@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   createSession, sendMessage as apiSendMessage, stopSessionApi,
   deleteSessionApi,
-  fetchProfiles, fetchSessions, fetchMessages, fetchSessionStatus,
+  fetchProfiles, fetchSessions,
   subscribeEvents, healthCheck,
 } from "./api";
 import type { Profile, SessionInfo, CreateSessionOpts } from "./api";
 import type { Session } from "./types";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
+import { nextMsgId } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { ChatView } from "./components/ChatView";
 import { ChatInput } from "./components/ChatInput";
@@ -40,6 +41,7 @@ function App() {
   // Event reducer state — ref for performance
   const reducerState = useRef<ReducerState>(createInitialState());
   const unsubRef = useRef<(() => void) | null>(null);
+  const sseConnectedRef = useRef(false);
 
   const [pendingHashId, setPendingHashId] = useState<string | null>(() => {
     const hash = window.location.hash.slice(1);
@@ -96,7 +98,7 @@ function App() {
       messages: rs.messages,
       totalCost: rs.totalCost,
       lastSeq: rs.lastSeq,
-      createdAt: Date.now(),
+      createdAt: rs.createdAt,
       updatedAt: Date.now(),
       activeToolName: rs.activeToolName,
       activeToolElapsed: rs.activeToolElapsed,
@@ -108,19 +110,33 @@ function App() {
   const subscribeToSession = useCallback((sessionId: string, afterSeq: number, profile?: string) => {
     unsubRef.current?.();
 
+    sseConnectedRef.current = true;
     const unsub = subscribeEvents(sessionId, afterSeq, {
       onEvent: (event, seq) => {
         reducerState.current = reduceEvent(reducerState.current, event, seq);
         syncSessionFromReducer(reducerState.current, profile);
       },
       onDone: () => {
-        if (reducerState.current.status !== "done" && reducerState.current.status !== "error") {
-          reducerState.current = { ...reducerState.current, status: "done" };
+        sseConnectedRef.current = false;
+        // Server sent "done" — clean close. Set to idle.
+        if (reducerState.current.status === "running" || reducerState.current.status === "starting") {
+          reducerState.current = { ...reducerState.current, status: "idle" };
         }
         syncSessionFromReducer(reducerState.current, profile);
         refreshSessions();
       },
+      onDisconnect: () => {
+        sseConnectedRef.current = false;
+        // Network drop — auto-reconnect after a short delay
+        console.warn(`SSE disconnected for ${sessionId}, reconnecting...`);
+        setTimeout(() => {
+          if (unsubRef.current === unsub) {
+            subscribeToSession(sessionId, reducerState.current.lastSeq, profile);
+          }
+        }, 2000);
+      },
       onError: (error) => {
+        sseConnectedRef.current = false;
         reducerState.current = { ...reducerState.current, status: "error" };
         syncSessionFromReducer(reducerState.current, profile);
         console.error("Event stream error:", error);
@@ -146,35 +162,13 @@ function App() {
     const info = serverSessions.find((s) => s.id === id);
     const sessionProfile = info?.profile ?? undefined;
 
+    // Always reconstruct state from events — single source of truth
     reducerState.current = createInitialState(id);
-
-    const dbMessages = await fetchMessages(id);
-    for (const m of dbMessages) {
-      const msg = {
-        role: m.role,
-        content: m.content,
-        thinking: m.thinking,
-        meta: m.role === "assistant" && (m.cost_usd || m.duration_ms) ? {
-          cost: m.cost_usd ?? undefined,
-          duration: m.duration_ms ?? undefined,
-          model: m.model ?? undefined,
-          turns: m.turns ?? undefined,
-        } : undefined,
-      };
-      reducerState.current.messages.push(msg as any);
-    }
-
-    const status = await fetchSessionStatus(id).catch(() => null);
-    const isActive = status && (status.status === "running" || status.status === "idle" || status.status === "starting");
-
-    if (isActive) {
-      reducerState.current.status = status!.status as any;
-      subscribeToSession(id, 0, sessionProfile);
-    } else {
-      reducerState.current.status = "done";
-    }
-
     syncSessionFromReducer(reducerState.current, sessionProfile);
+
+    // Subscribe to event stream (catches up from DB first, then live if active)
+    subscribeToSession(id, 0, sessionProfile);
+
     if (sessionProfile) setSelectedProfile(sessionProfile);
     updateHash(id);
     setInput("");
@@ -228,7 +222,7 @@ function App() {
       // Create new session
       const profile = selectedProfile || undefined;
       reducerState.current = createInitialState();
-      reducerState.current.messages.push({ role: "user", content: prompt });
+      reducerState.current.messages.push({ id: nextMsgId(), role: "user", content: prompt });
       reducerState.current.status = "starting";
       syncSessionFromReducer(reducerState.current, profile);
 
@@ -255,18 +249,22 @@ function App() {
         refreshSessions();
       } catch (err) {
         reducerState.current.status = "error";
-        reducerState.current.messages.push({ role: "assistant", content: `Error: ${err}` });
+        reducerState.current.messages.push({ id: nextMsgId(), role: "assistant", content: `Error: ${err}` });
         syncSessionFromReducer(reducerState.current, selectedProfile);
       }
     } else {
       // Send to existing session
-      reducerState.current.messages.push({ role: "user", content: prompt });
+      reducerState.current.messages.push({ id: nextMsgId(), role: "user", content: prompt });
+      reducerState.current.status = "running";
       syncSessionFromReducer(reducerState.current, activeSession.profile);
 
       try {
         await apiSendMessage(activeSession.id, prompt);
+        // Always re-subscribe to ensure we pick up new events.
+        // Catch-up from lastSeq covers any events between abort and reconnect.
+        subscribeToSession(activeSession.id, reducerState.current.lastSeq, activeSession.profile);
       } catch (err) {
-        reducerState.current.messages.push({ role: "assistant", content: `Error: ${err}` });
+        reducerState.current.messages.push({ id: nextMsgId(), role: "assistant", content: `Error: ${err}` });
         syncSessionFromReducer(reducerState.current, activeSession.profile);
       }
     }
@@ -275,7 +273,7 @@ function App() {
   const handleStop = useCallback(async () => {
     if (activeSession?.id) {
       await stopSessionApi(activeSession.id).catch(() => {});
-      reducerState.current.status = "done";
+      reducerState.current.status = "idle";
       syncSessionFromReducer(reducerState.current, activeSession.profile);
     }
   }, [activeSession, syncSessionFromReducer]);

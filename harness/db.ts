@@ -134,6 +134,7 @@ const stmts = {
   `),
   getEvents: db.prepare(`SELECT * FROM events WHERE session_id = $session_id AND seq > $after_seq ORDER BY seq ASC`),
   getEventCount: db.prepare(`SELECT COUNT(*) as count FROM events WHERE session_id = $session_id`),
+  getMaxSeq: db.prepare(`SELECT COALESCE(MAX(seq), 0) as max_seq FROM events WHERE session_id = $session_id`),
 };
 
 // ── Session Functions ──
@@ -232,6 +233,11 @@ export function getEvents(sessionId: string, afterSeq = 0): EventRow[] {
 export function getEventCount(sessionId: string): number {
   const row = stmts.getEventCount.get({ $session_id: sessionId }) as { count: number };
   return row?.count ?? 0;
+}
+
+export function getMaxSeq(sessionId: string): number {
+  const row = stmts.getMaxSeq.get({ $session_id: sessionId }) as { max_seq: number };
+  return row?.max_seq ?? 0;
 }
 
 export { db };

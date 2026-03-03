@@ -9,6 +9,10 @@ export type ToolCall = {
   result?: string;
   startedAt: number;
   duration?: number;
+  /** For Agent tool calls: nested sub-agent messages */
+  subMessages?: Message[];
+  /** For Agent tool calls: sub-agent summary from task_notification */
+  subSummary?: string;
 };
 
 // ── Sub-agent Tasks ──
@@ -23,7 +27,11 @@ export type SubTask = {
 
 // ── Messages ──
 
+let _msgId = 0;
+export function nextMsgId(): string { return `m${++_msgId}`; }
+
 export type Message = {
+  id: string;
   role: "user" | "assistant";
   content: string;
   thinking?: string;
@@ -34,6 +42,8 @@ export type Message = {
     duration?: number;
     model?: string;
     turns?: number;
+    inputTokens?: number;
+    outputTokens?: number;
   };
 };
 

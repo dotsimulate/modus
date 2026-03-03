@@ -49,11 +49,12 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
     <div className="chat-messages" ref={containerRef}>
       {messages.map((msg, i) => (
         <MessageBubble
-          key={i}
+          key={msg.id}
           msg={msg}
           isStreaming={
             streaming && i === messages.length - 1 && msg.role === "assistant"
           }
+          hideRole={i > 0 && messages[i - 1].role === msg.role}
           showThinking={showThinking}
           showMeta={showMeta}
           showToolCalls={showToolCalls}

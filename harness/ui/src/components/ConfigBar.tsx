@@ -80,15 +80,17 @@ export function ConfigBar({
         </svg>
       </div>
       <div className={`config-bar-collapse ${open ? "config-bar-collapse--open" : ""}`}>
-        <div className="config-bar-panel">
-          <AgentConfig
-            config={agentConfig}
-            profileTools={profileTools}
-            profileEffort={profileEffort}
-            profileMaxTurns={profileMaxTurns}
-            onChange={onAgentConfigChange}
-            compact
-          />
+        <div className="config-bar-clip">
+          <div className="config-bar-panel">
+            <AgentConfig
+              config={agentConfig}
+              profileTools={profileTools}
+              profileEffort={profileEffort}
+              profileMaxTurns={profileMaxTurns}
+              onChange={onAgentConfigChange}
+              compact
+            />
+          </div>
         </div>
       </div>
     </div>

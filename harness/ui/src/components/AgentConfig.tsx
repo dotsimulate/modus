@@ -93,14 +93,16 @@ export function AgentConfig({
         </button>
       ) : null}
 
-      {toolsOpen && (
-        <ToolGrid
-          states={config.toolStates}
-          profileTools={profileTools}
-          onChange={(toolStates) => update({ toolStates })}
-          compact={compact}
-        />
-      )}
+      <div className={`panel-collapse ${toolsOpen ? "panel-collapse--open" : ""}`}>
+        <div className="panel-collapse-clip">
+          <ToolGrid
+            states={config.toolStates}
+            profileTools={profileTools}
+            onChange={(toolStates) => update({ toolStates })}
+            compact={compact}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -50,7 +50,7 @@ const configs: Record<string, Partial<ProfileUiConfig>> = {
     label: "research",
     showThinking: false,
     showMeta: true,
-    showToolCalls: false,
+    showToolCalls: true,
     showSubTasks: false,
     placeholder: "what should I research?",
     emptyTitle: "research",
