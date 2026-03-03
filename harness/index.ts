@@ -173,38 +173,35 @@ app.get("/api/sessions/:id/events", (c) => {
     }
 
     // If session is still active, subscribe for live events
+    // The session manager broadcasts "done" when the drain loop ends —
+    // that flows through the writer and closes this connection naturally.
     const active = getActiveSession(id);
     if (active && active.status !== "done" && active.status !== "error") {
+      let resolve: () => void;
+      const done = new Promise<void>((r) => { resolve = r; });
+
+      // Keep-alive: send SSE comment every 30s to prevent idle timeout
+      const keepAlive = setInterval(async () => {
+        try { await stream.writeSSE({ event: "ping", data: "{}", id: "" }); } catch { /* connection dead */ }
+      }, 30_000);
+
       const writer: SSEWriter = {
         async write(event, data, seqId) {
           await stream.writeSSE({ event, data, id: seqId });
+          if (event === "done") resolve();
         },
-        close() { /* stream will close naturally */ },
+        close() { resolve(); },
       };
 
       const unsubscribe = subscribe(id, writer);
-      stream.onAbort(() => {
-        unsubscribe();
-        // NOTE: we do NOT abort the session — it keeps running
-      });
+      stream.onAbort(() => { clearInterval(keepAlive); unsubscribe(); resolve(); });
 
-      // Keep the SSE connection alive until session completes or client disconnects
-      await new Promise<void>((resolve) => {
-        const check = setInterval(() => {
-          if (!active || active.status === "done" || active.status === "error") {
-            clearInterval(check);
-            resolve();
-          }
-        }, 1000);
-        stream.onAbort(() => {
-          clearInterval(check);
-          resolve();
-        });
-      });
+      await done;
+      clearInterval(keepAlive);
+    } else {
+      // Session already finished — send done immediately after catch-up
+      await stream.writeSSE({ event: "done", data: "{}", id: "done" });
     }
-
-    // Send final done event
-    await stream.writeSSE({ event: "done", data: "{}", id: "done" });
   });
 });
 
@@ -217,11 +214,12 @@ app.post("/api/sessions/:id/messages", async (c) => {
 
   const active = getActiveSession(id);
   if (!active) {
-    // Session not active in memory — need to resume it
+    // Session not active in memory — resume it via SDK
+    const existing = getSession(id);
     const session = startSession({
       prompt,
       sessionId: id,
-      profile: body.profile,
+      profile: body.profile ?? existing?.profile ?? undefined,
     });
     const start = Date.now();
     while (session.sessionId.startsWith("pending-") && Date.now() - start < 5000) {
@@ -344,7 +342,7 @@ app.post("/api/agent/stream", async (c) => {
 
 // ── Start ──
 
-const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: HOST });
+const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: HOST, idleTimeout: 255 });
 console.log(`Agent harness listening on http://${HOST}:${PORT}${AUTH_TOKEN ? " (auth enabled)" : ""}`);
 
 // Graceful shutdown

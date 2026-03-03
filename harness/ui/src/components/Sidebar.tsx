@@ -167,29 +167,31 @@ export function Sidebar({
           </button>
 
           <div className={`panel-collapse ${configExpanded ? "panel-collapse--open" : ""}`}>
-            <div className="profile-panel-body">
-              {/* Profile selector */}
-              <label className="agent-config-field">
-                <span>profile</span>
-                <select
-                  value={selectedProfile}
-                  onChange={(e) => onSelectProfile(e.target.value)}
-                >
-                  {profiles.map((p) => (
-                    <option key={p.name} value={p.name}>{p.name}</option>
-                  ))}
-                </select>
-              </label>
+            <div className="panel-collapse-clip">
+              <div className="profile-panel-body">
+                {/* Profile selector */}
+                <label className="agent-config-field">
+                  <span>profile</span>
+                  <select
+                    value={selectedProfile}
+                    onChange={(e) => onSelectProfile(e.target.value)}
+                  >
+                    {profiles.map((p) => (
+                      <option key={p.name} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+                </label>
 
-              {/* Full session setup */}
-              <SessionSetup
-                config={setupState}
-                profileTools={selectedProfileData?.tools ?? "all"}
-                profileEffort={selectedProfileData?.effort}
-                profileMaxTurns={selectedProfileData?.maxTurns}
-                profileModel={selectedProfileData?.model}
-                onChange={onSetupChange}
-              />
+                {/* Full session setup */}
+                <SessionSetup
+                  config={setupState}
+                  profileTools={selectedProfileData?.tools ?? "all"}
+                  profileEffort={selectedProfileData?.effort}
+                  profileMaxTurns={selectedProfileData?.maxTurns}
+                  profileModel={selectedProfileData?.model}
+                  onChange={onSetupChange}
+                />
+              </div>
             </div>
           </div>
         </div>

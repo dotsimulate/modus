@@ -177,6 +177,8 @@ export async function stopSessionApi(sessionId: string): Promise<void> {
 export type EventStreamCallbacks = {
   onEvent: (event: any, seq: number) => void;
   onDone: () => void;
+  /** Stream closed without server sending "done" — likely network drop */
+  onDisconnect?: () => void;
   onError: (error: string) => void;
 };
 
@@ -195,6 +197,19 @@ export function subscribeEvents(
   const tp = tokenParam();
   const params = [`after=${afterSeq}`, tp].filter(Boolean).join("&");
   const url = `${API_BASE}/api/sessions/${sessionId}/events?${params}`;
+
+  let doneFired = false;
+  let gotServerDone = false;
+  const fireDone = () => {
+    if (doneFired) return;
+    doneFired = true;
+    if (gotServerDone) {
+      callbacks.onDone();
+    } else {
+      // Stream ended without server "done" — network drop
+      (callbacks.onDisconnect ?? callbacks.onDone)();
+    }
+  };
 
   fetch(url, { signal: abort.signal })
     .then(async (res) => {
@@ -226,7 +241,8 @@ export function subscribeEvents(
             currentId = line.slice(4).trim();
           } else if (line.startsWith("data: ")) {
             if (currentEvent === "done") {
-              callbacks.onDone();
+              gotServerDone = true;
+              fireDone();
             } else {
               try {
                 const parsed = JSON.parse(line.slice(6));
@@ -237,7 +253,7 @@ export function subscribeEvents(
         }
       }
 
-      callbacks.onDone();
+      fireDone();
     })
     .catch((err) => {
       if (err.name !== "AbortError") {

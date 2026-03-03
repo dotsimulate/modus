@@ -1,21 +1,29 @@
 import { useState } from "react";
 import type { Message } from "../types";
 import { ToolCallView } from "./ToolCall";
+import { Markdown } from "./Markdown";
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M ";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k ";
+  return n + " ";
+}
 
 type Props = {
   msg: Message;
   isStreaming: boolean;
+  hideRole?: boolean;
   showThinking?: boolean;
   showMeta?: boolean;
   showToolCalls?: boolean;
 };
 
-export function MessageBubble({ msg, isStreaming, showThinking = true, showMeta = true, showToolCalls = true }: Props) {
-  const [thinkingExpanded, setThinkingExpanded] = useState(false);
+export function MessageBubble({ msg, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true }: Props) {
+  const [thinkingExpanded, setThinkingExpanded] = useState(true);
 
   return (
-    <div className="message">
-      <div className="message-role">{msg.role}</div>
+    <div className="message" data-role={msg.role}>
+      {!hideRole && <div className="message-role">{msg.role}</div>}
 
       {showThinking && msg.thinking && (
         <div
@@ -36,7 +44,7 @@ export function MessageBubble({ msg, isStreaming, showThinking = true, showMeta 
 
       {msg.content && (
         <div className="message-content">
-          {msg.content}
+          <Markdown content={msg.content} />
           {isStreaming && <span className="streaming-cursor" />}
         </div>
       )}
@@ -53,10 +61,16 @@ export function MessageBubble({ msg, isStreaming, showThinking = true, showMeta 
           {msg.meta.cost != null && (
             <span>${msg.meta.cost.toFixed(4)}</span>
           )}
-          {msg.meta.duration != null && (
-            <span>{(msg.meta.duration / 1000).toFixed(1)}s</span>
-          )}
           {msg.meta.turns != null && <span>{msg.meta.turns} turns</span>}
+          {msg.meta.inputTokens != null && msg.meta.outputTokens != null && (
+            <span className="meta-tokens">
+              <span className="meta-arrow">&#x2193;</span>{fmtTokens(msg.meta.inputTokens)}
+              <span className="meta-arrow">&#x2191;</span>{fmtTokens(msg.meta.outputTokens)}
+            </span>
+          )}
+          {msg.meta.duration != null && (
+            <span className="meta-duration">{(msg.meta.duration / 1000).toFixed(1)}s</span>
+          )}
         </div>
       )}
     </div>

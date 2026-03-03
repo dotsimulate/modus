@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { SessionStatus } from "../types";
 
+/** In-memory history of sent messages — survives re-renders, cleared on page reload */
+const sentHistory: string[] = [];
+const MAX_HISTORY = 50;
+
 type Props = {
   value: string;
   onChange: (value: string) => void;
@@ -19,6 +23,9 @@ export function ChatInput({
   activeToolName, activeToolElapsed,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const historyIndex = useRef(-1);
+  const draft = useRef("");
+  const isActive = sessionStatus === "running" || sessionStatus === "starting";
 
   useEffect(() => {
     const ta = ref.current;
@@ -28,14 +35,65 @@ export function ChatInput({
     }
   }, [value]);
 
+  // Global Escape to stop — works regardless of focus
+  useEffect(() => {
+    if (!isActive) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); onStop(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isActive, onStop]);
+
+  const handleSend = () => {
+    const text = value.trim();
+    if (text) {
+      sentHistory.push(text);
+      if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
+      historyIndex.current = -1;
+      draft.current = "";
+    }
+    onSend();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onSend();
+      handleSend();
+      return;
+    }
+
+    // Up arrow at start of input — cycle back through history
+    if (e.key === "ArrowUp" && sentHistory.length > 0) {
+      const ta = ref.current;
+      const atStart = !ta || ta.selectionStart === 0;
+      if (atStart) {
+        e.preventDefault();
+        if (historyIndex.current === -1) draft.current = value;
+        const next = historyIndex.current === -1
+          ? sentHistory.length - 1
+          : Math.max(0, historyIndex.current - 1);
+        historyIndex.current = next;
+        onChange(sentHistory[next]);
+      }
+    }
+
+    // Down arrow — cycle forward through history, back to draft
+    if (e.key === "ArrowDown" && historyIndex.current !== -1) {
+      const ta = ref.current;
+      const atEnd = !ta || ta.selectionStart === ta.value.length;
+      if (atEnd) {
+        e.preventDefault();
+        if (historyIndex.current >= sentHistory.length - 1) {
+          historyIndex.current = -1;
+          onChange(draft.current);
+        } else {
+          historyIndex.current++;
+          onChange(sentHistory[historyIndex.current]);
+        }
+      }
     }
   };
-
-  const isActive = sessionStatus === "running" || sessionStatus === "starting";
 
   // Build status text
   let statusText = "responding...";
@@ -69,7 +127,7 @@ export function ChatInput({
         />
         <button
           className="send-btn"
-          onClick={onSend}
+          onClick={handleSend}
           disabled={!value.trim() || disabled}
         >
           send

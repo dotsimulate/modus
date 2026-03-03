@@ -8,7 +8,7 @@
 
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import {
-  upsertSession, updateSessionStatus, addMessage, addEvent,
+  upsertSession, updateSessionStatus, addEvent, getMaxSeq, getSession,
 } from "./db";
 import { getProfile } from "./profiles";
 import type { Profile } from "./profiles";
@@ -43,9 +43,13 @@ export type ActiveSession = {
   numTurns: number;
   error: string | null;
   preview: string;
+  /** Full initial prompt text (preview is truncated) */
+  initialPrompt: string;
   subscribers: Set<SSEWriter>;
   input: InputChannel;
   queryObj: ReturnType<typeof sdkQuery> | null;
+  /** Timestamp when current turn started (for harness-side timing) */
+  turnStartedAt: number;
 };
 
 // ── Active Sessions Map ──
@@ -114,19 +118,6 @@ function getSubtype(msg: any): string | null {
   return msg.subtype ?? null;
 }
 
-/** Should we persist this event? Skip high-volume streaming deltas. */
-function shouldPersist(msg: any): boolean {
-  if (msg.type !== "stream_event") return true;
-  const evt = msg.event;
-  if (!evt) return false;
-  // Keep structural events, skip raw text/thinking deltas
-  const keep = ["message_start", "message_stop", "message_delta", "content_block_start", "content_block_stop"];
-  if (keep.includes(evt.type)) return true;
-  // Keep tool input deltas (input_json_delta)
-  if (evt.type === "content_block_delta" && evt.delta?.type === "input_json_delta") return true;
-  // Skip text_delta and thinking_delta (high volume, reconstructed from assistant message)
-  return false;
-}
 
 // ── Start Session ──
 
@@ -189,9 +180,11 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     numTurns: 0,
     error: null,
     preview: opts.prompt.slice(0, 80),
+    initialPrompt: opts.prompt,
     subscribers: new Set(),
     input: channel,
     queryObj: null,
+    turnStartedAt: Date.now(),
   };
 
   activeSessions.set(tempId, session);
@@ -217,7 +210,6 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
 // ── Event Drain Loop ──
 
 async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
-  let thinkingText = "";
   let initSeen = false;
 
   try {
@@ -229,6 +221,8 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
       if (m.type === "system" && m.subtype === "init" && m.session_id && !initSeen) {
         initSeen = true;
         const realId = m.session_id;
+        const isResume = session.tempId === realId && !!getSession(realId);
+
         // Re-key in the map
         activeSessions.delete(session.tempId);
         session.sessionId = realId;
@@ -236,47 +230,64 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
         session.model = m.model ?? session.model;
         session.status = "running";
 
-        // Create DB session row + save first user message
-        upsertSession({
-          id: realId,
-          preview: session.preview,
-          profile: session.profile,
-          model: session.model,
-          status: "running",
-          messageCount: 0,
-          costUsd: 0,
-          lastPrompt: session.preview,
-        });
-        addMessage({ sessionId: realId, role: "user", content: session.preview });
-      }
-
-      // ── Capture thinking from assistant messages
-      if (m.type === "assistant" && m.message?.content) {
-        session.status = "running";
-        for (const block of m.message.content) {
-          if (block.type === "thinking" && block.thinking) {
-            thinkingText = block.thinking;
-          }
+        if (isResume) {
+          // Resume: pick up existing seq, update status, save new user message
+          session.seq = getMaxSeq(realId);
+          updateSessionStatus(realId, "running");
+          session.seq++;
+          addEvent(realId, session.seq, "user", "prompt", JSON.stringify({
+            type: "user",
+            subtype: "prompt",
+            message: { role: "user", content: session.initialPrompt },
+          }));
+        } else {
+          // Fresh session: create DB row + save first user message
+          upsertSession({
+            id: realId,
+            preview: session.preview,
+            profile: session.profile,
+            model: session.model,
+            status: "running",
+            messageCount: 0,
+            costUsd: 0,
+            lastPrompt: session.preview,
+          });
+          session.seq++;
+          addEvent(realId, session.seq, "user", "prompt", JSON.stringify({
+            type: "user",
+            subtype: "prompt",
+            message: { role: "user", content: session.initialPrompt },
+          }));
         }
       }
 
-      // ── Handle result: save assistant message, update session
+      // ── Track running status from assistant messages
+      if (m.type === "assistant" && m.message?.content) {
+        session.status = "running";
+      }
+
+      // ── Handle result: inject harness timing + token count, save assistant message
       if (m.type === "result") {
+        // Harness-measured turn duration
+        m.harness_duration_ms = Date.now() - session.turnStartedAt;
+
+        // Extract total tokens from modelUsage (SDK-provided)
+        if (m.modelUsage && typeof m.modelUsage === "object") {
+          let totalIn = 0, totalOut = 0;
+          for (const model of Object.values(m.modelUsage) as any[]) {
+            totalIn += model.inputTokens ?? 0;
+            totalOut += model.outputTokens ?? 0;
+          }
+          m.total_tokens = totalIn + totalOut;
+          m.input_tokens = totalIn;
+          m.output_tokens = totalOut;
+        }
+
         const resultText = m.result ?? "";
         session.costUsd += m.total_cost_usd ?? 0;
         session.numTurns += m.num_turns ?? 0;
 
         if (session.sessionId && !session.sessionId.startsWith("pending-")) {
-          addMessage({
-            sessionId: session.sessionId,
-            role: "assistant",
-            content: resultText,
-            thinking: thinkingText || undefined,
-            costUsd: m.total_cost_usd,
-            durationMs: m.duration_ms,
-            model: session.model ?? undefined,
-            turns: m.num_turns,
-          });
           upsertSession({
             id: session.sessionId,
             preview: session.preview,
@@ -290,15 +301,13 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
           });
         }
 
-        thinkingText = "";
-
         // After result, the agent is idle (waiting for next input) or done
         // If the input channel is closed, the query will end naturally
         session.status = "idle";
       }
 
       // ── Persist event to DB (selective for stream_event)
-      if (shouldPersist(m) && session.sessionId && !session.sessionId.startsWith("pending-")) {
+      if (session.sessionId && !session.sessionId.startsWith("pending-")) {
         session.seq++;
         addEvent(
           session.sessionId,
@@ -358,13 +367,19 @@ export function queueMessage(sessionId: string, prompt: string): boolean {
   if (!session) return false;
   session.preview = prompt.slice(0, 80); // update preview to latest prompt
 
-  // Save user message to DB
+  // Save user event for catch-up replay
   if (!sessionId.startsWith("pending-")) {
-    addMessage({ sessionId, role: "user", content: prompt });
+    session.seq++;
+    addEvent(sessionId, session.seq, "user", "prompt", JSON.stringify({
+      type: "user",
+      subtype: "prompt",
+      message: { role: "user", content: prompt },
+    }));
   }
 
   session.input.push(prompt);
   session.status = "running";
+  session.turnStartedAt = Date.now();
   if (!sessionId.startsWith("pending-")) {
     updateSessionStatus(sessionId, "running");
   }

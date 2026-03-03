@@ -6,6 +6,7 @@
  */
 
 import type { Message, ToolCall, SubTask, SessionStatus } from "./types";
+import { nextMsgId } from "./types";
 
 export type ReducerState = {
   sessionId: string;
@@ -15,6 +16,7 @@ export type ReducerState = {
   totalCost: number;
   numTurns: number;
   lastSeq: number;
+  createdAt: number;
   activeToolName?: string;
   activeToolElapsed?: number;
   // Internal accumulators (not displayed directly)
@@ -22,6 +24,10 @@ export type ReducerState = {
   _streamingThinking: string;
   _pendingToolCalls: Map<string, ToolCall>;
   _subTasks: Map<string, SubTask>;
+  /** Currently active sub-agent task ID */
+  _activeSubTaskId?: string;
+  /** tool_use_id of the Agent tool call that owns the active sub-agent */
+  _activeAgentToolId?: string;
 };
 
 export function createInitialState(sessionId = ""): ReducerState {
@@ -33,6 +39,7 @@ export function createInitialState(sessionId = ""): ReducerState {
     totalCost: 0,
     numTurns: 0,
     lastSeq: 0,
+    createdAt: Date.now(),
     _streamingText: "",
     _streamingThinking: "",
     _pendingToolCalls: new Map(),
@@ -67,6 +74,66 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
   }
 }
 
+// ── Helpers for sub-agent message nesting ──
+
+/** Append a sub-message to the Agent tool call's subMessages */
+function appendSubMessage(msgs: Message[], agentToolId: string, subMsg: Message): Message[] {
+  const result = [...msgs];
+  for (let i = result.length - 1; i >= 0; i--) {
+    const msg = result[i];
+    if (msg.toolCalls?.some((tc) => tc.id === agentToolId)) {
+      result[i] = {
+        ...msg,
+        toolCalls: msg.toolCalls!.map((tc) =>
+          tc.id === agentToolId
+            ? { ...tc, subMessages: [...(tc.subMessages ?? []), subMsg] }
+            : tc
+        ),
+      };
+      return result;
+    }
+  }
+  // Fallback: couldn't find the Agent tool call, add as top-level
+  result.push(subMsg);
+  return result;
+}
+
+/** Update the last sub-message in the Agent tool call's subMessages */
+function updateLastSubMessage(
+  msgs: Message[],
+  agentToolId: string,
+  updater: (m: Message) => Message,
+): Message[] {
+  const result = [...msgs];
+  for (let i = result.length - 1; i >= 0; i--) {
+    const msg = result[i];
+    const agentTc = msg.toolCalls?.find((tc) => tc.id === agentToolId);
+    if (agentTc?.subMessages?.length) {
+      const subs = [...agentTc.subMessages];
+      subs[subs.length - 1] = updater(subs[subs.length - 1]);
+      result[i] = {
+        ...msg,
+        toolCalls: msg.toolCalls!.map((tc) =>
+          tc.id === agentToolId ? { ...tc, subMessages: subs } : tc
+        ),
+      };
+      return result;
+    }
+  }
+  return result;
+}
+
+/** Get the last sub-message for the active Agent tool */
+function getLastSubMessage(msgs: Message[], agentToolId: string): Message | undefined {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const tc = msgs[i].toolCalls?.find((t) => t.id === agentToolId);
+    if (tc?.subMessages?.length) {
+      return tc.subMessages[tc.subMessages.length - 1];
+    }
+  }
+  return undefined;
+}
+
 // ── System Events ──
 
 function reduceSystem(s: ReducerState, m: any): ReducerState {
@@ -86,7 +153,12 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
       status: "running",
       lastToolName: undefined,
     });
-    return { ...s, _subTasks: tasks };
+    return {
+      ...s,
+      _subTasks: tasks,
+      _activeSubTaskId: m.task_id,
+      _activeAgentToolId: m.tool_use_id ?? s._activeAgentToolId,
+    };
   }
   if (m.subtype === "task_progress") {
     const tasks = new Map(s._subTasks);
@@ -110,7 +182,32 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
         usage: m.usage ?? existing.usage,
       });
     }
-    return { ...s, _subTasks: tasks };
+    // Store summary on the Agent tool call
+    let msgs = s.messages;
+    const toolId = m.tool_use_id ?? s._activeAgentToolId;
+    if (toolId && m.summary) {
+      msgs = [...msgs];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].toolCalls?.some((tc) => tc.id === toolId)) {
+          msgs[i] = {
+            ...msgs[i],
+            toolCalls: msgs[i].toolCalls!.map((tc) =>
+              tc.id === toolId ? { ...tc, subSummary: m.summary } : tc
+            ),
+          };
+          break;
+        }
+      }
+    }
+    // Clear active sub-task if this one is finishing
+    const clearing = s._activeSubTaskId === m.task_id;
+    return {
+      ...s,
+      messages: msgs,
+      _subTasks: tasks,
+      _activeSubTaskId: clearing ? undefined : s._activeSubTaskId,
+      _activeAgentToolId: clearing ? undefined : s._activeAgentToolId,
+    };
   }
   return s;
 }
@@ -143,20 +240,51 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
         startedAt: Date.now(),
       };
       toolCalls.push(tc);
-      // Track in pending map for result matching
+      // Track in pending map for result matching (immutable copy)
+      s._pendingToolCalls = new Map(s._pendingToolCalls);
       s._pendingToolCalls.set(block.id, tc);
     }
   }
 
-  // If this assistant message has text content, it's a real response
-  // (not just tool invocations). Create or update the message.
-  const msgs = [...s.messages];
+  // ── Sub-agent mode: nest inside Agent tool call ──
+  if (s._activeAgentToolId) {
+    const subMsg: Message = {
+      id: nextMsgId(),
+      role: "assistant",
+      content: text,
+      thinking: thinking || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+    };
 
-  if (text || thinking) {
-    // Check if last message is an in-progress assistant message
-    const last = msgs[msgs.length - 1];
-    if (last?.role === "assistant" && !last.meta) {
-      // Update in-progress message
+    const lastSub = getLastSubMessage(s.messages, s._activeAgentToolId);
+    const canMergeSub = lastSub?.role === "assistant" && !lastSub.meta
+      && !lastSub.toolCalls?.some((tc) => tc.status !== "running");
+    let msgs: Message[];
+
+    if (canMergeSub) {
+      msgs = updateLastSubMessage(s.messages, s._activeAgentToolId, (prev) => ({
+        ...prev,
+        content: text || prev.content,
+        thinking: thinking || prev.thinking,
+        toolCalls: [...(prev.toolCalls ?? []), ...toolCalls],
+      }));
+    } else {
+      msgs = appendSubMessage(s.messages, s._activeAgentToolId, subMsg);
+    }
+
+    return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "" };
+  }
+
+  // ── Normal mode: top-level messages ──
+  const msgs = [...s.messages];
+  const last = msgs[msgs.length - 1];
+
+  // A message with completed/errored tool calls is a finished turn — don't merge into it
+  const canMerge = last?.role === "assistant" && !last.meta
+    && !last.toolCalls?.some((tc) => tc.status !== "running");
+
+  if (text || thinking || toolCalls.length > 0) {
+    if (canMerge) {
       msgs[msgs.length - 1] = {
         ...last,
         content: text || last.content,
@@ -164,39 +292,17 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
         toolCalls: [...(last.toolCalls ?? []), ...toolCalls],
       };
     } else {
-      // New assistant message
       msgs.push({
+        id: nextMsgId(),
         role: "assistant",
         content: text,
         thinking: thinking || undefined,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       });
     }
-  } else if (toolCalls.length > 0) {
-    // Tool-only message — attach to last assistant or create new
-    const last = msgs[msgs.length - 1];
-    if (last?.role === "assistant" && !last.meta) {
-      msgs[msgs.length - 1] = {
-        ...last,
-        toolCalls: [...(last.toolCalls ?? []), ...toolCalls],
-      };
-    } else {
-      msgs.push({
-        role: "assistant",
-        content: "",
-        toolCalls,
-      });
-    }
   }
 
-  // Reset streaming accumulators since we got the full message
-  return {
-    ...s,
-    status: "running",
-    messages: msgs,
-    _streamingText: "",
-    _streamingThinking: "",
-  };
+  return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "" };
 }
 
 // ── User Messages (including synthetic tool_result) ──
@@ -208,7 +314,7 @@ function reduceUser(s: ReducerState, m: any): ReducerState {
   if (m.isSynthetic || hasToolResults) {
     if (Array.isArray(content)) {
       const pending = new Map(s._pendingToolCalls);
-      const msgs = [...s.messages];
+      let msgs = [...s.messages];
 
       for (const block of content) {
         if (block.type === "tool_result" && block.tool_use_id) {
@@ -217,49 +323,97 @@ function reduceUser(s: ReducerState, m: any): ReducerState {
             const result = typeof block.content === "string"
               ? block.content
               : JSON.stringify(block.content ?? "");
-            pending.set(block.tool_use_id, {
-              ...tc,
-              status: block.is_error ? "error" : "completed",
-              result: result.slice(0, 2000), // truncate for display
+            // Build update fields — merged onto the CURRENT tool call, not the stale pending copy
+            const updateFields = {
+              status: (block.is_error ? "error" : "completed") as ToolCall["status"],
+              result: result.slice(0, 2000),
               duration: Date.now() - tc.startedAt,
-            });
+            };
+            pending.set(block.tool_use_id, { ...tc, ...updateFields });
 
-            // Update the tool call in the message that contains it
+            // Update the tool call in messages — merge onto current (preserves subMessages etc.)
+            let found = false;
             for (let i = msgs.length - 1; i >= 0; i--) {
               const msg = msgs[i];
               if (msg.toolCalls?.some((t) => t.id === block.tool_use_id)) {
                 msgs[i] = {
                   ...msg,
                   toolCalls: msg.toolCalls!.map((t) =>
-                    t.id === block.tool_use_id ? pending.get(block.tool_use_id)! : t
+                    t.id === block.tool_use_id ? { ...t, ...updateFields } : t
                   ),
                 };
+                found = true;
                 break;
               }
+              // Also check inside Agent tool subMessages
+              for (const parentTc of msg.toolCalls ?? []) {
+                if (parentTc.subMessages) {
+                  for (let j = 0; j < parentTc.subMessages.length; j++) {
+                    const subMsg = parentTc.subMessages[j];
+                    if (subMsg.toolCalls?.some((t) => t.id === block.tool_use_id)) {
+                      const newSubs = [...parentTc.subMessages];
+                      newSubs[j] = {
+                        ...subMsg,
+                        toolCalls: subMsg.toolCalls!.map((t) =>
+                          t.id === block.tool_use_id ? { ...t, ...updateFields } : t
+                        ),
+                      };
+                      msgs[i] = {
+                        ...msg,
+                        toolCalls: msg.toolCalls!.map((t) =>
+                          t.id === parentTc.id ? { ...t, subMessages: newSubs } : t
+                        ),
+                      };
+                      found = true;
+                      break;
+                    }
+                  }
+                  if (found) break;
+                }
+              }
+              if (found) break;
             }
           }
         }
       }
-      return { ...s, messages: msgs, _pendingToolCalls: pending, activeToolName: undefined, activeToolElapsed: undefined };
+      // If the Agent tool_result arrived, clear sub-agent mode so subsequent
+      // assistant events go to top-level instead of nesting inside the Agent block
+      let activeAgentToolId = s._activeAgentToolId;
+      let activeSubTaskId = s._activeSubTaskId;
+      if (activeAgentToolId) {
+        for (const block of content) {
+          if (block.type === "tool_result" && block.tool_use_id === activeAgentToolId) {
+            activeAgentToolId = undefined;
+            activeSubTaskId = undefined;
+            break;
+          }
+        }
+      }
+
+      return { ...s, messages: msgs, _pendingToolCalls: pending, _streamingText: "", _streamingThinking: "", _activeAgentToolId: activeAgentToolId, _activeSubTaskId: activeSubTaskId, activeToolName: undefined, activeToolElapsed: undefined };
     }
     return s;
   }
 
-  // Real user message (replayed from session history or new)
-  if (m.isReplay) return s; // skip replays — we load from DB
+  // User prompt events (subtype: "prompt") — real user input, always display
+  if (m.subtype === "prompt") {
+    const text = typeof m.message?.content === "string"
+      ? m.message.content
+      : "";
+    if (!text) return s;
 
-  const text = typeof m.message?.content === "string"
-    ? m.message.content
-    : JSON.stringify(m.message?.content ?? "");
+    // Dedup: don't add if last message is identical user text
+    const last = s.messages[s.messages.length - 1];
+    if (last?.role === "user" && last.content === text) return s;
 
-  // Don't add if it's the same as the last user message (dedup)
-  const last = s.messages[s.messages.length - 1];
-  if (last?.role === "user" && last.content === text) return s;
+    return {
+      ...s,
+      messages: [...s.messages, { id: nextMsgId(), role: "user", content: text }],
+    };
+  }
 
-  return {
-    ...s,
-    messages: [...s.messages, { role: "user", content: text }],
-  };
+  // All other user events (SDK-originated, e.g. sub-agent prompt echoes) — skip display
+  return s;
 }
 
 // ── Stream Events (partial deltas) ──
@@ -269,15 +423,63 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
   if (!evt) return s;
 
   if (evt.type === "content_block_delta" && evt.delta) {
+    // ── Sub-agent mode: stream into Agent tool call's subMessages ──
+    if (s._activeAgentToolId) {
+      if (evt.delta.type === "text_delta" && evt.delta.text) {
+        const newText = s._streamingText + evt.delta.text;
+        const lastSub = getLastSubMessage(s.messages, s._activeAgentToolId);
+        const canMerge = lastSub?.role === "assistant" && !lastSub.meta
+          && !lastSub.toolCalls?.some((tc) => tc.status !== "running");
+        let msgs: Message[];
+        if (canMerge) {
+          msgs = updateLastSubMessage(s.messages, s._activeAgentToolId, (prev) => ({
+            ...prev,
+            content: newText,
+          }));
+        } else {
+          msgs = appendSubMessage(s.messages, s._activeAgentToolId, {
+            id: nextMsgId(),
+            role: "assistant",
+            content: newText,
+          });
+        }
+        return { ...s, messages: msgs, _streamingText: newText };
+      }
+      if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
+        const newThinking = s._streamingThinking + evt.delta.thinking;
+        const lastSub = getLastSubMessage(s.messages, s._activeAgentToolId);
+        const canMerge = lastSub?.role === "assistant" && !lastSub.meta
+          && !lastSub.toolCalls?.some((tc) => tc.status !== "running");
+        let msgs: Message[];
+        if (canMerge) {
+          msgs = updateLastSubMessage(s.messages, s._activeAgentToolId, (prev) => ({
+            ...prev,
+            thinking: newThinking,
+          }));
+        } else {
+          msgs = appendSubMessage(s.messages, s._activeAgentToolId, {
+            id: nextMsgId(),
+            role: "assistant",
+            content: "",
+            thinking: newThinking,
+          });
+        }
+        return { ...s, messages: msgs, _streamingThinking: newThinking };
+      }
+      return s;
+    }
+
+    // ── Normal mode ──
     if (evt.delta.type === "text_delta" && evt.delta.text) {
       const newText = s._streamingText + evt.delta.text;
-      // Update last assistant message content in-place
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
-      if (last?.role === "assistant" && !last.meta) {
+      const canMerge = last?.role === "assistant" && !last.meta
+        && !last.toolCalls?.some((tc) => tc.status !== "running");
+      if (canMerge) {
         msgs[msgs.length - 1] = { ...last, content: newText };
       } else {
-        msgs.push({ role: "assistant", content: newText });
+        msgs.push({ id: nextMsgId(), role: "assistant", content: newText });
       }
       return { ...s, messages: msgs, _streamingText: newText };
     }
@@ -285,10 +487,12 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
       const newThinking = s._streamingThinking + evt.delta.thinking;
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
-      if (last?.role === "assistant" && !last.meta) {
+      const canMerge = last?.role === "assistant" && !last.meta
+        && !last.toolCalls?.some((tc) => tc.status !== "running");
+      if (canMerge) {
         msgs[msgs.length - 1] = { ...last, thinking: newThinking };
       } else {
-        msgs.push({ role: "assistant", content: "", thinking: newThinking });
+        msgs.push({ id: nextMsgId(), role: "assistant", content: "", thinking: newThinking });
       }
       return { ...s, messages: msgs, _streamingThinking: newThinking };
     }
@@ -330,9 +534,11 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
         : undefined,
       meta: {
         cost: m.total_cost_usd,
-        duration: m.duration_ms,
+        duration: m.harness_duration_ms,
         model: modelName,
         turns: m.num_turns,
+        inputTokens: m.input_tokens,
+        outputTokens: m.output_tokens,
       },
     };
   }
