@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+
+# Python
+__pycache__/
+*.py[oc]
+.venv/
+*.egg-info/
+
+# Lock files (regenerated per-platform by bun/uv)
+bun.lock
+uv.lock
+
+# SQLite runtime files
+*.db
+*.db-shm
+*.db-wal
+
+# Build output
+dist/
+dist-ssr/
+out/
+build/
+*.tgz
+
+# Environment / secrets
+.env
+.env.*
+
+# MCP config (has machine-specific absolute paths)
+.mcp.json
+
+# Agent memory store (personal per-user)
+agent_memory/memory/
+
+# Claude settings (personal per-user)
+.claude/settings.local.json
+
+# Logs
+*.log
+logs/
+
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.code-workspace
+
+# Coverage / test artifacts
+coverage/
+*.lcov
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
