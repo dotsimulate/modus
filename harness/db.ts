@@ -39,8 +39,10 @@ db.run(`UPDATE sessions SET last_message_at = updated_at WHERE last_message_at I
 try { db.run(`ALTER TABLE sessions ADD COLUMN cwd TEXT`); } catch { /* already exists */ }
 // Migration: add schedule_name — set when session was spawned by a schedule
 try { db.run(`ALTER TABLE sessions ADD COLUMN schedule_name TEXT`); } catch { /* already exists */ }
-// Migration: add compacted flag for event compaction
-try { db.run(`ALTER TABLE sessions ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
+// Migration: add pruned flag for event pruning (removes redundant streaming deltas)
+try { db.run(`ALTER TABLE sessions ADD COLUMN pruned INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
+// Migration: rename compacted → pruned (if upgrading from older schema)
+try { db.run(`ALTER TABLE sessions RENAME COLUMN compacted TO pruned`); } catch { /* already renamed or never existed */ }
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -457,38 +459,38 @@ export function searchSessions(query: string, limit = 20, cwdPrefixes?: string[]
 }
 
 // ── Event Compaction ──
-// After a session goes idle, collapse stream_event deltas to save space.
+// After a session goes idle, prune redundant streaming deltas to save space.
 // Keeps assistant/user/system/result events intact — only removes text_delta and thinking_delta.
 
-const compactDeleteStmt = db.prepare(`
+const pruneDeleteStmt = db.prepare(`
   DELETE FROM events
   WHERE session_id = $sid
     AND type = 'stream_event'
     AND subtype IN ('text_delta', 'thinking_delta', 'content_block_start', 'content_block_stop', 'content_block_delta', 'message_start', 'message_delta', 'message_stop', 'input_json_delta')
 `);
 
-const markCompactedStmt = db.prepare(`UPDATE sessions SET compacted = 1 WHERE id = $sid`);
+const markPrunedStmt = db.prepare(`UPDATE sessions SET pruned = 1 WHERE id = $sid`);
 
-/** Compact a single session — delete stream deltas, keep assembled events */
-export function compactSession(sessionId: string): { deleted: number } {
-  const result = compactDeleteStmt.run({ $sid: sessionId });
-  markCompactedStmt.run({ $sid: sessionId });
+/** Prune a single session — delete redundant streaming deltas, keep assembled events */
+export function pruneSessionEvents(sessionId: string): { deleted: number } {
+  const result = pruneDeleteStmt.run({ $sid: sessionId });
+  markPrunedStmt.run({ $sid: sessionId });
   return { deleted: result.changes };
 }
 
-/** Compact all idle/done sessions that haven't been compacted yet */
-export function compactAllSessions(): { sessions: number; events: number } {
-  const uncompacted = db.prepare(
-    `SELECT id FROM sessions WHERE compacted = 0 AND status IN ('idle', 'done') AND archived = 0`
+/** Prune all idle/done sessions that haven't been pruned yet */
+export function pruneAllSessionEvents(): { sessions: number; events: number } {
+  const unpruned = db.prepare(
+    `SELECT id FROM sessions WHERE pruned = 0 AND status IN ('idle', 'done') AND archived = 0`
   ).all() as { id: string }[];
   let totalDeleted = 0;
   db.transaction(() => {
-    for (const { id } of uncompacted) {
-      const { deleted } = compactSession(id);
+    for (const { id } of unpruned) {
+      const { deleted } = pruneSessionEvents(id);
       totalDeleted += deleted;
     }
   })();
-  return { sessions: uncompacted.length, events: totalDeleted };
+  return { sessions: unpruned.length, events: totalDeleted };
 }
 
 /** Storage stats per project */

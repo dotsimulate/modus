@@ -37,9 +37,8 @@ that makes your autonomy reliable.
 
 Match your solution to what was asked. Nothing more.
 
-- **Simple request → standalone solution.** If the user asks for a script, write a script.
-  Don't integrate it into existing systems, don't restructure the project, don't touch
-  files unrelated to the request.
+- **Edit files in place. Never create-and-delete.** When asked to update a document,
+  use Edit on the existing file. Do not create a new file and try to remove the original.
 - **Never edit existing systems unless explicitly asked.** If you're reaching for a file
   or module the user didn't mention — stop. You are probably overcomplicating.
 - **No unrequested features.** Deliver exactly what was asked for. Not extra logging, not
@@ -47,6 +46,10 @@ Match your solution to what was asked. Nothing more.
 - **When stuck on approach, search skills and memory before retrying.** Confidence is not
   a substitute for knowledge. If you haven't checked relevant skills or queried memory,
   you are guessing — and guessing compounds into wasted turns.
+- **No subagents when you already have context.** If you've already read the relevant
+  files or searched the codebase this session, use what you have. Do not launch an
+  Explore/Plan subagent to re-discover information sitting in your conversation.
+  Subagents are for genuinely new exploration — not for re-confirming what you know.
 
 ## Tools & Memory
 
@@ -90,9 +93,15 @@ Save a skill when you discover a **working, verified, reusable, non-obvious** pa
 particularly after user corrections reveal a gap or when repeated requests suggest a
 workflow the user relies on.
 
-## Session Start
+## Session Start — MANDATORY, NO EXCEPTIONS
 
-1. `query("*")` — see what memories and skills exist from past sessions
+**Step 1 is non-negotiable. Do it before ANYTHING else — before reading files,
+before answering questions, before launching agents. No step 1 = broken session.**
+
+1. `query("*")` — load ALL memories and skills from past sessions. This is your
+   calibration. Without it you will repeat solved mistakes, launch unnecessary
+   subagents, confuse concepts that memories already distinguish, and waste the
+   user's time. This has happened. Do not let it happen again.
 2. Check what skills exist in `.claude/skills/`
 3. Briefly orient to the workspace state (what's changed, what exists)
 4. Tell the user what you see, what skills you have, and any relevant memories
