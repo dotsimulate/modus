@@ -1,25 +1,103 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
-const AUTH_TOKEN = import.meta.env.VITE_HARNESS_TOKEN ?? "";
+
+// Auth token — PIN session token from login (stored in localStorage).
+// HARNESS_TOKEN is for agents only; browsers authenticate via PIN.
+function getAuthToken(): string {
+  return localStorage.getItem("harness_token") || "";
+}
+
+export function setAuthToken(token: string) {
+  localStorage.setItem("harness_token", token);
+}
+
+export function clearAuthToken() {
+  localStorage.removeItem("harness_token");
+}
 
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
-  if (AUTH_TOKEN) h["Authorization"] = `Bearer ${AUTH_TOKEN}`;
+  const token = getAuthToken();
+  if (token) h["Authorization"] = `Bearer ${token}`;
   return h;
 }
 
 function tokenParam(): string {
-  return AUTH_TOKEN ? `token=${AUTH_TOKEN}` : "";
+  const token = getAuthToken();
+  return token ? `token=${token}` : "";
+}
+
+// ── PIN Auth ──
+
+/** Check if PIN auth is required */
+export async function authStatus(): Promise<{ required: boolean; setup: boolean; name: string | null }> {
+  const res = await fetch(`${API_BASE}/api/auth/status`);
+  return res.json();
+}
+
+/** First-run setup — set a new PIN (only works if none exists) */
+export async function setupNewPin(pin: string, name?: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/auth/setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin, name }),
+  });
+  if (!res.ok) throw new Error("Setup failed");
+  const data = await res.json();
+  return data.token;
+}
+
+/** Verify PIN, returns session token on success */
+export async function verifyPin(pin: string, name?: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/auth/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin, name }),
+  });
+  if (!res.ok) throw new Error("Wrong PIN");
+  const data = await res.json();
+  return data.token;
+}
+
+/** Get current user info */
+export async function fetchMe(): Promise<{ name: string | null }> {
+  const res = await fetch(`${API_BASE}/api/auth/me`, { headers: authHeaders() });
+  return res.json();
+}
+
+/** Lock — invalidate all browser sessions server-side */
+export async function lockAll(): Promise<void> {
+  await fetch(`${API_BASE}/api/auth/lock`, { method: "POST", headers: authHeaders() });
+}
+
+/** Check if current token is still valid — throws on 401 */
+export async function checkToken(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/sessions?limit=1`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("unauthorized");
 }
 
 // ── Types ──
 
+export type McpServerConfig =
+  | { type?: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
+  | { type: "sse"; url: string; headers?: Record<string, string> }
+  | { type: "http"; url: string; headers?: Record<string, string> };
+
 export type Profile = {
   name: string;
   description: string;
-  model: string;
-  maxTurns: number;
-  tools: string[] | "all";
-  effort: string;
+  prompt: string;
+  promptMode?: "custom" | "append";
+  model?: string;
+  effort?: string;
+  maxTurns?: number;
+  tools?: string[] | "all";
+  disallowedTools?: string[];
+  loadProjectSettings?: boolean;
+  mcpServers?: Record<string, McpServerConfig>;
+};
+
+export type GlobalConfig = {
+  mcpServers?: Record<string, McpServerConfig>;
 };
 
 export type SessionInfo = {
@@ -34,19 +112,6 @@ export type SessionInfo = {
   total_cost_usd: number;
   last_prompt: string | null;
   last_response: string | null;
-};
-
-export type MessageInfo = {
-  id: number;
-  session_id: string;
-  role: "user" | "assistant";
-  content: string;
-  thinking: string | null;
-  cost_usd: number | null;
-  duration_ms: number | null;
-  model: string | null;
-  turns: number | null;
-  created_at: number;
 };
 
 export type ActiveSessionInfo = {
@@ -81,6 +146,49 @@ export async function fetchProfiles(): Promise<Profile[]> {
   return res.json();
 }
 
+export async function fetchProfile(name: string): Promise<Profile> {
+  const res = await fetch(`${API_BASE}/api/profiles/${name}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Profile not found: ${name}`);
+  return res.json();
+}
+
+export async function saveProfileApi(name: string, profile: Omit<Profile, "name">): Promise<void> {
+  await fetch(`${API_BASE}/api/profiles/${name}`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(profile),
+  });
+}
+
+export async function deleteProfileApi(name: string): Promise<void> {
+  await fetch(`${API_BASE}/api/profiles/${name}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+}
+
+export async function fetchGlobalConfig(): Promise<GlobalConfig> {
+  const res = await fetch(`${API_BASE}/api/profiles/_global`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function saveGlobalConfigApi(config: GlobalConfig): Promise<void> {
+  await fetch(`${API_BASE}/api/profiles/_global`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(config),
+  });
+}
+
+export async function checkSecrets(vars: string[]): Promise<{ status: Record<string, boolean>; secretsFile: string }> {
+  const res = await fetch(`${API_BASE}/api/secrets/check`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ vars }),
+  });
+  return res.json();
+}
+
 export async function healthCheck(): Promise<{ status: string; uptime: number }> {
   const res = await fetch(`${API_BASE}/health`);
   return res.json();
@@ -88,11 +196,6 @@ export async function healthCheck(): Promise<{ status: string; uptime: number }>
 
 export async function fetchSessions(limit = 50): Promise<SessionInfo[]> {
   const res = await fetch(`${API_BASE}/api/sessions?limit=${limit}`, { headers: authHeaders() });
-  return res.json();
-}
-
-export async function fetchMessages(sessionId: string): Promise<MessageInfo[]> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages`, { headers: authHeaders() });
   return res.json();
 }
 
@@ -106,8 +209,36 @@ export async function fetchActiveSessions(): Promise<ActiveSessionInfo[]> {
   return res.json();
 }
 
-export async function deleteSessionApi(id: string): Promise<void> {
+export async function archiveSessionApi(id: string): Promise<void> {
   await fetch(`${API_BASE}/api/sessions/${id}`, { method: "DELETE", headers: authHeaders() });
+}
+
+// ── Draft Text ──
+
+export async function getDraft(sessionId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/draft`, { headers: authHeaders() });
+  const data = await res.json();
+  return data.draft ?? "";
+}
+
+export async function saveDraft(sessionId: string, draft: string): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${sessionId}/draft`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify({ draft }),
+  });
+}
+
+// ── Empty Session ──
+
+export async function createEmptySession(profile?: string, model?: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/sessions/empty`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ profile, model }),
+  });
+  const data = await res.json();
+  return data.sessionId;
 }
 
 // ── Directory Browser ──
@@ -127,8 +258,16 @@ export async function browsePath(path?: string): Promise<BrowseResult> {
 
 // ── Session Actions ──
 
+export type ApiAttachment = {
+  type: "image";
+  mediaType: string;
+  data: string;
+  name?: string;
+};
+
 export type CreateSessionOpts = {
   prompt: string;
+  attachments?: ApiAttachment[];
   profile?: string;
   model?: string;
   maxTurns?: number;
@@ -149,20 +288,17 @@ export async function createSession(opts: CreateSessionOpts): Promise<{ sessionI
   return res.json();
 }
 
-export async function sendMessage(sessionId: string, prompt: string): Promise<{ queued: boolean; status: string }> {
+export async function sendMessage(
+  sessionId: string,
+  prompt: string,
+  attachments?: ApiAttachment[],
+): Promise<{ queued: boolean; status: string }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, attachments }),
   });
   return res.json();
-}
-
-export async function interruptSession(sessionId: string): Promise<void> {
-  await fetch(`${API_BASE}/api/sessions/${sessionId}/interrupt`, {
-    method: "POST",
-    headers: authHeaders(),
-  });
 }
 
 export async function stopSessionApi(sessionId: string): Promise<void> {
@@ -170,6 +306,23 @@ export async function stopSessionApi(sessionId: string): Promise<void> {
     method: "POST",
     headers: authHeaders(),
   });
+}
+
+// ── Memories ──
+
+export type MemoryItem = {
+  id: string;
+  type: string;
+  tags: string[];
+  confidence: string;
+  created: string;
+  profile: string | null;
+  body: string;
+};
+
+export async function fetchMemories(): Promise<MemoryItem[]> {
+  const res = await fetch(`${API_BASE}/api/memories`, { headers: authHeaders() });
+  return res.json();
 }
 
 // ── Event Stream (SSE) ──

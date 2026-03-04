@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { Message } from "../types";
+import { useState, useEffect, useRef } from "react";
+import type { Message, ToolCall } from "../types";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 
@@ -9,8 +9,44 @@ function fmtTokens(n: number): string {
   return n + " ";
 }
 
+/** Count all tool calls recursively, including sub-agent nested tools */
+function countAllTools(toolCalls?: ToolCall[]): number {
+  if (!toolCalls) return 0;
+  let n = toolCalls.length;
+  for (const tc of toolCalls) {
+    if (tc.subMessages) {
+      for (const sub of tc.subMessages) {
+        n += countAllTools(sub.toolCalls);
+      }
+    }
+  }
+  return n;
+}
+
+/** Live elapsed timer that ticks every second while active.
+ *  Captures wall-clock start on first active render. */
+function useElapsed(active: boolean): number | null {
+  const [elapsed, setElapsed] = useState<number | null>(null);
+  const startRef = useRef<number>(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
+
+  useEffect(() => {
+    if (active) {
+      if (!startRef.current) startRef.current = Date.now();
+      const tick = () => setElapsed(Date.now() - startRef.current);
+      tick();
+      intervalRef.current = setInterval(tick, 1000);
+      return () => clearInterval(intervalRef.current);
+    }
+    // Keep showing last elapsed after streaming ends (before meta arrives)
+  }, [active]);
+
+  return elapsed;
+}
+
 type Props = {
   msg: Message;
+  isNew?: boolean;
   isStreaming: boolean;
   hideRole?: boolean;
   showThinking?: boolean;
@@ -18,12 +54,27 @@ type Props = {
   showToolCalls?: boolean;
 };
 
-export function MessageBubble({ msg, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true }: Props) {
+export function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
+  const toolCount = countAllTools(msg.toolCalls);
+  const liveElapsed = useElapsed(isStreaming && !msg.meta);
+  const duration = msg.meta?.duration ?? liveElapsed;
 
   return (
     <div className="message" data-role={msg.role}>
-      {!hideRole && <div className="message-role">{msg.role}</div>}
+      {!hideRole && (
+        <div className="message-role">
+          {msg.role}
+          {msg.role === "assistant" && (
+            <span className="role-stats">
+              {toolCount > 0 && <span>{toolCount} tools</span>}
+              {duration != null && (
+                <span className="role-elapsed">{(duration / 1000).toFixed(1)}s</span>
+              )}
+            </span>
+          )}
+        </div>
+      )}
 
       {showThinking && msg.thinking && (
         <div
@@ -42,15 +93,28 @@ export function MessageBubble({ msg, isStreaming, hideRole = false, showThinking
         </div>
       )}
 
+      {msg.attachments && msg.attachments.length > 0 && (
+        <div className="message-images">
+          {msg.attachments.map((att, i) => (
+            <img
+              key={i}
+              className="message-image"
+              src={`data:${att.mediaType};base64,${att.data}`}
+              alt={att.name ?? "attachment"}
+            />
+          ))}
+        </div>
+      )}
+
       {msg.content && (
-        <div className="message-content">
+        <div className={`message-content${isNew ? " message-content--new" : ""}`}>
           <Markdown content={msg.content} />
           {isStreaming && <span className="streaming-cursor" />}
         </div>
       )}
 
       {!msg.content && isStreaming && (
-        <div className="message-content">
+        <div className={`message-content${isNew ? " message-content--new" : ""}`}>
           <span className="streaming-cursor" />
         </div>
       )}

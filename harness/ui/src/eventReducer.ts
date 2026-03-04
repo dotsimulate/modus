@@ -5,7 +5,7 @@
  * Enables deterministic state reconstruction on reconnect.
  */
 
-import type { Message, ToolCall, SubTask, SessionStatus } from "./types";
+import type { Message, ToolCall, SubTask, SessionStatus, Attachment } from "./types";
 import { nextMsgId } from "./types";
 
 export type ReducerState = {
@@ -14,7 +14,6 @@ export type ReducerState = {
   model: string;
   messages: Message[];
   totalCost: number;
-  numTurns: number;
   lastSeq: number;
   createdAt: number;
   activeToolName?: string;
@@ -37,7 +36,6 @@ export function createInitialState(sessionId = ""): ReducerState {
     model: "",
     messages: [],
     totalCost: 0,
-    numTurns: 0,
     lastSeq: 0,
     createdAt: Date.now(),
     _streamingText: "",
@@ -145,6 +143,17 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
       status: "running",
     };
   }
+  if (m.subtype === "interrupted") {
+    return {
+      ...s,
+      status: "idle",
+      messages: [...s.messages, { id: nextMsgId(), role: "system", content: "interrupted" }],
+      _streamingText: "",
+      _streamingThinking: "",
+      activeToolName: undefined,
+      activeToolElapsed: undefined,
+    };
+  }
   if (m.subtype === "task_started") {
     const tasks = new Map(s._subTasks);
     tasks.set(m.task_id, {
@@ -235,7 +244,6 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
         id: block.id,
         name: block.name,
         input: block.input ?? {},
-        inputStr: JSON.stringify(block.input ?? {}, null, 2),
         status: "running",
         startedAt: Date.now(),
       };
@@ -397,18 +405,49 @@ function reduceUser(s: ReducerState, m: any): ReducerState {
 
   // User prompt events (subtype: "prompt") — real user input, always display
   if (m.subtype === "prompt") {
-    const text = typeof m.message?.content === "string"
-      ? m.message.content
-      : "";
-    if (!text) return s;
+    const rawContent = m.message?.content;
+    let text = "";
+    let attachments: Attachment[] | undefined;
 
-    // Dedup: don't add if last message is identical user text
-    const last = s.messages[s.messages.length - 1];
-    if (last?.role === "user" && last.content === text) return s;
+    if (typeof rawContent === "string") {
+      text = rawContent;
+    } else if (Array.isArray(rawContent)) {
+      // Content blocks — extract text and images
+      const imgs: Attachment[] = [];
+      for (const block of rawContent) {
+        if (block.type === "text" && block.text) {
+          text += block.text;
+        } else if (block.type === "image" && block.source?.type === "base64") {
+          imgs.push({
+            type: "image",
+            mediaType: block.source.media_type,
+            data: block.source.data,
+          });
+        }
+      }
+      if (imgs.length > 0) attachments = imgs;
+    }
+
+    if (!text && !attachments?.length) return s;
+
+    // Dedup: don't add if any recent user message has identical text
+    // (optimistic insert from handleSend may not be the last message anymore)
+    for (let i = s.messages.length - 1; i >= 0 && i >= s.messages.length - 4; i--) {
+      const prev = s.messages[i];
+      if (prev.role === "user" && prev.content === text) {
+        // If existing msg has no attachments but event does, update it
+        if (attachments && !prev.attachments) {
+          const msgs = [...s.messages];
+          msgs[i] = { ...prev, attachments };
+          return { ...s, messages: msgs };
+        }
+        return s;
+      }
+    }
 
     return {
       ...s,
-      messages: [...s.messages, { id: nextMsgId(), role: "user", content: text }],
+      messages: [...s.messages, { id: nextMsgId(), role: "user", content: text, attachments }],
     };
   }
 
@@ -528,10 +567,6 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     const modelName = m.modelUsage ? Object.keys(m.modelUsage)[0] : s.model;
     msgs[msgs.length - 1] = {
       ...last,
-      // Attach sub-tasks to the message
-      subTasks: s._subTasks.size > 0
-        ? Array.from(s._subTasks.values())
-        : undefined,
       meta: {
         cost: m.total_cost_usd,
         duration: m.harness_duration_ms,
@@ -548,7 +583,6 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     status: m.subtype === "success" ? "idle" : "error",
     messages: msgs,
     totalCost: s.totalCost + (m.total_cost_usd ?? 0),
-    numTurns: s.numTurns + (m.num_turns ?? 0),
     _streamingText: "",
     _streamingThinking: "",
     _pendingToolCalls: new Map(),

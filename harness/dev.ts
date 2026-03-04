@@ -34,7 +34,7 @@ const vite: Subprocess = spawn(["bun", "run", "dev"], {
   cwd: resolve(SCRIPT_DIR, "ui"),
   stdout: "inherit",
   stderr: "inherit",
-  env: { ...process.env, VITE_HARNESS_TOKEN: TOKEN },
+  env: process.env,
 });
 
 // ── Cleanup ──────────────────────────────────────────────────────

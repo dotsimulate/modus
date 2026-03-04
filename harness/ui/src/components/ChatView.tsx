@@ -23,18 +23,40 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
     if (!container) return;
     const onScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
-      isNearBottom.current = scrollHeight - scrollTop - clientHeight < 100;
+      isNearBottom.current = scrollHeight - scrollTop - clientHeight < 200;
     };
     container.addEventListener("scroll", onScroll, { passive: true });
     return () => container.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Auto-scroll when messages change, but only if near bottom
+  // Auto-scroll when messages change — defer to next frame so DOM is laid out
+  // Depend on messages.length (not messages ref) since the array is mutated in place
   useEffect(() => {
-    if (isNearBottom.current && endRef.current) {
-      endRef.current.scrollIntoView({ behavior: "smooth" });
+    if (!endRef.current) return;
+    const last = messages[messages.length - 1];
+    const userJustSent = last?.role === "user";
+    if (userJustSent || isNearBottom.current) {
+      requestAnimationFrame(() => {
+        endRef.current?.scrollIntoView({ behavior: "instant" });
+      });
     }
-  }, [messages]);
+  }, [messages.length]);
+
+  // Re-scroll on viewport resize (mobile keyboard open/close)
+  useEffect(() => {
+    const onResize = () => {
+      if (isNearBottom.current && endRef.current) {
+        endRef.current.scrollIntoView({ behavior: "instant" });
+      }
+    };
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener("resize", onResize);
+      return () => vv.removeEventListener("resize", onResize);
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   if (messages.length === 0) {
     return (
@@ -45,21 +67,35 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
     );
   }
 
+  // Find last message index per role for animation
+  const lastUser = messages.findLastIndex(m => m.role === "user");
+  const lastAssistant = messages.findLastIndex(m => m.role === "assistant");
+
   return (
     <div className="chat-messages" ref={containerRef}>
-      {messages.map((msg, i) => (
-        <MessageBubble
-          key={msg.id}
-          msg={msg}
-          isStreaming={
-            streaming && i === messages.length - 1 && msg.role === "assistant"
-          }
-          hideRole={i > 0 && messages[i - 1].role === msg.role}
-          showThinking={showThinking}
-          showMeta={showMeta}
-          showToolCalls={showToolCalls}
-        />
-      ))}
+      {messages.map((msg, i) =>
+        msg.role === "system" ? (
+          <div key={msg.id} className="system-divider">
+            <span>{msg.content}</span>
+          </div>
+        ) : (
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            isNew={streaming && (
+              (i === lastUser && msg.role === "user") ||
+              (i === lastAssistant && msg.role === "assistant" && !msg.meta)
+            )}
+            isStreaming={
+              streaming && i === messages.length - 1 && msg.role === "assistant"
+            }
+            hideRole={i > 0 && messages[i - 1].role === msg.role}
+            showThinking={showThinking}
+            showMeta={showMeta}
+            showToolCalls={showToolCalls}
+          />
+        )
+      )}
       <div ref={endRef} />
     </div>
   );

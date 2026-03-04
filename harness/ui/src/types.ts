@@ -4,7 +4,6 @@ export type ToolCall = {
   id: string;
   name: string;
   input: Record<string, unknown>;
-  inputStr: string;
   status: "running" | "completed" | "error";
   result?: string;
   startedAt: number;
@@ -25,6 +24,15 @@ export type SubTask = {
   usage?: { total_tokens: number; tool_uses: number; duration_ms: number };
 };
 
+// ── Attachments ──
+
+export type Attachment = {
+  type: "image";
+  mediaType: string; // e.g. "image/png", "image/jpeg"
+  data: string;      // base64-encoded
+  name?: string;     // original filename if available
+};
+
 // ── Messages ──
 
 let _msgId = 0;
@@ -32,11 +40,11 @@ export function nextMsgId(): string { return `m${++_msgId}`; }
 
 export type Message = {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   thinking?: string;
   toolCalls?: ToolCall[];
-  subTasks?: SubTask[];
+  attachments?: Attachment[];
   meta?: {
     cost?: number;
     duration?: number;

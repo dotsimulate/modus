@@ -1,16 +1,24 @@
 // Prevent nested session detection when launched from within Claude Code
 delete process.env.CLAUDECODE;
 
+import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin } from "./secrets";
+loadSecrets();
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
-import { profiles } from "./profiles";
 import {
-  listSessions, getSession, deleteSession, getMessages,
-  getEvents,
+  getAllProfiles, getProfile, listProfileNames,
+  saveProfile, deleteProfile, getGlobalConfig, saveGlobalConfig,
+  setUserName, getUserName,
+} from "./profiles";
+import {
+  listSessions, getSession, archiveSession,
+  getEvents, upsertSession as dbUpsertSession,
+  getDraft, setDraft,
 } from "./db";
 import {
-  startSession, queueMessage, interruptSession, stopSession, stopTask,
+  startSession, queueMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
   type SSEWriter,
 } from "./session-manager";
@@ -24,14 +32,85 @@ const app = new Hono();
 // CORS for all API routes
 app.use("/api/*", cors({ origin: "*" }));
 
+// ── PIN Auth (browser gate) ──
+// If HARNESS_PIN is set, browsers must verify the PIN to get access.
+// Agents using HARNESS_TOKEN (Bearer header) bypass the PIN gate entirely.
+
+/** Dynamic PIN lookup — picks up changes from first-run setup */
+function getPin() { return resolveSecret("HARNESS_PIN"); }
+
+// Check if PIN auth is required (no value exposed)
+app.get("/api/auth/status", (c) => {
+  const pin = getPin();
+  return c.json({ required: !!pin, setup: !pin, name: getUserName() });
+});
+
+// First-run setup — set PIN from UI, only if none exists yet
+app.post("/api/auth/setup", async (c) => {
+  if (getPin()) return c.json({ error: "pin already set" }, 403);
+  const body = await c.req.json();
+  const pin = body.pin?.trim();
+  const name = body.name?.trim();
+  if (!pin || pin.length < 4) return c.json({ error: "pin must be at least 4 characters" }, 400);
+  const ok = setupPin(pin);
+  if (!ok) return c.json({ error: "pin already set" }, 403);
+  const sessionToken = crypto.randomUUID();
+  pinSessions.add(sessionToken);
+  if (name) setUserName(name);
+  return c.json({ ok: true, token: sessionToken });
+});
+
+// Verify PIN — returns a session token for the browser
+app.post("/api/auth/verify", async (c) => {
+  const pin = getPin();
+  if (!pin) return c.json({ ok: true, token: "" });
+  const body = await c.req.json();
+  if (body.pin === pin) {
+    const sessionToken = crypto.randomUUID();
+    pinSessions.add(sessionToken);
+    const name = body.name?.trim();
+    if (name) setUserName(name);
+    return c.json({ ok: true, token: sessionToken });
+  }
+  return c.json({ error: "wrong pin" }, 401);
+});
+
+// Get current user display name
+app.get("/api/auth/me", (c) => {
+  return c.json({ name: getUserName() });
+});
+
+// In-memory set of valid browser session tokens from PIN auth
+const pinSessions = new Set<string>();
+
+// Lock — invalidate ALL browser sessions (agents unaffected)
+app.post("/api/auth/lock", (c) => {
+  pinSessions.clear();
+  return c.json({ ok: true });
+});
+
 // Token auth — skip if no HARNESS_TOKEN is set
+// Also allows PIN-derived session tokens
 app.use("/api/*", async (c, next) => {
-  if (!AUTH_TOKEN) return next();
+  // Auth endpoints are always open
+  if (c.req.path.startsWith("/api/auth/")) return next();
+
+  // If neither HARNESS_TOKEN nor HARNESS_PIN is set, no auth at all
+  if (!AUTH_TOKEN && !getPin()) return next();
+
   const header = c.req.header("Authorization");
   const tokenParam = new URL(c.req.url).searchParams.get("token");
-  if (header === `Bearer ${AUTH_TOKEN}` || tokenParam === AUTH_TOKEN) {
+  const bearerToken = header?.startsWith("Bearer ") ? header.slice(7) : null;
+
+  // Agent auth: HARNESS_TOKEN (always takes priority)
+  if (AUTH_TOKEN && (bearerToken === AUTH_TOKEN || tokenParam === AUTH_TOKEN)) {
     return next();
   }
+
+  // Browser auth: PIN session token
+  if (bearerToken && pinSessions.has(bearerToken)) return next();
+  if (tokenParam && pinSessions.has(tokenParam)) return next();
+
   return c.json({ error: "unauthorized" }, 401);
 });
 
@@ -44,15 +123,61 @@ app.get("/health", (c) =>
 // ── Profiles ──
 
 app.get("/api/profiles", (c) => {
-  const list = Object.entries(profiles).map(([name, p]) => ({
+  const all = getAllProfiles();
+  const list = Object.entries(all).map(([name, p]) => ({
     name,
-    description: p.description,
-    model: p.model,
-    maxTurns: p.maxTurns,
+    ...p,
     tools: p.tools ?? "all",
-    effort: p.effort,
   }));
   return c.json(list);
+});
+
+app.get("/api/profiles/_global", (c) => {
+  return c.json(getGlobalConfig());
+});
+
+app.put("/api/profiles/_global", async (c) => {
+  const body = await c.req.json();
+  saveGlobalConfig(body);
+  return c.json({ ok: true });
+});
+
+app.get("/api/profiles/:name", (c) => {
+  const name = c.req.param("name");
+  const profile = getProfile(name);
+  if (!profile) return c.json({ error: "profile not found" }, 404);
+  return c.json({ name, ...profile });
+});
+
+app.put("/api/profiles/:name", async (c) => {
+  const name = c.req.param("name");
+  if (name.startsWith("_")) return c.json({ error: "reserved name" }, 400);
+  const body = await c.req.json();
+  if (!body.description || !body.prompt) {
+    return c.json({ error: "description and prompt are required" }, 400);
+  }
+  saveProfile(name, body);
+  return c.json({ ok: true, name });
+});
+
+app.delete("/api/profiles/:name", (c) => {
+  const name = c.req.param("name");
+  const deleted = deleteProfile(name);
+  if (!deleted) return c.json({ error: "profile not found" }, 404);
+  return c.json({ ok: true });
+});
+
+// ── Secrets Status (booleans only, no values) ──
+
+app.post("/api/secrets/check", async (c) => {
+  const { vars } = await c.req.json<{ vars: string[] }>();
+  if (!Array.isArray(vars)) return c.json({ error: "vars must be an array" }, 400);
+  const status: Record<string, boolean> = {};
+  for (const v of vars) {
+    if (typeof v === "string") status[v] = isSecretSet(v);
+  }
+  const info = getSecretsInfo();
+  return c.json({ status, secretsFile: info.path });
 });
 
 // ── Sessions ──
@@ -86,15 +211,16 @@ app.post("/api/sessions", async (c) => {
   const { prompt } = body;
   if (!prompt) return c.json({ error: "prompt required" }, 400);
 
-  if (body.profile && !profiles[body.profile]) {
+  if (body.profile && !getProfile(body.profile)) {
     return c.json(
-      { error: `unknown profile: ${body.profile}`, available: Object.keys(profiles) },
+      { error: `unknown profile: ${body.profile}`, available: listProfileNames() },
       400,
     );
   }
 
   const session = startSession({
     prompt,
+    attachments: body.attachments,
     profile: body.profile,
     model: body.model,
     maxTurns: body.maxTurns,
@@ -116,6 +242,22 @@ app.post("/api/sessions", async (c) => {
     sessionId: session.sessionId,
     status: session.status,
   });
+});
+
+// Create empty session (DB row only, no SDK). Used by "new session" button.
+app.post("/api/sessions/empty", async (c) => {
+  const body = await c.req.json();
+  const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  dbUpsertSession({
+    id,
+    preview: "",
+    profile: body.profile ?? null,
+    model: body.model ?? null,
+    status: "idle",
+    messageCount: 0,
+    costUsd: 0,
+  });
+  return c.json({ sessionId: id });
 });
 
 // Get session status
@@ -149,11 +291,6 @@ app.get("/api/sessions/:id/status", (c) => {
     });
   }
   return c.json({ error: "session not found" }, 404);
-});
-
-// Get messages (high-level conversation)
-app.get("/api/sessions/:id/messages", (c) => {
-  return c.json(getMessages(c.req.param("id")));
 });
 
 // Subscribe to session events (SSE)
@@ -218,6 +355,7 @@ app.post("/api/sessions/:id/messages", async (c) => {
     const existing = getSession(id);
     const session = startSession({
       prompt,
+      attachments: body.attachments,
       sessionId: id,
       profile: body.profile ?? existing?.profile ?? undefined,
     });
@@ -228,14 +366,8 @@ app.post("/api/sessions/:id/messages", async (c) => {
     return c.json({ queued: true, status: session.status, sessionId: session.sessionId });
   }
 
-  const queued = queueMessage(id, prompt);
+  const queued = queueMessage(id, prompt, body.attachments);
   return c.json({ queued, status: active.status });
-});
-
-// Interrupt current turn
-app.post("/api/sessions/:id/interrupt", (c) => {
-  const ok = interruptSession(c.req.param("id"));
-  return c.json({ ok });
 });
 
 // Stop session entirely
@@ -251,11 +383,25 @@ app.post("/api/sessions/:id/stop-task", async (c) => {
   return c.json({ ok });
 });
 
-// Delete session (DB cleanup)
+// Archive session (soft-delete — preserves data in DB)
 app.delete("/api/sessions/:id", (c) => {
   // Stop if active
   stopSession(c.req.param("id"));
-  deleteSession(c.req.param("id"));
+  archiveSession(c.req.param("id"));
+  return c.json({ ok: true });
+});
+
+// ── Draft Text ──
+// Persists unsent user input per session — syncs across devices.
+
+app.get("/api/sessions/:id/draft", (c) => {
+  const text = getDraft(c.req.param("id"));
+  return c.json({ draft: text });
+});
+
+app.put("/api/sessions/:id/draft", async (c) => {
+  const body = await c.req.json();
+  setDraft(c.req.param("id"), body.draft ?? "");
   return c.json({ ok: true });
 });
 
@@ -283,67 +429,58 @@ app.get("/api/browse", async (c) => {
   }
 });
 
-// ── Legacy backward-compat endpoint ──
-// Creates a session and immediately returns SSE event stream
-app.post("/api/agent/stream", async (c) => {
-  const body = await c.req.json();
-  const { prompt } = body;
-  if (!prompt) return c.json({ error: "prompt required" }, 400);
+// ── Memories (reads from agent_memory store) ──
 
-  const session = startSession({
-    prompt,
-    profile: body.profile,
-    model: body.model,
-    maxTurns: body.maxTurns,
-    effort: body.effort,
-    cwd: body.cwd,
-    sessionId: body.sessionId,
-  });
+const MEMORY_DIR = new URL("../agent_memory/memory", import.meta.url).pathname;
 
-  return streamSSE(c, async (stream) => {
-    const writer: SSEWriter = {
-      async write(event, data, seqId) {
-        await stream.writeSSE({ event, data, id: seqId });
-      },
-      close() {},
-    };
-
-    const unsubscribe = subscribe(session.tempId, writer);
-    // Also subscribe to the real ID once it's resolved
-    let unsubReal: (() => void) | null = null;
-    const checkId = setInterval(() => {
-      if (session.sessionId !== session.tempId && !unsubReal) {
-        unsubReal = subscribe(session.sessionId, writer);
-        unsubscribe(); // stop listening on temp ID
-        clearInterval(checkId);
-      }
-    }, 100);
-
-    stream.onAbort(() => {
-      unsubscribe();
-      unsubReal?.();
-      clearInterval(checkId);
-      // Do NOT stop the session — it keeps running
-    });
-
-    await new Promise<void>((resolve) => {
-      const check = setInterval(() => {
-        if (session.status === "done" || session.status === "error") {
-          clearInterval(check);
-          resolve();
+app.get("/api/memories", async (c) => {
+  const { readdir, readFile } = await import("fs/promises");
+  const { resolve } = await import("path");
+  try {
+    const files = await readdir(MEMORY_DIR);
+    const memories: any[] = [];
+    for (const f of files) {
+      if (!f.endsWith(".md")) continue;
+      const text = await readFile(resolve(MEMORY_DIR, f), "utf-8");
+      const meta: Record<string, any> = {};
+      let body = text;
+      if (text.startsWith("---")) {
+        const end = text.indexOf("---", 3);
+        if (end !== -1) {
+          for (const line of text.slice(3, end).trim().split("\n")) {
+            const sep = line.indexOf(":");
+            if (sep === -1) continue;
+            const key = line.slice(0, sep).trim();
+            let val: any = line.slice(sep + 1).trim().replace(/^["']|["']$/g, "");
+            if (val.startsWith("[") && val.endsWith("]")) {
+              val = val.slice(1, -1).split(",").map((v: string) => v.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+            }
+            meta[key] = val;
+          }
+          body = text.slice(end + 3).trim();
         }
-      }, 1000);
-      stream.onAbort(() => { clearInterval(check); resolve(); });
-    });
-
-    await stream.writeSSE({ event: "done", data: "{}", id: "done" });
-  });
+      }
+      memories.push({
+        id: f.replace(/\.md$/, ""),
+        type: meta.type ?? "",
+        tags: Array.isArray(meta.tags) ? meta.tags : [],
+        confidence: meta.confidence ?? "",
+        created: meta.created ?? "",
+        profile: meta.profile ?? null,
+        body,
+      });
+    }
+    return c.json(memories);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
 });
 
 // ── Start ──
 
 const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: HOST, idleTimeout: 255 });
-console.log(`Agent harness listening on http://${HOST}:${PORT}${AUTH_TOKEN ? " (auth enabled)" : ""}`);
+const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
+console.log(`Agent harness listening on http://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
 
 // Graceful shutdown
 process.on("SIGTERM", () => {

@@ -4,6 +4,7 @@ import { SessionSetup, type SessionSetupState } from "./SessionSetup";
 
 type Props = {
   open: boolean;
+  collapsed: boolean;
   sessions: SessionInfo[];
   activeSessionId: string | null;
   profiles: Profile[];
@@ -11,11 +12,14 @@ type Props = {
   harnessUp: boolean | null;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
-  onDeleteSession: (id: string) => void;
+  onArchiveSession: (id: string) => void;
   onSelectProfile: (name: string) => void;
   onSetupChange: (setup: SessionSetupState) => void;
   setupState: SessionSetupState;
   onClose: () => void;
+  onToggleCollapse: () => void;
+  onLock?: () => void;
+  userName?: string | null;
 };
 
 /** Detect which categories have overrides vs profile defaults */
@@ -33,6 +37,7 @@ function getOverrideTags(setup: SessionSetupState): string[] {
 
 export function Sidebar({
   open,
+  collapsed,
   sessions,
   activeSessionId,
   profiles,
@@ -40,11 +45,14 @@ export function Sidebar({
   harnessUp,
   onNewSession,
   onSelectSession,
-  onDeleteSession,
+  onArchiveSession,
   onSelectProfile,
   onSetupChange,
   setupState,
   onClose,
+  onToggleCollapse,
+  onLock,
+  userName,
 }: Props) {
   const [configExpanded, setConfigExpanded] = useState(false);
   const selectedProfileData = profiles.find((p) => p.name === selectedProfile);
@@ -102,11 +110,23 @@ export function Sidebar({
   return (
     <>
       {open && <div className="sidebar-overlay" onClick={onClose} />}
-      <div className={`sidebar ${open ? "open" : ""}`}>
+      <div className={`sidebar ${open ? "open" : ""} ${collapsed ? "collapsed" : ""}`}>
         <div className="sidebar-header">
-          <div className="sidebar-title">agent</div>
+          <button
+            className="sidebar-collapse-btn"
+            onClick={onToggleCollapse}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              {collapsed ? (
+                <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              ) : (
+                <path d="M9 3L5 7l4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              )}
+            </svg>
+          </button>
           <button className="new-session-btn" onClick={onNewSession}>
-            new session
+            {collapsed ? "+" : "new session"}
           </button>
         </div>
 
@@ -131,9 +151,9 @@ export function Sidebar({
                     <span>${s.total_cost_usd.toFixed(3)}</span>
                     <span>{timeAgo(s.updated_at)}</span>
                     <button
-                      className="session-delete-btn"
-                      onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }}
-                      title="Delete session"
+                      className="session-archive-btn"
+                      onClick={(e) => { e.stopPropagation(); onArchiveSession(s.id); }}
+                      title="Archive session"
                     >
                       &times;
                     </button>
@@ -162,7 +182,11 @@ export function Sidebar({
                   ))}
                 </span>
               )}
-              <span className="profile-panel-chevron">{configExpanded ? "−" : "+"}</span>
+              <span className={`profile-panel-chevron ${configExpanded ? "profile-panel-chevron--open" : ""}`}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <path d="M3 4l2 2.5L7 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </span>
             </div>
           </button>
 
@@ -197,16 +221,31 @@ export function Sidebar({
         </div>
 
         <div className="harness-status">
-          <div
-            className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
-          />
-          <span>
-            {harnessUp === true
-              ? "harness connected"
-              : harnessUp === false
-                ? "harness offline"
-                : "checking..."}
-          </span>
+          <div className="harness-status-left">
+            <div
+              className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
+            />
+            <span>
+              {harnessUp === true
+                ? "harness connected"
+                : harnessUp === false
+                  ? "harness offline"
+                  : "checking..."}
+            </span>
+          </div>
+          <div className="harness-status-right">
+            {userName && (
+              <span className="harness-user">{userName}</span>
+            )}
+            {onLock && (
+              <button className="lock-btn" onClick={onLock} title="Lock">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <rect x="2" y="5" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+                  <path d="M4 5V3.5a2 2 0 0 1 4 0V5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </>
