@@ -55,7 +55,9 @@ export function isToolEnabled(
 ): boolean {
   if (state === "on") return true;
   if (state === "off") return false;
-  // inherit — check profile
+  // inherit — MCP tools default to enabled (backend uses disallowedTools blocklist)
+  if (tool.startsWith("mcp__")) return true;
+  // inherit — check profile for built-in tools
   return profileTools === "all" || profileTools.includes(tool);
 }
 

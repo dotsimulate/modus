@@ -19,7 +19,7 @@ import {
   getSession, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft,
-  compactSession, compactAllSessions, storageStats,
+  pruneSessionEvents, pruneAllSessionEvents, storageStats,
 } from "./db";
 import {
   startSession, queueMessage, stopSession, stopTask,
@@ -640,13 +640,13 @@ app.get("/api/stats/storage", (c) => {
   return c.json(storageStats());
 });
 
-app.post("/api/compact", (c) => {
-  const result = compactAllSessions();
+app.post("/api/prune", (c) => {
+  const result = pruneAllSessionEvents();
   return c.json(result);
 });
 
-app.post("/api/compact/:sessionId", (c) => {
-  const result = compactSession(c.req.param("sessionId"));
+app.post("/api/prune/:sessionId", (c) => {
+  const result = pruneSessionEvents(c.req.param("sessionId"));
   return c.json(result);
 });
 
