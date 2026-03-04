@@ -35,6 +35,34 @@ function getOverrideTags(setup: SessionSetupState): string[] {
   return tags;
 }
 
+type GroupMode = "time" | "project";
+
+/** Extract a short project label from a cwd path (last 2 segments) */
+function projectLabel(cwd: string | null): string {
+  if (!cwd) return "other";
+  const parts = cwd.replace(/\/+$/, "").split("/").filter(Boolean);
+  if (parts.length >= 2) return parts.slice(-2).join("/");
+  if (parts.length === 1) return parts[0];
+  return "other";
+}
+
+function groupSessionsByProject(list: SessionInfo[]) {
+  const map = new Map<string, SessionInfo[]>();
+  for (const s of list) {
+    const label = projectLabel(s.cwd);
+    if (!map.has(label)) map.set(label, []);
+    map.get(label)!.push(s);
+  }
+  // Sort groups: most recently active first
+  return Array.from(map.entries())
+    .map(([label, items]) => ({ label, items }))
+    .sort((a, b) => {
+      const aMax = Math.max(...a.items.map((s) => s.updated_at));
+      const bMax = Math.max(...b.items.map((s) => s.updated_at));
+      return bMax - aMax;
+    });
+}
+
 export function Sidebar({
   open,
   collapsed,
@@ -55,6 +83,8 @@ export function Sidebar({
   userName,
 }: Props) {
   const [configExpanded, setConfigExpanded] = useState(false);
+  const [groupMode, setGroupMode] = useState<GroupMode>("time");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const selectedProfileData = profiles.find((p) => p.name === selectedProfile);
   const overrideTags = getOverrideTags(setupState);
 
@@ -90,13 +120,14 @@ export function Sidebar({
   }
 
   function statusIcon(status: string) {
-    if (status === "running" || status === "idle") return <span className="session-running-dot" />;
+    if (status === "running" || status === "starting") return <span className="session-running-dot" />;
     if (status === "error") return <span className="session-error-dot" />;
-    if (status === "done") return <span className="session-done-dot" />;
-    return null;
+    return <span className="session-done-dot" />;
   }
 
-  const groups = groupSessions(sessions);
+  const groups = groupMode === "project"
+    ? groupSessionsByProject(sessions)
+    : groupSessions(sessions);
 
   // Profile summary line
   const profileSummary = selectedProfileData
@@ -126,42 +157,87 @@ export function Sidebar({
             </svg>
           </button>
           <button className="new-session-btn" onClick={onNewSession}>
-            {collapsed ? "+" : "new session"}
+            {collapsed ? "+" : "+ new session"}
           </button>
         </div>
 
         <div className="sidebar-sections">
-          {groups.map((group) => (
-            <div key={group.label}>
-              <div className="sidebar-section-label">{group.label}</div>
-              {group.items.map((s) => (
+          {!collapsed && (
+            <div className="group-toggle">
+              <button
+                className={`group-toggle-btn ${groupMode === "time" ? "group-toggle-btn--active" : ""}`}
+                onClick={() => setGroupMode("time")}
+              >
+                time
+              </button>
+              <button
+                className={`group-toggle-btn ${groupMode === "project" ? "group-toggle-btn--active" : ""}`}
+                onClick={() => setGroupMode("project")}
+              >
+                project
+              </button>
+            </div>
+          )}
+          {groups.map((group) => {
+            const isGroupCollapsed = collapsedGroups.has(group.label);
+            const toggleGroup = () => setCollapsedGroups((prev) => {
+              const next = new Set(prev);
+              if (next.has(group.label)) next.delete(group.label);
+              else next.add(group.label);
+              return next;
+            });
+            return (
+              <div key={group.label}>
                 <div
-                  key={s.id}
-                  className={`session-item ${s.id === activeSessionId ? "active" : ""}`}
-                  onClick={() => onSelectSession(s.id)}
+                  className="sidebar-section-label sidebar-section-label--clickable"
+                  onClick={toggleGroup}
                 >
-                  <div className="session-item-preview">
-                    {statusIcon(s.status)}
-                    <span className="session-item-text">{s.last_prompt ?? s.preview}</span>
-                  </div>
-                  <div className="session-item-meta">
-                    <span className="session-profile-tag">
-                      {s.profile ?? "default"}
-                    </span>
-                    <span>${s.total_cost_usd.toFixed(3)}</span>
-                    <span>{timeAgo(s.updated_at)}</span>
-                    <button
-                      className="session-archive-btn"
-                      onClick={(e) => { e.stopPropagation(); onArchiveSession(s.id); }}
-                      title="Archive session"
-                    >
-                      &times;
-                    </button>
+                  <span className={`section-chevron ${isGroupCollapsed ? "" : "section-chevron--open"}`}>
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                      <path d="M2 3l2 2.5L6 3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </span>
+                  <span>{group.label}</span>
+                  <span className="section-count">{group.items.length}</span>
+                </div>
+                <div className={`section-collapse ${isGroupCollapsed ? "" : "section-collapse--open"}`}>
+                  <div className="section-collapse-clip">
+                    {group.items.map((s) => (
+                      <div
+                        key={s.id}
+                        className={`session-item ${s.id === activeSessionId ? "active" : ""}`}
+                        onClick={() => onSelectSession(s.id)}
+                      >
+                        <div className="session-item-preview">
+                          {statusIcon(s.status)}
+                          <span className="session-item-text">{s.last_prompt ?? s.preview}</span>
+                        </div>
+                        <div className="session-item-meta">
+                          <span className="session-profile-tag">
+                            {s.profile ?? "default"}
+                          </span>
+                          {groupMode === "time" && s.cwd && (
+                            <span className="session-project-tag">
+                              {s.cwd.replace(/\/+$/, "").split("/").pop()}
+                            </span>
+                          )}
+                          <span>${s.total_cost_usd.toFixed(3)}</span>
+                          <span>{timeAgo(s.updated_at)}</span>
+                          <button
+                            className="session-archive-btn"
+                            onClick={(e) => { e.stopPropagation(); onArchiveSession(s.id); }}
+                            title="Archive session"
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
 
         {/* ── Collapsible profile + config panel ── */}

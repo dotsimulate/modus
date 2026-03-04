@@ -393,6 +393,7 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
             messageCount: 0,
             costUsd: 0,
             lastPrompt: session.preview,
+            cwd: session.sdkOptions.cwd,
           });
           session.seq++;
           addEvent(realId, session.seq, "user", "prompt", JSON.stringify({

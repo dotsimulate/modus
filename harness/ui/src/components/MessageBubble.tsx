@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import type { Message, ToolCall } from "../types";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
+import { ImageLightbox } from "./ImageLightbox";
 
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M ";
@@ -56,6 +57,7 @@ type Props = {
 
 export function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
+  const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const toolCount = countAllTools(msg.toolCalls);
   const liveElapsed = useElapsed(isStreaming && !msg.meta);
   const duration = msg.meta?.duration ?? liveElapsed;
@@ -106,15 +108,28 @@ export function MessageBubble({ msg, isNew = false, isStreaming, hideRole = fals
 
       {msg.attachments && msg.attachments.length > 0 && (
         <div className="message-images">
-          {msg.attachments.map((att, i) => (
-            <img
-              key={i}
-              className="message-image"
-              src={`data:${att.mediaType};base64,${att.data}`}
-              alt={att.name ?? "attachment"}
-            />
-          ))}
+          {msg.attachments.map((att, i) => {
+            const src = `data:${att.mediaType};base64,${att.data}`;
+            const alt = att.name ?? "attachment";
+            return (
+              <img
+                key={i}
+                className="message-image"
+                src={src}
+                alt={alt}
+                onClick={() => setLightboxSrc({ src, alt })}
+              />
+            );
+          })}
         </div>
+      )}
+
+      {lightboxSrc && (
+        <ImageLightbox
+          src={lightboxSrc.src}
+          alt={lightboxSrc.alt}
+          onClose={() => setLightboxSrc(null)}
+        />
       )}
 
       {msg.content && (

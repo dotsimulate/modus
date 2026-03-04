@@ -1,5 +1,52 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { fetchMemories, type MemoryItem } from "../api";
+
+// ── Custom dropdown (replaces native <select> for styled dropdowns) ──
+function Dropdown({ value, options, placeholder, onChange }: {
+  value: string;
+  options: { value: string; label: ReactNode }[];
+  placeholder: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value);
+  const label = selected ? selected.label : placeholder;
+
+  return (
+    <div className="custom-dropdown" ref={ref}>
+      <button className="custom-dropdown-trigger" onClick={() => setOpen((o) => !o)}>
+        <span>{label}</span>
+        <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </button>
+      {open && (
+        <div className="custom-dropdown-menu">
+          <button
+            className={`custom-dropdown-item${!value ? " active" : ""}`}
+            onClick={() => { onChange(""); setOpen(false); }}
+          >{placeholder}</button>
+          {options.filter((o) => o.value).map((o) => (
+            <button
+              key={o.value}
+              className={`custom-dropdown-item${o.value === value ? " active" : ""}`}
+              onClick={() => { onChange(o.value); setOpen(false); }}
+            >{o.label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Light markdown renderer ──
 function renderInline(text: string): (string | JSX.Element)[] {
@@ -358,15 +405,19 @@ function FilterBar({
         value={search}
         onChange={(e) => onSearch(e.target.value)}
       />
-      <select className="memviz-tag-select" value={tagFilter} onChange={(e) => onTagFilter(e.target.value)}>
-        <option value="">all tags</option>
-        {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
-      </select>
+      <Dropdown
+        value={tagFilter}
+        placeholder="all tags"
+        options={allTags.map((t) => ({ value: t, label: t }))}
+        onChange={onTagFilter}
+      />
       {allProfiles.length > 0 && (
-        <select className="memviz-tag-select" value={profileFilter} onChange={(e) => onProfileFilter(e.target.value)}>
-          <option value="">all profiles</option>
-          {allProfiles.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
+        <Dropdown
+          value={profileFilter}
+          placeholder="all profiles"
+          options={allProfiles.map((p) => ({ value: p, label: p }))}
+          onChange={onProfileFilter}
+        />
       )}
     </div>
   );
@@ -405,7 +456,7 @@ const DAMPING = 0.85;   // velocity damping (friction)
 const SETTLE_AGE = 60;  // frames until "fully settled" for connection fade-in
 
 // ── Main component ──
-export function MemoryViz({ onBack }: { onBack: () => void }) {
+export function MemoryViz() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -854,10 +905,6 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
   if (loading) {
     return (
       <div className="memviz">
-        <div className="memviz-header">
-          <button className="dash-back" onClick={onBack}>&larr; chat</button>
-          <span className="dash-title">memory</span>
-        </div>
         <div className="memviz-loading">loading memories...</div>
       </div>
     );
@@ -865,12 +912,6 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="memviz">
-      <div className="memviz-header">
-        <button className="dash-back" onClick={onBack}>&larr; chat</button>
-        <span className="dash-title">memory</span>
-        <a className="dash-link" href="#dashboard">dashboard</a>
-      </div>
-
       <FilterBar
         types={TYPE_ORDER.filter(t => visibleTypes.has(t))}
         activeTypes={activeTypes}

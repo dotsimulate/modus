@@ -462,89 +462,101 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
     selectSession(id);
   }, [selectSession]);
 
-  if (view === "memory") {
-    return (
-      <MemoryViz onBack={() => { window.location.hash = ""; setView("chat"); }} />
-    );
-  }
-
-  if (view === "dashboard") {
-    return (
-      <Dashboard
-        onSelectSession={handleDashboardSelect}
-        onBack={() => { window.location.hash = ""; setView("chat"); }}
-      />
-    );
-  }
+  const navigate = useCallback((target: "chat" | "dashboard" | "memory") => {
+    if (target === "dashboard") window.location.hash = "dashboard";
+    else if (target === "memory") window.location.hash = "memory";
+    else window.location.hash = "";
+    setView(target);
+  }, []);
 
   return (
     <div className="app">
-      <Sidebar
-        open={sidebarOpen}
-        collapsed={sidebarCollapsed}
-        sessions={serverSessions}
-        activeSessionId={activeSession?.id ?? null}
-        profiles={profiles}
-        selectedProfile={selectedProfile}
-        harnessUp={harnessUp}
-        onNewSession={newSession}
-        onSelectSession={selectSession}
-        onArchiveSession={archiveSession}
-        onSelectProfile={setSelectedProfile}
-        onSetupChange={setSetupState}
-        setupState={setupState}
-        onClose={() => setSidebarOpen(false)}
-        onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-        onLock={onLock}
-        userName={userName}
-      />
-
-      <div className="chat">
-        <div className="chat-header">
+      <div className="top-nav">
+        {view === "chat" && (
           <button className="menu-btn" onClick={() => setSidebarOpen(true)}>
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </button>
-          <span className="chat-header-profile">{ui.label}</span>
-          {activeSession?.status && activeSession.status !== "done" && (
-            <span className={`chat-header-status ${activeSession.status}`}>{activeSession.status}</span>
-          )}
-          <a className="dash-link" href="#memory">memory</a>
-          <a className="dash-link" href="#dashboard">dashboard</a>
-        </div>
+        )}
+        <nav className="top-nav-links">
+          <button className={`top-nav-link${view === "dashboard" ? " active" : ""}`} onClick={() => navigate("dashboard")}>dashboard</button>
+          <button className={`top-nav-link${view === "chat" ? " active" : ""}`} onClick={() => navigate("chat")}>sessions</button>
+          <button className={`top-nav-link${view === "memory" ? " active" : ""}`} onClick={() => navigate("memory")}>memory</button>
+        </nav>
+        {view === "chat" && activeSession?.status && activeSession.status !== "done" && (
+          <span className={`chat-header-status ${activeSession.status}`}>{activeSession.status}</span>
+        )}
+      </div>
 
-        <ChatView
-          messages={activeSession?.messages ?? []}
-          streaming={isStreaming}
-          showThinking={ui.showThinking}
-          showMeta={ui.showMeta}
-          showToolCalls={ui.showToolCalls}
-          emptyTitle={ui.emptyTitle ?? activeProfileName}
-          emptySubtitle={ui.emptySubtitle}
-        />
+      <div className="app-body">
+        {view === "chat" && (
+          <>
+            <Sidebar
+              open={sidebarOpen}
+              collapsed={sidebarCollapsed}
+              sessions={serverSessions.map((s) =>
+                activeSession && s.id === activeSession.id
+                  ? { ...s, status: activeSession.status ?? s.status }
+                  : s
+              )}
+              activeSessionId={activeSession?.id ?? null}
+              profiles={profiles}
+              selectedProfile={selectedProfile}
+              harnessUp={harnessUp}
+              onNewSession={newSession}
+              onSelectSession={selectSession}
+              onArchiveSession={archiveSession}
+              onSelectProfile={setSelectedProfile}
+              onSetupChange={setSetupState}
+              setupState={setupState}
+              onClose={() => setSidebarOpen(false)}
+              onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+              onLock={onLock}
+              userName={userName}
+            />
 
-        <ConfigBar
-          profileName={activeProfileName}
-          model={activeSession?.model ?? profileData?.model}
-          agentConfig={liveAgentConfig}
-          onAgentConfigChange={setLiveAgentConfig}
-          profileTools={profileData?.tools ?? "all"}
-          profileEffort={profileData?.effort}
-          profileMaxTurns={profileData?.maxTurns}
-          availableTools={activeSession?.availableTools}
-        />
-        <ChatInput
-          value={input}
-          onChange={handleInputChange}
-          onSend={handleSend}
-          onStop={handleStop}
-          sessionStatus={activeSession?.status ?? null}
-          disabled={harnessUp === false}
-          placeholder={ui.placeholder}
-          activeToolName={activeSession?.activeToolName}
-          activeToolElapsed={activeSession?.activeToolElapsed}
-        />
+            <div className="chat">
+              <ChatView
+                messages={activeSession?.messages ?? []}
+                streaming={isStreaming}
+                showThinking={ui.showThinking}
+                showMeta={ui.showMeta}
+                showToolCalls={ui.showToolCalls}
+                emptyTitle={ui.emptyTitle ?? activeProfileName}
+                emptySubtitle={ui.emptySubtitle}
+              />
+
+              <ConfigBar
+                profileName={activeProfileName}
+                model={activeSession?.model ?? profileData?.model}
+                agentConfig={liveAgentConfig}
+                onAgentConfigChange={setLiveAgentConfig}
+                profileTools={profileData?.tools ?? "all"}
+                profileEffort={profileData?.effort}
+                profileMaxTurns={profileData?.maxTurns}
+                availableTools={activeSession?.availableTools}
+              />
+              <ChatInput
+                value={input}
+                onChange={handleInputChange}
+                onSend={handleSend}
+                onStop={handleStop}
+                sessionStatus={activeSession?.status ?? null}
+                disabled={harnessUp === false}
+                placeholder={ui.placeholder}
+                activeToolName={activeSession?.activeToolName}
+                activeToolElapsed={activeSession?.activeToolElapsed}
+              />
+            </div>
+          </>
+        )}
+
+        {view === "dashboard" && (
+          <Dashboard onSelectSession={handleDashboardSelect} />
+        )}
+
+        {view === "memory" && <MemoryViz />}
       </div>
     </div>
   );

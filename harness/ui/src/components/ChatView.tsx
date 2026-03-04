@@ -23,14 +23,13 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
     if (!container) return;
     const onScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
-      isNearBottom.current = scrollHeight - scrollTop - clientHeight < 200;
+      isNearBottom.current = scrollHeight - scrollTop - clientHeight < 400;
     };
     container.addEventListener("scroll", onScroll, { passive: true });
     return () => container.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Auto-scroll when messages change — defer to next frame so DOM is laid out
-  // Depend on messages.length (not messages ref) since the array is mutated in place
+  // Auto-scroll when a new message is added
   useEffect(() => {
     if (!endRef.current) return;
     const last = messages[messages.length - 1];
@@ -41,6 +40,17 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
       });
     }
   }, [messages.length]);
+
+  // During streaming, keep scrolling to bottom as content grows
+  useEffect(() => {
+    if (!streaming) return;
+    const interval = setInterval(() => {
+      if (isNearBottom.current && endRef.current) {
+        endRef.current.scrollIntoView({ behavior: "instant" });
+      }
+    }, 150);
+    return () => clearInterval(interval);
+  }, [streaming]);
 
   // Re-scroll on viewport resize (mobile keyboard open/close)
   useEffect(() => {

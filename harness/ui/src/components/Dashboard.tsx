@@ -6,10 +6,9 @@ import { ProfileEditor } from "./ProfileEditor";
 
 type Props = {
   onSelectSession: (id: string) => void;
-  onBack: () => void;
 };
 
-export function Dashboard({ onSelectSession, onBack }: Props) {
+export function Dashboard({ onSelectSession }: Props) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
 
   const loadProfiles = async () => {
@@ -22,12 +21,6 @@ export function Dashboard({ onSelectSession, onBack }: Props) {
 
   return (
     <div className="dashboard">
-      <div className="dash-header">
-        <button className="dash-back" onClick={onBack}>&larr; chat</button>
-        <span className="dash-title">dashboard</span>
-        <a className="dash-link" href="#memory">memory</a>
-      </div>
-
       <div className="dash-panels">
         <SessionsPanel onSelectSession={onSelectSession} />
         <ProfileEditor profiles={profiles} onProfilesChange={loadProfiles} />

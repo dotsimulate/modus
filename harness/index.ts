@@ -202,6 +202,7 @@ app.get("/api/sessions/active", (c) => {
     preview: s.preview,
     seq: s.seq,
     subscribers: s.subscribers.size,
+    cwd: s.sdkOptions?.cwd ?? null,
   }));
   return c.json(memSessions);
 });
@@ -257,6 +258,7 @@ app.post("/api/sessions/empty", async (c) => {
     status: "idle",
     messageCount: 0,
     costUsd: 0,
+    cwd: body.cwd ?? null,
   });
   return c.json({ sessionId: id });
 });
