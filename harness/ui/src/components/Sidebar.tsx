@@ -324,23 +324,23 @@ export function Sidebar({
                           <span className="session-item-text">{s.last_prompt ?? s.preview}</span>
                         </div>
                         <div className="session-item-meta">
-                          <span className="session-profile-tag">
-                            {s.profile ?? "default"}
-                          </span>
-                          {groupMode === "time" && s.cwd && (
-                            <span className="session-project-tag">
-                              {s.cwd.replace(/\/+$/, "").split("/").pop()}
+                          <span className="session-meta-left">
+                            <span className="session-profile-tag">
+                              {s.profile ?? "default"}
                             </span>
-                          )}
-                          <span>${s.total_cost_usd.toFixed(3)}</span>
-                          <span>{timeAgo(s.updated_at)}</span>
-                          <button
-                            className="session-archive-btn"
-                            onClick={(e) => { e.stopPropagation(); onArchiveSession(s.id); }}
-                            title="Archive session"
-                          >
-                            &times;
-                          </button>
+<span>${s.total_cost_usd.toFixed(3)}</span>
+                            <span>{s.message_count}msg</span>
+                          </span>
+                          <span className="session-meta-right">
+                            <span>{timeAgo(s.updated_at)}</span>
+                            <button
+                              className="session-archive-btn"
+                              onClick={(e) => { e.stopPropagation(); onArchiveSession(s.id); }}
+                              title="Archive session"
+                            >
+                              &times;
+                            </button>
+                          </span>
                         </div>
                       </div>
                     ))}

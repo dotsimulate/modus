@@ -857,7 +857,23 @@ html, body, #root {
   margin-top: 4px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+}
+.session-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.session-meta-left > * { white-space: nowrap; }
+.session-meta-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .session-profile-tag {
   font-size: 10px;
@@ -865,8 +881,8 @@ html, body, #root {
   color: var(--text-dim);
 }
 .session-project-tag {
-  font-size: 9px;
-  color: var(--text-muted);
+  font-size: 10px;
+  color: var(--text-dim);
   letter-spacing: 0.02em;
 }
 .session-archive-btn {
@@ -876,7 +892,6 @@ html, body, #root {
   cursor: pointer;
   font-size: 14px;
   padding: 0 4px;
-  margin-left: auto;
   opacity: 0;
   transition: all 0.15s ease;
   line-height: 1;
