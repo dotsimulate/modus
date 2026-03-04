@@ -52,7 +52,7 @@ function HunkView({ hunk }: { hunk: DiffHunk }) {
 }
 
 function FileDiffCard({ file }: { file: FileDiff }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   return (
     <div className="diff-file">
@@ -164,6 +164,19 @@ function CommitList({ commits, selectedHash, onSelect }: {
             <span className="git-commit-author">{c.author}</span>
             <span className="git-commit-time">{timeAgo(c.date)}</span>
           </span>
+          {(c.filesChanged || c.additions || c.deletions) && (
+            <span className="git-commit-stats">
+              {c.filesChanged && (
+                <span className="git-commit-files">{c.filesChanged} file{c.filesChanged !== 1 ? "s" : ""}</span>
+              )}
+              {(c.additions ?? 0) > 0 && (
+                <span className="diff-stat diff-stat--add">+{c.additions}</span>
+              )}
+              {(c.deletions ?? 0) > 0 && (
+                <span className="diff-stat diff-stat--del">-{c.deletions}</span>
+              )}
+            </span>
+          )}
         </button>
       ))}
       {commits.length === 0 && <div className="git-empty">No commits</div>}
@@ -196,6 +209,73 @@ function CommitDetail({ detail, loading }: {
         </span>
       </div>
       <DiffView files={detail.files} />
+    </div>
+  );
+}
+
+function NoSelectionView({ commits, status }: { commits: GitCommit[]; status: GitStatus }) {
+  const totalAdd = commits.reduce((s, c) => s + (c.additions ?? 0), 0);
+  const totalDel = commits.reduce((s, c) => s + (c.deletions ?? 0), 0);
+  const totalFiles = commits.reduce((s, c) => s + (c.filesChanged ?? 0), 0);
+  const authors = [...new Set(commits.map((c) => c.author))];
+  const dirtyCount = (status.files?.modified.length ?? 0)
+    + (status.files?.staged.length ?? 0)
+    + (status.files?.untracked.length ?? 0);
+
+  return (
+    <div className="git-overview">
+      <div className="git-overview-section">
+        <span className="git-overview-label">recent activity</span>
+        <span className="git-overview-headline">
+          {commits.length} commit{commits.length !== 1 ? "s" : ""}
+        </span>
+        <div className="git-overview-stats">
+          <span className="git-overview-stat">
+            <span className="git-overview-num">{totalFiles}</span> files touched
+          </span>
+          <span className="git-overview-stat">
+            <span className="diff-stat diff-stat--add">+{totalAdd}</span>
+            <span className="diff-stat diff-stat--del">-{totalDel}</span>
+          </span>
+        </div>
+      </div>
+
+      {dirtyCount > 0 && (
+        <div className="git-overview-section">
+          <span className="git-overview-label">working tree</span>
+          <span className="git-overview-headline">
+            {dirtyCount} uncommitted change{dirtyCount !== 1 ? "s" : ""}
+          </span>
+          <div className="git-overview-dirty">
+            {(status.files?.staged.length ?? 0) > 0 && (
+              <span className="git-overview-file-count staged">
+                {status.files!.staged.length} staged
+              </span>
+            )}
+            {(status.files?.modified.length ?? 0) > 0 && (
+              <span className="git-overview-file-count modified">
+                {status.files!.modified.length} modified
+              </span>
+            )}
+            {(status.files?.untracked.length ?? 0) > 0 && (
+              <span className="git-overview-file-count untracked">
+                {status.files!.untracked.length} untracked
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="git-overview-section">
+        <span className="git-overview-label">contributors</span>
+        <div className="git-overview-authors">
+          {authors.map((a) => (
+            <span key={a} className="git-overview-author">{a}</span>
+          ))}
+        </div>
+      </div>
+
+      <div className="git-overview-hint">select a commit to view diff</div>
     </div>
   );
 }
@@ -280,8 +360,10 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
           selectedHash={selectedHash}
           onSelect={setSelectedHash}
         />
-        {selectedHash && (
+        {selectedHash ? (
           <CommitDetail detail={detail} loading={loadingDetail} />
+        ) : (
+          <NoSelectionView commits={log} status={status} />
         )}
       </div>
     </div>

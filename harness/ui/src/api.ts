@@ -506,6 +506,9 @@ export type GitCommit = {
   date: string;
   message: string;
   author: string;
+  filesChanged?: number;
+  additions?: number;
+  deletions?: number;
 };
 
 export type DiffLine = {
@@ -554,6 +557,7 @@ export async function fetchGitShow(cwd: string, hash: string): Promise<GitCommit
     `${API_BASE}/api/git/show/${hash}?cwd=${encodeURIComponent(cwd)}`,
     { headers: authHeaders() },
   );
+  if (!res.ok) throw new Error("Failed to load commit");
   return res.json();
 }
 

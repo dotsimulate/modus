@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ToolCall as ToolCallType, Message } from "../types";
 
 type Props = {
   tool: ToolCallType;
+  defaultExpanded?: boolean;
 };
 
 /** Extract a short human-readable summary from tool input */
@@ -132,11 +133,17 @@ function countSubTools(msgs: Message[]): number {
   return msgs.reduce((n, m) => n + (m.toolCalls?.length ?? 0), 0);
 }
 
-export function ToolCallView({ tool }: Props) {
-  const [expanded, setExpanded] = useState(tool.name === "TodoWrite");
+export function ToolCallView({ tool, defaultExpanded }: Props) {
+  const [expanded, setExpanded] = useState(defaultExpanded ?? tool.name === "TodoWrite");
+  const isTodo = tool.name === "TodoWrite";
+
+  // Auto-collapse old TodoWrites when a newer one arrives
+  useEffect(() => {
+    if (isTodo && defaultExpanded === false) setExpanded(false);
+  }, [defaultExpanded]);
+
   const summary = summarize(tool.name, tool.input);
   const isAgent = tool.name === "Agent" && (tool.subMessages?.length ?? 0) > 0;
-  const isTodo = tool.name === "TodoWrite";
   const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
 
   return (

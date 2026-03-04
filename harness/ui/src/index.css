@@ -3513,10 +3513,7 @@ html, body, #root {
   border-right: 1px solid var(--border);
 }
 
-.git-log:only-child {
-  width: 100%;
-  border-right: none;
-}
+/* git-log is never :only-child since overview panel is always shown */
 
 .git-commit {
   display: flex;
@@ -3582,6 +3579,18 @@ html, body, #root {
   color: var(--text-muted);
 }
 
+.git-commit-stats {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.git-commit-files {
+  color: var(--text-muted);
+}
+
 /* Commit detail pane */
 .git-detail {
   flex: 1;
@@ -3621,6 +3630,96 @@ html, body, #root {
 .git-detail-summary {
   margin-left: 8px;
   color: var(--text-dim);
+}
+
+/* ── No-selection overview ── */
+
+.git-overview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.git-overview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.git-overview-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.git-overview-headline {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.git-overview-stats {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.git-overview-stat {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.git-overview-num {
+  color: var(--text);
+}
+
+.git-overview-dirty {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.git-overview-file-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.git-overview-file-count.staged { color: #33cc33; }
+.git-overview-file-count.modified { color: #e89b50; }
+.git-overview-file-count.untracked { color: var(--text-muted); }
+
+.git-overview-authors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.git-overview-author {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.git-overview-hint {
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.5;
 }
 
 /* ── Diff View: per-file cards ── */
@@ -3790,8 +3889,8 @@ html, body, #root {
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
-  .git-log:only-child {
-    max-height: none;
+  .git-overview {
+    padding: 12px;
   }
   .git-detail {
     padding: 10px 0;
