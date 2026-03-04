@@ -184,13 +184,19 @@ export function Sidebar({
         <div className="sidebar-sections">
           {!collapsed && (
             <div className="sidebar-controls">
-              <input
-                className="sidebar-search"
-                type="text"
-                placeholder="search sessions..."
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); doSearch(e.target.value); }}
-              />
+              <div className="sidebar-search-wrap">
+                <input
+                  className="sidebar-search"
+                  type="text"
+                  placeholder="search sessions..."
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); doSearch(e.target.value); }}
+                  onKeyDown={(e) => { if (e.key === "Escape") { setSearchQuery(""); setSearchResults([]); (e.target as HTMLInputElement).blur(); } }}
+                />
+                {searchQuery && (
+                  <button className="sidebar-search-clear" onClick={() => { setSearchQuery(""); setSearchResults([]); }}>×</button>
+                )}
+              </div>
               <div className="group-toggle">
                 <button
                   className={`group-toggle-btn ${groupMode === "time" ? "group-toggle-btn--active" : ""}`}
