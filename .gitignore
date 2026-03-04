@@ -37,6 +37,7 @@ agent_memory/memory/
 harness/profiles/_users.json
 harness/profiles/state/
 harness/profiles/users/
+harness/profiles/**/.history/
 
 # Claude settings (personal per-user)
 .claude/settings.local.json

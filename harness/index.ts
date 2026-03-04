@@ -16,6 +16,9 @@ import {
   getUserProfileState, patchUserProfileState,
 } from "./profiles";
 import {
+  ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
+} from "./profile-schemas";
+import {
   listSessions, listSessionsForProjects,
   getSession, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
@@ -144,6 +147,8 @@ app.get("/api/profiles/_global", (c) => {
 
 app.put("/api/profiles/_global", async (c) => {
   const body = await c.req.json();
+  const v = validate(GlobalConfigSchema, body);
+  if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
   saveGlobalConfig(body);
   return c.json({ ok: true });
 });
@@ -159,9 +164,8 @@ app.put("/api/profiles/:name", async (c) => {
   const name = c.req.param("name");
   if (name.startsWith("_")) return c.json({ error: "reserved name" }, 400);
   const body = await c.req.json();
-  if (!body.description || !body.prompt) {
-    return c.json({ error: "description and prompt are required" }, 400);
-  }
+  const v = validate(ProfileSchema, body);
+  if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
   saveProfile(name, body);
   return c.json({ ok: true, name });
 });
@@ -191,9 +195,8 @@ app.get("/api/user-profiles/:name", (c) => {
 app.put("/api/user-profiles/:name", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json();
-  if (!body.displayName || !body.projects) {
-    return c.json({ error: "displayName and projects are required" }, 400);
-  }
+  const v = validate(UserProfileSchema, body);
+  if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
   saveUserProfile(name, body);
   return c.json({ ok: true, name });
 });
@@ -203,6 +206,9 @@ app.patch("/api/user-profiles/:name", async (c) => {
   const body = await c.req.json();
   const updated = patchUserProfile(name, body);
   if (!updated) return c.json({ error: "user profile not found" }, 404);
+  // Validate merged result
+  const v = validate(UserProfileSchema, updated);
+  if (!v.ok) return c.json({ error: "validation failed after merge", details: v.errors }, 400);
   return c.json({ ok: true, name, ...updated });
 });
 

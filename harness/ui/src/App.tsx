@@ -19,7 +19,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ChatView } from "./components/ChatView";
 import { ChatInput } from "./components/ChatInput";
 import { ConfigBar } from "./components/ConfigBar";
-import { getProfileUi } from "./profileUi";
+import type { ProfileUi } from "./api";
 import { createDefaultSetupState, type SessionSetupState } from "./components/SessionSetup";
 import { addRecentPath } from "./recentPaths";
 import { agentConfigToOverrides, type AgentConfigState } from "./components/AgentConfig";
@@ -552,7 +552,16 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
   }, [activeUserProfile, refreshSessions]);
 
   const activeProfileName = activeSession?.profile ?? selectedProfile;
-  const ui = getProfileUi(activeProfileName);
+  const profileUi = profiles.find((p) => p.name === activeProfileName)?.ui ?? {};
+  const ui: Required<ProfileUi> = {
+    label: profileUi.label ?? "agent",
+    showThinking: profileUi.showThinking ?? true,
+    showMeta: profileUi.showMeta ?? true,
+    showToolCalls: profileUi.showToolCalls ?? true,
+    placeholder: profileUi.placeholder ?? "message...",
+    emptyTitle: profileUi.emptyTitle ?? activeProfileName,
+    emptySubtitle: profileUi.emptySubtitle ?? "start typing to begin",
+  };
   const isStreaming = activeSession?.status === "running" || activeSession?.status === "starting";
   const profileData = profiles.find((p) => p.name === activeProfileName);
 
