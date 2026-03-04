@@ -209,6 +209,49 @@ export function setDraft(sessionId: string, text: string) {
   stmts.setDraft.run({ $id: sessionId, $draft_text: text });
 }
 
+// ── Search ──
+
+export type SearchHit = {
+  session_id: string;
+  preview: string;
+  profile: string | null;
+  model: string | null;
+  cwd: string | null;
+  last_message_at: number;
+  total_cost_usd: number;
+  snippet: string;
+};
+
+export function searchSessions(query: string, limit = 20): SearchHit[] {
+  const pattern = `%${query}%`;
+  return db.prepare(`
+    SELECT DISTINCT
+      s.id AS session_id,
+      s.preview,
+      s.profile,
+      s.model,
+      s.cwd,
+      s.last_message_at,
+      s.total_cost_usd,
+      COALESCE(
+        (SELECT SUBSTR(e.data, MAX(1, INSTR(e.data, $q) - 40), 120)
+         FROM events e WHERE e.session_id = s.id AND e.data LIKE $pattern
+         LIMIT 1),
+        s.last_prompt
+      ) AS snippet
+    FROM sessions s
+    WHERE s.archived = 0
+      AND (
+        s.preview LIKE $pattern
+        OR s.last_prompt LIKE $pattern
+        OR s.last_response LIKE $pattern
+        OR EXISTS (SELECT 1 FROM events e WHERE e.session_id = s.id AND e.data LIKE $pattern)
+      )
+    ORDER BY s.last_message_at DESC
+    LIMIT $limit
+  `).all({ $q: query, $pattern: pattern, $limit: limit }) as SearchHit[];
+}
+
 // ── Startup Cleanup ──
 // Mark orphaned running/starting/error sessions as done (harness restarted while they were active)
 db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'error')`);

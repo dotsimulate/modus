@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { Profile, SessionInfo } from "../api";
+import { useState, useRef, useCallback, useEffect } from "react";
+import type { Profile, SessionInfo, SearchHit } from "../api";
+import { searchSessions } from "../api";
 import { SessionSetup, type SessionSetupState } from "./SessionSetup";
 
 type Props = {
@@ -85,8 +86,27 @@ export function Sidebar({
   const [configExpanded, setConfigExpanded] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>("time");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
   const selectedProfileData = profiles.find((p) => p.name === selectedProfile);
   const overrideTags = getOverrideTags(setupState);
+
+  const doSearch = useCallback((q: string) => {
+    clearTimeout(searchTimer.current);
+    if (!q.trim()) { setSearchResults([]); setSearching(false); return; }
+    setSearching(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const hits = await searchSessions(q);
+        setSearchResults(hits);
+      } catch { /* silent */ }
+      setSearching(false);
+    }, 250);
+  }, []);
+
+  useEffect(() => () => clearTimeout(searchTimer.current), []);
 
   function timeAgo(ts: number): string {
     const diff = Date.now() - ts;
@@ -163,22 +183,68 @@ export function Sidebar({
 
         <div className="sidebar-sections">
           {!collapsed && (
-            <div className="group-toggle">
-              <button
-                className={`group-toggle-btn ${groupMode === "time" ? "group-toggle-btn--active" : ""}`}
-                onClick={() => setGroupMode("time")}
-              >
-                time
-              </button>
-              <button
-                className={`group-toggle-btn ${groupMode === "project" ? "group-toggle-btn--active" : ""}`}
-                onClick={() => setGroupMode("project")}
-              >
-                project
-              </button>
+            <div className="sidebar-controls">
+              <input
+                className="sidebar-search"
+                type="text"
+                placeholder="search sessions..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); doSearch(e.target.value); }}
+              />
+              <div className="group-toggle">
+                <button
+                  className={`group-toggle-btn ${groupMode === "time" ? "group-toggle-btn--active" : ""}`}
+                  onClick={() => setGroupMode("time")}
+                >
+                  time
+                </button>
+                <button
+                  className={`group-toggle-btn ${groupMode === "project" ? "group-toggle-btn--active" : ""}`}
+                  onClick={() => setGroupMode("project")}
+                >
+                  project
+                </button>
+              </div>
             </div>
           )}
-          {groups.map((group) => {
+
+          {/* Search results */}
+          {searchQuery.trim() ? (
+            <div className="search-results">
+              {searching && searchResults.length === 0 && (
+                <div className="search-empty">searching...</div>
+              )}
+              {!searching && searchResults.length === 0 && (
+                <div className="search-empty">no results</div>
+              )}
+              {searchResults.map((hit) => (
+                <div
+                  key={hit.session_id}
+                  className={`session-item ${hit.session_id === activeSessionId ? "active" : ""}`}
+                  onClick={() => onSelectSession(hit.session_id)}
+                >
+                  <div className="session-item-preview">
+                    <span className="session-item-text">{hit.preview}</span>
+                  </div>
+                  <div className="search-hit-snippet">{hit.snippet}</div>
+                  <div className="session-item-meta">
+                    {hit.cwd && (
+                      <span className="session-project-tag">
+                        {hit.cwd.replace(/\/+$/, "").split("/").pop()}
+                      </span>
+                    )}
+                    {hit.profile && (
+                      <span className="session-profile-tag">{hit.profile}</span>
+                    )}
+                    <span>{timeAgo(hit.last_message_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {/* Normal grouped sessions — hidden when searching */}
+          {!searchQuery.trim() && groups.map((group) => {
             const isGroupCollapsed = collapsedGroups.has(group.label);
             const toggleGroup = () => setCollapsedGroups((prev) => {
               const next = new Set(prev);
