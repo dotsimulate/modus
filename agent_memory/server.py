@@ -101,6 +101,12 @@ def read_memory(path: Path) -> dict | None:
     except (OSError, UnicodeDecodeError):
         return None
     meta, body = parse_frontmatter(text)
+    priority_raw = meta.get("priority", "0")
+    try:
+        priority = int(priority_raw)
+    except (ValueError, TypeError):
+        priority = 0
+
     return {
         "id": path.stem,
         "type": meta.get("type", ""),
@@ -108,6 +114,7 @@ def read_memory(path: Path) -> dict | None:
         "confidence": meta.get("confidence", ""),
         "created": meta.get("created", ""),
         "profile": meta.get("profile", None),
+        "priority": priority,
         "content": body,
     }
 
@@ -137,7 +144,7 @@ def keyword_score(text: str, terms: list[str]) -> int:
 
 
 @mcp.tool()
-def save(id: str, content: str, type: str = "discovery", tags: str = "", confidence: str = "medium") -> str:
+def save(id: str, content: str, type: str = "discovery", tags: str = "", confidence: str = "medium", priority: int = -1) -> str:
     """Save a memory to the store.
 
     Use this whenever you learn something worth persisting across sessions —
@@ -149,12 +156,20 @@ def save(id: str, content: str, type: str = "discovery", tags: str = "", confide
     "memory-001"). If a memory with this ID already exists, it will be
     overwritten — use this to update/refine existing memories.
 
+    **Priority & violations:** Each memory has a priority score (default 0).
+    When you violated a memory (you had the knowledge but didn't apply it),
+    rewrite it with an incremented priority and add a "## Violations" section
+    documenting what went wrong. Memories with higher priority sort first in
+    query("*") results and are marked [!!N], making them harder to overlook.
+    If you don't pass priority, the existing value is preserved on overwrites.
+
     Args:
         id: Kebab-case identifier for the memory (becomes the filename).
         content: The body of the memory — markdown text with what you learned.
         type: Category — one of: correction, discovery, pattern, preference, reference
         tags: Comma-separated tags for search (e.g. "cli, tools, permissions")
         confidence: How solid this is — high, medium, or low
+        priority: Violation priority (0 = normal). Increment when recording a violation. Omit to preserve existing value.
     """
     from datetime import date
 
@@ -165,12 +180,22 @@ def save(id: str, content: str, type: str = "discovery", tags: str = "", confide
     profile = os.environ.get("AGENT_PROFILE", "")
     profile_line = f"profile: {profile}\n" if profile else ""
 
+    # If priority not explicitly set, preserve existing value
+    if priority < 0:
+        existing_path = memory_dir / f"{id}.md"
+        if existing_path.exists():
+            existing = read_memory(existing_path)
+            priority = existing.get("priority", 0) if existing else 0
+        else:
+            priority = 0
+
     text = (
         f"---\n"
         f"type: {type}\n"
         f"tags: {tags_yaml}\n"
         f"confidence: {confidence}\n"
         f"created: {date.today().isoformat()}\n"
+        f"priority: {priority}\n"
         f"{profile_line}"
         f"---\n\n"
         f"{content}\n"
@@ -178,7 +203,7 @@ def save(id: str, content: str, type: str = "discovery", tags: str = "", confide
 
     path = memory_dir / f"{id}.md"
     path.write_text(text, encoding="utf-8")
-    return f"Saved memory '{id}' to {path.name}"
+    return f"Saved memory '{id}' (priority: {priority}) to {path.name}"
 
 
 # ── Query tool ───────────────────────────────────────────────────────
@@ -197,6 +222,11 @@ def query(input: str) -> str:
       - Search:  query("feedback TOP wiring")  → keyword search across all memories and skills
       - Recall:  query("glsl-output-swizzle")  → full content of a specific memory by ID
       - List:    query("*")                    → everything in the store
+
+    **Priority ranking:** Memories with violations are marked [!!N] and sorted
+    to the top of query("*") results. These are memories you've had before but
+    failed to apply — pay extra attention to them. In keyword search, priority
+    is used as a tiebreaker between equally relevant results.
 
     Memories were created during past session reflections (/session-reflect).
     If you learn something new this session that should be remembered, suggest
@@ -222,12 +252,14 @@ def query(input: str) -> str:
             mem = read_memory(exact_path)
             if mem:
                 tags = ", ".join(mem["tags"]) if isinstance(mem["tags"], list) else mem["tags"]
+                pri = mem.get("priority", 0)
+                pri_str = f"  |  **Priority:** {pri}" if pri > 0 else ""
                 return (
                     f"## Memory: {mem['id']}\n"
                     f"**Type:** {mem['type']}  |  "
                     f"**Confidence:** {mem['confidence']}  |  "
                     f"**Tags:** {tags}  |  "
-                    f"**Created:** {mem['created']}\n\n"
+                    f"**Created:** {mem['created']}{pri_str}\n\n"
                     f"{mem['content']}"
                 )
 
@@ -258,11 +290,15 @@ def query(input: str) -> str:
     if input == "*":
         lines = []
         if memories:
+            # Sort by priority descending so violated memories surface first
+            memories.sort(key=lambda m: m.get("priority", 0), reverse=True)
             lines.append(f"## Memories ({len(memories)})\n")
             for m in memories:
                 tags = ", ".join(m["tags"]) if isinstance(m["tags"], list) else m["tags"]
+                pri = m.get("priority", 0)
+                pri_marker = f" [!!{pri}]" if pri > 0 else ""
                 lines.append(
-                    f"- **{m['id']}** [{m['type']}] {m['content'][:80]}..."
+                    f"- **{m['id']}** [{m['type']}]{pri_marker} {m['content'][:80]}..."
                     + (f" _({tags})_" if tags else "")
                 )
         else:
@@ -287,7 +323,7 @@ def query(input: str) -> str:
         score = keyword_score(searchable, terms)
         if score > 0:
             scored_memories.append((score, m))
-    scored_memories.sort(key=lambda x: x[0], reverse=True)
+    scored_memories.sort(key=lambda x: (x[0], x[1].get("priority", 0)), reverse=True)
 
     scored_skills = []
     for s in skills:
@@ -303,8 +339,10 @@ def query(input: str) -> str:
         lines.append(f"## Memories ({len(scored_memories)} matches)\n")
         for _, m in scored_memories[:10]:
             tags = ", ".join(m["tags"]) if isinstance(m["tags"], list) else m["tags"]
+            pri = m.get("priority", 0)
+            pri_marker = f" [!!{pri}]" if pri > 0 else ""
             lines.append(
-                f"- **{m['id']}** [{m['type']}] (conf: {m['confidence']})\n"
+                f"- **{m['id']}** [{m['type']}]{pri_marker} (conf: {m['confidence']})\n"
                 f"  {m['content'][:120]}\n"
                 f"  _Tags: {tags}_  —  "
                 f"_Full recall:_ `query(\"{m['id']}\")`"

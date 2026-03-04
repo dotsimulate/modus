@@ -439,6 +439,7 @@ export type MemoryItem = {
   confidence: string;
   created: string;
   profile: string | null;
+  priority: number;
   body: string;
 };
 

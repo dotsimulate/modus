@@ -3573,7 +3573,6 @@ html, body, #root {
   cursor: pointer;
   font-size: 12px;
   position: relative;
-  overflow: hidden;
   transition: background 0.12s ease;
 }
 
@@ -3606,6 +3605,7 @@ html, body, #root {
 .git-commit-msg {
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.4;
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
