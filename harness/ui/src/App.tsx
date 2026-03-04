@@ -6,7 +6,7 @@ import {
   subscribeEvents, healthCheck,
   createEmptySession, getDraft, saveDraft,
   authStatus, clearAuthToken, lockAll, checkToken,
-  updateSessionConfig,
+  updateSessionConfig, respondToPermission,
   fetchUserProfiles, patchUserProfileApi,
 } from "./api";
 import { LoginScreen } from "./components/LoginScreen";
@@ -27,6 +27,7 @@ import { Dashboard } from "./components/Dashboard";
 import { MemoryViz } from "./components/MemoryViz";
 import { Schedules } from "./components/Schedules";
 import { GitPanel } from "./components/GitPanel";
+import { PermissionOverlay } from "./components/PermissionOverlay";
 
 function App() {
   // ── PIN Auth Gate ──
@@ -250,6 +251,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
       activeToolName: rs.activeToolName,
       activeToolElapsed: rs.activeToolElapsed,
       availableTools: rs.availableTools.length > 0 ? rs.availableTools : undefined,
+      pendingPermissions: rs.pendingPermissions.length > 0 ? rs.pendingPermissions : undefined,
     });
   }, []);
 
@@ -483,6 +485,16 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
     }
   }, [activeSession, syncSessionFromReducer]);
 
+  const handlePermissionResponse = useCallback(async (
+    requestId: string,
+    behavior: "allow" | "deny",
+    updatedInput?: Record<string, unknown>,
+    scope?: "once" | "session",
+  ) => {
+    if (!activeSession?.id) return;
+    await respondToPermission(activeSession.id, { requestId, behavior, updatedInput, scope }).catch(() => {});
+  }, [activeSession]);
+
   // Sync tool/config overrides to backend when session is active
   useEffect(() => {
     const id = activeSession?.id;
@@ -614,6 +626,14 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
                 emptyTitle={ui.emptyTitle ?? activeProfileName}
                 emptySubtitle={ui.emptySubtitle}
               />
+
+              {activeSession?.pendingPermissions && activeSession.pendingPermissions.length > 0 && (
+                <PermissionOverlay
+                  permissions={activeSession.pendingPermissions}
+                  sessionId={activeSession.id}
+                  onRespond={handlePermissionResponse}
+                />
+              )}
 
               <ConfigBar
                 profileName={activeProfileName}

@@ -1,16 +1,31 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { verifyPin, setupNewPin, setAuthToken } from "../api";
 
-const GLYPHS = "*%&$#@!?~^+=<>{}[]|/\\:;";
+const GLYPHS = "0123456789abcdefnrstiouxlm{}[]()=></:;.&|!?#@$%~^+*";
+const WORDS = [
+  "dot","td","dat","lab",
+  "fn","rx","ts","css","jsx","api","src","dom","ref","0x",
+  "if","db","io","cb","fs","ui","px","ms","ws","id","ev","async","py",
+  "ext","tox","toe",
+];
 function randomGlyph() { return GLYPHS[Math.floor(Math.random() * GLYPHS.length)]; }
 
 function buildNoise(typed: number, total: number) {
-  let s = "";
+  const out: string[] = [];
   for (let i = 0; i < total; i++) {
-    if (i < typed) s += "•";
-    else s += randomGlyph();
+    if (i < typed) { out.push("*"); continue; }
+    // ~15% chance to drop a word fragment if it fits
+    if (Math.random() < 0.15) {
+      const w = WORDS[Math.floor(Math.random() * WORDS.length)];
+      if (i + w.length <= total) {
+        for (const ch of w) out.push(ch);
+        i += w.length - 1;
+        continue;
+      }
+    }
+    out.push(randomGlyph());
   }
-  return s;
+  return out.join("");
 }
 
 const NOISE_LEN = 14;
@@ -55,7 +70,7 @@ function GlyphField({
   const display = [];
   for (let i = 0; i < NOISE_LEN; i++) {
     if (i < typed) {
-      display.push(<span key={i} className="login-noise-locked">•</span>);
+      display.push(<span key={i} className="login-noise-locked">*</span>);
     } else if (i === typed && focused) {
       display.push(<span key={i} className={`login-noise-caret${caretOn ? " on" : ""}`}>▎</span>);
     } else {

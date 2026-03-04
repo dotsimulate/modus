@@ -3150,17 +3150,17 @@ html, body, #root {
   text-align: center;
 }
 .login-noise-glyph {
-  color: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.14);
   transition: color 0.15s ease;
 }
 .login-field.is-hovered .login-noise-glyph {
-  color: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.22);
 }
 .login-field.is-focused .login-noise-glyph {
-  color: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.18);
 }
 .login-noise-locked {
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.75);
 }
 .login-noise-caret {
   color: transparent;
@@ -3207,6 +3207,36 @@ html, body, #root {
   40% { transform: translateX(4px); }
   60% { transform: translateX(-2px); }
   80% { transform: translateX(2px); }
+}
+
+/* ── Login — mobile ── */
+@media (max-width: 600px) {
+  .login-box {
+    width: 280px;
+    gap: 24px;
+  }
+  .login-noise {
+    font-size: 18px;
+  }
+  .login-noise-glyph,
+  .login-noise-locked,
+  .login-noise-caret {
+    width: 1.1ch;
+  }
+  .login-input {
+    font-size: 18px;
+    padding: 10px 0 8px;
+  }
+  .login-field-user .login-input {
+    font-size: 16px;
+    padding: 8px 0 6px;
+  }
+  .login-name-label {
+    font-size: 16px;
+  }
+  .login-field-pw {
+    padding: 6px 0;
+  }
 }
 
 /* ── Schedules View ── */
@@ -3895,4 +3925,195 @@ html, body, #root {
   .git-detail {
     padding: 10px 0;
   }
+}
+
+/* ── Permission Overlay ── */
+
+.permission-overlay {
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.permission-request {
+  background: rgba(232, 155, 80, 0.06);
+  border: 1px solid rgba(232, 155, 80, 0.25);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.permission-request-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.permission-request-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e89b50;
+  animation: pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.permission-request-tool {
+  color: #e89b50;
+  font-weight: 600;
+}
+
+.permission-request-reason {
+  color: var(--text-muted);
+}
+
+.permission-request-input {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--bg-raised);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.permission-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.permission-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.permission-btn--approve {
+  color: #33cc33;
+  border-color: rgba(51, 204, 51, 0.4);
+}
+.permission-btn--approve:hover:not(:disabled) {
+  background: rgba(51, 204, 51, 0.1);
+  border-color: #33cc33;
+}
+
+.permission-btn--session {
+  color: #5599ff;
+  border-color: rgba(85, 153, 255, 0.4);
+}
+.permission-btn--session:hover:not(:disabled) {
+  background: rgba(85, 153, 255, 0.1);
+  border-color: #5599ff;
+}
+
+.permission-btn--deny {
+  color: var(--text-muted);
+}
+.permission-btn--deny:hover:not(:disabled) {
+  color: var(--error);
+  border-color: var(--error);
+  background: rgba(255, 80, 80, 0.06);
+}
+
+/* ── AskUserQuestion form ── */
+
+.permission-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.permission-question-header {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: #e89b50;
+  text-transform: uppercase;
+}
+
+.permission-question-text {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text);
+  margin: 2px 0 6px;
+}
+
+.permission-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.permission-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: all 0.1s ease;
+}
+.permission-option:hover {
+  background: var(--bg-surface);
+  border-color: var(--text-muted);
+}
+.permission-option.selected {
+  border-color: #e89b50;
+  background: rgba(232, 155, 80, 0.08);
+}
+
+.permission-option-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.permission-option-desc {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.permission-other-input {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+}
+.permission-other-input:focus {
+  border-color: #e89b50;
 }

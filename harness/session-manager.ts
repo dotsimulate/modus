@@ -10,7 +10,7 @@ import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import {
   upsertSession, updateSessionStatus, addEvent, getMaxSeq, getSession,
 } from "./db";
-import { getProfile, getGlobalConfig, getUserData, type McpServerConfig } from "./profiles";
+import { getProfile, getGlobalConfig, getUserData, type McpServerConfig, type PermissionPolicy } from "./profiles";
 import { resolveSecret } from "./secrets";
 
 const CLAUDE_PATH =
@@ -135,6 +135,15 @@ export type ActiveSession = {
   skipNextPromptPersist?: boolean;
   /** Set when this session was spawned by the scheduler */
   scheduleName?: string;
+  /** Pending permission requests awaiting UI response */
+  pendingPermissions: Map<string, {
+    resolve: (result: { behavior: "allow" | "deny"; updatedInput?: Record<string, unknown>; message?: string }) => void;
+    toolName: string;
+    input: Record<string, unknown>;
+    requestedAt: number;
+  }>;
+  /** Tools approved for the entire session (auto-approve on subsequent calls) */
+  sessionApprovals: Set<string>;
 };
 
 // ── Active Sessions Map ──
@@ -266,6 +275,154 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     sdkTools = undefined;
   }
 
+  // ── Permission Policy ──
+  const policy: PermissionPolicy = profileDef?.permissionPolicy ?? "bypass";
+  const isBypass = policy === "bypass";
+
+  // Helper: broadcast + persist an event via SSE (used by permission hooks)
+  async function broadcastPermEvent(s: ActiveSession, evt: any) {
+    if (s.sessionId && !s.sessionId.startsWith("pending-")) {
+      s.seq++;
+      addEvent(s.sessionId, s.seq, evt.type, evt.subtype, JSON.stringify(evt));
+      const seqStr = String(s.seq);
+      for (const sub of s.subscribers) {
+        try { await sub.write(evt.type, JSON.stringify(evt), seqStr); } catch { s.subscribers.delete(sub); }
+      }
+    }
+  }
+
+  // ── PreToolUse Hook (ALL profiles) ──
+  // Handles regular tool permissions. AskUserQuestion is NOT handled here —
+  // it returns {} (no decision) so it falls through the pipeline to canUseTool.
+  const preToolUseHook = async (hookInput: any, toolUseID: string | undefined) => {
+    const toolName: string = hookInput.tool_name;
+    const input: Record<string, unknown> = hookInput.tool_input ?? {};
+
+    // AskUserQuestion → no decision here, fall through to canUseTool
+    if (toolName === "AskUserQuestion") {
+      return {};
+    }
+
+    // Bypass profiles: auto-approve everything (replaces bypassPermissions mode)
+    if (isBypass) {
+      return {
+        continue: true,
+        hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
+      };
+    }
+
+    // Non-bypass: check policy
+    let needsApproval = false;
+    if (policy === "ask") {
+      needsApproval = true;
+    } else if (typeof policy === "object") {
+      if (policy.requireApproval?.includes(toolName)) {
+        needsApproval = true;
+      } else if (policy.autoApprove?.includes(toolName)) {
+        needsApproval = false;
+      } else {
+        needsApproval = policy.default === "ask";
+      }
+    }
+
+    // Session-level approval: skip prompt if already approved for this session
+    if (needsApproval && session.sessionApprovals.has(toolName)) {
+      needsApproval = false;
+    }
+
+    if (!needsApproval) {
+      return {
+        continue: true,
+        hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
+      };
+    }
+
+    // Create a pending permission request and broadcast it
+    const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await broadcastPermEvent(session, {
+      type: "system",
+      subtype: "permission_request",
+      requestId,
+      toolName,
+      toolInput: input,
+      toolUseID: toolUseID ?? hookInput.tool_use_id,
+      interactive: false,
+      decisionReason: `${toolName} requires approval`,
+    });
+
+    // Wait for UI response
+    const result = await new Promise<{ behavior: "allow" | "deny"; updatedInput?: Record<string, unknown>; message?: string }>((resolve) => {
+      session.pendingPermissions.set(requestId, { resolve, toolName, input, requestedAt: Date.now() });
+    });
+
+    // Broadcast resolution
+    await broadcastPermEvent(session, {
+      type: "system",
+      subtype: "permission_resolved",
+      requestId,
+      behavior: result.behavior,
+    });
+    session.pendingPermissions.delete(requestId);
+
+    if (result.behavior === "deny") {
+      return {
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: result.message ?? "Denied by user",
+        },
+      };
+    }
+    return {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        ...(result.updatedInput ? { updatedInput: result.updatedInput } : {}),
+      },
+    };
+  };
+
+  // ── canUseTool Callback (ALL profiles) ──
+  // Handles AskUserQuestion interactively via the UI.
+  // This fires AFTER hooks in the permission pipeline, so AskUserQuestion
+  // (which the hook skips) arrives here for interactive handling.
+  const canUseTool = async (toolName: string, toolInput: Record<string, unknown>) => {
+    if (toolName === "AskUserQuestion") {
+      const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      await broadcastPermEvent(session, {
+        type: "system",
+        subtype: "permission_request",
+        requestId,
+        toolName,
+        toolInput,
+        interactive: true,
+        decisionReason: "Clarifying question",
+      });
+
+      const result = await new Promise<{ behavior: "allow" | "deny"; updatedInput?: Record<string, unknown>; message?: string }>((resolve) => {
+        session.pendingPermissions.set(requestId, { resolve, toolName, input: toolInput, requestedAt: Date.now() });
+      });
+
+      await broadcastPermEvent(session, {
+        type: "system",
+        subtype: "permission_resolved",
+        requestId,
+        behavior: result.behavior,
+      });
+      session.pendingPermissions.delete(requestId);
+
+      if (result.behavior === "deny") {
+        return { behavior: "deny" as const, message: result.message ?? "Skipped by user" };
+      }
+      return { behavior: "allow" as const, updatedInput: result.updatedInput ?? toolInput };
+    }
+
+    // Safety net: any other tool that reaches here — auto-approve
+    return { behavior: "allow" as const, updatedInput: toolInput };
+  };
+
   const sdkOptions: any = {
     pathToClaudeCodeExecutable: CLAUDE_PATH,
     cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
@@ -279,7 +436,14 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     tools: sdkTools,
     systemPrompt,
     settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
-    permissionMode: "bypassPermissions" as const,
+    permissionMode: "default" as const,
+    canUseTool,
+    hooks: {
+      PreToolUse: [{
+        hooks: [preToolUseHook],
+        timeout: 300, // 5 min timeout for user to respond
+      }],
+    },
     mcpServers: hasMcp ? resolveEnvVars(mergedMcp) : undefined,
   };
 
@@ -310,6 +474,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     abortController,
     pendingMessages: [],
     scheduleName: opts.scheduleName,
+    pendingPermissions: new Map(),
+    sessionApprovals: new Set(),
   };
 
   activeSessions.set(tempId, session);
@@ -673,6 +839,25 @@ export function stopTask(sessionId: string, taskId: string): boolean {
   const session = activeSessions.get(sessionId);
   if (!session?.queryObj) return false;
   session.queryObj.stopTask(taskId);
+  return true;
+}
+
+// ── Permission Response ──
+
+export function resolvePermission(
+  sessionId: string,
+  requestId: string,
+  response: { behavior: "allow" | "deny"; updatedInput?: Record<string, unknown>; message?: string; scope?: "once" | "session" },
+): boolean {
+  const session = activeSessions.get(sessionId);
+  if (!session) return false;
+  const pending = session.pendingPermissions.get(requestId);
+  if (!pending) return false;
+  // Track session-level approvals
+  if (response.behavior === "allow" && response.scope === "session") {
+    session.sessionApprovals.add(pending.toolName);
+  }
+  pending.resolve(response);
   return true;
 }
 

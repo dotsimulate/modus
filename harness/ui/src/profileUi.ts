@@ -28,7 +28,7 @@ const configs: Record<string, Partial<ProfileUiConfig>> = {
     label: "test",
     showThinking: true,
     showMeta: true,
-    showToolCalls: false,
+    showToolCalls: true,
     placeholder: "test message...",
     emptyTitle: "test-harness",
     emptySubtitle: "haiku / low effort / read-only tools",
