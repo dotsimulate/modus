@@ -11,11 +11,15 @@ import {
   getAllProfiles, getProfile, listProfileNames,
   saveProfile, deleteProfile, getGlobalConfig, saveGlobalConfig,
   setUserName, getUserName,
+  getUserProfile, listUserProfileNames, getAllUserProfiles,
+  saveUserProfile, deleteUserProfile, patchUserProfile,
 } from "./profiles";
 import {
-  listSessions, getSession, archiveSession, searchSessions,
+  listSessions, listSessionsForProjects,
+  getSession, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft,
+  compactSession, compactAllSessions, storageStats,
 } from "./db";
 import {
   startSession, queueMessage, stopSession, stopTask,
@@ -168,6 +172,46 @@ app.delete("/api/profiles/:name", (c) => {
   return c.json({ ok: true });
 });
 
+// ── User Profiles ──
+
+app.get("/api/user-profiles", (c) => {
+  const all = getAllUserProfiles();
+  const list = Object.entries(all).map(([name, p]) => ({ name, ...p }));
+  return c.json(list);
+});
+
+app.get("/api/user-profiles/:name", (c) => {
+  const name = c.req.param("name");
+  const profile = getUserProfile(name);
+  if (!profile) return c.json({ error: "user profile not found" }, 404);
+  return c.json({ name, ...profile });
+});
+
+app.put("/api/user-profiles/:name", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json();
+  if (!body.displayName || !body.projects) {
+    return c.json({ error: "displayName and projects are required" }, 400);
+  }
+  saveUserProfile(name, body);
+  return c.json({ ok: true, name });
+});
+
+app.patch("/api/user-profiles/:name", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json();
+  const updated = patchUserProfile(name, body);
+  if (!updated) return c.json({ error: "user profile not found" }, 404);
+  return c.json({ ok: true, name, ...updated });
+});
+
+app.delete("/api/user-profiles/:name", (c) => {
+  const name = c.req.param("name");
+  const deleted = deleteUserProfile(name);
+  if (!deleted) return c.json({ error: "user profile not found" }, 404);
+  return c.json({ ok: true });
+});
+
 // ── Secrets Status (booleans only, no values) ──
 
 app.post("/api/secrets/check", async (c) => {
@@ -183,16 +227,29 @@ app.post("/api/secrets/check", async (c) => {
 
 // ── Sessions ──
 
+/** Resolve CWD prefixes from a user profile name (query param) */
+function resolveProjectFilter(c: any): string[] | undefined {
+  const profileName = new URL(c.req.url).searchParams.get("userProfile");
+  if (!profileName) return undefined;
+  const profile = getUserProfile(profileName);
+  return profile?.projects;
+}
+
 app.get("/api/sessions/search", (c) => {
   const params = new URL(c.req.url).searchParams;
   const q = params.get("q")?.trim();
   if (!q) return c.json([]);
   const limit = Number(params.get("limit") ?? 20);
-  return c.json(searchSessions(q, limit));
+  const cwdPrefixes = resolveProjectFilter(c);
+  return c.json(searchSessions(q, limit, cwdPrefixes));
 });
 
 app.get("/api/sessions", (c) => {
   const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 50);
+  const cwdPrefixes = resolveProjectFilter(c);
+  if (cwdPrefixes && cwdPrefixes.length > 0) {
+    return c.json(listSessionsForProjects(cwdPrefixes, limit));
+  }
   return c.json(listSessions(limit));
 });
 
@@ -538,6 +595,49 @@ app.patch("/api/schedules/:name", async (c) => {
   const ok = updateScheduleConfig(name, body);
   if (!ok) return c.json({ error: "schedule not found" }, 404);
   return c.json({ ok: true });
+});
+
+// ── Git ──
+
+import { gitStatus, gitLog, gitShow } from "./git";
+
+app.get("/api/git/status", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  return c.json(await gitStatus(cwd));
+});
+
+app.get("/api/git/log", async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const cwd = params.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const limit = Number(params.get("limit") ?? 30);
+  return c.json(await gitLog(cwd, limit));
+});
+
+app.get("/api/git/show/:hash", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const hash = c.req.param("hash");
+  const detail = await gitShow(cwd, hash);
+  if (!detail) return c.json({ error: "commit not found" }, 404);
+  return c.json(detail);
+});
+
+// ── Storage Stats & Compaction ──
+
+app.get("/api/stats/storage", (c) => {
+  return c.json(storageStats());
+});
+
+app.post("/api/compact", (c) => {
+  const result = compactAllSessions();
+  return c.json(result);
+});
+
+app.post("/api/compact/:sessionId", (c) => {
+  const result = compactSession(c.req.param("sessionId"));
+  return c.json(result);
 });
 
 // ── Start ──

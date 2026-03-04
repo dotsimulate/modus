@@ -39,6 +39,8 @@ db.run(`UPDATE sessions SET last_message_at = updated_at WHERE last_message_at I
 try { db.run(`ALTER TABLE sessions ADD COLUMN cwd TEXT`); } catch { /* already exists */ }
 // Migration: add schedule_name — set when session was spawned by a schedule
 try { db.run(`ALTER TABLE sessions ADD COLUMN schedule_name TEXT`); } catch { /* already exists */ }
+// Migration: add compacted flag for event compaction
+try { db.run(`ALTER TABLE sessions ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -71,6 +73,7 @@ db.run(`
 `);
 db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, seq)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, archived, last_message_at DESC)`);
 
 // ── Schedule Runs (tracks each execution of a scheduled task) ──
 db.run(`
@@ -222,6 +225,15 @@ export function updateSessionStatus(id: string, status: string) {
 
 export function listSessions(limit = 50): SessionRow[] {
   return stmts.list.all({ $limit: limit }) as SessionRow[];
+}
+
+/** List sessions filtered to specific project CWD prefixes */
+export function listSessionsForProjects(cwdPrefixes: string[], limit = 50): SessionRow[] {
+  if (cwdPrefixes.length === 0) return listSessions(limit);
+  const conditions = cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
+  const sql = `SELECT * FROM sessions WHERE archived = 0 AND (${conditions}) ORDER BY last_message_at DESC LIMIT ?`;
+  const params = [...cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"), limit];
+  return db.prepare(sql).all(...params) as SessionRow[];
 }
 
 export function getSession(id: string): SessionRow | null {
@@ -385,7 +397,7 @@ export type SearchHit = {
   snippet: string;
 };
 
-export function searchSessions(query: string, limit = 20): SearchHit[] {
+export function searchSessions(query: string, limit = 20, cwdPrefixes?: string[]): SearchHit[] {
   const ftsQuery = query.trim().split(/\s+/).map(t => `"${t}"*`).join(" ");
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
 
@@ -403,9 +415,14 @@ export function searchSessions(query: string, limit = 20): SearchHit[] {
 
   const ids = matches.map(m => m.sid);
   const placeholders = ids.map(() => "?").join(",");
-  const sessions = db.prepare(
-    `SELECT * FROM sessions WHERE id IN (${placeholders}) AND archived = 0`
-  ).all(...ids) as SessionRow[];
+  let sessionsQuery = `SELECT * FROM sessions WHERE id IN (${placeholders}) AND archived = 0`;
+  const params: any[] = [...ids];
+  if (cwdPrefixes && cwdPrefixes.length > 0) {
+    const cwdConds = cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
+    sessionsQuery += ` AND (${cwdConds})`;
+    params.push(...cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"));
+  }
+  const sessions = db.prepare(sessionsQuery).all(...params) as SessionRow[];
   const sessionMap = new Map(sessions.map(s => [s.id, s]));
 
   // Build snippets from the actual indexed content
@@ -437,6 +454,56 @@ export function searchSessions(query: string, limit = 20): SearchHit[] {
       snippet,
     }];
   });
+}
+
+// ── Event Compaction ──
+// After a session goes idle, collapse stream_event deltas to save space.
+// Keeps assistant/user/system/result events intact — only removes text_delta and thinking_delta.
+
+const compactDeleteStmt = db.prepare(`
+  DELETE FROM events
+  WHERE session_id = $sid
+    AND type = 'stream_event'
+    AND subtype IN ('text_delta', 'thinking_delta', 'content_block_start', 'content_block_stop', 'content_block_delta', 'message_start', 'message_delta', 'message_stop', 'input_json_delta')
+`);
+
+const markCompactedStmt = db.prepare(`UPDATE sessions SET compacted = 1 WHERE id = $sid`);
+
+/** Compact a single session — delete stream deltas, keep assembled events */
+export function compactSession(sessionId: string): { deleted: number } {
+  const result = compactDeleteStmt.run({ $sid: sessionId });
+  markCompactedStmt.run({ $sid: sessionId });
+  return { deleted: result.changes };
+}
+
+/** Compact all idle/done sessions that haven't been compacted yet */
+export function compactAllSessions(): { sessions: number; events: number } {
+  const uncompacted = db.prepare(
+    `SELECT id FROM sessions WHERE compacted = 0 AND status IN ('idle', 'done') AND archived = 0`
+  ).all() as { id: string }[];
+  let totalDeleted = 0;
+  db.transaction(() => {
+    for (const { id } of uncompacted) {
+      const { deleted } = compactSession(id);
+      totalDeleted += deleted;
+    }
+  })();
+  return { sessions: uncompacted.length, events: totalDeleted };
+}
+
+/** Storage stats per project */
+export function storageStats(): { project: string; sessions: number; events: number; bytes: number }[] {
+  return db.prepare(`
+    SELECT COALESCE(s.cwd, '(unscoped)') as project,
+           COUNT(DISTINCT s.id) as sessions,
+           COUNT(e.id) as events,
+           COALESCE(SUM(LENGTH(e.data)), 0) as bytes
+    FROM sessions s
+    LEFT JOIN events e ON e.session_id = s.id
+    WHERE s.archived = 0
+    GROUP BY s.cwd
+    ORDER BY bytes DESC
+  `).all() as any[];
 }
 
 // ── Startup Cleanup ──

@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { Profile, SessionInfo, SearchHit } from "../api";
-import { searchSessions } from "../api";
+import type { Profile, SessionInfo, SearchHit, UserProfile } from "../api";
+import { searchSessionsScoped } from "../api";
 import { SessionSetup, type SessionSetupState } from "./SessionSetup";
+
+type GroupMode = "time" | "project";
 
 type Props = {
   open: boolean;
@@ -21,6 +23,15 @@ type Props = {
   onToggleCollapse: () => void;
   onLock?: () => void;
   userName?: string | null;
+  // User profile props
+  userProfiles?: UserProfile[];
+  activeUserProfile?: string | null;
+  onSwitchUserProfile?: (name: string | null) => void;
+  initialGroupMode?: GroupMode;
+  initialCollapsedGroups?: string[];
+  onGroupModeChange?: (mode: GroupMode) => void;
+  onCollapsedGroupsChange?: (groups: string[]) => void;
+  activeUserProfileObj?: UserProfile | null;
 };
 
 /** Detect which categories have overrides vs profile defaults */
@@ -36,21 +47,28 @@ function getOverrideTags(setup: SessionSetupState): string[] {
   return tags;
 }
 
-type GroupMode = "time" | "project";
-
-/** Extract a short project label from a cwd path (last 2 segments) */
-function projectLabel(cwd: string | null): string {
+/** Match a session CWD to a known project path, or fall back to last segment */
+function projectLabel(cwd: string | null, projectPaths?: string[]): string {
   if (!cwd) return "other";
-  const parts = cwd.replace(/\/+$/, "").split("/").filter(Boolean);
-  if (parts.length >= 2) return parts.slice(-2).join("/");
-  if (parts.length === 1) return parts[0];
-  return "other";
+  const norm = cwd.replace(/\/+$/, "");
+  if (projectPaths) {
+    for (const pp of projectPaths) {
+      const np = pp.replace(/\/+$/, "");
+      if (norm === np || norm.startsWith(np + "/")) {
+        // Use last segment of the project root as the label
+        return np.split("/").pop() ?? np;
+      }
+    }
+  }
+  // Fallback: last segment of the CWD
+  const parts = norm.split("/").filter(Boolean);
+  return parts.pop() ?? "other";
 }
 
-function groupSessionsByProject(list: SessionInfo[]) {
+function groupSessionsByProject(list: SessionInfo[], projectPaths?: string[]) {
   const map = new Map<string, SessionInfo[]>();
   for (const s of list) {
-    const label = projectLabel(s.cwd);
+    const label = projectLabel(s.cwd, projectPaths);
     if (!map.has(label)) map.set(label, []);
     map.get(label)!.push(s);
   }
@@ -82,10 +100,20 @@ export function Sidebar({
   onToggleCollapse,
   onLock,
   userName,
+  userProfiles,
+  activeUserProfile,
+  onSwitchUserProfile,
+  initialGroupMode,
+  initialCollapsedGroups,
+  onGroupModeChange,
+  onCollapsedGroupsChange,
+  activeUserProfileObj,
 }: Props) {
   const [configExpanded, setConfigExpanded] = useState(false);
-  const [groupMode, setGroupMode] = useState<GroupMode>("time");
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [groupMode, setGroupMode] = useState<GroupMode>(initialGroupMode ?? "time");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(initialCollapsedGroups ?? []),
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
@@ -93,18 +121,35 @@ export function Sidebar({
   const selectedProfileData = profiles.find((p) => p.name === selectedProfile);
   const overrideTags = getOverrideTags(setupState);
 
+  // Wrap groupMode setter to persist to user profile
+  const handleSetGroupMode = useCallback((mode: GroupMode) => {
+    setGroupMode(mode);
+    onGroupModeChange?.(mode);
+  }, [onGroupModeChange]);
+
+  // Wrap collapsedGroups setter to persist to user profile
+  const handleToggleGroup = useCallback((label: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      onCollapsedGroupsChange?.(Array.from(next));
+      return next;
+    });
+  }, [onCollapsedGroupsChange]);
+
   const doSearch = useCallback((q: string) => {
     clearTimeout(searchTimer.current);
     if (!q.trim()) { setSearchResults([]); setSearching(false); return; }
     setSearching(true);
     searchTimer.current = setTimeout(async () => {
       try {
-        const hits = await searchSessions(q);
+        const hits = await searchSessionsScoped(q, 20, activeUserProfile ?? undefined);
         setSearchResults(hits);
       } catch { /* silent */ }
       setSearching(false);
     }, 250);
-  }, []);
+  }, [activeUserProfile]);
 
   useEffect(() => () => clearTimeout(searchTimer.current), []);
 
@@ -146,7 +191,7 @@ export function Sidebar({
   }
 
   const groups = groupMode === "project"
-    ? groupSessionsByProject(sessions)
+    ? groupSessionsByProject(sessions, activeUserProfileObj?.projects)
     : groupSessions(sessions);
 
   // Profile summary line
@@ -200,13 +245,13 @@ export function Sidebar({
               <div className="group-toggle">
                 <button
                   className={`group-toggle-btn ${groupMode === "time" ? "group-toggle-btn--active" : ""}`}
-                  onClick={() => setGroupMode("time")}
+                  onClick={() => handleSetGroupMode("time")}
                 >
                   time
                 </button>
                 <button
                   className={`group-toggle-btn ${groupMode === "project" ? "group-toggle-btn--active" : ""}`}
-                  onClick={() => setGroupMode("project")}
+                  onClick={() => handleSetGroupMode("project")}
                 >
                   project
                 </button>
@@ -252,17 +297,11 @@ export function Sidebar({
           {/* Normal grouped sessions — hidden when searching */}
           {!searchQuery.trim() && groups.map((group) => {
             const isGroupCollapsed = collapsedGroups.has(group.label);
-            const toggleGroup = () => setCollapsedGroups((prev) => {
-              const next = new Set(prev);
-              if (next.has(group.label)) next.delete(group.label);
-              else next.add(group.label);
-              return next;
-            });
             return (
               <div key={group.label}>
                 <div
                   className="sidebar-section-label sidebar-section-label--clickable"
-                  onClick={toggleGroup}
+                  onClick={() => handleToggleGroup(group.label)}
                 >
                   <span className={`section-chevron ${isGroupCollapsed ? "" : "section-chevron--open"}`}>
                     <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
@@ -362,6 +401,7 @@ export function Sidebar({
                   profileMaxTurns={selectedProfileData?.maxTurns}
                   profileModel={selectedProfileData?.model}
                   onChange={onSetupChange}
+                  projectPaths={activeUserProfileObj?.projects}
                 />
               </div>
             </div>
@@ -373,13 +413,26 @@ export function Sidebar({
             <div
               className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
             />
-            <span>
-              {harnessUp === true
-                ? "harness connected"
-                : harnessUp === false
-                  ? "harness offline"
-                  : "checking..."}
-            </span>
+            {userProfiles && userProfiles.length > 0 && onSwitchUserProfile ? (
+              <select
+                className="user-profile-select"
+                value={activeUserProfile ?? ""}
+                onChange={(e) => onSwitchUserProfile(e.target.value || null)}
+              >
+                <option value="">all projects</option>
+                {userProfiles.map((up) => (
+                  <option key={up.name} value={up.name}>{up.displayName ?? up.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span>
+                {harnessUp === true
+                  ? "harness connected"
+                  : harnessUp === false
+                    ? "harness offline"
+                    : "checking..."}
+              </span>
+            )}
           </div>
           <div className="harness-status-right">
             {userName && (

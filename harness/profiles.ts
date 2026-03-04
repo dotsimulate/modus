@@ -47,6 +47,26 @@ export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
 };
 
+// ── User Profiles ──
+// Scoped views of the harness — each profile filters projects, agent profiles, memory.
+
+export type UserProfileUi = {
+  sidebarGroupMode?: "time" | "project";
+  sidebarCollapsedGroups?: string[];
+  sidebarConfigExpanded?: boolean;
+  lastAgentProfile?: string;
+  lastCwd?: string;
+};
+
+export type UserProfile = {
+  displayName: string;
+  templateVars?: Record<string, string>;
+  projects: string[];
+  agentProfiles?: string[];
+  memoryFilter?: string;
+  ui?: UserProfileUi;
+};
+
 // ── Read ──
 
 function readProfileFile(name: string): Profile | undefined {
@@ -113,6 +133,78 @@ export function deleteProfile(name: string): boolean {
 /** Save the global config */
 export function saveGlobalConfig(config: GlobalConfig): void {
   writeFileSync(join(PROFILES_DIR, "_global.json"), JSON.stringify(config, null, 2) + "\n", "utf-8");
+}
+
+// ── User Profile CRUD ──
+
+const USER_PROFILE_PREFIX = "_user_";
+
+function readUserProfileFile(name: string): UserProfile | undefined {
+  const filePath = join(PROFILES_DIR, `${USER_PROFILE_PREFIX}${name}.json`);
+  if (!existsSync(filePath)) return undefined;
+  try {
+    return JSON.parse(readFileSync(filePath, "utf-8")) as UserProfile;
+  } catch (err) {
+    console.error(`[profiles] Failed to parse user profile ${name}:`, err);
+    return undefined;
+  }
+}
+
+export function getUserProfile(name: string): UserProfile | undefined {
+  return readUserProfileFile(name);
+}
+
+export function listUserProfileNames(): string[] {
+  return readdirSync(PROFILES_DIR)
+    .filter((f) => f.endsWith(".json") && f.startsWith(USER_PROFILE_PREFIX))
+    .map((f) => basename(f, ".json").slice(USER_PROFILE_PREFIX.length))
+    .sort();
+}
+
+export function getAllUserProfiles(): Record<string, UserProfile> {
+  const result: Record<string, UserProfile> = {};
+  for (const name of listUserProfileNames()) {
+    const p = readUserProfileFile(name);
+    if (p) result[name] = p;
+  }
+  return result;
+}
+
+export function saveUserProfile(name: string, profile: UserProfile): void {
+  writeFileSync(
+    join(PROFILES_DIR, `${USER_PROFILE_PREFIX}${name}.json`),
+    JSON.stringify(profile, null, 2) + "\n",
+    "utf-8",
+  );
+}
+
+export function deleteUserProfile(name: string): boolean {
+  const filePath = join(PROFILES_DIR, `${USER_PROFILE_PREFIX}${name}.json`);
+  if (!existsSync(filePath)) return false;
+  unlinkSync(filePath);
+  return true;
+}
+
+/** Partial update — merges provided fields into existing profile */
+export function patchUserProfile(name: string, patch: Partial<UserProfile>): UserProfile | undefined {
+  const existing = readUserProfileFile(name);
+  if (!existing) return undefined;
+  const merged = { ...existing, ...patch };
+  // Deep merge the ui object if both exist
+  if (patch.ui && existing.ui) {
+    merged.ui = { ...existing.ui, ...patch.ui };
+  }
+  saveUserProfile(name, merged);
+  return merged;
+}
+
+/** Get merged template vars: _users.json defaults + user profile overrides */
+export function getTemplateVars(userProfileName?: string): Record<string, string | null> {
+  const base = getUserData();
+  if (!userProfileName) return base;
+  const profile = readUserProfileFile(userProfileName);
+  if (!profile?.templateVars) return base;
+  return { ...base, ...profile.templateVars };
 }
 
 // ── User Data ──

@@ -343,6 +343,70 @@ export async function updateSessionConfig(
   });
 }
 
+// ── User Profiles ──
+
+export type UserProfileUi = {
+  sidebarGroupMode?: "time" | "project";
+  sidebarCollapsedGroups?: string[];
+  sidebarConfigExpanded?: boolean;
+  lastAgentProfile?: string;
+  lastCwd?: string;
+};
+
+export type UserProfile = {
+  name: string;
+  displayName: string;
+  templateVars?: Record<string, string>;
+  projects: string[];
+  agentProfiles?: string[];
+  memoryFilter?: string;
+  ui?: UserProfileUi;
+};
+
+export async function fetchUserProfiles(): Promise<UserProfile[]> {
+  const res = await fetch(`${API_BASE}/api/user-profiles`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function fetchUserProfile(name: string): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`User profile not found: ${name}`);
+  return res.json();
+}
+
+export async function saveUserProfileApi(name: string, profile: Omit<UserProfile, "name">): Promise<void> {
+  await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, {
+    method: "PUT",
+    headers: authHeaders(),
+    body: JSON.stringify(profile),
+  });
+}
+
+export async function patchUserProfileApi(name: string, patch: Partial<UserProfile>): Promise<void> {
+  await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Fetch sessions with optional user profile scoping */
+export async function fetchSessionsScoped(limit = 50, userProfile?: string): Promise<SessionInfo[]> {
+  const params = [`limit=${limit}`];
+  if (userProfile) params.push(`userProfile=${encodeURIComponent(userProfile)}`);
+  const res = await fetch(`${API_BASE}/api/sessions?${params.join("&")}`, { headers: authHeaders() });
+  return res.json();
+}
+
+/** Search sessions with optional user profile scoping */
+export async function searchSessionsScoped(query: string, limit = 20, userProfile?: string): Promise<SearchHit[]> {
+  if (!query.trim()) return [];
+  const params = [`q=${encodeURIComponent(query)}`, `limit=${limit}`];
+  if (userProfile) params.push(`userProfile=${encodeURIComponent(userProfile)}`);
+  const res = await fetch(`${API_BASE}/api/sessions/search?${params.join("&")}`, { headers: authHeaders() });
+  return res.json();
+}
+
 // ── Memories ──
 
 export type MemoryItem = {
@@ -425,6 +489,72 @@ export async function updateScheduleApi(
     headers: { ...authHeaders(), "Content-Type": "application/json" },
     body: JSON.stringify(updates),
   });
+}
+
+// ── Git ──
+
+export type GitStatus = {
+  git: boolean;
+  branch?: string;
+  ahead?: number;
+  behind?: number;
+  files?: { modified: string[]; staged: string[]; untracked: string[] };
+};
+
+export type GitCommit = {
+  hash: string;
+  date: string;
+  message: string;
+  author: string;
+};
+
+export type DiffLine = {
+  type: "add" | "del" | "ctx";
+  content: string;
+  oldNum: number | null;
+  newNum: number | null;
+};
+
+export type DiffHunk = {
+  header: string;
+  oldStart: number;
+  newStart: number;
+  lines: DiffLine[];
+};
+
+export type FileDiff = {
+  path: string;
+  additions: number;
+  deletions: number;
+  hunks: DiffHunk[];
+};
+
+export type GitCommitDetail = GitCommit & {
+  files: FileDiff[];
+};
+
+export async function fetchGitStatus(cwd: string): Promise<GitStatus> {
+  const res = await fetch(
+    `${API_BASE}/api/git/status?cwd=${encodeURIComponent(cwd)}`,
+    { headers: authHeaders() },
+  );
+  return res.json();
+}
+
+export async function fetchGitLog(cwd: string, limit = 30): Promise<GitCommit[]> {
+  const res = await fetch(
+    `${API_BASE}/api/git/log?cwd=${encodeURIComponent(cwd)}&limit=${limit}`,
+    { headers: authHeaders() },
+  );
+  return res.json();
+}
+
+export async function fetchGitShow(cwd: string, hash: string): Promise<GitCommitDetail> {
+  const res = await fetch(
+    `${API_BASE}/api/git/show/${hash}?cwd=${encodeURIComponent(cwd)}`,
+    { headers: authHeaders() },
+  );
+  return res.json();
 }
 
 // ── Event Stream (SSE) ──

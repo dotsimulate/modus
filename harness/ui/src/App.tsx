@@ -2,14 +2,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   createSession, sendMessage as apiSendMessage, stopSessionApi,
   archiveSessionApi,
-  fetchProfiles, fetchSessions,
+  fetchProfiles, fetchSessions, fetchSessionsScoped, searchSessionsScoped,
   subscribeEvents, healthCheck,
   createEmptySession, getDraft, saveDraft,
   authStatus, clearAuthToken, lockAll, checkToken,
   updateSessionConfig,
+  fetchUserProfiles, patchUserProfileApi,
 } from "./api";
 import { LoginScreen } from "./components/LoginScreen";
-import type { Profile, SessionInfo, CreateSessionOpts } from "./api";
+import type { Profile, SessionInfo, CreateSessionOpts, UserProfile, UserProfileUi } from "./api";
 import type { Session, Attachment } from "./types";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
 import { nextMsgId } from "./types";
@@ -25,6 +26,7 @@ import { agentConfigToOverrides, type AgentConfigState } from "./components/Agen
 import { Dashboard } from "./components/Dashboard";
 import { MemoryViz } from "./components/MemoryViz";
 import { Schedules } from "./components/Schedules";
+import { GitPanel } from "./components/GitPanel";
 
 function App() {
   // ── PIN Auth Gate ──
@@ -89,6 +91,8 @@ function App() {
   return <AppInner onLock={handleLock} userName={userName} />;
 }
 
+const USER_PROFILE_KEY = "harness:active-user-profile";
+
 function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string | null }) {
   const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -99,13 +103,48 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [view, setView] = useState<"chat" | "dashboard" | "memory" | "schedules">(() => {
+  const [view, setView] = useState<"chat" | "dashboard" | "memory" | "schedules" | "git">(() => {
     const h = window.location.hash;
     if (h === "#dashboard") return "dashboard";
     if (h === "#memory") return "memory";
     if (h === "#schedules") return "schedules";
+    if (h === "#git") return "git";
     return "chat";
   });
+
+  // ── User Profiles ──
+  const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
+  const [activeUserProfile, setActiveUserProfile] = useState<string | null>(() =>
+    localStorage.getItem(USER_PROFILE_KEY),
+  );
+  const uiSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Resolved user profile object
+  const activeUP = userProfiles.find((p) => p.name === activeUserProfile) ?? null;
+
+  // Filter agent profiles by user profile's agentProfiles list
+  const visibleProfiles = activeUP?.agentProfiles
+    ? profiles.filter((p) => activeUP.agentProfiles!.includes(p.name))
+    : profiles;
+
+  /** Switch user profile — restore UI state from profile, reload sessions */
+  const switchUserProfile = useCallback((name: string | null) => {
+    if (name) {
+      localStorage.setItem(USER_PROFILE_KEY, name);
+    } else {
+      localStorage.removeItem(USER_PROFILE_KEY);
+    }
+    setActiveUserProfile(name);
+  }, []);
+
+  /** Debounced save of UI state back to user profile */
+  const saveUiState = useCallback((ui: Partial<UserProfileUi>) => {
+    if (!activeUserProfile) return;
+    if (uiSaveTimer.current) clearTimeout(uiSaveTimer.current);
+    uiSaveTimer.current = setTimeout(() => {
+      patchUserProfileApi(activeUserProfile, { ui: ui as any }).catch(() => {});
+    }, 500);
+  }, [activeUserProfile]);
 
   // New: structured setup state replaces old sessionOverrides
   const [setupState, setSetupState] = useState<SessionSetupState>(createDefaultSetupState());
@@ -128,15 +167,27 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
     return hash || null;
   });
 
-  // ── Load profiles + sessions ──
+  // ── Load profiles + sessions + user profiles ──
 
   useEffect(() => {
     const loadInitial = async () => {
       try {
-        const [p, s] = await Promise.all([fetchProfiles(), fetchSessions()]);
+        const [p, s, up] = await Promise.all([
+          fetchProfiles(),
+          activeUserProfile ? fetchSessionsScoped(50, activeUserProfile) : fetchSessions(),
+          fetchUserProfiles(),
+        ]);
         setProfiles(p);
         setServerSessions(s);
+        setUserProfiles(up);
         setHarnessUp(true);
+
+        // Restore UI state from active user profile
+        const activeUp = up.find((u) => u.name === activeUserProfile);
+        if (activeUp?.ui) {
+          if (activeUp.ui.lastAgentProfile) setSelectedProfile(activeUp.ui.lastAgentProfile);
+          if (activeUp.ui.lastCwd) setSetupState((prev) => ({ ...prev, cwd: activeUp.ui!.lastCwd! }));
+        }
       } catch {
         setHarnessUp(false);
       }
@@ -156,6 +207,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
       if (h === "#dashboard") setView("dashboard");
       else if (h === "#memory") setView("memory");
       else if (h === "#schedules") setView("schedules");
+      else if (h === "#git") setView("git");
       else setView("chat");
     };
     window.addEventListener("hashchange", onHash);
@@ -164,10 +216,12 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
 
   const refreshSessions = useCallback(async () => {
     try {
-      const s = await fetchSessions();
+      const s = activeUserProfile
+        ? await fetchSessionsScoped(50, activeUserProfile)
+        : await fetchSessions();
       setServerSessions(s);
     } catch { /* silent */ }
-  }, []);
+  }, [activeUserProfile]);
 
   // ── URL hash sync ──
 
@@ -454,6 +508,19 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
 
   // ── Render ──
 
+  // Wrap profile selection to persist to user profile
+  const handleSelectProfile = useCallback((name: string) => {
+    setSelectedProfile(name);
+    saveUiState({ lastAgentProfile: name });
+  }, [saveUiState]);
+
+  // Reload sessions when user profile changes
+  useEffect(() => {
+    refreshSessions();
+    // Also reload user profiles to get fresh ui state
+    fetchUserProfiles().then(setUserProfiles).catch(() => {});
+  }, [activeUserProfile, refreshSessions]);
+
   const activeProfileName = activeSession?.profile ?? selectedProfile;
   const ui = getProfileUi(activeProfileName);
   const isStreaming = activeSession?.status === "running" || activeSession?.status === "starting";
@@ -471,10 +538,11 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
     selectSession(id);
   }, [selectSession]);
 
-  const navigate = useCallback((target: "chat" | "dashboard" | "memory" | "schedules") => {
+  const navigate = useCallback((target: "chat" | "dashboard" | "memory" | "schedules" | "git") => {
     if (target === "dashboard") window.location.hash = "dashboard";
     else if (target === "memory") window.location.hash = "memory";
     else if (target === "schedules") window.location.hash = "schedules";
+    else if (target === "git") window.location.hash = "git";
     else window.location.hash = "";
     setView(target);
   }, []);
@@ -494,6 +562,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
           <button className={`top-nav-link${view === "chat" ? " active" : ""}`} onClick={() => navigate("chat")}>sessions</button>
           <button className={`top-nav-link${view === "memory" ? " active" : ""}`} onClick={() => navigate("memory")}>memory</button>
           <button className={`top-nav-link${view === "schedules" ? " active" : ""}`} onClick={() => navigate("schedules")}>schedules</button>
+          <button className={`top-nav-link${view === "git" ? " active" : ""}`} onClick={() => navigate("git")}>git</button>
         </nav>
         {view === "chat" && activeSession?.status && activeSession.status !== "done" && (
           <span className={`chat-header-status ${activeSession.status}`}>{activeSession.status}</span>
@@ -512,19 +581,27 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
                   : s
               )}
               activeSessionId={activeSession?.id ?? null}
-              profiles={profiles}
+              profiles={visibleProfiles}
               selectedProfile={selectedProfile}
               harnessUp={harnessUp}
               onNewSession={newSession}
               onSelectSession={selectSession}
               onArchiveSession={archiveSession}
-              onSelectProfile={setSelectedProfile}
+              onSelectProfile={handleSelectProfile}
               onSetupChange={setSetupState}
               setupState={setupState}
               onClose={() => setSidebarOpen(false)}
               onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
               onLock={onLock}
               userName={userName}
+              userProfiles={userProfiles}
+              activeUserProfile={activeUserProfile}
+              onSwitchUserProfile={switchUserProfile}
+              initialGroupMode={activeUP?.ui?.sidebarGroupMode}
+              initialCollapsedGroups={activeUP?.ui?.sidebarCollapsedGroups}
+              onGroupModeChange={(mode) => saveUiState({ sidebarGroupMode: mode })}
+              onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
+              activeUserProfileObj={activeUP}
             />
 
             <div className="chat">
@@ -567,8 +644,9 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
           <Dashboard onSelectSession={handleDashboardSelect} />
         )}
 
-        {view === "memory" && <MemoryViz />}
+        {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
         {view === "schedules" && <Schedules onSelectSession={handleScheduleSelect} />}
+        {view === "git" && <GitPanel cwd={setupState.cwd || serverSessions.find(s => s.id === activeSession?.id)?.cwd || null} />}
       </div>
     </div>
   );
