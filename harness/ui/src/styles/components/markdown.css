@@ -1,0 +1,196 @@
+/**
+ * Markdown — rendered markdown inside chat messages.
+ *
+ * Headings, code blocks, lists, tables, blockquotes, links, images.
+ * These styles apply within .message-content elements.
+ */
+
+/* ── Markdown: paragraphs ── */
+.message-content p { margin: 0 0 8px; }
+.message-content p:last-child { margin-bottom: 0; }
+
+/* ── Markdown: headings ── */
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+  font-family: var(--font-sans);
+  color: var(--accent);
+  margin: 16px 0 8px;
+  line-height: 1.3;
+}
+.message-content h1 { font-size: 1.4em; font-weight: 600; }
+.message-content h2 { font-size: 1.2em; font-weight: 600; }
+.message-content h3 { font-size: 1.05em; font-weight: 600; }
+.message-content h4,
+.message-content h5,
+.message-content h6 { font-size: 1em; font-weight: 500; }
+.message-content > :first-child { margin-top: 0; }
+
+/* ── Markdown: inline code ── */
+.message-content code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-surface);
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+/* ── Markdown: code blocks ── */
+.code-block {
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg-raised);
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+.code-block-lang {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.code-block-copy {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+.code-block-copy:hover { color: var(--text); }
+.code-block pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+.code-block code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+}
+
+/* ── Markdown: standalone pre (no language) ── */
+.message-content > pre {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  overflow-x: auto;
+}
+.message-content > pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* ── Markdown: lists ── */
+.message-content ul,
+.message-content ol {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+.message-content li { margin: 2px 0; }
+.message-content li > p { margin: 0; }
+.message-content ul { list-style: disc; }
+.message-content ol { list-style: decimal; }
+.message-content li::marker { color: var(--text-muted); }
+
+/* ── Markdown: task lists (GFM) ── */
+.message-content input[type="checkbox"] {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--border-active);
+  border-radius: 2px;
+  vertical-align: -2px;
+  margin-right: 6px;
+  background: var(--bg);
+}
+.message-content input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Markdown: blockquote ── */
+.message-content blockquote {
+  margin: 8px 0;
+  padding: 4px 14px;
+  border-left: 3px solid var(--border-active);
+  color: var(--text-dim);
+}
+.message-content blockquote p { margin: 0; }
+
+/* ── Markdown: table ── */
+.message-content table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13px;
+  width: auto;
+}
+.message-content th,
+.message-content td {
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  text-align: left;
+}
+.message-content th {
+  background: var(--bg-surface);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ── Markdown: horizontal rule ── */
+.message-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+
+/* ── Markdown: links ── */
+.message-content a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--text-muted);
+  transition: text-decoration-color 0.15s ease;
+}
+.message-content a:hover {
+  text-decoration-color: var(--text);
+}
+
+/* ── Markdown: strong / em ── */
+.message-content strong { font-weight: 600; color: var(--accent); }
+.message-content em { font-style: italic; }
+
+/* ── Markdown: images ── */
+.message-content img {
+  max-width: 100%;
+  border-radius: 4px;
+  margin: 8px 0;
+}
+

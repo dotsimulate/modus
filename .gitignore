@@ -33,8 +33,10 @@ build/
 # Agent memory store (personal per-user)
 agent_memory/memory/
 
-# Harness runtime config (auto-generated)
+# Harness runtime (auto-generated, personal per-user)
 harness/profiles/_users.json
+harness/profiles/state/
+harness/profiles/users/
 
 # Claude settings (personal per-user)
 .claude/settings.local.json

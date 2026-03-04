@@ -1,0 +1,163 @@
+/**
+ * Profile Editor — agent profile JSON editor form.
+ *
+ * View styles for editing agent profile configuration.
+ */
+
+/* ── Profile Editor ── */
+.profile-editor {
+  display: flex;
+  gap: 16px;
+  padding-bottom: 16px;
+  min-height: 0;
+}
+.profile-list {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.profile-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+}
+.profile-list-item:hover { background: var(--bg-hover); }
+.profile-list-item--active {
+  background: var(--bg-surface);
+  border-color: var(--border-active);
+}
+.profile-list-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+.profile-list-desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-list-mcp {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.profile-list-add {
+  padding: 6px 10px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  margin-top: 4px;
+}
+.profile-list-add:hover { border-color: var(--border-active); color: var(--text-dim); }
+.profile-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Profile form */
+.profile-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.profile-field > span {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.profile-field input,
+.profile-field select,
+.profile-field textarea {
+  padding: 6px 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+.profile-field input:focus,
+.profile-field select:focus,
+.profile-field textarea:focus {
+  border-color: var(--border-active);
+}
+.profile-field textarea {
+  resize: vertical;
+  min-height: 48px;
+}
+.profile-field-row {
+  display: flex;
+  gap: 8px;
+}
+.profile-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.profile-checkbox input[type="checkbox"] {
+  accent-color: var(--text-dim);
+}
+.profile-form-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.profile-btn {
+  padding: 5px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.profile-btn:hover { border-color: var(--border-active); color: var(--text); }
+.profile-btn:disabled { opacity: 0.4; cursor: default; }
+.profile-btn--save { color: var(--text); }
+.profile-btn--delete { color: var(--error); }
+.profile-btn--delete:hover { border-color: var(--error); }
+

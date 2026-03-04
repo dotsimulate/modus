@@ -1,0 +1,96 @@
+/**
+ * Profile Panel — collapsible profile + config panel in sidebar.
+ *
+ * Component styles for the expandable profile configuration section.
+ */
+
+/* ── Collapsible Profile + Config Panel ── */
+.profile-panel {
+  border-top: 1px solid var(--border);
+}
+.profile-panel-header {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+  gap: 8px;
+}
+.profile-panel-header:hover { background: var(--bg-raised); }
+.profile-panel-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.profile-panel-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+.profile-panel-summary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.profile-panel-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.profile-panel-overrides {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  justify-content: flex-end;
+}
+.override-tag {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  padding: 1px 4px;
+  border: 1px solid var(--border-active);
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.profile-panel-chevron {
+  color: var(--text-muted);
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease;
+}
+.profile-panel-chevron--open {
+  transform: rotate(180deg);
+}
+/* Reusable collapse wrapper for sidebar panels */
+.panel-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.1s ease;
+}
+.panel-collapse--open {
+  grid-template-rows: 1fr;
+}
+.panel-collapse-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+.profile-panel-body {
+  padding: 0 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+

@@ -1,0 +1,81 @@
+/**
+ * Config Bar — collapsible config bar above chat input + session status dots.
+ *
+ * Component styles for the expandable configuration panel in the chat view.
+ */
+
+/* ── Config Bar (collapsible bar above ChatInput) ── */
+.config-bar {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  max-width: 840px;
+  margin: 0 auto;
+  width: 100%;
+}
+.config-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 32px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+.config-bar-header:hover {
+  background: var(--bg-surface);
+}
+.config-bar-items {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.config-bar-label {
+  color: var(--text-dim);
+}
+.config-bar-value {
+  color: var(--text-muted);
+}
+.config-bar-sep {
+  margin: 0 8px;
+  color: var(--border-active);
+}
+.config-bar-overrides {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-surface);
+  border: 1px solid var(--accent);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.config-bar-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.1s ease;
+}
+.config-bar-chevron--open {
+  transform: rotate(180deg);
+}
+/* Collapse wrapper — grid row trick for smooth height animation */
+.config-bar-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.1s ease;
+}
+.config-bar-collapse--open {
+  grid-template-rows: 1fr;
+}
+.config-bar-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+.config-bar-panel {
+  padding: 8px 32px 12px;
+}
+
+

@@ -1,0 +1,131 @@
+/**
+ * Messages — message bubbles, role labels, meta, system dividers, streaming cursor.
+ *
+ * Component styles for chat messages. Markdown rendering inside messages
+ * lives in markdown.css. Tool call rendering lives in tools.css.
+ */
+
+.message {
+  padding: 0 32px;
+  margin-bottom: 24px;
+  max-width: 840px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+.message[data-role="user"] {
+  position: relative;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+.message[data-role="user"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 12px;
+  border-radius: 8px;
+  background: linear-gradient(
+    105deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.04) 50%,
+    rgba(255, 255, 255, 0.015) 100%
+  );
+  pointer-events: none;
+}
+
+.message-role {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.role-stats {
+  font-weight: 400;
+  font-style: italic;
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  display: flex;
+  gap: 6px;
+}
+.role-elapsed {
+  opacity: 0.7;
+}
+
+.message-content {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+@keyframes fade-user {
+  0% { color: #ff8c00; opacity: 0; transform: translateY(4px); }
+  40% { opacity: 1; transform: translateY(0); }
+  100% { color: var(--text); }
+}
+@keyframes fade-assistant {
+  0% { color: #b44dff; opacity: 0; transform: translateY(4px); }
+  40% { opacity: 1; transform: translateY(0); }
+  100% { color: var(--text); }
+}
+.message[data-role="user"] .message-content--new { animation: fade-user 1s ease-out; }
+.message[data-role="assistant"] .message-content--new { animation: fade-assistant 1s ease-out; }
+
+/* ── System divider (interrupts, etc.) ── */
+.system-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+}
+.system-divider::before,
+.system-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+
+.message-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  display: flex;
+  gap: 12px;
+}
+.meta-duration {
+  font-style: italic;
+  font-size: 9px;
+}
+.meta-tokens {
+  font-size: 9px;
+}
+.meta-arrow {
+  font-size: 8px;
+  opacity: 0.5;
+  margin-right: 1px;
+}
+
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
