@@ -20,6 +20,7 @@ import {
 import {
   startSession, queueMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
+  updateSessionConfig,
   type SSEWriter,
 } from "./session-manager";
 
@@ -381,6 +382,13 @@ app.post("/api/sessions/:id/stop-task", async (c) => {
   const body = await c.req.json();
   const ok = stopTask(c.req.param("id"), body.taskId);
   return c.json({ ok });
+});
+
+// Update session config (tools, etc.) — takes effect on next turn
+app.patch("/api/sessions/:id/config", async (c) => {
+  const body = await c.req.json();
+  const ok = updateSessionConfig(c.req.param("id"), body);
+  return ok ? c.json({ ok: true }) : c.json({ error: "session not found" }, 404);
 });
 
 // Archive session (soft-delete — preserves data in DB)

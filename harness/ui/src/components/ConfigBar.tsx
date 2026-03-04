@@ -10,6 +10,8 @@ type Props = {
   profileTools: string[] | "all";
   profileEffort?: string;
   profileMaxTurns?: number;
+  /** All tools reported by SDK init (for MCP tool discovery) */
+  availableTools?: string[];
 };
 
 function shortModel(model?: string): string {
@@ -25,6 +27,7 @@ export function ConfigBar({
   profileTools,
   profileEffort,
   profileMaxTurns,
+  availableTools,
 }: Props) {
   const [open, setOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
@@ -41,8 +44,9 @@ export function ConfigBar({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  const mcpCount = (availableTools ?? []).filter(t => t.startsWith("mcp__")).length;
   const toolCount =
-    profileTools === "all" ? ALL_TOOLS.length : profileTools.length;
+    (profileTools === "all" ? ALL_TOOLS.length : profileTools.length) + mcpCount;
   const effort = agentConfig.effort || profileEffort || "default";
   const overrideCount =
     Object.keys(agentConfig.toolStates).length +
@@ -89,6 +93,7 @@ export function ConfigBar({
               profileMaxTurns={profileMaxTurns}
               onChange={onAgentConfigChange}
               compact
+              availableTools={availableTools}
             />
           </div>
         </div>

@@ -18,6 +18,8 @@ export type ReducerState = {
   createdAt: number;
   activeToolName?: string;
   activeToolElapsed?: number;
+  /** All tools reported by SDK init (built-in + MCP) */
+  availableTools: string[];
   // Internal accumulators (not displayed directly)
   _streamingText: string;
   _streamingThinking: string;
@@ -27,6 +29,8 @@ export type ReducerState = {
   _activeSubTaskId?: string;
   /** tool_use_id of the Agent tool call that owns the active sub-agent */
   _activeAgentToolId?: string;
+  /** Timestamp when thinking started streaming */
+  _thinkingStartedAt?: number;
 };
 
 export function createInitialState(sessionId = ""): ReducerState {
@@ -38,6 +42,7 @@ export function createInitialState(sessionId = ""): ReducerState {
     totalCost: 0,
     lastSeq: 0,
     createdAt: Date.now(),
+    availableTools: [],
     _streamingText: "",
     _streamingThinking: "",
     _pendingToolCalls: new Map(),
@@ -141,6 +146,7 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
       sessionId: m.session_id ?? s.sessionId,
       model: m.model ?? s.model,
       status: "running",
+      availableTools: Array.isArray(m.tools) ? m.tools : s.availableTools,
     };
   }
   if (m.subtype === "interrupted") {
@@ -291,6 +297,9 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
   const canMerge = last?.role === "assistant" && !last.meta
     && !last.toolCalls?.some((tc) => tc.status !== "running");
 
+  // Finalize thinking duration if thinking phase just ended
+  const thinkingDuration = s._thinkingStartedAt ? Date.now() - s._thinkingStartedAt : undefined;
+
   if (text || thinking || toolCalls.length > 0) {
     if (canMerge) {
       msgs[msgs.length - 1] = {
@@ -298,6 +307,7 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
         content: text || last.content,
         thinking: thinking || last.thinking,
         toolCalls: [...(last.toolCalls ?? []), ...toolCalls],
+        ...(thinkingDuration != null && !last.thinkingDuration && { thinkingDuration }),
       };
     } else {
       msgs.push({
@@ -306,11 +316,12 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
         content: text,
         thinking: thinking || undefined,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        ...(thinkingDuration != null && { thinkingDuration }),
       });
     }
   }
 
-  return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "" };
+  return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "", _thinkingStartedAt: undefined };
 }
 
 // ── User Messages (including synthetic tool_result) ──
@@ -515,15 +526,19 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
       const last = msgs[msgs.length - 1];
       const canMerge = last?.role === "assistant" && !last.meta
         && !last.toolCalls?.some((tc) => tc.status !== "running");
+      // Finalize thinking duration when text starts
+      const thinkingDuration = s._thinkingStartedAt && !last?.thinkingDuration
+        ? Date.now() - s._thinkingStartedAt : undefined;
       if (canMerge) {
-        msgs[msgs.length - 1] = { ...last, content: newText };
+        msgs[msgs.length - 1] = { ...last, content: newText, ...(thinkingDuration != null && { thinkingDuration }) };
       } else {
         msgs.push({ id: nextMsgId(), role: "assistant", content: newText });
       }
-      return { ...s, messages: msgs, _streamingText: newText };
+      return { ...s, messages: msgs, _streamingText: newText, _thinkingStartedAt: undefined };
     }
     if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
       const newThinking = s._streamingThinking + evt.delta.thinking;
+      const startedAt = s._thinkingStartedAt ?? Date.now();
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
       const canMerge = last?.role === "assistant" && !last.meta
@@ -533,7 +548,7 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
       } else {
         msgs.push({ id: nextMsgId(), role: "assistant", content: "", thinking: newThinking });
       }
-      return { ...s, messages: msgs, _streamingThinking: newThinking };
+      return { ...s, messages: msgs, _streamingThinking: newThinking, _thinkingStartedAt: startedAt };
     }
   }
 
@@ -567,6 +582,8 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     const modelName = m.modelUsage ? Object.keys(m.modelUsage)[0] : s.model;
     msgs[msgs.length - 1] = {
       ...last,
+      // Persist backend-measured thinking duration (survives refresh)
+      ...(m.thinking_duration_ms != null && { thinkingDuration: m.thinking_duration_ms }),
       meta: {
         cost: m.total_cost_usd,
         duration: m.harness_duration_ms,

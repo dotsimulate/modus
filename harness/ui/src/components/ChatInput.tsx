@@ -240,11 +240,11 @@ export function ChatInput({
         <div className="drop-overlay">drop images here</div>
       )}
 
-      <div className="streaming-bar" style={{ visibility: isActive ? "visible" : "hidden" }}>
-        <span className="streaming-indicator" />
-        <span>{statusText}</span>
-        <span className="streaming-timer">{timerText}</span>
-        <button className="stop-inline" onClick={onStop}>stop</button>
+      <div className={`streaming-bar${isActive ? "" : " streaming-idle"}`}>
+        <span className={`streaming-indicator${activeToolName ? " indicator-tool" : ""}`} />
+        <span>{isActive ? statusText : "idle"}</span>
+        <span className="streaming-timer">{isActive ? timerText : ""}</span>
+        <button className="stop-inline" onClick={onStop} disabled={!isActive}>stop</button>
       </div>
 
       {attachments.length > 0 && (
@@ -284,7 +284,7 @@ export function ChatInput({
           onClick={handleSend}
           disabled={!hasContent || disabled}
         >
-          send
+          &uarr;
         </button>
       </div>
     </div>

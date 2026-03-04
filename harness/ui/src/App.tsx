@@ -6,6 +6,7 @@ import {
   subscribeEvents, healthCheck,
   createEmptySession, getDraft, saveDraft,
   authStatus, clearAuthToken, lockAll, checkToken,
+  updateSessionConfig,
 } from "./api";
 import { LoginScreen } from "./components/LoginScreen";
 import type { Profile, SessionInfo, CreateSessionOpts } from "./api";
@@ -191,6 +192,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
       updatedAt: Date.now(),
       activeToolName: rs.activeToolName,
       activeToolElapsed: rs.activeToolElapsed,
+      availableTools: rs.availableTools.length > 0 ? rs.availableTools : undefined,
     });
   }, []);
 
@@ -424,6 +426,17 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
     }
   }, [activeSession, syncSessionFromReducer]);
 
+  // Sync tool/config overrides to backend when session is active
+  useEffect(() => {
+    const id = activeSession?.id;
+    if (!id || id.startsWith("pending-")) return;
+    const hasOverrides = Object.keys(liveAgentConfig.toolStates).length > 0;
+    if (!hasOverrides) return;
+    const profile = profiles.find(p => p.name === activeSession?.profile);
+    const overrides = agentConfigToOverrides(liveAgentConfig, profile?.tools ?? "all");
+    updateSessionConfig(id, overrides).catch(() => {});
+  }, [liveAgentConfig, activeSession?.id, activeSession?.profile, profiles]);
+
   // Debounced draft save on input change (1s after last keystroke)
   const handleInputChange = useCallback((text: string) => {
     setInput(text);
@@ -519,6 +532,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
           profileTools={profileData?.tools ?? "all"}
           profileEffort={profileData?.effort}
           profileMaxTurns={profileData?.maxTurns}
+          availableTools={activeSession?.availableTools}
         />
         <ChatInput
           value={input}

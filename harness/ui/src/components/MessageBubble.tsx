@@ -77,12 +77,23 @@ export function MessageBubble({ msg, isNew = false, isStreaming, hideRole = fals
       )}
 
       {showThinking && msg.thinking && (
-        <div
-          className={`message-thinking ${thinkingExpanded ? "expanded" : ""}`}
-          onClick={() => setThinkingExpanded(!thinkingExpanded)}
-        >
-          {msg.thinking}
-        </div>
+        <>
+          {msg.thinkingDuration != null ? (
+            <div className="thinking-meta">
+              thought for {(msg.thinkingDuration / 1000).toFixed(1)}s
+            </div>
+          ) : isStreaming && !msg.content && (
+            <div className="thinking-meta">
+              thinking…
+            </div>
+          )}
+          <div
+            className={`message-thinking ${thinkingExpanded ? "expanded" : ""}`}
+            onClick={() => setThinkingExpanded(!thinkingExpanded)}
+          >
+            {msg.thinking}
+          </div>
+        </>
       )}
 
       {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (

@@ -308,6 +308,18 @@ export async function stopSessionApi(sessionId: string): Promise<void> {
   });
 }
 
+/** Update session config (tools, etc.) — takes effect on next turn */
+export async function updateSessionConfig(
+  sessionId: string,
+  config: { disallowedTools?: string[]; tools?: string[] },
+): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${sessionId}/config`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(config),
+  });
+}
+
 // ── Memories ──
 
 export type MemoryItem = {

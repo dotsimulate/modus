@@ -1114,8 +1114,16 @@ html, body, #root {
 .message-thinking:hover {
   background: var(--bg-raised);
 }
+.thinking-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: italic;
+  color: #666;
+  margin-bottom: 2px;
+  padding-left: 12px;
+}
 .message-thinking:not(.expanded) {
-  max-height: calc(11px * 1.5 * 3 + 12px);
+  max-height: calc(11px * 1.5 * 4 + 12px);
   overflow: hidden;
 }
 .message-thinking:not(.expanded)::after {
@@ -1387,10 +1395,15 @@ html, body, #root {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: #33cc33;
   animation: pulse 1.2s ease-in-out infinite;
 }
+.streaming-indicator.indicator-tool {
+  background: #e89b50;
+}
 @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+.streaming-idle { opacity: 0.25; }
+.streaming-idle .streaming-indicator { animation: none; opacity: 0.4; background: var(--text-muted); }
 .streaming-timer {
   font-style: italic;
   font-size: 10px;
@@ -1411,15 +1424,18 @@ html, body, #root {
 }
 .stop-inline:hover { border-color: var(--error); color: var(--error); }
 
-.input-row { display: flex; gap: 8px; align-items: flex-end; }
+.input-row {
+  position: relative;
+  display: flex;
+}
 
 .chat-textarea {
   flex: 1;
   resize: none;
-  padding: 10px 14px;
+  padding: 10px 48px 10px 14px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 14px;
@@ -1432,20 +1448,26 @@ html, body, #root {
 .chat-textarea::placeholder { color: var(--text-muted); }
 
 .send-btn {
-  padding: 10px 16px;
-  background: var(--accent);
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--text);
   color: var(--bg);
   border: none;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
-  white-space: nowrap;
   transition: opacity 0.15s ease;
+  padding: 0;
 }
 .send-btn:hover { opacity: 0.85; }
-.send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.send-btn:disabled { opacity: 0.15; cursor: not-allowed; }
 
 /* ── Drag & Drop Overlay ── */
 .chat-input-area.drag-active { position: relative; }
@@ -2256,12 +2278,23 @@ html, body, #root {
   pointer-events: none;
 }
 
-/* Memory feed — scrollable hazy panel */
-@keyframes memviz-fade-in {
+/* ── Temporal feed — chain of thought ── */
+
+@keyframes memfeed-enter {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.memviz-feed {
+
+@keyframes memfeed-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes memfeed-exit {
+  to { opacity: 0; transform: translateY(6px); }
+}
+
+.memfeed {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -2269,17 +2302,18 @@ html, body, #root {
   width: 320px;
   display: flex;
   flex-direction: column;
-  background: rgba(8, 8, 8, 0.65);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(8, 8, 8, 0.7);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
   font-family: var(--font-mono);
   font-size: 12px;
-  animation: memviz-fade-in 0.3s ease;
+  animation: memfeed-enter 0.3s ease;
   overflow: hidden;
 }
-.memviz-feed-header {
+
+.memfeed-header {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2287,106 +2321,21 @@ html, body, #root {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   flex-shrink: 0;
 }
-.memviz-feed-title {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
-  letter-spacing: 0.06em;
-  flex: 1;
-}
-.memviz-feed-count {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.15);
-}
-.memviz-feed-scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.memviz-feed-scroll::-webkit-scrollbar { width: 4px; }
-.memviz-feed-scroll::-webkit-scrollbar-track { background: transparent; }
-.memviz-feed-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
-.memviz-feed-toggle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
-  color: rgba(255, 255, 255, 0.35);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  padding: 4px 12px;
-  cursor: pointer;
-  letter-spacing: 0.04em;
-}
-.memviz-feed-toggle:hover { color: rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.1); }
 
-/* Memory card in feed */
-.memviz-card {
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
-  transition: background 0.2s, border-color 0.2s;
+.memfeed-title {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  flex: 1;
 }
-.memviz-card:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.06);
-}
-.memviz-card-hl {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
-}
-.memviz-card-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-.memviz-card-meta {
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.15);
-  margin-left: auto;
-  white-space: nowrap;
-}
-.memviz-card-body {
+
+.memfeed-count {
   font-size: 10px;
-  line-height: 1.55;
-  color: rgba(255, 255, 255, 0.35);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 80px;
-  overflow: hidden;
+  color: rgba(255, 255, 255, 0.12);
 }
-.memviz-card:hover .memviz-card-body {
-  max-height: none;
-  color: rgba(255, 255, 255, 0.45);
-}
-.memviz-card-tags {
-  margin-top: 6px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-}
-.memviz-detail-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.memviz-detail-id {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.6);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.memviz-detail-close {
+
+.memfeed-close {
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.2);
@@ -2395,15 +2344,265 @@ html, body, #root {
   padding: 0 4px;
   line-height: 1;
 }
-.memviz-detail-close:hover { color: rgba(255, 255, 255, 0.5); }
-.memviz-tag {
-  padding: 1px 5px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 2px;
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.25);
+.memfeed-close:hover { color: rgba(255, 255, 255, 0.5); }
+
+.memfeed-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+  letter-spacing: 0.06em;
 }
+
+.memfeed-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 10px 6px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  position: relative;
+}
+
+.memfeed-scroll::-webkit-scrollbar { width: 3px; }
+.memfeed-scroll::-webkit-scrollbar-track { background: transparent; }
+.memfeed-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 2px; }
+
+
+/* Feed card */
+.memfeed-card {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  transition: background 0.15s ease;
+  animation: memfeed-drop 0.25s ease backwards;
+  position: relative;
+  z-index: 1;
+  align-items: flex-start;
+}
+
+.memfeed-card > .memfeed-dot {
+  margin-top: 4px;
+}
+
+.memfeed-card:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.memfeed-card-exit {
+  animation: memfeed-exit 0.3s ease forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.memfeed-card-latest {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* Timeline dot */
+.memfeed-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  transition: box-shadow 0.3s ease;
+}
+
+.memfeed-card-latest .memfeed-dot {
+  box-shadow: 0 0 6px 1px var(--type-color);
+}
+
+/* Content */
+.memfeed-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.memfeed-card-id {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memfeed-copy {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.12);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 2px;
+  transition: color 0.15s ease;
+  opacity: 0;
+}
+
+.memfeed-card:hover .memfeed-copy { opacity: 1; }
+.memfeed-copy:hover { color: rgba(255, 255, 255, 0.4); }
+
+.memfeed-card-latest .memfeed-card-id {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.memfeed-card-body {
+  font-size: 10px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.25);
+  word-break: break-word;
+}
+
+.memfeed-card-latest .memfeed-card-body {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* ── Light markdown — dreamy ── */
+.md-body { display: flex; flex-direction: column; gap: 3px; }
+
+.md-heading {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.memfeed-card-latest .md-heading { color: rgba(255, 255, 255, 0.55); }
+
+.md-bold {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.memfeed-card-latest .md-bold { color: rgba(255, 255, 255, 0.65); }
+
+.md-italic {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.md-code {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(180, 160, 255, 0.5);
+}
+
+.memfeed-card-latest .md-code {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(180, 160, 255, 0.65);
+}
+
+.md-codeblock {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.5;
+  padding: 6px 8px;
+  margin: 2px 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(180, 160, 255, 0.4);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+.md-codeblock code {
+  font: inherit;
+  color: inherit;
+  background: none;
+  padding: 0;
+  border: none;
+}
+
+.memfeed-card-latest .md-codeblock {
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(180, 160, 255, 0.55);
+}
+
+.md-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.md-list li {
+  padding-left: 10px;
+  position: relative;
+}
+
+.md-list li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.memfeed-card-latest .md-list li::before {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.memfeed-card-tags {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.memfeed-tag {
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 2px;
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.18);
+}
+
+.memfeed-card:hover .memfeed-tag {
+  color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+/* Feed toggle button */
+.memviz-feed-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 12px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.memviz-feed-toggle:hover { color: rgba(255, 255, 255, 0.55); background: rgba(255, 255, 255, 0.08); }
 
 /* ── Login Screen ── */
 .login-screen {

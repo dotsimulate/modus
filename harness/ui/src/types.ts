@@ -43,6 +43,7 @@ export type Message = {
   role: "user" | "assistant" | "system";
   content: string;
   thinking?: string;
+  thinkingDuration?: number;
   toolCalls?: ToolCall[];
   attachments?: Attachment[];
   meta?: {
@@ -74,4 +75,6 @@ export type Session = {
   updatedAt: number;
   activeToolName?: string;
   activeToolElapsed?: number;
+  /** All tools reported by SDK init (built-in + MCP) */
+  availableTools?: string[];
 };
