@@ -10,7 +10,7 @@ import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import {
   upsertSession, updateSessionStatus, addEvent, getMaxSeq, getSession,
 } from "./db";
-import { getProfile, getGlobalConfig, getUserData, type McpServerConfig, type PermissionPolicy } from "./profiles";
+import { getProfile, getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, type PermissionPolicy } from "./profiles";
 import { resolveSecret } from "./secrets";
 
 const CLAUDE_PATH =
@@ -212,6 +212,7 @@ export type StartSessionOpts = {
   prompt: string;
   attachments?: ImageAttachment[];
   profile?: string;
+  userProfile?: string; // user profile name — for memory scoping
   model?: string;
   maxTurns?: number;
   effort?: string;
@@ -249,10 +250,33 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     ...(profileDef?.mcpServers ?? {}),
   };
 
-  // Inject AGENT_PROFILE into agent-memory so saved memories know their origin
-  if (mergedMcp["agent-memory"] && opts.profile) {
+  // Inject AGENT_PROFILE + memory scoping env vars into agent-memory MCP server
+  if (mergedMcp["agent-memory"]) {
     const am = mergedMcp["agent-memory"] as any;
-    am.env = { ...(am.env ?? {}), AGENT_PROFILE: opts.profile };
+    const env: Record<string, string> = { ...(am.env ?? {}) };
+
+    // Tag memories with agent profile origin
+    if (opts.profile) env.AGENT_PROFILE = opts.profile;
+
+    // Memory scoping: resolve user profile config → set AGENT_MEMORY_DIR + AGENT_MEMORY_READ_DIRS
+    if (opts.userProfile) {
+      const userProf = getUserProfile(opts.userProfile);
+      if (userProf?.memory?.scope === "profile") {
+        // Derive base memory dir from --directory arg (the agent_memory package root)
+        const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
+        const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
+        if (agentMemoryRoot) {
+          const globalDir = `${agentMemoryRoot}/memory`;
+          const profileDir = `${agentMemoryRoot}/memory/profiles/${opts.userProfile}`;
+          env.AGENT_MEMORY_DIR = profileDir;
+          if (userProf.memory.inheritGlobal !== false) {
+            env.AGENT_MEMORY_READ_DIRS = globalDir;
+          }
+        }
+      }
+    }
+
+    am.env = env;
   }
 
   const hasMcp = Object.keys(mergedMcp).length > 0;

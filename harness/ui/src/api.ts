@@ -381,6 +381,8 @@ export type UserProfile = {
   projects: string[];
   agentProfiles?: string[];
   memoryFilter?: string;
+  /** Show project paths from ALL user profiles in the CWD picker */
+  showAllProjectPaths?: boolean;
   ui?: UserProfileUi;
 };
 

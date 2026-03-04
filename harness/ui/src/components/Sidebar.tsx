@@ -401,7 +401,12 @@ export function Sidebar({
                   profileMaxTurns={selectedProfileData?.maxTurns}
                   profileModel={selectedProfileData?.model}
                   onChange={onSetupChange}
-                  projectPaths={activeUserProfileObj?.projects}
+                  projectPaths={
+                    activeUserProfileObj?.showAllProjectPaths && userProfiles
+                      ? [...new Set(userProfiles.flatMap((u) => u.projects))]
+                      : activeUserProfileObj?.projects
+                  }
+                  showAllProjectPaths={activeUserProfileObj?.showAllProjectPaths}
                 />
               </div>
             </div>
