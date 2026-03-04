@@ -187,6 +187,7 @@ export function addEvent(sessionId: string, seq: number, type: string, subtype: 
     $data: data,
     $created_at: Date.now(),
   });
+  indexEvent(sessionId, type, data);
 }
 
 export function getEvents(sessionId: string, afterSeq = 0): EventRow[] {
@@ -209,7 +210,48 @@ export function setDraft(sessionId: string, text: string) {
   stmts.setDraft.run({ $id: sessionId, $draft_text: text });
 }
 
-// ── Search ──
+// ── Full-Text Search (FTS5) ──
+
+db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+  session_id UNINDEXED,
+  role,
+  content,
+  tokenize = 'porter unicode61'
+)`);
+
+// Populate FTS from existing events (only if empty — avoids duplicates on restart)
+const ftsCount = (db.prepare(`SELECT COUNT(*) as n FROM search_index`).get() as any).n;
+if (ftsCount === 0) {
+  const rebuildStmt = db.prepare(`INSERT INTO search_index (session_id, role, content) VALUES ($sid, $role, $text)`);
+  const events = db.prepare(`SELECT session_id, type, data FROM events WHERE type IN ('user', 'result')`).all() as any[];
+  db.transaction(() => {
+    for (const ev of events) {
+      let text: string | null = null;
+      if (ev.type === "user") {
+        try { text = JSON.parse(ev.data)?.message?.content; } catch { /* skip */ }
+      } else if (ev.type === "result") {
+        try { text = JSON.parse(ev.data)?.result; } catch { /* skip */ }
+      }
+      if (typeof text === "string" && text.length > 0) {
+        rebuildStmt.run({ $sid: ev.session_id, $role: ev.type, $text: text });
+      }
+    }
+  })();
+}
+
+/** Insert into FTS index — call alongside addEvent for user/result events */
+export function indexEvent(sessionId: string, type: string, data: string) {
+  if (type !== "user" && type !== "result") return;
+  let text: string | null = null;
+  try {
+    const parsed = JSON.parse(data);
+    text = type === "user" ? parsed?.message?.content : parsed?.result;
+  } catch { return; }
+  if (typeof text === "string" && text.length > 0) {
+    db.prepare(`INSERT INTO search_index (session_id, role, content) VALUES ($sid, $role, $text)`)
+      .run({ $sid: sessionId, $role: type, $text: text });
+  }
+}
 
 export type SearchHit = {
   session_id: string;
@@ -223,33 +265,57 @@ export type SearchHit = {
 };
 
 export function searchSessions(query: string, limit = 20): SearchHit[] {
-  const pattern = `%${query}%`;
-  return db.prepare(`
-    SELECT DISTINCT
-      s.id AS session_id,
-      s.preview,
-      s.profile,
-      s.model,
-      s.cwd,
-      s.last_message_at,
-      s.total_cost_usd,
-      COALESCE(
-        (SELECT SUBSTR(e.data, MAX(1, INSTR(e.data, $q) - 40), 120)
-         FROM events e WHERE e.session_id = s.id AND e.data LIKE $pattern
-         LIMIT 1),
-        s.last_prompt
-      ) AS snippet
-    FROM sessions s
-    WHERE s.archived = 0
-      AND (
-        s.preview LIKE $pattern
-        OR s.last_prompt LIKE $pattern
-        OR s.last_response LIKE $pattern
-        OR EXISTS (SELECT 1 FROM events e WHERE e.session_id = s.id AND e.data LIKE $pattern)
-      )
-    ORDER BY s.last_message_at DESC
+  const ftsQuery = query.trim().split(/\s+/).map(t => `"${t}"*`).join(" ");
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+
+  // Find matching session IDs ranked by relevance
+  const matches = db.prepare(`
+    SELECT session_id AS sid, MIN(rank) AS best_rank
+    FROM search_index
+    WHERE search_index MATCH $fts
+    GROUP BY session_id
+    ORDER BY best_rank
     LIMIT $limit
-  `).all({ $q: query, $pattern: pattern, $limit: limit }) as SearchHit[];
+  `).all({ $fts: ftsQuery, $limit: limit }) as { sid: string; best_rank: number }[];
+
+  if (matches.length === 0) return [];
+
+  const ids = matches.map(m => m.sid);
+  const placeholders = ids.map(() => "?").join(",");
+  const sessions = db.prepare(
+    `SELECT * FROM sessions WHERE id IN (${placeholders}) AND archived = 0`
+  ).all(...ids) as SessionRow[];
+  const sessionMap = new Map(sessions.map(s => [s.id, s]));
+
+  // Build snippets from the actual indexed content
+  const snippetStmt = db.prepare(
+    `SELECT content FROM search_index WHERE session_id = $sid AND content LIKE $pattern LIMIT 1`
+  );
+
+  return matches.flatMap(m => {
+    const s = sessionMap.get(m.sid);
+    if (!s) return [];
+    const pattern = `%${terms[0]}%`;
+    const row = snippetStmt.get({ $sid: m.sid, $pattern: pattern }) as { content: string } | null;
+    let snippet = s.last_prompt ?? s.preview;
+    if (row?.content) {
+      const lower = row.content.toLowerCase();
+      const idx = lower.indexOf(terms[0] ?? "");
+      const start = Math.max(0, idx - 60);
+      const raw = row.content.slice(start, start + 160);
+      snippet = (start > 0 ? "..." : "") + raw + (start + 160 < row.content.length ? "..." : "");
+    }
+    return [{
+      session_id: s.id,
+      preview: s.preview,
+      profile: s.profile,
+      model: s.model,
+      cwd: s.cwd,
+      last_message_at: s.last_message_at,
+      total_cost_usd: s.total_cost_usd,
+      snippet,
+    }];
+  });
 }
 
 // ── Startup Cleanup ──
