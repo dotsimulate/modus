@@ -127,6 +127,10 @@ export type ActiveSession = {
   abortController: AbortController;
   /** Messages queued while agent is running — flushed to input after result event */
   pendingMessages: MessageContent[];
+  /** Timestamp when thinking started (for thinking duration tracking) */
+  thinkingStartedAt?: number;
+  /** Computed thinking duration in ms (persisted into result event) */
+  thinkingDurationMs?: number;
   /** Skip user/prompt persistence on next resume (already persisted by queueMessage) */
   skipNextPromptPersist?: boolean;
 };
@@ -241,6 +245,24 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
 
   const hasMcp = Object.keys(mergedMcp).length > 0;
 
+  // Convert tools allowlist → disallowedTools blocklist when MCP servers are present.
+  // The SDK's `tools` option filters ALL tools including MCP, which hides MCP tools
+  // from the init event. Using disallowedTools instead only blocks what's listed,
+  // leaving MCP tools visible and available.
+  const ALL_BUILTIN = ["Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Bash",
+    "WebSearch", "WebFetch", "Agent", "TodoWrite", "Skill", "NotebookEdit", "AskUserQuestion"];
+  const rawTools = opts.tools ?? profileDef?.tools ?? undefined;
+  const rawDisallowed = opts.disallowedTools ?? profileDef?.disallowedTools ?? undefined;
+
+  let sdkTools: any = rawTools;
+  let sdkDisallowed: string[] | undefined = rawDisallowed;
+  if (hasMcp && Array.isArray(rawTools)) {
+    // Convert allowlist to blocklist so MCP tools aren't filtered out
+    const blocked = ALL_BUILTIN.filter(t => !rawTools.includes(t));
+    sdkDisallowed = [...(rawDisallowed ?? []), ...blocked];
+    sdkTools = undefined;
+  }
+
   const sdkOptions: any = {
     pathToClaudeCodeExecutable: CLAUDE_PATH,
     cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
@@ -250,8 +272,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     effort: opts.effort ?? profileDef?.effort ?? undefined,
     maxTurns: opts.maxTurns ?? profileDef?.maxTurns ?? undefined,
     allowedTools: undefined,
-    disallowedTools: opts.disallowedTools ?? profileDef?.disallowedTools ?? undefined,
-    tools: opts.tools ?? profileDef?.tools ?? undefined,
+    disallowedTools: sdkDisallowed,
+    tools: sdkTools,
     systemPrompt,
     settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
     permissionMode: "bypassPermissions" as const,
@@ -316,6 +338,22 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
       const m = msg as any;
       session.lastEventAt = Date.now();
 
+      // ── Track thinking duration (first thinking_delta → first non-thinking event)
+      if (m.type === "stream_event" && m.event?.type === "content_block_delta") {
+        const delta = m.event.delta;
+        if (delta?.type === "thinking_delta" && !session.thinkingStartedAt) {
+          session.thinkingStartedAt = Date.now();
+        } else if (delta?.type === "text_delta" && session.thinkingStartedAt) {
+          session.thinkingDurationMs = Date.now() - session.thinkingStartedAt;
+          session.thinkingStartedAt = undefined;
+        }
+      }
+      // Also finalize on assistant message (tool_use arrives without text_delta)
+      if (m.type === "assistant" && session.thinkingStartedAt) {
+        session.thinkingDurationMs = Date.now() - session.thinkingStartedAt;
+        session.thinkingStartedAt = undefined;
+      }
+
       // ── Handle system init: capture session ID (first time only)
       if (m.type === "system" && m.subtype === "init" && m.session_id && !initSeen) {
         initSeen = true;
@@ -374,6 +412,12 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
       if (m.type === "result") {
         // Harness-measured turn duration
         m.harness_duration_ms = Date.now() - session.turnStartedAt;
+        // Thinking duration (if thinking occurred this turn)
+        if (session.thinkingDurationMs) {
+          m.thinking_duration_ms = session.thinkingDurationMs;
+        }
+        session.thinkingStartedAt = undefined;
+        session.thinkingDurationMs = undefined;
 
         // Extract total tokens from modelUsage (SDK-provided)
         if (m.modelUsage && typeof m.modelUsage === "object") {
@@ -588,6 +632,25 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
     updateSessionStatus(session.sessionId, "error");
   });
 
+  return true;
+}
+
+/** Update mutable SDK options on an active session.
+ * Changes take effect on next resume (next turn).
+ */
+export function updateSessionConfig(
+  sessionId: string,
+  config: { disallowedTools?: string[]; tools?: string[] },
+): boolean {
+  const session = activeSessions.get(sessionId);
+  if (!session) return false;
+  if (config.disallowedTools !== undefined) {
+    session.sdkOptions.disallowedTools = config.disallowedTools.length > 0
+      ? config.disallowedTools : undefined;
+  }
+  if (config.tools !== undefined) {
+    session.sdkOptions.tools = config.tools.length > 0 ? config.tools : undefined;
+  }
   return true;
 }
 

@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { ToolGrid } from "./ToolGrid";
-import { toSdkToolConfig, type ToolStates } from "../tools";
+import { toSdkToolConfig, mcpToolGroups, type ToolStates } from "../tools";
 
 export type AgentConfigState = {
   toolStates: ToolStates;
@@ -35,6 +35,8 @@ type Props = {
   compact?: boolean;
   /** Show/hide tools section (can collapse) */
   toolsCollapsible?: boolean;
+  /** All tools reported by SDK init (for MCP tool discovery) */
+  availableTools?: string[];
 };
 
 export function AgentConfig({
@@ -45,6 +47,7 @@ export function AgentConfig({
   onChange,
   compact,
   toolsCollapsible,
+  availableTools,
 }: Props) {
   const [toolsOpen, setToolsOpen] = useState(!toolsCollapsible);
 
@@ -100,6 +103,7 @@ export function AgentConfig({
             profileTools={profileTools}
             onChange={(toolStates) => update({ toolStates })}
             compact={compact}
+            extraGroups={mcpToolGroups(availableTools ?? [])}
           />
         </div>
       </div>

@@ -1,6 +1,90 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { fetchMemories, type MemoryItem } from "../api";
 
+// ── Light markdown renderer ──
+function renderInline(text: string): (string | JSX.Element)[] {
+  const parts: (string | JSX.Element)[] = [];
+  // Match **bold**, *italic*, `code` — non-greedy, no nesting
+  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    if (match[2]) parts.push(<strong key={key++} className="md-bold">{match[2]}</strong>);
+    else if (match[3]) parts.push(<em key={key++} className="md-italic">{match[3]}</em>);
+    else if (match[4]) parts.push(<code key={key++} className="md-code">{match[4]}</code>);
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function LightMarkdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const elements: JSX.Element[] = [];
+  let listItems: string[] = [];
+  let codeBlock: string[] | null = null;
+  let key = 0;
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    elements.push(
+      <ul key={key++} className="md-list">
+        {listItems.map((li, i) => <li key={i}>{renderInline(li)}</li>)}
+      </ul>
+    );
+    listItems = [];
+  };
+
+  const flushCode = () => {
+    if (!codeBlock) return;
+    elements.push(
+      <pre key={key++} className="md-codeblock"><code>{codeBlock.join("\n")}</code></pre>
+    );
+    codeBlock = null;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    // Fenced code block toggle
+    if (/^```/.test(trimmed)) {
+      if (codeBlock === null) {
+        flushList();
+        codeBlock = [];
+      } else {
+        flushCode();
+      }
+      continue;
+    }
+    // Inside code block — collect raw lines
+    if (codeBlock !== null) {
+      codeBlock.push(line);
+      continue;
+    }
+    // Bullet list
+    if (/^[-*]\s/.test(trimmed)) {
+      listItems.push(trimmed.replace(/^[-*]\s/, ""));
+      continue;
+    }
+    flushList();
+    // Heading
+    if (/^#{1,3}\s/.test(trimmed)) {
+      const content = trimmed.replace(/^#{1,3}\s/, "");
+      elements.push(<div key={key++} className="md-heading">{renderInline(content)}</div>);
+      continue;
+    }
+    // Blank line
+    if (trimmed === "") continue;
+    // Normal paragraph
+    elements.push(<div key={key++} className="md-line">{renderInline(trimmed)}</div>);
+  }
+  flushList();
+  flushCode(); // unclosed code block
+
+  return <div className="md-body">{elements}</div>;
+}
+
 // ── Type colors ──
 const TYPE_COLORS: Record<string, string> = {
   correction: "#ff6b6b",
@@ -36,7 +120,7 @@ function project(v: Vec3, w: number, h: number, camZ: number): { sx: number; sy:
   const fov = 600;
   const z = v.z - camZ;
   const d = fov / (fov + z);
-  return { sx: v.x * d + w / 2, sy: v.y * d + h / 2, scale: Math.max(0.1, d) };
+  return { sx: v.x * d + w * 0.45, sy: v.y * d + h / 2, scale: Math.max(0.1, d) };
 }
 
 // ── Physics particle ──
@@ -126,58 +210,118 @@ function findConnections(particles: Particle[]): [number, number][] {
   return result;
 }
 
-// ── Memory feed — scrollable hazy panel showing multiple memories ──
-function MemoryCard({ mem, highlighted }: { mem: MemoryItem; highlighted: boolean }) {
-  const [showTags, setShowTags] = useState(false);
-  return (
-    <div
-      className={`memviz-card${highlighted ? " memviz-card-hl" : ""}`}
-      onMouseEnter={() => setShowTags(true)}
-      onMouseLeave={() => setShowTags(false)}
-    >
-      <div className="memviz-card-header">
-        <span className="memviz-detail-dot" style={{ background: typeColor(mem.type) }} />
-        <span className="memviz-detail-id">{mem.id}</span>
-        <span className="memviz-card-meta">{mem.type}{mem.profile ? ` · ${mem.profile}` : ""} · {mem.created}</span>
-      </div>
-      <div className="memviz-card-body">{mem.body}</div>
-      {showTags && mem.tags.length > 0 && (
-        <div className="memviz-card-tags">
-          {mem.tags.map((t) => <span key={t} className="memviz-tag">{t}</span>)}
-        </div>
-      )}
-    </div>
-  );
-}
+// ── Temporal feed — chain-of-thought memory exploration ──
+
+type FeedEntry = {
+  mem: MemoryItem;
+  viewedAt: number;   // Date.now() when collected
+  dropKey: number;    // incremented when moved to top (triggers drop animation)
+};
+
+const FEED_TTL = 30_000; // ms before a memory drops off the feed
+
+const EXIT_DURATION = 300; // ms — matches CSS animation length
 
 function MemoryFeed({
-  memories, highlightId, onClose,
+  entries, onClose, onCardHover, onCardLeave, onExpire,
 }: {
-  memories: MemoryItem[]; highlightId: string | null; onClose: () => void;
+  entries: FeedEntry[];
+  onClose: () => void;
+  onCardHover?: (id: string) => void;
+  onCardLeave?: () => void;
+  onExpire: (ids: string[]) => void;
 }) {
   const feedRef = useRef<HTMLDivElement>(null);
+  const [dying, setDying] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState<string | null>(null);
 
-  // Scroll to highlighted memory when it changes
+  // Mark expired entries as dying, then remove after animation
   useEffect(() => {
-    if (!highlightId || !feedRef.current) return;
-    const el = feedRef.current.querySelector(`[data-mem-id="${highlightId}"]`);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [highlightId]);
+    const tick = setInterval(() => {
+      const now = Date.now();
+      const expired = entries
+        .filter(e => now - e.viewedAt >= FEED_TTL && !dying.has(e.mem.id))
+        .map(e => e.mem.id);
+      if (expired.length === 0) return;
+
+      setDying(prev => {
+        const next = new Set(prev);
+        for (const id of expired) next.add(id);
+        return next;
+      });
+
+      setTimeout(() => {
+        onExpire(expired);
+        setDying(prev => {
+          const next = new Set(prev);
+          for (const id of expired) next.delete(id);
+          return next;
+        });
+      }, EXIT_DURATION);
+    }, 200);
+    return () => clearInterval(tick);
+  }, [entries, onExpire, dying]);
+
+  // Auto-scroll to top when new card drops in
+  useEffect(() => {
+    if (feedRef.current && entries.length > 0) {
+      feedRef.current.scrollTop = 0;
+    }
+  }, [entries[0]?.dropKey, entries[0]?.mem.id]);
+
+  const liveCount = entries.filter(e => !dying.has(e.mem.id)).length;
 
   return (
-    <div className="memviz-feed" onClick={(e) => e.stopPropagation()}>
-      <div className="memviz-feed-header">
-        <span className="memviz-feed-title">memories</span>
-        <span className="memviz-feed-count">{memories.length}</span>
-        <button className="memviz-detail-close" onClick={onClose}>&times;</button>
+    <div className="memfeed" onClick={(e) => e.stopPropagation()}>
+      <div className="memfeed-header">
+        <span className="memfeed-title">memories</span>
+        <span className="memfeed-count">{liveCount || ""}</span>
+        <button className="memfeed-close" onClick={onClose}>&times;</button>
       </div>
-      <div className="memviz-feed-scroll" ref={feedRef}>
-        {memories.map((m) => (
-          <div key={m.id} data-mem-id={m.id}>
-            <MemoryCard mem={m} highlighted={m.id === highlightId} />
-          </div>
-        ))}
-      </div>
+      {entries.length === 0 ? (
+        <div className="memfeed-empty">hover the void</div>
+      ) : (
+        <div className="memfeed-scroll" ref={feedRef}>
+          {entries.map((entry, i) => {
+            const isLatest = i === 0 && !dying.has(entry.mem.id);
+            const isDying = dying.has(entry.mem.id);
+
+            return (
+              <div
+                key={`${entry.mem.id}-${entry.dropKey}`}
+                className={`memfeed-card${isLatest ? " memfeed-card-latest" : ""}${isDying ? " memfeed-card-exit" : ""}`}
+                style={{ "--type-color": typeColor(entry.mem.type) } as React.CSSProperties}
+                onMouseEnter={() => onCardHover?.(entry.mem.id)}
+                onMouseLeave={() => onCardLeave?.()}
+              >
+                <span className="memfeed-dot" style={{ background: typeColor(entry.mem.type) }} />
+                <div className="memfeed-card-content">
+                  <div className="memfeed-card-id">
+                    {entry.mem.id}
+                    <button
+                      className="memfeed-copy"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(entry.mem.body);
+                        setCopied(entry.mem.id);
+                        setTimeout(() => setCopied(null), 1200);
+                      }}
+                    >
+                      {copied === entry.mem.id ? "✓" : "⧉"}
+                    </button>
+                  </div>
+                  <div className="memfeed-card-body"><LightMarkdown text={entry.mem.body} /></div>
+                  {entry.mem.tags.length > 0 && (
+                    <div className="memfeed-card-tags">
+                      {entry.mem.tags.map((t) => <span key={t} className="memfeed-tag">{t}</span>)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -265,9 +409,14 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [highlightId, setHighlightId] = useState<string | null>(null);
-  const [feedOpen, setFeedOpen] = useState(false);
   const [hovered, setHovered] = useState<number>(-1);
+
+  // Feed state — temporal stack of explored memories
+  const [feedStack, setFeedStack] = useState<FeedEntry[]>([]);
+  const [feedOpen, setFeedOpen] = useState(true);
+  const [clickedId, setClickedId] = useState<string | null>(null);
+  const [feedHoverId, setFeedHoverId] = useState<string | null>(null);
+  const lastPushedIdRef = useRef<string | null>(null);
 
   // Filters
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set(TYPE_ORDER));
@@ -276,8 +425,8 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
   const [profileFilter, setProfileFilter] = useState("");
 
   // Camera
-  const cameraRef = useRef({ rotY: 0.4, rotX: -0.25, camZ: -500, autoRotate: true });
-  const dragRef = useRef({ dragging: false, lastX: 0, lastY: 0 });
+  const cameraRef = useRef({ rotY: 0.4, rotX: -0.25, camZ: -125, panX: 0, panY: 0, autoRotate: true });
+  const dragRef = useRef({ dragging: false, button: 0, lastX: 0, lastY: 0 });
 
   // Physics particles — mutable ref, updated every frame
   const particlesRef = useRef<Particle[]>([]);
@@ -299,6 +448,23 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
     for (const m of memories) if (m.profile) profiles.add(m.profile);
     return Array.from(profiles).sort();
   }, [memories]);
+
+  // Which types have any matches (ignoring type toggle) — for hiding empty type buttons
+  const visibleTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const m of memories) {
+      if (tagFilter && !m.tags.includes(tagFilter)) continue;
+      if (profileFilter && m.profile !== profileFilter) continue;
+      if (search) {
+        const s = search.toLowerCase();
+        if (!m.id.toLowerCase().includes(s)
+          && !m.body.toLowerCase().includes(s)
+          && !m.tags.some((t) => t.toLowerCase().includes(s))) continue;
+      }
+      types.add(m.type || "discovery");
+    }
+    return types;
+  }, [memories, search, tagFilter, profileFilter]);
 
   const filtered = useMemo(() => {
     return memories.filter((m) => {
@@ -351,15 +517,43 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
     particlesRef.current = next;
   }, [filtered, targets]);
 
+  // ── Hover → collect into feed ──
+  useEffect(() => {
+    const particles = particlesRef.current;
+    if (hovered < 0 || hovered >= particles.length) {
+      lastPushedIdRef.current = null;
+      return;
+    }
+
+    const mem = particles[hovered].mem;
+    if (mem.id === lastPushedIdRef.current) return;
+    lastPushedIdRef.current = mem.id;
+
+    setFeedStack(prev => {
+      // Already at top — refresh timestamp but no re-animation
+      if (prev.length > 0 && prev[0].mem.id === mem.id) {
+        return [{ ...prev[0], viewedAt: Date.now() }, ...prev.slice(1)];
+      }
+      // Move to top (or add new)
+      const existing = prev.find(e => e.mem.id === mem.id);
+      const rest = prev.filter(e => e.mem.id !== mem.id);
+      const dropKey = (existing?.dropKey ?? 0) + 1;
+      return [{ mem, viewedAt: Date.now(), dropKey }, ...rest];
+    });
+
+    setFeedOpen(true);
+  }, [hovered]);
+
   // Connections are derived from current particles (recomputed each frame is fine for 60 nodes)
-  // But we precompute the static set and just animate opacity based on particle age
   const connectionsRef = useRef<[number, number][]>([]);
 
   // Canvas rendering + physics step combined in the animation loop
   const hoveredRef = useRef(-1);
   const selectedRef = useRef<string | null>(null);
   hoveredRef.current = hovered;
-  selectedRef.current = highlightId;
+  // Effective highlight: feed card hover overrides click selection
+  const effectiveHighlight = feedHoverId || clickedId;
+  selectedRef.current = effectiveHighlight;
 
   const renderAndStep = useCallback(() => {
     const canvas = canvasRef.current;
@@ -403,11 +597,12 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
     const connections = connectionsRef.current;
 
     // ── Transform ──
+    const { panX, panY } = cam;
     const transformed = particles.map((p, i) => {
       let v = rotateY(p.pos, cam.rotY);
       v = rotateX(v, cam.rotX);
       const proj = project(v, w, h, cam.camZ);
-      return { ...proj, particle: p, idx: i, z: v.z };
+      return { sx: proj.sx + panX, sy: proj.sy + panY, scale: proj.scale, particle: p, idx: i, z: v.z };
     });
     transformed.sort((a, b) => b.z - a.z);
 
@@ -434,8 +629,8 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 0.5 + settle * 0.5;
       ctx.beginPath();
-      ctx.moveTo(pa.sx, pa.sy);
-      ctx.lineTo(pb.sx, pb.sy);
+      ctx.moveTo(pa.sx + panX, pa.sy + panY);
+      ctx.lineTo(pb.sx + panX, pb.sy + panY);
       ctx.stroke();
     }
     ctx.restore();
@@ -455,7 +650,7 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
       if (p.scale > 0.2) {
         ctx.fillStyle = typeColor(t);
         ctx.globalAlpha = 0.2 * p.scale;
-        ctx.fillText(t, p.sx, p.sy);
+        ctx.fillText(t, p.sx + panX, p.sy + panY);
       }
     });
     ctx.restore();
@@ -565,8 +760,12 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
   }, [loading]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    dragRef.current = { dragging: true, lastX: e.clientX, lastY: e.clientY };
+    dragRef.current = { dragging: true, button: e.button, lastX: e.clientX, lastY: e.clientY };
     cameraRef.current.autoRotate = false;
+  }, []);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
@@ -576,9 +775,16 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
     if (dragRef.current.dragging) {
       const dx = e.clientX - dragRef.current.lastX;
       const dy = e.clientY - dragRef.current.lastY;
-      cameraRef.current.rotY += dx * 0.005;
-      cameraRef.current.rotX += dy * 0.005;
-      cameraRef.current.rotX = Math.max(-1.2, Math.min(1.2, cameraRef.current.rotX));
+      if (dragRef.current.button === 2) {
+        // Right drag — pan camera look-at
+        cameraRef.current.panX += dx;
+        cameraRef.current.panY += dy;
+      } else {
+        // Left drag — rotate
+        cameraRef.current.rotY += dx * 0.005;
+        cameraRef.current.rotX += dy * 0.005;
+        cameraRef.current.rotX = Math.max(-1.2, Math.min(1.2, cameraRef.current.rotX));
+      }
       dragRef.current.lastX = e.clientX;
       dragRef.current.lastY = e.clientY;
       return;
@@ -599,7 +805,7 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
       let v = rotateY(particles[i].pos, cam.rotY);
       v = rotateX(v, cam.rotX);
       const p = project(v, w, h, cam.camZ);
-      const dist = Math.hypot(p.sx - mx, p.sy - my);
+      const dist = Math.hypot((p.sx + cam.panX) - mx, (p.sy + cam.panY) - my);
       if (dist < closestDist) {
         closestDist = dist;
         closest = i;
@@ -616,10 +822,25 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
   const handleClick = useCallback(() => {
     const particles = particlesRef.current;
     if (hovered >= 0 && hovered < particles.length) {
-      setHighlightId(particles[hovered].id);
+      const mem = particles[hovered].mem;
+      setClickedId(mem.id);
       setFeedOpen(true);
+      // Also push to feed on click
+      setFeedStack(prev => {
+        if (prev.length > 0 && prev[0].mem.id === mem.id) {
+          return [{ ...prev[0], viewedAt: Date.now() }, ...prev.slice(1)];
+        }
+        const existing = prev.find(e => e.mem.id === mem.id);
+        const rest = prev.filter(e => e.mem.id !== mem.id);
+        const dropKey = (existing?.dropKey ?? 0) + 1;
+        return [{ mem, viewedAt: Date.now(), dropKey }, ...rest];
+      });
     }
   }, [hovered]);
+
+  const handleExpire = useCallback((ids: string[]) => {
+    setFeedStack(prev => prev.filter(e => !ids.includes(e.mem.id)));
+  }, []);
 
   const toggleType = useCallback((t: string) => {
     setActiveTypes((prev) => {
@@ -651,7 +872,7 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
       </div>
 
       <FilterBar
-        types={TYPE_ORDER}
+        types={TYPE_ORDER.filter(t => visibleTypes.has(t))}
         activeTypes={activeTypes}
         onToggle={toggleType}
         search={search}
@@ -674,6 +895,7 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onContextMenu={handleContextMenu}
           onClick={handleClick}
         />
 
@@ -685,14 +907,16 @@ export function MemoryViz({ onBack }: { onBack: () => void }) {
 
         {feedOpen && (
           <MemoryFeed
-            memories={filtered}
-            highlightId={highlightId}
-            onClose={() => { setFeedOpen(false); setHighlightId(null); }}
+            entries={feedStack}
+            onClose={() => { setFeedOpen(false); setClickedId(null); }}
+            onCardHover={(id) => setFeedHoverId(id)}
+            onCardLeave={() => setFeedHoverId(null)}
+            onExpire={handleExpire}
           />
         )}
 
         <div className="memviz-controls-hint">
-          drag to rotate · scroll to zoom · click node to find in feed
+          drag to rotate · right-drag to pan · scroll to zoom · hover to collect
         </div>
       </div>
     </div>

@@ -59,6 +59,32 @@ export function isToolEnabled(
   return profileTools === "all" || profileTools.includes(tool);
 }
 
+/** Parse MCP tool names into ToolGroups by server name.
+ * MCP tools follow the naming convention: mcp__<server-name>__<tool-name>
+ */
+export function mcpToolGroups(availableTools: string[]): ToolGroup[] {
+  const serverMap = new Map<string, string[]>();
+  for (const tool of availableTools) {
+    if (!tool.startsWith("mcp__")) continue;
+    const parts = tool.split("__");
+    if (parts.length < 3) continue;
+    const serverName = parts[1];
+    const existing = serverMap.get(serverName) ?? [];
+    existing.push(tool);
+    serverMap.set(serverName, existing);
+  }
+  return Array.from(serverMap.entries()).map(([server, tools]) => ({
+    label: server,
+    tools,
+  }));
+}
+
+/** Strip MCP prefix for display: mcp__server__tool_name → tool_name */
+export function mcpToolDisplayName(tool: string): string {
+  if (!tool.startsWith("mcp__")) return tool;
+  return tool.split("__").slice(2).join("__");
+}
+
 /** Convert ToolStates to SDK-compatible tools/disallowedTools arrays */
 export function toSdkToolConfig(
   states: ToolStates,

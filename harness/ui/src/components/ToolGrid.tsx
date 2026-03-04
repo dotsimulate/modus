@@ -8,13 +8,15 @@
  *   profile includes. No "inherit" concept — you're setting the baseline.
  */
 
-import { TOOL_GROUPS, ALL_TOOLS, isToolEnabled, type ToolState, type ToolStates } from "../tools";
+import { TOOL_GROUPS, ALL_TOOLS, isToolEnabled, mcpToolDisplayName, type ToolGroup, type ToolState, type ToolStates } from "../tools";
 
 type BaseProps = {
   /** Called when any tool state changes */
   onChange: (states: ToolStates) => void;
   /** Compact mode — tighter spacing for popover use */
   compact?: boolean;
+  /** Additional tool groups (e.g., MCP tools discovered at runtime) */
+  extraGroups?: ToolGroup[];
 };
 
 type OverrideProps = BaseProps & {
@@ -44,6 +46,10 @@ export function ToolGrid(props: Props) {
   const { states, onChange, compact } = props;
   const mode = props.mode ?? "override";
   const profileTools = mode === "override" ? (props as OverrideProps).profileTools : "all";
+  const extraGroups = props.extraGroups;
+
+  const groups = extraGroups?.length ? [...TOOL_GROUPS, ...extraGroups] : TOOL_GROUPS;
+  const allTools = extraGroups?.length ? groups.flatMap(g => g.tools) : ALL_TOOLS;
 
   const overrideCount = Object.keys(states).length;
 
@@ -51,7 +57,7 @@ export function ToolGrid(props: Props) {
     if (mode === "baseline" && overrideCount === 0) {
       // "All tools" → clicking one means "all except this one"
       const updated: ToolStates = {};
-      for (const t of ALL_TOOLS) updated[t] = "on";
+      for (const t of allTools) updated[t] = "on";
       delete updated[tool];
       onChange(updated);
       return;
@@ -81,11 +87,11 @@ export function ToolGrid(props: Props) {
 
   const enabledCount = mode === "baseline"
     ? Object.values(states).filter((s) => s === "on").length
-    : ALL_TOOLS.filter((t) => isToolEnabled(t, states[t] ?? "inherit", profileTools)).length;
+    : allTools.filter((t) => isToolEnabled(t, states[t] ?? "inherit", profileTools)).length;
 
   const totalLabel = mode === "baseline"
     ? `${enabledCount || "all"} tools`
-    : `${enabledCount}/${ALL_TOOLS.length} tools`;
+    : `${enabledCount}/${allTools.length} tools`;
 
   const resetLabel = mode === "baseline" ? "clear" : "reset";
 
@@ -102,19 +108,19 @@ export function ToolGrid(props: Props) {
           </button>
         )}
       </div>
-      {TOOL_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.label} className="tool-grid-group">
           <div className="tool-grid-group-label">{group.label}</div>
           <div className="tool-grid-pills">
             {group.tools.map((tool) => {
               const state = states[tool] ?? "inherit";
+              const isMcp = tool.startsWith("mcp__");
+              const displayName = isMcp ? mcpToolDisplayName(tool) : tool;
 
               let enabled: boolean;
               let isOverride: boolean;
 
               if (mode === "baseline") {
-                // Baseline: "on" = included, anything else = excluded
-                // No states at all = "all tools" (nothing overridden)
                 enabled = overrideCount === 0 || state === "on";
                 isOverride = state === "on";
               } else {
@@ -140,7 +146,7 @@ export function ToolGrid(props: Props) {
                   }
                 >
                   {isOverride && <span className="tool-pill-dot" />}
-                  {tool}
+                  {displayName}
                 </button>
               );
             })}
