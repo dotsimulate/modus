@@ -24,6 +24,7 @@ import { addRecentPath } from "./recentPaths";
 import { agentConfigToOverrides, type AgentConfigState } from "./components/AgentConfig";
 import { Dashboard } from "./components/Dashboard";
 import { MemoryViz } from "./components/MemoryViz";
+import { Schedules } from "./components/Schedules";
 
 function App() {
   // ── PIN Auth Gate ──
@@ -98,10 +99,11 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [view, setView] = useState<"chat" | "dashboard" | "memory">(() => {
+  const [view, setView] = useState<"chat" | "dashboard" | "memory" | "schedules">(() => {
     const h = window.location.hash;
     if (h === "#dashboard") return "dashboard";
     if (h === "#memory") return "memory";
+    if (h === "#schedules") return "schedules";
     return "chat";
   });
 
@@ -153,6 +155,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
       const h = window.location.hash;
       if (h === "#dashboard") setView("dashboard");
       else if (h === "#memory") setView("memory");
+      else if (h === "#schedules") setView("schedules");
       else setView("chat");
     };
     window.addEventListener("hashchange", onHash);
@@ -462,9 +465,16 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
     selectSession(id);
   }, [selectSession]);
 
-  const navigate = useCallback((target: "chat" | "dashboard" | "memory") => {
+  const handleScheduleSelect = useCallback((id: string) => {
+    window.location.hash = id;
+    setView("chat");
+    selectSession(id);
+  }, [selectSession]);
+
+  const navigate = useCallback((target: "chat" | "dashboard" | "memory" | "schedules") => {
     if (target === "dashboard") window.location.hash = "dashboard";
     else if (target === "memory") window.location.hash = "memory";
+    else if (target === "schedules") window.location.hash = "schedules";
     else window.location.hash = "";
     setView(target);
   }, []);
@@ -483,6 +493,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
           <button className={`top-nav-link${view === "dashboard" ? " active" : ""}`} onClick={() => navigate("dashboard")}>dashboard</button>
           <button className={`top-nav-link${view === "chat" ? " active" : ""}`} onClick={() => navigate("chat")}>sessions</button>
           <button className={`top-nav-link${view === "memory" ? " active" : ""}`} onClick={() => navigate("memory")}>memory</button>
+          <button className={`top-nav-link${view === "schedules" ? " active" : ""}`} onClick={() => navigate("schedules")}>schedules</button>
         </nav>
         {view === "chat" && activeSession?.status && activeSession.status !== "done" && (
           <span className={`chat-header-status ${activeSession.status}`}>{activeSession.status}</span>
@@ -557,6 +568,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
         )}
 
         {view === "memory" && <MemoryViz />}
+        {view === "schedules" && <Schedules onSelectSession={handleScheduleSelect} />}
       </div>
     </div>
   );
