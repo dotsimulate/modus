@@ -108,10 +108,12 @@ export type SessionInfo = {
   status: string;
   created_at: number;
   updated_at: number;
+  last_message_at: number;
   message_count: number;
   total_cost_usd: number;
   last_prompt: string | null;
   last_response: string | null;
+  cwd: string | null;
 };
 
 export type ActiveSessionInfo = {
@@ -126,6 +128,7 @@ export type ActiveSessionInfo = {
   preview: string;
   seq: number;
   subscribers: number;
+  cwd: string | null;
 };
 
 export type SessionStatusInfo = {

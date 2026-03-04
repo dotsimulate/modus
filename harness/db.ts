@@ -31,6 +31,12 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'done
 try { db.run(`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
 // Migration: add draft_text column for persisting unsent user input
 try { db.run(`ALTER TABLE sessions ADD COLUMN draft_text TEXT DEFAULT ''`); } catch { /* already exists */ }
+// Migration: add last_message_at — tracks actual conversation activity (not drafts/status changes)
+try { db.run(`ALTER TABLE sessions ADD COLUMN last_message_at INTEGER`); } catch { /* already exists */ }
+// Backfill: seed last_message_at from updated_at for existing rows
+db.run(`UPDATE sessions SET last_message_at = updated_at WHERE last_message_at IS NULL`);
+// Migration: add cwd — working directory / project root for grouping
+try { db.run(`ALTER TABLE sessions ADD COLUMN cwd TEXT`); } catch { /* already exists */ }
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -62,6 +68,7 @@ db.run(`
   )
 `);
 db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, seq)`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
 
 // ── Types ──
 
@@ -73,10 +80,12 @@ export type SessionRow = {
   status: string;
   created_at: number;
   updated_at: number;
+  last_message_at: number;
   message_count: number;
   total_cost_usd: number;
   last_prompt: string | null;
   last_response: string | null;
+  cwd: string | null;
 };
 
 export type EventRow = {
@@ -94,10 +103,11 @@ export type EventRow = {
 const stmts = {
   // Sessions
   upsert: db.prepare(`
-    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, message_count, total_cost_usd, last_prompt, last_response)
-    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response)
+    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd)
+    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd)
     ON CONFLICT(id) DO UPDATE SET
       updated_at = $now,
+      last_message_at = $now,
       status = $status,
       message_count = $message_count,
       total_cost_usd = sessions.total_cost_usd + $total_cost_usd,
@@ -106,7 +116,7 @@ const stmts = {
       model = COALESCE($model, sessions.model)
   `),
   updateStatus: db.prepare(`UPDATE sessions SET status = $status, updated_at = $now WHERE id = $id`),
-  list: db.prepare(`SELECT * FROM sessions WHERE archived = 0 ORDER BY updated_at DESC LIMIT $limit`),
+  list: db.prepare(`SELECT * FROM sessions WHERE archived = 0 ORDER BY last_message_at DESC LIMIT $limit`),
   archive: db.prepare(`UPDATE sessions SET archived = 1, updated_at = $now WHERE id = $id`),
   get: db.prepare(`SELECT * FROM sessions WHERE id = $id`),
   // Events
@@ -118,7 +128,7 @@ const stmts = {
   getMaxSeq: db.prepare(`SELECT COALESCE(MAX(seq), 0) as max_seq FROM events WHERE session_id = $session_id`),
   // Drafts
   getDraft: db.prepare(`SELECT draft_text FROM sessions WHERE id = $id`),
-  setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text, updated_at = $now WHERE id = $id`),
+  setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text WHERE id = $id`),
 };
 
 // ── Session Functions ──
@@ -133,6 +143,7 @@ export function upsertSession(opts: {
   costUsd: number;
   lastPrompt?: string;
   lastResponse?: string;
+  cwd?: string;
 }) {
   stmts.upsert.run({
     $id: opts.id,
@@ -145,6 +156,7 @@ export function upsertSession(opts: {
     $total_cost_usd: opts.costUsd,
     $last_prompt: opts.lastPrompt ?? null,
     $last_response: opts.lastResponse ?? null,
+    $cwd: opts.cwd ?? null,
   });
 }
 
@@ -194,11 +206,11 @@ export function getDraft(sessionId: string): string {
 }
 
 export function setDraft(sessionId: string, text: string) {
-  stmts.setDraft.run({ $id: sessionId, $draft_text: text, $now: Date.now() });
+  stmts.setDraft.run({ $id: sessionId, $draft_text: text });
 }
 
 // ── Startup Cleanup ──
-// Mark orphaned running/starting sessions as idle (harness restarted while they were active)
-db.run(`UPDATE sessions SET status = 'idle' WHERE status IN ('running', 'starting')`);
+// Mark orphaned running/starting/error sessions as done (harness restarted while they were active)
+db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'error')`);
 
 export { db };

@@ -14,9 +14,10 @@ type MergedSession = {
   cost: number;
   turns: number;
   preview: string;
-  updatedAt: number;
+  lastMessageAt: number;
   active: boolean;
   subscribers?: number;
+  cwd: string | null;
 };
 
 function mergeRows(active: ActiveSessionInfo[], recent: SessionInfo[]): MergedSession[] {
@@ -33,9 +34,10 @@ function mergeRows(active: ActiveSessionInfo[], recent: SessionInfo[]): MergedSe
       cost: a.costUsd,
       turns: a.numTurns,
       preview: a.preview,
-      updatedAt: a.lastEventAt,
+      lastMessageAt: a.lastEventAt,
       active: true,
       subscribers: a.subscribers,
+      cwd: a.cwd,
     });
   }
 
@@ -43,18 +45,19 @@ function mergeRows(active: ActiveSessionInfo[], recent: SessionInfo[]): MergedSe
     if (seen.has(s.id)) continue;
     rows.push({
       id: s.id,
-      status: s.status,
+      status: s.status === "running" || s.status === "starting" || s.status === "error" ? "done" : s.status,
       profile: s.profile,
       model: s.model,
       cost: s.total_cost_usd,
       turns: s.message_count,
       preview: s.last_prompt ?? s.preview,
-      updatedAt: s.updated_at,
+      lastMessageAt: s.last_message_at,
       active: false,
+      cwd: s.cwd,
     });
   }
 
-  rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  rows.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
   return rows;
 }
 
@@ -66,16 +69,16 @@ function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-function statusDot(status: string) {
-  if (status === "running" || status === "starting") return <span className="dash-dot dash-dot--running" />;
-  if (status === "idle") return <span className="dash-dot dash-dot--idle" />;
-  if (status === "error") return <span className="dash-dot dash-dot--error" />;
-  return <span className="dash-dot dash-dot--done" />;
-}
-
 function shortModel(model: string | null): string {
   if (!model) return "";
   return model.replace("claude-", "").replace(/-\d{8}.*/, "");
+}
+
+function statusClass(status: string): string {
+  if (status === "running" || status === "starting") return "running";
+  if (status === "error") return "error";
+  if (status === "done") return "done";
+  return "idle";
 }
 
 const chevron = (
@@ -103,14 +106,15 @@ export function SessionsPanel({ onSelectSession }: Props) {
     return () => { active = false; clearInterval(interval); };
   }, []);
 
-  const activeCount = rows.filter((r) => r.active).length;
+  const activeRows = rows.filter((r) => r.active);
+  const recentRows = rows.filter((r) => !r.active);
 
   return (
     <div className="dash-panel">
       <button className="dash-panel-header" onClick={() => setOpen(!open)}>
         <span className="dash-panel-title">sessions</span>
-        {activeCount > 0 && (
-          <span className="dash-active-count">{activeCount} active</span>
+        {activeRows.length > 0 && (
+          <span className="dash-active-count">{activeRows.length} active</span>
         )}
         <span className={`profile-panel-chevron ${open ? "profile-panel-chevron--open" : ""}`}>
           {chevron}
@@ -118,37 +122,58 @@ export function SessionsPanel({ onSelectSession }: Props) {
       </button>
       <div className={`panel-collapse ${open ? "panel-collapse--open" : ""}`}>
         <div className="panel-collapse-clip">
-          <table className="dash-table">
-            <thead>
-              <tr>
-                <th className="dash-th-status"></th>
-                <th>session</th>
-                <th>profile</th>
-                <th>model</th>
-                <th>cost</th>
-                <th>time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={6} className="dash-empty">no sessions</td></tr>
-              )}
-              {rows.map((r) => (
-                <tr
+          {rows.length === 0 && (
+            <div className="dash-empty">no sessions</div>
+          )}
+
+          {/* Active agents — cards */}
+          {activeRows.length > 0 && (
+            <div className="agent-grid">
+              {activeRows.map((r) => (
+                <div
                   key={r.id}
-                  className={`dash-row ${r.active ? "dash-row--active" : ""}`}
+                  className={`agent-card agent-card--${statusClass(r.status)}`}
                   onClick={() => onSelectSession(r.id)}
                 >
-                  <td className="dash-cell-status">{statusDot(r.status)}</td>
-                  <td className="dash-cell-preview">{r.preview}</td>
-                  <td className="dash-cell-profile">{r.profile ?? ""}</td>
-                  <td className="dash-cell-model">{shortModel(r.model)}</td>
-                  <td className="dash-cell-cost">${r.cost.toFixed(3)}</td>
-                  <td className="dash-cell-time">{timeAgo(r.updatedAt)}</td>
-                </tr>
+                  <div className="agent-card-head">
+                    <span className={`dash-dot dash-dot--lg dash-dot--${statusClass(r.status)}`} />
+                    <span className="agent-card-profile">{r.profile ?? "default"}</span>
+                    <span className="agent-card-model">{shortModel(r.model)}</span>
+                  </div>
+                  <div className="agent-card-body">
+                    {r.preview || "new session"}
+                  </div>
+                  <div className="agent-card-foot">
+                    <span>${r.cost.toFixed(3)}</span>
+                    <span>{r.turns} turns</span>
+                    <span>{timeAgo(r.lastMessageAt)}</span>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          )}
+
+          {/* Recent — compact rows */}
+          {recentRows.length > 0 && (
+            <div className="recent-list">
+              {activeRows.length > 0 && (
+                <div className="recent-list-label">recent</div>
+              )}
+              {recentRows.map((r) => (
+                <div
+                  key={r.id}
+                  className="recent-row"
+                  onClick={() => onSelectSession(r.id)}
+                >
+                  <span className={`dash-dot dash-dot--${statusClass(r.status)}`} />
+                  <span className="recent-preview">{r.preview}</span>
+                  <span className="recent-meta">{r.profile}</span>
+                  <span className="recent-meta">${r.cost.toFixed(2)}</span>
+                  <span className="recent-meta">{timeAgo(r.lastMessageAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
