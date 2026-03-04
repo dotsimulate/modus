@@ -29,8 +29,18 @@ function summarize(name: string, input: Record<string, unknown>): string {
       return truncate(input.query as string, 60);
     case "Agent":
       return truncate(input.description as string, 60);
-    case "TodoWrite":
-      return "";
+    case "TodoWrite": {
+      const todos = input.todos as Array<{ status: string }> | undefined;
+      if (!todos?.length) return "";
+      const done = todos.filter(t => t.status === "completed").length;
+      const active = todos.filter(t => t.status === "in_progress").length;
+      const pending = todos.filter(t => t.status === "pending").length;
+      const parts: string[] = [];
+      if (done) parts.push(`${done} done`);
+      if (active) parts.push(`${active} active`);
+      if (pending) parts.push(`${pending} pending`);
+      return parts.join(" · ");
+    }
     case "Skill":
       return input.skill as string ?? "";
     default:
@@ -97,15 +107,37 @@ function ToolInputArgs({ input }: { input: Record<string, unknown> }) {
   );
 }
 
+/** Render TodoWrite as a compact checklist */
+function TodoList({ todos }: { todos: Array<{ content: string; status: string; activeForm?: string }> }) {
+  return (
+    <div className="todo-list">
+      {todos.map((t, i) => (
+        <div key={i} className={`todo-item todo-item--${t.status}`}>
+          <span className="todo-indicator">
+            {t.status === "completed" && <span className="tool-dot tool-dot--ok" />}
+            {t.status === "in_progress" && <span className="tool-spinner" />}
+            {t.status === "pending" && <span className="tool-dot todo-dot--pending" />}
+          </span>
+          <span className="todo-text">
+            {t.status === "in_progress" ? (t.activeForm || t.content) : t.content}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Count total tool calls across sub-messages */
 function countSubTools(msgs: Message[]): number {
   return msgs.reduce((n, m) => n + (m.toolCalls?.length ?? 0), 0);
 }
 
 export function ToolCallView({ tool }: Props) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(tool.name === "TodoWrite");
   const summary = summarize(tool.name, tool.input);
   const isAgent = tool.name === "Agent" && (tool.subMessages?.length ?? 0) > 0;
+  const isTodo = tool.name === "TodoWrite";
+  const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
 
   return (
     <div className={`tool-call ${tool.status} ${isAgent ? "tool-call--agent" : ""}`}>
@@ -141,6 +173,10 @@ export function ToolCallView({ tool }: Props) {
                   <div className="subagent-summary">{tool.subSummary}</div>
                 )}
               </div>
+            </div>
+          ) : isTodo && todos?.length ? (
+            <div className="tool-call-detail">
+              <TodoList todos={todos} />
             </div>
           ) : (
             <div className="tool-call-detail">

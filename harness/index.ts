@@ -13,7 +13,7 @@ import {
   setUserName, getUserName,
 } from "./profiles";
 import {
-  listSessions, getSession, archiveSession,
+  listSessions, getSession, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft,
 } from "./db";
@@ -182,6 +182,14 @@ app.post("/api/secrets/check", async (c) => {
 });
 
 // ── Sessions ──
+
+app.get("/api/sessions/search", (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const q = params.get("q")?.trim();
+  if (!q) return c.json([]);
+  const limit = Number(params.get("limit") ?? 20);
+  return c.json(searchSessions(q, limit));
+});
 
 app.get("/api/sessions", (c) => {
   const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 50);

@@ -131,6 +131,17 @@ export type ActiveSessionInfo = {
   cwd: string | null;
 };
 
+export type SearchHit = {
+  session_id: string;
+  preview: string;
+  profile: string | null;
+  model: string | null;
+  cwd: string | null;
+  last_message_at: number;
+  total_cost_usd: number;
+  snippet: string;
+};
+
 export type SessionStatusInfo = {
   sessionId: string;
   status: string;
@@ -209,6 +220,15 @@ export async function fetchSessionStatus(sessionId: string): Promise<SessionStat
 
 export async function fetchActiveSessions(): Promise<ActiveSessionInfo[]> {
   const res = await fetch(`${API_BASE}/api/sessions/active`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function searchSessions(query: string, limit = 20): Promise<SearchHit[]> {
+  if (!query.trim()) return [];
+  const res = await fetch(
+    `${API_BASE}/api/sessions/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+    { headers: authHeaders() },
+  );
   return res.json();
 }
 
