@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { MessageBubble } from "./MessageBubble";
-import type { Message } from "../types";
+import type { Message } from "../api";
 
 type Props = {
   messages: Message[];

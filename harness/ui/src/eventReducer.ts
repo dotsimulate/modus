@@ -5,8 +5,8 @@
  * Enables deterministic state reconstruction on reconnect.
  */
 
-import type { Message, ToolCall, SubTask, SessionStatus, Attachment, PendingPermission } from "./types";
-import { nextMsgId } from "./types";
+import type { Message, ToolCall, SubTask, SessionStatus, Attachment, PendingPermission } from "./api";
+import { nextMsgId } from "./api";
 
 export type ReducerState = {
   sessionId: string;

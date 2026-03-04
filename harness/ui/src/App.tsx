@@ -2,24 +2,24 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   createSession, sendMessage as apiSendMessage, stopSessionApi,
   archiveSessionApi,
-  fetchProfiles, fetchSessions, fetchSessionsScoped, searchSessionsScoped,
+  fetchProfiles, fetchSessions, fetchSessionsScoped,
   subscribeEvents, healthCheck,
   createEmptySession, getDraft, saveDraft,
   authStatus, clearAuthToken, lockAll, checkToken,
   updateSessionConfig, respondToPermission,
   fetchUserProfiles, fetchUserProfileState, patchUserProfileStateApi,
+  nextMsgId,
+} from "./api";
+import type {
+  Profile, SessionInfo, CreateSessionOpts, UserProfile, UserProfileState,
+  Session, Attachment, ApiAttachment, ProfileUi,
 } from "./api";
 import { LoginScreen } from "./components/LoginScreen";
-import type { Profile, SessionInfo, CreateSessionOpts, UserProfile, UserProfileState } from "./api";
-import type { Session, Attachment } from "./types";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
-import { nextMsgId } from "./types";
-import type { ApiAttachment } from "./api";
 import { Sidebar } from "./components/Sidebar";
 import { ChatView } from "./components/ChatView";
 import { ChatInput } from "./components/ChatInput";
 import { ConfigBar } from "./components/ConfigBar";
-import type { ProfileUi } from "./api";
 import { createDefaultSetupState, type SessionSetupState } from "./components/SessionSetup";
 import { addRecentPath } from "./recentPaths";
 import { agentConfigToOverrides, type AgentConfigState } from "./components/AgentConfig";
