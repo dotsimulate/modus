@@ -47,18 +47,55 @@ export type GitLogEntry = {
   date: string;
   message: string;
   author: string;
+  filesChanged?: number;
+  additions?: number;
+  deletions?: number;
 };
 
 export async function gitLog(cwd: string, limit = 30): Promise<GitLogEntry[]> {
   try {
     const git = simpleGit(cwd);
-    const log = await git.log({ maxCount: limit });
-    return log.all.map((c) => ({
-      hash: c.hash,
-      date: c.date,
-      message: c.message,
-      author: c.author_name,
-    }));
+    const SEP = "---GIT-LOG-SEP---";
+    const raw = await git.raw([
+      "log", `--max-count=${limit}`,
+      `--format=${SEP}%n%H%n%aI%n%an%n%s`,
+      "--shortstat",
+    ]);
+
+    const entries: GitLogEntry[] = [];
+    const chunks = raw.split(SEP).filter((s) => s.trim());
+
+    for (const chunk of chunks) {
+      const lines = chunk.trim().split("\n");
+      if (lines.length < 4) continue;
+      const [hash, date, author, message, ...rest] = lines;
+      const statLine = rest.join(" ").trim();
+
+      let filesChanged: number | undefined;
+      let additions: number | undefined;
+      let deletions: number | undefined;
+
+      if (statLine) {
+        const fm = statLine.match(/(\d+) files? changed/);
+        const am = statLine.match(/(\d+) insertions?\(\+\)/);
+        const dm = statLine.match(/(\d+) deletions?\(-\)/);
+        if (fm) filesChanged = Number(fm[1]);
+        if (am) additions = Number(am[1]);
+        if (dm) deletions = Number(dm[1]);
+      }
+
+      entries.push({
+        hash: hash!,
+        date: date!,
+        message: message!,
+        author: author!,
+        filesChanged,
+        additions,
+        deletions,
+      });
+    }
+
+    return entries;
   } catch {
     return [];
   }
@@ -174,7 +211,9 @@ export async function gitShow(cwd: string, hash: string): Promise<GitCommitDetai
       hasParent = false;
     }
 
-    const log = await git.log({ maxCount: 1, from: hasParent ? `${hash}~1` : hash, to: hash });
+    const log = hasParent
+      ? await git.log({ maxCount: 1, from: `${hash}~1`, to: hash })
+      : await git.log({ maxCount: 1, to: hash });
     const entry = log.latest;
     if (!entry) return null;
 

@@ -81,6 +81,18 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
   const lastUser = messages.findLastIndex(m => m.role === "user");
   const lastAssistant = messages.findLastIndex(m => m.role === "assistant");
 
+  // Find last TodoWrite tool call ID so only it defaults expanded
+  let lastTodoId: string | undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const tcs = messages[i].toolCalls;
+    if (tcs) {
+      for (let j = tcs.length - 1; j >= 0; j--) {
+        if (tcs[j].name === "TodoWrite") { lastTodoId = tcs[j].id; break; }
+      }
+      if (lastTodoId) break;
+    }
+  }
+
   return (
     <div className="chat-messages" ref={containerRef}>
       {messages.map((msg, i) =>
@@ -103,6 +115,7 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
             showThinking={showThinking}
             showMeta={showMeta}
             showToolCalls={showToolCalls}
+            lastTodoId={lastTodoId}
           />
         )
       )}
