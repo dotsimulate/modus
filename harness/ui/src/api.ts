@@ -82,6 +82,16 @@ export type McpServerConfig =
   | { type: "sse"; url: string; headers?: Record<string, string> }
   | { type: "http"; url: string; headers?: Record<string, string> };
 
+export type ProfileUi = {
+  label?: string;
+  showThinking?: boolean;
+  showMeta?: boolean;
+  showToolCalls?: boolean;
+  placeholder?: string;
+  emptyTitle?: string;
+  emptySubtitle?: string;
+};
+
 export type Profile = {
   name: string;
   description: string;
@@ -94,6 +104,7 @@ export type Profile = {
   disallowedTools?: string[];
   loadProjectSettings?: boolean;
   mcpServers?: Record<string, McpServerConfig>;
+  ui?: ProfileUi;
 };
 
 export type GlobalConfig = {

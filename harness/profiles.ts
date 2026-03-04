@@ -9,8 +9,8 @@
  *   profiles/_users.json  — template var defaults
  */
 
-import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync } from "fs";
-import { join, basename } from "path";
+import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
+import { join, basename, dirname } from "path";
 
 const PROFILES_DIR = join(import.meta.dir, "profiles");
 const AGENTS_DIR = join(PROFILES_DIR, "agents");
@@ -66,6 +66,16 @@ export type Profile = {
   mcpServers?: Record<string, McpServerConfig>;
   /** Permission policy — controls tool execution gating. Defaults to "bypass". */
   permissionPolicy?: PermissionPolicy;
+  /** UI presentation hints — read by frontend, optional with sensible defaults */
+  ui?: {
+    label?: string;
+    showThinking?: boolean;
+    showMeta?: boolean;
+    showToolCalls?: boolean;
+    placeholder?: string;
+    emptyTitle?: string;
+    emptySubtitle?: string;
+  };
 };
 
 export type GlobalConfig = {
@@ -116,6 +126,18 @@ function writeJson(filePath: string, data: unknown): void {
   writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
+/** Save a timestamped copy of a file before overwriting it.
+ *  Creates .history/<name>/<timestamp>.json alongside the source directory. */
+function snapshot(filePath: string): void {
+  if (!existsSync(filePath)) return;
+  const dir = dirname(filePath);
+  const name = basename(filePath, ".json");
+  const histDir = join(dir, ".history", name);
+  if (!existsSync(histDir)) mkdirSync(histDir, { recursive: true });
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  copyFileSync(filePath, join(histDir, `${ts}.json`));
+}
+
 // ── Agent Profile CRUD ──
 
 function readProfileFile(name: string): Profile | undefined {
@@ -149,7 +171,9 @@ export function getAllProfiles(): Record<string, Profile> {
 /** Save an agent profile (create or update) */
 export function saveProfile(name: string, profile: Profile): void {
   if (name.startsWith("_")) throw new Error("Profile names cannot start with _");
-  writeJson(join(AGENTS_DIR, `${name}.json`), profile);
+  const filePath = join(AGENTS_DIR, `${name}.json`);
+  snapshot(filePath);
+  writeJson(filePath, profile);
 }
 
 /** Delete an agent profile */
@@ -169,7 +193,9 @@ export function getGlobalConfig(): GlobalConfig {
 
 /** Save the global config */
 export function saveGlobalConfig(config: GlobalConfig): void {
-  writeJson(join(PROFILES_DIR, "_global.json"), config);
+  const filePath = join(PROFILES_DIR, "_global.json");
+  snapshot(filePath);
+  writeJson(filePath, config);
 }
 
 // ── User Profile CRUD ──
@@ -200,7 +226,9 @@ export function getAllUserProfiles(): Record<string, UserProfile> {
 }
 
 export function saveUserProfile(name: string, profile: UserProfile): void {
-  writeJson(join(USERS_DIR, `${name}.json`), profile);
+  const filePath = join(USERS_DIR, `${name}.json`);
+  snapshot(filePath);
+  writeJson(filePath, profile);
 }
 
 export function deleteUserProfile(name: string): boolean {
