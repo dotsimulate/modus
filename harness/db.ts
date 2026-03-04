@@ -37,6 +37,8 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN last_message_at INTEGER`); } catch
 db.run(`UPDATE sessions SET last_message_at = updated_at WHERE last_message_at IS NULL`);
 // Migration: add cwd — working directory / project root for grouping
 try { db.run(`ALTER TABLE sessions ADD COLUMN cwd TEXT`); } catch { /* already exists */ }
+// Migration: add schedule_name — set when session was spawned by a schedule
+try { db.run(`ALTER TABLE sessions ADD COLUMN schedule_name TEXT`); } catch { /* already exists */ }
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -70,6 +72,25 @@ db.run(`
 db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, seq)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
 
+// ── Schedule Runs (tracks each execution of a scheduled task) ──
+db.run(`
+  CREATE TABLE IF NOT EXISTS schedule_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    schedule_name TEXT NOT NULL,
+    session_id TEXT,
+    run_number INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    summary TEXT,
+    started_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    cost_usd REAL NOT NULL DEFAULT 0,
+    error TEXT
+  )
+`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_name ON schedule_runs(schedule_name, run_number DESC)`);
+// Migration: add cycle_number column
+try { db.run(`ALTER TABLE schedule_runs ADD COLUMN cycle_number INTEGER NOT NULL DEFAULT 1`); } catch { /* already exists */ }
+
 // ── Types ──
 
 export type SessionRow = {
@@ -86,6 +107,7 @@ export type SessionRow = {
   last_prompt: string | null;
   last_response: string | null;
   cwd: string | null;
+  schedule_name: string | null;
 };
 
 export type EventRow = {
@@ -103,8 +125,8 @@ export type EventRow = {
 const stmts = {
   // Sessions
   upsert: db.prepare(`
-    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd)
-    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd)
+    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, schedule_name)
+    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $schedule_name)
     ON CONFLICT(id) DO UPDATE SET
       updated_at = $now,
       last_message_at = $now,
@@ -129,6 +151,38 @@ const stmts = {
   // Drafts
   getDraft: db.prepare(`SELECT draft_text FROM sessions WHERE id = $id`),
   setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text WHERE id = $id`),
+  // Schedule Runs
+  insertScheduleRun: db.prepare(`
+    INSERT INTO schedule_runs (schedule_name, session_id, run_number, status, started_at, cycle_number)
+    VALUES ($schedule_name, $session_id, $run_number, $status, $started_at, $cycle_number)
+  `),
+  updateScheduleRun: db.prepare(`
+    UPDATE schedule_runs SET
+      status = $status,
+      summary = COALESCE($summary, summary),
+      completed_at = COALESCE($completed_at, completed_at),
+      cost_usd = COALESCE($cost_usd, cost_usd),
+      error = COALESCE($error, error),
+      session_id = COALESCE($session_id, session_id)
+    WHERE id = $id
+  `),
+  getScheduleRuns: db.prepare(`
+    SELECT id, schedule_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number
+    FROM schedule_runs WHERE schedule_name = $schedule_name
+    ORDER BY run_number DESC LIMIT $limit
+  `),
+  getRunSummaries: db.prepare(`
+    SELECT run_number, summary, completed_at FROM (
+      SELECT run_number, summary, completed_at
+      FROM schedule_runs
+      WHERE schedule_name = $schedule_name AND status = 'done' AND summary IS NOT NULL
+      ORDER BY run_number DESC LIMIT $limit
+    ) ORDER BY run_number ASC
+  `),
+  getNextRunNumber: db.prepare(`
+    SELECT COALESCE(MAX(run_number), 0) + 1 AS next
+    FROM schedule_runs WHERE schedule_name = $schedule_name
+  `),
 };
 
 // ── Session Functions ──
@@ -144,6 +198,7 @@ export function upsertSession(opts: {
   lastPrompt?: string;
   lastResponse?: string;
   cwd?: string;
+  scheduleName?: string;
 }) {
   stmts.upsert.run({
     $id: opts.id,
@@ -157,6 +212,7 @@ export function upsertSession(opts: {
     $last_prompt: opts.lastPrompt ?? null,
     $last_response: opts.lastResponse ?? null,
     $cwd: opts.cwd ?? null,
+    $schedule_name: opts.scheduleName ?? null,
   });
 }
 
@@ -208,6 +264,71 @@ export function getDraft(sessionId: string): string {
 
 export function setDraft(sessionId: string, text: string) {
   stmts.setDraft.run({ $id: sessionId, $draft_text: text });
+}
+
+// ── Schedule Run Functions ──
+
+import type { RunSummary, RunMeta } from "./scheduler-types";
+
+export function insertScheduleRun(scheduleName: string, runNumber: number, sessionId: string | null, startedAt: number, cycleNumber = 1): number {
+  stmts.insertScheduleRun.run({
+    $schedule_name: scheduleName,
+    $session_id: sessionId,
+    $run_number: runNumber,
+    $status: "running",
+    $started_at: startedAt,
+    $cycle_number: cycleNumber,
+  });
+  return Number((db.query("SELECT last_insert_rowid() as id").get() as any).id);
+}
+
+export function updateScheduleRun(id: number, updates: {
+  status?: string;
+  summary?: string;
+  completedAt?: number;
+  costUsd?: number;
+  error?: string;
+  sessionId?: string;
+}) {
+  stmts.updateScheduleRun.run({
+    $id: id,
+    $status: updates.status ?? null,
+    $summary: updates.summary ?? null,
+    $completed_at: updates.completedAt ?? null,
+    $cost_usd: updates.costUsd ?? null,
+    $error: updates.error ?? null,
+    $session_id: updates.sessionId ?? null,
+  });
+}
+
+export function getScheduleRuns(scheduleName: string, limit = 20): RunMeta[] {
+  const rows = stmts.getScheduleRuns.all({ $schedule_name: scheduleName, $limit: limit }) as any[];
+  return rows.map(r => ({
+    id: r.id,
+    runNumber: r.run_number,
+    sessionId: r.session_id,
+    status: r.status,
+    summary: r.summary,
+    startedAt: r.started_at,
+    completedAt: r.completed_at,
+    costUsd: r.cost_usd,
+    error: r.error,
+    cycleNumber: r.cycle_number ?? 1,
+  }));
+}
+
+export function getRunSummaries(scheduleName: string, limit = 5): RunSummary[] {
+  const rows = stmts.getRunSummaries.all({ $schedule_name: scheduleName, $limit: limit }) as any[];
+  return rows.map(r => ({
+    runNumber: r.run_number,
+    summary: r.summary,
+    completedAt: r.completed_at,
+  }));
+}
+
+export function getNextRunNumber(scheduleName: string): number {
+  const row = stmts.getNextRunNumber.get({ $schedule_name: scheduleName }) as { next: number };
+  return row.next;
 }
 
 // ── Full-Text Search (FTS5) ──

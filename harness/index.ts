@@ -494,15 +494,64 @@ app.get("/api/memories", async (c) => {
   }
 });
 
+// ── Schedules ──
+
+import {
+  initScheduler, stopScheduler, getSchedules, getScheduleState,
+  triggerSchedule, updateScheduleConfig,
+} from "./scheduler";
+import { getScheduleRuns as dbGetScheduleRuns } from "./db";
+
+app.get("/api/schedules", (c) => {
+  return c.json(getSchedules());
+});
+
+app.get("/api/schedules/:name", (c) => {
+  const name = c.req.param("name");
+  const state = getScheduleState(name);
+  if (!state) return c.json({ error: "schedule not found" }, 404);
+  return c.json({
+    ...state.config,
+    nextRunAt: state.nextRunAt,
+    lastRunAt: state.lastRunAt,
+    lastStatus: state.lastStatus,
+    running: state.running,
+  });
+});
+
+app.get("/api/schedules/:name/runs", (c) => {
+  const name = c.req.param("name");
+  const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 20);
+  return c.json(dbGetScheduleRuns(name, limit));
+});
+
+app.post("/api/schedules/:name/trigger", async (c) => {
+  const name = c.req.param("name");
+  const ok = await triggerSchedule(name);
+  if (!ok) return c.json({ error: "schedule not found or already running" }, 400);
+  return c.json({ ok: true });
+});
+
+app.patch("/api/schedules/:name", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json();
+  const ok = updateScheduleConfig(name, body);
+  if (!ok) return c.json({ error: "schedule not found" }, 404);
+  return c.json({ ok: true });
+});
+
 // ── Start ──
 
 const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: HOST, idleTimeout: 255 });
 const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
 console.log(`Agent harness listening on http://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
 
+initScheduler();
+
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("Shutting down...");
+  stopScheduler();
   shutdownAll();
   server.stop();
   setTimeout(() => process.exit(0), 3000);

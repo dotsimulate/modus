@@ -1,0 +1,11 @@
+{
+  "name": "example-heartbeat",
+  "description": "Example scheduled task -- reports a brief system status",
+  "agentProfile": "test-harness",
+  "interval": "30s",
+  "enabled": false,
+  "maxTurns": 3,
+  "maxRuns": 3,
+  "maxCycles": 3,
+  "cycleInterval": "3m"
+}

@@ -360,6 +360,73 @@ export async function fetchMemories(): Promise<MemoryItem[]> {
   return res.json();
 }
 
+// ── Schedules ──
+
+export type ScheduleInfo = {
+  name: string;
+  description: string;
+  agentProfile: string;
+  interval: string;
+  cycleInterval?: string;
+  activeHours?: { start: string; end: string };
+  enabled: boolean;
+  maxTurns?: number;
+  maxRuns?: number;
+  maxCycles?: number;
+  nextRunAt: number | null;
+  lastRunAt: number | null;
+  lastStatus: string | null;
+  running: boolean;
+  cycleNumber: number;
+  cycleRunCount: number;
+};
+
+export type ScheduleRun = {
+  id: number;
+  scheduleName: string;
+  sessionId: string | null;
+  runNumber: number;
+  cycleNumber: number;
+  status: string;
+  summary: string | null;
+  startedAt: number;
+  completedAt: number | null;
+  costUsd: number;
+  error: string | null;
+};
+
+export async function fetchSchedules(): Promise<ScheduleInfo[]> {
+  const res = await fetch(`${API_BASE}/api/schedules`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function fetchScheduleRuns(name: string, limit = 20): Promise<ScheduleRun[]> {
+  const res = await fetch(
+    `${API_BASE}/api/schedules/${encodeURIComponent(name)}/runs?limit=${limit}`,
+    { headers: authHeaders() },
+  );
+  return res.json();
+}
+
+export async function triggerScheduleApi(name: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(name)}/trigger`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("trigger failed");
+}
+
+export async function updateScheduleApi(
+  name: string,
+  updates: { enabled?: boolean; interval?: string },
+): Promise<void> {
+  await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+}
+
 // ── Event Stream (SSE) ──
 
 export type EventStreamCallbacks = {

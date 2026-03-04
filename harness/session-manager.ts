@@ -133,6 +133,8 @@ export type ActiveSession = {
   thinkingDurationMs?: number;
   /** Skip user/prompt persistence on next resume (already persisted by queueMessage) */
   skipNextPromptPersist?: boolean;
+  /** Set when this session was spawned by the scheduler */
+  scheduleName?: string;
 };
 
 // ── Active Sessions Map ──
@@ -209,6 +211,7 @@ export type StartSessionOpts = {
   disallowedTools?: string[];
   loadProjectSettings?: boolean;
   sessionId?: string; // for resume
+  scheduleName?: string; // set when spawned by scheduler
 };
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
@@ -306,6 +309,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     sdkOptions,
     abortController,
     pendingMessages: [],
+    scheduleName: opts.scheduleName,
   };
 
   activeSessions.set(tempId, session);
@@ -394,6 +398,7 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
             costUsd: 0,
             lastPrompt: session.preview,
             cwd: session.sdkOptions.cwd,
+            scheduleName: session.scheduleName,
           });
           session.seq++;
           addEvent(realId, session.seq, "user", "prompt", JSON.stringify({
