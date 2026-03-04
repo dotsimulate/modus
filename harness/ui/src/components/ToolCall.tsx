@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { ToolCall as ToolCallType, Message } from "../types";
+import type { ToolCall as ToolCallType, Message } from "../api";
 
 type Props = {
   tool: ToolCallType;

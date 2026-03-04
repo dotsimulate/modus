@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { Message, ToolCall } from "../types";
+import type { Message, ToolCall } from "../api";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";

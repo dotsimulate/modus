@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { PendingPermission } from "../types";
+import type { PendingPermission } from "../api";
 
 type Props = {
   permissions: PendingPermission[];
