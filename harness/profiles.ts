@@ -75,12 +75,20 @@ export type UserProfileUi = {
   lastCwd?: string;
 };
 
+export type UserProfileMemory = {
+  scope: "global" | "profile";
+  inheritGlobal?: boolean;
+};
+
 export type UserProfile = {
   displayName: string;
   templateVars?: Record<string, string>;
   projects: string[];
   agentProfiles?: string[];
   memoryFilter?: string;
+  memory?: UserProfileMemory;
+  /** Show project paths from ALL user profiles in the CWD picker (default: false) */
+  showAllProjectPaths?: boolean;
   ui?: UserProfileUi;
 };
 

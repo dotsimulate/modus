@@ -187,7 +187,10 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
         const activeUp = up.find((u) => u.name === activeUserProfile);
         if (activeUp?.ui) {
           if (activeUp.ui.lastAgentProfile) setSelectedProfile(activeUp.ui.lastAgentProfile);
-          if (activeUp.ui.lastCwd) setSetupState((prev) => ({ ...prev, cwd: activeUp.ui!.lastCwd! }));
+          const defaultCwd = activeUp.ui.lastCwd ?? activeUp.projects?.[0] ?? "";
+          if (defaultCwd) setSetupState((prev) => ({ ...prev, cwd: defaultCwd }));
+        } else if (activeUp?.projects?.[0]) {
+          setSetupState((prev) => ({ ...prev, cwd: activeUp!.projects![0] }));
         }
       } catch {
         setHarnessUp(false);
@@ -526,11 +529,21 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
     saveUiState({ lastAgentProfile: name });
   }, [saveUiState]);
 
-  // Reload sessions when user profile changes
+  // Reload sessions + reset CWD when user profile changes
   useEffect(() => {
     refreshSessions();
     // Also reload user profiles to get fresh ui state
-    fetchUserProfiles().then(setUserProfiles).catch(() => {});
+    fetchUserProfiles().then((ups) => {
+      setUserProfiles(ups);
+      // Reset CWD to new profile's lastCwd or first project path
+      const up = ups.find((u) => u.name === activeUserProfile);
+      if (up) {
+        const cwd = up.ui?.lastCwd ?? up.projects?.[0] ?? "";
+        setSetupState((prev) => ({ ...prev, cwd }));
+        // Restore agent profile preference
+        if (up.ui?.lastAgentProfile) setSelectedProfile(up.ui.lastAgentProfile);
+      }
+    }).catch(() => {});
   }, [activeUserProfile, refreshSessions]);
 
   const activeProfileName = activeSession?.profile ?? selectedProfile;

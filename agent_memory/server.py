@@ -35,11 +35,24 @@ def resolve_config():
         ),
     )
     parser.add_argument(
+        "--read-dir",
+        action="append",
+        default=None,
+        help="Additional read-only memory directories (repeatable)",
+    )
+    parser.add_argument(
         "--skills-dir",
         action="append",
         default=None,
     )
     args = parser.parse_args()
+
+    # Read-only dirs: CLI args, then env var, then empty
+    read_dirs = args.read_dir or []
+    if not read_dirs:
+        env_read = os.environ.get("AGENT_MEMORY_READ_DIRS", "")
+        if env_read:
+            read_dirs = [d.strip() for d in env_read.split(",") if d.strip()]
 
     skills_dirs = args.skills_dir
     if not skills_dirs:
@@ -50,10 +63,10 @@ def resolve_config():
             default = Path(__file__).parent.parent / ".claude" / "skills"
             skills_dirs = [str(default)] if default.exists() else []
 
-    return args.memory_dir, skills_dirs
+    return args.memory_dir, read_dirs, skills_dirs
 
 
-MEMORY_DIR, SKILLS_DIRS = resolve_config()
+MEMORY_DIR, READ_DIRS, SKILLS_DIRS = resolve_config()
 Path(MEMORY_DIR).mkdir(parents=True, exist_ok=True)
 
 mcp = FastMCP("Agent Memory")
@@ -199,28 +212,35 @@ def query(input: str) -> str:
     memory_dir = Path(MEMORY_DIR)
     input = input.strip()
 
-    # ── Exact recall by ID ───────────────────────────────────────
-    exact_path = memory_dir / f"{input}.md"
-    if exact_path.exists():
-        mem = read_memory(exact_path)
-        if mem:
-            tags = ", ".join(mem["tags"]) if isinstance(mem["tags"], list) else mem["tags"]
-            return (
-                f"## Memory: {mem['id']}\n"
-                f"**Type:** {mem['type']}  |  "
-                f"**Confidence:** {mem['confidence']}  |  "
-                f"**Tags:** {tags}  |  "
-                f"**Created:** {mem['created']}\n\n"
-                f"{mem['content']}"
-            )
+    # All memory directories: primary first, then read-only dirs
+    all_memory_dirs = [memory_dir] + [Path(d) for d in READ_DIRS]
 
-    # ── Gather all memories ──────────────────────────────────────
-    memories = []
-    if memory_dir.exists():
-        for f in sorted(memory_dir.glob("*.md")):
-            mem = read_memory(f)
+    # ── Exact recall by ID ───────────────────────────────────────
+    for d in all_memory_dirs:
+        exact_path = d / f"{input}.md"
+        if exact_path.exists():
+            mem = read_memory(exact_path)
             if mem:
-                memories.append(mem)
+                tags = ", ".join(mem["tags"]) if isinstance(mem["tags"], list) else mem["tags"]
+                return (
+                    f"## Memory: {mem['id']}\n"
+                    f"**Type:** {mem['type']}  |  "
+                    f"**Confidence:** {mem['confidence']}  |  "
+                    f"**Tags:** {tags}  |  "
+                    f"**Created:** {mem['created']}\n\n"
+                    f"{mem['content']}"
+                )
+
+    # ── Gather all memories (primary wins on ID conflict) ────────
+    memories_by_id: dict[str, dict] = {}
+    for d in all_memory_dirs:
+        if not d.exists():
+            continue
+        for f in sorted(d.glob("*.md")):
+            mem = read_memory(f)
+            if mem and mem["id"] not in memories_by_id:
+                memories_by_id[mem["id"]] = mem
+    memories = list(memories_by_id.values())
 
     # ── Gather all skills ────────────────────────────────────────
     skills = []

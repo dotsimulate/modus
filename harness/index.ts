@@ -289,6 +289,7 @@ app.post("/api/sessions", async (c) => {
     prompt,
     attachments: body.attachments,
     profile: body.profile,
+    userProfile: body.userProfile,
     model: body.model,
     maxTurns: body.maxTurns,
     effort: body.effort,
@@ -426,6 +427,7 @@ app.post("/api/sessions/:id/messages", async (c) => {
       attachments: body.attachments,
       sessionId: id,
       profile: body.profile ?? existing?.profile ?? undefined,
+      userProfile: body.userProfile,
     });
     const start = Date.now();
     while (session.sessionId.startsWith("pending-") && Date.now() - start < 5000) {
@@ -516,46 +518,68 @@ app.get("/api/browse", async (c) => {
 
 // ── Memories (reads from agent_memory store) ──
 
-const MEMORY_DIR = new URL("../agent_memory/memory", import.meta.url).pathname;
+const MEMORY_BASE = new URL("../agent_memory/memory", import.meta.url).pathname;
 
-app.get("/api/memories", async (c) => {
+async function readMemoriesFromDir(dir: string): Promise<any[]> {
   const { readdir, readFile } = await import("fs/promises");
   const { resolve } = await import("path");
-  try {
-    const files = await readdir(MEMORY_DIR);
-    const memories: any[] = [];
-    for (const f of files) {
-      if (!f.endsWith(".md")) continue;
-      const text = await readFile(resolve(MEMORY_DIR, f), "utf-8");
-      const meta: Record<string, any> = {};
-      let body = text;
-      if (text.startsWith("---")) {
-        const end = text.indexOf("---", 3);
-        if (end !== -1) {
-          for (const line of text.slice(3, end).trim().split("\n")) {
-            const sep = line.indexOf(":");
-            if (sep === -1) continue;
-            const key = line.slice(0, sep).trim();
-            let val: any = line.slice(sep + 1).trim().replace(/^["']|["']$/g, "");
-            if (val.startsWith("[") && val.endsWith("]")) {
-              val = val.slice(1, -1).split(",").map((v: string) => v.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-            }
-            meta[key] = val;
+  const memories: any[] = [];
+  let files: string[];
+  try { files = await readdir(dir); } catch { return []; }
+  for (const f of files) {
+    if (!f.endsWith(".md")) continue;
+    const text = await readFile(resolve(dir, f), "utf-8");
+    const meta: Record<string, any> = {};
+    let body = text;
+    if (text.startsWith("---")) {
+      const end = text.indexOf("---", 3);
+      if (end !== -1) {
+        for (const line of text.slice(3, end).trim().split("\n")) {
+          const sep = line.indexOf(":");
+          if (sep === -1) continue;
+          const key = line.slice(0, sep).trim();
+          let val: any = line.slice(sep + 1).trim().replace(/^["']|["']$/g, "");
+          if (val.startsWith("[") && val.endsWith("]")) {
+            val = val.slice(1, -1).split(",").map((v: string) => v.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
           }
-          body = text.slice(end + 3).trim();
+          meta[key] = val;
         }
+        body = text.slice(end + 3).trim();
       }
-      memories.push({
-        id: f.replace(/\.md$/, ""),
-        type: meta.type ?? "",
-        tags: Array.isArray(meta.tags) ? meta.tags : [],
-        confidence: meta.confidence ?? "",
-        created: meta.created ?? "",
-        profile: meta.profile ?? null,
-        body,
-      });
     }
-    return c.json(memories);
+    memories.push({
+      id: f.replace(/\.md$/, ""),
+      type: meta.type ?? "",
+      tags: Array.isArray(meta.tags) ? meta.tags : [],
+      confidence: meta.confidence ?? "",
+      created: meta.created ?? "",
+      profile: meta.profile ?? null,
+      body,
+    });
+  }
+  return memories;
+}
+
+app.get("/api/memories", async (c) => {
+  try {
+    const profileName = new URL(c.req.url).searchParams.get("userProfile");
+    const userProf = profileName ? getUserProfile(profileName) : undefined;
+
+    if (userProf?.memory?.scope === "profile" && profileName) {
+      // Profile-scoped: read from profile dir, optionally merge global
+      const profileDir = `${MEMORY_BASE}/profiles/${profileName}`;
+      const profileMems = await readMemoriesFromDir(profileDir);
+      if (userProf.memory.inheritGlobal === false) return c.json(profileMems);
+
+      // Merge: profile wins on ID conflict
+      const seen = new Set(profileMems.map(m => m.id));
+      const globalMems = await readMemoriesFromDir(MEMORY_BASE);
+      const merged = [...profileMems, ...globalMems.filter(m => !seen.has(m.id))];
+      return c.json(merged);
+    }
+
+    // Default: global only
+    return c.json(await readMemoriesFromDir(MEMORY_BASE));
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
   }

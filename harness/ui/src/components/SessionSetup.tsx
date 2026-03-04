@@ -30,6 +30,8 @@ type Props = {
   onChange: (config: SessionSetupState) => void;
   /** Project paths from the active user profile — shown first in CWD dropdown */
   projectPaths?: string[];
+  /** When false, hide recent paths — profile only sees its own project paths */
+  showAllProjectPaths?: boolean;
 };
 
 const MODELS = [
@@ -47,6 +49,7 @@ export function SessionSetup({
   profileModel,
   onChange,
   projectPaths,
+  showAllProjectPaths,
 }: Props) {
   const [browseOpen, setBrowseOpen] = useState(false);
   const recentPaths = getRecentPaths();
@@ -98,15 +101,12 @@ export function SessionSetup({
                 }
               }}
             >
-              <option value="">server default</option>
-              {projectPaths && projectPaths.length > 0 && (
-                <optgroup label="projects">
-                  {projectPaths.map((p) => (
-                    <option key={p} value={p}>{shortenPath(p)}</option>
-                  ))}
-                </optgroup>
-              )}
-              {filteredRecent.length > 0 && (
+              {projectPaths && projectPaths.length > 0 &&
+                projectPaths.map((p) => (
+                  <option key={p} value={p}>{shortenPath(p)}</option>
+                ))
+              }
+              {showAllProjectPaths && filteredRecent.length > 0 && (
                 <optgroup label="recent">
                   {filteredRecent.map((p) => (
                     <option key={p} value={p}>{shortenPath(p)}</option>
