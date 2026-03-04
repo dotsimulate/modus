@@ -27,6 +27,10 @@ db.run(`
 
 // Migration: add status column if missing (existing DBs)
 try { db.run(`ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'done'`); } catch { /* already exists */ }
+// Migration: add archived column if missing
+try { db.run(`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
+// Migration: add draft_text column for persisting unsent user input
+try { db.run(`ALTER TABLE sessions ADD COLUMN draft_text TEXT DEFAULT ''`); } catch { /* already exists */ }
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -75,19 +79,6 @@ export type SessionRow = {
   last_response: string | null;
 };
 
-export type MessageRow = {
-  id: number;
-  session_id: string;
-  role: string;
-  content: string;
-  thinking: string | null;
-  cost_usd: number | null;
-  duration_ms: number | null;
-  model: string | null;
-  turns: number | null;
-  created_at: number;
-};
-
 export type EventRow = {
   id: number;
   session_id: string;
@@ -115,26 +106,19 @@ const stmts = {
       model = COALESCE($model, sessions.model)
   `),
   updateStatus: db.prepare(`UPDATE sessions SET status = $status, updated_at = $now WHERE id = $id`),
-  list: db.prepare(`SELECT * FROM sessions ORDER BY updated_at DESC LIMIT $limit`),
+  list: db.prepare(`SELECT * FROM sessions WHERE archived = 0 ORDER BY updated_at DESC LIMIT $limit`),
+  archive: db.prepare(`UPDATE sessions SET archived = 1, updated_at = $now WHERE id = $id`),
   get: db.prepare(`SELECT * FROM sessions WHERE id = $id`),
-  getActive: db.prepare(`SELECT * FROM sessions WHERE status IN ('running', 'idle', 'starting') ORDER BY updated_at DESC`),
-  delete: db.prepare(`DELETE FROM sessions WHERE id = $id`),
-
-  // Messages
-  addMessage: db.prepare(`
-    INSERT INTO messages (session_id, role, content, thinking, cost_usd, duration_ms, model, turns, created_at)
-    VALUES ($session_id, $role, $content, $thinking, $cost_usd, $duration_ms, $model, $turns, $created_at)
-  `),
-  getMessages: db.prepare(`SELECT * FROM messages WHERE session_id = $session_id ORDER BY created_at ASC`),
-
   // Events
   addEvent: db.prepare(`
     INSERT INTO events (session_id, seq, type, subtype, data, created_at)
     VALUES ($session_id, $seq, $type, $subtype, $data, $created_at)
   `),
   getEvents: db.prepare(`SELECT * FROM events WHERE session_id = $session_id AND seq > $after_seq ORDER BY seq ASC`),
-  getEventCount: db.prepare(`SELECT COUNT(*) as count FROM events WHERE session_id = $session_id`),
   getMaxSeq: db.prepare(`SELECT COALESCE(MAX(seq), 0) as max_seq FROM events WHERE session_id = $session_id`),
+  // Drafts
+  getDraft: db.prepare(`SELECT draft_text FROM sessions WHERE id = $id`),
+  setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text, updated_at = $now WHERE id = $id`),
 };
 
 // ── Session Functions ──
@@ -176,41 +160,8 @@ export function getSession(id: string): SessionRow | null {
   return (stmts.get.get({ $id: id }) as SessionRow) ?? null;
 }
 
-export function getActiveSessions(): SessionRow[] {
-  return stmts.getActive.all() as SessionRow[];
-}
-
-export function deleteSession(id: string) {
-  stmts.delete.run({ $id: id });
-}
-
-// ── Message Functions ──
-
-export function addMessage(opts: {
-  sessionId: string;
-  role: "user" | "assistant";
-  content: string;
-  thinking?: string;
-  costUsd?: number;
-  durationMs?: number;
-  model?: string;
-  turns?: number;
-}) {
-  stmts.addMessage.run({
-    $session_id: opts.sessionId,
-    $role: opts.role,
-    $content: opts.content,
-    $thinking: opts.thinking ?? null,
-    $cost_usd: opts.costUsd ?? null,
-    $duration_ms: opts.durationMs ?? null,
-    $model: opts.model ?? null,
-    $turns: opts.turns ?? null,
-    $created_at: Date.now(),
-  });
-}
-
-export function getMessages(sessionId: string): MessageRow[] {
-  return stmts.getMessages.all({ $session_id: sessionId }) as MessageRow[];
+export function archiveSession(id: string) {
+  stmts.archive.run({ $id: id, $now: Date.now() });
 }
 
 // ── Event Functions ──
@@ -230,14 +181,24 @@ export function getEvents(sessionId: string, afterSeq = 0): EventRow[] {
   return stmts.getEvents.all({ $session_id: sessionId, $after_seq: afterSeq }) as EventRow[];
 }
 
-export function getEventCount(sessionId: string): number {
-  const row = stmts.getEventCount.get({ $session_id: sessionId }) as { count: number };
-  return row?.count ?? 0;
-}
-
 export function getMaxSeq(sessionId: string): number {
   const row = stmts.getMaxSeq.get({ $session_id: sessionId }) as { max_seq: number };
   return row?.max_seq ?? 0;
 }
+
+// ── Draft Functions ──
+
+export function getDraft(sessionId: string): string {
+  const row = stmts.getDraft.get({ $id: sessionId }) as { draft_text: string } | null;
+  return row?.draft_text ?? "";
+}
+
+export function setDraft(sessionId: string, text: string) {
+  stmts.setDraft.run({ $id: sessionId, $draft_text: text, $now: Date.now() });
+}
+
+// ── Startup Cleanup ──
+// Mark orphaned running/starting sessions as idle (harness restarted while they were active)
+db.run(`UPDATE sessions SET status = 'idle' WHERE status IN ('running', 'starting')`);
 
 export { db };

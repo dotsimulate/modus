@@ -94,6 +94,7 @@ def read_memory(path: Path) -> dict | None:
         "tags": meta.get("tags", []),
         "confidence": meta.get("confidence", ""),
         "created": meta.get("created", ""),
+        "profile": meta.get("profile", None),
         "content": body,
     }
 
@@ -148,12 +149,16 @@ def save(id: str, content: str, type: str = "discovery", tags: str = "", confide
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     tags_yaml = "[" + ", ".join(tag_list) + "]" if tag_list else "[]"
 
+    profile = os.environ.get("AGENT_PROFILE", "")
+    profile_line = f"profile: {profile}\n" if profile else ""
+
     text = (
         f"---\n"
         f"type: {type}\n"
         f"tags: {tags_yaml}\n"
         f"confidence: {confidence}\n"
         f"created: {date.today().isoformat()}\n"
+        f"{profile_line}"
         f"---\n\n"
         f"{content}\n"
     )

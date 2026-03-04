@@ -9,7 +9,7 @@
  * ".." to go up. "Select" picks the current directory as the cwd.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { browsePath, type BrowseResult } from "../api";
 
 type Props = {
@@ -23,7 +23,6 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pathInput, setPathInput] = useState(initialPath ?? "");
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const navigate = (path?: string) => {
     setLoading(true);
@@ -64,7 +63,6 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
       {/* Editable path bar — type to jump */}
       <div className="folder-picker-pathbar">
         <input
-          ref={inputRef}
           className="folder-picker-input"
           value={pathInput}
           onChange={(e) => setPathInput(e.target.value)}

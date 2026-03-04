@@ -10,11 +10,42 @@ import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import {
   upsertSession, updateSessionStatus, addEvent, getMaxSeq, getSession,
 } from "./db";
-import { getProfile } from "./profiles";
-import type { Profile } from "./profiles";
+import { getProfile, getGlobalConfig, getUserData, type McpServerConfig } from "./profiles";
+import { resolveSecret } from "./secrets";
 
 const CLAUDE_PATH =
   process.env.CLAUDE_PATH || `${process.env.HOME}/.local/bin/claude`;
+
+// ── MCP Env Var Resolution ──
+
+/** Replace $VAR_NAME references in MCP server env objects using the secrets loader */
+function resolveEnvVars(
+  servers: Record<string, McpServerConfig>,
+): Record<string, McpServerConfig> {
+  const resolved: Record<string, McpServerConfig> = {};
+  for (const [name, config] of Object.entries(servers)) {
+    if ("env" in config && config.env) {
+      const resolvedEnv: Record<string, string> = {};
+      for (const [key, val] of Object.entries(config.env)) {
+        if (typeof val === "string" && val.startsWith("$")) {
+          const envVal = resolveSecret(val.slice(1));
+          if (envVal !== undefined) {
+            resolvedEnv[key] = envVal;
+          } else {
+            console.warn(`[mcp] Missing secret: ${val} for MCP server "${name}"`);
+            console.warn(`[mcp] Add ${val.slice(1)} to ~/.config/harness/secrets.env`);
+          }
+        } else {
+          resolvedEnv[key] = val;
+        }
+      }
+      resolved[name] = { ...config, env: resolvedEnv } as McpServerConfig;
+    } else {
+      resolved[name] = config;
+    }
+  }
+  return resolved;
+}
 
 // ── Types ──
 
@@ -25,8 +56,46 @@ export type SSEWriter = {
   close(): void;
 };
 
+/** An attachment sent from the frontend (base64 image) */
+export type ImageAttachment = {
+  type: "image";
+  mediaType: string;
+  data: string;
+  name?: string;
+};
+
+/** Content can be a plain string or structured content blocks (for images) */
+type MessageContent = string | Array<
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+>;
+
+/** Build SDK-compatible content from a prompt string + optional attachments */
+function buildContent(prompt: string, attachments?: ImageAttachment[]): MessageContent {
+  if (!attachments?.length) return prompt;
+  const blocks: MessageContent = [];
+  for (const att of attachments) {
+    (blocks as any[]).push({
+      type: "image",
+      source: { type: "base64", media_type: att.mediaType, data: att.data },
+    });
+  }
+  if (prompt) (blocks as any[]).push({ type: "text", text: prompt });
+  return blocks;
+}
+
+/** Extract plain text from content (for preview/logging) */
+function contentPreview(content: MessageContent, maxLen = 80): string {
+  if (typeof content === "string") return content.slice(0, maxLen);
+  const textBlock = (content as any[]).find((b: any) => b.type === "text");
+  const text = textBlock?.text ?? "";
+  const imgCount = (content as any[]).filter((b: any) => b.type === "image").length;
+  const prefix = imgCount > 0 ? `[${imgCount} image${imgCount > 1 ? "s" : ""}] ` : "";
+  return (prefix + text).slice(0, maxLen);
+}
+
 type InputChannel = {
-  push(content: string): void;
+  push(content: MessageContent): void;
   close(): void;
 };
 
@@ -43,13 +112,23 @@ export type ActiveSession = {
   numTurns: number;
   error: string | null;
   preview: string;
-  /** Full initial prompt text (preview is truncated) */
+  /** Full initial prompt content (may include image blocks) */
   initialPrompt: string;
+  /** Initial content for SDK (string or content blocks) */
+  initialContent: MessageContent;
   subscribers: Set<SSEWriter>;
   input: InputChannel;
   queryObj: ReturnType<typeof sdkQuery> | null;
   /** Timestamp when current turn started (for harness-side timing) */
   turnStartedAt: number;
+  /** SDK options used to create the query (needed for abort+resume) */
+  sdkOptions: any;
+  /** AbortController for the current query — abort() cleanly breaks the for-await loop */
+  abortController: AbortController;
+  /** Messages queued while agent is running — flushed to input after result event */
+  pendingMessages: MessageContent[];
+  /** Skip user/prompt persistence on next resume (already persisted by queueMessage) */
+  skipNextPromptPersist?: boolean;
 };
 
 // ── Active Sessions Map ──
@@ -86,7 +165,7 @@ function createInputChannel(): { generator: AsyncIterable<any>; channel: InputCh
   return {
     generator: gen(),
     channel: {
-      push(content: string) {
+      push(content: MessageContent) {
         const msg = {
           type: "user" as const,
           message: { role: "user" as const, content },
@@ -112,17 +191,11 @@ function createInputChannel(): { generator: AsyncIterable<any>; channel: InputCh
   };
 }
 
-// ── Event Classification ──
-
-function getSubtype(msg: any): string | null {
-  return msg.subtype ?? null;
-}
-
-
 // ── Start Session ──
 
 export type StartSessionOpts = {
   prompt: string;
+  attachments?: ImageAttachment[];
   profile?: string;
   model?: string;
   maxTurns?: number;
@@ -140,16 +213,33 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
 
   const profileDef = opts.profile ? getProfile(opts.profile) : undefined;
 
-  // Build system prompt
+  // Build system prompt — resolve {{key}} template vars from _users.json
   let systemPrompt: string | { type: "preset"; preset: "claude_code"; append?: string } | undefined;
-  const rawPrompt = profileDef?.prompt;
+  let rawPrompt = profileDef?.prompt;
   if (rawPrompt) {
+    const userData = getUserData();
+    rawPrompt = rawPrompt.replace(/\{\{(\w+)\}\}/g, (_, key) => userData[key] ?? `{{${key}}}`);
     if (profileDef?.promptMode === "custom") {
       systemPrompt = rawPrompt;
     } else {
       systemPrompt = { type: "preset", preset: "claude_code", append: rawPrompt };
     }
   }
+
+  // Merge MCP servers: global + profile (profile overrides global by key)
+  const globalConfig = getGlobalConfig();
+  const mergedMcp = {
+    ...(globalConfig.mcpServers ?? {}),
+    ...(profileDef?.mcpServers ?? {}),
+  };
+
+  // Inject AGENT_PROFILE into agent-memory so saved memories know their origin
+  if (mergedMcp["agent-memory"] && opts.profile) {
+    const am = mergedMcp["agent-memory"] as any;
+    am.env = { ...(am.env ?? {}), AGENT_PROFILE: opts.profile };
+  }
+
+  const hasMcp = Object.keys(mergedMcp).length > 0;
 
   const sdkOptions: any = {
     pathToClaudeCodeExecutable: CLAUDE_PATH,
@@ -165,7 +255,12 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     systemPrompt,
     settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
     permissionMode: "bypassPermissions" as const,
+    mcpServers: hasMcp ? resolveEnvVars(mergedMcp) : undefined,
   };
+
+  const abortController = new AbortController();
+
+  const initialContent = buildContent(opts.prompt, opts.attachments);
 
   const session: ActiveSession = {
     sessionId: tempId,
@@ -179,21 +274,25 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     costUsd: 0,
     numTurns: 0,
     error: null,
-    preview: opts.prompt.slice(0, 80),
+    preview: contentPreview(initialContent),
     initialPrompt: opts.prompt,
+    initialContent,
     subscribers: new Set(),
     input: channel,
     queryObj: null,
     turnStartedAt: Date.now(),
+    sdkOptions,
+    abortController,
+    pendingMessages: [],
   };
 
   activeSessions.set(tempId, session);
 
-  // Push the initial prompt into the input channel
-  channel.push(opts.prompt);
+  // Push the initial content into the input channel (may include image blocks)
+  channel.push(initialContent);
 
   // Start the SDK query with streaming input
-  const q = sdkQuery({ prompt: generator, options: sdkOptions });
+  const q = sdkQuery({ prompt: generator, options: { ...sdkOptions, abortController } });
   session.queryObj = q;
 
   // Background drain loop — runs until query completes
@@ -231,15 +330,20 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
         session.status = "running";
 
         if (isResume) {
-          // Resume: pick up existing seq, update status, save new user message
+          // Resume: pick up existing seq, update status
           session.seq = getMaxSeq(realId);
           updateSessionStatus(realId, "running");
-          session.seq++;
-          addEvent(realId, session.seq, "user", "prompt", JSON.stringify({
-            type: "user",
-            subtype: "prompt",
-            message: { role: "user", content: session.initialPrompt },
-          }));
+          // Save user message unless already persisted (e.g. restart after abort race)
+          if (session.skipNextPromptPersist) {
+            session.skipNextPromptPersist = false;
+          } else {
+            session.seq++;
+            addEvent(realId, session.seq, "user", "prompt", JSON.stringify({
+              type: "user",
+              subtype: "prompt",
+              message: { role: "user", content: session.initialContent },
+            }));
+          }
         } else {
           // Fresh session: create DB row + save first user message
           upsertSession({
@@ -256,7 +360,7 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
           addEvent(realId, session.seq, "user", "prompt", JSON.stringify({
             type: "user",
             subtype: "prompt",
-            message: { role: "user", content: session.initialPrompt },
+            message: { role: "user", content: session.initialContent },
           }));
         }
       }
@@ -304,6 +408,16 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
         // After result, the agent is idle (waiting for next input) or done
         // If the input channel is closed, the query will end naturally
         session.status = "idle";
+
+        // Flush any messages that were queued while the agent was running
+        if (session.pendingMessages.length > 0) {
+          const next = session.pendingMessages.shift()!;
+          session.input.push(next);
+          session.status = "running";
+          session.turnStartedAt = Date.now();
+          session.preview = contentPreview(next);
+          console.log(`[session-manager] flushing queued message for ${session.sessionId}: "${contentPreview(next, 60)}"`);
+        }
       }
 
       // ── Persist event to DB (selective for stream_event)
@@ -313,7 +427,7 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
           session.sessionId,
           session.seq,
           m.type,
-          getSubtype(m),
+          m.subtype ?? null,
           JSON.stringify(m),
         );
       }
@@ -330,20 +444,76 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
         }
       }
     }
-  } catch (err) {
-    session.error = String(err);
-    session.status = "error";
-    if (session.sessionId && !session.sessionId.startsWith("pending-")) {
-      updateSessionStatus(session.sessionId, "error");
-    }
-    // Broadcast error to subscribers
-    const errData = JSON.stringify({ type: "error", error: String(err) });
-    for (const sub of session.subscribers) {
-      try { await sub.write("error", errData, String(session.seq)); } catch { /* ignore */ }
+    console.log(`[session-manager] drain loop exited normally for ${session.sessionId}, status=${session.status}`);
+  } catch (err: any) {
+    console.log(`[session-manager] drain caught for ${session.sessionId}: name=${err?.name}, type=${err?.type}, code=${err?.code}, message=${String(err).slice(0, 200)}`);
+    const isAbort = err?.name === "AbortError" || err?.type === "abort"
+      || String(err).includes("aborted by user");
+    if (isAbort) {
+      // ESC/stop: user aborted the current turn. Set idle so session can be
+      // resumed later via startSession({ sessionId }). Don't treat as error.
+      console.log(`[session-manager] aborted ${session.sessionId}`);
+      session.status = "idle";
+      if (session.sessionId && !session.sessionId.startsWith("pending-")) {
+        updateSessionStatus(session.sessionId, "idle");
+        // Persist + broadcast a synthetic "interrupted" event so the UI can show it inline
+        const interruptData = JSON.stringify({ type: "system", subtype: "interrupted" });
+        session.seq++;
+        addEvent(session.sessionId, session.seq, "system", "interrupted", interruptData);
+        const seqStr = String(session.seq);
+        for (const sub of session.subscribers) {
+          try { await sub.write("system", interruptData, seqStr); } catch { session.subscribers.delete(sub); }
+        }
+      }
+    } else {
+      session.error = String(err);
+      session.status = "error";
+      if (session.sessionId && !session.sessionId.startsWith("pending-")) {
+        updateSessionStatus(session.sessionId, "error");
+      }
+      // Broadcast error to subscribers
+      const errData = JSON.stringify({ type: "error", error: String(err) });
+      for (const sub of session.subscribers) {
+        try { await sub.write("error", errData, String(session.seq)); } catch { /* ignore */ }
+      }
     }
   }
 
-  // Query finished — mark done
+  // If aborted (idle), check for pending messages from the STOP+SEND race.
+  // If messages arrived while the abort was in flight, restart with resume.
+  if (session.status === "idle") {
+    if (session.pendingMessages.length > 0) {
+      console.log(`[session-manager] ${session.pendingMessages.length} pending after abort, restarting ${session.sessionId}`);
+      session.abortController = new AbortController();
+      const { generator, channel } = createInputChannel();
+      session.input = channel;
+      const next = session.pendingMessages.shift()!;
+      session.initialContent = next;
+      session.initialPrompt = contentPreview(next, 200);
+      session.preview = contentPreview(next);
+      channel.push(next);
+      const sdkOpts = { ...session.sdkOptions, resume: session.sessionId, abortController: session.abortController };
+      const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
+      session.queryObj = newQ;
+      session.status = "running";
+      session.turnStartedAt = Date.now();
+      session.skipNextPromptPersist = true; // queueMessage already persisted it
+      // Fire new drain loop — don't remove from activeSessions
+      drainEvents(session, newQ).catch((err) => {
+        console.error(`[session-manager] restart drain error for ${session.sessionId}:`, err);
+        session.status = "error";
+        session.error = String(err);
+        updateSessionStatus(session.sessionId, "error");
+      });
+      return;
+    }
+    // Don't delete and don't send "done" — keep session + SSE alive.
+    // The interrupted event already told the frontend to go idle.
+    // Next resume will push events through the same SSE connection.
+    return;
+  }
+
+  // Query finished normally or with error — mark done
   if (session.status !== "error") {
     session.status = "done";
     if (session.sessionId && !session.sessionId.startsWith("pending-")) {
@@ -362,53 +532,78 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
 
 // ── Session Control ──
 
-export function queueMessage(sessionId: string, prompt: string): boolean {
+export function queueMessage(sessionId: string, prompt: string, attachments?: ImageAttachment[]): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
-  session.preview = prompt.slice(0, 80); // update preview to latest prompt
 
-  // Save user event for catch-up replay
+  const content = buildContent(prompt, attachments);
+
+  // Persist user event for catch-up replay
   if (!sessionId.startsWith("pending-")) {
     session.seq++;
     addEvent(sessionId, session.seq, "user", "prompt", JSON.stringify({
       type: "user",
       subtype: "prompt",
-      message: { role: "user", content: prompt },
+      message: { role: "user", content },
     }));
   }
 
-  session.input.push(prompt);
+  if (session.status === "running" || session.status === "starting") {
+    // Agent is mid-turn — hold the message. The drain loop flushes it
+    // into the input channel after the current turn's result event.
+    session.pendingMessages.push(content);
+    console.log(`[session-manager] queued message for ${sessionId} (${session.pendingMessages.length} pending): "${contentPreview(content, 60)}"`);
+    return true;
+  }
+
+  // Agent is idle (post-abort or waiting) — need a fresh SDK query to resume.
+  // The old input channel/generator died when the for-await loop ended.
+  session.abortController = new AbortController();
+  const { generator, channel } = createInputChannel();
+  session.input = channel;
+  session.initialPrompt = prompt;
+  session.initialContent = content;
+  session.preview = contentPreview(content);
+  channel.push(content);
+
+  const sdkOpts = {
+    ...session.sdkOptions,
+    resume: session.sessionId,
+    abortController: session.abortController,
+  };
+  const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
+  session.queryObj = newQ;
   session.status = "running";
   session.turnStartedAt = Date.now();
+  session.skipNextPromptPersist = true; // already persisted above
+
   if (!sessionId.startsWith("pending-")) {
     updateSessionStatus(sessionId, "running");
   }
-  return true;
-}
 
-export function interruptSession(sessionId: string): boolean {
-  const session = activeSessions.get(sessionId);
-  if (!session?.queryObj) return false;
-  (session.queryObj as any).interrupt?.();
+  drainEvents(session, newQ).catch((err) => {
+    console.error(`[session-manager] resume drain error for ${session.sessionId}:`, err);
+    session.status = "error";
+    session.error = String(err);
+    updateSessionStatus(session.sessionId, "error");
+  });
+
   return true;
 }
 
 export function stopSession(sessionId: string): boolean {
   const session = activeSessions.get(sessionId);
-  if (!session?.queryObj) return false;
-  session.input.close();
-  (session.queryObj as any).close?.();
-  session.status = "done";
-  if (!sessionId.startsWith("pending-")) {
-    updateSessionStatus(sessionId, "done");
-  }
+  if (!session) return false;
+  // Only abort — don't close input or set status.
+  // The drain loop's AbortError handler sets idle + checks pendingMessages.
+  session.abortController.abort();
   return true;
 }
 
 export function stopTask(sessionId: string, taskId: string): boolean {
   const session = activeSessions.get(sessionId);
   if (!session?.queryObj) return false;
-  (session.queryObj as any).stopTask?.(taskId);
+  session.queryObj.stopTask(taskId);
   return true;
 }
 
@@ -440,7 +635,7 @@ export function shutdownAll() {
   for (const [id, session] of activeSessions) {
     try {
       session.input.close();
-      (session.queryObj as any)?.close?.();
+      session.abortController.abort();
     } catch { /* best effort */ }
     activeSessions.delete(id);
   }

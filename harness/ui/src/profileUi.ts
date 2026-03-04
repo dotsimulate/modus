@@ -8,7 +8,6 @@ export type ProfileUiConfig = {
   showThinking: boolean;
   showMeta: boolean;
   showToolCalls: boolean;
-  showSubTasks: boolean;
   placeholder?: string;
   emptyTitle?: string;
   emptySubtitle?: string;
@@ -19,7 +18,6 @@ const defaults: ProfileUiConfig = {
   showThinking: true,
   showMeta: true,
   showToolCalls: true,
-  showSubTasks: true,
   placeholder: "message...",
   emptyTitle: undefined,
   emptySubtitle: "start typing to begin",
@@ -31,7 +29,6 @@ const configs: Record<string, Partial<ProfileUiConfig>> = {
     showThinking: true,
     showMeta: true,
     showToolCalls: false,
-    showSubTasks: false,
     placeholder: "test message...",
     emptyTitle: "test-harness",
     emptySubtitle: "haiku / low effort / read-only tools",
@@ -41,7 +38,6 @@ const configs: Record<string, Partial<ProfileUiConfig>> = {
     showThinking: true,
     showMeta: true,
     showToolCalls: true,
-    showSubTasks: true,
     placeholder: "what should we build?",
     emptyTitle: "dev-agent",
     emptySubtitle: "opus / full tools / self-learning",
@@ -51,7 +47,6 @@ const configs: Record<string, Partial<ProfileUiConfig>> = {
     showThinking: false,
     showMeta: true,
     showToolCalls: true,
-    showSubTasks: false,
     placeholder: "what should I research?",
     emptyTitle: "research",
     emptySubtitle: "sonnet / read-only / web search",
