@@ -366,7 +366,7 @@ export async function respondToPermission(
 
 // ── User Profiles ──
 
-export type UserProfileUi = {
+export type UserProfileState = {
   sidebarGroupMode?: "time" | "project";
   sidebarCollapsedGroups?: string[];
   sidebarConfigExpanded?: boolean;
@@ -383,7 +383,6 @@ export type UserProfile = {
   memoryFilter?: string;
   /** Show project paths from ALL user profiles in the CWD picker */
   showAllProjectPaths?: boolean;
-  ui?: UserProfileUi;
 };
 
 export async function fetchUserProfiles(): Promise<UserProfile[]> {
@@ -407,6 +406,21 @@ export async function saveUserProfileApi(name: string, profile: Omit<UserProfile
 
 export async function patchUserProfileApi(name: string, patch: Partial<UserProfile>): Promise<void> {
   await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+}
+
+// ── User Profile State (runtime, separate from config) ──
+
+export async function fetchUserProfileState(name: string): Promise<UserProfileState> {
+  const res = await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}/state`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function patchUserProfileStateApi(name: string, patch: Partial<UserProfileState>): Promise<void> {
+  await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}/state`, {
     method: "PATCH",
     headers: authHeaders(),
     body: JSON.stringify(patch),

@@ -1,0 +1,233 @@
+/**
+ * Tools — tool calls, arguments, output, TodoWrite, sub-agents.
+ *
+ * Component styles for tool call rendering in chat messages.
+ */
+
+/* ── Tool Calls ── */
+.message-tools { margin: 8px 0; }
+
+.tool-call {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin-bottom: 2px;
+  background: var(--bg-raised);
+}
+.tool-call.running { background: rgba(232, 155, 80, 0.04); }
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border-radius: 3px;
+}
+.tool-call-header:hover { background: var(--bg-surface); }
+
+.tool-call-indicator { width: 12px; text-align: center; flex-shrink: 0; }
+.tool-spinner {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border: 1px solid rgba(232, 155, 80, 0.25);
+  border-top-color: #e89b50;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.tool-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.tool-dot--ok { background: #33cc33; }
+.tool-dot--err { background: var(--error); }
+
+.tool-call-name { color: var(--text); font-weight: 500; flex-shrink: 0; }
+.tool-call.running .tool-call-name { color: #e89b50; }
+.tool-call.error .tool-call-name { color: var(--error); }
+.tool-call-summary { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tool-call-duration { color: var(--text-muted); margin-left: auto; flex-shrink: 0; font-size: 10px; }
+.tool-call-expand { color: var(--text-muted); width: 14px; text-align: center; flex-shrink: 0; font-size: 10px; }
+
+.tool-call-detail { padding: 2px 10px 8px; }
+
+/* ── Tool Args (key-value pairs) ── */
+.tool-args {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.tool-arg {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.tool-arg--block {
+  flex-direction: column;
+  gap: 3px;
+}
+.tool-arg-key {
+  color: var(--text-muted);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.tool-arg-val {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-arg-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px 8px;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* ── Tool Output ── */
+.tool-output-box {
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+.tool-output-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-bottom: 2px;
+}
+.tool-output-content {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  padding: 0;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.tool-output--pending {
+  color: #e89b50;
+  animation: pulse-dim 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dim {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ── TodoWrite (task checklist) ── */
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.todo-indicator {
+  width: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.todo-dot--pending {
+  background: var(--text-muted);
+}
+.todo-text {
+  color: var(--text);
+  line-height: 1.4;
+}
+.todo-item--completed .todo-text {
+  color: var(--text-dim);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+}
+.todo-item--in_progress .todo-text {
+  color: #e89b50;
+}
+.todo-item--pending .todo-text {
+  color: var(--text-dim);
+}
+
+/* ── Sub-agent (nested inside Agent tool call) ── */
+.tool-call.tool-call--agent,
+.tool-call.tool-call--agent.running,
+.tool-call.tool-call--agent.completed,
+.tool-call.tool-call--agent.error {
+  border-radius: 3px;
+  background: #050505;
+  border-color: rgba(255, 255, 255, 0.04);
+}
+.subagent-detail {
+  display: flex;
+  padding: 4px 6px;
+}
+.subagent-gutter {
+  flex-shrink: 0;
+  width: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+}
+.subagent-gutter:hover {
+  color: var(--text-muted);
+}
+.subagent-content {
+  flex: 1;
+  min-width: 0;
+}
+.subagent-msg { display: flex; flex-direction: column; gap: 4px; }
+.subagent-tools { display: flex; flex-direction: column; gap: 4px; }
+.subagent-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.subagent-summary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  white-space: pre-wrap;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.tool-call-sub-count {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+

@@ -1,0 +1,74 @@
+/**
+ * Mobile — responsive overrides, menu button, sidebar overlay.
+ *
+ * Imported last. Contains @media queries that override styles from all
+ * other files. Only breakpoint and mobile-specific adjustments belong here.
+ */
+
+/* ── Menu button (mobile only) ── */
+.menu-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  display: none;
+  align-items: center;
+}
+
+/* ── Sidebar Overlay ── */
+.sidebar-overlay {
+  display: none;
+}
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.1s ease;
+    width: 300px;
+    min-width: 300px;
+  }
+  .sidebar.collapsed {
+    width: 300px;
+    min-width: 300px;
+  }
+  .sidebar.collapsed .sidebar-sections,
+  .sidebar.collapsed .profile-panel,
+  .sidebar.collapsed .harness-status {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .sidebar.collapsed .new-session-btn { padding: 10px 14px; font-size: 13px; text-align: left; }
+  .sidebar-collapse-btn { display: none; }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background: rgba(0, 0, 0, 0.6);
+  }
+
+  .menu-btn {
+    display: flex;
+  }
+
+  .message { padding: 0 16px; max-width: 100%; }
+  .message-content { font-size: 13px; }
+  .message-content pre { max-width: calc(100vw - 32px); }
+  .config-bar-header { padding: 6px 16px; }
+  .config-bar-panel { padding: 8px 16px 12px; }
+  .chat-input-area { padding: 8px 16px; }
+  /* 16px prevents iOS Safari auto-zoom on focus */
+  .chat-textarea { font-size: 16px; }
+}
+

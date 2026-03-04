@@ -1,24 +1,38 @@
 # Profiles
 
 Two profile systems live here: **agent profiles** (what the agent is) and **user profiles**
-(who is using the harness). Plus shared config files.
+(who is using the harness). Plus shared config and runtime state.
 
 > **IMPORTANT FOR AGENTS:** If you modify the profile types in `profiles.ts` or change how
 > the backend validates/uses profile fields, update this README to match. This is the
 > canonical reference for the profile JSON schema.
 
-## File conventions
+## Directory structure
 
-| Pattern | Purpose |
-|---|---|
-| `<name>.json` | Agent profile |
-| `_user_<name>.json` | User profile |
-| `_global.json` | Global config (MCP servers shared across all sessions) |
-| `_users.json` | Shared user data / template variables |
+```
+profiles/
+├── agents/              ← agent profile definitions (config, edit deliberately)
+│   ├── dev-agent.json
+│   ├── research.json
+│   └── ...
+├── users/               ← user profile definitions (config, edit deliberately, gitignored)
+│   ├── harness-dev.json
+│   └── ...
+├── state/               ← runtime UI state (app-managed, gitignored, never hand-edit)
+│   ├── harness-dev.json
+│   └── ...
+├── _global.json         ← shared MCP servers merged into every session
+└── _users.json          ← shared user data / template variables (gitignored)
+```
+
+Three folders, three concerns:
+- **`agents/`** — what the agent is. Config. Edit deliberately.
+- **`users/`** — what the user sees. Config. Edit deliberately.
+- **`state/`** — where the app was last. Ephemeral. Gitignored. Never hand-edit.
 
 ## Agent Profile (`Profile`)
 
-Controls how an agent session behaves. Defined in `profiles.ts`.
+Controls how an agent session behaves. Stored in `agents/<name>.json`. Defined in `profiles.ts`.
 
 ```jsonc
 {
@@ -81,7 +95,7 @@ Controls how an agent session behaves. Defined in `profiles.ts`.
 ## User Profile (`UserProfile`)
 
 Scopes the harness UI and sessions to a specific person/project context.
-Stored as `_user_<name>.json`. Defined in `profiles.ts`.
+Stored in `users/<name>.json`. Defined in `profiles.ts`.
 
 ```jsonc
 {
@@ -116,18 +130,13 @@ Stored as `_user_<name>.json`. Defined in `profiles.ts`.
   },
 
   // Show project paths from ALL user profiles in the CWD picker (default: false)
-  "showAllProjectPaths": false,
-
-  // Persisted UI state — managed by the frontend via PATCH endpoint
-  "ui": {
-    "sidebarGroupMode": "time",       // "time" | "project"
-    "sidebarCollapsedGroups": [],
-    "sidebarConfigExpanded": false,
-    "lastAgentProfile": "dev-agent",
-    "lastCwd": "/home/dot/dev/infra/agent_dev_zone"
-  }
+  "showAllProjectPaths": false
 }
 ```
+
+**Note:** User profiles contain only stable config. Runtime UI state (last selected
+agent profile, sidebar collapse state, last CWD) lives in `state/<name>.json` and is
+managed automatically by the frontend.
 
 ### Memory scoping details
 
@@ -138,6 +147,20 @@ global `agent_memory/memory/` directory. The agent is unaware of this — `save(
 
 When `memory.inheritGlobal` is `true` (default), the agent also sees global memories
 when querying. When `false`, only profile-scoped memories are visible.
+
+## User Profile State (`UserProfileState`)
+
+Runtime UI state — app-managed, gitignored, never hand-edit. Stored in `state/<name>.json`.
+
+```jsonc
+{
+  "sidebarGroupMode": "time",       // "time" | "project"
+  "sidebarCollapsedGroups": [],
+  "sidebarConfigExpanded": false,
+  "lastAgentProfile": "dev-agent",
+  "lastCwd": "/home/dot/dev/infra/agent_dev_zone"
+}
+```
 
 ## Global Config (`_global.json`)
 
@@ -183,5 +206,9 @@ All profiles are managed via REST endpoints on the harness server. See `index.ts
 - `GET /api/user-profiles` — list all
 - `GET /api/user-profiles/:name` — get one
 - `PUT /api/user-profiles/:name` — create/replace
-- `PATCH /api/user-profiles/:name` — partial update (UI state)
+- `PATCH /api/user-profiles/:name` — partial update (config only)
 - `DELETE /api/user-profiles/:name` — delete
+
+**User profile state (runtime, separate from config):**
+- `GET /api/user-profiles/:name/state` — get state
+- `PATCH /api/user-profiles/:name/state` — partial update state

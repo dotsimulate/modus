@@ -7,10 +7,10 @@ import {
   createEmptySession, getDraft, saveDraft,
   authStatus, clearAuthToken, lockAll, checkToken,
   updateSessionConfig, respondToPermission,
-  fetchUserProfiles, patchUserProfileApi,
+  fetchUserProfiles, fetchUserProfileState, patchUserProfileStateApi,
 } from "./api";
 import { LoginScreen } from "./components/LoginScreen";
-import type { Profile, SessionInfo, CreateSessionOpts, UserProfile, UserProfileUi } from "./api";
+import type { Profile, SessionInfo, CreateSessionOpts, UserProfile, UserProfileState } from "./api";
 import type { Session, Attachment } from "./types";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
 import { nextMsgId } from "./types";
@@ -118,6 +118,7 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
   const [activeUserProfile, setActiveUserProfile] = useState<string | null>(() =>
     localStorage.getItem(USER_PROFILE_KEY),
   );
+  const [uiState, setUiState] = useState<UserProfileState>({});
   const uiSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Resolved user profile object
@@ -138,12 +139,12 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
     setActiveUserProfile(name);
   }, []);
 
-  /** Debounced save of UI state back to user profile */
-  const saveUiState = useCallback((ui: Partial<UserProfileUi>) => {
+  /** Debounced save of UI state (separate from profile config) */
+  const saveUiState = useCallback((patch: Partial<UserProfileState>) => {
     if (!activeUserProfile) return;
     if (uiSaveTimer.current) clearTimeout(uiSaveTimer.current);
     uiSaveTimer.current = setTimeout(() => {
-      patchUserProfileApi(activeUserProfile, { ui: ui as any }).catch(() => {});
+      patchUserProfileStateApi(activeUserProfile, patch).catch(() => {});
     }, 500);
   }, [activeUserProfile]);
 
@@ -183,11 +184,13 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
         setUserProfiles(up);
         setHarnessUp(true);
 
-        // Restore UI state from active user profile
+        // Restore UI state from separate state file
         const activeUp = up.find((u) => u.name === activeUserProfile);
-        if (activeUp?.ui) {
-          if (activeUp.ui.lastAgentProfile) setSelectedProfile(activeUp.ui.lastAgentProfile);
-          const defaultCwd = activeUp.ui.lastCwd ?? activeUp.projects?.[0] ?? "";
+        if (activeUserProfile) {
+          const state = await fetchUserProfileState(activeUserProfile);
+          setUiState(state);
+          if (state.lastAgentProfile) setSelectedProfile(state.lastAgentProfile);
+          const defaultCwd = state.lastCwd ?? activeUp?.projects?.[0] ?? "";
           if (defaultCwd) setSetupState((prev) => ({ ...prev, cwd: defaultCwd }));
         } else if (activeUp?.projects?.[0]) {
           setSetupState((prev) => ({ ...prev, cwd: activeUp!.projects![0] }));
@@ -532,16 +535,18 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
   // Reload sessions + reset CWD when user profile changes
   useEffect(() => {
     refreshSessions();
-    // Also reload user profiles to get fresh ui state
-    fetchUserProfiles().then((ups) => {
+    // Reload user profiles and state
+    Promise.all([
+      fetchUserProfiles(),
+      activeUserProfile ? fetchUserProfileState(activeUserProfile) : Promise.resolve({} as UserProfileState),
+    ]).then(([ups, state]) => {
       setUserProfiles(ups);
-      // Reset CWD to new profile's lastCwd or first project path
+      setUiState(state);
       const up = ups.find((u) => u.name === activeUserProfile);
       if (up) {
-        const cwd = up.ui?.lastCwd ?? up.projects?.[0] ?? "";
+        const cwd = state.lastCwd ?? up.projects?.[0] ?? "";
         setSetupState((prev) => ({ ...prev, cwd }));
-        // Restore agent profile preference
-        if (up.ui?.lastAgentProfile) setSelectedProfile(up.ui.lastAgentProfile);
+        if (state.lastAgentProfile) setSelectedProfile(state.lastAgentProfile);
       }
     }).catch(() => {});
   }, [activeUserProfile, refreshSessions]);
@@ -622,8 +627,8 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
               userProfiles={userProfiles}
               activeUserProfile={activeUserProfile}
               onSwitchUserProfile={switchUserProfile}
-              initialGroupMode={activeUP?.ui?.sidebarGroupMode}
-              initialCollapsedGroups={activeUP?.ui?.sidebarCollapsedGroups}
+              initialGroupMode={uiState.sidebarGroupMode}
+              initialCollapsedGroups={uiState.sidebarCollapsedGroups}
               onGroupModeChange={(mode) => saveUiState({ sidebarGroupMode: mode })}
               onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
               activeUserProfileObj={activeUP}

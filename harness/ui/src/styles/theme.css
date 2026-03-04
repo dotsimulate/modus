@@ -1,0 +1,124 @@
+/**
+ * Theme — CSS custom properties, resets, scrollbar, syntax highlighting.
+ *
+ * This is the primary theming surface. Edit colors, fonts, and visual tokens
+ * here. All other files reference these variables via var(--*).
+ * Changes here affect the look. They cannot break layout or components.
+ */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg: #000000;
+  --bg-raised: #0a0a0a;
+  --bg-surface: #111111;
+  --bg-hover: #1a1a1a;
+  --border: #1e1e1e;
+  --border-active: #333333;
+  --text: #e0e0e0;
+  --text-dim: #666666;
+  --text-muted: #444444;
+  --accent: #ffffff;
+  --thinking: #0d0d0d;
+  --error: #ff3333;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'IBM Plex Sans', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+::selection { background: rgba(255, 255, 255, 0.12); }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+
+/* ── Highlight.js tokens — dark theme ── */
+.hljs-keyword { color: #c678dd; }
+.hljs-built_in { color: #e5c07b; }
+.hljs-type { color: #e5c07b; }
+.hljs-literal { color: #d19a66; }
+.hljs-number { color: #d19a66; }
+.hljs-string { color: #98c379; }
+.hljs-regexp { color: #98c379; }
+.hljs-symbol { color: #56b6c2; }
+.hljs-comment,
+.hljs-quote { color: #5c6370; font-style: italic; }
+.hljs-doctag { color: #c678dd; }
+.hljs-meta { color: #5c6370; }
+.hljs-function,
+.hljs-title { color: #61afef; }
+.hljs-title.class_ { color: #e5c07b; }
+.hljs-title.function_ { color: #61afef; }
+.hljs-section { color: #61afef; }
+.hljs-variable { color: #e06c75; }
+.hljs-params { color: var(--text); }
+.hljs-attr { color: #d19a66; }
+.hljs-attribute { color: #d19a66; }
+.hljs-tag { color: #e06c75; }
+.hljs-name { color: #e06c75; }
+.hljs-selector-tag { color: #e06c75; }
+.hljs-selector-class { color: #d19a66; }
+.hljs-selector-id { color: #61afef; }
+.hljs-addition { color: #98c379; background: rgba(152, 195, 121, 0.08); }
+.hljs-deletion { color: #e06c75; background: rgba(224, 108, 117, 0.08); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+
+.message-thinking {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  font-style: italic;
+  color: #999;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: pre-wrap;
+  position: relative;
+  transition: background 0.15s ease;
+}
+.message-thinking:hover {
+  background: var(--bg-raised);
+}
+.thinking-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: italic;
+  color: #666;
+  margin-bottom: 2px;
+  padding-left: 12px;
+}
+.message-thinking:not(.expanded) {
+  max-height: calc(11px * 1.5 * 4 + 12px);
+  overflow: hidden;
+}
+.message-thinking:not(.expanded)::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(11px * 1.5 * 2);
+  background: linear-gradient(to bottom, transparent, var(--bg));
+  pointer-events: none;
+}
+

@@ -1,17 +1,25 @@
 /**
- * Profile loader — reads individual JSON files from harness/profiles/.
+ * Profile loader — reads JSON files from harness/profiles/ subfolders.
  *
- * Each profile is a separate .json file (filename = profile name).
- * _global.json holds MCP servers that merge into every session.
- * Agents and the UI can read/write these files via the CRUD API.
+ * Directory structure:
+ *   profiles/agents/   — agent profile definitions (config, edit deliberately)
+ *   profiles/users/    — user profile definitions (config, edit deliberately)
+ *   profiles/state/    — runtime UI state (app-managed, gitignored)
+ *   profiles/_global.json — shared MCP servers merged into every session
+ *   profiles/_users.json  — template var defaults
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync } from "fs";
 import { join, basename } from "path";
 
 const PROFILES_DIR = join(import.meta.dir, "profiles");
+const AGENTS_DIR = join(PROFILES_DIR, "agents");
+const USERS_DIR = join(PROFILES_DIR, "users");
+const STATE_DIR = join(PROFILES_DIR, "state");
 
-if (!existsSync(PROFILES_DIR)) mkdirSync(PROFILES_DIR, { recursive: true });
+for (const dir of [PROFILES_DIR, AGENTS_DIR, USERS_DIR, STATE_DIR]) {
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+}
 
 // ── Types ──
 
@@ -66,8 +74,9 @@ export type GlobalConfig = {
 
 // ── User Profiles ──
 // Scoped views of the harness — each profile filters projects, agent profiles, memory.
+// Config lives in profiles/users/. Runtime state lives in profiles/state/.
 
-export type UserProfileUi = {
+export type UserProfileState = {
   sidebarGroupMode?: "time" | "project";
   sidebarCollapsedGroups?: string[];
   sidebarConfigExpanded?: boolean;
@@ -89,47 +98,45 @@ export type UserProfile = {
   memory?: UserProfileMemory;
   /** Show project paths from ALL user profiles in the CWD picker (default: false) */
   showAllProjectPaths?: boolean;
-  ui?: UserProfileUi;
 };
 
-// ── Read ──
+// ── Helpers ──
 
-function readProfileFile(name: string): Profile | undefined {
-  const filePath = join(PROFILES_DIR, `${name}.json`);
+function readJson<T>(filePath: string): T | undefined {
   if (!existsSync(filePath)) return undefined;
   try {
-    return JSON.parse(readFileSync(filePath, "utf-8")) as Profile;
+    return JSON.parse(readFileSync(filePath, "utf-8")) as T;
   } catch (err) {
-    console.error(`[profiles] Failed to parse ${name}.json:`, err);
+    console.error(`[profiles] Failed to parse ${filePath}:`, err);
     return undefined;
   }
 }
 
-/** Resolve a profile name to its definition */
+function writeJson(filePath: string, data: unknown): void {
+  writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+}
+
+// ── Agent Profile CRUD ──
+
+function readProfileFile(name: string): Profile | undefined {
+  return readJson<Profile>(join(AGENTS_DIR, `${name}.json`));
+}
+
+/** Resolve an agent profile name to its definition */
 export function getProfile(name: string): Profile | undefined {
   return readProfileFile(name);
 }
 
-/** Read the global config (_global.json) */
-export function getGlobalConfig(): GlobalConfig {
-  const filePath = join(PROFILES_DIR, "_global.json");
-  if (!existsSync(filePath)) return {};
-  try {
-    return JSON.parse(readFileSync(filePath, "utf-8")) as GlobalConfig;
-  } catch {
-    return {};
-  }
-}
-
-/** List all profile names (excludes _global) */
+/** List all agent profile names */
 export function listProfileNames(): string[] {
-  return readdirSync(PROFILES_DIR)
-    .filter((f) => f.endsWith(".json") && !f.startsWith("_"))
+  if (!existsSync(AGENTS_DIR)) return [];
+  return readdirSync(AGENTS_DIR)
+    .filter((f) => f.endsWith(".json"))
     .map((f) => basename(f, ".json"))
     .sort();
 }
 
-/** Get all profiles as a Record */
+/** Get all agent profiles as a Record */
 export function getAllProfiles(): Record<string, Profile> {
   const result: Record<string, Profile> = {};
   for (const name of listProfileNames()) {
@@ -139,40 +146,36 @@ export function getAllProfiles(): Record<string, Profile> {
   return result;
 }
 
-// ── Write ──
-
-/** Save a profile (create or update) */
+/** Save an agent profile (create or update) */
 export function saveProfile(name: string, profile: Profile): void {
   if (name.startsWith("_")) throw new Error("Profile names cannot start with _");
-  writeFileSync(join(PROFILES_DIR, `${name}.json`), JSON.stringify(profile, null, 2) + "\n", "utf-8");
+  writeJson(join(AGENTS_DIR, `${name}.json`), profile);
 }
 
-/** Delete a profile */
+/** Delete an agent profile */
 export function deleteProfile(name: string): boolean {
-  const filePath = join(PROFILES_DIR, `${name}.json`);
+  const filePath = join(AGENTS_DIR, `${name}.json`);
   if (!existsSync(filePath)) return false;
   unlinkSync(filePath);
   return true;
 }
 
+// ── Global Config ──
+
+/** Read the global config (_global.json) */
+export function getGlobalConfig(): GlobalConfig {
+  return readJson<GlobalConfig>(join(PROFILES_DIR, "_global.json")) ?? {};
+}
+
 /** Save the global config */
 export function saveGlobalConfig(config: GlobalConfig): void {
-  writeFileSync(join(PROFILES_DIR, "_global.json"), JSON.stringify(config, null, 2) + "\n", "utf-8");
+  writeJson(join(PROFILES_DIR, "_global.json"), config);
 }
 
 // ── User Profile CRUD ──
 
-const USER_PROFILE_PREFIX = "_user_";
-
 function readUserProfileFile(name: string): UserProfile | undefined {
-  const filePath = join(PROFILES_DIR, `${USER_PROFILE_PREFIX}${name}.json`);
-  if (!existsSync(filePath)) return undefined;
-  try {
-    return JSON.parse(readFileSync(filePath, "utf-8")) as UserProfile;
-  } catch (err) {
-    console.error(`[profiles] Failed to parse user profile ${name}:`, err);
-    return undefined;
-  }
+  return readJson<UserProfile>(join(USERS_DIR, `${name}.json`));
 }
 
 export function getUserProfile(name: string): UserProfile | undefined {
@@ -180,9 +183,10 @@ export function getUserProfile(name: string): UserProfile | undefined {
 }
 
 export function listUserProfileNames(): string[] {
-  return readdirSync(PROFILES_DIR)
-    .filter((f) => f.endsWith(".json") && f.startsWith(USER_PROFILE_PREFIX))
-    .map((f) => basename(f, ".json").slice(USER_PROFILE_PREFIX.length))
+  if (!existsSync(USERS_DIR)) return [];
+  return readdirSync(USERS_DIR)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => basename(f, ".json"))
     .sort();
 }
 
@@ -196,30 +200,40 @@ export function getAllUserProfiles(): Record<string, UserProfile> {
 }
 
 export function saveUserProfile(name: string, profile: UserProfile): void {
-  writeFileSync(
-    join(PROFILES_DIR, `${USER_PROFILE_PREFIX}${name}.json`),
-    JSON.stringify(profile, null, 2) + "\n",
-    "utf-8",
-  );
+  writeJson(join(USERS_DIR, `${name}.json`), profile);
 }
 
 export function deleteUserProfile(name: string): boolean {
-  const filePath = join(PROFILES_DIR, `${USER_PROFILE_PREFIX}${name}.json`);
+  const filePath = join(USERS_DIR, `${name}.json`);
   if (!existsSync(filePath)) return false;
   unlinkSync(filePath);
   return true;
 }
 
-/** Partial update — merges provided fields into existing profile */
+/** Partial update — merges provided fields into existing user profile config */
 export function patchUserProfile(name: string, patch: Partial<UserProfile>): UserProfile | undefined {
   const existing = readUserProfileFile(name);
   if (!existing) return undefined;
   const merged = { ...existing, ...patch };
-  // Deep merge the ui object if both exist
-  if (patch.ui && existing.ui) {
-    merged.ui = { ...existing.ui, ...patch.ui };
-  }
   saveUserProfile(name, merged);
+  return merged;
+}
+
+// ── User Profile State CRUD ──
+// Runtime UI state — lives in profiles/state/, gitignored, app-managed.
+
+export function getUserProfileState(name: string): UserProfileState {
+  return readJson<UserProfileState>(join(STATE_DIR, `${name}.json`)) ?? {};
+}
+
+export function saveUserProfileState(name: string, state: UserProfileState): void {
+  writeJson(join(STATE_DIR, `${name}.json`), state);
+}
+
+export function patchUserProfileState(name: string, patch: Partial<UserProfileState>): UserProfileState {
+  const existing = getUserProfileState(name);
+  const merged = { ...existing, ...patch };
+  saveUserProfileState(name, merged);
   return merged;
 }
 

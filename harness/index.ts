@@ -13,6 +13,7 @@ import {
   setUserName, getUserName,
   getUserProfile, listUserProfileNames, getAllUserProfiles,
   saveUserProfile, deleteUserProfile, patchUserProfile,
+  getUserProfileState, patchUserProfileState,
 } from "./profiles";
 import {
   listSessions, listSessionsForProjects,
@@ -210,6 +211,20 @@ app.delete("/api/user-profiles/:name", (c) => {
   const deleted = deleteUserProfile(name);
   if (!deleted) return c.json({ error: "user profile not found" }, 404);
   return c.json({ ok: true });
+});
+
+// ── User Profile State (runtime UI state, separate from config) ──
+
+app.get("/api/user-profiles/:name/state", (c) => {
+  const name = c.req.param("name");
+  return c.json(getUserProfileState(name));
+});
+
+app.patch("/api/user-profiles/:name/state", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json();
+  const updated = patchUserProfileState(name, body);
+  return c.json(updated);
 });
 
 // ── Secrets Status (booleans only, no values) ──
