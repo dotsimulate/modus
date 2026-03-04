@@ -14,59 +14,18 @@ type Props = {
 
 export function ChatView({ messages, streaming, showThinking = true, showMeta = true, showToolCalls = true, emptyTitle, emptySubtitle }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isNearBottom = useRef(true);
+  const hasScrolledRef = useRef(false);
 
-  // Track if user is near bottom — only auto-scroll if they are
+  // Scroll to bottom on initial load and when user sends a message.
+  // All other auto-scrolling is handled by CSS overflow-anchor.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const onScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      isNearBottom.current = scrollHeight - scrollTop - clientHeight < 400;
-    };
-    container.addEventListener("scroll", onScroll, { passive: true });
-    return () => container.removeEventListener("scroll", onScroll);
-  }, []);
-
-  // Auto-scroll when a new message is added
-  useEffect(() => {
-    if (!endRef.current) return;
+    if (!endRef.current || messages.length === 0) return;
     const last = messages[messages.length - 1];
-    const userJustSent = last?.role === "user";
-    if (userJustSent || isNearBottom.current) {
-      requestAnimationFrame(() => {
-        endRef.current?.scrollIntoView({ behavior: "instant" });
-      });
+    if (!hasScrolledRef.current || last?.role === "user") {
+      hasScrolledRef.current = true;
+      endRef.current.scrollIntoView({ behavior: "instant" });
     }
   }, [messages.length]);
-
-  // During streaming, keep scrolling to bottom as content grows
-  useEffect(() => {
-    if (!streaming) return;
-    const interval = setInterval(() => {
-      if (isNearBottom.current && endRef.current) {
-        endRef.current.scrollIntoView({ behavior: "instant" });
-      }
-    }, 150);
-    return () => clearInterval(interval);
-  }, [streaming]);
-
-  // Re-scroll on viewport resize (mobile keyboard open/close)
-  useEffect(() => {
-    const onResize = () => {
-      if (isNearBottom.current && endRef.current) {
-        endRef.current.scrollIntoView({ behavior: "instant" });
-      }
-    };
-    const vv = window.visualViewport;
-    if (vv) {
-      vv.addEventListener("resize", onResize);
-      return () => vv.removeEventListener("resize", onResize);
-    }
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
 
   if (messages.length === 0) {
     return (
@@ -94,7 +53,7 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
   }
 
   return (
-    <div className="chat-messages" ref={containerRef}>
+    <div className="chat-messages">
       {messages.map((msg, i) =>
         msg.role === "system" ? (
           <div key={msg.id} className="system-divider">
@@ -119,7 +78,7 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
           />
         )
       )}
-      <div ref={endRef} />
+      <div ref={endRef} className="chat-anchor" />
     </div>
   );
 }

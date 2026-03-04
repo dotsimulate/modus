@@ -47,7 +47,7 @@ Controls how an agent session behaves. Defined in `profiles.ts`.
   // Tool blocklist (optional — applied after allowlist)
   "disallowedTools": ["WebSearch"],
 
-  // Whether to load CLAUDE.md and project settings (default: false)
+  // Whether to load CLAUDE.md and project settings (default: true)
   "loadProjectSettings": true,
 
   // MCP servers specific to this profile (merged with _global.json)
