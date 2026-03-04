@@ -554,6 +554,7 @@ async function readMemoriesFromDir(dir: string): Promise<any[]> {
       confidence: meta.confidence ?? "",
       created: meta.created ?? "",
       profile: meta.profile ?? null,
+      priority: parseInt(meta.priority ?? "0", 10) || 0,
       body,
     });
   }
