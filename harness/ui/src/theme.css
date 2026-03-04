@@ -1,0 +1,174 @@
+/**
+ * Theme — visual tokens, resets, animations, syntax highlighting.
+ *
+ * This is the "safe to customize" file. Everything here controls appearance,
+ * not structure. Editing variables, colors, or animations here will not break
+ * layout. Profile theming and visual customization should start here.
+ *
+ * Structure:
+ *   1. Font imports
+ *   2. CSS custom properties (color, typography, spacing tokens)
+ *   3. Base resets
+ *   4. Scrollbar styling
+ *   5. Keyframe animations
+ *   6. Syntax highlighting (highlight.js tokens)
+ */
+
+/* ── Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
+/* ── Design Tokens ── */
+:root {
+  /* Background scale (dark → light) */
+  --bg: #000000;
+  --bg-raised: #0a0a0a;
+  --bg-surface: #111111;
+  --bg-hover: #1a1a1a;
+
+  /* Border scale */
+  --border: #1e1e1e;
+  --border-active: #333333;
+
+  /* Text scale (bright → dim) */
+  --text: #e0e0e0;
+  --text-dim: #666666;
+  --text-muted: #444444;
+
+  /* Accent */
+  --accent: #ffffff;
+
+  /* Semantic */
+  --thinking: #0d0d0d;
+  --error: #ff3333;
+
+  /* Typography */
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'IBM Plex Sans', sans-serif;
+}
+
+/* ── Base Reset ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+::selection { background: rgba(255, 255, 255, 0.12); }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+
+/* ── Animations ── */
+
+/* Message entry — user messages flash orange, assistant flashes purple */
+@keyframes fade-user {
+  0% { color: #ff8c00; opacity: 0; transform: translateY(4px); }
+  40% { opacity: 1; transform: translateY(0); }
+  100% { color: var(--text); }
+}
+@keyframes fade-assistant {
+  0% { color: #b44dff; opacity: 0; transform: translateY(4px); }
+  40% { opacity: 1; transform: translateY(0); }
+  100% { color: var(--text); }
+}
+
+/* Cursor blink */
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Status pulse — running indicators */
+@keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+/* Tool activity pulse */
+@keyframes pulse-dim {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* Spinner rotation */
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Dashboard card shimmer */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Lightbox fade */
+@keyframes lightbox-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Memory feed animations */
+@keyframes memfeed-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes memfeed-drop {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes memfeed-exit {
+  to { opacity: 0; transform: translateY(6px); }
+}
+
+/* Login animations */
+@keyframes login-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.1); }
+}
+@keyframes login-scan {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
+@keyframes login-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+/* ── Syntax Highlighting (highlight.js — dark theme) ── */
+.hljs-keyword { color: #c678dd; }
+.hljs-built_in { color: #e5c07b; }
+.hljs-type { color: #e5c07b; }
+.hljs-literal { color: #d19a66; }
+.hljs-number { color: #d19a66; }
+.hljs-string { color: #98c379; }
+.hljs-regexp { color: #98c379; }
+.hljs-symbol { color: #56b6c2; }
+.hljs-comment,
+.hljs-quote { color: #5c6370; font-style: italic; }
+.hljs-doctag { color: #c678dd; }
+.hljs-meta { color: #5c6370; }
+.hljs-function,
+.hljs-title { color: #61afef; }
+.hljs-title.class_ { color: #e5c07b; }
+.hljs-title.function_ { color: #61afef; }
+.hljs-section { color: #61afef; }
+.hljs-variable { color: #e06c75; }
+.hljs-params { color: var(--text); }
+.hljs-attr { color: #d19a66; }
+.hljs-attribute { color: #d19a66; }
+.hljs-tag { color: #e06c75; }
+.hljs-name { color: #e06c75; }
+.hljs-selector-tag { color: #e06c75; }
+.hljs-selector-class { color: #d19a66; }
+.hljs-selector-id { color: #61afef; }
+.hljs-addition { color: #98c379; background: rgba(152, 195, 121, 0.08); }
+.hljs-deletion { color: #e06c75; background: rgba(224, 108, 117, 0.08); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }

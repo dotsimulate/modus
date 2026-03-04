@@ -974,6 +974,12 @@ html, body, #root {
   overscroll-behavior: contain;
 }
 
+/* Browser-native scroll anchoring: pins chat to bottom as content
+   grows without JS polling. Anchor element at the end of the list
+   is the only node the browser will anchor to. */
+.chat-messages > * { overflow-anchor: none; }
+.chat-anchor { overflow-anchor: auto; height: 1px; }
+
 .message {
   padding: 0 32px;
   margin-bottom: 24px;
