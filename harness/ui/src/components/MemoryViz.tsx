@@ -456,7 +456,7 @@ const DAMPING = 0.85;   // velocity damping (friction)
 const SETTLE_AGE = 60;  // frames until "fully settled" for connection fade-in
 
 // ── Main component ──
-export function MemoryViz() {
+export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -472,7 +472,7 @@ export function MemoryViz() {
   // Filters
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set(TYPE_ORDER));
   const [search, setSearch] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState(initialTagFilter ?? "");
   const [profileFilter, setProfileFilter] = useState("");
 
   // Camera

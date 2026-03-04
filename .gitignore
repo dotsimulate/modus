@@ -39,6 +39,9 @@ harness/profiles/_users.json
 # Claude settings (personal per-user)
 .claude/settings.local.json
 
+# Archive (local reference docs)
+archive/
+
 # Logs
 *.log
 logs/

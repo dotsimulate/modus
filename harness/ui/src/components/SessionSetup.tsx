@@ -28,6 +28,8 @@ type Props = {
   profileMaxTurns?: number;
   profileModel?: string;
   onChange: (config: SessionSetupState) => void;
+  /** Project paths from the active user profile — shown first in CWD dropdown */
+  projectPaths?: string[];
 };
 
 const MODELS = [
@@ -44,9 +46,13 @@ export function SessionSetup({
   profileMaxTurns,
   profileModel,
   onChange,
+  projectPaths,
 }: Props) {
   const [browseOpen, setBrowseOpen] = useState(false);
   const recentPaths = getRecentPaths();
+  const projectPathSet = new Set(projectPaths ?? []);
+  // Recent paths minus any that are already in projectPaths
+  const filteredRecent = recentPaths.filter((p) => !projectPathSet.has(p));
 
   const update = (patch: Partial<SessionSetupState>) => {
     onChange({ ...config, ...patch });
@@ -93,9 +99,20 @@ export function SessionSetup({
               }}
             >
               <option value="">server default</option>
-              {recentPaths.map((p) => (
-                <option key={p} value={p}>{shortenPath(p)}</option>
-              ))}
+              {projectPaths && projectPaths.length > 0 && (
+                <optgroup label="projects">
+                  {projectPaths.map((p) => (
+                    <option key={p} value={p}>{shortenPath(p)}</option>
+                  ))}
+                </optgroup>
+              )}
+              {filteredRecent.length > 0 && (
+                <optgroup label="recent">
+                  {filteredRecent.map((p) => (
+                    <option key={p} value={p}>{shortenPath(p)}</option>
+                  ))}
+                </optgroup>
+              )}
               <option value="__browse__">browse...</option>
             </select>
             <button
