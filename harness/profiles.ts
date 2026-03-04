@@ -20,6 +20,21 @@ export type McpServerConfig =
   | { type: "sse"; url: string; headers?: Record<string, string> }
   | { type: "http"; url: string; headers?: Record<string, string> };
 
+/**
+ * Permission policy controls how tool executions are gated.
+ * - "bypass"  — bypassPermissions, no checks at all (default for backward compat)
+ * - "ask"     — every tool call requires user approval via UI
+ * - object    — mixed: per-tool auto-approve or require-approval rules
+ */
+export type PermissionPolicy =
+  | "bypass"
+  | "ask"
+  | {
+      default: "approve" | "ask";
+      autoApprove?: string[];
+      requireApproval?: string[];
+    };
+
 export type Profile = {
   /** Agent system prompt */
   prompt: string;
@@ -41,6 +56,8 @@ export type Profile = {
   promptMode?: "custom" | "append";
   /** MCP server configurations for this profile */
   mcpServers?: Record<string, McpServerConfig>;
+  /** Permission policy — controls tool execution gating. Defaults to "bypass". */
+  permissionPolicy?: PermissionPolicy;
 };
 
 export type GlobalConfig = {

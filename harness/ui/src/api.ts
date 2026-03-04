@@ -343,6 +343,27 @@ export async function updateSessionConfig(
   });
 }
 
+// ── Permission Responses ──
+
+export type PermissionResponse = {
+  requestId: string;
+  behavior: "allow" | "deny";
+  updatedInput?: Record<string, unknown>;
+  message?: string;
+  scope?: "once" | "session";
+};
+
+export async function respondToPermission(
+  sessionId: string,
+  response: PermissionResponse,
+): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${sessionId}/permission-response`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(response),
+  });
+}
+
 // ── User Profiles ──
 
 export type UserProfileUi = {

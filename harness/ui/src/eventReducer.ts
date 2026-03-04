@@ -5,7 +5,7 @@
  * Enables deterministic state reconstruction on reconnect.
  */
 
-import type { Message, ToolCall, SubTask, SessionStatus, Attachment } from "./types";
+import type { Message, ToolCall, SubTask, SessionStatus, Attachment, PendingPermission } from "./types";
 import { nextMsgId } from "./types";
 
 export type ReducerState = {
@@ -31,6 +31,8 @@ export type ReducerState = {
   _activeAgentToolId?: string;
   /** Timestamp when thinking started streaming */
   _thinkingStartedAt?: number;
+  /** Pending permission requests awaiting user response */
+  pendingPermissions: PendingPermission[];
 };
 
 export function createInitialState(sessionId = ""): ReducerState {
@@ -47,6 +49,7 @@ export function createInitialState(sessionId = ""): ReducerState {
     _streamingThinking: "",
     _pendingToolCalls: new Map(),
     _subTasks: new Map(),
+    pendingPermissions: [],
   };
 }
 
@@ -158,6 +161,24 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
       _streamingThinking: "",
       activeToolName: undefined,
       activeToolElapsed: undefined,
+    };
+  }
+  if (m.subtype === "permission_request") {
+    const perm: PendingPermission = {
+      requestId: m.requestId,
+      toolName: m.toolName,
+      toolInput: m.toolInput ?? {},
+      toolUseID: m.toolUseID,
+      interactive: !!m.interactive,
+      decisionReason: m.decisionReason,
+      requestedAt: Date.now(),
+    };
+    return { ...s, pendingPermissions: [...s.pendingPermissions, perm] };
+  }
+  if (m.subtype === "permission_resolved") {
+    return {
+      ...s,
+      pendingPermissions: s.pendingPermissions.filter((p) => p.requestId !== m.requestId),
     };
   }
   if (m.subtype === "task_started") {
@@ -606,5 +627,6 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     _subTasks: new Map(),
     activeToolName: undefined,
     activeToolElapsed: undefined,
+    pendingPermissions: [],
   };
 }

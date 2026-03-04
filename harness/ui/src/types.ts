@@ -56,6 +56,18 @@ export type Message = {
   };
 };
 
+// ── Permission Requests ──
+
+export type PendingPermission = {
+  requestId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  toolUseID?: string;
+  interactive: boolean; // true = AskUserQuestion (needs user input, not just approve/deny)
+  decisionReason?: string;
+  requestedAt: number;
+};
+
 // ── Session Status ──
 
 export type SessionStatus = "starting" | "running" | "idle" | "done" | "error";
@@ -77,4 +89,6 @@ export type Session = {
   activeToolElapsed?: number;
   /** All tools reported by SDK init (built-in + MCP) */
   availableTools?: string[];
+  /** Pending permission requests awaiting user response */
+  pendingPermissions?: PendingPermission[];
 };

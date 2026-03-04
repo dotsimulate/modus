@@ -24,7 +24,7 @@ import {
 import {
   startSession, queueMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
-  updateSessionConfig,
+  updateSessionConfig, resolvePermission,
   type SSEWriter,
 } from "./session-manager";
 
@@ -449,6 +449,16 @@ app.post("/api/sessions/:id/stop-task", async (c) => {
   const body = await c.req.json();
   const ok = stopTask(c.req.param("id"), body.taskId);
   return c.json({ ok });
+});
+
+// Respond to a permission request (approve/deny from UI)
+app.post("/api/sessions/:id/permission-response", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  const { requestId, behavior, updatedInput, message, scope } = body;
+  if (!requestId || !behavior) return c.json({ error: "requestId and behavior required" }, 400);
+  const ok = resolvePermission(id, requestId, { behavior, updatedInput, message, scope });
+  return ok ? c.json({ ok: true }) : c.json({ error: "permission request not found" }, 404);
 });
 
 // Update session config (tools, etc.) — takes effect on next turn
