@@ -40,6 +40,12 @@
   width: 220px;
   z-index: 1;
 }
+.login-logo {
+  display: flex;
+  justify-content: center;
+  color: var(--text);
+  margin-bottom: 4px;
+}
 .login-subtitle {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -83,11 +89,11 @@
   font-size: 14px;
   letter-spacing: 0.04em;
   outline: none;
-  caret-color: var(--accent, #e89b50);
+  caret-color: var(--text);
   position: relative;
   z-index: 1;
 }
-.login-input-name { letter-spacing: normal; }
+.login-input-name { letter-spacing: normal; text-align: center; }
 .login-input-pw {
   color: transparent;
   caret-color: transparent;
@@ -140,7 +146,8 @@
 /* ── floating label (user field only) ── */
 .login-label {
   position: absolute;
-  left: 0;
+  left: 50%;
+  transform: translateX(-50%);
   top: 8px;
   font-family: var(--font-mono);
   font-size: 12px;
@@ -152,6 +159,8 @@
 .login-field:focus-within .login-label,
 .login-field.has-value .login-label {
   top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 8px;
   letter-spacing: 0.16em;
   color: rgba(255, 255, 255, 0.15);
@@ -165,10 +174,12 @@
 .login-noise {
   position: absolute;
   left: 0;
+  right: 0;
   top: 0;
   bottom: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   font-family: var(--font-mono);
   font-size: 14px;
   pointer-events: none;
@@ -178,7 +189,8 @@
 /* every character cell — fixed width so bullets replace glyphs in-place */
 .login-noise-glyph,
 .login-noise-locked,
-.login-noise-caret {
+.login-noise-caret,
+.login-noise-cursor {
   display: inline-block;
   width: 1ch;
   text-align: center;
@@ -196,12 +208,12 @@
 .login-noise-locked {
   color: rgba(255, 255, 255, 0.75);
 }
-.login-noise-caret {
-  color: transparent;
+.login-field.is-focused .login-noise-cursor {
+  color: rgba(255, 255, 255, 0.08);
   transition: color 0.05s;
 }
-.login-noise-caret.on {
-  color: var(--accent, #e89b50);
+.login-field.is-focused .login-noise-cursor.on {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* ── button (setup flow only) ── */
@@ -225,6 +237,7 @@
   font-size: 13px;
   color: var(--text-dim);
   padding: 2px 0;
+  text-align: center;
 }
 
 /* ── error with shake ── */

@@ -18,6 +18,7 @@ import './styles/components/media.css'
 import './styles/components/dashboard.css'
 import './styles/components/permissions.css'
 import './styles/components/create-profile.css'
+import './styles/components/mo-logo.css'
 
 // Views
 import './styles/views/login.css'

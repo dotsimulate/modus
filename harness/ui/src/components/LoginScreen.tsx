@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { verifyPin, setupNewPin, setAuthToken } from "../api";
+import { MoLogo } from "./MoLogo";
 
 const GLYPHS = "0123456789abcdefnrstiouxlm{}[]()=></:;.&|!?#@$%~^+*";
 const WORDS = [
@@ -66,15 +67,14 @@ function GlyphField({
     return () => clearInterval(id);
   }, [focused]);
 
-  // build display: bullets + caret + trailing noise
+  // build display: bullets + cursor glyph + trailing noise
   const display = [];
   for (let i = 0; i < NOISE_LEN; i++) {
     if (i < typed) {
       display.push(<span key={i} className="login-noise-locked">*</span>);
     } else if (i === typed && focused) {
-      display.push(<span key={i} className={`login-noise-caret${caretOn ? " on" : ""}`}>▎</span>);
+      display.push(<span key={i} className={`login-noise-cursor${caretOn ? " on" : ""}`}>_</span>);
     } else {
-      const idx = i < typed ? i : focused ? i - 1 : i; // offset for caret
       display.push(<span key={i} className="login-noise-glyph">{noise[i] ?? randomGlyph()}</span>);
     }
   }
@@ -167,6 +167,7 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
     <div className="login-screen">
       <div className="login-glow" />
       <div className="login-box">
+        <div className="login-logo"><MoLogo size={36} /></div>
         {isSetup && <div className="login-subtitle">set a pin to secure access</div>}
         {isSetup ? (
           <form className="login-form-stack" onSubmit={(e) => { e.preventDefault(); submitSetup(); }}>

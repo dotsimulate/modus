@@ -17,6 +17,14 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+.top-nav-logo {
+  display: flex;
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  margin-right: 8px;
+}
 .top-nav-links {
   display: flex;
   gap: 2px;

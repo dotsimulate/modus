@@ -14,6 +14,7 @@ import { MemoryViz } from "./components/MemoryViz";
 import { Schedules } from "./components/Schedules";
 import { GitPanel } from "./components/GitPanel";
 import { PermissionOverlay } from "./components/PermissionOverlay";
+import { MoLogo } from "./components/MoLogo";
 
 function App() {
   return (
@@ -106,8 +107,8 @@ function AppShell() {
             </svg>
           </button>
         )}
+        <span className="top-nav-logo" onClick={() => navigate("dashboard")}><MoLogo size={16} /></span>
         <nav className="top-nav-links">
-          <button className={`top-nav-link${view === "dashboard" ? " active" : ""}`} onClick={() => navigate("dashboard")}>dashboard</button>
           <button className={`top-nav-link${view === "chat" ? " active" : ""}`} onClick={() => navigate("chat")}>sessions</button>
           <button className={`top-nav-link${view === "memory" ? " active" : ""}`} onClick={() => navigate("memory")}>memory</button>
           <button className={`top-nav-link${view === "schedules" ? " active" : ""}`} onClick={() => navigate("schedules")}>schedules</button>
