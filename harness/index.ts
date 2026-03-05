@@ -616,7 +616,15 @@ import {
 import { getScheduleRuns as dbGetScheduleRuns } from "./db";
 
 app.get("/api/schedules", (c) => {
-  return c.json(getSchedules());
+  const userProfileName = new URL(c.req.url).searchParams.get("userProfile");
+  let schedules = getSchedules();
+  if (userProfileName) {
+    const userProf = getUserProfile(userProfileName);
+    if (userProf?.schedules && !userProf.schedules.includes("*")) {
+      schedules = schedules.filter(s => userProf.schedules!.includes(s.name));
+    }
+  }
+  return c.json(schedules);
 });
 
 app.get("/api/schedules/:name", (c) => {
@@ -640,7 +648,8 @@ app.get("/api/schedules/:name/runs", (c) => {
 
 app.post("/api/schedules/:name/trigger", async (c) => {
   const name = c.req.param("name");
-  const ok = await triggerSchedule(name);
+  const body = await c.req.json().catch(() => ({}));
+  const ok = await triggerSchedule(name, { userProfile: body.userProfile });
   if (!ok) return c.json({ error: "schedule not found or already running" }, 400);
   return c.json({ ok: true });
 });

@@ -1,8 +1,9 @@
 import { API_BASE, authHeaders } from "./_fetch";
 import type { ScheduleInfo, ScheduleRun } from "./types";
 
-export async function fetchSchedules(): Promise<ScheduleInfo[]> {
-  const res = await fetch(`${API_BASE}/api/schedules`, { headers: authHeaders() });
+export async function fetchSchedules(userProfile?: string | null): Promise<ScheduleInfo[]> {
+  const params = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : "";
+  const res = await fetch(`${API_BASE}/api/schedules${params}`, { headers: authHeaders() });
   return res.json();
 }
 
@@ -14,10 +15,11 @@ export async function fetchScheduleRuns(name: string, limit = 20): Promise<Sched
   return res.json();
 }
 
-export async function triggerScheduleApi(name: string): Promise<void> {
+export async function triggerScheduleApi(name: string, userProfile?: string | null): Promise<void> {
   const res = await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(name)}/trigger`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ userProfile: userProfile ?? undefined }),
   });
   if (!res.ok) throw new Error("trigger failed");
 }

@@ -225,7 +225,7 @@ function buildScheduleDB(scheduleName: string): ScheduleDB {
 
 // ── Run Execution ──
 
-async function executeRun(name: string): Promise<void> {
+async function executeRun(name: string, overrides?: { userProfile?: string }): Promise<void> {
   const state = scheduleStates.get(name);
   if (!state || state.running) return;
 
@@ -271,7 +271,8 @@ async function executeRun(name: string): Promise<void> {
 
     // Insert schedule_runs row
     const startedAt = Date.now();
-    runId = insertScheduleRun(name, runNumber, null, startedAt, state.cycleNumber);
+    const effectiveUserProfile = overrides?.userProfile ?? state.config.userProfile;
+    runId = insertScheduleRun(name, runNumber, null, startedAt, state.cycleNumber, effectiveUserProfile);
 
     // Spawn fresh session via existing session manager
     const cfg = state.config;
@@ -286,6 +287,7 @@ async function executeRun(name: string): Promise<void> {
       disallowedTools: cfg.disallowedTools,
       loadProjectSettings: cfg.loadProjectSettings,
       scheduleName: name,
+      userProfile: effectiveUserProfile,
     });
 
     // Wait for real session ID (pending-* → real ID)
@@ -420,10 +422,10 @@ export function getScheduleState(name: string): ScheduleState | undefined {
 }
 
 /** Manually trigger a run (bypasses interval and active hours) */
-export async function triggerSchedule(name: string): Promise<boolean> {
+export async function triggerSchedule(name: string, opts?: { userProfile?: string }): Promise<boolean> {
   const state = scheduleStates.get(name);
   if (!state || state.running) return false;
-  executeRun(name).catch(err => {
+  executeRun(name, opts).catch(err => {
     console.error(`[scheduler] Manual trigger error for "${name}":`, err);
   });
   return true;

@@ -4,6 +4,7 @@ import {
   triggerScheduleApi, updateScheduleApi,
 } from "../api";
 import type { ScheduleInfo, ScheduleRun } from "../api";
+import { useProfiles } from "../providers/ProfileProvider";
 
 type Props = {
   onSelectSession: (id: string) => void;
@@ -30,6 +31,7 @@ function statusClass(s: ScheduleInfo): string {
 }
 
 export function Schedules({ onSelectSession }: Props) {
+  const { activeUserProfile } = useProfiles();
   const [schedules, setSchedules] = useState<ScheduleInfo[]>([]);
   const [expandedName, setExpandedName] = useState<string | null>(null);
   const [runs, setRuns] = useState<ScheduleRun[]>([]);
@@ -41,19 +43,19 @@ export function Schedules({ onSelectSession }: Props) {
     return () => clearInterval(t);
   }, []);
 
-  // Poll schedules every 5s
+  // Poll schedules every 5s, scoped to active user profile
   useEffect(() => {
     let active = true;
     const poll = async () => {
       try {
-        const s = await fetchSchedules();
+        const s = await fetchSchedules(activeUserProfile);
         if (active) setSchedules(s);
       } catch { /* silent */ }
     };
     poll();
     const interval = setInterval(poll, 5000);
     return () => { active = false; clearInterval(interval); };
-  }, []);
+  }, [activeUserProfile]);
 
   // Load runs when expanding a schedule
   useEffect(() => {
@@ -78,8 +80,8 @@ export function Schedules({ onSelectSession }: Props) {
   }, []);
 
   const handleTrigger = useCallback(async (name: string) => {
-    await triggerScheduleApi(name).catch(() => {});
-  }, []);
+    await triggerScheduleApi(name, activeUserProfile).catch(() => {});
+  }, [activeUserProfile]);
 
   return (
     <div className="schedules-view">
