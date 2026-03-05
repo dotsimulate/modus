@@ -1,28 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  createSession, sendMessage as apiSendMessage, stopSessionApi,
-  archiveSessionApi,
-  fetchProfiles, fetchSessions, fetchSessionsScoped,
-  subscribeEvents, healthCheck,
-  createEmptySession, getDraft, saveDraft,
-  authStatus, clearAuthToken, lockAll, checkToken,
-  updateSessionConfig, respondToPermission,
-  fetchUserProfiles, fetchUserProfileState, patchUserProfileStateApi,
-  nextMsgId,
-} from "./api";
-import type {
-  Profile, SessionInfo, CreateSessionOpts, UserProfile, UserProfileState,
-  Session, Attachment, ApiAttachment, ProfileUi,
-} from "./api";
-import { LoginScreen } from "./components/LoginScreen";
-import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
+import { useState, useEffect, useCallback } from "react";
+import type { ProfileUi } from "./api";
+import { healthCheck } from "./api";
+import { AuthProvider, useAuth } from "./providers/AuthProvider";
+import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
+import { SessionProvider, useSession } from "./providers/SessionProvider";
+import { useHashRouter } from "./hooks/useHashRouter";
 import { Sidebar } from "./components/Sidebar";
 import { ChatView } from "./components/ChatView";
 import { ChatInput } from "./components/ChatInput";
 import { ConfigBar } from "./components/ConfigBar";
-import { createDefaultSetupState, type SessionSetupState } from "./components/SessionSetup";
-import { addRecentPath } from "./recentPaths";
-import { agentConfigToOverrides, type AgentConfigState } from "./components/AgentConfig";
 import { Dashboard } from "./components/Dashboard";
 import { MemoryViz } from "./components/MemoryViz";
 import { Schedules } from "./components/Schedules";
@@ -30,527 +16,66 @@ import { GitPanel } from "./components/GitPanel";
 import { PermissionOverlay } from "./components/PermissionOverlay";
 
 function App() {
-  // ── PIN Auth Gate ──
-  const [authState, setAuthState] = useState<"checking" | "login" | "setup" | "ok">("checking");
-  const [userName, setUserName] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (authState !== "checking") return;
-    authStatus()
-      .then(async ({ required, setup, name }) => {
-        if (name) setUserName(name);
-        if (setup) { setAuthState("setup"); return; }
-        if (!required) { setAuthState("ok"); return; }
-        // PIN required — validate existing token if we have one
-        const existing = localStorage.getItem("harness_token");
-        if (existing) {
-          try {
-            await checkToken();
-            setAuthState("ok");
-            return;
-          } catch {
-            // Token stale (server restarted) — clear and show login
-            clearAuthToken();
-          }
-        }
-        setAuthState("login");
-      })
-      .catch(() => setAuthState("ok")); // server unreachable — let AppInner handle it
-  }, [authState]);
-
-  // Poll to detect server-side lock — kicks all tabs/devices to login
-  useEffect(() => {
-    if (authState !== "ok") return;
-    if (!localStorage.getItem("harness_token")) return; // no PIN auth, skip
-
-    const interval = setInterval(async () => {
-      try {
-        await checkToken();
-      } catch {
-        clearAuthToken();
-        setAuthState("checking");
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [authState]);
-
-  const handleAuth = useCallback((name: string) => {
-    setUserName(name || null);
-    setAuthState("ok");
-  }, []);
-
-  const handleLock = useCallback(() => {
-    lockAll().catch(() => {}); // invalidate all browser sessions server-side
-    clearAuthToken();
-    setUserName(null);
-    setAuthState("checking");
-  }, []);
-
-  if (authState === "checking") return null;
-  if (authState === "setup") return <LoginScreen isSetup onAuth={handleAuth} />;
-  if (authState === "login") return <LoginScreen savedName={userName ?? undefined} onAuth={handleAuth} />;
-  return <AppInner onLock={handleLock} userName={userName} />;
+  return (
+    <AuthProvider>
+      <ProfileProvider>
+        <SessionProvider>
+          <AppShell />
+        </SessionProvider>
+      </ProfileProvider>
+    </AuthProvider>
+  );
 }
 
-const USER_PROFILE_KEY = "harness:active-user-profile";
+function AppShell() {
+  const { userName, handleLock } = useAuth();
+  const {
+    profiles, visibleProfiles, userProfiles,
+    activeUserProfile, activeUP,
+    selectedProfile, selectProfile,
+    setupState, setSetupState,
+    liveAgentConfig, setLiveAgentConfig,
+    uiState, saveUiState, switchUserProfile,
+  } = useProfiles();
+  const {
+    activeSession, serverSessions,
+    input, handleInputChange,
+    send, stop, newSession, selectSession, archiveSession,
+    handlePermissionResponse,
+  } = useSession();
+  const { view, navigate } = useHashRouter();
 
-function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string | null }) {
-  const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
-  const [activeSession, setActiveSession] = useState<Session | null>(null);
-
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState("test-harness");
-  const [input, setInput] = useState("");
+  // ── Local UI state ──
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [view, setView] = useState<"chat" | "dashboard" | "memory" | "schedules" | "git">(() => {
-    const h = window.location.hash;
-    if (h === "#dashboard") return "dashboard";
-    if (h === "#memory") return "memory";
-    if (h === "#schedules") return "schedules";
-    if (h === "#git") return "git";
-    return "chat";
-  });
 
-  // ── User Profiles ──
-  const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
-  const [activeUserProfile, setActiveUserProfile] = useState<string | null>(() =>
-    localStorage.getItem(USER_PROFILE_KEY),
-  );
-  const [uiState, setUiState] = useState<UserProfileState>({});
-  const uiSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Resolved user profile object
-  const activeUP = userProfiles.find((p) => p.name === activeUserProfile) ?? null;
-
-  // Filter agent profiles by user profile's agentProfiles list
-  const visibleProfiles = activeUP?.agentProfiles
-    ? profiles.filter((p) => activeUP.agentProfiles!.includes(p.name))
-    : profiles;
-
-  /** Switch user profile — restore UI state from profile, reload sessions */
-  const switchUserProfile = useCallback((name: string | null) => {
-    if (name) {
-      localStorage.setItem(USER_PROFILE_KEY, name);
-    } else {
-      localStorage.removeItem(USER_PROFILE_KEY);
-    }
-    setActiveUserProfile(name);
-  }, []);
-
-  /** Debounced save of UI state (separate from profile config) */
-  const saveUiState = useCallback((patch: Partial<UserProfileState>) => {
-    if (!activeUserProfile) return;
-    if (uiSaveTimer.current) clearTimeout(uiSaveTimer.current);
-    uiSaveTimer.current = setTimeout(() => {
-      patchUserProfileStateApi(activeUserProfile, patch).catch(() => {});
-    }, 500);
-  }, [activeUserProfile]);
-
-  // New: structured setup state replaces old sessionOverrides
-  const [setupState, setSetupState] = useState<SessionSetupState>(createDefaultSetupState());
-
-  // Agent config for mid-session use (popover in ChatInput)
-  const [liveAgentConfig, setLiveAgentConfig] = useState<AgentConfigState>({
-    toolStates: {},
-    effort: "",
-    maxTurns: "",
-  });
-
-  // Event reducer state — ref for performance
-  const reducerState = useRef<ReducerState>(createInitialState());
-  const unsubRef = useRef<(() => void) | null>(null);
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sseConnectedRef = useRef(false);
-
-  const [pendingHashId, setPendingHashId] = useState<string | null>(() => {
-    const hash = window.location.hash.slice(1);
-    return hash || null;
-  });
-
-  // ── Load profiles + sessions + user profiles ──
-
+  // Health check
   useEffect(() => {
-    const loadInitial = async () => {
-      try {
-        const [p, s, up] = await Promise.all([
-          fetchProfiles(),
-          activeUserProfile ? fetchSessionsScoped(50, activeUserProfile) : fetchSessions(),
-          fetchUserProfiles(),
-        ]);
-        setProfiles(p);
-        setServerSessions(s);
-        setUserProfiles(up);
-        setHarnessUp(true);
-
-        // Restore UI state from separate state file
-        const activeUp = up.find((u) => u.name === activeUserProfile);
-        if (activeUserProfile) {
-          const state = await fetchUserProfileState(activeUserProfile);
-          setUiState(state);
-          if (state.lastAgentProfile) setSelectedProfile(state.lastAgentProfile);
-          const defaultCwd = state.lastCwd ?? activeUp?.projects?.[0] ?? "";
-          if (defaultCwd) setSetupState((prev) => ({ ...prev, cwd: defaultCwd }));
-        } else if (activeUp?.projects?.[0]) {
-          setSetupState((prev) => ({ ...prev, cwd: activeUp!.projects![0] }));
-        }
-      } catch {
-        setHarnessUp(false);
-      }
-    };
-    loadInitial();
-
-    const interval = setInterval(() => {
-      healthCheck().then(() => setHarnessUp(true)).catch(() => setHarnessUp(false));
-    }, 15000);
+    const check = () => healthCheck().then(() => setHarnessUp(true)).catch(() => setHarnessUp(false));
+    check();
+    const interval = setInterval(check, 15000);
     return () => clearInterval(interval);
   }, []);
 
-  // ── Hash-based view routing ──
-  useEffect(() => {
-    const onHash = () => {
-      const h = window.location.hash;
-      if (h === "#dashboard") setView("dashboard");
-      else if (h === "#memory") setView("memory");
-      else if (h === "#schedules") setView("schedules");
-      else if (h === "#git") setView("git");
-      else setView("chat");
-    };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-
-  const refreshSessions = useCallback(async () => {
-    try {
-      const s = activeUserProfile
-        ? await fetchSessionsScoped(50, activeUserProfile)
-        : await fetchSessions();
-      setServerSessions(s);
-    } catch { /* silent */ }
-  }, [activeUserProfile]);
-
-  // ── URL hash sync ──
-
-  const updateHash = useCallback((id: string | null) => {
-    if (id && !id.startsWith("pending-")) {
-      window.history.replaceState(null, "", `#${id}`);
-    } else {
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-  }, []);
-
-  // ── Apply reducer state to React state ──
-
-  const syncSessionFromReducer = useCallback((rs: ReducerState, profile?: string) => {
-    setActiveSession({
-      id: rs.sessionId,
-      status: rs.status,
-      preview: rs.messages[0]?.content?.slice(0, 60) ?? "",
-      profile,
-      model: rs.model,
-      messages: rs.messages,
-      totalCost: rs.totalCost,
-      lastSeq: rs.lastSeq,
-      createdAt: rs.createdAt,
-      updatedAt: Date.now(),
-      activeToolName: rs.activeToolName,
-      activeToolElapsed: rs.activeToolElapsed,
-      availableTools: rs.availableTools.length > 0 ? rs.availableTools : undefined,
-      pendingPermissions: rs.pendingPermissions.length > 0 ? rs.pendingPermissions : undefined,
-    });
-  }, []);
-
-  // ── Subscribe to event stream ──
-
-  const subscribeToSession = useCallback((sessionId: string, afterSeq: number, profile?: string) => {
-    unsubRef.current?.();
-
-    sseConnectedRef.current = true;
-    const unsub = subscribeEvents(sessionId, afterSeq, {
-      onEvent: (event, seq) => {
-        reducerState.current = reduceEvent(reducerState.current, event, seq);
-        syncSessionFromReducer(reducerState.current, profile);
-      },
-      onDone: () => {
-        sseConnectedRef.current = false;
-        // Server sent "done" — clean close. Set to idle.
-        if (reducerState.current.status === "running" || reducerState.current.status === "starting") {
-          reducerState.current = { ...reducerState.current, status: "idle" };
-        }
-        syncSessionFromReducer(reducerState.current, profile);
-        refreshSessions();
-      },
-      onDisconnect: () => {
-        sseConnectedRef.current = false;
-        // Network drop — auto-reconnect after a short delay
-        console.warn(`SSE disconnected for ${sessionId}, reconnecting...`);
-        setTimeout(() => {
-          if (unsubRef.current === unsub) {
-            subscribeToSession(sessionId, reducerState.current.lastSeq, profile);
-          }
-        }, 2000);
-      },
-      onError: (error) => {
-        sseConnectedRef.current = false;
-        reducerState.current = { ...reducerState.current, status: "error" };
-        syncSessionFromReducer(reducerState.current, profile);
-        console.error("Event stream error:", error);
-      },
-    });
-    unsubRef.current = unsub;
-  }, [syncSessionFromReducer, refreshSessions]);
-
-  // ── Session Actions ──
-
-  // Save draft for current session before navigating away
-  const saveDraftForCurrent = useCallback(async (text?: string) => {
-    const id = activeSession?.id;
-    if (id && !id.startsWith("pending-")) {
-      await saveDraft(id, text ?? input).catch(() => {});
-    }
-  }, [activeSession, input]);
-
-  const newSession = useCallback(async () => {
-    // Save draft for current session
-    await saveDraftForCurrent();
-
-    unsubRef.current?.();
-    unsubRef.current = null;
-
-    // Create an empty session in DB so it persists immediately
-    const profile = selectedProfile || undefined;
-    try {
-      const id = await createEmptySession(profile);
-      const rs = createInitialState(id);
-      rs.status = "idle";
-      reducerState.current = rs;
-      syncSessionFromReducer(rs, profile);
-      updateHash(id);
-      refreshSessions();
-    } catch {
-      // Fallback: local-only empty state
-      reducerState.current = createInitialState();
-      setActiveSession(null);
-      updateHash(null);
-    }
-
-    setInput("");
-    setLiveAgentConfig({ toolStates: {}, effort: "", maxTurns: "" });
+  // Wrap session actions with sidebar close
+  const handleNewSession = useCallback(() => {
+    newSession();
     setSidebarOpen(false);
-  }, [updateHash, selectedProfile, saveDraftForCurrent, syncSessionFromReducer, refreshSessions]);
+  }, [newSession]);
 
-  const selectSession = useCallback(async (id: string) => {
-    // Save draft for session we're leaving
-    await saveDraftForCurrent();
-
-    const info = serverSessions.find((s) => s.id === id);
-    const sessionProfile = info?.profile ?? undefined;
-
-    // Always reconstruct state from events — single source of truth
-    reducerState.current = createInitialState(id);
-    syncSessionFromReducer(reducerState.current, sessionProfile);
-
-    // Subscribe to event stream (catches up from DB first, then live if active)
-    subscribeToSession(id, 0, sessionProfile);
-
-    if (sessionProfile) setSelectedProfile(sessionProfile);
-    updateHash(id);
-
-    // Load draft for the session we're entering
-    const draft = await getDraft(id).catch(() => "");
-    setInput(draft);
-
-    setLiveAgentConfig({ toolStates: {}, effort: "", maxTurns: "" });
+  const handleSelectSession = useCallback((id: string) => {
+    selectSession(id);
     setSidebarOpen(false);
-  }, [serverSessions, updateHash, subscribeToSession, syncSessionFromReducer, saveDraftForCurrent]);
+  }, [selectSession]);
 
-  const archiveSession = useCallback(async (id: string) => {
-    await archiveSessionApi(id).catch(() => {});
-    if (activeSession?.id === id) {
-      newSession();
-    }
-    refreshSessions();
-  }, [activeSession, newSession, refreshSessions]);
+  // View-based session navigation (from dashboard/schedules)
+  const handleViewSession = useCallback((id: string) => {
+    navigate("chat");
+    selectSession(id);
+  }, [navigate, selectSession]);
 
-  // Auto-load from hash
-  useEffect(() => {
-    if (pendingHashId && serverSessions.length > 0) {
-      if (serverSessions.some((s) => s.id === pendingHashId)) {
-        selectSession(pendingHashId);
-      }
-      setPendingHashId(null);
-    }
-  }, [pendingHashId, serverSessions, selectSession]);
-
-  /** Build CreateSessionOpts from setup state */
-  const buildSessionOpts = useCallback((prompt: string, profile?: string): CreateSessionOpts => {
-    const profileData = profiles.find((p) => p.name === profile);
-    const agentOverrides = agentConfigToOverrides(
-      setupState.agent,
-      profileData?.tools ?? "all",
-    );
-    const cwd = setupState.cwd.trim();
-    if (cwd) addRecentPath(cwd);
-    return {
-      prompt,
-      profile,
-      ...(setupState.model ? { model: setupState.model } : {}),
-      ...(cwd ? { cwd } : {}),
-      loadProjectSettings: setupState.loadProjectSettings,
-      ...agentOverrides,
-    };
-  }, [setupState, profiles]);
-
-  const handleSend = useCallback(async (sendAttachments: Attachment[]) => {
-    const prompt = input.trim();
-    if (!prompt && sendAttachments.length === 0) return;
-    setInput("");
-
-    // Clear draft since we're sending
-    if (activeSession?.id) saveDraft(activeSession.id, "").catch(() => {});
-
-    // Convert UI attachments to API format
-    const apiAtts: ApiAttachment[] | undefined = sendAttachments.length > 0
-      ? sendAttachments.map((a) => ({ type: a.type, mediaType: a.mediaType, data: a.data, name: a.name }))
-      : undefined;
-
-    // Is this an empty session (created by "new session" but no messages yet)?
-    const isEmptySession = activeSession?.id && activeSession.status === "idle" && activeSession.messages.length === 0;
-    const needsNewSession = !activeSession || activeSession.status === "done" || activeSession.status === "error" || !activeSession.id || activeSession.id.startsWith("pending-") || isEmptySession;
-
-    if (needsNewSession) {
-      // Archive the empty placeholder if it exists
-      const emptyId = isEmptySession ? activeSession!.id : null;
-      if (emptyId) archiveSessionApi(emptyId).catch(() => {});
-
-      // Create new SDK session
-      const profile = selectedProfile || undefined;
-      reducerState.current = createInitialState();
-      reducerState.current.messages.push({
-        id: nextMsgId(), role: "user", content: prompt,
-        attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
-      });
-      reducerState.current.status = "starting";
-      syncSessionFromReducer(reducerState.current, profile);
-
-      try {
-        const opts = buildSessionOpts(prompt, profile);
-        if (apiAtts) opts.attachments = apiAtts;
-        const { sessionId } = await createSession(opts);
-
-        let realId = sessionId;
-        if (realId.startsWith("pending-")) {
-          for (let i = 0; i < 20; i++) {
-            await new Promise((r) => setTimeout(r, 500));
-            const sessions = await fetchSessions(1).catch(() => []);
-            if (sessions.length > 0 && !sessions[0].id.startsWith("pending-")) {
-              realId = sessions[0].id;
-              break;
-            }
-          }
-        }
-
-        reducerState.current.sessionId = realId;
-        updateHash(realId);
-        syncSessionFromReducer(reducerState.current, profile);
-        subscribeToSession(realId, 0, profile);
-        refreshSessions();
-      } catch (err) {
-        reducerState.current.status = "error";
-        reducerState.current.messages.push({ id: nextMsgId(), role: "assistant", content: `Error: ${err}` });
-        syncSessionFromReducer(reducerState.current, selectedProfile);
-      }
-    } else {
-      // Send to existing session
-      reducerState.current.messages.push({
-        id: nextMsgId(), role: "user", content: prompt,
-        attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
-      });
-      reducerState.current.status = "running";
-      syncSessionFromReducer(reducerState.current, activeSession.profile);
-
-      try {
-        await apiSendMessage(activeSession.id, prompt, apiAtts);
-        // Only re-subscribe if SSE is disconnected — prevents thrashing during mid-turn sends
-        if (!sseConnectedRef.current) {
-          subscribeToSession(activeSession.id, reducerState.current.lastSeq, activeSession.profile);
-        }
-      } catch (err) {
-        reducerState.current.messages.push({ id: nextMsgId(), role: "assistant", content: `Error: ${err}` });
-        syncSessionFromReducer(reducerState.current, activeSession.profile);
-      }
-    }
-  }, [input, activeSession, selectedProfile, buildSessionOpts, updateHash, subscribeToSession, syncSessionFromReducer, refreshSessions]);
-
-  const handleStop = useCallback(async () => {
-    if (activeSession?.id) {
-      await stopSessionApi(activeSession.id).catch(() => {});
-      reducerState.current.status = "idle";
-      syncSessionFromReducer(reducerState.current, activeSession.profile);
-    }
-  }, [activeSession, syncSessionFromReducer]);
-
-  const handlePermissionResponse = useCallback(async (
-    requestId: string,
-    behavior: "allow" | "deny",
-    updatedInput?: Record<string, unknown>,
-    scope?: "once" | "session",
-  ) => {
-    if (!activeSession?.id) return;
-    await respondToPermission(activeSession.id, { requestId, behavior, updatedInput, scope }).catch(() => {});
-  }, [activeSession]);
-
-  // Sync tool/config overrides to backend when session is active
-  useEffect(() => {
-    const id = activeSession?.id;
-    if (!id || id.startsWith("pending-")) return;
-    const hasOverrides = Object.keys(liveAgentConfig.toolStates).length > 0;
-    if (!hasOverrides) return;
-    const profile = profiles.find(p => p.name === activeSession?.profile);
-    const overrides = agentConfigToOverrides(liveAgentConfig, profile?.tools ?? "all");
-    updateSessionConfig(id, overrides).catch(() => {});
-  }, [liveAgentConfig, activeSession?.id, activeSession?.profile, profiles]);
-
-  // Debounced draft save on input change (1s after last keystroke)
-  const handleInputChange = useCallback((text: string) => {
-    setInput(text);
-    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-    const id = activeSession?.id;
-    if (id && !id.startsWith("pending-")) {
-      draftTimerRef.current = setTimeout(() => {
-        saveDraft(id, text).catch(() => {});
-      }, 1000);
-    }
-  }, [activeSession]);
-
-  // ── Render ──
-
-  // Wrap profile selection to persist to user profile
-  const handleSelectProfile = useCallback((name: string) => {
-    setSelectedProfile(name);
-    saveUiState({ lastAgentProfile: name });
-  }, [saveUiState]);
-
-  // Reload sessions + reset CWD when user profile changes
-  useEffect(() => {
-    refreshSessions();
-    // Reload user profiles and state
-    Promise.all([
-      fetchUserProfiles(),
-      activeUserProfile ? fetchUserProfileState(activeUserProfile) : Promise.resolve({} as UserProfileState),
-    ]).then(([ups, state]) => {
-      setUserProfiles(ups);
-      setUiState(state);
-      const up = ups.find((u) => u.name === activeUserProfile);
-      if (up) {
-        const cwd = state.lastCwd ?? up.projects?.[0] ?? "";
-        setSetupState((prev) => ({ ...prev, cwd }));
-        if (state.lastAgentProfile) setSelectedProfile(state.lastAgentProfile);
-      }
-    }).catch(() => {});
-  }, [activeUserProfile, refreshSessions]);
-
+  // ── Profile UI resolution ──
   const activeProfileName = activeSession?.profile ?? selectedProfile;
   const profileUi = profiles.find((p) => p.name === activeProfileName)?.ui ?? {};
   const ui: Required<ProfileUi> = {
@@ -564,27 +89,6 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
   };
   const isStreaming = activeSession?.status === "running" || activeSession?.status === "starting";
   const profileData = profiles.find((p) => p.name === activeProfileName);
-
-  const handleDashboardSelect = useCallback((id: string) => {
-    window.location.hash = id;
-    setView("chat");
-    selectSession(id);
-  }, [selectSession]);
-
-  const handleScheduleSelect = useCallback((id: string) => {
-    window.location.hash = id;
-    setView("chat");
-    selectSession(id);
-  }, [selectSession]);
-
-  const navigate = useCallback((target: "chat" | "dashboard" | "memory" | "schedules" | "git") => {
-    if (target === "dashboard") window.location.hash = "dashboard";
-    else if (target === "memory") window.location.hash = "memory";
-    else if (target === "schedules") window.location.hash = "schedules";
-    else if (target === "git") window.location.hash = "git";
-    else window.location.hash = "";
-    setView(target);
-  }, []);
 
   return (
     <div className="app">
@@ -623,15 +127,15 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
               profiles={visibleProfiles}
               selectedProfile={selectedProfile}
               harnessUp={harnessUp}
-              onNewSession={newSession}
-              onSelectSession={selectSession}
+              onNewSession={handleNewSession}
+              onSelectSession={handleSelectSession}
               onArchiveSession={archiveSession}
-              onSelectProfile={handleSelectProfile}
+              onSelectProfile={selectProfile}
               onSetupChange={setSetupState}
               setupState={setupState}
               onClose={() => setSidebarOpen(false)}
               onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-              onLock={onLock}
+              onLock={handleLock}
               userName={userName}
               userProfiles={userProfiles}
               activeUserProfile={activeUserProfile}
@@ -675,8 +179,8 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
               <ChatInput
                 value={input}
                 onChange={handleInputChange}
-                onSend={handleSend}
-                onStop={handleStop}
+                onSend={send}
+                onStop={stop}
                 sessionStatus={activeSession?.status ?? null}
                 disabled={harnessUp === false}
                 placeholder={ui.placeholder}
@@ -688,11 +192,11 @@ function AppInner({ onLock, userName }: { onLock?: () => void; userName?: string
         )}
 
         {view === "dashboard" && (
-          <Dashboard onSelectSession={handleDashboardSelect} />
+          <Dashboard onSelectSession={handleViewSession} />
         )}
 
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
-        {view === "schedules" && <Schedules onSelectSession={handleScheduleSelect} />}
+        {view === "schedules" && <Schedules onSelectSession={handleViewSession} />}
         {view === "git" && <GitPanel cwd={setupState.cwd || serverSessions.find(s => s.id === activeSession?.id)?.cwd || null} />}
       </div>
     </div>
