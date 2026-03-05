@@ -49,8 +49,8 @@ function Dropdown({ value, options, placeholder, onChange }: {
 }
 
 // ── Light markdown renderer ──
-function renderInline(text: string): (string | JSX.Element)[] {
-  const parts: (string | JSX.Element)[] = [];
+function renderInline(text: string): (string | React.ReactElement)[] {
+  const parts: (string | React.ReactElement)[] = [];
   // Match **bold**, *italic*, `code` — non-greedy, no nesting
   const re = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
   let last = 0;
@@ -69,7 +69,7 @@ function renderInline(text: string): (string | JSX.Element)[] {
 
 function LightMarkdown({ text }: { text: string }) {
   const lines = text.split("\n");
-  const elements: JSX.Element[] = [];
+  const elements: React.ReactElement[] = [];
   let listItems: string[] = [];
   let codeBlock: string[] | null = null;
   let key = 0;

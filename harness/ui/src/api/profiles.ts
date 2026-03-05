@@ -1,5 +1,5 @@
 import { API_BASE, authHeaders } from "./_fetch";
-import type { Profile, GlobalConfig, McpServerConfig, UserProfile, UserProfileState } from "./types";
+import type { Profile, GlobalConfig, UserProfile, UserProfileState } from "./types";
 
 export async function fetchProfiles(): Promise<Profile[]> {
   const res = await fetch(`${API_BASE}/api/profiles`, { headers: authHeaders() });

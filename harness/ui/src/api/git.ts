@@ -25,3 +25,11 @@ export async function fetchGitShow(cwd: string, hash: string): Promise<GitCommit
   if (!res.ok) throw new Error("Failed to load commit");
   return res.json();
 }
+
+export async function openInEditor(filePath: string, line?: number): Promise<void> {
+  await fetch(`${API_BASE}/api/open-in-editor`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ filePath, line }),
+  });
+}

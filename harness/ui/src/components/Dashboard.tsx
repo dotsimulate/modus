@@ -8,7 +8,7 @@ import { ProfileEditor } from "./ProfileEditor";
 
 type Props = {
   onSelectSession: (id: string) => void;
-  onNavigate: (view: string, preserveHash?: boolean) => void;
+  onNavigate: (view: "chat" | "dashboard" | "memory" | "schedules" | "git", preserveHash?: boolean) => void;
 };
 
 function shortModel(model?: string): string {

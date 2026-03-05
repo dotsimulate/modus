@@ -54,7 +54,7 @@ export function Sidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleSetGroupMode = useCallback((mode: GroupMode) => {
     setGroupMode(mode);

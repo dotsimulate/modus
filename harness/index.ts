@@ -746,6 +746,20 @@ app.get("/api/git/show/:hash", async (c) => {
   return c.json(detail);
 });
 
+// ── Open in Editor ──
+
+app.post("/api/open-in-editor", async (c) => {
+  const body = await c.req.json<{ filePath: string; line?: number }>();
+  if (!body.filePath) return c.json({ error: "filePath required" }, 400);
+  const target = body.line ? `${body.filePath}:${body.line}` : body.filePath;
+  try {
+    Bun.spawn(["code", "--goto", target], { stdout: "ignore", stderr: "ignore" });
+    return c.json({ ok: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
 // ── Storage Stats & Compaction ──
 
 app.get("/api/stats/storage", (c) => {

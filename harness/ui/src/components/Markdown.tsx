@@ -99,8 +99,8 @@ function CopyButton({ text }: { text: string }) {
 
 const plugins = [remarkGfm];
 
-const markdownComponents = {
-  pre({ children }: { children: React.ReactNode }) {
+const markdownComponents: Record<string, any> = {
+  pre({ children }: { children?: React.ReactNode }) {
     const child = children as ReactElement<any>;
     const props = child?.props;
     if (!props) return <pre>{children}</pre>;
