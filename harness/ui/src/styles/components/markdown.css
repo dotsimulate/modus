@@ -65,10 +65,10 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
   cursor: pointer;
-  padding: 0;
+  padding: 2px;
+  display: flex;
+  align-items: center;
   transition: color 0.15s ease;
 }
 .code-block-copy:hover { color: var(--text); }
