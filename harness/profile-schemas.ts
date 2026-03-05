@@ -54,6 +54,20 @@ const ProfileUiSchema = z.object({
   emptySubtitle: z.string().optional(),
 });
 
+// ── CLAUDE.md Excludes ──
+
+const ClaudeMdRuleSchema = z.enum(["no-parent-walk", "no-node-modules"]);
+
+const ClaudeMdExcludesObjectSchema = z.object({
+  rules: z.array(ClaudeMdRuleSchema).optional(),
+  custom: z.array(z.string()).optional(),
+});
+
+const ClaudeMdExcludesSchema = z.union([
+  z.array(z.string()),
+  ClaudeMdExcludesObjectSchema,
+]);
+
 // ── Agent Profile ──
 
 export const ProfileSchema = z.object({
@@ -65,6 +79,7 @@ export const ProfileSchema = z.object({
   maxTurns: z.number().int().positive().optional(),
   effort: z.enum(["low", "medium", "high", "max"]).optional(),
   loadProjectSettings: z.boolean().optional(),
+  claudeMdExcludes: ClaudeMdExcludesSchema.optional(),
   promptMode: z.enum(["custom", "append"]).optional(),
   mcpServers: z.record(McpServerConfigSchema).optional(),
   permissionPolicy: PermissionPolicySchema.optional(),

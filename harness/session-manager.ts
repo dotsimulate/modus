@@ -10,7 +10,8 @@ import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import {
   upsertSession, updateSessionStatus, addEvent, getMaxSeq, getSession,
 } from "./db";
-import { getProfile, getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, type PermissionPolicy } from "./profiles";
+import { getProfile, getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, type PermissionPolicy, type ClaudeMdExcludes } from "./profiles";
+import { dirname, join, parse as parsePath } from "path";
 import { resolveSecret } from "./secrets";
 
 // On Windows, Bun's subprocess needs the .cmd wrapper to resolve correctly via PATH.
@@ -50,6 +51,45 @@ function resolveEnvVars(
     }
   }
   return resolved;
+}
+
+// ── CLAUDE.md Exclude Resolution ──
+
+/** Expand a ClaudeMdExcludes config into a flat string[] for the SDK. */
+function resolveClaudeMdExcludes(
+  config: ClaudeMdExcludes | undefined,
+  cwd: string,
+): string[] | undefined {
+  if (!config) return undefined;
+
+  // Simple form: raw glob array
+  if (Array.isArray(config)) return config.length > 0 ? config : undefined;
+
+  // Object form: named rules + custom patterns
+  const patterns: string[] = [...(config.custom ?? [])];
+
+  for (const rule of config.rules ?? []) {
+    switch (rule) {
+      case "no-parent-walk": {
+        // Walk from CWD's parent up to filesystem root, exclude each CLAUDE.md
+        const normalized = cwd.replace(/\\/g, "/");
+        let dir = dirname(normalized);
+        const { root } = parsePath(normalized);
+        const rootNorm = root.replace(/\\/g, "/");
+        while (dir !== rootNorm && dir !== dirname(dir)) {
+          patterns.push(join(dir, "CLAUDE.md"));
+          patterns.push(join(dir, ".claude", "CLAUDE.md"));
+          dir = dirname(dir);
+        }
+        break;
+      }
+      case "no-node-modules":
+        patterns.push("**/node_modules/**/CLAUDE.md");
+        break;
+    }
+  }
+
+  return patterns.length > 0 ? patterns : undefined;
 }
 
 // ── Types ──
@@ -467,6 +507,10 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     tools: sdkTools,
     systemPrompt,
     settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
+    claudeMdExcludes: resolveClaudeMdExcludes(
+      profileDef?.claudeMdExcludes,
+      opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
+    ),
     permissionMode: "default" as const,
     canUseTool,
     hooks: {
@@ -912,6 +956,14 @@ export function updateSessionConfig(
 export function stopSession(sessionId: string): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
+
+  // Resolve any pending permission promises before aborting, so hook callbacks
+  // don't try to send responses on the already-closed stream ("Stream closed" errors).
+  for (const [id, pending] of session.pendingPermissions) {
+    pending.resolve({ behavior: "deny", message: "Session interrupted" });
+    session.pendingPermissions.delete(id);
+  }
+
   // Only abort — don't close input or set status.
   // The drain loop's AbortError handler sets idle + checks pendingMessages.
   session.abortController.abort();

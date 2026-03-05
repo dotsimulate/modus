@@ -110,7 +110,7 @@ function QuestionForm({ perm, onRespond }: { perm: PendingPermission; onRespond:
   );
 }
 
-export function PermissionOverlay({ permissions, sessionId, onRespond }: Props) {
+export function PermissionOverlay({ permissions, sessionId: _sessionId, onRespond }: Props) {
   // Enter key = Allow (first non-interactive permission)
   useEffect(() => {
     if (permissions.length === 0) return;

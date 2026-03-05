@@ -49,7 +49,7 @@ export function SessionSetup({
   profileModel,
   onChange,
   projectPaths,
-  showAllProjectPaths,
+  showAllProjectPaths: _showAllProjectPaths,
 }: Props) {
   const [browseOpen, setBrowseOpen] = useState(false);
   const recentPaths = getRecentPaths();

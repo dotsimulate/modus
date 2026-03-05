@@ -1,0 +1,209 @@
+/**
+ * FileChanges — inline diff summary shown at the bottom of agent messages.
+ *
+ * Shows files modified by Edit/Write tool calls with expandable diffs
+ * and open-in-editor buttons.
+ */
+
+/* ── Container ── */
+
+.fc-container {
+  max-width: 840px;
+  width: 100%;
+  margin: 0 auto 16px;
+  padding: 0 32px;
+}
+
+.fc-container-inner {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.fc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.fc-header-label {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.fc-header-stats {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ── Stats (reused in header + file cards) ── */
+
+.fc-stat {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.fc-stat--add { color: #33cc33; }
+.fc-stat--del { color: var(--error); }
+
+/* ── File list ── */
+
+.fc-files {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── File card ── */
+
+.fc-file {
+  border-bottom: 1px solid var(--border);
+}
+
+.fc-file:last-child {
+  border-bottom: none;
+}
+
+.fc-file-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.fc-file-header:hover {
+  background: var(--bg-hover);
+}
+
+.fc-toggle {
+  color: var(--text-muted);
+  font-size: 9px;
+  width: 10px;
+  flex-shrink: 0;
+}
+
+.fc-file-name {
+  color: var(--text);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.fc-file-dir {
+  color: var(--text-muted);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.fc-file-stats {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.fc-open-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.fc-open-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* ── Diff body ── */
+
+.fc-file-body {
+  border-top: 1px solid var(--border);
+  overflow: auto;
+  max-height: 300px;
+}
+
+.fc-diff-block {
+  border-bottom: 1px solid var(--border);
+}
+
+.fc-diff-block:last-child {
+  border-bottom: none;
+}
+
+.fc-diff-label {
+  padding: 2px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  background: var(--bg-surface);
+}
+
+.fc-diff-code {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ── Diff lines ── */
+
+.fc-line {
+  display: flex;
+  white-space: pre;
+}
+
+.fc-line-marker {
+  width: 20px;
+  min-width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  user-select: none;
+  font-weight: 600;
+}
+
+.fc-line--add {
+  color: #33cc33;
+  background: rgba(51, 204, 51, 0.06);
+}
+
+.fc-line--add .fc-line-marker {
+  color: #33cc33;
+}
+
+.fc-line--del {
+  color: var(--error);
+  background: rgba(255, 51, 51, 0.06);
+}
+
+.fc-line--del .fc-line-marker {
+  color: var(--error);
+}
+
+.fc-line--ctx {
+  color: var(--text-muted);
+}
+
+.fc-truncated {
+  color: var(--text-muted);
+  font-style: italic;
+}

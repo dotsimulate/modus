@@ -64,6 +64,15 @@ Controls how an agent session behaves. Stored in `agents/<name>.json`. Defined i
   // Whether to load CLAUDE.md and project settings (default: true)
   "loadProjectSettings": true,
 
+  // CLAUDE.md exclusions — prevents unwanted CLAUDE.md files from loading
+  // Simple form: raw glob patterns passed straight to the SDK
+  "claudeMdExcludes": ["**/node_modules/**/CLAUDE.md"],
+  // Object form: named rules + custom patterns (see below)
+  "claudeMdExcludes": {
+    "rules": ["no-parent-walk", "no-node-modules"],
+    "custom": ["D:/some/specific/CLAUDE.md"]
+  },
+
   // MCP servers specific to this profile (merged with _global.json)
   "mcpServers": {
     "server-name": {
@@ -91,6 +100,36 @@ Controls how an agent session behaves. Stored in `agents/<name>.json`. Defined i
   }
 }
 ```
+
+### CLAUDE.md exclusions
+
+Controls which `CLAUDE.md` files the SDK skips when loading project settings.
+Without this, Claude Code walks up the directory tree from CWD and loads every
+`CLAUDE.md` it finds — including parent repos you don't control.
+
+**Simple form** — raw glob patterns (picomatch syntax, matched against absolute paths):
+```jsonc
+{ "claudeMdExcludes": ["D:/TD-tox/LOPS_tox/GITsync/CLAUDE.md"] }
+```
+
+**Object form** — named rules + custom patterns:
+```jsonc
+{
+  "claudeMdExcludes": {
+    "rules": ["no-parent-walk", "no-node-modules"],
+    "custom": ["D:/other/repo/CLAUDE.md"]
+  }
+}
+```
+
+**Available rules:**
+| Rule | What it excludes |
+|------|-----------------|
+| `no-parent-walk` | Every `CLAUDE.md` and `.claude/CLAUDE.md` in directories above CWD |
+| `no-node-modules` | `**/node_modules/**/CLAUDE.md` |
+
+Rules are expanded at session start using the resolved CWD, then merged with
+any `custom` patterns into a flat array passed to the SDK's `claudeMdExcludes`.
 
 ## User Profile (`UserProfile`)
 

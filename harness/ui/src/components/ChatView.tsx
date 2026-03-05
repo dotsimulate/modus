@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo } from "react";
 import { MessageBubble } from "./MessageBubble";
-import type { Message } from "../api";
+import { FileChanges, extractFileEdits } from "./FileChanges";
+import type { Message, ToolCall } from "../api";
 
 type Props = {
   messages: Message[];
@@ -30,8 +31,8 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
   }, [messages.length]);
 
   // Find last message index per role for animation
-  const lastUser = useMemo(() => messages.findLastIndex(m => m.role === "user"), [messages]);
-  const lastAssistant = useMemo(() => messages.findLastIndex(m => m.role === "assistant"), [messages]);
+  const lastUser = useMemo(() => messages.findLastIndex((m: Message) => m.role === "user"), [messages]);
+  const lastAssistant = useMemo(() => messages.findLastIndex((m: Message) => m.role === "assistant"), [messages]);
 
   // Find last TodoWrite tool call ID so only it defaults expanded
   const lastTodoId = useMemo(() => {
@@ -46,6 +47,33 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
     return undefined;
   }, [messages]);
 
+  // Aggregate file edits per turn — map from message index to aggregated tool calls.
+  // A turn = all assistant messages between two user messages (or start/end of array).
+  // FileChanges renders after the last assistant message of each turn.
+  const turnFileEdits = useMemo(() => {
+    const result = new Map<number, ToolCall[]>();
+    let turnTools: ToolCall[] = [];
+    let lastAssistantIdx = -1;
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role === "user") {
+        if (lastAssistantIdx >= 0 && turnTools.length > 0) {
+          result.set(lastAssistantIdx, turnTools);
+        }
+        turnTools = [];
+        lastAssistantIdx = -1;
+      } else if (msg.role === "assistant") {
+        if (msg.toolCalls) turnTools.push(...msg.toolCalls);
+        lastAssistantIdx = i;
+      }
+    }
+    if (lastAssistantIdx >= 0 && turnTools.length > 0) {
+      result.set(lastAssistantIdx, turnTools);
+    }
+    return result;
+  }, [messages]);
+
   if (messages.length === 0) {
     return (
       <div className="empty-state">
@@ -57,32 +85,37 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
 
   return (
     <div className="chat-messages">
-      {messages.map((msg, i) =>
-        msg.role === "system" ? (
+      {messages.map((msg, i) => {
+        const turnTools = turnFileEdits.get(i);
+        const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
+
+        return msg.role === "system" ? (
           <div key={msg.id} className="system-divider">
             <span>{msg.content}</span>
           </div>
         ) : (
-          <MessageBubble
-            key={msg.id}
-            msg={msg}
-            isNew={streaming && (
-              (i === lastUser && msg.role === "user") ||
-              (i === lastAssistant && msg.role === "assistant" && !msg.meta)
-            )}
-            isStreaming={
-              streaming && i === messages.length - 1 && msg.role === "assistant"
-            }
-            hideRole={i > 0 && messages[i - 1].role === msg.role}
-            showThinking={showThinking}
-            showMeta={showMeta}
-            showToolCalls={showToolCalls}
-            showGitEvents={showGitEvents}
-            cwd={cwd}
-            lastTodoId={lastTodoId}
-          />
-        )
-      )}
+          <div key={msg.id}>
+            <MessageBubble
+              msg={msg}
+              isNew={streaming && (
+                (i === lastUser && msg.role === "user") ||
+                (i === lastAssistant && msg.role === "assistant" && !msg.meta)
+              )}
+              isStreaming={
+                streaming && i === messages.length - 1 && msg.role === "assistant"
+              }
+              hideRole={i > 0 && messages[i - 1].role === msg.role}
+              showThinking={showThinking}
+              showMeta={showMeta}
+              showToolCalls={showToolCalls}
+              showGitEvents={showGitEvents}
+              cwd={cwd}
+              lastTodoId={lastTodoId}
+            />
+            {showFileChanges && <FileChanges toolCalls={turnTools} />}
+          </div>
+        );
+      })}
       <div ref={endRef} className="chat-anchor" />
     </div>
   );

@@ -43,6 +43,25 @@ export type PermissionPolicy =
       requireApproval?: string[];
     };
 
+/**
+ * Named exclusion rules that expand to glob patterns at session start.
+ * - "no-parent-walk"  — exclude all CLAUDE.md files above the session CWD
+ * - "no-node-modules" — exclude CLAUDE.md inside any node_modules tree
+ */
+export type ClaudeMdRule = "no-parent-walk" | "no-node-modules";
+
+/**
+ * Controls which CLAUDE.md files the SDK excludes from loading.
+ * Accepts either a raw glob array (passed straight to SDK) or an object
+ * with named rules + custom globs for a mix of standard and specific exclusions.
+ */
+export type ClaudeMdExcludes =
+  | string[]
+  | {
+      rules?: ClaudeMdRule[];
+      custom?: string[];
+    };
+
 export type Profile = {
   /** Agent system prompt */
   prompt: string;
@@ -60,6 +79,8 @@ export type Profile = {
   effort?: "low" | "medium" | "high" | "max";
   /** Whether to load CLAUDE.md and project settings */
   loadProjectSettings?: boolean;
+  /** CLAUDE.md exclusions — raw globs or named rules + custom patterns */
+  claudeMdExcludes?: ClaudeMdExcludes;
   /** System prompt mode — "custom" replaces everything, "append" adds to claude_code preset */
   promptMode?: "custom" | "append";
   /** MCP server configurations for this profile */

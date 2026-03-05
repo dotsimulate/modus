@@ -40,13 +40,26 @@ const vite: Subprocess = spawn([BUN, "run", "dev"], {
 
 // ── Cleanup ──────────────────────────────────────────────────────
 
+/** Kill a subprocess tree. On Windows, kill() only kills the direct child,
+ *  leaving grandchildren (e.g. the actual vite node process) orphaned.
+ *  Use taskkill /T /F to kill the entire process tree. */
+function killTree(proc: Subprocess) {
+  try {
+    if (process.platform === "win32") {
+      Bun.spawnSync(["taskkill", "/T", "/F", "/PID", String(proc.pid)], { stdout: "ignore", stderr: "ignore" });
+    } else {
+      proc.kill();
+    }
+  } catch { /* best effort */ }
+}
+
 let stopping = false;
 function cleanup() {
   if (stopping) return;
   stopping = true;
   console.log("\nshutting down...");
-  harness.kill();
-  vite.kill();
+  killTree(harness);
+  killTree(vite);
 }
 
 process.on("SIGINT", cleanup);
