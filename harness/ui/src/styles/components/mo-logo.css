@@ -1,0 +1,55 @@
+/* ── MO Logo ── */
+
+/* Gap on O — active first half of cycle, hidden second half */
+.mo-gap-o {
+  stroke-dasharray: 0 120;
+  animation: mo-gap-o 20s ease-in-out 1.5s infinite;
+}
+
+/* Eye — floats around inside the O */
+.mo-eye {
+  opacity: 0;
+  animation:
+    mo-fade-in 0.4s ease 1s forwards,
+    mo-eye-look 20s ease-in-out 1.5s infinite;
+}
+
+/* ── Keyframes ── */
+
+@keyframes mo-fade-in {
+  to { opacity: 1; }
+}
+
+/* O gap: appear, sweep fast, disappear — first half only */
+@keyframes mo-gap-o {
+  0%    { stroke-dasharray: 0 120; }
+  4%    { stroke-dasharray: 14 106; stroke-dashoffset: 0; }
+  20%   { stroke-dashoffset: -120; stroke-dasharray: 14 106; }
+  24%   { stroke-dasharray: 0 120; }
+  100%  { stroke-dasharray: 0 120; }
+}
+
+/* Eye drifts around inside the O ring */
+@keyframes mo-eye-look {
+  0%   { transform: translate(0, 0); }
+  5%   { transform: translate(6px, -4px); }
+  10%  { transform: translate(6px, -4px); }
+  15%  { transform: translate(-5px, -6px); }
+  22%  { transform: translate(-5px, -6px); }
+  28%  { transform: translate(3px, 7px); }
+  33%  { transform: translate(3px, 7px); }
+  38%  { transform: translate(-7px, 2px); }
+  43%  { transform: translate(-7px, 2px); }
+  48%  { transform: translate(5px, 5px); }
+  52%  { transform: translate(5px, 5px); }
+  57%  { transform: translate(-3px, -7px); }
+  63%  { transform: translate(-3px, -7px); }
+  68%  { transform: translate(7px, 1px); }
+  73%  { transform: translate(7px, 1px); }
+  78%  { transform: translate(-4px, 6px); }
+  83%  { transform: translate(-4px, 6px); }
+  88%  { transform: translate(2px, -5px); }
+  93%  { transform: translate(2px, -5px); }
+  97%  { transform: translate(0, 0); }
+  100% { transform: translate(0, 0); }
+}
