@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/mo-logo.png" alt="MO" width="240">
+</p>
+
 # Modus
 
 Your MO for working with AI agents. Personal infrastructure designed to be forked and customized.
