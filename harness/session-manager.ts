@@ -13,8 +13,10 @@ import {
 import { getProfile, getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, type PermissionPolicy } from "./profiles";
 import { resolveSecret } from "./secrets";
 
-const CLAUDE_PATH =
-  process.env.CLAUDE_PATH || `${process.env.HOME}/.local/bin/claude`;
+// On Windows, Bun's subprocess needs the .cmd wrapper to resolve correctly via PATH.
+// The shell wrapper ("claude") works in bash but not when spawned directly by Bun.
+const CLAUDE_PATH = process.env.CLAUDE_PATH
+  || (process.platform === "win32" ? "claude.cmd" : "claude");
 
 const ALL_BUILTIN = ["Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Bash",
   "WebSearch", "WebFetch", "Agent", "TodoWrite", "Skill", "NotebookEdit", "AskUserQuestion"];
@@ -450,6 +452,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     return { behavior: "allow" as const, updatedInput: toolInput };
   };
 
+  let stderrBuf = "";
+
   const sdkOptions: any = {
     pathToClaudeCodeExecutable: CLAUDE_PATH,
     cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
@@ -473,7 +477,10 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     },
     mcpServers: hasMcp ? resolveEnvVars(mergedMcp) : undefined,
     stderr: (data: string) => {
-      console.error(`[session-manager] stderr (${tempId}):`, data.trim().slice(0, 2000));
+      const line = data.trim().slice(0, 2000);
+      console.error(`[session-manager] stderr (${tempId}):`, line);
+      // Accumulate stderr so we can surface it if the session never starts
+      stderrBuf += (stderrBuf ? "\n" : "") + line;
     },
   };
 
@@ -525,6 +532,24 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     session.error = String(err);
     updateSessionStatus(session.sessionId, "error");
   });
+
+  // Startup timeout — if no init event within 30s, mark as error and surface stderr
+  setTimeout(() => {
+    if (session.status === "starting") {
+      const reason = stderrBuf
+        ? `Session failed to start.\n\nstderr:\n${stderrBuf}`
+        : "Session failed to start — no response from Claude Code within 30s.";
+      console.error(`[session-manager] startup timeout for ${session.sessionId}: ${reason}`);
+      session.status = "error";
+      session.error = reason;
+      abortController.abort();
+      // Broadcast error to any SSE subscribers
+      const errData = JSON.stringify({ type: "error", error: reason });
+      for (const sub of session.subscribers) {
+        try { sub.write("error", errData, String(session.seq)); } catch { /* ignore */ }
+      }
+    }
+  }, 30_000);
 
   return session;
 }

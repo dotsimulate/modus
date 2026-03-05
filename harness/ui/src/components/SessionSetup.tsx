@@ -106,12 +106,16 @@ export function SessionSetup({
                   <option key={p} value={p}>{shortenPath(p)}</option>
                 ))
               }
-              {showAllProjectPaths && filteredRecent.length > 0 && (
+              {filteredRecent.length > 0 && (
                 <optgroup label="recent">
                   {filteredRecent.map((p) => (
                     <option key={p} value={p}>{shortenPath(p)}</option>
                   ))}
                 </optgroup>
+              )}
+              {/* Ensure current CWD is always selectable even if not in any list */}
+              {config.cwd && !projectPathSet.has(config.cwd) && !recentPaths.includes(config.cwd) && (
+                <option value={config.cwd}>{shortenPath(config.cwd)}</option>
               )}
               <option value="__browse__">browse...</option>
             </select>
@@ -166,22 +170,25 @@ export function SessionSetup({
 
 /** Shorten a path for display: ~/dev/infra/agent_dev_zone → ~/d/i/agent_dev_zone */
 function shortenPath(p: string): string {
-  const home = "/home/";
-  if (p.startsWith(home)) {
-    const rest = p.slice(home.length);
+  // Normalize to forward slashes for display
+  const norm = p.replace(/\\/g, "/");
+  // Detect home prefix: /home/user or C:/Users/user
+  const homeMatch = norm.match(/^(\/home\/[^/]+|[A-Z]:\/Users\/[^/]+)/i);
+  if (homeMatch) {
+    const rest = norm.slice(homeMatch[0].length + 1);
     const parts = rest.split("/");
     if (parts.length <= 2) return "~/" + parts.join("/");
     const last2 = parts.slice(-2).join("/");
-    const middle = parts.slice(1, -2).map((s) => s[0] ?? s).join("/");
+    const middle = parts.slice(0, -2).map((s) => s[0] ?? s).join("/");
     return `~/${middle}/${last2}`;
   }
-  if (p.length > 35) {
-    const parts = p.split("/").filter(Boolean);
-    if (parts.length <= 2) return p;
+  if (norm.length > 35) {
+    const parts = norm.split("/").filter(Boolean);
+    if (parts.length <= 2) return norm;
     const last2 = parts.slice(-2).join("/");
-    return `/.../${last2}`;
+    return `.../` + last2;
   }
-  return p;
+  return norm;
 }
 
 /** Default state for SessionSetup */

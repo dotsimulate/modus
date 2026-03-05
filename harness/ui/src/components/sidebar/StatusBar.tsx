@@ -27,25 +27,16 @@ export function StatusBar({
           className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
         />
         {userProfiles && userProfiles.length > 0 && onSwitchUserProfile ? (
-          <>
-            <select
-              className="user-profile-select"
-              value={activeUserProfile ?? ""}
-              onChange={(e) => onSwitchUserProfile(e.target.value || null)}
-            >
-              <option value="">all projects</option>
-              {userProfiles.map((up) => (
-                <option key={up.name} value={up.name}>{up.displayName ?? up.name}</option>
-              ))}
-            </select>
-            <button
-              className="create-profile-btn"
-              onClick={() => setShowCreate(true)}
-              title="New profile"
-            >
-              +
-            </button>
-          </>
+          <select
+            className="user-profile-select"
+            value={activeUserProfile ?? ""}
+            onChange={(e) => onSwitchUserProfile(e.target.value || null)}
+          >
+            <option value="">all projects</option>
+            {userProfiles.map((up) => (
+              <option key={up.name} value={up.name}>{up.displayName ?? up.name}</option>
+            ))}
+          </select>
         ) : (
           <span>
             {harnessUp === true
@@ -54,6 +45,15 @@ export function StatusBar({
                 ? "harness offline"
                 : "checking..."}
           </span>
+        )}
+        {onSwitchUserProfile && (
+          <button
+            className="create-profile-btn"
+            onClick={() => setShowCreate(true)}
+            title="New profile"
+          >
+            +
+          </button>
         )}
       </div>
       <div className="harness-status-right">
