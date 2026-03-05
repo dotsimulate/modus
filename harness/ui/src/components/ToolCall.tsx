@@ -31,8 +31,8 @@ function summarize(name: string, input: Record<string, unknown>): string {
     case "Agent":
       return truncate(input.description as string, 60);
     case "TodoWrite": {
-      const todos = input.todos as Array<{ status: string }> | undefined;
-      if (!todos?.length) return "";
+      const todos = input.todos;
+      if (!Array.isArray(todos) || !todos.length) return "";
       const done = todos.filter(t => t.status === "completed").length;
       const active = todos.filter(t => t.status === "in_progress").length;
       const pending = todos.filter(t => t.status === "pending").length;
@@ -110,6 +110,7 @@ function ToolInputArgs({ input }: { input: Record<string, unknown> }) {
 
 /** Render TodoWrite as a compact checklist */
 function TodoList({ todos }: { todos: Array<{ content: string; status: string; activeForm?: string }> }) {
+  if (!Array.isArray(todos)) return null;
   return (
     <div className="todo-list">
       {todos.map((t, i) => (

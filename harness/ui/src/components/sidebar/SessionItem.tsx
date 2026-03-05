@@ -7,10 +7,11 @@ type Props = {
   onArchive: (id: string) => void;
 };
 
-function statusIcon(status: string) {
-  if (status === "running" || status === "starting") return <span className="session-running-dot" />;
-  if (status === "error") return <span className="session-error-dot" />;
-  return <span className="session-done-dot" />;
+function statusDotClass(status: string): string {
+  if (status === "running") return "dash-dot--streaming";
+  if (status === "starting" || status === "idle") return "dash-dot--running";
+  if (status === "error") return "dash-dot--error";
+  return "dash-dot--done";
 }
 
 export function timeAgo(ts: number): string {
@@ -28,7 +29,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive }: Props) 
       onClick={() => onSelect(s.id)}
     >
       <div className="session-item-preview">
-        {statusIcon(s.status)}
+        <span className={`dash-dot ${statusDotClass(s.status)}`} />
         <span className="session-item-text">{s.last_prompt ?? s.preview}</span>
       </div>
       <div className="session-item-meta">

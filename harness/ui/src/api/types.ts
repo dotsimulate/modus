@@ -159,6 +159,7 @@ export type ActiveSessionInfo = {
   seq: number;
   subscribers: number;
   cwd: string | null;
+  archived?: boolean;
 };
 
 export type SearchHit = {
@@ -181,6 +182,7 @@ export type SessionStatusInfo = {
   startedAt: number;
   lastEventAt: number;
   error: string | null;
+  archived?: boolean;
 };
 
 export type ApiAttachment = {

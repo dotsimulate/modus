@@ -187,3 +187,13 @@
 }
 .attachment-thumb:hover .attachment-remove { opacity: 1; }
 
+.chat-header-archived {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: auto;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}

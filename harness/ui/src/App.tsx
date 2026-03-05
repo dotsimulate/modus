@@ -110,6 +110,9 @@ function AppShell() {
         {view === "chat" && activeSession?.status && activeSession.status !== "done" && (
           <span className={`chat-header-status ${activeSession.status}`}>{activeSession.status}</span>
         )}
+        {view === "chat" && activeSession?.id && !activeSession.id.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSession.id) && (
+          <span className="chat-header-archived">archived</span>
+        )}
       </div>
 
       <div className="app-body">
@@ -121,7 +124,9 @@ function AppShell() {
               sessions={serverSessions.map((s) =>
                 activeSession && s.id === activeSession.id
                   ? { ...s, status: activeSession.status ?? s.status }
-                  : s
+                  : s.status === "running" || s.status === "starting" || s.status === "idle"
+                    ? { ...s, status: "done" }
+                    : s
               )}
               activeSessionId={activeSession?.id ?? null}
               profiles={visibleProfiles}

@@ -43,10 +43,10 @@ function ActiveSessionsPopover({
       {sessions.map((s) => (
         <button
           key={s.id}
-          className="apc-popover-item"
+          className={`apc-popover-item ${s.archived ? "apc-popover-item--archived" : ""}`}
           onClick={(e) => { e.stopPropagation(); onSelect(s.id); }}
         >
-          <span className={`dash-dot ${s.status === "running" ? "dash-dot--streaming" : "dash-dot--running"}`} />
+          <span className={`dash-dot ${s.archived ? "dash-dot--idle" : s.status === "running" ? "dash-dot--streaming" : "dash-dot--running"}`} />
           <span className="apc-popover-preview">{s.lastText || s.preview || "new session"}</span>
           <span className="apc-popover-meta">${s.costUsd.toFixed(2)}</span>
           <span className="apc-popover-meta">{timeAgo(s.lastEventAt)}</span>
@@ -169,22 +169,20 @@ export function Dashboard({ onSelectSession, onNavigate }: Props) {
                 {/* Live + actions row */}
                 <div className="apc-row apc-row--actions">
                   {/* Active sessions badge with popover */}
-                  {profSessions.length > 0 && (
-                    <span
-                      className="apc-active-badge"
-                      onMouseEnter={() => setHoveredBadge(p.name)}
-                      onMouseLeave={() => setHoveredBadge(null)}
-                    >
-                      <span className={`dash-dot ${profSessions.some((s) => s.status === "running") ? "dash-dot--streaming" : "dash-dot--running"}`} />
-                      {profSessions.length} active
-                      {hoveredBadge === p.name && (
-                        <ActiveSessionsPopover
-                          sessions={profSessions}
-                          onSelect={onSelectSession}
-                        />
-                      )}
-                    </span>
-                  )}
+                  <span
+                    className={`apc-active-badge ${profSessions.length === 0 ? "apc-active-badge--zero" : ""}`}
+                    onMouseEnter={() => profSessions.length > 0 && setHoveredBadge(p.name)}
+                    onMouseLeave={() => setHoveredBadge(null)}
+                  >
+                    <span className={`dash-dot ${profSessions.length === 0 ? "dash-dot--idle" : profSessions.some((s) => s.status === "running" && !s.archived) ? "dash-dot--streaming" : "dash-dot--running"}`} />
+                    {profSessions.length}
+                    {hoveredBadge === p.name && profSessions.length > 0 && (
+                      <ActiveSessionsPopover
+                        sessions={profSessions}
+                        onSelect={onSelectSession}
+                      />
+                    )}
+                  </span>
                   {runningSchedules.length > 0 && (
                     <span className="apc-schedule-badge">
                       <span className="apc-live-dot apc-live-dot--schedule" />
