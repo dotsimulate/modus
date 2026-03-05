@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { saveProfileApi, deleteProfileApi, checkSecrets } from "../api";
+import { saveProfileApi, deleteProfileApi, checkSecrets, patchUserProfileApi } from "../api";
 import type { Profile, McpServerConfig } from "../api";
+import { useProfiles } from "../providers/ProfileProvider";
 import { ToolGrid } from "./ToolGrid";
 import type { ToolStates } from "../tools";
 
@@ -341,6 +342,7 @@ export function ProfileEditor({
   initialProfile = null,
   onCancel,
 }: Props) {
+  const { activeUserProfile, activeUP, refreshUserProfiles } = useProfiles();
   const [selectedName, setSelectedName] = useState<string | null>(initialProfile);
   // In "new" mode, we track whether the user has picked a source to duplicate from
   const [duplicateSource, setDuplicateSource] = useState<string | null>(null);
@@ -365,6 +367,12 @@ export function ProfileEditor({
     const saveName = isNew ? (data.name ?? "untitled") : selectedName!;
     const { name: _n, ...rest } = data as any;
     await saveProfileApi(saveName, rest);
+    // When creating a new profile, add it to the active user profile's agent list
+    if (isNew && activeUserProfile && activeUP?.agentProfiles) {
+      const updated = [...activeUP.agentProfiles, saveName];
+      await patchUserProfileApi(activeUserProfile, { agentProfiles: updated });
+      await refreshUserProfiles();
+    }
     onProfilesChange();
   };
 
