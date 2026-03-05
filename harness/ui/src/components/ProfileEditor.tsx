@@ -222,7 +222,7 @@ function ProfileForm({
   onCancel: () => void;
   isNew?: boolean;
 }) {
-  const [name, setName] = useState(profile.name);
+  const [name, setName] = useState(isNew && profile.name ? `${profile.name}-copy` : profile.name);
   const [description, setDescription] = useState(profile.description);
   const [prompt, setPrompt] = useState(profile.prompt);
   const [promptMode, setPromptMode] = useState(profile.promptMode ?? "append");
@@ -241,25 +241,6 @@ function ProfileForm({
   );
   const [saving, setSaving] = useState(false);
 
-  // Sync form when profile prop changes (e.g. duplicate-on-click)
-  useEffect(() => {
-    if (isNew) setName(profile.name ? `${profile.name}-copy` : "");
-    else setName(profile.name);
-    setDescription(profile.description);
-    setPrompt(profile.prompt);
-    setPromptMode(profile.promptMode ?? "append");
-    setModel(profile.model ?? "");
-    setEffort(profile.effort ?? "");
-    setMaxTurns(profile.maxTurns?.toString() ?? "");
-    if (!profile.tools || profile.tools === "all") setToolStates({});
-    else {
-      const s: ToolStates = {};
-      for (const t of profile.tools) s[t] = "on";
-      setToolStates(s);
-    }
-    setLoadProjectSettings(profile.loadProjectSettings ?? true);
-    setMcpServers(profile.mcpServers ?? {});
-  }, [profile]);
 
   const handleSave = async () => {
     setSaving(true);
