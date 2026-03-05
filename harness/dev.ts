@@ -10,7 +10,8 @@ import { randomBytes } from "crypto";
 import { networkInterfaces, hostname } from "os";
 import { resolve, dirname } from "path";
 
-const SCRIPT_DIR = dirname(new URL(import.meta.url).pathname);
+const BUN = process.execPath;
+const SCRIPT_DIR = dirname(Bun.fileURLToPath(import.meta.url));
 const PORT = process.env.HARNESS_PORT || "3777";
 const TOKEN = process.env.HARNESS_TOKEN ?? randomBytes(16).toString("hex");
 
@@ -23,14 +24,14 @@ process.env.HARNESS_TOKEN = TOKEN;
 
 // ── Start processes ──────────────────────────────────────────────
 
-const harness: Subprocess = spawn(["bun", "run", "index.ts"], {
+const harness: Subprocess = spawn([BUN, "run", "index.ts"], {
   cwd: SCRIPT_DIR,
   stdout: "inherit",
   stderr: "inherit",
   env: process.env,
 });
 
-const vite: Subprocess = spawn(["bun", "run", "dev"], {
+const vite: Subprocess = spawn([BUN, "run", "dev"], {
   cwd: resolve(SCRIPT_DIR, "ui"),
   stdout: "inherit",
   stderr: "inherit",

@@ -15,9 +15,10 @@
  */
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync } from "fs";
+import { homedir } from "os";
 import { join } from "path";
 
-const DEFAULT_DIR = join(process.env.HOME ?? "~", ".config", "agent-dev-zone");
+const DEFAULT_DIR = join(homedir(), ".config", "agent-dev-zone");
 const DEFAULT_PATH = join(DEFAULT_DIR, "secrets.env");
 
 let secretsStore: Record<string, string> = {};
