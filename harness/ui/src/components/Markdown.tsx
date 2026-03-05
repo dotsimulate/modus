@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import hljs from "highlight.js/lib/core";
-import { useState, type ReactElement } from "react";
+import { memo, useState, type ReactElement } from "react";
 
 // Register languages — core set for dev/AI chat
 import javascript from "highlight.js/lib/languages/javascript";
@@ -73,38 +73,38 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function Markdown({ content }: { content: string }) {
+const plugins = [remarkGfm];
+
+const markdownComponents = {
+  pre({ children }: { children: React.ReactNode }) {
+    const child = children as ReactElement<any>;
+    const props = child?.props;
+    if (!props) return <pre>{children}</pre>;
+
+    const className: string = props.className || "";
+    const match = /language-(\w+)/.exec(className);
+    const lang = match?.[1] || null;
+    const raw = String(props.children ?? "").replace(/\n$/, "");
+    const html = highlight(raw, lang);
+
+    return (
+      <div className="code-block">
+        <div className="code-block-header">
+          <span className="code-block-lang">{lang || "text"}</span>
+          <CopyButton text={raw} />
+        </div>
+        <pre>
+          <code dangerouslySetInnerHTML={{ __html: html }} />
+        </pre>
+      </div>
+    );
+  },
+};
+
+export const Markdown = memo(function Markdown({ content }: { content: string }) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        // Handle fenced code blocks: extract lang + highlight + add header
-        pre({ children }) {
-          const child = children as ReactElement<any>;
-          const props = child?.props;
-          if (!props) return <pre>{children}</pre>;
-
-          const className: string = props.className || "";
-          const match = /language-(\w+)/.exec(className);
-          const lang = match?.[1] || null;
-          const raw = String(props.children ?? "").replace(/\n$/, "");
-          const html = highlight(raw, lang);
-
-          return (
-            <div className="code-block">
-              <div className="code-block-header">
-                <span className="code-block-lang">{lang || "text"}</span>
-                <CopyButton text={raw} />
-              </div>
-              <pre>
-                <code dangerouslySetInnerHTML={{ __html: html }} />
-              </pre>
-            </div>
-          );
-        },
-      }}
-    >
+    <ReactMarkdown remarkPlugins={plugins} components={markdownComponents}>
       {content}
     </ReactMarkdown>
   );
-}
+});

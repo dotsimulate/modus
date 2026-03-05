@@ -1,9 +1,13 @@
-import { useState, useEffect } from "react";
-import type { ToolCall as ToolCallType, Message } from "../api";
+import { memo, useState, useEffect } from "react";
+import type { ToolCall as ToolCallType, Message, GitCommitDetail } from "../api";
+import { fetchGitShow } from "../api";
+import { DiffView } from "./DiffView";
 
 type Props = {
   tool: ToolCallType;
   defaultExpanded?: boolean;
+  showGitEvents?: boolean;
+  cwd?: string | null;
 };
 
 /** Extract a short human-readable summary from tool input */
@@ -134,7 +138,123 @@ function countSubTools(msgs: Message[]): number {
   return msgs.reduce((n, m) => n + (m.toolCalls?.length ?? 0), 0);
 }
 
-export function ToolCallView({ tool, defaultExpanded }: Props) {
+/** Detect git event type from a Bash tool call */
+type GitEventType = "commit" | "push" | null;
+function detectGitEvent(tool: ToolCallType): GitEventType {
+  if (tool.name !== "Bash") return null;
+  const cmd = tool.input.command as string ?? "";
+  if (/git\s+push/.test(cmd)) return "push";
+  if (/git\s+(commit|merge)/.test(cmd)) return "commit";
+  return null;
+}
+
+/** Parse commit hash from git commit output — matches [branch hash] pattern */
+const COMMIT_HASH_RE = /\[[\w/.-]+\s+([0-9a-f]{7,})\]/;
+function parseCommitHash(result: string): string | null {
+  const m = result.match(COMMIT_HASH_RE);
+  return m ? m[1] : null;
+}
+
+/** Parse commit message from git output — text after [branch hash] on same line */
+const COMMIT_MSG_RE = /\[[\w/.-]+\s+[0-9a-f]+\]\s+(.+)/;
+function parseCommitMessage(result: string): string {
+  const m = result.match(COMMIT_MSG_RE);
+  return m ? m[1] : "";
+}
+
+/** Parse push summary from git push output */
+function parsePushSummary(result: string): string {
+  // e.g. "To github.com:user/repo.git\n   abc1234..def5678  main -> main"
+  const branchMatch = result.match(/(\S+)\s*->\s*(\S+)/);
+  const repoMatch = result.match(/To\s+(\S+)/);
+  const parts: string[] = [];
+  if (repoMatch) parts.push(repoMatch[1].replace(/\.git$/, "").replace(/^.*[:/]/, ""));
+  if (branchMatch) parts.push(branchMatch[2]);
+  return parts.join(" ");
+}
+
+/** Inline git commit card — subagent-style with left gutter chevron */
+function GitCommitInline({ hash, message, result, cwd, expanded, onToggle }: {
+  hash: string;
+  message: string;
+  result: string;
+  cwd: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const [detail, setDetail] = useState<GitCommitDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!expanded || detail) return;
+    let active = true;
+    setLoading(true);
+    fetchGitShow(cwd, hash)
+      .then((d) => { if (active) setDetail(d); })
+      .catch(() => {})
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [expanded, hash, cwd]);
+
+  // Parse file stats from git output
+  const statsMatch = result.match(/(\d+)\s+files?\s+changed(?:,\s+(\d+)\s+insertion[^,]*)?(?:,\s+(\d+)\s+deletion.*)?/);
+  const filesChanged = statsMatch ? parseInt(statsMatch[1]) : null;
+  const additions = statsMatch?.[2] ? parseInt(statsMatch[2]) : null;
+  const deletions = statsMatch?.[3] ? parseInt(statsMatch[3]) : null;
+
+  return (
+    <div className="git-inline">
+      <div className="git-inline-gutter">
+        <svg width="8" height="8" viewBox="0 0 8 8">
+          {expanded
+            ? <path d="M1.5 5L4 2.5L6.5 5" stroke="currentColor" strokeWidth="1" fill="none" strokeLinecap="round"/>
+            : <path d="M2.5 1.5L5 4L2.5 6.5" stroke="currentColor" strokeWidth="1" fill="none" strokeLinecap="round"/>
+          }
+        </svg>
+      </div>
+      <div className="git-inline-content">
+        <div className="git-inline-summary" onClick={onToggle}>
+          <span className="git-inline-msg">{message}</span>
+          <span className="git-inline-meta">
+            <span className="git-inline-hash">{hash.slice(0, 7)}</span>
+            {filesChanged != null && (
+              <span className="git-inline-files">{filesChanged} file{filesChanged !== 1 ? "s" : ""}</span>
+            )}
+            {additions != null && additions > 0 && (
+              <span className="diff-stat diff-stat--add">+{additions}</span>
+            )}
+            {deletions != null && deletions > 0 && (
+              <span className="diff-stat diff-stat--del">-{deletions}</span>
+            )}
+          </span>
+        </div>
+        {expanded && (
+          <div className="git-inline-diff">
+            {loading && <div className="git-empty">Loading diff...</div>}
+            {detail && <DiffView files={detail.files} />}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Inline git push card */
+function GitPushInline({ result }: { result: string }) {
+  const summary = parsePushSummary(result);
+  return (
+    <div className="git-inline">
+      <div className="git-inline-gutter" />
+      <div className="git-inline-content">
+        <div className="git-inline-summary">
+          <span className="git-inline-msg">{summary || "pushed"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, showGitEvents = true, cwd }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? tool.name === "TodoWrite");
   const isTodo = tool.name === "TodoWrite";
 
@@ -142,6 +262,47 @@ export function ToolCallView({ tool, defaultExpanded }: Props) {
   useEffect(() => {
     if (isTodo && defaultExpanded === false) setExpanded(false);
   }, [defaultExpanded]);
+
+  // Git event detection
+  const gitEvent = showGitEvents && tool.status === "completed" && tool.result ? detectGitEvent(tool) : null;
+  const commitHash = gitEvent === "commit" ? parseCommitHash(tool.result!) : null;
+
+  // Render as inline git commit card (blue)
+  if (gitEvent === "commit" && commitHash && cwd) {
+    const commitMsg = parseCommitMessage(tool.result!);
+    return (
+      <div className={`tool-call tool-call--git-commit completed${expanded ? " tool-call--git-expanded" : ""}`}>
+        <div className="tool-call-header" onClick={() => setExpanded(!expanded)}>
+          <span className="tool-call-indicator">
+            <span className="tool-dot tool-dot--commit" />
+          </span>
+          <span className="tool-call-name">commit</span>
+          {tool.duration != null && (
+            <span className="tool-call-duration">{(tool.duration / 1000).toFixed(1)}s</span>
+          )}
+        </div>
+        <GitCommitInline hash={commitHash} message={commitMsg} result={tool.result!} cwd={cwd} expanded={expanded} onToggle={() => setExpanded(!expanded)} />
+      </div>
+    );
+  }
+
+  // Render as inline git push card (green)
+  if (gitEvent === "push") {
+    return (
+      <div className="tool-call tool-call--git-push completed">
+        <div className="tool-call-header">
+          <span className="tool-call-indicator">
+            <span className="tool-dot tool-dot--push" />
+          </span>
+          <span className="tool-call-name">push</span>
+          {tool.duration != null && (
+            <span className="tool-call-duration">{(tool.duration / 1000).toFixed(1)}s</span>
+          )}
+        </div>
+        <GitPushInline result={tool.result!} />
+      </div>
+    );
+  }
 
   const summary = summarize(tool.name, tool.input);
   const isAgent = tool.name === "Agent" && (tool.subMessages?.length ?? 0) > 0;
@@ -201,10 +362,10 @@ export function ToolCallView({ tool, defaultExpanded }: Props) {
       </div>
     </div>
   );
-}
+});
 
 /** Compact rendering of a sub-agent's message (tool calls + text) */
-function SubAgentMessage({ msg }: { msg: Message }) {
+const SubAgentMessage = memo(function SubAgentMessage({ msg }: { msg: Message }) {
   return (
     <div className="subagent-msg">
       {msg.toolCalls && msg.toolCalls.length > 0 && (
@@ -219,4 +380,4 @@ function SubAgentMessage({ msg }: { msg: Message }) {
       )}
     </div>
   );
-}
+});

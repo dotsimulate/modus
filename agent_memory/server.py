@@ -171,7 +171,7 @@ def save(id: str, content: str, type: str = "discovery", tags: str = "", confide
         confidence: How solid this is — high, medium, or low
         priority: Violation priority (0 = normal). Increment when recording a violation. Omit to preserve existing value.
     """
-    from datetime import date
+    from datetime import datetime, timezone
 
     memory_dir = Path(MEMORY_DIR)
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
@@ -194,7 +194,7 @@ def save(id: str, content: str, type: str = "discovery", tags: str = "", confide
         f"type: {type}\n"
         f"tags: {tags_yaml}\n"
         f"confidence: {confidence}\n"
-        f"created: {date.today().isoformat()}\n"
+        f"created: {datetime.now(timezone.utc).isoformat()}\n"
         f"priority: {priority}\n"
         f"{profile_line}"
         f"---\n\n"

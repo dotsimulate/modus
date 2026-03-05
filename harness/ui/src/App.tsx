@@ -83,6 +83,7 @@ function AppShell() {
     showThinking: profileUi.showThinking ?? true,
     showMeta: profileUi.showMeta ?? true,
     showToolCalls: profileUi.showToolCalls ?? true,
+    showGitEvents: profileUi.showGitEvents ?? true,
     placeholder: profileUi.placeholder ?? "message...",
     emptyTitle: profileUi.emptyTitle ?? activeProfileName,
     emptySubtitle: profileUi.emptySubtitle ?? "start typing to begin",
@@ -159,6 +160,8 @@ function AppShell() {
                 showThinking={ui.showThinking}
                 showMeta={ui.showMeta}
                 showToolCalls={ui.showToolCalls}
+                showGitEvents={ui.showGitEvents}
+                cwd={setupState.cwd || serverSessions.find(s => s.id === activeSession?.id)?.cwd || null}
                 emptyTitle={ui.emptyTitle ?? activeProfileName}
                 emptySubtitle={ui.emptySubtitle}
               />

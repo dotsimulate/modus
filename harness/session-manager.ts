@@ -16,6 +16,9 @@ import { resolveSecret } from "./secrets";
 const CLAUDE_PATH =
   process.env.CLAUDE_PATH || `${process.env.HOME}/.local/bin/claude`;
 
+const ALL_BUILTIN = ["Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Bash",
+  "WebSearch", "WebFetch", "Agent", "TodoWrite", "Skill", "NotebookEdit", "AskUserQuestion"];
+
 // ── MCP Env Var Resolution ──
 
 /** Replace $VAR_NAME references in MCP server env objects using the secrets loader */
@@ -287,8 +290,6 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   // The SDK's `tools` option filters ALL tools including MCP, which hides MCP tools
   // from the init event. Using disallowedTools instead only blocks what's listed,
   // leaving MCP tools visible and available.
-  const ALL_BUILTIN = ["Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Bash",
-    "WebSearch", "WebFetch", "Agent", "TodoWrite", "Skill", "NotebookEdit", "AskUserQuestion"];
   const rawTools = opts.tools ?? profileDef?.tools ?? undefined;
   const rawDisallowed = opts.disallowedTools ?? profileDef?.disallowedTools ?? undefined;
 
@@ -843,7 +844,11 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
 }
 
 /** Update mutable SDK options on an active session.
- * Changes take effect on next resume (next turn).
+ * When MCP servers are present, a `tools` allowlist is converted to a
+ * `disallowedTools` blocklist (same logic as session creation) so MCP
+ * tools remain visible.
+ * If the session is actively running, it is aborted so the next user
+ * message creates a fresh SDK query with the updated options.
  */
 export function updateSessionConfig(
   sessionId: string,
@@ -851,13 +856,31 @@ export function updateSessionConfig(
 ): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
-  if (config.disallowedTools !== undefined) {
-    session.sdkOptions.disallowedTools = config.disallowedTools.length > 0
-      ? config.disallowedTools : undefined;
+
+  const hasMcp = !!session.sdkOptions.mcpServers;
+
+  if (config.tools !== undefined && config.tools.length > 0 && hasMcp) {
+    // Convert allowlist → blocklist so MCP tools aren't filtered out
+    const blocked = ALL_BUILTIN.filter(t => !config.tools!.includes(t));
+    session.sdkOptions.disallowedTools = blocked.length > 0 ? blocked : undefined;
+    session.sdkOptions.tools = undefined;
+  } else {
+    if (config.disallowedTools !== undefined) {
+      session.sdkOptions.disallowedTools = config.disallowedTools.length > 0
+        ? config.disallowedTools : undefined;
+    }
+    if (config.tools !== undefined) {
+      session.sdkOptions.tools = config.tools.length > 0 ? config.tools : undefined;
+    }
   }
-  if (config.tools !== undefined) {
-    session.sdkOptions.tools = config.tools.length > 0 ? config.tools : undefined;
+
+  // If the session is running, abort so the next message picks up the new config.
+  // The drain loop's AbortError handler sets idle; the next sendMessage will
+  // create a fresh sdkQuery with the updated sdkOptions.
+  if (session.status === "running" || session.status === "starting") {
+    session.abortController.abort();
   }
+
   return true;
 }
 

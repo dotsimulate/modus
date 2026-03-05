@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import type { Message, ToolCall } from "../api";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
@@ -53,10 +53,12 @@ type Props = {
   showThinking?: boolean;
   showMeta?: boolean;
   showToolCalls?: boolean;
+  showGitEvents?: boolean;
+  cwd?: string | null;
   lastTodoId?: string;
 };
 
-export function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, lastTodoId }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const toolCount = countAllTools(msg.toolCalls);
@@ -102,7 +104,7 @@ export function MessageBubble({ msg, isNew = false, isStreaming, hideRole = fals
       {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
         <div className="message-tools">
           {msg.toolCalls.map((tc) => (
-            <ToolCallView key={tc.id} tool={tc} defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined} />
+            <ToolCallView key={tc.id} tool={tc} defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined} showGitEvents={showGitEvents} cwd={cwd} />
           ))}
         </div>
       )}
@@ -166,4 +168,4 @@ export function MessageBubble({ msg, isNew = false, isStreaming, hideRole = fals
       )}
     </div>
   );
-}
+});

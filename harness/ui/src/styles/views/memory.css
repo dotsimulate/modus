@@ -131,6 +131,109 @@
 .custom-dropdown-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
 .custom-dropdown-item.active { color: var(--text); background: rgba(255,255,255,0.08); }
 
+/* Date range slider */
+.memviz-date-slider {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+}
+.memviz-date-slider-track-wrap {
+  position: relative;
+  height: 16px;
+  display: flex;
+  align-items: center;
+}
+.memviz-date-slider-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.memviz-date-slider-active {
+  position: absolute;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 1px;
+}
+.memviz-date-input {
+  position: absolute;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: none;
+  pointer-events: none;
+  outline: none;
+}
+.memviz-date-input::-webkit-slider-runnable-track {
+  height: 2px;
+  background: transparent;
+}
+.memviz-date-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  border: 1px solid var(--bg);
+  cursor: pointer;
+  pointer-events: all;
+  margin-top: -4px;
+  transition: background 0.12s ease;
+}
+.memviz-date-input::-webkit-slider-thumb:hover {
+  background: var(--text);
+}
+.memviz-date-input::-moz-range-track {
+  height: 2px;
+  background: transparent;
+  border: none;
+}
+.memviz-date-input::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  border: 1px solid var(--bg);
+  cursor: pointer;
+  pointer-events: all;
+}
+.memviz-date-input::-moz-range-thumb:hover {
+  background: var(--text);
+}
+.memviz-date-input-start { z-index: 2; }
+.memviz-date-input-end { z-index: 1; }
+.memviz-date-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.memviz-date-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.memviz-date-reset {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 6px;
+  opacity: 0.7;
+  transition: opacity 0.12s ease;
+}
+.memviz-date-reset:hover { opacity: 1; }
+.memviz-date-reset.dimmed { opacity: 0.25; }
+
 /* Stats bar */
 .memviz-stats {
   display: flex;

@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { fetchActiveSessions, fetchSessions } from "../api";
 import type { ActiveSessionInfo, SessionInfo } from "../api";
 
 type Props = {
   onSelectSession: (id: string) => void;
 };
+
+type SortKey = "date" | "messages" | "cost" | "agent";
+type SortDir = "desc" | "asc";
 
 type MergedSession = {
   id: string;
@@ -72,16 +75,36 @@ function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-function shortModel(model: string | null): string {
-  if (!model) return "";
-  return model.replace("claude-", "").replace(/-\d{8}.*/, "");
-}
-
 function dotClass(row: MergedSession): string {
   if (!row.active) return "dash-dot--done";
   if (row.status === "running") return "dash-dot--streaming";
   if (row.status === "error") return "dash-dot--error";
   return "dash-dot--running";
+}
+
+function sortSessions(rows: MergedSession[], key: SortKey, dir: SortDir): MergedSession[] {
+  const flip = dir === "asc" ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    let cmp = 0;
+    switch (key) {
+      case "date":
+        cmp = b.lastMessageAt - a.lastMessageAt;
+        return cmp * flip;
+      case "messages":
+        cmp = b.turns - a.turns;
+        break;
+      case "cost":
+        cmp = b.cost - a.cost;
+        break;
+      case "agent":
+        cmp = (a.profile ?? "").localeCompare(b.profile ?? "");
+        // agent defaults to A-Z in desc, so flip to match convention
+        cmp = -cmp;
+        break;
+    }
+    // date is tiebreaker for non-date sorts
+    return cmp !== 0 ? cmp * flip : b.lastMessageAt - a.lastMessageAt;
+  });
 }
 
 const chevron = (
@@ -90,16 +113,34 @@ const chevron = (
   </svg>
 );
 
+const sortColumns: { key: SortKey; label: string }[] = [
+  { key: "date", label: "date" },
+  { key: "agent", label: "agent" },
+  { key: "messages", label: "msgs" },
+  { key: "cost", label: "cost" },
+];
+
 export function SessionsPanel({ onSelectSession }: Props) {
   const [open, setOpen] = useState(true);
   const [rows, setRows] = useState<MergedSession[]>([]);
+  const [sortBy, setSortBy] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const toggleSort = (key: SortKey) => {
+    if (sortBy === key) {
+      setSortDir((d) => d === "desc" ? "asc" : "desc");
+    } else {
+      setSortBy(key);
+      setSortDir("desc");
+    }
+  };
 
   useEffect(() => {
     let active = true;
 
     const poll = async () => {
       try {
-        const [a, r] = await Promise.all([fetchActiveSessions(), fetchSessions(20)]);
+        const [a, r] = await Promise.all([fetchActiveSessions(), fetchSessions(50)]);
         if (active) setRows(mergeRows(a, r));
       } catch { /* silent */ }
     };
@@ -110,6 +151,7 @@ export function SessionsPanel({ onSelectSession }: Props) {
   }, []);
 
   const visibleRows = rows.filter((r) => !r.archived);
+  const sorted = useMemo(() => sortSessions(visibleRows, sortBy, sortDir), [visibleRows, sortBy, sortDir]);
   const activeCount = visibleRows.filter((r) => r.active).length;
 
   return (
@@ -128,18 +170,34 @@ export function SessionsPanel({ onSelectSession }: Props) {
           )}
 
           {visibleRows.length > 0 && (
-            <div className="recent-list">
-              {visibleRows.map((r) => (
+            <div className="sessions-table">
+              {/* Sort header */}
+              <div className="sessions-table-header">
+                <span className="sessions-th sessions-th--preview">session</span>
+                {sortColumns.map((col) => (
+                  <button
+                    key={col.key}
+                    className={`sessions-th sessions-th--sortable ${sortBy === col.key ? "sessions-th--active" : ""}`}
+                    onClick={(e) => { e.stopPropagation(); toggleSort(col.key); }}
+                  >
+                    {col.label}{sortBy === col.key ? (sortDir === "desc" ? " v" : " ^") : ""}
+                  </button>
+                ))}
+              </div>
+
+              {/* Rows */}
+              {sorted.map((r) => (
                 <div
                   key={r.id}
-                  className="recent-row"
+                  className="sessions-table-row"
                   onClick={() => onSelectSession(r.id)}
                 >
                   <span className={`dash-dot ${dotClass(r)}`} />
-                  <span className="recent-preview">{r.preview || "new session"}</span>
-                  <span className="recent-meta">{r.profile}</span>
-                  <span className="recent-meta">${r.cost.toFixed(2)}</span>
-                  <span className="recent-meta">{timeAgo(r.lastMessageAt)}</span>
+                  <span className="sessions-cell sessions-cell--preview">{r.preview || "new session"}</span>
+                  <span className="sessions-cell sessions-cell--date">{timeAgo(r.lastMessageAt)}</span>
+                  <span className="sessions-cell sessions-cell--agent">{r.profile ?? ""}</span>
+                  <span className="sessions-cell sessions-cell--msgs">{r.turns}</span>
+                  <span className="sessions-cell sessions-cell--cost">${r.cost.toFixed(2)}</span>
                 </div>
               ))}
             </div>
