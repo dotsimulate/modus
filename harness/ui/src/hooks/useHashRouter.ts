@@ -25,9 +25,11 @@ export function useHashRouter() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  const navigate = useCallback((target: View) => {
-    if (target === "chat") window.location.hash = "";
-    else window.location.hash = target;
+  const navigate = useCallback((target: View, preserveHash = false) => {
+    if (!preserveHash) {
+      if (target === "chat") window.location.hash = "";
+      else window.location.hash = target;
+    }
     setView(target);
   }, []);
 
