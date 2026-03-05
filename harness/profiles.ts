@@ -104,6 +104,8 @@ export type UserProfile = {
   templateVars?: Record<string, string>;
   projects: string[];
   agentProfiles?: string[];
+  /** Visible schedules — omit or ["*"] for all */
+  schedules?: string[];
   memoryFilter?: string;
   memory?: UserProfileMemory;
   /** Show project paths from ALL user profiles in the CWD picker (default: false) */

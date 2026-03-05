@@ -95,6 +95,8 @@ db.run(`
 db.run(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_name ON schedule_runs(schedule_name, run_number DESC)`);
 // Migration: add cycle_number column
 try { db.run(`ALTER TABLE schedule_runs ADD COLUMN cycle_number INTEGER NOT NULL DEFAULT 1`); } catch { /* already exists */ }
+// Migration: add user_profile column
+try { db.run(`ALTER TABLE schedule_runs ADD COLUMN user_profile TEXT`); } catch { /* already exists */ }
 
 // ── Types ──
 
@@ -158,8 +160,8 @@ const stmts = {
   setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text WHERE id = $id`),
   // Schedule Runs
   insertScheduleRun: db.prepare(`
-    INSERT INTO schedule_runs (schedule_name, session_id, run_number, status, started_at, cycle_number)
-    VALUES ($schedule_name, $session_id, $run_number, $status, $started_at, $cycle_number)
+    INSERT INTO schedule_runs (schedule_name, session_id, run_number, status, started_at, cycle_number, user_profile)
+    VALUES ($schedule_name, $session_id, $run_number, $status, $started_at, $cycle_number, $user_profile)
   `),
   updateScheduleRun: db.prepare(`
     UPDATE schedule_runs SET
@@ -172,7 +174,7 @@ const stmts = {
     WHERE id = $id
   `),
   getScheduleRuns: db.prepare(`
-    SELECT id, schedule_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number
+    SELECT id, schedule_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, user_profile
     FROM schedule_runs WHERE schedule_name = $schedule_name
     ORDER BY run_number DESC LIMIT $limit
   `),
@@ -284,7 +286,7 @@ export function setDraft(sessionId: string, text: string) {
 
 import type { RunSummary, RunMeta } from "./scheduler-types";
 
-export function insertScheduleRun(scheduleName: string, runNumber: number, sessionId: string | null, startedAt: number, cycleNumber = 1): number {
+export function insertScheduleRun(scheduleName: string, runNumber: number, sessionId: string | null, startedAt: number, cycleNumber = 1, userProfile?: string): number {
   stmts.insertScheduleRun.run({
     $schedule_name: scheduleName,
     $session_id: sessionId,
@@ -292,6 +294,7 @@ export function insertScheduleRun(scheduleName: string, runNumber: number, sessi
     $status: "running",
     $started_at: startedAt,
     $cycle_number: cycleNumber,
+    $user_profile: userProfile ?? null,
   });
   return Number((db.query("SELECT last_insert_rowid() as id").get() as any).id);
 }

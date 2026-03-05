@@ -35,6 +35,9 @@ export interface ScheduleConfig {
   cycleInterval?: string;               // outer rhythm: "1d", "12h", etc. — resets run counter each cycle
   maxCycles?: number;                    // total cycle cap — auto-disables after N cycles complete
 
+  // ── User profile scoping ──
+  userProfile?: string;                   // user profile for session scoping (memory, template vars)
+
   // ── Session overrides (optional — profile provides defaults) ──
   model?: string;
   effort?: string;
