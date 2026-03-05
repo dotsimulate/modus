@@ -534,7 +534,8 @@ app.put("/api/sessions/:id/draft", async (c) => {
 // ── Directory Browser ──
 // Lists subdirectories at a given path for the CWD folder picker.
 app.get("/api/browse", async (c) => {
-  const raw = new URL(c.req.url).searchParams.get("path") ?? process.env.HOME ?? "/";
+  const { homedir } = await import("os");
+  const raw = new URL(c.req.url).searchParams.get("path") ?? homedir();
   // Resolve and sanitize — no traversal tricks
   const { resolve } = await import("path");
   const { readdir, stat } = await import("fs/promises");
@@ -557,7 +558,7 @@ app.get("/api/browse", async (c) => {
 
 // ── Memories (reads from agent_memory store) ──
 
-const MEMORY_BASE = new URL("../agent_memory/memory", import.meta.url).pathname;
+const MEMORY_BASE = Bun.fileURLToPath(new URL("../agent_memory/memory", import.meta.url));
 
 async function readMemoriesFromDir(dir: string): Promise<any[]> {
   const { readdir, readFile } = await import("fs/promises");

@@ -18,10 +18,11 @@ type Props = {
 /** Match a session CWD to a known project path, or fall back to last segment */
 function projectLabel(cwd: string | null, projectPaths?: string[]): string {
   if (!cwd) return "other";
-  const norm = cwd.replace(/\/+$/, "");
+  // Normalize to forward slashes, strip trailing
+  const norm = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
   if (projectPaths) {
     for (const pp of projectPaths) {
-      const np = pp.replace(/\/+$/, "");
+      const np = pp.replace(/\\/g, "/").replace(/\/+$/, "");
       if (norm === np || norm.startsWith(np + "/")) {
         return np.split("/").pop() ?? np;
       }
