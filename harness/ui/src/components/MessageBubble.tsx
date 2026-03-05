@@ -1,8 +1,9 @@
-import { memo, useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef, type ReactNode } from "react";
 import type { Message, ToolCall } from "../api";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
+import { StreamingCursor } from "./StreamingCursor";
 
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M ";
@@ -56,9 +57,10 @@ type Props = {
   showGitEvents?: boolean;
   cwd?: string | null;
   lastTodoId?: string;
+  children?: ReactNode;
 };
 
-export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, children }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const toolCount = countAllTools(msg.toolCalls);
@@ -138,13 +140,14 @@ export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, i
       {msg.content && (
         <div className={`message-content${isNew ? " message-content--new" : ""}`}>
           <Markdown content={msg.content} />
-          {isStreaming && <span className="streaming-cursor" />}
         </div>
       )}
 
-      {!msg.content && isStreaming && (
-        <div className={`message-content${isNew ? " message-content--new" : ""}`}>
-          <span className="streaming-cursor" />
+      {children}
+
+      {isStreaming && !msg.meta && (
+        <div className="message-meta">
+          <StreamingCursor />
         </div>
       )}
 
