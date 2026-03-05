@@ -16,7 +16,7 @@ import { startSession, getActiveSession } from "./session-manager";
 import {
   insertScheduleRun, updateScheduleRun, getScheduleRuns as dbGetScheduleRuns,
   getRunSummaries as dbGetRunSummaries, getNextRunNumber, getSession,
-  listSessions, getEvents, searchSessions,
+  listSessions, getEvents, searchSessions, clearScheduleRuns,
 } from "./db";
 import type { SessionRow, EventRow, SearchHit } from "./db";
 import type {
@@ -470,6 +470,52 @@ export function updateScheduleConfig(
     state.nextRunAt = null;
   }
   return true;
+}
+
+/** Reset a schedule — clears runs, resets cycle/run counters to 0 */
+export function resetSchedule(name: string): boolean {
+  const state = scheduleStates.get(name);
+  if (!state) return false;
+  if (state.running) return false; // can't reset while running
+
+  // Clear run history from DB
+  clearScheduleRuns(name);
+
+  // Reset in-memory state
+  state.cycleNumber = 1;
+  state.cycleRunCount = 0;
+  state.runNumber = 0;
+  state.lastRunAt = null;
+  state.lastStatus = null;
+  state.cycleStartedAt = null;
+
+  // Recalculate next run
+  if (state.config.enabled) {
+    state.nextRunAt = Date.now() + parseInterval(state.config.interval);
+  }
+
+  console.log(`[scheduler] Reset schedule "${name}" — counters zeroed, history cleared`);
+  return true;
+}
+
+/** Save skipConfirm preference for a schedule action */
+export function setSchedulePreference(name: string, key: string, value: boolean): boolean {
+  const state = scheduleStates.get(name);
+  if (!state) return false;
+  const configPath = join(SCHEDULES_DIR, name, "schedule.json");
+  // Read, patch, write
+  const config = JSON.parse(readFileSync(configPath, "utf-8"));
+  if (!config.preferences) config.preferences = {};
+  config.preferences[key] = value;
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  state.config = config;
+  return true;
+}
+
+/** Get schedule preferences */
+export function getSchedulePreferences(name: string): Record<string, boolean> {
+  const state = scheduleStates.get(name);
+  return (state?.config as any)?.preferences ?? {};
 }
 
 /** Reload schedules from disk without restart */

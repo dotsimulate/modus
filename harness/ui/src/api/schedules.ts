@@ -34,3 +34,34 @@ export async function updateScheduleApi(
     body: JSON.stringify(updates),
   });
 }
+
+export async function fetchScheduleInfo(name: string): Promise<{ contextSource: string; configSource: string }> {
+  const res = await fetch(
+    `${API_BASE}/api/schedules/${encodeURIComponent(name)}/info`,
+    { headers: authHeaders() },
+  );
+  return res.json();
+}
+
+export async function clearScheduleRunsApi(name: string): Promise<void> {
+  await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(name)}/runs`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+}
+
+export async function resetScheduleApi(name: string, skipConfirm = false): Promise<void> {
+  await fetch(`${API_BASE}/api/schedules/${encodeURIComponent(name)}/reset`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ skipConfirm }),
+  });
+}
+
+export async function fetchSchedulePreferences(name: string): Promise<Record<string, boolean>> {
+  const res = await fetch(
+    `${API_BASE}/api/schedules/${encodeURIComponent(name)}/preferences`,
+    { headers: authHeaders() },
+  );
+  return res.json();
+}

@@ -17,6 +17,7 @@ import './styles/components/chat-input.css'
 import './styles/components/media.css'
 import './styles/components/dashboard.css'
 import './styles/components/permissions.css'
+import './styles/components/create-profile.css'
 
 // Views
 import './styles/views/login.css'

@@ -26,7 +26,7 @@ export {
 } from "./sessions";
 
 // Schedules
-export { fetchSchedules, fetchScheduleRuns, triggerScheduleApi, updateScheduleApi } from "./schedules";
+export { fetchSchedules, fetchScheduleRuns, triggerScheduleApi, updateScheduleApi, fetchScheduleInfo, clearScheduleRunsApi, resetScheduleApi, fetchSchedulePreferences } from "./schedules";
 
 // Git
 export { fetchGitStatus, fetchGitLog, fetchGitShow } from "./git";

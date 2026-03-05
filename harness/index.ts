@@ -4,6 +4,7 @@ delete process.env.CLAUDECODE;
 import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin } from "./secrets";
 loadSecrets();
 
+import { join } from "path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -268,10 +269,18 @@ app.get("/api/sessions/search", (c) => {
 app.get("/api/sessions", (c) => {
   const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 50);
   const cwdPrefixes = resolveProjectFilter(c);
-  if (cwdPrefixes && cwdPrefixes.length > 0) {
-    return c.json(listSessionsForProjects(cwdPrefixes, limit));
-  }
-  return c.json(listSessions(limit));
+  const rows = cwdPrefixes && cwdPrefixes.length > 0
+    ? listSessionsForProjects(cwdPrefixes, limit)
+    : listSessions(limit);
+  // Correct stale statuses: if DB says running/starting/idle but session
+  // is not actually active in memory, it's done.
+  const corrected = rows.map((s) => {
+    if ((s.status === "running" || s.status === "starting" || s.status === "idle") && !getActiveSession(s.id)) {
+      return { ...s, status: "done" };
+    }
+    return s;
+  });
+  return c.json(corrected);
 });
 
 app.get("/api/sessions/active", (c) => {
@@ -621,8 +630,9 @@ app.get("/api/memories", async (c) => {
 import {
   initScheduler, stopScheduler, getSchedules, getScheduleState,
   triggerSchedule, updateScheduleConfig,
+  resetSchedule, setSchedulePreference, getSchedulePreferences,
 } from "./scheduler";
-import { getScheduleRuns as dbGetScheduleRuns } from "./db";
+import { getScheduleRuns as dbGetScheduleRuns, clearScheduleRuns } from "./db";
 
 app.get("/api/schedules", (c) => {
   const userProfileName = new URL(c.req.url).searchParams.get("userProfile");
@@ -661,6 +671,43 @@ app.post("/api/schedules/:name/trigger", async (c) => {
   const ok = await triggerSchedule(name, { userProfile: body.userProfile });
   if (!ok) return c.json({ error: "schedule not found or already running" }, 400);
   return c.json({ ok: true });
+});
+
+app.get("/api/schedules/:name/info", async (c) => {
+  const name = c.req.param("name");
+  const state = getScheduleState(name);
+  if (!state) return c.json({ error: "schedule not found" }, 404);
+  const schedDir = join(import.meta.dir, "schedules", name);
+  let contextSource = "";
+  let configSource = "";
+  try { contextSource = await Bun.file(join(schedDir, "context.ts")).text(); } catch { /* missing */ }
+  try { configSource = await Bun.file(join(schedDir, "schedule.json")).text(); } catch { /* missing */ }
+  return c.json({ contextSource, configSource });
+});
+
+app.delete("/api/schedules/:name/runs", (c) => {
+  const name = c.req.param("name");
+  const state = getScheduleState(name);
+  if (!state) return c.json({ error: "schedule not found" }, 404);
+  clearScheduleRuns(name);
+  return c.json({ ok: true });
+});
+
+app.post("/api/schedules/:name/reset", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json().catch(() => ({}));
+  const ok = resetSchedule(name);
+  if (!ok) return c.json({ error: "schedule not found or running" }, 400);
+  // Persist "skip confirm" preference if requested
+  if (body.skipConfirm) {
+    setSchedulePreference(name, "skipResetConfirm", true);
+  }
+  return c.json({ ok: true });
+});
+
+app.get("/api/schedules/:name/preferences", (c) => {
+  const name = c.req.param("name");
+  return c.json(getSchedulePreferences(name));
 });
 
 app.patch("/api/schedules/:name", async (c) => {

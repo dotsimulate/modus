@@ -64,9 +64,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     } catch { /* silent */ }
   }, [activeUserProfile]);
 
-  // Load sessions on mount + when user profile changes
+  // Load sessions on mount + poll every 10s for status updates
   useEffect(() => {
     refreshSessions();
+    const interval = setInterval(refreshSessions, 10_000);
+    return () => clearInterval(interval);
   }, [refreshSessions]);
 
   // ── URL hash sync ──

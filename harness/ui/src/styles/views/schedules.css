@@ -1,165 +1,478 @@
 /**
  * Schedules — scheduled task management view.
- *
- * View styles for the schedule list, cards, and cron configuration.
  */
 
-/* ── Schedules View ── */
-
+/* ── View container ── */
 .schedules-view {
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 24px;
   flex: 1;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  padding: 0 20px;
+  overflow-y: auto;
+  gap: 16px;
 }
-.schedules-header {
+
+/* ── Header ── */
+.sched-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px 0 12px;
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  padding-bottom: 8px;
 }
-.schedules-title {
+.sched-header-title {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.schedules-count {
+.sched-header-count {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
 }
-.schedules-empty {
-  text-align: center;
+.sched-header-running {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #33cc33;
+  margin-left: 4px;
+}
+.sched-header-enabled {
+  font-family: var(--font-mono);
+  font-size: 10px;
   color: var(--text-muted);
-  padding: 32px 10px;
+}
+
+/* ── Empty state ── */
+.sched-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px 16px;
+  color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 12px;
 }
-.schedules-empty-hint {
-  margin-top: 8px;
+.sched-empty-hint {
   font-size: 10px;
-  color: var(--text-muted);
   opacity: 0.6;
 }
 
-/* Schedule item */
-.schedule-item {
-  border-bottom: 1px solid var(--border);
-  padding: 12px 0;
+/* ── Card grid ── */
+.sched-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 0;
 }
-.schedule-head {
+
+/* ── Schedule card ── */
+.sched-card {
+  background: var(--bg);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  margin-top: -1px;
+  margin-left: -1px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.12s ease;
+}
+.sched-card:hover {
+  background: var(--bg-raised);
+}
+.sched-card--expanded {
+  background: var(--bg-raised);
+}
+
+/* Header row */
+.sched-card-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
-  transition: opacity 0.12s ease;
+  color: var(--text);
 }
-.schedule-head:hover { opacity: 0.85; }
-.schedule-name {
+.sched-card-name {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   color: var(--text);
 }
-.schedule-desc {
-  flex: 1;
+.sched-card-live {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #e89b50;
+  animation: sched-pulse 1.5s ease-in-out infinite;
 }
-.schedule-chevron {
-  font-size: 10px;
+@keyframes sched-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.sched-card-chevron {
   color: var(--text-muted);
-  transition: transform 0.15s ease;
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease;
 }
-.schedule-chevron.open {
+.sched-card-chevron--open {
   transform: rotate(180deg);
 }
-.schedule-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0 4px;
-}
-.schedule-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.schedule-toggle input[type="checkbox"] {
-  accent-color: #33cc33;
-}
-.schedule-trigger-btn {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-dim);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 3px 10px;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-.schedule-trigger-btn:hover:not(:disabled) {
-  color: var(--text);
-  border-color: var(--border-active);
-}
-.schedule-trigger-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.schedule-meta {
-  display: flex;
-  gap: 12px;
-  font-family: var(--font-mono);
-  font-size: 10px;
+
+/* Description */
+.sched-card-desc {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.45;
   color: var(--text-muted);
-  padding: 4px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-/* Run history rows */
-.schedule-runs {
-  padding-top: 6px;
+/* Tags row */
+.sched-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
-.schedule-run-row {
+
+/* ── Meters + actions row ── */
+.sched-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.sched-meters--off {
+  opacity: 0.4;
+}
+/* Top-right stamp */
+.sched-card-stamp {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 46px;
+}
+.sched-meter-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 2px;
+}
+.sched-meter-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 70px;
+}
+.sched-progress {
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  position: relative;
+  border-radius: 1.5px;
+  overflow: hidden;
+}
+.sched-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 1.5px;
+  transition: width 1s linear;
+}
+.sched-progress-fill--cycle {
+  background: #33cc33;
+}
+.sched-progress-fill--runs {
+  background: #33cc33;
+}
+.sched-progress-fill--next {
+  background: #e89b50;
+}
+
+/* ── Toggle Switch (pill, matches trigger btn width) ── */
+.sched-switch {
+  position: relative;
+  width: 100%;
+  height: 18px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+.sched-switch:hover {
+  border-color: var(--border-active);
+}
+.sched-switch--on {
+  background: rgba(51, 204, 51, 0.1);
+  border-color: rgba(51, 204, 51, 0.4);
+}
+.sched-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.15s ease;
+}
+.sched-switch--on .sched-switch-knob {
+  left: calc(100% - 15px);
+  background: #33cc33;
+}
+
+/* Trigger button */
+.sched-trigger-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.sched-trigger-btn:hover:not(:disabled) {
+  color: var(--text-dim);
+  border-color: var(--border-active);
+}
+.sched-trigger-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Detail panel (inside collapse) ── */
+.sched-detail {
+  margin-top: 0;
+}
+
+/* ── Tabs ── */
+.sched-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+.sched-tab {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+}
+.sched-tab:hover {
+  color: var(--text-dim);
+}
+.sched-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--text-dim);
+}
+
+/* ── Tab content — scrollable with max height ── */
+.sched-tab-content {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* ── Runs tab ── */
+.sched-runs-section {
+  padding-top: 4px;
+}
+.sched-runs-section + .sched-runs-section {
   border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.sched-runs-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.sched-runs-count {
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.sched-runs-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 16px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.sched-runs-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 4px;
+  border-top: 1px solid var(--border);
+}
+.sched-clear-btn {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.sched-clear-btn:hover {
+  color: #aa3333;
+  border-color: rgba(170, 51, 51, 0.4);
+}
+.sched-reset-btn {
+  color: #aa3333;
+  border-color: rgba(170, 51, 51, 0.3);
+}
+.sched-reset-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.sched-reset-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.sched-reset-warn {
+  color: #aa3333;
+}
+.sched-reset-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.sched-reset-checkbox input {
+  margin: 0;
+  accent-color: var(--text-muted);
+}
+.sched-reset-confirm-btns {
+  display: flex;
+  gap: 6px;
+}
+
+/* Run rows */
+.sched-run-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-dim);
   transition: background 0.12s ease;
 }
-.schedule-run-row.clickable {
-  cursor: pointer;
+.sched-run-row:last-child {
+  border-bottom: none;
 }
-.schedule-run-row.clickable:hover {
+.sched-run-row:hover:not(:disabled) {
   background: var(--bg-hover);
 }
-.schedule-run-number {
+.sched-run-row--no-session {
+  cursor: default;
+}
+.sched-run-num {
   font-size: 10px;
   color: var(--text-muted);
-  min-width: 28px;
+  min-width: 24px;
 }
-.schedule-run-summary {
+.sched-run-text {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
+.sched-run-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
 
+/* ── Info tab ── */
+.sched-info-tab {
+  padding: 8px 0;
+}
+.sched-info-section {
+  padding: 4px 0;
+}
+.sched-info-section + .sched-info-section {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.sched-info-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 4px 4px;
+}
+.sched-info-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+  tab-size: 2;
+}

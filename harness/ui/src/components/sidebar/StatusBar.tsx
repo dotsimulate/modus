@@ -1,4 +1,6 @@
-import type { UserProfile } from "../../api";
+import { useState } from "react";
+import type { UserProfile, Profile } from "../../api";
+import { CreateProfileModal } from "./CreateProfileModal";
 
 type Props = {
   harnessUp: boolean | null;
@@ -7,12 +9,17 @@ type Props = {
   userProfiles?: UserProfile[];
   activeUserProfile?: string | null;
   onSwitchUserProfile?: (name: string | null) => void;
+  onProfileCreated?: (name: string) => void;
+  agentProfiles?: Profile[];
 };
 
 export function StatusBar({
   harnessUp, userName, onLock,
   userProfiles, activeUserProfile, onSwitchUserProfile,
+  onProfileCreated, agentProfiles,
 }: Props) {
+  const [showCreate, setShowCreate] = useState(false);
+
   return (
     <div className="harness-status">
       <div className="harness-status-left">
@@ -20,16 +27,25 @@ export function StatusBar({
           className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
         />
         {userProfiles && userProfiles.length > 0 && onSwitchUserProfile ? (
-          <select
-            className="user-profile-select"
-            value={activeUserProfile ?? ""}
-            onChange={(e) => onSwitchUserProfile(e.target.value || null)}
-          >
-            <option value="">all projects</option>
-            {userProfiles.map((up) => (
-              <option key={up.name} value={up.name}>{up.displayName ?? up.name}</option>
-            ))}
-          </select>
+          <>
+            <select
+              className="user-profile-select"
+              value={activeUserProfile ?? ""}
+              onChange={(e) => onSwitchUserProfile(e.target.value || null)}
+            >
+              <option value="">all projects</option>
+              {userProfiles.map((up) => (
+                <option key={up.name} value={up.name}>{up.displayName ?? up.name}</option>
+              ))}
+            </select>
+            <button
+              className="create-profile-btn"
+              onClick={() => setShowCreate(true)}
+              title="New profile"
+            >
+              +
+            </button>
+          </>
         ) : (
           <span>
             {harnessUp === true
@@ -53,6 +69,16 @@ export function StatusBar({
           </button>
         )}
       </div>
+      {showCreate && (
+        <CreateProfileModal
+          agentProfiles={agentProfiles ?? []}
+          onClose={() => setShowCreate(false)}
+          onCreated={(name) => {
+            setShowCreate(false);
+            onProfileCreated?.(name);
+          }}
+        />
+      )}
     </div>
   );
 }

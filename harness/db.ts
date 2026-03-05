@@ -348,6 +348,10 @@ export function getNextRunNumber(scheduleName: string): number {
   return row.next;
 }
 
+export function clearScheduleRuns(scheduleName: string): void {
+  db.prepare(`DELETE FROM schedule_runs WHERE schedule_name = $name`).run({ $name: scheduleName });
+}
+
 // ── Full-Text Search (FTS5) ──
 
 db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
@@ -512,7 +516,7 @@ export function storageStats(): { project: string; sessions: number; events: num
 }
 
 // ── Startup Cleanup ──
-// Mark orphaned running/starting/error sessions as done (harness restarted while they were active)
-db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'error')`);
+// Mark orphaned running/starting/idle/error sessions as done (harness restarted while they were active)
+db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'idle', 'error')`);
 
 export { db };
