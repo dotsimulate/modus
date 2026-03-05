@@ -67,3 +67,10 @@ Desktop.ini
 coverage/
 *.lcov
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Agent profiles — only built-in agents tracked; user-specific profiles are local-only
+harness/profiles/agents/*.json
+!harness/profiles/agents/dev-agent.json
+!harness/profiles/agents/research.json
+!harness/profiles/agents/test-harness.json
+!harness/profiles/agents/web-ui.json
