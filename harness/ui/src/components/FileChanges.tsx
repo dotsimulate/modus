@@ -101,52 +101,63 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
-/** Render a single edit diff block */
-function EditDiff({ edit }: { edit: FileEdit }) {
+/** Render a single edit as a table hunk — reuses git diff CSS */
+function EditHunk({ edit, idx }: { edit: FileEdit; idx: number }) {
   if (edit.type === "write") {
     const lines = (edit.content ?? "").split("\n");
-    const display = lines.length > 20 ? lines.slice(0, 20) : lines;
+    const show = lines.slice(0, 30);
     return (
-      <div className="fc-diff-block">
-        <div className="fc-diff-label">file written</div>
-        <pre className="fc-diff-code">
-          {display.map((line, i) => (
-            <div key={i} className="fc-line fc-line--add">
-              <span className="fc-line-marker">+</span>
-              <span>{line}</span>
-            </div>
-          ))}
-          {lines.length > 20 && (
-            <div className="fc-line fc-line--ctx">
-              <span className="fc-line-marker"> </span>
-              <span className="fc-truncated">… {lines.length - 20} more lines</span>
-            </div>
-          )}
-        </pre>
-      </div>
+      <tbody className="diff-hunk-block">
+        <tr className="diff-hunk-header">
+          <td className="diff-gutter" colSpan={3}></td>
+          <td className="diff-hunk-range">file written</td>
+        </tr>
+        {show.map((l, i) => (
+          <tr key={i} className="diff-line diff-line--add">
+            <td className="diff-gutter diff-gutter--old"></td>
+            <td className="diff-gutter diff-gutter--new">{i + 1}</td>
+            <td className="diff-gutter diff-gutter--marker">+</td>
+            <td className="diff-code"><span>{l}</span></td>
+          </tr>
+        ))}
+        {lines.length > 30 && (
+          <tr className="diff-hunk-header">
+            <td className="diff-gutter" colSpan={3}></td>
+            <td className="diff-hunk-range">… {lines.length - 30} more lines</td>
+          </tr>
+        )}
+      </tbody>
     );
   }
 
-  const oldLines = (edit.oldString ?? "").split("\n");
-  const newLines = (edit.newString ?? "").split("\n");
+  const ol = (edit.oldString ?? "").split("\n");
+  const nl = (edit.newString ?? "").split("\n");
 
   return (
-    <div className="fc-diff-block">
-      <pre className="fc-diff-code">
-        {oldLines.map((line, i) => (
-          <div key={`d${i}`} className="fc-line fc-line--del">
-            <span className="fc-line-marker">-</span>
-            <span>{line}</span>
-          </div>
-        ))}
-        {newLines.map((line, i) => (
-          <div key={`a${i}`} className="fc-line fc-line--add">
-            <span className="fc-line-marker">+</span>
-            <span>{line}</span>
-          </div>
-        ))}
-      </pre>
-    </div>
+    <tbody className="diff-hunk-block">
+      {idx > 0 && (
+        <tr className="diff-hunk-header">
+          <td className="diff-gutter" colSpan={3}></td>
+          <td className="diff-hunk-range"></td>
+        </tr>
+      )}
+      {ol.map((l, i) => (
+        <tr key={`d${i}`} className="diff-line diff-line--del">
+          <td className="diff-gutter diff-gutter--old">{i + 1}</td>
+          <td className="diff-gutter diff-gutter--new"></td>
+          <td className="diff-gutter diff-gutter--marker">-</td>
+          <td className="diff-code"><span>{l}</span></td>
+        </tr>
+      ))}
+      {nl.map((l, i) => (
+        <tr key={`a${i}`} className="diff-line diff-line--add">
+          <td className="diff-gutter diff-gutter--old"></td>
+          <td className="diff-gutter diff-gutter--new">{i + 1}</td>
+          <td className="diff-gutter diff-gutter--marker">+</td>
+          <td className="diff-code"><span>{l}</span></td>
+        </tr>
+      ))}
+    </tbody>
   );
 }
 
@@ -165,12 +176,12 @@ function FileCard({ filePath, edits }: { filePath: string; edits: FileEdit[] }) 
   return (
     <div className="fc-file">
       <div className="fc-file-header" onClick={() => setExpanded(!expanded)}>
-        <span className="fc-toggle">{expanded ? "v" : ">"}</span>
+        <span className="diff-file-toggle">{expanded ? "v" : ">"}</span>
         <span className="fc-file-name">{name}</span>
         <span className="fc-file-dir">{dir}</span>
         <span className="fc-file-stats">
-          {additions > 0 && <span className="fc-stat fc-stat--add">+{additions}</span>}
-          {deletions > 0 && <span className="fc-stat fc-stat--del">-{deletions}</span>}
+          {additions > 0 && <span className="diff-stat diff-stat--add">+{additions}</span>}
+          {deletions > 0 && <span className="diff-stat diff-stat--del">-{deletions}</span>}
         </span>
         <button className="fc-open-btn" onClick={handleOpen} title="Open in editor">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -181,9 +192,11 @@ function FileCard({ filePath, edits }: { filePath: string; edits: FileEdit[] }) 
       </div>
       {expanded && (
         <div className="fc-file-body">
-          {edits.map((edit, i) => (
-            <EditDiff key={i} edit={edit} />
-          ))}
+          <table className="diff-table">
+            {edits.map((edit, i) => (
+              <EditHunk key={i} edit={edit} idx={i} />
+            ))}
+          </table>
         </div>
       )}
     </div>
@@ -211,10 +224,10 @@ export const FileChanges = memo(function FileChanges({ toolCalls }: Props) {
           </span>
           <span className="fc-header-stats">
             {totalChanges.additions > 0 && (
-              <span className="fc-stat fc-stat--add">+{totalChanges.additions}</span>
+              <span className="diff-stat diff-stat--add">+{totalChanges.additions}</span>
             )}
             {totalChanges.deletions > 0 && (
-              <span className="fc-stat fc-stat--del">-{totalChanges.deletions}</span>
+              <span className="diff-stat diff-stat--del">-{totalChanges.deletions}</span>
             )}
           </span>
         </div>

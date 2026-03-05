@@ -111,8 +111,9 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
               showGitEvents={showGitEvents}
               cwd={cwd}
               lastTodoId={lastTodoId}
-            />
-            {showFileChanges && <FileChanges toolCalls={turnTools} />}
+            >
+              {showFileChanges && <FileChanges toolCalls={turnTools} />}
+            </MessageBubble>
           </div>
         );
       })}
