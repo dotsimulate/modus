@@ -1,8 +1,8 @@
-# Agent Dev Zone
+# Modus
 
 A local-first agent harness built on the Claude Agent SDK. Manage concurrent agent sessions with configurable profiles, persistent memory, a live streaming UI, and scheduled automation — all from one `bun run dev`.
 
-This is a fast-moving, personal infrastructure project. Everything is designed to be forked and customized.
+Your MO for working with AI agents. Personal infrastructure designed to be forked and customized.
 
 ## Architecture
 
@@ -32,8 +32,8 @@ This is a fast-moving, personal infrastructure project. Everything is designed t
 ## Quick Start
 
 ```bash
-git clone <repo-url>
-cd agent_dev_zone
+git clone https://github.com/dotsimulate/modus.git
+cd modus
 
 # Install deps
 cd harness && bun install && cd ui && bun install && cd ../..

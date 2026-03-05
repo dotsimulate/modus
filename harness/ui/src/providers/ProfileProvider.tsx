@@ -26,6 +26,7 @@ type ProfileContextValue = {
   uiState: UserProfileState;
   saveUiState: (patch: Partial<UserProfileState>) => void;
   switchUserProfile: (name: string | null) => void;
+  refreshUserProfiles: () => Promise<void>;
   buildSessionOpts: (prompt: string, profile?: string) => CreateSessionOpts;
 };
 
@@ -63,6 +64,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem(USER_PROFILE_KEY);
     }
     setActiveUserProfile(name);
+  }, []);
+
+  // Refresh user profiles from server
+  const refreshUserProfiles = useCallback(async () => {
+    const ups = await fetchUserProfiles();
+    setUserProfiles(ups);
   }, []);
 
   // Debounced UI state save
@@ -151,7 +158,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,
       liveAgentConfig, setLiveAgentConfig,
-      uiState, saveUiState, switchUserProfile,
+      uiState, saveUiState, switchUserProfile, refreshUserProfiles,
       buildSessionOpts,
     }}>
       {children}

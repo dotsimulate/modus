@@ -1,0 +1,283 @@
+/**
+ * Create Profile Modal — modal overlay for creating new user profiles.
+ */
+
+.create-profile-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: cp-fade-in 0.15s ease;
+}
+
+@keyframes cp-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.create-profile-modal {
+  width: 420px;
+  max-width: 90vw;
+  max-height: 85vh;
+  background: var(--bg);
+  border: 1px solid var(--border-active);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: cp-slide-in 0.15s ease;
+}
+
+@keyframes cp-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.create-profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.create-profile-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+.create-profile-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.1s ease;
+}
+.create-profile-close:hover { color: var(--text); }
+
+.create-profile-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.create-profile-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.create-profile-label:first-child { margin-top: 0; }
+
+.create-profile-hint {
+  color: var(--text-muted);
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.create-profile-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: #fff;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.1s ease;
+}
+.create-profile-input:focus {
+  border-color: var(--border-active);
+}
+.create-profile-input::placeholder {
+  color: var(--text-muted);
+}
+.create-profile-input--mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ── Project Paths ── */
+
+.create-profile-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.create-profile-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--bg-raised);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.create-profile-path-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.create-profile-path-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.1s ease;
+}
+.create-profile-path-remove:hover { color: var(--error); }
+
+.create-profile-add-path {
+  background: none;
+  border: 1px dashed var(--border-active);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.1s ease;
+}
+.create-profile-add-path:hover {
+  border-color: var(--border-active);
+  color: var(--text-dim);
+}
+
+.create-profile-folder-picker {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.create-profile-folder-picker .folder-picker {
+  position: static;
+  margin-bottom: 0;
+  box-shadow: none;
+  border: none;
+  border-radius: 0;
+}
+
+/* ── Agent Profile Chips ── */
+
+.create-profile-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.create-profile-agent {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+.create-profile-agent:hover {
+  border-color: var(--border-active);
+  color: var(--text);
+}
+.create-profile-agent.selected {
+  border-color: rgba(232, 155, 80, 0.5);
+  color: #e89b50;
+  background: rgba(232, 155, 80, 0.06);
+}
+
+/* ── Error ── */
+
+.create-profile-error {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--error);
+  margin-top: 4px;
+}
+
+/* ── Footer ── */
+
+.create-profile-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.create-profile-cancel {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+.create-profile-cancel:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+}
+
+.create-profile-save {
+  background: transparent;
+  border: 1px solid rgba(51, 204, 51, 0.4);
+  border-radius: 4px;
+  color: #33cc33;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+.create-profile-save:hover:not(:disabled) {
+  background: rgba(51, 204, 51, 0.08);
+  border-color: #33cc33;
+}
+.create-profile-save:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ── + button in status bar ── */
+
+.create-profile-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.1s ease;
+}
+.create-profile-btn:hover { color: var(--text); }

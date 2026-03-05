@@ -35,7 +35,7 @@ function AppShell() {
     selectedProfile, selectProfile,
     setupState, setSetupState,
     liveAgentConfig, setLiveAgentConfig,
-    uiState, saveUiState, switchUserProfile,
+    uiState, saveUiState, switchUserProfile, refreshUserProfiles,
   } = useProfiles();
   const {
     activeSession, serverSessions,
@@ -68,6 +68,11 @@ function AppShell() {
     selectSession(id);
     setSidebarOpen(false);
   }, [selectSession]);
+
+  const handleProfileCreated = useCallback(async (name: string) => {
+    await refreshUserProfiles();
+    switchUserProfile(name);
+  }, [refreshUserProfiles, switchUserProfile]);
 
   // View-based session navigation (from dashboard/schedules)
   const handleViewSession = useCallback((id: string) => {
@@ -125,9 +130,7 @@ function AppShell() {
               sessions={serverSessions.map((s) =>
                 activeSession && s.id === activeSession.id
                   ? { ...s, status: activeSession.status ?? s.status }
-                  : s.status === "running" || s.status === "starting" || s.status === "idle"
-                    ? { ...s, status: "done" }
-                    : s
+                  : s
               )}
               activeSessionId={activeSession?.id ?? null}
               profiles={visibleProfiles}
@@ -146,6 +149,8 @@ function AppShell() {
               userProfiles={userProfiles}
               activeUserProfile={activeUserProfile}
               onSwitchUserProfile={switchUserProfile}
+              onProfileCreated={handleProfileCreated}
+              allProfiles={profiles}
               initialGroupMode={uiState.sidebarGroupMode}
               initialCollapsedGroups={uiState.sidebarCollapsedGroups}
               onGroupModeChange={(mode) => saveUiState({ sidebarGroupMode: mode })}
