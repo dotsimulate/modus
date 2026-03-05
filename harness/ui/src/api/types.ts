@@ -105,6 +105,7 @@ export type ProfileUi = {
   showThinking?: boolean;
   showMeta?: boolean;
   showToolCalls?: boolean;
+  showGitEvents?: boolean;
   placeholder?: string;
   emptyTitle?: string;
   emptySubtitle?: string;

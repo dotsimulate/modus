@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { MessageBubble } from "./MessageBubble";
 import type { Message } from "../api";
 
@@ -8,11 +8,13 @@ type Props = {
   showThinking?: boolean;
   showMeta?: boolean;
   showToolCalls?: boolean;
+  showGitEvents?: boolean;
+  cwd?: string | null;
   emptyTitle?: string;
   emptySubtitle?: string;
 };
 
-export function ChatView({ messages, streaming, showThinking = true, showMeta = true, showToolCalls = true, emptyTitle, emptySubtitle }: Props) {
+export function ChatView({ messages, streaming, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
 
@@ -27,6 +29,23 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
     }
   }, [messages.length]);
 
+  // Find last message index per role for animation
+  const lastUser = useMemo(() => messages.findLastIndex(m => m.role === "user"), [messages]);
+  const lastAssistant = useMemo(() => messages.findLastIndex(m => m.role === "assistant"), [messages]);
+
+  // Find last TodoWrite tool call ID so only it defaults expanded
+  const lastTodoId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const tcs = messages[i].toolCalls;
+      if (tcs) {
+        for (let j = tcs.length - 1; j >= 0; j--) {
+          if (tcs[j].name === "TodoWrite") return tcs[j].id;
+        }
+      }
+    }
+    return undefined;
+  }, [messages]);
+
   if (messages.length === 0) {
     return (
       <div className="empty-state">
@@ -34,22 +53,6 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
         <div className="empty-state-sub">{emptySubtitle ?? "start typing to begin"}</div>
       </div>
     );
-  }
-
-  // Find last message index per role for animation
-  const lastUser = messages.findLastIndex(m => m.role === "user");
-  const lastAssistant = messages.findLastIndex(m => m.role === "assistant");
-
-  // Find last TodoWrite tool call ID so only it defaults expanded
-  let lastTodoId: string | undefined;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const tcs = messages[i].toolCalls;
-    if (tcs) {
-      for (let j = tcs.length - 1; j >= 0; j--) {
-        if (tcs[j].name === "TodoWrite") { lastTodoId = tcs[j].id; break; }
-      }
-      if (lastTodoId) break;
-    }
   }
 
   return (
@@ -74,6 +77,8 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
             showThinking={showThinking}
             showMeta={showMeta}
             showToolCalls={showToolCalls}
+            showGitEvents={showGitEvents}
+            cwd={cwd}
             lastTodoId={lastTodoId}
           />
         )

@@ -75,6 +75,7 @@ export type Profile = {
     placeholder?: string;
     emptyTitle?: string;
     emptySubtitle?: string;
+    showGitEvents?: boolean;
   };
 };
 

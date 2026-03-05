@@ -373,16 +373,85 @@ function MemoryFeed({
   );
 }
 
+// ── Date range slider ──
+function DateRangeSlider({ min, max, startVal, endVal, onStartChange, onEndChange, onReset }: {
+  min: number; max: number;
+  startVal: number; endVal: number;
+  onStartChange: (v: number) => void;
+  onEndChange: (v: number) => void;
+  onReset: () => void;
+}) {
+  const isFullRange = startVal <= min && endVal >= max;
+  const fmt = (ts: number) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  // Percentage positions for the active track highlight
+  const range = max - min || 1;
+  const leftPct = ((startVal - min) / range) * 100;
+  const rightPct = ((endVal - min) / range) * 100;
+
+  return (
+    <div className="memviz-date-slider">
+      <div className="memviz-date-slider-track-wrap">
+        <div className="memviz-date-slider-track">
+          <div
+            className="memviz-date-slider-active"
+            style={{ left: `${leftPct}%`, width: `${rightPct - leftPct}%` }}
+          />
+        </div>
+        <input
+          type="range"
+          className="memviz-date-input memviz-date-input-start"
+          min={min}
+          max={max}
+          value={startVal}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            onStartChange(Math.min(v, endVal));
+          }}
+        />
+        <input
+          type="range"
+          className="memviz-date-input memviz-date-input-end"
+          min={min}
+          max={max}
+          value={endVal}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            onEndChange(Math.max(v, startVal));
+          }}
+        />
+      </div>
+      <div className="memviz-date-labels">
+        <span className="memviz-date-label">{fmt(startVal)}</span>
+        <button
+          className={`memviz-date-reset${isFullRange ? " dimmed" : ""}`}
+          onClick={onReset}
+        >reset</button>
+        <span className="memviz-date-label">{fmt(endVal)}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Filter bar ──
 function FilterBar({
   types, activeTypes, onToggle, search, onSearch,
   tagFilter, onTagFilter, allTags,
   profileFilter, onProfileFilter, allProfiles,
+  dateRange, dateStart, dateEnd, onDateStartChange, onDateEndChange, onDateReset,
 }: {
   types: string[]; activeTypes: Set<string>; onToggle: (t: string) => void;
   search: string; onSearch: (s: string) => void;
   tagFilter: string; onTagFilter: (t: string) => void; allTags: string[];
   profileFilter: string; onProfileFilter: (p: string) => void; allProfiles: string[];
+  dateRange: { min: number; max: number } | null;
+  dateStart: number; dateEnd: number;
+  onDateStartChange: (v: number) => void;
+  onDateEndChange: (v: number) => void;
+  onDateReset: () => void;
 }) {
   return (
     <div className="memviz-filters">
@@ -417,6 +486,17 @@ function FilterBar({
           placeholder="all profiles"
           options={allProfiles.map((p) => ({ value: p, label: p }))}
           onChange={onProfileFilter}
+        />
+      )}
+      {dateRange && (
+        <DateRangeSlider
+          min={dateRange.min}
+          max={dateRange.max}
+          startVal={dateStart}
+          endVal={dateEnd}
+          onStartChange={onDateStartChange}
+          onEndChange={onDateEndChange}
+          onReset={onDateReset}
         />
       )}
     </div>
@@ -474,6 +554,8 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState(initialTagFilter ?? "");
   const [profileFilter, setProfileFilter] = useState("");
+  const [dateStart, setDateStart] = useState(0);
+  const [dateEnd, setDateEnd] = useState(0);
 
   // Camera
   const cameraRef = useRef({ rotY: 0.4, rotX: -0.25, camZ: -125, panX: 0, panY: 0, autoRotate: true });
@@ -487,6 +569,28 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
       .then((m) => { setMemories(m); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  // Date range bounds from all memories
+  const dateRange = useMemo(() => {
+    if (memories.length === 0) return null;
+    let min = Infinity, max = -Infinity;
+    for (const m of memories) {
+      const ts = new Date(m.created).getTime();
+      if (!isNaN(ts)) {
+        if (ts < min) min = ts;
+        if (ts > max) max = ts;
+      }
+    }
+    return min <= max ? { min, max } : null;
+  }, [memories]);
+
+  // Initialize date range when memories first load
+  useEffect(() => {
+    if (dateRange) {
+      setDateStart(dateRange.min);
+      setDateEnd(dateRange.max);
+    }
+  }, [dateRange]);
 
   const allTags = useMemo(() => {
     const tags = new Set<string>();
@@ -512,16 +616,24 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
           && !m.body.toLowerCase().includes(s)
           && !m.tags.some((t) => t.toLowerCase().includes(s))) continue;
       }
+      if (dateRange) {
+        const ts = new Date(m.created).getTime();
+        if (ts < dateStart || ts > dateEnd) continue;
+      }
       types.add(m.type || "discovery");
     }
     return types;
-  }, [memories, search, tagFilter, profileFilter]);
+  }, [memories, search, tagFilter, profileFilter, dateRange, dateStart, dateEnd]);
 
   const filtered = useMemo(() => {
     return memories.filter((m) => {
       if (!activeTypes.has(m.type || "discovery")) return false;
       if (tagFilter && !m.tags.includes(tagFilter)) return false;
       if (profileFilter && m.profile !== profileFilter) return false;
+      if (dateRange) {
+        const ts = new Date(m.created).getTime();
+        if (ts < dateStart || ts > dateEnd) return false;
+      }
       if (search) {
         const s = search.toLowerCase();
         return m.id.toLowerCase().includes(s)
@@ -530,7 +642,7 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
       }
       return true;
     });
-  }, [memories, activeTypes, search, tagFilter, profileFilter]);
+  }, [memories, activeTypes, search, tagFilter, profileFilter, dateRange, dateStart, dateEnd]);
 
   // When filtered set changes, reconcile particles: add new, remove old, update targets
   const targets = useMemo(() => computeTargets(filtered), [filtered]);
@@ -924,6 +1036,12 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
         profileFilter={profileFilter}
         onProfileFilter={setProfileFilter}
         allProfiles={allProfiles}
+        dateRange={dateRange}
+        dateStart={dateStart}
+        dateEnd={dateEnd}
+        onDateStartChange={setDateStart}
+        onDateEndChange={setDateEnd}
+        onDateReset={() => { if (dateRange) { setDateStart(dateRange.min); setDateEnd(dateRange.max); } }}
       />
 
       <StatsBar memories={filtered} />
