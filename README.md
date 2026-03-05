@@ -1,10 +1,10 @@
 # Modus
 
-A local-first agent harness built on the Claude Agent SDK. Manage concurrent agent sessions with configurable profiles, persistent memory, a live streaming UI, and scheduled automation — all from one `bun run dev`.
-
 Your MO for working with AI agents. Personal infrastructure designed to be forked and customized.
 
 ## Architecture
+
+A locally configured agent wrangler designed for you to hone your agents. Built on the Claude Agent SDK — concurrent sessions, configurable profiles, persistent memory, live streaming UI, and scheduled automation from one `bun run dev`.
 
 ```
 ┌──────────────────────────────────┐
