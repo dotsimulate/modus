@@ -16,6 +16,7 @@ type MergedSession = {
   preview: string;
   lastMessageAt: number;
   active: boolean;
+  archived: boolean;
   subscribers?: number;
   cwd: string | null;
 };
@@ -36,6 +37,7 @@ function mergeRows(active: ActiveSessionInfo[], recent: SessionInfo[]): MergedSe
       preview: a.preview,
       lastMessageAt: a.lastEventAt,
       active: true,
+      archived: !!a.archived,
       subscribers: a.subscribers,
       cwd: a.cwd,
     });
@@ -53,6 +55,7 @@ function mergeRows(active: ActiveSessionInfo[], recent: SessionInfo[]): MergedSe
       preview: s.last_prompt ?? s.preview,
       lastMessageAt: s.last_message_at,
       active: false,
+      archived: false,
       cwd: s.cwd,
     });
   }
@@ -74,11 +77,11 @@ function shortModel(model: string | null): string {
   return model.replace("claude-", "").replace(/-\d{8}.*/, "");
 }
 
-function statusClass(status: string): string {
-  if (status === "running" || status === "starting") return "running";
-  if (status === "error") return "error";
-  if (status === "done") return "done";
-  return "idle";
+function dotClass(row: MergedSession): string {
+  if (!row.active) return "dash-dot--done";
+  if (row.status === "running") return "dash-dot--streaming";
+  if (row.status === "error") return "dash-dot--error";
+  return "dash-dot--running";
 }
 
 const chevron = (
@@ -106,67 +109,34 @@ export function SessionsPanel({ onSelectSession }: Props) {
     return () => { active = false; clearInterval(interval); };
   }, []);
 
-  const activeRows = rows.filter((r) => r.active);
-  const recentRows = rows.filter((r) => !r.active);
+  const visibleRows = rows.filter((r) => !r.archived);
+  const activeCount = visibleRows.filter((r) => r.active).length;
 
   return (
     <div className="dash-panel">
       <button className="dash-panel-header" onClick={() => setOpen(!open)}>
         <span className="dash-panel-title">sessions</span>
-        {activeRows.length > 0 && (
-          <span className="dash-active-count">{activeRows.length} active</span>
-        )}
+        <span className={`dash-active-count ${activeCount === 0 ? "dash-active-count--zero" : ""}`}>{activeCount}</span>
         <span className={`profile-panel-chevron ${open ? "profile-panel-chevron--open" : ""}`}>
           {chevron}
         </span>
       </button>
       <div className={`panel-collapse ${open ? "panel-collapse--open" : ""}`}>
         <div className="panel-collapse-clip">
-          {rows.length === 0 && (
+          {visibleRows.length === 0 && (
             <div className="dash-empty">no sessions</div>
           )}
 
-          {/* Active agents — cards */}
-          {activeRows.length > 0 && (
-            <div className="agent-grid">
-              {activeRows.map((r) => (
-                <div
-                  key={r.id}
-                  className={`agent-card agent-card--${statusClass(r.status)}`}
-                  onClick={() => onSelectSession(r.id)}
-                >
-                  <div className="agent-card-head">
-                    <span className={`dash-dot dash-dot--lg dash-dot--${statusClass(r.status)}`} />
-                    <span className="agent-card-profile">{r.profile ?? "default"}</span>
-                    <span className="agent-card-model">{shortModel(r.model)}</span>
-                  </div>
-                  <div className="agent-card-body">
-                    {r.preview || "new session"}
-                  </div>
-                  <div className="agent-card-foot">
-                    <span>${r.cost.toFixed(3)}</span>
-                    <span>{r.turns} turns</span>
-                    <span>{timeAgo(r.lastMessageAt)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Recent — compact rows */}
-          {recentRows.length > 0 && (
+          {visibleRows.length > 0 && (
             <div className="recent-list">
-              {activeRows.length > 0 && (
-                <div className="recent-list-label">recent</div>
-              )}
-              {recentRows.map((r) => (
+              {visibleRows.map((r) => (
                 <div
                   key={r.id}
                   className="recent-row"
                   onClick={() => onSelectSession(r.id)}
                 >
-                  <span className={`dash-dot dash-dot--${statusClass(r.status)}`} />
-                  <span className="recent-preview">{r.preview}</span>
+                  <span className={`dash-dot ${dotClass(r)}`} />
+                  <span className="recent-preview">{r.preview || "new session"}</span>
                   <span className="recent-meta">{r.profile}</span>
                   <span className="recent-meta">${r.cost.toFixed(2)}</span>
                   <span className="recent-meta">{timeAgo(r.lastMessageAt)}</span>

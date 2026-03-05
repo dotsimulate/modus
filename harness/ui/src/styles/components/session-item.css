@@ -29,35 +29,6 @@
   pointer-events: none;
 }
 
-/* ── Session Status Dots ── */
-.session-running-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #33cc33;
-  margin-right: 6px;
-  flex-shrink: 0;
-  animation: pulse 1.2s ease-in-out infinite;
-}
-.session-error-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--error);
-  margin-right: 6px;
-  flex-shrink: 0;
-}
-.session-done-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  margin-right: 6px;
-  flex-shrink: 0;
-}
 
 /* ── Session Item Content ── */
 .session-item-preview {
@@ -66,14 +37,15 @@
   line-height: 1.4;
   color: var(--text);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   display: flex;
   align-items: center;
+  gap: 6px;
 }
 .session-item-text {
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 .session-item-meta {
   font-family: var(--font-mono);

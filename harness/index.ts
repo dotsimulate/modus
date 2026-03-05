@@ -276,21 +276,25 @@ app.get("/api/sessions", (c) => {
 
 app.get("/api/sessions/active", (c) => {
   // Merge in-memory active sessions with DB active sessions
-  const memSessions = getAllActiveSessions().map((s) => ({
-    id: s.sessionId,
-    status: s.status,
-    profile: s.profile ?? null,
-    model: s.model ?? null,
-    costUsd: s.costUsd,
-    numTurns: s.numTurns,
-    startedAt: s.startedAt,
-    lastEventAt: s.lastEventAt,
-    preview: s.preview,
-    lastText: s.lastAssistantText || null,
-    seq: s.seq,
-    subscribers: s.subscribers.size,
-    cwd: s.sdkOptions?.cwd ?? null,
-  }));
+  const memSessions = getAllActiveSessions().map((s) => {
+    const dbRow = getSession(s.sessionId);
+    return {
+      id: s.sessionId,
+      status: s.status,
+      profile: s.profile ?? null,
+      model: s.model ?? null,
+      costUsd: s.costUsd,
+      numTurns: s.numTurns,
+      startedAt: s.startedAt,
+      lastEventAt: s.lastEventAt,
+      preview: s.preview,
+      lastText: s.lastAssistantText || null,
+      seq: s.seq,
+      subscribers: s.subscribers.size,
+      cwd: s.sdkOptions?.cwd ?? null,
+      archived: dbRow?.archived === 1,
+    };
+  });
   return c.json(memSessions);
 });
 
@@ -356,6 +360,7 @@ app.get("/api/sessions/:id/status", (c) => {
   const id = c.req.param("id");
   const active = getActiveSession(id);
   if (active) {
+    const dbRow = getSession(active.sessionId);
     return c.json({
       sessionId: active.sessionId,
       status: active.status,
@@ -365,6 +370,7 @@ app.get("/api/sessions/:id/status", (c) => {
       startedAt: active.startedAt,
       lastEventAt: active.lastEventAt,
       error: active.error,
+      archived: dbRow?.archived === 1,
     });
   }
   // Check DB for completed session
@@ -379,6 +385,7 @@ app.get("/api/sessions/:id/status", (c) => {
       startedAt: dbSession.created_at,
       lastEventAt: dbSession.updated_at,
       error: null,
+      archived: dbSession.archived === 1,
     });
   }
   return c.json({ error: "session not found" }, 404);
