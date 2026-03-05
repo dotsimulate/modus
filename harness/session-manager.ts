@@ -112,6 +112,8 @@ export type ActiveSession = {
   numTurns: number;
   error: string | null;
   preview: string;
+  /** Rolling snippet of the latest assistant text (for live preview) */
+  lastAssistantText: string;
   /** Full initial prompt content (may include image blocks) */
   initialPrompt: string;
   /** Initial content for SDK (string or content blocks) */
@@ -469,6 +471,9 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       }],
     },
     mcpServers: hasMcp ? resolveEnvVars(mergedMcp) : undefined,
+    stderr: (data: string) => {
+      console.error(`[session-manager] stderr (${tempId}):`, data.trim().slice(0, 2000));
+    },
   };
 
   const abortController = new AbortController();
@@ -488,6 +493,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     numTurns: 0,
     error: null,
     preview: contentPreview(initialContent),
+    lastAssistantText: "",
     initialPrompt: opts.prompt,
     initialContent,
     subscribers: new Set(),
@@ -533,13 +539,18 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
       session.lastEventAt = Date.now();
 
       // ── Track thinking duration (first thinking_delta → first non-thinking event)
+      // ── Accumulate latest assistant text for live preview
       if (m.type === "stream_event" && m.event?.type === "content_block_delta") {
         const delta = m.event.delta;
         if (delta?.type === "thinking_delta" && !session.thinkingStartedAt) {
           session.thinkingStartedAt = Date.now();
-        } else if (delta?.type === "text_delta" && session.thinkingStartedAt) {
-          session.thinkingDurationMs = Date.now() - session.thinkingStartedAt;
-          session.thinkingStartedAt = undefined;
+        } else if (delta?.type === "text_delta") {
+          if (session.thinkingStartedAt) {
+            session.thinkingDurationMs = Date.now() - session.thinkingStartedAt;
+            session.thinkingStartedAt = undefined;
+          }
+          // Keep rolling tail of latest assistant output (cap at 200 chars)
+          session.lastAssistantText = (session.lastAssistantText + (delta.text ?? "")).slice(-200);
         }
       }
       // Also finalize on assistant message (tool_use arrives without text_delta)
@@ -686,7 +697,7 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
     }
     console.log(`[session-manager] drain loop exited normally for ${session.sessionId}, status=${session.status}`);
   } catch (err: any) {
-    console.log(`[session-manager] drain caught for ${session.sessionId}: name=${err?.name}, type=${err?.type}, code=${err?.code}, message=${String(err).slice(0, 200)}`);
+    console.error(`[session-manager] drain caught for ${session.sessionId}:`, err);
     const isAbort = err?.name === "AbortError" || err?.type === "abort"
       || String(err).includes("aborted by user");
     if (isAbort) {

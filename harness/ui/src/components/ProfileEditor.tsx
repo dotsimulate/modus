@@ -7,13 +7,12 @@ import type { ToolStates } from "../tools";
 type Props = {
   profiles: Profile[];
   onProfilesChange: () => void;
+  /** "new" = creating new profile, "edit" = editing existing */
+  mode?: "new" | "edit";
+  /** Which profile to load initially (edit mode) or duplicate from (new mode) */
+  initialProfile?: string | null;
+  onCancel?: () => void;
 };
-
-const chevron = (
-  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-    <path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
-  </svg>
-);
 
 // ── MCP Server Editor ──
 
@@ -230,8 +229,6 @@ function ProfileForm({
   const [model, setModel] = useState(profile.model ?? "");
   const [effort, setEffort] = useState(profile.effort ?? "");
   const [maxTurns, setMaxTurns] = useState(profile.maxTurns?.toString() ?? "");
-  // Convert profile tools array to ToolStates for baseline mode
-  // Empty states = "all tools", states with "on" entries = specific tools
   const [toolStates, setToolStates] = useState<ToolStates>(() => {
     if (!profile.tools || profile.tools === "all") return {};
     const s: ToolStates = {};
@@ -243,6 +240,26 @@ function ProfileForm({
     profile.mcpServers ?? {},
   );
   const [saving, setSaving] = useState(false);
+
+  // Sync form when profile prop changes (e.g. duplicate-on-click)
+  useEffect(() => {
+    if (isNew) setName(profile.name ? `${profile.name}-copy` : "");
+    else setName(profile.name);
+    setDescription(profile.description);
+    setPrompt(profile.prompt);
+    setPromptMode(profile.promptMode ?? "append");
+    setModel(profile.model ?? "");
+    setEffort(profile.effort ?? "");
+    setMaxTurns(profile.maxTurns?.toString() ?? "");
+    if (!profile.tools || profile.tools === "all") setToolStates({});
+    else {
+      const s: ToolStates = {};
+      for (const t of profile.tools) s[t] = "on";
+      setToolStates(s);
+    }
+    setLoadProjectSettings(profile.loadProjectSettings ?? true);
+    setMcpServers(profile.mcpServers ?? {});
+  }, [profile]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -323,7 +340,7 @@ function ProfileForm({
 
       <div className="profile-form-actions">
         <button className="profile-btn profile-btn--save" onClick={handleSave} disabled={saving || !description || !prompt}>
-          {saving ? "saving..." : "save"}
+          {saving ? "saving..." : isNew ? "create" : "save"}
         </button>
         {onDelete && (
           <button className="profile-btn profile-btn--delete" onClick={onDelete}>delete</button>
@@ -336,19 +353,37 @@ function ProfileForm({
 
 // ── Profile Editor Panel ──
 
-export function ProfileEditor({ profiles, onProfilesChange }: Props) {
-  const [open, setOpen] = useState(false);
-  const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+export function ProfileEditor({
+  profiles,
+  onProfilesChange,
+  mode = "new",
+  initialProfile = null,
+  onCancel,
+}: Props) {
+  const [selectedName, setSelectedName] = useState<string | null>(initialProfile);
+  // In "new" mode, we track whether the user has picked a source to duplicate from
+  const [duplicateSource, setDuplicateSource] = useState<string | null>(null);
 
+  // Sync when initialProfile changes from parent
+  useEffect(() => {
+    setSelectedName(initialProfile);
+    if (mode === "edit") setDuplicateSource(null);
+  }, [initialProfile, mode]);
+
+  const isNew = mode === "new";
   const selected = profiles.find((p) => p.name === selectedName) ?? null;
 
+  // The profile to show in the form
+  const formProfile: Profile = isNew
+    ? (duplicateSource
+        ? { ...(profiles.find((p) => p.name === duplicateSource) ?? { name: "", description: "", prompt: "", tools: "all" as const }) }
+        : { name: "", description: "", prompt: "", tools: "all" as const })
+    : (selected ?? { name: "", description: "", prompt: "", tools: "all" as const });
+
   const handleSave = async (data: Omit<Profile, "name"> & { name?: string }) => {
-    const saveName = creating ? (data.name ?? "untitled") : selectedName!;
+    const saveName = isNew ? (data.name ?? "untitled") : selectedName!;
     const { name: _n, ...rest } = data as any;
     await saveProfileApi(saveName, rest);
-    setCreating(false);
-    setSelectedName(saveName);
     onProfilesChange();
   };
 
@@ -359,70 +394,56 @@ export function ProfileEditor({ profiles, onProfilesChange }: Props) {
     onProfilesChange();
   };
 
-  const startCreate = () => {
-    setCreating(true);
-    setSelectedName(null);
+  const handleListClick = (name: string) => {
+    if (isNew) {
+      // In new mode, clicking a profile duplicates its settings
+      setDuplicateSource(name);
+    } else {
+      setSelectedName(name);
+    }
   };
 
   const cancel = () => {
-    setCreating(false);
     setSelectedName(null);
+    setDuplicateSource(null);
+    onCancel?.();
   };
 
   return (
-    <div className="dash-panel">
-      <button className="dash-panel-header" onClick={() => setOpen(!open)}>
-        <span className="dash-panel-title">profiles</span>
-        <span className="dash-panel-count">{profiles.length}</span>
-        <span className={`profile-panel-chevron ${open ? "profile-panel-chevron--open" : ""}`}>
-          {chevron}
-        </span>
-      </button>
-      <div className={`panel-collapse ${open ? "panel-collapse--open" : ""}`}>
-        <div className="panel-collapse-clip">
-          <div className="profile-editor">
-            <div className="profile-list">
-              {profiles.map((p) => (
-                <button
-                  key={p.name}
-                  className={`profile-list-item ${p.name === selectedName && !creating ? "profile-list-item--active" : ""}`}
-                  onClick={() => { setSelectedName(p.name); setCreating(false); }}
-                >
-                  <span className="profile-list-name">{p.name}</span>
-                  <span className="profile-list-desc">{p.description}</span>
-                  {p.mcpServers && Object.keys(p.mcpServers).length > 0 && (
-                    <span className="profile-list-mcp">{Object.keys(p.mcpServers).length} mcp</span>
-                  )}
-                </button>
-              ))}
-              <button className="profile-list-add" onClick={startCreate}>+ new profile</button>
-            </div>
-
-            {creating && (
-              <ProfileForm
-                profile={{ name: "", description: "", prompt: "", tools: "all" }}
-                onSave={handleSave}
-                onCancel={cancel}
-                isNew
-              />
-            )}
-
-            {!creating && selected && (
-              <ProfileForm
-                key={selected.name}
-                profile={selected}
-                onSave={handleSave}
-                onDelete={handleDelete}
-                onCancel={cancel}
-              />
-            )}
-
-            {!creating && !selected && (
-              <div className="profile-empty">select a profile to edit</div>
-            )}
-          </div>
+    <div className="profile-editor">
+      <div className="profile-list">
+        <div className="profile-list-label">
+          {isNew ? "duplicate from" : "edit profile"}
         </div>
+        {profiles.map((p) => {
+          const isActive = isNew
+            ? p.name === duplicateSource
+            : p.name === selectedName;
+          return (
+            <button
+              key={p.name}
+              className={`profile-list-item ${isActive ? "profile-list-item--active" : ""}`}
+              onClick={() => handleListClick(p.name)}
+            >
+              <span className="profile-list-name">{p.name}</span>
+              <span className="profile-list-desc">{p.description}</span>
+            </button>
+          );
+        })}
       </div>
+
+      {(isNew || selected) ? (
+        <ProfileForm
+          key={isNew ? `new-${duplicateSource ?? "blank"}` : selected!.name}
+          profile={formProfile}
+          onSave={handleSave}
+          onDelete={!isNew && selected ? handleDelete : undefined}
+          onCancel={cancel}
+          isNew={isNew}
+        />
+      ) : (
+        <div className="profile-empty">select a profile to edit</div>
+      )}
     </div>
   );
 }

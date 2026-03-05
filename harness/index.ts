@@ -286,6 +286,7 @@ app.get("/api/sessions/active", (c) => {
     startedAt: s.startedAt,
     lastEventAt: s.lastEventAt,
     preview: s.preview,
+    lastText: s.lastAssistantText || null,
     seq: s.seq,
     subscribers: s.subscribers.size,
     cwd: s.sdkOptions?.cwd ?? null,
@@ -447,6 +448,7 @@ app.post("/api/sessions/:id/messages", async (c) => {
       prompt,
       attachments: body.attachments,
       sessionId: id,
+      cwd: existing?.cwd ?? undefined,
       profile: body.profile ?? existing?.profile ?? undefined,
       userProfile: body.userProfile,
     });

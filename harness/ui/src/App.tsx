@@ -192,7 +192,7 @@ function AppShell() {
         )}
 
         {view === "dashboard" && (
-          <Dashboard onSelectSession={handleViewSession} />
+          <Dashboard onSelectSession={handleViewSession} onNavigate={navigate} />
         )}
 
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}

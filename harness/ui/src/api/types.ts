@@ -155,6 +155,7 @@ export type ActiveSessionInfo = {
   startedAt: number;
   lastEventAt: number;
   preview: string;
+  lastText: string | null;
   seq: number;
   subscribers: number;
   cwd: string | null;
