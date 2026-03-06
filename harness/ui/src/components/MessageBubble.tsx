@@ -74,7 +74,7 @@ function formatMeta(meta: Message["meta"]): string {
 }
 
 export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, children }: Props) {
-  const [thinkingExpanded, setThinkingExpanded] = useState(true);
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
   const wasStreamingRef = useRef(false);
