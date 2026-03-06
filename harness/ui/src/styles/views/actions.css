@@ -1,5 +1,5 @@
 /**
- * Schedules — scheduled task management view.
+ * Actions — automated action management view.
  */
 
 /* ── View container ── */
@@ -73,7 +73,7 @@
   gap: 0;
 }
 
-/* ── Schedule card ── */
+/* ── Action card ── */
 .sched-card {
   background: var(--bg);
   padding: 14px 16px;
@@ -86,6 +86,7 @@
   cursor: pointer;
   position: relative;
   transition: background 0.12s ease;
+  min-width: 0;
 }
 .sched-card:hover {
   background: var(--bg-raised);
@@ -100,12 +101,17 @@
   align-items: center;
   gap: 8px;
   color: var(--text);
+  min-width: 0;
 }
 .sched-card-name {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .sched-card-live {
   font-family: var(--font-mono);
@@ -114,6 +120,7 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #e89b50;
+  flex-shrink: 0;
   animation: sched-pulse 1.5s ease-in-out infinite;
 }
 @keyframes sched-pulse {
@@ -123,6 +130,7 @@
 .sched-card-chevron {
   color: var(--text-muted);
   width: 14px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -151,7 +159,7 @@
   gap: 4px;
 }
 
-/* ── Meters + actions row ── */
+/* ── Meters ── */
 .sched-meters {
   display: flex;
   flex-direction: column;
@@ -203,17 +211,11 @@
   border-radius: 1.5px;
   transition: width 1s linear;
 }
-.sched-progress-fill--cycle {
-  background: #33cc33;
-}
-.sched-progress-fill--runs {
-  background: #33cc33;
-}
-.sched-progress-fill--next {
-  background: #e89b50;
-}
+.sched-progress-fill--cycle { background: #33cc33; }
+.sched-progress-fill--runs { background: #33cc33; }
+.sched-progress-fill--next { background: #e89b50; }
 
-/* ── Toggle Switch (pill, matches trigger btn width) ── */
+/* ── Toggle Switch ── */
 .sched-switch {
   position: relative;
   width: 100%;
@@ -272,6 +274,7 @@
 /* ── Detail panel (inside collapse) ── */
 .sched-detail {
   margin-top: 0;
+  min-width: 0;
 }
 
 /* ── Tabs ── */
@@ -303,9 +306,9 @@
   border-bottom-color: var(--text-dim);
 }
 
-/* ── Tab content — scrollable with max height ── */
+/* ── Tab content ── */
 .sched-tab-content {
-  max-height: 320px;
+  max-height: 420px;
   overflow-y: auto;
 }
 
@@ -321,7 +324,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 4px;
+  padding: 6px 8px;
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 500;
@@ -344,7 +347,8 @@
 .sched-runs-actions {
   display: flex;
   justify-content: flex-end;
-  padding: 6px 4px;
+  gap: 6px;
+  padding: 8px 8px;
   border-top: 1px solid var(--border);
 }
 .sched-clear-btn {
@@ -396,21 +400,18 @@
   gap: 6px;
 }
 
-/* Run rows */
+/* ── Run rows (multi-line) ── */
 .sched-run-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 4px;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 8px;
   border: none;
   border-bottom: 1px solid var(--border);
   background: none;
   width: 100%;
   text-align: left;
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-dim);
   transition: background 0.12s ease;
 }
 .sched-run-row:last-child {
@@ -422,25 +423,63 @@
 .sched-run-row--no-session {
   cursor: default;
 }
-.sched-run-num {
-  font-size: 10px;
-  color: var(--text-muted);
-  min-width: 24px;
-}
-.sched-run-text {
-  flex: 1;
+
+.sched-run-summary {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
 }
-.sched-run-meta {
-  font-size: 10px;
-  color: var(--text-muted);
-  flex-shrink: 0;
+.sched-run-row--error .sched-run-summary {
+  color: #aa3333;
 }
 
-/* ── Info tab ── */
+.sched-run-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sched-run-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.sched-run-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ── About tab ── */
+.sched-about-tab {
+  padding: 12px 8px;
+}
+.sched-about-tab .message-content {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+.sched-about-tab .message-content h2 {
+  font-size: 1.15em;
+  margin-top: 0;
+}
+.sched-about-tab .message-content h3 {
+  font-size: 1em;
+  color: var(--text-dim);
+}
+.sched-about-tab .message-content table {
+  font-size: 12px;
+}
+.sched-about-tab .message-content th,
+.sched-about-tab .message-content td {
+  padding: 4px 10px;
+}
+
+/* ── Files tab ── */
 .sched-info-tab {
   padding: 8px 0;
 }
@@ -472,7 +511,7 @@
   border-radius: 3px;
   padding: 10px 12px;
   margin: 0;
-  overflow-x: auto;
-  white-space: pre;
+  white-space: pre-wrap;
+  word-break: break-word;
   tab-size: 2;
 }

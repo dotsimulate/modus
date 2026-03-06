@@ -6,6 +6,7 @@ import {
 } from "../api";
 import type { ActionInfo, ActionRun } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
+import { Markdown } from "./Markdown";
 
 type Props = {
   onSelectSession: (id: string) => void;
@@ -194,28 +195,56 @@ function RunsTab({
 }
 
 function RunRow({ run, onSelect }: { run: ActionRun; onSelect: (id: string) => void }) {
+  const hasSession = !!run.sessionId;
+  const isError = run.status === "error";
   return (
     <button
-      className={`sched-run-row ${run.sessionId ? "" : "sched-run-row--no-session"}`}
-      onClick={() => run.sessionId && onSelect(run.sessionId)}
-      disabled={!run.sessionId}
+      className={`sched-run-row ${hasSession ? "" : "sched-run-row--no-session"} ${isError ? "sched-run-row--error" : ""}`}
+      onClick={() => hasSession && onSelect(run.sessionId)}
+      disabled={!hasSession}
     >
-      <span className="sched-run-num">#{run.runNumber}</span>
-      <span className={`dash-dot dash-dot--${runDotStatus(run.status)}`} />
-      <span className="sched-run-text">
+      <div className="sched-run-summary">
         {run.error || run.summary || "..."}
-      </span>
-      <span className="sched-run-meta">${run.costUsd.toFixed(3)}</span>
-      <span className="sched-run-meta">
-        {run.startedAt ? timeAgo(run.startedAt) : ""}
-      </span>
+      </div>
+      <div className="sched-run-footer">
+        <span className="sched-run-num">#{run.runNumber}</span>
+        <span className={`dash-dot dash-dot--${runDotStatus(run.status)}`} />
+        <span className="sched-run-meta">${run.costUsd.toFixed(3)}</span>
+        {run.startedAt ? <span className="sched-run-meta">{timeAgo(run.startedAt)}</span> : null}
+      </div>
     </button>
   );
 }
 
-// ── Tab: Info ──
+// ── Tab: About ──
 
-function InfoTab({ actionName }: { actionName: string }) {
+function AboutTab({ actionName }: { actionName: string }) {
+  const [desc, setDesc] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    fetchActionInfo(actionName).then(info => {
+      try {
+        const config = JSON.parse(info.configSource);
+        setDesc(config.longDescription || null);
+      } catch { setDesc(null); }
+    }).catch(() => setDesc(null));
+  }, [actionName]);
+
+  if (desc === undefined) return <div className="sched-tab-content sched-runs-empty">loading...</div>;
+  if (!desc) return <div className="sched-tab-content sched-runs-empty">no description</div>;
+
+  return (
+    <div className="sched-tab-content sched-about-tab">
+      <div className="message-content">
+        <Markdown content={desc} />
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: Files ──
+
+function FilesTab({ actionName }: { actionName: string }) {
   const [info, setInfo] = useState<{ contextSource: string; configSource: string } | null>(null);
 
   useEffect(() => {
@@ -315,7 +344,7 @@ function ActionMeters({ action }: { action: ActionInfo }) {
 
 // ── Action Card ──
 
-type TabKey = "runs" | "info";
+type TabKey = "runs" | "about" | "files";
 
 function ActionCard({
   action,
@@ -424,10 +453,16 @@ function ActionCard({
                 runs
               </button>
               <button
-                className={`sched-tab ${tab === "info" ? "sched-tab--active" : ""}`}
-                onClick={() => setTab("info")}
+                className={`sched-tab ${tab === "about" ? "sched-tab--active" : ""}`}
+                onClick={() => setTab("about")}
               >
-                info
+                about
+              </button>
+              <button
+                className={`sched-tab ${tab === "files" ? "sched-tab--active" : ""}`}
+                onClick={() => setTab("files")}
+              >
+                files
               </button>
             </div>
 
@@ -444,7 +479,8 @@ function ActionCard({
                 }
               />
             )}
-            {tab === "info" && <InfoTab actionName={action.name} />}
+            {tab === "about" && <AboutTab actionName={action.name} />}
+            {tab === "files" && <FilesTab actionName={action.name} />}
           </div>
         </div>
       </div>
