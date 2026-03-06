@@ -1,8 +1,11 @@
 {
   "name": "example-heartbeat",
-  "description": "Example scheduled task -- reports a brief system status",
+  "description": "Example action -- reports a brief system status on an interval",
   "agentProfile": "test-harness",
-  "interval": "30s",
+  "trigger": {
+    "type": "interval",
+    "every": "30s"
+  },
   "enabled": false,
   "maxTurns": 3,
   "maxRuns": 3,

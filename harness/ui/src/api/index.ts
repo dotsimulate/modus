@@ -26,8 +26,8 @@ export {
   browsePath, subscribeEvents,
 } from "./sessions";
 
-// Schedules
-export { fetchSchedules, fetchScheduleRuns, triggerScheduleApi, updateScheduleApi, fetchScheduleInfo, clearScheduleRunsApi, resetScheduleApi, fetchSchedulePreferences } from "./schedules";
+// Actions
+export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences } from "./actions";
 
 // Git
 export { fetchGitStatus, fetchGitLog, fetchGitShow, fetchGitFileDiff, fetchGitFileContent, fetchGitReadme, openInEditor } from "./git";
@@ -42,7 +42,7 @@ export type {
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,
   UserProfileState, UserProfile, MemoryItem,
-  ScheduleInfo, ScheduleRun,
+  ActionTrigger, ActionInfo, ActionRun,
   GitStatus, GitCommit, DiffLine, DiffHunk, FileDiff, GitCommitDetail,
   EventStreamCallbacks,
 } from "./types";

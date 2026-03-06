@@ -50,10 +50,10 @@ Agent Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
 (per-agent)            (per-provider, all agents)         (hardcoded defaults)
 ```
 
-When a schedule is involved, schedule overrides sit above agent profile:
+When an action is involved, action overrides sit above agent profile:
 
 ```
-Session override  >  Schedule config  >  Agent Profile  >  Provider Defaults  >  TS fallback
+Session override  >  Action config  >  Agent Profile  >  Provider Defaults  >  TS fallback
 ```
 
 ## Provider Defaults

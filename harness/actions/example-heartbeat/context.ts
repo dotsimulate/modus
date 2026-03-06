@@ -1,6 +1,6 @@
-import type { ScheduleContext } from "../../scheduler-types";
+import type { ActionContext } from "../../action-types";
 
-export async function gather(ctx: ScheduleContext): Promise<string> {
+export async function gather(ctx: ActionContext): Promise<string> {
   const summaries = ctx.db.getRunSummaries(20);
 
   const pastContext = summaries.length > 0

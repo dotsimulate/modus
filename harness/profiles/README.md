@@ -154,6 +154,12 @@ Stored in `users/<name>.json`. Defined in `profiles.ts`.
   // Which agent profiles this user works with (shown in UI selector)
   "agentProfiles": ["dev-agent", "web-ui", "research"],
 
+  // Which actions this user can see (optional — omit or ["*"] for all)
+  "actions": ["health-monitor", "daily-report"],
+
+  // Default execution provider (optional — agent profile overrides this)
+  "provider": "claude-code",  // "claude-code" | "anthropic" | "openai" | "litellm" | "ollama"
+
   // Tag filter pre-applied to MemoryViz (optional)
   "memoryFilter": "harness",
 
@@ -230,6 +236,42 @@ User profile `templateVars` override these per-profile.
   "editor": "VS Code with Claude Code"
 }
 ```
+
+## How Profiles Connect to Actions
+
+Actions are the automation primitive in MO. Every action references an agent profile
+by name — the profile defines *how* the agent behaves, the action defines *when*,
+*why*, and *with what context* it runs.
+
+```
+Action (actions/<name>/action.json)
+  ├── trigger: interval | webhook | manual | action-chain
+  ├── agentProfile: "ops-agent"  ──→  profiles/agents/ops-agent.json
+  ├── context.ts: gather() builds the prompt, afterRun() handles side effects
+  └── overrides: model, effort, maxTurns, tools, cwd (override the profile per-run)
+```
+
+**What actions can do:**
+- Run on intervals with active hours and cycle limits
+- Fire from HTTP webhooks (GitHub, home automation, external services)
+- Chain: action A completes → action B fires automatically (up to 8 levels deep)
+- Trigger manually from the UI or API
+- Gather live data (APIs, files, DB) before each run to build a dynamic prompt
+- Act on the agent's response after completion (notifications, file writes, API calls)
+
+**What profiles control that actions cannot override:**
+- System prompt (always from the agent profile)
+- MCP server configuration
+- Permission policies
+- Prompt mode (`custom` vs `append`)
+
+**Concurrency:** If a trigger fires while the action is already running, it's dropped
+and logged. No queuing, no overlapping runs.
+
+User profiles scope which actions are visible via the `actions` field. Omit or set to
+`["*"]` to show all actions.
+
+See `action-types.ts` for the full type contracts and `action-runner.ts` for the engine.
 
 ## API
 

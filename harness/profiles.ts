@@ -147,8 +147,8 @@ export type UserProfile = {
   templateVars?: Record<string, string>;
   projects: string[];
   agentProfiles?: string[];
-  /** Visible schedules — omit or ["*"] for all */
-  schedules?: string[];
+  /** Visible actions — omit or ["*"] for all */
+  actions?: string[];
   /** Default execution provider for sessions under this user profile */
   provider?: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama";
   memoryFilter?: string;

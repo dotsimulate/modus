@@ -645,32 +645,32 @@ app.get("/api/memories", async (c) => {
   }
 });
 
-// ── Schedules ──
+// ── Actions ──
 
 import {
-  initScheduler, stopScheduler, getSchedules, getScheduleState,
-  triggerSchedule, updateScheduleConfig,
-  resetSchedule, setSchedulePreference, getSchedulePreferences,
-  reloadSchedules,
-} from "./scheduler";
-import { getScheduleRuns as dbGetScheduleRuns, clearScheduleRuns } from "./db";
+  initActions, stopActions, getActions, getActionState,
+  triggerAction, handleWebhook, updateActionConfig,
+  resetAction, setActionPreference, getActionPreferences,
+  reloadActions,
+} from "./action-runner";
+import { getActionRuns as dbGetActionRuns, clearActionRuns } from "./db";
 
-app.get("/api/schedules", (c) => {
+app.get("/api/actions", (c) => {
   const userProfileName = new URL(c.req.url).searchParams.get("userProfile");
-  let schedules = getSchedules();
+  let actions = getActions();
   if (userProfileName) {
     const userProf = getUserProfile(userProfileName);
-    if (userProf?.schedules && !userProf.schedules.includes("*")) {
-      schedules = schedules.filter(s => userProf.schedules!.includes(s.name));
+    if (userProf?.actions && !userProf.actions.includes("*")) {
+      actions = actions.filter(a => userProf.actions!.includes(a.name));
     }
   }
-  return c.json(schedules);
+  return c.json(actions);
 });
 
-app.get("/api/schedules/:name", (c) => {
+app.get("/api/actions/:name", (c) => {
   const name = c.req.param("name");
-  const state = getScheduleState(name);
-  if (!state) return c.json({ error: "schedule not found" }, 404);
+  const state = getActionState(name);
+  if (!state) return c.json({ error: "action not found" }, 404);
   return c.json({
     ...state.config,
     nextRunAt: state.nextRunAt,
@@ -680,69 +680,77 @@ app.get("/api/schedules/:name", (c) => {
   });
 });
 
-app.get("/api/schedules/:name/runs", (c) => {
+app.get("/api/actions/:name/runs", (c) => {
   const name = c.req.param("name");
   const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 20);
-  return c.json(dbGetScheduleRuns(name, limit));
+  return c.json(dbGetActionRuns(name, limit));
 });
 
-app.post("/api/schedules/:name/trigger", async (c) => {
+app.post("/api/actions/:name/trigger", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json().catch(() => ({}));
-  const ok = await triggerSchedule(name, { userProfile: body.userProfile });
-  if (!ok) return c.json({ error: "schedule not found or already running" }, 400);
+  const ok = await triggerAction(name, { userProfile: body.userProfile });
+  if (!ok) return c.json({ error: "action not found or already running" }, 400);
   return c.json({ ok: true });
 });
 
-app.get("/api/schedules/:name/info", async (c) => {
+app.post("/api/actions/:name/hook", async (c) => {
   const name = c.req.param("name");
-  const state = getScheduleState(name);
-  if (!state) return c.json({ error: "schedule not found" }, 404);
-  const schedDir = join(import.meta.dir, "schedules", name);
+  const token = new URL(c.req.url).searchParams.get("token") ?? "";
+  const payload = await c.req.json().catch(() => ({}));
+  const result = await handleWebhook(name, token, payload);
+  if (!result.ok) return c.json({ error: result.error }, 400);
+  return c.json({ ok: true });
+});
+
+app.get("/api/actions/:name/info", async (c) => {
+  const name = c.req.param("name");
+  const state = getActionState(name);
+  if (!state) return c.json({ error: "action not found" }, 404);
+  const actDir = join(import.meta.dir, "actions", name);
   let contextSource = "";
   let configSource = "";
-  try { contextSource = await Bun.file(join(schedDir, "context.ts")).text(); } catch { /* missing */ }
-  try { configSource = await Bun.file(join(schedDir, "schedule.json")).text(); } catch { /* missing */ }
+  try { contextSource = await Bun.file(join(actDir, "context.ts")).text(); } catch { /* missing */ }
+  try { configSource = await Bun.file(join(actDir, "action.json")).text(); } catch { /* missing */ }
   return c.json({ contextSource, configSource });
 });
 
-app.delete("/api/schedules/:name/runs", (c) => {
+app.delete("/api/actions/:name/runs", (c) => {
   const name = c.req.param("name");
-  const state = getScheduleState(name);
-  if (!state) return c.json({ error: "schedule not found" }, 404);
-  clearScheduleRuns(name);
+  const state = getActionState(name);
+  if (!state) return c.json({ error: "action not found" }, 404);
+  clearActionRuns(name);
   return c.json({ ok: true });
 });
 
-app.post("/api/schedules/:name/reset", async (c) => {
+app.post("/api/actions/:name/reset", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json().catch(() => ({}));
-  const ok = resetSchedule(name);
-  if (!ok) return c.json({ error: "schedule not found or running" }, 400);
-  // Persist "skip confirm" preference if requested
+  const ok = resetAction(name);
+  if (!ok) return c.json({ error: "action not found or running" }, 400);
   if (body.skipConfirm) {
-    setSchedulePreference(name, "skipResetConfirm", true);
+    setActionPreference(name, "skipResetConfirm", true);
   }
   return c.json({ ok: true });
 });
 
-app.get("/api/schedules/:name/preferences", (c) => {
+app.get("/api/actions/:name/preferences", (c) => {
   const name = c.req.param("name");
-  return c.json(getSchedulePreferences(name));
+  return c.json(getActionPreferences(name));
 });
 
-app.patch("/api/schedules/:name", async (c) => {
+app.patch("/api/actions/:name", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json();
-  const ok = updateScheduleConfig(name, body);
-  if (!ok) return c.json({ error: "schedule not found" }, 404);
+  const ok = updateActionConfig(name, body);
+  if (!ok) return c.json({ error: "action not found" }, 404);
   return c.json({ ok: true });
 });
 
-app.post("/api/schedules/reload", (c) => {
-  reloadSchedules();
-  const schedules = getSchedules();
-  return c.json({ ok: true, count: schedules.length });
+app.post("/api/actions/reload", (c) => {
+  reloadActions();
+  const actions = getActions();
+  return c.json({ ok: true, count: actions.length });
 });
 
 // ── Git ──
@@ -876,12 +884,12 @@ const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: HOST, idleTim
 const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
 console.log(`Agent harness listening on http://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
 
-initScheduler();
+initActions();
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("Shutting down...");
-  stopScheduler();
+  stopActions();
   shutdownAll();
   server.stop();
   setTimeout(() => process.exit(0), 3000);

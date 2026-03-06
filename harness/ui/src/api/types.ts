@@ -256,13 +256,18 @@ export type MemoryItem = {
   body: string;
 };
 
-export type ScheduleInfo = {
+export type ActionTrigger =
+  | { type: "interval"; every: string; from?: "completion" | "start"; activeHours?: { start: string; end: string } }
+  | { type: "webhook"; token?: string }
+  | { type: "manual" }
+  | { type: "action"; source: string; condition: "any" | "done" | "error" };
+
+export type ActionInfo = {
   name: string;
   description: string;
   agentProfile: string;
-  interval: string;
+  trigger: ActionTrigger;
   cycleInterval?: string;
-  activeHours?: { start: string; end: string };
   enabled: boolean;
   maxTurns?: number;
   maxRuns?: number;
@@ -275,9 +280,9 @@ export type ScheduleInfo = {
   cycleRunCount: number;
 };
 
-export type ScheduleRun = {
+export type ActionRun = {
   id: number;
-  scheduleName: string;
+  actionName: string;
   sessionId: string | null;
   runNumber: number;
   cycleNumber: number;
@@ -287,6 +292,8 @@ export type ScheduleRun = {
   completedAt: number | null;
   costUsd: number;
   error: string | null;
+  triggerType: string;
+  afterRunError: string | null;
 };
 
 export type GitStatus = {
