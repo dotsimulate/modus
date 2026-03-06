@@ -20,6 +20,7 @@ import './styles/components/permissions.css'
 import './styles/components/create-profile.css'
 import './styles/components/mo-logo.css'
 import './styles/components/file-changes.css'
+import './styles/components/queued-message.css'
 
 // Views
 import './styles/views/login.css'

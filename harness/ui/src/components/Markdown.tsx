@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import hljs from "highlight.js/lib/core";
 import { memo, useState, type ReactElement } from "react";
 
@@ -97,7 +98,8 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-const plugins = [remarkGfm];
+const remarkPlugins = [remarkGfm];
+const rehypePlugins = [rehypeRaw];
 
 const markdownComponents: Record<string, any> = {
   pre({ children }: { children?: React.ReactNode }) {
@@ -114,7 +116,7 @@ const markdownComponents: Record<string, any> = {
     return (
       <div className="code-block">
         <div className="code-block-header">
-          <span className="code-block-lang">{lang || "text"}</span>
+          {lang && <span className="code-block-lang">{lang}</span>}
           <CopyButton text={raw} />
         </div>
         <pre>
@@ -127,7 +129,7 @@ const markdownComponents: Record<string, any> = {
 
 export const Markdown = memo(function Markdown({ content }: { content: string }) {
   return (
-    <ReactMarkdown remarkPlugins={plugins} components={markdownComponents}>
+    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
       {content}
     </ReactMarkdown>
   );

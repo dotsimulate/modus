@@ -238,9 +238,12 @@ function translateEvents(
 
     case "tool_execution_end": {
       session.lastEventAt = Date.now();
-      const resultText = typeof event.result === "string"
-        ? event.result
-        : JSON.stringify(event.result);
+      // event.result is AgentToolResult { content: [{type:"text",text:"..."},...], details }
+      const raw = event.result;
+      const resultText = raw?.content
+        ?.filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("") || JSON.stringify(raw);
       ctx.emitEvent({
         type: "user",
         isSynthetic: true,

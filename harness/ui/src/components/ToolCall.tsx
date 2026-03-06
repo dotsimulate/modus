@@ -411,7 +411,7 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
               <TodoList todos={todos} />
             </div>
           ) : isRead && tool.result ? (
-            <div className="tool-call-detail">
+            <div className="tool-call-detail tool-call-detail--read">
               <ReadOutput result={tool.result} offset={tool.input.offset as number | undefined} />
             </div>
           ) : (

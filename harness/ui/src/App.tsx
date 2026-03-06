@@ -44,6 +44,7 @@ function AppShell() {
     input, handleInputChange,
     send, stop, newSession, selectSession, archiveSession,
     handlePermissionResponse,
+    queuedMessage, cancelQueued,
   } = useSession();
   const { view, navigate } = useHashRouter();
 
@@ -172,6 +173,8 @@ function AppShell() {
                 cwd={setupState.cwd || serverSessions.find(s => s.id === activeSession?.id)?.cwd || null}
                 emptyTitle={ui.emptyTitle ?? activeProfileName}
                 emptySubtitle={ui.emptySubtitle}
+                queuedMessage={queuedMessage}
+                onCancelQueued={cancelQueued}
               />
 
               {activeSession?.pendingPermissions && activeSession.pendingPermissions.length > 0 && (
