@@ -62,9 +62,9 @@ UI and session management to a specific person or project context.
   // Show project paths from ALL user profiles in CWD picker (default: false)
   "showAllProjectPaths": false,
 
-  // Which schedules this user can see (optional)
-  // Omit or ["*"] = see all schedules
-  "schedules": ["*"]
+  // Which actions this user can see (optional)
+  // Omit or ["*"] = see all actions
+  "actions": ["*"]
 }
 ```
 
@@ -149,14 +149,14 @@ State files are created automatically on first use.
 }
 ```
 
-### Ops user with schedule visibility
+### Ops user with action visibility
 
 ```json
 {
   "displayName": "ops",
   "projects": ["/srv", "/etc/services"],
   "agentProfiles": ["ops-agent", "monitoring"],
-  "schedules": ["health-check", "log-rotate", "backup-verify"],
+  "actions": ["health-check", "log-rotate", "backup-verify"],
   "memory": {
     "scope": "profile",
     "inheritGlobal": true

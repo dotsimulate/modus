@@ -27,7 +27,7 @@ import './styles/views/login.css'
 import './styles/views/profile-editor.css'
 import './styles/views/mcp-editor.css'
 import './styles/views/memory.css'
-import './styles/views/schedules.css'
+import './styles/views/actions.css'
 import './styles/views/git.css'
 
 // Overrides (last — responsive)

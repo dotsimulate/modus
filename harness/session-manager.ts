@@ -56,7 +56,7 @@ export type ActiveSession = {
   pendingMessages: MessageContent[];
   turnStartedAt: number;
   cwd?: string;
-  scheduleName?: string;
+  actionName?: string;
   pendingPermissions: Map<string, {
     resolve: (result: { behavior: "allow" | "deny"; updatedInput?: Record<string, unknown>; message?: string }) => void;
     toolName: string;
@@ -162,7 +162,7 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
         lastPrompt: updates.lastPrompt ?? session.preview,
         lastResponse: updates.lastResponse,
         cwd: session.cwd,
-        scheduleName: session.scheduleName,
+        actionName: session.actionName,
       });
     },
   };
@@ -184,7 +184,7 @@ export type StartSessionOpts = {
   disallowedTools?: string[];
   loadProjectSettings?: boolean;
   sessionId?: string;
-  scheduleName?: string;
+  actionName?: string;
 };
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
@@ -228,7 +228,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     pendingMessages: [],
     turnStartedAt: Date.now(),
     cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
-    scheduleName: opts.scheduleName,
+    actionName: opts.actionName,
     pendingPermissions: new Map(),
     sessionApprovals: new Set(),
     _provider: provider,
@@ -252,7 +252,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       costUsd: 0,
       lastPrompt: session.preview,
       cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
-      scheduleName: session.scheduleName,
+      actionName: session.actionName,
     });
 
     // Persist initial user message

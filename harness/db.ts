@@ -37,8 +37,9 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN last_message_at INTEGER`); } catch
 db.run(`UPDATE sessions SET last_message_at = updated_at WHERE last_message_at IS NULL`);
 // Migration: add cwd — working directory / project root for grouping
 try { db.run(`ALTER TABLE sessions ADD COLUMN cwd TEXT`); } catch { /* already exists */ }
-// Migration: add schedule_name — set when session was spawned by a schedule
-try { db.run(`ALTER TABLE sessions ADD COLUMN schedule_name TEXT`); } catch { /* already exists */ }
+// Migration: rename schedule_name → action_name
+try { db.run(`ALTER TABLE sessions ADD COLUMN action_name TEXT`); } catch { /* already exists */ }
+try { db.run(`ALTER TABLE sessions RENAME COLUMN schedule_name TO action_name`); } catch { /* already renamed or never existed */ }
 // Migration: add pruned flag for event pruning (removes redundant streaming deltas)
 try { db.run(`ALTER TABLE sessions ADD COLUMN pruned INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
 // Migration: rename compacted → pruned (if upgrading from older schema)
@@ -77,11 +78,11 @@ db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, 
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, archived, last_message_at DESC)`);
 
-// ── Schedule Runs (tracks each execution of a scheduled task) ──
+// ── Action Runs (tracks each execution of an action) ──
 db.run(`
-  CREATE TABLE IF NOT EXISTS schedule_runs (
+  CREATE TABLE IF NOT EXISTS action_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    schedule_name TEXT NOT NULL,
+    action_name TEXT NOT NULL,
     session_id TEXT,
     run_number INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
@@ -89,14 +90,24 @@ db.run(`
     started_at INTEGER NOT NULL,
     completed_at INTEGER,
     cost_usd REAL NOT NULL DEFAULT 0,
-    error TEXT
+    error TEXT,
+    cycle_number INTEGER NOT NULL DEFAULT 1,
+    trigger_type TEXT,
+    after_run_error TEXT,
+    user_profile TEXT
   )
 `);
-db.run(`CREATE INDEX IF NOT EXISTS idx_schedule_runs_name ON schedule_runs(schedule_name, run_number DESC)`);
-// Migration: add cycle_number column
-try { db.run(`ALTER TABLE schedule_runs ADD COLUMN cycle_number INTEGER NOT NULL DEFAULT 1`); } catch { /* already exists */ }
-// Migration: add user_profile column
-try { db.run(`ALTER TABLE schedule_runs ADD COLUMN user_profile TEXT`); } catch { /* already exists */ }
+db.run(`CREATE INDEX IF NOT EXISTS idx_action_runs_name ON action_runs(action_name, run_number DESC)`);
+// Migration: rename schedule_runs → action_runs (copy data if old table exists)
+try {
+  const hasOld = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='schedule_runs'`).get();
+  if (hasOld) {
+    db.run(`INSERT OR IGNORE INTO action_runs (id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, user_profile)
+            SELECT id, schedule_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, COALESCE(cycle_number, 1), user_profile FROM schedule_runs`);
+    db.run(`DROP TABLE schedule_runs`);
+    console.log("[db] Migrated schedule_runs → action_runs");
+  }
+} catch { /* already migrated */ }
 
 // ── Types ──
 
@@ -114,7 +125,7 @@ export type SessionRow = {
   last_prompt: string | null;
   last_response: string | null;
   cwd: string | null;
-  schedule_name: string | null;
+  action_name: string | null;
 };
 
 export type EventRow = {
@@ -132,8 +143,8 @@ export type EventRow = {
 const stmts = {
   // Sessions
   upsert: db.prepare(`
-    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, schedule_name)
-    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $schedule_name)
+    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name)
+    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name)
     ON CONFLICT(id) DO UPDATE SET
       updated_at = $now,
       last_message_at = $now,
@@ -158,37 +169,38 @@ const stmts = {
   // Drafts
   getDraft: db.prepare(`SELECT draft_text FROM sessions WHERE id = $id`),
   setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text WHERE id = $id`),
-  // Schedule Runs
-  insertScheduleRun: db.prepare(`
-    INSERT INTO schedule_runs (schedule_name, session_id, run_number, status, started_at, cycle_number, user_profile)
-    VALUES ($schedule_name, $session_id, $run_number, $status, $started_at, $cycle_number, $user_profile)
+  // Action Runs
+  insertActionRun: db.prepare(`
+    INSERT INTO action_runs (action_name, session_id, run_number, status, started_at, cycle_number, trigger_type, user_profile)
+    VALUES ($action_name, $session_id, $run_number, $status, $started_at, $cycle_number, $trigger_type, $user_profile)
   `),
-  updateScheduleRun: db.prepare(`
-    UPDATE schedule_runs SET
-      status = $status,
+  updateActionRun: db.prepare(`
+    UPDATE action_runs SET
+      status = COALESCE($status, status),
       summary = COALESCE($summary, summary),
       completed_at = COALESCE($completed_at, completed_at),
       cost_usd = COALESCE($cost_usd, cost_usd),
       error = COALESCE($error, error),
-      session_id = COALESCE($session_id, session_id)
+      session_id = COALESCE($session_id, session_id),
+      after_run_error = COALESCE($after_run_error, after_run_error)
     WHERE id = $id
   `),
-  getScheduleRuns: db.prepare(`
-    SELECT id, schedule_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, user_profile
-    FROM schedule_runs WHERE schedule_name = $schedule_name
+  getActionRuns: db.prepare(`
+    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile
+    FROM action_runs WHERE action_name = $action_name
     ORDER BY run_number DESC LIMIT $limit
   `),
   getRunSummaries: db.prepare(`
     SELECT run_number, summary, completed_at FROM (
       SELECT run_number, summary, completed_at
-      FROM schedule_runs
-      WHERE schedule_name = $schedule_name AND status = 'done' AND summary IS NOT NULL
+      FROM action_runs
+      WHERE action_name = $action_name AND status = 'done' AND summary IS NOT NULL
       ORDER BY run_number DESC LIMIT $limit
     ) ORDER BY run_number ASC
   `),
   getNextRunNumber: db.prepare(`
     SELECT COALESCE(MAX(run_number), 0) + 1 AS next
-    FROM schedule_runs WHERE schedule_name = $schedule_name
+    FROM action_runs WHERE action_name = $action_name
   `),
 };
 
@@ -205,7 +217,7 @@ export function upsertSession(opts: {
   lastPrompt?: string;
   lastResponse?: string;
   cwd?: string;
-  scheduleName?: string;
+  actionName?: string;
 }) {
   stmts.upsert.run({
     $id: opts.id,
@@ -219,7 +231,7 @@ export function upsertSession(opts: {
     $last_prompt: opts.lastPrompt ?? null,
     $last_response: opts.lastResponse ?? null,
     $cwd: opts.cwd ?? null,
-    $schedule_name: opts.scheduleName ?? null,
+    $action_name: opts.actionName ?? null,
   });
 }
 
@@ -282,32 +294,34 @@ export function setDraft(sessionId: string, text: string) {
   stmts.setDraft.run({ $id: sessionId, $draft_text: text });
 }
 
-// ── Schedule Run Functions ──
+// ── Action Run Functions ──
 
-import type { RunSummary, RunMeta } from "./scheduler-types";
+import type { RunSummary, RunMeta } from "./action-types";
 
-export function insertScheduleRun(scheduleName: string, runNumber: number, sessionId: string | null, startedAt: number, cycleNumber = 1, userProfile?: string): number {
-  stmts.insertScheduleRun.run({
-    $schedule_name: scheduleName,
+export function insertActionRun(actionName: string, runNumber: number, sessionId: string | null, startedAt: number, cycleNumber = 1, triggerType?: string, userProfile?: string): number {
+  stmts.insertActionRun.run({
+    $action_name: actionName,
     $session_id: sessionId,
     $run_number: runNumber,
     $status: "running",
     $started_at: startedAt,
     $cycle_number: cycleNumber,
+    $trigger_type: triggerType ?? null,
     $user_profile: userProfile ?? null,
   });
   return Number((db.query("SELECT last_insert_rowid() as id").get() as any).id);
 }
 
-export function updateScheduleRun(id: number, updates: {
+export function updateActionRun(id: number, updates: {
   status?: string;
   summary?: string;
   completedAt?: number;
   costUsd?: number;
   error?: string;
   sessionId?: string;
+  afterRunError?: string;
 }) {
-  stmts.updateScheduleRun.run({
+  stmts.updateActionRun.run({
     $id: id,
     $status: updates.status ?? null,
     $summary: updates.summary ?? null,
@@ -315,14 +329,16 @@ export function updateScheduleRun(id: number, updates: {
     $cost_usd: updates.costUsd ?? null,
     $error: updates.error ?? null,
     $session_id: updates.sessionId ?? null,
+    $after_run_error: updates.afterRunError ?? null,
   });
 }
 
-export function getScheduleRuns(scheduleName: string, limit = 20): RunMeta[] {
-  const rows = stmts.getScheduleRuns.all({ $schedule_name: scheduleName, $limit: limit }) as any[];
+export function getActionRuns(actionName: string, limit = 20): RunMeta[] {
+  const rows = stmts.getActionRuns.all({ $action_name: actionName, $limit: limit }) as any[];
   return rows.map(r => ({
     id: r.id,
     runNumber: r.run_number,
+    cycleNumber: r.cycle_number ?? 1,
     sessionId: r.session_id,
     status: r.status,
     summary: r.summary,
@@ -330,12 +346,13 @@ export function getScheduleRuns(scheduleName: string, limit = 20): RunMeta[] {
     completedAt: r.completed_at,
     costUsd: r.cost_usd,
     error: r.error,
-    cycleNumber: r.cycle_number ?? 1,
+    triggerType: r.trigger_type ?? "interval",
+    afterRunError: r.after_run_error,
   }));
 }
 
-export function getRunSummaries(scheduleName: string, limit = 5): RunSummary[] {
-  const rows = stmts.getRunSummaries.all({ $schedule_name: scheduleName, $limit: limit }) as any[];
+export function getRunSummaries(actionName: string, limit = 5): RunSummary[] {
+  const rows = stmts.getRunSummaries.all({ $action_name: actionName, $limit: limit }) as any[];
   return rows.map(r => ({
     runNumber: r.run_number,
     summary: r.summary,
@@ -343,13 +360,13 @@ export function getRunSummaries(scheduleName: string, limit = 5): RunSummary[] {
   }));
 }
 
-export function getNextRunNumber(scheduleName: string): number {
-  const row = stmts.getNextRunNumber.get({ $schedule_name: scheduleName }) as { next: number };
+export function getNextRunNumber(actionName: string): number {
+  const row = stmts.getNextRunNumber.get({ $action_name: actionName }) as { next: number };
   return row.next;
 }
 
-export function clearScheduleRuns(scheduleName: string): void {
-  db.prepare(`DELETE FROM schedule_runs WHERE schedule_name = $name`).run({ $name: scheduleName });
+export function clearActionRuns(actionName: string): void {
+  db.prepare(`DELETE FROM action_runs WHERE action_name = $name`).run({ $name: actionName });
 }
 
 // ── Full-Text Search (FTS5) ──

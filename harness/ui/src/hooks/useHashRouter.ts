@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 
-export type View = "chat" | "dashboard" | "memory" | "schedules" | "git";
+export type View = "chat" | "dashboard" | "memory" | "actions" | "git";
 
 export function useHashRouter() {
   const [view, setView] = useState<View>(() => {
     const h = window.location.hash;
     if (h === "#dashboard") return "dashboard";
     if (h === "#memory") return "memory";
-    if (h === "#schedules") return "schedules";
+    if (h === "#actions") return "actions";
     if (h === "#git") return "git";
     return "chat";
   });
@@ -17,7 +17,7 @@ export function useHashRouter() {
       const h = window.location.hash;
       if (h === "#dashboard") setView("dashboard");
       else if (h === "#memory") setView("memory");
-      else if (h === "#schedules") setView("schedules");
+      else if (h === "#actions") setView("actions");
       else if (h === "#git") setView("git");
       else setView("chat");
     };

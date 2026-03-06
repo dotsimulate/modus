@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { fetchProfiles, fetchSchedules, fetchActiveSessions } from "../api";
-import type { Profile, ScheduleInfo, ActiveSessionInfo } from "../api";
+import { fetchProfiles, fetchActions, fetchActiveSessions } from "../api";
+import type { Profile, ActionInfo, ActiveSessionInfo } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { useSession } from "../providers/SessionProvider";
 import { SessionsPanel } from "./SessionsPanel";
@@ -8,7 +8,7 @@ import { ProfileEditor } from "./ProfileEditor";
 
 type Props = {
   onSelectSession: (id: string) => void;
-  onNavigate: (view: "chat" | "dashboard" | "memory" | "schedules" | "git", preserveHash?: boolean) => void;
+  onNavigate: (view: "chat" | "dashboard" | "memory" | "actions" | "git", preserveHash?: boolean) => void;
 };
 
 function shortModel(model?: string): string {
@@ -68,7 +68,7 @@ export function Dashboard({ onSelectSession, onNavigate }: Props) {
   const { visibleProfiles, selectProfile, activeUserProfile } = useProfiles();
   const { newSession } = useSession();
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [schedules, setSchedules] = useState<ScheduleInfo[]>([]);
+  const [actions, setActions] = useState<ActionInfo[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSessionInfo[]>([]);
   const [editorMode, setEditorMode] = useState<"closed" | "new" | "edit">("closed");
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
@@ -79,11 +79,11 @@ export function Dashboard({ onSelectSession, onNavigate }: Props) {
       try {
         const [p, s, a] = await Promise.all([
           fetchProfiles(),
-          fetchSchedules(activeUserProfile),
+          fetchActions(activeUserProfile),
           fetchActiveSessions(),
         ]);
         setProfiles(p);
-        setSchedules(s);
+        setActions(s);
         setActiveSessions(a);
       } catch { /* silent */ }
     };
@@ -94,8 +94,8 @@ export function Dashboard({ onSelectSession, onNavigate }: Props) {
 
   const displayProfiles = visibleProfiles.length > 0 ? visibleProfiles : profiles;
 
-  const getSchedulesForProfile = (name: string) =>
-    schedules.filter((s) => s.agentProfile === name);
+  const getActionsForProfile = (name: string) =>
+    actions.filter((a) => a.agentProfile === name);
   const getActiveSessionsForProfile = (name: string) =>
     activeSessions.filter((s) => s.profile === name);
 
@@ -133,10 +133,10 @@ export function Dashboard({ onSelectSession, onNavigate }: Props) {
 
         <div className="agent-profile-grid">
           {displayProfiles.map((p) => {
-            const profSchedules = getSchedulesForProfile(p.name);
+            const profActions = getActionsForProfile(p.name);
             const profSessions = getActiveSessionsForProfile(p.name);
-            const activeSchedules = profSchedules.filter((s) => s.enabled);
-            const runningSchedules = profSchedules.filter((s) => s.running);
+            const activeActions = profActions.filter((a) => a.enabled);
+            const runningActions = profActions.filter((a) => a.running);
 
             return (
               <div key={p.name} className="agent-profile-card">
@@ -183,10 +183,10 @@ export function Dashboard({ onSelectSession, onNavigate }: Props) {
                       />
                     )}
                   </span>
-                  {runningSchedules.length > 0 && (
+                  {runningActions.length > 0 && (
                     <span className="apc-schedule-badge">
                       <span className="apc-live-dot apc-live-dot--schedule" />
-                      {runningSchedules.length} schedule
+                      {runningActions.length} action
                     </span>
                   )}
 
@@ -202,12 +202,12 @@ export function Dashboard({ onSelectSession, onNavigate }: Props) {
                   >
                     new session
                   </button>
-                  {activeSchedules.length > 0 && (
+                  {activeActions.length > 0 && (
                     <button
                       className="apc-action"
-                      onClick={() => onNavigate("schedules")}
+                      onClick={() => onNavigate("actions")}
                     >
-                      schedules
+                      actions
                     </button>
                   )}
                   <button

@@ -12,7 +12,7 @@ import { ChatInput } from "./components/ChatInput";
 import { ConfigBar } from "./components/ConfigBar";
 import { Dashboard } from "./components/Dashboard";
 import { MemoryViz } from "./components/MemoryViz";
-import { Schedules } from "./components/Schedules";
+import { Actions } from "./components/Actions";
 import { GitPanel } from "./components/GitPanel";
 import { PermissionOverlay } from "./components/PermissionOverlay";
 import { MoLogo } from "./components/MoLogo";
@@ -113,7 +113,7 @@ function AppShell() {
         <nav className="top-nav-links">
           <button className={`top-nav-link${view === "chat" ? " active" : ""}`} onClick={() => navigate("chat")}>sessions</button>
           <button className={`top-nav-link${view === "memory" ? " active" : ""}`} onClick={() => navigate("memory")}>memory</button>
-          <button className={`top-nav-link${view === "schedules" ? " active" : ""}`} onClick={() => navigate("schedules")}>schedules</button>
+          <button className={`top-nav-link${view === "actions" ? " active" : ""}`} onClick={() => navigate("actions")}>actions</button>
           <button className={`top-nav-link${view === "git" ? " active" : ""}`} onClick={() => navigate("git")}>git</button>
         </nav>
         {view === "chat" && activeSession?.status && activeSession.status !== "done" && (
@@ -217,7 +217,7 @@ function AppShell() {
         )}
 
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
-        {view === "schedules" && <Schedules onSelectSession={handleViewSession} />}
+        {view === "actions" && <Actions onSelectSession={handleViewSession} />}
         {view === "git" && <GitPanel cwd={setupState.cwd || serverSessions.find(s => s.id === activeSession?.id)?.cwd || null} />}
       </div>
     </div>
