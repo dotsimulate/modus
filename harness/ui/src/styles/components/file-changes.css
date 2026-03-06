@@ -120,6 +120,27 @@
   background: var(--bg-hover);
 }
 
+/* ── Image preview ── */
+
+.fc-image-preview {
+  padding: 8px;
+  display: flex;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border);
+}
+
+.fc-image-preview img {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+}
+
+.fc-image-preview--svg img {
+  max-height: none;
+  width: 100%;
+}
+
 /* ── Diff body ── */
 
 .fc-file-body {
