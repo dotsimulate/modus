@@ -91,6 +91,8 @@ export type Session = {
   availableTools?: string[];
   /** Pending permission requests awaiting user response */
   pendingPermissions?: PendingPermission[];
+  /** Rolling feed of recent stream content for noise display */
+  streamFeed?: string;
 };
 
 // ── API Types ──

@@ -33,6 +33,8 @@ export type ReducerState = {
   _thinkingStartedAt?: number;
   /** Pending permission requests awaiting user response */
   pendingPermissions: PendingPermission[];
+  /** Rolling feed of recent stream content (text, thinking, tool inputs) for noise display */
+  streamFeed: string;
 };
 
 export function createInitialState(sessionId = ""): ReducerState {
@@ -50,6 +52,7 @@ export function createInitialState(sessionId = ""): ReducerState {
     _pendingToolCalls: new Map(),
     _subTasks: new Map(),
     pendingPermissions: [],
+    streamFeed: "",
   };
 }
 
@@ -78,6 +81,11 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
     default:
       return s;
   }
+}
+
+/** Append to streamFeed, keeping a rolling tail of ~500 chars */
+function appendFeed(current: string, text: string): string {
+  return (current + " " + text).slice(-500);
 }
 
 // ── Helpers for sub-agent message nesting ──
@@ -258,13 +266,16 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
   let text = "";
   let thinking = "";
   const toolCalls: ToolCall[] = [];
+  const feedParts: string[] = [];
 
   for (const block of content) {
     if (block.type === "text" && block.text) {
       text += block.text;
+      feedParts.push(block.text);
     }
     if (block.type === "thinking" && block.thinking) {
       thinking = block.thinking;
+      feedParts.push(block.thinking);
     }
     if (block.type === "tool_use") {
       const tc: ToolCall = {
@@ -278,6 +289,10 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
       // Track in pending map for result matching (immutable copy)
       s._pendingToolCalls = new Map(s._pendingToolCalls);
       s._pendingToolCalls.set(block.id, tc);
+      // Feed tool inputs into streamFeed
+      for (const v of Object.values(block.input ?? {})) {
+        if (typeof v === "string" && v.length > 1) feedParts.push(v);
+      }
     }
   }
 
@@ -307,7 +322,8 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
       msgs = appendSubMessage(s.messages, s._activeAgentToolId, subMsg);
     }
 
-    return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "" };
+    const feed = feedParts.length > 0 ? feedParts.reduce((f, p) => appendFeed(f, p), s.streamFeed) : s.streamFeed;
+    return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "", streamFeed: feed };
   }
 
   // ── Normal mode: top-level messages ──
@@ -342,7 +358,8 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
     }
   }
 
-  return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "", _thinkingStartedAt: undefined };
+  const feed = feedParts.length > 0 ? feedParts.reduce((f, p) => appendFeed(f, p), s.streamFeed) : s.streamFeed;
+  return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "", _thinkingStartedAt: undefined, streamFeed: feed };
 }
 
 // ── User Messages (including synthetic tool_result) ──
@@ -514,7 +531,7 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
             content: newText,
           });
         }
-        return { ...s, messages: msgs, _streamingText: newText };
+        return { ...s, messages: msgs, _streamingText: newText, streamFeed: appendFeed(s.streamFeed, evt.delta.text) };
       }
       if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
         const newThinking = s._streamingThinking + evt.delta.thinking;
@@ -535,7 +552,7 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
             thinking: newThinking,
           });
         }
-        return { ...s, messages: msgs, _streamingThinking: newThinking };
+        return { ...s, messages: msgs, _streamingThinking: newThinking, streamFeed: appendFeed(s.streamFeed, evt.delta.thinking) };
       }
       return s;
     }
@@ -555,7 +572,7 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
       } else {
         msgs.push({ id: nextMsgId(), role: "assistant", content: newText });
       }
-      return { ...s, messages: msgs, _streamingText: newText, _thinkingStartedAt: undefined };
+      return { ...s, messages: msgs, _streamingText: newText, _thinkingStartedAt: undefined, streamFeed: appendFeed(s.streamFeed, evt.delta.text) };
     }
     if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
       const newThinking = s._streamingThinking + evt.delta.thinking;
@@ -569,7 +586,7 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
       } else {
         msgs.push({ id: nextMsgId(), role: "assistant", content: "", thinking: newThinking });
       }
-      return { ...s, messages: msgs, _streamingThinking: newThinking, _thinkingStartedAt: startedAt };
+      return { ...s, messages: msgs, _streamingThinking: newThinking, _thinkingStartedAt: startedAt, streamFeed: appendFeed(s.streamFeed, evt.delta.thinking) };
     }
   }
 
@@ -628,5 +645,6 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     activeToolName: undefined,
     activeToolElapsed: undefined,
     pendingPermissions: [],
+    streamFeed: "",
   };
 }

@@ -605,6 +605,10 @@ async function drainEvents(session: ActiveSession, q: AsyncIterable<any>) {
 
   try {
     for await (const msg of q) {
+      // If stopSession already forced idle, drop all further events.
+      // The SDK process is being killed but may still yield buffered events.
+      if (session.abortController.signal.aborted) break;
+
       const m = msg as any;
       session.lastEventAt = Date.now();
 
@@ -957,16 +961,30 @@ export function stopSession(sessionId: string): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
-  // Resolve any pending permission promises before aborting, so hook callbacks
-  // don't try to send responses on the already-closed stream ("Stream closed" errors).
+  // Resolve any pending permission promises before aborting
   for (const [id, pending] of session.pendingPermissions) {
     pending.resolve({ behavior: "deny", message: "Session interrupted" });
     session.pendingPermissions.delete(id);
   }
 
-  // Only abort — don't close input or set status.
-  // The drain loop's AbortError handler sets idle + checks pendingMessages.
+  // Force idle IMMEDIATELY — don't wait for the SDK to propagate the abort.
+  // On Windows the SDK's async iterator can hang for seconds after abort().
+  session.status = "idle";
+  if (session.sessionId && !session.sessionId.startsWith("pending-")) {
+    updateSessionStatus(session.sessionId, "idle");
+    const interruptData = JSON.stringify({ type: "system", subtype: "interrupted" });
+    session.seq++;
+    addEvent(session.sessionId, session.seq, "system", "interrupted", interruptData);
+    for (const sub of session.subscribers) {
+      try { sub.write("system", interruptData, String(session.seq)); } catch { session.subscribers.delete(sub); }
+    }
+  }
+
+  // Now kill the SDK process — the drain loop will eventually catch the abort
+  // but the session is already idle so the UI won't show further activity.
+  session.input.close();
   session.abortController.abort();
+
   return true;
 }
 

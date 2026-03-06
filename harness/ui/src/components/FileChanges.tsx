@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import type { ToolCall } from "../api";
 import { openInEditor } from "../api";
+import { API_BASE, tokenParam } from "../api/_fetch";
 
 type FileEdit = {
   filePath: string;
@@ -161,16 +162,37 @@ function EditHunk({ edit, idx }: { edit: FileEdit; idx: number }) {
   );
 }
 
+const BROWSER_EXTS = new Set([
+  ".html", ".htm", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf",
+]);
+
+function isBrowserPreviewable(filePath: string): boolean {
+  const ext = filePath.replace(/\\/g, "/").split("/").pop()?.match(/\.[^.]+$/)?.[0]?.toLowerCase();
+  return !!ext && BROWSER_EXTS.has(ext);
+}
+
+function rawFileUrl(filePath: string): string {
+  const tp = tokenParam();
+  const sep = tp ? "&" : "";
+  return `${API_BASE}/api/file/raw?path=${encodeURIComponent(filePath)}${sep}${tp}`;
+}
+
 /** A single file card with collapsible edits */
 function FileCard({ filePath, edits }: { filePath: string; edits: FileEdit[] }) {
   const [expanded, setExpanded] = useState(false);
   const { additions, deletions } = countChanges(edits);
   const name = basename(filePath);
   const dir = shortPath(filePath).replace(/\/?[^/]+$/, "");
+  const previewable = isBrowserPreviewable(filePath);
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation();
     openInEditor(filePath);
+  };
+
+  const handlePreview = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(rawFileUrl(filePath), "_blank");
   };
 
   return (
@@ -183,6 +205,15 @@ function FileCard({ filePath, edits }: { filePath: string; edits: FileEdit[] }) 
           {additions > 0 && <span className="diff-stat diff-stat--add">+{additions}</span>}
           {deletions > 0 && <span className="diff-stat diff-stat--del">-{deletions}</span>}
         </span>
+        {previewable && (
+          <button className="fc-open-btn" onClick={handlePreview} title="Open in browser">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
+              <ellipse cx="6" cy="6" rx="2.2" ry="5" stroke="currentColor" strokeWidth="1.2"/>
+              <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.2"/>
+            </svg>
+          </button>
+        )}
         <button className="fc-open-btn" onClick={handleOpen} title="Open in editor">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M10 6.5V10a1 1 0 01-1 1H2a1 1 0 01-1-1V3a1 1 0 011-1h3.5M7 1h4v4M5 7l6-6"

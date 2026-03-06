@@ -20,7 +20,7 @@ import {
 } from "./db";
 import type { SessionRow, EventRow, SearchHit } from "./db";
 import type {
-  ScheduleConfig, ScheduleContext, ScheduleModule,
+  ScheduleConfig, ScheduleContext, ScheduleModule, RunResult,
   ScheduleState, ScheduleDB,
   SessionInfo, SearchResult, EventInfo,
 } from "./scheduler-types";
@@ -303,7 +303,28 @@ async function executeRun(name: string, overrides?: { userProfile?: string }): P
     updateScheduleRun(runId, { sessionId: session.sessionId, status: "running" });
 
     // Monitor until session completes
+    const runStart = Date.now();
     await monitorSession(session.sessionId, name, runId, state);
+
+    // Call afterRun hook if the module exports one
+    if (typeof mod.afterRun === "function") {
+      try {
+        const dbSession = getSession(session.sessionId);
+        const runResult: RunResult = {
+          status: state.lastStatus === "error" ? "error" : "done",
+          response: dbSession?.last_response ?? null,
+          summary: dbSession?.last_response?.slice(0, 500) ?? null,
+          costUsd: dbSession?.total_cost_usd ?? 0,
+          durationMs: Date.now() - runStart,
+          sessionId: session.sessionId,
+          error: state.lastStatus === "error" ? (dbSession?.last_response ?? "unknown") : null,
+        };
+        await mod.afterRun(ctx, runResult);
+        console.log(`[scheduler] afterRun hook completed for "${name}" run #${runNumber}`);
+      } catch (hookErr: any) {
+        console.error(`[scheduler] afterRun hook failed for "${name}" run #${runNumber}:`, hookErr);
+      }
+    }
 
   } catch (err: any) {
     console.error(`[scheduler] Run #${runNumber} failed for "${name}":`, err);
