@@ -119,13 +119,15 @@
   margin-right: 1px;
 }
 
-.streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 14px;
-  background: var(--accent);
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  animation: blink 0.8s step-end infinite;
+/* Streaming noise */
+.sc-noise {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: italic;
+  white-space: nowrap;
+  color: var(--text-muted);
 }
-@keyframes blink { 50% { opacity: 0; } }
+.sc-glyphs {
+}
+.sc-resolved {
+}

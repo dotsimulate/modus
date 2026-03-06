@@ -194,3 +194,83 @@
 .permission-other-input:focus {
   border-color: #e89b50;
 }
+
+/* ── Question step indicators ── */
+
+.question-steps {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.question-step {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s ease;
+}
+.question-step:hover {
+  border-color: var(--text-muted);
+}
+.question-step.active {
+  border-color: #e89b50;
+  color: #e89b50;
+  background: rgba(232, 155, 80, 0.1);
+}
+.question-step.answered {
+  border-color: rgba(51, 204, 51, 0.5);
+  color: #33cc33;
+}
+.question-step.active.answered {
+  border-color: #e89b50;
+  color: #e89b50;
+}
+
+/* ── Permission tabs (multiple pending) ── */
+
+.permission-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.permission-tab {
+  position: relative;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+.permission-tab:hover {
+  border-color: var(--text-muted);
+}
+.permission-tab.active {
+  border-color: #e89b50;
+  color: #e89b50;
+  background: rgba(232, 155, 80, 0.08);
+}
+
+.permission-tab-dot {
+  position: absolute;
+  bottom: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #e89b50;
+}

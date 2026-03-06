@@ -57,15 +57,38 @@ type Props = {
   showGitEvents?: boolean;
   cwd?: string | null;
   lastTodoId?: string;
+  streamFeed?: string;
   children?: ReactNode;
 };
 
-export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, children }: Props) {
+function formatMeta(meta: Message["meta"]): string {
+  if (!meta) return "";
+  const parts: string[] = [];
+  if (meta.model) parts.push(meta.model);
+  if (meta.cost != null) parts.push(`$${meta.cost.toFixed(4)}`);
+  if (meta.turns != null) parts.push(`${meta.turns} turns`);
+  if (meta.inputTokens != null && meta.outputTokens != null)
+    parts.push(`↓${fmtTokens(meta.inputTokens).trim()} ↑${fmtTokens(meta.outputTokens).trim()}`);
+  if (meta.duration != null) parts.push(`${(meta.duration / 1000).toFixed(1)}s`);
+  return parts.join("  ");
+}
+
+export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, children }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(true);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const wasStreamingRef = useRef(false);
   const toolCount = countAllTools(msg.toolCalls);
   const liveElapsed = useElapsed(isStreaming && !msg.meta);
   const duration = msg.meta?.duration ?? liveElapsed;
+
+  // Track streaming → meta transition for resolve animation
+  useEffect(() => {
+    if (isStreaming) wasStreamingRef.current = true;
+    if (wasStreamingRef.current && msg.meta && !resolving) {
+      setResolving(true);
+    }
+  }, [isStreaming, msg.meta]);
 
   return (
     <div className="message" data-role={msg.role}>
@@ -147,11 +170,17 @@ export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, i
 
       {isStreaming && !msg.meta && (
         <div className="message-meta">
-          <StreamingCursor />
+          <StreamingCursor feed={streamFeed} />
         </div>
       )}
 
-      {showMeta && msg.meta && (
+      {resolving && msg.meta && (
+        <div className="message-meta">
+          <StreamingCursor resolveText={formatMeta(msg.meta)} onResolved={() => setResolving(false)} />
+        </div>
+      )}
+
+      {showMeta && msg.meta && !resolving && (
         <div className="message-meta">
           {msg.meta.model && <span>{msg.meta.model}</span>}
           {msg.meta.cost != null && (

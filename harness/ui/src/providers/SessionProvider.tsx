@@ -99,6 +99,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       activeToolElapsed: rs.activeToolElapsed,
       availableTools: rs.availableTools.length > 0 ? rs.availableTools : undefined,
       pendingPermissions: rs.pendingPermissions.length > 0 ? rs.pendingPermissions : undefined,
+      streamFeed: rs.streamFeed || undefined,
     });
   }, []);
 

@@ -4,7 +4,7 @@ delete process.env.CLAUDECODE;
 import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin } from "./secrets";
 loadSecrets();
 
-import { join } from "path";
+import { join, resolve, extname } from "path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -758,6 +758,32 @@ app.post("/api/open-in-editor", async (c) => {
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
   }
+});
+
+// ── Serve raw file (for browser preview) ──
+
+const MIME_MAP: Record<string, string> = {
+  ".html": "text/html", ".htm": "text/html",
+  ".svg": "image/svg+xml",
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".gif": "image/gif", ".webp": "image/webp",
+  ".css": "text/css", ".js": "text/javascript",
+  ".json": "application/json", ".xml": "application/xml",
+  ".pdf": "application/pdf", ".md": "text/markdown",
+  ".txt": "text/plain",
+};
+
+app.get("/api/file/raw", async (c) => {
+  const filePath = new URL(c.req.url).searchParams.get("path");
+  if (!filePath) return c.json({ error: "path required" }, 400);
+
+  const abs = resolve(filePath);
+  const file = Bun.file(abs);
+  if (!(await file.exists())) return c.json({ error: "not found" }, 404);
+
+  const ext = extname(abs).toLowerCase();
+  const mime = MIME_MAP[ext] ?? "text/plain";
+  return new Response(file, { headers: { "Content-Type": mime } });
 });
 
 // ── Storage Stats & Compaction ──

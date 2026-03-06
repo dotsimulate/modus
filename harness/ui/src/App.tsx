@@ -163,6 +163,7 @@ function AppShell() {
               <ChatView
                 messages={activeSession?.messages ?? []}
                 streaming={isStreaming}
+                streamFeed={activeSession?.streamFeed}
                 showThinking={ui.showThinking}
                 showMeta={ui.showMeta}
                 showToolCalls={ui.showToolCalls}

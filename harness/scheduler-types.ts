@@ -130,11 +130,22 @@ export interface ScheduleContext {
   // provide(tool: ToolDef): void
 }
 
+/** Result passed to afterRun hook — everything the schedule needs to act on */
+export interface RunResult {
+  status: "done" | "error";
+  response: string | null;       // agent's final response text
+  summary: string | null;        // truncated summary stored in DB
+  costUsd: number;
+  durationMs: number;
+  sessionId: string | null;
+  error: string | null;
+}
+
 /** What a schedule's context.ts module must export */
 export interface ScheduleModule {
   gather(ctx: ScheduleContext): Promise<string>;
-  // Future seed:
-  // check?(ctx: ScheduleContext, result: RunResult): Promise<string | null>;
+  /** Optional hook — runs after the agent session completes. Use for side effects: API calls, notifications, hardware, etc. */
+  afterRun?(ctx: ScheduleContext, result: RunResult): Promise<void>;
 }
 
 export interface RunSummary {

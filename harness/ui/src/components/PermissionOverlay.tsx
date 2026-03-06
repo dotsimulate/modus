@@ -7,6 +7,27 @@ type Props = {
   onRespond: (requestId: string, behavior: "allow" | "deny", updatedInput?: Record<string, unknown>, scope?: "once" | "session") => void;
 };
 
+// ── Persistent answer state (survives component unmount/remount) ──
+
+type FormState = {
+  step: number;
+  answers: Record<string, string>;
+  customInputs: Record<string, string>;
+};
+
+const formStore = new Map<string, FormState>();
+/** Active permission tab index — survives navigation */
+let persistedActiveIdx = 0;
+
+function getFormState(requestId: string): FormState {
+  return formStore.get(requestId) ?? { step: 0, answers: {}, customInputs: {} };
+}
+
+function setFormState(requestId: string, patch: Partial<FormState>) {
+  const prev = getFormState(requestId);
+  formStore.set(requestId, { ...prev, ...patch });
+}
+
 /** Summarize tool input for display */
 function inputSummary(toolName: string, input: Record<string, unknown>): string {
   switch (toolName) {
@@ -30,79 +51,132 @@ function inputSummary(toolName: string, input: Record<string, unknown>): string 
   }
 }
 
-/** Render an AskUserQuestion interactive form */
+/** Render an AskUserQuestion interactive form — one question at a time */
 function QuestionForm({ perm, onRespond }: { perm: PendingPermission; onRespond: Props["onRespond"] }) {
   const questions = (perm.toolInput.questions as any[]) ?? [];
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [customInputs, setCustomInputs] = useState<Record<string, string>>({});
+  const saved = getFormState(perm.requestId);
 
+  // Local state initialized from persistent store
+  const [step, _setStep] = useState(saved.step);
+  const [answers, _setAnswers] = useState(saved.answers);
+  const [customInputs, _setCustomInputs] = useState(saved.customInputs);
+
+  // Wrap setters to persist to module store
+  const setStep = (s: number) => {
+    _setStep(s);
+    setFormState(perm.requestId, { step: s });
+  };
   const setAnswer = (question: string, value: string) => {
-    setAnswers((prev) => ({ ...prev, [question]: value }));
+    _setAnswers((prev) => {
+      const next = { ...prev, [question]: value };
+      setFormState(perm.requestId, { answers: next });
+      return next;
+    });
+  };
+  const setCustomInput = (question: string, value: string) => {
+    _setCustomInputs((prev) => {
+      const next = { ...prev, [question]: value };
+      setFormState(perm.requestId, { customInputs: next });
+      return next;
+    });
   };
 
-  const handleSubmit = () => {
-    // Merge custom inputs for "Other" selections
-    const finalAnswers: Record<string, string> = {};
-    for (const q of questions) {
-      const qText = q.question as string;
-      const ans = answers[qText];
-      if (ans === "__other__") {
-        finalAnswers[qText] = customInputs[qText] ?? "";
-      } else if (ans) {
-        finalAnswers[qText] = ans;
-      }
-    }
-    onRespond(perm.requestId, "allow", { ...perm.toolInput, answers: finalAnswers });
-  };
+  const q = questions[step];
+  const total = questions.length;
+  const isLast = step === total - 1;
 
-  const allAnswered = questions.every((q: any) => {
+  const currentAnswered = (() => {
+    if (!q) return false;
     const ans = answers[q.question];
     if (!ans) return false;
     if (ans === "__other__" && !customInputs[q.question]?.trim()) return false;
     return true;
-  });
+  })();
+
+  const handleNext = () => {
+    if (isLast) {
+      // Submit all answers and clean up store
+      const finalAnswers: Record<string, string> = {};
+      for (const qq of questions) {
+        const qText = qq.question as string;
+        const ans = answers[qText];
+        if (ans === "__other__") {
+          finalAnswers[qText] = customInputs[qText] ?? "";
+        } else if (ans) {
+          finalAnswers[qText] = ans;
+        }
+      }
+      formStore.delete(perm.requestId);
+      onRespond(perm.requestId, "allow", { ...perm.toolInput, answers: finalAnswers });
+    } else {
+      setStep(step + 1);
+    }
+  };
+
+  if (!q) return null;
 
   return (
     <div className="permission-questions">
-      {questions.map((q: any, qi: number) => (
-        <div key={qi} className="permission-question">
-          <div className="permission-question-header">{q.header}</div>
-          <div className="permission-question-text">{q.question}</div>
-          <div className="permission-options">
-            {(q.options ?? []).map((opt: any, oi: number) => (
-              <button
-                key={oi}
-                className={`permission-option${answers[q.question] === opt.label ? " selected" : ""}`}
-                onClick={() => setAnswer(q.question, opt.label)}
-              >
-                <span className="permission-option-label">{opt.label}</span>
-                {opt.description && <span className="permission-option-desc">{opt.description}</span>}
-              </button>
-            ))}
+      {total > 1 && (
+        <div className="question-steps">
+          {questions.map((_: any, i: number) => (
             <button
-              className={`permission-option${answers[q.question] === "__other__" ? " selected" : ""}`}
-              onClick={() => setAnswer(q.question, "__other__")}
+              key={i}
+              className={`question-step${i === step ? " active" : ""}${answers[questions[i].question] ? " answered" : ""}`}
+              onClick={() => setStep(i)}
             >
-              <span className="permission-option-label">Other</span>
+              {i + 1}
             </button>
-          </div>
-          {answers[q.question] === "__other__" && (
-            <input
-              className="permission-other-input"
-              type="text"
-              placeholder="Type your answer..."
-              value={customInputs[q.question] ?? ""}
-              onChange={(e) => setCustomInputs((prev) => ({ ...prev, [q.question]: e.target.value }))}
-              autoFocus
-            />
-          )}
+          ))}
         </div>
-      ))}
+      )}
+
+      <div className="permission-question">
+        <div className="permission-question-header">{q.header}</div>
+        <div className="permission-question-text">{q.question}</div>
+        <div className="permission-options">
+          {(q.options ?? []).map((opt: any, oi: number) => (
+            <button
+              key={oi}
+              className={`permission-option${answers[q.question] === opt.label ? " selected" : ""}`}
+              onClick={() => setAnswer(q.question, opt.label)}
+            >
+              <span className="permission-option-label">{opt.label}</span>
+              {opt.description && <span className="permission-option-desc">{opt.description}</span>}
+            </button>
+          ))}
+          <button
+            className={`permission-option${answers[q.question] === "__other__" ? " selected" : ""}`}
+            onClick={() => setAnswer(q.question, "__other__")}
+          >
+            <span className="permission-option-label">Other</span>
+          </button>
+        </div>
+        {answers[q.question] === "__other__" && (
+          <input
+            className="permission-other-input"
+            type="text"
+            placeholder="Type your answer..."
+            value={customInputs[q.question] ?? ""}
+            onChange={(e) => setCustomInput(q.question, e.target.value)}
+            autoFocus
+          />
+        )}
+      </div>
+
       <div className="permission-actions">
-        <button className="permission-btn permission-btn--approve" onClick={handleSubmit} disabled={!allAnswered}>
-          Submit
+        {step > 0 && (
+          <button className="permission-btn" onClick={() => setStep(step - 1)}>
+            Back
+          </button>
+        )}
+        <button className="permission-btn permission-btn--approve" onClick={handleNext} disabled={!currentAnswered}>
+          {isLast ? "Submit" : "Next"}
         </button>
-        <button className="permission-btn permission-btn--deny" onClick={() => onRespond(perm.requestId, "deny")}>
+        <button className="permission-btn permission-btn--deny" onClick={() => {
+          formStore.delete(perm.requestId);
+          onRespond(perm.requestId, "deny");
+        }}>
           Skip
         </button>
       </div>
@@ -111,54 +185,86 @@ function QuestionForm({ perm, onRespond }: { perm: PendingPermission; onRespond:
 }
 
 export function PermissionOverlay({ permissions, sessionId: _sessionId, onRespond }: Props) {
-  // Enter key = Allow (first non-interactive permission)
+  const [activeIdx, _setActiveIdx] = useState(persistedActiveIdx);
+  const setActiveIdx = (i: number) => { persistedActiveIdx = i; _setActiveIdx(i); };
+
+  // Clamp active index when permissions change
+  useEffect(() => {
+    if (activeIdx >= permissions.length) setActiveIdx(Math.max(0, permissions.length - 1));
+  }, [permissions.length]);
+
+  // Clean up stale form store entries for permissions that no longer exist
+  useEffect(() => {
+    const ids = new Set(permissions.map((p) => p.requestId));
+    for (const key of formStore.keys()) {
+      if (!ids.has(key)) formStore.delete(key);
+    }
+  }, [permissions]);
+
+  // Enter key = Allow (active non-interactive permission)
   useEffect(() => {
     if (permissions.length === 0) return;
-    const first = permissions.find((p) => !p.interactive);
-    if (!first) return;
+    const perm = permissions[activeIdx];
+    if (!perm || perm.interactive) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         e.preventDefault();
-        onRespond(first.requestId, "allow", undefined, "once");
+        onRespond(perm.requestId, "allow", undefined, "once");
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [permissions, onRespond]);
+  }, [permissions, activeIdx, onRespond]);
 
   if (permissions.length === 0) return null;
 
+  const perm = permissions[activeIdx];
+  if (!perm) return null;
+
   return (
     <div className="permission-overlay">
-      {permissions.map((perm) => (
-        <div key={perm.requestId} className="permission-request">
-          {perm.interactive ? (
-            <QuestionForm perm={perm} onRespond={onRespond} />
-          ) : (
-            <>
-              <div className="permission-request-header">
-                <span className="permission-request-indicator" />
-                <span className="permission-request-tool">{perm.toolName}</span>
-                <span className="permission-request-reason">{perm.decisionReason}</span>
-              </div>
-              {inputSummary(perm.toolName, perm.toolInput) && (
-                <pre className="permission-request-input">{inputSummary(perm.toolName, perm.toolInput)}</pre>
-              )}
-              <div className="permission-actions">
-                <button className="permission-btn permission-btn--approve" onClick={() => onRespond(perm.requestId, "allow", undefined, "once")}>
-                  Allow
-                </button>
-                <button className="permission-btn permission-btn--session" onClick={() => onRespond(perm.requestId, "allow", undefined, "session")}>
-                  Allow for Session
-                </button>
-                <button className="permission-btn permission-btn--deny" onClick={() => onRespond(perm.requestId, "deny")}>
-                  Deny
-                </button>
-              </div>
-            </>
-          )}
+      {permissions.length > 1 && (
+        <div className="permission-tabs">
+          {permissions.map((p, i) => (
+            <button
+              key={p.requestId}
+              className={`permission-tab${i === activeIdx ? " active" : ""}`}
+              onClick={() => setActiveIdx(i)}
+            >
+              {p.interactive ? "Q" : p.toolName.slice(0, 4)}
+              {i === activeIdx && <span className="permission-tab-dot" />}
+            </button>
+          ))}
         </div>
-      ))}
+      )}
+
+      <div className="permission-request">
+        {perm.interactive ? (
+          <QuestionForm perm={perm} onRespond={onRespond} />
+        ) : (
+          <>
+            <div className="permission-request-header">
+              <span className="permission-request-indicator" />
+              <span className="permission-request-tool">{perm.toolName}</span>
+              <span className="permission-request-reason">{perm.decisionReason}</span>
+            </div>
+            {inputSummary(perm.toolName, perm.toolInput) && (
+              <pre className="permission-request-input">{inputSummary(perm.toolName, perm.toolInput)}</pre>
+            )}
+            <div className="permission-actions">
+              <button className="permission-btn permission-btn--approve" onClick={() => onRespond(perm.requestId, "allow", undefined, "once")}>
+                Allow
+              </button>
+              <button className="permission-btn permission-btn--session" onClick={() => onRespond(perm.requestId, "allow", undefined, "session")}>
+                Allow for Session
+              </button>
+              <button className="permission-btn permission-btn--deny" onClick={() => onRespond(perm.requestId, "deny")}>
+                Deny
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

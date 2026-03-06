@@ -6,6 +6,7 @@ import type { Message, ToolCall } from "../api";
 type Props = {
   messages: Message[];
   streaming: boolean;
+  streamFeed?: string;
   showThinking?: boolean;
   showMeta?: boolean;
   showToolCalls?: boolean;
@@ -15,7 +16,7 @@ type Props = {
   emptySubtitle?: string;
 };
 
-export function ChatView({ messages, streaming, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle }: Props) {
+export function ChatView({ messages, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
 
@@ -111,6 +112,9 @@ export function ChatView({ messages, streaming, showThinking = true, showMeta = 
               showGitEvents={showGitEvents}
               cwd={cwd}
               lastTodoId={lastTodoId}
+              streamFeed={streaming && i === messages.length - 1 && msg.role === "assistant"
+                ? streamFeed
+                : undefined}
             >
               {showFileChanges && <FileChanges toolCalls={turnTools} />}
             </MessageBubble>

@@ -127,6 +127,18 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
     else pinRef.current?.focus();
   }, []);
 
+  // Any keyboard activity focuses the passcode field
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (pinRef.current && document.activeElement !== pinRef.current) {
+        pinRef.current.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   const submitLogin = useCallback(async () => {
     if (!name.trim()) { setError("name required"); nameRef.current?.focus(); return; }
     if (!pin.trim() || loading) return;
