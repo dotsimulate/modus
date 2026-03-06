@@ -37,6 +37,7 @@ type Props = {
   activeUserProfileObj?: UserProfile | null;
   onProfileCreated?: (name: string) => void;
   allProfiles?: Profile[];
+  availableProviders?: string[];
 };
 
 export function Sidebar({
@@ -49,6 +50,7 @@ export function Sidebar({
   initialGroupMode, initialCollapsedGroups,
   onGroupModeChange, onCollapsedGroupsChange,
   activeUserProfileObj, onProfileCreated, allProfiles,
+  availableProviders,
 }: Props) {
   const [groupMode, setGroupMode] = useState<GroupMode>(initialGroupMode ?? "time");
   const [searchQuery, setSearchQuery] = useState("");
@@ -155,6 +157,7 @@ export function Sidebar({
 
         <ProfilePanel
           profiles={profiles}
+          availableProviders={availableProviders}
           selectedProfile={selectedProfile}
           onSelectProfile={onSelectProfile}
           setupState={setupState}

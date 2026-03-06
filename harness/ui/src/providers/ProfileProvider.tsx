@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import type { Profile, UserProfile, UserProfileState, CreateSessionOpts } from "../api";
 import {
-  fetchProfiles, fetchUserProfiles, fetchUserProfileState,
+  fetchProfiles, fetchProviders, fetchUserProfiles, fetchUserProfileState,
   patchUserProfileStateApi,
 } from "../api";
 import { createDefaultSetupState, type SessionSetupState } from "../components/SessionSetup";
@@ -13,6 +13,7 @@ const USER_PROFILE_KEY = "harness:active-user-profile";
 type ProfileContextValue = {
   profiles: Profile[];
   visibleProfiles: Profile[];
+  availableProviders: string[];
   userProfiles: UserProfile[];
   activeUserProfile: string | null;
   activeUP: UserProfile | null;
@@ -26,6 +27,7 @@ type ProfileContextValue = {
   uiState: UserProfileState;
   saveUiState: (patch: Partial<UserProfileState>) => void;
   switchUserProfile: (name: string | null) => void;
+  refreshProfiles: () => Promise<void>;
   refreshUserProfiles: () => Promise<void>;
   buildSessionOpts: (prompt: string, profile?: string) => CreateSessionOpts;
 };
@@ -35,6 +37,7 @@ export const useProfiles = () => useContext(ProfileContext);
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
   const [selectedProfile, setSelectedProfile] = useState("test-harness");
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
   const [activeUserProfile, setActiveUserProfile] = useState<string | null>(
@@ -46,6 +49,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [setupState, setSetupState] = useState<SessionSetupState>(createDefaultSetupState());
   const [liveAgentConfig, setLiveAgentConfig] = useState<AgentConfigState>({
     toolStates: {},
+    provider: "",
     effort: "",
     maxTurns: "",
   });
@@ -64,6 +68,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem(USER_PROFILE_KEY);
     }
     setActiveUserProfile(name);
+  }, []);
+
+  // Refresh agent profiles from server
+  const refreshProfiles = useCallback(async () => {
+    const p = await fetchProfiles();
+    setProfiles(p);
   }, []);
 
   // Refresh user profiles from server
@@ -110,9 +120,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadInitial = async () => {
       try {
-        const [p, up] = await Promise.all([fetchProfiles(), fetchUserProfiles()]);
+        const [p, up, prov] = await Promise.all([fetchProfiles(), fetchUserProfiles(), fetchProviders()]);
         setProfiles(p);
         setUserProfiles(up);
+        setAvailableProviders(prov);
 
         if (activeUserProfile) {
           const state = await fetchUserProfileState(activeUserProfile);
@@ -153,12 +164,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ProfileContext.Provider value={{
-      profiles, visibleProfiles, userProfiles,
+      profiles, visibleProfiles, availableProviders, userProfiles,
       activeUserProfile, activeUP,
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,
       liveAgentConfig, setLiveAgentConfig,
-      uiState, saveUiState, switchUserProfile, refreshUserProfiles,
+      uiState, saveUiState, switchUserProfile, refreshProfiles, refreshUserProfiles,
       buildSessionOpts,
     }}>
       {children}

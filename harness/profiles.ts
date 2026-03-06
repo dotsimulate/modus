@@ -67,6 +67,8 @@ export type Profile = {
   prompt: string;
   /** Agent description (for subagent selection / UI display) */
   description: string;
+  /** Execution backend — "claude-code" (default) uses Agent SDK, anything else uses direct API */
+  provider?: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama";
   /** Allowed tools — omit to inherit all */
   tools?: string[];
   /** Disallowed tools */
@@ -87,6 +89,10 @@ export type Profile = {
   mcpServers?: Record<string, McpServerConfig>;
   /** Permission policy — controls tool execution gating. Defaults to "bypass". */
   permissionPolicy?: PermissionPolicy;
+  /** Context window size override — for models where API doesn't report it */
+  contextWindow?: number;
+  /** Max output tokens override — for models where API doesn't report it */
+  maxOutputTokens?: number;
   /** UI presentation hints — read by frontend, optional with sensible defaults */
   ui?: {
     label?: string;
@@ -128,6 +134,8 @@ export type UserProfile = {
   agentProfiles?: string[];
   /** Visible schedules — omit or ["*"] for all */
   schedules?: string[];
+  /** Default execution provider for sessions under this user profile */
+  provider?: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama";
   memoryFilter?: string;
   memory?: UserProfileMemory;
   /** Show project paths from ALL user profiles in the CWD picker (default: false) */

@@ -73,6 +73,7 @@ const ClaudeMdExcludesSchema = z.union([
 export const ProfileSchema = z.object({
   prompt: z.string(),
   description: z.string(),
+  provider: z.enum(["claude-code", "anthropic", "openai", "litellm", "ollama"]).optional(),
   tools: z.array(z.string()).optional(),
   disallowedTools: z.array(z.string()).optional(),
   model: z.string().optional(),
@@ -84,6 +85,8 @@ export const ProfileSchema = z.object({
   mcpServers: z.record(McpServerConfigSchema).optional(),
   permissionPolicy: PermissionPolicySchema.optional(),
   ui: ProfileUiSchema.optional(),
+  contextWindow: z.number().int().positive().optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
 });
 
 // ── User Profile ──
@@ -98,6 +101,7 @@ export const UserProfileSchema = z.object({
   templateVars: z.record(z.string()).optional(),
   projects: z.array(z.string()),
   agentProfiles: z.array(z.string()).optional(),
+  provider: z.enum(["claude-code", "anthropic", "openai", "litellm", "ollama"]).optional(),
   memoryFilter: z.string().optional(),
   memory: UserProfileMemorySchema.optional(),
   showAllProjectPaths: z.boolean().optional(),

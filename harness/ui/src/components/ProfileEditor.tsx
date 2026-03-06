@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { saveProfileApi, deleteProfileApi, checkSecrets, patchUserProfileApi } from "../api";
-import type { Profile, McpServerConfig } from "../api";
+import { saveProfileApi, deleteProfileApi, checkSecrets, patchUserProfileApi, fetchProviderModels } from "../api";
+import type { Profile, McpServerConfig, ProviderModel } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { ToolGrid } from "./ToolGrid";
-import type { ToolStates } from "../tools";
+import { isPiProvider, type ToolStates } from "../tools";
 
 type Props = {
   profiles: Profile[];
@@ -223,10 +223,12 @@ function ProfileForm({
   onCancel: () => void;
   isNew?: boolean;
 }) {
+  const { availableProviders } = useProfiles();
   const [name, setName] = useState(isNew && profile.name ? `${profile.name}-copy` : profile.name);
   const [description, setDescription] = useState(profile.description);
   const [prompt, setPrompt] = useState(profile.prompt);
   const [promptMode, setPromptMode] = useState(profile.promptMode ?? "append");
+  const [provider, setProvider] = useState(profile.provider ?? "");
   const [model, setModel] = useState(profile.model ?? "");
   const [effort, setEffort] = useState(profile.effort ?? "");
   const [maxTurns, setMaxTurns] = useState(profile.maxTurns?.toString() ?? "");
@@ -241,11 +243,28 @@ function ProfileForm({
     profile.mcpServers ?? {},
   );
   const [saving, setSaving] = useState(false);
+  const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
 
+  // Fetch models when provider changes — clear model if it doesn't exist in new list
+  // Also reset tool states when switching between Claude and PI (different tool names)
+  useEffect(() => {
+    const p = provider || "claude-code";
+    fetchProviderModels(p).then((models) => {
+      setProviderModels(models);
+      if (model && models.length > 0 && !models.some((m) => m.id === model)) {
+        setModel("");
+      }
+    }).catch(() => setProviderModels([]));
+    // Reset tool selections — Claude and PI use different tool namespaces
+    const wasPi = isPiProvider(profile.provider);
+    const isPi = isPiProvider(provider);
+    if (wasPi !== isPi) setToolStates({});
+  }, [provider]);
 
   const handleSave = async () => {
     setSaving(true);
     const data: any = { description, prompt, promptMode, loadProjectSettings };
+    if (provider) data.provider = provider;
     if (model) data.model = model;
     if (effort) data.effort = effort;
     if (maxTurns) data.maxTurns = Number(maxTurns);
@@ -275,13 +294,27 @@ function ProfileForm({
       </label>
       <div className="profile-field-row">
         <label className="profile-field">
+          <span>provider</span>
+          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+            <option value="">default (claude-code)</option>
+            {availableProviders
+              .filter((v) => v !== "claude-code")
+              .map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+          </select>
+        </label>
+        <label className="profile-field">
           <span>model</span>
           <select value={model} onChange={(e) => setModel(e.target.value)}>
             <option value="">default</option>
-            <option value="claude-opus-4-6">opus 4.6</option>
-            <option value="claude-sonnet-4-6">sonnet 4.6</option>
-            <option value="claude-haiku-4-5">haiku 4.5</option>
+            {providerModels.map((m) => (
+              <option key={m.id} value={m.id}>{m.id}</option>
+            ))}
           </select>
+          {model && providerModels.length > 0 && !providerModels.some((m) => m.id === model) && (
+            <span className="profile-field-warn">not in provider's model list</span>
+          )}
         </label>
         <label className="profile-field">
           <span>effort</span>
@@ -312,6 +345,7 @@ function ProfileForm({
         states={toolStates}
         onChange={setToolStates}
         compact
+        provider={provider}
       />
       <label className="profile-checkbox">
         <input type="checkbox" checked={loadProjectSettings} onChange={(e) => setLoadProjectSettings(e.target.checked)} />
@@ -342,7 +376,7 @@ export function ProfileEditor({
   initialProfile = null,
   onCancel,
 }: Props) {
-  const { activeUserProfile, activeUP, refreshUserProfiles } = useProfiles();
+  const { activeUserProfile, activeUP, refreshProfiles, refreshUserProfiles } = useProfiles();
   const [selectedName, setSelectedName] = useState<string | null>(initialProfile);
   // In "new" mode, we track whether the user has picked a source to duplicate from
   const [duplicateSource, setDuplicateSource] = useState<string | null>(null);
@@ -371,8 +405,9 @@ export function ProfileEditor({
     if (isNew && activeUserProfile && activeUP?.agentProfiles) {
       const updated = [...activeUP.agentProfiles, saveName];
       await patchUserProfileApi(activeUserProfile, { agentProfiles: updated });
-      await refreshUserProfiles();
     }
+    // Refresh both provider states so visibleProfiles updates immediately
+    await Promise.all([refreshProfiles(), refreshUserProfiles()]);
     onProfilesChange();
   };
 

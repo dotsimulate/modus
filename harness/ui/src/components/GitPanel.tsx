@@ -25,15 +25,34 @@ function GitHeader({ status, cwd }: { status: GitStatus; cwd: string }) {
     + (status.files?.untracked.length ?? 0);
 
   return (
-    <div className="git-header">
-      <div className="git-branch">
-        <span className="git-branch-icon">⎇</span>
-        <span className="git-branch-name">{status.branch}</span>
-        {fileCount > 0 && <span className="git-dirty">●</span>}
-        {(status.ahead ?? 0) > 0 && <span className="git-ahead">↑{status.ahead}</span>}
-        {(status.behind ?? 0) > 0 && <span className="git-behind">↓{status.behind}</span>}
+    <div className="git-section">
+      <div className="git-section-label">repository</div>
+      <div className="git-header">
+        <div className="git-branch">
+          <span className="git-branch-icon">⎇</span>
+          <span className="git-branch-name">{status.branch}</span>
+          {fileCount > 0 && <span className="git-dirty">●</span>}
+          {(status.ahead ?? 0) > 0 && <span className="git-ahead">↑{status.ahead}</span>}
+          {(status.behind ?? 0) > 0 && <span className="git-behind">↓{status.behind}</span>}
+        </div>
+        <span className="git-cwd">{cwd}</span>
       </div>
-      <span className="git-cwd">{cwd}</span>
+    </div>
+  );
+}
+
+function FileStatus({ files }: { files: GitStatus["files"] }) {
+  if (!files) return null;
+  const count = files.modified.length + files.staged.length + files.untracked.length;
+  if (count === 0) return null;
+  return (
+    <div className="git-section">
+      <div className="git-section-label">working tree</div>
+      <div className="git-files">
+        <FileGroup label="staged" files={files.staged} variant="staged" />
+        <FileGroup label="modified" files={files.modified} variant="modified" />
+        <FileGroup label="untracked" files={files.untracked} variant="untracked" />
+      </div>
     </div>
   );
 }
@@ -50,19 +69,6 @@ function FileGroup({ label, files, variant }: { label: string; files: string[]; 
   );
 }
 
-function FileStatus({ files }: { files: GitStatus["files"] }) {
-  if (!files) return null;
-  const count = files.modified.length + files.staged.length + files.untracked.length;
-  if (count === 0) return null;
-  return (
-    <div className="git-files">
-      <FileGroup label="staged" files={files.staged} variant="staged" />
-      <FileGroup label="modified" files={files.modified} variant="modified" />
-      <FileGroup label="untracked" files={files.untracked} variant="untracked" />
-    </div>
-  );
-}
-
 // ── Commit Components ──
 
 function CommitList({ commits, selectedHash, onSelect }: {
@@ -71,35 +77,38 @@ function CommitList({ commits, selectedHash, onSelect }: {
   onSelect: (hash: string | null) => void;
 }) {
   return (
-    <div className="git-log">
-      {commits.map((c) => (
-        <button
-          key={c.hash}
-          className={`git-commit${selectedHash === c.hash ? " selected" : ""}`}
-          onClick={() => onSelect(selectedHash === c.hash ? null : c.hash)}
-        >
-          <span className="git-commit-hash">{shortHash(c.hash)}</span>
-          <span className="git-commit-msg">{c.message}</span>
-          <span className="git-commit-meta">
-            <span className="git-commit-author">{c.author}</span>
-            <span className="git-commit-time">{timeAgo(c.date)}</span>
-          </span>
-          {(c.filesChanged || c.additions || c.deletions) && (
-            <span className="git-commit-stats">
-              {c.filesChanged && (
-                <span className="git-commit-files">{c.filesChanged} file{c.filesChanged !== 1 ? "s" : ""}</span>
-              )}
-              {(c.additions ?? 0) > 0 && (
-                <span className="diff-stat diff-stat--add">+{c.additions}</span>
-              )}
-              {(c.deletions ?? 0) > 0 && (
-                <span className="diff-stat diff-stat--del">-{c.deletions}</span>
-              )}
+    <div className="git-section">
+      <div className="git-section-label">recent commits</div>
+      <div className="git-log">
+        {commits.map((c) => (
+          <button
+            key={c.hash}
+            className={`git-commit${selectedHash === c.hash ? " selected" : ""}`}
+            onClick={() => onSelect(selectedHash === c.hash ? null : c.hash)}
+          >
+            <span className="git-commit-hash">{shortHash(c.hash)}</span>
+            <span className="git-commit-msg">{c.message}</span>
+            <span className="git-commit-meta">
+              <span className="git-commit-author">{c.author}</span>
+              <span className="git-commit-time">{timeAgo(c.date)}</span>
             </span>
-          )}
-        </button>
-      ))}
-      {commits.length === 0 && <div className="git-empty">No commits</div>}
+            {(c.filesChanged || c.additions || c.deletions) && (
+              <span className="git-commit-stats">
+                {c.filesChanged && (
+                  <span className="git-commit-files">{c.filesChanged} file{c.filesChanged !== 1 ? "s" : ""}</span>
+                )}
+                {(c.additions ?? 0) > 0 && (
+                  <span className="diff-stat diff-stat--add">+{c.additions}</span>
+                )}
+                {(c.deletions ?? 0) > 0 && (
+                  <span className="diff-stat diff-stat--del">-{c.deletions}</span>
+                )}
+              </span>
+            )}
+          </button>
+        ))}
+        {commits.length === 0 && <div className="git-empty">No commits</div>}
+      </div>
     </div>
   );
 }
@@ -108,27 +117,30 @@ function CommitDetail({ detail, loading }: {
   detail: GitCommitDetail | null;
   loading: boolean;
 }) {
-  if (loading) return <div className="git-detail"><div className="git-empty">Loading diff...</div></div>;
-  if (!detail) return <div className="git-detail"><div className="git-empty">Could not load commit</div></div>;
+  if (loading) return <div className="git-section"><div className="git-empty">Loading diff...</div></div>;
+  if (!detail) return <div className="git-section"><div className="git-empty">Could not load commit</div></div>;
 
   const totalAdd = detail.files.reduce((s, f) => s + f.additions, 0);
   const totalDel = detail.files.reduce((s, f) => s + f.deletions, 0);
 
   return (
-    <div className="git-detail">
-      <div className="git-detail-header">
-        <span className="git-detail-hash">{shortHash(detail.hash)}</span>
-        <span className="git-detail-msg">{detail.message}</span>
-        <span className="git-detail-meta">
-          {detail.author} · {timeAgo(detail.date)}
-          <span className="git-detail-summary">
-            {detail.files.length} file{detail.files.length !== 1 ? "s" : ""}
-            {totalAdd > 0 && <span className="diff-stat diff-stat--add"> +{totalAdd}</span>}
-            {totalDel > 0 && <span className="diff-stat diff-stat--del"> -{totalDel}</span>}
+    <div className="git-section">
+      <div className="git-section-label">commit details</div>
+      <div className="git-detail">
+        <div className="git-detail-header">
+          <span className="git-detail-hash">{shortHash(detail.hash)}</span>
+          <span className="git-detail-msg">{detail.message}</span>
+          <span className="git-detail-meta">
+            {detail.author} · {timeAgo(detail.date)}
+            <span className="git-detail-summary">
+              {detail.files.length} file{detail.files.length !== 1 ? "s" : ""}
+              {totalAdd > 0 && <span className="diff-stat diff-stat--add"> +{totalAdd}</span>}
+              {totalDel > 0 && <span className="diff-stat diff-stat--del"> -{totalDel}</span>}
+            </span>
           </span>
-        </span>
+        </div>
+        <DiffView files={detail.files} />
       </div>
-      <DiffView files={detail.files} />
     </div>
   );
 }
@@ -143,59 +155,62 @@ function NoSelectionView({ commits, status }: { commits: GitCommit[]; status: Gi
     + (status.files?.untracked.length ?? 0);
 
   return (
-    <div className="git-overview">
-      <div className="git-overview-section">
-        <span className="git-overview-label">recent activity</span>
-        <span className="git-overview-headline">
-          {commits.length} commit{commits.length !== 1 ? "s" : ""}
-        </span>
-        <div className="git-overview-stats">
-          <span className="git-overview-stat">
-            <span className="git-overview-num">{totalFiles}</span> files touched
-          </span>
-          <span className="git-overview-stat">
-            <span className="diff-stat diff-stat--add">+{totalAdd}</span>
-            <span className="diff-stat diff-stat--del">-{totalDel}</span>
-          </span>
-        </div>
-      </div>
-
-      {dirtyCount > 0 && (
+    <div className="git-section">
+      <div className="git-section-label">commit details</div>
+      <div className="git-overview">
         <div className="git-overview-section">
-          <span className="git-overview-label">working tree</span>
+          <span className="git-overview-label">recent activity</span>
           <span className="git-overview-headline">
-            {dirtyCount} uncommitted change{dirtyCount !== 1 ? "s" : ""}
+            {commits.length} commit{commits.length !== 1 ? "s" : ""}
           </span>
-          <div className="git-overview-dirty">
-            {(status.files?.staged.length ?? 0) > 0 && (
-              <span className="git-overview-file-count staged">
-                {status.files!.staged.length} staged
-              </span>
-            )}
-            {(status.files?.modified.length ?? 0) > 0 && (
-              <span className="git-overview-file-count modified">
-                {status.files!.modified.length} modified
-              </span>
-            )}
-            {(status.files?.untracked.length ?? 0) > 0 && (
-              <span className="git-overview-file-count untracked">
-                {status.files!.untracked.length} untracked
-              </span>
-            )}
+          <div className="git-overview-stats">
+            <span className="git-overview-stat">
+              <span className="git-overview-num">{totalFiles}</span> files touched
+            </span>
+            <span className="git-overview-stat">
+              <span className="diff-stat diff-stat--add">+{totalAdd}</span>
+              <span className="diff-stat diff-stat--del">-{totalDel}</span>
+            </span>
           </div>
         </div>
-      )}
 
-      <div className="git-overview-section">
-        <span className="git-overview-label">contributors</span>
-        <div className="git-overview-authors">
-          {authors.map((a) => (
-            <span key={a} className="git-overview-author">{a}</span>
-          ))}
+        {dirtyCount > 0 && (
+          <div className="git-overview-section">
+            <span className="git-overview-label">working tree</span>
+            <span className="git-overview-headline">
+              {dirtyCount} uncommitted change{dirtyCount !== 1 ? "s" : ""}
+            </span>
+            <div className="git-overview-dirty">
+              {(status.files?.staged.length ?? 0) > 0 && (
+                <span className="git-overview-file-count staged">
+                  {status.files!.staged.length} staged
+                </span>
+              )}
+              {(status.files?.modified.length ?? 0) > 0 && (
+                <span className="git-overview-file-count modified">
+                  {status.files!.modified.length} modified
+                </span>
+              )}
+              {(status.files?.untracked.length ?? 0) > 0 && (
+                <span className="git-overview-file-count untracked">
+                  {status.files!.untracked.length} untracked
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="git-overview-section">
+          <span className="git-overview-label">contributors</span>
+          <div className="git-overview-authors">
+            {authors.map((a) => (
+              <span key={a} className="git-overview-author">{a}</span>
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="git-overview-hint">select a commit to view diff</div>
+        <div className="git-overview-hint">select a commit to view diff</div>
+      </div>
     </div>
   );
 }

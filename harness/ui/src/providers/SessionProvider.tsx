@@ -2,13 +2,18 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 import {
   createSession, sendMessage as apiSendMessage, stopSessionApi,
   archiveSessionApi, fetchSessions, fetchSessionsScoped,
-  subscribeEvents, createEmptySession, getDraft, saveDraft,
+  createEmptySession, getDraft, saveDraft,
   updateSessionConfig, respondToPermission, nextMsgId,
 } from "../api";
 import type { Session, SessionInfo, Attachment, ApiAttachment } from "../api";
-import { createInitialState, reduceEvent, type ReducerState } from "../eventReducer";
+import { createInitialState } from "../eventReducer";
 import { agentConfigToOverrides } from "../components/AgentConfig";
 import { useProfiles } from "./ProfileProvider";
+import {
+  useSessionState, setSessionState, getSessionState,
+  subscribeSession, unsubscribeSession, isSubscribed,
+  rekeySession, removeSession,
+} from "../sessionStore";
 
 type SessionContextValue = {
   activeSession: Session | null;
@@ -40,18 +45,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   } = useProfiles();
 
   const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
-  const [activeSession, setActiveSession] = useState<Session | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
 
-  const reducerState = useRef<ReducerState>(createInitialState());
-  const unsubRef = useRef<(() => void) | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sseConnectedRef = useRef(false);
 
   const [pendingHashId, setPendingHashId] = useState<string | null>(() => {
     const hash = window.location.hash.slice(1);
     return hash || null;
   });
+
+  // Derive activeSession from the store
+  const activeSession = useSessionState(activeSessionId);
 
   // ── Refresh sessions ──
 
@@ -81,111 +86,46 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // ── Sync reducer state to React state ──
-
-  const syncSessionFromReducer = useCallback((rs: ReducerState, profile?: string) => {
-    setActiveSession({
-      id: rs.sessionId,
-      status: rs.status,
-      preview: rs.messages[0]?.content?.slice(0, 60) ?? "",
-      profile,
-      model: rs.model,
-      messages: rs.messages,
-      totalCost: rs.totalCost,
-      lastSeq: rs.lastSeq,
-      createdAt: rs.createdAt,
-      updatedAt: Date.now(),
-      activeToolName: rs.activeToolName,
-      activeToolElapsed: rs.activeToolElapsed,
-      availableTools: rs.availableTools.length > 0 ? rs.availableTools : undefined,
-      pendingPermissions: rs.pendingPermissions.length > 0 ? rs.pendingPermissions : undefined,
-      streamFeed: rs.streamFeed || undefined,
-    });
-  }, []);
-
-  // ── SSE subscription ──
-
-  const subscribeToSession = useCallback((sessionId: string, afterSeq: number, profile?: string) => {
-    unsubRef.current?.();
-
-    sseConnectedRef.current = true;
-    const unsub = subscribeEvents(sessionId, afterSeq, {
-      onEvent: (event, seq) => {
-        reducerState.current = reduceEvent(reducerState.current, event, seq);
-        syncSessionFromReducer(reducerState.current, profile);
-      },
-      onDone: () => {
-        sseConnectedRef.current = false;
-        if (reducerState.current.status === "running" || reducerState.current.status === "starting") {
-          reducerState.current = { ...reducerState.current, status: "idle" };
-        }
-        syncSessionFromReducer(reducerState.current, profile);
-        refreshSessions();
-      },
-      onDisconnect: () => {
-        sseConnectedRef.current = false;
-        console.warn(`SSE disconnected for ${sessionId}, reconnecting...`);
-        setTimeout(() => {
-          if (unsubRef.current === unsub) {
-            subscribeToSession(sessionId, reducerState.current.lastSeq, profile);
-          }
-        }, 2000);
-      },
-      onError: (error) => {
-        sseConnectedRef.current = false;
-        reducerState.current = { ...reducerState.current, status: "error" };
-        syncSessionFromReducer(reducerState.current, profile);
-        console.error("Event stream error:", error);
-      },
-    });
-    unsubRef.current = unsub;
-  }, [syncSessionFromReducer, refreshSessions]);
-
   // ── Draft management ──
 
   const saveDraftForCurrent = useCallback(async (text?: string) => {
-    const id = activeSession?.id;
-    if (id && !id.startsWith("pending-")) {
-      await saveDraft(id, text ?? input).catch(() => {});
+    if (activeSessionId && !activeSessionId.startsWith("pending-")) {
+      await saveDraft(activeSessionId, text ?? input).catch(() => {});
     }
-  }, [activeSession, input]);
+  }, [activeSessionId, input]);
 
   const handleInputChange = useCallback((text: string) => {
     setInput(text);
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-    const id = activeSession?.id;
-    if (id && !id.startsWith("pending-")) {
+    if (activeSessionId && !activeSessionId.startsWith("pending-")) {
       draftTimerRef.current = setTimeout(() => {
-        saveDraft(id, text).catch(() => {});
+        saveDraft(activeSessionId, text).catch(() => {});
       }, 1000);
     }
-  }, [activeSession]);
+  }, [activeSessionId]);
 
   // ── Session actions ──
 
   const newSession = useCallback(async () => {
     await saveDraftForCurrent();
-    unsubRef.current?.();
-    unsubRef.current = null;
 
     const profile = selectedProfile || undefined;
     try {
       const id = await createEmptySession(profile);
       const rs = createInitialState(id);
       rs.status = "idle";
-      reducerState.current = rs;
-      syncSessionFromReducer(rs, profile);
+      setSessionState(id, rs, profile);
+      setActiveSessionId(id);
       updateHash(id);
       refreshSessions();
     } catch {
-      reducerState.current = createInitialState();
-      setActiveSession(null);
+      setActiveSessionId(null);
       updateHash(null);
     }
 
     setInput("");
-    setLiveAgentConfig({ toolStates: {}, effort: "", maxTurns: "" });
-  }, [updateHash, selectedProfile, saveDraftForCurrent, syncSessionFromReducer, refreshSessions, setLiveAgentConfig]);
+    setLiveAgentConfig({ toolStates: {}, provider: "", effort: "", maxTurns: "" });
+  }, [updateHash, selectedProfile, saveDraftForCurrent, refreshSessions, setLiveAgentConfig]);
 
   const selectSession = useCallback(async (id: string) => {
     await saveDraftForCurrent();
@@ -193,9 +133,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const info = serverSessions.find((s) => s.id === id);
     const sessionProfile = info?.profile ?? undefined;
 
-    reducerState.current = createInitialState(id);
-    syncSessionFromReducer(reducerState.current, sessionProfile);
-    subscribeToSession(id, 0, sessionProfile);
+    // Create store entry and subscribe
+    const rs = createInitialState(id);
+    setSessionState(id, rs, sessionProfile);
+    setActiveSessionId(id);
+    subscribeSession(id, 0, sessionProfile, refreshSessions);
 
     if (sessionProfile) setSelectedProfile(sessionProfile);
     updateHash(id);
@@ -203,16 +145,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const draft = await getDraft(id).catch(() => "");
     setInput(draft);
 
-    setLiveAgentConfig({ toolStates: {}, effort: "", maxTurns: "" });
-  }, [serverSessions, updateHash, subscribeToSession, syncSessionFromReducer, saveDraftForCurrent, setSelectedProfile, setLiveAgentConfig]);
+    setLiveAgentConfig({ toolStates: {}, provider: "", effort: "", maxTurns: "" });
+  }, [serverSessions, updateHash, saveDraftForCurrent, setSelectedProfile, setLiveAgentConfig, refreshSessions]);
 
   const archiveSession = useCallback(async (id: string) => {
     await archiveSessionApi(id).catch(() => {});
-    if (activeSession?.id === id) {
+    if (activeSessionId === id) {
+      unsubscribeSession(id);
+      removeSession(id);
       newSession();
     }
     refreshSessions();
-  }, [activeSession, newSession, refreshSessions]);
+  }, [activeSessionId, newSession, refreshSessions]);
 
   // ── Send message ──
 
@@ -221,27 +165,29 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!prompt && sendAttachments.length === 0) return;
     setInput("");
 
-    if (activeSession?.id) saveDraft(activeSession.id, "").catch(() => {});
+    if (activeSessionId) saveDraft(activeSessionId, "").catch(() => {});
 
     const apiAtts: ApiAttachment[] | undefined = sendAttachments.length > 0
       ? sendAttachments.map((a) => ({ type: a.type, mediaType: a.mediaType, data: a.data, name: a.name }))
       : undefined;
 
-    const isEmptySession = activeSession?.id && activeSession.status === "idle" && activeSession.messages.length === 0;
-    const needsNewSession = !activeSession || activeSession.status === "done" || activeSession.status === "error" || !activeSession.id || activeSession.id.startsWith("pending-") || isEmptySession;
+    const currentState = activeSessionId ? getSessionState(activeSessionId) : null;
+    const isEmptySession = activeSessionId && currentState?.status === "idle" && currentState.messages.length === 0;
+    const needsNewSession = !activeSessionId || !currentState || currentState.status === "done" || currentState.status === "error" || activeSessionId.startsWith("pending-") || isEmptySession;
 
     if (needsNewSession) {
-      const emptyId = isEmptySession ? activeSession!.id : null;
-      if (emptyId) archiveSessionApi(emptyId).catch(() => {});
+      if (isEmptySession && activeSessionId) archiveSessionApi(activeSessionId).catch(() => {});
 
       const profile = selectedProfile || undefined;
-      reducerState.current = createInitialState();
-      reducerState.current.messages.push({
+      const rs = createInitialState();
+      rs.messages.push({
         id: nextMsgId(), role: "user", content: prompt,
         attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
       });
-      reducerState.current.status = "starting";
-      syncSessionFromReducer(reducerState.current, profile);
+      rs.status = "starting";
+      const tempId = rs.sessionId;
+      setSessionState(tempId, rs, profile);
+      setActiveSessionId(tempId);
 
       try {
         const opts = buildSessionOpts(prompt, profile);
@@ -260,43 +206,55 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        reducerState.current.sessionId = realId;
+        rekeySession(tempId, realId);
+        setActiveSessionId(realId);
         updateHash(realId);
-        syncSessionFromReducer(reducerState.current, profile);
-        subscribeToSession(realId, 0, profile);
+        subscribeSession(realId, 0, profile, refreshSessions);
         refreshSessions();
       } catch (err) {
-        reducerState.current.status = "error";
-        reducerState.current.messages.push({ id: nextMsgId(), role: "assistant", content: `Error: ${err}` });
-        syncSessionFromReducer(reducerState.current, selectedProfile);
+        const errState = getSessionState(tempId);
+        if (errState) {
+          const updated = { ...errState, status: "error" as const };
+          updated.messages = [...updated.messages, { id: nextMsgId(), role: "assistant" as const, content: `Error: ${err}` }];
+          setSessionState(tempId, updated, profile);
+        }
       }
     } else {
-      reducerState.current.messages.push({
-        id: nextMsgId(), role: "user", content: prompt,
+      // Follow-up to existing session
+      const rs = getSessionState(activeSessionId!)!;
+      const updated = { ...rs, status: "running" as const };
+      updated.messages = [...updated.messages, {
+        id: nextMsgId(), role: "user" as const, content: prompt,
         attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
-      });
-      reducerState.current.status = "running";
-      syncSessionFromReducer(reducerState.current, activeSession.profile);
+      }];
+      setSessionState(activeSessionId!, updated, activeSession?.profile);
 
       try {
-        await apiSendMessage(activeSession.id, prompt, apiAtts);
-        if (!sseConnectedRef.current) {
-          subscribeToSession(activeSession.id, reducerState.current.lastSeq, activeSession.profile);
+        await apiSendMessage(activeSessionId!, prompt, apiAtts);
+        if (!isSubscribed(activeSessionId!)) {
+          const latest = getSessionState(activeSessionId!);
+          subscribeSession(activeSessionId!, latest?.lastSeq ?? 0, activeSession?.profile, refreshSessions);
         }
       } catch (err) {
-        reducerState.current.messages.push({ id: nextMsgId(), role: "assistant", content: `Error: ${err}` });
-        syncSessionFromReducer(reducerState.current, activeSession.profile);
+        const latest = getSessionState(activeSessionId!);
+        if (latest) {
+          const errState = { ...latest };
+          errState.messages = [...errState.messages, { id: nextMsgId(), role: "assistant" as const, content: `Error: ${err}` }];
+          setSessionState(activeSessionId!, errState, activeSession?.profile);
+        }
       }
     }
-  }, [input, activeSession, selectedProfile, buildSessionOpts, updateHash, subscribeToSession, syncSessionFromReducer, refreshSessions]);
+  }, [input, activeSessionId, activeSession?.profile, selectedProfile, buildSessionOpts, updateHash, refreshSessions]);
 
   const stop = useCallback(async () => {
-    if (activeSession?.id) {
-      await stopSessionApi(activeSession.id).catch(() => {});
-      reducerState.current.status = "idle";
-      syncSessionFromReducer(reducerState.current, activeSession.profile);
+    if (activeSessionId) {
+      await stopSessionApi(activeSessionId).catch(() => {});
+      const rs = getSessionState(activeSessionId);
+      if (rs) {
+        setSessionState(activeSessionId, { ...rs, status: "idle" }, activeSession?.profile);
+      }
     }
-  }, [activeSession, syncSessionFromReducer]);
+  }, [activeSessionId, activeSession?.profile]);
 
   const handlePermissionResponse = useCallback(async (
     requestId: string,
@@ -304,9 +262,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     updatedInput?: Record<string, unknown>,
     scope?: "once" | "session",
   ) => {
-    if (!activeSession?.id) return;
-    await respondToPermission(activeSession.id, { requestId, behavior, updatedInput, scope }).catch(() => {});
-  }, [activeSession]);
+    if (!activeSessionId) return;
+    await respondToPermission(activeSessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
+  }, [activeSessionId]);
 
   // ── Auto-load session from URL hash ──
 
@@ -322,14 +280,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // ── Sync live config overrides to backend ──
 
   useEffect(() => {
-    const id = activeSession?.id;
-    if (!id || id.startsWith("pending-")) return;
+    if (!activeSessionId || activeSessionId.startsWith("pending-")) return;
     const hasOverrides = Object.keys(liveAgentConfig.toolStates).length > 0;
     if (!hasOverrides) return;
     const profile = profiles.find(p => p.name === activeSession?.profile);
     const overrides = agentConfigToOverrides(liveAgentConfig, profile?.tools ?? "all");
-    updateSessionConfig(id, overrides).catch(() => {});
-  }, [liveAgentConfig, activeSession?.id, activeSession?.profile, profiles]);
+    updateSessionConfig(activeSessionId, overrides).catch(() => {});
+  }, [liveAgentConfig, activeSessionId, activeSession?.profile, profiles]);
 
   return (
     <SessionContext.Provider value={{

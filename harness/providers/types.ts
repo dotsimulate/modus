@@ -1,0 +1,56 @@
+/**
+ * Provider Interface — the contract any execution backend must satisfy.
+ *
+ * Session-manager handles lifecycle (create, persist, broadcast, subscribe).
+ * Providers handle execution (run a turn, send follow-ups, abort).
+ */
+
+import type { ActiveSession, StartSessionOpts, MessageContent } from "../session-manager";
+import type { Profile } from "../profiles";
+
+// ── Provider Interface ──
+
+export interface SessionProvider {
+  /** Kick off the first turn. Runs async, calls ctx helpers to emit events. */
+  startTurn(ctx: TurnContext): void;
+
+  /** Send a follow-up message to an idle or running session */
+  sendMessage(ctx: TurnContext, content: MessageContent): void;
+
+  /** Abort the current turn */
+  abort(session: ActiveSession): void;
+
+  /** Stop a specific sub-task (optional — only Claude SDK supports this) */
+  stopTask?(session: ActiveSession, taskId: string): boolean;
+
+  /** Update mutable config mid-session (optional — only Claude SDK needs this) */
+  updateConfig?(session: ActiveSession, config: Record<string, any>): void;
+}
+
+// ── Turn Context ──
+// Passed to providers so they can interact with session-manager's shared infrastructure
+// without importing it directly (avoids circular deps).
+
+export type TurnContext = {
+  session: ActiveSession;
+  opts: StartSessionOpts;
+  profile: Profile | undefined;
+
+  /** Persist event to DB + broadcast to SSE subscribers */
+  emitEvent(event: any): void;
+
+  /** Broadcast to SSE subscribers only (no DB persist) */
+  broadcastEvent(event: any): void;
+
+  /** Re-key the session in the active sessions map (called when SDK provides real ID) */
+  rekeySession(newId: string): void;
+
+  /** Update session row in the DB */
+  updateSessionDb(updates: {
+    status?: string;
+    messageCount?: number;
+    costUsd?: number;
+    lastPrompt?: string;
+    lastResponse?: string;
+  }): void;
+};

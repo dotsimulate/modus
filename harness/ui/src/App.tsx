@@ -4,6 +4,7 @@ import { healthCheck } from "./api";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { SessionProvider, useSession } from "./providers/SessionProvider";
+import { getSessionState } from "./sessionStore";
 import { useHashRouter } from "./hooks/useHashRouter";
 import { Sidebar } from "./components/Sidebar";
 import { ChatView } from "./components/ChatView";
@@ -31,7 +32,7 @@ function App() {
 function AppShell() {
   const { userName, handleLock } = useAuth();
   const {
-    profiles, visibleProfiles, userProfiles,
+    profiles, visibleProfiles, availableProviders, userProfiles,
     activeUserProfile, activeUP,
     selectedProfile, selectProfile,
     setupState, setSetupState,
@@ -128,11 +129,10 @@ function AppShell() {
             <Sidebar
               open={sidebarOpen}
               collapsed={sidebarCollapsed}
-              sessions={serverSessions.map((s) =>
-                activeSession && s.id === activeSession.id
-                  ? { ...s, status: activeSession.status ?? s.status }
-                  : s
-              )}
+              sessions={serverSessions.map((s) => {
+                const storeState = getSessionState(s.id);
+                return storeState ? { ...s, status: storeState.status ?? s.status } : s;
+              })}
               activeSessionId={activeSession?.id ?? null}
               profiles={visibleProfiles}
               selectedProfile={selectedProfile}
@@ -157,6 +157,7 @@ function AppShell() {
               onGroupModeChange={(mode) => saveUiState({ sidebarGroupMode: mode })}
               onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
               activeUserProfileObj={activeUP}
+              availableProviders={availableProviders}
             />
 
             <div className="chat">
@@ -187,6 +188,8 @@ function AppShell() {
                 agentConfig={liveAgentConfig}
                 onAgentConfigChange={setLiveAgentConfig}
                 profileTools={profileData?.tools ?? "all"}
+                availableProviders={availableProviders}
+                profileProvider={profileData?.provider}
                 profileEffort={profileData?.effort}
                 profileMaxTurns={profileData?.maxTurns}
                 availableTools={activeSession?.availableTools}

@@ -16,6 +16,7 @@ import { toSdkToolConfig, mcpToolGroups, type ToolStates } from "../tools";
 
 export type AgentConfigState = {
   toolStates: ToolStates;
+  provider: string;
   effort: string;
   maxTurns: string;
 };
@@ -25,6 +26,10 @@ type Props = {
   config: AgentConfigState;
   /** Profile's tool baseline */
   profileTools: string[] | "all";
+  /** Available providers from backend registry */
+  availableProviders?: string[];
+  /** Profile's default provider */
+  profileProvider?: string;
   /** Profile's default effort */
   profileEffort?: string;
   /** Profile's default maxTurns */
@@ -42,6 +47,8 @@ type Props = {
 export function AgentConfig({
   config,
   profileTools,
+  availableProviders,
+  profileProvider,
   profileEffort,
   profileMaxTurns,
   onChange,
@@ -57,8 +64,24 @@ export function AgentConfig({
 
   return (
     <div className={`agent-config ${compact ? "agent-config--compact" : ""}`}>
-      {/* Effort + Max Turns row */}
+      {/* Provider + Effort + Max Turns row */}
       <div className="agent-config-row">
+        {availableProviders && availableProviders.length > 1 && (
+          <label className="agent-config-field">
+            <span>provider</span>
+            <select
+              value={config.provider}
+              onChange={(e) => update({ provider: e.target.value })}
+            >
+              <option value="">{profileProvider ?? "claude-code"}</option>
+              {availableProviders
+                .filter((v) => v !== profileProvider)
+                .map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+            </select>
+          </label>
+        )}
         <label className="agent-config-field">
           <span>effort</span>
           <select
@@ -104,6 +127,7 @@ export function AgentConfig({
             onChange={(toolStates) => update({ toolStates })}
             compact={compact}
             extraGroups={mcpToolGroups(availableTools ?? [])}
+            provider={config.provider || profileProvider}
           />
         </div>
       </div>
@@ -115,10 +139,11 @@ export function AgentConfig({
 export function agentConfigToOverrides(
   config: AgentConfigState,
   profileTools: string[] | "all",
-): { tools?: string[]; disallowedTools?: string[]; maxTurns?: number; effort?: string } {
+): { provider?: string; tools?: string[]; disallowedTools?: string[]; maxTurns?: number; effort?: string } {
   const toolConfig = toSdkToolConfig(config.toolStates, profileTools);
   return {
     ...toolConfig,
+    ...(config.provider.trim() ? { provider: config.provider } : {}),
     ...(config.maxTurns.trim() ? { maxTurns: Number(config.maxTurns) } : {}),
     ...(config.effort.trim() ? { effort: config.effort } : {}),
   };

@@ -39,6 +39,7 @@ export interface ScheduleConfig {
   userProfile?: string;                   // user profile for session scoping (memory, template vars)
 
   // ── Session overrides (optional — profile provides defaults) ──
+  provider?: string;
   model?: string;
   effort?: string;
   cwd?: string;
