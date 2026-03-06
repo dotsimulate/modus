@@ -292,6 +292,7 @@ export type ScheduleRun = {
 export type GitStatus = {
   git: boolean;
   branch?: string;
+  remote?: string;
   ahead?: number;
   behind?: number;
   files?: { modified: string[]; staged: string[]; untracked: string[] };

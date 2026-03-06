@@ -30,7 +30,7 @@ export {
 export { fetchSchedules, fetchScheduleRuns, triggerScheduleApi, updateScheduleApi, fetchScheduleInfo, clearScheduleRunsApi, resetScheduleApi, fetchSchedulePreferences } from "./schedules";
 
 // Git
-export { fetchGitStatus, fetchGitLog, fetchGitShow, openInEditor } from "./git";
+export { fetchGitStatus, fetchGitLog, fetchGitShow, fetchGitFileDiff, fetchGitFileContent, fetchGitReadme, openInEditor } from "./git";
 
 // Memories
 export { fetchMemories } from "./memories";

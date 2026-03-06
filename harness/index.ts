@@ -747,7 +747,7 @@ app.post("/api/schedules/reload", (c) => {
 
 // ── Git ──
 
-import { gitStatus, gitLog, gitShow } from "./git";
+import { gitStatus, gitLog, gitShow, gitFileDiff, gitReadme, gitFileContent } from "./git";
 
 app.get("/api/git/status", async (c) => {
   const cwd = new URL(c.req.url).searchParams.get("cwd");
@@ -770,6 +770,48 @@ app.get("/api/git/show/:hash", async (c) => {
   const detail = await gitShow(cwd, hash);
   if (!detail) return c.json({ error: "commit not found" }, 404);
   return c.json(detail);
+});
+
+app.get("/api/git/readme", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const readme = await gitReadme(cwd);
+  if (!readme) return c.json(null);
+  return c.json(readme);
+});
+
+app.get("/api/git/file-content", async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const cwd = params.get("cwd");
+  const hash = params.get("hash");
+  const path = params.get("path");
+  if (!cwd || !hash || !path) return c.json({ error: "cwd, hash, and path required" }, 400);
+  const content = await gitFileContent(cwd, hash, path);
+  if (content === null) return c.json({ error: "file not found" }, 404);
+  return c.json({ content });
+});
+
+/** Serve raw files from a repo working tree (for images, etc.) */
+app.get("/api/git/raw/*", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const filePath = c.req.path.replace("/api/git/raw/", "");
+  if (!filePath || filePath.includes("..")) return c.json({ error: "invalid path" }, 400);
+  const fullPath = resolve(cwd, filePath);
+  if (!fullPath.startsWith(resolve(cwd))) return c.json({ error: "path traversal" }, 403);
+  const file = Bun.file(fullPath);
+  if (!(await file.exists())) return c.json({ error: "not found" }, 404);
+  return new Response(file.stream(), {
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+  });
+});
+
+app.get("/api/git/file-diff", async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const cwd = params.get("cwd");
+  const file = params.get("file");
+  if (!cwd || !file) return c.json({ error: "cwd and file required" }, 400);
+  return c.json(await gitFileDiff(cwd, file));
 });
 
 // ── Open in Editor ──

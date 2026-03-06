@@ -1,4 +1,6 @@
 import simpleGit from "simple-git";
+import { readFile } from "fs/promises";
+import { join } from "path";
 
 export async function isGitRepo(cwd: string): Promise<boolean> {
   try {
@@ -13,6 +15,7 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
 export type GitStatusResult = {
   git: true;
   branch: string;
+  remote?: string;
   ahead: number;
   behind: number;
   files: {
@@ -26,9 +29,23 @@ export async function gitStatus(cwd: string): Promise<GitStatusResult | { git: f
   try {
     const git = simpleGit(cwd);
     const status = await git.status();
+
+    // Try to get remote URL for display name
+    let remote: string | undefined;
+    try {
+      const url = (await git.remote(["get-url", "origin"])) as string | null;
+      if (url) {
+        // Extract "user/repo" from git URL
+        const cleaned = url.trim().replace(/\.git$/, "");
+        const match = cleaned.match(/[/:]([\w.-]+\/[\w.-]+)$/);
+        remote = match?.[1] ?? cleaned.split("/").pop();
+      }
+    } catch { /* no remote */ }
+
     return {
       git: true,
       branch: status.current ?? "HEAD",
+      remote,
       ahead: status.ahead,
       behind: status.behind,
       files: {
@@ -56,9 +73,10 @@ export async function gitLog(cwd: string, limit = 30): Promise<GitLogEntry[]> {
   try {
     const git = simpleGit(cwd);
     const SEP = "---GIT-LOG-SEP---";
+    const END = "---GIT-LOG-END---";
     const raw = await git.raw([
       "log", `--max-count=${limit}`,
-      `--format=${SEP}%n%H%n%aI%n%an%n%s`,
+      `--format=${SEP}%n%H%n%aI%n%an%n%B${END}`,
       "--shortstat",
     ]);
 
@@ -66,33 +84,37 @@ export async function gitLog(cwd: string, limit = 30): Promise<GitLogEntry[]> {
     const chunks = raw.split(SEP).filter((s) => s.trim());
 
     for (const chunk of chunks) {
-      const lines = chunk.trim().split("\n");
-      if (lines.length < 4) continue;
-      const [hash, date, author, message, ...rest] = lines;
-      const statLine = rest.join(" ").trim();
+      const endIdx = chunk.indexOf(END);
+      if (endIdx === -1) continue;
+
+      const metaAndBody = chunk.slice(0, endIdx).trim();
+      const afterEnd = chunk.slice(endIdx + END.length).trim();
+
+      // First 3 lines are hash, date, author. Rest is the full message body.
+      const firstNl = metaAndBody.indexOf("\n");
+      const secondNl = metaAndBody.indexOf("\n", firstNl + 1);
+      const thirdNl = metaAndBody.indexOf("\n", secondNl + 1);
+      if (firstNl === -1 || secondNl === -1 || thirdNl === -1) continue;
+
+      const hash = metaAndBody.slice(0, firstNl);
+      const date = metaAndBody.slice(firstNl + 1, secondNl);
+      const author = metaAndBody.slice(secondNl + 1, thirdNl);
+      const message = metaAndBody.slice(thirdNl + 1).trim();
 
       let filesChanged: number | undefined;
       let additions: number | undefined;
       let deletions: number | undefined;
 
-      if (statLine) {
-        const fm = statLine.match(/(\d+) files? changed/);
-        const am = statLine.match(/(\d+) insertions?\(\+\)/);
-        const dm = statLine.match(/(\d+) deletions?\(-\)/);
+      if (afterEnd) {
+        const fm = afterEnd.match(/(\d+) files? changed/);
+        const am = afterEnd.match(/(\d+) insertions?\(\+\)/);
+        const dm = afterEnd.match(/(\d+) deletions?\(-\)/);
         if (fm) filesChanged = Number(fm[1]);
         if (am) additions = Number(am[1]);
         if (dm) deletions = Number(dm[1]);
       }
 
-      entries.push({
-        hash: hash!,
-        date: date!,
-        message: message!,
-        author: author!,
-        filesChanged,
-        additions,
-        deletions,
-      });
+      entries.push({ hash, date, message, author, filesChanged, additions, deletions });
     }
 
     return entries;
@@ -198,10 +220,48 @@ function parseDiff(raw: string): FileDiff[] {
   return files;
 }
 
+/** Get the working-tree diff for a single file (unstaged + staged) */
+export async function gitFileDiff(cwd: string, filePath: string): Promise<FileDiff[]> {
+  try {
+    const git = simpleGit(cwd);
+    // Try staged first, then unstaged — combine both
+    const [staged, unstaged] = await Promise.all([
+      git.diff(["--cached", "--", filePath]).catch(() => ""),
+      git.diff(["--", filePath]).catch(() => ""),
+    ]);
+    const combined = [staged, unstaged].filter(Boolean).join("\n");
+    if (!combined.trim()) return [];
+    return parseDiff(combined);
+  } catch {
+    return [];
+  }
+}
+
 export async function gitShow(cwd: string, hash: string): Promise<GitCommitDetail | null> {
   try {
     const git = simpleGit(cwd);
     if (!/^[a-f0-9]+$/i.test(hash)) return null;
+
+    // Get full commit metadata with %B for complete message body
+    const END = "---GIT-SHOW-END---";
+    const metaRaw = await git.raw([
+      "log", "--max-count=1",
+      `--format=%H%n%aI%n%an%n%B${END}`,
+      hash,
+    ]);
+    const endIdx = metaRaw.indexOf(END);
+    if (endIdx === -1) return null;
+
+    const meta = metaRaw.slice(0, endIdx).trim();
+    const firstNl = meta.indexOf("\n");
+    const secondNl = meta.indexOf("\n", firstNl + 1);
+    const thirdNl = meta.indexOf("\n", secondNl + 1);
+    if (firstNl === -1 || secondNl === -1 || thirdNl === -1) return null;
+
+    const commitHash = meta.slice(0, firstNl);
+    const date = meta.slice(firstNl + 1, secondNl);
+    const author = meta.slice(secondNl + 1, thirdNl);
+    const message = meta.slice(thirdNl + 1).trim();
 
     // Check if this commit has a parent
     let hasParent = true;
@@ -211,12 +271,6 @@ export async function gitShow(cwd: string, hash: string): Promise<GitCommitDetai
       hasParent = false;
     }
 
-    const log = hasParent
-      ? await git.log({ maxCount: 1, from: `${hash}~1`, to: hash })
-      : await git.log({ maxCount: 1, to: hash });
-    const entry = log.latest;
-    if (!entry) return null;
-
     let rawDiff: string;
     if (hasParent) {
       rawDiff = await git.diff([`${hash}~1`, hash]);
@@ -225,12 +279,35 @@ export async function gitShow(cwd: string, hash: string): Promise<GitCommitDetai
     }
 
     return {
-      hash: entry.hash,
-      date: entry.date,
-      message: entry.message,
-      author: entry.author_name,
+      hash: commitHash,
+      date,
+      message,
+      author,
       files: parseDiff(rawDiff),
     };
+  } catch {
+    return null;
+  }
+}
+
+/** Read the README file from a git repo working directory */
+export async function gitReadme(cwd: string): Promise<{ name: string; content: string } | null> {
+  const candidates = ["README.md", "readme.md", "Readme.md", "README", "README.txt", "README.rst"];
+  for (const name of candidates) {
+    try {
+      const content = await readFile(join(cwd, name), "utf-8");
+      return { name, content };
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+/** Get file content at a specific commit */
+export async function gitFileContent(cwd: string, hash: string, path: string): Promise<string | null> {
+  try {
+    const git = simpleGit(cwd);
+    if (!/^[a-f0-9]+$/i.test(hash)) return null;
+    return await git.raw(["show", `${hash}:${path}`]);
   } catch {
     return null;
   }

@@ -35,7 +35,7 @@ function HunkView({ hunk }: { hunk: DiffHunk }) {
 }
 
 export function FileDiffCard({ file }: { file: FileDiff }) {
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="diff-file">

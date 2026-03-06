@@ -1,0 +1,79 @@
+/* ── Queued Message — compact indicator above scroll-to-bottom ── */
+
+.queued-message {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  margin: 0 auto;
+  max-width: 840px;
+  width: calc(100% - 64px);
+  background: var(--bg-raised);
+}
+
+.queued-message-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border-radius: 3px;
+}
+.queued-message-header:hover { background: var(--bg-surface); }
+
+.queued-message-indicator {
+  width: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.queued-message-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: pulse-dim 1.5s ease-in-out infinite;
+}
+
+.queued-message-label {
+  color: var(--text-dim);
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.queued-message-preview {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.queued-message-cancel {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.queued-message-cancel:hover { color: var(--error); }
+
+.queued-message-body {
+  padding: 2px 10px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}

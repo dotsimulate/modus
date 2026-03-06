@@ -15,6 +15,11 @@ import {
   rekeySession, removeSession,
 } from "../sessionStore";
 
+export type QueuedMessage = {
+  text: string;
+  attachments: Attachment[];
+};
+
 type SessionContextValue = {
   activeSession: Session | null;
   serverSessions: SessionInfo[];
@@ -32,6 +37,8 @@ type SessionContextValue = {
     updatedInput?: Record<string, unknown>,
     scope?: "once" | "session",
   ) => Promise<void>;
+  queuedMessage: QueuedMessage | null;
+  cancelQueued: () => void;
 };
 
 const SessionContext = createContext<SessionContextValue>(null!);
@@ -47,6 +54,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  const [queuedMessage, setQueuedMessage] = useState<QueuedMessage | null>(null);
 
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -124,6 +132,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
 
     setInput("");
+    setQueuedMessage(null);
     setLiveAgentConfig({ toolStates: {}, provider: "", effort: "", maxTurns: "" });
   }, [updateHash, selectedProfile, saveDraftForCurrent, refreshSessions, setLiveAgentConfig]);
 
@@ -154,6 +163,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const draft = await getDraft(id).catch(() => "");
     setInput(draft);
 
+    setQueuedMessage(null);
     setLiveAgentConfig({ toolStates: {}, provider: "", effort: "", maxTurns: "" });
   }, [serverSessions, updateHash, saveDraftForCurrent, setSelectedProfile, setLiveAgentConfig, refreshSessions]);
 
@@ -230,6 +240,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
     } else {
       // Follow-up to existing session
+      const isActive = currentState.status === "running" || currentState.status === "starting";
+
+      if (isActive) {
+        // Model is mid-turn — queue for later
+        setQueuedMessage({ text: prompt, attachments: sendAttachments });
+        return;
+      }
+
       const rs = getSessionState(activeSessionId!)!;
       const updated = { ...rs, status: "running" as const };
       updated.messages = [...updated.messages, {
@@ -254,6 +272,31 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [input, activeSessionId, activeSession?.profile, selectedProfile, buildSessionOpts, updateHash, refreshSessions]);
+
+  // ── Auto-send queued message when model finishes ──
+
+  const sendRef = useRef(send);
+  sendRef.current = send;
+
+  useEffect(() => {
+    if (!queuedMessage) return;
+    if (!activeSession) return;
+    const status = activeSession.status;
+    if (status === "running" || status === "starting") return;
+    // Model finished — flush the queued message
+    const { text, attachments } = queuedMessage;
+    setQueuedMessage(null);
+    setInput(text);
+    // Defer send to next tick so input state is set
+    setTimeout(() => sendRef.current(attachments), 0);
+  }, [activeSession?.status, queuedMessage]);
+
+  const cancelQueued = useCallback(() => {
+    if (!queuedMessage) return;
+    // Restore text back to input
+    setInput(queuedMessage.text);
+    setQueuedMessage(null);
+  }, [queuedMessage]);
 
   const stop = useCallback(async () => {
     if (activeSessionId) {
@@ -303,6 +346,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       input, handleInputChange,
       send, stop, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,
+      queuedMessage, cancelQueued,
     }}>
       {children}
     </SessionContext.Provider>

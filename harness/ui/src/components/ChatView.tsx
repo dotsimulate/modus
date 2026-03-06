@@ -1,7 +1,9 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { FileChanges, extractFileEdits } from "./FileChanges";
+import { QueuedMessage } from "./QueuedMessage";
 import type { Message, ToolCall } from "../api";
+import type { QueuedMessage as QueuedMessageType } from "../providers/SessionProvider";
 
 type Props = {
   messages: Message[];
@@ -14,11 +16,15 @@ type Props = {
   cwd?: string | null;
   emptyTitle?: string;
   emptySubtitle?: string;
+  queuedMessage?: QueuedMessageType | null;
+  onCancelQueued?: () => void;
 };
 
-export function ChatView({ messages, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle }: Props) {
+export function ChatView({ messages, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   // Scroll to bottom on initial load and when user sends a message.
   // All other auto-scrolling is handled by CSS overflow-anchor.
@@ -30,6 +36,23 @@ export function ChatView({ messages, streaming, streamFeed, showThinking = true,
       endRef.current.scrollIntoView({ behavior: "instant" });
     }
   }, [messages.length]);
+
+  // Track scroll position for scroll-to-bottom button
+  const hasMessages = messages.length > 0;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+      setShowScrollBtn(!atBottom);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [hasMessages]);
+
+  const scrollToBottom = useCallback(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   // Find last message index per role for animation
   const lastUser = useMemo(() => messages.findLastIndex((m: Message) => m.role === "user"), [messages]);
@@ -85,43 +108,58 @@ export function ChatView({ messages, streaming, streamFeed, showThinking = true,
   }
 
   return (
-    <div className="chat-messages">
-      {messages.map((msg, i) => {
-        const turnTools = turnFileEdits.get(i);
-        const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
+    <div className="chat-scroll-wrapper">
+      <div className="chat-messages" ref={scrollRef}>
+        {messages.map((msg, i) => {
+          const turnTools = turnFileEdits.get(i);
+          const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
 
-        return msg.role === "system" ? (
-          <div key={msg.id} className="system-divider">
-            <span>{msg.content}</span>
-          </div>
-        ) : (
-          <div key={msg.id}>
-            <MessageBubble
-              msg={msg}
-              isNew={streaming && (
-                (i === lastUser && msg.role === "user") ||
-                (i === lastAssistant && msg.role === "assistant" && !msg.meta)
-              )}
-              isStreaming={
-                streaming && i === messages.length - 1 && msg.role === "assistant"
-              }
-              hideRole={i > 0 && messages[i - 1].role === msg.role}
-              showThinking={showThinking}
-              showMeta={showMeta}
-              showToolCalls={showToolCalls}
-              showGitEvents={showGitEvents}
-              cwd={cwd}
-              lastTodoId={lastTodoId}
-              streamFeed={streaming && i === messages.length - 1 && msg.role === "assistant"
-                ? streamFeed
-                : undefined}
-            >
-              {showFileChanges && <FileChanges toolCalls={turnTools} />}
-            </MessageBubble>
-          </div>
-        );
-      })}
-      <div ref={endRef} className="chat-anchor" />
+          return msg.role === "system" ? (
+            <div key={msg.id} className="system-divider">
+              <span>{msg.content}</span>
+            </div>
+          ) : (
+            <div key={msg.id}>
+              <MessageBubble
+                msg={msg}
+                isNew={streaming && (
+                  (i === lastUser && msg.role === "user") ||
+                  (i === lastAssistant && msg.role === "assistant" && !msg.meta)
+                )}
+                isStreaming={
+                  streaming && i === messages.length - 1 && msg.role === "assistant"
+                }
+                hideRole={i > 0 && messages[i - 1].role === msg.role}
+                showThinking={showThinking}
+                showMeta={showMeta}
+                showToolCalls={showToolCalls}
+                showGitEvents={showGitEvents}
+                cwd={cwd}
+                lastTodoId={lastTodoId}
+                streamFeed={streaming && i === messages.length - 1 && msg.role === "assistant"
+                  ? streamFeed
+                  : undefined}
+              >
+                {showFileChanges && <FileChanges toolCalls={turnTools} />}
+              </MessageBubble>
+            </div>
+          );
+        })}
+        <div ref={endRef} className="chat-anchor" />
+      </div>
+      {queuedMessage && onCancelQueued && (
+        <QueuedMessage message={queuedMessage} onCancel={onCancelQueued} />
+      )}
+      <div
+        className={`scroll-to-bottom${showScrollBtn ? " visible" : ""}`}
+        onClick={scrollToBottom}
+      >
+        <div className="scroll-to-bottom-inner">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      </div>
     </div>
   );
 }
