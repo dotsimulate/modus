@@ -68,6 +68,22 @@ const ClaudeMdExcludesSchema = z.union([
   ClaudeMdExcludesObjectSchema,
 ]);
 
+// ── Compaction Config ──
+
+const CompactionConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  reserveTokens: z.number().int().positive().optional(),
+  keepRecentTokens: z.number().int().positive().optional(),
+});
+
+// ── Provider Defaults ──
+
+const ProviderDefaultsSchema = z.object({
+  contextWindow: z.number().int().positive().optional(),
+  maxOutputTokens: z.number().int().positive().optional(),
+  compaction: CompactionConfigSchema.optional(),
+});
+
 // ── Agent Profile ──
 
 export const ProfileSchema = z.object({
@@ -87,6 +103,7 @@ export const ProfileSchema = z.object({
   ui: ProfileUiSchema.optional(),
   contextWindow: z.number().int().positive().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
+  compaction: CompactionConfigSchema.optional(),
 });
 
 // ── User Profile ──
@@ -111,6 +128,7 @@ export const UserProfileSchema = z.object({
 
 export const GlobalConfigSchema = z.object({
   mcpServers: z.record(McpServerConfigSchema).optional(),
+  providerDefaults: z.record(ProviderDefaultsSchema).optional(),
 });
 
 // ── Helpers ──

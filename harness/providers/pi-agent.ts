@@ -21,7 +21,7 @@ import {
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { SessionProvider, TurnContext } from "./types";
 import type { ActiveSession, MessageContent } from "../session-manager";
-import { getGlobalConfig } from "../profiles";
+import { getGlobalConfig, type ProviderDefaults } from "../profiles";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
 import { resolveSecret } from "../secrets";
 
@@ -69,7 +69,7 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any): M
         reasoning: false,
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: profile?.contextWindow ?? 128000,
+        contextWindow: profile?.contextWindow ?? 200000,
         maxTokens: profile?.maxOutputTokens ?? (provider === "anthropic" ? 8192 : 0),
         compat: provider === "openai" ? {} : undefined,
       } as Model<any>;
@@ -82,6 +82,7 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any): M
     ? "http://localhost:4000/v1"
     : "http://localhost:11434/v1";
   const baseUrl = resolveSecret(baseUrlEnv) ?? process.env[baseUrlEnv] ?? defaultUrl;
+  const providerDefaults = getGlobalConfig().providerDefaults?.[provider];
 
   return {
     id: modelId,
@@ -92,8 +93,8 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any): M
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: profile?.contextWindow ?? 128000,
-    maxTokens: profile?.maxOutputTokens ?? 0,
+    contextWindow: profile?.contextWindow ?? providerDefaults?.contextWindow ?? 32768,
+    maxTokens: profile?.maxOutputTokens ?? providerDefaults?.maxOutputTokens ?? 2048,
     compat: {
       supportsStore: false,
       supportsDeveloperRole: false,
@@ -257,10 +258,21 @@ function translateEvents(
     }
 
     case "agent_end": {
+      // If session was already stopped/interrupted by the user, don't process further.
+      // stopSession() sets status to "idle" before calling abort, so agent_end
+      // arrives after the session is already cleaned up.
+      if (session.abortController.signal.aborted) {
+        session.pendingMessages = [];
+        break;
+      }
+
       const messages = (event as any).messages ?? [];
       const lastAssistant = [...messages].reverse().find(
         (m: any) => m.role === "assistant",
       );
+      const stopReason = lastAssistant?.stopReason;
+      const wasAborted = stopReason === "aborted";
+      const wasError = stopReason === "error";
 
       const resultText = lastAssistant
         ? (lastAssistant.content ?? [])
@@ -268,9 +280,6 @@ function translateEvents(
             .map((b: any) => b.text)
             .join("")
         : session.lastAssistantText;
-
-      // Don't emit assistant event — text already streamed via text_delta,
-      // tool calls already emitted via tool_execution_start/end.
 
       // Extract usage from last assistant message
       const usage = lastAssistant?.usage;
@@ -282,28 +291,37 @@ function translateEvents(
       session.numTurns++;
       session.costUsd += costTotal;
 
-      ctx.emitEvent({
-        type: "result",
-        subtype: "success",
-        result: resultText,
-        harness_duration_ms: durationMs,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        total_tokens: inputTokens + outputTokens,
-        num_turns: session.numTurns,
-        total_cost_usd: session.costUsd,
-      });
+      if (wasError) {
+        const errorMsg = lastAssistant?.errorMessage ?? "Unknown error";
+        const message = friendlyError({ message: errorMsg }, providerName);
+        ctx.emitEvent({ type: "result", subtype: "error", error: message });
+        session.status = "error";
+        session.error = message;
+        ctx.updateSessionDb({ status: "error" });
+      } else {
+        ctx.emitEvent({
+          type: "result",
+          subtype: wasAborted ? "interrupted" : "success",
+          result: resultText,
+          harness_duration_ms: durationMs,
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          total_tokens: inputTokens + outputTokens,
+          num_turns: session.numTurns,
+          total_cost_usd: session.costUsd,
+        });
 
-      session.status = "idle";
-      ctx.updateSessionDb({
-        status: "idle",
-        messageCount: session.numTurns * 2,
-        costUsd: session.costUsd,
-        lastResponse: resultText.slice(0, 200),
-      });
+        session.status = "idle";
+        ctx.updateSessionDb({
+          status: "idle",
+          messageCount: session.numTurns * 2,
+          costUsd: session.costUsd,
+          lastResponse: resultText.slice(0, 200),
+        });
+      }
 
-      // Flush queued messages
-      if (session.pendingMessages.length > 0) {
+      // Flush queued messages (only if not aborted/errored)
+      if (!wasAborted && !wasError && session.pendingMessages.length > 0) {
         const next = session.pendingMessages.shift()!;
         session.status = "running";
         session.turnStartedAt = Date.now();
@@ -350,7 +368,13 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         const model = buildModel(providerName, modelId, profile);
         const authStorage = buildAuthStorage(providerName);
         const sessionManager = SessionManager.inMemory(cwd);
-        const settingsManager = SettingsManager.inMemory();
+        const providerDefaults = getGlobalConfig().providerDefaults?.[providerName];
+        const compaction = {
+          enabled: profile?.compaction?.enabled ?? providerDefaults?.compaction?.enabled ?? true,
+          reserveTokens: profile?.compaction?.reserveTokens ?? providerDefaults?.compaction?.reserveTokens ?? 16384,
+          keepRecentTokens: profile?.compaction?.keepRecentTokens ?? providerDefaults?.compaction?.keepRecentTokens ?? 20000,
+        };
+        const settingsManager = SettingsManager.inMemory({ compaction });
 
         // Resource loader with our profile prompt
         const resourceLoader = new DefaultResourceLoader({
@@ -396,10 +420,17 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
           customTools: mcpTools.length > 0 ? mcpTools : undefined,
         });
 
-        // Disable auto-compaction and auto-retry — we manage lifecycle ourselves,
-        // and these can cause runaway LLM call loops with local models
-        agentSession.setAutoCompactionEnabled(false);
-        agentSession.setAutoRetryEnabled(false);
+        // Configure compaction based on provider type
+        if (providerName === "anthropic" || providerName === "openai") {
+          // Cloud providers: enable auto-compaction, disable auto-retry
+          agentSession.setAutoRetryEnabled(false);
+        } else {
+          // Local models (litellm/ollama): enable threshold compaction, no retry
+          // Overflow compaction uses the same (slow) local model to generate summaries
+          // which can hang — but threshold compaction fires proactively at 75% usage
+          // so overflow should rarely happen if contextWindow matches the server's -c flag
+          agentSession.setAutoRetryEnabled(false);
+        }
 
         // Apply tool allowlist from profile
         if (profile?.tools && profile.tools.length > 0) {

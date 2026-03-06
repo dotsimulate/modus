@@ -133,11 +133,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const info = serverSessions.find((s) => s.id === id);
     const sessionProfile = info?.profile ?? undefined;
 
-    // Create store entry and subscribe
-    const rs = createInitialState(id);
-    setSessionState(id, rs, sessionProfile);
+    // Reuse existing store entry if available, otherwise create fresh
+    const existing = getSessionState(id);
+    if (!existing) {
+      const rs = createInitialState(id);
+      rs.status = info?.status ?? "idle";
+      setSessionState(id, rs, sessionProfile);
+    }
     setActiveSessionId(id);
-    subscribeSession(id, 0, sessionProfile, refreshSessions);
+
+    // Subscribe from last known seq (avoids full replay if store has state)
+    const afterSeq = existing?.lastSeq ?? 0;
+    if (!isSubscribed(id)) {
+      subscribeSession(id, afterSeq, sessionProfile, refreshSessions);
+    }
 
     if (sessionProfile) setSelectedProfile(sessionProfile);
     updateHash(id);

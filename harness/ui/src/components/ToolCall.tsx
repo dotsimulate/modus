@@ -10,24 +10,40 @@ type Props = {
   cwd?: string | null;
 };
 
-/** Extract a short human-readable summary from tool input */
-function summarize(name: string, input: Record<string, unknown>): string {
+/** Extract a short human-readable summary from tool input + result */
+function summarize(name: string, input: Record<string, unknown>, result?: string): string {
   const path = input.file_path as string | undefined;
   const shortPath = path?.replace(/^\/home\/[^/]+\//, "~/") ?? "";
 
   switch (name) {
     case "Read":
-      return shortPath;
+    case "read": {
+      const p = shortPath || truncate(input.path as string, 80);
+      const offset = input.offset as number | undefined;
+      const limit = input.limit as number | undefined;
+      if (offset && limit) return `${p} :${offset}-${offset + limit}`;
+      if (offset) return `${p} :${offset}`;
+      if (limit) return `${p} (${limit} lines)`;
+      return p;
+    }
     case "Write":
+    case "write":
     case "Edit":
+    case "edit":
     case "MultiEdit":
-      return shortPath;
+      return shortPath || truncate(input.path as string, 80);
     case "Bash":
+    case "bash":
       return truncate(input.command as string, 80);
     case "Grep":
+    case "grep":
       return `/${input.pattern}/${input.path ? ` in ${basename(input.path as string)}` : ""}`;
     case "Glob":
       return `${input.pattern}${input.path ? ` in ${basename(input.path as string)}` : ""}`;
+    case "find":
+      return truncate(input.pattern as string ?? input.path as string, 80);
+    case "ls":
+      return truncate(input.path as string, 80);
     case "WebFetch":
       return truncate(input.url as string, 60);
     case "WebSearch":
@@ -75,6 +91,52 @@ function isCodeLike(s: string): boolean {
 /** Shorten paths for display */
 function shortPath(s: string): string {
   return s.replace(/^\/home\/[^/]+\//, "~/");
+}
+
+/** Unwrap JSON-stringified text (PI results can be double-encoded) */
+function unwrapResult(s: string): string {
+  if (s.startsWith('"') || s.startsWith("[") || s.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(s);
+      if (typeof parsed === "string") return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((b: any) => (typeof b === "string" ? b : b.text ?? JSON.stringify(b)))
+          .join("\n");
+      }
+      // Handle {"content":[{"type":"text","text":"..."}]} format
+      if (parsed && Array.isArray(parsed.content)) {
+        return parsed.content
+          .map((b: any) => (typeof b === "string" ? b : b.text ?? JSON.stringify(b)))
+          .join("\n");
+      }
+    } catch { /* not JSON, use as-is */ }
+  }
+  return s;
+}
+
+/** Render file content with line numbers, diff-table style */
+function ReadOutput({ result, offset }: { result: string; offset?: number }) {
+  const text = unwrapResult(result);
+  const lines = text.split("\n");
+  // Drop trailing empty line from split
+  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  const startLine = (offset ?? 1);
+
+  return (
+    <div className="tool-output-box read-output">
+      <table className="diff-table">
+        <tbody>
+          {lines.map((line, i) => (
+            <tr key={i} className="diff-line diff-line--ctx">
+              <td className="diff-gutter">{startLine + i}</td>
+              <td className="diff-code"><span>{line}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 /** Render tool input as formatted key-value pairs.
@@ -304,8 +366,9 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
     );
   }
 
-  const summary = summarize(tool.name, tool.input);
+  const summary = summarize(tool.name, tool.input, tool.result);
   const isAgent = tool.name === "Agent" && (tool.subMessages?.length ?? 0) > 0;
+  const isRead = tool.name === "Read" || tool.name === "read";
   const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
 
   return (
@@ -346,6 +409,10 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
           ) : isTodo && todos?.length ? (
             <div className="tool-call-detail">
               <TodoList todos={todos} />
+            </div>
+          ) : isRead && tool.result ? (
+            <div className="tool-call-detail">
+              <ReadOutput result={tool.result} offset={tool.input.offset as number | undefined} />
             </div>
           ) : (
             <div className="tool-call-detail">
