@@ -108,7 +108,7 @@ html, body, #root {
   padding-left: 12px;
 }
 .message-thinking:not(.expanded) {
-  max-height: calc(11px * 1.5 * 4 + 12px);
+  max-height: calc(11px * 1.5 * 2 + 12px);
   overflow: hidden;
 }
 .message-thinking:not(.expanded)::after {
