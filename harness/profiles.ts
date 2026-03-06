@@ -62,6 +62,18 @@ export type ClaudeMdExcludes =
       custom?: string[];
     };
 
+export type CompactionConfig = {
+  enabled?: boolean;
+  reserveTokens?: number;
+  keepRecentTokens?: number;
+};
+
+export type ProviderDefaults = {
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  compaction?: CompactionConfig;
+};
+
 export type Profile = {
   /** Agent system prompt */
   prompt: string;
@@ -93,6 +105,8 @@ export type Profile = {
   contextWindow?: number;
   /** Max output tokens override — for models where API doesn't report it */
   maxOutputTokens?: number;
+  /** Compaction tuning — overrides providerDefaults when set */
+  compaction?: CompactionConfig;
   /** UI presentation hints — read by frontend, optional with sensible defaults */
   ui?: {
     label?: string;
@@ -108,6 +122,7 @@ export type Profile = {
 
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
+  providerDefaults?: Record<string, ProviderDefaults>;
 };
 
 // ── User Profiles ──

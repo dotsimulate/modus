@@ -64,8 +64,8 @@ highest priority — bypasses PI's own env var lookup (which doesn't know litell
 3. **abort**: Calls `agentSession.abort()` + fires the abort controller.
 4. **dispose**: Unsubscribes, disposes agent session, shuts down MCP connections.
 
-Auto-compaction and auto-retry are disabled — the harness manages its own lifecycle
-and these can cause runaway LLM call loops with local models.
+Auto-retry is disabled for all providers — the harness manages its own lifecycle.
+Compaction is enabled with configurable thresholds (see `docs/config-resolution.md`).
 
 ## Event Translation
 
