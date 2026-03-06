@@ -421,6 +421,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       session.abortController = new AbortController();
       const { generator, channel } = createInputChannel();
       state.input = channel;
+      session.initialContent = content;
       session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
       channel.push(content);
 
@@ -592,6 +593,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         // Flush queued messages
         if (session.pendingMessages.length > 0) {
           const next = session.pendingMessages.shift()!;
+          session.initialContent = next;
           state.input.push(next);
           session.status = "running";
           session.turnStartedAt = Date.now();
