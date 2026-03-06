@@ -585,7 +585,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           messageCount: session.numTurns * 2,
           costUsd: m.total_cost_usd ?? 0,
           lastPrompt: session.preview,
-          lastResponse: (m.result ?? "").slice(0, 200),
+          lastResponse: (m.result || session.lastAssistantText || "").slice(0, 200),
         });
 
         session.status = "idle";

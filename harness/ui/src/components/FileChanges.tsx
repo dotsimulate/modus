@@ -166,6 +166,15 @@ const BROWSER_EXTS = new Set([
   ".html", ".htm", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf",
 ]);
 
+const IMAGE_EXTS = new Set([
+  ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+]);
+
+function isImage(filePath: string): boolean {
+  const ext = filePath.replace(/\\/g, "/").split("/").pop()?.match(/\.[^.]+$/)?.[0]?.toLowerCase();
+  return !!ext && IMAGE_EXTS.has(ext);
+}
+
 function isBrowserPreviewable(filePath: string): boolean {
   const ext = filePath.replace(/\\/g, "/").split("/").pop()?.match(/\.[^.]+$/)?.[0]?.toLowerCase();
   return !!ext && BROWSER_EXTS.has(ext);
@@ -223,6 +232,11 @@ function FileCard({ filePath, edits }: { filePath: string; edits: FileEdit[] }) 
       </div>
       {expanded && (
         <div className="fc-file-body">
+          {isImage(filePath) && (
+            <div className={`fc-image-preview${filePath.toLowerCase().endsWith(".svg") ? " fc-image-preview--svg" : ""}`}>
+              <img src={rawFileUrl(filePath)} alt={name} />
+            </div>
+          )}
           <table className="diff-table">
             {edits.map((edit, i) => (
               <EditHunk key={i} edit={edit} idx={i} />

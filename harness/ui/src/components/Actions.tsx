@@ -197,20 +197,27 @@ function RunsTab({
 function RunRow({ run, onSelect }: { run: ActionRun; onSelect: (id: string) => void }) {
   const hasSession = !!run.sessionId;
   const isError = run.status === "error";
+  const elapsed = run.startedAt && run.completedAt
+    ? `${Math.floor((run.completedAt - run.startedAt) / 60000)}:${String(Math.floor(((run.completedAt - run.startedAt) % 60000) / 1000)).padStart(2, "0")}`
+    : run.status === "running" ? "..." : null;
+
   return (
     <button
       className={`sched-run-row ${hasSession ? "" : "sched-run-row--no-session"} ${isError ? "sched-run-row--error" : ""}`}
-      onClick={() => hasSession && onSelect(run.sessionId)}
+      onClick={() => hasSession && onSelect(run.sessionId!)}
       disabled={!hasSession}
     >
-      <div className="sched-run-summary">
-        {run.error || run.summary || "..."}
+      <div className="sched-run-top">
+        <div className="sched-run-summary">
+          {run.error || run.summary || "..."}
+        </div>
+        {elapsed && <span className="sched-run-elapsed">{elapsed}</span>}
       </div>
       <div className="sched-run-footer">
         <span className="sched-run-num">#{run.runNumber}</span>
         <span className={`dash-dot dash-dot--${runDotStatus(run.status)}`} />
         <span className="sched-run-meta">${run.costUsd.toFixed(3)}</span>
-        {run.startedAt ? <span className="sched-run-meta">{timeAgo(run.startedAt)}</span> : null}
+        {run.startedAt ? <span className="sched-run-ago">{timeAgo(run.startedAt)}</span> : null}
       </div>
     </button>
   );

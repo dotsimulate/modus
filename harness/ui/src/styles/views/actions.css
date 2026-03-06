@@ -424,6 +424,11 @@
   cursor: default;
 }
 
+.sched-run-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
 .sched-run-summary {
   font-family: var(--font-sans);
   font-size: 12px;
@@ -433,6 +438,15 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+.sched-run-elapsed {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .sched-run-row--error .sched-run-summary {
   color: #aa3333;
@@ -452,6 +466,13 @@
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
+}
+.sched-run-ago {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-left: auto;
 }
 
 /* ── About tab ── */
