@@ -279,6 +279,7 @@ async function executeRun(name: string, overrides?: { userProfile?: string }): P
     const session = startSession({
       prompt,
       profile: cfg.agentProfile,
+      provider: cfg.provider,
       maxTurns: cfg.maxTurns,
       model: cfg.model,
       effort: cfg.effort,

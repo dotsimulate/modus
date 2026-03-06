@@ -7,10 +7,12 @@
  * Lives in the sidebar below the profile selector.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AgentConfig, type AgentConfigState } from "./AgentConfig";
 import { FolderPicker } from "./FolderPicker";
 import { getRecentPaths, addRecentPath } from "../recentPaths";
+import { fetchProviderModels } from "../api";
+import type { ProviderModel } from "../api";
 
 export type SessionSetupState = {
   /** Mutable agent config (tools, effort, turns) */
@@ -24,6 +26,8 @@ export type SessionSetupState = {
 type Props = {
   config: SessionSetupState;
   profileTools: string[] | "all";
+  availableProviders?: string[];
+  profileProvider?: string;
   profileEffort?: string;
   profileMaxTurns?: number;
   profileModel?: string;
@@ -34,16 +38,11 @@ type Props = {
   showAllProjectPaths?: boolean;
 };
 
-const MODELS = [
-  { value: "", label: "profile default" },
-  { value: "claude-opus-4-6", label: "opus" },
-  { value: "claude-sonnet-4-6", label: "sonnet" },
-  { value: "claude-haiku-4-5", label: "haiku" },
-];
-
 export function SessionSetup({
   config,
   profileTools,
+  availableProviders,
+  profileProvider,
   profileEffort,
   profileMaxTurns,
   profileModel,
@@ -52,18 +51,27 @@ export function SessionSetup({
   showAllProjectPaths: _showAllProjectPaths,
 }: Props) {
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
   const recentPaths = getRecentPaths();
   const projectPathSet = new Set(projectPaths ?? []);
-  // Recent paths minus any that are already in projectPaths
   const filteredRecent = recentPaths.filter((p) => !projectPathSet.has(p));
+
+  // Effective provider: session override > profile default > claude-code
+  const effectiveProvider = config.agent.provider || profileProvider || "claude-code";
+
+  useEffect(() => {
+    fetchProviderModels(effectiveProvider).then(setProviderModels).catch(() => setProviderModels([]));
+  }, [effectiveProvider]);
 
   const update = (patch: Partial<SessionSetupState>) => {
     onChange({ ...config, ...patch });
   };
 
-  const modelLabel = profileModel
-    ? MODELS.find((m) => m.value === profileModel)?.label ?? profileModel
-    : "default";
+  // Only show profile model as label if it's valid for the current provider
+  const profileModelValid = profileModel && providerModels.length > 0
+    ? providerModels.some((m) => m.id === profileModel)
+    : true; // assume valid until models load
+  const modelLabel = profileModel && profileModelValid ? profileModel : "default";
 
   return (
     <div className="session-setup">
@@ -76,9 +84,11 @@ export function SessionSetup({
             onChange={(e) => update({ model: e.target.value })}
           >
             <option value="">{modelLabel}</option>
-            {MODELS.filter((m) => m.value && m.value !== profileModel).map((m) => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
+            {providerModels
+              .filter((m) => m.id !== profileModel)
+              .map((m) => (
+                <option key={m.id} value={m.id}>{m.id}</option>
+              ))}
           </select>
         </label>
       </div>
@@ -149,6 +159,8 @@ export function SessionSetup({
       <AgentConfig
         config={config.agent}
         profileTools={profileTools}
+        availableProviders={availableProviders}
+        profileProvider={profileProvider}
         profileEffort={profileEffort}
         profileMaxTurns={profileMaxTurns}
         onChange={(agent) => update({ agent })}
@@ -194,7 +206,7 @@ function shortenPath(p: string): string {
 /** Default state for SessionSetup */
 export function createDefaultSetupState(): SessionSetupState {
   return {
-    agent: { toolStates: {}, effort: "", maxTurns: "" },
+    agent: { toolStates: {}, provider: "", effort: "", maxTurns: "" },
     model: "",
     cwd: "",
     loadProjectSettings: true,

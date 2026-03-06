@@ -633,6 +633,11 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     };
   }
 
+  // Surface error text in the chat
+  if (m.subtype === "error" && m.error) {
+    msgs.push({ id: nextMsgId(), role: "system", content: m.error });
+  }
+
   return {
     ...s,
     status: m.subtype === "success" ? "idle" : "error",

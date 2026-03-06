@@ -118,6 +118,7 @@ export type Profile = {
   description: string;
   prompt: string;
   promptMode?: "custom" | "append";
+  provider?: string;
   model?: string;
   effort?: string;
   maxTurns?: number;
@@ -199,6 +200,7 @@ export type CreateSessionOpts = {
   prompt: string;
   attachments?: ApiAttachment[];
   profile?: string;
+  provider?: string;
   model?: string;
   maxTurns?: number;
   effort?: string;
@@ -237,6 +239,7 @@ export type UserProfile = {
   templateVars?: Record<string, string>;
   projects: string[];
   agentProfiles?: string[];
+  provider?: string;
   memoryFilter?: string;
   /** Show project paths from ALL user profiles in the CWD picker */
   showAllProjectPaths?: boolean;

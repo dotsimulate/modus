@@ -49,6 +49,21 @@ export async function checkSecrets(vars: string[]): Promise<{ status: Record<str
   return res.json();
 }
 
+// ── Providers ──
+
+export async function fetchProviders(): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/providers`, { headers: authHeaders() });
+  return res.json();
+}
+
+export type ProviderModel = { id: string; owned_by?: string };
+
+export async function fetchProviderModels(provider: string): Promise<ProviderModel[]> {
+  const res = await fetch(`${API_BASE}/api/providers/${encodeURIComponent(provider)}/models`, { headers: authHeaders() });
+  if (!res.ok) return [];
+  return res.json();
+}
+
 // ── User Profiles ──
 
 export async function fetchUserProfiles(): Promise<UserProfile[]> {

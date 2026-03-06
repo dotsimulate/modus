@@ -1,5 +1,5 @@
 /**
- * Claude Code tool definitions — canonical list with grouping.
+ * Tool definitions — canonical lists with grouping per provider.
  * Used by ToolGrid for display and by config components for validation.
  */
 
@@ -8,6 +8,7 @@ export type ToolGroup = {
   tools: string[];
 };
 
+// Claude Code tools (PascalCase — SDK-native names)
 export const TOOL_GROUPS: ToolGroup[] = [
   {
     label: "files",
@@ -34,6 +35,27 @@ export const TOOL_GROUPS: ToolGroup[] = [
     tools: ["NotebookEdit", "AskUserQuestion"],
   },
 ];
+
+// PI Agent tools (lowercase — pi-coding-agent names)
+export const PI_TOOL_GROUPS: ToolGroup[] = [
+  { label: "files", tools: ["read", "write", "edit"] },
+  { label: "search", tools: ["grep", "find", "ls"] },
+  { label: "exec", tools: ["bash"] },
+];
+
+const PI_PROVIDERS = ["anthropic", "openai", "litellm", "ollama"];
+
+export function isPiProvider(provider?: string): boolean {
+  return !!provider && PI_PROVIDERS.includes(provider);
+}
+
+export function getToolGroups(provider?: string): ToolGroup[] {
+  return isPiProvider(provider) ? PI_TOOL_GROUPS : TOOL_GROUPS;
+}
+
+export function getAllTools(provider?: string): string[] {
+  return getToolGroups(provider).flatMap((g) => g.tools);
+}
 
 export const ALL_TOOLS = TOOL_GROUPS.flatMap((g) => g.tools);
 

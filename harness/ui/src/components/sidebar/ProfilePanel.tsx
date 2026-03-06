@@ -4,6 +4,7 @@ import { SessionSetup, type SessionSetupState } from "../SessionSetup";
 
 type Props = {
   profiles: Profile[];
+  availableProviders?: string[];
   selectedProfile: string;
   onSelectProfile: (name: string) => void;
   setupState: SessionSetupState;
@@ -26,7 +27,7 @@ function getOverrideTags(setup: SessionSetupState): string[] {
 }
 
 export function ProfilePanel({
-  profiles, selectedProfile, onSelectProfile,
+  profiles, availableProviders, selectedProfile, onSelectProfile,
   setupState, onSetupChange,
   userProfiles, activeUserProfileObj,
 }: Props) {
@@ -86,6 +87,8 @@ export function ProfilePanel({
             <SessionSetup
               config={setupState}
               profileTools={selectedProfileData?.tools ?? "all"}
+              availableProviders={availableProviders}
+              profileProvider={selectedProfileData?.provider}
               profileEffort={selectedProfileData?.effort}
               profileMaxTurns={selectedProfileData?.maxTurns}
               profileModel={selectedProfileData?.model}

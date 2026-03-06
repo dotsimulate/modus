@@ -10,6 +10,7 @@ export { authStatus, setupNewPin, verifyPin, fetchMe, lockAll, checkToken, healt
 export {
   fetchProfiles, fetchProfile, saveProfileApi, deleteProfileApi,
   fetchGlobalConfig, saveGlobalConfigApi, checkSecrets,
+  fetchProviders, fetchProviderModels,
   fetchUserProfiles, fetchUserProfile, saveUserProfileApi, patchUserProfileApi,
   fetchUserProfileState, patchUserProfileStateApi,
 } from "./profiles";
@@ -45,6 +46,8 @@ export type {
   GitStatus, GitCommit, DiffLine, DiffHunk, FileDiff, GitCommitDetail,
   EventStreamCallbacks,
 } from "./types";
+
+export type { ProviderModel } from "./profiles";
 
 // Utility
 export { nextMsgId } from "./types";

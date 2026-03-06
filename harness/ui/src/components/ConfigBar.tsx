@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { AgentConfig, type AgentConfigState } from "./AgentConfig";
-import { ALL_TOOLS } from "../tools";
+import { getAllTools } from "../tools";
 
 type Props = {
   profileName?: string;
@@ -8,6 +8,8 @@ type Props = {
   agentConfig: AgentConfigState;
   onAgentConfigChange: (config: AgentConfigState) => void;
   profileTools: string[] | "all";
+  availableProviders?: string[];
+  profileProvider?: string;
   profileEffort?: string;
   profileMaxTurns?: number;
   /** All tools reported by SDK init (for MCP tool discovery) */
@@ -25,6 +27,8 @@ export function ConfigBar({
   agentConfig,
   onAgentConfigChange,
   profileTools,
+  availableProviders,
+  profileProvider,
   profileEffort,
   profileMaxTurns,
   availableTools,
@@ -44,12 +48,14 @@ export function ConfigBar({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  const effectiveProvider = agentConfig.provider || profileProvider;
   const mcpCount = (availableTools ?? []).filter(t => t.startsWith("mcp__")).length;
   const toolCount =
-    (profileTools === "all" ? ALL_TOOLS.length : profileTools.length) + mcpCount;
+    (profileTools === "all" ? getAllTools(effectiveProvider).length : profileTools.length) + mcpCount;
   const effort = agentConfig.effort || profileEffort || "default";
   const overrideCount =
     Object.keys(agentConfig.toolStates).length +
+    (agentConfig.provider ? 1 : 0) +
     (agentConfig.effort ? 1 : 0) +
     (agentConfig.maxTurns ? 1 : 0);
 
@@ -89,6 +95,8 @@ export function ConfigBar({
             <AgentConfig
               config={agentConfig}
               profileTools={profileTools}
+              availableProviders={availableProviders}
+              profileProvider={profileProvider}
               profileEffort={profileEffort}
               profileMaxTurns={profileMaxTurns}
               onChange={onAgentConfigChange}

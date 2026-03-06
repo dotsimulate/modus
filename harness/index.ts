@@ -247,6 +247,24 @@ app.post("/api/secrets/check", async (c) => {
   return c.json({ status, secretsFile: info.path });
 });
 
+// ── Providers ──
+
+app.get("/api/providers", async (c) => {
+  const { listProviders } = await import("./providers/registry");
+  return c.json(listProviders());
+});
+
+app.get("/api/providers/:name/models", async (c) => {
+  const { fetchProviderModels } = await import("./providers/models");
+  const name = c.req.param("name");
+  try {
+    const models = await fetchProviderModels(name);
+    return c.json(models);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 502);
+  }
+});
+
 // ── Sessions ──
 
 /** Resolve CWD prefixes from a user profile name (query param) */
@@ -300,7 +318,7 @@ app.get("/api/sessions/active", (c) => {
       lastText: s.lastAssistantText || null,
       seq: s.seq,
       subscribers: s.subscribers.size,
-      cwd: s.sdkOptions?.cwd ?? null,
+      cwd: s.cwd ?? null,
       archived: dbRow?.archived === 1,
     };
   });
@@ -325,6 +343,7 @@ app.post("/api/sessions", async (c) => {
     attachments: body.attachments,
     profile: body.profile,
     userProfile: body.userProfile,
+    provider: body.provider,
     model: body.model,
     maxTurns: body.maxTurns,
     effort: body.effort,
@@ -632,6 +651,7 @@ import {
   initScheduler, stopScheduler, getSchedules, getScheduleState,
   triggerSchedule, updateScheduleConfig,
   resetSchedule, setSchedulePreference, getSchedulePreferences,
+  reloadSchedules,
 } from "./scheduler";
 import { getScheduleRuns as dbGetScheduleRuns, clearScheduleRuns } from "./db";
 
@@ -717,6 +737,12 @@ app.patch("/api/schedules/:name", async (c) => {
   const ok = updateScheduleConfig(name, body);
   if (!ok) return c.json({ error: "schedule not found" }, 404);
   return c.json({ ok: true });
+});
+
+app.post("/api/schedules/reload", (c) => {
+  reloadSchedules();
+  const schedules = getSchedules();
+  return c.json({ ok: true, count: schedules.length });
 });
 
 // ── Git ──
