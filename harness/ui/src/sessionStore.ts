@@ -6,10 +6,10 @@
  * connection gets its own reducer instance.
  */
 
-import { useSyncExternalStore, useCallback } from "react";
+import { useSyncExternalStore } from "react";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
 import { subscribeEvents } from "./api";
-import type { Session, PendingPermission } from "./api/types";
+import type { Session } from "./api/types";
 
 // ── Store State ──
 
@@ -186,6 +186,9 @@ export function deriveSession(rs: ReducerState, profile?: string): Session {
     preview: rs.messages[0]?.content?.slice(0, 60) ?? "",
     profile,
     model: rs.model,
+    agentConfig: rs.agentConfig,
+    cwd: rs.cwd || undefined,
+    loadProjectSettings: rs.loadProjectSettings,
     messages: rs.messages,
     totalCost: rs.totalCost,
     lastSeq: rs.lastSeq,

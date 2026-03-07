@@ -43,10 +43,10 @@ export const PI_TOOL_GROUPS: ToolGroup[] = [
   { label: "exec", tools: ["bash"] },
 ];
 
-const PI_PROVIDERS = ["anthropic", "openai", "litellm", "ollama"];
-
 export function isPiProvider(provider?: string): boolean {
-  return !!provider && PI_PROVIDERS.includes(provider);
+  // The backend registry is the source of truth. In the UI, everything except
+  // Claude Code currently routes through PI and therefore uses PI tool names.
+  return !!provider && provider !== "claude-code";
 }
 
 export function getToolGroups(provider?: string): ToolGroup[] {

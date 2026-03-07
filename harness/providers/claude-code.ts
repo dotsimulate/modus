@@ -463,6 +463,16 @@ export function createClaudeCodeProvider(): SessionProvider {
       const state = getState(session);
       const hasMcp = !!state.sdkOptions.mcpServers;
 
+      if (config.model !== undefined) {
+        state.sdkOptions.model = config.model || undefined;
+      }
+      if (config.effort !== undefined) {
+        state.sdkOptions.effort = config.effort || undefined;
+      }
+      if (config.maxTurns !== undefined) {
+        state.sdkOptions.maxTurns = config.maxTurns || undefined;
+      }
+
       if (config.tools !== undefined && config.tools.length > 0 && hasMcp) {
         const blocked = ALL_BUILTIN.filter((t: string) => !config.tools.includes(t));
         state.sdkOptions.disallowedTools = blocked.length > 0 ? blocked : undefined;
@@ -602,6 +612,17 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       }
 
       // Persist + broadcast event
+      if (m.type === "system" && m.subtype === "init") {
+        m.config = {
+          provider: ctx.opts.provider ?? "",
+          model: ctx.opts.model ?? "",
+          effort: ctx.opts.effort ?? "",
+          maxTurns: ctx.opts.maxTurns,
+          toolStates: ctx.opts.toolStates ?? {},
+        };
+        m.cwd = session.cwd;
+        m.loadProjectSettings = ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true;
+      }
       ctx.emitEvent(m);
     }
     console.log(`[claude-code] drain loop exited normally for ${session.sessionId}, status=${session.status}`);

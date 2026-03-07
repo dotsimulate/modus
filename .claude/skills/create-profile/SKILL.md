@@ -146,6 +146,7 @@ MCP tools use the pattern: `mcp__<server-name>__<tool-name>`
 | `openai` | GPT-4o, GPT models | OpenAI API |
 | `litellm` | Any OpenAI-compatible endpoint | Local models, vLLM, llama.cpp |
 | `ollama` | Ollama models | Local Ollama server |
+| `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers |
 
 ## Output Format
 

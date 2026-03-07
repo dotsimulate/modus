@@ -56,10 +56,21 @@ export interface ActionConfig {
   // ── Run layer ──
   maxRuns?: number;                    // per-cycle limit (or lifetime cap if no cycleInterval)
   maxTurns?: number;                   // override agent profile's maxTurns
+  maxRetries?: number;                 // verify retries per run, default 0
+
+  // ── Resilience ──
+  onGatherError?: "fail" | "retry";    // default "fail" — "retry" uses verify retry loop
+  maxTransientRetries?: number;        // network error retries, default 2
+  retryBackoff?: string;               // backoff between transient retries, default "2m"
+  onTransientFailure?: "retry" | "skip"; // default "retry"
 
   // ── Cycle layer ──
   cycleInterval?: string;              // outer rhythm: "1d", "12h" — resets run counter each cycle
   maxCycles?: number;                  // total cycle cap — auto-disables after N cycles complete
+
+  // ── Execution layer ──
+  concurrency?: number;                // max simultaneous executions, default 1
+  onExhausted?: "archive" | "idle" | "restart"; // default "archive"
 
   // ── User profile scoping ──
   userProfile?: string;
@@ -87,20 +98,49 @@ export type TriggerInfo = {
 
 // ── Context & Module ──
 
-/** Context object passed to gather() and afterRun() */
+/** Context object passed to gather(), verify(), and afterRun() */
 export interface ActionContext {
   actionName: string;
+  executionId: number;                 // which execution this run belongs to
   runNumber: number;
   cycleNumber: number;
   cycleRunIndex: number;               // 0-based index within current cycle
   lastRunAt: Date | null;
   db: ActionDB;
   trigger: TriggerInfo;
+  actionDir: string;                   // absolute path to actions/<name>/
+
+  // ── Verify/retry context ──
+  attempt: number;                     // 1-based, 1 = first try
+  lastVerifyError?: string;            // reason from failed verify, if retrying
+
+  // ── Artifact helpers ──
+  /** Returns the artifact directory for this attempt. Created on first access. */
+  artifactDir(): string;
+  /** Returns a safe path for storing run artifacts. Namespaced so reruns don't collide. */
+  artifactPath(filename: string): string;
 }
+
+// ── Session Outcome (returned by monitorSession, not yet finalized) ──
+
+/** Raw session completion data — before verify decides the final run status */
+export interface SessionOutcome {
+  sessionStatus: "done" | "idle" | "error" | "timeout";
+  response: string | null;
+  summary: string | null;
+  costUsd: number;
+  error: string | null;
+}
+
+// ── Verify ──
+
+export type VerifyResult =
+  | { ok: true }
+  | { ok: false; reason: string; retry?: boolean };
 
 /** Result passed to afterRun — everything the action needs to act on */
 export interface RunResult {
-  status: "done" | "error";
+  status: "done" | "error" | "failed-verification" | "error-transient";
   response: string | null;             // agent's final response text
   summary: string | null;              // truncated summary stored in DB
   costUsd: number;
@@ -109,12 +149,22 @@ export interface RunResult {
   error: string | null;
 }
 
+/** Content blocks for multipart messages (text + images/files) */
+export type ActionContent = string | Array<
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+>;
+
 /** What an action's context.ts module must export */
 export interface ActionModule {
-  gather(ctx: ActionContext): Promise<string>;
-  /** Optional hook — runs after the agent session completes.
+  gather(ctx: ActionContext): Promise<string | ActionContent>;
+  /** Optional — runs after session completes but before run is finalized.
+   *  Inspects output and decides whether to accept, reject, or retry. */
+  verify?(ctx: ActionContext, result: RunResult): Promise<VerifyResult>;
+  /** Optional hook — runs after the run is finalized as "done".
    *  For side effects: API calls, notifications, hardware, etc.
-   *  Failures here are logged but do NOT change the run's status. */
+   *  Failures here are logged but do NOT change the run's status.
+   *  NOT called on failed-verification or error — only on success. */
   afterRun?(ctx: ActionContext, result: RunResult): Promise<void>;
 }
 
@@ -158,6 +208,9 @@ export interface RunMeta {
   error: string | null;
   triggerType: string;
   afterRunError: string | null;
+  attempts: number;
+  verifyError: string | null;
+  executionId: number | null;
 }
 
 export interface SessionInfo {
@@ -198,18 +251,30 @@ export interface EventInfo {
   createdAt: number;
 }
 
-/** Runtime state per action (in-memory, not persisted) */
-export interface ActionState {
-  config: ActionConfig;
-  running: boolean;
-  currentSessionId: string | null;
-  lastRunAt: number | null;
-  nextRunAt: number | null;
-  lastStatus: string | null;
-  runNumber: number;
+/** Runtime state per execution (in-memory, tracks one lifecycle instance) */
+export interface ExecutionState {
+  id: number;                          // DB row id
+  actionName: string;
+  status: "running" | "done" | "idle" | "reset" | "cancelled";
+  startedAt: number;
+  runNumber: number;                   // current run within this execution
   cycleNumber: number;
   cycleRunCount: number;
   cycleStartedAt: number | null;
+  currentSessionId: string | null;
+  lastStatus: string | null;
+  totalCostUsd: number;
+}
+
+/** Runtime state per action (in-memory, not persisted) */
+export interface ActionState {
+  config: ActionConfig;
+  activeExecutions: Map<number, ExecutionState>; // keyed by execution ID
+  lastRunAt: number | null;
+  nextRunAt: number | null;
+  exhausted: boolean;
+  // Derived: running = activeExecutions.size > 0
+  // Derived: lastStatus from most recent execution
 }
 
 // ── Constants ──

@@ -13,11 +13,15 @@ export async function fetchProfile(name: string): Promise<Profile> {
 }
 
 export async function saveProfileApi(name: string, profile: Omit<Profile, "name">): Promise<void> {
-  await fetch(`${API_BASE}/api/profiles/${name}`, {
+  const res = await fetch(`${API_BASE}/api/profiles/${name}`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(profile),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `Failed to save profile: ${name}`);
+  }
 }
 
 export async function deleteProfileApi(name: string): Promise<void> {
@@ -33,11 +37,15 @@ export async function fetchGlobalConfig(): Promise<GlobalConfig> {
 }
 
 export async function saveGlobalConfigApi(config: GlobalConfig): Promise<void> {
-  await fetch(`${API_BASE}/api/profiles/_global`, {
+  const res = await fetch(`${API_BASE}/api/profiles/_global`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(config),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || "Failed to save global config");
+  }
 }
 
 export async function checkSecrets(vars: string[]): Promise<{ status: Record<string, boolean>; secretsFile: string }> {
@@ -78,19 +86,27 @@ export async function fetchUserProfile(name: string): Promise<UserProfile> {
 }
 
 export async function saveUserProfileApi(name: string, profile: Omit<UserProfile, "name">): Promise<void> {
-  await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, {
+  const res = await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(profile),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `Failed to save user profile: ${name}`);
+  }
 }
 
 export async function patchUserProfileApi(name: string, patch: Partial<UserProfile>): Promise<void> {
-  await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, {
+  const res = await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, {
     method: "PATCH",
     headers: authHeaders(),
     body: JSON.stringify(patch),
   });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `Failed to update user profile: ${name}`);
+  }
 }
 
 // ── User Profile State (runtime, separate from config) ──

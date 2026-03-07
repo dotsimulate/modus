@@ -20,7 +20,7 @@ import {
   ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
 } from "./profile-schemas";
 import {
-  listSessions, listSessionsForProjects,
+  listSessions, listSessionsForProjects, listSessionsByAction,
   getSession, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft,
@@ -285,11 +285,15 @@ app.get("/api/sessions/search", (c) => {
 });
 
 app.get("/api/sessions", (c) => {
-  const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 50);
+  const params = new URL(c.req.url).searchParams;
+  const limit = Number(params.get("limit") ?? 50);
+  const actionFilter = params.get("action");
   const cwdPrefixes = resolveProjectFilter(c);
-  const rows = cwdPrefixes && cwdPrefixes.length > 0
-    ? listSessionsForProjects(cwdPrefixes, limit)
-    : listSessions(limit);
+  const rows = actionFilter
+    ? listSessionsByAction(actionFilter, limit)
+    : cwdPrefixes && cwdPrefixes.length > 0
+      ? listSessionsForProjects(cwdPrefixes, limit)
+      : listSessions(limit);
   // Correct stale statuses: if DB says running/starting/idle but session
   // is not actually active in memory, it's done.
   const corrected = rows.map((s) => {
@@ -671,12 +675,14 @@ app.get("/api/actions/:name", (c) => {
   const name = c.req.param("name");
   const state = getActionState(name);
   if (!state) return c.json({ error: "action not found" }, 404);
+  // Derive flat fields from active execution for API compat
+  const exec = Array.from(state.activeExecutions.values()).find(e => e.status === "running");
   return c.json({
     ...state.config,
     nextRunAt: state.nextRunAt,
     lastRunAt: state.lastRunAt,
-    lastStatus: state.lastStatus,
-    running: state.running,
+    lastStatus: exec?.lastStatus ?? null,
+    running: state.activeExecutions.size > 0,
   });
 });
 

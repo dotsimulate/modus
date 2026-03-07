@@ -1,7 +1,7 @@
 import { API_BASE, authHeaders, tokenParam } from "./_fetch";
 import type {
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo,
-  ApiAttachment, CreateSessionOpts, EventStreamCallbacks,
+  AgentConfigState, ApiAttachment, CreateSessionOpts, EventStreamCallbacks,
 } from "./types";
 
 export async function fetchSessions(limit = 50): Promise<SessionInfo[]> {
@@ -94,7 +94,17 @@ export async function stopSessionApi(sessionId: string): Promise<void> {
 /** Update session config (tools, etc.) — takes effect on next turn */
 export async function updateSessionConfig(
   sessionId: string,
-  config: { disallowedTools?: string[]; tools?: string[] },
+  config: {
+    provider?: string;
+    model?: string;
+    effort?: string;
+    maxTurns?: number;
+    tools?: string[];
+    disallowedTools?: string[];
+    toolStates?: AgentConfigState["toolStates"];
+    cwd?: string;
+    loadProjectSettings?: boolean;
+  },
 ): Promise<void> {
   await fetch(`${API_BASE}/api/sessions/${sessionId}/config`, {
     method: "PATCH",
@@ -118,10 +128,11 @@ export async function respondToPermission(
 
 // ── Scoped queries ──
 
-/** Fetch sessions with optional user profile scoping */
-export async function fetchSessionsScoped(limit = 50, userProfile?: string): Promise<SessionInfo[]> {
+/** Fetch sessions with optional user profile scoping and action filter */
+export async function fetchSessionsScoped(limit = 50, userProfile?: string, action?: string): Promise<SessionInfo[]> {
   const params = [`limit=${limit}`];
   if (userProfile) params.push(`userProfile=${encodeURIComponent(userProfile)}`);
+  if (action) params.push(`action=${encodeURIComponent(action)}`);
   const res = await fetch(`${API_BASE}/api/sessions?${params.join("&")}`, { headers: authHeaders() });
   return res.json();
 }

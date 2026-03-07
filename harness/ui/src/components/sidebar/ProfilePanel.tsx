@@ -16,7 +16,8 @@ type Props = {
 /** Detect which categories have overrides vs profile defaults */
 function getOverrideTags(setup: SessionSetupState): string[] {
   const tags: string[] = [];
-  if (setup.model) tags.push("model");
+  if (setup.agent.model) tags.push("model");
+  if (setup.agent.provider) tags.push("provider");
   if (setup.cwd.trim()) tags.push("cwd");
   if (setup.agent.effort) tags.push("effort");
   if (setup.agent.maxTurns) tags.push("turns");

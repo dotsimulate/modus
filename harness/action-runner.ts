@@ -1,5 +1,5 @@
 /**
- * Action Runner — orchestrates automated agent sessions.
+ * Action Runner — orchestrates automated agent sessions (with multipart content support).
  *
  * Actions are the automation primitive in MO:
  *   trigger → gather() → session → afterRun()
@@ -13,20 +13,25 @@
  *   - webhook    → HTTP POST with token auth
  *   - manual     → UI button / API call
  *   - action     → fires after another action completes (chain)
+ *
+ * Executions: each lifecycle instance (start → runs → exhaust) is tracked as
+ * a first-class entity. An action can have multiple concurrent executions
+ * (controlled by `concurrency` config). Run/cycle counters are per-execution.
  */
 
-import { readFileSync, readdirSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { startSession, getActiveSession } from "./session-manager";
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
   getRunSummaries as dbGetRunSummaries, getNextRunNumber, getSession,
-  listSessions, getEvents, searchSessions, clearActionRuns,
+  listSessions, getEvents, searchSessions,
+  insertExecution, updateExecution as dbUpdateExecution,
 } from "./db";
 import type { SessionRow, EventRow, SearchHit } from "./db";
 import type {
-  ActionConfig, ActionContext, ActionModule, RunResult,
-  ActionState, ActionDB, TriggerInfo,
+  ActionConfig, ActionContext, ActionModule, ActionContent, RunResult,
+  ActionState, ExecutionState, ActionDB, TriggerInfo, SessionOutcome,
   SessionInfo, SearchResult, EventInfo,
 } from "./action-types";
 import { MAX_CHAIN_DEPTH } from "./action-types";
@@ -73,6 +78,89 @@ function isWithinActiveHours(activeHours?: { start: string; end: string }): bool
   return currentMinutes >= start || currentMinutes < end;
 }
 
+// ── Execution Helpers ──
+
+/** Check if an execution has exhausted its run/cycle budget */
+function isExecutionExhausted(exec: ExecutionState, config: ActionConfig): boolean {
+  const { maxRuns, maxCycles, cycleInterval } = config;
+  if (!maxRuns || maxRuns <= 0) return false;
+  if (cycleInterval && maxCycles && maxCycles > 0) {
+    return exec.cycleNumber >= maxCycles && exec.cycleRunCount >= maxRuns;
+  }
+  // Lifetime cap: total runs across all cycles
+  return exec.runNumber >= maxRuns;
+}
+
+/** Find the first active execution for an action, or null */
+function findActiveExecution(state: ActionState): ExecutionState | null {
+  for (const exec of state.activeExecutions.values()) {
+    if (exec.status === "running") return exec;
+  }
+  return null;
+}
+
+/** Create a new execution in DB and return in-memory state */
+function createExecution(actionName: string, config: ActionConfig): ExecutionState {
+  const id = insertExecution(actionName, JSON.stringify(config));
+  return {
+    id,
+    actionName,
+    status: "running",
+    startedAt: Date.now(),
+    runNumber: 0,
+    cycleNumber: 1,
+    cycleRunCount: 0,
+    cycleStartedAt: null,
+    currentSessionId: null,
+    lastStatus: null,
+    totalCostUsd: 0,
+  };
+}
+
+/** Close an execution (mark done in DB and memory) */
+function closeExecution(exec: ExecutionState, state: ActionState): void {
+  exec.status = "done";
+  dbUpdateExecution(exec.id, {
+    status: "done",
+    completedAt: Date.now(),
+    runCount: exec.runNumber,
+    cycleCount: exec.cycleNumber,
+    totalCostUsd: exec.totalCostUsd,
+  });
+  state.activeExecutions.delete(exec.id);
+}
+
+/** Handle what happens when an execution exhausts its budget */
+function handleOnExhausted(state: ActionState): void {
+  const mode = state.config.onExhausted ?? "archive";
+  switch (mode) {
+    case "archive":
+      state.exhausted = true;
+      setActionEnabled(state.config.name, false);
+      break;
+    case "idle":
+      state.nextRunAt = null;
+      break;
+    case "restart": {
+      const exec = createExecution(state.config.name, state.config);
+      state.activeExecutions.set(exec.id, exec);
+      break;
+    }
+  }
+}
+
+// ── Exhaustion Detection (for loading from DB) ──
+
+function deriveExhausted(config: ActionConfig, runCount: number, cycle: number, cycleRunCount: number): boolean {
+  if (config.enabled) return false;
+  const { maxRuns, maxCycles, cycleInterval } = config;
+  if (!maxRuns || maxRuns <= 0) return false;
+  if (cycleInterval && maxCycles && maxCycles > 0) {
+    return cycle >= maxCycles && cycleRunCount >= maxRuns;
+  }
+  return runCount >= maxRuns;
+}
+
 // ── Action Loading ──
 
 function loadActions(): void {
@@ -86,14 +174,12 @@ function loadActions(): void {
     if (!existsSync(configPath)) continue;
     try {
       const config = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
-      config.name = name; // ensure name matches directory
+      config.name = name;
 
-      // Validate interval triggers
       if (config.trigger.type === "interval") {
         parseInterval(config.trigger.every);
       }
 
-      // Auto-generate webhook token if absent
       if (config.trigger.type === "webhook" && !config.trigger.token) {
         config.trigger.token = crypto.randomUUID();
         writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
@@ -102,8 +188,6 @@ function loadActions(): void {
 
       const existing = actionStates.get(name);
       const lastRunNumber = getNextRunNumber(name) - 1;
-
-      // Load last run info from DB
       const lastRuns = dbGetActionRuns(name, 1);
       const lastRun = lastRuns[0];
 
@@ -112,30 +196,38 @@ function loadActions(): void {
       const recentRuns = dbGetActionRuns(name, 100);
       let cycleRunCount = recentRuns.filter(r => r.cycleNumber === currentCycle).length;
 
-      // If cycle is already full and we have cycleInterval, advance to next cycle
       if (config.cycleInterval && config.maxRuns && cycleRunCount >= config.maxRuns) {
         currentCycle++;
         cycleRunCount = 0;
       }
 
-      // Compute nextRunAt for interval triggers
-      let nextRunAt: number | null = null;
-      if (config.enabled && config.trigger.type === "interval") {
-        nextRunAt = Date.now() + parseInterval(config.trigger.every);
-      }
+      const nextRunAt = existing ? existing.nextRunAt
+        : config.enabled && config.trigger.type === "interval"
+          ? Date.now() + parseInterval(config.trigger.every)
+          : null;
 
-      actionStates.set(name, {
-        config,
-        running: existing?.running ?? false,
-        currentSessionId: existing?.currentSessionId ?? null,
-        lastRunAt: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
-        nextRunAt,
-        lastStatus: lastRun?.status ?? null,
-        runNumber: lastRunNumber,
-        cycleNumber: existing?.cycleNumber ?? currentCycle,
-        cycleRunCount: existing?.cycleRunCount ?? cycleRunCount,
-        cycleStartedAt: existing?.cycleStartedAt ?? null,
-      });
+      const isRunning = existing && existing.activeExecutions.size > 0;
+      if (isRunning) {
+        existing.config = config;
+      } else {
+        const state: ActionState = existing ?? {
+          config,
+          activeExecutions: new Map(),
+          lastRunAt: null,
+          nextRunAt: null,
+          exhausted: false,
+        };
+        Object.assign(state, {
+          config,
+          lastRunAt: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
+          nextRunAt,
+          exhausted: deriveExhausted(config, lastRunNumber, currentCycle, cycleRunCount),
+        });
+        if (!existing) {
+          state.activeExecutions = new Map();
+          actionStates.set(name, state);
+        }
+      }
     } catch (err) {
       console.error(`[actions] Failed to load action "${name}":`, err);
     }
@@ -147,60 +239,65 @@ function loadActions(): void {
 async function monitorSession(
   sessionId: string,
   actionName: string,
-  runId: number,
-  state: ActionState,
-): Promise<void> {
+): Promise<SessionOutcome> {
   const start = Date.now();
 
   while (Date.now() - start < SESSION_TIMEOUT_MS) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
-    // Check in-memory active session first
     const active = getActiveSession(sessionId);
     if (active) {
       if (active.status === "idle" || active.status === "done" || active.status === "error") {
         const dbSession = getSession(sessionId);
-        const summary = dbSession?.last_response?.slice(0, 500) ?? "";
-
-        updateActionRun(runId, {
-          status: active.status === "error" ? "error" : "done",
-          summary,
-          completedAt: Date.now(),
+        const sessionStatus = active.status === "error" ? "error" as const : "done" as const;
+        console.log(`[actions] Session completed for "${actionName}": ${active.status}`);
+        return {
+          sessionStatus,
+          response: dbSession?.last_response ?? null,
+          summary: dbSession?.last_response?.slice(0, 500) ?? null,
           costUsd: active.costUsd,
-          error: active.status === "error" ? (active.error ?? "unknown error") : undefined,
-        });
-
-        state.lastStatus = active.status === "error" ? "error" : "done";
-        console.log(`[actions] Run #${state.runNumber} completed for "${actionName}": ${active.status}`);
-        return;
+          error: active.status === "error" ? (active.error ?? "unknown error") : null,
+        };
       }
-      continue; // still running
+      continue;
     }
 
-    // Fallback: check DB (session may have exited active map)
     const dbSession = getSession(sessionId);
     if (dbSession && (dbSession.status === "done" || dbSession.status === "idle" || dbSession.status === "error")) {
-      updateActionRun(runId, {
-        status: dbSession.status === "error" ? "error" : "done",
-        summary: dbSession.last_response?.slice(0, 500) ?? "",
-        completedAt: Date.now(),
+      const sessionStatus = dbSession.status === "error" ? "error" as const : "done" as const;
+      console.log(`[actions] Session completed for "${actionName}" (from DB): ${dbSession.status}`);
+      return {
+        sessionStatus,
+        response: dbSession.last_response ?? null,
+        summary: dbSession.last_response?.slice(0, 500) ?? null,
         costUsd: dbSession.total_cost_usd,
-        error: dbSession.status === "error" ? "session error" : undefined,
-      });
-      state.lastStatus = dbSession.status === "error" ? "error" : "done";
-      console.log(`[actions] Run #${state.runNumber} completed for "${actionName}" (from DB): ${dbSession.status}`);
-      return;
+        error: dbSession.status === "error" ? "session error" : null,
+      };
     }
   }
 
-  // Timeout
-  console.error(`[actions] Run #${state.runNumber} timed out for "${actionName}" after ${SESSION_TIMEOUT_MS / 60000}m`);
-  updateActionRun(runId, {
-    status: "error",
-    completedAt: Date.now(),
+  console.error(`[actions] Session timed out for "${actionName}" after ${SESSION_TIMEOUT_MS / 60000}m`);
+  return {
+    sessionStatus: "timeout",
+    response: null,
+    summary: null,
+    costUsd: 0,
     error: `timeout after ${SESSION_TIMEOUT_MS / 60000} minutes`,
-  });
-  state.lastStatus = "error";
+  };
+}
+
+// ── Transient Error Detection ──
+
+const TRANSIENT_PATTERNS = [
+  "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "ECONNRESET",
+  "fetch failed", "network", "socket hang up",
+  "503", "502", "429",
+  "timeout", "EHOSTUNREACH",
+];
+
+function isTransientError(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  return TRANSIENT_PATTERNS.some(p => msg.includes(p.toLowerCase()));
 }
 
 // ── DB Row Mappers ──
@@ -250,7 +347,6 @@ async function fireAction(
   chainDepth: number = 0,
   overrides?: { userProfile?: string },
 ): Promise<void> {
-  // Chain depth guard
   if (chainDepth >= MAX_CHAIN_DEPTH) {
     console.error(`[actions] Chain depth limit (${MAX_CHAIN_DEPTH}) reached — refusing to fire "${name}"`);
     return;
@@ -262,30 +358,41 @@ async function fireAction(
     return;
   }
 
-  // Concurrency: drop + log
-  if (state.running) {
-    console.log(`[actions] "${name}" already running — dropping ${triggerInfo.type} trigger`);
+  // Concurrency guard
+  const maxConcurrency = state.config.concurrency ?? 1;
+  if (state.activeExecutions.size >= maxConcurrency) {
+    console.log(`[actions] "${name}" at concurrency limit (${maxConcurrency}) — dropping ${triggerInfo.type} trigger`);
     return;
   }
 
-  state.running = true;
-  const runStartedAt = Date.now();
-  const runNumber = getNextRunNumber(name);
-  state.runNumber = runNumber;
-
-  // Start cycle clock on first run of a cycle
-  if (!state.cycleStartedAt) {
-    state.cycleStartedAt = Date.now();
+  // Find or create execution
+  let exec = findActiveExecution(state);
+  if (!exec) {
+    exec = createExecution(name, state.config);
+    state.activeExecutions.set(exec.id, exec);
   }
 
-  console.log(`[actions] Starting run #${runNumber} (cycle #${state.cycleNumber}, run ${state.cycleRunCount + 1}/${state.config.maxRuns ?? "∞"}) for "${name}" [${triggerInfo.type}]`);
+  const runStartedAt = Date.now();
+  const runNumber = getNextRunNumber(name);
+  exec.runNumber++;
+  const execRunNumber = exec.runNumber; // per-execution run number
+  const cfg = state.config;
+  const effectiveUserProfile = overrides?.userProfile ?? cfg.userProfile;
+  const actionDir = join(ACTIONS_DIR, name);
+
+  // Start cycle clock on first run of a cycle
+  if (!exec.cycleStartedAt) {
+    exec.cycleStartedAt = Date.now();
+  }
+
+  console.log(`[actions] Starting run #${runNumber} (exec #${exec.id}, cycle #${exec.cycleNumber}, run ${exec.cycleRunCount + 1}/${cfg.maxRuns ?? "∞"}) for "${name}" [${triggerInfo.type}]`);
 
   let runId: number | null = null;
   let runResult: RunResult | null = null;
+  let isTransient = false;
 
   try {
-    // Dynamic import context.ts — cache bust so edits are picked up
-    const contextPath = join(ACTIONS_DIR, name, "context.ts");
+    const contextPath = join(actionDir, "context.ts");
     if (!existsSync(contextPath)) {
       throw new Error(`Missing context.ts for action "${name}"`);
     }
@@ -294,78 +401,167 @@ async function fireAction(
       throw new Error(`context.ts for "${name}" does not export a gather() function`);
     }
 
-    // Build context
-    const db = buildActionDB(name);
-    const ctx: ActionContext = {
-      actionName: name,
-      runNumber,
-      cycleNumber: state.cycleNumber,
-      cycleRunIndex: state.cycleRunCount,
-      lastRunAt: state.lastRunAt ? new Date(state.lastRunAt) : null,
-      db,
-      trigger: triggerInfo,
-    };
+    const startedAt = Date.now();
+    runId = insertActionRun(name, runNumber, null, startedAt, exec.cycleNumber, triggerInfo.type, effectiveUserProfile, exec.id);
 
-    // Gather prompt
-    const prompt = await mod.gather(ctx);
-    if (!prompt || typeof prompt !== "string") {
-      throw new Error(`gather() returned invalid prompt for "${name}": ${typeof prompt}`);
+    const maxRetries = cfg.maxRetries ?? 0;
+    let attempt = 1;
+    let lastVerifyError: string | undefined;
+    let lastCtx: ActionContext | null = null;
+
+    // ── Verify retry loop ──
+    for (attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      const runDir = join(actionDir, "output", `exec-${exec.id}`, `run-${execRunNumber}`);
+      let artifactDirCreated = false;
+
+      const db = buildActionDB(name);
+      const ctx: ActionContext = {
+        actionName: name,
+        executionId: exec.id,
+        runNumber,
+        cycleNumber: exec.cycleNumber,
+        cycleRunIndex: exec.cycleRunCount,
+        lastRunAt: state.lastRunAt ? new Date(state.lastRunAt) : null,
+        db,
+        trigger: triggerInfo,
+        actionDir,
+        attempt,
+        lastVerifyError,
+        artifactDir() {
+          if (!artifactDirCreated) {
+            mkdirSync(runDir, { recursive: true });
+            artifactDirCreated = true;
+          }
+          return runDir;
+        },
+        artifactPath(filename: string) {
+          return join(ctx.artifactDir(), filename);
+        },
+      };
+      lastCtx = ctx;
+
+      if (attempt > 1) {
+        console.log(`[actions] Retry attempt ${attempt}/${maxRetries + 1} for "${name}" run #${runNumber} (last error: ${lastVerifyError})`);
+      }
+
+      let prompt: string | ActionContent;
+      try {
+        const gathered = await mod.gather(ctx);
+        if (!gathered || (typeof gathered !== "string" && !Array.isArray(gathered))) {
+          throw new Error(`gather() returned invalid prompt for "${name}": ${typeof gathered}`);
+        }
+        prompt = gathered;
+      } catch (gatherErr: any) {
+        const stderr = gatherErr?.stderr ? String(gatherErr.stderr).trim() : "";
+        const baseMsg = String(gatherErr?.message ?? gatherErr);
+        const gatherErrMsg = stderr ? `${baseMsg}: ${stderr}` : baseMsg;
+
+        if ((cfg.onGatherError ?? "fail") === "retry" && attempt < maxRetries + 1) {
+          lastVerifyError = `gather error: ${gatherErrMsg}`;
+          console.log(`[actions] gather() failed for "${name}" run #${runNumber} attempt ${attempt}: ${gatherErrMsg} — retrying`);
+          continue;
+        }
+        throw gatherErr;
+      }
+
+      const session = startSession({
+        prompt,
+        profile: cfg.agentProfile,
+        provider: cfg.provider,
+        maxTurns: cfg.maxTurns,
+        model: cfg.model,
+        effort: cfg.effort,
+        cwd: cfg.cwd,
+        tools: cfg.tools,
+        disallowedTools: cfg.disallowedTools,
+        loadProjectSettings: cfg.loadProjectSettings,
+        actionName: name,
+        userProfile: effectiveUserProfile,
+      });
+
+      const idStart = Date.now();
+      while (session.sessionId.startsWith("pending-") && Date.now() - idStart < 15_000) {
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      exec.currentSessionId = session.sessionId;
+      console.log(`[actions] Run #${runNumber} for "${name}" → session ${session.sessionId} (attempt ${attempt})`);
+
+      updateActionRun(runId, {
+        sessionId: session.sessionId,
+        status: "running",
+        attempts: attempt,
+      });
+
+      const attemptStart = Date.now();
+      const outcome = await monitorSession(session.sessionId, name);
+
+      const outcomeStatus: RunResult["status"] =
+        outcome.sessionStatus === "error" || outcome.sessionStatus === "timeout"
+          ? "error" : "done";
+
+      runResult = {
+        status: outcomeStatus,
+        response: outcome.response,
+        summary: outcome.summary,
+        costUsd: outcome.costUsd,
+        durationMs: Date.now() - attemptStart,
+        sessionId: session.sessionId,
+        error: outcome.error,
+      };
+
+      if (outcomeStatus === "error") break;
+
+      if (typeof mod.verify === "function") {
+        try {
+          const verifyResult = await mod.verify(ctx, runResult);
+          if (verifyResult.ok) break;
+
+          lastVerifyError = verifyResult.reason;
+          console.log(`[actions] Verify failed for "${name}" run #${runNumber} attempt ${attempt}: ${verifyResult.reason}`);
+
+          if (!verifyResult.retry || attempt >= maxRetries + 1) {
+            runResult.status = "failed-verification";
+            runResult.error = lastVerifyError;
+            break;
+          }
+          continue;
+        } catch (verifyErr: any) {
+          lastVerifyError = String(verifyErr?.message ?? verifyErr);
+          console.error(`[actions] verify() threw for "${name}" run #${runNumber}:`, verifyErr);
+          runResult.status = "failed-verification";
+          runResult.error = lastVerifyError;
+          break;
+        }
+      } else {
+        break;
+      }
     }
 
-    // Insert action_runs row
-    const startedAt = Date.now();
-    const effectiveUserProfile = overrides?.userProfile ?? state.config.userProfile;
-    runId = insertActionRun(name, runNumber, null, startedAt, state.cycleNumber, triggerInfo.type, effectiveUserProfile);
+    if (attempt > maxRetries + 1 && runResult && runResult.status === "done") {
+      runResult.status = "failed-verification";
+      runResult.error = lastVerifyError ?? "verify retries exhausted";
+    }
 
-    // Spawn fresh session
-    const cfg = state.config;
-    const session = startSession({
-      prompt,
-      profile: cfg.agentProfile,
-      provider: cfg.provider,
-      maxTurns: cfg.maxTurns,
-      model: cfg.model,
-      effort: cfg.effort,
-      cwd: cfg.cwd,
-      tools: cfg.tools,
-      disallowedTools: cfg.disallowedTools,
-      loadProjectSettings: cfg.loadProjectSettings,
-      actionName: name,
-      userProfile: effectiveUserProfile,
+    const finalStatus = runResult!.status;
+    exec.lastStatus = finalStatus;
+    const finalAttempts = Math.min(attempt, maxRetries + 1);
+
+    updateActionRun(runId, {
+      status: finalStatus,
+      summary: runResult!.summary ?? undefined,
+      completedAt: Date.now(),
+      costUsd: runResult!.costUsd,
+      error: runResult!.error ?? undefined,
+      verifyError: lastVerifyError,
+      attempts: finalAttempts,
     });
 
-    // Wait for real session ID (pending-* → real ID)
-    const idStart = Date.now();
-    while (session.sessionId.startsWith("pending-") && Date.now() - idStart < 15_000) {
-      await new Promise(r => setTimeout(r, 200));
-    }
+    console.log(`[actions] Run #${runNumber} finalized for "${name}": ${finalStatus} (${finalAttempts} attempt(s))`);
 
-    state.currentSessionId = session.sessionId;
-    console.log(`[actions] Run #${runNumber} for "${name}" → session ${session.sessionId}`);
-
-    // Update run row with session ID
-    updateActionRun(runId, { sessionId: session.sessionId, status: "running" });
-
-    // Monitor until session completes
-    const runStart = Date.now();
-    await monitorSession(session.sessionId, name, runId, state);
-
-    // Build RunResult
-    const dbSession = getSession(session.sessionId);
-    runResult = {
-      status: state.lastStatus === "error" ? "error" : "done",
-      response: dbSession?.last_response ?? null,
-      summary: dbSession?.last_response?.slice(0, 500) ?? null,
-      costUsd: dbSession?.total_cost_usd ?? 0,
-      durationMs: Date.now() - runStart,
-      sessionId: session.sessionId,
-      error: state.lastStatus === "error" ? (dbSession?.last_response ?? "unknown") : null,
-    };
-
-    // afterRun hook — failures are isolated from run status
-    if (typeof mod.afterRun === "function") {
+    if (finalStatus === "done" && typeof mod.afterRun === "function" && lastCtx) {
       try {
-        await mod.afterRun(ctx, runResult);
+        await mod.afterRun(lastCtx, runResult!);
         console.log(`[actions] afterRun completed for "${name}" run #${runNumber}`);
       } catch (hookErr: any) {
         const afterRunError = String(hookErr?.message ?? hookErr);
@@ -375,20 +571,66 @@ async function fireAction(
     }
 
   } catch (err: any) {
+    const stderr = err?.stderr ? String(err.stderr).trim() : "";
+    const baseMsg = String(err?.message ?? err);
+    const errMsg = stderr ? `${baseMsg}: ${stderr}` : baseMsg;
+    isTransient = isTransientError(err);
+
+    if (isTransient && (cfg.onTransientFailure ?? "retry") === "retry") {
+      const maxTR = cfg.maxTransientRetries ?? 2;
+      const bkoff = cfg.retryBackoff ? parseInterval(cfg.retryBackoff) : 120_000;
+      const ta = ((exec as any)._transientAttempts ?? 0) + 1;
+      (exec as any)._transientAttempts = ta;
+
+      if (ta <= maxTR) {
+        console.log(`[actions] Transient error for "${name}" run #${runNumber} (${ta}/${maxTR}): ${errMsg} — retrying in ${bkoff / 1000}s`);
+        if (runId !== null) {
+          updateActionRun(runId, {
+            status: "error",
+            error: `transient (attempt ${ta}): ${errMsg}`,
+            completedAt: Date.now(),
+          });
+        }
+        exec.currentSessionId = null;
+        await new Promise(r => setTimeout(r, bkoff));
+        return fireAction(name, triggerInfo, chainDepth, overrides);
+      }
+      console.error(`[actions] Transient retries exhausted for "${name}" run #${runNumber} after ${ta} attempts`);
+    }
+
     console.error(`[actions] Run #${runNumber} failed for "${name}":`, err);
-    state.lastStatus = "error";
+    exec.lastStatus = isTransient ? "error-transient" : "error";
+    runResult = {
+      status: isTransient ? "error-transient" : "error",
+      response: null, summary: null, costUsd: 0, durationMs: 0,
+      sessionId: null, error: errMsg,
+    };
     if (runId !== null) {
       updateActionRun(runId, {
-        status: "error",
+        status: runResult.status,
         completedAt: Date.now(),
-        error: String(err?.message ?? err),
+        error: errMsg,
       });
     }
   } finally {
-    state.running = false;
-    state.currentSessionId = null;
+    exec.currentSessionId = null;
     state.lastRunAt = Date.now();
-    state.cycleRunCount++;
+
+    // Track cost on execution
+    if (runResult && runResult.costUsd > 0) {
+      exec.totalCostUsd += runResult.costUsd;
+    }
+
+    // Transient failures don't count against maxRuns
+    if (!isTransient) {
+      exec.cycleRunCount++;
+    }
+
+    // Check if execution is exhausted
+    if (!isTransient && isExecutionExhausted(exec, cfg)) {
+      closeExecution(exec, state);
+      handleOnExhausted(state);
+    }
 
     // Recalculate nextRunAt for interval triggers
     if (state.config.trigger.type === "interval") {
@@ -428,39 +670,48 @@ function tick(): void {
   const now = Date.now();
   for (const [name, state] of actionStates) {
     if (!state.config.enabled) continue;
-    if (state.running) continue;
+    if (state.activeExecutions.size > 0) continue; // has active execution running
     if (state.config.trigger.type !== "interval") continue;
 
     const trigger = state.config.trigger;
-    const { maxRuns, cycleInterval } = state.config;
-    const atRunLimit = maxRuns && maxRuns > 0 && state.cycleRunCount >= maxRuns;
 
-    if (atRunLimit) {
-      if (cycleInterval) {
-        // Cycle mode: wait for cycleInterval then start new cycle
-        const cycleMs = parseInterval(cycleInterval);
-        const nextCycleAt = (state.cycleStartedAt ?? now) + cycleMs;
-        if (now < nextCycleAt) {
-          state.nextRunAt = nextCycleAt;
-          continue;
-        }
-        // Check maxCycles before starting a new one
-        const { maxCycles } = state.config;
-        if (maxCycles && maxCycles > 0 && state.cycleNumber >= maxCycles) {
-          console.log(`[actions] "${name}" reached maxCycles (${maxCycles}) — auto-disabling`);
+    // Find or create an execution to check cycle state
+    // For tick, we check if we need to advance cycles on the most recent execution
+    // If no active execution, check if we should create one
+    const exec = findActiveExecution(state);
+
+    // If there's an active execution, check its run/cycle limits
+    if (exec) {
+      const { maxRuns, cycleInterval } = state.config;
+      const atRunLimit = maxRuns && maxRuns > 0 && exec.cycleRunCount >= maxRuns;
+
+      if (atRunLimit) {
+        if (cycleInterval) {
+          const cycleMs = parseInterval(cycleInterval);
+          const nextCycleAt = (exec.cycleStartedAt ?? now) + cycleMs;
+          if (now < nextCycleAt) {
+            state.nextRunAt = nextCycleAt;
+            continue;
+          }
+          const { maxCycles } = state.config;
+          if (maxCycles && maxCycles > 0 && exec.cycleNumber >= maxCycles) {
+            console.log(`[actions] "${name}" reached maxCycles (${maxCycles}) — auto-disabling`);
+            closeExecution(exec, state);
+            state.exhausted = true;
+            setActionEnabled(name, false);
+            continue;
+          }
+          exec.cycleNumber++;
+          exec.cycleRunCount = 0;
+          exec.cycleStartedAt = null;
+          console.log(`[actions] "${name}" starting cycle #${exec.cycleNumber}`);
+        } else {
+          console.log(`[actions] "${name}" reached maxRuns (${maxRuns}) — auto-disabling`);
+          closeExecution(exec, state);
+          state.exhausted = true;
           setActionEnabled(name, false);
           continue;
         }
-        // New cycle
-        state.cycleNumber++;
-        state.cycleRunCount = 0;
-        state.cycleStartedAt = null;
-        console.log(`[actions] "${name}" starting cycle #${state.cycleNumber}`);
-      } else {
-        // No cycleInterval = lifetime cap, auto-disable
-        console.log(`[actions] "${name}" reached maxRuns (${maxRuns}) — auto-disabling`);
-        setActionEnabled(name, false);
-        continue;
       }
     }
 
@@ -495,7 +746,7 @@ export function stopActions(): void {
   console.log("[actions] Stopped");
 }
 
-/** Get all actions with runtime state */
+/** Get all actions with runtime state — derives flat fields from active executions for API compat */
 export function getActions(): Array<ActionConfig & {
   nextRunAt: number | null;
   lastRunAt: number | null;
@@ -503,16 +754,22 @@ export function getActions(): Array<ActionConfig & {
   running: boolean;
   cycleNumber: number;
   cycleRunCount: number;
+  exhausted: boolean;
 }> {
-  return Array.from(actionStates.values()).map(s => ({
-    ...s.config,
-    nextRunAt: s.nextRunAt,
-    lastRunAt: s.lastRunAt,
-    lastStatus: s.lastStatus,
-    running: s.running,
-    cycleNumber: s.cycleNumber,
-    cycleRunCount: s.cycleRunCount,
-  }));
+  return Array.from(actionStates.values()).map(s => {
+    // Derive flat fields from most recent active execution
+    const exec = findActiveExecution(s);
+    return {
+      ...s.config,
+      nextRunAt: s.nextRunAt,
+      lastRunAt: s.lastRunAt,
+      lastStatus: exec?.lastStatus ?? null,
+      running: s.activeExecutions.size > 0,
+      cycleNumber: exec?.cycleNumber ?? 1,
+      cycleRunCount: exec?.cycleRunCount ?? 0,
+      exhausted: s.exhausted,
+    };
+  });
 }
 
 /** Get single action state */
@@ -523,7 +780,9 @@ export function getActionState(name: string): ActionState | undefined {
 /** Manually trigger an action (bypasses interval and active hours) */
 export async function triggerAction(name: string, opts?: { userProfile?: string }): Promise<boolean> {
   const state = actionStates.get(name);
-  if (!state || state.running) return false;
+  if (!state) return false;
+  const maxConcurrency = state.config.concurrency ?? 1;
+  if (state.activeExecutions.size >= maxConcurrency) return false;
   const triggerInfo: TriggerInfo = { type: "manual" };
   fireAction(name, triggerInfo, 0, opts).catch(err => {
     console.error(`[actions] Manual trigger error for "${name}":`, err);
@@ -539,9 +798,10 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
   if (state.config.trigger.token !== token) return { ok: false, error: "invalid token" };
   if (!state.config.enabled) return { ok: false, error: "action is disabled" };
 
-  if (state.running) {
-    console.log(`[actions] "${name}" already running — dropping webhook trigger`);
-    return { ok: false, error: "action already running" };
+  const maxConcurrency = state.config.concurrency ?? 1;
+  if (state.activeExecutions.size >= maxConcurrency) {
+    console.log(`[actions] "${name}" at concurrency limit — dropping webhook trigger`);
+    return { ok: false, error: "action at concurrency limit" };
   }
 
   const triggerInfo: TriggerInfo = { type: "webhook", payload };
@@ -556,6 +816,7 @@ export function setActionEnabled(name: string, enabled: boolean): boolean {
   const state = actionStates.get(name);
   if (!state) return false;
   state.config.enabled = enabled;
+  if (enabled) state.exhausted = false;
   const configPath = join(ACTIONS_DIR, name, "action.json");
   writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
   if (enabled && state.config.trigger.type === "interval") {
@@ -577,14 +838,13 @@ export function updateActionConfig(
     state.config.enabled = updates.enabled;
   }
   if (updates.interval !== undefined && state.config.trigger.type === "interval") {
-    parseInterval(updates.interval); // validate
+    parseInterval(updates.interval);
     state.config.trigger.every = updates.interval;
   }
-  // Persist
   const configPath = join(ACTIONS_DIR, name, "action.json");
   writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
-  // Recalculate next run
-  if (state.config.enabled && !state.running && state.config.trigger.type === "interval") {
+  const running = state.activeExecutions.size > 0;
+  if (state.config.enabled && !running && state.config.trigger.type === "interval") {
     state.nextRunAt = Date.now() + parseInterval(state.config.trigger.every);
   } else if (!state.config.enabled) {
     state.nextRunAt = null;
@@ -592,26 +852,26 @@ export function updateActionConfig(
   return true;
 }
 
-/** Reset an action — clears runs, resets cycle/run counters */
+/** Reset an action — marks old executions as "reset", preserves history, creates fresh execution */
 export function resetAction(name: string): boolean {
   const state = actionStates.get(name);
   if (!state) return false;
-  if (state.running) return false;
+  if (state.activeExecutions.size > 0) return false;
 
-  clearActionRuns(name);
+  // Close all active executions as "reset" (data preserved in DB)
+  for (const [id, exec] of state.activeExecutions) {
+    exec.status = "reset";
+    dbUpdateExecution(id, { status: "reset", completedAt: Date.now() });
+  }
+  state.activeExecutions.clear();
+  state.exhausted = false;
 
-  state.cycleNumber = 1;
-  state.cycleRunCount = 0;
-  state.runNumber = 0;
-  state.lastRunAt = null;
-  state.lastStatus = null;
-  state.cycleStartedAt = null;
-
+  // Restart interval if enabled
   if (state.config.enabled && state.config.trigger.type === "interval") {
     state.nextRunAt = Date.now() + parseInterval(state.config.trigger.every);
   }
 
-  console.log(`[actions] Reset action "${name}" — counters zeroed, history cleared`);
+  console.log(`[actions] Reset action "${name}" — old executions archived, ready for new execution`);
   return true;
 }
 

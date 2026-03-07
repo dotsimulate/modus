@@ -27,7 +27,7 @@ export {
 } from "./sessions";
 
 // Actions
-export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences } from "./actions";
+export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences, reloadActionsApi } from "./actions";
 
 // Git
 export { fetchGitStatus, fetchGitLog, fetchGitShow, fetchGitFileDiff, fetchGitFileContent, fetchGitReadme, openInEditor } from "./git";
@@ -37,7 +37,7 @@ export { fetchMemories } from "./memories";
 
 // All types
 export type {
-  ToolCall, SubTask, Attachment, Message, PendingPermission, SessionStatus, Session,
+  ToolCall, SubTask, Attachment, Message, PendingPermission, SessionStatus, Session, AgentConfigState,
   McpServerConfig, ProfileUi, Profile, GlobalConfig,
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,

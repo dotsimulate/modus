@@ -36,14 +36,13 @@ function AppShell() {
     activeUserProfile, activeUP,
     selectedProfile, selectProfile,
     setupState, setSetupState,
-    liveAgentConfig, setLiveAgentConfig,
     uiState, saveUiState, switchUserProfile, refreshUserProfiles,
   } = useProfiles();
   const {
     activeSession, serverSessions,
     input, handleInputChange,
     send, stop, newSession, selectSession, archiveSession,
-    handlePermissionResponse,
+    handlePermissionResponse, updateActiveSessionConfig,
     queuedMessage, cancelQueued,
   } = useSession();
   const { view, navigate } = useHashRouter();
@@ -170,7 +169,7 @@ function AppShell() {
                 showMeta={ui.showMeta}
                 showToolCalls={ui.showToolCalls}
                 showGitEvents={ui.showGitEvents}
-                cwd={setupState.cwd || serverSessions.find(s => s.id === activeSession?.id)?.cwd || null}
+                cwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd ?? null}
                 emptyTitle={ui.emptyTitle ?? activeProfileName}
                 emptySubtitle={ui.emptySubtitle}
                 queuedMessage={queuedMessage}
@@ -188,11 +187,12 @@ function AppShell() {
               <ConfigBar
                 profileName={activeProfileName}
                 model={activeSession?.model ?? profileData?.model}
-                agentConfig={liveAgentConfig}
-                onAgentConfigChange={setLiveAgentConfig}
+                agentConfig={activeSession ? activeSession.agentConfig : setupState.agent}
+                onAgentConfigChange={updateActiveSessionConfig}
                 profileTools={profileData?.tools ?? "all"}
                 availableProviders={availableProviders}
                 profileProvider={profileData?.provider}
+                profileModel={activeSession?.model ?? profileData?.model}
                 profileEffort={profileData?.effort}
                 profileMaxTurns={profileData?.maxTurns}
                 availableTools={activeSession?.availableTools}
@@ -218,7 +218,7 @@ function AppShell() {
 
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
         {view === "actions" && <Actions onSelectSession={handleViewSession} />}
-        {view === "git" && <GitPanel cwd={setupState.cwd || serverSessions.find(s => s.id === activeSession?.id)?.cwd || null} />}
+        {view === "git" && <GitPanel cwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd ?? null} />}
       </div>
     </div>
   );

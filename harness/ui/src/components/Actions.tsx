@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   fetchActions, fetchActionRuns, fetchActionInfo,
   triggerActionApi, updateActionApi, clearActionRunsApi,
-  resetActionApi, fetchActionPreferences,
+  resetActionApi, fetchActionPreferences, reloadActionsApi,
 } from "../api";
 import type { ActionInfo, ActionRun } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -45,16 +45,23 @@ function parseIntervalMs(s: string): number {
 
 function dotStatus(a: ActionInfo): string {
   if (a.running) return "streaming";
+  if (a.exhausted) return "done";
   if (!a.enabled) return "idle";
-  if (a.lastStatus === "error") return "error";
+  if (a.lastStatus === "error" || a.lastStatus === "failed-verification" || a.lastStatus === "error-transient") return "error";
   return "running"; // enabled + waiting = green dot
 }
 
 function runDotStatus(status: string): string {
   if (status === "done") return "done";
-  if (status === "error") return "error";
+  if (status === "error" || status === "failed-verification" || status === "error-transient") return "error";
   if (status === "running") return "streaming";
   return "idle";
+}
+
+function runStatusLabel(status: string): string | null {
+  if (status === "failed-verification") return "verify failed";
+  if (status === "error-transient") return "transient";
+  return null;
 }
 
 function triggerLabel(a: ActionInfo): string {
@@ -194,32 +201,66 @@ function RunsTab({
   );
 }
 
+function copyToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    return;
+  }
+  // Fallback for non-HTTPS contexts
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  document.body.removeChild(ta);
+}
+
 function RunRow({ run, onSelect }: { run: ActionRun; onSelect: (id: string) => void }) {
   const hasSession = !!run.sessionId;
-  const isError = run.status === "error";
+  const isError = run.status === "error" || run.status === "failed-verification" || run.status === "error-transient";
   const elapsed = run.startedAt && run.completedAt
     ? `${Math.floor((run.completedAt - run.startedAt) / 60000)}:${String(Math.floor(((run.completedAt - run.startedAt) % 60000) / 1000)).padStart(2, "0")}`
     : run.status === "running" ? "..." : null;
+  const statusLabel = runStatusLabel(run.status);
+  const attempts = run.attempts && run.attempts > 1 ? run.attempts : null;
+  const rawError = run.verifyError || run.error;
+  const displayError = rawError
+    ? rawError.split("\n").filter(l => l.trim() && !l.includes("WARNING:")).pop()
+      ?? rawError.split("\n").filter(l => l.trim())[0]
+      ?? rawError
+    : null;
 
   return (
-    <button
+    <div
       className={`sched-run-row ${hasSession ? "" : "sched-run-row--no-session"} ${isError ? "sched-run-row--error" : ""}`}
       onClick={() => hasSession && onSelect(run.sessionId!)}
-      disabled={!hasSession}
     >
       <div className="sched-run-top">
         <div className="sched-run-summary">
-          {run.error || run.summary || "..."}
+          {displayError || run.summary || "..."}
         </div>
+        {rawError && (
+          <span
+            className="sched-run-copy"
+            title="copy full error"
+            onClick={(e) => { e.stopPropagation(); copyToClipboard(rawError); }}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4 4v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2v2a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2zm2 0h4a2 2 0 0 1 2 2v4h2V2H6v2zM2 6v8h6V6H2z"/></svg>
+          </span>
+        )}
         {elapsed && <span className="sched-run-elapsed">{elapsed}</span>}
       </div>
       <div className="sched-run-footer">
         <span className="sched-run-num">#{run.runNumber}</span>
         <span className={`dash-dot dash-dot--${runDotStatus(run.status)}`} />
+        {statusLabel && <span className="sched-run-status-label">{statusLabel}</span>}
+        {attempts && <span className="sched-run-attempts">{attempts} attempts</span>}
         <span className="sched-run-meta">${run.costUsd.toFixed(3)}</span>
         {run.startedAt ? <span className="sched-run-ago">{timeAgo(run.startedAt)}</span> : null}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -430,6 +471,7 @@ function ActionCard({
           {chevron}
         </span>
         {action.running && <span className="sched-card-live">running</span>}
+        {action.exhausted && !action.running && <span className="sched-card-done">complete</span>}
       </div>
 
       {/* Tags row */}
@@ -518,7 +560,7 @@ export function Actions({ onSelectSession }: Props) {
         if (active) setActions(a);
       } catch { /* silent */ }
     };
-    poll();
+    reloadActionsApi().then(poll, poll);
     const interval = setInterval(poll, 2000);
     return () => { active = false; clearInterval(interval); };
   }, [activeUserProfile]);

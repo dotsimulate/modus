@@ -8,7 +8,7 @@ import type { SessionProvider } from "./types";
 import { createClaudeCodeProvider } from "./claude-code";
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
 
-const PI_PROVIDERS: PiProviderName[] = ["anthropic", "openai", "litellm", "ollama"];
+const PI_PROVIDERS: PiProviderName[] = ["anthropic", "openai", "litellm", "ollama", "openrouter"];
 
 // Lazy-init cache
 const cache = new Map<string, SessionProvider>();

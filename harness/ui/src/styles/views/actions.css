@@ -127,6 +127,15 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+.sched-card-done {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
 .sched-card-chevron {
   color: var(--text-muted);
   width: 14px;
@@ -310,6 +319,8 @@
 .sched-tab-content {
   max-height: 420px;
   overflow-y: auto;
+  margin-right: -8px;
+  padding-right: 8px;
 }
 
 /* ── Runs tab ── */
@@ -413,6 +424,7 @@
   text-align: left;
   cursor: pointer;
   transition: background 0.12s ease;
+  overflow: hidden;
 }
 .sched-run-row:last-child {
   border-bottom: none;
@@ -441,6 +453,21 @@
   flex: 1;
   min-width: 0;
 }
+.sched-run-copy {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+  padding: 2px;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.sched-run-row:hover .sched-run-copy {
+  opacity: 0.6;
+}
+.sched-run-copy:hover {
+  opacity: 1 !important;
+  color: var(--text-dim);
+}
 .sched-run-elapsed {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -456,10 +483,28 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+.sched-run-footer > * {
+  flex-shrink: 0;
+}
+.sched-run-footer .sched-run-ago {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sched-run-num {
   font-family: var(--font-mono);
   font-size: 10px;
+  color: var(--text-muted);
+}
+.sched-run-status-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #aa3333;
+}
+.sched-run-attempts {
+  font-family: var(--font-mono);
+  font-size: 9px;
   color: var(--text-muted);
 }
 .sched-run-meta {

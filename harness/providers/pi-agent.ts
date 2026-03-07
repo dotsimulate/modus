@@ -27,13 +27,14 @@ import { resolveSecret } from "../secrets";
 
 // ── Provider Names ──
 
-export type PiProviderName = "anthropic" | "openai" | "litellm" | "ollama";
+export type PiProviderName = "anthropic" | "openai" | "litellm" | "ollama" | "openrouter";
 
 const DEFAULT_MODELS: Record<PiProviderName, string> = {
   anthropic: "claude-sonnet-4-6",
   openai: "gpt-4o",
   litellm: "default",
   ollama: "default",
+  openrouter: "anthropic/claude-3.5-sonnet",
 };
 
 // ── Provider-specific state on session._providerState ──
@@ -76,11 +77,17 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any): M
     }
   }
 
-  // OpenAI-compat providers (litellm, ollama)
-  const baseUrlEnv = provider === "litellm" ? "LITELLM_BASE_URL" : "OLLAMA_BASE_URL";
+  // OpenAI-compat providers (litellm, ollama, openrouter)
+  const baseUrlEnv = provider === "litellm" 
+    ? "LITELLM_BASE_URL" 
+    : provider === "ollama"
+    ? "OLLAMA_BASE_URL"
+    : "OPENROUTER_BASE_URL";
   const defaultUrl = provider === "litellm"
     ? "http://localhost:4000/v1"
-    : "http://localhost:11434/v1";
+    : provider === "ollama"
+    ? "http://localhost:11434/v1"
+    : "https://openrouter.ai/api/v1";
   const baseUrl = resolveSecret(baseUrlEnv) ?? process.env[baseUrlEnv] ?? defaultUrl;
   const providerDefaults = getGlobalConfig().providerDefaults?.[provider];
 
@@ -116,6 +123,7 @@ function buildAuthStorage(provider: PiProviderName): AuthStorage {
     openai: "OPENAI_API_KEY",
     litellm: "LITELLM_API_KEY",
     ollama: "OLLAMA_API_KEY",
+    openrouter: "OPENROUTER_API_KEY",
   };
 
   const envVar = envMap[provider];
@@ -137,6 +145,10 @@ function getProviderUrl(provider: string): string {
   }
   if (provider === "ollama") {
     const url = resolveSecret("OLLAMA_BASE_URL") ?? process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1";
+    return url.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
+  }
+  if (provider === "openrouter") {
+    const url = resolveSecret("OPENROUTER_BASE_URL") ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
     return url.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
   }
   return "";
@@ -176,10 +188,27 @@ function friendlyError(err: any, provider: string): string {
 
 // ── Content Helpers ──
 
-function contentToText(content: MessageContent): string {
+/** Convert harness MessageContent to PI's native content format */
+function contentToPi(content: MessageContent): string | { type: "text"; text: string }[] | { type: "text" | "image"; text?: string; data?: string; mimeType?: string }[] {
   if (typeof content === "string") return content;
-  const textBlock = (content as any[]).find((b: any) => b.type === "text");
-  return textBlock?.text ?? "";
+  return (content as any[]).map((block: any) => {
+    if (block.type === "text") return { type: "text" as const, text: block.text };
+    if (block.type === "image" && block.source) {
+      return { type: "image" as const, data: block.source.data, mimeType: block.source.media_type };
+    }
+    return { type: "text" as const, text: "" };
+  });
+}
+
+/** Extract text and images from MessageContent for PI's prompt() signature */
+function contentToPiPrompt(content: MessageContent): { text: string; images?: { type: "image"; data: string; mimeType: string }[] } {
+  if (typeof content === "string") return { text: content };
+  const blocks = content as any[];
+  const text = blocks.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+  const images = blocks
+    .filter((b: any) => b.type === "image" && b.source)
+    .map((b: any) => ({ type: "image" as const, data: b.source.data, mimeType: b.source.media_type }));
+  return { text, images: images.length > 0 ? images : undefined };
 }
 
 // ── Event Translation ──
@@ -335,7 +364,7 @@ function translateEvents(
         });
         const state = getState(session);
         if (state) {
-          state.agentSession.sendUserMessage(contentToText(next), {
+          state.agentSession.sendUserMessage(contentToPi(next) as any, {
             deliverAs: "followUp",
           });
         }
@@ -462,7 +491,8 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         // Send the initial prompt
         session.status = "running";
         session.turnStartedAt = Date.now();
-        await agentSession.prompt(contentToText(session.initialContent));
+        const { text: promptText, images: promptImages } = contentToPiPrompt(session.initialContent);
+        await agentSession.prompt(promptText, promptImages ? { images: promptImages } : undefined);
       } catch (err: any) {
         const message = friendlyError(err, providerName);
         console.error(`[pi-agent] ${session.sessionId}: ${message}`);
@@ -500,7 +530,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         message: { role: "user", content },
       });
 
-      state.agentSession.sendUserMessage(contentToText(content)).catch((err: any) => {
+      state.agentSession.sendUserMessage(contentToPi(content) as any).catch((err: any) => {
         const message = friendlyError(err, providerName);
         console.error(`[pi-agent] ${session.sessionId}: ${message}`);
         ctx.emitEvent({ type: "result", subtype: "error", error: message });
@@ -516,6 +546,19 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         state.agentSession.abort().catch(() => {});
       }
       session.abortController.abort();
+    },
+
+    updateConfig(session: ActiveSession, config: Record<string, any>) {
+      const state = getState(session);
+      if (!state) return;
+
+      let activeTools = state.agentSession.getActiveToolNames();
+      if (Array.isArray(config.tools)) {
+        activeTools = config.tools;
+      } else if (Array.isArray(config.disallowedTools) && config.disallowedTools.length > 0) {
+        activeTools = activeTools.filter((tool) => !config.disallowedTools.includes(tool));
+      }
+      state.agentSession.setActiveToolsByName(activeTools);
     },
   };
 }

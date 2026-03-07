@@ -25,7 +25,7 @@ is the profile's ID used everywhere in the system.
 
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
-  // Options: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama"
+  // Options: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama" | "openrouter"
 
   // Model ID (omit for provider's default)
   "model": "claude-opus-4-6",
@@ -84,7 +84,7 @@ is the profile's ID used everywhere in the system.
   // object = granular per-tool control
   "permissionPolicy": "bypass",
 
-  // ── Provider Tuning (PI providers only: anthropic, openai, litellm, ollama) ──
+  // ── Provider Tuning (PI providers only: anthropic, openai, litellm, ollama, openrouter) ──
 
   // Context window size (must match inference server's -c flag for local models)
   "contextWindow": 65536,

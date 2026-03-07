@@ -72,6 +72,14 @@ export type PendingPermission = {
 
 export type SessionStatus = "starting" | "running" | "idle" | "done" | "error";
 
+export type AgentConfigState = {
+  toolStates: Record<string, "inherit" | "on" | "off">;
+  model: string;
+  provider: string;
+  effort: string;
+  maxTurns: string;
+};
+
 // ── Session ──
 
 export type Session = {
@@ -80,6 +88,9 @@ export type Session = {
   preview: string;
   profile?: string;
   model?: string;
+  agentConfig: AgentConfigState;
+  cwd?: string;
+  loadProjectSettings?: boolean;
   messages: Message[];
   totalCost: number;
   lastSeq: number;
@@ -147,6 +158,7 @@ export type SessionInfo = {
   last_prompt: string | null;
   last_response: string | null;
   cwd: string | null;
+  action_name: string | null;
 };
 
 export type ActiveSessionInfo = {
@@ -202,6 +214,7 @@ export type CreateSessionOpts = {
   profile?: string;
   provider?: string;
   model?: string;
+  toolStates?: Record<string, "inherit" | "on" | "off">;
   maxTurns?: number;
   effort?: string;
   cwd?: string;
@@ -272,12 +285,17 @@ export type ActionInfo = {
   maxTurns?: number;
   maxRuns?: number;
   maxCycles?: number;
+  maxRetries?: number;
+  onGatherError?: "fail" | "retry";
+  maxTransientRetries?: number;
+  onTransientFailure?: "retry" | "skip";
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;
   running: boolean;
   cycleNumber: number;
   cycleRunCount: number;
+  exhausted: boolean;
 };
 
 export type ActionRun = {
@@ -294,6 +312,8 @@ export type ActionRun = {
   error: string | null;
   triggerType: string;
   afterRunError: string | null;
+  attempts?: number;
+  verifyError?: string | null;
 };
 
 export type GitStatus = {

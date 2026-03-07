@@ -5,7 +5,7 @@ import {
   patchUserProfileStateApi,
 } from "../api";
 import { createDefaultSetupState, type SessionSetupState } from "../components/SessionSetup";
-import { agentConfigToOverrides, type AgentConfigState } from "../components/AgentConfig";
+import { agentConfigToOverrides } from "../components/AgentConfig";
 import { addRecentPath } from "../recentPaths";
 
 const USER_PROFILE_KEY = "harness:active-user-profile";
@@ -22,14 +22,12 @@ type ProfileContextValue = {
   setSelectedProfile: (name: string) => void;
   setupState: SessionSetupState;
   setSetupState: React.Dispatch<React.SetStateAction<SessionSetupState>>;
-  liveAgentConfig: AgentConfigState;
-  setLiveAgentConfig: React.Dispatch<React.SetStateAction<AgentConfigState>>;
   uiState: UserProfileState;
   saveUiState: (patch: Partial<UserProfileState>) => void;
   switchUserProfile: (name: string | null) => void;
   refreshProfiles: () => Promise<void>;
   refreshUserProfiles: () => Promise<void>;
-  buildSessionOpts: (prompt: string, profile?: string) => CreateSessionOpts;
+  buildSessionOpts: (prompt: string, profile?: string, seed?: SessionSetupState) => CreateSessionOpts;
 };
 
 const ProfileContext = createContext<ProfileContextValue>(null!);
@@ -47,12 +45,6 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const uiSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [setupState, setSetupState] = useState<SessionSetupState>(createDefaultSetupState());
-  const [liveAgentConfig, setLiveAgentConfig] = useState<AgentConfigState>({
-    toolStates: {},
-    provider: "",
-    effort: "",
-    maxTurns: "",
-  });
 
   // Derived
   const activeUP = userProfiles.find((p) => p.name === activeUserProfile) ?? null;
@@ -98,20 +90,20 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [saveUiState]);
 
   // Build session creation opts from current setup state
-  const buildSessionOpts = useCallback((prompt: string, profile?: string): CreateSessionOpts => {
+  const buildSessionOpts = useCallback((prompt: string, profile?: string, seed?: SessionSetupState): CreateSessionOpts => {
+    const source = seed ?? setupState;
     const profileData = profiles.find((p) => p.name === profile);
     const agentOverrides = agentConfigToOverrides(
-      setupState.agent,
+      source.agent,
       profileData?.tools ?? "all",
     );
-    const cwd = setupState.cwd.trim();
+    const cwd = source.cwd.trim();
     if (cwd) addRecentPath(cwd);
     return {
       prompt,
       profile,
-      ...(setupState.model ? { model: setupState.model } : {}),
       ...(cwd ? { cwd } : {}),
-      loadProjectSettings: setupState.loadProjectSettings,
+      loadProjectSettings: source.loadProjectSettings,
       ...agentOverrides,
     };
   }, [setupState, profiles]);
@@ -168,7 +160,6 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       activeUserProfile, activeUP,
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,
-      liveAgentConfig, setLiveAgentConfig,
       uiState, saveUiState, switchUserProfile, refreshProfiles, refreshUserProfiles,
       buildSessionOpts,
     }}>

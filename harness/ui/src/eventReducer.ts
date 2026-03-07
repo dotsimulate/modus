@@ -5,13 +5,16 @@
  * Enables deterministic state reconstruction on reconnect.
  */
 
-import type { Message, ToolCall, SubTask, SessionStatus, Attachment, PendingPermission } from "./api";
+import type { AgentConfigState, Message, ToolCall, SubTask, SessionStatus, Attachment, PendingPermission } from "./api";
 import { nextMsgId } from "./api";
 
 export type ReducerState = {
   sessionId: string;
   status: SessionStatus;
   model: string;
+  agentConfig: AgentConfigState;
+  cwd: string;
+  loadProjectSettings: boolean;
   messages: Message[];
   totalCost: number;
   lastSeq: number;
@@ -42,6 +45,9 @@ export function createInitialState(sessionId = ""): ReducerState {
     sessionId,
     status: "starting",
     model: "",
+    agentConfig: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "" },
+    cwd: "",
+    loadProjectSettings: true,
     messages: [],
     totalCost: 0,
     lastSeq: 0,
@@ -152,12 +158,26 @@ function getLastSubMessage(msgs: Message[], agentToolId: string): Message | unde
 
 function reduceSystem(s: ReducerState, m: any): ReducerState {
   if (m.subtype === "init") {
+    const nextConfig = readAgentConfig(m.config);
     return {
       ...s,
       sessionId: m.session_id ?? s.sessionId,
       model: m.model ?? s.model,
+      agentConfig: nextConfig ?? s.agentConfig,
+      cwd: m.cwd ?? s.cwd,
+      loadProjectSettings: m.loadProjectSettings ?? s.loadProjectSettings,
       status: "running",
       availableTools: Array.isArray(m.tools) ? m.tools : s.availableTools,
+    };
+  }
+  if (m.subtype === "config_updated") {
+    const nextConfig = readAgentConfig(m.config);
+    return {
+      ...s,
+      model: m.model ?? s.model,
+      agentConfig: nextConfig ?? s.agentConfig,
+      cwd: m.cwd ?? s.cwd,
+      loadProjectSettings: m.loadProjectSettings ?? s.loadProjectSettings,
     };
   }
   if (m.subtype === "interrupted") {
@@ -254,6 +274,26 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
     };
   }
   return s;
+}
+
+function readAgentConfig(config: any): AgentConfigState | null {
+  if (!config || typeof config !== "object") return null;
+  return {
+    toolStates: readToolStates(config.toolStates),
+    model: typeof config.model === "string" ? config.model : "",
+    provider: typeof config.provider === "string" ? config.provider : "",
+    effort: typeof config.effort === "string" ? config.effort : "",
+    maxTurns: config.maxTurns != null ? String(config.maxTurns) : "",
+  };
+}
+
+function readToolStates(toolStates: any): AgentConfigState["toolStates"] {
+  if (!toolStates || typeof toolStates !== "object") return {};
+  const next: AgentConfigState["toolStates"] = {};
+  for (const [tool, state] of Object.entries(toolStates)) {
+    if (state === "inherit" || state === "on" || state === "off") next[tool] = state;
+  }
+  return next;
 }
 
 // ── Assistant Messages ──

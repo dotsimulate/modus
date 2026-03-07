@@ -10,6 +10,7 @@ type Props = {
   profileTools: string[] | "all";
   availableProviders?: string[];
   profileProvider?: string;
+  profileModel?: string;
   profileEffort?: string;
   profileMaxTurns?: number;
   /** All tools reported by SDK init (for MCP tool discovery) */
@@ -29,6 +30,7 @@ export function ConfigBar({
   profileTools,
   availableProviders,
   profileProvider,
+  profileModel,
   profileEffort,
   profileMaxTurns,
   availableTools,
@@ -55,7 +57,7 @@ export function ConfigBar({
   const effort = agentConfig.effort || profileEffort || "default";
   const overrideCount =
     Object.keys(agentConfig.toolStates).length +
-    (agentConfig.provider ? 1 : 0) +
+    (agentConfig.model ? 1 : 0) +
     (agentConfig.effort ? 1 : 0) +
     (agentConfig.maxTurns ? 1 : 0);
 
@@ -97,10 +99,12 @@ export function ConfigBar({
               profileTools={profileTools}
               availableProviders={availableProviders}
               profileProvider={profileProvider}
+              profileModel={profileModel}
               profileEffort={profileEffort}
               profileMaxTurns={profileMaxTurns}
               onChange={onAgentConfigChange}
               compact
+              showProvider={false}
               availableTools={availableTools}
             />
           </div>
