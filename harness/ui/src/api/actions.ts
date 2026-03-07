@@ -58,6 +58,13 @@ export async function resetActionApi(name: string, skipConfirm = false): Promise
   });
 }
 
+export async function reloadActionsApi(): Promise<void> {
+  await fetch(`${API_BASE}/api/actions/reload`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+}
+
 export async function fetchActionPreferences(name: string): Promise<Record<string, boolean>> {
   const res = await fetch(
     `${API_BASE}/api/actions/${encodeURIComponent(name)}/preferences`,

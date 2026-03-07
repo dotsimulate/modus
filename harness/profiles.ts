@@ -79,8 +79,8 @@ export type Profile = {
   prompt: string;
   /** Agent description (for subagent selection / UI display) */
   description: string;
-  /** Execution backend — "claude-code" (default) uses Agent SDK, anything else uses direct API */
-  provider?: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama";
+  /** Execution backend — provider names are validated against the runtime registry */
+  provider?: string;
   /** Allowed tools — omit to inherit all */
   tools?: string[];
   /** Disallowed tools */
@@ -150,7 +150,7 @@ export type UserProfile = {
   /** Visible actions — omit or ["*"] for all */
   actions?: string[];
   /** Default execution provider for sessions under this user profile */
-  provider?: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama";
+  provider?: string;
   memoryFilter?: string;
   memory?: UserProfileMemory;
   /** Show project paths from ALL user profiles in the CWD picker (default: false) */

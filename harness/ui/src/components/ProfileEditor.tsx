@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { saveProfileApi, deleteProfileApi, checkSecrets, patchUserProfileApi, fetchProviderModels } from "../api";
 import type { Profile, McpServerConfig, ProviderModel } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
+import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
 import { isPiProvider, type ToolStates } from "../tools";
 
@@ -218,7 +219,7 @@ function ProfileForm({
   isNew,
 }: {
   profile: Profile;
-  onSave: (p: Omit<Profile, "name"> & { name?: string }) => void;
+  onSave: (p: Omit<Profile, "name"> & { name?: string }) => Promise<void>;
   onDelete?: () => void;
   onCancel: () => void;
   isNew?: boolean;
@@ -244,17 +245,27 @@ function ProfileForm({
   );
   const [saving, setSaving] = useState(false);
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const previousProviderRef = useRef(provider);
 
   // Fetch models when provider changes — clear model if it doesn't exist in new list
   // Also reset tool states when switching between Claude and PI (different tool names)
   useEffect(() => {
+    const providerChanged = previousProviderRef.current !== provider;
+    previousProviderRef.current = provider;
     const p = provider || "claude-code";
+    if (providerChanged) {
+      setModel("");
+      setProviderModels([]);
+    }
+    setModelsLoading(true);
     fetchProviderModels(p).then((models) => {
       setProviderModels(models);
       if (model && models.length > 0 && !models.some((m) => m.id === model)) {
         setModel("");
       }
-    }).catch(() => setProviderModels([]));
+    }).catch(() => setProviderModels([])).finally(() => setModelsLoading(false));
     // Reset tool selections — Claude and PI use different tool namespaces
     const wasPi = isPiProvider(profile.provider);
     const isPi = isPiProvider(provider);
@@ -263,17 +274,23 @@ function ProfileForm({
 
   const handleSave = async () => {
     setSaving(true);
-    const data: any = { description, prompt, promptMode, loadProjectSettings };
-    if (provider) data.provider = provider;
-    if (model) data.model = model;
-    if (effort) data.effort = effort;
-    if (maxTurns) data.maxTurns = Number(maxTurns);
-    const onTools = Object.entries(toolStates).filter(([, s]) => s === "on").map(([t]) => t);
-    if (onTools.length > 0) data.tools = onTools;
-    if (Object.keys(mcpServers).length > 0) data.mcpServers = mcpServers;
-    if (isNew) data.name = name;
-    onSave(data);
-    setSaving(false);
+    setSaveError("");
+    try {
+      const data: any = { description, prompt, promptMode, loadProjectSettings };
+      if (provider) data.provider = provider;
+      if (model) data.model = model;
+      if (effort) data.effort = effort;
+      if (maxTurns) data.maxTurns = Number(maxTurns);
+      const onTools = Object.entries(toolStates).filter(([, s]) => s === "on").map(([t]) => t);
+      if (onTools.length > 0) data.tools = onTools;
+      if (Object.keys(mcpServers).length > 0) data.mcpServers = mcpServers;
+      if (isNew) data.name = name;
+      await onSave(data);
+    } catch (err: any) {
+      setSaveError(err?.message ?? String(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -306,12 +323,17 @@ function ProfileForm({
         </label>
         <label className="profile-field">
           <span>model</span>
-          <select value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="">default</option>
-            {providerModels.map((m) => (
-              <option key={m.id} value={m.id}>{m.id}</option>
-            ))}
-          </select>
+          <SearchDropdown
+            value={model}
+            options={providerModels.map((m) => ({ value: m.id }))}
+            placeholder={modelsLoading ? "loading models..." : "select model"}
+            searchPlaceholder="search models..."
+            emptyLabel={modelsLoading ? "loading models..." : "no models found"}
+            onChange={setModel}
+          />
+          {!model && !modelsLoading && providerModels.length > 0 && (
+            <span className="profile-field-warn">required</span>
+          )}
           {model && providerModels.length > 0 && !providerModels.some((m) => m.id === model) && (
             <span className="profile-field-warn">not in provider's model list</span>
           )}
@@ -355,7 +377,7 @@ function ProfileForm({
       <McpServersEditor servers={mcpServers} onChange={setMcpServers} />
 
       <div className="profile-form-actions">
-        <button className="profile-btn profile-btn--save" onClick={handleSave} disabled={saving || !description || !prompt}>
+        <button className="profile-btn profile-btn--save" onClick={handleSave} disabled={saving || !description || !prompt || !model}>
           {saving ? "saving..." : isNew ? "create" : "save"}
         </button>
         {onDelete && (
@@ -363,6 +385,7 @@ function ProfileForm({
         )}
         <button className="profile-btn" onClick={onCancel}>cancel</button>
       </div>
+      {saveError && <div className="profile-field-warn">{saveError}</div>}
     </div>
   );
 }

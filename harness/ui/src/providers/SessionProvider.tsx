@@ -7,7 +7,7 @@ import {
 } from "../api";
 import type { Session, SessionInfo, Attachment, ApiAttachment } from "../api";
 import { createInitialState } from "../eventReducer";
-import { agentConfigToOverrides } from "../components/AgentConfig";
+import { agentConfigToOverrides, type AgentConfigState } from "../components/AgentConfig";
 import { useProfiles } from "./ProfileProvider";
 import {
   useSessionState, setSessionState, getSessionState,
@@ -39,6 +39,7 @@ type SessionContextValue = {
   ) => Promise<void>;
   queuedMessage: QueuedMessage | null;
   cancelQueued: () => void;
+  updateActiveSessionConfig: (config: AgentConfigState) => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue>(null!);
@@ -46,8 +47,7 @@ export const useSession = () => useContext(SessionContext);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
-    selectedProfile, profiles, buildSessionOpts,
-    liveAgentConfig, setLiveAgentConfig, activeUserProfile,
+    selectedProfile, profiles, buildSessionOpts, setupState, activeUserProfile,
     setSelectedProfile,
   } = useProfiles();
 
@@ -65,6 +65,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   // Derive activeSession from the store
   const activeSession = useSessionState(activeSessionId);
+
+  const applyAgentConfigToState = useCallback((sessionId: string, config: AgentConfigState) => {
+    const rs = getSessionState(sessionId);
+    if (!rs) return;
+    setSessionState(sessionId, {
+      ...rs,
+      agentConfig: config,
+      model: config.model || rs.model,
+    }, activeSession?.profile);
+  }, [activeSession?.profile]);
 
   // ── Refresh sessions ──
 
@@ -119,9 +129,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const profile = selectedProfile || undefined;
     try {
-      const id = await createEmptySession(profile);
+      const id = await createEmptySession(profile, setupState.agent.model || undefined);
       const rs = createInitialState(id);
       rs.status = "idle";
+      rs.agentConfig = setupState.agent;
+      rs.model = setupState.agent.model;
+      rs.cwd = setupState.cwd;
+      rs.loadProjectSettings = setupState.loadProjectSettings;
       setSessionState(id, rs, profile);
       setActiveSessionId(id);
       updateHash(id);
@@ -133,8 +147,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     setInput("");
     setQueuedMessage(null);
-    setLiveAgentConfig({ toolStates: {}, provider: "", effort: "", maxTurns: "" });
-  }, [updateHash, selectedProfile, saveDraftForCurrent, refreshSessions, setLiveAgentConfig]);
+  }, [updateHash, selectedProfile, saveDraftForCurrent, refreshSessions, setupState]);
 
   const selectSession = useCallback(async (id: string) => {
     await saveDraftForCurrent();
@@ -146,7 +159,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const existing = getSessionState(id);
     if (!existing) {
       const rs = createInitialState(id);
-      rs.status = info?.status ?? "idle";
+      rs.status = (info?.status as Session["status"]) ?? "idle";
+      rs.model = info?.model ?? "";
+      rs.cwd = info?.cwd ?? "";
       setSessionState(id, rs, sessionProfile);
     }
     setActiveSessionId(id);
@@ -164,8 +179,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setInput(draft);
 
     setQueuedMessage(null);
-    setLiveAgentConfig({ toolStates: {}, provider: "", effort: "", maxTurns: "" });
-  }, [serverSessions, updateHash, saveDraftForCurrent, setSelectedProfile, setLiveAgentConfig, refreshSessions]);
+  }, [serverSessions, updateHash, saveDraftForCurrent, setSelectedProfile, refreshSessions]);
 
   const archiveSession = useCallback(async (id: string) => {
     await archiveSessionApi(id).catch(() => {});
@@ -199,17 +213,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       const profile = selectedProfile || undefined;
       const rs = createInitialState();
+      const seedState = currentState
+        ? {
+            agent: currentState.agentConfig,
+            cwd: currentState.cwd,
+            loadProjectSettings: currentState.loadProjectSettings,
+          }
+        : setupState;
       rs.messages.push({
         id: nextMsgId(), role: "user", content: prompt,
         attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
       });
       rs.status = "starting";
+      rs.agentConfig = seedState.agent;
+      rs.model = seedState.agent.model;
+      rs.cwd = seedState.cwd;
+      rs.loadProjectSettings = seedState.loadProjectSettings;
       const tempId = rs.sessionId;
       setSessionState(tempId, rs, profile);
       setActiveSessionId(tempId);
 
       try {
-        const opts = buildSessionOpts(prompt, profile);
+        const opts = buildSessionOpts(prompt, profile, seedState);
         if (apiAtts) opts.attachments = apiAtts;
         const { sessionId } = await createSession(opts);
 
@@ -271,7 +296,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [input, activeSessionId, activeSession?.profile, selectedProfile, buildSessionOpts, updateHash, refreshSessions]);
+  }, [input, activeSessionId, activeSession?.profile, selectedProfile, buildSessionOpts, updateHash, refreshSessions, setupState]);
 
   // ── Auto-send queued message when model finishes ──
 
@@ -329,16 +354,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [pendingHashId, serverSessions, selectSession]);
 
-  // ── Sync live config overrides to backend ──
-
-  useEffect(() => {
-    if (!activeSessionId || activeSessionId.startsWith("pending-")) return;
-    const hasOverrides = Object.keys(liveAgentConfig.toolStates).length > 0;
-    if (!hasOverrides) return;
-    const profile = profiles.find(p => p.name === activeSession?.profile);
-    const overrides = agentConfigToOverrides(liveAgentConfig, profile?.tools ?? "all");
-    updateSessionConfig(activeSessionId, overrides).catch(() => {});
-  }, [liveAgentConfig, activeSessionId, activeSession?.profile, profiles]);
+  const updateActiveSessionConfig = useCallback(async (config: AgentConfigState) => {
+    if (!activeSessionId) return;
+    applyAgentConfigToState(activeSessionId, config);
+    if (activeSessionId.startsWith("pending-")) return;
+    const profile = profiles.find((p) => p.name === activeSession?.profile);
+    const overrides = agentConfigToOverrides(config, profile?.tools ?? "all");
+    await updateSessionConfig(activeSessionId, {
+      ...overrides,
+      cwd: getSessionState(activeSessionId)?.cwd,
+      loadProjectSettings: getSessionState(activeSessionId)?.loadProjectSettings,
+    }).catch(() => {});
+  }, [activeSessionId, activeSession?.profile, applyAgentConfigToState, profiles]);
 
   return (
     <SessionContext.Provider value={{
@@ -346,7 +373,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       input, handleInputChange,
       send, stop, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,
-      queuedMessage, cancelQueued,
+      queuedMessage, cancelQueued, updateActiveSessionConfig,
     }}>
       {children}
     </SessionContext.Provider>

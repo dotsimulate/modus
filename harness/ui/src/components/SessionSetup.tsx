@@ -1,24 +1,18 @@
 /**
  * SessionSetup — full session creation panel.
  *
- * Combines AgentConfig (mutable settings) with creation-only fields:
- * model, cwd, loadProjectSettings. Replaces the old SessionConfig.
- *
- * Lives in the sidebar below the profile selector.
+ * Combines AgentConfig (model/provider/tools/effort/turns) with
+ * creation-only path settings for the next session.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { AgentConfig, type AgentConfigState } from "./AgentConfig";
 import { FolderPicker } from "./FolderPicker";
 import { getRecentPaths, addRecentPath } from "../recentPaths";
-import { fetchProviderModels } from "../api";
-import type { ProviderModel } from "../api";
 
 export type SessionSetupState = {
-  /** Mutable agent config (tools, effort, turns) */
+  /** Mutable agent config for seeding the next session */
   agent: AgentConfigState;
-  /** Creation-only fields */
-  model: string;
   cwd: string;
   loadProjectSettings: boolean;
 };
@@ -51,48 +45,16 @@ export function SessionSetup({
   showAllProjectPaths: _showAllProjectPaths,
 }: Props) {
   const [browseOpen, setBrowseOpen] = useState(false);
-  const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
   const recentPaths = getRecentPaths();
   const projectPathSet = new Set(projectPaths ?? []);
   const filteredRecent = recentPaths.filter((p) => !projectPathSet.has(p));
-
-  // Effective provider: session override > profile default > claude-code
-  const effectiveProvider = config.agent.provider || profileProvider || "claude-code";
-
-  useEffect(() => {
-    fetchProviderModels(effectiveProvider).then(setProviderModels).catch(() => setProviderModels([]));
-  }, [effectiveProvider]);
 
   const update = (patch: Partial<SessionSetupState>) => {
     onChange({ ...config, ...patch });
   };
 
-  // Only show profile model as label if it's valid for the current provider
-  const profileModelValid = profileModel && providerModels.length > 0
-    ? providerModels.some((m) => m.id === profileModel)
-    : true; // assume valid until models load
-  const modelLabel = profileModel && profileModelValid ? profileModel : "default";
-
   return (
     <div className="session-setup">
-      {/* Model selector */}
-      <div className="session-setup-row">
-        <label className="agent-config-field">
-          <span>model</span>
-          <select
-            value={config.model}
-            onChange={(e) => update({ model: e.target.value })}
-          >
-            <option value="">{modelLabel}</option>
-            {providerModels
-              .filter((m) => m.id !== profileModel)
-              .map((m) => (
-                <option key={m.id} value={m.id}>{m.id}</option>
-              ))}
-          </select>
-        </label>
-      </div>
-
       {/* CWD — dropdown of recent paths + browse button */}
       <div className="cwd-field">
         <label className="agent-config-field">
@@ -161,9 +123,11 @@ export function SessionSetup({
         profileTools={profileTools}
         availableProviders={availableProviders}
         profileProvider={profileProvider}
+        profileModel={profileModel}
         profileEffort={profileEffort}
         profileMaxTurns={profileMaxTurns}
         onChange={(agent) => update({ agent })}
+        dropdownDirection="up"
         toolsCollapsible
       />
 
@@ -206,8 +170,7 @@ function shortenPath(p: string): string {
 /** Default state for SessionSetup */
 export function createDefaultSetupState(): SessionSetupState {
   return {
-    agent: { toolStates: {}, provider: "", effort: "", maxTurns: "" },
-    model: "",
+    agent: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "" },
     cwd: "",
     loadProjectSettings: true,
   };

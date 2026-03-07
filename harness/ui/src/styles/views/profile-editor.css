@@ -123,6 +123,11 @@
   resize: vertical;
   min-height: 48px;
 }
+.profile-field-warn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--error);
+}
 .profile-field-row {
   display: flex;
   gap: 8px;

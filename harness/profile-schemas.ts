@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { isKnownProvider } from "./providers/registry";
 
 // ── MCP Server Config ──
 
@@ -84,12 +85,16 @@ const ProviderDefaultsSchema = z.object({
   compaction: CompactionConfigSchema.optional(),
 });
 
+const ProviderSchema = z.string().refine(isKnownProvider, {
+  message: "unknown provider",
+});
+
 // ── Agent Profile ──
 
 export const ProfileSchema = z.object({
   prompt: z.string(),
   description: z.string(),
-  provider: z.enum(["claude-code", "anthropic", "openai", "litellm", "ollama"]).optional(),
+  provider: ProviderSchema.optional(),
   tools: z.array(z.string()).optional(),
   disallowedTools: z.array(z.string()).optional(),
   model: z.string().optional(),
@@ -118,7 +123,7 @@ export const UserProfileSchema = z.object({
   templateVars: z.record(z.string()).optional(),
   projects: z.array(z.string()),
   agentProfiles: z.array(z.string()).optional(),
-  provider: z.enum(["claude-code", "anthropic", "openai", "litellm", "ollama"]).optional(),
+  provider: ProviderSchema.optional(),
   memoryFilter: z.string().optional(),
   memory: UserProfileMemorySchema.optional(),
   showAllProjectPaths: z.boolean().optional(),

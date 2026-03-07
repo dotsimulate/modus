@@ -1,0 +1,114 @@
+/**
+ * Search Dropdown — shared searchable select input.
+ *
+ * Reusable styles for typed dropdown selection across forms.
+ */
+
+.search-dropdown {
+  position: relative;
+}
+.search-dropdown-control {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  transition: border-color 0.12s ease;
+}
+.search-dropdown--open .search-dropdown-control,
+.search-dropdown-control:focus-within {
+  border-color: var(--border-active);
+}
+.search-dropdown--disabled .search-dropdown-control {
+  opacity: 0.5;
+}
+.search-dropdown-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+}
+.search-dropdown-input::placeholder {
+  color: var(--text-muted);
+}
+.search-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.search-dropdown-toggle:hover {
+  color: var(--text);
+}
+.search-dropdown-toggle {
+  width: 24px;
+}
+.search-dropdown-toggle:disabled {
+  cursor: default;
+}
+.search-dropdown-toggle-x {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1;
+}
+.search-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-active);
+  border-radius: 3px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 20;
+}
+.search-dropdown--up .search-dropdown-menu {
+  top: auto;
+  bottom: calc(100% + 4px);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+.search-dropdown-item,
+.search-dropdown-empty {
+  width: 100%;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.search-dropdown-item {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-align: left;
+}
+.search-dropdown-item:hover,
+.search-dropdown-item--active {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.search-dropdown-empty {
+  color: var(--text-muted);
+}
+
+.search-dropdown--compact .search-dropdown-control {
+  background: var(--bg-surface);
+}
+.search-dropdown--compact .search-dropdown-input {
+  padding: 4px 6px;
+}
+.search-dropdown--compact .search-dropdown-item,
+.search-dropdown--compact .search-dropdown-empty {
+  padding: 5px 6px;
+}

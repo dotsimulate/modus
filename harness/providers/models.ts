@@ -29,6 +29,11 @@ function getBaseURL(provider: string): { url: string; apiKey: string } {
         url: "https://api.openai.com/v1",
         apiKey: resolveSecret("OPENAI_API_KEY") ?? process.env.OPENAI_API_KEY ?? "",
       };
+    case "openrouter":
+      return {
+        url: resolveSecret("OPENROUTER_BASE_URL") ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
+        apiKey: resolveSecret("OPENROUTER_API_KEY") ?? process.env.OPENROUTER_API_KEY ?? "",
+      };
     default:
       throw new Error(`No model list for provider: ${provider}`);
   }

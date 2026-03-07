@@ -78,6 +78,22 @@ db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, 
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, archived, last_message_at DESC)`);
 
+// ── Action Executions (lifecycle instances — one complete pass through run budget) ──
+db.run(`
+  CREATE TABLE IF NOT EXISTS action_executions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running',
+    started_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    run_count INTEGER DEFAULT 0,
+    cycle_count INTEGER DEFAULT 1,
+    total_cost_usd REAL DEFAULT 0,
+    config_snapshot TEXT
+  )
+`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_executions_action ON action_executions(action_name)`);
+
 // ── Action Runs (tracks each execution of an action) ──
 db.run(`
   CREATE TABLE IF NOT EXISTS action_runs (
@@ -108,6 +124,18 @@ try {
     console.log("[db] Migrated schedule_runs → action_runs");
   }
 } catch { /* already migrated */ }
+
+// Migration: add attempts + verify_error columns
+try {
+  db.run(`ALTER TABLE action_runs ADD COLUMN attempts INTEGER DEFAULT 1`);
+} catch { /* column already exists */ }
+try {
+  db.run(`ALTER TABLE action_runs ADD COLUMN verify_error TEXT`);
+} catch { /* column already exists */ }
+// Migration: add execution_id column linking runs to executions
+try {
+  db.run(`ALTER TABLE action_runs ADD COLUMN execution_id INTEGER REFERENCES action_executions(id)`);
+} catch { /* column already exists */ }
 
 // ── Types ──
 
@@ -169,10 +197,31 @@ const stmts = {
   // Drafts
   getDraft: db.prepare(`SELECT draft_text FROM sessions WHERE id = $id`),
   setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text WHERE id = $id`),
+  // Action Executions
+  insertExecution: db.prepare(`
+    INSERT INTO action_executions (action_name, status, started_at, config_snapshot)
+    VALUES ($action_name, $status, $started_at, $config_snapshot)
+  `),
+  updateExecution: db.prepare(`
+    UPDATE action_executions SET
+      status = COALESCE($status, status),
+      completed_at = COALESCE($completed_at, completed_at),
+      run_count = COALESCE($run_count, run_count),
+      cycle_count = COALESCE($cycle_count, cycle_count),
+      total_cost_usd = COALESCE($total_cost_usd, total_cost_usd)
+    WHERE id = $id
+  `),
+  getExecutions: db.prepare(`
+    SELECT * FROM action_executions WHERE action_name = $action_name
+    ORDER BY id DESC LIMIT $limit
+  `),
+  getActiveExecutions: db.prepare(`
+    SELECT * FROM action_executions WHERE action_name = $action_name AND status = 'running'
+  `),
   // Action Runs
   insertActionRun: db.prepare(`
-    INSERT INTO action_runs (action_name, session_id, run_number, status, started_at, cycle_number, trigger_type, user_profile)
-    VALUES ($action_name, $session_id, $run_number, $status, $started_at, $cycle_number, $trigger_type, $user_profile)
+    INSERT INTO action_runs (action_name, session_id, run_number, status, started_at, cycle_number, trigger_type, user_profile, execution_id)
+    VALUES ($action_name, $session_id, $run_number, $status, $started_at, $cycle_number, $trigger_type, $user_profile, $execution_id)
   `),
   updateActionRun: db.prepare(`
     UPDATE action_runs SET
@@ -182,13 +231,20 @@ const stmts = {
       cost_usd = COALESCE($cost_usd, cost_usd),
       error = COALESCE($error, error),
       session_id = COALESCE($session_id, session_id),
-      after_run_error = COALESCE($after_run_error, after_run_error)
+      after_run_error = COALESCE($after_run_error, after_run_error),
+      attempts = COALESCE($attempts, attempts),
+      verify_error = COALESCE($verify_error, verify_error)
     WHERE id = $id
   `),
   getActionRuns: db.prepare(`
-    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile
+    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, execution_id
     FROM action_runs WHERE action_name = $action_name
     ORDER BY run_number DESC LIMIT $limit
+  `),
+  getRunsByExecution: db.prepare(`
+    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, execution_id
+    FROM action_runs WHERE execution_id = $execution_id
+    ORDER BY run_number ASC
   `),
   getRunSummaries: db.prepare(`
     SELECT run_number, summary, completed_at FROM (
@@ -243,6 +299,13 @@ export function listSessions(limit = 50): SessionRow[] {
   return stmts.list.all({ $limit: limit }) as SessionRow[];
 }
 
+/** List sessions spawned by a specific action */
+export function listSessionsByAction(actionName: string, limit = 50): SessionRow[] {
+  return db.prepare(
+    `SELECT * FROM sessions WHERE archived = 0 AND action_name = $action ORDER BY last_message_at DESC LIMIT $limit`
+  ).all({ $action: actionName, $limit: limit }) as SessionRow[];
+}
+
 /** List sessions filtered to specific project CWD prefixes */
 export function listSessionsForProjects(cwdPrefixes: string[], limit = 50): SessionRow[] {
   if (cwdPrefixes.length === 0) return listSessions(limit);
@@ -294,48 +357,66 @@ export function setDraft(sessionId: string, text: string) {
   stmts.setDraft.run({ $id: sessionId, $draft_text: text });
 }
 
-// ── Action Run Functions ──
+// ── Action Execution Functions ──
 
-import type { RunSummary, RunMeta } from "./action-types";
+export type ExecutionRow = {
+  id: number;
+  action_name: string;
+  status: string;
+  started_at: number;
+  completed_at: number | null;
+  run_count: number;
+  cycle_count: number;
+  total_cost_usd: number;
+  config_snapshot: string | null;
+};
 
-export function insertActionRun(actionName: string, runNumber: number, sessionId: string | null, startedAt: number, cycleNumber = 1, triggerType?: string, userProfile?: string): number {
-  stmts.insertActionRun.run({
+export function insertExecution(actionName: string, configSnapshot?: string): number {
+  stmts.insertExecution.run({
     $action_name: actionName,
-    $session_id: sessionId,
-    $run_number: runNumber,
     $status: "running",
-    $started_at: startedAt,
-    $cycle_number: cycleNumber,
-    $trigger_type: triggerType ?? null,
-    $user_profile: userProfile ?? null,
+    $started_at: Date.now(),
+    $config_snapshot: configSnapshot ?? null,
   });
   return Number((db.query("SELECT last_insert_rowid() as id").get() as any).id);
 }
 
-export function updateActionRun(id: number, updates: {
+export function updateExecution(id: number, updates: {
   status?: string;
-  summary?: string;
   completedAt?: number;
-  costUsd?: number;
-  error?: string;
-  sessionId?: string;
-  afterRunError?: string;
+  runCount?: number;
+  cycleCount?: number;
+  totalCostUsd?: number;
 }) {
-  stmts.updateActionRun.run({
+  stmts.updateExecution.run({
     $id: id,
     $status: updates.status ?? null,
-    $summary: updates.summary ?? null,
     $completed_at: updates.completedAt ?? null,
-    $cost_usd: updates.costUsd ?? null,
-    $error: updates.error ?? null,
-    $session_id: updates.sessionId ?? null,
-    $after_run_error: updates.afterRunError ?? null,
+    $run_count: updates.runCount ?? null,
+    $cycle_count: updates.cycleCount ?? null,
+    $total_cost_usd: updates.totalCostUsd ?? null,
   });
 }
 
-export function getActionRuns(actionName: string, limit = 20): RunMeta[] {
-  const rows = stmts.getActionRuns.all({ $action_name: actionName, $limit: limit }) as any[];
-  return rows.map(r => ({
+export function getExecutions(actionName: string, limit = 20): ExecutionRow[] {
+  return stmts.getExecutions.all({ $action_name: actionName, $limit: limit }) as ExecutionRow[];
+}
+
+export function getActiveExecutions(actionName: string): ExecutionRow[] {
+  return stmts.getActiveExecutions.all({ $action_name: actionName }) as ExecutionRow[];
+}
+
+export function getRunsByExecution(executionId: number): RunMeta[] {
+  const rows = stmts.getRunsByExecution.all({ $execution_id: executionId }) as any[];
+  return rows.map(mapRunRow);
+}
+
+// ── Action Run Functions ──
+
+import type { RunSummary, RunMeta } from "./action-types";
+
+function mapRunRow(r: any): RunMeta {
+  return {
     id: r.id,
     runNumber: r.run_number,
     cycleNumber: r.cycle_number ?? 1,
@@ -348,7 +429,55 @@ export function getActionRuns(actionName: string, limit = 20): RunMeta[] {
     error: r.error,
     triggerType: r.trigger_type ?? "interval",
     afterRunError: r.after_run_error,
-  }));
+    attempts: r.attempts ?? 1,
+    verifyError: r.verify_error ?? null,
+    executionId: r.execution_id ?? null,
+  };
+}
+
+export function insertActionRun(actionName: string, runNumber: number, sessionId: string | null, startedAt: number, cycleNumber = 1, triggerType?: string, userProfile?: string, executionId?: number): number {
+  stmts.insertActionRun.run({
+    $action_name: actionName,
+    $session_id: sessionId,
+    $run_number: runNumber,
+    $status: "running",
+    $started_at: startedAt,
+    $cycle_number: cycleNumber,
+    $trigger_type: triggerType ?? null,
+    $user_profile: userProfile ?? null,
+    $execution_id: executionId ?? null,
+  });
+  return Number((db.query("SELECT last_insert_rowid() as id").get() as any).id);
+}
+
+export function updateActionRun(id: number, updates: {
+  status?: string;
+  summary?: string;
+  completedAt?: number;
+  costUsd?: number;
+  error?: string;
+  sessionId?: string;
+  afterRunError?: string;
+  attempts?: number;
+  verifyError?: string;
+}) {
+  stmts.updateActionRun.run({
+    $id: id,
+    $status: updates.status ?? null,
+    $summary: updates.summary ?? null,
+    $completed_at: updates.completedAt ?? null,
+    $cost_usd: updates.costUsd ?? null,
+    $error: updates.error ?? null,
+    $session_id: updates.sessionId ?? null,
+    $after_run_error: updates.afterRunError ?? null,
+    $attempts: updates.attempts ?? null,
+    $verify_error: updates.verifyError ?? null,
+  });
+}
+
+export function getActionRuns(actionName: string, limit = 20): RunMeta[] {
+  const rows = stmts.getActionRuns.all({ $action_name: actionName, $limit: limit }) as any[];
+  return rows.map(mapRunRow);
 }
 
 export function getRunSummaries(actionName: string, limit = 5): RunSummary[] {
@@ -535,5 +664,15 @@ export function storageStats(): { project: string; sessions: number; events: num
 // ── Startup Cleanup ──
 // Mark orphaned running/starting/idle/error sessions as done (harness restarted while they were active)
 db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'idle', 'error')`);
+// Mark orphaned action runs as error (harness crashed mid-run)
+const staleRuns = db.run(`UPDATE action_runs SET status = 'error', error = 'harness crashed during run', completed_at = ${Date.now()} WHERE status = 'running'`);
+if (staleRuns.changes > 0) {
+  console.log(`[db] Cleaned up ${staleRuns.changes} orphaned action run(s) from previous crash`);
+}
+// Mark orphaned executions as done (harness crashed mid-execution)
+const staleExecs = db.run(`UPDATE action_executions SET status = 'done', completed_at = ${Date.now()} WHERE status = 'running'`);
+if (staleExecs.changes > 0) {
+  console.log(`[db] Cleaned up ${staleExecs.changes} orphaned execution(s) from previous crash`);
+}
 
 export { db };

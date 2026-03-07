@@ -171,12 +171,13 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
 // ── Start Session ──
 
 export type StartSessionOpts = {
-  prompt: string;
+  prompt: string | MessageContent;
   attachments?: ImageAttachment[];
   profile?: string;
   userProfile?: string;
   provider?: string;
   model?: string;
+  toolStates?: Record<string, string>;
   maxTurns?: number;
   effort?: string;
   cwd?: string;
@@ -186,6 +187,24 @@ export type StartSessionOpts = {
   sessionId?: string;
   actionName?: string;
 };
+
+function configEventPayload(config: {
+  provider?: string;
+  model?: string;
+  effort?: string;
+  maxTurns?: number;
+  toolStates?: Record<string, string>;
+  cwd?: string;
+  loadProjectSettings?: boolean;
+}) {
+  return {
+    provider: config.provider ?? "",
+    model: config.model ?? "",
+    effort: config.effort ?? "",
+    maxTurns: config.maxTurns,
+    toolStates: config.toolStates ?? {},
+  };
+}
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
   const profileDef = opts.profile ? getProfile(opts.profile) : undefined;
@@ -201,7 +220,9 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     systemPrompt = systemPrompt.replace(/\{\{(\w+)\}\}/g, (_, key) => userData[key] ?? `{{${key}}}`);
   }
 
-  const initialContent = buildContent(opts.prompt, opts.attachments);
+  const initialContent = typeof opts.prompt === "string"
+    ? buildContent(opts.prompt, opts.attachments)
+    : opts.prompt; // already MessageContent (content blocks from actions)
   const isClaudeCode = providerName === "claude-code";
   const tempId = isClaudeCode
     ? (opts.sessionId ?? `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
@@ -221,7 +242,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     error: null,
     preview: contentPreview(initialContent),
     lastAssistantText: "",
-    initialPrompt: opts.prompt,
+    initialPrompt: typeof opts.prompt === "string" ? opts.prompt : contentPreview(opts.prompt),
     initialContent,
     subscribers: new Set(),
     abortController: new AbortController(),
@@ -269,6 +290,9 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       session_id: tempId,
       model: session.model,
       provider: providerName,
+      config: configEventPayload(opts),
+      cwd: session.cwd,
+      loadProjectSettings: opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true,
       tools: [],
     };
     ctx.emitEvent(initEvent);
@@ -347,12 +371,36 @@ export function stopTask(sessionId: string, taskId: string): boolean {
 
 export function updateSessionConfig(
   sessionId: string,
-  config: { disallowedTools?: string[]; tools?: string[] },
+  config: {
+    provider?: string;
+    model?: string;
+    effort?: string;
+    maxTurns?: number;
+    tools?: string[];
+    disallowedTools?: string[];
+    toolStates?: Record<string, string>;
+    cwd?: string;
+    loadProjectSettings?: boolean;
+  },
 ): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
-  if (!session._provider.updateConfig) return false;
-  session._provider.updateConfig(session, config);
+  if (config.model !== undefined) {
+    session.model = config.model || getProfile(session.profile ?? "")?.model;
+  }
+  if (config.cwd !== undefined) {
+    session.cwd = config.cwd;
+  }
+  session._provider.updateConfig?.(session, config);
+  session.seq++;
+  addEvent(session.sessionId, session.seq, "system", "config_updated", JSON.stringify({
+    type: "system",
+    subtype: "config_updated",
+    model: session.model,
+    config: configEventPayload(config),
+    cwd: session.cwd,
+    loadProjectSettings: config.loadProjectSettings,
+  }));
   return true;
 }
 
