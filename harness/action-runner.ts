@@ -114,6 +114,7 @@ function createExecution(actionName: string, config: ActionConfig): ExecutionSta
     currentSessionId: null,
     lastStatus: null,
     totalCostUsd: 0,
+    transientAttempts: 0,
   };
 }
 
@@ -579,8 +580,8 @@ async function fireAction(
     if (isTransient && (cfg.onTransientFailure ?? "retry") === "retry") {
       const maxTR = cfg.maxTransientRetries ?? 2;
       const bkoff = cfg.retryBackoff ? parseInterval(cfg.retryBackoff) : 120_000;
-      const ta = ((exec as any)._transientAttempts ?? 0) + 1;
-      (exec as any)._transientAttempts = ta;
+      const ta = exec.transientAttempts + 1;
+      exec.transientAttempts = ta;
 
       if (ta <= maxTR) {
         console.log(`[actions] Transient error for "${name}" run #${runNumber} (${ta}/${maxTR}): ${errMsg} — retrying in ${bkoff / 1000}s`);
@@ -670,8 +671,11 @@ function tick(): void {
   const now = Date.now();
   for (const [name, state] of actionStates) {
     if (!state.config.enabled) continue;
-    if (state.activeExecutions.size > 0) continue; // has active execution running
     if (state.config.trigger.type !== "interval") continue;
+
+    // Skip if a session is currently running (don't double-fire)
+    const hasRunningSession = [...state.activeExecutions.values()].some(e => e.currentSessionId !== null);
+    if (hasRunningSession) continue;
 
     const trigger = state.config.trigger;
 
@@ -852,11 +856,10 @@ export function updateActionConfig(
   return true;
 }
 
-/** Reset an action — marks old executions as "reset", preserves history, creates fresh execution */
+/** Reset an action — marks old executions as "reset", preserves history */
 export function resetAction(name: string): boolean {
   const state = actionStates.get(name);
   if (!state) return false;
-  if (state.activeExecutions.size > 0) return false;
 
   // Close all active executions as "reset" (data preserved in DB)
   for (const [id, exec] of state.activeExecutions) {

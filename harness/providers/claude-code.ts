@@ -472,6 +472,9 @@ export function createClaudeCodeProvider(): SessionProvider {
       if (config.maxTurns !== undefined) {
         state.sdkOptions.maxTurns = config.maxTurns || undefined;
       }
+      if (config.systemPrompt !== undefined) {
+        state.sdkOptions.systemPrompt = config.systemPrompt || undefined;
+      }
 
       if (config.tools !== undefined && config.tools.length > 0 && hasMcp) {
         const blocked = ALL_BUILTIN.filter((t: string) => !config.tools.includes(t));
@@ -490,6 +493,43 @@ export function createClaudeCodeProvider(): SessionProvider {
       if (session.status === "running" || session.status === "starting") {
         session.abortController.abort();
       }
+    },
+
+    switchProfile(session: ActiveSession, ctx: TurnContext, contextMode: string) {
+      const state = getState(session);
+      const profileDef = ctx.profile;
+
+      // Build new system prompt
+      let systemPrompt: string | { type: "preset"; preset: "claude_code"; append?: string } | undefined;
+      if (profileDef?.prompt) {
+        if (profileDef.promptMode === "custom") {
+          systemPrompt = profileDef.prompt;
+        } else {
+          systemPrompt = { type: "preset", preset: "claude_code", append: profileDef.prompt };
+        }
+      }
+
+      // Update SDK options for next resume
+      state.sdkOptions.systemPrompt = systemPrompt;
+      state.sdkOptions.model = ctx.opts.model || undefined;
+      state.sdkOptions.effort = ctx.opts.effort || undefined;
+      state.sdkOptions.maxTurns = ctx.opts.maxTurns || undefined;
+
+      // Update tools
+      const hasMcp = !!state.sdkOptions.mcpServers;
+      const rawTools = ctx.opts.tools ?? profileDef?.tools ?? undefined;
+      const rawDisallowed = ctx.opts.disallowedTools ?? profileDef?.disallowedTools ?? undefined;
+      if (hasMcp && Array.isArray(rawTools)) {
+        const blocked = ALL_BUILTIN.filter(t => !rawTools.includes(t));
+        state.sdkOptions.disallowedTools = blocked.length > 0 ? blocked : undefined;
+        state.sdkOptions.tools = undefined;
+      } else {
+        state.sdkOptions.tools = Array.isArray(rawTools) && rawTools.length > 0 ? rawTools : undefined;
+        state.sdkOptions.disallowedTools = Array.isArray(rawDisallowed) && rawDisallowed.length > 0 ? rawDisallowed : undefined;
+      }
+
+      // Close old input channel — next sendMessage will create a fresh resume
+      state.input.close();
     },
   };
 }
@@ -526,6 +566,8 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       }
 
       // Handle system init: capture session ID
+      // DB row already exists (session-manager creates it upfront).
+      // rekeySession renames the row if SDK provides a different ID.
       if (m.type === "system" && m.subtype === "init" && m.session_id && !initSeen) {
         initSeen = true;
         const realId = m.session_id;
@@ -534,32 +576,21 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         ctx.rekeySession(realId);
         session.model = m.model ?? session.model;
         session.status = "running";
+        updateSessionStatus(realId, "running");
 
         if (isResume) {
           session.seq = getMaxSeq(realId);
-          updateSessionStatus(realId, "running");
-          if (state.skipNextPromptPersist) {
-            state.skipNextPromptPersist = false;
-          } else {
-            ctx.emitEvent({
-              type: "user",
-              subtype: "prompt",
-              message: { role: "user", content: session.initialContent },
-            });
-          }
-        } else {
-          ctx.updateSessionDb({
-            status: "running",
-            messageCount: 0,
-            costUsd: 0,
-            lastPrompt: session.preview,
-          });
+        }
+
+        // Emit user prompt (unless resuming a turn that already persisted it)
+        if (!(isResume && state.skipNextPromptPersist)) {
           ctx.emitEvent({
             type: "user",
             subtype: "prompt",
             message: { role: "user", content: session.initialContent },
           });
         }
+        state.skipNextPromptPersist = false;
       }
 
       // Track running status

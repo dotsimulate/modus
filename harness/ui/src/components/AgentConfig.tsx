@@ -8,18 +8,12 @@
 
 import { useEffect, useState } from "react";
 import { fetchProviderModels } from "../api";
-import type { ProviderModel } from "../api";
+import type { ProviderModel, AgentConfigState } from "../api";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
-import { getAllTools, isPiProvider, mcpToolGroups, toSdkToolConfig, type ToolStates } from "../tools";
+import { isPiProvider, mcpToolGroups, toSdkToolConfig, type ToolStates } from "../tools";
 
-export type AgentConfigState = {
-  toolStates: ToolStates;
-  model: string;
-  provider: string;
-  effort: string;
-  maxTurns: string;
-};
+export type { AgentConfigState };
 
 export type SessionConfigPatch = {
   provider?: string;
@@ -93,7 +87,6 @@ export function AgentConfig({
   const updateProvider = (provider: string) => {
     const switchingToolFamilies = isPiProvider(config.provider || profileProvider) !== isPiProvider(provider || profileProvider);
     update({
-      ...config,
       provider,
       model: "",
       ...(switchingToolFamilies ? { toolStates: {} } : {}),
@@ -200,47 +193,3 @@ export function agentConfigToOverrides(
   };
 }
 
-/** Reconstruct UI override state from stored session config. */
-export function sessionConfigToAgentConfig(
-  config: SessionConfigPatch | undefined,
-  profileTools: string[] | "all",
-  provider?: string,
-  availableTools?: string[],
-): AgentConfigState {
-  const effectiveProvider = config?.provider || provider;
-  const knownTools = new Set([
-    ...getAllTools(effectiveProvider),
-    ...(availableTools ?? []),
-    ...(profileTools === "all" ? [] : profileTools),
-    ...(config?.tools ?? []),
-    ...(config?.disallowedTools ?? []),
-    ...Object.keys(config?.toolStates ?? {}),
-  ]);
-  const toolStates: ToolStates = {};
-
-  if (config?.toolStates) {
-    for (const [tool, state] of Object.entries(config.toolStates)) {
-      if (state === "on" || state === "off") toolStates[tool] = state;
-    }
-  } else if (profileTools === "all") {
-    for (const tool of config?.disallowedTools ?? []) {
-      toolStates[tool] = "off";
-    }
-  } else if (config?.tools) {
-    const effective = new Set(config.tools);
-    for (const tool of knownTools) {
-      const inProfile = profileTools.includes(tool);
-      const inEffective = effective.has(tool);
-      if (inEffective && !inProfile) toolStates[tool] = "on";
-      if (!inEffective && inProfile) toolStates[tool] = "off";
-    }
-  }
-
-  return {
-    toolStates,
-    provider: config?.provider ?? "",
-    model: config?.model ?? "",
-    effort: config?.effort ?? "",
-    maxTurns: config?.maxTurns != null ? String(config.maxTurns) : "",
-  };
-}

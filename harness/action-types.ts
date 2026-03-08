@@ -264,6 +264,7 @@ export interface ExecutionState {
   currentSessionId: string | null;
   lastStatus: string | null;
   totalCostUsd: number;
+  transientAttempts: number;           // network error retry counter
 }
 
 /** Runtime state per action (in-memory, not persisted) */

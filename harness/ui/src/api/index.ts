@@ -20,8 +20,8 @@ export {
   fetchSessions, fetchSessionStatus, fetchActiveSessions,
   searchSessions, archiveSessionApi,
   getDraft, saveDraft, createEmptySession,
-  createSession, sendMessage, stopSessionApi, updateSessionConfig,
-  respondToPermission,
+  createSession, sendMessage, stopSessionApi, switchSessionProfile,
+  updateSessionConfig, respondToPermission,
   fetchSessionsScoped, searchSessionsScoped,
   browsePath, subscribeEvents,
 } from "./sessions";

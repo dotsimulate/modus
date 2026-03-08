@@ -191,6 +191,17 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
       activeToolElapsed: undefined,
     };
   }
+  if (m.subtype === "switch") {
+    return {
+      ...s,
+      model: m.model ?? s.model,
+      messages: [...s.messages, {
+        id: nextMsgId(),
+        role: "system",
+        content: `switched to ${m.toProfile}`,
+      }],
+    };
+  }
   if (m.subtype === "permission_request") {
     const perm: PendingPermission = {
       requestId: m.requestId,

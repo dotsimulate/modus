@@ -106,7 +106,7 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any): M
       supportsStore: false,
       supportsDeveloperRole: false,
       supportsReasoningEffort: false,
-      supportsUsageInStreaming: provider === "litellm",
+      supportsUsageInStreaming: provider === "litellm" || provider === "openrouter",
       maxTokensField: "max_tokens",
     },
   } as Model<any>;
@@ -396,6 +396,31 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       const modelId = session.model || DEFAULT_MODELS[providerName] || "default";
       const cwd = session.cwd ?? process.cwd();
 
+      // Provider owns init events — emit user prompt + system init
+      ctx.emitEvent({
+        type: "user",
+        subtype: "prompt",
+        message: { role: "user", content: session.initialContent },
+      });
+      ctx.emitEvent({
+        type: "system",
+        subtype: "init",
+        session_id: session.sessionId,
+        model: session.model,
+        provider: providerName,
+        config: {
+          provider: opts.provider ?? "",
+          model: opts.model ?? "",
+          effort: opts.effort ?? "",
+          maxTurns: opts.maxTurns,
+          toolStates: opts.toolStates ?? {},
+        },
+        cwd: session.cwd,
+        loadProjectSettings: opts.loadProjectSettings ?? profile?.loadProjectSettings ?? true,
+        tools: [],
+      });
+      session.status = "running";
+
       try {
         const model = buildModel(providerName, modelId, profile);
         const authStorage = buildAuthStorage(providerName);
@@ -473,9 +498,41 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         console.log(`[pi-agent] Active tools for LLM: ${agentSession.getActiveToolNames().join(", ")}`);
 
         // Subscribe to events and translate
+        // Accumulate streamed text/thinking so we can emit assembled assistant
+        // events — the permanent record that survives stream_event pruning.
+        let accText = "";
+        let accThinking = "";
+        const flushAssembled = () => {
+          if (!accText && !accThinking) return;
+          const content: any[] = [];
+          if (accThinking) content.push({ type: "thinking", thinking: accThinking });
+          if (accText) content.push({ type: "text", text: accText });
+          ctx.emitEvent({
+            type: "assistant",
+            message: { role: "assistant", content },
+          });
+          accText = "";
+          accThinking = "";
+        };
+
         const unsubscribe = agentSession.subscribe((event: AgentSessionEvent) => {
           try {
+            // Flush accumulated text before tool calls and turn end
+            if (event.type === "tool_execution_start") {
+              flushAssembled();
+            }
+            if (event.type === "agent_end" && !session.abortController.signal.aborted) {
+              flushAssembled();
+            }
+
             translateEvents(event, ctx, providerName);
+
+            // Accumulate after translateEvents so stream_events emit first
+            if (event.type === "message_update") {
+              const ame = (event as any).assistantMessageEvent;
+              if (ame?.type === "text_delta" && ame.delta) accText += ame.delta;
+              if (ame?.type === "thinking_delta" && ame.delta) accThinking += ame.delta;
+            }
           } catch (err) {
             console.error(`[pi-agent] event translation error:`, err);
           }
@@ -559,6 +616,29 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         activeTools = activeTools.filter((tool) => !config.disallowedTools.includes(tool));
       }
       state.agentSession.setActiveToolsByName(activeTools);
+    },
+
+    switchProfile(session: ActiveSession, ctx: TurnContext, _contextMode: string) {
+      const state = getState(session);
+      if (!state) return;
+
+      const profileDef = ctx.profile;
+
+      // Model swap via setModel
+      const newModelId = ctx.opts.model || DEFAULT_MODELS[providerName] || "default";
+      const newModel = buildModel(providerName, newModelId, profileDef);
+      state.agentSession.setModel(newModel);
+
+      // System prompt via agent reach-through
+      if (profileDef?.prompt) {
+        (state.agentSession as any).agent?.setSystemPrompt?.(profileDef.prompt);
+      }
+
+      // Tools swap
+      const rawTools = ctx.opts.tools ?? profileDef?.tools ?? undefined;
+      if (Array.isArray(rawTools) && rawTools.length > 0) {
+        state.agentSession.setActiveToolsByName(rawTools);
+      }
     },
   };
 }

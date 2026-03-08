@@ -59,6 +59,10 @@ export function applyEvent(id: string, event: any, seq: number) {
   const entry = sessions.get(id);
   if (!entry) return;
   entry.state = reduceEvent(entry.state, event, seq);
+  // Profile switch: update the entry-level profile name
+  if (event.type === "system" && event.subtype === "switch" && event.toProfile) {
+    entry.profile = event.toProfile;
+  }
   notify();
 }
 

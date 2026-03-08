@@ -25,6 +25,9 @@ export interface SessionProvider {
 
   /** Update mutable config mid-session (optional — only Claude SDK needs this) */
   updateConfig?(session: ActiveSession, config: Record<string, any>): void;
+
+  /** Switch active profile mid-session (optional — provider-specific swap logic) */
+  switchProfile?(session: ActiveSession, ctx: TurnContext, contextMode: string): void;
 }
 
 // ── Turn Context ──

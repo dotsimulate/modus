@@ -205,7 +205,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       : undefined;
 
     const currentState = activeSessionId ? getSessionState(activeSessionId) : null;
-    const isEmptySession = activeSessionId && currentState?.status === "idle" && currentState.messages.length === 0;
+    const activeServerSession = activeSessionId
+      ? serverSessions.find((session) => session.id === activeSessionId)
+      : null;
+    const hasPersistedHistory = !!activeServerSession?.preview || (currentState?.lastSeq ?? 0) > 0;
+    const isEmptySession = activeSessionId
+      && currentState?.status === "idle"
+      && currentState.messages.length === 0
+      && !hasPersistedHistory;
     const needsNewSession = !activeSessionId || !currentState || currentState.status === "done" || currentState.status === "error" || activeSessionId.startsWith("pending-") || isEmptySession;
 
     if (needsNewSession) {
@@ -282,7 +289,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setSessionState(activeSessionId!, updated, activeSession?.profile);
 
       try {
-        await apiSendMessage(activeSessionId!, prompt, apiAtts);
+        const profile = profiles.find((p) => p.name === activeSession?.profile);
+        const overrides = agentConfigToOverrides(rs.agentConfig, profile?.tools ?? "all");
+        await apiSendMessage(activeSessionId!, prompt, apiAtts, {
+          profile: activeSession?.profile,
+          provider: overrides.provider,
+          model: overrides.model,
+          effort: overrides.effort,
+          maxTurns: overrides.maxTurns,
+          tools: overrides.tools,
+          disallowedTools: overrides.disallowedTools,
+          toolStates: overrides.toolStates,
+          cwd: rs.cwd,
+          loadProjectSettings: rs.loadProjectSettings,
+        });
         if (!isSubscribed(activeSessionId!)) {
           const latest = getSessionState(activeSessionId!);
           subscribeSession(activeSessionId!, latest?.lastSeq ?? 0, activeSession?.profile, refreshSessions);
@@ -296,7 +316,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-  }, [input, activeSessionId, activeSession?.profile, selectedProfile, buildSessionOpts, updateHash, refreshSessions, setupState]);
+  }, [input, activeSessionId, activeSession?.profile, selectedProfile, buildSessionOpts, updateHash, refreshSessions, setupState, profiles, serverSessions]);
 
   // ── Auto-send queued message when model finishes ──
 
@@ -346,13 +366,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // ── Auto-load session from URL hash ──
 
   useEffect(() => {
-    if (pendingHashId && serverSessions.length > 0) {
-      if (serverSessions.some((s) => s.id === pendingHashId)) {
-        selectSession(pendingHashId);
-      }
+    if (pendingHashId) {
+      selectSession(pendingHashId);
       setPendingHashId(null);
     }
-  }, [pendingHashId, serverSessions, selectSession]);
+  }, [pendingHashId, selectSession]);
 
   const updateActiveSessionConfig = useCallback(async (config: AgentConfigState) => {
     if (!activeSessionId) return;
