@@ -4,10 +4,20 @@
  * Orchestrates session creation, persistence, SSE broadcasting, and message routing.
  * Provider-specific execution logic lives in providers/ — session-manager delegates
  * to whichever provider the profile specifies.
+ *
+ * Session-manager owns:
+ * - DB row creation (always upfront, before provider starts)
+ * - Event persistence + SSE broadcasting
+ * - Session ID lifecycle (generate temp, optional rekey by provider)
+ * - Subscriber management
+ *
+ * Session-manager does NOT:
+ * - Emit init events (user/prompt, system/init) — that's the provider's job
+ * - Know which provider is running — all paths are provider-agnostic
  */
 
 import {
-  upsertSession, updateSessionStatus, addEvent,
+  upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
 } from "./db";
 import { getProfile, getUserData, getUserProfile } from "./profiles";
 import { getProvider } from "./providers/registry";
@@ -118,16 +128,14 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     profile,
 
     emitEvent(event: any) {
-      if (session.sessionId && !session.sessionId.startsWith("pending-")) {
-        session.seq++;
-        addEvent(
-          session.sessionId,
-          session.seq,
-          event.type,
-          event.subtype ?? null,
-          JSON.stringify(event),
-        );
-      }
+      session.seq++;
+      addEvent(
+        session.sessionId,
+        session.seq,
+        event.type,
+        event.subtype ?? null,
+        JSON.stringify(event),
+      );
       const data = JSON.stringify(event);
       const seqStr = String(session.seq);
       for (const sub of session.subscribers) {
@@ -144,13 +152,16 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     },
 
     rekeySession(newId: string) {
-      activeSessions.delete(session.tempId);
+      const oldId = session.sessionId;
+      activeSessions.delete(oldId);
       session.sessionId = newId;
       activeSessions.set(newId, session);
+      if (oldId !== newId) {
+        renameSession(oldId, newId);
+      }
     },
 
     updateSessionDb(updates) {
-      if (!session.sessionId || session.sessionId.startsWith("pending-")) return;
       upsertSession({
         id: session.sessionId,
         preview: session.preview,
@@ -223,10 +234,11 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   const initialContent = typeof opts.prompt === "string"
     ? buildContent(opts.prompt, opts.attachments)
     : opts.prompt; // already MessageContent (content blocks from actions)
-  const isClaudeCode = providerName === "claude-code";
-  const tempId = isClaudeCode
-    ? (opts.sessionId ?? `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
-    : `pi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Session ID: use provided ID (for resume), otherwise generate one.
+  // Provider can rekey later if its backend provides a different ID.
+  const tempId = opts.sessionId ?? `ses-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
 
   const session: ActiveSession = {
     sessionId: tempId,
@@ -258,48 +270,28 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
 
   activeSessions.set(tempId, session);
 
-  const ctx = createTurnContext(session, opts);
-
-  // For non-SDK providers, set up DB row + init event immediately
-  // (SDK providers handle this in the drain loop when init event arrives)
-  if (!isClaudeCode) {
+  // DB row: always exists before provider starts.
+  // Resume: update status on existing row (preserves cost, message count, etc.)
+  // New: create fresh row.
+  if (isResume) {
+    updateSessionStatus(tempId, "starting");
+  } else {
     upsertSession({
       id: tempId,
       preview: session.preview,
       profile: session.profile,
       model: session.model,
-      status: "running",
+      status: "starting",
       messageCount: 0,
       costUsd: 0,
       lastPrompt: session.preview,
-      cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
+      cwd: session.cwd,
       actionName: session.actionName,
     });
-
-    // Persist initial user message
-    ctx.emitEvent({
-      type: "user",
-      subtype: "prompt",
-      message: { role: "user", content: initialContent },
-    });
-
-    // Emit init event
-    const initEvent = {
-      type: "system",
-      subtype: "init",
-      session_id: tempId,
-      model: session.model,
-      provider: providerName,
-      config: configEventPayload(opts),
-      cwd: session.cwd,
-      loadProjectSettings: opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true,
-      tools: [],
-    };
-    ctx.emitEvent(initEvent);
-    session.status = "running";
   }
 
-  // Delegate to provider
+  // Delegate to provider — provider handles init events (user/prompt, system/init)
+  const ctx = createTurnContext(session, opts);
   provider.startTurn(ctx);
 
   return session;
@@ -314,14 +306,12 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
   const content = buildContent(prompt, attachments);
 
   // Persist user event for catch-up replay
-  if (!sessionId.startsWith("pending-")) {
-    session.seq++;
-    addEvent(sessionId, session.seq, "user", "prompt", JSON.stringify({
-      type: "user",
-      subtype: "prompt",
-      message: { role: "user", content },
-    }));
-  }
+  session.seq++;
+  addEvent(sessionId, session.seq, "user", "prompt", JSON.stringify({
+    type: "user",
+    subtype: "prompt",
+    message: { role: "user", content },
+  }));
 
   // Delegate to provider
   const ctx = createTurnContext(session, {
@@ -347,14 +337,12 @@ export function stopSession(sessionId: string): boolean {
 
   // Force idle IMMEDIATELY — don't wait for the provider to propagate
   session.status = "idle";
-  if (session.sessionId && !session.sessionId.startsWith("pending-")) {
-    updateSessionStatus(session.sessionId, "idle");
-    const interruptData = JSON.stringify({ type: "system", subtype: "interrupted" });
-    session.seq++;
-    addEvent(session.sessionId, session.seq, "system", "interrupted", interruptData);
-    for (const sub of session.subscribers) {
-      try { sub.write("system", interruptData, String(session.seq)); } catch { session.subscribers.delete(sub); }
-    }
+  updateSessionStatus(session.sessionId, "idle");
+  const interruptData = JSON.stringify({ type: "system", subtype: "interrupted" });
+  session.seq++;
+  addEvent(session.sessionId, session.seq, "system", "interrupted", interruptData);
+  for (const sub of session.subscribers) {
+    try { sub.write("system", interruptData, String(session.seq)); } catch { session.subscribers.delete(sub); }
   }
 
   // Delegate to provider for cleanup
@@ -401,6 +389,125 @@ export function updateSessionConfig(
     cwd: session.cwd,
     loadProjectSettings: config.loadProjectSettings,
   }));
+  return true;
+}
+
+// ── Profile Switch ──
+
+export type SwitchProfileOpts = {
+  contextMode?: "full" | "summary" | "lastResponse";
+};
+
+export async function switchProfile(
+  sessionId: string,
+  newProfileName: string,
+  opts?: SwitchProfileOpts,
+): Promise<boolean> {
+  const session = activeSessions.get(sessionId);
+  if (!session) return false;
+
+  const newProfile = getProfile(newProfileName);
+  if (!newProfile) return false;
+
+  const contextMode = opts?.contextMode ?? "full";
+  const oldProfileName = session.profile;
+  const oldProvider = session._provider;
+  const newProviderName = newProfile.provider ?? "claude-code";
+  const oldProviderName = oldProfileName ? (getProfile(oldProfileName)?.provider ?? "claude-code") : "claude-code";
+  const sameProvider = newProviderName === oldProviderName;
+
+  // Step 1: Abort current turn if running — wait for settle
+  if (session.status === "running" || session.status === "starting") {
+    // Resolve any pending permission promises
+    for (const [id, pending] of session.pendingPermissions) {
+      pending.resolve({ behavior: "deny", message: "Profile switch" });
+      session.pendingPermissions.delete(id);
+    }
+    session.status = "idle";
+    updateSessionStatus(session.sessionId, "idle");
+    oldProvider.abort(session);
+    // Brief settle timeout for provider drain to complete
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  // Step 2: Resolve system prompt template vars
+  let systemPrompt = newProfile.prompt;
+  if (systemPrompt) {
+    const userData = getUserData();
+    systemPrompt = systemPrompt.replace(/\{\{(\w+)\}\}/g, (_, key) => userData[key] ?? `{{${key}}}`);
+  }
+
+  // Step 3–5: Provider swap
+  const ctx = createTurnContext(session, {
+    prompt: "",
+    profile: newProfileName,
+    provider: newProviderName,
+    model: newProfile.model,
+    effort: newProfile.effort,
+    maxTurns: newProfile.maxTurns,
+    tools: newProfile.tools,
+    disallowedTools: newProfile.disallowedTools,
+    cwd: session.cwd,
+    loadProjectSettings: newProfile.loadProjectSettings,
+  });
+
+  if (sameProvider && oldProvider.switchProfile) {
+    // In-place swap: let provider handle internals
+    oldProvider.switchProfile(session, ctx, contextMode);
+  } else if (!sameProvider) {
+    // Cross-provider switch: tear down old, create new
+    oldProvider.abort(session);
+    const newProvider = getProvider(newProviderName);
+    session._provider = newProvider;
+    session._providerState = null;
+    // New provider will be started on next message send
+  } else {
+    // Same provider, no switchProfile method — update config directly
+    oldProvider.updateConfig?.(session, {
+      model: newProfile.model,
+      effort: newProfile.effort,
+      maxTurns: newProfile.maxTurns,
+      tools: newProfile.tools,
+      disallowedTools: newProfile.disallowedTools,
+    });
+  }
+
+  // Step 6: Update ActiveSession fields
+  session.profile = newProfileName;
+  session.model = newProfile.model ?? session.model;
+  session.abortController = new AbortController();
+  session.pendingMessages = [];
+
+  // Step 7: Emit system/switch event + update DB
+  session.seq++;
+  const switchEvent = {
+    type: "system",
+    subtype: "switch",
+    fromProfile: oldProfileName ?? null,
+    toProfile: newProfileName,
+    contextMode,
+    model: session.model,
+    provider: newProviderName,
+  };
+  addEvent(session.sessionId, session.seq, "system", "switch", JSON.stringify(switchEvent));
+  for (const sub of session.subscribers) {
+    try { sub.write("system", JSON.stringify(switchEvent), String(session.seq)); } catch { session.subscribers.delete(sub); }
+  }
+
+  // Update DB row with new profile
+  upsertSession({
+    id: session.sessionId,
+    preview: session.preview,
+    profile: newProfileName,
+    model: session.model,
+    status: session.status,
+    messageCount: session.numTurns * 2,
+    costUsd: session.costUsd,
+    lastPrompt: session.preview,
+    cwd: session.cwd,
+    actionName: session.actionName,
+  });
+
   return true;
 }
 

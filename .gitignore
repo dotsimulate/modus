@@ -38,6 +38,8 @@ harness/profiles/_users.json
 harness/profiles/state/
 harness/profiles/users/
 harness/profiles/**/.history/
+harness/actions/*/output/
+harness/actions/*/gallery/
 
 # Claude settings (personal per-user)
 .claude/settings.local.json

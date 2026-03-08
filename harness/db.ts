@@ -145,6 +145,7 @@ export type SessionRow = {
   profile: string | null;
   model: string | null;
   status: string;
+  archived: number;
   created_at: number;
   updated_at: number;
   last_message_at: number;
@@ -164,6 +165,18 @@ export type EventRow = {
   subtype: string | null;
   data: string;
   created_at: number;
+};
+
+export type StoredSessionConfig = {
+  provider?: string;
+  model?: string;
+  effort?: string;
+  maxTurns?: number;
+  tools?: string[];
+  disallowedTools?: string[];
+  toolStates?: Record<string, string>;
+  cwd?: string;
+  loadProjectSettings?: boolean;
 };
 
 // ── Prepared Statements ──
@@ -193,6 +206,12 @@ const stmts = {
     VALUES ($session_id, $seq, $type, $subtype, $data, $created_at)
   `),
   getEvents: db.prepare(`SELECT * FROM events WHERE session_id = $session_id AND seq > $after_seq ORDER BY seq ASC`),
+  getLatestConfigEvent: db.prepare(`
+    SELECT * FROM events
+    WHERE session_id = $session_id AND type = 'system' AND (subtype = 'config_updated' OR subtype = 'init')
+    ORDER BY seq DESC
+    LIMIT 1
+  `),
   getMaxSeq: db.prepare(`SELECT COALESCE(MAX(seq), 0) as max_seq FROM events WHERE session_id = $session_id`),
   // Drafts
   getDraft: db.prepare(`SELECT draft_text FROM sessions WHERE id = $id`),
@@ -291,8 +310,20 @@ export function upsertSession(opts: {
   });
 }
 
+export function renameSession(oldId: string, newId: string) {
+  if (oldId === newId) return;
+  db.prepare(`UPDATE sessions SET id = $new WHERE id = $old`).run({ $old: oldId, $new: newId });
+  db.prepare(`UPDATE events SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+}
+
 export function updateSessionStatus(id: string, status: string) {
   stmts.updateStatus.run({ $id: id, $status: status, $now: Date.now() });
+  // Auto-prune stream events when session completes
+  if (status === "idle" || status === "done") {
+    try { pruneSessionEvents(id); } catch (e) {
+      console.error(`[db] Auto-prune failed for session ${id}:`, e);
+    }
+  }
 }
 
 export function listSessions(limit = 50): SessionRow[] {
@@ -339,6 +370,28 @@ export function addEvent(sessionId: string, seq: number, type: string, subtype: 
 
 export function getEvents(sessionId: string, afterSeq = 0): EventRow[] {
   return stmts.getEvents.all({ $session_id: sessionId, $after_seq: afterSeq }) as EventRow[];
+}
+
+export function getStoredSessionConfig(sessionId: string): StoredSessionConfig | null {
+  const row = stmts.getLatestConfigEvent.get({ $session_id: sessionId }) as EventRow | null;
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.data);
+    const config = parsed?.config && typeof parsed.config === "object" ? parsed.config : {};
+    return {
+      provider: config.provider || parsed.provider || undefined,
+      model: config.model || parsed.model || undefined,
+      effort: config.effort || undefined,
+      maxTurns: typeof config.maxTurns === "number" ? config.maxTurns : undefined,
+      tools: Array.isArray(config.tools) ? config.tools : undefined,
+      disallowedTools: Array.isArray(config.disallowedTools) ? config.disallowedTools : undefined,
+      toolStates: config.toolStates && typeof config.toolStates === "object" ? config.toolStates : undefined,
+      cwd: parsed.cwd || undefined,
+      loadProjectSettings: typeof parsed.loadProjectSettings === "boolean" ? parsed.loadProjectSettings : undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function getMaxSeq(sessionId: string): number {
@@ -611,30 +664,44 @@ export function searchSessions(query: string, limit = 20, cwdPrefixes?: string[]
   });
 }
 
-// ── Event Compaction ──
-// After a session goes idle, prune redundant streaming deltas to save space.
-// Keeps assistant/user/system/result events intact — only removes text_delta and thinking_delta.
+// ── Event Pruning ──
+// After a session completes, prune redundant streaming deltas to save space.
+// Keeps assistant/user/system/result events intact — only removes stream_event rows.
+// Safety: only prunes sessions that have assembled assistant events (so PI-only
+// sessions that lack assistant events keep their stream_events for replay).
 
 const pruneDeleteStmt = db.prepare(`
   DELETE FROM events
   WHERE session_id = $sid
     AND type = 'stream_event'
-    AND subtype IN ('text_delta', 'thinking_delta', 'content_block_start', 'content_block_stop', 'content_block_delta', 'message_start', 'message_delta', 'message_stop', 'input_json_delta')
 `);
+
+const hasAssistantEventsStmt = db.prepare(
+  `SELECT 1 FROM events WHERE session_id = $sid AND type = 'assistant' LIMIT 1`
+);
 
 const markPrunedStmt = db.prepare(`UPDATE sessions SET pruned = 1 WHERE id = $sid`);
 
-/** Prune a single session — delete redundant streaming deltas, keep assembled events */
+/** Prune a single session — delete all stream_event rows if assembled assistant events exist */
 export function pruneSessionEvents(sessionId: string): { deleted: number } {
+  const hasAssembled = hasAssistantEventsStmt.get({ $sid: sessionId });
+  if (!hasAssembled) {
+    // No assistant events — stream_events are the only record of content, keep them
+    markPrunedStmt.run({ $sid: sessionId });
+    return { deleted: 0 };
+  }
   const result = pruneDeleteStmt.run({ $sid: sessionId });
   markPrunedStmt.run({ $sid: sessionId });
+  if (result.changes > 0) {
+    console.log(`[db] Pruned ${result.changes} stream events from session ${sessionId.slice(0, 12)}…`);
+  }
   return { deleted: result.changes };
 }
 
 /** Prune all idle/done sessions that haven't been pruned yet */
 export function pruneAllSessionEvents(): { sessions: number; events: number } {
   const unpruned = db.prepare(
-    `SELECT id FROM sessions WHERE pruned = 0 AND status IN ('idle', 'done') AND archived = 0`
+    `SELECT id FROM sessions WHERE pruned = 0 AND status IN ('idle', 'done')`
   ).all() as { id: string }[];
   let totalDeleted = 0;
   db.transaction(() => {
@@ -643,6 +710,9 @@ export function pruneAllSessionEvents(): { sessions: number; events: number } {
       totalDeleted += deleted;
     }
   })();
+  if (totalDeleted > 0) {
+    console.log(`[db] Pruned ${totalDeleted} stream events across ${unpruned.length} sessions`);
+  }
   return { sessions: unpruned.length, events: totalDeleted };
 }
 
@@ -674,5 +744,8 @@ const staleExecs = db.run(`UPDATE action_executions SET status = 'done', complet
 if (staleExecs.changes > 0) {
   console.log(`[db] Cleaned up ${staleExecs.changes} orphaned execution(s) from previous crash`);
 }
+
+// Prune stream events from all unpruned completed sessions
+pruneAllSessionEvents();
 
 export { db };

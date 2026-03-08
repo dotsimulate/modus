@@ -21,7 +21,7 @@ import {
 } from "./profile-schemas";
 import {
   listSessions, listSessionsForProjects, listSessionsByAction,
-  getSession, archiveSession, searchSessions,
+  getSession, getStoredSessionConfig, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft,
   pruneSessionEvents, pruneAllSessionEvents, storageStats,
@@ -29,7 +29,7 @@ import {
 import {
   startSession, queueMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
-  updateSessionConfig, resolvePermission,
+  updateSessionConfig, resolvePermission, switchProfile,
   type SSEWriter,
 } from "./session-manager";
 
@@ -349,6 +349,7 @@ app.post("/api/sessions", async (c) => {
     userProfile: body.userProfile,
     provider: body.provider,
     model: body.model,
+    toolStates: body.toolStates,
     maxTurns: body.maxTurns,
     effort: body.effort,
     cwd: body.cwd,
@@ -483,13 +484,22 @@ app.post("/api/sessions/:id/messages", async (c) => {
   if (!active) {
     // Session not active in memory — resume it via SDK
     const existing = getSession(id);
+    const storedConfig = getStoredSessionConfig(id);
     const session = startSession({
       prompt,
       attachments: body.attachments,
       sessionId: id,
-      cwd: existing?.cwd ?? undefined,
+      cwd: body.cwd ?? storedConfig?.cwd ?? existing?.cwd ?? undefined,
       profile: body.profile ?? existing?.profile ?? undefined,
       userProfile: body.userProfile,
+      provider: body.provider ?? storedConfig?.provider,
+      model: body.model ?? storedConfig?.model ?? existing?.model ?? undefined,
+      effort: body.effort ?? storedConfig?.effort,
+      maxTurns: body.maxTurns ?? storedConfig?.maxTurns,
+      tools: body.tools ?? storedConfig?.tools,
+      disallowedTools: body.disallowedTools ?? storedConfig?.disallowedTools,
+      toolStates: body.toolStates ?? storedConfig?.toolStates,
+      loadProjectSettings: body.loadProjectSettings ?? storedConfig?.loadProjectSettings,
     });
     const start = Date.now();
     while (session.sessionId.startsWith("pending-") && Date.now() - start < 5000) {
@@ -530,6 +540,23 @@ app.patch("/api/sessions/:id/config", async (c) => {
   const body = await c.req.json();
   const ok = updateSessionConfig(c.req.param("id"), body);
   return ok ? c.json({ ok: true }) : c.json({ error: "session not found" }, 404);
+});
+
+// Switch active profile on a running/idle session
+app.patch("/api/sessions/:id/profile", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  const { profile, contextMode } = body;
+  if (!profile) return c.json({ error: "profile required" }, 400);
+  if (!getProfile(profile)) {
+    return c.json(
+      { error: `unknown profile: ${profile}`, available: listProfileNames() },
+      400,
+    );
+  }
+  const ok = await switchProfile(id, profile, { contextMode });
+  if (!ok) return c.json({ error: "session not found or switch failed" }, 404);
+  return c.json({ ok: true, profile });
 });
 
 // Archive session (soft-delete — preserves data in DB)

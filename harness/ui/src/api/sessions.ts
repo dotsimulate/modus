@@ -75,11 +75,23 @@ export async function sendMessage(
   sessionId: string,
   prompt: string,
   attachments?: ApiAttachment[],
+  config?: {
+    profile?: string;
+    provider?: string;
+    model?: string;
+    effort?: string;
+    maxTurns?: number;
+    tools?: string[];
+    disallowedTools?: string[];
+    toolStates?: Record<string, "inherit" | "on" | "off">;
+    cwd?: string;
+    loadProjectSettings?: boolean;
+  },
 ): Promise<{ queued: boolean; status: string }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ prompt, attachments }),
+    body: JSON.stringify({ prompt, attachments, ...config }),
   });
   return res.json();
 }
@@ -89,6 +101,20 @@ export async function stopSessionApi(sessionId: string): Promise<void> {
     method: "POST",
     headers: authHeaders(),
   });
+}
+
+/** Switch active profile on a running/idle session */
+export async function switchSessionProfile(
+  sessionId: string,
+  profile: string,
+  contextMode?: "full" | "summary" | "lastResponse",
+): Promise<{ ok: boolean; profile?: string }> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/profile`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify({ profile, contextMode }),
+  });
+  return res.json();
 }
 
 /** Update session config (tools, etc.) — takes effect on next turn */

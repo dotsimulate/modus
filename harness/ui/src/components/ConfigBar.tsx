@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { AgentConfig, type AgentConfigState } from "./AgentConfig";
+import { SearchDropdown } from "./SearchDropdown";
 import { getAllTools } from "../tools";
+import type { Profile } from "../api";
 
 type Props = {
   profileName?: string;
@@ -15,6 +17,10 @@ type Props = {
   profileMaxTurns?: number;
   /** All tools reported by SDK init (for MCP tool discovery) */
   availableTools?: string[];
+  /** Available profiles for live switching */
+  profiles?: Profile[];
+  /** Called when user switches profile on the live session */
+  onSwitchProfile?: (name: string) => void;
 };
 
 function shortModel(model?: string): string {
@@ -34,6 +40,8 @@ export function ConfigBar({
   profileEffort,
   profileMaxTurns,
   availableTools,
+  profiles,
+  onSwitchProfile,
 }: Props) {
   const [open, setOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
@@ -94,6 +102,25 @@ export function ConfigBar({
       <div className={`config-bar-collapse ${open ? "config-bar-collapse--open" : ""}`}>
         <div className="config-bar-clip">
           <div className="config-bar-panel">
+            {profiles && profiles.length > 1 && onSwitchProfile && (
+              <div className="agent-config agent-config--compact">
+                <div className="agent-config-row">
+                  <label className="agent-config-field">
+                    <span>profile</span>
+                    <SearchDropdown
+                      className="search-dropdown--compact"
+                      value=""
+                      options={profiles
+                        .filter((p) => p.name !== profileName)
+                        .map((p) => ({ value: p.name }))}
+                      placeholder={profileName ?? "select profile"}
+                      searchPlaceholder="search profiles..."
+                      onChange={onSwitchProfile}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
             <AgentConfig
               config={agentConfig}
               profileTools={profileTools}

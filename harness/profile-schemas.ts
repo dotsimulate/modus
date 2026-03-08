@@ -12,19 +12,19 @@ const McpStdioSchema = z.object({
   type: z.literal("stdio").optional(),
   command: z.string(),
   args: z.array(z.string()).optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
 });
 
 const McpSseSchema = z.object({
   type: z.literal("sse"),
   url: z.string(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
 });
 
 const McpHttpSchema = z.object({
   type: z.literal("http"),
   url: z.string(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
 });
 
 const McpServerConfigSchema = z.union([McpStdioSchema, McpSseSchema, McpHttpSchema]);
@@ -103,7 +103,7 @@ export const ProfileSchema = z.object({
   loadProjectSettings: z.boolean().optional(),
   claudeMdExcludes: ClaudeMdExcludesSchema.optional(),
   promptMode: z.enum(["custom", "append"]).optional(),
-  mcpServers: z.record(McpServerConfigSchema).optional(),
+  mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
   permissionPolicy: PermissionPolicySchema.optional(),
   ui: ProfileUiSchema.optional(),
   contextWindow: z.number().int().positive().optional(),
@@ -120,7 +120,7 @@ const UserProfileMemorySchema = z.object({
 
 export const UserProfileSchema = z.object({
   displayName: z.string(),
-  templateVars: z.record(z.string()).optional(),
+  templateVars: z.record(z.string(), z.string()).optional(),
   projects: z.array(z.string()),
   agentProfiles: z.array(z.string()).optional(),
   provider: ProviderSchema.optional(),
@@ -132,8 +132,8 @@ export const UserProfileSchema = z.object({
 // ── Global Config ──
 
 export const GlobalConfigSchema = z.object({
-  mcpServers: z.record(McpServerConfigSchema).optional(),
-  providerDefaults: z.record(ProviderDefaultsSchema).optional(),
+  mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
+  providerDefaults: z.record(z.string(), ProviderDefaultsSchema).optional(),
 });
 
 // ── Helpers ──

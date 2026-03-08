@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck } from "./api";
+import { healthCheck, switchSessionProfile } from "./api";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { SessionProvider, useSession } from "./providers/SessionProvider";
@@ -75,6 +75,13 @@ function AppShell() {
     await refreshUserProfiles();
     switchUserProfile(name);
   }, [refreshUserProfiles, switchUserProfile]);
+
+  // Switch profile on live session (ConfigBar controls this)
+  const handleSwitchProfile = useCallback((name: string) => {
+    if (activeSession?.id && !activeSession.id.startsWith("pending-")) {
+      switchSessionProfile(activeSession.id, name).catch(() => {});
+    }
+  }, [activeSession?.id]);
 
   // View-based session navigation (from dashboard/schedules)
   const handleViewSession = useCallback((id: string) => {
@@ -196,6 +203,8 @@ function AppShell() {
                 profileEffort={profileData?.effort}
                 profileMaxTurns={profileData?.maxTurns}
                 availableTools={activeSession?.availableTools}
+                profiles={visibleProfiles}
+                onSwitchProfile={handleSwitchProfile}
               />
               <ChatInput
                 value={input}
