@@ -7,11 +7,12 @@ type Props = {
   userProfiles?: UserProfile[];
   activeUserProfile?: string | null;
   onSwitchUserProfile?: (name: string | null) => void;
+  onNewProfile?: () => void;
 };
 
 export function StatusBar({
   harnessUp, onLock,
-  userProfiles, activeUserProfile, onSwitchUserProfile,
+  userProfiles, activeUserProfile, onSwitchUserProfile, onNewProfile,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -63,6 +64,13 @@ export function StatusBar({
                   {up.displayName ?? up.name}
                 </button>
               ))}
+              <div className="profile-switcher-divider" />
+              <button
+                className="profile-switcher-item profile-switcher-new"
+                onClick={() => { setMenuOpen(false); onNewProfile?.(); }}
+              >
+                + new profile
+              </button>
             </div>
           )}
         </div>

@@ -2,6 +2,7 @@ import { memo, useState, useEffect } from "react";
 import type { ToolCall as ToolCallType, Message, GitCommitDetail } from "../api";
 import { fetchGitShow } from "../api";
 import { DiffView } from "./DiffView";
+import { EditHunk } from "./FileChanges";
 
 type Props = {
   tool: ToolCallType;
@@ -316,6 +317,43 @@ function GitPushInline({ result }: { result: string }) {
   );
 }
 
+/** Render Edit/Write/MultiEdit as inline diff */
+function EditDiffDetail({ tool }: { tool: ToolCallType }) {
+  const name = tool.name;
+  const inp = tool.input;
+
+  type FileEdit = {
+    filePath: string;
+    type: "edit" | "write";
+    oldString?: string;
+    newString?: string;
+    content?: string;
+  };
+
+  const edits: FileEdit[] = [];
+  const fp = (inp.file_path as string) ?? "";
+
+  if (name === "Write" || name === "write") {
+    edits.push({ filePath: fp, type: "write", content: inp.content as string ?? "" });
+  } else if (name === "MultiEdit" && Array.isArray(inp.edits)) {
+    for (const e of inp.edits as Array<{ old_string?: string; new_string?: string }>) {
+      edits.push({ filePath: fp, type: "edit", oldString: e.old_string ?? "", newString: e.new_string ?? "" });
+    }
+  } else {
+    edits.push({ filePath: fp, type: "edit", oldString: inp.old_string as string ?? "", newString: inp.new_string as string ?? "" });
+  }
+
+  return (
+    <div className="tool-call-detail tool-call-detail--edit">
+      <table className="diff-table">
+        {edits.map((edit, i) => (
+          <EditHunk key={i} edit={edit} idx={i} />
+        ))}
+      </table>
+    </div>
+  );
+}
+
 export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, showGitEvents = true, cwd }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? tool.name === "TodoWrite");
   const isTodo = tool.name === "TodoWrite";
@@ -369,6 +407,7 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
   const summary = summarize(tool.name, tool.input, tool.result);
   const isAgent = tool.name === "Agent" && (tool.subMessages?.length ?? 0) > 0;
   const isRead = tool.name === "Read" || tool.name === "read";
+  const isEdit = /^(Edit|edit|MultiEdit|Write|write)$/.test(tool.name);
   const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
 
   return (
@@ -410,6 +449,8 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
             <div className="tool-call-detail">
               <TodoList todos={todos} />
             </div>
+          ) : isEdit ? (
+            <EditDiffDetail tool={tool} />
           ) : isRead && tool.result ? (
             <div className="tool-call-detail tool-call-detail--read">
               <ReadOutput result={tool.result} offset={tool.input.offset as number | undefined} />

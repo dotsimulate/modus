@@ -103,7 +103,7 @@ function basename(p: string): string {
 }
 
 /** Render a single edit as a table hunk — reuses git diff CSS */
-function EditHunk({ edit, idx }: { edit: FileEdit; idx: number }) {
+export function EditHunk({ edit, idx }: { edit: FileEdit; idx: number }) {
   if (edit.type === "write") {
     const lines = (edit.content ?? "").split("\n");
     const show = lines.slice(0, 30);
