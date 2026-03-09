@@ -13,40 +13,52 @@ bold()  { printf "\033[1m%s\033[0m\n" "$*"; }
 # ── Prereqs ──────────────────────────────────────────────────────
 bold "checking prerequisites..."
 
-missing=0
-for cmd in bun uv; do
-  if command -v "$cmd" &>/dev/null; then
-    green "  ✓ $cmd $(command $cmd --version 2>/dev/null | head -1)"
-  else
-    red "  ✗ $cmd not found"
-    missing=1
-  fi
-done
-
-if [ "$missing" -eq 1 ]; then
-  echo ""
-  red "install missing tools before continuing:"
-  echo "  bun  → https://bun.sh"
-  echo "  uv   → https://docs.astral.sh/uv/"
-  exit 1
+if command -v bun &>/dev/null; then
+  green "  ✓ bun $(bun --version 2>/dev/null | head -1)"
+else
+  echo "  bun not found — installing..."
+  curl -fsSL https://bun.sh/install | bash
+  export PATH="$HOME/.bun/bin:$PATH"
+  green "  ✓ bun installed ($(bun --version 2>/dev/null))"
 fi
 
-# ── Install JS deps ─────────────────────────────────────────────
+if command -v uv &>/dev/null; then
+  green "  ✓ $(uv --version 2>/dev/null | head -1)"
+else
+  echo "  uv not found — installing..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+  green "  ✓ uv installed ($(uv --version 2>/dev/null))"
+fi
+
+# ── Install JS deps (skip if already installed) ─────────────────
 echo ""
-bold "installing harness dependencies..."
-cd "$ROOT/harness"
-bun install
+if [ -d "$ROOT/harness/node_modules" ]; then
+  dim "  harness deps already installed, skipping"
+else
+  bold "installing harness dependencies..."
+  cd "$ROOT/harness"
+  bun install
+fi
 
 echo ""
-bold "installing UI dependencies..."
-cd "$ROOT/harness/ui"
-bun install
+if [ -d "$ROOT/harness/ui/node_modules" ]; then
+  dim "  UI deps already installed, skipping"
+else
+  bold "installing UI dependencies..."
+  cd "$ROOT/harness/ui"
+  bun install
+fi
 
-# ── Sync Python deps ────────────────────────────────────────────
+# ── Sync Python deps (skip if venv exists) ──────────────────────
 echo ""
-bold "syncing agent-memory Python deps..."
-cd "$ROOT/agent_memory"
-uv sync
+if [ -f "$ROOT/agent_memory/.venv/bin/python" ]; then
+  dim "  agent-memory Python deps already synced, skipping"
+else
+  bold "syncing agent-memory Python deps..."
+  cd "$ROOT/agent_memory"
+  uv sync
+fi
 
 # ── MCP config ───────────────────────────────────────────────────
 cd "$ROOT"
@@ -66,12 +78,10 @@ else
   dim "  .mcp.json already exists, skipping"
 fi
 
-# ── Done ─────────────────────────────────────────────────────────
+# ── Launch ───────────────────────────────────────────────────────
 echo ""
-green "setup complete!"
+green "setup complete! launching..."
+echo "  API :3777  |  UI :5180"
 echo ""
-echo "  start:  cd harness && bun run dev"
-echo "          cd harness; bun run dev   (PowerShell)"
-echo "  ports:  API :3777  |  UI :5180"
-echo ""
-dim "first launch will prompt you to set a PIN."
+cd "$ROOT/harness"
+exec bun run dev

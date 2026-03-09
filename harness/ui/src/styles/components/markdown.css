@@ -32,7 +32,7 @@
 /* ── Markdown: inline code ── */
 .message-content code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   background: var(--bg-surface);
   padding: 2px 5px;
   border-radius: 3px;
@@ -82,7 +82,7 @@
 }
 .code-block code {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--font-scale, 1));
   line-height: 1.55;
   background: none;
   border: none;
@@ -148,7 +148,7 @@
 .message-content table {
   border-collapse: collapse;
   margin: 10px 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale, 1));
   width: auto;
 }
 .message-content th,

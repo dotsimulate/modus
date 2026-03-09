@@ -127,13 +127,13 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
     else pinRef.current?.focus();
   }, []);
 
-  // Any keyboard activity focuses the passcode field
+  // Any keyboard activity focuses the passcode field — but not when user field is active
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (pinRef.current && document.activeElement !== pinRef.current) {
-        pinRef.current.focus();
-      }
+      const active = document.activeElement;
+      if (active === pinRef.current || active === nameRef.current) return;
+      pinRef.current?.focus();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -205,7 +205,14 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
               value={confirm}
               onChange={setConfirm}
               autoComplete="new-password"
+              onSubmit={submitSetup}
             />
+            {confirm && pin && confirm !== pin.slice(0, confirm.length) && (
+              <div className="login-hint">pins don't match</div>
+            )}
+            {confirm && pin && confirm === pin && (
+              <div className="login-hint login-hint-ok">confirmed</div>
+            )}
             <button className="login-btn" type="submit" disabled={loading || !name.trim() || !pin.trim() || !confirm.trim()}>
               {loading ? "..." : "set pin"}
             </button>

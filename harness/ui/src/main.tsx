@@ -27,6 +27,7 @@ import './styles/components/create-profile.css'
 import './styles/components/mo-logo.css'
 import './styles/components/file-changes.css'
 import './styles/components/queued-message.css'
+import './styles/components/chat-settings.css'
 
 // Views
 import './styles/views/login.css'

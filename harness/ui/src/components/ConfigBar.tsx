@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { AgentConfig, type AgentConfigState } from "./AgentConfig";
 import { SearchDropdown } from "./SearchDropdown";
+import { ChatSettings } from "./ChatSettings";
 import { getAllTools } from "../tools";
 import type { Profile } from "../api";
 
@@ -72,6 +73,14 @@ export function ConfigBar({
   return (
     <div className={`config-bar ${open ? "config-bar--open" : ""}`} ref={barRef}>
       <div className="config-bar-header" onClick={() => setOpen(!open)}>
+        <svg
+          className={`config-bar-chevron ${open ? "config-bar-chevron--open" : ""}`}
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+        >
+          <path d="M2.5 6.5L5 4L7.5 6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+        </svg>
         <div className="config-bar-items">
           {profileName && (
             <span className="config-bar-label">{profileName}</span>
@@ -90,14 +99,7 @@ export function ConfigBar({
             <span className="config-bar-overrides">{overrideCount} override{overrideCount > 1 ? "s" : ""}</span>
           )}
         </div>
-        <svg
-          className={`config-bar-chevron ${open ? "config-bar-chevron--open" : ""}`}
-          width="10"
-          height="10"
-          viewBox="0 0 10 10"
-        >
-          <path d="M2.5 6.5L5 4L7.5 6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-        </svg>
+        <ChatSettings />
       </div>
       <div className={`config-bar-collapse ${open ? "config-bar-collapse--open" : ""}`}>
         <div className="config-bar-clip">

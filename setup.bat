@@ -7,48 +7,62 @@ set "ROOT=%cd%"
 :: ── Prereqs ─────────────────────────────────────────────────────
 echo checking prerequisites...
 
-set "MISSING=0"
-
 where bun >nul 2>&1
 if %errorlevel% equ 0 (
     for /f "tokens=*" %%v in ('bun --version 2^>nul') do echo   + bun %%v
 ) else (
-    echo   X bun not found
-    set "MISSING=1"
+    echo   bun not found — installing...
+    powershell -Command "irm bun.sh/install.ps1 | iex"
+    if %errorlevel% neq 0 (
+        echo   X failed to install bun
+        exit /b 1
+    )
+    set "PATH=%USERPROFILE%\.bun\bin;%PATH%"
+    echo   + bun installed
 )
 
 where uv >nul 2>&1
 if %errorlevel% equ 0 (
     for /f "tokens=*" %%v in ('uv --version 2^>nul') do echo   + %%v
 ) else (
-    echo   X uv not found
-    set "MISSING=1"
+    echo   uv not found — installing...
+    powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+    if %errorlevel% neq 0 (
+        echo   X failed to install uv
+        exit /b 1
+    )
+    set "PATH=%USERPROFILE%\.local\bin;%PATH%"
+    echo   + uv installed
 )
 
-if "%MISSING%"=="1" (
-    echo.
-    echo install missing tools before continuing:
-    echo   bun  - https://bun.sh
-    echo   uv   - https://docs.astral.sh/uv/
-    exit /b 1
+:: ── Install JS deps (skip if already installed) ──────────────
+echo.
+if exist "%ROOT%\harness\node_modules\.package-lock.json" (
+    echo   harness deps already installed, skipping
+) else (
+    echo installing harness dependencies...
+    cd /d "%ROOT%\harness"
+    call bun install
 )
 
-:: ── Install JS deps ────────────────────────────────────────────
 echo.
-echo installing harness dependencies...
-cd /d "%ROOT%\harness"
-call bun install
+if exist "%ROOT%\harness\ui\node_modules\.package-lock.json" (
+    echo   UI deps already installed, skipping
+) else (
+    echo installing UI dependencies...
+    cd /d "%ROOT%\harness\ui"
+    call bun install
+)
 
+:: ── Sync Python deps (skip if venv exists) ───────────────────
 echo.
-echo installing UI dependencies...
-cd /d "%ROOT%\harness\ui"
-call bun install
-
-:: ── Sync Python deps ───────────────────────────────────────────
-echo.
-echo syncing agent-memory Python deps...
-cd /d "%ROOT%\agent_memory"
-call uv sync
+if exist "%ROOT%\agent_memory\.venv\Scripts\python.exe" (
+    echo   agent-memory Python deps already synced, skipping
+) else (
+    echo syncing agent-memory Python deps...
+    cd /d "%ROOT%\agent_memory"
+    call uv sync
+)
 
 :: ── MCP config ─────────────────────────────────────────────────
 cd /d "%ROOT%"
@@ -66,14 +80,12 @@ if not exist ".mcp.json" (
     echo   .mcp.json already exists, skipping
 )
 
-:: ── Done ────────────────────────────────────────────────────────
+:: ── Launch ────────────────────────────────────────────────────
 echo.
-echo setup complete!
+echo setup complete! launching...
+echo   API :3777  ^|  UI :5180
 echo.
-echo   start:  cd harness; bun run dev    (PowerShell)
-echo           cd harness ^&^& bun run dev  (cmd)
-echo   ports:  API :3777  ^|  UI :5180
-echo.
-echo   first launch will prompt you to set a PIN.
+cd /d "%ROOT%\harness"
+call bun run dev
 
 endlocal

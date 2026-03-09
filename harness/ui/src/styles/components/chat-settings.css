@@ -1,0 +1,111 @@
+/**
+ * Chat Settings — gear popover for font size + chat width.
+ */
+
+.chat-settings {
+  position: relative;
+}
+
+.chat-settings-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.chat-settings-btn:hover,
+.chat-settings-btn.active {
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chat-settings-popover {
+  position: fixed;
+  width: 240px;
+  padding: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-active);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.chat-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-settings-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  width: 34px;
+  flex-shrink: 0;
+}
+
+.chat-settings-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.chat-settings-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.chat-settings-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.chat-settings-row input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--text);
+}
+
+.chat-settings-row input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  background: var(--text-dim);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.chat-settings-reset {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  text-align: right;
+  padding: 0;
+}
+.chat-settings-reset:hover {
+  color: var(--text-dim);
+}
