@@ -60,7 +60,7 @@
   color: var(--text-dim);
 }
 .new-session-btn:hover {
-  color: #fff;
+  color: var(--accent);
   border-color: rgba(255, 255, 255, 0.25);
   background: rgba(255, 255, 255, 0.03);
 }

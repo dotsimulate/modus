@@ -1,25 +1,11 @@
 /**
- * Theme — CSS custom properties, resets, scrollbar, syntax highlighting.
+ * Theme — resets, fonts, scrollbar, syntax highlighting, global component styles.
  *
- * This is the primary theming surface. Edit colors, fonts, and visual tokens
- * here. All other files reference these variables via var(--*).
- * Changes here affect the look. They cannot break layout or components.
+ * Colors are defined in colors.css (imported first). This file applies them.
  */
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
 
 :root {
-  --bg: #000000;
-  --bg-raised: #0a0a0a;
-  --bg-surface: #111111;
-  --bg-hover: #1a1a1a;
-  --border: #1e1e1e;
-  --border-active: #333333;
-  --text: #e0e0e0;
-  --text-dim: #666666;
-  --text-muted: #444444;
-  --accent: #ffffff;
-  --thinking: #0d0d0d;
-  --error: #ff3333;
   --font-mono: 'JetBrains Mono', monospace;
   --font-sans: 'IBM Plex Sans', sans-serif;
 }
@@ -48,34 +34,34 @@ html, body, #root {
 
 
 /* ── Highlight.js tokens — dark theme ── */
-.hljs-keyword { color: #c678dd; }
-.hljs-built_in { color: #e5c07b; }
-.hljs-type { color: #e5c07b; }
-.hljs-literal { color: #d19a66; }
-.hljs-number { color: #d19a66; }
-.hljs-string { color: #98c379; }
-.hljs-regexp { color: #98c379; }
-.hljs-symbol { color: #56b6c2; }
+.hljs-keyword { color: var(--syn-keyword); }
+.hljs-built_in { color: var(--syn-builtin); }
+.hljs-type { color: var(--syn-type); }
+.hljs-literal { color: var(--syn-literal); }
+.hljs-number { color: var(--syn-number); }
+.hljs-string { color: var(--syn-string); }
+.hljs-regexp { color: var(--syn-regexp); }
+.hljs-symbol { color: var(--syn-symbol); }
 .hljs-comment,
-.hljs-quote { color: #5c6370; font-style: italic; }
-.hljs-doctag { color: #c678dd; }
-.hljs-meta { color: #5c6370; }
+.hljs-quote { color: var(--syn-comment); font-style: italic; }
+.hljs-doctag { color: var(--syn-keyword); }
+.hljs-meta { color: var(--syn-comment); }
 .hljs-function,
-.hljs-title { color: #61afef; }
-.hljs-title.class_ { color: #e5c07b; }
-.hljs-title.function_ { color: #61afef; }
-.hljs-section { color: #61afef; }
-.hljs-variable { color: #e06c75; }
+.hljs-title { color: var(--syn-function); }
+.hljs-title.class_ { color: var(--syn-type); }
+.hljs-title.function_ { color: var(--syn-function); }
+.hljs-section { color: var(--syn-function); }
+.hljs-variable { color: var(--syn-variable); }
 .hljs-params { color: var(--text); }
-.hljs-attr { color: #d19a66; }
-.hljs-attribute { color: #d19a66; }
-.hljs-tag { color: #e06c75; }
-.hljs-name { color: #e06c75; }
-.hljs-selector-tag { color: #e06c75; }
-.hljs-selector-class { color: #d19a66; }
-.hljs-selector-id { color: #61afef; }
-.hljs-addition { color: #98c379; background: rgba(152, 195, 121, 0.08); }
-.hljs-deletion { color: #e06c75; background: rgba(224, 108, 117, 0.08); }
+.hljs-attr { color: var(--syn-attr); }
+.hljs-attribute { color: var(--syn-attr); }
+.hljs-tag { color: var(--syn-tag); }
+.hljs-name { color: var(--syn-tag); }
+.hljs-selector-tag { color: var(--syn-tag); }
+.hljs-selector-class { color: var(--syn-attr); }
+.hljs-selector-id { color: var(--syn-function); }
+.hljs-addition { color: var(--syn-addition); background: rgba(152, 195, 121, 0.08); }
+.hljs-deletion { color: var(--syn-deletion); background: rgba(224, 108, 117, 0.08); }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 600; }
 
@@ -84,7 +70,7 @@ html, body, #root {
   font-size: 11px;
   line-height: 1.5;
   font-style: italic;
-  color: #999;
+  color: var(--text-tertiary);
   background: transparent;
   border: none;
   border-radius: 4px;
@@ -103,7 +89,7 @@ html, body, #root {
   font-family: var(--font-mono);
   font-size: 10px;
   font-style: italic;
-  color: #666;
+  color: var(--text-dim);
   margin-bottom: 2px;
   padding-left: 12px;
 }
@@ -121,4 +107,3 @@ html, body, #root {
   background: linear-gradient(to bottom, transparent, var(--bg));
   pointer-events: none;
 }
-

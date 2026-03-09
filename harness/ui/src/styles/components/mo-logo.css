@@ -14,10 +14,39 @@
     mo-eye-look 20s ease-in-out 1.5s infinite;
 }
 
+/* Exit: flicker-fade — keeps mo-fade-in + mo-eye-look at same indices so they don't restart */
+.mo-eye.mo-eye--exit {
+  animation:
+    mo-fade-in 0.4s ease 1s forwards,
+    mo-eye-look 20s ease-in-out 1.5s infinite,
+    mo-eye-exit 2s ease-in-out forwards;
+}
+
+/* Ring pulse — expands outward when dots are absorbed */
+.mo-ring-pulse {
+  transform-origin: 88px 24px;
+  opacity: 0;
+  animation: mo-ring-pulse 1.4s ease-out 0.4s forwards;
+}
+
 /* ── Keyframes ── */
 
 @keyframes mo-fade-in {
   to { opacity: 1; }
+}
+
+@keyframes mo-eye-exit {
+  0%   { opacity: 1; r: 3; filter: brightness(1) blur(0); }
+  18%  { opacity: 1; r: 4; filter: brightness(2) blur(0); }
+  30%  { opacity: 0.9; r: 2; filter: brightness(1.2) blur(0); }
+  45%  { opacity: 1; r: 3.5; filter: brightness(2.5) blur(0); }
+  65%  { opacity: 0.5; r: 1.2; filter: brightness(1.6) blur(0.5px); }
+  100% { opacity: 0; r: 0; filter: brightness(3) blur(1.5px); }
+}
+
+@keyframes mo-ring-pulse {
+  0%   { opacity: 0.4; transform: scale(1); stroke-width: 2; }
+  100% { opacity: 0; transform: scale(1.4); stroke-width: 0.3; }
 }
 
 /* O gap: appear, sweep fast, disappear — first half only */
@@ -29,27 +58,27 @@
   100%  { stroke-dasharray: 0 120; }
 }
 
-/* Eye drifts around inside the O ring */
+/* Eye drifts around inside the O ring — tight range for rotation safety */
 @keyframes mo-eye-look {
   0%   { transform: translate(0, 0); }
-  5%   { transform: translate(6px, -4px); }
-  10%  { transform: translate(6px, -4px); }
-  15%  { transform: translate(-5px, -6px); }
-  22%  { transform: translate(-5px, -6px); }
-  28%  { transform: translate(3px, 7px); }
-  33%  { transform: translate(3px, 7px); }
-  38%  { transform: translate(-7px, 2px); }
-  43%  { transform: translate(-7px, 2px); }
-  48%  { transform: translate(5px, 5px); }
-  52%  { transform: translate(5px, 5px); }
-  57%  { transform: translate(-3px, -7px); }
-  63%  { transform: translate(-3px, -7px); }
-  68%  { transform: translate(7px, 1px); }
-  73%  { transform: translate(7px, 1px); }
-  78%  { transform: translate(-4px, 6px); }
-  83%  { transform: translate(-4px, 6px); }
-  88%  { transform: translate(2px, -5px); }
-  93%  { transform: translate(2px, -5px); }
+  5%   { transform: translate(3px, -2px); }
+  10%  { transform: translate(3px, -2px); }
+  15%  { transform: translate(-2px, -3px); }
+  22%  { transform: translate(-2px, -3px); }
+  28%  { transform: translate(1px, 4px); }
+  33%  { transform: translate(1px, 4px); }
+  38%  { transform: translate(-4px, 1px); }
+  43%  { transform: translate(-4px, 1px); }
+  48%  { transform: translate(2px, 2px); }
+  52%  { transform: translate(2px, 2px); }
+  57%  { transform: translate(-1px, -4px); }
+  63%  { transform: translate(-1px, -4px); }
+  68%  { transform: translate(4px, 1px); }
+  73%  { transform: translate(4px, 1px); }
+  78%  { transform: translate(-2px, 3px); }
+  83%  { transform: translate(-2px, 3px); }
+  88%  { transform: translate(1px, -2px); }
+  93%  { transform: translate(1px, -2px); }
   97%  { transform: translate(0, 0); }
   100% { transform: translate(0, 0); }
 }

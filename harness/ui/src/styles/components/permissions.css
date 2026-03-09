@@ -32,7 +32,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #e89b50;
+  background: var(--warning);
   animation: pulse 1.5s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -43,7 +43,7 @@
 }
 
 .permission-request-tool {
-  color: #e89b50;
+  color: var(--warning);
   font-weight: 600;
 }
 
@@ -89,21 +89,21 @@
 }
 
 .permission-btn--approve {
-  color: #33cc33;
+  color: var(--success);
   border-color: rgba(51, 204, 51, 0.4);
 }
 .permission-btn--approve:hover:not(:disabled) {
   background: rgba(51, 204, 51, 0.1);
-  border-color: #33cc33;
+  border-color: var(--success);
 }
 
 .permission-btn--session {
-  color: #5599ff;
+  color: var(--info);
   border-color: rgba(85, 153, 255, 0.4);
 }
 .permission-btn--session:hover:not(:disabled) {
   background: rgba(85, 153, 255, 0.1);
-  border-color: #5599ff;
+  border-color: var(--info);
 }
 
 .permission-btn--deny {
@@ -127,7 +127,7 @@
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.05em;
-  color: #e89b50;
+  color: var(--warning);
   text-transform: uppercase;
 }
 
@@ -163,7 +163,7 @@
   border-color: var(--text-muted);
 }
 .permission-option.selected {
-  border-color: #e89b50;
+  border-color: var(--warning);
   background: rgba(232, 155, 80, 0.08);
 }
 
@@ -192,7 +192,7 @@
   outline: none;
 }
 .permission-other-input:focus {
-  border-color: #e89b50;
+  border-color: var(--warning);
 }
 
 /* ── Question step indicators ── */
@@ -222,17 +222,17 @@
   border-color: var(--text-muted);
 }
 .question-step.active {
-  border-color: #e89b50;
-  color: #e89b50;
+  border-color: var(--warning);
+  color: var(--warning);
   background: rgba(232, 155, 80, 0.1);
 }
 .question-step.answered {
   border-color: rgba(51, 204, 51, 0.5);
-  color: #33cc33;
+  color: var(--success);
 }
 .question-step.active.answered {
-  border-color: #e89b50;
-  color: #e89b50;
+  border-color: var(--warning);
+  color: var(--warning);
 }
 
 /* ── Permission tabs (multiple pending) ── */
@@ -259,8 +259,8 @@
   border-color: var(--text-muted);
 }
 .permission-tab.active {
-  border-color: #e89b50;
-  color: #e89b50;
+  border-color: var(--warning);
+  color: var(--warning);
   background: rgba(232, 155, 80, 0.08);
 }
 
@@ -272,5 +272,5 @@
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: #e89b50;
+  background: var(--warning);
 }
