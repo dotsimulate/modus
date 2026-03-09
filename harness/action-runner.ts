@@ -21,7 +21,7 @@
 
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join } from "path";
-import { startSession, getActiveSession, switchProfile, queueMessage } from "./session-manager";
+import { startSession, getActiveSession, switchProfile, queueMessage, type ActiveSession } from "./session-manager";
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
   getRunSummaries as dbGetRunSummaries, getNextRunNumber, getSession,
@@ -33,6 +33,7 @@ import type {
   ActionConfig, ActionContext, ActionModule, ActionContent, RunResult,
   ActionState, ExecutionState, ActionDB, TriggerInfo, SessionOutcome,
   SessionInfo, SearchResult, EventInfo,
+  SessionTriggerEvent, SessionTriggerPayload,
 } from "./action-types";
 import { MAX_CHAIN_DEPTH } from "./action-types";
 import { sendNotifications, sendActionNotification } from "./notify";
@@ -271,41 +272,34 @@ function loadActions(): void {
 // ── Session Monitoring ──
 
 async function monitorSession(
-  sessionId: string,
+  session: ActiveSession,
   actionName: string,
 ): Promise<SessionOutcome> {
   const start = Date.now();
+  let pollCount = 0;
 
   while (Date.now() - start < SESSION_TIMEOUT_MS) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    pollCount++;
 
-    const active = getActiveSession(sessionId);
-    if (active) {
-      if (active.status === "idle" || active.status === "done" || active.status === "error") {
-        const dbSession = getSession(sessionId);
-        const sessionStatus = active.status === "error" ? "error" as const : "done" as const;
-        console.log(`[actions] Session completed for "${actionName}": ${active.status}`);
-        return {
-          sessionStatus,
-          response: dbSession?.last_response ?? null,
-          summary: dbSession?.last_response?.slice(0, 500) ?? null,
-          costUsd: active.costUsd,
-          error: active.status === "error" ? (active.error ?? "unknown error") : null,
-        };
-      }
-      continue;
+    // Read status directly from the live object — immune to rekey ID changes
+    const status = session.status;
+    const currentId = session.sessionId;
+
+    if (pollCount <= 5 || pollCount % 10 === 0) {
+      console.log(`[actions:monitor] "${actionName}" poll #${pollCount}: status=${status} id=${currentId.slice(0, 20)}`);
     }
 
-    const dbSession = getSession(sessionId);
-    if (dbSession && (dbSession.status === "done" || dbSession.status === "idle" || dbSession.status === "error")) {
-      const sessionStatus = dbSession.status === "error" ? "error" as const : "done" as const;
-      console.log(`[actions] Session completed for "${actionName}" (from DB): ${dbSession.status}`);
+    if (status === "idle" || status === "done" || status === "error") {
+      const dbSession = getSession(currentId);
+      const sessionStatus = status === "error" ? "error" as const : "done" as const;
+      console.log(`[actions] Session completed for "${actionName}": ${status}`);
       return {
         sessionStatus,
-        response: dbSession.last_response ?? null,
-        summary: dbSession.last_response?.slice(0, 500) ?? null,
-        costUsd: dbSession.total_cost_usd,
-        error: dbSession.status === "error" ? "session error" : null,
+        response: dbSession?.last_response ?? null,
+        summary: dbSession?.last_response?.slice(0, 500) ?? null,
+        costUsd: session.costUsd,
+        error: status === "error" ? (session.error ?? "unknown error") : null,
       };
     }
   }
@@ -474,6 +468,18 @@ async function fireAction(
         previousStepResult: null,
         attempt,
         lastVerifyError,
+        log(message: string, metadata?: Record<string, unknown>) {
+          const combined = { ...metadata, runNumber, executionId: exec.id, attempt };
+          logActivity({
+            eventType: "action_log",
+            actionName: name,
+            agentProfile: cfg.agentProfile,
+            userProfile: effectiveUserProfile,
+            summary: `[${name}] ${message}`,
+            metadata: combined,
+          });
+          console.log(`[actions:${name}] ${message}`);
+        },
         artifactDir() {
           if (!artifactDirCreated) {
             mkdirSync(runDir, { recursive: true });
@@ -546,7 +552,9 @@ async function fireAction(
       });
 
       const attemptStart = Date.now();
-      const outcome = await monitorSession(session.sessionId, name);
+      console.log(`[actions:${name}] monitorSession START for ${session.sessionId}`);
+      const outcome = await monitorSession(session, name);
+      console.log(`[actions:${name}] monitorSession END: ${outcome.sessionStatus} (${Date.now() - attemptStart}ms)`);
 
       const outcomeStatus: RunResult["status"] =
         outcome.sessionStatus === "error" || outcome.sessionStatus === "timeout"
@@ -594,7 +602,7 @@ async function fireAction(
           queueMessage(session.sessionId, promptStr);
 
           // 4. Wait for step completion
-          finalOutcome = await monitorSession(session.sessionId, name);
+          finalOutcome = await monitorSession(session, name);
 
           // Accumulate cost
           runResult!.costUsd += finalOutcome.costUsd;
@@ -784,6 +792,11 @@ async function fireAction(
     if (!isTransient && isExecutionExhausted(exec, cfg)) {
       closeExecution(exec, state);
       handleOnExhausted(state);
+    }
+
+    // Session/webhook/manual triggers: close execution after each run (no persistent lifecycle)
+    if (!isTransient && cfg.trigger.type !== "interval" && cfg.trigger.type !== "action" && state.activeExecutions.has(exec.id)) {
+      closeExecution(exec, state);
     }
 
     // Recalculate nextRunAt for interval triggers
@@ -1099,6 +1112,90 @@ export function startNewExecution(actionName: string): { ok: boolean; executionI
   state.activeExecutions.set(exec.id, exec);
   console.log(`[actions] Manually created execution #${exec.id} for "${actionName}"`);
   return { ok: true, executionId: exec.id };
+}
+
+// ── Session Trigger Matching ──
+
+function matchesRound(spec: number | string, actual: number): boolean {
+  if (typeof spec === "number") return actual === spec;
+  if (typeof spec === "string") {
+    if (spec.startsWith("every:")) {
+      const n = parseInt(spec.slice(6));
+      return n > 0 && actual > 0 && actual % n === 0;
+    }
+    if (spec.startsWith("after:")) {
+      const n = parseInt(spec.slice(6));
+      return actual >= n;
+    }
+  }
+  return false;
+}
+
+/** Called by session-manager when a session lifecycle event occurs.
+ *  Scans all loaded actions for matching session triggers and fires them. */
+export function onSessionEvent(
+  event: SessionTriggerEvent,
+  session: {
+    id: string;
+    userProfile?: string;
+    tags: string[];
+    preview: string;
+    title?: string | null;
+    messageCount: number;
+    lastResponse?: string;
+  },
+): void {
+  for (const [name, state] of actionStates) {
+    if (!state.config.enabled) continue;
+    const trigger = state.config.trigger;
+    if (trigger.type !== "session") continue;
+
+    // Check excludeTags (default: ["internal"])
+    const excludeTags = trigger.excludeTags ?? ["internal"];
+    if (excludeTags.some(t => session.tags.includes(t))) continue;
+
+    // Check userProfile scoping
+    if (state.config.userProfile && session.userProfile !== state.config.userProfile) continue;
+
+    // Match the event against the trigger's `on` spec
+    const on = trigger.on;
+    let matched = false;
+    let round = 0;
+    let role: "user" | "assistant" = "user";
+
+    if (typeof event === "string" && typeof on === "string") {
+      // Flat events: "archived", "deleted"
+      matched = event === on;
+    } else if (typeof event === "object" && typeof on === "object") {
+      // Round-based events
+      if (event.role === on.role && event.at === on.at && matchesRound(on.round, event.round)) {
+        matched = true;
+        round = event.round;
+        role = event.role;
+      }
+    }
+
+    if (!matched) continue;
+
+    const payload: SessionTriggerPayload = {
+      sessionId: session.id,
+      userProfile: session.userProfile,
+      preview: session.preview,
+      title: session.title,
+      tags: session.tags,
+      messageCount: session.messageCount,
+      round,
+      role,
+      lastResponse: session.lastResponse,
+    };
+
+    const triggerInfo: TriggerInfo = { type: "session", payload };
+    console.log(`[actions] Session trigger matched: "${name}" on ${typeof event === "string" ? event : `${event.role}:${event.at}:${event.round}`} for session ${session.id.slice(0, 12)}…`);
+
+    fireAction(name, triggerInfo).catch(err => {
+      console.error(`[actions] Session trigger error for "${name}":`, err);
+    });
+  }
 }
 
 /** Reload actions from disk without restart */

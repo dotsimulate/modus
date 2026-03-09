@@ -33,6 +33,16 @@ export async function archiveSessionApi(id: string): Promise<void> {
   await fetch(`${API_BASE}/api/sessions/${id}`, { method: "DELETE", headers: authHeaders() });
 }
 
+// ── Title ──
+
+export async function updateSessionTitle(id: string, title: string | null): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${id}/title`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify({ title }),
+  });
+}
+
 // ── Draft Text ──
 
 export async function getDraft(sessionId: string): Promise<string> {

@@ -1,0 +1,14 @@
+{
+  "name": "auto-title",
+  "description": "Generates a short title for new sessions after the first assistant response",
+  "longDescription": "## Auto-Title\n\nAutomatically generates concise session titles after the first assistant response.\n\n### How it works\n\n1. **Trigger**: Fires on assistant round 1 end — after the first complete user→assistant exchange\n2. **Context**: `gather()` builds a prompt from the user's opening message and the assistant's truncated response\n3. **Generation**: The `summarizer` profile (Haiku, no tools) produces a 3–6 word title\n4. **Write-back**: `afterRun()` writes the title to the originating session's DB row and tags it `auto-titled`\n\n### Guard rails\n\n- **`excludeTags: [\"internal\", \"auto-titled\"]`** — won't fire on action-spawned sessions or sessions that already have a title\n- **Exchange counter**: Uses `exchangeCount` (not SDK turns), so tool-heavy first responses still count as round 1\n- **Resume-safe**: `exchangeCount` is seeded from the DB on session resume, preventing re-triggers after server restarts\n\n### Configuration\n\n| Parameter | Value | Notes |\n|-----------|-------|-------|\n| Profile | `summarizer` | Haiku, no tools, no MCP |\n| Trigger | assistant round 1 end | Configurable — e.g. `round: 3` for more context |\n| Max turns | 1 | Single-shot generation |\n| Exclude tags | `internal`, `auto-titled` | Prevents cascades and duplicates |",
+  "agentProfile": "summarizer",
+  "trigger": {
+    "type": "session",
+    "on": { "role": "assistant", "round": 1, "at": "end" },
+    "excludeTags": ["internal", "auto-titled"]
+  },
+  "enabled": true,
+  "maxTurns": 1,
+  "loadProjectSettings": false
+}

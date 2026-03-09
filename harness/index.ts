@@ -24,9 +24,12 @@ import {
   getSession, getStoredSessionConfig, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft,
+  updateSessionTitle,
+  getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats,
 } from "./db";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
+import { onSessionEvent } from "./action-runner";
 import {
   startSession, queueMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
@@ -610,10 +613,54 @@ app.patch("/api/sessions/:id/profile", async (c) => {
 
 // Archive session (soft-delete — preserves data in DB)
 app.delete("/api/sessions/:id", (c) => {
+  const id = c.req.param("id");
   // Stop if active
-  stopSession(c.req.param("id"));
-  archiveSession(c.req.param("id"));
+  stopSession(id);
+  const dbRow = getSession(id);
+  archiveSession(id);
+  // Emit session trigger for "archived" event
+  if (dbRow) {
+    onSessionEvent("archived", {
+      id,
+      userProfile: dbRow.user_profile ?? undefined,
+      tags: [...parseTags(dbRow.tags), "archived"],
+      preview: dbRow.preview,
+      title: dbRow.title,
+      messageCount: dbRow.message_count,
+    });
+  }
   return c.json({ ok: true });
+});
+
+// Rename session (set/clear title)
+app.patch("/api/sessions/:id/title", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  const title = typeof body.title === "string" ? body.title.trim() || null : null;
+  updateSessionTitle(id, title);
+  return c.json({ ok: true, title });
+});
+
+// Session tags — get, set, add, remove
+app.get("/api/sessions/:id/tags", (c) => {
+  const tags = getSessionTags(c.req.param("id"));
+  return c.json({ tags });
+});
+
+app.patch("/api/sessions/:id/tags", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  if (Array.isArray(body.tags)) {
+    // Replace all tags
+    updateSessionTags(id, body.tags.filter((t: any) => typeof t === "string"));
+  } else if (typeof body.add === "string") {
+    addSessionTag(id, body.add.toLowerCase().trim());
+  } else if (typeof body.remove === "string") {
+    removeSessionTag(id, body.remove.toLowerCase().trim());
+  } else {
+    return c.json({ error: "provide tags (array), add (string), or remove (string)" }, 400);
+  }
+  return c.json({ ok: true, tags: getSessionTags(id) });
 });
 
 // Branch session — fork from a specific point in a past conversation

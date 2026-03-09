@@ -151,6 +151,7 @@ export type GlobalConfig = {
 export type SessionInfo = {
   id: string;
   preview: string;
+  title: string | null;
   profile: string | null;
   model: string | null;
   status: string;
@@ -163,6 +164,7 @@ export type SessionInfo = {
   last_response: string | null;
   cwd: string | null;
   action_name: string | null;
+  tags: string;
 };
 
 export type ActiveSessionInfo = {
