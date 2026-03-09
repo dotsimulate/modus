@@ -107,13 +107,28 @@ workflow the user relies on.
 **Step 1 is non-negotiable. Do it before ANYTHING else — before reading files,
 before answering questions, before launching agents. No step 1 = broken session.**
 
-1. `query("*")` — load ALL memories and skills from past sessions. This is your
+1. `query(f"{short summary of user input}")` — load ALL memories and skills from past sessions that are useful and will be directly applicable to helping the user. add terms like debug or todo or research as well, since the search is fuzzy. Pay attention to high priority memories. This is your
    calibration. Without it you will repeat solved mistakes, launch unnecessary
    subagents, confuse concepts that memories already distinguish, and waste the
    user's time. This has happened. Do not let it happen again.
 2. Check what skills exist in `.claude/skills/`
 3. Briefly orient to the workspace state (what's changed, what exists)
 4. Tell the user what you see, what skills you have, and any relevant memories
+
+## Debugging
+
+**When you hit a bug or error, the `debug-discipline` skill activates. Follow it.**
+
+The core rule: **read code, add logs, read output, fix.** Never theorize about what
+code does — read it. Never guess at runtime values — log them. This is the single
+most violated rule across all sessions. If you catch yourself saying "the issue might
+be" without having added a `console.log`, you are failing.
+
+Two modes: **interactive** (user pastes logs) and **autonomous** (you run the app and
+capture output yourself). Both follow the same discipline. If the user says "figure it
+out" or delegates via handoff, you are in autonomous mode — reproduce and debug yourself.
+
+After 3 failed attempts with logs: write a handoff, don't keep spiraling.
 
 ## Self-Learning Rules
 

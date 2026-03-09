@@ -1,12 +1,20 @@
 /**
  * Profile loader — reads JSON files from harness/profiles/ subfolders.
  *
- * Directory structure:
+ * Directory structure (base — ships with the harness):
  *   profiles/agents/   — agent profile definitions (config, edit deliberately)
  *   profiles/users/    — user profile definitions (config, edit deliberately)
  *   profiles/state/    — runtime UI state (app-managed, gitignored)
  *   profiles/_global.json — shared MCP servers merged into every session
  *   profiles/_users.json  — template var defaults
+ *
+ * Project-local overrides — any project directory can contain:
+ *   .modus/profiles/agents/  — extra agent profiles (override base by name)
+ *   .modus/actions/           — extra actions (loaded by action-runner)
+ *   .modus/_global.json       — project-level MCP servers (merged additively)
+ *
+ * When a session CWD is provided, project-local profiles take precedence
+ * over base profiles of the same name. Listing functions merge both sources.
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
@@ -19,6 +27,18 @@ const STATE_DIR = join(PROFILES_DIR, "state");
 
 for (const dir of [PROFILES_DIR, AGENTS_DIR, USERS_DIR, STATE_DIR]) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+}
+
+// ── Project-local .modus/ discovery ──
+
+const MODUS_DIR = ".modus";
+
+function projectAgentsDir(cwd: string): string {
+  return join(cwd, MODUS_DIR, "profiles", "agents");
+}
+
+function projectGlobalPath(cwd: string): string {
+  return join(cwd, MODUS_DIR, "_global.json");
 }
 
 // ── Types ──
@@ -198,26 +218,51 @@ function readProfileFile(name: string): Profile | undefined {
   return readJson<Profile>(join(AGENTS_DIR, `${name}.json`));
 }
 
-/** Resolve an agent profile name to its definition */
-export function getProfile(name: string): Profile | undefined {
+/** Resolve an agent profile — checks project-local .modus/ first when cwd is provided */
+export function getProfile(name: string, cwd?: string): Profile | undefined {
+  if (cwd) {
+    const proj = readJson<Profile>(join(projectAgentsDir(cwd), `${name}.json`));
+    if (proj) return proj;
+  }
   return readProfileFile(name);
 }
 
-/** List all agent profile names */
-export function listProfileNames(): string[] {
-  if (!existsSync(AGENTS_DIR)) return [];
-  return readdirSync(AGENTS_DIR)
+/** List all agent profile names — merges project-local when cwd is provided */
+export function listProfileNames(cwd?: string): string[] {
+  const baseNames = !existsSync(AGENTS_DIR) ? [] : readdirSync(AGENTS_DIR)
     .filter((f) => f.endsWith(".json"))
-    .map((f) => basename(f, ".json"))
-    .sort();
+    .map((f) => basename(f, ".json"));
+
+  if (cwd) {
+    const projDir = projectAgentsDir(cwd);
+    if (existsSync(projDir)) {
+      const projNames = readdirSync(projDir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => basename(f, ".json"));
+      const merged = new Set([...projNames, ...baseNames]);
+      return [...merged].sort();
+    }
+  }
+  return baseNames.sort();
 }
 
-/** Get all agent profiles as a Record */
-export function getAllProfiles(): Record<string, Profile> {
+/** Get all agent profiles as a Record — merges project-local when cwd is provided */
+export function getAllProfiles(cwd?: string): Record<string, Profile> {
+  // Base profiles first, then project-local overrides on top
   const result: Record<string, Profile> = {};
   for (const name of listProfileNames()) {
     const p = readProfileFile(name);
     if (p) result[name] = p;
+  }
+  if (cwd) {
+    const projDir = projectAgentsDir(cwd);
+    if (existsSync(projDir)) {
+      for (const f of readdirSync(projDir).filter(f => f.endsWith(".json"))) {
+        const name = basename(f, ".json");
+        const p = readJson<Profile>(join(projDir, f));
+        if (p) result[name] = p;
+      }
+    }
   }
   return result;
 }
@@ -240,9 +285,18 @@ export function deleteProfile(name: string): boolean {
 
 // ── Global Config ──
 
-/** Read the global config (_global.json) */
-export function getGlobalConfig(): GlobalConfig {
-  return readJson<GlobalConfig>(join(PROFILES_DIR, "_global.json")) ?? {};
+/** Read the global config — merges project-local MCP servers when cwd is provided */
+export function getGlobalConfig(cwd?: string): GlobalConfig {
+  const base = readJson<GlobalConfig>(join(PROFILES_DIR, "_global.json")) ?? {};
+  if (!cwd) return base;
+  const proj = readJson<GlobalConfig>(projectGlobalPath(cwd));
+  if (!proj) return base;
+  return {
+    ...base,
+    mcpServers: { ...base.mcpServers, ...proj.mcpServers },
+    providerDefaults: { ...base.providerDefaults, ...proj.providerDefaults },
+    notificationChannels: { ...base.notificationChannels, ...proj.notificationChannels },
+  };
 }
 
 /** Save the global config */

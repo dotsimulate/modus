@@ -21,6 +21,7 @@
 
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join } from "path";
+import { getAllUserProfiles } from "./profiles";
 import { startSession, getActiveSession, switchProfile, queueMessage, type ActiveSession } from "./session-manager";
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
@@ -42,6 +43,7 @@ import { logActivity } from "./activity";
 // ── Constants ──
 
 const ACTIONS_DIR = join(import.meta.dir, "actions");
+const MODUS_ACTIONS = ".modus/actions";
 const TICK_INTERVAL_MS = 10_000;       // check every 10 seconds
 const SESSION_TIMEOUT_MS = 30 * 60_000; // 30 minute max per run
 const POLL_INTERVAL_MS = 2_000;        // poll session status every 2s
@@ -196,20 +198,40 @@ function deriveExhausted(config: ActionConfig, runCount: number, cycle: number, 
   return runCount >= maxRuns;
 }
 
+// ── Project-local action discovery ──
+
+/** Collect all .modus/actions/ directories from known user-profile project paths */
+function discoverProjectActionDirs(): Array<{ actionsDir: string; projectCwd: string }> {
+  const result: Array<{ actionsDir: string; projectCwd: string }> = [];
+  const userProfiles = getAllUserProfiles();
+  const seen = new Set<string>();
+  for (const up of Object.values(userProfiles)) {
+    for (const proj of up.projects ?? []) {
+      if (seen.has(proj)) continue;
+      seen.add(proj);
+      const dir = join(proj, MODUS_ACTIONS);
+      if (existsSync(dir)) result.push({ actionsDir: dir, projectCwd: proj });
+    }
+  }
+  return result;
+}
+
 // ── Action Loading ──
 
-function loadActions(): void {
-  if (!existsSync(ACTIONS_DIR)) return;
-  const dirs = readdirSync(ACTIONS_DIR, { withFileTypes: true })
+function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
+  if (!existsSync(actionsDir)) return;
+  const dirs = readdirSync(actionsDir, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name);
 
   for (const name of dirs) {
-    const configPath = join(ACTIONS_DIR, name, "action.json");
+    const configPath = join(actionsDir, name, "action.json");
     if (!existsSync(configPath)) continue;
     try {
       const config = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
       config.name = name;
+      // Project-local actions default their CWD to the project they came from
+      if (defaultCwd && !config.cwd) config.cwd = defaultCwd;
 
       if (config.trigger.type === "interval") {
         parseInterval(config.trigger.every);
@@ -241,12 +263,15 @@ function loadActions(): void {
           ? Date.now() + parseInterval(config.trigger.every)
           : null;
 
+      const actionDir = join(actionsDir, name);
       const isRunning = existing && existing.activeExecutions.size > 0;
       if (isRunning) {
         existing.config = config;
+        existing.actionDir = actionDir;
       } else {
         const state: ActionState = existing ?? {
           config,
+          actionDir,
           activeExecutions: new Map(),
           lastRunAt: null,
           nextRunAt: null,
@@ -254,6 +279,7 @@ function loadActions(): void {
         };
         Object.assign(state, {
           config,
+          actionDir,
           lastRunAt: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
           nextRunAt,
           exhausted: deriveExhausted(config, lastRunNumber, currentCycle, cycleRunCount),
@@ -266,6 +292,13 @@ function loadActions(): void {
     } catch (err) {
       console.error(`[actions] Failed to load action "${name}":`, err);
     }
+  }
+}
+
+function loadActions(): void {
+  loadActionsFromDir(ACTIONS_DIR);
+  for (const { actionsDir, projectCwd } of discoverProjectActionDirs()) {
+    loadActionsFromDir(actionsDir, projectCwd);
   }
 }
 
@@ -406,7 +439,7 @@ async function fireAction(
   const execRunNumber = exec.runNumber; // per-execution run number
   const cfg = state.config;
   const effectiveUserProfile = overrides?.userProfile ?? cfg.userProfile;
-  const actionDir = join(ACTIONS_DIR, name);
+  const actionDir = state.actionDir;
 
   // Start cycle clock on first run of a cycle
   if (!exec.cycleStartedAt) {
@@ -987,7 +1020,7 @@ export function setActionEnabled(name: string, enabled: boolean): boolean {
   if (!state) return false;
   state.config.enabled = enabled;
   if (enabled) state.exhausted = false;
-  const configPath = join(ACTIONS_DIR, name, "action.json");
+  const configPath = join(state.actionDir, "action.json");
   writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
   if (enabled && state.config.trigger.type === "interval") {
     state.nextRunAt = Date.now() + parseInterval(state.config.trigger.every);
@@ -1011,7 +1044,7 @@ export function updateActionConfig(
     parseInterval(updates.interval);
     state.config.trigger.every = updates.interval;
   }
-  const configPath = join(ACTIONS_DIR, name, "action.json");
+  const configPath = join(state.actionDir, "action.json");
   writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
   const running = state.activeExecutions.size > 0;
   if (state.config.enabled && !running && state.config.trigger.type === "interval") {
@@ -1048,7 +1081,7 @@ export function resetAction(name: string): boolean {
 export function setActionPreference(name: string, key: string, value: boolean): boolean {
   const state = actionStates.get(name);
   if (!state) return false;
-  const configPath = join(ACTIONS_DIR, name, "action.json");
+  const configPath = join(state.actionDir, "action.json");
   const config = JSON.parse(readFileSync(configPath, "utf-8"));
   if (!config.preferences) config.preferences = {};
   config.preferences[key] = value;
@@ -1070,7 +1103,7 @@ export function addActionTag(name: string, tag: string): boolean {
   if (!state.config.tags) state.config.tags = [];
   if (state.config.tags.includes(tag)) return true;
   state.config.tags.push(tag);
-  const configPath = join(ACTIONS_DIR, name, "action.json");
+  const configPath = join(state.actionDir, "action.json");
   writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
   return true;
 }
@@ -1082,7 +1115,7 @@ export function removeActionTag(name: string, tag: string): boolean {
   if (!state.config.tags) return true;
   state.config.tags = state.config.tags.filter(t => t !== tag);
   if (state.config.tags.length === 0) delete state.config.tags;
-  const configPath = join(ACTIONS_DIR, name, "action.json");
+  const configPath = join(state.actionDir, "action.json");
   writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
   return true;
 }

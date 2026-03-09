@@ -122,19 +122,28 @@ function LeftSummary({ status, commits, onFileClick, activeFile }: {
   const files = status.files;
   const dirtyCount = (files?.modified.length ?? 0) + (files?.staged.length ?? 0) + (files?.untracked.length ?? 0);
   const authors = [...new Set(commits.map((c) => c.author))];
+  const [wtOpen, setWtOpen] = useState(() => {
+    try { return localStorage.getItem("git-wt-open") !== "0"; } catch { return true; }
+  });
+  const toggleWt = () => {
+    setWtOpen((prev) => { const next = !prev; try { localStorage.setItem("git-wt-open", next ? "1" : "0"); } catch {} return next; });
+  };
 
   return (
     <div className="git-left-summary">
       {dirtyCount > 0 && files && (
         <div className="git-ls-wt">
-          <div className="git-ls-wt-head">
+          <button className="git-ls-wt-head" onClick={toggleWt} type="button">
+            <Chevron open={wtOpen} />
             <span className="git-section-label">working tree</span>
             <span className="git-ls-wt-count">{dirtyCount} uncommitted</span>
-          </div>
-          <div className="git-ls-wt-files">
-            {files.staged.length > 0 && <FileGroup label="staged" files={files.staged} variant="staged" onFileClick={onFileClick} activeFile={activeFile} />}
-            {files.modified.length > 0 && <FileGroup label="modified" files={files.modified} variant="modified" onFileClick={onFileClick} activeFile={activeFile} />}
-            {files.untracked.length > 0 && <FileGroup label="untracked" files={files.untracked} variant="untracked" onFileClick={onFileClick} activeFile={activeFile} />}
+          </button>
+          <div className={`git-ls-wt-files-wrap${wtOpen ? " git-ls-wt-files-wrap--open" : ""}`}>
+            <div className="git-ls-wt-files">
+              {files.staged.length > 0 && <FileGroup label="staged" files={files.staged} variant="staged" onFileClick={onFileClick} activeFile={activeFile} />}
+              {files.modified.length > 0 && <FileGroup label="modified" files={files.modified} variant="modified" onFileClick={onFileClick} activeFile={activeFile} />}
+              {files.untracked.length > 0 && <FileGroup label="untracked" files={files.untracked} variant="untracked" onFileClick={onFileClick} activeFile={activeFile} />}
+            </div>
           </div>
         </div>
       )}
