@@ -25,7 +25,7 @@
   flex-shrink: 0;
   padding: 8px 32px;
   padding-bottom: max(16px, env(safe-area-inset-bottom));
-  max-width: 840px;
+  max-width: var(--chat-max-width, 840px);
   margin: 0 auto;
   width: 100%;
   background: var(--bg);
@@ -88,7 +88,7 @@
   border-radius: 8px;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   line-height: 1.5;
   min-height: 42px;
   max-height: 200px;

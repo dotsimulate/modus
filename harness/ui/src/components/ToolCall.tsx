@@ -355,7 +355,8 @@ function EditDiffDetail({ tool }: { tool: ToolCallType }) {
 }
 
 export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, showGitEvents = true, cwd }: Props) {
-  const [expanded, setExpanded] = useState(defaultExpanded ?? tool.name === "TodoWrite");
+  const isGitCommit = showGitEvents && tool.status === "completed" && !!tool.result && detectGitEvent(tool) === "commit" && !!parseCommitHash(tool.result);
+  const [expanded, setExpanded] = useState(defaultExpanded ?? (tool.name === "TodoWrite" || isGitCommit));
   const isTodo = tool.name === "TodoWrite";
 
   // Auto-collapse old TodoWrites when a newer one arrives

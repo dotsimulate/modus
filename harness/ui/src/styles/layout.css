@@ -119,7 +119,7 @@
   max-height: 28px;
 }
 .scroll-to-bottom-inner {
-  max-width: 840px;
+  max-width: var(--chat-max-width, 840px);
   width: 100%;
   margin: 0 auto;
   display: flex;

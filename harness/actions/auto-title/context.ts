@@ -3,6 +3,7 @@ import { updateSessionTitle, addSessionTag } from "../../db";
 
 export async function gather(ctx: ActionContext): Promise<string> {
   const payload = ctx.trigger.payload as SessionTriggerPayload;
+  ctx.log("DEBUG gather", { sessionId: payload.sessionId, round: payload.round, tags: payload.tags, messageCount: payload.messageCount });
 
   let context = `User message:\n"${payload.preview}"`;
   if (payload.lastResponse) {

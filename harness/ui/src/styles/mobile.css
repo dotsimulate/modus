@@ -63,12 +63,13 @@
 
   .message { padding: 0 16px; max-width: 100%; }
   .message[data-role="user"]::before { inset: 0 4px; }
-  .message-content { font-size: 13px; }
+  .message-content { font-size: calc(13px * var(--font-scale, 1)); }
   .message-content pre { max-width: calc(100vw - 32px); }
   .config-bar-header { padding: 6px 16px; }
   .config-bar-panel { padding: 8px 16px 12px; }
   .chat-input-area { padding: 8px 16px; }
-  /* 16px prevents iOS Safari auto-zoom on focus */
-  .chat-textarea { font-size: 16px; }
+  /* 16px min prevents iOS Safari auto-zoom on focus */
+  .chat-textarea { font-size: max(16px, calc(16px * var(--font-scale, 1))); }
+  .chat-settings { display: none; }
 }
 
