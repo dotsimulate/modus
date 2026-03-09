@@ -49,6 +49,12 @@ try { db.run(`ALTER TABLE sessions RENAME COLUMN compacted TO pruned`); } catch 
 // Migration: add fork metadata for branched sessions (consumed on first resume)
 try { db.run(`ALTER TABLE sessions ADD COLUMN parent_session_id TEXT`); } catch { /* already exists */ }
 try { db.run(`ALTER TABLE sessions ADD COLUMN branch_message_uuid TEXT`); } catch { /* already exists */ }
+// Migration: add title — user-set or auto-generated session label
+try { db.run(`ALTER TABLE sessions ADD COLUMN title TEXT`); } catch { /* already exists */ }
+// Migration: add tags — JSON array of string tags (replaces archived column)
+try { db.run(`ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`); } catch { /* already exists */ }
+// Backfill: seed tags from archived column for existing rows
+db.run(`UPDATE sessions SET tags = '["archived"]' WHERE archived = 1 AND tags = '[]'`);
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -162,6 +168,8 @@ export type SessionRow = {
   action_name: string | null;
   parent_session_id: string | null;
   branch_message_uuid: string | null;
+  title: string | null;
+  tags: string; // JSON array of strings, e.g. '["archived"]'
 };
 
 export type EventRow = {
@@ -191,8 +199,8 @@ export type StoredSessionConfig = {
 const stmts = {
   // Sessions
   upsert: db.prepare(`
-    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile, parent_session_id, branch_message_uuid)
-    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile, $parent_session_id, $branch_message_uuid)
+    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile, parent_session_id, branch_message_uuid, title)
+    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile, $parent_session_id, $branch_message_uuid, $title)
     ON CONFLICT(id) DO UPDATE SET
       updated_at = $now,
       last_message_at = $now,
@@ -201,11 +209,14 @@ const stmts = {
       total_cost_usd = sessions.total_cost_usd + $total_cost_usd,
       last_prompt = COALESCE($last_prompt, sessions.last_prompt),
       last_response = COALESCE($last_response, sessions.last_response),
-      model = COALESCE($model, sessions.model)
+      model = COALESCE($model, sessions.model),
+      title = COALESCE($title, sessions.title)
   `),
   updateStatus: db.prepare(`UPDATE sessions SET status = $status, updated_at = $now WHERE id = $id`),
-  list: db.prepare(`SELECT * FROM sessions WHERE archived = 0 ORDER BY last_message_at DESC LIMIT $limit`),
+  updateTitle: db.prepare(`UPDATE sessions SET title = $title, updated_at = $now WHERE id = $id`),
+  list: db.prepare(`SELECT * FROM sessions WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%' ORDER BY last_message_at DESC LIMIT $limit`),
   archive: db.prepare(`UPDATE sessions SET archived = 1, updated_at = $now WHERE id = $id`),
+  updateTags: db.prepare(`UPDATE sessions SET tags = $tags, updated_at = $now WHERE id = $id`),
   get: db.prepare(`SELECT * FROM sessions WHERE id = $id`),
   // Events
   addEvent: db.prepare(`
@@ -303,6 +314,7 @@ export function upsertSession(opts: {
   userProfile?: string;
   parentSessionId?: string;
   branchMessageUuid?: string;
+  title?: string;
 }) {
   stmts.upsert.run({
     $id: opts.id,
@@ -320,6 +332,7 @@ export function upsertSession(opts: {
     $user_profile: opts.userProfile ?? null,
     $parent_session_id: opts.parentSessionId ?? null,
     $branch_message_uuid: opts.branchMessageUuid ?? null,
+    $title: opts.title ?? null,
   });
 }
 
@@ -339,6 +352,10 @@ export function updateSessionStatus(id: string, status: string) {
   }
 }
 
+export function updateSessionTitle(id: string, title: string | null) {
+  stmts.updateTitle.run({ $id: id, $title: title, $now: Date.now() });
+}
+
 export function listSessions(limit = 50): SessionRow[] {
   return stmts.list.all({ $limit: limit }) as SessionRow[];
 }
@@ -346,7 +363,7 @@ export function listSessions(limit = 50): SessionRow[] {
 /** List sessions spawned by a specific action */
 export function listSessionsByAction(actionName: string, limit = 50): SessionRow[] {
   return db.prepare(
-    `SELECT * FROM sessions WHERE archived = 0 AND action_name = $action ORDER BY last_message_at DESC LIMIT $limit`
+    `SELECT * FROM sessions WHERE tags NOT LIKE '%"archived"%' AND action_name = $action ORDER BY last_message_at DESC LIMIT $limit`
   ).all({ $action: actionName, $limit: limit }) as SessionRow[];
 }
 
@@ -354,7 +371,7 @@ export function listSessionsByAction(actionName: string, limit = 50): SessionRow
 export function listSessionsForProjects(cwdPrefixes: string[], limit = 50): SessionRow[] {
   if (cwdPrefixes.length === 0) return listSessions(limit);
   const conditions = cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
-  const sql = `SELECT * FROM sessions WHERE archived = 0 AND (${conditions}) ORDER BY last_message_at DESC LIMIT ?`;
+  const sql = `SELECT * FROM sessions WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%' AND (${conditions}) ORDER BY last_message_at DESC LIMIT ?`;
   const params = [...cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"), limit];
   return db.prepare(sql).all(...params) as SessionRow[];
 }
@@ -364,7 +381,7 @@ export function listSessionsScoped(
   opts: { cwdPrefixes?: string[]; agentProfiles?: string[]; userProfileName?: string; limit?: number },
 ): SessionRow[] {
   const limit = opts.limit ?? 50;
-  const conditions: string[] = ["archived = 0"];
+  const conditions: string[] = ["tags NOT LIKE '%\"archived\"%'", "tags NOT LIKE '%\"internal\"%'"];
   const params: any[] = [];
 
   if (opts.userProfileName) {
@@ -400,6 +417,43 @@ export function getSession(id: string): SessionRow | null {
 
 export function archiveSession(id: string) {
   stmts.archive.run({ $id: id, $now: Date.now() });
+  addSessionTag(id, "archived");
+}
+
+// ── Tag Functions ──
+
+/** Parse tags JSON from a session row, safely defaulting to [] */
+export function parseTags(raw: string): string[] {
+  try { return JSON.parse(raw); } catch { return []; }
+}
+
+/** Get tags for a session */
+export function getSessionTags(id: string): string[] {
+  const row = stmts.get.get({ $id: id }) as SessionRow | null;
+  return row ? parseTags(row.tags) : [];
+}
+
+/** Replace all tags on a session */
+export function updateSessionTags(id: string, tags: string[]) {
+  stmts.updateTags.run({ $id: id, $tags: JSON.stringify(tags), $now: Date.now() });
+}
+
+/** Add a tag if not already present */
+export function addSessionTag(id: string, tag: string) {
+  const tags = getSessionTags(id);
+  if (!tags.includes(tag)) {
+    tags.push(tag);
+    updateSessionTags(id, tags);
+  }
+}
+
+/** Remove a tag if present */
+export function removeSessionTag(id: string, tag: string) {
+  const tags = getSessionTags(id);
+  const filtered = tags.filter(t => t !== tag);
+  if (filtered.length !== tags.length) {
+    updateSessionTags(id, filtered);
+  }
 }
 
 // ── Event Functions ──
@@ -723,7 +777,7 @@ export function searchSessions(query: string, limit = 20, cwdPrefixes?: string[]
 
   const ids = matches.map(m => m.sid);
   const placeholders = ids.map(() => "?").join(",");
-  let sessionsQuery = `SELECT * FROM sessions WHERE id IN (${placeholders}) AND archived = 0`;
+  let sessionsQuery = `SELECT * FROM sessions WHERE id IN (${placeholders}) AND tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'`;
   const params: any[] = [...ids];
   if (cwdPrefixes && cwdPrefixes.length > 0) {
     const cwdConds = cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
@@ -825,7 +879,7 @@ export function storageStats(): { project: string; sessions: number; events: num
            COALESCE(SUM(LENGTH(e.data)), 0) as bytes
     FROM sessions s
     LEFT JOIN events e ON e.session_id = s.id
-    WHERE s.archived = 0
+    WHERE s.tags NOT LIKE '%"archived"%' AND s.tags NOT LIKE '%"internal"%'
     GROUP BY s.cwd
     ORDER BY bytes DESC
   `).all() as any[];

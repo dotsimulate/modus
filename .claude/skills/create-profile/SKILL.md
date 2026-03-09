@@ -15,9 +15,9 @@ description: >
 
 MO profiles are JSON files that configure AI agent behavior across three layers:
 
-- **Agent profiles** (`profiles/agents/<name>.json`) — what the agent does
-- **User profiles** (`profiles/users/<name>.json`) — who uses the system
-- **Global config** (`profiles/_global.json`) — shared defaults for all sessions
+- **Agent profiles** (`harness/profiles/agents/<name>.json`) — what the agent does
+- **User profiles** (`harness/profiles/users/<name>.json`) — who uses the system
+- **Global config** (`harness/profiles/_global.json`) — shared defaults for all sessions
 
 ## Workflow
 
@@ -31,15 +31,15 @@ MO profiles are JSON files that configure AI agent behavior across three layers:
 
 **"I want a new agent / assistant / bot"**
   Read [references/agent-profile-schema.md](references/agent-profile-schema.md).
-  Create `profiles/agents/<name>.json`.
+  Create `harness/profiles/agents/<name>.json`.
 
 **"I want to organize my projects / set up my account"**
   Read [references/user-profile-schema.md](references/user-profile-schema.md).
-  Create `profiles/users/<name>.json`.
+  Create `harness/profiles/users/<name>.json`.
 
 **"I want to set defaults for all agents" / "configure my local LLM"**
   Read [references/global-config.md](references/global-config.md).
-  Update `profiles/_global.json`.
+  Update `harness/profiles/_global.json`.
 
 **"Set up everything for a new use case"** (full stack)
   Create all three: user profile + agent profile + update global config if needed.

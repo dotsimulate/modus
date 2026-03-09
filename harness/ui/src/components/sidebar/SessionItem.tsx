@@ -1,4 +1,6 @@
+import { useState, useRef, useEffect } from "react";
 import type { SessionInfo } from "../../api";
+import { updateSessionTitle } from "../../api";
 
 type Props = {
   session: SessionInfo;
@@ -22,15 +24,66 @@ export function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+function displayText(s: SessionInfo): string {
+  return s.title ?? s.last_prompt ?? s.preview;
+}
+
 export function SessionItem({ session: s, active, onSelect, onArchive }: Props) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const startEdit = () => {
+    setEditValue(s.title ?? "");
+    setEditing(true);
+  };
+
+  const commitEdit = async () => {
+    setEditing(false);
+    const trimmed = editValue.trim();
+    const newTitle = trimmed || null;
+    if (newTitle === (s.title ?? null)) return;
+    s.title = newTitle; // optimistic
+    await updateSessionTitle(s.id, newTitle);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+  };
+
   return (
     <div
       className={`session-item ${active ? "active" : ""}`}
-      onClick={() => onSelect(s.id)}
+      onClick={() => !editing && onSelect(s.id)}
     >
       <div className="session-item-preview">
         <span className={`dash-dot ${statusDotClass(s.status)}`} />
-        <span className="session-item-text">{s.last_prompt ?? s.preview}</span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="session-title-input"
+            value={editValue}
+            placeholder={s.last_prompt ?? s.preview}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") cancelEdit();
+            }}
+            onBlur={commitEdit}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span
+            className="session-item-text"
+            onDoubleClick={(e) => { e.stopPropagation(); startEdit(); }}
+          >
+            {displayText(s)}
+          </span>
+        )}
       </div>
       <div className="session-item-meta">
         <span className="session-meta-left">

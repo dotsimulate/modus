@@ -19,8 +19,18 @@
 import {
   upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
   copyEventsToSession, findAssistantUuid, clearBranchFields,
+  addSessionTag, parseTags,
 } from "./db";
 import { logActivity } from "./activity";
+
+// Lazy import to avoid circular dep (action-runner → session-manager → action-runner)
+let _onSessionEvent: typeof import("./action-runner").onSessionEvent | null = null;
+function getOnSessionEvent() {
+  if (!_onSessionEvent) {
+    _onSessionEvent = require("./action-runner").onSessionEvent;
+  }
+  return _onSessionEvent!;
+}
 import { getProfile, getUserData, getUserProfile } from "./profiles";
 import { getProvider } from "./providers/registry";
 import type { SessionProvider, TurnContext } from "./providers/types";
@@ -58,6 +68,8 @@ export type ActiveSession = {
   lastEventAt: number;
   costUsd: number;
   numTurns: number;
+  /** Count of complete user↔assistant exchanges (1 per result event). Used for session trigger round matching. */
+  exchangeCount: number;
   error: string | null;
   preview: string;
   lastAssistantText: string;
@@ -180,6 +192,28 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
         cwd: session.cwd,
         actionName: session.actionName,
       });
+
+      // Emit session trigger: assistant round end (on successful turn completion)
+      if (updates.status === "idle" || updates.status === "done") {
+        // exchangeCount tracks user↔assistant rounds (1 per result), not SDK agentic turns
+        session.exchangeCount++;
+        const dbRow = getSession(session.sessionId);
+        const tags = dbRow ? parseTags(dbRow.tags) : [];
+        console.log(`[session-trigger] emission: status=${updates.status} exchange=${session.exchangeCount} session=${session.sessionId.slice(0, 12)}…`);
+        try {
+          getOnSessionEvent()(
+            { role: "assistant", round: session.exchangeCount, at: "end" },
+            {
+              id: session.sessionId, userProfile: session.userProfile, tags,
+              preview: session.preview, title: dbRow?.title,
+              messageCount: updates.messageCount ?? 0,
+              lastResponse: updates.lastResponse,
+            },
+          );
+        } catch (err) {
+          console.error(`[session-trigger] onSessionEvent failed:`, err);
+        }
+      }
     },
   };
 }
@@ -273,6 +307,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     lastEventAt: Date.now(),
     costUsd: 0,
     numTurns: 0,
+    exchangeCount: 0,
     error: null,
     preview: contentPreview(initialContent),
     lastAssistantText: "",
@@ -300,6 +335,12 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   // New: create fresh row.
   if (isResume) {
     updateSessionStatus(tempId, "starting");
+    // Seed exchangeCount from persisted message_count so session triggers
+    // don't re-fire (e.g. round:1 won't match an established session after restart)
+    const resumeRow = getSession(tempId);
+    if (resumeRow?.message_count) {
+      session.exchangeCount = Math.ceil(resumeRow.message_count / 2);
+    }
   } else {
     upsertSession({
       id: tempId,
@@ -314,6 +355,10 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       actionName: session.actionName,
       userProfile: session.userProfile,
     });
+    // Auto-tag action-spawned sessions as internal (prevents cascade triggers)
+    if (session.actionName) {
+      addSessionTag(tempId, "internal");
+    }
   }
 
   // Delegate to provider — provider handles init events (user/prompt, system/init)
@@ -328,6 +373,16 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     summary: `Session started: ${session.preview.slice(0, 100)}`,
     metadata: { provider: providerName, model: session.model, cwd: session.cwd, isResume },
   });
+
+  // Emit session trigger: user round 1 start (for new sessions only)
+  if (!isResume) {
+    const dbRow = getSession(tempId);
+    const tags = dbRow ? parseTags(dbRow.tags) : [];
+    getOnSessionEvent()(
+      { role: "user", round: 1, at: "start" },
+      { id: tempId, userProfile: session.userProfile, tags, preview: session.preview, title: null, messageCount: 0 },
+    );
+  }
 
   return session;
 }
@@ -353,6 +408,15 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
     session.pendingMessages.push(content);
     return true;
   }
+
+  // Emit session trigger: user round start (exchangeCount is 0-based before this exchange completes)
+  const userRound = session.exchangeCount + 1;
+  const dbRow = getSession(sessionId);
+  const tags = dbRow ? parseTags(dbRow.tags) : [];
+  getOnSessionEvent()(
+    { role: "user", round: userRound, at: "start" },
+    { id: sessionId, userProfile: session.userProfile, tags, preview: session.preview, title: dbRow?.title, messageCount: session.exchangeCount * 2 },
+  );
 
   // Delegate to provider (provider sets status to "running" internally)
   const ctx = createTurnContext(session, {

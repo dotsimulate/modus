@@ -37,7 +37,22 @@ export type ActionChainTrigger = {
   condition: "any" | "done" | "error"; // when to fire
 };
 
-export type Trigger = IntervalTrigger | WebhookTrigger | ManualTrigger | ActionChainTrigger;
+export type SessionTriggerEvent =
+  | {
+      role: "user" | "assistant";
+      round: number | `every:${number}` | `after:${number}`;
+      at: "start" | "end";
+    }
+  | "archived"
+  | "deleted";
+
+export type SessionTrigger = {
+  type: "session";
+  on: SessionTriggerEvent;
+  excludeTags?: string[];      // default: ["internal"] — prevents cascade
+};
+
+export type Trigger = IntervalTrigger | WebhookTrigger | ManualTrigger | ActionChainTrigger | SessionTrigger;
 
 // ── Multi-Step Sequences ──
 
@@ -129,9 +144,22 @@ export interface NotifySpec {
 
 // ── Trigger Info (passed to gather/afterRun) ──
 
+export type SessionTriggerPayload = {
+  sessionId: string;
+  userProfile: string | undefined;
+  preview: string;
+  title: string | null | undefined;
+  tags: string[];
+  messageCount: number;
+  round: number;
+  role: "user" | "assistant";
+  /** Truncated last assistant response (available on assistant round end triggers) */
+  lastResponse?: string;
+};
+
 export type TriggerInfo = {
-  type: "interval" | "webhook" | "manual" | "action";
-  payload?: unknown;                   // webhook body or source RunResult
+  type: "interval" | "webhook" | "manual" | "action" | "session";
+  payload?: unknown;                   // webhook body, source RunResult, or SessionTriggerPayload
   source?: string;                     // source action name (for action chains)
 };
 
@@ -157,6 +185,10 @@ export interface ActionContext {
   // ── Verify/retry context ──
   attempt: number;                     // 1-based, 1 = first try
   lastVerifyError?: string;            // reason from failed verify, if retrying
+
+  // ── Logging ──
+  /** Emit a log entry visible in the activity log. Use for debugging and tracing action behavior. */
+  log(message: string, metadata?: Record<string, unknown>): void;
 
   // ── Artifact helpers ──
   /** Returns the artifact directory for this attempt. Created on first access. */
