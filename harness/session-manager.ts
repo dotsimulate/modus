@@ -18,7 +18,9 @@
 
 import {
   upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
+  copyEventsToSession, findAssistantUuid, clearBranchFields,
 } from "./db";
+import { logActivity } from "./activity";
 import { getProfile, getUserData, getUserProfile } from "./profiles";
 import { getProvider } from "./providers/registry";
 import type { SessionProvider, TurnContext } from "./providers/types";
@@ -200,6 +202,10 @@ export type StartSessionOpts = {
   loadProjectSettings?: boolean;
   sessionId?: string;
   actionName?: string;
+  /** For branched sessions: parent session ID to fork from (SDK resume source) */
+  branchParentId?: string;
+  /** For branched sessions: SDK message UUID to resume at */
+  branchMessageUUID?: string;
 };
 
 function configEventPayload(config: {
@@ -242,6 +248,19 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   // Provider can rekey later if its backend provides a different ID.
   const tempId = opts.sessionId ?? `ses-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
+
+  // Branch detection: if resuming a session that has parent_session_id,
+  // pass fork opts to the provider and clear the fields so it only forks once.
+  if (isResume && !opts.branchParentId) {
+    const dbRow = getSession(opts.sessionId!);
+    if (dbRow?.parent_session_id && dbRow.branch_message_uuid) {
+      opts.branchParentId = dbRow.parent_session_id;
+      opts.branchMessageUUID = dbRow.branch_message_uuid;
+      // Clear branch fields so next resume is a normal resume, not another fork
+      clearBranchFields(opts.sessionId!);
+      console.log(`[branch-detect] Will fork ${opts.sessionId} from parent=${opts.branchParentId} at message=${opts.branchMessageUUID}`);
+    }
+  }
 
   const session: ActiveSession = {
     sessionId: tempId,
@@ -300,6 +319,15 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   // Delegate to provider — provider handles init events (user/prompt, system/init)
   const ctx = createTurnContext(session, opts);
   provider.startTurn(ctx);
+
+  logActivity({
+    userProfile: session.userProfile,
+    eventType: "session_start",
+    sessionId: session.sessionId,
+    agentProfile: session.profile,
+    summary: `Session started: ${session.preview.slice(0, 100)}`,
+    metadata: { provider: providerName, model: session.model, cwd: session.cwd, isResume },
+  });
 
   return session;
 }
@@ -367,6 +395,14 @@ export function stopSession(sessionId: string): boolean {
 
   // Delegate to provider for cleanup
   session._provider.abort(session);
+
+  logActivity({
+    userProfile: session.userProfile,
+    eventType: "agent_interrupted",
+    sessionId: session.sessionId,
+    agentProfile: session.profile,
+    summary: "Session interrupted by user",
+  });
 
   return true;
 }
@@ -561,8 +597,9 @@ export async function switchProfile(
     // In-place swap: let provider handle internals
     oldProvider.switchProfile(session, ctx, contextMode);
   } else if (!sameProvider) {
-    // Cross-provider switch: tear down old, create new
+    // Cross-provider switch: tear down old, dispose resources (MCP, AgentSession)
     oldProvider.abort(session);
+    await oldProvider.dispose?.(session);
     const newProvider = getProvider(newProviderName);
     session._provider = newProvider;
     session._providerState = null;
@@ -656,7 +693,45 @@ export function shutdownAll() {
         session.pauseResolver = null;
       }
       session._provider.abort(session);
+      session._provider.dispose?.(session).catch(() => {});
     } catch { /* best effort */ }
     activeSessions.delete(id);
   }
+}
+
+// ── Branching ──
+
+export function branchSession(
+  sourceId: string,
+  branchSeq: number,
+): { sessionId: string } | { error: string } {
+  const source = getSession(sourceId);
+  if (!source) return { error: "source session not found" };
+
+  // Find the SDK assistant message UUID for resumeSessionAt
+  const messageUuid = findAssistantUuid(sourceId, branchSeq);
+
+  // Create new session — just a copy with a fresh ID
+  const newId = crypto.randomUUID();
+
+  // Create DB row first (events FK references sessions)
+  upsertSession({
+    id: newId,
+    preview: source.preview,
+    profile: source.profile ?? undefined,
+    model: source.model ?? undefined,
+    status: "idle",
+    messageCount: 0,
+    costUsd: 0,
+    lastPrompt: source.last_prompt ?? undefined,
+    cwd: source.cwd ?? undefined,
+    parentSessionId: sourceId,
+    branchMessageUuid: messageUuid ?? undefined,
+  });
+
+  // Copy events from source up to branchSeq
+  const copied = copyEventsToSession(sourceId, newId, branchSeq);
+  if (copied === 0) return { error: "no events to copy at that seq" };
+
+  return { sessionId: newId };
 }

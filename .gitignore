@@ -76,3 +76,4 @@ harness/profiles/agents/*.json
 !harness/profiles/agents/research.json
 !harness/profiles/agents/test-harness.json
 !harness/profiles/agents/web-ui.json
+!harness/profiles/agents/meta-debugger.json

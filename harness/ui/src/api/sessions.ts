@@ -153,6 +153,19 @@ export async function respondToPermission(
   });
 }
 
+// ── Branching ──
+
+export async function branchSessionApi(sourceId: string, seq: number): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sourceId}/branch`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ seq }),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.sessionId;
+}
+
 // ── Scoped queries ──
 
 /** Fetch sessions with optional user profile scoping and action filter */

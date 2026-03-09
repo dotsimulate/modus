@@ -62,6 +62,7 @@
   }
 
   .message { padding: 0 16px; max-width: 100%; }
+  .message[data-role="user"]::before { inset: 0 4px; }
   .message-content { font-size: 13px; }
   .message-content pre { max-width: calc(100vw - 32px); }
   .config-bar-header { padding: 6px 16px; }

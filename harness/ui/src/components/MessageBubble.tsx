@@ -26,22 +26,22 @@ function countAllTools(toolCalls?: ToolCall[]): number {
 }
 
 /** Live elapsed timer that ticks every second while active.
- *  Captures wall-clock start on first active render. */
-function useElapsed(active: boolean): number | null {
+ *  Uses msg.timestamp (from event created_at) so it survives refresh. */
+function useElapsed(active: boolean, startTime?: number): number | null {
   const [elapsed, setElapsed] = useState<number | null>(null);
   const startRef = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   useEffect(() => {
     if (active) {
-      if (!startRef.current) startRef.current = Date.now();
+      if (!startRef.current) startRef.current = startTime ?? Date.now();
       const tick = () => setElapsed(Date.now() - startRef.current);
       tick();
       intervalRef.current = setInterval(tick, 1000);
       return () => clearInterval(intervalRef.current);
     }
     // Keep showing last elapsed after streaming ends (before meta arrives)
-  }, [active]);
+  }, [active, startTime]);
 
   return elapsed;
 }
@@ -58,6 +58,7 @@ type Props = {
   cwd?: string | null;
   lastTodoId?: string;
   streamFeed?: string;
+  onBranch?: (seq: number, prefill?: string) => void;
   children?: ReactNode;
 };
 
@@ -73,13 +74,13 @@ function formatMeta(meta: Message["meta"]): string {
   return parts.join("  ");
 }
 
-export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, children }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, children }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
   const wasStreamingRef = useRef(false);
   const toolCount = countAllTools(msg.toolCalls);
-  const liveElapsed = useElapsed(isStreaming && !msg.meta);
+  const liveElapsed = useElapsed(isStreaming && !msg.meta, msg.timestamp);
   const duration = msg.meta?.duration ?? liveElapsed;
 
   // Track streaming → meta transition for resolve animation
@@ -198,6 +199,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, i
           )}
         </div>
       )}
+
     </div>
   );
 });

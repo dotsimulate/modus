@@ -36,6 +36,7 @@ import type {
 } from "./action-types";
 import { MAX_CHAIN_DEPTH } from "./action-types";
 import { sendNotifications, sendActionNotification } from "./notify";
+import { logActivity } from "./activity";
 
 // ── Constants ──
 
@@ -420,6 +421,15 @@ async function fireAction(
 
   console.log(`[actions] Starting run #${runNumber} (exec #${exec.id}, cycle #${exec.cycleNumber}, run ${exec.cycleRunCount + 1}/${cfg.maxRuns ?? "∞"}) for "${name}" [${triggerInfo.type}]`);
 
+  logActivity({
+    eventType: "action_trigger",
+    actionName: name,
+    agentProfile: cfg.agentProfile,
+    userProfile: effectiveUserProfile,
+    summary: `Action "${name}" triggered (${triggerInfo.type})`,
+    metadata: { triggerType: triggerInfo.type, runNumber, executionId: exec.id },
+  });
+
   let runId: number | null = null;
   let runResult: RunResult | null = null;
   let isTransient = false;
@@ -750,6 +760,15 @@ async function fireAction(
   } finally {
     exec.currentSessionId = null;
     state.lastRunAt = Date.now();
+
+    logActivity({
+      eventType: "action_complete",
+      actionName: name,
+      agentProfile: cfg.agentProfile,
+      userProfile: effectiveUserProfile,
+      summary: `Action "${name}" run #${runNumber}: ${runResult?.status ?? "unknown"}`,
+      metadata: { status: runResult?.status, costUsd: runResult?.costUsd, durationMs: runResult?.durationMs, error: runResult?.error },
+    });
 
     // Track cost on execution
     if (runResult && runResult.costUsd > 0) {

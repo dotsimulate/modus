@@ -26,11 +26,12 @@ import {
   getDraft, setDraft,
   pruneSessionEvents, pruneAllSessionEvents, storageStats,
 } from "./db";
+import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import {
   startSession, queueMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
   updateSessionConfig, resolvePermission, switchProfile,
-  pauseSession, resumeSession,
+  pauseSession, resumeSession, branchSession,
   type SSEWriter,
 } from "./session-manager";
 
@@ -454,9 +455,12 @@ app.get("/api/sessions/:id/events", (c) => {
     // Send catch-up events from DB
     const pastEvents = getEvents(id, afterSeq);
     for (const evt of pastEvents) {
+      // Inject original timestamp so frontend uses real times on catch-up replay
+      let data = evt.data;
+      try { data = JSON.stringify({ ...JSON.parse(evt.data), _ts: evt.created_at }); } catch {}
       await stream.writeSSE({
         event: evt.type,
-        data: evt.data,
+        data,
         id: String(evt.seq),
       });
     }
@@ -589,8 +593,18 @@ app.patch("/api/sessions/:id/profile", async (c) => {
       400,
     );
   }
+  const active = getActiveSession(id);
+  const fromProfile = active?.profile;
   const ok = await switchProfile(id, profile, { contextMode });
   if (!ok) return c.json({ error: "session not found or switch failed" }, 404);
+  logActivity({
+    eventType: "profile_switch",
+    sessionId: id,
+    agentProfile: profile,
+    userProfile: active?.userProfile,
+    summary: `Profile switched: ${fromProfile ?? "none"} -> ${profile}`,
+    metadata: { fromProfile, toProfile: profile, contextMode },
+  });
   return c.json({ ok: true, profile });
 });
 
@@ -600,6 +614,17 @@ app.delete("/api/sessions/:id", (c) => {
   stopSession(c.req.param("id"));
   archiveSession(c.req.param("id"));
   return c.json({ ok: true });
+});
+
+// Branch session — fork from a specific point in a past conversation
+app.post("/api/sessions/:id/branch", async (c) => {
+  const sourceId = c.req.param("id");
+  const body = await c.req.json();
+  const { seq } = body;
+  if (typeof seq !== "number" || seq < 1) return c.json({ error: "seq required (positive integer)" }, 400);
+  const result = branchSession(sourceId, seq);
+  if ("error" in result) return c.json({ error: result.error }, 400);
+  return c.json({ sessionId: result.sessionId });
 });
 
 // ── Draft Text ──
@@ -993,6 +1018,24 @@ app.post("/api/prune", (c) => {
 app.post("/api/prune/:sessionId", (c) => {
   const result = pruneSessionEvents(c.req.param("sessionId"));
   return c.json(result);
+});
+
+// ── Activity Log ──
+
+app.get("/api/activity", (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const userProfile = params.get("userProfile") ?? undefined;
+  const since = params.get("since") ? Number(params.get("since")) : undefined;
+  const limit = params.get("limit") ? Number(params.get("limit")) : undefined;
+  const eventType = params.get("eventType") ?? undefined;
+  return c.json(getActivityLog({ userProfile, since, limit, eventType }));
+});
+
+app.get("/api/activity/summary", (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const userProfile = params.get("userProfile") ?? undefined;
+  const hours = params.get("hours") ? Number(params.get("hours")) : undefined;
+  return c.json(getActivitySummary({ userProfile, hours }));
 });
 
 // ── Start ──

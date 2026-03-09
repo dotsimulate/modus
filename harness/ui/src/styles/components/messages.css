@@ -15,13 +15,13 @@
 }
 .message[data-role="user"] {
   position: relative;
-  padding-top: 14px;
-  padding-bottom: 14px;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 .message[data-role="user"]::before {
   content: "";
   position: absolute;
-  inset: 0 0 0 12px;
+  inset: 0 20px;
   border-radius: 8px;
   background: linear-gradient(
     105deg,
@@ -117,6 +117,45 @@
   font-size: 8px;
   opacity: 0.5;
   margin-right: 1px;
+}
+.meta-branch {
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  margin-left: auto;
+}
+.message-meta:hover .meta-branch {
+  opacity: 0.6;
+}
+.meta-branch:hover {
+  opacity: 1 !important;
+  color: var(--text);
+}
+
+/* ── User meta (timestamp + branch, outside bubble) ── */
+.user-meta {
+  max-width: 840px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 2px 32px 4px;
+  margin-top: -20px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.user-meta-branch {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.user-meta-branch:hover {
+  opacity: 1;
+  color: var(--text);
 }
 
 /* Streaming noise */

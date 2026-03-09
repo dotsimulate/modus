@@ -10,6 +10,7 @@ import type { SessionProvider, TurnContext } from "./types";
 import type { ActiveSession, MessageContent } from "../session-manager";
 import { getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, type PermissionPolicy } from "../profiles";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
+import { logActivity } from "../activity";
 import { dirname, join, parse as parsePath } from "path";
 import { resolveSecret } from "../secrets";
 import type { ClaudeMdExcludes } from "../profiles";
@@ -298,6 +299,14 @@ export function createClaudeCodeProvider(): SessionProvider {
         session.pendingPermissions.delete(requestId);
 
         if (result.behavior === "deny") {
+          logActivity({
+            userProfile: session.userProfile,
+            eventType: "tool_denied",
+            sessionId: session.sessionId,
+            agentProfile: session.profile,
+            summary: `Tool denied: ${toolName}`,
+            metadata: { toolName, reason: result.message },
+          });
           return {
             continue: true,
             hookSpecificOutput: {
@@ -370,11 +379,23 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       let stderrBuf = "";
 
+      // Branch fork: resume from parent session, fork to new ID
+      const isBranch = !!opts.branchParentId;
+      const resumeTarget = isBranch ? opts.branchParentId : (opts.sessionId ?? undefined);
+      console.log(`[claude-code] startTurn isBranch=${isBranch} resume=${resumeTarget} sessionId=${opts.sessionId} branchParent=${opts.branchParentId} branchMsgUUID=${opts.branchMessageUUID}`);
+
+      // Fork options are one-shot — only used for the initial query(), never stored
+      const forkOpts = isBranch ? {
+        forkSession: true,
+        sessionId: opts.sessionId,
+        resumeSessionAt: opts.branchMessageUUID ?? undefined,
+      } : {};
+
       const sdkOptions: any = {
         pathToClaudeCodeExecutable: CLAUDE_PATH,
         cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
         includePartialMessages: true,
-        resume: opts.sessionId ?? undefined,
+        resume: resumeTarget,
         model: opts.model ?? profileDef?.model ?? undefined,
         effort: opts.effort ?? profileDef?.effort ?? undefined,
         maxTurns: opts.maxTurns ?? profileDef?.maxTurns ?? undefined,
@@ -418,7 +439,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       channel.push(session.initialContent);
 
       // Start the SDK query
-      const q = sdkQuery({ prompt: generator, options: { ...sdkOptions, abortController } });
+      const q = sdkQuery({ prompt: generator, options: { ...sdkOptions, ...forkOpts, abortController } });
       state.queryObj = q;
 
       // Background drain loop
@@ -534,6 +555,14 @@ export function createClaudeCodeProvider(): SessionProvider {
       if (session.status === "running" || session.status === "starting") {
         session.abortController.abort();
       }
+    },
+
+    async dispose(session: ActiveSession) {
+      const state = getState(session);
+      if (!state) return;
+      state.input.close();
+      session.abortController.abort();
+      session._providerState = null;
     },
 
     switchProfile(session: ActiveSession, ctx: TurnContext, contextMode: string) {
@@ -670,6 +699,15 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           lastResponse: (m.result || session.lastAssistantText || "").slice(0, 200),
         });
 
+        logActivity({
+          userProfile: session.userProfile,
+          eventType: "session_end",
+          sessionId: session.sessionId,
+          agentProfile: session.profile,
+          summary: `Turn completed: ${m.num_turns ?? 0} turns, $${(m.total_cost_usd ?? 0).toFixed(4)}`,
+          metadata: { costUsd: m.total_cost_usd, numTurns: m.num_turns, status: m.subtype, durationMs: m.harness_duration_ms },
+        });
+
         session.status = "idle";
 
         // Flush queued messages
@@ -681,6 +719,30 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           session.turnStartedAt = Date.now();
           session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
         }
+      }
+
+      // Translate compaction events to unified format
+      if (m.type === "system" && m.subtype === "status" && m.status === "compacting") {
+        ctx.emitEvent({
+          type: "system",
+          subtype: "compacting",
+          provider: "claude-code",
+        });
+        continue;
+      }
+      if (m.type === "system" && m.subtype === "compact_boundary") {
+        ctx.emitEvent({
+          type: "system",
+          subtype: "compact_complete",
+          provider: "claude-code",
+          pre_tokens: m.compact_metadata?.pre_tokens,
+          trigger: m.compact_metadata?.trigger ?? "auto",
+        });
+        continue;
+      }
+      // Status null = compaction finished status clear — skip raw event
+      if (m.type === "system" && m.subtype === "status" && m.status === null) {
+        continue;
       }
 
       // Persist + broadcast event
@@ -699,6 +761,9 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     }
     console.log(`[claude-code] drain loop exited normally for ${session.sessionId}, status=${session.status}`);
   } catch (err: any) {
+    // stopSession / switchProfile may have already set status — skip if handled
+    if (session.status === "idle") return;
+
     console.error(`[claude-code] drain caught for ${session.sessionId}:`, err);
     const isAbort = err?.name === "AbortError" || err?.type === "abort"
       || String(err).includes("aborted by user");
@@ -706,7 +771,6 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       console.log(`[claude-code] aborted ${session.sessionId}`);
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
-      ctx.emitEvent({ type: "system", subtype: "interrupted" });
     } else {
       session.error = String(err);
       session.status = "error";
