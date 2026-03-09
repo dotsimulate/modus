@@ -54,6 +54,7 @@ function AppShell() {
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [forceSetup, setForceSetup] = useState(false);
 
   // Health check
   useEffect(() => {
@@ -118,6 +119,10 @@ function AppShell() {
   };
   const isStreaming = activeSession?.status === "running" || activeSession?.status === "starting";
   const profileData = profiles.find((p) => p.name === activeProfileName);
+  const activeAgentCount = serverSessions.filter(s => {
+    const status = getSessionState(s.id)?.status ?? s.status;
+    return status === "running" || status === "starting";
+  }).length;
 
   return (
     <div className="app">
@@ -129,7 +134,7 @@ function AppShell() {
             </svg>
           </button>
         )}
-        <span className="top-nav-logo" onClick={() => navigate("home")}><MoLogo size={16} /></span>
+        <span className="top-nav-logo" onClick={() => navigate("home")}><MoLogo size={16} activeCount={activeAgentCount} /></span>
         <nav className="top-nav-links">
           {NAV_VIEWS.map((nv) => (
             <button
@@ -154,6 +159,7 @@ function AppShell() {
           userProfiles={userProfiles}
           activeUserProfile={activeUserProfile}
           onSwitchUserProfile={handleSwitchUserProfile}
+          onNewProfile={() => { setForceSetup(true); navigate("home"); }}
         />
       </div>
 
@@ -242,7 +248,12 @@ function AppShell() {
         )}
 
         {view === "home" && (
-          <Dashboard onNavigate={navigate} onSelectSession={handleViewSession} />
+          <Dashboard
+            onNavigate={navigate}
+            onSelectSession={handleViewSession}
+            forceSetup={forceSetup}
+            onSetupDone={() => setForceSetup(false)}
+          />
         )}
 
         {view === "profiles" && (

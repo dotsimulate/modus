@@ -9,6 +9,8 @@ import type { WidgetBase } from "../widgets";
 type Props = {
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
+  forceSetup?: boolean;
+  onSetupDone?: () => void;
 };
 
 const chevron = (
@@ -55,20 +57,21 @@ function WidgetSlot({
  * Shows ProjectSetup when no user profile exists or when the active
  * profile has no agent profiles configured. Otherwise shows widgets.
  */
-export function Dashboard({ onNavigate, onSelectSession }: Props) {
+export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone }: Props) {
   const { activeUP, userProfiles, refreshProfiles, refreshUserProfiles } = useProfiles();
   const [setupDismissed, setSetupDismissed] = useState(false);
   const dashboard = activeUP?.dashboard ?? DEFAULT_DASHBOARD;
 
   const needsProject = userProfiles.length === 0;
   const needsAgents = activeUP && (!activeUP.agentProfiles || activeUP.agentProfiles.length === 0);
-  const showSetup = !setupDismissed && (needsProject || needsAgents);
+  const showSetup = forceSetup || (!setupDismissed && (needsProject || needsAgents));
 
   const handleSetupComplete = useCallback(() => {
     setSetupDismissed(true);
+    onSetupDone?.();
     refreshProfiles();
     refreshUserProfiles();
-  }, [refreshProfiles, refreshUserProfiles]);
+  }, [refreshProfiles, refreshUserProfiles, onSetupDone]);
 
   return (
     <div className="dashboard">
