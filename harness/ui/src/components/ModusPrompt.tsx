@@ -2,13 +2,15 @@
  * ModusPrompt — general-purpose modus-dev editor prompt.
  *
  * Lives at the top of the dashboard. User types what they want to configure,
- * modus-dev runs, user can watch the session via a link. When done, profiles refresh.
+ * modus-dev runs, user can watch the session inline via MiniSession.
  * Recent modus-dev sessions listed below the input.
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
-import { createSession, fetchSessions, fetchSessionStatus, fetchSessionsByProfile } from "../api";
+import { createSession, fetchSessionsByProfile } from "../api";
+import { useSessionState } from "../sessionStore";
+import { MiniSession } from "./MiniSession";
 import type { SessionInfo } from "../api";
 
 type Props = {
@@ -29,30 +31,44 @@ export function ModusPrompt({ onSelectSession }: Props) {
   const { activeUP, activeUserProfile, refreshProfiles, refreshUserProfiles } = useProfiles();
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
-  const [statusText, setStatusText] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [recentSessions, setRecentSessions] = useState<SessionInfo[]>([]);
-  const pollRef = useRef(false);
 
-  // Fetch recent modus-dev sessions
+  // Watch the active session via sessionStore (SSE-driven, no polling)
+  const activeSession = useSessionState(phase === "running" ? sessionId : null);
+
+  // Detect when the running session finishes
+  useEffect(() => {
+    if (phase !== "running" || !activeSession) return;
+    if (activeSession.status === "idle") {
+      Promise.all([refreshProfiles(), refreshUserProfiles()]).catch(() => {});
+      fetchSessionsByProfile("modus-dev", 5, activeUserProfile ?? undefined).then(setRecentSessions).catch(() => {});
+      setPhase("done");
+      setPrompt("");
+    } else if (activeSession.status === "error") {
+      setError("agent error");
+      setPhase("error");
+    }
+  }, [phase, activeSession?.status]);
+
+  // Fetch recent modus-dev sessions (scoped to active user profile)
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const sessions = await fetchSessionsByProfile("modus-dev", 5);
+        const sessions = await fetchSessionsByProfile("modus-dev", 5, activeUserProfile ?? undefined);
         if (active) setRecentSessions(sessions);
       } catch { /* silent */ }
     };
     load();
-    const interval = setInterval(load, 5000);
+    const interval = setInterval(load, 10000);
     return () => { active = false; clearInterval(interval); };
-  }, []);
+  }, [activeUserProfile]);
 
-  // Re-fetch after completion
+  // Auto-dismiss done state
   useEffect(() => {
     if (phase !== "done") return;
-    fetchSessionsByProfile("modus-dev", 5).then(setRecentSessions).catch(() => {});
     const t = setTimeout(() => setPhase("idle"), 3000);
     return () => clearTimeout(t);
   }, [phase]);
@@ -92,67 +108,21 @@ export function ModusPrompt({ onSelectSession }: Props) {
     ].join("\n");
 
     setPhase("running");
-    setStatusText("starting...");
     setError("");
     setSessionId(null);
-    pollRef.current = true;
 
     try {
-      const { sessionId: initialId } = await createSession({
+      const { sessionId: sid } = await createSession({
         prompt: structuredPrompt,
         profile: "modus-dev",
+        userProfile: activeUserProfile ?? undefined,
       });
-
-      // Resolve real session ID (backend rekeys ses-* to UUIDs)
-      let sid = initialId;
-      if (sid.startsWith("ses-")) {
-        for (let i = 0; i < 30 && pollRef.current; i++) {
-          await new Promise((r) => setTimeout(r, 300));
-          try {
-            const sessions = await fetchSessions(1);
-            if (sessions.length > 0 && !sessions[0].id.startsWith("ses-")) {
-              sid = sessions[0].id;
-              break;
-            }
-          } catch { /* keep trying */ }
-        }
-      }
-
       setSessionId(sid);
-
-      // Poll until done
-      for (let i = 0; i < 120 && pollRef.current; i++) {
-        await new Promise((r) => setTimeout(r, 1500));
-        try {
-          const status = await fetchSessionStatus(sid);
-          if (status.status === "idle") {
-            setStatusText("done");
-            await Promise.all([refreshProfiles(), refreshUserProfiles()]);
-            setPhase("done");
-            setPrompt("");
-            return;
-          }
-          if (status.status === "error") {
-            setError(status.error || "agent error");
-            setPhase("error");
-            return;
-          }
-          const turns = status.numTurns ?? 0;
-          setStatusText(turns > 0 ? `working... (${turns} turn${turns !== 1 ? "s" : ""})` : "working...");
-        } catch { /* keep polling */ }
-      }
-      if (pollRef.current) {
-        setError("timed out");
-        setPhase("error");
-      }
     } catch (err) {
       setError(`failed to start: ${err}`);
       setPhase("error");
     }
   }, [prompt, activeUserProfile, activeUP, refreshProfiles, refreshUserProfiles]);
-
-  // Cleanup on unmount
-  useEffect(() => () => { pollRef.current = false; }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && prompt.trim()) {
@@ -168,30 +138,16 @@ export function ModusPrompt({ onSelectSession }: Props) {
         create agents, edit profiles, set up actions, or change any MO configuration
       </p>
 
-      {/* ── Running state ── */}
-      {phase === "running" && (
+      {/* ── Running: inline MiniSession ── */}
+      {phase === "running" && sessionId && (
         <div className="modus-prompt-running">
-          <div className="modus-prompt-status">
-            <span className="modus-prompt-dot" />
-            <span>{statusText}</span>
-            {sessionId && (
-              <button
-                className="modus-prompt-link"
-                onClick={() => onSelectSession(sessionId)}
-              >
-                watch session
-              </button>
-            )}
-            <button
-              className="modus-prompt-cancel"
-              onClick={() => { pollRef.current = false; setPhase("idle"); }}
-            >
-              cancel
-            </button>
-          </div>
-          <div className="modus-prompt-progress">
-            <div className="modus-prompt-progress-fill" />
-          </div>
+          <MiniSession sessionId={sessionId} onNavigate={onSelectSession} />
+          <button
+            className="modus-prompt-cancel"
+            onClick={() => setPhase("idle")}
+          >
+            dismiss
+          </button>
         </div>
       )}
 

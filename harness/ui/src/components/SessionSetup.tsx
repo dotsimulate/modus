@@ -146,6 +146,7 @@ export function SessionSetup({
 
 /** Shorten a path for display: ~/dev/infra/agent_dev_zone → ~/d/i/agent_dev_zone */
 function shortenPath(p: string): string {
+  if (!p) return "";
   // Normalize to forward slashes for display
   const norm = p.replace(/\\/g, "/");
   // Detect home prefix: /home/user or C:/Users/user

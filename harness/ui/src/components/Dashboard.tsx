@@ -76,6 +76,7 @@ export function Dashboard({ onNavigate, onSelectSession }: Props) {
         <ProjectSetup
           existingProject={needsAgents && !needsProject ? activeUP!.name : undefined}
           onComplete={handleSetupComplete}
+          onSelectSession={onSelectSession}
         />
       ) : (
         <ModusPrompt onSelectSession={onSelectSession} />

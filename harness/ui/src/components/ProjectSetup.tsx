@@ -8,12 +8,11 @@
  * Standalone component, not a widget — needs to work before any project exists.
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
-import {
-  saveUserProfileApi, createSession,
-  fetchSessionStatus, fetchSessions, browsePath,
-} from "../api";
+import { saveUserProfileApi, createSession, browsePath } from "../api";
+import { useSessionState } from "../sessionStore";
+import { MiniSession } from "./MiniSession";
 import type { BrowseResult } from "../api";
 
 type Phase = "project" | "agents" | "running" | "done" | "error";
@@ -22,9 +21,10 @@ type Props = {
   /** If set, skip project creation and go straight to agent setup */
   existingProject?: string;
   onComplete: () => void;
+  onSelectSession?: (id: string) => void;
 };
 
-export function ProjectSetup({ existingProject, onComplete }: Props) {
+export function ProjectSetup({ existingProject, onComplete, onSelectSession }: Props) {
   const {
     switchUserProfile, refreshProfiles, refreshUserProfiles, activeUP,
   } = useProfiles();
@@ -45,12 +45,26 @@ export function ProjectSetup({ existingProject, onComplete }: Props) {
 
   // ── Agent setup ──
   const [agentPrompt, setAgentPrompt] = useState("");
-  const [statusText, setStatusText] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const pollRef = useRef(false);
 
   const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const activeSlug = existingProject ?? slug;
+
+  // Watch the active session via sessionStore (SSE-driven, no polling)
+  const activeSession = useSessionState(phase === "running" ? sessionId : null);
+
+  // Detect when the running session finishes
+  useEffect(() => {
+    if (phase !== "running" || !activeSession) return;
+    if (activeSession.status === "idle") {
+      Promise.all([refreshProfiles(), refreshUserProfiles()]).catch(() => {});
+      setPhase("done");
+    } else if (activeSession.status === "error") {
+      setError("Agent encountered an error");
+      setPhase("error");
+    }
+  }, [phase, activeSession?.status]);
 
   // ── Path browser helpers ──
 
@@ -137,62 +151,21 @@ export function ProjectSetup({ existingProject, onComplete }: Props) {
     ].join("\n");
 
     setPhase("running");
-    setStatusText("starting setup agent...");
-    pollRef.current = true;
+    setError("");
+    setSessionId(null);
 
     try {
-      const { sessionId: initialId } = await createSession({
+      const { sessionId: sid } = await createSession({
         prompt: structuredPrompt,
         profile: "modus-dev",
+        userProfile: activeSlug,
       });
-
-      // Resolve real session ID (backend rekeys ses-* temp IDs to UUIDs)
-      let sid = initialId;
-      if (sid.startsWith("ses-")) {
-        for (let i = 0; i < 20; i++) {
-          await new Promise((r) => setTimeout(r, 500));
-          try {
-            const sessions = await fetchSessions(1);
-            if (sessions.length > 0 && !sessions[0].id.startsWith("ses-")) {
-              sid = sessions[0].id;
-              break;
-            }
-          } catch { /* keep trying */ }
-        }
-      }
-
-      // Poll until done
-      for (let i = 0; i < 120 && pollRef.current; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        try {
-          const status = await fetchSessionStatus(sid);
-          if (status.status === "idle") {
-            setStatusText("setup complete");
-            await Promise.all([refreshProfiles(), refreshUserProfiles()]);
-            setPhase("done");
-            return;
-          }
-          if (status.status === "error") {
-            setError(status.error || "Agent encountered an error");
-            setPhase("error");
-            return;
-          }
-          const turns = status.numTurns ?? 0;
-          setStatusText(turns > 0 ? `agent working... (${turns} turn${turns !== 1 ? "s" : ""})` : "agent working...");
-        } catch { /* keep polling */ }
-      }
-      if (pollRef.current) {
-        setError("Setup timed out");
-        setPhase("error");
-      }
+      setSessionId(sid);
     } catch (err) {
       setError(`Failed to start setup: ${err}`);
       setPhase("error");
     }
   }, [agentPrompt, projectName, projectPath, activeSlug, activeUP, refreshProfiles, refreshUserProfiles]);
-
-  // Cleanup polling on unmount
-  useEffect(() => () => { pollRef.current = false; }, []);
 
   // ── Skip agent setup ──
 
@@ -347,10 +320,7 @@ export function ProjectSetup({ existingProject, onComplete }: Props) {
     return (
       <div className="project-setup">
         <div className="setup-phase-title">setting up</div>
-        <div className="setup-status">{statusText}</div>
-        <div className="setup-progress-bar">
-          <div className="setup-progress-fill" />
-        </div>
+        {sessionId && <MiniSession sessionId={sessionId} onNavigate={onSelectSession} />}
       </div>
     );
   }

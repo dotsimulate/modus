@@ -295,10 +295,11 @@ app.get("/api/sessions", (c) => {
   const actionFilter = params.get("action");
   const profileFilter = params.get("profile");
   const scope = resolveUserProfileScope(c);
+  const userProfileName = new URL(c.req.url).searchParams.get("userProfile") ?? undefined;
   const rows = actionFilter
     ? listSessionsByAction(actionFilter, limit)
     : profileFilter
-      ? listSessionsScoped({ agentProfiles: [profileFilter], limit })
+      ? listSessionsScoped({ agentProfiles: [profileFilter], userProfileName, limit })
       : scope
         ? listSessionsScoped({ ...scope, limit })
         : listSessions(limit);
