@@ -48,7 +48,7 @@
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.04em;
-  color: #fff;
+  color: var(--accent);
 }
 
 .create-profile-close {
@@ -94,7 +94,7 @@
   padding: 8px 10px;
   font-family: var(--font-sans);
   font-size: 13px;
-  color: #fff;
+  color: var(--accent);
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -208,7 +208,7 @@
 }
 .create-profile-agent.selected {
   border-color: rgba(232, 155, 80, 0.5);
-  color: #e89b50;
+  color: var(--warning);
   background: rgba(232, 155, 80, 0.06);
 }
 
@@ -251,7 +251,7 @@
   background: transparent;
   border: 1px solid rgba(51, 204, 51, 0.4);
   border-radius: 4px;
-  color: #33cc33;
+  color: var(--success);
   font-family: var(--font-mono);
   font-size: 10px;
   padding: 5px 14px;
@@ -260,7 +260,7 @@
 }
 .create-profile-save:hover:not(:disabled) {
   background: rgba(51, 204, 51, 0.08);
-  border-color: #33cc33;
+  border-color: var(--success);
 }
 .create-profile-save:disabled {
   opacity: 0.3;

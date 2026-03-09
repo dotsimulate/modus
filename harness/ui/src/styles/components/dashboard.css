@@ -192,7 +192,7 @@
   border-radius: 50%;
 }
 .apc-live-dot--schedule {
-  background: #e89b50;
+  background: var(--warning);
 }
 
 .apc-actions-spacer {
@@ -277,7 +277,7 @@
 }
 /* Subtle red tint for new-mode */
 .dash-editor-wrap--new .profile-list-label {
-  color: #cc6666;
+  color: var(--error-soft);
 }
 .dash-editor-wrap--new .profile-list-item--active {
   border-color: rgba(204, 102, 102, 0.3);
@@ -299,7 +299,7 @@
 .dash-active-count {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: #33cc33;
+  color: var(--success);
   border: 1px solid rgba(51, 204, 51, 0.4);
   padding: 1px 6px;
   border-radius: 3px;
@@ -402,10 +402,10 @@
   height: 8px;
 }
 .dash-dot--running {
-  background: #33cc33;
+  background: var(--dot-running);
 }
 .dash-dot--streaming {
-  background: #33cc33;
+  background: var(--dot-running);
   box-shadow: 0 0 6px 2px rgba(51, 204, 51, 0.5);
   animation: stream-pulse 0.8s ease-in-out infinite;
 }
@@ -413,9 +413,9 @@
   0%, 100% { opacity: 1; box-shadow: 0 0 6px 2px rgba(51, 204, 51, 0.5); }
   50% { opacity: 0.4; box-shadow: 0 0 2px 1px rgba(51, 204, 51, 0.2); }
 }
-.dash-dot--idle { background: #555; }
-.dash-dot--done { background: #555; }
-.dash-dot--error { background: #aa3333; }
+.dash-dot--idle { background: var(--dot-idle); }
+.dash-dot--done { background: var(--dot-done); }
+.dash-dot--error { background: var(--dot-error); }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

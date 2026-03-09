@@ -66,12 +66,12 @@
   max-width: 100%;
 }
 @keyframes fade-user {
-  0% { color: #ff8c00; opacity: 0; transform: translateY(4px); }
+  0% { color: var(--flash-user); opacity: 0; transform: translateY(4px); }
   40% { opacity: 1; transform: translateY(0); }
   100% { color: var(--text); }
 }
 @keyframes fade-assistant {
-  0% { color: #b44dff; opacity: 0; transform: translateY(4px); }
+  0% { color: var(--flash-assistant); opacity: 0; transform: translateY(4px); }
   40% { opacity: 1; transform: translateY(0); }
   100% { color: var(--text); }
 }

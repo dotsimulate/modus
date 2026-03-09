@@ -39,7 +39,7 @@
 }
 
 .mini-session-dot--active {
-  background: #33cc33;
+  background: var(--success);
   animation: mini-dot-pulse 1.2s ease-in-out infinite;
 }
 
@@ -49,7 +49,7 @@
 }
 
 .mini-session-dot--error {
-  background: #cc4444;
+  background: var(--error-soft);
 }
 
 @keyframes mini-dot-pulse {

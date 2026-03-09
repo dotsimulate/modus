@@ -47,6 +47,23 @@
   min-width: 0;
   flex: 1;
 }
+.session-title-input {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--text-muted);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+}
+.session-title-input::placeholder {
+  color: var(--text-muted);
+}
 .session-item-meta {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -161,6 +178,18 @@
 .profile-switcher-item.active {
   color: var(--text);
 }
+.profile-switcher-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.profile-switcher-new {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.profile-switcher-new:hover {
+  opacity: 1;
+}
 .lock-btn {
   background: none;
   border: none;
@@ -179,5 +208,5 @@
   background: var(--text-muted);
   flex-shrink: 0;
 }
-.status-dot.connected { background: #33cc33; }
-.status-dot.error { background: var(--error); }
+.status-dot.connected { background: var(--dot-connected); }
+.status-dot.error { background: var(--dot-error); }

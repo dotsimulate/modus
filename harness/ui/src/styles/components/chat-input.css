@@ -14,7 +14,7 @@
   border-radius: 3px;
   margin-left: auto;
 }
-.chat-header-status.running { color: #33cc33; border: 1px solid #33cc33; }
+.chat-header-status.running { color: var(--success); border: 1px solid var(--success); }
 .chat-header-status.starting { color: var(--text-muted); border: 1px solid var(--border); }
 .chat-header-status.idle { color: var(--text-dim); border: 1px solid var(--border); }
 .chat-header-status.error { color: var(--error); border: 1px solid var(--error); }
@@ -45,11 +45,11 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #33cc33;
+  background: var(--success);
   animation: pulse 1.2s ease-in-out infinite;
 }
 .streaming-indicator.indicator-tool {
-  background: #e89b50;
+  background: var(--warning);
 }
 @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 .streaming-idle { opacity: 0.25; }
@@ -117,8 +117,8 @@
   padding: 0;
 }
 .send-btn:hover {
-  background: #fff;
-  border-color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .send-btn:disabled {
   color: var(--text-muted);
@@ -178,7 +178,7 @@
   border: none;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.7);
-  color: #fff;
+  color: var(--accent);
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
