@@ -502,7 +502,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         const model = buildModel(providerName, modelId, profile, cost);
         const authStorage = buildAuthStorage(providerName);
         const sessionManager = SessionManager.inMemory(cwd);
-        const providerDefaults = getGlobalConfig().providerDefaults?.[providerName];
+        const providerDefaults = getGlobalConfig(session.cwd).providerDefaults?.[providerName];
         const compaction = {
           enabled: profile?.compaction?.enabled ?? providerDefaults?.compaction?.enabled ?? true,
           reserveTokens: profile?.compaction?.reserveTokens ?? providerDefaults?.compaction?.reserveTokens ?? 16384,
@@ -522,8 +522,8 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         });
         await resourceLoader.reload();
 
-        // MCP tools: merge global + profile (same as claude-code provider)
-        const globalConfig = getGlobalConfig();
+        // MCP tools: merge global + project-local + profile
+        const globalConfig = getGlobalConfig(session.cwd);
         const mergedMcp = {
           ...(globalConfig.mcpServers ?? {}),
           ...(profile?.mcpServers ?? {}),

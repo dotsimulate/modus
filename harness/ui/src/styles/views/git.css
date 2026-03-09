@@ -156,14 +156,35 @@
 .git-ls-wt { display: flex; flex-direction: column; gap: 4px; }
 .git-ls-wt-head {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
 }
+.git-ls-wt-head:hover .git-section-label { color: var(--text-dim); }
 .git-ls-wt-count {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-dim);
 }
+
+.git-ls-wt-files-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.1s ease;
+}
+.git-ls-wt-files-wrap--open { grid-template-rows: 1fr; }
+.git-ls-wt-files-wrap > .git-ls-wt-files { overflow: hidden; }
+.git-ls-wt-files-wrap--open > .git-ls-wt-files {
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
 .git-ls-wt-files { display: flex; flex-direction: column; gap: 4px; }
 
 .git-ls-meta {

@@ -174,8 +174,8 @@ export function createClaudeCodeProvider(): SessionProvider {
         }
       }
 
-      // Merge MCP servers: global + profile
-      const globalConfig = getGlobalConfig();
+      // Merge MCP servers: global + project-local + profile
+      const globalConfig = getGlobalConfig(session.cwd);
       const mergedMcp = {
         ...(globalConfig.mcpServers ?? {}),
         ...(profileDef?.mcpServers ?? {}),

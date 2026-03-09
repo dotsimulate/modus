@@ -138,7 +138,8 @@ app.get("/health", (c) =>
 // ── Profiles ──
 
 app.get("/api/profiles", (c) => {
-  const all = getAllProfiles();
+  const cwd = c.req.query("cwd");
+  const all = getAllProfiles(cwd);
   const list = Object.entries(all).map(([name, p]) => ({
     name,
     ...p,
@@ -148,7 +149,8 @@ app.get("/api/profiles", (c) => {
 });
 
 app.get("/api/profiles/_global", (c) => {
-  return c.json(getGlobalConfig());
+  const cwd = c.req.query("cwd");
+  return c.json(getGlobalConfig(cwd));
 });
 
 app.put("/api/profiles/_global", async (c) => {
@@ -161,7 +163,8 @@ app.put("/api/profiles/_global", async (c) => {
 
 app.get("/api/profiles/:name", (c) => {
   const name = c.req.param("name");
-  const profile = getProfile(name);
+  const cwd = c.req.query("cwd");
+  const profile = getProfile(name, cwd);
   if (!profile) return c.json({ error: "profile not found" }, 404);
   return c.json({ name, ...profile });
 });
@@ -358,9 +361,9 @@ app.post("/api/sessions", async (c) => {
   const { prompt } = body;
   if (!prompt) return c.json({ error: "prompt required" }, 400);
 
-  if (body.profile && !getProfile(body.profile)) {
+  if (body.profile && !getProfile(body.profile, body.cwd)) {
     return c.json(
-      { error: `unknown profile: ${body.profile}`, available: listProfileNames() },
+      { error: `unknown profile: ${body.profile}`, available: listProfileNames(body.cwd) },
       400,
     );
   }
@@ -590,13 +593,13 @@ app.patch("/api/sessions/:id/profile", async (c) => {
   const body = await c.req.json();
   const { profile, contextMode } = body;
   if (!profile) return c.json({ error: "profile required" }, 400);
-  if (!getProfile(profile)) {
+  const active = getActiveSession(id);
+  if (!getProfile(profile, active?.cwd)) {
     return c.json(
-      { error: `unknown profile: ${profile}`, available: listProfileNames() },
+      { error: `unknown profile: ${profile}`, available: listProfileNames(active?.cwd) },
       400,
     );
   }
-  const active = getActiveSession(id);
   const fromProfile = active?.profile;
   const ok = await switchProfile(id, profile, { contextMode });
   if (!ok) return c.json({ error: "session not found or switch failed" }, 404);

@@ -137,7 +137,7 @@ export function getAllActiveSessions(): ActiveSession[] {
 // Creates the context object that providers use to interact with session-manager.
 
 function createTurnContext(session: ActiveSession, opts: StartSessionOpts): TurnContext {
-  const profile = opts.profile ? getProfile(opts.profile) : undefined;
+  const profile = opts.profile ? getProfile(opts.profile, opts.cwd) : undefined;
 
   return {
     session,
@@ -261,7 +261,7 @@ function configEventPayload(config: {
 }
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
-  const profileDef = opts.profile ? getProfile(opts.profile) : undefined;
+  const profileDef = opts.profile ? getProfile(opts.profile, opts.cwd) : undefined;
   const userProf = opts.userProfile ? getUserProfile(opts.userProfile) : undefined;
   // Cascade: session override > agent profile > user profile > default
   const providerName = opts.provider ?? profileDef?.provider ?? userProf?.provider ?? "claude-code";
@@ -574,7 +574,7 @@ export function updateSessionConfig(
   const session = activeSessions.get(sessionId);
   if (!session) return false;
   if (config.model !== undefined) {
-    session.model = config.model || getProfile(session.profile ?? "")?.model;
+    session.model = config.model || getProfile(session.profile ?? "", session.cwd)?.model;
   }
   if (config.cwd !== undefined) {
     session.cwd = config.cwd;
@@ -606,14 +606,14 @@ export async function switchProfile(
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
-  const newProfile = getProfile(newProfileName);
+  const newProfile = getProfile(newProfileName, session.cwd);
   if (!newProfile) return false;
 
   const contextMode = opts?.contextMode ?? "full";
   const oldProfileName = session.profile;
   const oldProvider = session._provider;
   const newProviderName = newProfile.provider ?? "claude-code";
-  const oldProviderName = oldProfileName ? (getProfile(oldProfileName)?.provider ?? "claude-code") : "claude-code";
+  const oldProviderName = oldProfileName ? (getProfile(oldProfileName, session.cwd)?.provider ?? "claude-code") : "claude-code";
   const sameProvider = newProviderName === oldProviderName;
 
   // Step 1: Abort current turn if running/paused — wait for settle
