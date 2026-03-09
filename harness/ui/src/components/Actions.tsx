@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   fetchActions, fetchActionRuns, fetchActionInfo,
   triggerActionApi, updateActionApi, clearActionRunsApi,
   resetActionApi, fetchActionPreferences, reloadActionsApi,
+  addTagApi, removeTagApi,
 } from "../api";
 import type { ActionInfo, ActionRun } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -266,26 +267,80 @@ function RunRow({ run, onSelect }: { run: ActionRun; onSelect: (id: string) => v
 
 // ── Tab: About ──
 
-function AboutTab({ actionName }: { actionName: string }) {
+function AboutTab({ action }: { action: ActionInfo }) {
   const [desc, setDesc] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    fetchActionInfo(actionName).then(info => {
+    fetchActionInfo(action.name).then(info => {
       try {
         const config = JSON.parse(info.configSource);
         setDesc(config.longDescription || null);
       } catch { setDesc(null); }
     }).catch(() => setDesc(null));
-  }, [actionName]);
+  }, [action.name]);
 
-  if (desc === undefined) return <div className="sched-tab-content sched-runs-empty">loading...</div>;
-  if (!desc) return <div className="sched-tab-content sched-runs-empty">no description</div>;
+  const hasRetry = (action.maxRetries ?? 0) > 0 || (action.maxTransientRetries ?? 0) > 0;
+  const hasNotify = action.notify && action.notify.length > 0;
+  const hasArtifacts = action.artifacts && action.artifacts.length > 0;
+  const hasPipeline = hasRetry || hasNotify || hasArtifacts;
 
   return (
     <div className="sched-tab-content sched-about-tab">
-      <div className="message-content">
-        <Markdown content={desc} />
-      </div>
+      {desc && (
+        <div className="message-content" style={{ marginBottom: hasPipeline ? 12 : 0 }}>
+          <Markdown content={desc} />
+        </div>
+      )}
+      {hasPipeline && (
+        <div className="sched-about-pipeline">
+          {hasRetry && (
+            <div className="sched-about-section">
+              <span className="sched-about-heading">retry</span>
+              <div className="sched-about-items">
+                {(action.maxRetries ?? 0) > 0 && (
+                  <span className="sched-about-chip">
+                    verify: {action.maxRetries} retries
+                    {action.onGatherError === "retry" ? " (incl. gather)" : ""}
+                  </span>
+                )}
+                {(action.maxTransientRetries ?? 0) > 0 && (
+                  <span className="sched-about-chip">
+                    transient: {action.maxTransientRetries ?? 2}x
+                    {action.onTransientFailure === "skip" ? " (skip)" : ""}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {hasNotify && (
+            <div className="sched-about-section">
+              <span className="sched-about-heading">notifications</span>
+              <div className="sched-about-items">
+                {action.notify!.map((n, i) => (
+                  <span key={i} className="sched-about-chip">
+                    {n.channel} on {Array.isArray(n.on) ? n.on.join(", ") : n.on}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {hasArtifacts && (
+            <div className="sched-about-section">
+              <span className="sched-about-heading">artifacts</span>
+              <div className="sched-about-items">
+                {action.artifacts!.map((a, i) => (
+                  <span key={i} className="sched-about-chip">
+                    {a.name} ({a.mime}){a.required === false ? " optional" : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {!desc && !hasPipeline && (
+        <div className="sched-runs-empty">no description</div>
+      )}
     </div>
   );
 }
@@ -402,6 +457,7 @@ function ActionCard({
   onTrigger,
   onSelectSession,
   onClearRuns,
+  onArchive,
 }: {
   action: ActionInfo;
   expanded: boolean;
@@ -410,6 +466,7 @@ function ActionCard({
   onTrigger: () => void;
   onSelectSession: (id: string) => void;
   onClearRuns: () => void;
+  onArchive: () => void;
 }) {
   const [runs, setRuns] = useState<ActionRun[]>([]);
   const [tab, setTab] = useState<TabKey>("runs");
@@ -461,6 +518,13 @@ function ActionCard({
         >
           {action.running ? "..." : "run"}
         </button>
+        <button
+          className="sched-archive-btn"
+          onClick={(e) => { e.stopPropagation(); onArchive(); }}
+          title="Archive action"
+        >
+          arc
+        </button>
       </div>
 
       {/* Header */}
@@ -481,6 +545,9 @@ function ActionCard({
         {action.trigger.type === "interval" && action.trigger.activeHours && (
           <span className="override-tag">{action.trigger.activeHours.start}-{action.trigger.activeHours.end}</span>
         )}
+        {action.tags?.filter(t => t !== "archived").map(t => (
+          <span key={t} className="override-tag override-tag--user">{t}</span>
+        ))}
       </div>
 
       {/* Description */}
@@ -528,7 +595,7 @@ function ActionCard({
                 }
               />
             )}
-            {tab === "about" && <AboutTab actionName={action.name} />}
+            {tab === "about" && <AboutTab action={action} />}
             {tab === "files" && <FilesTab actionName={action.name} />}
           </div>
         </div>
@@ -543,6 +610,8 @@ export function Actions({ onSelectSession }: Props) {
   const { activeUserProfile } = useProfiles();
   const [actions, setActions] = useState<ActionInfo[]>([]);
   const [expandedName, setExpandedName] = useState<string | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   // 1s render tick for smooth countdowns
   const [, setTick] = useState(0);
@@ -576,25 +645,80 @@ export function Actions({ onSelectSession }: Props) {
     await triggerActionApi(name, activeUserProfile).catch(() => {});
   }, [activeUserProfile]);
 
-  const runningCount = actions.filter(a => a.running).length;
-  const enabledCount = actions.filter(a => a.enabled).length;
+  const handleArchive = useCallback(async (name: string) => {
+    const action = actions.find(a => a.name === name);
+    const isArchived = action?.tags?.includes("archived");
+    if (isArchived) {
+      await removeTagApi(name, "archived").catch(() => {});
+      setActions(prev => prev.map(a =>
+        a.name === name ? { ...a, tags: (a.tags ?? []).filter(t => t !== "archived") } : a
+      ));
+    } else {
+      await addTagApi(name, "archived").catch(() => {});
+      setActions(prev => prev.map(a =>
+        a.name === name ? { ...a, tags: [...(a.tags ?? []), "archived"] } : a
+      ));
+    }
+  }, [actions]);
+
+  // Collect all unique tags (excluding "archived")
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    for (const a of actions) {
+      for (const t of a.tags ?? []) {
+        if (t !== "archived") tags.add(t);
+      }
+    }
+    return Array.from(tags).sort();
+  }, [actions]);
+
+  // Split into active and archived
+  const activeActions = useMemo(() => {
+    let list = actions.filter(a => !a.tags?.includes("archived"));
+    if (activeTag) list = list.filter(a => a.tags?.includes(activeTag));
+    return list;
+  }, [actions, activeTag]);
+
+  const archivedActions = useMemo(() =>
+    actions.filter(a => a.tags?.includes("archived")),
+  [actions]);
+
+  const runningCount = activeActions.filter(a => a.running).length;
+  const enabledCount = activeActions.filter(a => a.enabled).length;
 
   return (
     <div className="schedules-view">
       {/* Header */}
       <div className="sched-header">
         <span className="sched-header-title">actions</span>
-        <span className="sched-header-count">{actions.length}</span>
+        <span className="sched-header-count">{activeActions.length}</span>
         {runningCount > 0 && (
           <span className="sched-header-running">
             <span className="dash-dot dash-dot--streaming" />
             {runningCount} active
           </span>
         )}
-        {enabledCount > 0 && enabledCount < actions.length && (
+        {enabledCount > 0 && enabledCount < activeActions.length && (
           <span className="sched-header-enabled">{enabledCount} enabled</span>
         )}
       </div>
+
+      {/* Tag filter bar */}
+      {allTags.length > 0 && (
+        <div className="sched-tag-bar">
+          <button
+            className={`sched-tag-filter ${!activeTag ? "sched-tag-filter--active" : ""}`}
+            onClick={() => setActiveTag(null)}
+          >all</button>
+          {allTags.map(t => (
+            <button
+              key={t}
+              className={`sched-tag-filter ${activeTag === t ? "sched-tag-filter--active" : ""}`}
+              onClick={() => setActiveTag(activeTag === t ? null : t)}
+            >{t}</button>
+          ))}
+        </div>
+      )}
 
       {/* Empty state */}
       {actions.length === 0 && (
@@ -606,9 +730,9 @@ export function Actions({ onSelectSession }: Props) {
         </div>
       )}
 
-      {/* Action cards */}
+      {/* Active action cards */}
       <div className="sched-grid">
-        {actions.map(a => (
+        {activeActions.map(a => (
           <ActionCard
             key={a.name}
             action={a}
@@ -618,9 +742,42 @@ export function Actions({ onSelectSession }: Props) {
             onTrigger={() => handleTrigger(a.name)}
             onSelectSession={onSelectSession}
             onClearRuns={() => {}}
+            onArchive={() => handleArchive(a.name)}
           />
         ))}
       </div>
+
+      {/* Archived section */}
+      {archivedActions.length > 0 && (
+        <div className="sched-archived-section">
+          <button
+            className="sched-archived-toggle"
+            onClick={() => setShowArchived(!showArchived)}
+          >
+            <span className={`sched-card-chevron ${showArchived ? "sched-card-chevron--open" : ""}`}>
+              {chevron}
+            </span>
+            {archivedActions.length} archived
+          </button>
+          {showArchived && (
+            <div className="sched-grid">
+              {archivedActions.map(a => (
+                <ActionCard
+                  key={a.name}
+                  action={a}
+                  expanded={expandedName === a.name}
+                  onToggleExpand={() => setExpandedName(expandedName === a.name ? null : a.name)}
+                  onToggleEnabled={(enabled) => handleToggle(a.name, enabled)}
+                  onTrigger={() => handleTrigger(a.name)}
+                  onSelectSession={onSelectSession}
+                  onClearRuns={() => {}}
+                  onArchive={() => handleArchive(a.name)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

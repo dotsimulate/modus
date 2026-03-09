@@ -114,6 +114,7 @@ def read_memory(path: Path) -> dict | None:
         "confidence": meta.get("confidence", ""),
         "created": meta.get("created", ""),
         "profile": meta.get("profile", None),
+        "user_profile": meta.get("user_profile", None),
         "priority": priority,
         "content": body,
     }
@@ -179,6 +180,8 @@ def save(id: str, content: str, type: str = "discovery", tags: str = "", confide
 
     profile = os.environ.get("AGENT_PROFILE", "")
     profile_line = f"profile: {profile}\n" if profile else ""
+    user_profile = os.environ.get("USER_PROFILE", "")
+    user_profile_line = f"user_profile: {user_profile}\n" if user_profile else ""
 
     # If priority not explicitly set, preserve existing value
     if priority < 0:
@@ -197,6 +200,7 @@ def save(id: str, content: str, type: str = "discovery", tags: str = "", confide
         f"created: {datetime.now(timezone.utc).isoformat()}\n"
         f"priority: {priority}\n"
         f"{profile_line}"
+        f"{user_profile_line}"
         f"---\n\n"
         f"{content}\n"
     )
@@ -246,11 +250,16 @@ def query(input: str) -> str:
     all_memory_dirs = [memory_dir] + [Path(d) for d in READ_DIRS]
 
     # ── Exact recall by ID ───────────────────────────────────────
+    user_profile_filter = os.environ.get("USER_PROFILE", "")
     for d in all_memory_dirs:
         exact_path = d / f"{input}.md"
         if exact_path.exists():
             mem = read_memory(exact_path)
             if mem:
+                # Block recall of memories from other projects
+                mem_up = mem.get("user_profile")
+                if user_profile_filter and mem_up and mem_up != user_profile_filter:
+                    return f"No memory found with ID '{input}'."
                 tags = ", ".join(mem["tags"]) if isinstance(mem["tags"], list) else mem["tags"]
                 pri = mem.get("priority", 0)
                 pri_str = f"  |  **Priority:** {pri}" if pri > 0 else ""
@@ -265,12 +274,18 @@ def query(input: str) -> str:
 
     # ── Gather all memories (primary wins on ID conflict) ────────
     memories_by_id: dict[str, dict] = {}
+    user_profile_filter = os.environ.get("USER_PROFILE", "")
     for d in all_memory_dirs:
         if not d.exists():
             continue
         for f in sorted(d.glob("*.md")):
             mem = read_memory(f)
             if mem and mem["id"] not in memories_by_id:
+                # Filter by user_profile if set
+                if user_profile_filter:
+                    mem_up = mem.get("user_profile")
+                    if mem_up and mem_up != user_profile_filter:
+                        continue
                 memories_by_id[mem["id"]] = mem
     memories = list(memories_by_id.values())
 

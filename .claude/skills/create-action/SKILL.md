@@ -17,14 +17,15 @@ description: >
 
 # Create Action
 
-Actions are the automation primitive in MO: **trigger -> gather() -> session -> afterRun()**.
+Actions are the automation primitive in MO:
+**trigger -> gather() -> session -> verify() -> finalize -> notify -> chain**
 
 Each action is a directory:
 
 ```
 actions/<name>/
   action.json    <- trigger, agent profile ref, execution config
-  context.ts     <- dynamic prompt builder + optional post-run hook
+  context.ts     <- dynamic prompt builder + optional verify + optional afterRun hook
 ```
 
 ## Workflow
@@ -32,9 +33,10 @@ actions/<name>/
 1. Determine what to automate and which trigger type fits
 2. Identify or create the agent profile (see `create-profile` skill)
 3. Design the trigger config and execution limits
-4. Write `action.json`
-5. Write `context.ts` (dynamic context + optional afterRun hook)
-6. Output both files with paths
+4. Decide if verify/retry is needed (file-producing actions, quality checks)
+5. Write `action.json` (including artifacts, notify, retry config if needed)
+6. Write `context.ts` (gather + optional verify + optional afterRun)
+7. Output both files with paths
 
 ## Four Trigger Types
 
@@ -100,41 +102,125 @@ For the complete schema: [references/action-schema.md](references/action-schema.
 For context.ts patterns (dynamic prompts, DB queries, afterRun hooks, webhook payloads):
 [references/context-patterns.md](references/context-patterns.md).
 
-## Two-Layer Execution Model
+## Execution Model
 
-Actions use **runs** and **cycles**:
+Actions use **executions**, **runs**, and **cycles**:
 
 ```
 Action
-  Cycle #1
-    Run #1  (trigger apart)
-    Run #2
-    Run #3  (maxRuns reached, cycle complete)
-  [wait for cycleInterval]
-  Cycle #2
-    ...
+  Execution #1
+    Cycle #1
+      Run #1  (with verify retry loop if maxRetries > 0)
+      Run #2
+      Run #3  (maxRuns reached, cycle complete)
+    [wait for cycleInterval]
+    Cycle #2
+      ...
+    [maxCycles reached → onExhausted]
 ```
 
-Without `cycleInterval`, `maxRuns` is a lifetime cap.
+Without `cycleInterval`, `maxRuns` is a lifetime cap. Each execution is a separate
+lifecycle instance — actions can have concurrent executions via `concurrency` config.
+
+## Verify / Retry Pipeline
+
+When `maxRetries > 0`, each run enters a verify loop:
+
+```
+gather() → session → verify() → accept/retry
+```
+
+- `verify()` in context.ts inspects the result and returns `{ ok: true }` or
+  `{ ok: false, reason: "...", retry?: true }`
+- If retry is true and attempts remain, `gather()` is re-called with
+  `ctx.lastVerifyError` set so it can adapt the prompt
+- Same `runId` throughout — `session_id` updated to latest attempt
+- If no `verify()` but `artifacts` are declared, auto-verify checks file
+  existence and non-empty size for each required artifact
+- `failed-verification` status when all retries exhausted
+
+## Artifacts
+
+Declare expected output files in `action.json`:
+
+```json
+"artifacts": [
+  { "name": "cartoon", "mime": "image/svg+xml" },
+  { "name": "report", "mime": "application/json", "required": false }
+]
+```
+
+In `context.ts`, use `ctx.artifact("cartoon")` to get the expected file path
+(extension derived from mime: `.svg`, `.json`, etc.). The agent should write
+its output to this path. If no `verify()` exists, auto-verify checks that
+each required artifact exists and is non-empty.
+
+Lower-level: `ctx.artifactDir()` returns the run's output directory,
+`ctx.artifactPath("filename.ext")` returns a path within it. Use `artifact()`
+when you have declared specs; use `artifactPath()` for ad-hoc files.
+
+## Notifications
+
+Declarative alerts — no custom afterRun code needed:
+
+```json
+"notify": [
+  { "on": "error", "channel": "webhook-alerts" },
+  { "on": ["done", "exhausted"], "channel": "file-log", "message": "{action}: {status} (${cost})" }
+]
+```
+
+Channels are defined in `_global.json` under `notificationChannels`:
+- `"webhook"`: `{ "type": "webhook", "url": "https://...", "method": "POST", "headers": {} }`
+- `"file"`: `{ "type": "file", "path": "/path/to/alerts.jsonl" }`
+
+Template variables: `{action}`, `{run}`, `{status}`, `{error}`, `{cost}`, `{duration}`, `{profile}`
+
+## Transient Resilience
+
+Network errors are automatically retried (separate from verify retries):
+- `maxTransientRetries`: how many times (default 2)
+- `retryBackoff`: delay between retries (default "2m")
+- `onTransientFailure`: `"retry"` (default) or `"skip"`
+- Transient errors: ECONNREFUSED, ETIMEDOUT, 429, 502, 503, etc.
+- Transient failures don't count against `maxRuns`
+
+## Multi-Step Sequences
+
+An action can switch agent profiles mid-session:
+
+```json
+"steps": [
+  { "profile": "editor-agent", "contextMode": "full" },
+  { "profile": "reviewer-agent", "prompt": "Review the above edit." }
+]
+```
+
+Steps run in the same session. `gather()` provides the initial prompt for the
+first profile (`agentProfile`), then each step either uses a static `prompt`
+or calls `gather()` again with `ctx.stepIndex` set.
 
 ## Key Rules
 
 - Every action MUST reference an `agentProfile` in `profiles/agents/`
 - Actions start `enabled: false` — user enables them deliberately
 - Interval format: `"30s"`, `"5m"`, `"1h"`, `"4h"`, `"1d"`
-- Concurrency: if a trigger fires while the action is already running, it's dropped and logged
-- Chain depth limit: max 8 levels of action->action chaining to prevent loops
-- `afterRun()` failures are isolated — they don't change the run's status
+- Concurrency controlled by `concurrency` config (default 1)
+- Chain depth limit: max 8 levels of action→action chaining
+- `afterRun()` only runs on success (not on failed-verification or error)
+- `afterRun()` failures are logged but don't change the run's status
 - `gather()` returns the user message; the agent profile's system prompt is still loaded
+- `verify()` takes precedence over auto-verify from artifact specs
 - Action can override: `model`, `effort`, `maxTurns`, `tools`, `cwd`, `provider`,
   `disallowedTools`, `loadProjectSettings`
 - Action CANNOT override: prompt, MCP servers, permission policies
+- Cost awareness: retry Haiku freely (cheap), cap Opus retries at 1-2
 
 ## Creating the Full Stack
 
 1. **Agent profile** — the agent's identity (`create-profile` skill)
-2. **Action config** — trigger and execution config
-3. **Context module** — what to ask and what to do with the answer
+2. **Action config** — trigger, execution, verify, artifacts, notifications
+3. **Context module** — what to ask, how to verify, what to do with the answer
 
 Output paths:
 - `profiles/agents/<agent-name>.json`

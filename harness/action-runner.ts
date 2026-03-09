@@ -19,9 +19,9 @@
  * (controlled by `concurrency` config). Run/cycle counters are per-execution.
  */
 
-import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join } from "path";
-import { startSession, getActiveSession } from "./session-manager";
+import { startSession, getActiveSession, switchProfile, queueMessage } from "./session-manager";
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
   getRunSummaries as dbGetRunSummaries, getNextRunNumber, getSession,
@@ -35,6 +35,7 @@ import type {
   SessionInfo, SearchResult, EventInfo,
 } from "./action-types";
 import { MAX_CHAIN_DEPTH } from "./action-types";
+import { sendNotifications, sendActionNotification } from "./notify";
 
 // ── Constants ──
 
@@ -42,6 +43,29 @@ const ACTIONS_DIR = join(import.meta.dir, "actions");
 const TICK_INTERVAL_MS = 10_000;       // check every 10 seconds
 const SESSION_TIMEOUT_MS = 30 * 60_000; // 30 minute max per run
 const POLL_INTERVAL_MS = 2_000;        // poll session status every 2s
+
+// ── Mime → Extension ──
+
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/svg+xml": ".svg",
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "application/json": ".json",
+  "application/pdf": ".pdf",
+  "text/plain": ".txt",
+  "text/html": ".html",
+  "text/csv": ".csv",
+  "text/markdown": ".md",
+  "audio/mpeg": ".mp3",
+  "audio/wav": ".wav",
+  "video/mp4": ".mp4",
+};
+
+function mimeToExtension(mime: string): string {
+  return MIME_EXTENSIONS[mime] ?? `.${mime.split("/").pop() ?? "bin"}`;
+}
 
 // ── State ──
 
@@ -134,6 +158,14 @@ function closeExecution(exec: ExecutionState, state: ActionState): void {
 /** Handle what happens when an execution exhausts its budget */
 function handleOnExhausted(state: ActionState): void {
   const mode = state.config.onExhausted ?? "archive";
+
+  // Notify on exhaustion
+  if (state.config.notify?.length) {
+    sendActionNotification(state.config.notify, "exhausted", {
+      actionName: state.config.name, profile: state.config.agentProfile,
+    }).catch(err => console.error(`[actions] Exhaustion notification error:`, err));
+  }
+
   switch (mode) {
     case "archive":
       state.exhausted = true;
@@ -416,6 +448,7 @@ async function fireAction(
       let artifactDirCreated = false;
 
       const db = buildActionDB(name);
+      const totalSteps = (cfg.steps?.length ?? 0) + 1;
       const ctx: ActionContext = {
         actionName: name,
         executionId: exec.id,
@@ -426,6 +459,9 @@ async function fireAction(
         db,
         trigger: triggerInfo,
         actionDir,
+        stepIndex: 0,
+        totalSteps,
+        previousStepResult: null,
         attempt,
         lastVerifyError,
         artifactDir() {
@@ -437,6 +473,11 @@ async function fireAction(
         },
         artifactPath(filename: string) {
           return join(ctx.artifactDir(), filename);
+        },
+        artifact(artifactName: string) {
+          const spec = cfg.artifacts?.find(a => a.name === artifactName);
+          if (!spec) throw new Error(`No artifact "${artifactName}" declared in action.json for "${name}"`);
+          return join(ctx.artifactDir(), artifactName + mimeToExtension(spec.mime));
         },
       };
       lastCtx = ctx;
@@ -511,7 +552,59 @@ async function fireAction(
         error: outcome.error,
       };
 
-      if (outcomeStatus === "error") break;
+      // ── Multi-step sequence ──
+      if (outcomeStatus !== "error" && cfg.steps?.length) {
+        let finalOutcome = outcome;
+
+        for (let si = 0; si < cfg.steps.length; si++) {
+          const step = cfg.steps[si]!;
+          const stepIndex = si + 1;
+
+          // 1. Switch profile
+          const switched = await switchProfile(session.sessionId, step.profile, {
+            contextMode: step.contextMode ?? "full",
+          });
+          if (!switched) {
+            runResult!.status = "error";
+            runResult!.error = `switch to "${step.profile}" failed`;
+            break;
+          }
+
+          // 2. Get prompt for this step
+          let stepPrompt: string | ActionContent;
+          if (step.prompt) {
+            stepPrompt = step.prompt;
+          } else {
+            const stepCtx = { ...ctx, stepIndex, previousStepResult: finalOutcome };
+            stepPrompt = await mod.gather(stepCtx);
+          }
+
+          // 3. Queue message (status set to "starting" by queueMessage)
+          const promptStr = typeof stepPrompt === "string" ? stepPrompt : JSON.stringify(stepPrompt);
+          queueMessage(session.sessionId, promptStr);
+
+          // 4. Wait for step completion
+          finalOutcome = await monitorSession(session.sessionId, name);
+
+          // Accumulate cost
+          runResult!.costUsd += finalOutcome.costUsd;
+
+          if (finalOutcome.sessionStatus === "error" || finalOutcome.sessionStatus === "timeout") {
+            runResult!.status = "error";
+            runResult!.error = finalOutcome.error;
+            break;
+          }
+        }
+
+        // Update runResult with final step's outcome
+        runResult!.response = finalOutcome.response;
+        runResult!.summary = finalOutcome.summary;
+        if (runResult!.status !== "error") {
+          runResult!.status = "done";
+        }
+      }
+
+      if (runResult!.status === "error") break;
 
       if (typeof mod.verify === "function") {
         try {
@@ -534,6 +627,33 @@ async function fireAction(
           runResult.error = lastVerifyError;
           break;
         }
+      } else if (cfg.artifacts?.length) {
+        // ── Auto-verify from artifact specs ──
+        const missing: string[] = [];
+        for (const spec of cfg.artifacts) {
+          if (spec.required === false) continue;
+          const path = join(ctx.artifactDir(), spec.name + mimeToExtension(spec.mime));
+          if (!existsSync(path)) {
+            missing.push(`"${spec.name}" not found at ${path}`);
+          } else {
+            try {
+              const size = statSync(path).size;
+              if (size === 0) missing.push(`"${spec.name}" is empty (0 bytes)`);
+            } catch { missing.push(`"${spec.name}" stat failed`); }
+          }
+        }
+
+        if (missing.length === 0) break;
+
+        lastVerifyError = `Missing artifacts: ${missing.join("; ")}`;
+        console.log(`[actions] Auto-verify failed for "${name}" run #${runNumber} attempt ${attempt}: ${lastVerifyError}`);
+
+        if (attempt >= maxRetries + 1) {
+          runResult.status = "failed-verification";
+          runResult.error = lastVerifyError;
+          break;
+        }
+        continue;
       } else {
         break;
       }
@@ -569,6 +689,13 @@ async function fireAction(
         console.error(`[actions] afterRun failed for "${name}" run #${runNumber}:`, hookErr);
         updateActionRun(runId, { afterRunError });
       }
+    }
+
+    // Notifications (after afterRun, before chain triggers)
+    if (cfg.notify?.length) {
+      sendNotifications(cfg.notify, runResult!, {
+        actionName: name, runNumber, profile: cfg.agentProfile,
+      }).catch(err => console.error(`[actions] Notification error for "${name}":`, err));
     }
 
   } catch (err: any) {
@@ -612,6 +739,13 @@ async function fireAction(
         completedAt: Date.now(),
         error: errMsg,
       });
+    }
+
+    // Notifications for errors (non-transient-retry — those already returned above)
+    if (cfg.notify?.length && runResult) {
+      sendNotifications(cfg.notify, runResult, {
+        actionName: name, runNumber, profile: cfg.agentProfile,
+      }).catch(err2 => console.error(`[actions] Notification error for "${name}":`, err2));
     }
   } finally {
     exec.currentSessionId = null;
@@ -895,6 +1029,57 @@ export function setActionPreference(name: string, key: string, value: boolean): 
 export function getActionPreferences(name: string): Record<string, boolean> {
   const state = actionStates.get(name);
   return (state?.config as any)?.preferences ?? {};
+}
+
+/** Add a tag to an action */
+export function addActionTag(name: string, tag: string): boolean {
+  const state = actionStates.get(name);
+  if (!state) return false;
+  if (!state.config.tags) state.config.tags = [];
+  if (state.config.tags.includes(tag)) return true;
+  state.config.tags.push(tag);
+  const configPath = join(ACTIONS_DIR, name, "action.json");
+  writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
+  return true;
+}
+
+/** Remove a tag from an action */
+export function removeActionTag(name: string, tag: string): boolean {
+  const state = actionStates.get(name);
+  if (!state) return false;
+  if (!state.config.tags) return true;
+  state.config.tags = state.config.tags.filter(t => t !== tag);
+  if (state.config.tags.length === 0) delete state.config.tags;
+  const configPath = join(ACTIONS_DIR, name, "action.json");
+  writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
+  return true;
+}
+
+/** Cancel an active execution */
+export function cancelExecution(actionName: string, executionId: number): boolean {
+  const state = actionStates.get(actionName);
+  if (!state) return false;
+  const exec = state.activeExecutions.get(executionId);
+  if (!exec) return false;
+  exec.status = "cancelled";
+  dbUpdateExecution(executionId, { status: "cancelled", completedAt: Date.now() });
+  state.activeExecutions.delete(executionId);
+  console.log(`[actions] Cancelled execution #${executionId} for "${actionName}"`);
+  return true;
+}
+
+/** Manually start a new execution for an action */
+export function startNewExecution(actionName: string): { ok: boolean; executionId?: number; error?: string } {
+  const state = actionStates.get(actionName);
+  if (!state) return { ok: false, error: "action not found" };
+  const maxConcurrency = state.config.concurrency ?? 1;
+  if (state.activeExecutions.size >= maxConcurrency) {
+    return { ok: false, error: `at concurrency limit (${maxConcurrency})` };
+  }
+  const exec = createExecution(actionName, state.config);
+  state.activeExecutions.set(exec.id, exec);
+  console.log(`[actions] Manually created execution #${exec.id} for "${actionName}"`);
+  return { ok: true, executionId: exec.id };
 }
 
 /** Reload actions from disk without restart */

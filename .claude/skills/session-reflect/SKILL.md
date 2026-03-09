@@ -18,9 +18,21 @@ Scan the conversation for **spikes** — moments where normal flow was disrupted
 
 List each spike as a one-line summary. If there were no spikes (smooth session), say so and end — not every session produces learnings.
 
+## How to Save Memories
+
+**Use the MCP `save` tool first.** If it fails (server down, import error, any error),
+write the markdown file directly to `agent_memory/memory/` using the Write tool. The
+MCP tool is just a wrapper that writes markdown files — you can do the same thing manually.
+
+**NEVER use the auto-memory directory** (`~/.claude/projects/.../memory/`). That is a
+separate Claude Code system. All memories for this project go to `agent_memory/memory/`.
+No exceptions, no "fallbacks" to the auto-memory dir.
+
 ## Step 2 — Conflict Check
 
 For each spike, use the `query` tool (Agent Memory server) to search for related existing memories or skills.
+If the MCP server is down, read the memory files directly from `agent_memory/memory/` using
+Glob + Read to check for conflicts manually.
 
 - **Conflicting memory found**: Present old vs new to the user. Ask which is correct. Edit or delete the old file as directed.
 - **Matching skill found**: Flag to user if the skill contradicts the new learning. Do NOT edit skills here.

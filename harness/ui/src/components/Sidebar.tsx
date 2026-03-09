@@ -5,7 +5,6 @@ import type { SessionSetupState } from "./SessionSetup";
 import { SessionList } from "./sidebar/SessionList";
 import { SearchResults } from "./sidebar/SearchResults";
 import { ProfilePanel } from "./sidebar/ProfilePanel";
-import { StatusBar } from "./sidebar/StatusBar";
 
 type GroupMode = "time" | "project";
 
@@ -16,7 +15,6 @@ type Props = {
   activeSessionId: string | null;
   profiles: Profile[];
   selectedProfile: string;
-  harnessUp: boolean | null;
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onArchiveSession: (id: string) => void;
@@ -25,32 +23,23 @@ type Props = {
   setupState: SessionSetupState;
   onClose: () => void;
   onToggleCollapse: () => void;
-  onLock?: () => void;
-  userName?: string | null;
-  userProfiles?: UserProfile[];
-  activeUserProfile?: string | null;
-  onSwitchUserProfile?: (name: string | null) => void;
   initialGroupMode?: GroupMode;
   initialCollapsedGroups?: string[];
   onGroupModeChange?: (mode: GroupMode) => void;
   onCollapsedGroupsChange?: (groups: string[]) => void;
   activeUserProfileObj?: UserProfile | null;
-  onProfileCreated?: (name: string) => void;
-  allProfiles?: Profile[];
   availableProviders?: string[];
 };
 
 export function Sidebar({
   open, collapsed, sessions, activeSessionId,
-  profiles, selectedProfile, harnessUp,
+  profiles, selectedProfile,
   onNewSession, onSelectSession, onArchiveSession,
   onSelectProfile, onSetupChange, setupState,
-  onClose, onToggleCollapse, onLock, userName,
-  userProfiles, activeUserProfile, onSwitchUserProfile,
+  onClose, onToggleCollapse,
   initialGroupMode, initialCollapsedGroups,
   onGroupModeChange, onCollapsedGroupsChange,
-  activeUserProfileObj, onProfileCreated, allProfiles,
-  availableProviders,
+  activeUserProfileObj, availableProviders,
 }: Props) {
   const [groupMode, setGroupMode] = useState<GroupMode>(initialGroupMode ?? "time");
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,12 +58,12 @@ export function Sidebar({
     setSearching(true);
     searchTimer.current = setTimeout(async () => {
       try {
-        const hits = await searchSessionsScoped(q, 20, activeUserProfile ?? undefined);
+        const hits = await searchSessionsScoped(q, 20, activeUserProfileObj?.name ?? undefined);
         setSearchResults(hits);
       } catch { /* silent */ }
       setSearching(false);
     }, 250);
-  }, [activeUserProfile]);
+  }, [activeUserProfileObj?.name]);
 
   useEffect(() => () => clearTimeout(searchTimer.current), []);
 
@@ -162,19 +151,7 @@ export function Sidebar({
           onSelectProfile={onSelectProfile}
           setupState={setupState}
           onSetupChange={onSetupChange}
-          userProfiles={userProfiles}
           activeUserProfileObj={activeUserProfileObj}
-        />
-
-        <StatusBar
-          harnessUp={harnessUp}
-          userName={userName}
-          onLock={onLock}
-          userProfiles={userProfiles}
-          activeUserProfile={activeUserProfile}
-          onSwitchUserProfile={onSwitchUserProfile}
-          onProfileCreated={onProfileCreated}
-          agentProfiles={allProfiles}
         />
       </div>
     </>

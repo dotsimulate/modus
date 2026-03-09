@@ -1,83 +1,87 @@
-import { useState } from "react";
-import type { UserProfile, Profile } from "../../api";
-import { CreateProfileModal } from "./CreateProfileModal";
+import { useState, useRef, useEffect } from "react";
+import type { UserProfile } from "../../api";
 
 type Props = {
   harnessUp: boolean | null;
-  userName?: string | null;
   onLock?: () => void;
   userProfiles?: UserProfile[];
   activeUserProfile?: string | null;
   onSwitchUserProfile?: (name: string | null) => void;
-  onProfileCreated?: (name: string) => void;
-  agentProfiles?: Profile[];
 };
 
 export function StatusBar({
-  harnessUp, userName, onLock,
+  harnessUp, onLock,
   userProfiles, activeUserProfile, onSwitchUserProfile,
-  onProfileCreated, agentProfiles,
 }: Props) {
-  const [showCreate, setShowCreate] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpen]);
+
+  const hasProfiles = userProfiles && userProfiles.length > 0 && onSwitchUserProfile;
+  const activeUp = userProfiles?.find((p) => p.name === activeUserProfile);
+  const label = activeUp?.displayName ?? activeUp?.name ?? "all";
 
   return (
     <div className="harness-status">
-      <div className="harness-status-left">
-        <div
-          className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
-        />
-        {userProfiles && userProfiles.length > 0 && onSwitchUserProfile ? (
-          <select
-            className="user-profile-select"
-            value={activeUserProfile ?? ""}
-            onChange={(e) => onSwitchUserProfile(e.target.value || null)}
-          >
-            <option value="">all projects</option>
-            {userProfiles.map((up) => (
-              <option key={up.name} value={up.name}>{up.displayName ?? up.name}</option>
-            ))}
-          </select>
-        ) : (
-          <span>
-            {harnessUp === true
-              ? "harness connected"
-              : harnessUp === false
-                ? "harness offline"
-                : "checking..."}
-          </span>
-        )}
-        {onSwitchUserProfile && (
+      <div
+        className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
+      />
+      {hasProfiles ? (
+        <div className="profile-switcher" ref={wrapRef}>
           <button
-            className="create-profile-btn"
-            onClick={() => setShowCreate(true)}
-            title="New profile"
+            className="profile-switcher-btn"
+            onClick={() => setMenuOpen((o) => !o)}
           >
-            +
-          </button>
-        )}
-      </div>
-      <div className="harness-status-right">
-        {userName && (
-          <span className="harness-user">{userName}</span>
-        )}
-        {onLock && (
-          <button className="lock-btn" onClick={onLock} title="Lock">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <rect x="2" y="5" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-              <path d="M4 5V3.5a2 2 0 0 1 4 0V5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            {label}
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+              <path d="M2 3l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
-        )}
-      </div>
-      {showCreate && (
-        <CreateProfileModal
-          agentProfiles={agentProfiles ?? []}
-          onClose={() => setShowCreate(false)}
-          onCreated={(name) => {
-            setShowCreate(false);
-            onProfileCreated?.(name);
-          }}
-        />
+          {menuOpen && (
+            <div className="profile-switcher-menu">
+              <button
+                className={`profile-switcher-item${!activeUserProfile ? " active" : ""}`}
+                onClick={() => { onSwitchUserProfile!(null); setMenuOpen(false); }}
+              >
+                all projects
+              </button>
+              {userProfiles!.map((up) => (
+                <button
+                  key={up.name}
+                  className={`profile-switcher-item${activeUserProfile === up.name ? " active" : ""}`}
+                  onClick={() => { onSwitchUserProfile!(up.name); setMenuOpen(false); }}
+                >
+                  {up.displayName ?? up.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <span>
+          {harnessUp === true
+            ? "connected"
+            : harnessUp === false
+              ? "offline"
+              : "..."}
+        </span>
+      )}
+      {onLock && (
+        <button className="lock-btn" onClick={onLock} title="Lock">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <rect x="2" y="5" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+            <path d="M4 5V3.5a2 2 0 0 1 4 0V5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          </svg>
+        </button>
       )}
     </div>
   );

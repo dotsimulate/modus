@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ProfileUi } from "./api";
 import { healthCheck, switchSessionProfile } from "./api";
+import { NAV_VIEWS } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { SessionProvider, useSession } from "./providers/SessionProvider";
@@ -11,11 +12,13 @@ import { ChatView } from "./components/ChatView";
 import { ChatInput } from "./components/ChatInput";
 import { ConfigBar } from "./components/ConfigBar";
 import { Dashboard } from "./components/Dashboard";
+import { Profiles } from "./components/Profiles";
 import { MemoryViz } from "./components/MemoryViz";
 import { Actions } from "./components/Actions";
 import { GitPanel } from "./components/GitPanel";
 import { PermissionOverlay } from "./components/PermissionOverlay";
 import { MoLogo } from "./components/MoLogo";
+import { StatusBar } from "./components/sidebar/StatusBar";
 
 function App() {
   return (
@@ -36,7 +39,7 @@ function AppShell() {
     activeUserProfile, activeUP,
     selectedProfile, selectProfile,
     setupState, setSetupState,
-    uiState, saveUiState, switchUserProfile, refreshUserProfiles,
+    uiState, saveUiState, switchUserProfile,
   } = useProfiles();
   const {
     activeSession, serverSessions,
@@ -45,7 +48,7 @@ function AppShell() {
     handlePermissionResponse, updateActiveSessionConfig,
     queuedMessage, cancelQueued,
   } = useSession();
-  const { view, navigate } = useHashRouter();
+  const { view, navigate, hashProfile, setUrlProfile, consumeHashProfile } = useHashRouter();
 
   // ── Local UI state ──
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
@@ -60,6 +63,16 @@ function AppShell() {
     return () => clearInterval(interval);
   }, []);
 
+  // Sync profile from URL hash → app state
+  useEffect(() => {
+    const urlProfile = consumeHashProfile();
+    if (urlProfile === null) return;
+    // URL had an explicit profile — switch to it (or "" for "all")
+    if (urlProfile !== (activeUserProfile ?? "")) {
+      switchUserProfile(urlProfile || null);
+    }
+  }, [hashProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Wrap session actions with sidebar close
   const handleNewSession = useCallback(() => {
     newSession();
@@ -71,10 +84,11 @@ function AppShell() {
     setSidebarOpen(false);
   }, [selectSession]);
 
-  const handleProfileCreated = useCallback(async (name: string) => {
-    await refreshUserProfiles();
+  // Wrap switchUserProfile to also update URL
+  const handleSwitchUserProfile = useCallback((name: string | null) => {
     switchUserProfile(name);
-  }, [refreshUserProfiles, switchUserProfile]);
+    setUrlProfile(name);
+  }, [switchUserProfile, setUrlProfile]);
 
   // Switch profile on live session (ConfigBar controls this)
   const handleSwitchProfile = useCallback((name: string) => {
@@ -115,19 +129,32 @@ function AppShell() {
             </svg>
           </button>
         )}
-        <span className="top-nav-logo" onClick={() => navigate("dashboard")}><MoLogo size={16} /></span>
+        <span className="top-nav-logo" onClick={() => navigate("home")}><MoLogo size={16} /></span>
         <nav className="top-nav-links">
-          <button className={`top-nav-link${view === "chat" ? " active" : ""}`} onClick={() => navigate("chat")}>sessions</button>
-          <button className={`top-nav-link${view === "memory" ? " active" : ""}`} onClick={() => navigate("memory")}>memory</button>
-          <button className={`top-nav-link${view === "actions" ? " active" : ""}`} onClick={() => navigate("actions")}>actions</button>
-          <button className={`top-nav-link${view === "git" ? " active" : ""}`} onClick={() => navigate("git")}>git</button>
+          {NAV_VIEWS.map((nv) => (
+            <button
+              key={nv.view}
+              className={`top-nav-link${view === nv.view ? " active" : ""}`}
+              onClick={() => navigate(nv.view)}
+            >
+              {nv.label}
+            </button>
+          ))}
         </nav>
+        <div className="top-nav-spacer" />
         {view === "chat" && activeSession?.status && activeSession.status !== "done" && (
           <span className={`chat-header-status ${activeSession.status}`}>{activeSession.status}</span>
         )}
         {view === "chat" && activeSession?.id && !activeSession.id.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSession.id) && (
           <span className="chat-header-archived">archived</span>
         )}
+        <StatusBar
+          harnessUp={harnessUp}
+          onLock={handleLock}
+          userProfiles={userProfiles}
+          activeUserProfile={activeUserProfile}
+          onSwitchUserProfile={handleSwitchUserProfile}
+        />
       </div>
 
       <div className="app-body">
@@ -143,7 +170,6 @@ function AppShell() {
               activeSessionId={activeSession?.id ?? null}
               profiles={visibleProfiles}
               selectedProfile={selectedProfile}
-              harnessUp={harnessUp}
               onNewSession={handleNewSession}
               onSelectSession={handleSelectSession}
               onArchiveSession={archiveSession}
@@ -152,13 +178,6 @@ function AppShell() {
               setupState={setupState}
               onClose={() => setSidebarOpen(false)}
               onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-              onLock={handleLock}
-              userName={userName}
-              userProfiles={userProfiles}
-              activeUserProfile={activeUserProfile}
-              onSwitchUserProfile={switchUserProfile}
-              onProfileCreated={handleProfileCreated}
-              allProfiles={profiles}
               initialGroupMode={uiState.sidebarGroupMode}
               initialCollapsedGroups={uiState.sidebarCollapsedGroups}
               onGroupModeChange={(mode) => saveUiState({ sidebarGroupMode: mode })}
@@ -221,8 +240,12 @@ function AppShell() {
           </>
         )}
 
-        {view === "dashboard" && (
-          <Dashboard onSelectSession={handleViewSession} onNavigate={navigate} />
+        {view === "home" && (
+          <Dashboard onNavigate={navigate} onSelectSession={handleViewSession} />
+        )}
+
+        {view === "profiles" && (
+          <Profiles onSelectSession={handleViewSession} onNavigate={navigate} />
         )}
 
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}

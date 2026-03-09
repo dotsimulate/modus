@@ -65,6 +65,21 @@ export async function reloadActionsApi(): Promise<void> {
   });
 }
 
+export async function addTagApi(name: string, tag: string): Promise<void> {
+  await fetch(`${API_BASE}/api/actions/${encodeURIComponent(name)}/tags`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ tag }),
+  });
+}
+
+export async function removeTagApi(name: string, tag: string): Promise<void> {
+  await fetch(`${API_BASE}/api/actions/${encodeURIComponent(name)}/tags/${encodeURIComponent(tag)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+}
+
 export async function fetchActionPreferences(name: string): Promise<Record<string, boolean>> {
   const res = await fetch(
     `${API_BASE}/api/actions/${encodeURIComponent(name)}/preferences`,

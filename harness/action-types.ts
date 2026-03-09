@@ -39,6 +39,15 @@ export type ActionChainTrigger = {
 
 export type Trigger = IntervalTrigger | WebhookTrigger | ManualTrigger | ActionChainTrigger;
 
+// ── Multi-Step Sequences ──
+
+/** A step in a multi-profile action sequence (steps beyond the initial agentProfile) */
+export interface ActionStep {
+  profile: string;
+  prompt?: string;           // static prompt — used if gather doesn't handle this stepIndex
+  contextMode?: "full" | "summary" | "lastResponse";
+}
+
 // ── Action Config ──
 
 /** On-disk action config — lives in actions/<name>/action.json */
@@ -49,6 +58,9 @@ export interface ActionConfig {
 
   // ── What to run ──
   agentProfile: string;
+
+  // ── Multi-step profile sequence (optional) ──
+  steps?: ActionStep[];
 
   // ── When to run ──
   trigger: Trigger;
@@ -84,8 +96,35 @@ export interface ActionConfig {
   disallowedTools?: string[];
   loadProjectSettings?: boolean;
 
+  // ── Artifacts ──
+  artifacts?: ArtifactSpec[];
+
+  // ── Notifications ──
+  notify?: NotifySpec[];
+
+  // ── Tags (freeform labels — used for filtering, grouping, archiving) ──
+  tags?: string[];
+
   // ── UI preferences (managed by frontend) ──
   preferences?: Record<string, boolean>;
+}
+
+// ── Artifacts ──
+
+export interface ArtifactSpec {
+  name: string;                          // logical name: "cartoon", "report"
+  mime: string;                          // mime type: "image/svg+xml", "application/json"
+  required?: boolean;                    // default true — auto-verify fails if missing
+}
+
+// ── Notifications ──
+
+export type NotifyStatus = "done" | "error" | "error-transient" | "failed-verification" | "exhausted";
+
+export interface NotifySpec {
+  on: NotifyStatus | NotifyStatus[];   // trigger on these statuses
+  channel: string;                     // references a named channel in _global.json
+  message?: string;                    // template with {action}, {run}, {status}, {error}, {cost}, {duration}, {profile}
 }
 
 // ── Trigger Info (passed to gather/afterRun) ──
@@ -110,6 +149,11 @@ export interface ActionContext {
   trigger: TriggerInfo;
   actionDir: string;                   // absolute path to actions/<name>/
 
+  // ── Multi-step context ──
+  stepIndex: number;                   // 0 for single-step or step 0, 1+ for subsequent
+  totalSteps: number;                  // 1 for single-step actions
+  previousStepResult?: SessionOutcome | null;  // result from prior step
+
   // ── Verify/retry context ──
   attempt: number;                     // 1-based, 1 = first try
   lastVerifyError?: string;            // reason from failed verify, if retrying
@@ -119,6 +163,10 @@ export interface ActionContext {
   artifactDir(): string;
   /** Returns a safe path for storing run artifacts. Namespaced so reruns don't collide. */
   artifactPath(filename: string): string;
+  /** Returns the expected path for a declared artifact by logical name.
+   *  Derives extension from the artifact spec's mime type. Only works when
+   *  `artifacts` is declared in action.json — throws if name not found. */
+  artifact(name: string): string;
 }
 
 // ── Session Outcome (returned by monitorSession, not yet finalized) ──

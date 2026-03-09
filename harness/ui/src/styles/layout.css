@@ -29,6 +29,7 @@
   display: flex;
   gap: 2px;
 }
+.top-nav-spacer { flex: 1; }
 .top-nav-link {
   background: none;
   border: none;
@@ -71,14 +72,12 @@
 }
 
 .sidebar .sidebar-sections,
-.sidebar .profile-panel,
-.sidebar .harness-status {
+.sidebar .profile-panel {
   transition: opacity 0.1s ease;
 }
 
 .sidebar.collapsed .sidebar-sections,
-.sidebar.collapsed .profile-panel,
-.sidebar.collapsed .harness-status {
+.sidebar.collapsed .profile-panel {
   opacity: 0;
   pointer-events: none;
 }

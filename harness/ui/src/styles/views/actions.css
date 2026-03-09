@@ -545,6 +545,39 @@
   padding: 4px 10px;
 }
 
+/* ── About: pipeline config ── */
+.sched-about-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sched-about-section {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.sched-about-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  opacity: 0.6;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.sched-about-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.sched-about-chip {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg-lighter, rgba(255,255,255,0.04));
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
 /* ── Files tab ── */
 .sched-info-tab {
   padding: 8px 0;
@@ -580,4 +613,78 @@
   white-space: pre-wrap;
   word-break: break-word;
   tab-size: 2;
+}
+
+/* ── Tag filter bar ── */
+.sched-tag-bar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.sched-tag-filter {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.sched-tag-filter:hover {
+  color: var(--text-dim);
+  border-color: var(--border-active);
+}
+.sched-tag-filter--active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Archive button ── */
+.sched-archive-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 2px 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.12s ease;
+}
+.sched-card:hover .sched-archive-btn {
+  opacity: 1;
+}
+.sched-archive-btn:hover {
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+/* ── User tags ── */
+.override-tag--user {
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+/* ── Archived section ── */
+.sched-archived-section {
+  margin-top: 4px;
+}
+.sched-archived-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 8px;
+}
+.sched-archived-toggle:hover {
+  color: var(--text-dim);
 }

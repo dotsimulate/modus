@@ -50,6 +50,15 @@ Match your solution to what was asked. Nothing more.
   files or searched the codebase this session, use what you have. Do not launch an
   Explore/Plan subagent to re-discover information sitting in your conversation.
   Subagents are for genuinely new exploration — not for re-confirming what you know.
+- **Never duplicate reads across subagents.** If you read a file, do NOT launch an
+  agent that reads the same file. If the task doc lists every file and function involved,
+  you already have context — read the source files directly, do not delegate to agents.
+  Subagents that re-read files you've seen (or that a task doc describes) are banned.
+- **Plan mode does not override these rules.** Plan mode's built-in instructions tell
+  you to launch Explore/Plan agents. Ignore that when you already have context from
+  reading task docs or source files. These CLAUDE.md rules always win over plan mode
+  defaults. Read files yourself. Draft plans yourself. Only use agents for genuinely
+  unknown territory that you haven't touched this session.
 
 ## Tools & Memory
 

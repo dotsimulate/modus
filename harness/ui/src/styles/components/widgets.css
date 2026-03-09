@@ -1,0 +1,57 @@
+/**
+ * Widget chrome — shared wrapper styles for dashboard widgets.
+ */
+
+/* ── Widget grid ── */
+.dashboard-widgets {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0;
+}
+
+/* ── Size variants ── */
+.widget--full { grid-column: 1 / -1; }
+.widget--half { /* default: single column */ }
+.widget--third { /* future: 3-col grid */ }
+
+/* ── Widget container ── */
+.widget {
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Widget header ── */
+.widget-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-dim);
+  transition: color 0.12s ease;
+}
+.widget-header:hover { color: var(--text); }
+
+.widget-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: inherit;
+}
+
+.widget-chevron {
+  margin-left: auto;
+  display: flex;
+  transform: rotate(-90deg);
+  transition: transform 0.1s ease;
+  color: var(--text-muted);
+}
+.widget-chevron--open {
+  transform: rotate(0deg);
+}
+

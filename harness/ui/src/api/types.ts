@@ -212,6 +212,7 @@ export type CreateSessionOpts = {
   prompt: string;
   attachments?: ApiAttachment[];
   profile?: string;
+  userProfile?: string;
   provider?: string;
   model?: string;
   toolStates?: Record<string, "inherit" | "on" | "off">;
@@ -256,6 +257,8 @@ export type UserProfile = {
   memoryFilter?: string;
   /** Show project paths from ALL user profiles in the CWD picker */
   showAllProjectPaths?: boolean;
+  /** Dashboard widget layout */
+  dashboard?: { widgets: Array<{ type: string; [key: string]: unknown }> };
 };
 
 export type MemoryItem = {
@@ -265,6 +268,7 @@ export type MemoryItem = {
   confidence: string;
   created: string;
   profile: string | null;
+  user_profile: string | null;
   priority: number;
   body: string;
 };
@@ -274,6 +278,18 @@ export type ActionTrigger =
   | { type: "webhook"; token?: string }
   | { type: "manual" }
   | { type: "action"; source: string; condition: "any" | "done" | "error" };
+
+export type ArtifactSpec = {
+  name: string;
+  mime: string;
+  required?: boolean;
+};
+
+export type NotifySpec = {
+  on: string | string[];
+  channel: string;
+  message?: string;
+};
 
 export type ActionInfo = {
   name: string;
@@ -289,6 +305,9 @@ export type ActionInfo = {
   onGatherError?: "fail" | "retry";
   maxTransientRetries?: number;
   onTransientFailure?: "retry" | "skip";
+  artifacts?: ArtifactSpec[];
+  notify?: NotifySpec[];
+  tags?: string[];
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;

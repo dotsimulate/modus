@@ -14,6 +14,14 @@ Actions live at `actions/<name>/action.json`. The directory name is the action's
   // ── What to Run (required) ──
   "agentProfile": "ops-agent",        // References profiles/agents/<name>.json
 
+  // ── Multi-step sequence (optional) ──
+  // Switches agent profiles mid-session. Each step runs in the same session.
+  "steps": [
+    { "profile": "reviewer", "contextMode": "full" },
+    { "profile": "editor", "prompt": "Apply the review feedback." }
+  ],
+  // contextMode: "full" (default) | "summary" | "lastResponse"
+
   // ── Trigger (required) ──
   // Exactly one of the four trigger types:
 
@@ -42,10 +50,40 @@ Actions live at `actions/<name>/action.json`. The directory name is the action's
   // ── Run Layer ──
   "maxRuns": 3,                        // per-cycle limit (or lifetime cap without cycleInterval)
   "maxTurns": 5,                       // override agent profile's maxTurns
+  "maxRetries": 2,                     // verify retries per run (default 0)
+
+  // ── Resilience ──
+  "onGatherError": "fail",            // "fail" (default) or "retry" (feeds error into retry loop)
+  "maxTransientRetries": 2,            // network error retries (default 2)
+  "retryBackoff": "2m",               // delay between transient retries (default "2m")
+  "onTransientFailure": "retry",       // "retry" (default) or "skip"
 
   // ── Cycle Layer ──
   "cycleInterval": "1h",              // outer rhythm — resets run counter each cycle
   "maxCycles": 24,                     // total cycle cap — auto-disables after N cycles
+
+  // ── Execution Layer ──
+  "concurrency": 1,                    // max simultaneous executions (default 1)
+  "onExhausted": "archive",           // "archive" (default), "idle", or "restart"
+
+  // ── Artifacts ──
+  "artifacts": [
+    { "name": "cartoon", "mime": "image/svg+xml" },
+    { "name": "metadata", "mime": "application/json", "required": false }
+  ],
+  // name: logical name, used with ctx.artifact("cartoon") → .../cartoon.svg
+  // mime: determines file extension (image/svg+xml → .svg, application/json → .json, etc.)
+  // required: default true — auto-verify fails if missing or empty
+
+  // ── Notifications ──
+  "notify": [
+    { "on": "error", "channel": "webhook-alerts" },
+    { "on": ["done", "exhausted"], "channel": "file-log",
+      "message": "{action} run #{run}: {status} ({cost})" }
+  ],
+  // on: "done" | "error" | "error-transient" | "failed-verification" | "exhausted"
+  // channel: references notificationChannels in _global.json
+  // message: template with {action}, {run}, {status}, {error}, {cost}, {duration}, {profile}
 
   // ── User Profile Scoping ──
   "userProfile": "ops-user",
@@ -55,7 +93,7 @@ Actions live at `actions/<name>/action.json`. The directory name is the action's
   "model": "claude-sonnet-4-6",
   "effort": "medium",
   "cwd": "/srv/monitoring",
-  "tools": ["Read", "Bash", "Grep"],
+  "tools": ["Read", "Bash", "Grep", "Glob"],
   "disallowedTools": ["Write"],
   "loadProjectSettings": false
 }
@@ -107,6 +145,35 @@ Actions live at `actions/<name>/action.json`. The directory name is the action's
 { "trigger": { "type": "action", "source": "health-check", "condition": "any" } }
 ```
 
+## Verify + Retry Examples
+
+### File-producing action with auto-verify (no verify() needed)
+
+```json
+{
+  "name": "generate-cartoon",
+  "agentProfile": "artist",
+  "trigger": { "type": "interval", "every": "1h" },
+  "artifacts": [{ "name": "cartoon", "mime": "image/svg+xml" }],
+  "maxRetries": 2,
+  "maxRuns": 10
+}
+```
+
+### Action with custom verify + transient resilience
+
+```json
+{
+  "name": "api-report",
+  "agentProfile": "analyst",
+  "trigger": { "type": "interval", "every": "4h" },
+  "maxRetries": 1,
+  "maxTransientRetries": 3,
+  "retryBackoff": "5m",
+  "notify": [{ "on": "error", "channel": "webhook-alerts" }]
+}
+```
+
 ## Override Precedence
 
 ```
@@ -120,8 +187,9 @@ Action config  >  Agent Profile  >  User Profile  >  Default
 
 ## Concurrency
 
-If a trigger fires while the action is already running, the trigger is **dropped and logged**.
-No queuing, no overlapping runs.
+Controlled by `concurrency` config (default 1). When at the limit, new triggers
+are dropped and logged. Multiple executions run independently with separate
+run/cycle counters.
 
 ## Chain Depth Limit
 
@@ -136,9 +204,14 @@ as error with a timeout message.
 ## API Endpoints
 
 - `GET /api/actions` — list all actions with runtime state
+- `GET /api/actions/<name>` — single action detail
 - `POST /api/actions/<name>/trigger` — manual trigger (bypasses interval + active hours)
 - `POST /api/actions/<name>/hook?token=<token>` — webhook trigger
 - `GET /api/actions/<name>/runs?limit=20` — run history
+- `GET /api/actions/<name>/executions` — list executions
+- `GET /api/actions/<name>/executions/<id>/runs` — runs for specific execution
+- `POST /api/actions/<name>/executions` — start new execution
+- `DELETE /api/actions/<name>/executions/<id>` — cancel execution
 - `PATCH /api/actions/<name>` — update config (enabled, interval)
 - `POST /api/actions/<name>/reset` — clear history, reset counters
 - `POST /api/actions/reload` — reload from disk

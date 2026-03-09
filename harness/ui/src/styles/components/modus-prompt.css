@@ -1,0 +1,260 @@
+/**
+ * ModusPrompt — general-purpose modus-dev editor prompt on dashboard.
+ */
+
+.modus-prompt {
+  max-width: 520px;
+  padding: 20px 0 8px;
+}
+
+/* ── Label + hint ── */
+
+.modus-prompt-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.modus-prompt-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+/* ── Input area ── */
+
+.modus-prompt-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modus-prompt-textarea {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  line-height: 1.5;
+  transition: border-color 0.12s ease;
+}
+.modus-prompt-textarea:focus {
+  border-color: var(--text-dim);
+}
+.modus-prompt-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.modus-prompt-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.modus-prompt-run {
+  background: none;
+  border: 1px solid var(--text-dim);
+  border-radius: 3px;
+  padding: 7px 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  white-space: nowrap;
+}
+.modus-prompt-run:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text);
+}
+.modus-prompt-run:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ── Running state ── */
+
+.modus-prompt-running {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.modus-prompt-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.modus-prompt-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  animation: modus-dot-pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes modus-dot-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.modus-prompt-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.12s ease;
+}
+.modus-prompt-link:hover {
+  color: var(--text);
+}
+
+.modus-prompt-cancel {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-left: auto;
+  transition: color 0.12s ease;
+}
+.modus-prompt-cancel:hover {
+  color: var(--text);
+}
+
+.modus-prompt-progress {
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.modus-prompt-progress-fill {
+  height: 100%;
+  width: 30%;
+  background: var(--text-dim);
+  border-radius: 1px;
+  animation: modus-progress-slide 1.5s ease-in-out infinite;
+}
+
+@keyframes modus-progress-slide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(250%); }
+  100% { transform: translateX(-100%); }
+}
+
+/* ── Done state ── */
+
+.modus-prompt-done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.modus-prompt-done-text {
+  color: #33cc33;
+}
+
+/* ── Error state ── */
+
+.modus-prompt-error-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+.modus-prompt-error {
+  color: #cc4444;
+}
+
+/* ── Recent sessions list ── */
+
+.modus-prompt-recent {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.modus-prompt-recent-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.modus-prompt-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 5px 4px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.12s ease;
+  text-align: left;
+}
+.modus-prompt-session:hover {
+  background: var(--bg-hover);
+}
+
+.modus-prompt-session-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.modus-prompt-session-dot--active {
+  background: #33cc33;
+  animation: modus-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.modus-prompt-session-text {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.modus-prompt-session-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}

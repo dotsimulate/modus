@@ -180,13 +180,34 @@ export function createClaudeCodeProvider(): SessionProvider {
         ...(profileDef?.mcpServers ?? {}),
       };
 
+      // Resolve relative --directory args to absolute (configs use paths relative to harness root)
+      const harnessRoot = dirname(import.meta.dir.endsWith("/") ? import.meta.dir.slice(0, -1) : import.meta.dir);
+      for (const server of Object.values(mergedMcp) as any[]) {
+        const args = server.args as string[] | undefined;
+        if (!args) continue;
+        const dirIdx = args.indexOf("--directory");
+        const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
+        if (dirVal && !dirVal.startsWith("/")) {
+          args[dirIdx + 1] = join(harnessRoot, dirVal);
+        }
+      }
+
       // Inject AGENT_PROFILE + memory scoping env vars into agent-memory MCP server
       if (mergedMcp["agent-memory"]) {
         const am = mergedMcp["agent-memory"] as any;
         const env: Record<string, string> = { ...(am.env ?? {}) };
         if (opts.profile) env.AGENT_PROFILE = opts.profile;
+        if (opts.userProfile) env.USER_PROFILE = opts.userProfile;
         if (opts.userProfile) {
           const userProf = getUserProfile(opts.userProfile);
+          // Skills scoping: derive from user profile's project paths
+          if (userProf?.projects?.length) {
+            env.AGENT_MEMORY_SKILLS_DIRS = userProf.projects
+              .map(p => join(p, ".claude", "skills"))
+              .join(",");
+          } else {
+            env.AGENT_MEMORY_SKILLS_DIRS = "";
+          }
           if (userProf?.memory?.scope === "profile") {
             const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
             const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
@@ -297,6 +318,24 @@ export function createClaudeCodeProvider(): SessionProvider {
       };
 
       const canUseTool = async (toolName: string, toolInput: Record<string, unknown>) => {
+        // ── Pause gate ──
+        if (session.pauseRequested) {
+          session.pauseRequested = false;
+          session.status = "paused";
+          updateSessionStatus(session.sessionId, "paused");
+          ctx.emitEvent({
+            type: "system",
+            subtype: "paused",
+            data: { toolName, input: toolInput },
+          });
+          await new Promise<void>((resolve) => {
+            session.pauseResolver = resolve;
+          });
+          session.pauseResolver = null;
+          session.status = "running";
+          updateSessionStatus(session.sessionId, "running");
+        }
+
         if (toolName === "AskUserQuestion") {
           const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           ctx.emitEvent({
@@ -390,9 +429,11 @@ export function createClaudeCodeProvider(): SessionProvider {
         updateSessionStatus(session.sessionId, "error");
       });
 
-      // Startup timeout
+      // Startup timeout — only fires if this specific turn is still starting.
+      // Guard against false positives: if the abortController has changed (sendMessage
+      // created a new turn), this timeout belongs to an already-completed turn.
       setTimeout(() => {
-        if (session.status === "starting") {
+        if (session.status === "starting" && session.abortController === abortController) {
           const reason = stderrBuf
             ? `Session failed to start.\n\nstderr:\n${stderrBuf}`
             : "Session failed to start — no response from Claude Code within 30s.";
@@ -571,7 +612,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       if (m.type === "system" && m.subtype === "init" && m.session_id && !initSeen) {
         initSeen = true;
         const realId = m.session_id;
-        const isResume = session.tempId === realId && !!getSession(realId);
+        const isResume = session.sessionId === realId && !!getSession(realId);
 
         ctx.rekeySession(realId);
         session.model = m.model ?? session.model;

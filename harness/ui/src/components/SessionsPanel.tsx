@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { fetchActiveSessions, fetchSessions } from "../api";
+import { fetchActiveSessions, fetchSessionsScoped } from "../api";
 import type { ActiveSessionInfo, SessionInfo } from "../api";
+import { useProfiles } from "../providers/ProfileProvider";
 
 type Props = {
   onSelectSession: (id: string) => void;
@@ -121,6 +122,7 @@ const sortColumns: { key: SortKey; label: string }[] = [
 ];
 
 export function SessionsPanel({ onSelectSession }: Props) {
+  const { activeUserProfile } = useProfiles();
   const [open, setOpen] = useState(true);
   const [rows, setRows] = useState<MergedSession[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("date");
@@ -140,7 +142,8 @@ export function SessionsPanel({ onSelectSession }: Props) {
 
     const poll = async () => {
       try {
-        const [a, r] = await Promise.all([fetchActiveSessions(), fetchSessions(50)]);
+        const up = activeUserProfile ?? undefined;
+        const [a, r] = await Promise.all([fetchActiveSessions(up), fetchSessionsScoped(50, up)]);
         if (active) setRows(mergeRows(a, r));
       } catch { /* silent */ }
     };
@@ -148,7 +151,7 @@ export function SessionsPanel({ onSelectSession }: Props) {
     poll();
     const interval = setInterval(poll, 3000);
     return () => { active = false; clearInterval(interval); };
-  }, []);
+  }, [activeUserProfile]);
 
   const visibleRows = rows.filter((r) => !r.archived);
   const sorted = useMemo(() => sortSessions(visibleRows, sortBy, sortDir), [visibleRows, sortBy, sortDir]);

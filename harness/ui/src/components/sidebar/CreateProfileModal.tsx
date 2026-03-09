@@ -79,7 +79,7 @@ export function CreateProfileModal({ onClose, onCreated, agentProfiles }: Props)
         onKeyDown={handleKeyDown}
       >
         <div className="create-profile-header">
-          <span className="create-profile-title">new profile</span>
+          <span className="create-profile-title">new project</span>
           <button className="create-profile-close" onClick={onClose}>&times;</button>
         </div>
 
@@ -161,7 +161,7 @@ export function CreateProfileModal({ onClose, onCreated, agentProfiles }: Props)
             onClick={handleSave}
             disabled={!canSave || saving}
           >
-            {saving ? "creating..." : "create profile"}
+            {saving ? "creating..." : "create project"}
           </button>
         </div>
       </div>
