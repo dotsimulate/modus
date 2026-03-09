@@ -67,6 +67,7 @@ export type ActiveSession = {
   turnStartedAt: number;
   cwd?: string;
   actionName?: string;
+  userProfile?: string;
   pauseRequested: boolean;
   pauseResolver: (() => void) | null;
   pendingPermissions: Map<string, {
@@ -264,6 +265,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     turnStartedAt: Date.now(),
     cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
     actionName: opts.actionName,
+    userProfile: opts.userProfile,
     pauseRequested: false,
     pauseResolver: null,
     pendingPermissions: new Map(),
@@ -291,6 +293,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       lastPrompt: session.preview,
       cwd: session.cwd,
       actionName: session.actionName,
+      userProfile: session.userProfile,
     });
   }
 

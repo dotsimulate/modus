@@ -42,6 +42,8 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN action_name TEXT`); } catch { /* a
 try { db.run(`ALTER TABLE sessions RENAME COLUMN schedule_name TO action_name`); } catch { /* already renamed or never existed */ }
 // Migration: add pruned flag for event pruning (removes redundant streaming deltas)
 try { db.run(`ALTER TABLE sessions ADD COLUMN pruned INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
+// Migration: add user_profile — which user profile spawned this session
+try { db.run(`ALTER TABLE sessions ADD COLUMN user_profile TEXT`); } catch { /* already exists */ }
 // Migration: rename compacted → pruned (if upgrading from older schema)
 try { db.run(`ALTER TABLE sessions RENAME COLUMN compacted TO pruned`); } catch { /* already renamed or never existed */ }
 
@@ -184,8 +186,8 @@ export type StoredSessionConfig = {
 const stmts = {
   // Sessions
   upsert: db.prepare(`
-    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name)
-    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name)
+    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile)
+    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile)
     ON CONFLICT(id) DO UPDATE SET
       updated_at = $now,
       last_message_at = $now,
@@ -293,6 +295,7 @@ export function upsertSession(opts: {
   lastResponse?: string;
   cwd?: string;
   actionName?: string;
+  userProfile?: string;
 }) {
   stmts.upsert.run({
     $id: opts.id,
@@ -307,6 +310,7 @@ export function upsertSession(opts: {
     $last_response: opts.lastResponse ?? null,
     $cwd: opts.cwd ?? null,
     $action_name: opts.actionName ?? null,
+    $user_profile: opts.userProfile ?? null,
   });
 }
 
@@ -346,13 +350,18 @@ export function listSessionsForProjects(cwdPrefixes: string[], limit = 50): Sess
   return db.prepare(sql).all(...params) as SessionRow[];
 }
 
-/** List sessions scoped to a user profile — filters by CWD prefixes AND/OR agent profiles */
+/** List sessions scoped to a user profile — filters by CWD prefixes AND/OR agent profiles AND/OR user_profile column */
 export function listSessionsScoped(
-  opts: { cwdPrefixes?: string[]; agentProfiles?: string[]; limit?: number },
+  opts: { cwdPrefixes?: string[]; agentProfiles?: string[]; userProfileName?: string; limit?: number },
 ): SessionRow[] {
   const limit = opts.limit ?? 50;
   const conditions: string[] = ["archived = 0"];
   const params: any[] = [];
+
+  if (opts.userProfileName) {
+    conditions.push("(user_profile = ? OR user_profile IS NULL)");
+    params.push(opts.userProfileName);
+  }
 
   if (opts.cwdPrefixes && opts.cwdPrefixes.length > 0) {
     const cwdConds = opts.cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
@@ -366,8 +375,8 @@ export function listSessionsScoped(
     params.push(...opts.agentProfiles);
   }
 
-  // If user profile has neither projects nor agents, return nothing (fully empty profile)
-  if (!opts.cwdPrefixes?.length && !opts.agentProfiles?.length) {
+  // If no filters provided at all, return nothing (fully empty profile)
+  if (!opts.cwdPrefixes?.length && !opts.agentProfiles?.length && !opts.userProfileName) {
     return [];
   }
 

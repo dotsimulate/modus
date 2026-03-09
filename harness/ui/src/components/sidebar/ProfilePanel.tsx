@@ -97,7 +97,7 @@ export function ProfilePanel({
               onChange={onSetupChange}
               projectPaths={
                 activeUserProfileObj?.showAllProjectPaths && userProfiles
-                  ? [...new Set(userProfiles.flatMap((u) => u.projects))]
+                  ? [...new Set(userProfiles.flatMap((u) => u.projects ?? []))]
                   : activeUserProfileObj?.projects
               }
               showAllProjectPaths={activeUserProfileObj?.showAllProjectPaths}

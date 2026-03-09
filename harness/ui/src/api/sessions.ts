@@ -164,10 +164,12 @@ export async function fetchSessionsScoped(limit = 50, userProfile?: string, acti
   return res.json();
 }
 
-/** Fetch sessions filtered by agent profile name */
-export async function fetchSessionsByProfile(profile: string, limit = 10): Promise<SessionInfo[]> {
+/** Fetch sessions filtered by agent profile name, optionally scoped to a user profile */
+export async function fetchSessionsByProfile(profile: string, limit = 10, userProfile?: string): Promise<SessionInfo[]> {
+  const params = [`profile=${encodeURIComponent(profile)}`, `limit=${limit}`];
+  if (userProfile) params.push(`userProfile=${encodeURIComponent(userProfile)}`);
   const res = await fetch(
-    `${API_BASE}/api/sessions?profile=${encodeURIComponent(profile)}&limit=${limit}`,
+    `${API_BASE}/api/sessions?${params.join("&")}`,
     { headers: authHeaders() },
   );
   return res.json();
