@@ -46,6 +46,9 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN pruned INTEGER NOT NULL DEFAULT 0`
 try { db.run(`ALTER TABLE sessions ADD COLUMN user_profile TEXT`); } catch { /* already exists */ }
 // Migration: rename compacted → pruned (if upgrading from older schema)
 try { db.run(`ALTER TABLE sessions RENAME COLUMN compacted TO pruned`); } catch { /* already renamed or never existed */ }
+// Migration: add fork metadata for branched sessions (consumed on first resume)
+try { db.run(`ALTER TABLE sessions ADD COLUMN parent_session_id TEXT`); } catch { /* already exists */ }
+try { db.run(`ALTER TABLE sessions ADD COLUMN branch_message_uuid TEXT`); } catch { /* already exists */ }
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -157,6 +160,8 @@ export type SessionRow = {
   last_response: string | null;
   cwd: string | null;
   action_name: string | null;
+  parent_session_id: string | null;
+  branch_message_uuid: string | null;
 };
 
 export type EventRow = {
@@ -186,8 +191,8 @@ export type StoredSessionConfig = {
 const stmts = {
   // Sessions
   upsert: db.prepare(`
-    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile)
-    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile)
+    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile, parent_session_id, branch_message_uuid)
+    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile, $parent_session_id, $branch_message_uuid)
     ON CONFLICT(id) DO UPDATE SET
       updated_at = $now,
       last_message_at = $now,
@@ -296,6 +301,8 @@ export function upsertSession(opts: {
   cwd?: string;
   actionName?: string;
   userProfile?: string;
+  parentSessionId?: string;
+  branchMessageUuid?: string;
 }) {
   stmts.upsert.run({
     $id: opts.id,
@@ -311,6 +318,8 @@ export function upsertSession(opts: {
     $cwd: opts.cwd ?? null,
     $action_name: opts.actionName ?? null,
     $user_profile: opts.userProfile ?? null,
+    $parent_session_id: opts.parentSessionId ?? null,
+    $branch_message_uuid: opts.branchMessageUuid ?? null,
   });
 }
 
@@ -447,6 +456,58 @@ export function getDraft(sessionId: string): string {
 
 export function setDraft(sessionId: string, text: string) {
   stmts.setDraft.run({ $id: sessionId, $draft_text: text });
+}
+
+// ── Branching Functions ──
+
+/** Copy events from source session to target, up to maxSeq (inclusive). Re-numbers seq from 1. */
+export function copyEventsToSession(sourceId: string, targetId: string, maxSeq: number): number {
+  const events = db.prepare(
+    `SELECT type, subtype, data FROM events WHERE session_id = $sid AND seq <= $max ORDER BY seq ASC`
+  ).all({ $sid: sourceId, $max: maxSeq }) as { type: string; subtype: string | null; data: string }[];
+
+  const now = Date.now();
+  const insert = db.prepare(`
+    INSERT INTO events (session_id, seq, type, subtype, data, created_at)
+    VALUES ($sid, $seq, $type, $subtype, $data, $created_at)
+  `);
+
+  db.transaction(() => {
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i]!;
+      insert.run({
+        $sid: targetId,
+        $seq: i + 1,
+        $type: ev.type,
+        $subtype: ev.subtype,
+        $data: ev.data,
+        $created_at: now,
+      });
+    }
+  })();
+
+  return events.length;
+}
+
+/** Clear branch fields so a forked session resumes normally next time */
+export function clearBranchFields(sessionId: string): void {
+  db.prepare(
+    `UPDATE sessions SET parent_session_id = NULL, branch_message_uuid = NULL WHERE id = $id`
+  ).run({ $id: sessionId });
+}
+
+/** Find the SDK assistant message UUID at or before the given seq */
+export function findAssistantUuid(sessionId: string, maxSeq: number): string | null {
+  const row = db.prepare(
+    `SELECT data FROM events WHERE session_id = $sid AND type = 'assistant' AND seq <= $max ORDER BY seq DESC LIMIT 1`
+  ).get({ $sid: sessionId, $max: maxSeq }) as { data: string } | null;
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.data);
+    return parsed.uuid ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Action Execution Functions ──

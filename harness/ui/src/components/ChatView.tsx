@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { MessageBubble } from "./MessageBubble";
+import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
 import type { Message, ToolCall } from "../api";
@@ -18,9 +19,10 @@ type Props = {
   emptySubtitle?: string;
   queuedMessage?: QueuedMessageType | null;
   onCancelQueued?: () => void;
+  onBranch?: (seq: number, prefill?: string) => void;
 };
 
-export function ChatView({ messages, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued }: Props) {
+export function ChatView({ messages, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
@@ -129,7 +131,7 @@ export function ChatView({ messages, streaming, streamFeed, showThinking = true,
                 isStreaming={
                   streaming && i === messages.length - 1 && msg.role === "assistant"
                 }
-                hideRole={i > 0 && messages[i - 1].role === msg.role}
+                hideRole
                 showThinking={showThinking}
                 showMeta={showMeta}
                 showToolCalls={showToolCalls}
@@ -139,9 +141,13 @@ export function ChatView({ messages, streaming, streamFeed, showThinking = true,
                 streamFeed={streaming && i === messages.length - 1 && msg.role === "assistant"
                   ? streamFeed
                   : undefined}
+                onBranch={msg.role === "user" && msg.seq != null ? onBranch : undefined}
               >
                 {showFileChanges && <FileChanges toolCalls={turnTools} />}
               </MessageBubble>
+              {msg.role === "user" && (
+                <UserMeta msg={msg} onBranch={onBranch} />
+              )}
             </div>
           );
         })}

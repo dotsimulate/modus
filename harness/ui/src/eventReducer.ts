@@ -66,16 +66,17 @@ export function createInitialState(sessionId = ""): ReducerState {
 export function reduceEvent(state: ReducerState, event: any, seq: number): ReducerState {
   const s = { ...state, lastSeq: Math.max(state.lastSeq, seq) };
   const m = typeof event === "string" ? JSON.parse(event) : event;
+  const ts: number = m._ts ?? Date.now();
 
   switch (m.type) {
     case "system":
-      return reduceSystem(s, m);
+      return reduceSystem(s, m, ts);
     case "assistant":
-      return reduceAssistant(s, m);
+      return reduceAssistant(s, m, ts);
     case "user":
-      return reduceUser(s, m);
+      return reduceUser(s, m, ts);
     case "stream_event":
-      return reduceStreamEvent(s, m);
+      return reduceStreamEvent(s, m, ts);
     case "tool_progress":
       return reduceToolProgress(s, m);
     case "tool_use_summary":
@@ -156,7 +157,7 @@ function getLastSubMessage(msgs: Message[], agentToolId: string): Message | unde
 
 // ── System Events ──
 
-function reduceSystem(s: ReducerState, m: any): ReducerState {
+function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
   if (m.subtype === "init") {
     const nextConfig = readAgentConfig(m.config);
     return {
@@ -210,7 +211,7 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
       toolUseID: m.toolUseID,
       interactive: !!m.interactive,
       decisionReason: m.decisionReason,
-      requestedAt: Date.now(),
+      requestedAt: ts,
     };
     return { ...s, pendingPermissions: [...s.pendingPermissions, perm] };
   }
@@ -246,6 +247,53 @@ function reduceSystem(s: ReducerState, m: any): ReducerState {
       });
     }
     return { ...s, _subTasks: tasks };
+  }
+  if (m.subtype === "compacting") {
+    return {
+      ...s,
+      messages: [...s.messages, {
+        id: nextMsgId(),
+        role: "system",
+        content: "summarizing context...",
+      }],
+    };
+  }
+  if (m.subtype === "compact_complete") {
+    // Replace the "summarizing context..." message with completion
+    const msgs = [...s.messages];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "system" && msgs[i].content === "summarizing context...") {
+        const detail = m.pre_tokens ? ` (${Math.round(m.pre_tokens / 1000)}k tokens)` : "";
+        msgs[i] = { ...msgs[i], content: `context compacted${detail}` };
+        return { ...s, messages: msgs };
+      }
+    }
+    // No pending message found — append
+    return {
+      ...s,
+      messages: [...s.messages, {
+        id: nextMsgId(),
+        role: "system",
+        content: "context compacted",
+      }],
+    };
+  }
+  if (m.subtype === "compact_error") {
+    const msgs = [...s.messages];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "system" && msgs[i].content === "summarizing context...") {
+        msgs[i] = { ...msgs[i], content: `compaction failed: ${m.error}` };
+        return { ...s, messages: msgs };
+      }
+    }
+    return {
+      ...s,
+      messages: [...s.messages, {
+        id: nextMsgId(),
+        role: "system",
+        content: `compaction failed: ${m.error}`,
+      }],
+    };
   }
   if (m.subtype === "task_notification") {
     const tasks = new Map(s._subTasks);
@@ -310,7 +358,7 @@ function readToolStates(toolStates: any): AgentConfigState["toolStates"] {
 // ── Assistant Messages ──
 // Contains text, thinking, and tool_use content blocks
 
-function reduceAssistant(s: ReducerState, m: any): ReducerState {
+function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
   const content = m.message?.content;
   if (!content || !Array.isArray(content)) return s;
 
@@ -334,7 +382,7 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
         name: block.name,
         input: block.input ?? {},
         status: "running",
-        startedAt: Date.now(),
+        startedAt: ts,
       };
       toolCalls.push(tc);
       // Track in pending map for result matching (immutable copy)
@@ -353,6 +401,7 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
       id: nextMsgId(),
       role: "assistant",
       content: text,
+      timestamp: ts,
       thinking: thinking || undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     };
@@ -386,7 +435,7 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
     && !last.toolCalls?.some((tc) => tc.status !== "running");
 
   // Finalize thinking duration if thinking phase just ended
-  const thinkingDuration = s._thinkingStartedAt ? Date.now() - s._thinkingStartedAt : undefined;
+  const thinkingDuration = s._thinkingStartedAt ? ts - s._thinkingStartedAt : undefined;
 
   if (text || thinking || toolCalls.length > 0) {
     if (canMerge) {
@@ -402,6 +451,7 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
         id: nextMsgId(),
         role: "assistant",
         content: text,
+        timestamp: ts,
         thinking: thinking || undefined,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
         ...(thinkingDuration != null && { thinkingDuration }),
@@ -415,7 +465,7 @@ function reduceAssistant(s: ReducerState, m: any): ReducerState {
 
 // ── User Messages (including synthetic tool_result) ──
 
-function reduceUser(s: ReducerState, m: any): ReducerState {
+function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
   // Detect synthetic tool_result messages — either flagged or contains tool_result blocks
   const content = m.message?.content;
   const hasToolResults = Array.isArray(content) && content.some((b: any) => b.type === "tool_result");
@@ -435,7 +485,7 @@ function reduceUser(s: ReducerState, m: any): ReducerState {
             const updateFields = {
               status: (block.is_error ? "error" : "completed") as ToolCall["status"],
               result: result.slice(0, 2000),
-              duration: Date.now() - tc.startedAt,
+              duration: ts - tc.startedAt,
             };
             pending.set(block.tool_use_id, { ...tc, ...updateFields });
 
@@ -536,9 +586,10 @@ function reduceUser(s: ReducerState, m: any): ReducerState {
       const prev = s.messages[i];
       if (prev.role === "user" && prev.content === text) {
         // If existing msg has no attachments but event does, update it
-        if (attachments && !prev.attachments) {
+        // Also stamp seq if missing
+        if ((attachments && !prev.attachments) || !prev.seq) {
           const msgs = [...s.messages];
-          msgs[i] = { ...prev, attachments };
+          msgs[i] = { ...prev, seq: s.lastSeq, timestamp: prev.timestamp ?? ts, ...(attachments && !prev.attachments && { attachments }) };
           return { ...s, messages: msgs };
         }
         return s;
@@ -547,7 +598,7 @@ function reduceUser(s: ReducerState, m: any): ReducerState {
 
     return {
       ...s,
-      messages: [...s.messages, { id: nextMsgId(), role: "user", content: text, attachments }],
+      messages: [...s.messages, { id: nextMsgId(), role: "user", content: text, seq: s.lastSeq, timestamp: ts, attachments }],
     };
   }
 
@@ -557,7 +608,7 @@ function reduceUser(s: ReducerState, m: any): ReducerState {
 
 // ── Stream Events (partial deltas) ──
 
-function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
+function reduceStreamEvent(s: ReducerState, m: any, ts: number): ReducerState {
   const evt = m.event;
   if (!evt) return s;
 
@@ -580,6 +631,7 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
             id: nextMsgId(),
             role: "assistant",
             content: newText,
+            timestamp: ts,
           });
         }
         return { ...s, messages: msgs, _streamingText: newText, streamFeed: appendFeed(s.streamFeed, evt.delta.text) };
@@ -601,6 +653,7 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
             role: "assistant",
             content: "",
             thinking: newThinking,
+            timestamp: ts,
           });
         }
         return { ...s, messages: msgs, _streamingThinking: newThinking, streamFeed: appendFeed(s.streamFeed, evt.delta.thinking) };
@@ -617,17 +670,17 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
         && !last.toolCalls?.some((tc) => tc.status !== "running");
       // Finalize thinking duration when text starts
       const thinkingDuration = s._thinkingStartedAt && !last?.thinkingDuration
-        ? Date.now() - s._thinkingStartedAt : undefined;
+        ? ts - s._thinkingStartedAt : undefined;
       if (canMerge) {
         msgs[msgs.length - 1] = { ...last, content: newText, ...(thinkingDuration != null && { thinkingDuration }) };
       } else {
-        msgs.push({ id: nextMsgId(), role: "assistant", content: newText });
+        msgs.push({ id: nextMsgId(), role: "assistant", content: newText, timestamp: ts });
       }
       return { ...s, messages: msgs, _streamingText: newText, _thinkingStartedAt: undefined, streamFeed: appendFeed(s.streamFeed, evt.delta.text) };
     }
     if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
       const newThinking = s._streamingThinking + evt.delta.thinking;
-      const startedAt = s._thinkingStartedAt ?? Date.now();
+      const startedAt = s._thinkingStartedAt ?? ts;
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
       const canMerge = last?.role === "assistant" && !last.meta
@@ -635,7 +688,7 @@ function reduceStreamEvent(s: ReducerState, m: any): ReducerState {
       if (canMerge) {
         msgs[msgs.length - 1] = { ...last, thinking: newThinking };
       } else {
-        msgs.push({ id: nextMsgId(), role: "assistant", content: "", thinking: newThinking });
+        msgs.push({ id: nextMsgId(), role: "assistant", content: "", thinking: newThinking, timestamp: ts });
       }
       return { ...s, messages: msgs, _streamingThinking: newThinking, _thinkingStartedAt: startedAt, streamFeed: appendFeed(s.streamFeed, evt.delta.thinking) };
     }
@@ -671,6 +724,7 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     const modelName = m.modelUsage ? Object.keys(m.modelUsage)[0] : s.model;
     msgs[msgs.length - 1] = {
       ...last,
+      seq: s.lastSeq, // result event seq — used as branch point
       // Persist backend-measured thinking duration (survives refresh)
       ...(m.thinking_duration_ms != null && { thinkingDuration: m.thinking_duration_ms }),
       meta: {

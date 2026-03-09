@@ -28,6 +28,10 @@ export interface SessionProvider {
 
   /** Switch active profile mid-session (optional — provider-specific swap logic) */
   switchProfile?(session: ActiveSession, ctx: TurnContext, contextMode: string): void;
+
+  /** Clean up provider-specific resources when a session is fully done.
+   *  Called by session-manager on shutdown and cross-provider switch. */
+  dispose?(session: ActiveSession): Promise<void>;
 }
 
 // ── Turn Context ──

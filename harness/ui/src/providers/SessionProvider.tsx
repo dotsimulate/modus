@@ -4,6 +4,7 @@ import {
   archiveSessionApi, fetchSessions, fetchSessionsScoped,
   createEmptySession, getDraft, saveDraft,
   updateSessionConfig, respondToPermission, nextMsgId,
+  branchSessionApi,
 } from "../api";
 import type { Session, SessionInfo, Attachment, ApiAttachment } from "../api";
 import { createInitialState } from "../eventReducer";
@@ -40,6 +41,7 @@ type SessionContextValue = {
   queuedMessage: QueuedMessage | null;
   cancelQueued: () => void;
   updateActiveSessionConfig: (config: AgentConfigState) => Promise<void>;
+  branchFromMessage: (seq: number, prefill?: string) => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue>(null!);
@@ -235,7 +237,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           }
         : setupState;
       rs.messages.push({
-        id: nextMsgId(), role: "user", content: prompt,
+        id: nextMsgId(), role: "user", content: prompt, timestamp: Date.now(),
         attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
       });
       rs.status = "starting";
@@ -278,7 +280,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const rs = getSessionState(activeSessionId!)!;
       const updated = { ...rs, status: "running" as const };
       updated.messages = [...updated.messages, {
-        id: nextMsgId(), role: "user" as const, content: prompt,
+        id: nextMsgId(), role: "user" as const, content: prompt, timestamp: Date.now(),
         attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
       }];
       setSessionState(activeSessionId!, updated, activeSession?.profile);
@@ -380,6 +382,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => {});
   }, [activeSessionId, activeSession?.profile, applyAgentConfigToState, profiles]);
 
+  const branchFromMessage = useCallback(async (seq: number, prefill?: string) => {
+    if (!activeSessionId) return;
+    try {
+      // Branch at seq-1: copy everything before this user message
+      const branchAt = prefill ? Math.max(1, seq - 1) : seq;
+      const newId = await branchSessionApi(activeSessionId, branchAt);
+      await refreshSessions();
+      await selectSession(newId);
+      if (prefill) setInput(prefill);
+    } catch (err) {
+      console.error("Branch failed:", err);
+    }
+  }, [activeSessionId, selectSession, refreshSessions]);
+
   return (
     <SessionContext.Provider value={{
       activeSession, serverSessions,
@@ -387,6 +403,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       send, stop, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,
       queuedMessage, cancelQueued, updateActiveSessionConfig,
+      branchFromMessage,
     }}>
       {children}
     </SessionContext.Provider>

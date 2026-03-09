@@ -46,6 +46,10 @@ export type Message = {
   thinkingDuration?: number;
   toolCalls?: ToolCall[];
   attachments?: Attachment[];
+  /** Event seq (user prompt or result event) — used as branch point */
+  seq?: number;
+  /** Epoch ms timestamp from the event's created_at */
+  timestamp?: number;
   meta?: {
     cost?: number;
     duration?: number;

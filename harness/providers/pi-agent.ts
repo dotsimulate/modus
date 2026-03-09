@@ -420,8 +420,39 @@ function translateEvents(
       break;
     }
 
-    case "auto_compaction_start":
-    case "auto_compaction_end":
+    case "auto_compaction_start": {
+      console.log(`[pi-agent] ${session.sessionId}: ${event.type}`);
+      ctx.emitEvent({
+        type: "system",
+        subtype: "compacting",
+        provider: "pi-agent",
+        reason: (event as any).reason,
+      });
+      break;
+    }
+
+    case "auto_compaction_end": {
+      const e = event as any;
+      console.log(`[pi-agent] ${session.sessionId}: ${event.type} result=${e.result}`);
+      if (e.result === "error" || e.errorMessage) {
+        ctx.emitEvent({
+          type: "system",
+          subtype: "compact_error",
+          provider: "pi-agent",
+          error: e.errorMessage ?? "compaction failed",
+        });
+      } else {
+        ctx.emitEvent({
+          type: "system",
+          subtype: "compact_complete",
+          provider: "pi-agent",
+          trigger: e.reason ?? "auto",
+          will_retry: !!e.willRetry,
+        });
+      }
+      break;
+    }
+
     case "auto_retry_start":
     case "auto_retry_end": {
       console.log(`[pi-agent] ${session.sessionId}: ${event.type}`);
@@ -681,6 +712,10 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         activeTools = activeTools.filter((tool) => !config.disallowedTools.includes(tool));
       }
       state.agentSession.setActiveToolsByName(activeTools);
+    },
+
+    async dispose(session: ActiveSession) {
+      await disposePiAgent(session);
     },
 
     switchProfile(session: ActiveSession, ctx: TurnContext, _contextMode: string) {

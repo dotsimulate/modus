@@ -23,7 +23,7 @@ export {
   createSession, sendMessage, stopSessionApi, switchSessionProfile,
   updateSessionConfig, respondToPermission,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
-  browsePath, subscribeEvents,
+  browsePath, subscribeEvents, branchSessionApi,
 } from "./sessions";
 
 // Actions
