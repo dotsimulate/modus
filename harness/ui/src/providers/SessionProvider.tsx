@@ -59,8 +59,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [pendingHashId, setPendingHashId] = useState<string | null>(() => {
-    const hash = window.location.hash.slice(1);
-    return hash || null;
+    // Extract session UUID from hash: #profile/uuid or #uuid
+    const raw = window.location.hash.replace(/^#\/?/, "");
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const slash = raw.indexOf("/");
+    const candidate = slash >= 0 ? raw.slice(slash + 1) : raw;
+    return UUID_RE.test(candidate) ? candidate : null;
   });
 
   // Derive activeSession from the store
@@ -98,11 +102,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const updateHash = useCallback((id: string | null) => {
     if (id && !id.startsWith("pending-")) {
-      window.history.replaceState(null, "", `#${id}`);
+      const profile = activeUserProfile ?? "";
+      const hash = profile ? `${profile}/${id}` : id;
+      window.history.replaceState(null, "", `#${hash}`);
     } else {
-      window.history.replaceState(null, "", window.location.pathname);
+      // Keep profile in URL even when no session
+      const profile = activeUserProfile ?? "";
+      window.history.replaceState(null, "", profile ? `#${profile}` : window.location.pathname);
     }
-  }, []);
+  }, [activeUserProfile]);
 
   // ── Draft management ──
 
@@ -214,7 +222,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       && currentState.messages.length === 0
       && !hasPersistedHistory;
     const needsNewSession = !activeSessionId || !currentState || currentState.status === "done" || currentState.status === "error" || activeSessionId.startsWith("pending-") || isEmptySession;
-
     if (needsNewSession) {
       if (isEmptySession && activeSessionId) archiveSessionApi(activeSessionId).catch(() => {});
 
@@ -243,19 +250,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       try {
         const opts = buildSessionOpts(prompt, profile, seedState);
         if (apiAtts) opts.attachments = apiAtts;
-        const { sessionId } = await createSession(opts);
-
-        let realId = sessionId;
-        if (realId.startsWith("pending-")) {
-          for (let i = 0; i < 20; i++) {
-            await new Promise((r) => setTimeout(r, 500));
-            const sessions = await fetchSessions(1).catch(() => []);
-            if (sessions.length > 0 && !sessions[0].id.startsWith("pending-")) {
-              realId = sessions[0].id;
-              break;
-            }
-          }
-        }
+        const { sessionId: realId } = await createSession(opts);
 
         rekeySession(tempId, realId);
         setActiveSessionId(realId);

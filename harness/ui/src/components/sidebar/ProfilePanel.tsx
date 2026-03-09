@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Profile, UserProfile } from "../../api";
+import { useProfiles } from "../../providers/ProfileProvider";
 import { SessionSetup, type SessionSetupState } from "../SessionSetup";
 
 type Props = {
@@ -9,7 +10,6 @@ type Props = {
   onSelectProfile: (name: string) => void;
   setupState: SessionSetupState;
   onSetupChange: (setup: SessionSetupState) => void;
-  userProfiles?: UserProfile[];
   activeUserProfileObj?: UserProfile | null;
 };
 
@@ -30,8 +30,9 @@ function getOverrideTags(setup: SessionSetupState): string[] {
 export function ProfilePanel({
   profiles, availableProviders, selectedProfile, onSelectProfile,
   setupState, onSetupChange,
-  userProfiles, activeUserProfileObj,
+  activeUserProfileObj,
 }: Props) {
+  const { userProfiles } = useProfiles();
   const [configExpanded, setConfigExpanded] = useState(false);
   const selectedProfileData = profiles.find((p) => p.name === selectedProfile);
   const overrideTags = getOverrideTags(setupState);

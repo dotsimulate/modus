@@ -14,8 +14,9 @@ export async function fetchSessionStatus(sessionId: string): Promise<SessionStat
   return res.json();
 }
 
-export async function fetchActiveSessions(): Promise<ActiveSessionInfo[]> {
-  const res = await fetch(`${API_BASE}/api/sessions/active`, { headers: authHeaders() });
+export async function fetchActiveSessions(userProfile?: string): Promise<ActiveSessionInfo[]> {
+  const params = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : "";
+  const res = await fetch(`${API_BASE}/api/sessions/active${params}`, { headers: authHeaders() });
   return res.json();
 }
 
@@ -160,6 +161,15 @@ export async function fetchSessionsScoped(limit = 50, userProfile?: string, acti
   if (userProfile) params.push(`userProfile=${encodeURIComponent(userProfile)}`);
   if (action) params.push(`action=${encodeURIComponent(action)}`);
   const res = await fetch(`${API_BASE}/api/sessions?${params.join("&")}`, { headers: authHeaders() });
+  return res.json();
+}
+
+/** Fetch sessions filtered by agent profile name */
+export async function fetchSessionsByProfile(profile: string, limit = 10): Promise<SessionInfo[]> {
+  const res = await fetch(
+    `${API_BASE}/api/sessions?profile=${encodeURIComponent(profile)}&limit=${limit}`,
+    { headers: authHeaders() },
+  );
   return res.json();
 }
 

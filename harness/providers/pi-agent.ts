@@ -22,6 +22,7 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { SessionProvider, TurnContext } from "./types";
 import type { ActiveSession, MessageContent } from "../session-manager";
 import { getGlobalConfig, type ProviderDefaults } from "../profiles";
+import { updateSessionStatus } from "../db";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
 import { resolveSecret } from "../secrets";
 
@@ -34,7 +35,7 @@ const DEFAULT_MODELS: Record<PiProviderName, string> = {
   openai: "gpt-4o",
   litellm: "default",
   ollama: "default",
-  openrouter: "anthropic/claude-3.5-sonnet",
+  openrouter: "anthropic/claude-sonnet-4.5",
 };
 
 // ── Provider-specific state on session._providerState ──
@@ -49,9 +50,45 @@ function getState(session: ActiveSession): PiAgentState | null {
   return session._providerState as PiAgentState | null;
 }
 
+// ── OpenRouter Pricing ──
+
+type CostRates = { input: number; output: number; cacheRead: number; cacheWrite: number };
+const ZERO_COST: CostRates = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+// Cache keyed by model ID, populated lazily from OpenRouter's /api/v1/models
+let openRouterPricing: Map<string, CostRates> | null = null;
+
+async function fetchOpenRouterPricing(modelId: string): Promise<CostRates> {
+  if (openRouterPricing) return openRouterPricing.get(modelId) ?? ZERO_COST;
+
+  try {
+    const baseUrl = resolveSecret("OPENROUTER_BASE_URL") ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/models`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json() as { data?: { id: string; pricing?: Record<string, string> }[] };
+    openRouterPricing = new Map();
+    for (const m of json.data ?? []) {
+      if (!m.pricing) continue;
+      // OpenRouter prices are per-token strings; PI SDK wants per-million-token numbers
+      openRouterPricing.set(m.id, {
+        input: parseFloat(m.pricing.prompt || "0") * 1_000_000,
+        output: parseFloat(m.pricing.completion || "0") * 1_000_000,
+        cacheRead: parseFloat(m.pricing.input_cache_read || "0") * 1_000_000,
+        cacheWrite: parseFloat(m.pricing.input_cache_write || "0") * 1_000_000,
+      });
+    }
+    console.log(`[pi-agent] Cached OpenRouter pricing for ${openRouterPricing.size} models`);
+    return openRouterPricing.get(modelId) ?? ZERO_COST;
+  } catch (err) {
+    console.error(`[pi-agent] Failed to fetch OpenRouter pricing:`, err);
+    openRouterPricing = new Map(); // don't retry on failure
+    return ZERO_COST;
+  }
+}
+
 // ── Model Construction ──
 
-function buildModel(provider: PiProviderName, modelId: string, profile?: any): Model<any> {
+function buildModel(provider: PiProviderName, modelId: string, profile?: any, cost?: CostRates): Model<any> {
   // Known providers: use PI's built-in model registry
   if (provider === "anthropic" || provider === "openai") {
     try {
@@ -99,7 +136,7 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any): M
     baseUrl,
     reasoning: false,
     input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    cost: cost ?? ZERO_COST,
     contextWindow: profile?.contextWindow ?? providerDefaults?.contextWindow ?? 32768,
     maxTokens: profile?.maxOutputTokens ?? providerDefaults?.maxOutputTokens ?? 2048,
     compat: {
@@ -189,7 +226,7 @@ function friendlyError(err: any, provider: string): string {
 // ── Content Helpers ──
 
 /** Convert harness MessageContent to PI's native content format */
-function contentToPi(content: MessageContent): string | { type: "text"; text: string }[] | { type: "text" | "image"; text?: string; data?: string; mimeType?: string }[] {
+function contentToPi(content: MessageContent): any {
   if (typeof content === "string") return content;
   return (content as any[]).map((block: any) => {
     if (block.type === "text") return { type: "text" as const, text: block.text };
@@ -230,6 +267,7 @@ function translateEvents(
         session.lastEventAt = Date.now();
         ctx.emitEvent({
           type: "stream_event",
+          subtype: "content_block_delta",
           event: {
             type: "content_block_delta",
             delta: { type: "text_delta", text: ame.delta },
@@ -239,6 +277,7 @@ function translateEvents(
         session.lastEventAt = Date.now();
         ctx.emitEvent({
           type: "stream_event",
+          subtype: "content_block_delta",
           event: {
             type: "content_block_delta",
             delta: { type: "thinking_delta", thinking: ame.delta },
@@ -290,6 +329,10 @@ function translateEvents(
     }
 
     case "agent_end": {
+      // If session was paused at a tool boundary, the abort was intentional —
+      // don't transition to idle/done. Session stays paused until resumed.
+      if (session.status === "paused") break;
+
       // If session was already stopped/interrupted by the user, don't process further.
       // stopSession() sets status to "idle" before calling abort, so agent_end
       // arrives after the session is already cleaned up.
@@ -364,7 +407,7 @@ function translateEvents(
         });
         const state = getState(session);
         if (state) {
-          state.agentSession.sendUserMessage(contentToPi(next) as any, {
+          state.agentSession.sendUserMessage(contentToPi(next), {
             deliverAs: "followUp",
           });
         }
@@ -422,7 +465,10 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       session.status = "running";
 
       try {
-        const model = buildModel(providerName, modelId, profile);
+        const cost = providerName === "openrouter"
+          ? await fetchOpenRouterPricing(modelId)
+          : undefined;
+        const model = buildModel(providerName, modelId, profile, cost);
         const authStorage = buildAuthStorage(providerName);
         const sessionManager = SessionManager.inMemory(cwd);
         const providerDefaults = getGlobalConfig().providerDefaults?.[providerName];
@@ -517,6 +563,25 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
 
         const unsubscribe = agentSession.subscribe((event: AgentSessionEvent) => {
           try {
+            // ── Pause gate ──
+            // PI doesn't expose a blocking hook in its tool loop, so we abort
+            // the agent at the tool boundary. On resume, the turn is lost — the
+            // user sends the next message to continue.
+            if (event.type === "tool_execution_start" && session.pauseRequested) {
+              session.pauseRequested = false;
+              session.status = "paused";
+              updateSessionStatus(session.sessionId, "paused");
+              flushAssembled();
+              ctx.emitEvent({
+                type: "system",
+                subtype: "paused",
+                data: { toolName: event.toolName, input: event.args ?? {} },
+              });
+              // Abort the agent — turn is interrupted at this tool boundary
+              agentSession.abort().catch(() => {});
+              return;
+            }
+
             // Flush accumulated text before tool calls and turn end
             if (event.type === "tool_execution_start") {
               flushAssembled();
@@ -587,7 +652,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         message: { role: "user", content },
       });
 
-      state.agentSession.sendUserMessage(contentToPi(content) as any).catch((err: any) => {
+      state.agentSession.sendUserMessage(contentToPi(content)).catch((err: any) => {
         const message = friendlyError(err, providerName);
         console.error(`[pi-agent] ${session.sessionId}: ${message}`);
         ctx.emitEvent({ type: "result", subtype: "error", error: message });
@@ -626,7 +691,10 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
 
       // Model swap via setModel
       const newModelId = ctx.opts.model || DEFAULT_MODELS[providerName] || "default";
-      const newModel = buildModel(providerName, newModelId, profileDef);
+      const cachedCost = providerName === "openrouter" && openRouterPricing
+        ? openRouterPricing.get(newModelId)
+        : undefined;
+      const newModel = buildModel(providerName, newModelId, profileDef, cachedCost);
       state.agentSession.setModel(newModel);
 
       // System prompt via agent reach-through

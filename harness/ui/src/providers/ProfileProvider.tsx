@@ -102,11 +102,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     return {
       prompt,
       profile,
+      ...(activeUserProfile ? { userProfile: activeUserProfile } : {}),
       ...(cwd ? { cwd } : {}),
       loadProjectSettings: source.loadProjectSettings,
       ...agentOverrides,
     };
-  }, [setupState, profiles]);
+  }, [setupState, profiles, activeUserProfile]);
 
   // Initial load
   useEffect(() => {

@@ -120,9 +120,14 @@ export type Profile = {
   };
 };
 
+export type NotificationChannel =
+  | { type: "webhook"; url: string; method?: string; headers?: Record<string, string> }
+  | { type: "file"; path: string };
+
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
   providerDefaults?: Record<string, ProviderDefaults>;
+  notificationChannels?: Record<string, NotificationChannel>;
 };
 
 // ── User Profiles ──
@@ -155,6 +160,8 @@ export type UserProfile = {
   memory?: UserProfileMemory;
   /** Show project paths from ALL user profiles in the CWD picker (default: false) */
   showAllProjectPaths?: boolean;
+  /** Dashboard widget layout — read by frontend */
+  dashboard?: { widgets: Array<{ type: string; [key: string]: unknown }> };
 };
 
 // ── Helpers ──

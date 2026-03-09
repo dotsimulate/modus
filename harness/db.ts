@@ -346,6 +346,36 @@ export function listSessionsForProjects(cwdPrefixes: string[], limit = 50): Sess
   return db.prepare(sql).all(...params) as SessionRow[];
 }
 
+/** List sessions scoped to a user profile — filters by CWD prefixes AND/OR agent profiles */
+export function listSessionsScoped(
+  opts: { cwdPrefixes?: string[]; agentProfiles?: string[]; limit?: number },
+): SessionRow[] {
+  const limit = opts.limit ?? 50;
+  const conditions: string[] = ["archived = 0"];
+  const params: any[] = [];
+
+  if (opts.cwdPrefixes && opts.cwdPrefixes.length > 0) {
+    const cwdConds = opts.cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
+    conditions.push(`(${cwdConds})`);
+    params.push(...opts.cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"));
+  }
+
+  if (opts.agentProfiles && opts.agentProfiles.length > 0) {
+    const placeholders = opts.agentProfiles.map(() => "?").join(", ");
+    conditions.push(`profile IN (${placeholders})`);
+    params.push(...opts.agentProfiles);
+  }
+
+  // If user profile has neither projects nor agents, return nothing (fully empty profile)
+  if (!opts.cwdPrefixes?.length && !opts.agentProfiles?.length) {
+    return [];
+  }
+
+  const sql = `SELECT * FROM sessions WHERE ${conditions.join(" AND ")} ORDER BY last_message_at DESC LIMIT ?`;
+  params.push(limit);
+  return db.prepare(sql).all(...params) as SessionRow[];
+}
+
 export function getSession(id: string): SessionRow | null {
   return (stmts.get.get({ $id: id }) as SessionRow) ?? null;
 }

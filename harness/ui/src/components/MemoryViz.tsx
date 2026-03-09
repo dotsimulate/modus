@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { fetchMemories, type MemoryItem } from "../api";
+import { useProfiles } from "../providers/ProfileProvider";
 
 // ── Custom dropdown (replaces native <select> for styled dropdowns) ──
 function Dropdown({ value, options, placeholder, onChange }: {
@@ -541,6 +542,7 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hovered, setHovered] = useState<number>(-1);
+  const { activeUserProfile } = useProfiles();
 
   // Feed state — temporal stack of explored memories
   const [feedStack, setFeedStack] = useState<FeedEntry[]>([]);
@@ -565,10 +567,11 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
   const particlesRef = useRef<Particle[]>([]);
 
   useEffect(() => {
-    fetchMemories()
+    setLoading(true);
+    fetchMemories(activeUserProfile ?? undefined)
       .then((m) => { setMemories(m); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+  }, [activeUserProfile]);
 
   // Date range bounds from all memories
   const dateRange = useMemo(() => {

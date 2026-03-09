@@ -25,7 +25,7 @@ import type { SessionProvider, TurnContext } from "./providers/types";
 
 // ── Types ──
 
-export type SessionStatus = "starting" | "running" | "idle" | "done" | "error";
+export type SessionStatus = "starting" | "running" | "idle" | "paused" | "done" | "error";
 
 export type SSEWriter = {
   write(event: string, data: string, id: string): Promise<void>;
@@ -67,6 +67,8 @@ export type ActiveSession = {
   turnStartedAt: number;
   cwd?: string;
   actionName?: string;
+  pauseRequested: boolean;
+  pauseResolver: (() => void) | null;
   pendingPermissions: Map<string, {
     resolve: (result: { behavior: "allow" | "deny"; updatedInput?: Record<string, unknown>; message?: string }) => void;
     toolName: string;
@@ -262,6 +264,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     turnStartedAt: Date.now(),
     cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
     actionName: opts.actionName,
+    pauseRequested: false,
+    pauseResolver: null,
     pendingPermissions: new Map(),
     sessionApprovals: new Set(),
     _provider: provider,
@@ -313,7 +317,13 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
     message: { role: "user", content },
   }));
 
-  // Delegate to provider
+  // If paused, queue the message — it will be flushed on resume
+  if (session.status === "paused") {
+    session.pendingMessages.push(content);
+    return true;
+  }
+
+  // Delegate to provider (provider sets status to "running" internally)
   const ctx = createTurnContext(session, {
     prompt,
     attachments,
@@ -328,6 +338,13 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
 export function stopSession(sessionId: string): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
+
+  // Resolve pending pause before aborting
+  if (session.pauseResolver) {
+    session.pauseResolver();
+    session.pauseResolver = null;
+  }
+  session.pauseRequested = false;
 
   // Resolve any pending permission promises before aborting
   for (const [id, pending] of session.pendingPermissions) {
@@ -355,6 +372,86 @@ export function stopTask(sessionId: string, taskId: string): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
   return session._provider.stopTask?.(session, taskId) ?? false;
+}
+
+// ── Pause / Resume ──
+
+export function pauseSession(sessionId: string): { ok: boolean; status?: SessionStatus } {
+  const session = activeSessions.get(sessionId);
+  if (!session) return { ok: false };
+  if (session.status === "paused") return { ok: true, status: "paused" };
+
+  if (session.status === "running" || session.status === "starting") {
+    // Agent is mid-turn — flag it so the provider pauses at next tool boundary
+    session.pauseRequested = true;
+    const eventData = JSON.stringify({ type: "system", subtype: "pause_requested" });
+    session.seq++;
+    addEvent(session.sessionId, session.seq, "system", "pause_requested", eventData);
+    for (const sub of session.subscribers) {
+      try { sub.write("system", eventData, String(session.seq)); } catch { session.subscribers.delete(sub); }
+    }
+    return { ok: true, status: session.status };
+  }
+
+  if (session.status === "idle") {
+    // Not running — pause immediately
+    session.status = "paused";
+    updateSessionStatus(session.sessionId, "paused");
+    const eventData = JSON.stringify({ type: "system", subtype: "paused" });
+    session.seq++;
+    addEvent(session.sessionId, session.seq, "system", "paused", eventData);
+    for (const sub of session.subscribers) {
+      try { sub.write("system", eventData, String(session.seq)); } catch { session.subscribers.delete(sub); }
+    }
+    return { ok: true, status: "paused" };
+  }
+
+  return { ok: false };
+}
+
+export function resumeSession(sessionId: string): { ok: boolean; status?: SessionStatus } {
+  const session = activeSessions.get(sessionId);
+  if (!session) return { ok: false };
+
+  // Clear pending pause flag if it hasn't been consumed yet
+  if (session.pauseRequested) {
+    session.pauseRequested = false;
+  }
+
+  if (session.status !== "paused") return { ok: true, status: session.status };
+
+  // Emit resumed event
+  const eventData = JSON.stringify({ type: "system", subtype: "resumed" });
+  session.seq++;
+  addEvent(session.sessionId, session.seq, "system", "resumed", eventData);
+  for (const sub of session.subscribers) {
+    try { sub.write("system", eventData, String(session.seq)); } catch { session.subscribers.delete(sub); }
+  }
+
+  if (session.pauseResolver) {
+    // Was paused at a tool boundary — resolve the held promise to continue
+    session.status = "running";
+    updateSessionStatus(session.sessionId, "running");
+    session.pauseResolver();
+    session.pauseResolver = null;
+  } else if (session.pendingMessages.length > 0) {
+    // Was paused while idle with queued messages — flush them
+    const next = session.pendingMessages.shift()!;
+    const ctx = createTurnContext(session, {
+      prompt: typeof next === "string" ? next : "",
+      profile: session.profile,
+      sessionId,
+    });
+    session.status = "starting";
+    updateSessionStatus(session.sessionId, "starting");
+    session._provider.sendMessage(ctx, next);
+  } else {
+    // Was paused while idle, no pending messages
+    session.status = "idle";
+    updateSessionStatus(session.sessionId, "idle");
+  }
+
+  return { ok: true, status: session.status };
 }
 
 export function updateSessionConfig(
@@ -416,8 +513,14 @@ export async function switchProfile(
   const oldProviderName = oldProfileName ? (getProfile(oldProfileName)?.provider ?? "claude-code") : "claude-code";
   const sameProvider = newProviderName === oldProviderName;
 
-  // Step 1: Abort current turn if running — wait for settle
-  if (session.status === "running" || session.status === "starting") {
+  // Step 1: Abort current turn if running/paused — wait for settle
+  if (session.pauseResolver) {
+    session.pauseResolver();
+    session.pauseResolver = null;
+  }
+  session.pauseRequested = false;
+
+  if (session.status === "running" || session.status === "starting" || session.status === "paused") {
     // Resolve any pending permission promises
     for (const [id, pending] of session.pendingPermissions) {
       pending.resolve({ behavior: "deny", message: "Profile switch" });
@@ -545,6 +648,10 @@ export function subscribe(sessionId: string, writer: SSEWriter): () => void {
 export function shutdownAll() {
   for (const [id, session] of activeSessions) {
     try {
+      if (session.pauseResolver) {
+        session.pauseResolver();
+        session.pauseResolver = null;
+      }
       session._provider.abort(session);
     } catch { /* best effort */ }
     activeSessions.delete(id);

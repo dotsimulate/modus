@@ -39,8 +39,7 @@
     min-width: 300px;
   }
   .sidebar.collapsed .sidebar-sections,
-  .sidebar.collapsed .profile-panel,
-  .sidebar.collapsed .harness-status {
+  .sidebar.collapsed .profile-panel {
     opacity: 1;
     pointer-events: auto;
   }

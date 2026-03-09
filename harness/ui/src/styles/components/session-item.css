@@ -97,40 +97,68 @@
 .session-archive-btn:hover { color: var(--text); }
 
 .harness-status {
-  padding: 10px 20px;
-  border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
 }
-.harness-status-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.profile-switcher {
+  position: relative;
 }
-.harness-status-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.harness-user {
+.profile-switcher-btn {
+  background: none;
+  border: none;
   color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-.user-profile-select {
-  background: transparent;
+.profile-switcher-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.profile-switcher-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 100%;
+  width: max-content;
+  z-index: 100;
+}
+.profile-switcher-item {
+  display: block;
+  width: 100%;
+  background: none;
   border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 10px;
+  letter-spacing: 0.03em;
+  padding: 5px 12px;
   cursor: pointer;
-  padding: 0;
-  outline: none;
+  text-align: left;
+  white-space: nowrap;
+  transition: color 0.1s ease, background 0.1s ease;
 }
-.user-profile-select option {
-  background: var(--bg);
+.profile-switcher-item:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.profile-switcher-item.active {
   color: var(--text);
 }
 .lock-btn {

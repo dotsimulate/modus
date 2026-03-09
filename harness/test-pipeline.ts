@@ -185,10 +185,14 @@ describe("type shapes", () => {
       db: {} as any,
       trigger: { type: "manual" },
       actionDir: "/tmp/test-action",
+      stepIndex: 0,
+      totalSteps: 1,
+      previousStepResult: null,
       attempt: 2,
       lastVerifyError: "SVG too small",
       artifactDir: () => "/tmp/test-action/output/exec-42/run-1",
       artifactPath: (f: string) => `/tmp/test-action/output/exec-42/run-1/${f}`,
+      artifact: (n: string) => `/tmp/test-action/output/exec-42/run-1/${n}`,
     };
     expect(ctx.attempt).toBe(2);
     expect(ctx.executionId).toBe(42);
@@ -278,6 +282,7 @@ describe("type shapes", () => {
       currentSessionId: "sess-123",
       lastStatus: "done",
       totalCostUsd: 0.15,
+      transientAttempts: 0,
     };
     expect(exec.id).toBe(1);
     expect(exec.status).toBe("running");
@@ -294,7 +299,7 @@ describe("type shapes", () => {
         id: 1, actionName: "test", status, startedAt: Date.now(),
         runNumber: 0, cycleNumber: 1, cycleRunCount: 0,
         cycleStartedAt: null, currentSessionId: null,
-        lastStatus: null, totalCostUsd: 0,
+        lastStatus: null, totalCostUsd: 0, transientAttempts: 0,
       };
       expect(exec.status).toBe(status);
     }
@@ -305,7 +310,7 @@ describe("type shapes", () => {
       id: 1, actionName: "test", status: "running", startedAt: Date.now(),
       runNumber: 2, cycleNumber: 1, cycleRunCount: 2,
       cycleStartedAt: Date.now(), currentSessionId: "sess-1",
-      lastStatus: "done", totalCostUsd: 0.1,
+      lastStatus: "done", totalCostUsd: 0.1, transientAttempts: 0,
     };
     const state: import("./action-types").ActionState = {
       config: {

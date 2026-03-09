@@ -22,12 +22,12 @@ export {
   getDraft, saveDraft, createEmptySession,
   createSession, sendMessage, stopSessionApi, switchSessionProfile,
   updateSessionConfig, respondToPermission,
-  fetchSessionsScoped, searchSessionsScoped,
+  fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
   browsePath, subscribeEvents,
 } from "./sessions";
 
 // Actions
-export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences, reloadActionsApi } from "./actions";
+export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences, reloadActionsApi, addTagApi, removeTagApi } from "./actions";
 
 // Git
 export { fetchGitStatus, fetchGitLog, fetchGitShow, fetchGitFileDiff, fetchGitFileContent, fetchGitReadme, openInEditor } from "./git";
