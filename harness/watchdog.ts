@@ -22,11 +22,13 @@
 import simpleGit from "simple-git";
 import { appendFileSync, watch as fsWatch, existsSync, readdirSync, statSync, renameSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
+import { createConnection } from "net";
 
 const HARNESS_DIR = import.meta.dir;
 const REPO_DIR = resolve(HARNESS_DIR, "..");
 const LOG_FILE = join(HARNESS_DIR, "watchdog.log");
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
+const VITE_PORT = 5180;
 const BASE_DELAY_MS = Number(process.env.MODUS_RESTART_DELAY ?? 3000);
 const MAX_DELAY_MS = 60_000;
 const CRASH_LOG_LINES = 50;
@@ -47,6 +49,17 @@ const RESTART_SENTINEL = join(HARNESS_DIR, ".watchdog-restart");
 
 let currentProc: ReturnType<typeof Bun.spawn> | null = null;
 let stopping = false;
+
+/** Kill a process and its entire tree (Windows grandchildren included). */
+function killTree(proc: ReturnType<typeof Bun.spawn>) {
+  try {
+    if (process.platform === "win32") {
+      Bun.spawnSync(["taskkill", "/T", "/F", "/PID", String(proc.pid)], { stdout: "ignore", stderr: "ignore" });
+    } else {
+      proc.kill();
+    }
+  } catch { /* best effort */ }
+}
 let healthTimer: ReturnType<typeof setInterval> | null = null;
 let fileChangeRestart = false;
 let pendingReloadFile: string | null = null;  // file change waiting for sessions to clear
@@ -61,7 +74,7 @@ function teardown() {
   if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
   if (pendingReloadTimer) { clearInterval(pendingReloadTimer); pendingReloadTimer = null; }
   for (const w of fileWatchers) { try { w.close(); } catch { /* best effort */ } }
-  currentProc?.kill();
+  if (currentProc) killTree(currentProc);
 }
 
 // ── Logging ──
@@ -117,7 +130,7 @@ function startHealthPolling(proc: ReturnType<typeof Bun.spawn>) {
       if (failures >= HEALTH_FAIL_THRESHOLD) {
         log("error", `health check failed ${failures}x (${e}) — killing hung process`);
         await notify("Modus hung", `Health check failed ${failures} times: ${e}`);
-        proc.kill();
+        killTree(proc);
       } else {
         log("warn", `health check failed (${e}) — ${HEALTH_FAIL_THRESHOLD - failures} more before kill`);
       }
@@ -143,6 +156,28 @@ async function tryGitStash(): Promise<string | null> {
     log("warn", `git stash failed: ${e}`);
     return null;
   }
+}
+
+// ── Port availability check ──
+
+/** Returns true if a TCP connection to port succeeds (port is in use). */
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = createConnection({ port, host: "127.0.0.1" });
+    sock.once("connect", () => { sock.destroy(); resolve(true); });
+    sock.once("error", () => { resolve(false); });
+    sock.setTimeout(500, () => { sock.destroy(); resolve(false); });
+  });
+}
+
+/** Wait until a port is free, polling every interval. Returns false on timeout. */
+async function waitForPortFree(port: number, timeoutMs = 15_000, intervalMs = 500): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!(await isPortInUse(port))) return true;
+    await Bun.sleep(intervalMs);
+  }
+  return false;
 }
 
 // ── File watcher (dev mode) ──
@@ -172,7 +207,7 @@ function executePendingReload() {
   log("info", `file changed: ${pendingReloadFile} — reloading...`);
   pendingReloadFile = null;
   fileChangeRestart = true;
-  currentProc.kill();
+  killTree(currentProc);
 }
 
 /** Start polling for sessions to clear so we can apply a pending reload. */
@@ -290,20 +325,22 @@ async function run() {
     if (pendingReloadTimer) { clearInterval(pendingReloadTimer); pendingReloadTimer = null; }
     pendingReloadFile = null;
 
-    // Controlled restart requested by agent — skip crash logic, restart immediately
+    // Controlled restart requested by agent — skip crash logic, wait for port
     if (existsSync(RESTART_SENTINEL)) {
       try { unlinkSync(RESTART_SENTINEL); } catch { /* best effort */ }
-      log("info", "controlled restart requested — restarting immediately");
+      log("info", "controlled restart requested — waiting for ports...");
+      await waitForPortFree(VITE_PORT);
       restarts++;
       delay = BASE_DELAY_MS;
       continue;
     }
 
-    // File-change restart — skip crash logic, brief pause for ports to release
+    // File-change restart — wait for Vite port to actually free up
     if (fileChangeRestart) {
       fileChangeRestart = false;
       restarts++;
-      await Bun.sleep(1500);
+      const portFree = await waitForPortFree(VITE_PORT);
+      if (!portFree) log("warn", `port ${VITE_PORT} still in use after timeout — restarting anyway`);
       continue;
     }
 
