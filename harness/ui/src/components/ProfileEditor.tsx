@@ -399,7 +399,7 @@ export function ProfileEditor({
   initialProfile = null,
   onCancel,
 }: Props) {
-  const { activeUserProfile, activeUP, refreshProfiles, refreshUserProfiles } = useProfiles();
+  const { activeUserProfile, activeUP, activeCwd, refreshProfiles, refreshUserProfiles } = useProfiles();
   const [selectedName, setSelectedName] = useState<string | null>(initialProfile);
   // In "new" mode, we track whether the user has picked a source to duplicate from
   const [duplicateSource, setDuplicateSource] = useState<string | null>(null);
@@ -423,7 +423,7 @@ export function ProfileEditor({
   const handleSave = async (data: Omit<Profile, "name"> & { name?: string }) => {
     const saveName = isNew ? (data.name ?? "untitled") : selectedName!;
     const { name: _n, ...rest } = data as any;
-    await saveProfileApi(saveName, rest);
+    await saveProfileApi(saveName, rest, activeCwd);
     // When creating a new profile, add it to the active user profile's agent list
     if (isNew && activeUserProfile && activeUP?.agentProfiles) {
       const updated = [...activeUP.agentProfiles, saveName];
@@ -436,7 +436,7 @@ export function ProfileEditor({
 
   const handleDelete = async () => {
     if (!selectedName) return;
-    await deleteProfileApi(selectedName);
+    await deleteProfileApi(selectedName, activeCwd);
     setSelectedName(null);
     onProfilesChange();
   };

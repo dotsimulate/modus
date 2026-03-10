@@ -135,6 +135,41 @@
   transition: background 0.1s ease;
 }
 .folder-picker-select:hover { background: var(--bg-hover); }
+
+/* ── Modus Init Banner ── */
+.modus-init-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.modus-init-banner.modus-init-ok {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text-dim);
+}
+.modus-init-btn {
+  padding: 3px 10px;
+  background: var(--accent);
+  border: none;
+  border-radius: 3px;
+  color: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.1s ease;
+}
+.modus-init-btn:hover { opacity: 0.85; }
+.modus-init-btn:disabled { opacity: 0.5; cursor: default; }
+
 .session-setup-check {
   display: flex;
   flex-direction: row;

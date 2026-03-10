@@ -32,7 +32,7 @@ export function ProfilePanel({
   setupState, onSetupChange,
   activeUserProfileObj,
 }: Props) {
-  const { userProfiles } = useProfiles();
+  const { userProfiles, refreshProfiles } = useProfiles();
   const [configExpanded, setConfigExpanded] = useState(false);
   const selectedProfileData = profiles.find((p) => p.name === selectedProfile);
   const overrideTags = getOverrideTags(setupState);
@@ -101,6 +101,7 @@ export function ProfilePanel({
                   : activeUserProfileObj?.projects
               }
               showAllProjectPaths={activeUserProfileObj?.showAllProjectPaths}
+              onProjectInit={refreshProfiles}
             />
           </div>
         </div>

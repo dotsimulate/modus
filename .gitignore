@@ -33,6 +33,9 @@ build/
 # Agent memory store (personal per-user)
 agent_memory/memory/
 
+# Project-local .modus/ — runtime/personal data, fully ignored
+.modus/
+
 # Harness runtime (auto-generated, personal per-user)
 harness/profiles/_users.json
 harness/profiles/state/
@@ -40,6 +43,9 @@ harness/profiles/users/
 harness/profiles/**/.history/
 harness/actions/*/output/
 harness/actions/*/gallery/
+
+# Claude skills — scaffolded per-project by modus init from harness/templates/
+.claude/skills/
 
 # Claude settings (personal per-user)
 .claude/settings.local.json
@@ -70,10 +76,5 @@ coverage/
 *.lcov
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# Agent profiles — only built-in agents tracked; user-specific profiles are local-only
-harness/profiles/agents/*.json
-!harness/profiles/agents/dev-agent.json
-!harness/profiles/agents/research.json
-!harness/profiles/agents/test-harness.json
-!harness/profiles/agents/web-ui.json
-!harness/profiles/agents/meta-debugger.json
+# Harness agent profiles — runtime only, templates are in harness/templates/
+harness/profiles/agents/

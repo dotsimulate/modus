@@ -1,6 +1,6 @@
 # User Profile Schema
 
-User profiles live at `profiles/users/<name>.json`. They scope the entire harness
+User profiles live at `<cwd>/.modus/profiles/users/<name>.json`. They scope the
 UI and session management to a specific person or project context.
 
 ## Complete Schema
@@ -166,6 +166,6 @@ State files are created automatically on first use.
 
 ## Naming Conventions
 
-- Use kebab-case for profile names: `harness-dev`, `creative-studio`
+- Use kebab-case for profile names: `modus-dev`, `creative-studio`
 - Name should reflect the person or context, not the agent
 - The `displayName` field is what appears in the UI (can include spaces, capitals)

@@ -66,7 +66,7 @@ const editIcon = (
 );
 
 export function Profiles({ onSelectSession, onNavigate }: Props) {
-  const { visibleProfiles, selectProfile, activeUserProfile } = useProfiles();
+  const { visibleProfiles, selectProfile, activeUserProfile, activeCwd } = useProfiles();
   const { newSession } = useSession();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [actions, setActions] = useState<ActionInfo[]>([]);
@@ -79,7 +79,7 @@ export function Profiles({ onSelectSession, onNavigate }: Props) {
     const load = async () => {
       try {
         const [p, s, a] = await Promise.all([
-          fetchProfiles(),
+          fetchProfiles(activeCwd),
           fetchActions(activeUserProfile),
           fetchActiveSessions(activeUserProfile ?? undefined),
         ]);
@@ -114,7 +114,7 @@ export function Profiles({ onSelectSession, onNavigate }: Props) {
   };
 
   const reloadProfiles = async () => {
-    try { setProfiles(await fetchProfiles()); } catch {}
+    try { setProfiles(await fetchProfiles(activeCwd)); } catch {}
   };
 
   return (

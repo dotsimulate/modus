@@ -11,7 +11,8 @@ import type { ActiveSession, MessageContent } from "../session-manager";
 import { getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, type PermissionPolicy } from "../profiles";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
-import { dirname, join, parse as parsePath } from "path";
+import { dirname, isAbsolute, join, parse as parsePath } from "path";
+import { existsSync } from "fs";
 import { resolveSecret } from "../secrets";
 import type { ClaudeMdExcludes } from "../profiles";
 
@@ -176,6 +177,7 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       // Merge MCP servers: global + project-local + profile
       const globalConfig = getGlobalConfig(session.cwd);
+      console.log(`[claude-code] MCP merge: cwd=${session.cwd} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))}`);
       const mergedMcp = {
         ...(globalConfig.mcpServers ?? {}),
         ...(profileDef?.mcpServers ?? {}),
@@ -188,7 +190,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         if (!args) continue;
         const dirIdx = args.indexOf("--directory");
         const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
-        if (dirVal && !dirVal.startsWith("/")) {
+        if (dirVal && !isAbsolute(dirVal)) {
           args[dirIdx + 1] = join(harnessRoot, dirVal);
         }
       }
@@ -199,6 +201,22 @@ export function createClaudeCodeProvider(): SessionProvider {
         const env: Record<string, string> = { ...(am.env ?? {}) };
         if (opts.profile) env.AGENT_PROFILE = opts.profile;
         if (opts.userProfile) env.USER_PROFILE = opts.userProfile;
+
+        // Project-local memory: use <cwd>/.modus/memory/ when it exists
+        const sessionCwd = opts.cwd ?? process.env.AGENT_CWD;
+        if (sessionCwd) {
+          const projectMemoryDir = join(sessionCwd, ".modus", "memory");
+          if (existsSync(projectMemoryDir)) {
+            env.AGENT_MEMORY_DIR = projectMemoryDir;
+            // Also allow reading from global memory as fallback
+            const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
+            const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
+            if (agentMemoryRoot) {
+              env.AGENT_MEMORY_READ_DIRS = `${agentMemoryRoot}/memory`;
+            }
+          }
+        }
+
         if (opts.userProfile) {
           const userProf = getUserProfile(opts.userProfile);
           // Skills scoping: derive from user profile's project paths
@@ -209,6 +227,7 @@ export function createClaudeCodeProvider(): SessionProvider {
           } else {
             env.AGENT_MEMORY_SKILLS_DIRS = "";
           }
+          // Profile-level memory scoping (overrides project-local if both set)
           if (userProf?.memory?.scope === "profile") {
             const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
             const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
@@ -403,6 +422,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         disallowedTools: sdkDisallowed,
         tools: sdkTools,
         systemPrompt,
+        skills: profileDef?.skills,
         settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
         claudeMdExcludes: resolveClaudeMdExcludes(
           profileDef?.claudeMdExcludes,

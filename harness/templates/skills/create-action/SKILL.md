@@ -202,7 +202,7 @@ or calls `gather()` again with `ctx.stepIndex` set.
 
 ## Key Rules
 
-- Every action MUST reference an `agentProfile` in `profiles/agents/`
+- Every action MUST reference an `agentProfile` in `<cwd>/.modus/profiles/agents/`
 - Actions start `enabled: false` — user enables them deliberately
 - Interval format: `"30s"`, `"5m"`, `"1h"`, `"4h"`, `"1d"`
 - Concurrency controlled by `concurrency` config (default 1)
@@ -223,6 +223,6 @@ or calls `gather()` again with `ctx.stepIndex` set.
 3. **Context module** — what to ask, how to verify, what to do with the answer
 
 Output paths:
-- `profiles/agents/<agent-name>.json`
-- `actions/<action-name>/action.json`
-- `actions/<action-name>/context.ts`
+- `<cwd>/.modus/profiles/agents/<agent-name>.json`
+- `<cwd>/.modus/actions/<action-name>/action.json`
+- `<cwd>/.modus/actions/<action-name>/context.ts`

@@ -5,6 +5,7 @@ import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin } fro
 loadSecrets();
 
 import { join, resolve, extname } from "path";
+import { existsSync } from "fs";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -15,7 +16,9 @@ import {
   getUserProfile, listUserProfileNames, getAllUserProfiles,
   saveUserProfile, deleteUserProfile, patchUserProfile,
   getUserProfileState, patchUserProfileState,
+  listProjects, getProjectById, updateProjectPath,
 } from "./profiles";
+import { initProject, getInitStatus } from "./init";
 import {
   ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
 } from "./profile-schemas";
@@ -154,10 +157,11 @@ app.get("/api/profiles/_global", (c) => {
 });
 
 app.put("/api/profiles/_global", async (c) => {
+  const cwd = c.req.query("cwd");
   const body = await c.req.json();
   const v = validate(GlobalConfigSchema, body);
   if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
-  saveGlobalConfig(body);
+  saveGlobalConfig(body, cwd);
   return c.json({ ok: true });
 });
 
@@ -171,17 +175,19 @@ app.get("/api/profiles/:name", (c) => {
 
 app.put("/api/profiles/:name", async (c) => {
   const name = c.req.param("name");
+  const cwd = c.req.query("cwd");
   if (name.startsWith("_")) return c.json({ error: "reserved name" }, 400);
   const body = await c.req.json();
   const v = validate(ProfileSchema, body);
   if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
-  saveProfile(name, body);
+  saveProfile(name, body, cwd);
   return c.json({ ok: true, name });
 });
 
 app.delete("/api/profiles/:name", (c) => {
   const name = c.req.param("name");
-  const deleted = deleteProfile(name);
+  const cwd = c.req.query("cwd");
+  const deleted = deleteProfile(name, cwd);
   if (!deleted) return c.json({ error: "profile not found" }, 404);
   return c.json({ ok: true });
 });
@@ -716,6 +722,46 @@ app.get("/api/browse", async (c) => {
   }
 });
 
+// ── Projects & Init ──
+
+app.get("/api/projects", (c) => {
+  const projects = listProjects();
+  return c.json(projects.map((p) => ({
+    ...p,
+    pathExists: existsSync(p.path),
+  })));
+});
+
+app.get("/api/projects/:id", (c) => {
+  const project = getProjectById(c.req.param("id"));
+  if (!project) return c.json({ error: "project not found" }, 404);
+  return c.json(project);
+});
+
+app.patch("/api/projects/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  if (typeof body.path !== "string") return c.json({ error: "path required" }, 400);
+  const ok = updateProjectPath(id, body.path);
+  if (!ok) return c.json({ error: "project not found" }, 404);
+  return c.json({ ok: true });
+});
+
+app.get("/api/init/status", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  return c.json(getInitStatus(cwd));
+});
+
+app.post("/api/init", async (c) => {
+  const body = await c.req.json();
+  const cwd = body.cwd;
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const result = initProject(cwd, { name: body.name });
+  if (!result.ok) return c.json({ error: result.error }, 400);
+  return c.json(result);
+});
+
 // ── Memories (reads from agent_memory store) ──
 
 const MEMORY_BASE = Bun.fileURLToPath(new URL("../agent_memory/memory", import.meta.url));
@@ -765,8 +811,24 @@ async function readMemoriesFromDir(dir: string): Promise<any[]> {
 app.get("/api/memories", async (c) => {
   try {
     const profileName = new URL(c.req.url).searchParams.get("userProfile");
+    const cwd = new URL(c.req.url).searchParams.get("cwd");
     const userProf = profileName ? getUserProfile(profileName) : undefined;
-    const allMems = await readMemoriesFromDir(MEMORY_BASE);
+
+    // Read from project-local .modus/memory/ when CWD is provided, with global fallback
+    let allMems: any[];
+    if (cwd) {
+      const projectMemDir = join(cwd, ".modus", "memory");
+      const [projectMems, globalMems] = await Promise.all([
+        readMemoriesFromDir(projectMemDir),
+        readMemoriesFromDir(MEMORY_BASE),
+      ]);
+      // Project memories override global by ID
+      const byId = new Map(globalMems.map(m => [m.id, m]));
+      for (const m of projectMems) byId.set(m.id, m);
+      allMems = [...byId.values()];
+    } else {
+      allMems = await readMemoriesFromDir(MEMORY_BASE);
+    }
 
     if (profileName) {
       const allowedAgents = userProf?.agentProfiles?.length ? new Set(userProf.agentProfiles) : null;
@@ -881,7 +943,7 @@ app.get("/api/actions/:name/info", async (c) => {
   const name = c.req.param("name");
   const state = getActionState(name);
   if (!state) return c.json({ error: "action not found" }, 404);
-  const actDir = join(import.meta.dir, "actions", name);
+  const actDir = state.actionDir;
   let contextSource = "";
   let configSource = "";
   try { contextSource = await Bun.file(join(actDir, "context.ts")).text(); } catch { /* missing */ }

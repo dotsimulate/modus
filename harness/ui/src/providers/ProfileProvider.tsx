@@ -17,6 +17,7 @@ type ProfileContextValue = {
   userProfiles: UserProfile[];
   activeUserProfile: string | null;
   activeUP: UserProfile | null;
+  activeCwd: string | undefined;
   selectedProfile: string;
   selectProfile: (name: string) => void;
   setSelectedProfile: (name: string) => void;
@@ -36,7 +37,7 @@ export const useProfiles = () => useContext(ProfileContext);
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [availableProviders, setAvailableProviders] = useState<string[]>([]);
-  const [selectedProfile, setSelectedProfile] = useState("test-harness");
+  const [selectedProfile, setSelectedProfile] = useState("");
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
   const [activeUserProfile, setActiveUserProfile] = useState<string | null>(
     () => localStorage.getItem(USER_PROFILE_KEY),
@@ -48,7 +49,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   // Derived
   const activeUP = userProfiles.find((p) => p.name === activeUserProfile) ?? null;
-  const visibleProfiles = activeUP?.agentProfiles
+  const visibleProfiles = activeUP?.agentProfiles?.length
     ? profiles.filter((p) => activeUP.agentProfiles!.includes(p.name))
     : profiles;
 
@@ -62,11 +63,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setActiveUserProfile(name);
   }, []);
 
-  // Refresh agent profiles from server
+  // Refresh agent profiles from server (scoped to current CWD for project-local merging)
   const refreshProfiles = useCallback(async () => {
-    const p = await fetchProfiles();
+    const cwd = setupState.cwd.trim() || undefined;
+    const p = await fetchProfiles(cwd);
     setProfiles(p);
-  }, []);
+  }, [setupState.cwd]);
 
   // Refresh user profiles from server
   const refreshUserProfiles = useCallback(async () => {
@@ -113,28 +115,42 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadInitial = async () => {
       try {
-        const [p, up, prov] = await Promise.all([fetchProfiles(), fetchUserProfiles(), fetchProviders()]);
-        setProfiles(p);
+        const [up, prov] = await Promise.all([fetchUserProfiles(), fetchProviders()]);
         setUserProfiles(up);
         setAvailableProviders(prov);
+
+        // Resolve CWD before profile fetch so project-local profiles are included
+        const activeUp = up.find((u) => u.name === activeUserProfile);
+        let initialCwd = activeUp?.projects?.[0] ?? "";
 
         if (activeUserProfile) {
           const state = await fetchUserProfileState(activeUserProfile);
           setUiState(state);
           if (state.lastAgentProfile) setSelectedProfile(state.lastAgentProfile);
-          const activeUp = up.find((u) => u.name === activeUserProfile);
-          const defaultCwd = state.lastCwd ?? activeUp?.projects?.[0] ?? "";
-          if (defaultCwd) setSetupState((prev) => ({ ...prev, cwd: defaultCwd }));
-        } else {
-          const activeUp = up.find((u) => u.name === activeUserProfile);
-          if (activeUp?.projects?.[0]) {
-            setSetupState((prev) => ({ ...prev, cwd: activeUp.projects![0] }));
-          }
+          initialCwd = state.lastCwd ?? initialCwd;
+          if (initialCwd) setSetupState((prev) => ({ ...prev, cwd: initialCwd }));
+        } else if (initialCwd) {
+          setSetupState((prev) => ({ ...prev, cwd: initialCwd }));
         }
+
+        // Fetch profiles with resolved CWD for project-local merging
+        const p = await fetchProfiles(initialCwd || undefined);
+        setProfiles(p);
+        // Default to first profile if none was restored from state
+        setSelectedProfile((cur) => cur || p[0]?.name || "");
       } catch { /* silent — health check will catch */ }
     };
     loadInitial();
   }, []);
+
+  // Reload profiles when CWD changes (project-local profiles may differ)
+  const prevCwdRef = useRef<string>("");
+  useEffect(() => {
+    const cwd = setupState.cwd.trim();
+    if (cwd === prevCwdRef.current) return;
+    prevCwdRef.current = cwd;
+    fetchProfiles(cwd || undefined).then(setProfiles).catch(() => {});
+  }, [setupState.cwd]);
 
   // Reload when user profile changes
   useEffect(() => {
@@ -159,6 +175,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     <ProfileContext.Provider value={{
       profiles, visibleProfiles, availableProviders, userProfiles,
       activeUserProfile, activeUP,
+      activeCwd: setupState.cwd.trim() || undefined,
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,
       uiState, saveUiState, switchUserProfile, refreshProfiles, refreshUserProfiles,

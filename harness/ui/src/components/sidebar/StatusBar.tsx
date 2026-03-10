@@ -69,7 +69,7 @@ export function StatusBar({
                 className="profile-switcher-item profile-switcher-new"
                 onClick={() => { setMenuOpen(false); onNewProfile?.(); }}
               >
-                + new profile
+                + new project
               </button>
             </div>
           )}
