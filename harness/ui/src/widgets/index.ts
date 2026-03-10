@@ -57,5 +57,5 @@ for (const mod of Object.values(modules)) {
 
 /** Default dashboard when user profile has no dashboard config */
 export const DEFAULT_DASHBOARD: DashboardConfig = {
-  widgets: [{ type: "sessions" }],
+  widgets: [{ type: "stats" }, { type: "sessions" }],
 };
