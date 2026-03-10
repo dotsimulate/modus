@@ -19,6 +19,10 @@ type SkillItem = { name: string; filename: string; path: string };
 type Props = {
   onInject: (text: string, settings?: PromptSettings) => void;
   onAutoSend?: (text: string, settings?: PromptSettings) => void;
+  /** "up" (default, chat input) or "down" (dashboard) */
+  direction?: "up" | "down";
+  /** Filter prompts by tag */
+  tags?: string[];
 };
 
 /** Rough token estimate: ~4 chars per token for English text */
@@ -28,7 +32,7 @@ function estimateTokens(text: string): string {
   return `~${(count / 1000).toFixed(1)}k tok`;
 }
 
-export function PromptPicker({ onInject, onAutoSend }: Props) {
+export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: Props) {
   const { activeUP, activeUserProfile } = useProfiles();
   const [open, setOpen] = useState(false);
   const [prompts, setPrompts] = useState<PromptListItem[]>([]);
@@ -68,7 +72,7 @@ export function PromptPicker({ onInject, onAutoSend }: Props) {
   // Load prompts + skills on open
   useEffect(() => {
     if (!open) return;
-    fetchPrompts().then(setPrompts).catch(() => {});
+    fetchPrompts(tags ? { tags } : undefined).then(setPrompts).catch(() => {});
 
     // Load skills from project's .claude/skills/
     const paths = activeUP?.projects ?? [];
@@ -200,32 +204,29 @@ export function PromptPicker({ onInject, onAutoSend }: Props) {
     }
   };
 
-  if (!open) {
-    return (
-      <button
-        className="prompt-picker-trigger"
-        onClick={() => setOpen(true)}
-        title="Insert prompt template"
-      >
-        /
-      </button>
-    );
-  }
-
   // Filter prompts + skills by search
   const q = search.toLowerCase().trim();
-  const filteredPrompts = q
+  const filteredPrompts = open && q
     ? prompts.filter(p =>
         p.label.toLowerCase().includes(q) ||
         (p.description?.toLowerCase().includes(q))
       )
     : prompts;
-  const filteredSkills = q
+  const filteredSkills = open && q
     ? skills.filter(s => s.filename.toLowerCase().includes(q))
     : skills;
 
   return (
-    <div className="prompt-picker" ref={dropdownRef}>
+    <div className="prompt-picker-wrap" ref={dropdownRef}>
+      <button
+        className={`prompt-picker-trigger${open ? " prompt-picker-trigger--hidden" : ""}`}
+        onClick={() => setOpen(true)}
+        title="Insert prompt template"
+      >
+        /
+      </button>
+      {open && (
+    <div className={`prompt-picker ${direction === "down" ? "prompt-picker--down" : ""}`}>
       {previewSkill ? (
         /* ── Skill preview ── */
         <div className="prompt-picker-preview">
@@ -259,6 +260,27 @@ export function PromptPicker({ onInject, onAutoSend }: Props) {
       ) : !selected ? (
         /* ── Prompt + skills list ── */
         <div className="prompt-picker-list">
+          {direction === "down" && (
+            <div className="prompt-picker-footer prompt-picker-footer--top">
+              <input
+                ref={searchRef}
+                className="prompt-picker-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") { setOpen(false); setSearch(""); }
+                }}
+                placeholder="search..."
+                spellCheck={false}
+              />
+              <button
+                className="prompt-picker-close"
+                onClick={() => setOpen(false)}
+              >
+                cancel
+              </button>
+            </div>
+          )}
           {filteredPrompts.length === 0 && filteredSkills.length === 0 && (
             <div className="prompt-picker-empty">
               {q ? "no matches" : "no prompts available"}
@@ -296,25 +318,27 @@ export function PromptPicker({ onInject, onAutoSend }: Props) {
               )}
             </button>
           ))}
-          <div className="prompt-picker-footer">
-            <input
-              ref={searchRef}
-              className="prompt-picker-search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") { setOpen(false); setSearch(""); }
-              }}
-              placeholder="search..."
-              spellCheck={false}
-            />
-            <button
-              className="prompt-picker-close"
-              onClick={() => setOpen(false)}
-            >
-              cancel
-            </button>
-          </div>
+          {direction !== "down" && (
+            <div className="prompt-picker-footer">
+              <input
+                ref={searchRef}
+                className="prompt-picker-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") { setOpen(false); setSearch(""); }
+                }}
+                placeholder="search..."
+                spellCheck={false}
+              />
+              <button
+                className="prompt-picker-close"
+                onClick={() => setOpen(false)}
+              >
+                cancel
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         /* ── Input form for selected prompt ── */
@@ -423,6 +447,8 @@ export function PromptPicker({ onInject, onAutoSend }: Props) {
             </button>
           </div>
         </div>
+      )}
+    </div>
       )}
     </div>
   );

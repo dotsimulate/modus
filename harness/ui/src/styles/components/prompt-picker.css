@@ -4,6 +4,11 @@
 
 /* ── Trigger button ── */
 
+.prompt-picker-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .prompt-picker-trigger {
   background: none;
   border: none;
@@ -17,11 +22,15 @@
   font-weight: 600;
   color: var(--text-dim);
   cursor: pointer;
-  transition: color 0.12s ease;
+  transition: color 0.12s ease, opacity 0.12s ease;
   flex-shrink: 0;
 }
 .prompt-picker-trigger:hover {
   color: var(--text);
+}
+.prompt-picker-trigger--hidden {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ── Dropdown container ── */
@@ -41,6 +50,16 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Downward variant (dashboard) */
+.prompt-picker--down {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  margin-top: 6px;
+  min-width: 360px;
+  max-width: 480px;
 }
 
 .prompt-picker-header {
@@ -346,6 +365,12 @@
   gap: 6px;
   padding: 4px 8px 6px;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.prompt-picker-footer--top {
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px 4px;
 }
 
 .prompt-picker-search {
