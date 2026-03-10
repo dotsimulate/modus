@@ -59,6 +59,7 @@ type Props = {
   lastTodoId?: string;
   streamFeed?: string;
   onBranch?: (seq: number, prefill?: string) => void;
+  onStopTask?: (taskId: string) => void;
   children?: ReactNode;
 };
 
@@ -74,7 +75,7 @@ function formatMeta(meta: Message["meta"]): string {
   return parts.join("  ");
 }
 
-export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, children }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, children }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -130,7 +131,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, i
       {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
         <div className="message-tools">
           {msg.toolCalls.map((tc) => (
-            <ToolCallView key={tc.id} tool={tc} defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined} showGitEvents={showGitEvents} cwd={cwd} />
+            <ToolCallView key={tc.id} tool={tc} defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined} showGitEvents={showGitEvents} cwd={cwd} onStopTask={onStopTask} />
           ))}
         </div>
       )}

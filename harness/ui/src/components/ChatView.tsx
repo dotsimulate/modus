@@ -20,9 +20,10 @@ type Props = {
   queuedMessage?: QueuedMessageType | null;
   onCancelQueued?: () => void;
   onBranch?: (seq: number, prefill?: string) => void;
+  onStopTask?: (taskId: string) => void;
 };
 
-export function ChatView({ messages, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch }: Props) {
+export function ChatView({ messages, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch, onStopTask }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
@@ -142,6 +143,7 @@ export function ChatView({ messages, streaming, streamFeed, showThinking = true,
                   ? streamFeed
                   : undefined}
                 onBranch={msg.role === "user" && msg.seq != null ? onBranch : undefined}
+                onStopTask={onStopTask}
               >
                 {showFileChanges && <FileChanges toolCalls={turnTools} />}
               </MessageBubble>

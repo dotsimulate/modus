@@ -229,11 +229,29 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
       status: "running",
       lastToolName: undefined,
     });
+    // Store taskId on the Agent ToolCall so the UI can call stopTask
+    const toolId = m.tool_use_id ?? s._activeAgentToolId;
+    let msgs = s.messages;
+    if (toolId) {
+      msgs = [...msgs];
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].toolCalls?.some((tc) => tc.id === toolId)) {
+          msgs[i] = {
+            ...msgs[i],
+            toolCalls: msgs[i].toolCalls!.map((tc) =>
+              tc.id === toolId ? { ...tc, taskId: m.task_id } : tc
+            ),
+          };
+          break;
+        }
+      }
+    }
     return {
       ...s,
+      messages: msgs,
       _subTasks: tasks,
       _activeSubTaskId: m.task_id,
-      _activeAgentToolId: m.tool_use_id ?? s._activeAgentToolId,
+      _activeAgentToolId: toolId,
     };
   }
   if (m.subtype === "task_progress") {

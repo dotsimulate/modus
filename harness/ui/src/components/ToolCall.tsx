@@ -1,4 +1,4 @@
-import { memo, useState, useEffect } from "react";
+import { memo, useState, useEffect, useCallback } from "react";
 import type { ToolCall as ToolCallType, Message, GitCommitDetail } from "../api";
 import { fetchGitShow } from "../api";
 import { DiffView } from "./DiffView";
@@ -9,6 +9,7 @@ type Props = {
   defaultExpanded?: boolean;
   showGitEvents?: boolean;
   cwd?: string | null;
+  onStopTask?: (taskId: string) => void;
 };
 
 /** Extract a short human-readable summary from tool input + result */
@@ -354,10 +355,16 @@ function EditDiffDetail({ tool }: { tool: ToolCallType }) {
   );
 }
 
-export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, showGitEvents = true, cwd }: Props) {
+export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, showGitEvents = true, cwd, onStopTask }: Props) {
   const isGitCommit = showGitEvents && tool.status === "completed" && !!tool.result && detectGitEvent(tool) === "commit" && !!parseCommitHash(tool.result);
   const [expanded, setExpanded] = useState(defaultExpanded ?? (tool.name === "TodoWrite" || isGitCommit));
   const isTodo = tool.name === "TodoWrite";
+
+  const canCancel = tool.status === "running" && tool.taskId && onStopTask;
+  const handleCancel = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (tool.taskId && onStopTask) onStopTask(tool.taskId);
+  }, [tool.taskId, onStopTask]);
 
   // Auto-collapse old TodoWrites when a newer one arrives
   useEffect(() => {
@@ -426,6 +433,13 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
         )}
         {tool.duration != null && (
           <span className="tool-call-duration">{(tool.duration / 1000).toFixed(1)}s</span>
+        )}
+        {canCancel && (
+          <button className="tool-call-cancel" onClick={handleCancel} title="Cancel this task">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         )}
         <span className="tool-call-expand">{expanded ? "−" : "+"}</span>
       </div>

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import {
-  createSession, sendMessage as apiSendMessage, stopSessionApi,
+  createSession, sendMessage as apiSendMessage, stopSessionApi, stopTaskApi,
   archiveSessionApi, fetchSessions, fetchSessionsScoped,
   createEmptySession, getDraft, saveDraft,
   updateSessionConfig, respondToPermission, nextMsgId,
@@ -28,6 +28,7 @@ type SessionContextValue = {
   handleInputChange: (text: string) => void;
   send: (attachments: Attachment[]) => Promise<void>;
   stop: () => Promise<void>;
+  stopTask: (taskId: string) => Promise<void>;
   newSession: () => Promise<void>;
   selectSession: (id: string) => Promise<void>;
   archiveSession: (id: string) => Promise<void>;
@@ -350,6 +351,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeSessionId, activeSession?.profile]);
 
+  const stopTask = useCallback(async (taskId: string) => {
+    if (activeSessionId) {
+      await stopTaskApi(activeSessionId, taskId).catch(() => {});
+    }
+  }, [activeSessionId]);
+
   const handlePermissionResponse = useCallback(async (
     requestId: string,
     behavior: "allow" | "deny",
@@ -402,7 +409,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     <SessionContext.Provider value={{
       activeSession, serverSessions,
       input, handleInputChange,
-      send, stop, newSession, selectSession, archiveSession,
+      send, stop, stopTask, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,
       queuedMessage, cancelQueued, updateActiveSessionConfig,
       branchFromMessage,
