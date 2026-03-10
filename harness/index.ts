@@ -29,7 +29,7 @@ import {
   getDraft, setDraft,
   updateSessionTitle,
   getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
-  pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats,
+  pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
 } from "./db";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
@@ -1126,6 +1126,28 @@ app.get("/api/stats/sessions", (c) => {
   const params = new URL(c.req.url).searchParams;
   const userProfile = params.get("userProfile") ?? undefined;
   return c.json(getSessionStats(userProfile));
+});
+
+app.get("/api/account", async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const userProfile = params.get("userProfile") ?? undefined;
+
+  // Get Claude Code auth status
+  let account: Record<string, unknown> | null = null;
+  try {
+    const proc = Bun.spawn(
+      [process.platform === "win32" ? "claude.cmd" : "claude", "auth", "status", "--json"],
+      { env: { ...process.env, CLAUDECODE: "" }, stdout: "pipe", stderr: "pipe" },
+    );
+    const text = await new Response(proc.stdout).text();
+    await proc.exited;
+    if (text.trim()) account = JSON.parse(text.trim());
+  } catch { /* silent — account info is optional */ }
+
+  // Get period-based cost summaries from local DB
+  const costs = getPeriodCosts(userProfile);
+
+  return c.json({ account, costs });
 });
 
 app.post("/api/prune", (c) => {

@@ -193,6 +193,31 @@ export async function fetchSessionStats(userProfile?: string): Promise<SessionSt
   return res.json();
 }
 
+// ── Account ──
+
+export type AccountInfo = {
+  account: {
+    loggedIn: boolean;
+    authMethod: string;
+    apiProvider: string;
+    email: string;
+    orgId: string;
+    orgName: string;
+    subscriptionType: string;
+  } | null;
+  costs: {
+    today: { cost: number; sessions: number; messages: number };
+    week: { cost: number; sessions: number; messages: number };
+    month: { cost: number; sessions: number; messages: number };
+  };
+};
+
+export async function fetchAccountInfo(userProfile?: string): Promise<AccountInfo> {
+  const params = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : "";
+  const res = await fetch(`${API_BASE}/api/account${params}`, { headers: authHeaders() });
+  return res.json();
+}
+
 // ── Scoped queries ──
 
 /** Fetch sessions with optional user profile scoping and action filter */

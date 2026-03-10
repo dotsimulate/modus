@@ -1,0 +1,147 @@
+/**
+ * Account widget — identity + period cost breakdown.
+ */
+
+.account-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 8px;
+}
+
+/* ── Identity ── */
+.account-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.account-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-org {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.account-plan {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.account-plan--max {
+  color: var(--warning);
+  border-color: rgba(232, 155, 80, 0.25);
+}
+
+.account-plan--pro {
+  color: var(--info);
+  border-color: rgba(80, 144, 255, 0.25);
+}
+
+.account-plan--enterprise,
+.account-plan--team {
+  color: var(--success);
+  border-color: rgba(51, 204, 51, 0.25);
+}
+
+.account-email {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ── Period costs ── */
+.account-periods {
+  display: flex;
+  gap: 0;
+}
+
+.account-period {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px 8px 0;
+  border-right: 1px solid var(--border);
+}
+
+.account-period:last-child {
+  border-right: none;
+}
+
+.account-period:first-child {
+  padding-left: 0;
+}
+
+.account-period-cost {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.account-period-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.account-period-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.account-period-detail {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .account-periods {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .account-period {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .account-period:last-child {
+    border-bottom: none;
+  }
+
+  .account-period-cost {
+    min-width: 60px;
+  }
+
+  .account-period-meta {
+    flex-direction: row;
+    gap: 8px;
+  }
+}

@@ -29,6 +29,7 @@ import './styles/components/file-changes.css'
 import './styles/components/queued-message.css'
 import './styles/components/chat-settings.css'
 import './styles/components/stats-widget.css'
+import './styles/components/account-widget.css'
 
 // Views
 import './styles/views/login.css'
