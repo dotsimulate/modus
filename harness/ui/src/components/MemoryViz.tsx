@@ -542,7 +542,7 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hovered, setHovered] = useState<number>(-1);
-  const { activeUserProfile } = useProfiles();
+  const { activeUserProfile, activeCwd } = useProfiles();
 
   // Feed state — temporal stack of explored memories
   const [feedStack, setFeedStack] = useState<FeedEntry[]>([]);
@@ -568,10 +568,10 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
 
   useEffect(() => {
     setLoading(true);
-    fetchMemories(activeUserProfile ?? undefined)
+    fetchMemories(activeUserProfile ?? undefined, activeCwd)
       .then((m) => { setMemories(m); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [activeUserProfile]);
+  }, [activeUserProfile, activeCwd]);
 
   // Date range bounds from all memories
   const dateRange = useMemo(() => {

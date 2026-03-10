@@ -1,8 +1,9 @@
 import { API_BASE, authHeaders } from "./_fetch";
 import type { Profile, GlobalConfig, UserProfile, UserProfileState } from "./types";
 
-export async function fetchProfiles(): Promise<Profile[]> {
-  const res = await fetch(`${API_BASE}/api/profiles`, { headers: authHeaders() });
+export async function fetchProfiles(cwd?: string): Promise<Profile[]> {
+  const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+  const res = await fetch(`${API_BASE}/api/profiles${params}`, { headers: authHeaders() });
   return res.json();
 }
 
@@ -12,8 +13,9 @@ export async function fetchProfile(name: string): Promise<Profile> {
   return res.json();
 }
 
-export async function saveProfileApi(name: string, profile: Omit<Profile, "name">): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/profiles/${name}`, {
+export async function saveProfileApi(name: string, profile: Omit<Profile, "name">, cwd?: string): Promise<void> {
+  const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+  const res = await fetch(`${API_BASE}/api/profiles/${name}${params}`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(profile),
@@ -24,20 +26,23 @@ export async function saveProfileApi(name: string, profile: Omit<Profile, "name"
   }
 }
 
-export async function deleteProfileApi(name: string): Promise<void> {
-  await fetch(`${API_BASE}/api/profiles/${name}`, {
+export async function deleteProfileApi(name: string, cwd?: string): Promise<void> {
+  const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+  await fetch(`${API_BASE}/api/profiles/${name}${params}`, {
     method: "DELETE",
     headers: authHeaders(),
   });
 }
 
-export async function fetchGlobalConfig(): Promise<GlobalConfig> {
-  const res = await fetch(`${API_BASE}/api/profiles/_global`, { headers: authHeaders() });
+export async function fetchGlobalConfig(cwd?: string): Promise<GlobalConfig> {
+  const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+  const res = await fetch(`${API_BASE}/api/profiles/_global${params}`, { headers: authHeaders() });
   return res.json();
 }
 
-export async function saveGlobalConfigApi(config: GlobalConfig): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/profiles/_global`, {
+export async function saveGlobalConfigApi(config: GlobalConfig, cwd?: string): Promise<void> {
+  const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+  const res = await fetch(`${API_BASE}/api/profiles/_global${params}`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(config),

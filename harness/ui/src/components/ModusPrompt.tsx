@@ -97,7 +97,7 @@ export function ModusPrompt({ onSelectSession }: Props) {
       `### Tasks`,
       `1. Read the relevant skill (create-profile or create-action) for schemas`,
       `2. Make the requested changes — create/edit profiles, actions, etc.`,
-      ...(slug ? [`3. If creating new agent profiles, add them to profiles/users/${slug}.json agentProfiles array`] : []),
+      ...(slug ? [`3. If creating new agent profiles, add them to the user profile's agentProfiles array at <cwd>/.modus/profiles/users/${slug}.json`] : []),
       `4. List what you created or changed`,
       ``,
       `### Rules`,
@@ -116,6 +116,7 @@ export function ModusPrompt({ onSelectSession }: Props) {
         prompt: structuredPrompt,
         profile: "modus-dev",
         userProfile: activeUserProfile ?? undefined,
+        cwd: paths[0] || undefined,
       });
       setSessionId(sid);
     } catch (err) {

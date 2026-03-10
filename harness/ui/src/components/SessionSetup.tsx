@@ -5,10 +5,11 @@
  * creation-only path settings for the next session.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AgentConfig, type AgentConfigState } from "./AgentConfig";
 import { FolderPicker } from "./FolderPicker";
 import { getRecentPaths, addRecentPath } from "../recentPaths";
+import { fetchInitStatus, initProject, type InitStatus } from "../api/projects";
 
 export type SessionSetupState = {
   /** Mutable agent config for seeding the next session */
@@ -30,6 +31,8 @@ type Props = {
   projectPaths?: string[];
   /** When false, hide recent paths — profile only sees its own project paths */
   showAllProjectPaths?: boolean;
+  /** Callback to refresh profiles after init adds project-local profiles */
+  onProjectInit?: () => void;
 };
 
 export function SessionSetup({
@@ -43,8 +46,33 @@ export function SessionSetup({
   onChange,
   projectPaths,
   showAllProjectPaths: _showAllProjectPaths,
+  onProjectInit,
 }: Props) {
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
+  const [initLoading, setInitLoading] = useState(false);
+
+  // Check .modus/ init status when CWD changes
+  useEffect(() => {
+    if (!config.cwd) { setInitStatus(null); return; }
+    fetchInitStatus(config.cwd).then(setInitStatus).catch(() => setInitStatus(null));
+  }, [config.cwd]);
+
+  const handleInit = async () => {
+    if (!config.cwd) return;
+    setInitLoading(true);
+    try {
+      await initProject(config.cwd);
+      const status = await fetchInitStatus(config.cwd);
+      setInitStatus(status);
+      onProjectInit?.();
+    } catch (e) {
+      console.error("Init failed:", e);
+    } finally {
+      setInitLoading(false);
+    }
+  };
+
   const recentPaths = getRecentPaths();
   const projectPathSet = new Set(projectPaths ?? []);
   const filteredRecent = recentPaths.filter((p) => !projectPathSet.has(p));
@@ -116,6 +144,25 @@ export function SessionSetup({
           />
         )}
       </div>
+
+      {/* .modus/ init status */}
+      {config.cwd && initStatus && !initStatus.initialized && (
+        <div className="modus-init-banner">
+          <span>no .modus/ in this directory</span>
+          <button
+            className="modus-init-btn"
+            onClick={handleInit}
+            disabled={initLoading}
+          >
+            {initLoading ? "initializing..." : "initialize project"}
+          </button>
+        </div>
+      )}
+      {config.cwd && initStatus?.initialized && (
+        <div className="modus-init-banner modus-init-ok">
+          <span>project: {initStatus.meta?.name ?? initStatus.projectId}</span>
+        </div>
+      )}
 
       {/* Agent config (tools + effort + turns) */}
       <AgentConfig

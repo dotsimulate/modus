@@ -1,7 +1,7 @@
 # Agent Profile Schema
 
-Agent profiles live at `profiles/agents/<name>.json`. The filename (without `.json`)
-is the profile's ID used everywhere in the system.
+Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
+(without `.json`) is the profile's ID used everywhere in the system.
 
 ## Complete Schema
 
@@ -72,7 +72,7 @@ is the profile's ID used everywhere in the system.
       "command": "npx",
       "args": ["-y", "some-mcp-server"],
       "env": {
-        "API_KEY": "$API_KEY"     // $VAR references resolve from harness secrets
+        "API_KEY": "$API_KEY"     // $VAR references resolve from environment variables
       }
     }
   },

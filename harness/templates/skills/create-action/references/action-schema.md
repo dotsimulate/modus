@@ -1,6 +1,6 @@
 # Action Schema
 
-Actions live at `actions/<name>/action.json`. The directory name is the action's ID.
+Actions live at `<cwd>/.modus/actions/<name>/action.json`. The directory name is the action's ID.
 
 ## Complete Schema
 
@@ -12,7 +12,7 @@ Actions live at `actions/<name>/action.json`. The directory name is the action's
   "enabled": false,                    // Always start disabled
 
   // ── What to Run (required) ──
-  "agentProfile": "ops-agent",        // References profiles/agents/<name>.json
+  "agentProfile": "ops-agent",        // References .modus/profiles/agents/<name>.json
 
   // ── Multi-step sequence (optional) ──
   // Switches agent profiles mid-session. Each step runs in the same session.

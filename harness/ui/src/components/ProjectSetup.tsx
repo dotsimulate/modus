@@ -11,6 +11,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
 import { saveUserProfileApi, createSession, browsePath } from "../api";
+import { initProject } from "../api/projects";
 import { useSessionState } from "../sessionStore";
 import { MiniSession } from "./MiniSession";
 import type { BrowseResult } from "../api";
@@ -100,8 +101,10 @@ export function ProjectSetup({ existingProject, onComplete, onSelectSession }: P
         agentProfiles: [],
         ...(useMemory ? {} : { memory: { scope: "global" as const, inheritGlobal: false } }),
       });
+      // Scaffold .modus/ in the project directory
+      await initProject(projectPath.trim(), projectName);
       switchUserProfile(slug);
-      await refreshUserProfiles();
+      await Promise.all([refreshUserProfiles(), refreshProfiles()]);
       setPhase("agents");
     } catch (err) {
       setError(`Failed to create project: ${err}`);
@@ -134,11 +137,11 @@ export function ProjectSetup({ existingProject, onComplete, onSelectSession }: P
       ``,
       `### Tasks`,
       `1. Read the create-profile skill for the full schema`,
-      `2. Create 1-2 agent profile(s) in profiles/agents/<name>.json`,
+      `2. Create 1-2 agent profile(s) in <cwd>/.modus/profiles/agents/<name>.json`,
       `   - Write specific, directive prompts (not generic placeholders)`,
       `   - Use {{name}} to reference the user in prompts`,
       `   - Match tools list to the agent's purpose`,
-      `3. Update profiles/users/${activeSlug}.json:`,
+      `3. Update <cwd>/.modus/profiles/users/${activeSlug}.json:`,
       `   - Add new agent profile names to the agentProfiles array`,
       `   - Keep all existing fields intact (use Edit, not Write)`,
       `4. List what you created`,
@@ -159,6 +162,7 @@ export function ProjectSetup({ existingProject, onComplete, onSelectSession }: P
         prompt: structuredPrompt,
         profile: "modus-dev",
         userProfile: activeSlug,
+        cwd: paths[0] || undefined,
       });
       setSessionId(sid);
     } catch (err) {

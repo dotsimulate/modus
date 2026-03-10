@@ -91,7 +91,7 @@ Result:  { "agent-memory": {...}, "filesystem": {...custom...}, "tavily": {...} 
   "command": "npx",      // executable to run
   "args": ["-y", "package-name"],  // command arguments
   "env": {
-    "API_KEY": "$API_KEY"  // $VAR references resolve from harness secrets store
+    "API_KEY": "$API_KEY"  // $VAR references resolve from environment variables
   }
 }
 ```

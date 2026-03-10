@@ -15,31 +15,42 @@ description: >
 
 MO profiles are JSON files that configure AI agent behavior across three layers:
 
-- **Agent profiles** (`harness/profiles/agents/<name>.json`) — what the agent does
-- **User profiles** (`harness/profiles/users/<name>.json`) — who uses the system
-- **Global config** (`harness/profiles/_global.json`) — shared defaults for all sessions
+- **Agent profiles** — what the agent does
+- **User profiles** — who uses the system
+- **Global config** — shared defaults for all sessions
+
+## Path Resolution — CRITICAL
+
+- Agent profiles: `<cwd>/.modus/profiles/agents/<name>.json`
+- Global config: `<cwd>/.modus/_global.json`
+- User profiles: `<harness>/profiles/users/<name>.json` — harness-level only, NOT project-local
+
+If CWD has no `.modus/`, create it.
 
 ## Workflow
 
 1. Determine what the user needs (see decision tree)
-2. Gather requirements through focused questions
-3. Read the relevant reference file for schema details
-4. Generate valid JSON
-5. Output the file path and content
+2. **Check if CWD has `.modus/`** — this determines where agent profiles go
+3. Gather requirements through focused questions
+4. Read the relevant reference file for schema details
+5. Generate valid JSON
+6. Output the file path and content
 
 ## Decision Tree
 
 **"I want a new agent / assistant / bot"**
   Read [references/agent-profile-schema.md](references/agent-profile-schema.md).
-  Create `harness/profiles/agents/<name>.json`.
+  Create `<cwd>/.modus/profiles/agents/<name>.json`.
+  If CWD has no `.modus/`, tell the user to init the project first.
 
 **"I want to organize my projects / set up my account"**
   Read [references/user-profile-schema.md](references/user-profile-schema.md).
-  Create `harness/profiles/users/<name>.json`.
+  User profiles live in the harness at `profiles/users/<name>.json` — NOT inside any project's `.modus/`.
+  Only create from a harness-context session (CWD = harness directory).
 
 **"I want to set defaults for all agents" / "configure my local LLM"**
   Read [references/global-config.md](references/global-config.md).
-  Update `harness/profiles/_global.json`.
+  Update `<cwd>/.modus/_global.json`.
 
 **"Set up everything for a new use case"** (full stack)
   Create all three: user profile + agent profile + update global config if needed.

@@ -105,7 +105,11 @@ function AppShell() {
   }, [navigate, selectSession]);
 
   // ── Profile UI resolution ──
-  const activeProfileName = activeSession?.profile ?? selectedProfile;
+  // Config bar shows the active session's profile. Sidebar's selectedProfile
+  // is only used when there is NO active session (new chat preview).
+  const activeProfileName = activeSession
+    ? activeSession.profile          // session owns its profile (never leak sidebar)
+    : selectedProfile;               // no session → sidebar preview only
   const profileUi = profiles.find((p) => p.name === activeProfileName)?.ui ?? {};
   const ui: Required<ProfileUi> = {
     label: profileUi.label ?? "agent",

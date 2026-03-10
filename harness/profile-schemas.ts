@@ -109,6 +109,7 @@ export const ProfileSchema = z.object({
   contextWindow: z.number().int().positive().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
   compaction: CompactionConfigSchema.optional(),
+  skills: z.array(z.string()).optional(),
 });
 
 // ── User Profile ──

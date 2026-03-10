@@ -25,7 +25,7 @@ const AGENTS_DIR = join(PROFILES_DIR, "agents");
 const USERS_DIR = join(PROFILES_DIR, "users");
 const STATE_DIR = join(PROFILES_DIR, "state");
 
-for (const dir of [PROFILES_DIR, AGENTS_DIR, USERS_DIR, STATE_DIR]) {
+for (const dir of [PROFILES_DIR, USERS_DIR, STATE_DIR]) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
@@ -127,6 +127,8 @@ export type Profile = {
   maxOutputTokens?: number;
   /** Compaction tuning — overrides providerDefaults when set */
   compaction?: CompactionConfig;
+  /** Skills to preload into agent context (skill names from .claude/skills/) */
+  skills?: string[];
   /** UI presentation hints — read by frontend, optional with sensible defaults */
   ui?: {
     label?: string;
@@ -267,17 +269,22 @@ export function getAllProfiles(cwd?: string): Record<string, Profile> {
   return result;
 }
 
-/** Save an agent profile (create or update) */
-export function saveProfile(name: string, profile: Profile): void {
+/** Save an agent profile (create or update).
+ *  When cwd is provided, writes to <cwd>/.modus/profiles/agents/ instead of harness-local. */
+export function saveProfile(name: string, profile: Profile, cwd?: string): void {
   if (name.startsWith("_")) throw new Error("Profile names cannot start with _");
-  const filePath = join(AGENTS_DIR, `${name}.json`);
+  const dir = cwd ? projectAgentsDir(cwd) : AGENTS_DIR;
+  if (cwd && !existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, `${name}.json`);
   snapshot(filePath);
   writeJson(filePath, profile);
 }
 
-/** Delete an agent profile */
-export function deleteProfile(name: string): boolean {
-  const filePath = join(AGENTS_DIR, `${name}.json`);
+/** Delete an agent profile.
+ *  When cwd is provided, deletes from <cwd>/.modus/profiles/agents/. */
+export function deleteProfile(name: string, cwd?: string): boolean {
+  const dir = cwd ? projectAgentsDir(cwd) : AGENTS_DIR;
+  const filePath = join(dir, `${name}.json`);
   if (!existsSync(filePath)) return false;
   unlinkSync(filePath);
   return true;
@@ -299,9 +306,14 @@ export function getGlobalConfig(cwd?: string): GlobalConfig {
   };
 }
 
-/** Save the global config */
-export function saveGlobalConfig(config: GlobalConfig): void {
-  const filePath = join(PROFILES_DIR, "_global.json");
+/** Save the global config.
+ *  When cwd is provided, writes to <cwd>/.modus/_global.json instead of harness-local. */
+export function saveGlobalConfig(config: GlobalConfig, cwd?: string): void {
+  const filePath = cwd ? projectGlobalPath(cwd) : join(PROFILES_DIR, "_global.json");
+  if (cwd) {
+    const dir = join(cwd, MODUS_DIR);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  }
   snapshot(filePath);
   writeJson(filePath, config);
 }
@@ -411,6 +423,65 @@ export function setUserName(name: string): void {
 
 export function getUserName(): string | null {
   return getUserData().name ?? null;
+}
+
+// ── Project Registry ──
+// Stored in _projects.json. Maps project IDs to names + paths.
+// Each project's .modus/_project.json carries just the ID — portable across moves.
+
+const PROJECTS_FILE = join(PROFILES_DIR, "_projects.json");
+
+export type ProjectEntry = {
+  name: string;
+  path: string;
+  created: string;
+};
+
+export type ProjectRegistry = Record<string, ProjectEntry>;
+
+export function getProjectRegistry(): ProjectRegistry {
+  return readJson<ProjectRegistry>(PROJECTS_FILE) ?? {};
+}
+
+function saveProjectRegistry(registry: ProjectRegistry): void {
+  snapshot(PROJECTS_FILE);
+  writeJson(PROJECTS_FILE, registry);
+}
+
+export function getProjectById(id: string): (ProjectEntry & { id: string }) | undefined {
+  const reg = getProjectRegistry();
+  const entry = reg[id];
+  return entry ? { id, ...entry } : undefined;
+}
+
+export function getProjectByPath(path: string): (ProjectEntry & { id: string }) | undefined {
+  const reg = getProjectRegistry();
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  for (const [id, entry] of Object.entries(reg)) {
+    if (entry.path.replace(/\\/g, "/").replace(/\/+$/, "") === normalized) {
+      return { id, ...entry };
+    }
+  }
+  return undefined;
+}
+
+export function registerProject(id: string, entry: ProjectEntry): void {
+  const reg = getProjectRegistry();
+  reg[id] = entry;
+  saveProjectRegistry(reg);
+}
+
+export function updateProjectPath(id: string, newPath: string): boolean {
+  const reg = getProjectRegistry();
+  if (!reg[id]) return false;
+  reg[id].path = newPath;
+  saveProjectRegistry(reg);
+  return true;
+}
+
+export function listProjects(): Array<ProjectEntry & { id: string }> {
+  const reg = getProjectRegistry();
+  return Object.entries(reg).map(([id, entry]) => ({ id, ...entry }));
 }
 
 // ── Backward compat ──

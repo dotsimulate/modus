@@ -32,6 +32,9 @@ export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetch
 // Git
 export { fetchGitStatus, fetchGitLog, fetchGitShow, fetchGitFileDiff, fetchGitFileContent, fetchGitReadme, openInEditor } from "./git";
 
+// Projects & Init
+export { fetchInitStatus, initProject, fetchProjects } from "./projects";
+
 // Memories
 export { fetchMemories } from "./memories";
 
