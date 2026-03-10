@@ -28,6 +28,7 @@ import {
   getRunSummaries as dbGetRunSummaries, getNextRunNumber, getSession,
   listSessions, getEvents, searchSessions,
   insertExecution, updateExecution as dbUpdateExecution,
+  updateSessionTitle, addSessionTag, removeSessionTag,
 } from "./db";
 import type { SessionRow, EventRow, SearchHit } from "./db";
 import type {
@@ -38,7 +39,8 @@ import type {
 } from "./action-types";
 import { MAX_CHAIN_DEPTH } from "./action-types";
 import { sendNotifications, sendActionNotification } from "./notify";
-import { logActivity } from "./activity";
+import { logActivity, getActivityLog, getActivitySummary } from "./activity";
+import { svgToPngBase64 } from "./svg-render";
 
 // ── Constants ──
 
@@ -397,6 +399,11 @@ function buildActionDB(actionName: string): ActionDB {
     getSession: (id) => { const s = getSession(id); return s ? mapSession(s) : null; },
     searchSessions: (query, limit = 20) => searchSessions(query, limit).map(mapSearchHit),
     getEvents: (sessionId, afterSeq = 0) => getEvents(sessionId, afterSeq).map(mapEvent),
+    updateSessionTitle,
+    addSessionTag,
+    removeSessionTag,
+    getActivityLog,
+    getActivitySummary,
   };
 }
 
@@ -528,6 +535,7 @@ async function fireAction(
           if (!spec) throw new Error(`No artifact "${artifactName}" declared in action.json for "${name}"`);
           return join(ctx.artifactDir(), artifactName + mimeToExtension(spec.mime));
         },
+        svgToPngBase64,
       };
       lastCtx = ctx;
 
