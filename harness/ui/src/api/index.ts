@@ -20,7 +20,7 @@ export {
   fetchSessions, fetchSessionStatus, fetchActiveSessions,
   searchSessions, archiveSessionApi, updateSessionTitle,
   getDraft, saveDraft, createEmptySession,
-  createSession, sendMessage, stopSessionApi, switchSessionProfile,
+  createSession, sendMessage, stopSessionApi, stopTaskApi, switchSessionProfile,
   updateSessionConfig, respondToPermission,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
   fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, subscribeEvents, branchSessionApi,

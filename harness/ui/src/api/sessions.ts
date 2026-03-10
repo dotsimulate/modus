@@ -114,6 +114,14 @@ export async function stopSessionApi(sessionId: string): Promise<void> {
   });
 }
 
+export async function stopTaskApi(sessionId: string, taskId: string): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${sessionId}/stop-task`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ taskId }),
+  });
+}
+
 /** Switch active profile on a running/idle session */
 export async function switchSessionProfile(
   sessionId: string,

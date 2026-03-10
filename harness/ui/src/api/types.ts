@@ -8,6 +8,8 @@ export type ToolCall = {
   result?: string;
   startedAt: number;
   duration?: number;
+  /** For Agent tool calls: the SDK task ID (used for stopTask) */
+  taskId?: string;
   /** For Agent tool calls: nested sub-agent messages */
   subMessages?: Message[];
   /** For Agent tool calls: sub-agent summary from task_notification */

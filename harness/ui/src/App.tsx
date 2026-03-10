@@ -44,7 +44,7 @@ function AppShell() {
   const {
     activeSession, serverSessions,
     input, handleInputChange,
-    send, stop, newSession, selectSession, archiveSession,
+    send, stop, stopTask, newSession, selectSession, archiveSession,
     handlePermissionResponse, updateActiveSessionConfig,
     queuedMessage, cancelQueued, branchFromMessage,
   } = useSession();
@@ -211,6 +211,7 @@ function AppShell() {
                 queuedMessage={queuedMessage}
                 onCancelQueued={cancelQueued}
                 onBranch={branchFromMessage}
+                onStopTask={stopTask}
               />
 
               {activeSession?.pendingPermissions && activeSession.pendingPermissions.length > 0 && (
