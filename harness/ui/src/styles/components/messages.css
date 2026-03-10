@@ -65,6 +65,9 @@
   overflow-wrap: break-word;
   max-width: 100%;
 }
+.message[data-role="user"] .message-content {
+  white-space: pre-wrap;
+}
 @keyframes fade-user {
   0% { color: var(--flash-user); opacity: 0; transform: translateY(4px); }
   40% { opacity: 1; transform: translateY(0); }

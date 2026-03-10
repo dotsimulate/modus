@@ -148,20 +148,21 @@
   top: 100%;
   right: 0;
   margin-top: 4px;
-  background: var(--bg-hover);
-  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-active);
   border-radius: 6px;
   padding: 4px 0;
   min-width: 100%;
   width: max-content;
   z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
 }
 .profile-switcher-item {
   display: block;
   width: 100%;
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text-label);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.03em;
@@ -173,7 +174,7 @@
 }
 .profile-switcher-item:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
 }
 .profile-switcher-item.active {
   color: var(--text);
@@ -182,13 +183,13 @@
   height: 1px;
   background: var(--border);
   margin: 4px 0;
+  opacity: 0.6;
 }
 .profile-switcher-new {
-  color: var(--text-muted);
-  opacity: 0.7;
+  color: var(--text-label);
 }
 .profile-switcher-new:hover {
-  opacity: 1;
+  color: var(--text);
 }
 .lock-btn {
   background: none;
@@ -210,3 +211,16 @@
 }
 .status-dot.connected { background: var(--dot-connected); }
 .status-dot.error { background: var(--dot-error); }
+.status-computer-info {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+.status-sep {
+  opacity: 0.3;
+}
+.status-path {
+  font-style: italic;
+  opacity: 0.75;
+}

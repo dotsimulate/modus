@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, switchSessionProfile } from "./api";
+import { healthCheck, switchSessionProfile, patchUserProfileApi } from "./api";
 import { NAV_VIEWS } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -19,6 +19,7 @@ import { GitPanel } from "./components/GitPanel";
 import { PermissionOverlay } from "./components/PermissionOverlay";
 import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
+import { UserSettingsModal } from "./components/UserSettingsModal";
 
 function App() {
   return (
@@ -39,7 +40,7 @@ function AppShell() {
     activeUserProfile, activeUP,
     selectedProfile, selectProfile,
     setupState, setSetupState,
-    uiState, saveUiState, switchUserProfile,
+    uiState, saveUiState, switchUserProfile, refreshUserProfiles,
   } = useProfiles();
   const {
     activeSession, serverSessions,
@@ -55,6 +56,14 @@ function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [forceSetup, setForceSetup] = useState(false);
+  const [showUserSettings, setShowUserSettings] = useState(false);
+
+  // Sync editor pref from active user profile into localStorage
+  useEffect(() => {
+    if (!activeUP) return;
+    if (activeUP.editor) localStorage.setItem("mo:editor", activeUP.editor);
+    else localStorage.removeItem("mo:editor");
+  }, [activeUP?.editor]);
 
   // Health check
   useEffect(() => {
@@ -151,9 +160,6 @@ function AppShell() {
           ))}
         </nav>
         <div className="top-nav-spacer" />
-        {view === "chat" && activeSession?.status && activeSession.status !== "done" && (
-          <span className={`chat-header-status ${activeSession.status}`}>{activeSession.status}</span>
-        )}
         {view === "chat" && activeSession?.id && !activeSession.id.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSession.id) && (
           <span className="chat-header-archived">archived</span>
         )}
@@ -164,6 +170,9 @@ function AppShell() {
           activeUserProfile={activeUserProfile}
           onSwitchUserProfile={handleSwitchUserProfile}
           onNewProfile={() => { setForceSetup(true); navigate("home"); }}
+          onUserSettings={() => setShowUserSettings(true)}
+          computer={activeUP?.computer}
+          projectPath={activeUP?.projects?.[0]}
         />
       </div>
 
@@ -269,6 +278,18 @@ function AppShell() {
         {view === "actions" && <Actions onSelectSession={handleViewSession} />}
         {view === "git" && <GitPanel cwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd ?? null} />}
       </div>
+
+      {showUserSettings && activeUP && (
+        <UserSettingsModal
+          userProfile={activeUP}
+          onClose={() => setShowUserSettings(false)}
+          onSave={async (patch) => {
+            if (!activeUserProfile) return;
+            await patchUserProfileApi(activeUserProfile, patch);
+            await refreshUserProfiles();
+          }}
+        />
+      )}
     </div>
   );
 }

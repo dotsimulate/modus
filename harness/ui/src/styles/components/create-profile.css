@@ -89,6 +89,19 @@
   opacity: 0.7;
 }
 
+.create-profile-section-heading {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 16px;
+  margin-bottom: 2px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.create-profile-section-heading:first-child { margin-top: 0; }
+
 .create-profile-input {
   width: 100%;
   padding: 8px 10px;

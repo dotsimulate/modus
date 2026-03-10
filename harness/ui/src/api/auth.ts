@@ -47,6 +47,19 @@ export async function checkToken(): Promise<void> {
   if (!res.ok) throw new Error("unauthorized");
 }
 
+/** Change PIN — verifies old PIN before updating */
+export async function changePinApi(oldPin: string, newPin: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/change-pin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ oldPin, newPin }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || "Failed to change PIN");
+  }
+}
+
 export async function healthCheck(): Promise<{ status: string; uptime: number }> {
   const res = await fetch(`${API_BASE}/health`);
   return res.json();
