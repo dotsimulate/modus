@@ -2,6 +2,9 @@
  * Provider Models — fetch available models from each provider's API.
  */
 
+import { readFileSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 import { resolveSecret } from "../secrets";
 
 type ModelInfo = { id: string; owned_by?: string };
@@ -11,6 +14,21 @@ const CLAUDE_MODELS: ModelInfo[] = [
   { id: "claude-sonnet-4-6", owned_by: "anthropic" },
   { id: "claude-haiku-4-5", owned_by: "anthropic" },
 ];
+
+/** Read models from Codex CLI's local cache (~/.codex/models_cache.json). */
+function readCodexModelsCache(): ModelInfo[] {
+  try {
+    const cachePath = join(homedir(), ".codex", "models_cache.json");
+    const raw = JSON.parse(readFileSync(cachePath, "utf-8"));
+    if (!Array.isArray(raw.models)) return [];
+    return raw.models
+      .filter((m: any) => m.visibility !== "hide")
+      .sort((a: any, b: any) => (a.priority ?? 99) - (b.priority ?? 99))
+      .map((m: any) => ({ id: m.slug, owned_by: "openai" }));
+  } catch {
+    return [{ id: "gpt-5.1-codex", owned_by: "openai" }];
+  }
+}
 
 function getBaseURL(provider: string): { url: string; apiKey: string } {
   switch (provider) {
@@ -43,6 +61,11 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
   // Static list for claude-code / anthropic
   if (provider === "claude-code" || provider === "anthropic") {
     return CLAUDE_MODELS;
+  }
+
+  // Read from Codex CLI's local cache (~/.codex/models_cache.json)
+  if (provider === "codex") {
+    return readCodexModelsCache();
   }
 
   const { url, apiKey } = getBaseURL(provider);

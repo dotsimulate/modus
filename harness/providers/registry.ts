@@ -6,6 +6,7 @@
 
 import type { SessionProvider } from "./types";
 import { createClaudeCodeProvider } from "./claude-code";
+import { createCodexProvider } from "./codex";
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
 
 const PI_PROVIDERS: PiProviderName[] = ["anthropic", "openai", "litellm", "ollama", "openrouter"];
@@ -19,10 +20,12 @@ export function getProvider(name: string): SessionProvider {
 
   if (name === "claude-code") {
     provider = createClaudeCodeProvider();
+  } else if (name === "codex") {
+    provider = createCodexProvider();
   } else if (PI_PROVIDERS.includes(name as PiProviderName)) {
     provider = createPiAgentProvider(name as PiProviderName);
   } else {
-    throw new Error(`Unknown provider: "${name}". Available: claude-code, ${PI_PROVIDERS.join(", ")}`);
+    throw new Error(`Unknown provider: "${name}". Available: claude-code, codex, ${PI_PROVIDERS.join(", ")}`);
   }
 
   cache.set(name, provider);
@@ -30,9 +33,9 @@ export function getProvider(name: string): SessionProvider {
 }
 
 export function isKnownProvider(name: string): boolean {
-  return name === "claude-code" || PI_PROVIDERS.includes(name as PiProviderName);
+  return name === "claude-code" || name === "codex" || PI_PROVIDERS.includes(name as PiProviderName);
 }
 
 export function listProviders(): string[] {
-  return ["claude-code", ...PI_PROVIDERS];
+  return ["claude-code", "codex", ...PI_PROVIDERS];
 }
