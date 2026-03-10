@@ -199,6 +199,10 @@ export interface ActionContext {
    *  Derives extension from the artifact spec's mime type. Only works when
    *  `artifacts` is declared in action.json — throws if name not found. */
   artifact(name: string): string;
+
+  // ── Utilities ──
+  /** Render an SVG file to a base64-encoded PNG string. Returns null on failure. */
+  svgToPngBase64(svgPath: string, width?: number): string | null;
 }
 
 // ── Session Outcome (returned by monitorSession, not yet finalized) ──
@@ -265,6 +269,22 @@ export interface ActionDB {
   searchSessions(query: string, limit?: number): SearchResult[];
   /** Get events for a session (optionally after a sequence number) */
   getEvents(sessionId: string, afterSeq?: number): EventInfo[];
+
+  // ── Session mutations ──
+
+  /** Update a session's title */
+  updateSessionTitle(id: string, title: string | null): void;
+  /** Add a tag to a session (no-op if already present) */
+  addSessionTag(id: string, tag: string): void;
+  /** Remove a tag from a session (no-op if not present) */
+  removeSessionTag(id: string, tag: string): void;
+
+  // ── Activity log ──
+
+  /** Query the activity log (defaults: last 200 entries) */
+  getActivityLog(opts?: { userProfile?: string; since?: number; limit?: number; eventType?: string }): ActivityEntry[];
+  /** Get event type counts over a time window (defaults: last 24h) */
+  getActivitySummary(opts?: { userProfile?: string; hours?: number }): ActivitySummaryEntry[];
 }
 
 // ── Data Types ──
@@ -361,6 +381,26 @@ export interface ActionState {
 }
 
 // ── Constants ──
+
+// ── Activity Types (mirror of activity.ts row shapes) ──
+
+export interface ActivityEntry {
+  id: number;
+  user_profile: string | null;
+  event_type: string;
+  session_id: string | null;
+  action_name: string | null;
+  agent_profile: string | null;
+  summary: string | null;
+  metadata: string | null;
+  created_at: number;
+}
+
+export interface ActivitySummaryEntry {
+  event_type: string;
+  count: number;
+  latest: number;
+}
 
 /** Max depth for action→action chain triggers to prevent infinite loops */
 export const MAX_CHAIN_DEPTH = 8;

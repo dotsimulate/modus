@@ -23,6 +23,10 @@ type Props = {
   direction?: "up" | "down";
   /** Filter prompts by tag */
   tags?: string[];
+  /** External control: increment to force the picker open */
+  forceOpen?: number;
+  /** Notify parent when open state changes */
+  onOpenChange?: (open: boolean) => void;
 };
 
 /** Rough token estimate: ~4 chars per token for English text */
@@ -32,9 +36,26 @@ function estimateTokens(text: string): string {
   return `~${(count / 1000).toFixed(1)}k tok`;
 }
 
-export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: Props) {
+export function PromptPicker({ onInject, onAutoSend, direction = "up", tags, forceOpen, onOpenChange }: Props) {
   const { activeUP, activeUserProfile } = useProfiles();
   const [open, setOpen] = useState(false);
+  const lastForceOpen = useRef(0);
+
+  // Notify parent on open state changes
+  const setOpenAndNotify = useCallback((v: boolean) => {
+    setOpen(v);
+    onOpenChange?.(v);
+  }, [onOpenChange]);
+
+  // Sync forceOpen prop → open the picker
+  useEffect(() => {
+    console.log("[DBG] PromptPicker forceOpen effect:", forceOpen, "last:", lastForceOpen.current, "open:", open);
+    if (forceOpen && forceOpen !== lastForceOpen.current) {
+      lastForceOpen.current = forceOpen;
+      console.log("[DBG] PromptPicker calling setOpenAndNotify(true)");
+      setOpenAndNotify(true);
+    }
+  }, [forceOpen, setOpenAndNotify]);
   const [prompts, setPrompts] = useState<PromptListItem[]>([]);
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [selected, setSelected] = useState<PromptListItem | null>(null);
@@ -57,7 +78,7 @@ export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: P
     if (!open) return;
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        setOpenAndNotify(false);
         setSelected(null);
         setPreviewSkill(null);
         setPreviewContent(null);
@@ -142,7 +163,7 @@ export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: P
 
   const handleSkillSelect = useCallback((skill: SkillItem) => {
     onInject(`/${skill.filename}`);
-    setOpen(false);
+    setOpenAndNotify(false);
     setSelected(null);
     setPreviewSkill(null);
     setSearch("");
@@ -183,7 +204,7 @@ export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: P
       } else {
         onInject(rendered, settings);
       }
-      setOpen(false);
+      setOpenAndNotify(false);
       setSelected(null);
       setSearch("");
     } catch (err) {
@@ -198,7 +219,7 @@ export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: P
       handleRender("inject");
     }
     if (e.key === "Escape") {
-      setOpen(false);
+      setOpenAndNotify(false);
       setSelected(null);
       setSearch("");
     }
@@ -220,7 +241,7 @@ export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: P
     <div className="prompt-picker-wrap" ref={dropdownRef}>
       <button
         className={`prompt-picker-trigger${open ? " prompt-picker-trigger--hidden" : ""}`}
-        onClick={() => setOpen(true)}
+        onClick={() => setOpenAndNotify(true)}
         title="Insert prompt template"
       >
         /
@@ -239,7 +260,7 @@ export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: P
               className="prompt-picker-btn"
               onClick={() => {
                 if (previewContent) onInject(previewContent);
-                setOpen(false);
+                setOpenAndNotify(false);
                 setPreviewSkill(null);
                 setPreviewContent(null);
               }}
@@ -268,14 +289,14 @@ export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: P
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") { setOpen(false); setSearch(""); }
+                  if (e.key === "Escape") { setOpenAndNotify(false); setSearch(""); }
                 }}
                 placeholder="search..."
                 spellCheck={false}
               />
               <button
                 className="prompt-picker-close"
-                onClick={() => setOpen(false)}
+                onClick={() => setOpenAndNotify(false)}
               >
                 cancel
               </button>
@@ -326,14 +347,14 @@ export function PromptPicker({ onInject, onAutoSend, direction = "up", tags }: P
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") { setOpen(false); setSearch(""); }
+                  if (e.key === "Escape") { setOpenAndNotify(false); setSearch(""); }
                 }}
                 placeholder="search..."
                 spellCheck={false}
               />
               <button
                 className="prompt-picker-close"
-                onClick={() => setOpen(false)}
+                onClick={() => setOpenAndNotify(false)}
               >
                 cancel
               </button>

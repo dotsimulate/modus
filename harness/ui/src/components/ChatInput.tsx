@@ -44,6 +44,10 @@ export function ChatInput({
   const draft = useRef("");
   const isActive = sessionStatus === "running" || sessionStatus === "starting";
 
+  // Prompt picker slash shortcut
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerForceOpen, setPickerForceOpen] = useState(0);
+
   // Attachment state
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -79,15 +83,15 @@ export function ChatInput({
     }
   }, [sessionStatus, disabled]);
 
-  // Global Escape to stop — works regardless of focus
+  // Global Escape to stop — works regardless of focus, but not when picker is open
   useEffect(() => {
     if (!isActive) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); onStop(); }
+      if (e.key === "Escape" && !pickerOpen) { e.preventDefault(); onStop(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isActive, onStop]);
+  }, [isActive, onStop, pickerOpen]);
 
   // ── File processing ──
 
@@ -179,10 +183,27 @@ export function ChatInput({
     setAttachments([]);
   };
 
+  // Catch "/" via beforeinput — works even when keyDown doesn't fire (IME, dead keys, etc.)
+  const handleBeforeInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
+    const ie = e.nativeEvent as InputEvent;
+    if (ie.data === "/" && !value.trim()) {
+      e.preventDefault();
+      setPickerForceOpen((n) => n + 1);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+      return;
+    }
+
+    // "/" on empty input → open prompt picker
+    if (e.key === "/" && !value.trim()) {
+      console.log("[DBG] / on empty → incrementing forceOpen");
+      e.preventDefault();
+      setPickerForceOpen((n) => { console.log("[DBG] forceOpen:", n, "→", n+1); return n + 1; });
       return;
     }
 
@@ -269,45 +290,54 @@ export function ChatInput({
       )}
 
       <div className="input-row">
-        <PromptPicker
-          onInject={(text) => {
-            const ta = ref.current;
-            const existing = value;
-            if (!existing.trim()) {
-              // Empty — just set it
-              onChange(text);
-            } else if (text.startsWith("/")) {
-              // Skills — prepend with newline separator
-              onChange(text + "\n" + existing);
-            } else {
-              // Prompts — insert at cursor position
-              const pos = ta?.selectionStart ?? existing.length;
-              const before = existing.slice(0, pos);
-              const after = existing.slice(pos);
-              const sep = before && !before.endsWith("\n") ? "\n" : "";
-              onChange(before + sep + text + after);
-            }
-            ta?.focus();
-          }}
-        />
-        <textarea
-          ref={ref}
-          className="chat-textarea"
-          placeholder={placeholder ?? "message... (drop or paste images)"}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          rows={1}
-          disabled={disabled}
-        />
-        <button
-          className="send-btn"
-          onClick={handleSend}
-          disabled={!hasContent || disabled}
-        >
-          &uarr;
-        </button>
+        <div className="chat-textarea-wrap">
+          <textarea
+            ref={ref}
+            className="chat-textarea"
+            placeholder={placeholder ?? "message... (drop or paste images)"}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBeforeInput={handleBeforeInput}
+            onPaste={handlePaste}
+            rows={1}
+            disabled={disabled}
+          />
+          <div className="chat-picker">
+            <PromptPicker
+              forceOpen={pickerForceOpen}
+              onOpenChange={(isOpen) => {
+                setPickerOpen(isOpen);
+                if (!isOpen) {
+                  ref.current?.focus();
+                }
+              }}
+              onInject={(text) => {
+                const ta = ref.current;
+                const existing = value;
+                if (!existing.trim()) {
+                  onChange(text);
+                } else if (text.startsWith("/")) {
+                  onChange(text + "\n" + existing);
+                } else {
+                  const pos = ta?.selectionStart ?? existing.length;
+                  const before = existing.slice(0, pos);
+                  const after = existing.slice(pos);
+                  const sep = before && !before.endsWith("\n") ? "\n" : "";
+                  onChange(before + sep + text + after);
+                }
+                ta?.focus();
+              }}
+            />
+          </div>
+          <button
+            className="send-btn"
+            onClick={handleSend}
+            disabled={!hasContent || disabled}
+          >
+            send
+          </button>
+        </div>
       </div>
     </div>
   );
