@@ -23,7 +23,7 @@ export {
   createSession, sendMessage, stopSessionApi, switchSessionProfile,
   updateSessionConfig, respondToPermission,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
-  fetchSessionStats, fetchAccountInfo, browsePath, subscribeEvents, branchSessionApi,
+  fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, subscribeEvents, branchSessionApi,
 } from "./sessions";
 
 export type { SessionStats, AccountInfo } from "./sessions";
@@ -39,6 +39,10 @@ export { fetchInitStatus, initProject, fetchProjects } from "./projects";
 
 // Memories
 export { fetchMemories } from "./memories";
+
+// Prompts
+export { fetchPrompts, renderPromptApi, reloadPromptsApi } from "./prompts";
+export type { PromptListItem, PromptInput, RenderResult } from "./prompts";
 
 // All types
 export type {

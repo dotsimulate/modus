@@ -1,0 +1,11 @@
+{
+  "label": "project status",
+  "description": "Quick status report — git state, structure, and MO config",
+  "profile": "modus-dev",
+  "icon": "activity",
+  "inputs": [
+    { "name": "depth", "type": "select", "placeholder": "depth", "options": ["glance", "full"], "default": "glance" },
+    { "name": "includeModus", "type": "toggle", "placeholder": "include MO config (yes/no)", "default": "yes" }
+  ],
+  "tags": ["dashboard"]
+}

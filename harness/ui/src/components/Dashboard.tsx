@@ -54,8 +54,9 @@ function WidgetSlot({
 /**
  * Dashboard — home/landing page.
  *
- * Shows ProjectSetup when no user profile exists or when the active
- * profile has no agent profiles configured. Otherwise shows widgets.
+ * Shows ProjectSetup only when no user profile exists (project creation).
+ * Once a project exists, ModusPrompt handles everything — including agent
+ * setup via prompt presets (explore, set up agents, configure).
  */
 export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone }: Props) {
   const { activeUP, userProfiles, refreshProfiles, refreshUserProfiles } = useProfiles();
@@ -64,7 +65,7 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
 
   const needsProject = userProfiles.length === 0;
   const needsAgents = activeUP && (!activeUP.agentProfiles || activeUP.agentProfiles.length === 0);
-  const showSetup = forceSetup || (!setupDismissed && (needsProject || needsAgents));
+  const showProjectSetup = forceSetup || (!setupDismissed && needsProject);
 
   const handleSetupComplete = useCallback(() => {
     setSetupDismissed(true);
@@ -75,17 +76,19 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
 
   return (
     <div className="dashboard">
-      {showSetup ? (
+      {showProjectSetup ? (
         <ProjectSetup
-          existingProject={needsAgents && !needsProject ? activeUP!.name : undefined}
           onComplete={handleSetupComplete}
           onSelectSession={onSelectSession}
         />
       ) : (
-        <ModusPrompt onSelectSession={onSelectSession} />
+        <ModusPrompt
+          onSelectSession={onSelectSession}
+          isNewProject={!!needsAgents}
+        />
       )}
 
-      {/* Widgets — always visible (setup/prompt is above, not replacing) */}
+      {/* Widgets — always visible */}
       <div className="dashboard-widgets">
         {dashboard.widgets.map((config: WidgetBase, i: number) => (
           <WidgetSlot

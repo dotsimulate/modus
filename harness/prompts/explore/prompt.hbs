@@ -1,0 +1,16 @@
+Explore {{project.name}}. Read-only — do not create, modify, or delete any files.
+
+{{#ifCond depth "quick"}}Quick pass — top-level structure, languages, key entry points. 2-3 minutes max.{{/ifCond}}
+{{#ifCond depth "thorough"}}Thorough exploration — read key files, trace import graphs, map dependencies.{{/ifCond}}
+{{#ifCond depth "audit"}}Full audit — dead code, missing tests, security concerns, config drift. Be exhaustive.{{/ifCond}}
+
+{{#ifCond areas "frontend"}}Scope: frontend only — components, styles, routing, state, build config.{{/ifCond}}
+{{#ifCond areas "backend"}}Scope: backend only — API routes, database, middleware, auth, server config.{{/ifCond}}
+{{#ifCond areas "infra"}}Scope: infra only — deployment, CI/CD, Docker, env config, tooling.{{/ifCond}}
+{{#ifCond areas "tests"}}Scope: tests only — coverage, patterns, fixtures, what's missing.{{/ifCond}}
+{{#ifCond areas "config"}}Scope: config only — package.json, tsconfig, env files, MO config, build settings.{{/ifCond}}
+
+{{#if focus}}Focus: {{focus}}{{/if}}
+{{#if input}}{{input}}{{/if}}
+
+Report: structure, languages, tooling, agent profiles/actions if any, patterns, suggestions. Bullet points, not paragraphs. If .modus/ exists, describe it.

@@ -45,12 +45,46 @@ cd harness && bun install && cd ui && bun install && cd ../..
 # Configure MCP — edit the absolute path in _global.json to match your machine
 # harness/profiles/_global.json
 
-# Launch
-cd harness
-bun run dev
+# Launch (with watchdog — recommended)
+./modus.sh            # Linux / macOS
+modus.bat             # Windows
+
+# Or launch the dev server directly (no watchdog)
+cd harness && bun run dev
 ```
 
 One command starts the API server (`:3777`) and frontend (`:5180`). First run prompts for a PIN. Works on Linux, macOS, and Windows.
+
+## Watchdog
+
+`modus.sh` / `modus.bat` wrap the harness in a watchdog that keeps it running unattended.
+
+| Feature | Detail |
+|---|---|
+| Auto-restart | Restarts on crash, skips clean exits and Ctrl+C |
+| Health polling | `GET /health` every 30s — catches hangs, not just crashes |
+| Exponential backoff | Quick crashes (< 30s uptime) double the restart delay (3s → 6s → ... → 60s) |
+| Git rollback | `MODUS_GIT_ROLLBACK=1` — quick crash + dirty tree → `git stash` and retry |
+| Crash log | Appends to `harness/watchdog.log` |
+| Push notifications | Optional — via [ntfy.sh](https://ntfy.sh), no account needed |
+
+```bash
+# Linux / macOS
+./modus.sh              # watchdog only (production)
+./modus.sh watch:dev    # watchdog + auto-reload on .ts file changes (development)
+
+# Windows
+modus.bat               # watchdog only
+modus.bat watch:dev     # watchdog + file watcher
+```
+
+**Crash notifications** — subscribe to a free ntfy.sh topic on your phone, then:
+
+```bash
+MODUS_NOTIFY_TOPIC=your-topic ./modus.sh
+```
+
+You'll get a push with exit code, uptime, and the last 50 lines of stderr when Modus goes down.
 
 ## Prerequisites
 

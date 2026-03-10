@@ -712,7 +712,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         session.numTurns += m.num_turns ?? 0;
 
         ctx.updateSessionDb({
-          status: m.subtype === "success" ? "idle" : "error",
+          status: (m.subtype === "success" || m.subtype === "error_max_turns") ? "idle" : "error",
           messageCount: session.numTurns * 2,
           costUsd: m.total_cost_usd ?? 0,
           lastPrompt: session.preview,

@@ -1,0 +1,14 @@
+{
+  "label": "configure",
+  "description": "Edit profiles, actions, providers, or permissions",
+  "profile": "modus-dev",
+  "icon": "settings",
+  "inputs": [
+    { "name": "mode", "type": "select", "placeholder": "mode", "options": ["create", "edit", "review"], "default": "edit" },
+    { "name": "agents", "type": "toggle", "placeholder": "agent profiles (yes/no)", "default": "yes" },
+    { "name": "actions", "type": "toggle", "placeholder": "actions (yes/no)", "default": "no" },
+    { "name": "providers", "type": "toggle", "placeholder": "providers (yes/no)", "default": "no" },
+    { "name": "permissions", "type": "toggle", "placeholder": "permissions (yes/no)", "default": "no" }
+  ],
+  "tags": ["dashboard"]
+}

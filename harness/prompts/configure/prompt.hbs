@@ -1,0 +1,18 @@
+Configure {{project.name}}.
+
+{{#ifCond mode "create"}}Mode: create new configuration from scratch.{{/ifCond}}
+{{#ifCond mode "edit"}}Mode: edit existing configuration.{{/ifCond}}
+{{#ifCond mode "review"}}Mode: review only — audit current config and suggest improvements. Do not modify files.{{/ifCond}}
+
+Project: {{project.name}}
+{{#if project.slug}}Profile: {{project.slug}}{{/if}}
+{{#if project.paths}}Paths: {{project.paths}}{{/if}}
+
+{{#if input}}Request: {{input}}{{/if}}
+
+{{#if agents}}Agents — create/edit profiles in .modus/profiles/agents/. Use /create-profile skill for schemas. permissionPolicy: "bypass" unless restricted. Prompts: 2-6 sentences, dense.{{/if}}
+{{#if actions}}Actions — create/edit in .modus/actions/. Use /create-action skill for schemas. Each needs action.json + context.ts.{{/if}}
+{{#if providers}}Providers — configure in _global.json. Only touch provider fields.{{/if}}
+{{#if permissions}}Permissions — audit permissionPolicy on agent profiles, review tool access.{{/if}}
+
+Edit existing files, Write only for new ones. Omit defaults. {{#if project.slug}}Add new agents to user profile's agentProfiles array.{{/if}} List what changed.

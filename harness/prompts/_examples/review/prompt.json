@@ -1,0 +1,10 @@
+{
+  "label": "code review",
+  "description": "Review staged or recent changes",
+  "icon": "eye",
+  "inputs": [
+    { "name": "target", "type": "select", "placeholder": "review target", "options": ["staged", "unstaged", "last-commit", "branch"], "default": "staged" },
+    { "name": "focus", "type": "select", "placeholder": "focus", "options": ["all", "bugs", "security", "style", "perf"], "default": "all" }
+  ],
+  "tags": ["dashboard"]
+}

@@ -95,6 +95,16 @@ export type ActiveSession = {
   _provider: SessionProvider;
   /** Provider-specific state (opaque to session-manager) */
   _providerState: unknown;
+  /** Live config overrides set by the user via ConfigBar */
+  _configOverrides: {
+    provider?: string;
+    effort?: string;
+    maxTurns?: number;
+    tools?: string[];
+    disallowedTools?: string[];
+    toolStates?: Record<string, string>;
+    loadProjectSettings?: boolean;
+  };
 };
 
 // ── Helpers ──
@@ -326,6 +336,15 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     sessionApprovals: new Set(),
     _provider: provider,
     _providerState: null,
+    _configOverrides: {
+      provider: opts.provider,
+      effort: opts.effort,
+      maxTurns: opts.maxTurns,
+      tools: opts.tools,
+      disallowedTools: opts.disallowedTools,
+      toolStates: opts.toolStates,
+      loadProjectSettings: opts.loadProjectSettings,
+    },
   };
 
   activeSessions.set(tempId, session);
@@ -419,11 +438,14 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
   );
 
   // Delegate to provider (provider sets status to "running" internally)
+  // Include stored config overrides so provider init events reflect current state
   const ctx = createTurnContext(session, {
     prompt,
     attachments,
     profile: session.profile,
     sessionId,
+    model: session.model,
+    ...session._configOverrides,
   });
   session._provider.sendMessage(ctx, content);
 
@@ -544,6 +566,8 @@ export function resumeSession(sessionId: string): { ok: boolean; status?: Sessio
       prompt: typeof next === "string" ? next : "",
       profile: session.profile,
       sessionId,
+      model: session.model,
+      ...session._configOverrides,
     });
     session.status = "starting";
     updateSessionStatus(session.sessionId, "starting");
@@ -579,6 +603,14 @@ export function updateSessionConfig(
   if (config.cwd !== undefined) {
     session.cwd = config.cwd;
   }
+  // Persist config overrides so follow-up turns include them
+  if (config.provider !== undefined) session._configOverrides.provider = config.provider || undefined;
+  if (config.effort !== undefined) session._configOverrides.effort = config.effort || undefined;
+  if (config.maxTurns !== undefined) session._configOverrides.maxTurns = config.maxTurns || undefined;
+  if (config.tools !== undefined) session._configOverrides.tools = config.tools;
+  if (config.disallowedTools !== undefined) session._configOverrides.disallowedTools = config.disallowedTools;
+  if (config.toolStates !== undefined) session._configOverrides.toolStates = config.toolStates;
+  if (config.loadProjectSettings !== undefined) session._configOverrides.loadProjectSettings = config.loadProjectSettings;
   session._provider.updateConfig?.(session, config);
   session.seq++;
   addEvent(session.sessionId, session.seq, "system", "config_updated", JSON.stringify({

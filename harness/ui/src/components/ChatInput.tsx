@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { SessionStatus, Attachment } from "../api";
+import { PromptPicker } from "./PromptPicker";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
 const sentHistory: string[] = [];
@@ -268,6 +269,27 @@ export function ChatInput({
       )}
 
       <div className="input-row">
+        <PromptPicker
+          onInject={(text) => {
+            const ta = ref.current;
+            const existing = value;
+            if (!existing.trim()) {
+              // Empty — just set it
+              onChange(text);
+            } else if (text.startsWith("/")) {
+              // Skills — prepend with newline separator
+              onChange(text + "\n" + existing);
+            } else {
+              // Prompts — insert at cursor position
+              const pos = ta?.selectionStart ?? existing.length;
+              const before = existing.slice(0, pos);
+              const after = existing.slice(pos);
+              const sep = before && !before.endsWith("\n") ? "\n" : "";
+              onChange(before + sep + text + after);
+            }
+            ta?.focus();
+          }}
+        />
         <textarea
           ref={ref}
           className="chat-textarea"

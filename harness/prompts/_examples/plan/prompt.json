@@ -1,0 +1,10 @@
+{
+  "label": "plan",
+  "description": "Architecture planning with project context",
+  "icon": "map",
+  "inputs": [
+    { "name": "scope", "type": "select", "placeholder": "scope", "options": ["feature", "refactor", "migration", "system"], "default": "feature" },
+    { "name": "goal", "placeholder": "what are you building or changing?", "required": true }
+  ],
+  "tags": ["dashboard"]
+}

@@ -745,7 +745,7 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
 
   return {
     ...s,
-    status: m.subtype === "success" ? "idle" : "error",
+    status: (m.subtype === "success" || m.subtype === "error_max_turns") ? "idle" : "error",
     messages: msgs,
     totalCost: s.totalCost + (m.total_cost_usd ?? 0),
     _streamingText: "",

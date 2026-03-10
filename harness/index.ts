@@ -134,9 +134,49 @@ app.use("/api/*", async (c, next) => {
 
 // ── Health ──
 
-app.get("/health", (c) =>
-  c.json({ status: "ok", uptime: process.uptime() })
-);
+app.get("/health", (c) => {
+  const all = getAllActiveSessions();
+  const running = all.filter(s => s.status === "running" || s.status === "starting");
+  return c.json({ status: "ok", uptime: process.uptime(), activeSessions: running.length });
+});
+
+// ── Admin ──
+
+app.post("/api/admin/restart", async (c) => {
+  // Requires HARNESS_TOKEN — agents only, not browser PIN sessions
+  const header = c.req.header("Authorization");
+  const bearer = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!AUTH_TOKEN || bearer !== AUTH_TOKEN) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+
+  const { force = false } = await c.req.json().catch(() => ({}));
+
+  const active = getAllActiveSessions();
+  if (!force && active.length > 0) {
+    return c.json({
+      error: "active sessions",
+      sessions: active.map(s => s.sessionId),
+      hint: "use force:true to restart anyway"
+    }, 409);
+  }
+
+  // Write sentinel file — watchdog sees this and does a clean restart (no backoff)
+  const sentinelPath = join(import.meta.dir, ".watchdog-restart");
+  await Bun.write(sentinelPath, Date.now().toString());
+
+  // Respond before shutting down
+  const response = c.json({ ok: true, restarting: true });
+
+  // Shut down after response flushes (~100ms)
+  setTimeout(async () => {
+    shutdownAll();
+    await Bun.sleep(200);
+    process.exit(0);
+  }, 100);
+
+  return response;
+});
 
 // ── Profiles ──
 
@@ -722,6 +762,22 @@ app.get("/api/browse", async (c) => {
   }
 });
 
+// ── File Reader ──
+// Read a single file's text content by absolute path.
+app.get("/api/file-read", async (c) => {
+  const raw = new URL(c.req.url).searchParams.get("path");
+  if (!raw) return c.json({ error: "path required" }, 400);
+  const { resolve } = await import("path");
+  const { readFile } = await import("fs/promises");
+  const target = resolve(raw);
+  try {
+    const content = await readFile(target, "utf-8");
+    return c.json({ path: target, content });
+  } catch (err: any) {
+    return c.json({ error: err.code === "ENOENT" ? "not found" : err.message }, 400);
+  }
+});
+
 // ── Projects & Init ──
 
 app.get("/api/projects", (c) => {
@@ -1007,6 +1063,33 @@ app.post("/api/actions/reload", (c) => {
   return c.json({ ok: true, count: actions.length });
 });
 
+// ── Prompts ──
+
+import { loadPrompts, listPrompts, renderPrompt, reloadPrompts } from "./prompt-loader";
+
+app.get("/api/prompts", (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const tags = params.get("tags")?.split(",").filter(Boolean);
+  const projectCwd = params.get("projectCwd") ?? undefined;
+  return c.json(listPrompts({ tags, projectCwd }));
+});
+
+app.post("/api/prompts/:name/render", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json();
+  const projectCwd = body.projectCwd ?? undefined;
+  const vars = { ...body, projectCwd: undefined };
+  const result = await renderPrompt(name, vars, projectCwd);
+  if ("error" in result) return c.json(result, 404);
+  return c.json(result);
+});
+
+app.post("/api/prompts/reload", (c) => {
+  reloadPrompts();
+  const prompts = listPrompts();
+  return c.json({ ok: true, count: prompts.length });
+});
+
 // ── Git ──
 
 import { gitStatus, gitLog, gitShow, gitFileDiff, gitReadme, gitFileContent } from "./git";
@@ -1185,6 +1268,7 @@ const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
 console.log(`Agent harness listening on http://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
 
 initActions();
+loadPrompts();
 
 // Graceful shutdown
 process.on("SIGTERM", () => {
