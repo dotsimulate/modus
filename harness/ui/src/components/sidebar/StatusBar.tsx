@@ -8,11 +8,15 @@ type Props = {
   activeUserProfile?: string | null;
   onSwitchUserProfile?: (name: string | null) => void;
   onNewProfile?: () => void;
+  onUserSettings?: () => void;
+  computer?: string;
+  projectPath?: string;
 };
 
 export function StatusBar({
   harnessUp, onLock,
-  userProfiles, activeUserProfile, onSwitchUserProfile, onNewProfile,
+  userProfiles, activeUserProfile, onSwitchUserProfile, onNewProfile, onUserSettings,
+  computer, projectPath,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -31,8 +35,17 @@ export function StatusBar({
   const activeUp = userProfiles?.find((p) => p.name === activeUserProfile);
   const label = activeUp?.displayName ?? activeUp?.name ?? "all";
 
+  const folderName = projectPath ? projectPath.split("/").filter(Boolean).pop() : undefined;
+
   return (
     <div className="harness-status">
+      {(computer || folderName) && (
+        <span className="status-computer-info">
+          {computer && <span>{computer}</span>}
+          {computer && folderName && <span className="status-sep">·</span>}
+          {folderName && <span className="status-path">{folderName}</span>}
+        </span>
+      )}
       <div
         className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
       />
@@ -70,6 +83,13 @@ export function StatusBar({
                 onClick={() => { setMenuOpen(false); onNewProfile?.(); }}
               >
                 + new project
+              </button>
+              <div className="profile-switcher-divider" />
+              <button
+                className="profile-switcher-item"
+                onClick={() => { setMenuOpen(false); onUserSettings?.(); }}
+              >
+                user settings
               </button>
             </div>
           )}

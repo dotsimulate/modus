@@ -267,6 +267,10 @@ export type UserProfile = {
   showAllProjectPaths?: boolean;
   /** Dashboard widget layout */
   dashboard?: { widgets: Array<{ type: string; [key: string]: unknown }> };
+  /** Computer/machine name — displayed in top-nav status bar */
+  computer?: string;
+  /** Preferred editor CLI command for "open in editor" */
+  editor?: string;
 };
 
 export type MemoryItem = {

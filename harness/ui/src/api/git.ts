@@ -53,9 +53,10 @@ export async function fetchGitReadme(cwd: string): Promise<{ name: string; conte
 }
 
 export async function openInEditor(filePath: string, line?: number): Promise<void> {
+  const editor = localStorage.getItem("mo:editor") ?? undefined;
   await fetch(`${API_BASE}/api/open-in-editor`, {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify({ filePath, line }),
+    body: JSON.stringify({ filePath, line, editor }),
   });
 }

@@ -1,0 +1,297 @@
+/**
+ * File Viewer - reusable inline file renderer + chat popup wrapper.
+ */
+
+.fcv-panel {
+  --fcv-gutter-chars: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.fcv-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px 9px;
+  border-bottom: 1px solid var(--border);
+  min-height: 42px;
+  background: var(--bg-surface);
+}
+
+.fcv-meta {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0;
+}
+
+.fcv-name-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fcv-name-actions {
+  display: inline-flex;
+  align-items: center;
+}
+
+.fcv-head-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.fcv-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fcv-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.fcv-count {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 1px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.fcv-body {
+  min-height: 0;
+  max-height: min(65dvh, 720px);
+  overflow: auto;
+}
+
+.fcv-state {
+  padding: 16px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.fcv-markdown {
+  padding: 16px 18px 18px;
+}
+
+.fcv-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.fcv-table .diff-gutter {
+  width: calc(var(--fcv-gutter-chars) * 0.68ch + 18px);
+  min-width: calc(var(--fcv-gutter-chars) * 0.68ch + 18px);
+  padding: 0 7px 0 5px;
+}
+
+.fcv-table .diff-code {
+  white-space: pre;
+  color: var(--text-secondary);
+}
+
+.chat-file-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  animation: cfv-fade-in 0.12s ease-out;
+  pointer-events: none;
+}
+
+.chat-file-viewer-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 42%, rgba(0, 0, 0, 0.08) 76%, rgba(0, 0, 0, 0.16) 100%);
+  opacity: 1;
+  pointer-events: none;
+}
+
+.chat-file-viewer-popup {
+  position: fixed;
+  border: 1px solid var(--border-active);
+  border-radius: 4px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.chat-file-viewer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-file-viewer-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.chat-file-viewer-resize {
+  position: absolute;
+  z-index: 2;
+}
+
+.chat-file-viewer-resize--n,
+.chat-file-viewer-resize--s {
+  left: 12px;
+  right: 12px;
+  height: 10px;
+}
+
+.chat-file-viewer-resize--n {
+  top: -5px;
+}
+
+.chat-file-viewer-resize--s {
+  bottom: -5px;
+}
+
+.chat-file-viewer-resize--e,
+.chat-file-viewer-resize--w {
+  top: 12px;
+  bottom: 12px;
+  width: 10px;
+}
+
+.chat-file-viewer-resize--e {
+  right: -5px;
+}
+
+.chat-file-viewer-resize--w {
+  left: -5px;
+}
+
+.chat-file-viewer-resize--ne,
+.chat-file-viewer-resize--nw,
+.chat-file-viewer-resize--se,
+.chat-file-viewer-resize--sw {
+  width: 18px;
+  height: 18px;
+}
+
+.chat-file-viewer-resize--ne {
+  top: -5px;
+  right: -5px;
+}
+
+.chat-file-viewer-resize--nw {
+  top: -5px;
+  left: -5px;
+}
+
+.chat-file-viewer-resize--se {
+  right: -5px;
+  bottom: -5px;
+}
+
+.chat-file-viewer-resize--sw {
+  left: -5px;
+  bottom: -5px;
+}
+
+.chat-file-viewer-resize--ne::before,
+.chat-file-viewer-resize--nw::before,
+.chat-file-viewer-resize--se::before,
+.chat-file-viewer-resize--sw::before {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  opacity: 0.65;
+}
+
+.chat-file-viewer-resize--ne::before {
+  top: 5px;
+  right: 5px;
+  border-top: 1px solid var(--text-muted);
+  border-right: 1px solid var(--text-muted);
+}
+
+.chat-file-viewer-resize--nw::before {
+  top: 5px;
+  left: 5px;
+  border-top: 1px solid var(--text-muted);
+  border-left: 1px solid var(--text-muted);
+}
+
+.chat-file-viewer-resize--se::before {
+  right: 5px;
+  bottom: 5px;
+  border-right: 1px solid var(--text-muted);
+  border-bottom: 1px solid var(--text-muted);
+}
+
+.chat-file-viewer-resize--sw::before {
+  left: 5px;
+  bottom: 5px;
+  border-left: 1px solid var(--text-muted);
+  border-bottom: 1px solid var(--text-muted);
+}
+
+.chat-file-viewer-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 3px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.chat-file-viewer-btn--inline {
+  width: 16px;
+  height: 16px;
+}
+
+.chat-file-viewer-btn--inline.is-copied {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+@media (max-width: 640px) {
+  .fcv-head {
+    padding: 9px 12px 8px;
+  }
+
+  .fcv-count {
+    display: none;
+  }
+
+  .chat-file-viewer-backdrop {
+    background:
+      linear-gradient(180deg, rgba(0, 0, 0, 0) 18%, rgba(0, 0, 0, 0.1) 56%, rgba(0, 0, 0, 0.22) 100%);
+  }
+}
+
+@keyframes cfv-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

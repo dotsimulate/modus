@@ -4,7 +4,7 @@
 export { setAuthToken, clearAuthToken } from "./_fetch";
 
 // Auth
-export { authStatus, setupNewPin, verifyPin, fetchMe, lockAll, checkToken, healthCheck } from "./auth";
+export { authStatus, setupNewPin, verifyPin, fetchMe, lockAll, checkToken, changePinApi, healthCheck } from "./auth";
 
 // Profiles
 export {

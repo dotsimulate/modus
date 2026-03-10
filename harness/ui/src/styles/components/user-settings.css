@@ -1,0 +1,296 @@
+/**
+ * User Settings Modal — distinct from create-profile, settings-specific layout.
+ * Shares the modal shell (.create-profile-backdrop/modal/header/footer) from create-profile.css.
+ */
+
+/* ── Modal fixed size ── */
+
+.us-modal {
+  width: 480px !important;
+  height: 520px !important;
+  max-height: 520px !important;
+}
+
+/* ── Tabs ── */
+
+.us-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  gap: 0;
+}
+
+.us-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 0.1s ease, border-color 0.1s ease;
+}
+.us-tab:hover {
+  color: var(--text-dim);
+}
+.us-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--border-focus);
+}
+
+/* ── Settings body ── */
+
+.us-body {
+  padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── Section ── */
+
+.us-section {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.us-section--scroll {
+  padding: 8px 20px;
+}
+
+.us-empty {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+
+/* ── Setting row: label + control side by side ── */
+
+.us-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.us-row-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.us-row-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  padding-left: calc(110px + 12px);
+  margin-top: -4px;
+}
+
+/* ── Input / select ── */
+
+.us-input,
+.us-select {
+  width: 100%;
+  padding: 6px 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.1s ease;
+  box-sizing: border-box;
+}
+.us-input:focus,
+.us-select:focus {
+  border-color: var(--border-active);
+}
+.us-input::placeholder {
+  color: var(--text-muted);
+}
+.us-select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23555'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+.us-select option {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+
+/* ── PIN group ── */
+
+.us-pin-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.us-pin-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.us-pin-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  padding-left: calc(110px + 12px);
+}
+
+.us-pin-btn {
+  background: none;
+  border: 1px solid var(--border-active);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+.us-pin-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-focus);
+}
+.us-pin-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.us-pin-feedback {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.us-pin-feedback.error { color: var(--error); }
+.us-pin-feedback.success { color: var(--success); }
+
+/* ── Profile info (read-only inline) ── */
+
+.us-info-val {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* ── Collapsible groups ── */
+
+.us-group {
+  border-top: 1px solid var(--border);
+}
+.us-group:first-of-type {
+  border-top: none;
+}
+
+.us-group-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 7px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.us-group-header:hover .us-group-label {
+  color: var(--text-secondary);
+}
+
+.us-group-arrow {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  width: 10px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.us-group-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  flex: 1;
+  transition: color 0.1s ease;
+}
+
+.us-group-count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* CSS collapse — grid-template-rows trick */
+.us-group-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.1s ease;
+}
+.us-group-body.open {
+  grid-template-rows: 1fr;
+}
+
+.us-group-inner {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+
+.us-group-row {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 2px 0 2px 17px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.us-group-row--mono {
+  font-family: var(--font-mono);
+}
+
+.us-group-kv {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 8px;
+  padding: 2px 0 2px 17px;
+}
+
+.us-group-kv-key {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.us-group-kv-val {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
