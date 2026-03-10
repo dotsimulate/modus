@@ -39,21 +39,23 @@ A locally configured agent wrangler designed for you to hone your agents. Built 
 git clone https://github.com/dotsimulate/modus.git
 cd modus
 
-# Install deps
-cd harness && bun install && cd ui && bun install && cd ../..
-
-# Configure MCP — edit the absolute path in _global.json to match your machine
-# harness/profiles/_global.json
+# Install all deps (harness, UI, agent memory)
+./modus.sh setup      # Linux / macOS
+.\modus.bat setup     # Windows
 
 # Launch (with watchdog — recommended)
 ./modus.sh            # Linux / macOS
-modus.bat             # Windows
-
-# Or launch the dev server directly (no watchdog)
-cd harness && bun run dev
+.\modus.bat           # Windows
 ```
 
-One command starts the API server (`:3777`) and frontend (`:5180`). First run prompts for a PIN. Works on Linux, macOS, and Windows.
+One command starts the API server (`:3777`) and frontend (`:5180`). First run prompts for a PIN.
+
+**To add modus to an existing project:**
+
+```bash
+cd /your/project
+modus init            # scaffolds .modus/ with memory MCP and starter profile
+```
 
 ## Watchdog
 

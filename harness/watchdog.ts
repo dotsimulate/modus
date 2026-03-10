@@ -299,10 +299,11 @@ async function run() {
       continue;
     }
 
-    // File-change restart — skip crash logic, reload immediately
+    // File-change restart — skip crash logic, brief pause for ports to release
     if (fileChangeRestart) {
       fileChangeRestart = false;
       restarts++;
+      await Bun.sleep(1500);
       continue;
     }
 

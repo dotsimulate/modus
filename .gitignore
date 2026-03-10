@@ -38,6 +38,7 @@ agent_memory/memory/
 
 # Harness runtime (auto-generated, personal per-user)
 harness/profiles/_users.json
+harness/profiles/_projects.json
 harness/profiles/state/
 harness/profiles/users/
 harness/profiles/**/.history/
