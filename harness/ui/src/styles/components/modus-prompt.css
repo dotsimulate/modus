@@ -49,11 +49,11 @@
 
 .modus-prompt-textarea {
   width: 100%;
-  background: var(--bg-surface);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 70px 40px 14px;
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: calc(14px * var(--font-scale, 1));
   color: var(--text);
   outline: none;
