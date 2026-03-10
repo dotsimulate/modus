@@ -1,0 +1,12 @@
+Set up agents for {{project.name}}.
+
+{{#ifCond archetype "reviewer"}}Archetype: reviewer — reads diffs, checks bugs/style/security. Read-only, reports findings.{{/ifCond}}
+{{#ifCond archetype "runner"}}Archetype: runner — executes commands, runs tests, builds. Needs shell + file write.{{/ifCond}}
+{{#ifCond archetype "monitor"}}Archetype: monitor — watches changes, checks health, reports status. For recurring runs.{{/ifCond}}
+{{#ifCond archetype "researcher"}}Archetype: researcher — explores codebases, reads docs, summarizes. Read-only, high context.{{/ifCond}}
+{{#ifCond archetype "writer"}}Archetype: writer — docs, READMEs, changelogs. File write, benefits from project context.{{/ifCond}}
+
+Description: {{description}}
+{{#if input}}{{input}}{{/if}}
+
+Survey the project first. Create profiles in .modus/profiles/agents/<name>.json{{#ifCond archetype "custom"}}{{else}} based on the {{archetype}} archetype{{/ifCond}}. Use /create-profile skill for schemas. Only create what was asked for. Set reasonable maxTurns and permissions.

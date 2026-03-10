@@ -1,0 +1,67 @@
+## Code Review: {{project.name}}
+
+Review the following changes and report findings.
+
+{{#ifCond target "staged"}}
+### Staged changes
+```
+{{git "diff" "--cached"}}
+```
+{{/ifCond}}
+{{#ifCond target "unstaged"}}
+### Unstaged changes
+```
+{{git "diff"}}
+```
+{{/ifCond}}
+{{#ifCond target "last-commit"}}
+### Last commit
+```
+{{git "log" "-1" "--format=%H %s"}}
+```
+
+```
+{{git "diff" "HEAD~1"}}
+```
+{{/ifCond}}
+{{#ifCond target "branch"}}
+### Branch diff (vs main)
+```
+{{git "log" "main..HEAD" "--oneline"}}
+```
+
+```
+{{git "diff" "main...HEAD"}}
+```
+{{/ifCond}}
+
+{{#if input}}
+### Additional context
+{{input}}
+
+{{/if}}
+### Review focus
+{{#ifCond focus "all"}}
+Check everything: correctness, security, style, performance.
+{{/ifCond}}
+{{#ifCond focus "bugs"}}
+Focus on **bugs** — logic errors, off-by-one, null checks, race conditions, broken edge cases.
+{{/ifCond}}
+{{#ifCond focus "security"}}
+Focus on **security** — injection, XSS, auth bypass, secrets exposure, OWASP top 10.
+{{/ifCond}}
+{{#ifCond focus "style"}}
+Focus on **style** — naming, consistency, readability, dead code, unnecessary complexity.
+{{/ifCond}}
+{{#ifCond focus "perf"}}
+Focus on **performance** — unnecessary renders, N+1 queries, missing memoization, large bundles.
+{{/ifCond}}
+
+### Output format
+For each finding:
+- **File:line** — what's wrong, why, and the fix
+- Severity: `critical` / `warning` / `nit`
+
+End with a summary: ship it, needs fixes, or needs rework.
+
+*Generated {{date}}*

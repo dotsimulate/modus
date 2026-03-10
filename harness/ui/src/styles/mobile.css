@@ -71,5 +71,12 @@
   /* 16px min prevents iOS Safari auto-zoom on focus */
   .chat-textarea { font-size: max(16px, calc(16px * var(--font-scale, 1))); }
   .chat-settings { display: none; }
+
+  /* Prompt picker dropdown — constrain to viewport */
+  .prompt-picker {
+    min-width: 0;
+    width: calc(100vw - 32px);
+    max-width: 320px;
+  }
 }
 

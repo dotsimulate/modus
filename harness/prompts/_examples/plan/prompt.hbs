@@ -1,0 +1,51 @@
+## Plan: {{project.name}}
+
+Design an implementation plan before writing code.
+
+### Goal
+{{goal}}
+
+{{#if input}}
+### Additional context
+{{input}}
+
+{{/if}}
+### Scope: {{scope}}
+
+{{#ifCond scope "feature"}}
+New feature — identify where it fits in the existing architecture, what files to create/modify, and what to avoid touching.
+{{/ifCond}}
+{{#ifCond scope "refactor"}}
+Refactor — map the current state, define the target state, and plan the incremental steps to get there without breaking things.
+{{/ifCond}}
+{{#ifCond scope "migration"}}
+Migration — identify all affected systems, plan the transition, define rollback steps, and flag breaking changes.
+{{/ifCond}}
+{{#ifCond scope "system"}}
+System design — define components, interfaces, data flow, and constraints before any implementation.
+{{/ifCond}}
+
+### Project structure
+```
+{{run "ls -1"}}
+```
+
+### Recent activity
+```
+{{git "log" "--oneline" "-5"}}
+```
+
+### What to produce
+1. **Overview** — one paragraph explaining the approach
+2. **File plan** — which files to create, modify, or delete (with paths)
+3. **Order of operations** — numbered steps, dependencies between them
+4. **Risks** — what could go wrong, what to test
+5. **Open questions** — anything that needs a decision before starting
+
+### Rules
+- Plan only — do NOT create or modify any files
+- Be specific about file paths and function names
+- Flag any changes that affect shared systems or other features
+- If the scope is too large for one session, break it into phases
+
+*Generated {{date}}*

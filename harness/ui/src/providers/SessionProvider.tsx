@@ -372,7 +372,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const updateActiveSessionConfig = useCallback(async (config: AgentConfigState) => {
     if (!activeSessionId) return;
     applyAgentConfigToState(activeSessionId, config);
-    if (activeSessionId.startsWith("pending-")) return;
+    // Skip PATCH for sessions without messages — config will be applied on first send
+    const state = getSessionState(activeSessionId);
+    if (activeSessionId.startsWith("pending-") || !state || state.messages.length === 0) return;
     const profile = profiles.find((p) => p.name === activeSession?.profile);
     const overrides = agentConfigToOverrides(config, profile?.tools ?? "all");
     await updateSessionConfig(activeSessionId, {

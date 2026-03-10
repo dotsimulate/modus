@@ -77,6 +77,8 @@
 .input-row {
   position: relative;
   display: flex;
+  align-items: flex-end;
+  gap: 6px;
 }
 
 .chat-textarea {

@@ -1,20 +1,25 @@
 /**
- * ModusPrompt — general-purpose modus-dev editor prompt.
+ * ModusPrompt — unified prompt component for dashboard.
  *
- * Lives at the top of the dashboard. User types what they want to configure,
- * modus-dev runs, user can watch the session inline via MiniSession.
+ * Shows available prompt templates as selectable presets. User picks one,
+ * fills in inputs + free text, submit renders the template and creates
+ * a modus-dev session. Replaces both the old ModusPrompt and ProjectSetup's
+ * agent phase.
+ *
  * Recent modus-dev sessions listed below the input.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
-import { createSession, fetchSessionsByProfile } from "../api";
+import { createSession, fetchSessionsByProfile, fetchPrompts, renderPromptApi } from "../api";
 import { useSessionState } from "../sessionStore";
 import { MiniSession } from "./MiniSession";
-import type { SessionInfo } from "../api";
+import type { SessionInfo, PromptListItem } from "../api";
 
 type Props = {
   onSelectSession: (id: string) => void;
+  /** Hint that this is a fresh project — bias toward setup prompts */
+  isNewProject?: boolean;
 };
 
 type Phase = "idle" | "running" | "done" | "error";
@@ -27,32 +32,57 @@ function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-export function ModusPrompt({ onSelectSession }: Props) {
+export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
   const { activeUP, activeUserProfile, refreshProfiles, refreshUserProfiles } = useProfiles();
-  const [prompt, setPrompt] = useState("");
+  const [prompts, setPrompts] = useState<PromptListItem[]>([]);
+  const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [freeText, setFreeText] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [recentSessions, setRecentSessions] = useState<SessionInfo[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Watch the active session via sessionStore (SSE-driven, no polling)
   const activeSession = useSessionState(phase === "running" ? sessionId : null);
+  const selected = prompts.find(p => p.name === selectedPrompt) ?? null;
 
-  // Detect when the running session finishes
+  // Load available prompts
+  useEffect(() => {
+    let active = true;
+    fetchPrompts({ tags: ["dashboard"] }).then(list => {
+      if (!active) return;
+      setPrompts(list);
+      // Auto-select: if new project, prefer setup-agents or explore; otherwise first
+      if (list.length > 0 && !selectedPrompt) {
+        if (isNewProject) {
+          const setup = list.find(p => p.name === "setup-agents");
+          setSelectedPrompt(setup?.name ?? list[0]!.name);
+        } else {
+          setSelectedPrompt(list[0]!.name);
+        }
+      }
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  // Detect when running session finishes
   useEffect(() => {
     if (phase !== "running" || !activeSession) return;
     if (activeSession.status === "idle") {
       Promise.all([refreshProfiles(), refreshUserProfiles()]).catch(() => {});
-      fetchSessionsByProfile("modus-dev", 5, activeUserProfile ?? undefined).then(setRecentSessions).catch(() => {});
+      fetchSessionsByProfile("modus-dev", 5, activeUserProfile ?? undefined)
+        .then(setRecentSessions).catch(() => {});
       setPhase("done");
-      setPrompt("");
+      setFreeText("");
+      setInputValues({});
     } else if (activeSession.status === "error") {
       setError("agent error");
       setPhase("error");
     }
   }, [phase, activeSession?.status]);
 
-  // Fetch recent modus-dev sessions (scoped to active user profile)
+  // Fetch recent modus-dev sessions
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -73,80 +103,113 @@ export function ModusPrompt({ onSelectSession }: Props) {
     return () => clearTimeout(t);
   }, [phase]);
 
+  // When prompt selection changes, reset inputs and focus textarea
+  useEffect(() => {
+    setInputValues({});
+    setFreeText("");
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  }, [selectedPrompt]);
+
+  const canSubmit = useCallback(() => {
+    if (!selected) return false;
+    // Check required inputs
+    for (const inp of selected.inputs ?? []) {
+      if (inp.required && !inputValues[inp.name]?.trim()) return false;
+    }
+    // Need at least some text somewhere (free text or a filled input)
+    const hasInput = freeText.trim() || Object.values(inputValues).some(v => v.trim());
+    return hasInput;
+  }, [selected, inputValues, freeText]);
+
   const run = useCallback(async () => {
-    const text = prompt.trim();
-    if (!text) return;
+    if (!selected || !canSubmit()) return;
 
     const slug = activeUserProfile ?? "";
-    const userDisplay = activeUP?.displayName ?? slug;
     const paths = activeUP?.projects ?? [];
 
-    const structuredPrompt = [
-      `## Edit Request`,
-      ``,
-      `Modify MO configuration based on the user's description.`,
-      ``,
-      `### User`,
-      `- Name: ${userDisplay}`,
-      ...(slug ? [`- Profile slug: ${slug}`] : []),
-      ...(paths.length > 0 ? [`- Project paths: ${paths.join(", ")}`] : []),
-      ``,
-      `### What they want`,
-      text,
-      ``,
-      `### Tasks`,
-      `1. Read the relevant skill (create-profile or create-action) for schemas`,
-      `2. Make the requested changes — create/edit profiles, actions, etc.`,
-      ...(slug ? [`3. If creating new agent profiles, add them to the user profile's agentProfiles array at <cwd>/.modus/profiles/users/${slug}.json`] : []),
-      `4. List what you created or changed`,
-      ``,
-      `### Rules`,
-      `- Use Edit on existing files, Write only for new ones`,
-      `- Use permissionPolicy: "bypass" unless restrictions are requested`,
-      `- Omit optional fields that use defaults — keep JSON clean`,
-      `- Agent prompts: 2-6 sentences, dense and directive`,
-    ].join("\n");
+    // Build render variables
+    const vars: Record<string, unknown> = {
+      input: freeText.trim() || undefined,
+      project: {
+        name: activeUP?.displayName || slug || "project",
+        slug,
+        paths,
+      },
+      ...inputValues,
+    };
 
     setPhase("running");
     setError("");
     setSessionId(null);
 
     try {
+      // Render the prompt template
+      const { rendered, config } = await renderPromptApi(selected.name, vars);
+
+      // Create session with rendered prompt
+      const profile = config.profile ?? selected.profile ?? "modus-dev";
       const { sessionId: sid } = await createSession({
-        prompt: structuredPrompt,
-        profile: "modus-dev",
+        prompt: rendered,
+        profile,
         userProfile: activeUserProfile ?? undefined,
         cwd: paths[0] || undefined,
+        ...(config.settings?.provider ? { provider: config.settings.provider } : {}),
+        ...(config.settings?.model ? { model: config.settings.model } : {}),
+        ...(config.settings?.effort ? { effort: config.settings.effort } : {}),
       });
       setSessionId(sid);
     } catch (err) {
       setError(`failed to start: ${err}`);
       setPhase("error");
     }
-  }, [prompt, activeUserProfile, activeUP, refreshProfiles, refreshUserProfiles]);
+  }, [selected, freeText, inputValues, activeUserProfile, activeUP, canSubmit]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && prompt.trim()) {
+    if (e.key === "Enter" && !e.shiftKey && canSubmit()) {
       e.preventDefault();
       run();
     }
   };
 
+  const setInput = (name: string, value: string) => {
+    setInputValues(prev => ({ ...prev, [name]: value }));
+  };
+
   return (
     <div className="modus-prompt">
-      <div className="modus-prompt-label">configure</div>
-      <p className="modus-prompt-hint">
-        create agents, edit profiles, set up actions, or change any MO configuration
-      </p>
+      {/* ── Prompt selector ── */}
+      {prompts.length > 1 && (
+        <div className="modus-prompt-selector">
+          {prompts.map(p => (
+            <button
+              key={p.name}
+              className={`modus-prompt-preset ${selectedPrompt === p.name ? "modus-prompt-preset--active" : ""}`}
+              onClick={() => setSelectedPrompt(p.name)}
+              title={p.description}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Label + hint ── */}
+      {selected && (
+        <>
+          {prompts.length <= 1 && (
+            <div className="modus-prompt-label">{selected.label}</div>
+          )}
+          {selected.description && (
+            <p className="modus-prompt-hint">{selected.description}</p>
+          )}
+        </>
+      )}
 
       {/* ── Running: inline MiniSession ── */}
       {phase === "running" && sessionId && (
         <div className="modus-prompt-running">
           <MiniSession sessionId={sessionId} onNavigate={onSelectSession} />
-          <button
-            className="modus-prompt-cancel"
-            onClick={() => setPhase("idle")}
-          >
+          <button className="modus-prompt-cancel" onClick={() => setPhase("idle")}>
             dismiss
           </button>
         </div>
@@ -155,12 +218,9 @@ export function ModusPrompt({ onSelectSession }: Props) {
       {/* ── Done state ── */}
       {phase === "done" && (
         <div className="modus-prompt-done">
-          <span className="modus-prompt-done-text">done — configuration updated</span>
+          <span className="modus-prompt-done-text">done</span>
           {sessionId && (
-            <button
-              className="modus-prompt-link"
-              onClick={() => onSelectSession(sessionId)}
-            >
+            <button className="modus-prompt-link" onClick={() => onSelectSession(sessionId)}>
               view session
             </button>
           )}
@@ -172,31 +232,39 @@ export function ModusPrompt({ onSelectSession }: Props) {
         <div className="modus-prompt-error-row">
           <span className="modus-prompt-error">{error}</span>
           {sessionId && (
-            <button
-              className="modus-prompt-link"
-              onClick={() => onSelectSession(sessionId)}
-            >
+            <button className="modus-prompt-link" onClick={() => onSelectSession(sessionId)}>
               view session
             </button>
           )}
-          <button
-            className="modus-prompt-cancel"
-            onClick={() => setPhase("idle")}
-          >
+          <button className="modus-prompt-cancel" onClick={() => setPhase("idle")}>
             dismiss
           </button>
         </div>
       )}
 
-      {/* ── Input ── */}
-      {(phase === "idle" || phase === "done") && (
+      {/* ── Input area ── */}
+      {(phase === "idle" || phase === "done") && selected && (
         <div className="modus-prompt-input-row">
+          {/* Named inputs from prompt config */}
+          {(selected.inputs ?? []).map(inp => (
+            <input
+              key={inp.name}
+              className="modus-prompt-field"
+              value={inputValues[inp.name] ?? ""}
+              onChange={(e) => setInput(inp.name, e.target.value)}
+              placeholder={inp.placeholder ?? inp.name}
+              spellCheck={false}
+            />
+          ))}
+
+          {/* Free text textarea */}
           <textarea
+            ref={textareaRef}
             className="modus-prompt-textarea"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            value={freeText}
+            onChange={(e) => setFreeText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="describe what you want to set up or change..."
+            placeholder="additional context..."
             rows={2}
             spellCheck={false}
           />
@@ -204,7 +272,7 @@ export function ModusPrompt({ onSelectSession }: Props) {
             <button
               className="modus-prompt-run"
               onClick={run}
-              disabled={!prompt.trim()}
+              disabled={!canSubmit()}
             >
               run
             </button>
@@ -212,7 +280,7 @@ export function ModusPrompt({ onSelectSession }: Props) {
         </div>
       )}
 
-      {/* ── Recent modus-dev sessions ── */}
+      {/* ── Recent sessions ── */}
       {recentSessions.length > 0 && (
         <div className="modus-prompt-recent">
           <div className="modus-prompt-recent-label">recent</div>

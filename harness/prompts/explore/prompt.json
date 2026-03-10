@@ -1,0 +1,12 @@
+{
+  "label": "explore project",
+  "description": "Survey the project structure and report findings without modifying anything",
+  "profile": "modus-dev",
+  "icon": "search",
+  "inputs": [
+    { "name": "depth", "type": "select", "placeholder": "depth", "options": ["quick", "thorough", "audit"], "default": "quick" },
+    { "name": "areas", "type": "select", "placeholder": "focus area", "options": ["all", "frontend", "backend", "infra", "tests", "config"], "default": "all" },
+    { "name": "focus", "placeholder": "specific thing to look for?", "required": false }
+  ],
+  "tags": ["dashboard", "setup"]
+}

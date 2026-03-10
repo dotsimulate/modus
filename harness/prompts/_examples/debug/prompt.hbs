@@ -1,0 +1,50 @@
+## Debug: {{project.name}}
+
+Something is broken. Find the cause and fix it.
+
+### Error / Symptom
+```
+{{error}}
+```
+
+{{#if input}}
+### Additional context
+{{input}}
+
+{{/if}}
+{{#ifCond scope "frontend"}}
+### Scope: Frontend
+Focus on UI components, styles, React state, and browser-side issues.
+{{/ifCond}}
+{{#ifCond scope "backend"}}
+### Scope: Backend
+Focus on API routes, database, server logic, and process errors.
+{{/ifCond}}
+{{#ifCond scope "infra"}}
+### Scope: Infrastructure
+Focus on build config, dependencies, env vars, and tooling.
+{{/ifCond}}
+
+### Recent changes
+```
+{{git "diff" "HEAD~1" "--stat"}}
+```
+
+```
+{{git "log" "--oneline" "-3"}}
+```
+
+### Approach
+1. **Read the error** — extract file paths, line numbers, and the actual failure
+2. **Read the code** — go to the exact location. Do not guess what it does.
+3. **Add logs** — if the cause isn't obvious, add `console.log` at key points
+4. **Read the output** — run it, check the logs, confirm your theory
+5. **Fix** — make the minimal change that resolves the root cause
+
+### Rules
+- Never theorize without reading the code first
+- Never guess at runtime values — log them
+- Minimal fix only — don't refactor adjacent code
+- If stuck after 3 attempts, write a summary of what you tried and what you found
+
+*Generated {{date}}*

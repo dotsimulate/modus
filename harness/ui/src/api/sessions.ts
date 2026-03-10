@@ -258,6 +258,15 @@ export async function browsePath(path?: string): Promise<import("./types").Brows
   return res.json();
 }
 
+// ── File Reader ──
+
+export async function readFileContent(path: string): Promise<string | null> {
+  const res = await fetch(`${API_BASE}/api/file-read?path=${encodeURIComponent(path)}`, { headers: authHeaders() });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.content ?? null;
+}
+
 // ── Event Stream (SSE) ──
 
 /**

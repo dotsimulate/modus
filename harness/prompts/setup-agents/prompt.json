@@ -1,0 +1,11 @@
+{
+  "label": "set up agents",
+  "description": "Create agent profiles tailored to this project",
+  "profile": "modus-dev",
+  "icon": "users",
+  "inputs": [
+    { "name": "archetype", "type": "select", "placeholder": "start from", "options": ["custom", "reviewer", "runner", "monitor", "researcher", "writer"], "default": "custom" },
+    { "name": "description", "placeholder": "describe what you want your agents to do", "required": true }
+  ],
+  "tags": ["dashboard", "setup"]
+}

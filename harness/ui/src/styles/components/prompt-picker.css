@@ -1,0 +1,441 @@
+/**
+ * PromptPicker — dropdown for inserting prompt templates in live sessions.
+ */
+
+/* ── Trigger button ── */
+
+.prompt-picker-trigger {
+  background: none;
+  border: none;
+  width: 30px;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: calc(14px * var(--font-scale, 1));
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.12s ease;
+  flex-shrink: 0;
+}
+.prompt-picker-trigger:hover {
+  color: var(--text);
+}
+
+/* ── Dropdown container ── */
+
+.prompt-picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 6px;
+  min-width: 280px;
+  max-width: 360px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  z-index: 100;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.prompt-picker-header {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 8px 10px 4px;
+}
+
+/* ── Prompt list ── */
+
+.prompt-picker-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.prompt-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 7px 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+.prompt-picker-item:hover {
+  background: var(--bg-hover);
+}
+
+/* Skill items: row layout with preview button on right */
+.prompt-picker-item--skill {
+  flex-direction: row;
+  align-items: center;
+  padding: 0;
+  cursor: default;
+}
+.prompt-picker-item-main {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 7px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.prompt-picker-preview-btn {
+  background: none;
+  border: none;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.12s ease;
+  flex-shrink: 0;
+}
+.prompt-picker-preview-btn:hover {
+  color: var(--text-tertiary);
+}
+
+.prompt-picker-item-label {
+  font-family: var(--font-mono);
+  font-size: calc(12px * var(--font-scale, 1));
+  color: var(--text-secondary);
+}
+.prompt-picker-item:hover .prompt-picker-item-label {
+  color: var(--text);
+}
+
+.prompt-picker-item-desc {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.prompt-picker-empty {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
+  padding: 10px;
+}
+
+.prompt-picker-divider {
+  margin: 2px 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Toggle inputs ── */
+
+.prompt-picker-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px;
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+.prompt-picker-toggle input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-active);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+}
+.prompt-picker-toggle input[type="checkbox"]:checked {
+  border-color: var(--text-tertiary);
+  background: var(--text-tertiary);
+}
+.prompt-picker-toggle input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.prompt-picker-toggle:hover {
+  color: var(--text);
+}
+
+/* ── Select button row ── */
+
+.prompt-picker-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 10px;
+  padding: 2px 0;
+}
+.prompt-picker-select-label {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+}
+.prompt-picker-select-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.prompt-picker-select-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  background: var(--bg-surface);
+  border: none;
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+.prompt-picker-select-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.prompt-picker-select-btn.active {
+  color: var(--text);
+  background: var(--bg-hover);
+  box-shadow: inset 0 -1px 0 var(--border-focus);
+}
+
+/* ── Input form ── */
+
+.prompt-picker-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 0 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.prompt-picker-desc {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-tertiary);
+  padding: 0 10px;
+  line-height: 1.4;
+}
+
+.prompt-picker-input {
+  margin: 0 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.12s ease;
+}
+.prompt-picker-input:focus {
+  border-color: var(--border-active);
+}
+.prompt-picker-input::placeholder {
+  color: var(--text-muted);
+}
+
+.prompt-picker-textarea {
+  margin: 0 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+  line-height: 1.4;
+  transition: border-color 0.12s ease;
+}
+.prompt-picker-textarea:focus {
+  border-color: var(--border-active);
+}
+.prompt-picker-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.prompt-picker-error {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--error-soft);
+  padding: 0 10px;
+}
+
+/* ── Actions ── */
+
+.prompt-picker-actions {
+  display: flex;
+  gap: 6px;
+  padding: 2px 8px 0;
+  align-items: center;
+}
+
+.prompt-picker-btn {
+  background: none;
+  border: 1px solid var(--border-active);
+  border-radius: 3px;
+  padding: 4px 12px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.prompt-picker-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-focus);
+}
+.prompt-picker-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.prompt-picker-btn--send {
+  color: var(--success);
+  border-color: var(--success);
+}
+.prompt-picker-btn--send:hover:not(:disabled) {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+/* ── Token estimate ── */
+
+.prompt-picker-tokens {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  min-width: 50px;
+}
+
+/* ── Footer (search + cancel) ── */
+
+.prompt-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 6px;
+  border-top: 1px solid var(--border);
+}
+
+.prompt-picker-search {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 4px 2px;
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text);
+  outline: none;
+}
+.prompt-picker-search::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── Skill preview ── */
+
+.prompt-picker-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 0 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.prompt-picker-preview-content {
+  font-size: calc(11px * var(--font-scale, 1));
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  padding: 0 10px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+/* Compact markdown overrides for preview */
+.prompt-picker-preview-content p { margin: 0 0 4px; }
+.prompt-picker-preview-content h1,
+.prompt-picker-preview-content h2,
+.prompt-picker-preview-content h3,
+.prompt-picker-preview-content h4 {
+  font-size: calc(11px * var(--font-scale, 1));
+  margin: 8px 0 4px;
+}
+.prompt-picker-preview-content ul,
+.prompt-picker-preview-content ol {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+.prompt-picker-preview-content li { margin: 1px 0; }
+.prompt-picker-preview-content code {
+  font-size: calc(10px * var(--font-scale, 1));
+  padding: 1px 3px;
+}
+.prompt-picker-preview-content .code-block {
+  margin: 6px 0;
+}
+.prompt-picker-preview-content .code-block code {
+  font-size: calc(10px * var(--font-scale, 1));
+  line-height: 1.4;
+}
+.prompt-picker-preview-content .code-block pre {
+  padding: 8px 10px;
+}
+.prompt-picker-preview-content blockquote {
+  margin: 4px 0;
+  padding: 2px 10px;
+}
+.prompt-picker-preview-content hr {
+  margin: 8px 0;
+}
+.prompt-picker-preview-content strong {
+  color: var(--text-secondary);
+}
+
+/* ── Close / back button ── */
+
+.prompt-picker-close {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.12s ease;
+  flex-shrink: 0;
+}
+.prompt-picker-close:hover {
+  color: var(--text);
+}
