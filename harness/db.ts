@@ -885,6 +885,70 @@ export function storageStats(): { project: string; sessions: number; events: num
   `).all() as any[];
 }
 
+// ── User Stats ──
+
+export type SessionStats = {
+  totals: { sessions: number; cost: number; messages: number; firstSession: number | null; lastSession: number | null };
+  byProject: { project: string; sessions: number; cost: number; messages: number }[];
+  byProfile: { profile: string; sessions: number; cost: number; messages: number }[];
+  byModel: { model: string; sessions: number; cost: number }[];
+  daily: { day: string; sessions: number; cost: number }[];
+  topSessions: { id: string; preview: string; cost: number; messages: number; profile: string | null; cwd: string | null }[];
+};
+
+export function getSessionStats(userProfile?: string): SessionStats {
+  const base = `tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'`;
+  const upFilter = userProfile ? ` AND (user_profile = ? OR user_profile IS NULL)` : "";
+  const params: any[] = userProfile ? [userProfile] : [];
+
+  const totals = db.prepare(`
+    SELECT COUNT(*) as sessions, COALESCE(SUM(total_cost_usd), 0) as cost,
+           COALESCE(SUM(message_count), 0) as messages,
+           MIN(created_at) as firstSession, MAX(last_message_at) as lastSession
+    FROM sessions WHERE ${base}${upFilter}
+  `).get(...params) as any;
+
+  const byProject = db.prepare(`
+    SELECT COALESCE(cwd, '(none)') as project, COUNT(*) as sessions,
+           COALESCE(SUM(total_cost_usd), 0) as cost, COALESCE(SUM(message_count), 0) as messages
+    FROM sessions WHERE ${base}${upFilter}
+    GROUP BY cwd ORDER BY cost DESC LIMIT 20
+  `).all(...params) as any[];
+
+  const byProfile = db.prepare(`
+    SELECT COALESCE(profile, '(default)') as profile, COUNT(*) as sessions,
+           COALESCE(SUM(total_cost_usd), 0) as cost, COALESCE(SUM(message_count), 0) as messages
+    FROM sessions WHERE ${base}${upFilter}
+    GROUP BY profile ORDER BY cost DESC LIMIT 20
+  `).all(...params) as any[];
+
+  const byModel = db.prepare(`
+    SELECT COALESCE(model, '(unknown)') as model, COUNT(*) as sessions,
+           COALESCE(SUM(total_cost_usd), 0) as cost
+    FROM sessions WHERE ${base}${upFilter}
+    GROUP BY model ORDER BY cost DESC LIMIT 10
+  `).all(...params) as any[];
+
+  // Daily activity for last 60 days
+  const since = Date.now() - 60 * 86_400_000;
+  const dailyParams = [...params, since];
+  const daily = db.prepare(`
+    SELECT DATE(created_at / 1000, 'unixepoch') as day, COUNT(*) as sessions,
+           COALESCE(SUM(total_cost_usd), 0) as cost
+    FROM sessions WHERE ${base}${upFilter} AND created_at > ?
+    GROUP BY day ORDER BY day
+  `).all(...dailyParams) as any[];
+
+  // Top 5 most expensive sessions
+  const topSessions = db.prepare(`
+    SELECT id, preview, total_cost_usd as cost, message_count as messages, profile, cwd
+    FROM sessions WHERE ${base}${upFilter}
+    ORDER BY total_cost_usd DESC LIMIT 5
+  `).all(...params) as any[];
+
+  return { totals, byProject, byProfile, byModel, daily, topSessions };
+}
+
 // ── Startup Cleanup ──
 // Mark orphaned running/starting/idle/error sessions as done (harness restarted while they were active)
 db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'idle', 'error')`);

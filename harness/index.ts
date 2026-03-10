@@ -29,7 +29,7 @@ import {
   getDraft, setDraft,
   updateSessionTitle,
   getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
-  pruneSessionEvents, pruneAllSessionEvents, storageStats,
+  pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats,
 } from "./db";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
@@ -1120,6 +1120,12 @@ app.get("/api/file/raw", async (c) => {
 
 app.get("/api/stats/storage", (c) => {
   return c.json(storageStats());
+});
+
+app.get("/api/stats/sessions", (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const userProfile = params.get("userProfile") ?? undefined;
+  return c.json(getSessionStats(userProfile));
 });
 
 app.post("/api/prune", (c) => {

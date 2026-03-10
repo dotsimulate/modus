@@ -176,6 +176,23 @@ export async function branchSessionApi(sourceId: string, seq: number): Promise<s
   return data.sessionId;
 }
 
+// ── Stats ──
+
+export type SessionStats = {
+  totals: { sessions: number; cost: number; messages: number; firstSession: number | null; lastSession: number | null };
+  byProject: { project: string; sessions: number; cost: number; messages: number }[];
+  byProfile: { profile: string; sessions: number; cost: number; messages: number }[];
+  byModel: { model: string; sessions: number; cost: number }[];
+  daily: { day: string; sessions: number; cost: number }[];
+  topSessions: { id: string; preview: string; cost: number; messages: number; profile: string | null; cwd: string | null }[];
+};
+
+export async function fetchSessionStats(userProfile?: string): Promise<SessionStats> {
+  const params = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : "";
+  const res = await fetch(`${API_BASE}/api/stats/sessions${params}`, { headers: authHeaders() });
+  return res.json();
+}
+
 // ── Scoped queries ──
 
 /** Fetch sessions with optional user profile scoping and action filter */

@@ -1,0 +1,214 @@
+/**
+ * Stats widget — KPI numbers, activity chart, breakdowns.
+ */
+
+/* ── Container ── */
+.stats-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0 8px;
+}
+
+/* ── KPI row ── */
+.stats-kpi-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.stats-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 52px;
+}
+
+.stats-kpi-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.stats-kpi-value--streak {
+  color: var(--warning);
+}
+
+.stats-kpi-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── Sections ── */
+.stats-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stats-section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── Activity chart (30-day bar chart) ── */
+.stats-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+}
+
+.stats-chart-bar {
+  flex: 1;
+  min-width: 0;
+  background: var(--border-active);
+  border-radius: 1px;
+  transition: background 0.12s ease;
+}
+
+.stats-chart-bar:hover {
+  background: var(--text-dim);
+}
+
+/* ── Tabs ── */
+.stats-tabs {
+  display: flex;
+  gap: 0;
+}
+
+.stats-tab {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 4px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.stats-tab:hover {
+  color: var(--text-dim);
+}
+
+.stats-tab--active {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+/* ── Breakdown rows ── */
+.stats-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stats-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.stats-row:last-child {
+  border-bottom: none;
+}
+
+.stats-row-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 80px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.stats-row--session .stats-row-name {
+  flex: 1;
+  max-width: none;
+  min-width: 0;
+}
+
+.stats-row-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.stats-row-cost {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  width: 48px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── Horizontal bar ── */
+.stats-hbar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  min-width: 40px;
+}
+
+.stats-hbar-fill {
+  height: 100%;
+  background: var(--border-active);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ── Model tags ── */
+.stats-model-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stats-model-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.stats-model-count {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .stats-kpi-row {
+    gap: 16px;
+  }
+  .stats-kpi-value {
+    font-size: 15px;
+  }
+  .stats-row-name {
+    max-width: 100px;
+  }
+}
