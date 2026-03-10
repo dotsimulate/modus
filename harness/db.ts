@@ -949,6 +949,39 @@ export function getSessionStats(userProfile?: string): SessionStats {
   return { totals, byProject, byProfile, byModel, daily, topSessions };
 }
 
+// ── Time-Period Cost Stats ──
+
+export type PeriodCosts = {
+  today: { cost: number; sessions: number; messages: number };
+  week: { cost: number; sessions: number; messages: number };
+  month: { cost: number; sessions: number; messages: number };
+};
+
+export function getPeriodCosts(userProfile?: string): PeriodCosts {
+  const now = Date.now();
+  const todayStart = now - (now % 86_400_000);
+  const weekStart = now - 7 * 86_400_000;
+  const monthStart = now - 30 * 86_400_000;
+
+  const base = `tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'`;
+  const upFilter = userProfile ? ` AND (user_profile = ? OR user_profile IS NULL)` : "";
+
+  const query = (since: number) => {
+    const params: any[] = userProfile ? [userProfile, since] : [since];
+    return db.prepare(`
+      SELECT COALESCE(SUM(total_cost_usd), 0) as cost, COUNT(*) as sessions,
+             COALESCE(SUM(message_count), 0) as messages
+      FROM sessions WHERE ${base}${upFilter} AND created_at > ?
+    `).get(...params) as any;
+  };
+
+  return {
+    today: query(todayStart),
+    week: query(weekStart),
+    month: query(monthStart),
+  };
+}
+
 // ── Startup Cleanup ──
 // Mark orphaned running/starting/idle/error sessions as done (harness restarted while they were active)
 db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'idle', 'error')`);

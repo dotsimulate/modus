@@ -23,10 +23,10 @@ export {
   createSession, sendMessage, stopSessionApi, switchSessionProfile,
   updateSessionConfig, respondToPermission,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
-  fetchSessionStats, browsePath, subscribeEvents, branchSessionApi,
+  fetchSessionStats, fetchAccountInfo, browsePath, subscribeEvents, branchSessionApi,
 } from "./sessions";
 
-export type { SessionStats } from "./sessions";
+export type { SessionStats, AccountInfo } from "./sessions";
 
 // Actions
 export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences, reloadActionsApi, addTagApi, removeTagApi } from "./actions";
