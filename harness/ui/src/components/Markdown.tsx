@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import hljs from "highlight.js/lib/core";
 import { memo, useState, type ReactElement } from "react";
+import { useFileViewer } from "../providers/FileViewerProvider";
 
 // Register languages — core set for dev/AI chat
 import javascript from "highlight.js/lib/languages/javascript";
@@ -101,6 +102,17 @@ function CopyButton({ text }: { text: string }) {
 const remarkPlugins = [remarkGfm];
 const rehypePlugins = [rehypeRaw];
 
+function isLocalFilePath(href: string): boolean {
+  if (!href) return false;
+  // Absolute unix paths, home-dir paths, or relative paths without a protocol
+  if (/^https?:\/\//i.test(href)) return false;
+  if (/^mailto:/i.test(href)) return false;
+  if (href.startsWith("/") || href.startsWith("~/")) return true;
+  // Looks like a file path (contains a slash or extension, no protocol)
+  if (!href.includes("://") && (href.includes("/") || /\.\w{1,6}$/.test(href))) return true;
+  return false;
+}
+
 const markdownComponents: Record<string, any> = {
   pre({ children }: { children?: React.ReactNode }) {
     const child = children as ReactElement<any>;
@@ -128,9 +140,23 @@ const markdownComponents: Record<string, any> = {
 };
 
 export const Markdown = memo(function Markdown({ content }: { content: string }) {
+  const { openFile } = useFileViewer();
+
+  function handleClick(e: React.MouseEvent<HTMLDivElement>) {
+    const target = (e.target as HTMLElement).closest("a");
+    if (!target) return;
+    const href = target.getAttribute("href");
+    if (!href || !isLocalFilePath(href)) return;
+    e.preventDefault();
+    // Strip anchor fragment (#L63 etc) before opening
+    openFile(href.replace(/#.*$/, ""));
+  }
+
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
-      {content}
-    </ReactMarkdown>
+    <div onClick={handleClick}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 });

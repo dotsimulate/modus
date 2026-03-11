@@ -15,6 +15,16 @@ const CLAUDE_MODELS: ModelInfo[] = [
   { id: "claude-haiku-4-5", owned_by: "anthropic" },
 ];
 
+const GEMINI_MODELS: ModelInfo[] = [
+  { id: "auto-gemini-3", owned_by: "google" },
+  { id: "gemini-2.5-pro", owned_by: "google" },
+  { id: "gemini-2.5-flash", owned_by: "google" },
+  { id: "gemini-2.5-flash-preview", owned_by: "google" },
+  { id: "gemini-3.1-flash", owned_by: "google" },
+  { id: "gemini-3-pro-preview", owned_by: "google" },
+  { id: "gemini-3-flash-preview", owned_by: "google" },
+];
+
 /** Read models from Codex CLI's local cache (~/.codex/models_cache.json). */
 function readCodexModelsCache(): ModelInfo[] {
   try {
@@ -68,6 +78,10 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
     return readCodexModelsCache();
   }
 
+  if (provider === "gemini-cli") {
+    return GEMINI_MODELS;
+  }
+
   const { url, apiKey } = getBaseURL(provider);
   const modelsUrl = url.replace(/\/+$/, "") + "/models";
 
@@ -81,7 +95,11 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
     throw new Error(`${provider}: ${res.status} — ${body.slice(0, 200)}`);
   }
 
-  const json = await res.json();
-  const data = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+  const json: unknown = await res.json();
+  const data = Array.isArray(json)
+    ? json
+    : (json && typeof json === "object" && "data" in json && Array.isArray(json.data))
+      ? json.data
+      : [];
   return data.map((m: any) => ({ id: m.id ?? m.name, owned_by: m.owned_by }));
 }

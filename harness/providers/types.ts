@@ -18,7 +18,7 @@ export type ProviderToolGroup = {
 export type ProviderCapabilities = {
   name: string;
   label: string;
-  family: "claude-code" | "codex" | "pi-agent";
+  family: "claude-code" | "codex" | "gemini-cli" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
   builtInToolMode: "explicit" | "event-derived";

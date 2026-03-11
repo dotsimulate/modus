@@ -21,13 +21,16 @@ import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
 import { UserSettingsModal } from "./components/UserSettingsModal";
 import { createEmptyAgentConfig } from "./components/AgentConfig";
+import { FileViewerProvider } from "./providers/FileViewerProvider";
 
 function App() {
   return (
     <AuthProvider>
       <ProfileProvider>
         <SessionProvider>
-          <AppShell />
+          <FileViewerProvider>
+            <AppShell />
+          </FileViewerProvider>
         </SessionProvider>
       </ProfileProvider>
     </AuthProvider>

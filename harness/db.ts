@@ -156,6 +156,7 @@ export type SessionRow = {
   id: string;
   preview: string;
   profile: string | null;
+  user_profile: string | null;
   provider: string | null;
   model: string | null;
   status: string;

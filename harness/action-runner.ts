@@ -1157,7 +1157,7 @@ export function startNewExecution(actionName: string): { ok: boolean; executionI
 
 // ── Session Trigger Matching ──
 
-function matchesRound(spec: number | string, actual: number): boolean {
+function matchesRound(spec: number | `every:${number}` | `after:${number}`, actual: number): boolean {
   if (typeof spec === "number") return actual === spec;
   if (typeof spec === "string") {
     if (spec.startsWith("every:")) {
@@ -1207,7 +1207,7 @@ export function onSessionEvent(
     if (typeof event === "string" && typeof on === "string") {
       // Flat events: "archived", "deleted"
       matched = event === on;
-    } else if (typeof event === "object" && typeof on === "object") {
+    } else if (typeof event === "object" && typeof on === "object" && typeof event.round === "number") {
       // Round-based events
       if (event.role === on.role && event.at === on.at && matchesRound(on.round, event.round)) {
         matched = true;

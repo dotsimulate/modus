@@ -25,5 +25,14 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  "include": [
+    "./*.ts",
+    "./providers/**/*.ts",
+    "./actions/**/*.ts"
+  ],
+  "exclude": [
+    "./ui",
+    "./node_modules"
+  ]
 }

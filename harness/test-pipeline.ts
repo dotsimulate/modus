@@ -190,9 +190,11 @@ describe("type shapes", () => {
       previousStepResult: null,
       attempt: 2,
       lastVerifyError: "SVG too small",
+      log: () => {},
       artifactDir: () => "/tmp/test-action/output/exec-42/run-1",
       artifactPath: (f: string) => `/tmp/test-action/output/exec-42/run-1/${f}`,
       artifact: (n: string) => `/tmp/test-action/output/exec-42/run-1/${n}`,
+      svgToPngBase64: () => null,
     };
     expect(ctx.attempt).toBe(2);
     expect(ctx.executionId).toBe(42);
@@ -317,6 +319,7 @@ describe("type shapes", () => {
         name: "test", description: "test", enabled: true,
         agentProfile: "default", trigger: { type: "manual" },
       },
+      actionDir: "/tmp/test-action",
       activeExecutions: new Map([[1, exec]]),
       lastRunAt: Date.now(),
       nextRunAt: null,
@@ -333,6 +336,7 @@ describe("type shapes", () => {
         name: "test", description: "test", enabled: true,
         agentProfile: "default", trigger: { type: "manual" },
       },
+      actionDir: "/tmp/test-action",
       activeExecutions: new Map(),
       lastRunAt: null,
       nextRunAt: null,

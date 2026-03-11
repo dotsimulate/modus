@@ -11,7 +11,7 @@ import { fetchProviderModels } from "../api";
 import type { ProviderModel, AgentConfigState } from "../api";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
-import { isCodexProvider, isPiProvider, mcpToolGroups, toSdkToolConfig, type ToolStates } from "../tools";
+import { isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
 
 export type { AgentConfigState };
 
@@ -97,7 +97,7 @@ export function AgentConfig({
   };
 
   const updateProvider = (provider: string) => {
-    const switchingToolFamilies = isPiProvider(config.provider || profileProvider) !== isPiProvider(provider || profileProvider);
+    const switchingToolFamilies = providerToolFamily(config.provider || profileProvider) !== providerToolFamily(provider || profileProvider);
     update({
       provider,
       model: "",

@@ -4,7 +4,7 @@ import type { Profile, McpServerConfig, ProviderModel } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
-import { isPiProvider, type ToolStates } from "../tools";
+import { providerToolFamily, type ToolStates } from "../tools";
 
 type Props = {
   profiles: Profile[];
@@ -250,7 +250,7 @@ function ProfileForm({
   const previousProviderRef = useRef(provider);
 
   // Fetch models when provider changes — clear model if it doesn't exist in new list
-  // Also reset tool states when switching between Claude and PI (different tool names)
+  // Reset tool states when switching between provider tool families.
   useEffect(() => {
     const providerChanged = previousProviderRef.current !== provider;
     previousProviderRef.current = provider;
@@ -267,9 +267,9 @@ function ProfileForm({
       }
     }).catch(() => setProviderModels([])).finally(() => setModelsLoading(false));
     // Reset tool selections — Claude and PI use different tool namespaces
-    const wasPi = isPiProvider(profile.provider);
-    const isPi = isPiProvider(provider);
-    if (wasPi !== isPi) setToolStates({});
+    const previousFamily = providerToolFamily(profile.provider);
+    const nextFamily = providerToolFamily(provider);
+    if (previousFamily !== nextFamily) setToolStates({});
   }, [provider]);
 
   const handleSave = async () => {
