@@ -14,7 +14,10 @@ import type { ActiveSession, MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
-import { getGlobalConfig, getProfile, getUserProfile, resolveProfilePrompt, type PermissionPolicy, type Profile } from "../profiles";
+import {
+  getGlobalConfig, getProfile, getUserProfile, resolveProfilePrompt,
+  type McpServerConfig, type PermissionPolicy, type Profile,
+} from "../profiles";
 import { isAbsolute, join } from "path";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
 import { homedir } from "os";
@@ -47,7 +50,7 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
   ],
   builtInToolMode: "event-derived",
   supportsMcp: true,
-  mcpSupport: "stdio-only",
+  mcpSupport: "full",
   nonToolSignals: ["reasoning", "todo_list", "file_change"],
   permissionModel: {
     mode: "runtime-native",
@@ -106,6 +109,53 @@ function resolveMcpEnv(env: Record<string, string> | undefined, serverName: stri
     }
   }
   return resolved;
+}
+
+function buildCodexEnv(extraEnv: Record<string, string>): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) merged[key] = value;
+  }
+  return { ...merged, ...extraEnv };
+}
+
+function codexBearerEnvName(serverName: string): string {
+  return `CODEX_MCP_BEARER_${serverName.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase()}`;
+}
+
+function buildRemoteCodexMcpServer(
+  name: string,
+  config: Extract<McpServerConfig, { type: "http" | "sse" }>,
+  env: Record<string, string>,
+): CodexConfigObject | null {
+  if (config.type === "sse") {
+    console.warn(`[codex] Skipping MCP server "${name}" — Codex MCP wiring expects streamable HTTP, not SSE.`);
+    return null;
+  }
+
+  const serverConfig: CodexConfigObject = {
+    url: config.url,
+  };
+
+  const authHeader = Object.entries(config.headers ?? {}).find(
+    ([key, value]) => key.toLowerCase() === "authorization" && /^Bearer\s+/i.test(value),
+  );
+  if (authHeader) {
+    const envName = codexBearerEnvName(name);
+    env[envName] = authHeader[1].replace(/^Bearer\s+/i, "");
+    serverConfig.bearer_token_env_var = envName;
+  }
+
+  const unsupportedHeaders = Object.keys(config.headers ?? {}).filter(
+    (key) => key.toLowerCase() !== "authorization",
+  );
+  if (unsupportedHeaders.length > 0) {
+    console.warn(
+      `[codex] MCP server "${name}" has unsupported HTTP headers for Codex CLI and they will be ignored: ${unsupportedHeaders.join(", ")}`,
+    );
+  }
+
+  return serverConfig;
 }
 
 // ── Codex Rules File (.rules) ──
@@ -278,14 +328,14 @@ function resolveCodexRuntimeSettings(
   return { approvalPolicy, sandboxMode, webSearchMode };
 }
 
-function buildCodexConfig(ctx: TurnContext): CodexConfigObject | undefined {
+function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?: Record<string, string> } {
   const { opts, profile } = ctx;
   const globalConfig = getGlobalConfig(ctx.session.cwd);
   const mergedMcp = {
     ...(globalConfig.mcpServers ?? {}),
     ...(profile?.mcpServers ?? {}),
   };
-  if (Object.keys(mergedMcp).length === 0) return undefined;
+  if (Object.keys(mergedMcp).length === 0) return {};
 
   // Resolve relative --directory args to absolute (same as claude-code provider)
   const harnessRoot = join(import.meta.dir, "..");
@@ -345,29 +395,44 @@ function buildCodexConfig(ctx: TurnContext): CodexConfigObject | undefined {
   }
 
   const mcpServers: CodexConfigObject = {};
+  const extraEnv: Record<string, string> = {};
   for (const [name, config] of Object.entries(mergedMcp)) {
-    if (!("command" in config)) {
-      console.warn(`[codex] Skipping MCP server "${name}" — Codex MCP wiring currently supports stdio servers only.`);
+    if ("command" in config) {
+      const serverConfig: CodexConfigObject = {
+        command: config.command,
+      };
+      if (config.args?.length) serverConfig.args = config.args;
+      const env = resolveMcpEnv(config.env, name);
+      if (env && Object.keys(env).length > 0) serverConfig.env = env;
+      mcpServers[name] = serverConfig;
       continue;
     }
 
-    const serverConfig: CodexConfigObject = {
-      command: config.command,
-    };
-    if (config.args?.length) serverConfig.args = config.args;
-    const env = resolveMcpEnv(config.env, name);
-    if (env && Object.keys(env).length > 0) serverConfig.env = env;
-    mcpServers[name] = serverConfig;
+    const remoteConfig = buildRemoteCodexMcpServer(name, config, extraEnv);
+    if (remoteConfig) mcpServers[name] = remoteConfig;
   }
 
-  return Object.keys(mcpServers).length > 0 ? { mcp_servers: mcpServers } : undefined;
+  return {
+    config: Object.keys(mcpServers).length > 0 ? { mcp_servers: mcpServers } : undefined,
+    env: Object.keys(extraEnv).length > 0 ? buildCodexEnv(extraEnv) : undefined,
+  };
 }
 
 function createCodexClient(ctx: TurnContext, apiKey: string | undefined): Codex {
+  const { config, env } = buildCodexConfig(ctx);
   return new Codex({
     apiKey,
-    config: buildCodexConfig(ctx),
+    config,
+    env,
   });
+}
+
+function resolveCodexApiKey(): string | undefined {
+  return resolveSecret("CODEX_API_KEY")
+    ?? resolveSecret("OPENAI_API_KEY")
+    ?? process.env.CODEX_API_KEY
+    ?? process.env.OPENAI_API_KEY
+    ?? undefined;
 }
 
 // ── Event Translation ──
@@ -550,12 +615,7 @@ export function createCodexProvider(): SessionProvider {
       const { session, opts, profile: profileDef } = ctx;
 
       // Resolve API key — Codex uses CODEX_API_KEY or OAuth
-      const apiKey = resolveSecret("CODEX_API_KEY")
-        ?? resolveSecret("OPENAI_API_KEY")
-        ?? process.env.CODEX_API_KEY
-        ?? process.env.OPENAI_API_KEY
-        ?? undefined;
-
+      const apiKey = resolveCodexApiKey();
       const codex = createCodexClient(ctx, apiKey);
 
       const { approvalPolicy, sandboxMode, webSearchMode } = resolveCodexRuntimeSettings(profileDef, {
@@ -647,6 +707,9 @@ export function createCodexProvider(): SessionProvider {
 
       updateSessionStatus(session.sessionId, "running");
 
+      // Rebuild the Codex client so next turns pick up live MCP/profile changes.
+      state.codex = createCodexClient(ctx, resolveCodexApiKey());
+
       const input = buildCodexInput(content, ctx);
       runTurn(ctx, state, input, true, true).catch((err) => {
         console.error(`[codex] sendMessage error for ${session.sessionId}:`, err);
@@ -730,12 +793,7 @@ export function createCodexProvider(): SessionProvider {
       state.threadOptions.sandboxMode = runtime.sandboxMode;
       state.threadOptions.webSearchMode = runtime.webSearchMode;
 
-      const apiKey = resolveSecret("CODEX_API_KEY")
-        ?? resolveSecret("OPENAI_API_KEY")
-        ?? process.env.CODEX_API_KEY
-        ?? process.env.OPENAI_API_KEY
-        ?? undefined;
-      state.codex = createCodexClient(ctx, apiKey);
+      state.codex = createCodexClient(ctx, resolveCodexApiKey());
     },
   };
 }

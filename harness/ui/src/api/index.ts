@@ -45,6 +45,10 @@ export { fetchMemories } from "./memories";
 export { fetchPrompts, renderPromptApi, reloadPromptsApi } from "./prompts";
 export type { PromptListItem, PromptInput, RenderResult } from "./prompts";
 
+// Moves
+export { fetchMoves, activateMoveApi } from "./moves";
+export type { MoveInput, MoveListItem, ActivateMoveResult } from "./moves";
+
 // All types
 export type {
   ToolCall, SubTask, Attachment, Message, PendingPermission, SessionStatus, Session, AgentConfigState,

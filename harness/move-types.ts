@@ -1,0 +1,196 @@
+/**
+ * Move Types — shared contracts for the move system.
+ *
+ * Moves are the user-facing invocation primitive in MO:
+ *   - Agent profiles define HOW an agent behaves
+ *   - Actions define WHEN automation runs
+ *   - Moves define WHAT the user wants done right now
+ *
+ * Each move is a directory: .modus/moves/<name>/ containing:
+ *   - move.json   → MoveConfig
+ *   - context.ts  → MoveModule (optional gather + onSubmit)
+ *   - prompt.hbs  → template (optional, inline prompt is fine)
+ *
+ * Execution modes:
+ *   - inline:     current agent handles it, blocking until submit/completion
+ *   - branch:     spawn a sibling session, return a link/card
+ *   - background: fire-and-forget with persisted status and later recall
+ */
+
+// ── Move Config (on-disk definition) ──
+
+export interface MoveConfig {
+  name: string;
+  label: string;
+  description: string;
+  icon?: string;
+
+  // ── User inputs (form fields before execution) ──
+  inputs?: MoveInput[];
+
+  // ── Submission contract ──
+  schema?: Record<string, unknown>;    // full JSON Schema for harness validation
+  schemaHint?: string;                 // compact shape shown to the model
+
+  submit?: {
+    required?: boolean;                // agent must call modus_submit
+    retryOnInvalid?: boolean;          // return validation errors for retry
+    maxAttempts?: number;              // cap invalid submissions (default 3)
+  };
+
+  // ── Execution mode ──
+  mode?: "inline" | "branch" | "background";  // default: "inline"
+
+  // ── Session behavior ──
+  session?: {
+    profileOverride?: string | null;   // swap agent profile for this move
+    settingsOverride?: Record<string, unknown>;
+    afterSubmit?: "continue" | "end" | `switch:${string}`;
+  };
+
+  // ── Prompt (inline or external via prompt.hbs) ──
+  prompt?: string | null;
+
+  // ── Agent profile for branch/background modes ──
+  agentProfile?: string;
+
+  // ── Metadata ──
+  enabled?: boolean;
+  tags?: string[];
+}
+
+// ── Move Input (user form field) ──
+
+export interface MoveInput {
+  name: string;
+  label?: string;
+  type: "text" | "textarea" | "select" | "toggle" | "number";
+  options?: string[] | string;   // literal array or template var ref "{{agentProfiles}}"
+  required?: boolean;
+  default?: unknown;
+  placeholder?: string;
+}
+
+// ── Move Module (context.ts exports) ──
+
+export interface MoveModule {
+  gather?(ctx: MoveContext): Promise<Record<string, unknown>>;
+  onSubmit?(
+    ctx: MoveContext,
+    data: Record<string, unknown>,
+    inputs: Record<string, unknown>,
+  ): Promise<SubmitResult>;
+}
+
+// ── Move Context (passed to gather/onSubmit) ──
+
+export interface MoveContext {
+  moveName: string;
+  sessionId: string;
+  session: {
+    lastAssistantText: string;
+    seq: number;
+    profile: string | undefined;
+    exchangeCount: number;
+  };
+  cwd: string;
+  userProfile: string | undefined;
+  db: MoveDB;
+  run: (cmd: string) => Promise<string>;
+  harness: HarnessBridge;
+}
+
+// ── Harness Bridge (server-side operations available to onSubmit) ──
+
+export interface HarnessBridge {
+  createSession: (opts: {
+    profile: string;
+    prompt: string;
+    cwd?: string;
+    userProfile?: string;
+  }) => Promise<string>;
+  sendMessage: (sessionId: string, content: string) => Promise<void>;
+  triggerAction: (actionName: string) => Promise<void>;
+  notify: (spec: { channel: string; body: string }) => Promise<void>;
+}
+
+// ── Move DB (read-only queries available to context.ts) ──
+
+export interface MoveDB {
+  listSessions(limit?: number): SessionRef[];
+  getSession(id: string): SessionRef | null;
+  searchSessions(query: string, limit?: number): SearchRef[];
+  getMoveHistory(moveName: string, limit?: number): MoveRun[];
+}
+
+export interface SessionRef {
+  id: string;
+  preview: string;
+  profile: string | null;
+  status: string;
+  lastMessageAt: number;
+}
+
+export interface SearchRef {
+  sessionId: string;
+  snippet: string;
+  profile: string | null;
+}
+
+export interface MoveRun {
+  id: number;
+  moveName: string;
+  sessionId: string;
+  mode: string;
+  status: string;
+  summary: string | null;
+  createdAt: number;
+  completedAt: number | null;
+  spawnedSessionId: string | null;
+}
+
+// ── Submit Result (returned by onSubmit) ──
+
+export interface SubmitResult {
+  message?: string;
+  notify?: { channel: string; body: string };
+  error?: string;
+}
+
+// ── Move Token (server-side state for active contracts) ──
+
+export interface MoveToken {
+  token: string;
+  sessionId: string;
+  moveName: string;
+  mode: "inline" | "branch" | "background";
+  schema: Record<string, unknown> | undefined;
+  inputs: Record<string, unknown>;
+  gatheredContext: Record<string, unknown>;
+  createdAt: number;
+  ttl: number;                         // ms — default 10 minutes
+  status: "pending" | "submitted" | "invalid" | "completed" | "expired";
+  attempts: number;
+  maxAttempts: number;
+  moveRunId: number | null;            // DB row for tracking
+  spawnedSessionId: string | null;     // for branch/background modes
+}
+
+// ── Activation Request (from UI/API) ──
+
+export interface ActivateMoveOpts {
+  moveName: string;
+  sessionId: string;
+  inputs: Record<string, unknown>;
+  cwd: string;
+  userProfile?: string;
+}
+
+// ── Activation Result ──
+
+export interface ActivateMoveResult {
+  token: string;
+  mode: "inline" | "branch" | "background";
+  spawnedSessionId?: string;           // for branch/background
+  moveRunId: number;
+}

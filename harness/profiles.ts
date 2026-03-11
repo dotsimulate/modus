@@ -172,6 +172,19 @@ export type GlobalConfig = {
   notificationChannels?: Record<string, NotificationChannel>;
 };
 
+function getBuiltInMcpServers(): Record<string, McpServerConfig> {
+  const port = Number(process.env.HARNESS_PORT ?? 3777);
+  const token = process.env.HARNESS_TOKEN;
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  return {
+    modus: {
+      type: "http",
+      url: `http://127.0.0.1:${port}/api/mcp/modus`,
+      ...(headers ? { headers } : {}),
+    },
+  };
+}
+
 // ── User Profiles ──
 // Scoped views of the harness — each profile filters projects, agent profiles, memory.
 // Config lives in profiles/users/. Runtime state lives in profiles/state/.
@@ -327,12 +340,23 @@ export function deleteProfile(name: string, cwd?: string): boolean {
 /** Read the global config — merges project-local MCP servers when cwd is provided */
 export function getGlobalConfig(cwd?: string): GlobalConfig {
   const base = readJson<GlobalConfig>(join(PROFILES_DIR, "_global.json")) ?? {};
-  if (!cwd) return base;
+  const builtInMcpServers = getBuiltInMcpServers();
+  if (!cwd) {
+    return {
+      ...base,
+      mcpServers: { ...builtInMcpServers, ...base.mcpServers },
+    };
+  }
   const proj = readJson<GlobalConfig>(projectGlobalPath(cwd));
-  if (!proj) return base;
+  if (!proj) {
+    return {
+      ...base,
+      mcpServers: { ...builtInMcpServers, ...base.mcpServers },
+    };
+  }
   return {
     ...base,
-    mcpServers: { ...base.mcpServers, ...proj.mcpServers },
+    mcpServers: { ...builtInMcpServers, ...base.mcpServers, ...proj.mcpServers },
     providerDefaults: { ...base.providerDefaults, ...proj.providerDefaults },
     notificationChannels: { ...base.notificationChannels, ...proj.notificationChannels },
   };

@@ -1,0 +1,623 @@
+/**
+ * Move Runner — loads, activates, and processes moves.
+ *
+ * Moves are the user-facing invocation primitive:
+ *   user invokes → gather context → render prompt → inject into session → agent submits → side effects
+ *
+ * Three execution modes:
+ *   - inline:     message injected into current session, agent handles it now
+ *   - branch:     spawn a sibling session with move prompt, return link
+ *   - background: fire-and-forget session with persisted status
+ *
+ * Token management is in-memory with TTL expiry.
+ * Execution records are persisted to DB for recall.
+ */
+
+import { readFileSync, readdirSync, existsSync } from "fs";
+import { join } from "path";
+import type {
+  MoveConfig, MoveModule, MoveContext, MoveToken,
+  ActivateMoveOpts, ActivateMoveResult, SubmitResult,
+  MoveDB, HarnessBridge, MoveRun,
+} from "./move-types";
+import {
+  getActiveSession, queueMessage, startSession,
+} from "./session-manager";
+import {
+  listSessions as dbListSessions, getSession as dbGetSession,
+  searchSessions as dbSearchSessions,
+} from "./db";
+import {
+  insertMoveRun, updateMoveRun, getMoveRuns,
+} from "./move-db";
+import { logActivity } from "./activity";
+import { triggerAction } from "./action-runner";
+
+// ── Constants ──
+
+const MODUS_MOVES_DIR = ".modus/moves";
+const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
+const DEFAULT_MAX_ATTEMPTS = 3;
+const TOKEN_CLEANUP_INTERVAL_MS = 60_000;  // sweep every 60s
+
+// ── Token Store (in-memory) ──
+
+const tokenStore = new Map<string, MoveToken>();
+
+// Periodic cleanup of expired tokens
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, tok] of tokenStore) {
+    if (tok.status === "completed" || tok.status === "expired") {
+      tokenStore.delete(key);
+    } else if (now - tok.createdAt > tok.ttl) {
+      tok.status = "expired";
+      tokenStore.delete(key);
+    }
+  }
+}, TOKEN_CLEANUP_INTERVAL_MS);
+
+// ── Move Loading ──
+
+function movesDir(cwd: string): string {
+  return join(cwd, MODUS_MOVES_DIR);
+}
+
+/** Load a single move config from disk */
+export function getMove(name: string, cwd: string): MoveConfig | null {
+  const configPath = join(movesDir(cwd), name, "move.json");
+  if (!existsSync(configPath)) return null;
+  try {
+    const raw = readFileSync(configPath, "utf-8");
+    const config: MoveConfig = JSON.parse(raw);
+    config.name = name; // enforce directory name as canonical
+    return config;
+  } catch (err) {
+    console.error(`[move-runner] Failed to load move "${name}":`, err);
+    return null;
+  }
+}
+
+/** List all available moves for a CWD */
+export function listMoves(cwd: string): MoveConfig[] {
+  const dir = movesDir(cwd);
+  if (!existsSync(dir)) return [];
+  const moves: MoveConfig[] = [];
+  try {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const config = getMove(entry.name, cwd);
+      if (config && config.enabled !== false) moves.push(config);
+    }
+  } catch {
+    // directory doesn't exist or isn't readable
+  }
+  return moves;
+}
+
+/** Load move module (context.ts) if it exists */
+async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | null> {
+  const modulePath = join(movesDir(cwd), name, "context.ts");
+  if (!existsSync(modulePath)) return null;
+  try {
+    const mod = await import(modulePath);
+    return mod as MoveModule;
+  } catch (err) {
+    console.error(`[move-runner] Failed to load context.ts for move "${name}":`, err);
+    return null;
+  }
+}
+
+/** Load external prompt template if it exists */
+function loadPromptTemplate(name: string, cwd: string): string | null {
+  const templatePath = join(movesDir(cwd), name, "prompt.hbs");
+  if (!existsSync(templatePath)) return null;
+  try {
+    return readFileSync(templatePath, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+// ── Token Generation ──
+
+function generateToken(): string {
+  // Short, opaque, URL-safe
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 16);
+}
+
+// ── Context Builder ──
+
+function buildMoveContext(
+  moveName: string,
+  sessionId: string,
+  cwd: string,
+  userProfile: string | undefined,
+): MoveContext {
+  const active = getActiveSession(sessionId);
+
+  return {
+    moveName,
+    sessionId,
+    session: {
+      lastAssistantText: active?.lastAssistantText ?? "",
+      seq: active?.seq ?? 0,
+      profile: active?.profile,
+      exchangeCount: active?.exchangeCount ?? 0,
+    },
+    cwd,
+    userProfile,
+    db: buildMoveDB(moveName, cwd),
+    run: async (cmd: string): Promise<string> => {
+      const proc = Bun.spawn(["sh", "-c", cmd], { cwd, stdout: "pipe", stderr: "pipe" });
+      const out = await new Response(proc.stdout).text();
+      return out.trim();
+    },
+    harness: buildHarnessBridge(cwd, userProfile),
+  };
+}
+
+function buildMoveDB(moveName: string, cwd: string): MoveDB {
+  return {
+    listSessions(limit = 20) {
+      return dbListSessions(limit).map((s) => ({
+        id: s.id,
+        preview: s.preview,
+        profile: s.profile,
+        status: s.status,
+        lastMessageAt: s.last_message_at,
+      }));
+    },
+    getSession(id: string) {
+      const s = dbGetSession(id);
+      if (!s) return null;
+      return {
+        id: s.id,
+        preview: s.preview,
+        profile: s.profile,
+        status: s.status,
+        lastMessageAt: s.last_message_at,
+      };
+    },
+    searchSessions(query: string, limit = 10) {
+      return dbSearchSessions(query, limit).map((h) => ({
+        sessionId: h.session_id,
+        snippet: h.snippet,
+        profile: h.profile,
+      }));
+    },
+    getMoveHistory(mn: string, limit = 10) {
+      return getMoveRuns(mn, limit);
+    },
+  };
+}
+
+function buildHarnessBridge(cwd: string, userProfile: string | undefined): HarnessBridge {
+  return {
+    async createSession(opts) {
+      const session = startSession({
+        prompt: opts.prompt,
+        profile: opts.profile,
+        cwd: opts.cwd ?? cwd,
+        userProfile: opts.userProfile ?? userProfile,
+      });
+      // Wait for real session ID
+      const start = Date.now();
+      while (session.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
+        await Bun.sleep(100);
+      }
+      return session.sessionId;
+    },
+    async sendMessage(sessionId, content) {
+      queueMessage(sessionId, content);
+    },
+    async triggerAction(actionName) {
+      await triggerAction(actionName);
+    },
+    async notify(spec) {
+      console.log(`[move-runner] notify requested on channel "${spec.channel}": ${spec.body}`);
+    },
+  };
+}
+
+// ── Prompt Rendering ──
+
+function renderPrompt(
+  config: MoveConfig,
+  inputs: Record<string, unknown>,
+  context: Record<string, unknown>,
+  token: string,
+): string {
+  // Load external template or use inline prompt
+  let template = config.prompt ?? "";
+  if (!template) {
+    // Try loading prompt.hbs from the move directory — we don't have cwd here,
+    // so the caller should resolve this. For now, build a default prompt.
+    template = buildDefaultPrompt(config);
+  }
+
+  // Simple {{key}} interpolation
+  const vars: Record<string, string> = {
+    token,
+    schema: config.schemaHint ?? (config.schema ? JSON.stringify(config.schema, null, 2) : "{}"),
+    moveName: config.name,
+    moveLabel: config.label,
+    moveDescription: config.description,
+  };
+
+  // Flatten inputs as input.* vars
+  for (const [k, v] of Object.entries(inputs)) {
+    vars[`input.${k}`] = String(v ?? "");
+  }
+
+  // Flatten context as context.* vars
+  for (const [k, v] of Object.entries(context)) {
+    vars[`context.${k}`] = typeof v === "string" ? v : JSON.stringify(v);
+  }
+
+  let rendered = template;
+  for (const [k, v] of Object.entries(vars)) {
+    rendered = rendered.replaceAll(`{{${k}}}`, v);
+  }
+
+  return rendered;
+}
+
+function buildDefaultPrompt(config: MoveConfig): string {
+  const parts: string[] = [];
+  parts.push(`## Move: ${config.label}`);
+  parts.push(config.description);
+  parts.push("");
+
+  if (config.schemaHint || config.schema) {
+    parts.push("### Expected output shape");
+    parts.push("```");
+    parts.push(config.schemaHint ?? JSON.stringify(config.schema, null, 2));
+    parts.push("```");
+    parts.push("");
+  }
+
+  if (config.submit?.required !== false) {
+    parts.push("### Submission");
+    parts.push("When you have completed this move, call the `modus_submit` tool with:");
+    parts.push("- `token`: `{{token}}`");
+    parts.push("- `data`: your structured output matching the schema above");
+    parts.push("");
+  }
+
+  return parts.join("\n");
+}
+
+// ── JSON Schema Validation (minimal, good enough for V1) ──
+
+function validateSchema(
+  data: Record<string, unknown>,
+  schema: Record<string, unknown>,
+): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  const props = (schema as any).properties ?? {};
+  const required: string[] = (schema as any).required ?? [];
+
+  // Check required fields
+  for (const field of required) {
+    if (data[field] === undefined || data[field] === null) {
+      errors.push(`Missing required field: ${field}`);
+    }
+  }
+
+  // Check types (shallow)
+  for (const [key, spec] of Object.entries(props) as [string, any][]) {
+    const val = data[key];
+    if (val === undefined) continue;
+
+    if (spec.type === "string" && typeof val !== "string") {
+      errors.push(`Field "${key}" must be a string`);
+    } else if (spec.type === "integer" && (typeof val !== "number" || !Number.isInteger(val))) {
+      errors.push(`Field "${key}" must be an integer`);
+    } else if (spec.type === "number" && typeof val !== "number") {
+      errors.push(`Field "${key}" must be a number`);
+    } else if (spec.type === "boolean" && typeof val !== "boolean") {
+      errors.push(`Field "${key}" must be a boolean`);
+    } else if (spec.type === "array" && !Array.isArray(val)) {
+      errors.push(`Field "${key}" must be an array`);
+    } else if (spec.type === "object" && (typeof val !== "object" || Array.isArray(val))) {
+      errors.push(`Field "${key}" must be an object`);
+    }
+
+    // Range checks
+    if (typeof val === "number") {
+      if (spec.minimum !== undefined && val < spec.minimum) {
+        errors.push(`Field "${key}" must be >= ${spec.minimum}`);
+      }
+      if (spec.maximum !== undefined && val > spec.maximum) {
+        errors.push(`Field "${key}" must be <= ${spec.maximum}`);
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ── Activate Move ──
+
+export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMoveResult | { error: string }> {
+  const { moveName, sessionId, inputs, cwd, userProfile } = opts;
+
+  // Load move config
+  const config = getMove(moveName, cwd);
+  if (!config) return { error: `Move not found: ${moveName}` };
+  if (config.enabled === false) return { error: `Move is disabled: ${moveName}` };
+
+  const mode = config.mode ?? "inline";
+
+  // Build context
+  const moveCtx = buildMoveContext(moveName, sessionId, cwd, userProfile);
+
+  // Call gather() if context.ts exists
+  let gatheredContext: Record<string, unknown> = {};
+  try {
+    const mod = await loadMoveModule(moveName, cwd);
+    if (mod?.gather) {
+      gatheredContext = await mod.gather(moveCtx);
+    }
+  } catch (err) {
+    console.error(`[move-runner] gather() failed for "${moveName}":`, err);
+    return { error: `gather() failed: ${err}` };
+  }
+
+  // Load external template if available
+  const externalTemplate = loadPromptTemplate(moveName, cwd);
+  const configWithTemplate = externalTemplate
+    ? { ...config, prompt: externalTemplate }
+    : config;
+
+  // Generate token
+  const token = generateToken();
+
+  // Create persisted execution record
+  const moveRunId = insertMoveRun({
+    moveName,
+    sessionId,
+    mode,
+    status: "pending",
+    inputs: JSON.stringify(inputs),
+    gatheredContext: JSON.stringify(gatheredContext),
+    token,
+  });
+
+  // Store token
+  const moveToken: MoveToken = {
+    token,
+    sessionId,
+    moveName,
+    mode,
+    schema: config.schema,
+    inputs,
+    gatheredContext,
+    createdAt: Date.now(),
+    ttl: DEFAULT_TTL_MS,
+    status: "pending",
+    attempts: 0,
+    maxAttempts: config.submit?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+    moveRunId,
+    spawnedSessionId: null,
+  };
+  tokenStore.set(token, moveToken);
+
+  // Render prompt
+  const prompt = renderPrompt(configWithTemplate, inputs, gatheredContext, token);
+
+  // Log activity
+  logActivity({
+    userProfile,
+    eventType: "move_activated",
+    sessionId,
+    summary: `Move activated: ${config.label} (${mode})`,
+    metadata: { moveName, mode, token },
+  });
+
+  // Execute based on mode
+  if (mode === "inline") {
+    // Inject prompt into current session
+    const active = getActiveSession(sessionId);
+    if (!active) return { error: `Session not active: ${sessionId}` };
+    queueMessage(sessionId, prompt);
+    return { token, mode, moveRunId };
+  }
+
+  if (mode === "branch" || mode === "background") {
+    // Spawn a new session with the move prompt
+    const profile = config.agentProfile ?? config.session?.profileOverride ?? undefined;
+    const spawned = startSession({
+      prompt,
+      profile: profile ?? undefined,
+      cwd,
+      userProfile,
+    });
+
+    // Wait for real session ID
+    const start = Date.now();
+    while (spawned.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
+      await Bun.sleep(100);
+    }
+
+    moveToken.spawnedSessionId = spawned.sessionId;
+
+    updateMoveRun(moveRunId, {
+      status: "running",
+      spawnedSessionId: spawned.sessionId,
+    });
+
+    return {
+      token,
+      mode,
+      spawnedSessionId: spawned.sessionId,
+      moveRunId,
+    };
+  }
+
+  return { error: `Unknown mode: ${mode}` };
+}
+
+// ── Handle Submit (called by modus_submit MCP tool) ──
+
+export async function handleSubmit(
+  token: string,
+  data: Record<string, unknown>,
+): Promise<{ ok: boolean; message?: string; error?: string; retry?: boolean }> {
+  const moveToken = tokenStore.get(token);
+
+  if (!moveToken) {
+    return { ok: false, error: "Invalid or expired token" };
+  }
+
+  if (moveToken.status === "completed") {
+    return { ok: false, error: "Move already completed" };
+  }
+
+  if (moveToken.status === "expired") {
+    return { ok: false, error: "Move token expired" };
+  }
+
+  // Check TTL
+  if (Date.now() - moveToken.createdAt > moveToken.ttl) {
+    moveToken.status = "expired";
+    tokenStore.delete(token);
+    updateMoveRun(moveToken.moveRunId!, { status: "expired" });
+    return { ok: false, error: "Move token expired" };
+  }
+
+  // Increment attempts
+  moveToken.attempts++;
+
+  // Validate against schema if present
+  if (moveToken.schema) {
+    const { valid, errors } = validateSchema(data, moveToken.schema);
+    if (!valid) {
+      const canRetry = moveToken.attempts < moveToken.maxAttempts;
+      moveToken.status = "invalid";
+      updateMoveRun(moveToken.moveRunId!, {
+        status: "invalid",
+        error: errors.join("; "),
+      });
+
+      if (canRetry) {
+        return {
+          ok: false,
+          error: `Validation failed: ${errors.join("; ")}`,
+          retry: true,
+        };
+      }
+      return {
+        ok: false,
+        error: `Validation failed after ${moveToken.attempts} attempts: ${errors.join("; ")}`,
+        retry: false,
+      };
+    }
+  }
+
+  // Load move config to get the CWD
+  // We stored the session ID, look up the active session to get cwd
+  const active = getActiveSession(moveToken.sessionId);
+  const cwd = active?.cwd ?? process.cwd();
+
+  // Call onSubmit() if context.ts exists
+  let submitResult: SubmitResult = {};
+  try {
+    const mod = await loadMoveModule(moveToken.moveName, cwd);
+    if (mod?.onSubmit) {
+      const ctx = buildMoveContext(
+        moveToken.moveName,
+        moveToken.sessionId,
+        cwd,
+        active?.userProfile,
+      );
+      submitResult = await mod.onSubmit(ctx, data, moveToken.inputs);
+    }
+  } catch (err) {
+    console.error(`[move-runner] onSubmit() failed for "${moveToken.moveName}":`, err);
+    updateMoveRun(moveToken.moveRunId!, {
+      status: "error",
+      error: String(err),
+    });
+    return { ok: false, error: `onSubmit() failed: ${err}` };
+  }
+
+  if (submitResult.error) {
+    updateMoveRun(moveToken.moveRunId!, {
+      status: "error",
+      error: submitResult.error,
+    });
+    return { ok: false, error: submitResult.error };
+  }
+
+  // Mark completed
+  moveToken.status = "completed";
+  updateMoveRun(moveToken.moveRunId!, {
+    status: "completed",
+    summary: submitResult.message ?? `Submitted ${Object.keys(data).length} fields`,
+    completedAt: Date.now(),
+  });
+
+  // Send notification if requested
+  if (submitResult.notify) {
+    console.log(
+      `[move-runner] notify requested on channel "${submitResult.notify.channel}": ${submitResult.notify.body}`,
+    );
+  }
+
+  // Log activity
+  logActivity({
+    userProfile: active?.userProfile,
+    eventType: "move_completed",
+    sessionId: moveToken.sessionId,
+    summary: `Move completed: ${moveToken.moveName}`,
+    metadata: {
+      moveName: moveToken.moveName,
+      mode: moveToken.mode,
+      token,
+      fields: Object.keys(data),
+    },
+  });
+
+  // Apply afterSubmit
+  const config = getMove(moveToken.moveName, cwd);
+  const after = config?.session?.afterSubmit ?? "continue";
+  if (after === "end") {
+    // The session should end — handled by caller
+  } else if (after.startsWith("switch:")) {
+    const targetProfile = after.slice("switch:".length);
+    // Profile switch is handled externally via session-manager
+    return {
+      ok: true,
+      message: submitResult.message ?? `Move completed. Switching to ${targetProfile}.`,
+    };
+  }
+
+  return {
+    ok: true,
+    message: submitResult.message ?? "Move completed successfully.",
+  };
+}
+
+// ── Token Queries ──
+
+export function getToken(token: string): MoveToken | undefined {
+  return tokenStore.get(token);
+}
+
+export function getActiveTokensForSession(sessionId: string): MoveToken[] {
+  const tokens: MoveToken[] = [];
+  for (const tok of tokenStore.values()) {
+    if (tok.sessionId === sessionId && tok.status === "pending") {
+      tokens.push(tok);
+    }
+  }
+  return tokens;
+}
+
+// ── Public API for move run history ──
+
+export { getMoveRuns } from "./move-db";

@@ -50,6 +50,7 @@ function AppShell() {
     activeSession, serverSessions,
     input, handleInputChange,
     send, stop, stopTask, newSession, selectSession, archiveSession,
+    refreshSessions,
     handlePermissionResponse, updateActiveSessionConfig, updateActiveSessionProfile,
     queuedMessage, cancelQueued, branchFromMessage,
   } = useSession();
@@ -292,6 +293,10 @@ function AppShell() {
                 sessionStatus={activeSession?.status ?? null}
                 disabled={harnessUp === false}
                 placeholder={ui.placeholder}
+                sessionId={activeSession?.id}
+                projectCwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
+                userProfile={activeUserProfile ?? undefined}
+                onMoveActivated={() => { refreshSessions(); }}
               />
             </div>
           </>
