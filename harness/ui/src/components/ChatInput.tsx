@@ -188,9 +188,8 @@ export function ChatInput({
 
     // "/" on empty input → open prompt picker
     if (e.key === "/" && !value.trim()) {
-      console.log("[DBG] / on empty → incrementing forceOpen");
       e.preventDefault();
-      setPickerForceOpen((n) => { console.log("[DBG] forceOpen:", n, "→", n+1); return n + 1; });
+      setPickerForceOpen((n) => n + 1);
       return;
     }
 

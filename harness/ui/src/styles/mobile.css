@@ -5,7 +5,7 @@
  * other files. Only breakpoint and mobile-specific adjustments belong here.
  */
 
-/* ── Menu button (mobile only) ── */
+/* ── Menu button (mobile only — now replaced by MoLogo tap) ── */
 .menu-btn {
   background: none;
   border: none;
@@ -16,6 +16,9 @@
   align-items: center;
 }
 
+/* ── Sidebar nav — hidden on desktop ── */
+.sidebar-nav { display: none; }
+
 /* ── Sidebar Overlay ── */
 .sidebar-overlay {
   display: none;
@@ -23,6 +26,10 @@
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
+  /* Hide top-nav links — MoLogo opens sidebar nav instead */
+  .top-nav-links { display: none; }
+  .menu-btn { display: none; }
+
   .sidebar {
     position: fixed;
     left: 0;
@@ -48,6 +55,9 @@
   .sidebar.open {
     transform: translateX(0);
   }
+  .sidebar.nav-only {
+    display: flex;
+  }
 
   .sidebar-overlay {
     display: block;
@@ -57,8 +67,30 @@
     background: rgba(0, 0, 0, 0.6);
   }
 
-  .menu-btn {
+  /* Sidebar nav links — mobile only */
+  .sidebar-nav {
     display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 12px 14px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-nav-link {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: calc(12px * var(--font-scale, 1));
+    letter-spacing: 0.05em;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+  .sidebar-nav-link:hover { color: var(--text-dim); }
+  .sidebar-nav-link.active {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
   }
 
   .message { padding: 0 16px; max-width: 100%; }

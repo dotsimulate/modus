@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { MessageBubble } from "./MessageBubble";
+import { GitActivityItem } from "./GitActivityItem";
 import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
@@ -34,15 +35,21 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
   const hasMessages = messages.length > 0;
 
   const isNearBottom = useCallback((el: HTMLDivElement) => {
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
   }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = scrollRef.current;
     if (!el) return;
     autoScrollRef.current = true;
-    setShowScrollBtn(false);
-    el.scrollTo({ top: el.scrollHeight, behavior });
+    // Don't hide button eagerly — let syncScrollState hide it
+    // once the scroll actually lands. Prevents the button vanishing
+    // while the scroll silently fails on mobile.
+    el.scrollTop = el.scrollHeight;
+    // For smooth, also try scrollTo — but scrollTop is the reliable fallback
+    if (behavior === "smooth") {
+      el.scrollTo({ top: el.scrollHeight, behavior });
+    }
   }, []);
 
   const syncScrollState = useCallback(() => {
@@ -87,6 +94,21 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
     observer.observe(contentEl);
     return () => observer.disconnect();
   }, [scrollToBottom]);
+
+  // Mobile keyboards and address bars resize the visual viewport —
+  // re-pin to bottom when this happens so we don't lose position.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      if (autoScrollRef.current) {
+        const el = scrollRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      }
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
 
   // Streaming updates can change content without changing element size
   // immediately, so also pin on render while we are in sticky mode.
@@ -163,6 +185,12 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
               <div key={msg.id} className="system-divider">
                 <span>{msg.content}</span>
               </div>
+            ) : msg.role === "git" && msg.gitActivity ? (
+              showGitEvents ? (
+              <div key={msg.id} className="message message--git" data-role="git">
+                <GitActivityItem activity={msg.gitActivity} />
+              </div>
+              ) : null
             ) : (
               <div key={msg.id}>
                 <MessageBubble

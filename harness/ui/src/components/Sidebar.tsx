@@ -5,8 +5,11 @@ import type { SessionSetupState } from "./SessionSetup";
 import { SessionList } from "./sidebar/SessionList";
 import { SearchResults } from "./sidebar/SearchResults";
 import { ProfilePanel } from "./sidebar/ProfilePanel";
+import type { View } from "../views";
 
 type GroupMode = "time" | "agent";
+
+type NavLink = { view: View; label: string };
 
 type Props = {
   open: boolean;
@@ -29,6 +32,12 @@ type Props = {
   onCollapsedGroupsChange?: (groups: string[]) => void;
   activeUserProfileObj?: UserProfile | null;
   availableProviders?: string[];
+  /** Mobile nav links — rendered at top of sidebar when provided */
+  navLinks?: NavLink[];
+  currentView?: View;
+  onNavigate?: (view: View) => void;
+  /** When true, hide session-specific content (used on non-chat views) */
+  navOnly?: boolean;
 };
 
 export function Sidebar({
@@ -40,6 +49,7 @@ export function Sidebar({
   initialGroupMode, initialCollapsedGroups,
   onGroupModeChange, onCollapsedGroupsChange,
   activeUserProfileObj, availableProviders,
+  navLinks, currentView, onNavigate, navOnly,
 }: Props) {
   const [groupMode, setGroupMode] = useState<GroupMode>(initialGroupMode ?? "time");
   const [searchQuery, setSearchQuery] = useState("");
@@ -70,27 +80,43 @@ export function Sidebar({
   return (
     <>
       {open && <div className="sidebar-overlay" onClick={onClose} />}
-      <div className={`sidebar ${open ? "open" : ""} ${collapsed ? "collapsed" : ""}`}>
-        <div className="sidebar-header">
-          <button
-            className="sidebar-collapse-btn"
-            onClick={onToggleCollapse}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              {collapsed ? (
-                <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-              ) : (
-                <path d="M9 3L5 7l4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-              )}
-            </svg>
-          </button>
-          <button className="new-session-btn" onClick={onNewSession}>
-            {collapsed ? "+" : "+ new session"}
-          </button>
-        </div>
+      <div className={`sidebar ${open ? "open" : ""} ${collapsed ? "collapsed" : ""}${navOnly ? " nav-only" : ""}`}>
+        {navLinks && navLinks.length > 0 && (
+          <nav className="sidebar-nav">
+            {navLinks.map((nv) => (
+              <button
+                key={nv.view}
+                className={`sidebar-nav-link${currentView === nv.view ? " active" : ""}`}
+                onClick={() => { onNavigate?.(nv.view); onClose(); }}
+              >
+                {nv.label}
+              </button>
+            ))}
+          </nav>
+        )}
 
-        <ProfilePanel
+        {!navOnly && (
+          <>
+            <div className="sidebar-header">
+              <button
+                className="sidebar-collapse-btn"
+                onClick={onToggleCollapse}
+                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  {collapsed ? (
+                    <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  ) : (
+                    <path d="M9 3L5 7l4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  )}
+                </svg>
+              </button>
+              <button className="new-session-btn" onClick={onNewSession}>
+                {collapsed ? "+" : "+ new session"}
+              </button>
+            </div>
+
+            <ProfilePanel
           profiles={profiles}
           availableProviders={availableProviders}
           selectedProfile={selectedProfile}
@@ -153,6 +179,8 @@ export function Sidebar({
             />
           )}
         </div>
+          </>
+        )}
       </div>
     </>
   );

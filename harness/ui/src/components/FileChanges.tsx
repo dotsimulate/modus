@@ -335,7 +335,7 @@ export const FileChanges = memo(function FileChanges({ toolCalls }: Props) {
           ))}
         </div>
       </div>
-      <ChatFileViewer filePath={viewerPath} onClose={() => setViewerPath(null)} />
+      <ChatFileViewer path={viewerPath} onClose={() => setViewerPath(null)} />
     </div>
   );
 });

@@ -2,7 +2,8 @@
 title: Project UI (Themes & Fonts)
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: 9c6d78f
+lastCommit: 119f911
+covers: harness/project-ui.ts harness/ui/src/project-ui-theme.ts harness/ui/src/widgets/project-theme.widget.tsx harness/ui/src/styles/
 ---
 
 # Project UI — Themes & Fonts

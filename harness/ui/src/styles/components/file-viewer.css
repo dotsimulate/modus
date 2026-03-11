@@ -92,6 +92,73 @@
   margin-bottom: 0;
 }
 
+.fcv-directory {
+  padding: 10px 0 12px;
+}
+
+.fcv-directory-path {
+  padding: 0 14px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+
+.fcv-directory-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.fcv-directory-entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.fcv-directory-entry:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.fcv-directory-entry--parent {
+  font-family: var(--font-mono);
+}
+
+.fcv-directory-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dot-connected);
+  opacity: 0.9;
+}
+
+.fcv-directory-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.fcv-directory-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .fcv-table .diff-gutter {
   width: calc(var(--fcv-gutter-chars) * 0.68ch + 18px);
   min-width: calc(var(--fcv-gutter-chars) * 0.68ch + 18px);

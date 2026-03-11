@@ -71,6 +71,11 @@
   overflow: hidden;
 }
 
+/* On desktop, nav-only sidebar is invisible (only used on mobile) */
+.sidebar.nav-only {
+  display: none;
+}
+
 .sidebar .sidebar-sections,
 .sidebar .profile-panel {
   transition: opacity 0.1s ease;
@@ -133,6 +138,14 @@
 }
 .scroll-to-bottom:hover {
   color: var(--text-dim);
+}
+@media (pointer: coarse) {
+  .scroll-to-bottom.visible {
+    max-height: 44px;
+  }
+  .scroll-to-bottom-inner {
+    padding: 14px 32px;
+  }
 }
 
 /* Browser-native scroll anchoring: pins chat to bottom as content

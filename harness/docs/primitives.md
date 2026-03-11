@@ -2,7 +2,7 @@
 title: Core Primitives
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: 9c6d78f
+lastCommit: 119f911
 covers: harness/db.ts harness/session-manager.ts harness/index.ts
 ---
 
@@ -67,7 +67,7 @@ prompt. `"custom"` replaces it entirely.
 Define WHO is using the system. Scoping layer for visibility and defaults.
 
 **Key fields**: displayName, projects (array of paths), agentProfiles (visible
-agent names), defaultAgentProfile, provider, model, templateVars, memory
+agent names), defaultAgentProfile, provider, model, effort, templateVars, memory
 (scope + inheritGlobal), actions, dashboard.
 
 **Scoping**: user profile filters which agent profiles appear in the UI, which
