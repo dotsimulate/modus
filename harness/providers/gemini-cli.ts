@@ -6,7 +6,6 @@ import {
   GeminiEventType,
   MCPServerConfig,
   MessageBusType,
-  PolicyDecision,
   Scheduler,
   ToolConfirmationOutcome,
   type ConversationRecord,
@@ -16,6 +15,7 @@ import {
   type ToolConfirmationRequest,
   type CompletedToolCall,
 } from "@google/gemini-cli-core";
+import { CoreEvent, coreEvents } from "@google/gemini-cli-core/dist/src/utils/events.js";
 import { join } from "path";
 import { getSession, updateSessionStatus } from "../db";
 import { getGlobalConfig, resolveProfilePrompt, type McpServerConfig, type PermissionPolicy, type Profile } from "../profiles";
@@ -310,6 +310,48 @@ function isAbortError(error: unknown): boolean {
   return candidate.name === "AbortError" || candidate.message === "The operation was aborted.";
 }
 
+function emitGeminiProviderMessage(
+  ctx: TurnContext,
+  content: string,
+  severity: "info" | "warning" | "error" = "info",
+) {
+  const text = content.trim();
+  if (!text) return;
+  ctx.emitEvent({
+    type: "system",
+    subtype: "provider_message",
+    severity,
+    content: severity === "info" ? text : `${severity}: ${text}`,
+  });
+}
+
+function describeToolCall(toolCall: { name?: unknown; args?: unknown } | undefined): string {
+  const name = typeof toolCall?.name === "string" && toolCall.name ? toolCall.name : "unknown_tool";
+  const args = toolCall?.args;
+  if (args && typeof args === "object") {
+    const record = args as Record<string, unknown>;
+    if (typeof record.command === "string" && record.command.trim()) {
+      return `${name} (${record.command.trim().slice(0, 120)})`;
+    }
+    if (typeof record.path === "string" && record.path.trim()) {
+      return `${name} (${record.path.trim().slice(0, 120)})`;
+    }
+  }
+  return name;
+}
+
+function formatRetryDelay(delayMs: number | undefined): string {
+  if (!Number.isFinite(delayMs)) return "unknown delay";
+  if (delayMs! >= 1000) return `${(delayMs! / 1000).toFixed(delayMs! >= 10_000 ? 0 : 1)}s`;
+  return `${Math.round(delayMs!)}ms`;
+}
+
+function formatFeedbackMessage(message: string, error?: unknown): string {
+  const detail = extractErrorMessage(error, "").trim();
+  if (!detail || detail === message) return message;
+  return `${message}\n${detail}`;
+}
+
 async function loadResumedSessionData(config: Config, sessionId: string): Promise<ResumedSessionData | null> {
   const chatFiles = await config.storage.listProjectChatFiles();
   for (const chatFile of chatFiles) {
@@ -352,92 +394,152 @@ async function createGeminiRuntime(
     ...toolConfig,
   });
 
-  await config.initialize();
-
-  // ── Bridge Gemini MessageBus confirmations to harness permission UI ──
-  const policy: PermissionPolicy = profileDef?.permissionPolicy ?? "bypass";
-  const isBypass = policy === "bypass";
-  const messageBus = config.getMessageBus();
-
-  messageBus.subscribe(MessageBusType.TOOL_CONFIRMATION_REQUEST, async (request: ToolConfirmationRequest) => {
-    const toolName = request.toolCall?.name ?? "unknown_tool";
-    const correlationId = request.correlationId;
-
-    if (isBypass) {
-      // Auto-approve for bypass profiles
-      await messageBus.publish({
-        type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
-        correlationId,
-        confirmed: true,
-        outcome: ToolConfirmationOutcome.ProceedOnce,
-      });
-      return;
+  const cleanupFns: Array<() => void> = [];
+  const cleanup = () => {
+    while (cleanupFns.length > 0) {
+      try {
+        cleanupFns.pop()?.();
+      } catch {
+        // Ignore cleanup failures from third-party emitters.
+      }
     }
+  };
 
-    // Bridge to harness interactive permission UI
-    const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    ctx.emitEvent({
-      type: "system",
-      subtype: "permission_request",
-      requestId,
-      toolName,
-      toolInput: request.toolCall?.args ?? {},
-      interactive: false,
-      decisionReason: `${toolName} requires approval`,
-    });
+  try {
+    await config.initialize();
 
-    const result = await new Promise<{ behavior: "allow" | "deny"; message?: string }>((resolve) => {
-      session.pendingPermissions.set(requestId, {
-        resolve,
+    const policy: PermissionPolicy = profileDef?.permissionPolicy ?? "bypass";
+    const isBypass = policy === "bypass";
+    const messageBus = config.getMessageBus();
+
+    const onToolConfirmationRequest = async (request: ToolConfirmationRequest) => {
+      const toolName = request.toolCall?.name ?? "unknown_tool";
+      const correlationId = request.correlationId;
+
+      if (isBypass) {
+        await messageBus.publish({
+          type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          correlationId,
+          confirmed: true,
+          outcome: ToolConfirmationOutcome.ProceedOnce,
+        });
+        return;
+      }
+
+      const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      ctx.emitEvent({
+        type: "system",
+        subtype: "permission_request",
+        requestId,
         toolName,
-        input: request.toolCall?.args ?? {},
-        requestedAt: Date.now(),
+        toolInput: request.toolCall?.args ?? {},
+        interactive: false,
+        decisionReason: `${toolName} requires approval`,
       });
-    });
 
-    ctx.emitEvent({
-      type: "system",
-      subtype: "permission_resolved",
-      requestId,
-      behavior: result.behavior,
-    });
-    session.pendingPermissions.delete(requestId);
+      const result = await new Promise<{ behavior: "allow" | "deny"; message?: string }>((resolve) => {
+        session.pendingPermissions.set(requestId, {
+          resolve,
+          toolName,
+          input: request.toolCall?.args ?? {},
+          requestedAt: Date.now(),
+        });
+      });
 
-    if (result.behavior === "deny") {
-      await messageBus.publish({
-        type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
-        correlationId,
-        confirmed: false,
-        outcome: ToolConfirmationOutcome.Cancel,
+      ctx.emitEvent({
+        type: "system",
+        subtype: "permission_resolved",
+        requestId,
+        behavior: result.behavior,
       });
-    } else {
-      await messageBus.publish({
-        type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
-        correlationId,
-        confirmed: true,
-        outcome: ToolConfirmationOutcome.ProceedOnce,
-      });
+      session.pendingPermissions.delete(requestId);
+
+      if (result.behavior === "deny") {
+        await messageBus.publish({
+          type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          correlationId,
+          confirmed: false,
+          outcome: ToolConfirmationOutcome.Cancel,
+        });
+      } else {
+        await messageBus.publish({
+          type: MessageBusType.TOOL_CONFIRMATION_RESPONSE,
+          correlationId,
+          confirmed: true,
+          outcome: ToolConfirmationOutcome.ProceedOnce,
+        });
+      }
+    };
+
+    const onToolPolicyRejection = (message: { toolCall?: { name?: unknown; args?: unknown } }) => {
+      emitGeminiProviderMessage(
+        ctx,
+        `Gemini policy rejected ${describeToolCall(message.toolCall)}.`,
+        "warning",
+      );
+    };
+
+    const onMessageBusError = (error: unknown) => {
+      emitGeminiProviderMessage(
+        ctx,
+        extractErrorMessage(error, "Gemini message bus failed."),
+        "error",
+      );
+    };
+
+    const onUserFeedback = (payload: { severity: "info" | "warning" | "error"; message: string; error?: unknown }) => {
+      emitGeminiProviderMessage(ctx, formatFeedbackMessage(payload.message, payload.error), payload.severity);
+    };
+
+    const onRetryAttempt = (payload: { attempt: number; maxAttempts: number; delayMs: number; error?: string; model: string }) => {
+      const detail = payload.error ? `: ${payload.error}` : "";
+      emitGeminiProviderMessage(
+        ctx,
+        `Gemini retry ${payload.attempt}/${payload.maxAttempts} (${payload.model})${detail}. Retrying in ${formatRetryDelay(payload.delayMs)}.`,
+        "warning",
+      );
+    };
+
+    const onOauthDisplayMessage = (message: string) => {
+      emitGeminiProviderMessage(ctx, message, "info");
+    };
+
+    messageBus.subscribe(MessageBusType.TOOL_CONFIRMATION_REQUEST, onToolConfirmationRequest);
+    messageBus.subscribe(MessageBusType.TOOL_POLICY_REJECTION, onToolPolicyRejection as never);
+    messageBus.on("error", onMessageBusError);
+    cleanupFns.push(() => messageBus.unsubscribe(MessageBusType.TOOL_CONFIRMATION_REQUEST, onToolConfirmationRequest));
+    cleanupFns.push(() => messageBus.unsubscribe(MessageBusType.TOOL_POLICY_REJECTION, onToolPolicyRejection as never));
+    cleanupFns.push(() => messageBus.off("error", onMessageBusError));
+
+    coreEvents.on(CoreEvent.UserFeedback, onUserFeedback);
+    coreEvents.on(CoreEvent.RetryAttempt, onRetryAttempt);
+    coreEvents.on(CoreEvent.OauthDisplayMessage, onOauthDisplayMessage);
+    cleanupFns.push(() => coreEvents.off(CoreEvent.UserFeedback, onUserFeedback));
+    cleanupFns.push(() => coreEvents.off(CoreEvent.RetryAttempt, onRetryAttempt));
+    cleanupFns.push(() => coreEvents.off(CoreEvent.OauthDisplayMessage, onOauthDisplayMessage));
+
+    await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+
+    const client = config.getGeminiClient();
+    if (options.isResume) {
+      const resumed = await loadResumedSessionData(config, session.sessionId);
+      if (!resumed) {
+        throw new Error(`Gemini session ${session.sessionId} could not be resumed from local Gemini history.`);
+      }
+      await client.resumeChat(convertSessionToClientHistory(resumed.conversation.messages), resumed);
+    } else if (!client.isInitialized()) {
+      await client.initialize();
     }
-  });
 
-  await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+    state.config = config;
+    state.client = client;
+    state.availableTools = config.getToolRegistry().getAllToolNames();
 
-  const client = config.getGeminiClient();
-  if (options.isResume) {
-    const resumed = await loadResumedSessionData(config, session.sessionId);
-    if (!resumed) {
-      throw new Error(`Gemini session ${session.sessionId} could not be resumed from local Gemini history.`);
-    }
-    await client.resumeChat(convertSessionToClientHistory(resumed.conversation.messages), resumed);
-  } else if (!client.isInitialized()) {
-    await client.initialize();
+    return { client, model, cleanup };
+  } catch (error) {
+    cleanup();
+    throw error;
   }
-
-  state.config = config;
-  state.client = client;
-  state.availableTools = config.getToolRegistry().getAllToolNames();
-
-  return { client, model };
 }
 
 async function runTurn(
@@ -462,6 +564,7 @@ async function runTurn(
 
   let finalized = false;
   let queuedNext: MessageContent | null = null;
+  let cleanupRuntimeListeners: (() => void) | undefined;
 
   const finalizeSuccess = (usageMetadata: Record<string, any> | undefined) => {
     if (finalized) return;
@@ -574,7 +677,9 @@ async function runTurn(
   };
 
   try {
-    const { client, model } = await createGeminiRuntime(ctx, state, { isResume: options.isResume });
+    const runtime = await createGeminiRuntime(ctx, state, { isResume: options.isResume });
+    const { client, model } = runtime;
+    cleanupRuntimeListeners = runtime.cleanup;
 
     session.status = "running";
     updateSessionStatus(session.sessionId, "running");
@@ -832,6 +937,7 @@ async function runTurn(
     }
     finalizeError(extractErrorMessage(error, "Gemini provider failed to start."));
   } finally {
+    cleanupRuntimeListeners?.();
     try {
       state.client?.dispose();
     } catch {

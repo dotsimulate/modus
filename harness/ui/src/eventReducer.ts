@@ -158,6 +158,25 @@ function getLastSubMessage(msgs: Message[], agentToolId: string): Message | unde
 // ── System Events ──
 
 function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
+  if (m.subtype === "provider_message") {
+    const content = typeof m.content === "string"
+      ? m.content.trim()
+      : typeof m.message === "string"
+        ? m.message.trim()
+        : "";
+    if (!content) return s;
+    const last = s.messages[s.messages.length - 1];
+    if (last?.role === "system" && last.content === content) return s;
+    return {
+      ...s,
+      messages: [...s.messages, {
+        id: nextMsgId(),
+        role: "system",
+        content,
+        timestamp: ts,
+      }],
+    };
+  }
   if (m.subtype === "init") {
     const nextConfig = readAgentConfig(m.config);
     return {

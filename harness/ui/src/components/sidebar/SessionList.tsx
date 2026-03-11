@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import type { SessionInfo } from "../../api";
 import { SessionItem } from "./SessionItem";
 
-type GroupMode = "time" | "project";
+type GroupMode = "time" | "agent";
 
 type Props = {
   sessions: SessionInfo[];
@@ -15,27 +15,10 @@ type Props = {
   onCollapsedGroupsChange?: (groups: string[]) => void;
 };
 
-/** Match a session CWD to a known project path, or fall back to last segment */
-function projectLabel(cwd: string | null, projectPaths?: string[]): string {
-  if (!cwd) return "other";
-  // Normalize to forward slashes, strip trailing
-  const norm = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
-  if (projectPaths) {
-    for (const pp of projectPaths) {
-      const np = pp.replace(/\\/g, "/").replace(/\/+$/, "");
-      if (norm === np || norm.startsWith(np + "/")) {
-        return np.split("/").pop() ?? np;
-      }
-    }
-  }
-  const parts = norm.split("/").filter(Boolean);
-  return parts.pop() ?? "other";
-}
-
-function groupSessionsByProject(list: SessionInfo[], projectPaths?: string[]) {
+function groupSessionsByAgent(list: SessionInfo[]) {
   const map = new Map<string, SessionInfo[]>();
   for (const s of list) {
-    const label = projectLabel(s.cwd, projectPaths);
+    const label = s.profile ?? "no agent";
     if (!map.has(label)) map.set(label, []);
     map.get(label)!.push(s);
   }
@@ -90,8 +73,8 @@ export function SessionList({
     });
   }, [onCollapsedGroupsChange]);
 
-  const groups = groupMode === "project"
-    ? groupSessionsByProject(sessions, projectPaths)
+  const groups = groupMode === "agent"
+    ? groupSessionsByAgent(sessions)
     : groupSessionsByTime(sessions);
 
   return (

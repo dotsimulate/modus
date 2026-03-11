@@ -235,9 +235,30 @@ export type AccountInfo = {
   };
 };
 
+export type GeminiUsageInfo = {
+  available: boolean;
+  authType: string;
+  model: string;
+  checkedAt: number;
+  quota: {
+    remaining?: number;
+    limit?: number;
+    resetTime?: string;
+  };
+  tier?: string;
+  paidTier?: string;
+  error?: string;
+};
+
 export async function fetchAccountInfo(userProfile?: string): Promise<AccountInfo> {
   const params = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : "";
   const res = await fetch(`${API_BASE}/api/account${params}`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function fetchGeminiUsage(cwd?: string): Promise<GeminiUsageInfo> {
+  const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+  const res = await fetch(`${API_BASE}/api/gemini/usage${params}`, { headers: authHeaders() });
   return res.json();
 }
 

@@ -1,0 +1,27 @@
+/**
+ * Profiles View — agent grid, natural scroll with dashboard.
+ */
+
+.profiles-view {
+  position: relative;
+}
+
+.profiles-inner {
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.profiles-inner .dash-section {
+  padding: 0;
+}
+
+@media (max-width: 900px) {
+  .profiles-inner {
+    padding: 20px;
+  }
+}

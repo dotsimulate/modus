@@ -9,9 +9,7 @@ import { providerToolFamily, type ToolStates } from "../tools";
 type Props = {
   profiles: Profile[];
   onProfilesChange: () => void;
-  /** "new" = creating new profile, "edit" = editing existing */
-  mode?: "new" | "edit";
-  /** Which profile to load initially (edit mode) or duplicate from (new mode) */
+  mode?: "closed" | "new" | "edit";
   initialProfile?: string | null;
   onCancel?: () => void;
 };
@@ -29,7 +27,6 @@ function McpServersEditor({
   const [secretStatus, setSecretStatus] = useState<Record<string, boolean>>({});
   const [secretsPath, setSecretsPath] = useState("");
 
-  // Collect all $VAR references and check which are configured
   useEffect(() => {
     const vars: string[] = [];
     for (const cfg of Object.values(servers)) {
@@ -47,6 +44,7 @@ function McpServersEditor({
       setSecretsPath(r.secretsFile.replace(/^\/home\/[^/]+/, "~"));
     }).catch(() => {});
   }, [servers]);
+
   const entries = Object.entries(servers);
 
   const remove = (name: string) => {
@@ -225,7 +223,7 @@ function ProfileForm({
   isNew?: boolean;
 }) {
   const { availableProviders } = useProfiles();
-  const [name, setName] = useState(isNew && profile.name ? `${profile.name}-copy` : profile.name);
+  const [name, setName] = useState(profile.name);
   const [description, setDescription] = useState(profile.description);
   const [prompt, setPrompt] = useState(profile.prompt);
   const [promptMode, setPromptMode] = useState(profile.promptMode ?? "append");
@@ -249,8 +247,9 @@ function ProfileForm({
   const [saveError, setSaveError] = useState("");
   const previousProviderRef = useRef(provider);
 
-  // Fetch models when provider changes — clear model if it doesn't exist in new list
-  // Reset tool states when switching between provider tool families.
+  const enabledToolCount = Object.values(toolStates).filter((s) => s === "on").length;
+  const toolSummary = enabledToolCount === 0 ? "all" : `${enabledToolCount} selected`;
+
   useEffect(() => {
     const providerChanged = previousProviderRef.current !== provider;
     previousProviderRef.current = provider;
@@ -266,7 +265,6 @@ function ProfileForm({
         setModel("");
       }
     }).catch(() => setProviderModels([])).finally(() => setModelsLoading(false));
-    // Reset tool selections — Claude and PI use different tool namespaces
     const previousFamily = providerToolFamily(profile.provider);
     const nextFamily = providerToolFamily(provider);
     if (previousFamily !== nextFamily) setToolStates({});
@@ -294,203 +292,192 @@ function ProfileForm({
   };
 
   return (
-    <div className="profile-form">
-      {isNew && (
-        <label className="profile-field">
-          <span>name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-agent" />
-        </label>
-      )}
-      <label className="profile-field">
-        <span>description</span>
-        <input value={description} onChange={(e) => setDescription(e.target.value)} />
-      </label>
-      <label className="profile-field">
-        <span>prompt</span>
-        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} />
-      </label>
-      <div className="profile-field-row">
-        <label className="profile-field">
-          <span>provider</span>
-          <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-            <option value="">default (claude-code)</option>
-            {availableProviders
-              .filter((v) => v !== "claude-code")
-              .map((v) => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-          </select>
-        </label>
-        <label className="profile-field">
-          <span>model</span>
-          <SearchDropdown
-            value={model}
-            options={providerModels.map((m) => ({ value: m.id }))}
-            placeholder={modelsLoading ? "loading models..." : "select model"}
-            searchPlaceholder="search models..."
-            emptyLabel={modelsLoading ? "loading models..." : "no models found"}
-            onChange={setModel}
-          />
-          {!model && !modelsLoading && providerModels.length > 0 && (
-            <span className="profile-field-warn">required</span>
-          )}
-          {model && providerModels.length > 0 && !providerModels.some((m) => m.id === model) && (
-            <span className="profile-field-warn">not in provider's model list</span>
-          )}
-        </label>
-        <label className="profile-field">
-          <span>effort</span>
-          <select value={effort} onChange={(e) => setEffort(e.target.value)}>
-            <option value="">default</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-            <option value="max">max</option>
-          </select>
-        </label>
-        <label className="profile-field">
-          <span>max turns</span>
-          <input value={maxTurns} onChange={(e) => setMaxTurns(e.target.value)} placeholder="none" type="number" />
+    <div className="pf">
+      {/* Identity */}
+      <div className="pf-group">
+        {isNew && (
+          <label className="pf-field">
+            <span>name</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-agent" />
+          </label>
+        )}
+        <label className="pf-field">
+          <span>description</span>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} />
         </label>
       </div>
-      <div className="profile-field-row">
-        <label className="profile-field">
-          <span>prompt mode</span>
-          <select value={promptMode} onChange={(e) => setPromptMode(e.target.value as "custom" | "append")}>
-            <option value="append">append</option>
-            <option value="custom">custom</option>
-          </select>
+
+      {/* Runtime */}
+      <div className="pf-group">
+        <span className="pf-group-label">runtime</span>
+        <div className="pf-row">
+          <label className="pf-field">
+            <span>provider</span>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+              <option value="">claude-code</option>
+              {availableProviders
+                .filter((v) => v !== "claude-code")
+                .map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
+          <label className="pf-field">
+            <span>model</span>
+            <SearchDropdown
+              className="pf-search-dropdown"
+              value={model}
+              options={providerModels.map((m) => ({ value: m.id }))}
+              placeholder={modelsLoading ? "loading..." : "select model"}
+              searchPlaceholder="search models..."
+              emptyLabel={modelsLoading ? "loading..." : "no models"}
+              onChange={setModel}
+            />
+            {!model && !modelsLoading && providerModels.length > 0 && (
+              <span className="pf-warn">required</span>
+            )}
+          </label>
+        </div>
+        <div className="pf-row pf-row--3">
+          <label className="pf-field">
+            <span>effort</span>
+            <select value={effort} onChange={(e) => setEffort(e.target.value)}>
+              <option value="">default</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="max">max</option>
+            </select>
+          </label>
+          <label className="pf-field">
+            <span>max turns</span>
+            <input value={maxTurns} onChange={(e) => setMaxTurns(e.target.value)} placeholder="—" type="number" />
+          </label>
+          <label className="pf-field">
+            <span>prompt mode</span>
+            <select value={promptMode} onChange={(e) => setPromptMode(e.target.value as "custom" | "append")}>
+              <option value="append">append</option>
+              <option value="custom">custom</option>
+            </select>
+          </label>
+        </div>
+        <label className="pf-check">
+          <input type="checkbox" checked={loadProjectSettings} onChange={(e) => setLoadProjectSettings(e.target.checked)} />
+          <span>load CLAUDE.md</span>
         </label>
       </div>
-      <ToolGrid
-        mode="baseline"
-        states={toolStates}
-        onChange={setToolStates}
-        compact
-        provider={provider}
-      />
-      <label className="profile-checkbox">
-        <input type="checkbox" checked={loadProjectSettings} onChange={(e) => setLoadProjectSettings(e.target.checked)} />
-        <span>load CLAUDE.md</span>
-      </label>
 
-      <McpServersEditor servers={mcpServers} onChange={setMcpServers} />
+      {/* Prompt */}
+      <div className="pf-group">
+        <span className="pf-group-label">prompt</span>
+        <textarea
+          className="pf-prompt"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={10}
+          placeholder="system prompt..."
+        />
+      </div>
 
-      <div className="profile-form-actions">
-        <button className="profile-btn profile-btn--save" onClick={handleSave} disabled={saving || !description || !prompt || !model}>
+      {/* Tools */}
+      <div className="pf-group">
+        <div className="pf-group-head">
+          <span className="pf-group-label">tools</span>
+          <span className="pf-group-meta">{toolSummary}</span>
+        </div>
+        <ToolGrid
+          mode="baseline"
+          states={toolStates}
+          onChange={setToolStates}
+          compact
+          provider={provider}
+        />
+      </div>
+
+      {/* MCP */}
+      <div className="pf-group">
+        <span className="pf-group-label">mcp servers</span>
+        <McpServersEditor servers={mcpServers} onChange={setMcpServers} />
+      </div>
+
+      {/* Footer */}
+      <div className="pf-footer">
+        {saveError && <span className="pf-error">{saveError}</span>}
+        <span className="pf-spacer" />
+        <button className="apc-action" onClick={onCancel}>cancel</button>
+        {onDelete && (
+          <button className="apc-action pf-btn-delete" onClick={onDelete}>delete</button>
+        )}
+        <button
+          className="apc-action apc-action--primary"
+          onClick={handleSave}
+          disabled={saving || !description.trim() || !prompt.trim() || !model}
+        >
           {saving ? "saving..." : isNew ? "create" : "save"}
         </button>
-        {onDelete && (
-          <button className="profile-btn profile-btn--delete" onClick={onDelete}>delete</button>
-        )}
-        <button className="profile-btn" onClick={onCancel}>cancel</button>
       </div>
-      {saveError && <div className="profile-field-warn">{saveError}</div>}
     </div>
   );
 }
 
-// ── Profile Editor Panel ──
+// ── Profile Editor ──
 
 export function ProfileEditor({
   profiles,
   onProfilesChange,
-  mode = "new",
+  mode = "closed",
   initialProfile = null,
   onCancel,
 }: Props) {
   const { activeUserProfile, activeUP, activeCwd, refreshProfiles, refreshUserProfiles } = useProfiles();
-  const [selectedName, setSelectedName] = useState<string | null>(initialProfile);
-  // In "new" mode, we track whether the user has picked a source to duplicate from
-  const [duplicateSource, setDuplicateSource] = useState<string | null>(null);
 
-  // Sync when initialProfile changes from parent
-  useEffect(() => {
-    setSelectedName(initialProfile);
-    if (mode === "edit") setDuplicateSource(null);
-  }, [initialProfile, mode]);
-
+  const isOpen = mode !== "closed";
   const isNew = mode === "new";
-  const selected = profiles.find((p) => p.name === selectedName) ?? null;
+  const selected = profiles.find((p) => p.name === initialProfile) ?? null;
 
-  // The profile to show in the form
   const formProfile: Profile = isNew
-    ? (duplicateSource
-        ? { ...(profiles.find((p) => p.name === duplicateSource) ?? { name: "", description: "", prompt: "", tools: "all" as const }) }
-        : { name: "", description: "", prompt: "", tools: "all" as const })
+    ? { name: "", description: "", prompt: "", tools: "all" as const }
     : (selected ?? { name: "", description: "", prompt: "", tools: "all" as const });
 
   const handleSave = async (data: Omit<Profile, "name"> & { name?: string }) => {
-    const saveName = isNew ? (data.name ?? "untitled") : selectedName!;
+    const saveName = isNew ? (data.name ?? "untitled") : initialProfile!;
     const { name: _n, ...rest } = data as any;
     await saveProfileApi(saveName, rest, activeCwd);
-    // When creating a new profile, add it to the active user profile's agent list
     if (isNew && activeUserProfile && activeUP?.agentProfiles) {
       const updated = [...activeUP.agentProfiles, saveName];
       await patchUserProfileApi(activeUserProfile, { agentProfiles: updated });
     }
-    // Refresh both provider states so visibleProfiles updates immediately
     await Promise.all([refreshProfiles(), refreshUserProfiles()]);
     onProfilesChange();
   };
 
   const handleDelete = async () => {
-    if (!selectedName) return;
-    await deleteProfileApi(selectedName, activeCwd);
-    setSelectedName(null);
+    if (!initialProfile) return;
+    await deleteProfileApi(initialProfile, activeCwd);
     onProfilesChange();
   };
 
-  const handleListClick = (name: string) => {
-    if (isNew) {
-      // In new mode, clicking a profile duplicates its settings
-      setDuplicateSource(name);
-    } else {
-      setSelectedName(name);
-    }
-  };
-
-  const cancel = () => {
-    setSelectedName(null);
-    setDuplicateSource(null);
-    onCancel?.();
-  };
+  if (!isOpen) return null;
 
   return (
     <div className="profile-editor">
-      <div className="profile-list">
-        <div className="profile-list-label">
-          {isNew ? "duplicate from" : "edit profile"}
-        </div>
-        {profiles.map((p) => {
-          const isActive = isNew
-            ? p.name === duplicateSource
-            : p.name === selectedName;
-          return (
-            <button
-              key={p.name}
-              className={`profile-list-item ${isActive ? "profile-list-item--active" : ""}`}
-              onClick={() => handleListClick(p.name)}
-            >
-              <span className="profile-list-name">{p.name}</span>
-              <span className="profile-list-desc">{p.description}</span>
-            </button>
-          );
-        })}
+      <div className="profile-editor-header">
+        <span className="apc-name">{isNew ? "new agent" : initialProfile}</span>
+        <span className="apc-actions-spacer" />
+        <button className="apc-action" onClick={() => onCancel?.()}>close</button>
       </div>
-
-      {(isNew || selected) ? (
-        <ProfileForm
-          key={isNew ? `new-${duplicateSource ?? "blank"}` : selected!.name}
-          profile={formProfile}
-          onSave={handleSave}
-          onDelete={!isNew && selected ? handleDelete : undefined}
-          onCancel={cancel}
-          isNew={isNew}
-        />
-      ) : (
-        <div className="profile-empty">select a profile to edit</div>
-      )}
+      <div className="profile-editor-body">
+        {(isNew || selected) ? (
+          <ProfileForm
+            key={isNew ? "new" : selected!.name}
+            profile={formProfile}
+            onSave={handleSave}
+            onDelete={!isNew && selected ? handleDelete : undefined}
+            onCancel={() => onCancel?.()}
+            isNew={isNew}
+          />
+        ) : (
+          <div className="profile-empty">profile not found</div>
+        )}
+      </div>
     </div>
   );
 }

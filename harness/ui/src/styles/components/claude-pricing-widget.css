@@ -1,0 +1,287 @@
+/**
+ * Claude Pricing Widget — styles.
+ */
+
+.cpw-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0 8px;
+  /* Apply font scaling */
+  --widget-scale: var(--font-scale, 1);
+}
+
+/* ── Tabs ── */
+.cpw-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cpw-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--widget-scale));
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  margin-bottom: -1px;
+}
+
+.cpw-tab:hover {
+  color: var(--text-dim);
+}
+
+.cpw-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--text-dim);
+}
+
+/* ── Content ── */
+.cpw-content {
+  min-height: 120px;
+}
+
+/* ── Overview ── */
+.cpw-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cpw-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cpw-identity-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cpw-org {
+  font-family: var(--font-mono);
+  font-size: calc(13px * var(--widget-scale));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cpw-plan {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  font-weight: 500;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+}
+
+.cpw-plan--max { color: var(--warning); border-color: rgba(232, 155, 80, 0.2); }
+.cpw-plan--pro { color: var(--info); border-color: rgba(80, 144, 255, 0.2); }
+
+.cpw-email {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--widget-scale));
+  color: var(--text-muted);
+}
+
+.cpw-kpis {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.cpw-kpi {
+  display: flex;
+  flex-direction: column;
+  min-width: 60px;
+}
+
+.cpw-kpi-val {
+  font-family: var(--font-mono);
+  font-size: calc(18px * var(--widget-scale));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cpw-kpi-lbl {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cpw-periods {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.cpw-period {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  padding-right: 12px;
+}
+
+.cpw-period:last-child {
+  border-right: none;
+}
+
+.cpw-period:not(:first-child) {
+  padding-left: 12px;
+}
+
+.cpw-period-cost {
+  font-family: var(--font-mono);
+  font-size: calc(14px * var(--widget-scale));
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.cpw-period-lbl {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+/* ── History ── */
+.cpw-history {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cpw-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cpw-section-lbl {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cpw-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-raised);
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.cpw-toggle button {
+  background: none;
+  border: none;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.cpw-toggle button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.cpw-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 28px;
+  padding: 0 2px;
+}
+
+.cpw-chart-bar {
+  flex: 1;
+  background: var(--border-active);
+  border-radius: 1px;
+}
+
+.cpw-chart-bar--cost {
+  background: var(--syn-number);
+  opacity: 0.6;
+}
+
+.cpw-chart-bar:hover {
+  opacity: 1;
+  background: var(--text-dim);
+}
+
+.cpw-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cpw-list-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cpw-list-item:last-child {
+  border-bottom: none;
+}
+
+.cpw-item-name {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--widget-scale));
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cpw-item-val {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--widget-scale));
+  color: var(--text-muted);
+}
+
+/* ── Breakdown ── */
+.cpw-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cpw-list-item--hbar {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cpw-item-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.cpw-hbar {
+  height: 4px;
+  background: var(--bg-raised);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.cpw-hbar-fill {
+  height: 100%;
+  background: var(--border-active);
+  border-radius: 2px;
+}
