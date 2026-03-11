@@ -7,9 +7,11 @@
 import type { ProviderCapabilities, SessionProvider } from "./types";
 import { createClaudeCodeProvider } from "./claude-code";
 import { createCodexProvider } from "./codex";
+import { createGeminiCliProvider } from "./gemini-cli";
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
 
 const PI_PROVIDERS: PiProviderName[] = ["anthropic", "openai", "litellm", "ollama", "openrouter"];
+const STANDALONE_PROVIDERS = ["claude-code", "codex", "gemini-cli"] as const;
 
 // Lazy-init cache
 const cache = new Map<string, SessionProvider>();
@@ -22,10 +24,12 @@ export function getProvider(name: string): SessionProvider {
     provider = createClaudeCodeProvider();
   } else if (name === "codex") {
     provider = createCodexProvider();
+  } else if (name === "gemini-cli") {
+    provider = createGeminiCliProvider();
   } else if (PI_PROVIDERS.includes(name as PiProviderName)) {
     provider = createPiAgentProvider(name as PiProviderName);
   } else {
-    throw new Error(`Unknown provider: "${name}". Available: claude-code, codex, ${PI_PROVIDERS.join(", ")}`);
+    throw new Error(`Unknown provider: "${name}". Available: ${[...STANDALONE_PROVIDERS, ...PI_PROVIDERS].join(", ")}`);
   }
 
   cache.set(name, provider);
@@ -33,11 +37,11 @@ export function getProvider(name: string): SessionProvider {
 }
 
 export function isKnownProvider(name: string): boolean {
-  return name === "claude-code" || name === "codex" || PI_PROVIDERS.includes(name as PiProviderName);
+  return STANDALONE_PROVIDERS.includes(name as (typeof STANDALONE_PROVIDERS)[number]) || PI_PROVIDERS.includes(name as PiProviderName);
 }
 
 export function listProviders(): string[] {
-  return ["claude-code", "codex", ...PI_PROVIDERS];
+  return [...STANDALONE_PROVIDERS, ...PI_PROVIDERS];
 }
 
 export function getProviderCapabilities(name: string): ProviderCapabilities {

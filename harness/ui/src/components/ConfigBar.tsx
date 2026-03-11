@@ -7,7 +7,7 @@ import {
 } from "./AgentConfig";
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
-import { getAllTools, isCodexProvider } from "../tools";
+import { getAllTools, getToolGroups, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
 import type { Profile } from "../api";
 
 type Props = {
@@ -37,6 +37,28 @@ type Props = {
 function shortModel(model?: string): string {
   if (!model) return "";
   return model.replace(/^claude-/, "");
+}
+
+function summarizeGeminiTools(
+  toolStates: AgentConfigState["toolStates"],
+  profileTools: string[] | "all",
+  availableTools?: string[],
+): string {
+  const runtimeTools = new Set(
+    (availableTools ?? []).filter((tool) => getAllTools("gemini-cli").includes(tool)),
+  );
+
+  if (runtimeTools.size === 0) return "Gemini tools";
+
+  const labels = getToolGroups("gemini-cli")
+    .filter((group) =>
+      group.tools.some((tool) =>
+        runtimeTools.has(tool) && isToolEnabled(tool, toolStates[tool] ?? "inherit", profileTools),
+      ),
+    )
+    .map((group) => group.label);
+
+  return labels.length > 0 ? labels.join("/") : "Gemini tools";
 }
 
 export function ConfigBar({
@@ -87,6 +109,11 @@ export function ConfigBar({
   const editorProfileName = pendingProfileName || profileName;
   const overrideCount =
     pendingCount;
+  const toolSummary = isCodexProvider(effectiveProvider)
+    ? (codexControls.sandboxMode ?? "sandbox:auto")
+    : isGeminiProvider(effectiveProvider)
+      ? summarizeGeminiTools(agentConfig.toolStates, profileTools, availableTools)
+      : `${toolCount} tools`;
   return (
     <div className={`config-bar ${open ? "config-bar--open" : ""}`} ref={barRef}>
       <div className="config-bar-header" onClick={() => setOpen(!open)}>
@@ -113,9 +140,7 @@ export function ConfigBar({
           )}
           <span className="config-bar-sep">·</span>
           <span className="config-bar-value">
-            {isCodexProvider(effectiveProvider)
-              ? (codexControls.sandboxMode ?? "sandbox:auto")
-              : `${toolCount} tools`}
+            {toolSummary}
           </span>
           <span className="config-bar-sep">·</span>
           {isCodexProvider(effectiveProvider) && (
