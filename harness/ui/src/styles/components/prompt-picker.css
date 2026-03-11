@@ -46,7 +46,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   z-index: 100;
-  max-height: 340px;
+  max-height: 440px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -81,6 +81,15 @@
   min-height: 0;
 }
 
+.prompt-picker-section-label {
+  padding: 8px 10px 4px;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
 .prompt-picker-item {
   display: flex;
   flex-direction: column;
@@ -95,6 +104,20 @@
 }
 .prompt-picker-item:hover {
   background: var(--bg-hover);
+}
+
+.prompt-picker-item-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.prompt-picker-item-meta {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-dim);
+  text-transform: uppercase;
 }
 
 /* Skill items: row layout with preview button on right */

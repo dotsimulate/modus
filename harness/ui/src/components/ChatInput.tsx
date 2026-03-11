@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { SessionStatus, Attachment } from "../api";
+import type { ActivateMoveResult } from "../api";
 import { PromptPicker } from "./PromptPicker";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
@@ -16,6 +17,10 @@ type Props = {
   sessionStatus: SessionStatus | null;
   disabled: boolean;
   placeholder?: string;
+  sessionId?: string;
+  projectCwd?: string;
+  userProfile?: string;
+  onMoveActivated?: (result: ActivateMoveResult) => void;
 };
 
 /** Read a File as base64 (strip the data: prefix) */
@@ -34,7 +39,7 @@ function fileToBase64(file: File): Promise<{ data: string; mediaType: string; na
 
 export function ChatInput({
   value, onChange, onSend, onStop,
-  sessionStatus, disabled, placeholder,
+  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const historyIndex = useRef(-1);
@@ -272,6 +277,10 @@ export function ChatInput({
           <div className="chat-picker">
             <PromptPicker
               forceOpen={pickerForceOpen}
+              sessionId={sessionId}
+              projectCwd={projectCwd}
+              userProfile={userProfile}
+              onMoveActivated={onMoveActivated}
               onOpenChange={(isOpen) => {
                 setPickerOpen(isOpen);
                 if (!isOpen) {

@@ -1304,6 +1304,94 @@ app.get("/api/activity/summary", (c) => {
   return c.json(getActivitySummary({ userProfile, hours }));
 });
 
+// ── Moves ──
+
+import { listMoves, getMove, activateMove, getMoveRuns, getToken, getActiveTokensForSession } from "./move-runner";
+import { getMoveRunsBySession, getMoveRunById } from "./move-db";
+import { handleModusMcpRequest } from "./modus-mcp";
+
+// List available moves for a CWD
+app.get("/api/moves", (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  return c.json(listMoves(cwd));
+});
+
+// Get a specific move definition
+app.get("/api/moves/:name", (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const move = getMove(c.req.param("name"), cwd);
+  if (!move) return c.json({ error: "move not found" }, 404);
+  return c.json(move);
+});
+
+// Get move run history
+app.get("/api/moves/:name/runs", (c) => {
+  const name = c.req.param("name");
+  const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 20);
+  return c.json(getMoveRuns(name, limit));
+});
+
+// Get a specific move run by ID
+app.get("/api/move-runs/:id", (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  const run = getMoveRunById(id);
+  if (!run) return c.json({ error: "move run not found" }, 404);
+  return c.json(run);
+});
+
+// Get move runs for a session
+app.get("/api/sessions/:id/moves", (c) => {
+  const sessionId = c.req.param("id");
+  const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 20);
+  return c.json(getMoveRunsBySession(sessionId, limit));
+});
+
+// Get active move tokens for a session
+app.get("/api/sessions/:id/moves/active", (c) => {
+  const sessionId = c.req.param("id");
+  const tokens = getActiveTokensForSession(sessionId);
+  return c.json(tokens.map(t => ({
+    token: t.token,
+    moveName: t.moveName,
+    mode: t.mode,
+    status: t.status,
+    createdAt: t.createdAt,
+    attempts: t.attempts,
+    spawnedSessionId: t.spawnedSessionId,
+  })));
+});
+
+// Activate a move on a session
+app.post("/api/sessions/:id/moves/activate", async (c) => {
+  const sessionId = c.req.param("id");
+  const body = await c.req.json();
+  const { moveName, inputs, cwd, userProfile } = body;
+  if (!moveName) return c.json({ error: "moveName required" }, 400);
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+
+  const result = await activateMove({
+    moveName,
+    sessionId,
+    inputs: inputs ?? {},
+    cwd,
+    userProfile,
+  });
+
+  if ("error" in result) return c.json(result, 400);
+  return c.json(result);
+});
+
+// Modus MCP endpoint — Streamable HTTP transport for modus_submit
+app.all("/api/mcp/modus", async (c) => {
+  return handleModusMcpRequest(c.req.raw);
+});
+app.all("/api/mcp/modus/*", async (c) => {
+  return handleModusMcpRequest(c.req.raw);
+});
+
 // ── Start ──
 
 const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: HOST, idleTimeout: 255 });
