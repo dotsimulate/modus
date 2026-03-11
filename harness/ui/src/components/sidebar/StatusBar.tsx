@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import type { UserProfile } from "../../api";
+import { fetchGeminiUsage } from "../../api";
+import type { GeminiUsageInfo, UserProfile } from "../../api";
 
 type Props = {
   harnessUp: boolean | null;
@@ -19,6 +20,7 @@ export function StatusBar({
   computer, projectPath,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [geminiUsage, setGeminiUsage] = useState<GeminiUsageInfo | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -31,11 +33,42 @@ export function StatusBar({
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
 
+  useEffect(() => {
+    let alive = true;
+
+    const load = async () => {
+      try {
+        const data = await fetchGeminiUsage(projectPath);
+        if (alive) setGeminiUsage(data);
+      } catch {
+        if (alive) setGeminiUsage(null);
+      }
+    };
+
+    load();
+    const iv = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [projectPath]);
+
   const hasProfiles = userProfiles && userProfiles.length > 0 && onSwitchUserProfile;
   const activeUp = userProfiles?.find((p) => p.name === activeUserProfile);
   const label = activeUp?.displayName ?? activeUp?.name ?? "all";
 
   const folderName = projectPath ? projectPath.split("/").filter(Boolean).pop() : undefined;
+  const remaining = geminiUsage?.quota.remaining;
+  const limit = geminiUsage?.quota.limit;
+  const resetTime = geminiUsage?.quota.resetTime;
+  const showGeminiUsage = geminiUsage?.available && remaining != null && limit != null;
+  const geminiText = showGeminiUsage ? `gemini ${remaining}/${limit}` : null;
+  const geminiTitle = showGeminiUsage
+    ? [
+        geminiUsage?.tier ? `tier: ${geminiUsage.tier}` : null,
+        resetTime ? `resets: ${new Date(resetTime).toLocaleString()}` : null,
+      ].filter(Boolean).join(" | ")
+    : undefined;
 
   return (
     <div className="harness-status">
@@ -44,6 +77,11 @@ export function StatusBar({
           {computer && <span>{computer}</span>}
           {computer && folderName && <span className="status-sep">·</span>}
           {folderName && <span className="status-path">{folderName}</span>}
+        </span>
+      )}
+      {geminiText && (
+        <span className="status-gemini-usage" title={geminiTitle}>
+          {geminiText}
         </span>
       )}
       <div

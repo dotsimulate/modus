@@ -6,7 +6,7 @@ import { SessionList } from "./sidebar/SessionList";
 import { SearchResults } from "./sidebar/SearchResults";
 import { ProfilePanel } from "./sidebar/ProfilePanel";
 
-type GroupMode = "time" | "project";
+type GroupMode = "time" | "agent";
 
 type Props = {
   open: boolean;
@@ -124,10 +124,10 @@ export function Sidebar({
                   time
                 </button>
                 <button
-                  className={`group-toggle-btn ${groupMode === "project" ? "group-toggle-btn--active" : ""}`}
-                  onClick={() => handleSetGroupMode("project")}
+                  className={`group-toggle-btn ${groupMode === "agent" ? "group-toggle-btn--active" : ""}`}
+                  onClick={() => handleSetGroupMode("agent")}
                 >
-                  project
+                  agent
                 </button>
               </div>
             </div>

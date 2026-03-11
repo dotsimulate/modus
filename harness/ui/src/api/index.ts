@@ -24,9 +24,10 @@ export {
   updateSessionConfig, respondToPermission,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
   fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, subscribeEvents, branchSessionApi,
+  fetchGeminiUsage,
 } from "./sessions";
 
-export type { SessionStats, AccountInfo } from "./sessions";
+export type { SessionStats, AccountInfo, GeminiUsageInfo } from "./sessions";
 
 // Actions
 export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences, reloadActionsApi, addTagApi, removeTagApi } from "./actions";

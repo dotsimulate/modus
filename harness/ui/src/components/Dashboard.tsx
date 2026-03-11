@@ -76,28 +76,30 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
 
   return (
     <div className="dashboard">
-      {showProjectSetup ? (
-        <ProjectSetup
-          onComplete={handleSetupComplete}
-          onSelectSession={onSelectSession}
-        />
-      ) : (
-        <ModusPrompt
-          onSelectSession={onSelectSession}
-          isNewProject={!!needsAgents}
-        />
-      )}
-
-      {/* Widgets — always visible */}
-      <div className="dashboard-widgets">
-        {dashboard.widgets.map((config: WidgetBase, i: number) => (
-          <WidgetSlot
-            key={`${config.type}-${i}`}
-            config={config}
-            onNavigate={onNavigate}
+      <div className="dashboard-inner">
+        {showProjectSetup ? (
+          <ProjectSetup
+            onComplete={handleSetupComplete}
             onSelectSession={onSelectSession}
           />
-        ))}
+        ) : (
+          <ModusPrompt
+            onSelectSession={onSelectSession}
+            isNewProject={!!needsAgents}
+          />
+        )}
+
+        {/* Widgets — always visible */}
+        <div className="dashboard-widgets">
+          {dashboard.widgets.map((config: WidgetBase, i: number) => (
+            <WidgetSlot
+              key={`${config.type}-${i}`}
+              config={config}
+              onNavigate={onNavigate}
+              onSelectSession={onSelectSession}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

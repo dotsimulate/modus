@@ -199,7 +199,7 @@ Runtime UI state — app-managed, gitignored, never hand-edit. Stored in `state/
 
 ```jsonc
 {
-  "sidebarGroupMode": "time",       // "time" | "project"
+  "sidebarGroupMode": "time",       // "time" | "agent"
   "sidebarCollapsedGroups": [],
   "sidebarConfigExpanded": false,
   "lastAgentProfile": "dev-agent",

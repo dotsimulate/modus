@@ -289,7 +289,7 @@ export type ProviderCapabilities = {
 };
 
 export type UserProfileState = {
-  sidebarGroupMode?: "time" | "project";
+  sidebarGroupMode?: "time" | "agent";
   sidebarCollapsedGroups?: string[];
   sidebarConfigExpanded?: boolean;
   lastAgentProfile?: string;

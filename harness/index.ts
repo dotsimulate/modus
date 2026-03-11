@@ -19,6 +19,7 @@ import {
   listProjects, getProjectById, updateProjectPath,
 } from "./profiles";
 import { initProject, getInitStatus } from "./init";
+import { fetchGeminiUsageSnapshot } from "./gemini-usage";
 import {
   ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
 } from "./profile-schemas";
@@ -1267,6 +1268,12 @@ app.get("/api/account", async (c) => {
   const costs = getPeriodCosts(userProfile);
 
   return c.json({ account, costs });
+});
+
+app.get("/api/gemini/usage", async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const cwd = params.get("cwd") ?? process.cwd();
+  return c.json(await fetchGeminiUsageSnapshot({ cwd }));
 });
 
 app.post("/api/prune", (c) => {

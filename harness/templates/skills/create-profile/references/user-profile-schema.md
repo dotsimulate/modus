@@ -104,7 +104,7 @@ app-managed and should never be hand-edited:
 
 ```jsonc
 {
-  "sidebarGroupMode": "time",
+  "sidebarGroupMode": "time",       // "time" | "agent"
   "sidebarCollapsedGroups": [],
   "sidebarConfigExpanded": false,
   "lastAgentProfile": "dev-agent",

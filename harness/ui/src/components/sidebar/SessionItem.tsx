@@ -46,6 +46,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive }: Props) 
     inputTokens: latestUsage?.inputTokens ?? s.last_input_tokens,
     outputTokens: latestUsage?.outputTokens ?? s.last_output_tokens,
   });
+  const compactUsageText = usageText?.replace(/\stok$/, "t");
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -104,8 +105,8 @@ export function SessionItem({ session: s, active, onSelect, onArchive }: Props) 
           <span className="session-profile-tag">
             {provider ?? "unknown"}
           </span>
-          <span>{s.message_count} msg</span>
-          {usageText && <span>{usageText}</span>}
+          <span>{s.message_count}m</span>
+          {compactUsageText && <span>{compactUsageText}</span>}
         </span>
         <span className="session-meta-right">
           <span>{timeAgo(s.updated_at)}</span>

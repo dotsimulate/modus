@@ -86,26 +86,44 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
     const text = prompt.trim();
     if (!text) return;
 
-    const slug = activeUserProfile ?? "";
     const paths = activeUP?.projects ?? [];
+    const cwd = paths[0] || undefined;
+    const project = {
+      name: activeUP?.displayName || activeUserProfile || "project",
+      slug: activeUserProfile,
+      paths,
+    };
 
     setPhase("running");
     setError("");
     setSessionId(null);
 
     try {
+      // Render the appropriate prompt template to inject context
+      let renderedPrompt = text;
+      try {
+        const promptName = tab === "create" ? "setup-agents" : "configure";
+        const vars = tab === "create"
+          ? { input: text, description: text, archetype: "custom", project, projectCwd: cwd }
+          : { input: text, mode: "edit", agents: "yes", project, projectCwd: cwd };
+        const result = await renderPromptApi(promptName, vars);
+        renderedPrompt = result.rendered;
+      } catch {
+        // fall back to raw text if render fails
+      }
+
       const { sessionId: sid } = await createSession({
-        prompt: text,
+        prompt: renderedPrompt,
         profile: "modus-dev",
         userProfile: activeUserProfile ?? undefined,
-        cwd: paths[0] || undefined,
+        cwd,
       });
       setSessionId(sid);
     } catch (err) {
       setError(`failed to start: ${err}`);
       setPhase("error");
     }
-  }, [prompt, activeUserProfile, activeUP]);
+  }, [prompt, activeUserProfile, activeUP, tab]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && prompt.trim()) {
