@@ -131,6 +131,37 @@ export function setupPin(pin: string): boolean {
   return true;
 }
 
+/**
+ * Change the PIN — verifies old PIN first, then overwrites the value in the secrets file.
+ * Returns true on success, false if old PIN doesn't match or no PIN is set.
+ */
+export function changePin(oldPin: string, newPin: string): boolean {
+  const current = resolveSecret("HARNESS_PIN");
+  if (!current || current !== oldPin) return false;
+
+  const path = process.env.HARNESS_SECRETS_FILE ?? DEFAULT_PATH;
+  if (!existsSync(path)) return false;
+
+  // Read the file, replace the HARNESS_PIN line, write back
+  const content = readFileSync(path, "utf-8");
+  const lines = content.split("\n");
+  let replaced = false;
+  const updated = lines.map((line) => {
+    if (line.match(/^HARNESS_PIN=/)) {
+      replaced = true;
+      return `HARNESS_PIN=${newPin}`;
+    }
+    return line;
+  });
+  if (!replaced) {
+    updated.push(`HARNESS_PIN=${newPin}`);
+  }
+  writeFileSync(path, updated.join("\n"), { mode: 0o600 });
+  // Update in-memory store
+  secretsStore["HARNESS_PIN"] = newPin;
+  return true;
+}
+
 /** Get info about where secrets are loaded from (for startup log) */
 export function getSecretsInfo(): { path: string; loadedFrom: string | null; count: number } {
   return {

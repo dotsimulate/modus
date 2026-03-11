@@ -84,6 +84,12 @@ export type AgentConfigState = {
   provider: string;
   effort: string;
   maxTurns: string;
+  providerControls?: {
+    codex?: {
+      sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+      webSearchMode?: "disabled" | "cached" | "live";
+    };
+  };
 };
 
 // ── Session ──
@@ -93,6 +99,9 @@ export type Session = {
   status: SessionStatus;
   preview: string;
   profile?: string;
+  provider?: string;
+  nextProfile?: string;
+  nextAgentConfig?: AgentConfigState;
   model?: string;
   agentConfig: AgentConfigState;
   cwd?: string;
@@ -155,6 +164,7 @@ export type SessionInfo = {
   preview: string;
   title: string | null;
   profile: string | null;
+  provider: string | null;
   model: string | null;
   status: string;
   created_at: number;
@@ -167,12 +177,15 @@ export type SessionInfo = {
   cwd: string | null;
   action_name: string | null;
   tags: string;
+  last_input_tokens?: number | null;
+  last_output_tokens?: number | null;
 };
 
 export type ActiveSessionInfo = {
   id: string;
   status: string;
   profile: string | null;
+  provider: string | null;
   model: string | null;
   costUsd: number;
   numTurns: number;
@@ -229,6 +242,7 @@ export type CreateSessionOpts = {
   cwd?: string;
   tools?: string[];
   disallowedTools?: string[];
+  providerControls?: AgentConfigState["providerControls"];
   loadProjectSettings?: boolean;
   sessionId?: string;
 };
@@ -245,6 +259,33 @@ export type PermissionResponse = {
   updatedInput?: Record<string, unknown>;
   message?: string;
   scope?: "once" | "session";
+};
+
+export type ProviderToolGroup = {
+  label: string;
+  tools: string[];
+};
+
+export type ProviderCapabilities = {
+  name: string;
+  label: string;
+  family: "claude-code" | "codex" | "pi-agent";
+  builtInTools: string[];
+  builtInToolGroups: ProviderToolGroup[];
+  builtInToolMode: "explicit" | "event-derived";
+  supportsMcp: boolean;
+  mcpSupport: "full" | "stdio-only" | "none";
+  nonToolSignals: string[];
+  permissionModel: {
+    mode: "per-tool-ui" | "runtime-native" | "none";
+    interactive: boolean;
+    summary: string;
+  };
+  sessionMutability: {
+    providerSwitchAfterStart: boolean;
+    profileSwitch: "allowed" | "provider-locked";
+    configApplies: "immediate" | "next-turn";
+  };
 };
 
 export type UserProfileState = {

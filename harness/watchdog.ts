@@ -60,6 +60,29 @@ function killTree(proc: ReturnType<typeof Bun.spawn>) {
     }
   } catch { /* best effort */ }
 }
+
+/** Names of agent CLI binaries that providers may spawn as subprocesses. */
+const AGENT_BINARIES = ["claude", "codex"];
+
+/**
+ * Kill orphaned agent subprocesses (claude, codex) that survived the tree kill.
+ * The Codex SDK spawns `codex exec` as a child process; Claude Code spawns `claude`.
+ * On unclean shutdown these can outlive the harness and block restart.
+ */
+function killOrphanedAgents() {
+  try {
+    if (process.platform === "win32") {
+      for (const name of AGENT_BINARIES) {
+        Bun.spawnSync(["taskkill", "/F", "/IM", `${name}.exe`], { stdout: "ignore", stderr: "ignore" });
+      }
+    } else {
+      // pkill by exact binary name — only kills processes matching these names
+      for (const name of AGENT_BINARIES) {
+        Bun.spawnSync(["pkill", "-x", name], { stdout: "ignore", stderr: "ignore" });
+      }
+    }
+  } catch { /* best effort */ }
+}
 let healthTimer: ReturnType<typeof setInterval> | null = null;
 let fileChangeRestart = false;
 let pendingReloadFile: string | null = null;  // file change waiting for sessions to clear
@@ -178,6 +201,28 @@ async function waitForPortFree(port: number, timeoutMs = 15_000, intervalMs = 50
     await Bun.sleep(intervalMs);
   }
   return false;
+}
+
+/** Wait for both harness and Vite ports to free up. Kills orphaned agents if needed. */
+async function waitForCleanRestart(): Promise<void> {
+  const [harnessFree, viteFree] = await Promise.all([
+    waitForPortFree(PORT),
+    waitForPortFree(VITE_PORT),
+  ]);
+  if (!harnessFree || !viteFree) {
+    // Ports still held — likely orphaned agent subprocesses
+    const stuck = [!harnessFree && PORT, !viteFree && VITE_PORT].filter(Boolean);
+    log("warn", `port(s) ${stuck.join(", ")} still in use — killing orphaned agents`);
+    killOrphanedAgents();
+    // Give processes a moment to die, then re-check
+    await Bun.sleep(1000);
+    if (!harnessFree && await isPortInUse(PORT)) {
+      log("warn", `port ${PORT} still in use after orphan cleanup — restarting anyway`);
+    }
+    if (!viteFree && await isPortInUse(VITE_PORT)) {
+      log("warn", `port ${VITE_PORT} still in use after orphan cleanup — restarting anyway`);
+    }
+  }
 }
 
 // ── File watcher (dev mode) ──
@@ -325,22 +370,21 @@ async function run() {
     if (pendingReloadTimer) { clearInterval(pendingReloadTimer); pendingReloadTimer = null; }
     pendingReloadFile = null;
 
-    // Controlled restart requested by agent — skip crash logic, wait for port
+    // Controlled restart requested by agent — skip crash logic, wait for ports
     if (existsSync(RESTART_SENTINEL)) {
       try { unlinkSync(RESTART_SENTINEL); } catch { /* best effort */ }
       log("info", "controlled restart requested — waiting for ports...");
-      await waitForPortFree(VITE_PORT);
+      await waitForCleanRestart();
       restarts++;
       delay = BASE_DELAY_MS;
       continue;
     }
 
-    // File-change restart — wait for Vite port to actually free up
+    // File-change restart — wait for harness + Vite ports to free up
     if (fileChangeRestart) {
       fileChangeRestart = false;
       restarts++;
-      const portFree = await waitForPortFree(VITE_PORT);
-      if (!portFree) log("warn", `port ${VITE_PORT} still in use after timeout — restarting anyway`);
+      await waitForCleanRestart();
       continue;
     }
 
@@ -375,6 +419,8 @@ async function run() {
     );
 
     restarts++;
+    // Kill orphaned agent subprocesses — crash means SIGTERM handler may not have run
+    killOrphanedAgents();
     log("info", `restarting in ${delay / 1000}s...`);
     await Bun.sleep(delay);
   }

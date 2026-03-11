@@ -4,14 +4,22 @@ import {
   archiveSessionApi, fetchSessions, fetchSessionsScoped,
   createEmptySession, getDraft, saveDraft,
   updateSessionConfig, respondToPermission, nextMsgId,
-  branchSessionApi,
+  branchSessionApi, switchSessionProfile,
 } from "../api";
 import type { Session, SessionInfo, Attachment, ApiAttachment } from "../api";
 import { createInitialState } from "../eventReducer";
-import { agentConfigToOverrides, type AgentConfigState } from "../components/AgentConfig";
+import {
+  agentConfigToOverrides,
+  agentConfigToUpdatePayload,
+  createEmptyAgentConfig,
+  isAgentConfigEqual,
+  type AgentConfigState,
+} from "../components/AgentConfig";
 import { useProfiles } from "./ProfileProvider";
 import {
   useSessionState, setSessionState, getSessionState,
+  setSessionNextAgentConfig,
+  setSessionNextProfile,
   subscribeSession, unsubscribeSession, isSubscribed,
   rekeySession, removeSession,
 } from "../sessionStore";
@@ -42,6 +50,7 @@ type SessionContextValue = {
   queuedMessage: QueuedMessage | null;
   cancelQueued: () => void;
   updateActiveSessionConfig: (config: AgentConfigState) => Promise<void>;
+  updateActiveSessionProfile: (profile: string) => void;
   branchFromMessage: (seq: number, prefill?: string) => Promise<void>;
 };
 
@@ -60,6 +69,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [queuedMessage, setQueuedMessage] = useState<QueuedMessage | null>(null);
 
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevActiveStatusRef = useRef<Session["status"] | null>(null);
 
   const [pendingHashId, setPendingHashId] = useState<string | null>(() => {
     // Extract session UUID from hash: #profile/uuid or #uuid
@@ -73,15 +83,57 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // Derive activeSession from the store
   const activeSession = useSessionState(activeSessionId);
 
-  const applyAgentConfigToState = useCallback((sessionId: string, config: AgentConfigState) => {
-    const rs = getSessionState(sessionId);
-    if (!rs) return;
-    setSessionState(sessionId, {
-      ...rs,
-      agentConfig: config,
-      model: config.model || rs.model,
-    }, activeSession?.profile);
-  }, [activeSession?.profile]);
+  const hasPendingProfileChange = useCallback((session: Session | null) => (
+    !!session?.nextProfile && session.nextProfile !== session.profile
+  ), []);
+
+  const getQueuedAgentConfig = useCallback((session: Session | null, liveConfig: AgentConfigState) => {
+    if (session?.nextAgentConfig) return session.nextAgentConfig;
+    if (hasPendingProfileChange(session)) return createEmptyAgentConfig();
+    return liveConfig;
+  }, [hasPendingProfileChange]);
+
+  const getLockedSessionProvider = useCallback((session: Session | null) => {
+    if (!session) return undefined;
+    if (session.agentConfig.provider) return session.agentConfig.provider;
+    return profiles.find((p) => p.name === session.profile)?.provider;
+  }, [profiles]);
+
+  const profileProviderMatchesSession = useCallback((session: Session | null, profileName?: string) => {
+    const lockedProvider = getLockedSessionProvider(session);
+    const targetProvider = profiles.find((p) => p.name === profileName)?.provider;
+    return !lockedProvider || !targetProvider || lockedProvider === targetProvider;
+  }, [getLockedSessionProvider, profiles]);
+
+  const getProfileToolsForStartedSession = useCallback((session: Session | null, profileName?: string) => {
+    const targetProfile = profiles.find((p) => p.name === profileName);
+    if (!session || profileProviderMatchesSession(session, profileName)) {
+      return targetProfile?.tools ?? "all";
+    }
+    const currentProfile = profiles.find((p) => p.name === session.profile);
+    return currentProfile?.tools ?? "all";
+  }, [profileProviderMatchesSession, profiles]);
+
+  const resolveAppliedModel = useCallback((
+    config: AgentConfigState,
+    session: Session | null,
+    profileName?: string,
+    fallback?: string,
+  ) => {
+    if (config.model.trim()) return config.model;
+    if (!profileProviderMatchesSession(session, profileName)) return fallback ?? "";
+    const profile = profiles.find((p) => p.name === profileName);
+    return profile?.model ?? fallback ?? "";
+  }, [profileProviderMatchesSession, profiles]);
+
+  const updateActiveSessionProfile = useCallback((profile: string) => {
+    if (!activeSessionId) return;
+    const nextProfile = profile.trim();
+    const currentProfile = activeSession?.profile ?? "";
+    const pendingProfile = nextProfile && nextProfile !== currentProfile ? nextProfile : undefined;
+    setSessionNextProfile(activeSessionId, pendingProfile);
+    setSessionNextAgentConfig(activeSessionId, undefined);
+  }, [activeSession?.profile, activeSessionId]);
 
   // ── Refresh sessions ──
 
@@ -100,6 +152,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(refreshSessions, 10_000);
     return () => clearInterval(interval);
   }, [refreshSessions]);
+
+  useEffect(() => {
+    const prev = prevActiveStatusRef.current;
+    const next = activeSession?.status ?? null;
+    if (
+      prev
+      && (prev === "running" || prev === "starting")
+      && next
+      && (next === "idle" || next === "error")
+    ) {
+      refreshSessions();
+    }
+    prevActiveStatusRef.current = next;
+  }, [activeSession?.status, refreshSessions]);
 
   // ── URL hash sync ──
 
@@ -140,7 +206,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const profile = selectedProfile || undefined;
     try {
-      const id = await createEmptySession(profile, setupState.agent.model || undefined);
+      const id = await createEmptySession(
+        profile,
+        setupState.agent.model || undefined,
+        setupState.agent.provider || undefined,
+      );
       const rs = createInitialState(id);
       rs.status = "idle";
       rs.agentConfig = setupState.agent;
@@ -228,11 +298,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (needsNewSession) {
       if (isEmptySession && activeSessionId) archiveSessionApi(activeSessionId).catch(() => {});
 
-      const profile = selectedProfile || undefined;
+      const queuedProfileName = activeSession?.nextProfile ?? activeSession?.profile ?? selectedProfile;
+      const queuedProfile = queuedProfileName || undefined;
+      const queuedAgentConfig = currentState
+        ? getQueuedAgentConfig(activeSession, currentState.agentConfig)
+        : setupState.agent;
       const rs = createInitialState();
       const seedState = currentState
         ? {
-            agent: currentState.agentConfig,
+            agent: queuedAgentConfig,
             cwd: currentState.cwd,
             loadProjectSettings: currentState.loadProjectSettings,
           }
@@ -243,29 +317,31 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       });
       rs.status = "starting";
       rs.agentConfig = seedState.agent;
-      rs.model = seedState.agent.model;
+      rs.model = resolveAppliedModel(seedState.agent, null, queuedProfile);
       rs.cwd = seedState.cwd;
       rs.loadProjectSettings = seedState.loadProjectSettings;
       const tempId = rs.sessionId;
-      setSessionState(tempId, rs, profile);
+      setSessionState(tempId, rs, queuedProfile);
       setActiveSessionId(tempId);
 
       try {
-        const opts = buildSessionOpts(prompt, profile, seedState);
+        const opts = buildSessionOpts(prompt, queuedProfile, seedState);
         if (apiAtts) opts.attachments = apiAtts;
         const { sessionId: realId } = await createSession(opts);
 
         rekeySession(tempId, realId);
+        setSessionNextProfile(realId, undefined);
+        setSessionNextAgentConfig(realId, undefined);
         setActiveSessionId(realId);
         updateHash(realId);
-        subscribeSession(realId, 0, profile, refreshSessions);
+        subscribeSession(realId, 0, queuedProfile, refreshSessions);
         refreshSessions();
       } catch (err) {
         const errState = getSessionState(tempId);
         if (errState) {
           const updated = { ...errState, status: "error" as const };
           updated.messages = [...updated.messages, { id: nextMsgId(), role: "assistant" as const, content: `Error: ${err}` }];
-          setSessionState(tempId, updated, profile);
+          setSessionState(tempId, updated, queuedProfile);
         }
       }
     } else {
@@ -278,19 +354,45 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const rs = getSessionState(activeSessionId!)!;
-      const updated = { ...rs, status: "running" as const };
-      updated.messages = [...updated.messages, {
-        id: nextMsgId(), role: "user" as const, content: prompt, timestamp: Date.now(),
-        attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
-      }];
-      setSessionState(activeSessionId!, updated, activeSession?.profile);
-
+      let effectiveProfile = activeSession?.profile;
       try {
-        const profile = profiles.find((p) => p.name === activeSession?.profile);
-        const overrides = agentConfigToOverrides(rs.agentConfig, profile?.tools ?? "all");
+        const hasPendingProfile = hasPendingProfileChange(activeSession);
+        const nextTurnConfig = getQueuedAgentConfig(activeSession, currentState.agentConfig);
+        if (hasPendingProfile && activeSession?.nextProfile) {
+          await switchSessionProfile(activeSessionId!, activeSession.nextProfile);
+          effectiveProfile = activeSession.nextProfile;
+        }
+        if (activeSession?.nextAgentConfig) {
+          await updateSessionConfig(activeSessionId!, {
+            ...agentConfigToUpdatePayload(
+              nextTurnConfig,
+              getProfileToolsForStartedSession(activeSession, effectiveProfile),
+            ),
+            cwd: currentState.cwd,
+            loadProjectSettings: currentState.loadProjectSettings,
+          });
+        }
+        const rs = getSessionState(activeSessionId!) ?? currentState;
+        const updated = {
+          ...rs,
+          status: "running" as const,
+          agentConfig: nextTurnConfig,
+          model: resolveAppliedModel(nextTurnConfig, activeSession, effectiveProfile, rs.model),
+        };
+        updated.messages = [...updated.messages, {
+          id: nextMsgId(), role: "user" as const, content: prompt, timestamp: Date.now(),
+          attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
+        }];
+        setSessionState(activeSessionId!, updated, effectiveProfile);
+        setSessionNextProfile(activeSessionId!, undefined);
+        setSessionNextAgentConfig(activeSessionId!, undefined);
+
+        const overrides = agentConfigToOverrides(
+          nextTurnConfig,
+          getProfileToolsForStartedSession(activeSession, effectiveProfile),
+        );
         await apiSendMessage(activeSessionId!, prompt, apiAtts, {
-          profile: activeSession?.profile,
+          profile: effectiveProfile,
           provider: overrides.provider,
           model: overrides.model,
           effort: overrides.effort,
@@ -298,23 +400,41 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           tools: overrides.tools,
           disallowedTools: overrides.disallowedTools,
           toolStates: overrides.toolStates,
+          providerControls: overrides.providerControls,
           cwd: rs.cwd,
           loadProjectSettings: rs.loadProjectSettings,
         });
         if (!isSubscribed(activeSessionId!)) {
           const latest = getSessionState(activeSessionId!);
-          subscribeSession(activeSessionId!, latest?.lastSeq ?? 0, activeSession?.profile, refreshSessions);
+          subscribeSession(activeSessionId!, latest?.lastSeq ?? 0, effectiveProfile, refreshSessions);
         }
       } catch (err) {
         const latest = getSessionState(activeSessionId!);
         if (latest) {
           const errState = { ...latest };
           errState.messages = [...errState.messages, { id: nextMsgId(), role: "assistant" as const, content: `Error: ${err}` }];
-          setSessionState(activeSessionId!, errState, activeSession?.profile);
+          setSessionState(activeSessionId!, errState, effectiveProfile);
         }
       }
     }
-  }, [input, activeSessionId, activeSession?.profile, selectedProfile, buildSessionOpts, updateHash, refreshSessions, setupState, profiles, serverSessions]);
+  }, [
+    input,
+    activeSession,
+    activeSessionId,
+    selectedProfile,
+    buildSessionOpts,
+    getQueuedAgentConfig,
+    getProfileToolsForStartedSession,
+    getLockedSessionProvider,
+    hasPendingProfileChange,
+    profileProviderMatchesSession,
+    updateHash,
+    refreshSessions,
+    resolveAppliedModel,
+    setupState,
+    profiles,
+    serverSessions,
+  ]);
 
   // ── Auto-send queued message when model finishes ──
 
@@ -378,18 +498,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const updateActiveSessionConfig = useCallback(async (config: AgentConfigState) => {
     if (!activeSessionId) return;
-    applyAgentConfigToState(activeSessionId, config);
-    // Skip PATCH for sessions without messages — config will be applied on first send
-    const state = getSessionState(activeSessionId);
-    if (activeSessionId.startsWith("pending-") || !state || state.messages.length === 0) return;
-    const profile = profiles.find((p) => p.name === activeSession?.profile);
-    const overrides = agentConfigToOverrides(config, profile?.tools ?? "all");
-    await updateSessionConfig(activeSessionId, {
-      ...overrides,
-      cwd: getSessionState(activeSessionId)?.cwd,
-      loadProjectSettings: getSessionState(activeSessionId)?.loadProjectSettings,
-    }).catch(() => {});
-  }, [activeSessionId, activeSession?.profile, applyAgentConfigToState, profiles]);
+    const baseline = hasPendingProfileChange(activeSession)
+      ? createEmptyAgentConfig()
+      : (activeSession?.agentConfig ?? createEmptyAgentConfig());
+    setSessionNextAgentConfig(
+      activeSessionId,
+      isAgentConfigEqual(config, baseline) ? undefined : config,
+    );
+  }, [activeSession, activeSessionId, hasPendingProfileChange]);
 
   const branchFromMessage = useCallback(async (seq: number, prefill?: string) => {
     if (!activeSessionId) return;
@@ -411,7 +527,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       input, handleInputChange,
       send, stop, stopTask, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,
-      queuedMessage, cancelQueued, updateActiveSessionConfig,
+      queuedMessage, cancelQueued, updateActiveSessionConfig, updateActiveSessionProfile,
       branchFromMessage,
     }}>
       {children}

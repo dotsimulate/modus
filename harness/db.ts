@@ -55,6 +55,8 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN title TEXT`); } catch { /* already
 try { db.run(`ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`); } catch { /* already exists */ }
 // Backfill: seed tags from archived column for existing rows
 db.run(`UPDATE sessions SET tags = '["archived"]' WHERE archived = 1 AND tags = '[]'`);
+// Migration: add provider — resolved execution backend for sidebar/display
+try { db.run(`ALTER TABLE sessions ADD COLUMN provider TEXT`); } catch { /* already exists */ }
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -154,6 +156,7 @@ export type SessionRow = {
   id: string;
   preview: string;
   profile: string | null;
+  provider: string | null;
   model: string | null;
   status: string;
   archived: number;
@@ -182,6 +185,11 @@ export type EventRow = {
   created_at: number;
 };
 
+export type SessionUsageRow = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+};
+
 export type StoredSessionConfig = {
   provider?: string;
   model?: string;
@@ -190,6 +198,7 @@ export type StoredSessionConfig = {
   tools?: string[];
   disallowedTools?: string[];
   toolStates?: Record<string, string>;
+  providerControls?: Record<string, unknown>;
   cwd?: string;
   loadProjectSettings?: boolean;
 };
@@ -199,8 +208,8 @@ export type StoredSessionConfig = {
 const stmts = {
   // Sessions
   upsert: db.prepare(`
-    INSERT INTO sessions (id, preview, profile, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile, parent_session_id, branch_message_uuid, title)
-    VALUES ($id, $preview, $profile, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile, $parent_session_id, $branch_message_uuid, $title)
+    INSERT INTO sessions (id, preview, profile, provider, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile, parent_session_id, branch_message_uuid, title)
+    VALUES ($id, $preview, $profile, $provider, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile, $parent_session_id, $branch_message_uuid, $title)
     ON CONFLICT(id) DO UPDATE SET
       updated_at = $now,
       last_message_at = $now,
@@ -209,6 +218,7 @@ const stmts = {
       total_cost_usd = sessions.total_cost_usd + $total_cost_usd,
       last_prompt = COALESCE($last_prompt, sessions.last_prompt),
       last_response = COALESCE($last_response, sessions.last_response),
+      provider = COALESCE($provider, sessions.provider),
       model = COALESCE($model, sessions.model),
       title = COALESCE($title, sessions.title)
   `),
@@ -229,6 +239,17 @@ const stmts = {
     WHERE session_id = $session_id AND type = 'system' AND (subtype = 'config_updated' OR subtype = 'init')
     ORDER BY seq DESC
     LIMIT 1
+  `),
+  getLatestResultEvent: db.prepare(`
+    SELECT data FROM events
+    WHERE session_id = $session_id AND type = 'result'
+    ORDER BY seq DESC
+    LIMIT 1
+  `),
+  getResultEvents: db.prepare(`
+    SELECT data FROM events
+    WHERE session_id = $session_id AND type = 'result'
+    ORDER BY seq ASC
   `),
   getMaxSeq: db.prepare(`SELECT COALESCE(MAX(seq), 0) as max_seq FROM events WHERE session_id = $session_id`),
   // Drafts
@@ -303,6 +324,7 @@ export function upsertSession(opts: {
   id: string;
   preview: string;
   profile?: string;
+  provider?: string;
   model?: string;
   status?: string;
   messageCount: number;
@@ -320,6 +342,7 @@ export function upsertSession(opts: {
     $id: opts.id,
     $preview: opts.preview,
     $profile: opts.profile ?? null,
+    $provider: opts.provider ?? null,
     $model: opts.model ?? null,
     $status: opts.status ?? "done",
     $now: Date.now(),
@@ -488,8 +511,47 @@ export function getStoredSessionConfig(sessionId: string): StoredSessionConfig |
       tools: Array.isArray(config.tools) ? config.tools : undefined,
       disallowedTools: Array.isArray(config.disallowedTools) ? config.disallowedTools : undefined,
       toolStates: config.toolStates && typeof config.toolStates === "object" ? config.toolStates : undefined,
+      providerControls: config.providerControls && typeof config.providerControls === "object" ? config.providerControls : undefined,
       cwd: parsed.cwd || undefined,
       loadProjectSettings: typeof parsed.loadProjectSettings === "boolean" ? parsed.loadProjectSettings : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function getLatestSessionUsage(sessionId: string, provider?: string | null): SessionUsageRow | null {
+  if (provider === "codex") {
+    const rows = stmts.getResultEvents.all({ $session_id: sessionId }) as { data: string }[];
+    if (rows.length === 0) return null;
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let sawUsage = false;
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.data);
+        if (typeof parsed.input_tokens === "number") {
+          inputTokens += parsed.input_tokens;
+          sawUsage = true;
+        }
+        if (typeof parsed.output_tokens === "number") {
+          outputTokens += parsed.output_tokens;
+          sawUsage = true;
+        }
+      } catch {
+        // Ignore malformed historical events and keep aggregating.
+      }
+    }
+    return sawUsage ? { inputTokens, outputTokens } : null;
+  }
+
+  const row = stmts.getLatestResultEvent.get({ $session_id: sessionId }) as { data: string } | null;
+  if (!row) return null;
+  try {
+    const parsed = JSON.parse(row.data);
+    return {
+      inputTokens: typeof parsed.input_tokens === "number" ? parsed.input_tokens : null,
+      outputTokens: typeof parsed.output_tokens === "number" ? parsed.output_tokens : null,
     };
   } catch {
     return null;

@@ -1,7 +1,8 @@
-import { useState } from "react";
-import type { Profile, UserProfile } from "../../api";
+import { useEffect, useRef, useState } from "react";
+import { fetchProviderModels, type Profile, type UserProfile } from "../../api";
 import { useProfiles } from "../../providers/ProfileProvider";
-import { SessionSetup, type SessionSetupState } from "../SessionSetup";
+import { SearchDropdown } from "../SearchDropdown";
+import { SessionSetup, shortenPath, type SessionSetupState } from "../SessionSetup";
 
 type Props = {
   profiles: Profile[];
@@ -16,15 +17,16 @@ type Props = {
 /** Detect which categories have overrides vs profile defaults */
 function getOverrideTags(setup: SessionSetupState): string[] {
   const tags: string[] = [];
-  if (setup.agent.model) tags.push("model");
   if (setup.agent.provider) tags.push("provider");
   if (setup.cwd.trim()) tags.push("cwd");
-  if (setup.agent.effort) tags.push("effort");
-  if (setup.agent.maxTurns) tags.push("turns");
-  const toolOverrides = Object.keys(setup.agent.toolStates).length;
-  if (toolOverrides > 0) tags.push(`${toolOverrides} tools`);
   if (!setup.loadProjectSettings) tags.push("no claude.md");
   return tags;
+}
+
+function providerSeedModel(provider: string): string {
+  if (provider === "codex") return "gpt-5.1-codex";
+  if (provider === "claude-code" || provider === "anthropic") return "claude-opus-4-6";
+  return "";
 }
 
 export function ProfilePanel({
@@ -34,16 +36,70 @@ export function ProfilePanel({
 }: Props) {
   const { userProfiles, refreshProfiles } = useProfiles();
   const [configExpanded, setConfigExpanded] = useState(false);
+  const setupStateRef = useRef(setupState);
   const selectedProfileData = profiles.find((p) => p.name === selectedProfile);
   const overrideTags = getOverrideTags(setupState);
+  const effectiveProvider =
+    setupState.agent.provider
+    || selectedProfileData?.provider
+    || activeUserProfileObj?.provider
+    || "claude-code";
+  const summaryBits = [effectiveProvider];
+  if (setupState.cwd.trim()) summaryBits.push(shortenPath(setupState.cwd.trim()));
 
-  const profileSummary = selectedProfileData
-    ? `${selectedProfileData.model?.replace("claude-", "").replace(/-\d.*/, "") ?? "?"} / ${selectedProfileData.effort ?? "default"} / ${
-        typeof selectedProfileData.tools === "string"
-          ? selectedProfileData.tools
-          : selectedProfileData.tools?.length + " tools"
-      }`
-    : "";
+  const profileSummary = summaryBits.join(" / ");
+
+  useEffect(() => {
+    setupStateRef.current = setupState;
+  }, [setupState]);
+
+  const handleProviderChange = async (provider: string) => {
+    const current = setupStateRef.current;
+
+    if (!provider) {
+      onSetupChange({
+        ...current,
+        agent: {
+          ...current.agent,
+          provider: "",
+          model: "",
+        },
+      });
+      return;
+    }
+
+    const shouldSeedModel = provider !== selectedProfileData?.provider;
+    const initialModel = shouldSeedModel ? providerSeedModel(provider) : "";
+    onSetupChange({
+      ...current,
+      agent: {
+        ...current.agent,
+        provider,
+        model: initialModel,
+      },
+    });
+
+    if (!shouldSeedModel) return;
+
+    try {
+      const models = await fetchProviderModels(provider);
+      const seededModel = models[0]?.id ?? initialModel;
+      if (!seededModel) return;
+      const latest = setupStateRef.current;
+      if (latest.agent.provider !== provider) return;
+      if (latest.agent.model === seededModel) return;
+      onSetupChange({
+        ...latest,
+        agent: {
+          ...latest.agent,
+          provider,
+          model: seededModel,
+        },
+      });
+    } catch {
+      // Keep the lightweight fallback model if model discovery fails.
+    }
+  };
 
   return (
     <div className="profile-panel">
@@ -76,14 +132,27 @@ export function ProfilePanel({
           <div className="profile-panel-body">
             <label className="agent-config-field">
               <span>profile</span>
-              <select
+              <SearchDropdown
+                className="search-dropdown--compact search-dropdown--up"
                 value={selectedProfile}
-                onChange={(e) => onSelectProfile(e.target.value)}
-              >
-                {profiles.map((p) => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
-                ))}
-              </select>
+                options={profiles.map((p) => ({ value: p.name }))}
+                placeholder="select profile"
+                searchPlaceholder="search profiles..."
+                clearable={false}
+                onChange={onSelectProfile}
+              />
+            </label>
+
+            <label className="agent-config-field">
+              <span>provider</span>
+              <SearchDropdown
+                className="search-dropdown--compact search-dropdown--up"
+                value={setupState.agent.provider}
+                options={(availableProviders ?? []).map((provider) => ({ value: provider }))}
+                placeholder={selectedProfileData?.provider ?? activeUserProfileObj?.provider ?? "claude-code"}
+                searchPlaceholder="search providers..."
+                onChange={handleProviderChange}
+              />
             </label>
 
             <SessionSetup
@@ -102,6 +171,7 @@ export function ProfilePanel({
               }
               showAllProjectPaths={activeUserProfileObj?.showAllProjectPaths}
               onProjectInit={refreshProfiles}
+              showAgentConfig={false}
             />
           </div>
         </div>

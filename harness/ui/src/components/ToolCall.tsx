@@ -12,10 +12,22 @@ type Props = {
   onStopTask?: (taskId: string) => void;
 };
 
+function displayToolName(name: string): string {
+  if (name === "CommandExecution") return "command execution";
+  if (name === "FileChange") return "file change";
+  if (name === "WebSearch") return "web search";
+  if (name === "MCPToolCall") return "mcp tool call";
+  return name;
+}
+
 /** Extract a short human-readable summary from tool input + result */
-function summarize(name: string, input: Record<string, unknown>, result?: string): string {
+function summarize(name: string, input: Record<string, unknown>): string {
   const path = input.file_path as string | undefined;
   const shortPath = path?.replace(/^\/home\/[^/]+\//, "~/") ?? "";
+  if (name.startsWith("mcp__")) {
+    const parts = name.split("__");
+    if (parts.length >= 3) return `${parts[1]}/${parts[2]}`;
+  }
 
   switch (name) {
     case "Read":
@@ -28,12 +40,18 @@ function summarize(name: string, input: Record<string, unknown>, result?: string
       if (limit) return `${p} (${limit} lines)`;
       return p;
     }
+    case "FileChange": {
+      const kind = input.change_kind as string | undefined;
+      const file = shortPath || truncate(input.path as string, 80) || truncate(input.file_path as string, 80);
+      return kind ? `${kind} ${file}` : file;
+    }
     case "Write":
     case "write":
     case "Edit":
     case "edit":
     case "MultiEdit":
       return shortPath || truncate(input.path as string, 80);
+    case "CommandExecution":
     case "Bash":
     case "bash":
       return truncate(input.command as string, 80);
@@ -50,6 +68,12 @@ function summarize(name: string, input: Record<string, unknown>, result?: string
       return truncate(input.url as string, 60);
     case "WebSearch":
       return truncate(input.query as string, 60);
+    case "MCPToolCall": {
+      const server = input.server as string | undefined;
+      const tool = input.tool as string | undefined;
+      if (server && tool) return `${server}/${tool}`;
+      return server || tool || "";
+    }
     case "Agent":
       return truncate(input.description as string, 60);
     case "TodoWrite": {
@@ -412,10 +436,10 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
     );
   }
 
-  const summary = summarize(tool.name, tool.input, tool.result);
+  const summary = summarize(tool.name, tool.input);
   const isAgent = tool.name === "Agent" && (tool.subMessages?.length ?? 0) > 0;
   const isRead = tool.name === "Read" || tool.name === "read";
-  const isEdit = /^(Edit|edit|MultiEdit|Write|write)$/.test(tool.name);
+  const isEdit = /^(Edit|edit|MultiEdit|Write|write|FileChange)$/.test(tool.name);
   const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
 
   return (
@@ -426,7 +450,7 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
           {tool.status === "completed" && <span className="tool-dot tool-dot--ok" />}
           {tool.status === "error" && <span className="tool-dot tool-dot--err" />}
         </span>
-        <span className="tool-call-name">{tool.name}</span>
+        <span className="tool-call-name">{displayToolName(tool.name)}</span>
         {summary && <span className="tool-call-summary">{summary}</span>}
         {isAgent && (
           <span className="tool-call-sub-count">{countSubTools(tool.subMessages!)} calls</span>

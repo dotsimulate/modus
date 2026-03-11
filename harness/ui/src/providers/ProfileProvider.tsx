@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
-import type { Profile, UserProfile, UserProfileState, CreateSessionOpts } from "../api";
+import type { Profile, ProviderCapabilities, UserProfile, UserProfileState, CreateSessionOpts } from "../api";
 import {
-  fetchProfiles, fetchProviders, fetchUserProfiles, fetchUserProfileState,
+  fetchProfiles, fetchProviderCapabilities, fetchProviders, fetchUserProfiles, fetchUserProfileState,
   patchUserProfileStateApi,
 } from "../api";
 import { createDefaultSetupState, type SessionSetupState } from "../components/SessionSetup";
@@ -14,6 +14,7 @@ type ProfileContextValue = {
   profiles: Profile[];
   visibleProfiles: Profile[];
   availableProviders: string[];
+  providerCapabilities: Record<string, ProviderCapabilities>;
   userProfiles: UserProfile[];
   activeUserProfile: string | null;
   activeUP: UserProfile | null;
@@ -37,6 +38,7 @@ export const useProfiles = () => useContext(ProfileContext);
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+  const [providerCapabilities, setProviderCapabilities] = useState<Record<string, ProviderCapabilities>>({});
   const [selectedProfile, setSelectedProfile] = useState("");
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
   const [activeUserProfile, setActiveUserProfile] = useState<string | null>(
@@ -115,9 +117,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadInitial = async () => {
       try {
-        const [up, prov] = await Promise.all([fetchUserProfiles(), fetchProviders()]);
+        const [up, prov, caps] = await Promise.all([
+          fetchUserProfiles(),
+          fetchProviders(),
+          fetchProviderCapabilities(),
+        ]);
         setUserProfiles(up);
         setAvailableProviders(prov);
+        setProviderCapabilities(Object.fromEntries(caps.map((cap) => [cap.name, cap])));
 
         // Resolve CWD before profile fetch so project-local profiles are included
         const activeUp = up.find((u) => u.name === activeUserProfile);
@@ -174,6 +181,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   return (
     <ProfileContext.Provider value={{
       profiles, visibleProfiles, availableProviders, userProfiles,
+      providerCapabilities,
       activeUserProfile, activeUP,
       activeCwd: setupState.cwd.trim() || undefined,
       selectedProfile, selectProfile, setSelectedProfile,

@@ -4,7 +4,7 @@
  * Adding a new provider: import it, register it. That's it.
  */
 
-import type { SessionProvider } from "./types";
+import type { ProviderCapabilities, SessionProvider } from "./types";
 import { createClaudeCodeProvider } from "./claude-code";
 import { createCodexProvider } from "./codex";
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
@@ -38,4 +38,12 @@ export function isKnownProvider(name: string): boolean {
 
 export function listProviders(): string[] {
   return ["claude-code", "codex", ...PI_PROVIDERS];
+}
+
+export function getProviderCapabilities(name: string): ProviderCapabilities {
+  return getProvider(name).capabilities;
+}
+
+export function listProviderCapabilities(): ProviderCapabilities[] {
+  return listProviders().map((name) => getProviderCapabilities(name));
 }

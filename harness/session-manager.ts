@@ -62,6 +62,7 @@ export type ActiveSession = {
   tempId: string;
   status: SessionStatus;
   profile: string | undefined;
+  provider: string;
   model: string | undefined;
   seq: number;
   startedAt: number;
@@ -103,6 +104,7 @@ export type ActiveSession = {
     tools?: string[];
     disallowedTools?: string[];
     toolStates?: Record<string, string>;
+    providerControls?: Record<string, unknown>;
     loadProjectSettings?: boolean;
   };
 };
@@ -189,13 +191,18 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     },
 
     updateSessionDb(updates) {
+      const completing = updates.status === "idle" || updates.status === "done";
+      const persistedMessageCount = completing
+        ? (session.exchangeCount + 1) * 2
+        : (updates.messageCount ?? session.exchangeCount * 2);
       upsertSession({
         id: session.sessionId,
         preview: session.preview,
         profile: session.profile,
+        provider: updates.provider ?? session.provider,
         model: session.model,
         status: updates.status ?? session.status,
-        messageCount: updates.messageCount ?? 0,
+        messageCount: persistedMessageCount,
         costUsd: updates.costUsd ?? session.costUsd,
         lastPrompt: updates.lastPrompt ?? session.preview,
         lastResponse: updates.lastResponse,
@@ -204,7 +211,7 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
       });
 
       // Emit session trigger: assistant round end (on successful turn completion)
-      if (updates.status === "idle" || updates.status === "done") {
+      if (completing) {
         // exchangeCount tracks user↔assistant rounds (1 per result), not SDK agentic turns
         session.exchangeCount++;
         const dbRow = getSession(session.sessionId);
@@ -216,7 +223,7 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
             {
               id: session.sessionId, userProfile: session.userProfile, tags,
               preview: session.preview, title: dbRow?.title,
-              messageCount: updates.messageCount ?? 0,
+              messageCount: persistedMessageCount,
               lastResponse: updates.lastResponse,
             },
           );
@@ -243,6 +250,7 @@ export type StartSessionOpts = {
   cwd?: string;
   tools?: string[];
   disallowedTools?: string[];
+  providerControls?: Record<string, unknown>;
   loadProjectSettings?: boolean;
   sessionId?: string;
   actionName?: string;
@@ -256,8 +264,9 @@ function configEventPayload(config: {
   provider?: string;
   model?: string;
   effort?: string;
-  maxTurns?: number;
+  maxTurns?: number | null;
   toolStates?: Record<string, string>;
+  providerControls?: Record<string, unknown>;
   cwd?: string;
   loadProjectSettings?: boolean;
 }) {
@@ -267,6 +276,7 @@ function configEventPayload(config: {
     effort: config.effort ?? "",
     maxTurns: config.maxTurns,
     toolStates: config.toolStates ?? {},
+    providerControls: config.providerControls ?? {},
   };
 }
 
@@ -311,6 +321,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     tempId,
     status: "starting",
     profile: opts.profile,
+    provider: providerName,
     model: opts.model ?? profileDef?.model,
     seq: 0,
     startedAt: Date.now(),
@@ -343,6 +354,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       tools: opts.tools,
       disallowedTools: opts.disallowedTools,
       toolStates: opts.toolStates,
+      providerControls: opts.providerControls,
       loadProjectSettings: opts.loadProjectSettings,
     },
   };
@@ -365,6 +377,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       id: tempId,
       preview: session.preview,
       profile: session.profile,
+      provider: session.provider,
       model: session.model,
       status: "starting",
       messageCount: 0,
@@ -587,31 +600,56 @@ export function updateSessionConfig(
     provider?: string;
     model?: string;
     effort?: string;
-    maxTurns?: number;
+    maxTurns?: number | null;
     tools?: string[];
     disallowedTools?: string[];
     toolStates?: Record<string, string>;
+    providerControls?: Record<string, unknown>;
     cwd?: string;
     loadProjectSettings?: boolean;
   },
 ): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
+  const profileDef = getProfile(session.profile ?? "", session.cwd);
+  const profileProvider = profileDef?.provider ?? "claude-code";
+  const compatibleProfileModel = profileProvider === session.provider
+    ? profileDef?.model
+    : undefined;
   if (config.model !== undefined) {
-    session.model = config.model || getProfile(session.profile ?? "", session.cwd)?.model;
+    session.model = config.model || compatibleProfileModel || session.model;
+  }
+  if (config.provider !== undefined) {
+    session.provider = config.provider
+      || profileDef?.provider
+      || session.provider;
   }
   if (config.cwd !== undefined) {
     session.cwd = config.cwd;
   }
+  const normalizedTools = config.tools && config.tools.length > 0 ? config.tools : undefined;
+  const normalizedDisallowedTools = config.disallowedTools && config.disallowedTools.length > 0
+    ? config.disallowedTools
+    : undefined;
+  const normalizedProviderControls = config.providerControls && Object.keys(config.providerControls).length > 0
+    ? config.providerControls
+    : undefined;
   // Persist config overrides so follow-up turns include them
   if (config.provider !== undefined) session._configOverrides.provider = config.provider || undefined;
   if (config.effort !== undefined) session._configOverrides.effort = config.effort || undefined;
   if (config.maxTurns !== undefined) session._configOverrides.maxTurns = config.maxTurns || undefined;
-  if (config.tools !== undefined) session._configOverrides.tools = config.tools;
-  if (config.disallowedTools !== undefined) session._configOverrides.disallowedTools = config.disallowedTools;
+  if (config.tools !== undefined) session._configOverrides.tools = normalizedTools;
+  if (config.disallowedTools !== undefined) session._configOverrides.disallowedTools = normalizedDisallowedTools;
   if (config.toolStates !== undefined) session._configOverrides.toolStates = config.toolStates;
+  if (config.providerControls !== undefined) session._configOverrides.providerControls = normalizedProviderControls;
   if (config.loadProjectSettings !== undefined) session._configOverrides.loadProjectSettings = config.loadProjectSettings;
-  session._provider.updateConfig?.(session, config);
+  if (session.status === "idle") {
+    session._provider.updateConfig?.(session, {
+      ...config,
+      tools: config.tools !== undefined ? config.tools : undefined,
+      disallowedTools: config.disallowedTools !== undefined ? config.disallowedTools : undefined,
+    });
+  }
   session.seq++;
   addEvent(session.sessionId, session.seq, "system", "config_updated", JSON.stringify({
     type: "system",
@@ -643,10 +681,16 @@ export async function switchProfile(
 
   const contextMode = opts?.contextMode ?? "full";
   const oldProfileName = session.profile;
+  const oldProfile = oldProfileName ? getProfile(oldProfileName, session.cwd) : undefined;
   const oldProvider = session._provider;
-  const newProviderName = newProfile.provider ?? "claude-code";
-  const oldProviderName = oldProfileName ? (getProfile(oldProfileName, session.cwd)?.provider ?? "claude-code") : "claude-code";
-  const sameProvider = newProviderName === oldProviderName;
+  const oldProviderName = session.provider || oldProfile?.provider || "claude-code";
+  const requestedProviderName = newProfile.provider ?? "claude-code";
+  const providerLocked = true;
+  const providerMismatch = providerLocked && requestedProviderName !== oldProviderName;
+  const effectiveProviderName = providerMismatch ? oldProviderName : requestedProviderName;
+  const sameProvider = effectiveProviderName === oldProviderName;
+  const currentTools = session._configOverrides.tools ?? oldProfile?.tools;
+  const currentDisallowedTools = session._configOverrides.disallowedTools ?? oldProfile?.disallowedTools;
 
   // Step 1: Abort current turn if running/paused — wait for settle
   if (session.pauseResolver) {
@@ -679,12 +723,12 @@ export async function switchProfile(
   const ctx = createTurnContext(session, {
     prompt: "",
     profile: newProfileName,
-    provider: newProviderName,
-    model: newProfile.model,
+    provider: effectiveProviderName,
+    model: providerMismatch ? session.model : newProfile.model,
     effort: newProfile.effort,
     maxTurns: newProfile.maxTurns,
-    tools: newProfile.tools,
-    disallowedTools: newProfile.disallowedTools,
+    tools: providerMismatch ? currentTools : newProfile.tools,
+    disallowedTools: providerMismatch ? currentDisallowedTools : newProfile.disallowedTools,
     cwd: session.cwd,
     loadProjectSettings: newProfile.loadProjectSettings,
   });
@@ -696,7 +740,7 @@ export async function switchProfile(
     // Cross-provider switch: tear down old, dispose resources (MCP, AgentSession)
     oldProvider.abort(session);
     await oldProvider.dispose?.(session);
-    const newProvider = getProvider(newProviderName);
+    const newProvider = getProvider(effectiveProviderName);
     session._provider = newProvider;
     session._providerState = null;
     // New provider will be started on next message send
@@ -713,7 +757,15 @@ export async function switchProfile(
 
   // Step 6: Update ActiveSession fields
   session.profile = newProfileName;
-  session.model = newProfile.model ?? session.model;
+  session.provider = effectiveProviderName;
+  session.model = providerMismatch ? session.model : (newProfile.model ?? session.model);
+  session._configOverrides.provider = undefined;
+  session._configOverrides.effort = undefined;
+  session._configOverrides.maxTurns = undefined;
+  session._configOverrides.tools = undefined;
+  session._configOverrides.disallowedTools = undefined;
+  session._configOverrides.toolStates = undefined;
+  session._configOverrides.providerControls = undefined;
   session.abortController = new AbortController();
   session.pendingMessages = [];
 
@@ -726,7 +778,7 @@ export async function switchProfile(
     toProfile: newProfileName,
     contextMode,
     model: session.model,
-    provider: newProviderName,
+    provider: effectiveProviderName,
   };
   addEvent(session.sessionId, session.seq, "system", "switch", JSON.stringify(switchEvent));
   for (const sub of session.subscribers) {
@@ -738,6 +790,7 @@ export async function switchProfile(
     id: session.sessionId,
     preview: session.preview,
     profile: newProfileName,
+    provider: effectiveProviderName,
     model: session.model,
     status: session.status,
     messageCount: session.numTurns * 2,

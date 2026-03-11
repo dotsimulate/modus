@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import type { SessionInfo } from "../../api";
 import { updateSessionTitle } from "../../api";
+import { useSessionState } from "../../sessionStore";
+import { formatSidebarProviderStat, getLatestAssistantUsage } from "../providerStats";
 
 type Props = {
   session: SessionInfo;
@@ -32,6 +34,18 @@ export function SessionItem({ session: s, active, onSelect, onArchive }: Props) 
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const liveSession = useSessionState(s.id);
+  const latestUsage = liveSession ? getLatestAssistantUsage(liveSession.messages) : null;
+  const provider = liveSession?.agentConfig.provider ?? s.provider;
+  const costUsd = provider === "claude-code"
+    ? s.total_cost_usd
+    : (latestUsage?.cost ?? s.total_cost_usd);
+  const usageText = formatSidebarProviderStat(provider, {
+    model: liveSession?.model ?? s.model,
+    costUsd,
+    inputTokens: latestUsage?.inputTokens ?? s.last_input_tokens,
+    outputTokens: latestUsage?.outputTokens ?? s.last_output_tokens,
+  });
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -88,10 +102,10 @@ export function SessionItem({ session: s, active, onSelect, onArchive }: Props) 
       <div className="session-item-meta">
         <span className="session-meta-left">
           <span className="session-profile-tag">
-            {s.profile ?? "default"}
+            {provider ?? "unknown"}
           </span>
-          <span>${s.total_cost_usd.toFixed(3)}</span>
-          <span>{s.message_count}msg</span>
+          <span>{s.message_count} msg</span>
+          {usageText && <span>{usageText}</span>}
         </span>
         <span className="session-meta-right">
           <span>{timeAgo(s.updated_at)}</span>

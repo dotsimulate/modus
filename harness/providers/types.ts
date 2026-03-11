@@ -10,7 +10,37 @@ import type { Profile } from "../profiles";
 
 // ── Provider Interface ──
 
+export type ProviderToolGroup = {
+  label: string;
+  tools: string[];
+};
+
+export type ProviderCapabilities = {
+  name: string;
+  label: string;
+  family: "claude-code" | "codex" | "pi-agent";
+  builtInTools: string[];
+  builtInToolGroups: ProviderToolGroup[];
+  builtInToolMode: "explicit" | "event-derived";
+  supportsMcp: boolean;
+  mcpSupport: "full" | "stdio-only" | "none";
+  nonToolSignals: string[];
+  permissionModel: {
+    mode: "per-tool-ui" | "runtime-native" | "none";
+    interactive: boolean;
+    summary: string;
+  };
+  sessionMutability: {
+    providerSwitchAfterStart: boolean;
+    profileSwitch: "allowed" | "provider-locked";
+    configApplies: "immediate" | "next-turn";
+  };
+};
+
 export interface SessionProvider {
+  /** Static capability description used by API/UI to describe actual provider behavior. */
+  capabilities: ProviderCapabilities;
+
   /** Kick off the first turn. Runs async, calls ctx helpers to emit events. */
   startTurn(ctx: TurnContext): void;
 
@@ -59,5 +89,6 @@ export type TurnContext = {
     costUsd?: number;
     lastPrompt?: string;
     lastResponse?: string;
+    provider?: string;
   }): void;
 };

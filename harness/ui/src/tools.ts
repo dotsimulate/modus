@@ -43,14 +43,28 @@ export const PI_TOOL_GROUPS: ToolGroup[] = [
   { label: "exec", tools: ["bash"] },
 ];
 
+export const CODEX_TOOL_GROUPS: ToolGroup[] = [
+  { label: "exec", tools: ["Bash"] },
+  { label: "files", tools: ["Edit"] },
+  { label: "web", tools: ["WebSearch"] },
+];
+
+// PI Agent providers use lowercase tool names (read, write, edit, bash, ...)
+// Claude Code and Codex both use PascalCase tool names (Read, Write, Edit, Bash, ...)
+const PI_PROVIDER_NAMES = new Set(["anthropic", "openai", "litellm", "ollama", "openrouter"]);
+
 export function isPiProvider(provider?: string): boolean {
-  // The backend registry is the source of truth. In the UI, everything except
-  // Claude Code currently routes through PI and therefore uses PI tool names.
-  return !!provider && provider !== "claude-code";
+  return !!provider && PI_PROVIDER_NAMES.has(provider);
+}
+
+export function isCodexProvider(provider?: string): boolean {
+  return provider === "codex";
 }
 
 export function getToolGroups(provider?: string): ToolGroup[] {
-  return isPiProvider(provider) ? PI_TOOL_GROUPS : TOOL_GROUPS;
+  if (isPiProvider(provider)) return PI_TOOL_GROUPS;
+  if (isCodexProvider(provider)) return CODEX_TOOL_GROUPS;
+  return TOOL_GROUPS;
 }
 
 export function getAllTools(provider?: string): string[] {
@@ -93,6 +107,7 @@ export function mcpToolGroups(availableTools: string[]): ToolGroup[] {
     const parts = tool.split("__");
     if (parts.length < 3) continue;
     const serverName = parts[1];
+    if (!serverName) continue;
     const existing = serverMap.get(serverName) ?? [];
     existing.push(tool);
     serverMap.set(serverName, existing);

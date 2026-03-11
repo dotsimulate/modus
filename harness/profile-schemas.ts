@@ -110,6 +110,8 @@ export const ProfileSchema = z.object({
   maxOutputTokens: z.number().int().positive().optional(),
   compaction: CompactionConfigSchema.optional(),
   skills: z.array(z.string()).optional(),
+  codexSandboxMode: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
+  codexRules: z.array(z.string()).optional(),
 });
 
 // ── User Profile ──
@@ -128,6 +130,8 @@ export const UserProfileSchema = z.object({
   memoryFilter: z.string().optional(),
   memory: UserProfileMemorySchema.optional(),
   showAllProjectPaths: z.boolean().optional(),
+  computer: z.string().optional(),
+  editor: z.string().optional(),
 });
 
 // ── Global Config ──

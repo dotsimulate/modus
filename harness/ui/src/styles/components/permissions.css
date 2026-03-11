@@ -117,6 +117,62 @@
 
 /* ── AskUserQuestion form ── */
 
+.permission-question-collapse {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 2px 0 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.permission-question-collapse-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  animation: pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.permission-question-collapse-label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.permission-question-collapse-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+
+.permission-question-collapse:hover .permission-question-collapse-chevron {
+  color: var(--text);
+}
+
+.permission-question-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.1s ease;
+}
+
+.permission-question-body.collapsed {
+  grid-template-rows: 0fr;
+}
+
+.permission-question-body-inner {
+  overflow: hidden;
+}
+
 .permission-questions {
   display: flex;
   flex-direction: column;

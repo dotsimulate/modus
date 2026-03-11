@@ -4,12 +4,7 @@ import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
 import { StreamingCursor } from "./StreamingCursor";
-
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M ";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k ";
-  return n + " ";
-}
+import { formatProviderTokenUsage } from "./providerStats";
 
 /** Count all tool calls recursively, including sub-agent nested tools */
 function countAllTools(toolCalls?: ToolCall[]): number {
@@ -48,6 +43,7 @@ function useElapsed(active: boolean, startTime?: number): number | null {
 
 type Props = {
   msg: Message;
+  provider?: string;
   isNew?: boolean;
   isStreaming: boolean;
   hideRole?: boolean;
@@ -63,19 +59,19 @@ type Props = {
   children?: ReactNode;
 };
 
-function formatMeta(meta: Message["meta"]): string {
+function formatMeta(meta: Message["meta"], provider?: string): string {
   if (!meta) return "";
   const parts: string[] = [];
   if (meta.model) parts.push(meta.model);
   if (meta.cost != null) parts.push(`$${meta.cost.toFixed(4)}`);
   if (meta.turns != null) parts.push(`${meta.turns} turns`);
-  if (meta.inputTokens != null && meta.outputTokens != null)
-    parts.push(`↓${fmtTokens(meta.inputTokens).trim()} ↑${fmtTokens(meta.outputTokens).trim()}`);
+  const usage = formatProviderTokenUsage(provider, meta.inputTokens, meta.outputTokens);
+  if (usage) parts.push(usage);
   if (meta.duration != null) parts.push(`${(meta.duration / 1000).toFixed(1)}s`);
   return parts.join("  ");
 }
 
-export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, children }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, children }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -83,6 +79,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, i
   const toolCount = countAllTools(msg.toolCalls);
   const liveElapsed = useElapsed(isStreaming && !msg.meta, msg.timestamp);
   const duration = msg.meta?.duration ?? liveElapsed;
+  const usageText = formatProviderTokenUsage(provider, msg.meta?.inputTokens, msg.meta?.outputTokens);
 
   // Track streaming → meta transition for resolve animation
   useEffect(() => {
@@ -178,7 +175,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, i
 
       {resolving && msg.meta && (
         <div className="message-meta">
-          <StreamingCursor resolveText={formatMeta(msg.meta)} onResolved={() => setResolving(false)} />
+          <StreamingCursor resolveText={formatMeta(msg.meta, provider)} onResolved={() => setResolving(false)} />
         </div>
       )}
 
@@ -189,10 +186,9 @@ export const MessageBubble = memo(function MessageBubble({ msg, isNew = false, i
             <span>${msg.meta.cost.toFixed(4)}</span>
           )}
           {msg.meta.turns != null && <span>{msg.meta.turns} turns</span>}
-          {msg.meta.inputTokens != null && msg.meta.outputTokens != null && (
+          {usageText && (
             <span className="meta-tokens">
-              <span className="meta-arrow">&#x2193;</span>{fmtTokens(msg.meta.inputTokens)}
-              <span className="meta-arrow">&#x2191;</span>{fmtTokens(msg.meta.outputTokens)}
+              {usageText}
             </span>
           )}
           {msg.meta.duration != null && (

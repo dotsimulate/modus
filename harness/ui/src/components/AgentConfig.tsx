@@ -11,7 +11,7 @@ import { fetchProviderModels } from "../api";
 import type { ProviderModel, AgentConfigState } from "../api";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
-import { isPiProvider, mcpToolGroups, toSdkToolConfig, type ToolStates } from "../tools";
+import { isCodexProvider, isPiProvider, mcpToolGroups, toSdkToolConfig, type ToolStates } from "../tools";
 
 export type { AgentConfigState };
 
@@ -23,6 +23,18 @@ export type SessionConfigPatch = {
   tools?: string[];
   disallowedTools?: string[];
   toolStates?: ToolStates;
+  providerControls?: AgentConfigState["providerControls"];
+};
+
+export type SessionConfigUpdate = {
+  provider: string;
+  model: string;
+  effort: string;
+  maxTurns: number | null;
+  tools: string[];
+  disallowedTools: string[];
+  toolStates: ToolStates;
+  providerControls: AgentConfigState["providerControls"];
 };
 
 type Props = {
@@ -90,6 +102,20 @@ export function AgentConfig({
       provider,
       model: "",
       ...(switchingToolFamilies ? { toolStates: {} } : {}),
+      ...(isCodexProvider(provider || profileProvider) ? {} : { providerControls: {} }),
+    });
+  };
+
+  const codexControls = config.providerControls?.codex ?? {};
+  const updateCodexControls = (patch: NonNullable<NonNullable<AgentConfigState["providerControls"]>["codex"]>) => {
+    update({
+      providerControls: {
+        ...(config.providerControls ?? {}),
+        codex: {
+          ...codexControls,
+          ...patch,
+        },
+      },
     });
   };
 
@@ -151,8 +177,48 @@ export function AgentConfig({
         </label>
       </div>
 
+      {/* Provider-specific runtime controls */}
+      {isCodexProvider(effectiveProvider) ? (
+        <div className="agent-config-row">
+          <label className="agent-config-field">
+            <span>sandbox</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={codexControls.sandboxMode ?? ""}
+              options={[
+                { value: "danger-full-access" },
+                { value: "workspace-write" },
+                { value: "read-only" },
+              ]}
+              placeholder="profile default"
+              searchPlaceholder="search sandbox..."
+              onChange={(sandboxMode) => updateCodexControls({
+                sandboxMode: sandboxMode as NonNullable<NonNullable<AgentConfigState["providerControls"]>["codex"]>["sandboxMode"],
+              })}
+            />
+          </label>
+          <label className="agent-config-field">
+            <span>web</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={codexControls.webSearchMode ?? ""}
+              options={[
+                { value: "live" },
+                { value: "disabled" },
+                { value: "cached" },
+              ]}
+              placeholder="profile default"
+              searchPlaceholder="search web mode..."
+              onChange={(webSearchMode) => updateCodexControls({
+                webSearchMode: webSearchMode as NonNullable<NonNullable<AgentConfigState["providerControls"]>["codex"]>["webSearchMode"],
+              })}
+            />
+          </label>
+        </div>
+      ) : null}
+
       {/* Tools section */}
-      {toolsCollapsible ? (
+      {!isCodexProvider(effectiveProvider) && toolsCollapsible ? (
         <button
           className="agent-config-tools-toggle"
           onClick={() => setToolsOpen(!toolsOpen)}
@@ -161,20 +227,77 @@ export function AgentConfig({
         </button>
       ) : null}
 
-      <div className={`panel-collapse ${toolsOpen ? "panel-collapse--open" : ""}`}>
-        <div className="panel-collapse-clip">
-          <ToolGrid
-            states={config.toolStates}
-            profileTools={profileTools}
-            onChange={(toolStates) => update({ toolStates })}
-            compact={compact}
-            extraGroups={mcpToolGroups(availableTools ?? [])}
-            provider={effectiveProvider}
-          />
+      {!isCodexProvider(effectiveProvider) && (
+        <div className={`panel-collapse ${toolsOpen ? "panel-collapse--open" : ""}`}>
+          <div className="panel-collapse-clip">
+            <ToolGrid
+              states={config.toolStates}
+              profileTools={profileTools}
+              onChange={(toolStates) => update({ toolStates })}
+              compact={compact}
+              extraGroups={mcpToolGroups(availableTools ?? [])}
+              provider={effectiveProvider}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
+}
+
+export function createEmptyAgentConfig(): AgentConfigState {
+  return {
+    toolStates: {},
+    model: "",
+    provider: "",
+    effort: "",
+    maxTurns: "",
+    providerControls: {},
+  };
+}
+
+function equalStringRecord(
+  left: Record<string, string>,
+  right: Record<string, string>,
+): boolean {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => left[key] === right[key]);
+}
+
+function equalProviderControls(
+  left: AgentConfigState["providerControls"],
+  right: AgentConfigState["providerControls"],
+): boolean {
+  const leftCodex = left?.codex ?? {};
+  const rightCodex = right?.codex ?? {};
+  return (
+    leftCodex.sandboxMode === rightCodex.sandboxMode
+    && leftCodex.webSearchMode === rightCodex.webSearchMode
+  );
+}
+
+export function isAgentConfigEqual(left: AgentConfigState, right: AgentConfigState): boolean {
+  return (
+    left.model === right.model
+    && left.provider === right.provider
+    && left.effort === right.effort
+    && left.maxTurns === right.maxTurns
+    && equalStringRecord(left.toolStates, right.toolStates)
+    && equalProviderControls(left.providerControls, right.providerControls)
+  );
+}
+
+export function countAgentConfigDifferences(left: AgentConfigState, right: AgentConfigState): number {
+  let count = 0;
+  if (left.model !== right.model) count++;
+  if (left.provider !== right.provider) count++;
+  if (left.effort !== right.effort) count++;
+  if (left.maxTurns !== right.maxTurns) count++;
+  if (!equalStringRecord(left.toolStates, right.toolStates)) count++;
+  if (!equalProviderControls(left.providerControls, right.providerControls)) count++;
+  return count;
 }
 
 /** Convert AgentConfigState to SDK-compatible overrides */
@@ -190,6 +313,24 @@ export function agentConfigToOverrides(
     ...(config.maxTurns.trim() ? { maxTurns: Number(config.maxTurns) } : {}),
     ...(config.effort.trim() ? { effort: config.effort } : {}),
     toolStates: config.toolStates,
+    providerControls: config.providerControls,
   };
 }
 
+/** Convert AgentConfigState to session config update payload, preserving explicit clears. */
+export function agentConfigToUpdatePayload(
+  config: AgentConfigState,
+  profileTools: string[] | "all",
+): SessionConfigUpdate {
+  const toolConfig = toSdkToolConfig(config.toolStates, profileTools);
+  return {
+    provider: config.provider.trim(),
+    model: config.model.trim(),
+    effort: config.effort.trim(),
+    maxTurns: config.maxTurns.trim() ? Number(config.maxTurns) : null,
+    tools: "tools" in toolConfig ? (toolConfig.tools ?? []) : [],
+    disallowedTools: "disallowedTools" in toolConfig ? (toolConfig.disallowedTools ?? []) : [],
+    toolStates: config.toolStates,
+    providerControls: config.providerControls ?? {},
+  };
+}

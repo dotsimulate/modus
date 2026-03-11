@@ -15,6 +15,7 @@ import { dirname, isAbsolute, join, parse as parsePath } from "path";
 import { existsSync } from "fs";
 import { resolveSecret } from "../secrets";
 import type { ClaudeMdExcludes } from "../profiles";
+import type { ProviderCapabilities } from "./types";
 
 // On Windows, Bun's subprocess needs the .cmd wrapper to resolve correctly via PATH.
 const CLAUDE_PATH = process.env.CLAUDE_PATH
@@ -22,6 +23,35 @@ const CLAUDE_PATH = process.env.CLAUDE_PATH
 
 const ALL_BUILTIN = ["Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Bash",
   "WebSearch", "WebFetch", "Agent", "TodoWrite", "Skill", "NotebookEdit", "AskUserQuestion"];
+
+const CLAUDE_CAPABILITIES: ProviderCapabilities = {
+  name: "claude-code",
+  label: "Claude Code",
+  family: "claude-code",
+  builtInTools: ALL_BUILTIN,
+  builtInToolGroups: [
+    { label: "files", tools: ["Read", "Write", "Edit", "MultiEdit"] },
+    { label: "search", tools: ["Glob", "Grep"] },
+    { label: "exec", tools: ["Bash"] },
+    { label: "web", tools: ["WebSearch", "WebFetch"] },
+    { label: "agent", tools: ["Agent", "TodoWrite", "Skill"] },
+    { label: "other", tools: ["NotebookEdit", "AskUserQuestion"] },
+  ],
+  builtInToolMode: "explicit",
+  supportsMcp: true,
+  mcpSupport: "full",
+  nonToolSignals: ["thinking", "streaming"],
+  permissionModel: {
+    mode: "per-tool-ui",
+    interactive: true,
+    summary: "Per-tool approval requests are surfaced to the UI and can be allowed or denied live.",
+  },
+  sessionMutability: {
+    providerSwitchAfterStart: false,
+    profileSwitch: "provider-locked",
+    configApplies: "next-turn",
+  },
+};
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -40,8 +70,8 @@ type InputChannel = {
   close(): void;
 };
 
-function getState(session: ActiveSession): ClaudeCodeState {
-  return session._providerState as ClaudeCodeState;
+function getState(session: ActiveSession): ClaudeCodeState | null {
+  return (session._providerState as ClaudeCodeState | null) ?? null;
 }
 
 // ── Input Channel (async generator for streaming input mode) ──
@@ -158,6 +188,7 @@ function resolveClaudeMdExcludes(
 
 export function createClaudeCodeProvider(): SessionProvider {
   return {
+    capabilities: CLAUDE_CAPABILITIES,
     startTurn(ctx: TurnContext) {
       const { session, opts, profile: profileDef } = ctx;
       const { generator, channel } = createInputChannel();
@@ -493,6 +524,9 @@ export function createClaudeCodeProvider(): SessionProvider {
     sendMessage(ctx: TurnContext, content: MessageContent) {
       const { session } = ctx;
       const state = getState(session);
+      if (!state) {
+        throw new Error("claude-code provider state missing during sendMessage");
+      }
 
       if (session.status === "running" || session.status === "starting") {
         session.pendingMessages.push(content);
@@ -530,19 +564,20 @@ export function createClaudeCodeProvider(): SessionProvider {
 
     abort(session: ActiveSession) {
       const state = getState(session);
-      state.input.close();
+      state?.input.close();
       session.abortController.abort();
     },
 
     stopTask(session: ActiveSession, taskId: string): boolean {
       const state = getState(session);
-      if (!state.queryObj) return false;
+      if (!state?.queryObj) return false;
       state.queryObj.stopTask(taskId);
       return true;
     },
 
     updateConfig(session: ActiveSession, config: Record<string, any>) {
       const state = getState(session);
+      if (!state) return;
       const hasMcp = !!state.sdkOptions.mcpServers;
 
       if (config.model !== undefined) {
@@ -587,6 +622,7 @@ export function createClaudeCodeProvider(): SessionProvider {
 
     switchProfile(session: ActiveSession, ctx: TurnContext, contextMode: string) {
       const state = getState(session);
+      if (!state) return;
       const profileDef = ctx.profile;
 
       // Build new system prompt
@@ -607,15 +643,37 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       // Update tools
       const hasMcp = !!state.sdkOptions.mcpServers;
-      const rawTools = ctx.opts.tools ?? profileDef?.tools ?? undefined;
-      const rawDisallowed = ctx.opts.disallowedTools ?? profileDef?.disallowedTools ?? undefined;
-      if (hasMcp && Array.isArray(rawTools)) {
-        const blocked = ALL_BUILTIN.filter(t => !rawTools.includes(t));
-        state.sdkOptions.disallowedTools = blocked.length > 0 ? blocked : undefined;
-        state.sdkOptions.tools = undefined;
+      const providerLockedToDifferentProfile = !!ctx.opts.provider
+        && !!profileDef?.provider
+        && ctx.opts.provider !== profileDef.provider;
+      if (providerLockedToDifferentProfile) {
+        if (ctx.opts.tools !== undefined) {
+          if (hasMcp && Array.isArray(ctx.opts.tools)) {
+            const blocked = ALL_BUILTIN.filter(t => !ctx.opts.tools!.includes(t));
+            state.sdkOptions.disallowedTools = blocked.length > 0 ? blocked : undefined;
+            state.sdkOptions.tools = undefined;
+          } else {
+            state.sdkOptions.tools = Array.isArray(ctx.opts.tools) && ctx.opts.tools.length > 0
+              ? ctx.opts.tools
+              : undefined;
+          }
+        }
+        if (ctx.opts.disallowedTools !== undefined) {
+          state.sdkOptions.disallowedTools = Array.isArray(ctx.opts.disallowedTools) && ctx.opts.disallowedTools.length > 0
+            ? ctx.opts.disallowedTools
+            : undefined;
+        }
       } else {
-        state.sdkOptions.tools = Array.isArray(rawTools) && rawTools.length > 0 ? rawTools : undefined;
-        state.sdkOptions.disallowedTools = Array.isArray(rawDisallowed) && rawDisallowed.length > 0 ? rawDisallowed : undefined;
+        const rawTools = ctx.opts.tools ?? profileDef?.tools ?? undefined;
+        const rawDisallowed = ctx.opts.disallowedTools ?? profileDef?.disallowedTools ?? undefined;
+        if (hasMcp && Array.isArray(rawTools)) {
+          const blocked = ALL_BUILTIN.filter(t => !rawTools.includes(t));
+          state.sdkOptions.disallowedTools = blocked.length > 0 ? blocked : undefined;
+          state.sdkOptions.tools = undefined;
+        } else {
+          state.sdkOptions.tools = Array.isArray(rawTools) && rawTools.length > 0 ? rawTools : undefined;
+          state.sdkOptions.disallowedTools = Array.isArray(rawDisallowed) && rawDisallowed.length > 0 ? rawDisallowed : undefined;
+        }
       }
 
       // Close old input channel — next sendMessage will create a fresh resume
@@ -773,6 +831,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           effort: ctx.opts.effort ?? "",
           maxTurns: ctx.opts.maxTurns,
           toolStates: ctx.opts.toolStates ?? {},
+          providerControls: ctx.opts.providerControls ?? {},
         };
         m.cwd = session.cwd;
         m.loadProjectSettings = ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true;

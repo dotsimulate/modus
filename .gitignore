@@ -42,8 +42,11 @@ harness/profiles/_projects.json
 harness/profiles/state/
 harness/profiles/users/
 harness/profiles/**/.history/
+harness/actions/
 harness/actions/*/output/
 harness/actions/*/gallery/
+harness/TODO/
+TODO/
 
 # Claude skills — scaffolded per-project by modus init from harness/templates/
 .claude/skills/

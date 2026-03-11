@@ -72,7 +72,7 @@
   border: 1px solid var(--border-active);
   border-radius: 3px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  z-index: 20;
+  z-index: 120;
 }
 .search-dropdown--up .search-dropdown-menu {
   top: auto;

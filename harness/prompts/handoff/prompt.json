@@ -1,0 +1,26 @@
+{
+  "label": "handoff",
+  "description": "Generate a structured agent handoff — grounding, resources to consume, next steps, hot prep, testimony, and optional user working tips",
+  "icon": "git-branch",
+  "inputs": [
+    {
+      "name": "type",
+      "type": "select",
+      "placeholder": "handoff type",
+      "options": ["task", "research", "session", "automated"],
+      "default": "task"
+    },
+    {
+      "name": "focus",
+      "placeholder": "what you're handing off — topic, task, or context focus",
+      "required": true
+    },
+    {
+      "name": "includeUserTips",
+      "type": "toggle",
+      "placeholder": "include user working tips (yes/no)",
+      "default": "yes"
+    }
+  ],
+  "tags": ["dashboard"]
+}

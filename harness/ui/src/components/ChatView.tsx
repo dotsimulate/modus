@@ -8,6 +8,7 @@ import type { QueuedMessage as QueuedMessageType } from "../providers/SessionPro
 
 type Props = {
   messages: Message[];
+  provider?: string;
   streaming: boolean;
   streamFeed?: string;
   showThinking?: boolean;
@@ -23,7 +24,7 @@ type Props = {
   onStopTask?: (taskId: string) => void;
 };
 
-export function ChatView({ messages, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch, onStopTask }: Props) {
+export function ChatView({ messages, provider, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch, onStopTask }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
@@ -125,6 +126,7 @@ export function ChatView({ messages, streaming, streamFeed, showThinking = true,
             <div key={msg.id}>
               <MessageBubble
                 msg={msg}
+                provider={provider}
                 isNew={streaming && (
                   (i === lastUser && msg.role === "user") ||
                   (i === lastAssistant && msg.role === "assistant" && !msg.meta)
