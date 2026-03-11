@@ -39,6 +39,8 @@
   color: var(--text-muted);
   overflow: hidden;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 .config-bar-profile-wrap {
   display: flex;

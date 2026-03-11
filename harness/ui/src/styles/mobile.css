@@ -70,7 +70,6 @@
   .chat-input-area { padding: 8px 16px; }
   /* 16px min prevents iOS Safari auto-zoom on focus */
   .chat-textarea { font-size: max(16px, calc(16px * var(--font-scale, 1))); }
-  .chat-settings { display: none; }
 
   /* Prompt picker dropdown — constrain to viewport */
   .prompt-picker {

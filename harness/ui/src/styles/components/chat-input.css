@@ -90,6 +90,26 @@
   cursor: default;
 }
 
+.stop-btn {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  background: none;
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-family: var(--font-mono);
+  font-size: calc(12px * var(--font-scale, 1));
+  color: var(--error);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+  white-space: nowrap;
+}
+.stop-btn:hover {
+  background: rgba(255, 68, 68, 0.08);
+  border-color: #ff6666;
+}
+
 /* ── Drag & Drop Overlay ── */
 .chat-input-area.drag-active { position: relative; }
 .drop-overlay {
