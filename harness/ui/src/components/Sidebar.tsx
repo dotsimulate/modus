@@ -90,6 +90,16 @@ export function Sidebar({
           </button>
         </div>
 
+        <ProfilePanel
+          profiles={profiles}
+          availableProviders={availableProviders}
+          selectedProfile={selectedProfile}
+          onSelectProfile={onSelectProfile}
+          setupState={setupState}
+          onSetupChange={onSetupChange}
+          activeUserProfileObj={activeUserProfileObj}
+        />
+
         <div className="sidebar-sections">
           {!collapsed && (
             <div className="sidebar-controls">
@@ -143,16 +153,6 @@ export function Sidebar({
             />
           )}
         </div>
-
-        <ProfilePanel
-          profiles={profiles}
-          availableProviders={availableProviders}
-          selectedProfile={selectedProfile}
-          onSelectProfile={onSelectProfile}
-          setupState={setupState}
-          onSetupChange={onSetupChange}
-          activeUserProfileObj={activeUserProfileObj}
-        />
       </div>
     </>
   );

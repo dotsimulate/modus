@@ -282,6 +282,7 @@ function AppShell() {
                 availableTools={activeSession?.availableTools}
                 profiles={visibleProfiles}
                 onSwitchProfile={handleSwitchProfile}
+                status={activeSession?.status}
               />
               <ChatInput
                 value={input}
@@ -291,8 +292,6 @@ function AppShell() {
                 sessionStatus={activeSession?.status ?? null}
                 disabled={harnessUp === false}
                 placeholder={ui.placeholder}
-                activeToolName={activeSession?.activeToolName}
-                activeToolElapsed={activeSession?.activeToolElapsed}
               />
             </div>
           </>

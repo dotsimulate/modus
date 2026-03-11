@@ -65,7 +65,7 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
-.sidebar-sections { flex: 1; overflow-y: auto; padding: 0 0 8px; }
+.sidebar-sections { flex: 1; overflow-y: auto; padding: 10px 0 8px; }
 
 .sidebar-controls {
   padding: 0 20px 4px;

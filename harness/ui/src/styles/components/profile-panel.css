@@ -6,7 +6,7 @@
 
 /* ── Collapsible Profile + Config Panel ── */
 .profile-panel {
-  border-top: 1px solid var(--border);
+  /* No border here, padding handled by sidebar-sections */
 }
 .profile-panel-header {
   width: 100%;
@@ -91,9 +91,49 @@
   overflow: visible;
 }
 .profile-panel-body {
-  padding: 0 20px 14px;
+  padding: 0 20px 20px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.profile-panel--disabled .profile-panel-name {
+  color: var(--text-muted) !important;
+}
+.profile-panel--disabled .profile-panel-summary {
+  color: var(--text-muted) !important;
+  opacity: 0.5;
+}
+.profile-panel-body--disabled {
+  pointer-events: none;
+}
+.profile-panel--disabled .profile-panel-body * {
+  color: var(--text-muted) !important;
+  border-color: var(--border) !important;
+}
+.profile-panel--disabled .search-dropdown-control,
+.profile-panel--disabled .cwd-browse-btn,
+.profile-panel--disabled input,
+.profile-panel--disabled select {
+  background: transparent !important;
+  opacity: 0.5;
+}
+.manual-toggle {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+.manual-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.manual-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
 }
 

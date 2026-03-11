@@ -112,51 +112,53 @@ export function ToolGrid(props: Props) {
           </button>
         )}
       </div>
-      {groups.map((group) => (
-        <div key={group.label} className="tool-grid-group">
-          <div className="tool-grid-group-label">{group.label}</div>
-          <div className="tool-grid-pills">
-            {group.tools.map((tool) => {
-              const state = states[tool] ?? "inherit";
-              const isMcp = tool.startsWith("mcp__");
-              const displayName = isMcp ? mcpToolDisplayName(tool) : tool;
+      <div className="tool-grid-groups">
+        {groups.map((group) => (
+          <div key={group.label} className="tool-grid-group">
+            <div className="tool-grid-group-label">{group.label}</div>
+            <div className="tool-grid-pills">
+              {group.tools.map((tool) => {
+                const state = states[tool] ?? "inherit";
+                const isMcp = tool.startsWith("mcp__");
+                const displayName = isMcp ? mcpToolDisplayName(tool) : tool;
 
-              let enabled: boolean;
-              let isOverride: boolean;
+                let enabled: boolean;
+                let isOverride: boolean;
 
-              if (mode === "baseline") {
-                enabled = overrideCount === 0 || state === "on";
-                isOverride = state === "on";
-              } else {
-                enabled = isToolEnabled(tool, state, profileTools);
-                isOverride = state !== "inherit";
-              }
+                if (mode === "baseline") {
+                  enabled = overrideCount === 0 || state === "on";
+                  isOverride = state === "on";
+                } else {
+                  enabled = isToolEnabled(tool, state, profileTools);
+                  isOverride = state !== "inherit";
+                }
 
-              return (
-                <button
-                  key={tool}
-                  className={[
-                    "tool-pill",
-                    enabled ? "tool-pill--on" : "tool-pill--off",
-                    isOverride ? "tool-pill--override" : "",
-                    state === "off" ? "tool-pill--forced-off" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onClick={() => toggle(tool)}
-                  title={mode === "baseline"
-                    ? `${tool}: ${enabled ? "included" : "excluded"}`
-                    : `${tool}: ${state}${isOverride ? " (override)" : ""}`
-                  }
-                >
-                  {isOverride && <span className="tool-pill-dot" />}
-                  {displayName}
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={tool}
+                    className={[
+                      "tool-pill",
+                      enabled ? "tool-pill--on" : "tool-pill--off",
+                      isOverride ? "tool-pill--override" : "",
+                      state === "off" ? "tool-pill--forced-off" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => toggle(tool)}
+                    title={mode === "baseline"
+                      ? `${tool}: ${enabled ? "included" : "excluded"}`
+                      : `${tool}: ${state}${isOverride ? " (override)" : ""}`
+                    }
+                  >
+                    {isOverride && <span className="tool-pill-dot" />}
+                    {displayName}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
