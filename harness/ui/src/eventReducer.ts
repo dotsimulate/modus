@@ -45,7 +45,7 @@ export function createInitialState(sessionId = ""): ReducerState {
     sessionId,
     status: "starting",
     model: "",
-    agentConfig: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "" },
+    agentConfig: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "", providerControls: {} },
     cwd: "",
     loadProjectSettings: true,
     messages: [],
@@ -188,6 +188,8 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
       messages: [...s.messages, { id: nextMsgId(), role: "system", content: "interrupted" }],
       _streamingText: "",
       _streamingThinking: "",
+      _activeAgentToolId: undefined,
+      _activeSubTaskId: undefined,
       activeToolName: undefined,
       activeToolElapsed: undefined,
     };
@@ -361,6 +363,7 @@ function readAgentConfig(config: any): AgentConfigState | null {
     provider: typeof config.provider === "string" ? config.provider : "",
     effort: typeof config.effort === "string" ? config.effort : "",
     maxTurns: config.maxTurns != null ? String(config.maxTurns) : "",
+    providerControls: readProviderControls(config.providerControls),
   };
 }
 
@@ -369,6 +372,27 @@ function readToolStates(toolStates: any): AgentConfigState["toolStates"] {
   const next: AgentConfigState["toolStates"] = {};
   for (const [tool, state] of Object.entries(toolStates)) {
     if (state === "inherit" || state === "on" || state === "off") next[tool] = state;
+  }
+  return next;
+}
+
+function readProviderControls(providerControls: any): AgentConfigState["providerControls"] {
+  if (!providerControls || typeof providerControls !== "object") return {};
+  const next: NonNullable<AgentConfigState["providerControls"]> = {};
+  const rawCodex = (providerControls as Record<string, unknown>).codex;
+  if (rawCodex && typeof rawCodex === "object") {
+    const codex = rawCodex as Record<string, unknown>;
+    next.codex = {};
+    if (
+      codex.sandboxMode === "read-only"
+      || codex.sandboxMode === "workspace-write"
+      || codex.sandboxMode === "danger-full-access"
+    ) {
+      next.codex.sandboxMode = codex.sandboxMode;
+    }
+    if (codex.webSearchMode === "disabled" || codex.webSearchMode === "cached" || codex.webSearchMode === "live") {
+      next.codex.webSearchMode = codex.webSearchMode;
+    }
   }
   return next;
 }
@@ -770,6 +794,8 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     _streamingThinking: "",
     _pendingToolCalls: new Map(),
     _subTasks: new Map(),
+    _activeAgentToolId: undefined,
+    _activeSubTaskId: undefined,
     activeToolName: undefined,
     activeToolElapsed: undefined,
     pendingPermissions: [],

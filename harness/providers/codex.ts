@@ -9,11 +9,15 @@
  */
 
 import { Codex, type Thread, type ThreadEvent, type ThreadItem } from "@openai/codex-sdk";
-import type { SessionProvider, TurnContext } from "./types";
+import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import type { ActiveSession, MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
+import { getGlobalConfig, getProfile, getUserProfile, resolveProfilePrompt, type PermissionPolicy, type Profile } from "../profiles";
+import { isAbsolute, join } from "path";
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
+import { homedir } from "os";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -23,6 +27,38 @@ type CodexState = {
   threadId: string | null;
   threadOptions: import("@openai/codex-sdk").ThreadOptions;
   abortController: AbortController;
+  rulesFilePath?: string;
+};
+
+type CodexConfigValue = string | number | boolean | CodexConfigValue[] | CodexConfigObject;
+type CodexConfigObject = {
+  [key: string]: CodexConfigValue;
+};
+
+const CODEX_CAPABILITIES: ProviderCapabilities = {
+  name: "codex",
+  label: "Codex",
+  family: "codex",
+  builtInTools: ["Bash", "Write", "Edit", "WebSearch"],
+  builtInToolGroups: [
+    { label: "exec", tools: ["Bash"] },
+    { label: "files", tools: ["Write", "Edit"] },
+    { label: "web", tools: ["WebSearch"] },
+  ],
+  builtInToolMode: "event-derived",
+  supportsMcp: true,
+  mcpSupport: "stdio-only",
+  nonToolSignals: ["reasoning", "todo_list", "file_change"],
+  permissionModel: {
+    mode: "runtime-native",
+    interactive: false,
+    summary: "Codex exec mode supports sandbox and approval settings, but this harness path cannot surface live per-tool approve or deny prompts.",
+  },
+  sessionMutability: {
+    providerSwitchAfterStart: false,
+    profileSwitch: "provider-locked",
+    configApplies: "next-turn",
+  },
 };
 
 function getState(session: ActiveSession): CodexState {
@@ -37,6 +73,301 @@ function contentToString(content: MessageContent): string {
     .filter((b: any) => b.type === "text")
     .map((b: any) => b.text)
     .join("\n");
+}
+
+function buildCodexInput(content: MessageContent, ctx: TurnContext): string {
+  const prompt = resolveProfilePrompt(ctx.profile);
+  const userInput = contentToString(content);
+  if (!prompt?.text) return userInput;
+
+  // Codex SDK does not expose a first-class system prompt or provider preset API.
+  // For now both prompt modes are applied as an injected instruction prelude so
+  // Codex sessions actually honor the profile contract instead of ignoring it.
+  const header = prompt.mode === "custom"
+    ? "System instructions:"
+    : "Additional profile instructions:";
+
+  return `${header}\n${prompt.text}\n\nUser request:\n${userInput}`;
+}
+
+function resolveMcpEnv(env: Record<string, string> | undefined, serverName: string): Record<string, string> | undefined {
+  if (!env) return undefined;
+  const resolved: Record<string, string> = {};
+  for (const [key, val] of Object.entries(env)) {
+    if (val.startsWith("$")) {
+      const envVal = resolveSecret(val.slice(1));
+      if (envVal !== undefined) {
+        resolved[key] = envVal;
+      } else {
+        console.warn(`[codex] Missing secret ${val} for MCP server "${serverName}"`);
+      }
+    } else {
+      resolved[key] = val;
+    }
+  }
+  return resolved;
+}
+
+// ── Codex Rules File (.rules) ──
+
+/**
+ * Write profile codexRules to ~/.codex/rules/harness-{sessionId}.rules.
+ * Format: Starlark prefix_rule() calls, one per line.
+ * Example rule: prefix_rule(pattern=["rm"], decision="forbidden")
+ * Rules in this directory merge alphabetically; harness- prefix scopes them to us.
+ */
+function writeCodexRulesFile(rules: string[], sessionId: string): string | undefined {
+  if (!rules.length) return undefined;
+  const rulesDir = join(homedir(), ".codex", "rules");
+  try {
+    mkdirSync(rulesDir, { recursive: true });
+    const filePath = join(rulesDir, `harness-${sessionId}.rules`);
+    writeFileSync(filePath, rules.join("\n") + "\n", "utf8");
+    console.log(`[codex] wrote rules file: ${filePath} (${rules.length} rules)`);
+    return filePath;
+  } catch (err) {
+    console.warn(`[codex] Failed to write rules file for session ${sessionId}:`, err);
+    return undefined;
+  }
+}
+
+function cleanupCodexRulesFile(filePath: string | undefined): void {
+  if (!filePath) return;
+  try {
+    unlinkSync(filePath);
+  } catch {
+    // Ignore — file may already be gone on cleanup
+  }
+}
+
+// ── Permission Policy → Codex sandbox/approval mapping ──
+
+/**
+ * Maps harness PermissionPolicy to Codex-native controls.
+ *
+ * Codex exec mode does NOT support interactive approvals. Research confirmed:
+ * - Approval requests are never emitted as JSONL events — no interception possible.
+ * - exec mode auto-rejects all approval-requiring operations regardless of approvalPolicy flag.
+ * - The delegate/callback approval system exists in the Rust library, not in exec mode.
+ *
+ * Practical mapping:
+ *   "bypass"  → approvalPolicy "never", sandboxMode "danger-full-access"
+ *   "ask"     → approvalPolicy "never", sandboxMode "workspace-write" (physical containment)
+ *                warns that interactive approval is not achievable
+ *   object    → maps only the `default` field; requireApproval lists warn and are ignored
+ *                use profile.codexRules for command-level allow/forbidden enforcement
+ *
+ * codexSandboxMode on the profile overrides the derived sandboxMode.
+ */
+function mapPermissionPolicy(
+  policy: PermissionPolicy | undefined,
+  codexSandboxMode?: "read-only" | "workspace-write" | "danger-full-access",
+): {
+  approvalPolicy: import("@openai/codex-sdk").ApprovalMode;
+  sandboxMode: import("@openai/codex-sdk").SandboxMode;
+} {
+  let approvalPolicy: import("@openai/codex-sdk").ApprovalMode = "never";
+  let sandboxMode: import("@openai/codex-sdk").SandboxMode = "danger-full-access";
+
+  if (!policy || policy === "bypass") {
+    approvalPolicy = "never";
+    sandboxMode = "danger-full-access";
+  } else if (policy === "ask") {
+    console.warn(
+      "[codex] permissionPolicy \"ask\" cannot be honored — Codex exec mode auto-rejects " +
+      "interactive approvals. Falling back to sandboxMode \"workspace-write\" with no approval " +
+      "prompts. Use codexRules in the profile for command-level allow/forbidden enforcement.",
+    );
+    approvalPolicy = "never";
+    sandboxMode = "workspace-write";
+  } else {
+    // Object policy
+    if (policy.requireApproval?.length) {
+      console.warn(
+        `[codex] permissionPolicy.requireApproval [${policy.requireApproval.join(", ")}] ` +
+        "cannot be honored — Codex exec mode has no per-tool approval hooks. " +
+        "Use codexRules in the profile for command-level allow/forbidden enforcement.",
+      );
+    }
+    approvalPolicy = "never";
+    sandboxMode = policy.default === "ask" ? "workspace-write" : "danger-full-access";
+  }
+
+  // codexSandboxMode on the profile overrides the derived value
+  if (codexSandboxMode) sandboxMode = codexSandboxMode;
+
+  return { approvalPolicy, sandboxMode };
+}
+
+type CodexProviderControls = {
+  sandboxMode?: import("@openai/codex-sdk").SandboxMode;
+  webSearchMode?: import("@openai/codex-sdk").WebSearchMode;
+};
+
+function readCodexProviderControls(raw: unknown): CodexProviderControls {
+  if (!raw || typeof raw !== "object") return {};
+  const codex = (raw as Record<string, unknown>).codex;
+  if (!codex || typeof codex !== "object") return {};
+
+  const controls: CodexProviderControls = {};
+  if (
+    (codex as Record<string, unknown>).sandboxMode === "read-only"
+    || (codex as Record<string, unknown>).sandboxMode === "workspace-write"
+    || (codex as Record<string, unknown>).sandboxMode === "danger-full-access"
+  ) {
+    controls.sandboxMode = (codex as Record<string, import("@openai/codex-sdk").SandboxMode>).sandboxMode;
+  }
+  if (
+    (codex as Record<string, unknown>).webSearchMode === "disabled"
+    || (codex as Record<string, unknown>).webSearchMode === "cached"
+    || (codex as Record<string, unknown>).webSearchMode === "live"
+  ) {
+    controls.webSearchMode = (codex as Record<string, import("@openai/codex-sdk").WebSearchMode>).webSearchMode;
+  }
+  return controls;
+}
+
+function isLegacyToolEnabled(
+  tool: "Bash" | "Edit" | "WebSearch",
+  profileTools: string[] | undefined,
+  toolStates: Record<string, string> | undefined,
+): boolean {
+  const state = toolStates?.[tool];
+  if (state === "on") return true;
+  if (state === "off") return false;
+  return !profileTools || profileTools.includes(tool);
+}
+
+function resolveCodexRuntimeSettings(
+  profileDef: Profile | undefined,
+  opts: {
+    toolStates?: Record<string, string>;
+    providerControls?: Record<string, unknown>;
+  },
+): {
+  approvalPolicy: import("@openai/codex-sdk").ApprovalMode;
+  sandboxMode: import("@openai/codex-sdk").SandboxMode;
+  webSearchMode: import("@openai/codex-sdk").WebSearchMode;
+} {
+  const controls = readCodexProviderControls(opts.providerControls);
+  const { approvalPolicy, sandboxMode: derivedSandbox } = mapPermissionPolicy(
+    profileDef?.permissionPolicy,
+    profileDef?.codexSandboxMode,
+  );
+
+  let sandboxMode = controls.sandboxMode ?? derivedSandbox;
+  if (!controls.sandboxMode) {
+    const bashEnabled = isLegacyToolEnabled("Bash", profileDef?.tools, opts.toolStates);
+    const editEnabled = isLegacyToolEnabled("Edit", profileDef?.tools, opts.toolStates);
+    // Legacy tool toggles cannot express shell/files independently in Codex.
+    // Approximate "one disabled" as workspace-write and "both disabled" as read-only.
+    if (!bashEnabled && !editEnabled) {
+      sandboxMode = "read-only";
+    } else if (!bashEnabled || !editEnabled) {
+      sandboxMode = "workspace-write";
+    }
+  }
+
+  let webSearchMode = controls.webSearchMode;
+  if (!webSearchMode) {
+    webSearchMode = isLegacyToolEnabled("WebSearch", profileDef?.tools, opts.toolStates)
+      ? "live"
+      : "disabled";
+  }
+
+  return { approvalPolicy, sandboxMode, webSearchMode };
+}
+
+function buildCodexConfig(ctx: TurnContext): CodexConfigObject | undefined {
+  const { opts, profile } = ctx;
+  const globalConfig = getGlobalConfig(ctx.session.cwd);
+  const mergedMcp = {
+    ...(globalConfig.mcpServers ?? {}),
+    ...(profile?.mcpServers ?? {}),
+  };
+  if (Object.keys(mergedMcp).length === 0) return undefined;
+
+  // Resolve relative --directory args to absolute (same as claude-code provider)
+  const harnessRoot = join(import.meta.dir, "..");
+  for (const server of Object.values(mergedMcp) as any[]) {
+    const args = server.args as string[] | undefined;
+    if (!args) continue;
+    const dirIdx = args.indexOf("--directory");
+    const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
+    if (dirVal && !isAbsolute(dirVal)) {
+      args[dirIdx + 1] = join(harnessRoot, dirVal);
+    }
+  }
+
+  // Inject agent-memory scoping env vars (mirrors claude-code provider)
+  if (mergedMcp["agent-memory"]) {
+    const am = mergedMcp["agent-memory"] as any;
+    const env: Record<string, string> = { ...(am.env ?? {}) };
+    if (opts.profile) env.AGENT_PROFILE = opts.profile;
+    if (opts.userProfile) env.USER_PROFILE = opts.userProfile;
+
+    const sessionCwd = opts.cwd ?? process.env.AGENT_CWD;
+    if (sessionCwd) {
+      const projectMemoryDir = join(sessionCwd, ".modus", "memory");
+      if (existsSync(projectMemoryDir)) {
+        env.AGENT_MEMORY_DIR = projectMemoryDir;
+        const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
+        const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
+        if (agentMemoryRoot) {
+          env.AGENT_MEMORY_READ_DIRS = `${agentMemoryRoot}/memory`;
+        }
+      }
+    }
+
+    if (opts.userProfile) {
+      const userProf = getUserProfile(opts.userProfile);
+      if (userProf?.projects?.length) {
+        env.AGENT_MEMORY_SKILLS_DIRS = userProf.projects
+          .map(p => join(p, ".claude", "skills"))
+          .join(",");
+      } else {
+        env.AGENT_MEMORY_SKILLS_DIRS = "";
+      }
+      if (userProf?.memory?.scope === "profile") {
+        const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
+        const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
+        if (agentMemoryRoot) {
+          const globalDir = `${agentMemoryRoot}/memory`;
+          const profileDir = `${agentMemoryRoot}/memory/profiles/${opts.userProfile}`;
+          env.AGENT_MEMORY_DIR = profileDir;
+          if (userProf.memory.inheritGlobal !== false) {
+            env.AGENT_MEMORY_READ_DIRS = globalDir;
+          }
+        }
+      }
+    }
+    am.env = env;
+  }
+
+  const mcpServers: CodexConfigObject = {};
+  for (const [name, config] of Object.entries(mergedMcp)) {
+    if (!("command" in config)) {
+      console.warn(`[codex] Skipping MCP server "${name}" — Codex MCP wiring currently supports stdio servers only.`);
+      continue;
+    }
+
+    const serverConfig: CodexConfigObject = {
+      command: config.command,
+    };
+    if (config.args?.length) serverConfig.args = config.args;
+    const env = resolveMcpEnv(config.env, name);
+    if (env && Object.keys(env).length > 0) serverConfig.env = env;
+    mcpServers[name] = serverConfig;
+  }
+
+  return Object.keys(mcpServers).length > 0 ? { mcp_servers: mcpServers } : undefined;
+}
+
+function createCodexClient(ctx: TurnContext, apiKey: string | undefined): Codex {
+  return new Codex({
+    apiKey,
+    config: buildCodexConfig(ctx),
+  });
 }
 
 // ── Event Translation ──
@@ -69,6 +400,7 @@ function toolEvents(item: ThreadItem): any[] {
 
   switch (item.type) {
     case "command_execution": {
+      const commandFailed = item.status === "failed" || (typeof item.exit_code === "number" && item.exit_code !== 0);
       events.push({
         type: "assistant",
         message: {
@@ -76,8 +408,12 @@ function toolEvents(item: ThreadItem): any[] {
           content: [{
             type: "tool_use",
             id: item.id,
-            name: "Bash",
-            input: { command: item.command },
+            name: "CommandExecution",
+            input: {
+              command: item.command,
+              status: item.status,
+              ...(item.exit_code != null ? { exit_code: item.exit_code } : {}),
+            },
           }],
         },
       });
@@ -91,40 +427,47 @@ function toolEvents(item: ThreadItem): any[] {
             type: "tool_result",
             tool_use_id: item.id,
             content: item.aggregated_output || `exit code: ${item.exit_code ?? "unknown"}`,
+            is_error: commandFailed,
           }],
         },
       });
       break;
     }
     case "file_change": {
-      const summary = item.changes
-        .map(c => `${c.kind}: ${c.path}`)
-        .join("\n");
-      events.push({
-        type: "assistant",
-        message: {
-          role: "assistant",
-          content: [{
-            type: "tool_use",
-            id: item.id,
-            name: "Edit",
-            input: { files: item.changes.map(c => c.path) },
-          }],
-        },
-      });
-      events.push({
-        type: "user",
-        subtype: "tool_result",
-        isSynthetic: true,
-        message: {
-          role: "user",
-          content: [{
-            type: "tool_result",
-            tool_use_id: item.id,
-            content: `${item.status}: ${summary}`,
-          }],
-        },
-      });
+      const patchFailed = item.status === "failed";
+      for (const change of item.changes) {
+        const toolId = `${item.id}_${change.path.replace(/\W/g, "_")}`;
+        events.push({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: [{
+              type: "tool_use",
+              id: toolId,
+              name: "FileChange",
+              input: {
+                file_path: change.path,
+                change_kind: change.kind,
+                status: item.status,
+              },
+            }],
+          },
+        });
+        events.push({
+          type: "user",
+          subtype: "tool_result",
+          isSynthetic: true,
+          message: {
+            role: "user",
+            content: [{
+              type: "tool_result",
+              tool_use_id: toolId,
+              content: `${change.kind}: ${change.path} (${item.status})`,
+              is_error: patchFailed,
+            }],
+          },
+        });
+      }
       break;
     }
     case "mcp_tool_call": {
@@ -135,14 +478,20 @@ function toolEvents(item: ThreadItem): any[] {
           content: [{
             type: "tool_use",
             id: item.id,
-            name: `mcp__${item.server}__${item.tool}`,
-            input: item.arguments ?? {},
+            name: "MCPToolCall",
+            input: {
+              server: item.server,
+              tool: item.tool,
+              arguments: item.arguments ?? {},
+              status: item.status,
+            },
           }],
         },
       });
       const resultText = item.error?.message
         ?? (item.result?.content?.map((c: any) => c.text ?? JSON.stringify(c)).join("\n"))
         ?? item.status;
+      const mcpFailed = item.status === "failed" || !!item.error;
       events.push({
         type: "user",
         subtype: "tool_result",
@@ -153,6 +502,7 @@ function toolEvents(item: ThreadItem): any[] {
             type: "tool_result",
             tool_use_id: item.id,
             content: resultText,
+            is_error: mcpFailed,
           }],
         },
       });
@@ -180,7 +530,7 @@ function toolEvents(item: ThreadItem): any[] {
           content: [{
             type: "tool_result",
             tool_use_id: item.id,
-            content: "Search completed",
+            content: "search completed",
           }],
         },
       });
@@ -195,6 +545,7 @@ function toolEvents(item: ThreadItem): any[] {
 
 export function createCodexProvider(): SessionProvider {
   return {
+    capabilities: CODEX_CAPABILITIES,
     startTurn(ctx: TurnContext) {
       const { session, opts, profile: profileDef } = ctx;
 
@@ -205,15 +556,19 @@ export function createCodexProvider(): SessionProvider {
         ?? process.env.OPENAI_API_KEY
         ?? undefined;
 
-      const codex = new Codex({
-        apiKey,
-      });
+      const codex = createCodexClient(ctx, apiKey);
 
+      const { approvalPolicy, sandboxMode, webSearchMode } = resolveCodexRuntimeSettings(profileDef, {
+        toolStates: opts.toolStates,
+        providerControls: opts.providerControls,
+      });
       const threadOptions: import("@openai/codex-sdk").ThreadOptions = {
         model: opts.model ?? profileDef?.model ?? "gpt-5.1-codex",
         workingDirectory: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
         skipGitRepoCheck: true,
-        sandboxMode: "danger-full-access",
+        sandboxMode,
+        approvalPolicy,
+        webSearchMode,
       };
 
       // Map effort levels
@@ -232,17 +587,23 @@ export function createCodexProvider(): SessionProvider {
       // Check if this is a resume
       const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
 
+      // On resume, session ID IS the Codex thread ID (set by rekeySession on first turn)
       const state: CodexState = {
         codex,
         thread: null,
-        threadId: null,
+        threadId: isResume && opts.sessionId ? opts.sessionId : null,
         threadOptions,
         abortController: session.abortController,
       };
       session._providerState = state;
 
+      // Write codexRules file if profile specifies any
+      if (profileDef?.codexRules?.length) {
+        state.rulesFilePath = writeCodexRulesFile(profileDef.codexRules, session.sessionId);
+      }
+
       // Start the turn
-      const input = contentToString(session.initialContent);
+      const input = buildCodexInput(session.initialContent, ctx);
       runTurn(ctx, state, input, isResume, false).catch((err) => {
         console.error(`[codex] startTurn error for ${session.sessionId}:`, err);
         session.status = "error";
@@ -286,7 +647,7 @@ export function createCodexProvider(): SessionProvider {
 
       updateSessionStatus(session.sessionId, "running");
 
-      const input = contentToString(content);
+      const input = buildCodexInput(content, ctx);
       runTurn(ctx, state, input, true, true).catch((err) => {
         console.error(`[codex] sendMessage error for ${session.sessionId}:`, err);
         session.status = "error";
@@ -321,6 +682,15 @@ export function createCodexProvider(): SessionProvider {
           : undefined;
       }
 
+      const profileDef = session.profile ? getProfile(session.profile, session.cwd) : undefined;
+      const runtime = resolveCodexRuntimeSettings(profileDef, {
+        toolStates: session._configOverrides.toolStates,
+        providerControls: session._configOverrides.providerControls,
+      });
+      state.threadOptions.approvalPolicy = runtime.approvalPolicy;
+      state.threadOptions.sandboxMode = runtime.sandboxMode;
+      state.threadOptions.webSearchMode = runtime.webSearchMode;
+
       if (session.status === "running" || session.status === "starting") {
         session.abortController.abort();
       }
@@ -330,6 +700,7 @@ export function createCodexProvider(): SessionProvider {
       const state = getState(session);
       if (!state) return;
       state.abortController.abort();
+      cleanupCodexRulesFile(state.rulesFilePath);
       session._providerState = null;
     },
 
@@ -350,6 +721,21 @@ export function createCodexProvider(): SessionProvider {
           ? effortMap[effort]
           : undefined;
       }
+      // Update permission policy for next turn
+      const runtime = resolveCodexRuntimeSettings(ctx.profile, {
+        toolStates: ctx.opts.toolStates,
+        providerControls: ctx.opts.providerControls,
+      });
+      state.threadOptions.approvalPolicy = runtime.approvalPolicy;
+      state.threadOptions.sandboxMode = runtime.sandboxMode;
+      state.threadOptions.webSearchMode = runtime.webSearchMode;
+
+      const apiKey = resolveSecret("CODEX_API_KEY")
+        ?? resolveSecret("OPENAI_API_KEY")
+        ?? process.env.CODEX_API_KEY
+        ?? process.env.OPENAI_API_KEY
+        ?? undefined;
+      state.codex = createCodexClient(ctx, apiKey);
     },
   };
 }
@@ -433,6 +819,7 @@ async function runTurn(
                 effort: ctx.opts.effort ?? "",
                 maxTurns: ctx.opts.maxTurns,
                 toolStates: ctx.opts.toolStates ?? {},
+                providerControls: ctx.opts.providerControls ?? {},
               },
               cwd: session.cwd,
               loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? false,
@@ -471,12 +858,35 @@ async function runTurn(
               break;
             }
             case "todo_list": {
-              // Informational — emit as system status
-              ctx.broadcastEvent({
-                type: "system",
-                subtype: "status",
-                status: "todo_update",
-                items: item.items,
+              const todos = item.items.map((it, idx) => ({
+                content: it.text,
+                status: it.completed ? "completed" : "pending",
+                order: idx,
+              }));
+              ctx.emitEvent({
+                type: "assistant",
+                message: {
+                  role: "assistant",
+                  content: [{
+                    type: "tool_use",
+                    id: item.id,
+                    name: "TodoWrite",
+                    input: { todos },
+                  }],
+                },
+              });
+              ctx.emitEvent({
+                type: "user",
+                subtype: "tool_result",
+                isSynthetic: true,
+                message: {
+                  role: "user",
+                  content: [{
+                    type: "tool_result",
+                    tool_use_id: item.id,
+                    content: "todo list updated",
+                  }],
+                },
               });
               break;
             }
@@ -612,7 +1022,7 @@ async function runTurn(
       session.status = "running";
       session.turnStartedAt = Date.now();
 
-      const nextInput = contentToString(next);
+      const nextInput = buildCodexInput(next, ctx);
       runTurn(ctx, state, nextInput, true, true).catch((err) => {
         console.error(`[codex] pending drain error for ${session.sessionId}:`, err);
         session.status = "error";
@@ -643,7 +1053,7 @@ async function runTurn(
         session.status = "running";
         session.turnStartedAt = Date.now();
 
-        const nextInput = contentToString(next);
+        const nextInput = buildCodexInput(next, ctx);
         runTurn(ctx, state, nextInput, true, true).catch((err2) => {
           console.error(`[codex] post-abort drain error for ${session.sessionId}:`, err2);
           session.status = "error";

@@ -6,6 +6,8 @@
 
 /* ── Config Bar (collapsible bar above ChatInput) ── */
 .config-bar {
+  position: relative;
+  z-index: 30;
   flex-shrink: 0;
   border-top: 1px solid var(--border);
   max-width: var(--chat-max-width, 840px);
@@ -72,13 +74,17 @@
 }
 .config-bar-collapse--open {
   grid-template-rows: 1fr;
+  overflow: visible;
 }
 .config-bar-clip {
   overflow: hidden;
   min-height: 0;
 }
+.config-bar-collapse--open .config-bar-clip {
+  overflow: visible;
+}
 .config-bar-panel {
+  position: relative;
   padding: 8px 32px 12px;
 }
-
 

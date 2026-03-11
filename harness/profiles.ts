@@ -129,6 +129,21 @@ export type Profile = {
   compaction?: CompactionConfig;
   /** Skills to preload into agent context (skill names from .claude/skills/) */
   skills?: string[];
+  /**
+   * Codex-specific sandbox mode — overrides the sandboxMode derived from permissionPolicy.
+   * Only read by the Codex provider; ignored by Claude and other providers.
+   * "read-only" = no writes or shell; "workspace-write" = writes in cwd, no arbitrary shell;
+   * "danger-full-access" = no restrictions.
+   */
+  codexSandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+  /**
+   * Codex-specific command rules expressed as Starlark rule strings.
+   * Written to a temp ~/.codex/rules/ file before each session, cleaned up after.
+   * Allows per-profile allow/forbidden rules for specific command prefixes.
+   * Only read by the Codex provider; ignored by all other providers.
+   * NOTE: "prompt" decisions are auto-rejected in exec mode — use "allow"/"forbidden" only.
+   */
+  codexRules?: string[];
   /** UI presentation hints — read by frontend, optional with sensible defaults */
   ui?: {
     label?: string;
@@ -140,6 +155,11 @@ export type Profile = {
     emptySubtitle?: string;
     showGitEvents?: boolean;
   };
+};
+
+export type ResolvedProfilePrompt = {
+  text: string;
+  mode: "custom" | "append";
 };
 
 export type NotificationChannel =
@@ -184,6 +204,8 @@ export type UserProfile = {
   showAllProjectPaths?: boolean;
   /** Dashboard widget layout — read by frontend */
   dashboard?: { widgets: Array<{ type: string; [key: string]: unknown }> };
+  /** Computer/machine name — displayed in top-nav status bar */
+  computer?: string;
 };
 
 // ── Helpers ──
@@ -267,6 +289,16 @@ export function getAllProfiles(cwd?: string): Record<string, Profile> {
     }
   }
   return result;
+}
+
+export function resolveProfilePrompt(profile?: Profile): ResolvedProfilePrompt | undefined {
+  if (!profile?.prompt) return undefined;
+  const userData = getUserData();
+  const text = profile.prompt.replace(/\{\{(\w+)\}\}/g, (_, key) => userData[key] ?? `{{${key}}}`);
+  return {
+    text,
+    mode: profile.promptMode === "custom" ? "custom" : "append",
+  };
 }
 
 /** Save an agent profile (create or update).

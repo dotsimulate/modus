@@ -70,24 +70,28 @@
   color: var(--text-dim);
   margin-top: 4px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 }
 .session-meta-left {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
-  overflow: hidden;
+  flex: 1;
 }
-.session-meta-left > * { white-space: nowrap; }
+.session-meta-left > * {
+  white-space: nowrap;
+}
 .session-meta-right {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
   white-space: nowrap;
+  align-self: flex-start;
 }
 .session-profile-tag {
   font-size: 10px;

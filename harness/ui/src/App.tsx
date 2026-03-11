@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, switchSessionProfile, patchUserProfileApi } from "./api";
+import { healthCheck, patchUserProfileApi } from "./api";
 import { NAV_VIEWS } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -20,6 +20,7 @@ import { PermissionOverlay } from "./components/PermissionOverlay";
 import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
 import { UserSettingsModal } from "./components/UserSettingsModal";
+import { createEmptyAgentConfig } from "./components/AgentConfig";
 
 function App() {
   return (
@@ -34,9 +35,9 @@ function App() {
 }
 
 function AppShell() {
-  const { userName, handleLock } = useAuth();
+  const { handleLock } = useAuth();
   const {
-    profiles, visibleProfiles, availableProviders, userProfiles,
+    profiles, visibleProfiles, availableProviders, providerCapabilities, userProfiles,
     activeUserProfile, activeUP,
     selectedProfile, selectProfile,
     setupState, setSetupState,
@@ -46,7 +47,7 @@ function AppShell() {
     activeSession, serverSessions,
     input, handleInputChange,
     send, stop, stopTask, newSession, selectSession, archiveSession,
-    handlePermissionResponse, updateActiveSessionConfig,
+    handlePermissionResponse, updateActiveSessionConfig, updateActiveSessionProfile,
     queuedMessage, cancelQueued, branchFromMessage,
   } = useSession();
   const { view, navigate, hashProfile, setUrlProfile, consumeHashProfile } = useHashRouter();
@@ -103,9 +104,9 @@ function AppShell() {
   // Switch profile on live session (ConfigBar controls this)
   const handleSwitchProfile = useCallback((name: string) => {
     if (activeSession?.id && !activeSession.id.startsWith("pending-")) {
-      switchSessionProfile(activeSession.id, name).catch(() => {});
+      updateActiveSessionProfile(name);
     }
-  }, [activeSession?.id]);
+  }, [activeSession?.id, updateActiveSessionProfile]);
 
   // View-based session navigation (from dashboard/schedules)
   const handleViewSession = useCallback((id: string) => {
@@ -116,9 +117,7 @@ function AppShell() {
   // ── Profile UI resolution ──
   // Config bar shows the active session's profile. Sidebar's selectedProfile
   // is only used when there is NO active session (new chat preview).
-  const activeProfileName = activeSession
-    ? activeSession.profile          // session owns its profile (never leak sidebar)
-    : selectedProfile;               // no session → sidebar preview only
+  const activeProfileName = activeSession?.profile ?? selectedProfile;
   const profileUi = profiles.find((p) => p.name === activeProfileName)?.ui ?? {};
   const ui: Required<ProfileUi> = {
     label: profileUi.label ?? "agent",
@@ -132,6 +131,23 @@ function AppShell() {
   };
   const isStreaming = activeSession?.status === "running" || activeSession?.status === "starting";
   const profileData = profiles.find((p) => p.name === activeProfileName);
+  const activeSessionInfo = activeSession?.id ? serverSessions.find((s) => s.id === activeSession.id) : undefined;
+  const editorProfileName = activeSession?.nextProfile ?? activeProfileName;
+  const editorProfileData = profiles.find((p) => p.name === editorProfileName);
+  const sessionProviderLocked = !!activeSession && activeSession.messages.length > 0;
+  const liveProvider = activeSessionInfo?.provider || activeSession?.provider || profileData?.provider;
+  const liveModel = activeSession ? activeSession.model : profileData?.model;
+  const pendingProfileProviderMatches = !sessionProviderLocked
+    || !liveProvider
+    || !editorProfileData?.provider
+    || editorProfileData.provider === liveProvider;
+  const editorAgentConfig = activeSession?.nextAgentConfig
+    ?? (
+      activeSession?.nextProfile && activeSession.nextProfile !== activeSession.profile
+        ? createEmptyAgentConfig()
+        : activeSession?.agentConfig
+    )
+    ?? setupState.agent;
   const activeAgentCount = serverSessions.filter(s => {
     const status = getSessionState(s.id)?.status ?? s.status;
     return status === "running" || status === "starting";
@@ -208,6 +224,7 @@ function AppShell() {
             <div className="chat">
               <ChatView
                 messages={activeSession?.messages ?? []}
+                provider={liveProvider}
                 streaming={isStreaming}
                 streamFeed={activeSession?.streamFeed}
                 showThinking={ui.showThinking}
@@ -233,15 +250,32 @@ function AppShell() {
 
               <ConfigBar
                 profileName={activeProfileName}
-                model={activeSession?.model ?? profileData?.model}
+                pendingProfileName={activeSession?.nextProfile}
+                model={liveModel}
                 agentConfig={activeSession ? activeSession.agentConfig : setupState.agent}
+                editorConfig={editorAgentConfig}
                 onAgentConfigChange={updateActiveSessionConfig}
                 profileTools={profileData?.tools ?? "all"}
+                editorProfileTools={
+                  sessionProviderLocked && !pendingProfileProviderMatches
+                    ? (profileData?.tools ?? "all")
+                    : (editorProfileData?.tools ?? "all")
+                }
                 availableProviders={availableProviders}
-                profileProvider={profileData?.provider}
-                profileModel={activeSession?.model ?? profileData?.model}
+                profileProvider={liveProvider}
+                editorProfileProvider={
+                  sessionProviderLocked
+                    ? liveProvider
+                    : editorProfileData?.provider
+                }
+                editorProfileModel={
+                  pendingProfileProviderMatches
+                    ? editorProfileData?.model
+                    : undefined
+                }
                 profileEffort={profileData?.effort}
-                profileMaxTurns={profileData?.maxTurns}
+                editorProfileEffort={editorProfileData?.effort}
+                editorProfileMaxTurns={editorProfileData?.maxTurns}
                 availableTools={activeSession?.availableTools}
                 profiles={visibleProfiles}
                 onSwitchProfile={handleSwitchProfile}

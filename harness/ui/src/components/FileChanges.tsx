@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import type { ToolCall } from "../api";
 import { openInEditor } from "../api";
 import { API_BASE, tokenParam } from "../api/_fetch";
+import { ChatFileViewer } from "./ChatFileViewer";
 
 type FileEdit = {
   filePath: string;
@@ -14,15 +15,36 @@ type FileEdit = {
 /** Extract file edits from an array of tool calls (recurses into sub-agents) */
 export function extractFileEdits(toolCalls: ToolCall[]): FileEdit[] {
   const edits: FileEdit[] = [];
-
   for (const tc of toolCalls) {
     if (tc.status !== "completed") continue;
 
-    if (tc.name === "Edit" || tc.name === "MultiEdit") {
-      const fp = tc.input.file_path as string | undefined;
+    const name = (tc.name ?? "").toLowerCase();
+    const fp = (tc.input.file_path ?? tc.input.path) as string | undefined;
+    const hasBatchEdits = Array.isArray(tc.input.edits);
+    const hasSingleEdit = typeof tc.input.old_string === "string" || typeof tc.input.new_string === "string";
+    const hasWrite = typeof tc.input.content === "string";
+
+    // Codex pre-fix format: Edit with { files: string[] } — emit one entry per file
+    if ((name === "edit" || name === "write") && Array.isArray(tc.input.files) && !fp) {
+      for (const filePath of tc.input.files as string[]) {
+        edits.push({ filePath, type: name === "write" ? "write" : "edit" });
+      }
+      continue;
+    }
+    // Codex file-change event format: FileChange with { file_path, change_kind }
+    if (name === "filechange") {
+      if (!fp) continue;
+      edits.push({
+        filePath: fp,
+        type: "edit",
+      });
+      continue;
+    }
+
+    if (name === "edit" || name === "multiedit" || hasBatchEdits || hasSingleEdit) {
       if (!fp) continue;
 
-      if (tc.name === "MultiEdit" && Array.isArray(tc.input.edits)) {
+      if ((name === "multiedit" || hasBatchEdits) && Array.isArray(tc.input.edits)) {
         for (const edit of tc.input.edits as Array<{ old_string?: string; new_string?: string }>) {
           edits.push({
             filePath: fp,
@@ -39,8 +61,7 @@ export function extractFileEdits(toolCalls: ToolCall[]): FileEdit[] {
           newString: tc.input.new_string as string ?? "",
         });
       }
-    } else if (tc.name === "Write") {
-      const fp = tc.input.file_path as string | undefined;
+    } else if (name === "write" || hasWrite) {
       if (!fp) continue;
       edits.push({
         filePath: fp,
@@ -134,6 +155,18 @@ export function EditHunk({ edit, idx }: { edit: FileEdit; idx: number }) {
   const ol = (edit.oldString ?? "").split("\n");
   const nl = (edit.newString ?? "").split("\n");
 
+  // No diff content available (e.g. provider only reports which files changed)
+  if (!edit.oldString && !edit.newString) {
+    return (
+      <tbody className="diff-hunk-block">
+        <tr className="diff-hunk-header">
+          <td className="diff-gutter" colSpan={3}></td>
+          <td className="diff-hunk-range">file modified</td>
+        </tr>
+      </tbody>
+    );
+  }
+
   return (
     <tbody className="diff-hunk-block">
       {idx > 0 && (
@@ -187,7 +220,15 @@ function rawFileUrl(filePath: string): string {
 }
 
 /** A single file card with collapsible edits */
-function FileCard({ filePath, edits }: { filePath: string; edits: FileEdit[] }) {
+function FileCard({
+  filePath,
+  edits,
+  onViewFile,
+}: {
+  filePath: string;
+  edits: FileEdit[];
+  onViewFile: (path: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const { additions, deletions } = countChanges(edits);
   const name = basename(filePath);
@@ -202,6 +243,11 @@ function FileCard({ filePath, edits }: { filePath: string; edits: FileEdit[] }) 
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(rawFileUrl(filePath), "_blank");
+  };
+
+  const handleViewFile = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onViewFile(filePath);
   };
 
   return (
@@ -223,6 +269,12 @@ function FileCard({ filePath, edits }: { filePath: string; edits: FileEdit[] }) 
             </svg>
           </button>
         )}
+        <button className="fc-open-btn" onClick={handleViewFile} title="View current file state">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M1 6s1.8-3 5-3 5 3 5 3-1.8 3-5 3-5-3-5-3Z" stroke="currentColor" strokeWidth="1.1"/>
+            <circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.1"/>
+          </svg>
+        </button>
         <button className="fc-open-btn" onClick={handleOpen} title="Open in editor">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M10 6.5V10a1 1 0 01-1 1H2a1 1 0 01-1-1V3a1 1 0 011-1h3.5M7 1h4v4M5 7l6-6"
@@ -253,6 +305,7 @@ type Props = {
 };
 
 export const FileChanges = memo(function FileChanges({ toolCalls }: Props) {
+  const [viewerPath, setViewerPath] = useState<string | null>(null);
   const edits = extractFileEdits(toolCalls);
   if (edits.length === 0) return null;
 
@@ -278,10 +331,11 @@ export const FileChanges = memo(function FileChanges({ toolCalls }: Props) {
         </div>
         <div className="fc-files">
           {[...grouped.entries()].map(([fp, edits]) => (
-            <FileCard key={fp} filePath={fp} edits={edits} />
+            <FileCard key={fp} filePath={fp} edits={edits} onViewFile={setViewerPath} />
           ))}
         </div>
       </div>
+      <ChatFileViewer filePath={viewerPath} onClose={() => setViewerPath(null)} />
     </div>
   );
 });

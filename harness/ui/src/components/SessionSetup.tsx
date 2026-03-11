@@ -33,6 +33,10 @@ type Props = {
   showAllProjectPaths?: boolean;
   /** Callback to refresh profiles after init adds project-local profiles */
   onProjectInit?: () => void;
+  /** Hide live-tunable agent config when sidebar should only seed session identity */
+  showAgentConfig?: boolean;
+  /** Hide creation-only project settings toggle when not needed */
+  showLoadProjectSettings?: boolean;
 };
 
 export function SessionSetup({
@@ -47,6 +51,8 @@ export function SessionSetup({
   projectPaths,
   showAllProjectPaths: _showAllProjectPaths,
   onProjectInit,
+  showAgentConfig = true,
+  showLoadProjectSettings = true,
 }: Props) {
   const [browseOpen, setBrowseOpen] = useState(false);
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
@@ -165,34 +171,38 @@ export function SessionSetup({
       )}
 
       {/* Agent config (tools + effort + turns) */}
-      <AgentConfig
-        config={config.agent}
-        profileTools={profileTools}
-        availableProviders={availableProviders}
-        profileProvider={profileProvider}
-        profileModel={profileModel}
-        profileEffort={profileEffort}
-        profileMaxTurns={profileMaxTurns}
-        onChange={(agent) => update({ agent })}
-        dropdownDirection="up"
-        toolsCollapsible
-      />
+      {showAgentConfig && (
+        <AgentConfig
+          config={config.agent}
+          profileTools={profileTools}
+          availableProviders={availableProviders}
+          profileProvider={profileProvider}
+          profileModel={profileModel}
+          profileEffort={profileEffort}
+          profileMaxTurns={profileMaxTurns}
+          onChange={(agent) => update({ agent })}
+          dropdownDirection="up"
+          toolsCollapsible
+        />
+      )}
 
       {/* Load CLAUDE.md */}
-      <label className="session-setup-check">
-        <input
-          type="checkbox"
-          checked={config.loadProjectSettings}
-          onChange={(e) => update({ loadProjectSettings: e.target.checked })}
-        />
-        <span>load CLAUDE.md</span>
-      </label>
+      {showLoadProjectSettings && (
+        <label className="session-setup-check">
+          <input
+            type="checkbox"
+            checked={config.loadProjectSettings}
+            onChange={(e) => update({ loadProjectSettings: e.target.checked })}
+          />
+          <span>load CLAUDE.md</span>
+        </label>
+      )}
     </div>
   );
 }
 
 /** Shorten a path for display: ~/dev/infra/agent_dev_zone → ~/d/i/agent_dev_zone */
-function shortenPath(p: string): string {
+export function shortenPath(p: string): string {
   if (!p) return "";
   // Normalize to forward slashes for display
   const norm = p.replace(/\\/g, "/");
@@ -218,7 +228,7 @@ function shortenPath(p: string): string {
 /** Default state for SessionSetup */
 export function createDefaultSetupState(): SessionSetupState {
   return {
-    agent: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "" },
+    agent: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "", providerControls: {} },
     cwd: "",
     loadProjectSettings: true,
   };

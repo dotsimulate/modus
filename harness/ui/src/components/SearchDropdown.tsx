@@ -13,6 +13,7 @@ type Props = {
   emptyLabel?: string;
   disabled?: boolean;
   className?: string;
+  clearable?: boolean;
   onChange: (value: string) => void;
 };
 
@@ -24,6 +25,7 @@ export function SearchDropdown({
   emptyLabel = "no matches",
   disabled,
   className = "",
+  clearable = true,
   onChange,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -127,11 +129,11 @@ export function SearchDropdown({
         <button
           type="button"
           className="search-dropdown-toggle"
-          aria-label={value ? "clear selection" : open ? "close options" : "open options"}
+          aria-label={value && clearable ? "clear selection" : open ? "close options" : "open options"}
           disabled={disabled}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
-            if (value) {
+            if (value && clearable) {
               clearSelection();
               return;
             }
@@ -139,7 +141,7 @@ export function SearchDropdown({
             else openMenu();
           }}
         >
-          {value ? (
+          {value && clearable ? (
             <span className="search-dropdown-toggle-x">&times;</span>
           ) : (
             <svg width="10" height="6" viewBox="0 0 10 6" fill="none">

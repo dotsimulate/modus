@@ -1,7 +1,7 @@
 // Prevent nested session detection when launched from within Claude Code
 delete process.env.CLAUDECODE;
 
-import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin } from "./secrets";
+import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin } from "./secrets";
 loadSecrets();
 
 import { join, resolve, extname } from "path";
@@ -24,7 +24,7 @@ import {
 } from "./profile-schemas";
 import {
   listSessions, listSessionsForProjects, listSessionsByAction, listSessionsScoped,
-  getSession, getStoredSessionConfig, archiveSession, searchSessions,
+  getSession, getStoredSessionConfig, getLatestSessionUsage, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft,
   updateSessionTitle,
@@ -104,6 +104,18 @@ const pinSessions = new Set<string>();
 // Lock — invalidate ALL browser sessions (agents unaffected)
 app.post("/api/auth/lock", (c) => {
   pinSessions.clear();
+  return c.json({ ok: true });
+});
+
+// Change PIN — requires old PIN to verify identity
+app.post("/api/auth/change-pin", async (c) => {
+  const body = await c.req.json();
+  const oldPin = body.oldPin?.trim();
+  const newPin = body.newPin?.trim();
+  if (!oldPin || !newPin) return c.json({ error: "oldPin and newPin are required" }, 400);
+  if (newPin.length < 4) return c.json({ error: "new PIN must be at least 4 characters" }, 400);
+  const ok = changePin(oldPin, newPin);
+  if (!ok) return c.json({ error: "wrong PIN" }, 401);
   return c.json({ ok: true });
 });
 
@@ -308,6 +320,11 @@ app.get("/api/providers", async (c) => {
   return c.json(listProviders());
 });
 
+app.get("/api/provider-capabilities", async (c) => {
+  const { listProviderCapabilities } = await import("./providers/registry");
+  return c.json(listProviderCapabilities());
+});
+
 app.get("/api/providers/:name/models", async (c) => {
   const { fetchProviderModels } = await import("./providers/models");
   const name = c.req.param("name");
@@ -359,10 +376,24 @@ app.get("/api/sessions", (c) => {
   // Correct stale statuses: if DB says running/starting/idle but session
   // is not actually active in memory, it's done.
   const corrected = rows.map((s) => {
+    const storedConfig = s.provider ? null : getStoredSessionConfig(s.id);
+    const provider = s.provider ?? storedConfig?.provider ?? null;
+    const usage = getLatestSessionUsage(s.id, provider);
     if ((s.status === "running" || s.status === "starting" || s.status === "idle" || s.status === "paused") && !getActiveSession(s.id)) {
-      return { ...s, status: "done" };
+      return {
+        ...s,
+        provider,
+        status: "done",
+        last_input_tokens: usage?.inputTokens ?? null,
+        last_output_tokens: usage?.outputTokens ?? null,
+      };
     }
-    return s;
+    return {
+      ...s,
+      provider,
+      last_input_tokens: usage?.inputTokens ?? null,
+      last_output_tokens: usage?.outputTokens ?? null,
+    };
   });
   return c.json(corrected);
 });
@@ -375,6 +406,7 @@ app.get("/api/sessions/active", (c) => {
       id: s.sessionId,
       status: s.status,
       profile: s.profile ?? null,
+      provider: s.provider,
       model: s.model ?? null,
       costUsd: s.costUsd,
       numTurns: s.numTurns,
@@ -427,6 +459,7 @@ app.post("/api/sessions", async (c) => {
     cwd: body.cwd,
     tools: body.tools,
     disallowedTools: body.disallowedTools,
+    providerControls: body.providerControls,
     loadProjectSettings: body.loadProjectSettings,
     sessionId: body.sessionId, // for resume
   });
@@ -453,6 +486,7 @@ app.post("/api/sessions/empty", async (c) => {
     id,
     preview: "",
     profile: body.profile ?? null,
+    provider: body.provider ?? null,
     model: body.model ?? null,
     status: "idle",
     messageCount: 0,
@@ -576,6 +610,7 @@ app.post("/api/sessions/:id/messages", async (c) => {
       tools: body.tools ?? storedConfig?.tools,
       disallowedTools: body.disallowedTools ?? storedConfig?.disallowedTools,
       toolStates: body.toolStates ?? storedConfig?.toolStates,
+      providerControls: body.providerControls ?? storedConfig?.providerControls,
       loadProjectSettings: body.loadProjectSettings ?? storedConfig?.loadProjectSettings,
     });
     const start = Date.now();
@@ -1087,7 +1122,7 @@ app.post("/api/prompts/:name/render", async (c) => {
 app.post("/api/prompts/reload", (c) => {
   reloadPrompts();
   const prompts = listPrompts();
-  return c.json({ ok: true, count: prompts.length });
+  return c.json({ ok: true, count: prompts.length, names: prompts.map(p => p.name) });
 });
 
 // ── Git ──
@@ -1162,11 +1197,12 @@ app.get("/api/git/file-diff", async (c) => {
 // ── Open in Editor ──
 
 app.post("/api/open-in-editor", async (c) => {
-  const body = await c.req.json<{ filePath: string; line?: number }>();
+  const body = await c.req.json<{ filePath: string; line?: number; editor?: string }>();
   if (!body.filePath) return c.json({ error: "filePath required" }, 400);
   const target = body.line ? `${body.filePath}:${body.line}` : body.filePath;
   try {
-    Bun.spawn(["code", "--goto", target], { stdout: "ignore", stderr: "ignore" });
+    const editor = body.editor ?? (Bun.which("cursor") ? "cursor" : "code");
+    Bun.spawn([editor, "--goto", target], { stdout: "ignore", stderr: "ignore" });
     return c.json({ ok: true });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);

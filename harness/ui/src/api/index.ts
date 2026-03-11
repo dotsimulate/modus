@@ -10,7 +10,7 @@ export { authStatus, setupNewPin, verifyPin, fetchMe, lockAll, checkToken, chang
 export {
   fetchProfiles, fetchProfile, saveProfileApi, deleteProfileApi,
   fetchGlobalConfig, saveGlobalConfigApi, checkSecrets,
-  fetchProviders, fetchProviderModels,
+  fetchProviders, fetchProviderCapabilities, fetchProviderModels,
   fetchUserProfiles, fetchUserProfile, saveUserProfileApi, patchUserProfileApi,
   fetchUserProfileState, patchUserProfileStateApi,
 } from "./profiles";
@@ -48,6 +48,7 @@ export type { PromptListItem, PromptInput, RenderResult } from "./prompts";
 export type {
   ToolCall, SubTask, Attachment, Message, PendingPermission, SessionStatus, Session, AgentConfigState,
   McpServerConfig, ProfileUi, Profile, GlobalConfig,
+  ProviderCapabilities, ProviderToolGroup,
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,
   UserProfileState, UserProfile, MemoryItem,

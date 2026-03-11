@@ -1,21 +1,31 @@
 import { useState, useRef, useEffect } from "react";
-import { AgentConfig, type AgentConfigState } from "./AgentConfig";
+import {
+  AgentConfig,
+  countAgentConfigDifferences,
+  createEmptyAgentConfig,
+  type AgentConfigState,
+} from "./AgentConfig";
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
-import { getAllTools } from "../tools";
+import { getAllTools, isCodexProvider } from "../tools";
 import type { Profile } from "../api";
 
 type Props = {
   profileName?: string;
+  pendingProfileName?: string;
   model?: string;
   agentConfig: AgentConfigState;
+  editorConfig: AgentConfigState;
   onAgentConfigChange: (config: AgentConfigState) => void;
   profileTools: string[] | "all";
+  editorProfileTools: string[] | "all";
   availableProviders?: string[];
   profileProvider?: string;
-  profileModel?: string;
+  editorProfileProvider?: string;
+  editorProfileModel?: string;
   profileEffort?: string;
-  profileMaxTurns?: number;
+  editorProfileEffort?: string;
+  editorProfileMaxTurns?: number;
   /** All tools reported by SDK init (for MCP tool discovery) */
   availableTools?: string[];
   /** Available profiles for live switching */
@@ -31,15 +41,20 @@ function shortModel(model?: string): string {
 
 export function ConfigBar({
   profileName,
+  pendingProfileName,
   model,
   agentConfig,
+  editorConfig,
   onAgentConfigChange,
   profileTools,
+  editorProfileTools,
   availableProviders,
   profileProvider,
-  profileModel,
+  editorProfileProvider,
+  editorProfileModel,
   profileEffort,
-  profileMaxTurns,
+  editorProfileEffort,
+  editorProfileMaxTurns,
   availableTools,
   profiles,
   onSwitchProfile,
@@ -63,13 +78,15 @@ export function ConfigBar({
   const mcpCount = (availableTools ?? []).filter(t => t.startsWith("mcp__")).length;
   const toolCount =
     (profileTools === "all" ? getAllTools(effectiveProvider).length : profileTools.length) + mcpCount;
+  const codexControls = agentConfig.providerControls?.codex ?? {};
   const effort = agentConfig.effort || profileEffort || "default";
+  const hasPendingProfile = !!pendingProfileName && pendingProfileName !== profileName;
+  const pendingConfigBaseline = hasPendingProfile ? createEmptyAgentConfig() : agentConfig;
+  const pendingConfigCount = countAgentConfigDifferences(editorConfig, pendingConfigBaseline);
+  const pendingCount = pendingConfigCount + (hasPendingProfile ? 1 : 0);
+  const editorProfileName = pendingProfileName || profileName;
   const overrideCount =
-    Object.keys(agentConfig.toolStates).length +
-    (agentConfig.model ? 1 : 0) +
-    (agentConfig.effort ? 1 : 0) +
-    (agentConfig.maxTurns ? 1 : 0);
-
+    pendingCount;
   return (
     <div className={`config-bar ${open ? "config-bar--open" : ""}`} ref={barRef}>
       <div className="config-bar-header" onClick={() => setOpen(!open)}>
@@ -85,6 +102,9 @@ export function ConfigBar({
           {profileName && (
             <span className="config-bar-label">{profileName}</span>
           )}
+          {hasPendingProfile && (
+            <span className="config-bar-overrides">next: {pendingProfileName}</span>
+          )}
           {model && (
             <>
               <span className="config-bar-sep">·</span>
@@ -92,8 +112,18 @@ export function ConfigBar({
             </>
           )}
           <span className="config-bar-sep">·</span>
-          <span className="config-bar-value">{toolCount} tools</span>
+          <span className="config-bar-value">
+            {isCodexProvider(effectiveProvider)
+              ? (codexControls.sandboxMode ?? "sandbox:auto")
+              : `${toolCount} tools`}
+          </span>
           <span className="config-bar-sep">·</span>
+          {isCodexProvider(effectiveProvider) && (
+            <>
+              <span className="config-bar-value">{codexControls.webSearchMode ?? "web:auto"}</span>
+              <span className="config-bar-sep">·</span>
+            </>
+          )}
           <span className="config-bar-value">{effort}</span>
           {overrideCount > 0 && (
             <span className="config-bar-overrides">{overrideCount} override{overrideCount > 1 ? "s" : ""}</span>
@@ -111,12 +141,11 @@ export function ConfigBar({
                     <span>profile</span>
                     <SearchDropdown
                       className="search-dropdown--compact"
-                      value=""
-                      options={profiles
-                        .filter((p) => p.name !== profileName)
-                        .map((p) => ({ value: p.name }))}
-                      placeholder={profileName ?? "select profile"}
+                      value={editorProfileName ?? ""}
+                      options={profiles.map((p) => ({ value: p.name }))}
+                      placeholder="select profile"
                       searchPlaceholder="search profiles..."
+                      clearable={false}
                       onChange={onSwitchProfile}
                     />
                   </label>
@@ -124,13 +153,13 @@ export function ConfigBar({
               </div>
             )}
             <AgentConfig
-              config={agentConfig}
-              profileTools={profileTools}
+              config={editorConfig}
+              profileTools={editorProfileTools}
               availableProviders={availableProviders}
-              profileProvider={profileProvider}
-              profileModel={profileModel}
-              profileEffort={profileEffort}
-              profileMaxTurns={profileMaxTurns}
+              profileProvider={editorProfileProvider}
+              profileModel={editorProfileModel}
+              profileEffort={editorProfileEffort}
+              profileMaxTurns={editorProfileMaxTurns}
               onChange={onAgentConfigChange}
               compact
               showProvider={false}

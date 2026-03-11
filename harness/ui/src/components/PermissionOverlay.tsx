@@ -18,6 +18,8 @@ type FormState = {
 const formStore = new Map<string, FormState>();
 /** Active permission tab index — survives navigation */
 let persistedActiveIdx = 0;
+/** Collapsed state for interactive (AskUserQuestion) permissions */
+const collapsedStore = new Map<string, boolean>();
 
 function getFormState(requestId: string): FormState {
   return formStore.get(requestId) ?? { step: 0, answers: {}, customInputs: {} };
@@ -52,7 +54,12 @@ function inputSummary(toolName: string, input: Record<string, unknown>): string 
 }
 
 /** Render an AskUserQuestion interactive form — one question at a time */
-function QuestionForm({ perm, onRespond }: { perm: PendingPermission; onRespond: Props["onRespond"] }) {
+function QuestionForm({ perm, onRespond, collapsed, onToggleCollapse }: {
+  perm: PendingPermission;
+  onRespond: Props["onRespond"];
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}) {
   const questions = (perm.toolInput.questions as any[]) ?? [];
   const saved = getFormState(perm.requestId);
 
@@ -117,6 +124,13 @@ function QuestionForm({ perm, onRespond }: { perm: PendingPermission; onRespond:
 
   return (
     <div className="permission-questions">
+      <button className="permission-question-collapse" onClick={onToggleCollapse}>
+        <span className="permission-question-collapse-indicator" />
+        <span className="permission-question-collapse-label">{q.question}</span>
+        <span className="permission-question-collapse-chevron">{collapsed ? "▸" : "▾"}</span>
+      </button>
+      <div className={`permission-question-body${collapsed ? " collapsed" : ""}`}>
+      <div className="permission-question-body-inner">
       {total > 1 && (
         <div className="question-steps">
           {questions.map((_: any, i: number) => (
@@ -180,6 +194,8 @@ function QuestionForm({ perm, onRespond }: { perm: PendingPermission; onRespond:
           Skip
         </button>
       </div>
+      </div>
+      </div>
     </div>
   );
 }
@@ -187,6 +203,11 @@ function QuestionForm({ perm, onRespond }: { perm: PendingPermission; onRespond:
 export function PermissionOverlay({ permissions, sessionId: _sessionId, onRespond }: Props) {
   const [activeIdx, _setActiveIdx] = useState(persistedActiveIdx);
   const setActiveIdx = (i: number) => { persistedActiveIdx = i; _setActiveIdx(i); };
+  const [, forceUpdate] = useState(0);
+  const toggleCollapsed = (requestId: string) => {
+    collapsedStore.set(requestId, !collapsedStore.get(requestId));
+    forceUpdate(n => n + 1);
+  };
 
   // Clamp active index when permissions change
   useEffect(() => {
@@ -240,7 +261,7 @@ export function PermissionOverlay({ permissions, sessionId: _sessionId, onRespon
 
       <div className="permission-request">
         {perm.interactive ? (
-          <QuestionForm perm={perm} onRespond={onRespond} />
+          <QuestionForm perm={perm} onRespond={onRespond} collapsed={!!collapsedStore.get(perm.requestId)} onToggleCollapse={() => toggleCollapsed(perm.requestId)} />
         ) : (
           <>
             <div className="permission-request-header">

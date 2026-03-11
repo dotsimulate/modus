@@ -61,11 +61,11 @@ export async function saveDraft(sessionId: string, draft: string): Promise<void>
 
 // ── Empty Session ──
 
-export async function createEmptySession(profile?: string, model?: string): Promise<string> {
+export async function createEmptySession(profile?: string, model?: string, provider?: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/sessions/empty`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ profile, model }),
+    body: JSON.stringify({ profile, model, provider }),
   });
   const data = await res.json();
   return data.sessionId;
@@ -95,6 +95,7 @@ export async function sendMessage(
     tools?: string[];
     disallowedTools?: string[];
     toolStates?: Record<string, "inherit" | "on" | "off">;
+    providerControls?: AgentConfigState["providerControls"];
     cwd?: string;
     loadProjectSettings?: boolean;
   },
@@ -133,7 +134,20 @@ export async function switchSessionProfile(
     headers: authHeaders(),
     body: JSON.stringify({ profile, contextMode }),
   });
-  return res.json();
+  const text = await res.text();
+  const data = text
+    ? (() => {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { error: text };
+        }
+      })()
+    : {};
+  if (!res.ok) {
+    throw new Error(typeof data?.error === "string" ? data.error : `Profile switch failed (${res.status})`);
+  }
+  return data;
 }
 
 /** Update session config (tools, etc.) — takes effect on next turn */
@@ -143,10 +157,11 @@ export async function updateSessionConfig(
     provider?: string;
     model?: string;
     effort?: string;
-    maxTurns?: number;
+    maxTurns?: number | null;
     tools?: string[];
     disallowedTools?: string[];
     toolStates?: AgentConfigState["toolStates"];
+    providerControls?: AgentConfigState["providerControls"];
     cwd?: string;
     loadProjectSettings?: boolean;
   },

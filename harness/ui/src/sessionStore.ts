@@ -16,6 +16,9 @@ import type { Session } from "./api/types";
 type SessionEntry = {
   state: ReducerState;
   profile?: string;
+  provider?: string;
+  nextProfile?: string;
+  nextAgentConfig?: Session["nextAgentConfig"];
 };
 
 type Subscription = {
@@ -50,7 +53,30 @@ export function getSessionProfile(id: string): string | undefined {
 
 /** Set or replace state for a session */
 export function setSessionState(id: string, state: ReducerState, profile?: string) {
-  sessions.set(id, { state, profile: profile ?? sessions.get(id)?.profile });
+  const existing = sessions.get(id);
+  sessions.set(id, {
+    state,
+    profile: profile ?? existing?.profile,
+    provider: existing?.provider,
+    nextProfile: existing?.nextProfile,
+    nextAgentConfig: existing?.nextAgentConfig,
+  });
+  notify();
+}
+
+/** Set the profile queued for the next user turn */
+export function setSessionNextProfile(id: string, nextProfile?: string) {
+  const entry = sessions.get(id);
+  if (!entry) return;
+  entry.nextProfile = nextProfile || undefined;
+  notify();
+}
+
+/** Set the agent config queued for the next user turn */
+export function setSessionNextAgentConfig(id: string, nextAgentConfig?: Session["nextAgentConfig"]) {
+  const entry = sessions.get(id);
+  if (!entry) return;
+  entry.nextAgentConfig = nextAgentConfig;
   notify();
 }
 
@@ -62,6 +88,8 @@ export function applyEvent(id: string, event: any, seq: number) {
   // Profile switch: update the entry-level profile name
   if (event.type === "system" && event.subtype === "switch" && event.toProfile) {
     entry.profile = event.toProfile;
+    entry.nextProfile = undefined;
+    entry.nextAgentConfig = undefined;
   }
   notify();
 }
@@ -183,12 +211,21 @@ export function unsubscribeAll() {
 
 // ── Derive Session (public shape) from ReducerState ──
 
-export function deriveSession(rs: ReducerState, profile?: string): Session {
+export function deriveSession(
+  rs: ReducerState,
+  profile?: string,
+  provider?: string,
+  nextProfile?: string,
+  nextAgentConfig?: Session["nextAgentConfig"],
+): Session {
   return {
     id: rs.sessionId,
     status: rs.status,
     preview: rs.messages[0]?.content?.slice(0, 60) ?? "",
     profile,
+    provider,
+    nextProfile,
+    nextAgentConfig,
     model: rs.model,
     agentConfig: rs.agentConfig,
     cwd: rs.cwd || undefined,
@@ -227,7 +264,7 @@ export function useSessionState(id: string | null): Session | null {
   if (!id) return null;
   const entry = sessions.get(id);
   if (!entry) return null;
-  return deriveSession(entry.state, entry.profile);
+  return deriveSession(entry.state, entry.profile, entry.provider, entry.nextProfile, entry.nextAgentConfig);
 }
 
 /**

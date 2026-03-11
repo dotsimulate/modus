@@ -107,6 +107,7 @@
   color: var(--text-muted);
   margin-top: 8px;
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
 }
 .meta-duration {
@@ -115,6 +116,7 @@
 }
 .meta-tokens {
   font-size: 9px;
+  color: var(--text-secondary);
 }
 .meta-arrow {
   font-size: 8px;

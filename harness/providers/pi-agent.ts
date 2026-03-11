@@ -19,9 +19,9 @@ import {
   type AgentSessionEvent,
 } from "@mariozechner/pi-coding-agent";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
-import type { SessionProvider, TurnContext } from "./types";
+import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import type { ActiveSession, MessageContent } from "../session-manager";
-import { getGlobalConfig, type ProviderDefaults } from "../profiles";
+import { getGlobalConfig, getProfile, type ProviderDefaults } from "../profiles";
 import { updateSessionStatus } from "../db";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
 import { resolveSecret } from "../secrets";
@@ -37,6 +37,36 @@ const DEFAULT_MODELS: Record<PiProviderName, string> = {
   ollama: "default",
   openrouter: "anthropic/claude-sonnet-4.5",
 };
+
+const PI_TOOL_GROUPS = [
+  { label: "files", tools: ["read", "write", "edit"] },
+  { label: "search", tools: ["grep", "find", "ls"] },
+  { label: "exec", tools: ["bash"] },
+] as const;
+
+function buildPiCapabilities(providerName: PiProviderName): ProviderCapabilities {
+  return {
+    name: providerName,
+    label: providerName,
+    family: "pi-agent",
+    builtInTools: PI_TOOL_GROUPS.flatMap((group) => [...group.tools]),
+    builtInToolGroups: PI_TOOL_GROUPS.map((group) => ({ label: group.label, tools: [...group.tools] })),
+    builtInToolMode: "explicit",
+    supportsMcp: true,
+    mcpSupport: "full",
+    nonToolSignals: ["streaming"],
+    permissionModel: {
+      mode: "none",
+      interactive: false,
+      summary: "PI providers do not expose harness-managed per-tool approval prompts.",
+    },
+    sessionMutability: {
+      providerSwitchAfterStart: false,
+      profileSwitch: "provider-locked",
+      configApplies: "next-turn",
+    },
+  };
+}
 
 // ── Provider-specific state on session._providerState ──
 
@@ -465,6 +495,7 @@ function translateEvents(
 
 export function createPiAgentProvider(providerName: PiProviderName): SessionProvider {
   return {
+    capabilities: buildPiCapabilities(providerName),
     async startTurn(ctx: TurnContext) {
       const { session, opts, profile } = ctx;
       const modelId = session.model || DEFAULT_MODELS[providerName] || "default";
@@ -488,6 +519,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
           effort: opts.effort ?? "",
           maxTurns: opts.maxTurns,
           toolStates: opts.toolStates ?? {},
+          providerControls: opts.providerControls ?? {},
         },
         cwd: session.cwd,
         loadProjectSettings: opts.loadProjectSettings ?? profile?.loadProjectSettings ?? true,
@@ -706,10 +738,15 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       if (!state) return;
 
       let activeTools = state.agentSession.getActiveToolNames();
+      const profileTools = getProfile(session.profile ?? "", session.cwd)?.tools;
       if (Array.isArray(config.tools)) {
-        activeTools = config.tools;
+        activeTools = config.tools.length > 0
+          ? config.tools
+          : (Array.isArray(profileTools) && profileTools.length > 0 ? profileTools : activeTools);
       } else if (Array.isArray(config.disallowedTools) && config.disallowedTools.length > 0) {
         activeTools = activeTools.filter((tool) => !config.disallowedTools.includes(tool));
+      } else if (Array.isArray(config.disallowedTools)) {
+        activeTools = Array.isArray(profileTools) && profileTools.length > 0 ? profileTools : activeTools;
       }
       state.agentSession.setActiveToolsByName(activeTools);
     },
