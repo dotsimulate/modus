@@ -3,6 +3,7 @@ title: Moves
 audience: agents
 lastUpdated: 2026-03-11
 lastCommit: cf9d454
+covers: harness/move-runner.ts harness/move-types.ts
 ---
 
 # Moves

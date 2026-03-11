@@ -12,6 +12,8 @@ type Props = {
 
 type Tab = "profile" | "defaults" | "environment" | "project" | "security";
 
+const EFFORT_OPTIONS = ["off", "low", "medium", "high", "max"] as const;
+
 function providerSeedModel(provider: string): string {
   if (provider === "codex") return "gpt-5.1-codex";
   if (provider === "gemini-cli") return "auto-gemini-3";
@@ -27,6 +29,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [defaultAgentProfile, setDefaultAgentProfile] = useState(userProfile.defaultAgentProfile ?? "");
   const [defaultProvider, setDefaultProvider] = useState(userProfile.provider ?? "");
   const [defaultModel, setDefaultModel] = useState(userProfile.model ?? "");
+  const [defaultEffort, setDefaultEffort] = useState(userProfile.effort ?? "");
   const [computer, setComputer] = useState(userProfile.computer ?? "");
   const [editor, setEditor] = useState(userProfile.editor ?? "");
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
@@ -51,6 +54,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     setDefaultAgentProfile(userProfile.defaultAgentProfile ?? "");
     setDefaultProvider(userProfile.provider ?? "");
     setDefaultModel(userProfile.model ?? "");
+    setDefaultEffort(userProfile.effort ?? "");
     setComputer(userProfile.computer ?? "");
     setEditor(userProfile.editor ?? "");
   }, [userProfile]);
@@ -100,6 +104,8 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
         patch.provider = defaultProvider || undefined;
       if (defaultModel !== (userProfile.model ?? ""))
         patch.model = defaultModel || undefined;
+      if (defaultEffort !== (userProfile.effort ?? ""))
+        patch.effort = defaultEffort || undefined;
       if (computer.trim() !== (userProfile.computer ?? ""))
         patch.computer = computer.trim() || undefined;
       if (editor !== (userProfile.editor ?? "")) {
@@ -227,6 +233,17 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                     searchPlaceholder="search models..."
                     disabled={!defaultProvider}
                     onChange={setDefaultModel}
+                  />
+                </label>
+                <label className="agent-config-field">
+                  <span>thinking</span>
+                  <SearchDropdown
+                    className="search-dropdown--compact"
+                    value={defaultEffort}
+                    options={EFFORT_OPTIONS.map((effort) => ({ value: effort }))}
+                    placeholder="default"
+                    searchPlaceholder="search thinking..."
+                    onChange={setDefaultEffort}
                   />
                 </label>
               </div>

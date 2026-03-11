@@ -68,6 +68,18 @@ function getState(session: ActiveSession): CodexState {
   return session._providerState as CodexState;
 }
 
+function mapCodexReasoningEffort(
+  effort?: string,
+): import("@openai/codex-sdk").ModelReasoningEffort | undefined {
+  if (!effort || effort === "off" || effort === "max") return undefined;
+  const effortMap: Record<string, import("@openai/codex-sdk").ModelReasoningEffort> = {
+    low: "low",
+    medium: "medium",
+    high: "high",
+  };
+  return effortMap[effort];
+}
+
 // ── Content → string input ──
 
 function contentToString(content: MessageContent): string {
@@ -632,17 +644,7 @@ export function createCodexProvider(): SessionProvider {
       };
 
       // Map effort levels
-      const effort = opts.effort ?? profileDef?.effort;
-      if (effort) {
-        const effortMap: Record<string, import("@openai/codex-sdk").ModelReasoningEffort> = {
-          low: "low",
-          medium: "medium",
-          high: "high",
-        };
-        if (effort in effortMap) {
-          threadOptions.modelReasoningEffort = effortMap[effort];
-        }
-      }
+      threadOptions.modelReasoningEffort = mapCodexReasoningEffort(opts.effort ?? profileDef?.effort);
 
       // Check if this is a resume
       const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
@@ -735,14 +737,7 @@ export function createCodexProvider(): SessionProvider {
         state.threadOptions.model = config.model || undefined;
       }
       if (config.effort !== undefined) {
-        const effortMap: Record<string, import("@openai/codex-sdk").ModelReasoningEffort> = {
-          low: "low",
-          medium: "medium",
-          high: "high",
-        };
-        state.threadOptions.modelReasoningEffort = config.effort in effortMap
-          ? effortMap[config.effort]
-          : undefined;
+        state.threadOptions.modelReasoningEffort = mapCodexReasoningEffort(config.effort);
       }
 
       const profileDef = session.profile ? getProfile(session.profile, session.cwd) : undefined;
@@ -773,17 +768,7 @@ export function createCodexProvider(): SessionProvider {
 
       // Update thread options for next turn
       state.threadOptions.model = ctx.opts.model || undefined;
-      const effort = ctx.opts.effort;
-      if (effort) {
-        const effortMap: Record<string, import("@openai/codex-sdk").ModelReasoningEffort> = {
-          low: "low",
-          medium: "medium",
-          high: "high",
-        };
-        state.threadOptions.modelReasoningEffort = effort in effortMap
-          ? effortMap[effort]
-          : undefined;
-      }
+      state.threadOptions.modelReasoningEffort = mapCodexReasoningEffort(ctx.opts.effort);
       // Update permission policy for next turn
       const runtime = resolveCodexRuntimeSettings(ctx.profile, {
         toolStates: ctx.opts.toolStates,

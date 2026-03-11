@@ -5,10 +5,13 @@
  * a single tabbed widget for a denser, more focused dashboard.
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { fetchAccountInfo, fetchSessionStats } from "../api";
 import type { AccountInfo, SessionStats } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
+import { fmtCost, fmtNum, basename, planLabel } from "../utils/format";
+import { ActivityChart } from "../components/ActivityChart";
+import { HBar } from "../components/HBar";
 import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
 
 // ── Types ──
@@ -21,29 +24,6 @@ type Tab = "overview" | "history" | "breakdown";
 
 // ── Helpers ──
 
-function fmtCost(n: number): string {
-  if (n >= 100) return `$${n.toFixed(0)}`;
-  if (n >= 10) return `$${n.toFixed(1)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function fmtNum(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function planLabel(sub: string): string {
-  switch (sub) {
-    case "max": return "Max";
-    case "pro": return "Pro";
-    case "free": return "Free";
-    case "team": return "Team";
-    case "enterprise": return "Enterprise";
-    default: return sub;
-  }
-}
-
 function planClass(sub: string): string {
   switch (sub) {
     case "max": return "cpw-plan--max";
@@ -52,57 +32,6 @@ function planClass(sub: string): string {
     case "team": return "cpw-plan--team";
     default: return "";
   }
-}
-
-function projectName(cwd: string | null): string {
-  if (!cwd || cwd === "(none)") return "(none)";
-  const parts = cwd.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || cwd;
-}
-
-// ── Sub-components ──
-
-function ActivityChart({ daily, mode }: { daily: SessionStats["daily"], mode: "sessions" | "cost" }) {
-  const filled = useMemo(() => {
-    const map = new Map(daily.map((d) => [d.day, d]));
-    const days: { day: string; sessions: number; cost: number }[] = [];
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 86_400_000);
-      const key = d.toISOString().slice(0, 10);
-      days.push(map.get(key) ?? { day: key, sessions: 0, cost: 0 });
-    }
-    return days;
-  }, [daily]);
-
-  const maxValue = Math.max(0.01, ...filled.map((d) => mode === "sessions" ? d.sessions : d.cost));
-
-  return (
-    <div className="cpw-chart">
-      {filled.map((d) => {
-        const val = mode === "sessions" ? d.sessions : d.cost;
-        const h = Math.max(1, Math.round((val / maxValue) * 28));
-        return (
-          <div
-            key={d.day}
-            className={`cpw-chart-bar cpw-chart-bar--${mode}`}
-            style={{ height: `${h}px` }}
-            title={`${d.day}: ${d.sessions} sessions, ${fmtCost(d.cost)}`}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function HBar({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 ? Math.max(1, (value / max) * 100) : 0;
-  return (
-    <div className="cpw-hbar">
-      <div className="cpw-hbar-fill" style={{ width: `${pct}%` }} />
-    </div>
-  );
 }
 
 // ── Main Component ──
@@ -223,7 +152,7 @@ function ClaudePricingWidget(_props: WidgetProps<PricingConfig>) {
                 >sessions</button>
               </div>
             </div>
-            <ActivityChart daily={daily} mode={chartMode} />
+            <ActivityChart daily={daily} prefix="cpw" mode={chartMode} />
 
             {topSessions.length > 0 && (
               <div className="cpw-top-sessions">
@@ -260,10 +189,10 @@ function ClaudePricingWidget(_props: WidgetProps<PricingConfig>) {
               {(breakdownView === "agents" ? byProfile : byProject).slice(0, 8).map((p: any) => (
                 <div key={p.profile || p.project} className="cpw-list-item cpw-list-item--hbar">
                   <div className="cpw-item-row">
-                    <span className="cpw-item-name">{p.profile || projectName(p.project)}</span>
+                    <span className="cpw-item-name">{p.profile || basename(p.project)}</span>
                     <span className="cpw-item-val">{fmtCost(p.cost)}</span>
                   </div>
-                  <HBar value={p.cost} max={breakdownView === "agents" ? (byProfile[0]?.cost || 1) : (byProject[0]?.cost || 1)} />
+                  <HBar value={p.cost} max={breakdownView === "agents" ? (byProfile[0]?.cost || 1) : (byProject[0]?.cost || 1)} prefix="cpw" />
                 </div>
               ))}
             </div>

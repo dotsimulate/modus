@@ -286,8 +286,8 @@ function AppShell() {
                     ? editorProfileModel
                     : undefined
                 }
-                profileEffort={profileData?.effort}
-                editorProfileEffort={editorProfileData?.effort}
+                profileEffort={profileData?.effort ?? activeUP?.effort}
+                editorProfileEffort={editorProfileData?.effort ?? activeUP?.effort}
                 editorProfileMaxTurns={editorProfileData?.maxTurns}
                 showProvider={!!activeSession && !sessionProviderLocked}
                 availableTools={activeSession?.availableTools}

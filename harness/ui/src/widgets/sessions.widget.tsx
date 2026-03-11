@@ -9,6 +9,7 @@ import { useState, useEffect, useMemo } from "react";
 import { fetchActiveSessions, fetchSessionsScoped } from "../api";
 import type { ActiveSessionInfo, SessionInfo } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
+import { timeAgo } from "../utils/format";
 import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
 import { useWidgetUiState } from "./ui-state";
 
@@ -66,14 +67,6 @@ function merge(active: ActiveSessionInfo[], recent: SessionInfo[]): Row[] {
 
   rows.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
   return rows;
-}
-
-function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
 function dotClass(row: Row): string {

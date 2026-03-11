@@ -166,7 +166,7 @@ export function ProfilePanel({
               profileTools={selectedProfileData?.tools ?? "all"}
               availableProviders={availableProviders}
               profileProvider={selectedProfileData?.provider ?? activeUserProfileObj?.provider}
-              profileEffort={selectedProfileData?.effort}
+              profileEffort={selectedProfileData?.effort ?? activeUserProfileObj?.effort}
               profileMaxTurns={selectedProfileData?.maxTurns}
               profileModel={selectedProfileData?.model ?? activeUserProfileObj?.model}
               onChange={onSetupChange}

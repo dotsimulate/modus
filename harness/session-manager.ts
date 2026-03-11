@@ -285,6 +285,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   const userProf = opts.userProfile ? getUserProfile(opts.userProfile) : undefined;
   // Cascade: session override > agent profile > user profile > default
   const providerName = opts.provider ?? profileDef?.provider ?? userProf?.provider ?? "claude-code";
+  const resolvedEffort = opts.effort ?? profileDef?.effort ?? userProf?.effort;
   const provider = getProvider(providerName);
 
   // Resolve system prompt template vars
@@ -349,7 +350,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     _providerState: null,
     _configOverrides: {
       provider: opts.provider,
-      effort: opts.effort,
+      effort: opts.effort ?? (profileDef?.effort === undefined ? userProf?.effort : undefined),
       maxTurns: opts.maxTurns,
       tools: opts.tools,
       disallowedTools: opts.disallowedTools,
@@ -394,7 +395,12 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   }
 
   // Delegate to provider — provider handles init events (user/prompt, system/init)
-  const ctx = createTurnContext(session, opts);
+  const ctx = createTurnContext(session, {
+    ...opts,
+    provider: providerName,
+    model: session.model ?? undefined,
+    effort: resolvedEffort,
+  });
   provider.startTurn(ctx);
 
   logActivity({

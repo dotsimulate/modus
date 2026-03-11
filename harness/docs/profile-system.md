@@ -3,6 +3,7 @@ title: Profile System
 audience: agents
 lastUpdated: 2026-03-11
 lastCommit: cf9d454
+covers: harness/profiles/ harness/profile-schemas.ts harness/profiles.ts
 ---
 
 # Profile System

@@ -119,6 +119,14 @@ detailed docs for each subsystem (profiles, providers, actions, moves, etc.).
 These are the core reference — read them before diving into source code for
 unfamiliar subsystems.
 
+**UI path correction:** The frontend lives at `harness/ui/src/`, NOT `ui/src/`.
+The system persona references paths like `ui/src/styles/colors.css` — these are
+relative shorthand. Always prepend `harness/` when working with UI files:
+- Styles: `harness/ui/src/styles/`
+- Components: `harness/ui/src/components/`
+- Widgets: `harness/ui/src/widgets/`
+If a Glob on `ui/src/...` returns nothing, you're missing the `harness/` prefix.
+
 `TODO/` and `TODO/arc/` are for temporary plans, research drops, casual docs,
 and user-requested output — NOT for system documentation. There is a backlog of
 ideas in there, some implemented, many outdated and stale. Occasionally useful

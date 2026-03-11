@@ -110,7 +110,7 @@ export type Profile = {
   /** Max turns override */
   maxTurns?: number;
   /** Effort level */
-  effort?: "low" | "medium" | "high" | "max";
+  effort?: "off" | "low" | "medium" | "high" | "max";
   /** Whether to load CLAUDE.md and project settings */
   loadProjectSettings?: boolean;
   /** CLAUDE.md exclusions — raw globs or named rules + custom patterns */
@@ -215,6 +215,8 @@ export type UserProfile = {
   provider?: string;
   /** Default model when the selected agent profile does not define one */
   model?: string;
+  /** Default reasoning/thinking effort when the selected agent profile does not define one */
+  effort?: "off" | "low" | "medium" | "high" | "max";
   memoryFilter?: string;
   memory?: UserProfileMemory;
   /** Show project paths from ALL user profiles in the CWD picker (default: false) */

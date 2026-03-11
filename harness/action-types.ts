@@ -117,6 +117,9 @@ export interface ActionConfig {
   // ── Notifications ──
   notify?: NotifySpec[];
 
+  // ── Static inputs (passed to ctx.inputs in gather/verify/afterRun) ──
+  inputs?: Record<string, unknown>;
+
   // ── Tags (freeform labels — used for filtering, grouping, archiving) ──
   tags?: string[];
 
@@ -176,6 +179,8 @@ export interface ActionContext {
   db: ActionDB;
   trigger: TriggerInfo;
   actionDir: string;                   // absolute path to actions/<name>/
+  cwd: string | undefined;             // working directory from action config (cfg.cwd)
+  inputs: Record<string, unknown>;     // inputs from action.json (cfg.inputs ?? {})
 
   // ── Multi-step context ──
   stepIndex: number;                   // 0 for single-step or step 0, 1+ for subsequent

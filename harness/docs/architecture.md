@@ -2,7 +2,7 @@
 title: MO Architecture
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastCommit: 9c6d78f
 ---
 
 # MO Architecture
@@ -64,6 +64,7 @@ agent_dev_zone/
         styles/            # CSS (see styling doc)
         hooks/             # Custom React hooks
         widgets/           # Dashboard widgets
+        project-ui-theme.ts  # Applies active theme/font CSS to document.head
         main.tsx           # App entry point
   .modus/                  # Project-local MO config (see modus-dir doc)
     _global.json           # Project MCP servers (merged with base)
