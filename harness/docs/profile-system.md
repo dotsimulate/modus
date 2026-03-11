@@ -1,3 +1,10 @@
+---
+title: Profile System
+audience: agents
+lastUpdated: 2026-03-11
+lastCommit: cf9d454
+---
+
 # Profile System
 
 Profiles are the harness config layer. Everything is JSON files in `harness/profiles/`.

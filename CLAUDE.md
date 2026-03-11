@@ -111,6 +111,25 @@ Save a skill when you discover a **working, verified, reusable, non-obvious** pa
 particularly after user corrections reveal a gap or when repeated requests suggest a
 workflow the user relies on.
 
+## Architecture Docs
+
+Reference documentation for the harness lives in `harness/docs/`. Start with
+`architecture.md` — it covers repo structure, core primitives, and links to
+detailed docs for each subsystem (profiles, providers, actions, moves, etc.).
+These are the core reference — read them before diving into source code for
+unfamiliar subsystems.
+
+`TODO/` and `TODO/arc/` are for temporary plans, research drops, casual docs,
+and user-requested output — NOT for system documentation. There is a backlog of
+ideas in there, some implemented, many outdated and stale. Occasionally useful
+for context but treat it as fragile and unverified. The `harness/docs/` files
+are the authoritative source.
+
+**Do NOT edit `harness/docs/` directly** unless the user explicitly requests it.
+If your work changes architecture, APIs, or primitives, mention that docs may
+need updating — but leave the actual edits to the doc-maintainer agent or the
+user. This keeps docs intentional and reviewed, not silently drifted.
+
 ## Session Start
 
 1. `query("{summary of user input}")` — load relevant memories and skills. This is your calibration.

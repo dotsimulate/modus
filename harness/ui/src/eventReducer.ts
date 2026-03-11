@@ -782,12 +782,30 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
 
   // Finalize the last assistant message with metadata
   if (last?.role === "assistant" && !last.meta) {
+    // Aggregate full-turn content: collect all assistant rounds since the last user message
+    let turnText = "";
+    let turnThinking = "";
+    const turnToolCalls: ToolCall[] = [];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const msg = msgs[i];
+      if (msg.role === "user") break;
+      if (msg.role === "assistant" && !msg.meta) {
+        if (msg.content) turnText = msg.content + (turnText ? "\n\n" + turnText : "");
+        if (msg.thinking) turnThinking = msg.thinking + (turnThinking ? "\n\n" + turnThinking : "");
+        if (msg.toolCalls?.length) turnToolCalls.unshift(...msg.toolCalls);
+      }
+    }
+    const turnCopy: Message["turnCopy"] = { text: turnText };
+    if (turnThinking) turnCopy.thinking = turnThinking;
+    if (turnToolCalls.length > 0) turnCopy.toolCalls = turnToolCalls;
+
     const modelName = m.modelUsage ? Object.keys(m.modelUsage)[0] : s.model;
     msgs[msgs.length - 1] = {
       ...last,
       seq: s.lastSeq, // result event seq — used as branch point
       // Persist backend-measured thinking duration (survives refresh)
       ...(m.thinking_duration_ms != null && { thinkingDuration: m.thinking_duration_ms }),
+      turnCopy,
       meta: {
         cost: m.total_cost_usd,
         duration: m.harness_duration_ms,

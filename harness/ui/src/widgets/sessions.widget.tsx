@@ -2,7 +2,7 @@
  * Sessions widget — sortable session list.
  *
  * Config example (in user profile dashboard.widgets):
- *   { "type": "sessions", "filter": "all", "limit": 50, "sort": { "key": "date", "dir": "desc" } }
+ *   { "id": "sessions-main", "type": "sessions", "filter": "all", "limit": 50, "sort": { "key": "date", "dir": "desc" } }
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -10,6 +10,7 @@ import { fetchActiveSessions, fetchSessionsScoped } from "../api";
 import type { ActiveSessionInfo, SessionInfo } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
+import { useWidgetUiState } from "./ui-state";
 
 // ── Config ──
 
@@ -109,11 +110,21 @@ const SORT_COLS: { key: SortKey; label: string }[] = [
 
 // ── Component ──
 
-function SessionsWidget({ config, onSelectSession }: WidgetProps<SessionsConfig>) {
-  const { activeUserProfile } = useProfiles();
+function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<SessionsConfig>) {
+  const { activeCwd, activeUserProfile } = useProfiles();
   const [rows, setRows] = useState<Row[]>([]);
-  const [sortBy, setSortBy] = useState<SortKey>(config.sort?.key ?? "date");
-  const [sortDir, setSortDir] = useState<SortDir>(config.sort?.dir ?? "desc");
+  const [sortBy, setSortBy] = useWidgetUiState<SortKey>(
+    { userProfile: activeUserProfile, cwd: activeCwd },
+    widgetId,
+    "sort-key",
+    config.sort?.key ?? "date",
+  );
+  const [sortDir, setSortDir] = useWidgetUiState<SortDir>(
+    { userProfile: activeUserProfile, cwd: activeCwd },
+    widgetId,
+    "sort-dir",
+    config.sort?.dir ?? "desc",
+  );
 
   const limit = config.limit ?? 50;
   const filter = config.filter ?? "all";

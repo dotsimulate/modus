@@ -35,6 +35,7 @@ import './styles/components/chat-settings.css'
 import './styles/components/stats-widget.css'
 import './styles/components/account-widget.css'
 import './styles/components/claude-pricing-widget.css'
+import './styles/components/project-theme-widget.css'
 import './styles/components/prompt-picker.css'
 
 // Views

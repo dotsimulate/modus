@@ -1,3 +1,10 @@
+---
+title: Config Resolution
+audience: agents
+lastUpdated: 2026-03-11
+lastCommit: cf9d454
+---
+
 # Config Resolution
 
 Every runtime value in the harness resolves through a layered chain. The first

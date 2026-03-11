@@ -21,6 +21,10 @@ import {
 import { initProject, getInitStatus } from "./init";
 import { fetchGeminiUsageSnapshot } from "./gemini-usage";
 import {
+  getUiState, listThemes, listFonts, getTheme, getFont, getActiveTheme, getActiveFont,
+  registerTheme, registerFont, activateTheme, activateFont, patchTheme, patchFont,
+} from "./project-ui";
+import {
   ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
 } from "./profile-schemas";
 import {
@@ -31,6 +35,7 @@ import {
   updateSessionTitle,
   getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
+  getSessionMessages,
 } from "./db";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
@@ -585,6 +590,20 @@ app.get("/api/sessions/:id/events", (c) => {
   });
 });
 
+// Get reconstructed message content for a session (from events)
+app.get("/api/sessions/:id/messages-content", (c) => {
+  const id = c.req.param("id");
+  const seq = c.req.query("seq");
+  const messages = getSessionMessages(id);
+  if (seq) {
+    const seqNum = Number(seq);
+    const msg = messages.find(m => m.seq === seqNum);
+    if (!msg) return c.json({ error: "message not found" }, 404);
+    return c.json(msg);
+  }
+  return c.json(messages);
+});
+
 // Queue a message into a running/idle session
 app.post("/api/sessions/:id/messages", async (c) => {
   const id = c.req.param("id");
@@ -852,6 +871,178 @@ app.post("/api/init", async (c) => {
   const result = initProject(cwd, { name: body.name });
   if (!result.ok) return c.json({ error: result.error }, 400);
   return c.json(result);
+});
+
+// ── Project UI Themes / Fonts ──
+
+app.get("/api/ui/state", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  try {
+    return c.json(getUiState(cwd));
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/api/ui/themes", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  try {
+    return c.json(listThemes(cwd));
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/api/ui/themes/:id", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  try {
+    const theme = getTheme(cwd, c.req.param("id"));
+    if (!theme) return c.json({ error: "theme not found" }, 404);
+    return c.json(theme);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/api/ui/theme/active", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  try {
+    const theme = getActiveTheme(cwd);
+    if (!theme) return c.json({ error: "active theme not found" }, 404);
+    return c.json(theme);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/api/ui/themes/register", async (c) => {
+  const body = await c.req.json();
+  if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
+  if (typeof body.themeId !== "string") return c.json({ error: "themeId required" }, 400);
+  if (typeof body.cssPath !== "string") return c.json({ error: "cssPath required" }, 400);
+  try {
+    const theme = registerTheme({
+      cwd: body.cwd,
+      themeId: body.themeId,
+      themeName: typeof body.themeName === "string" ? body.themeName : undefined,
+      cssPath: body.cssPath,
+      activate: body.activate === true,
+      notes: typeof body.notes === "string" ? body.notes : undefined,
+      source: typeof body.source === "string" ? body.source : "api",
+    });
+    return c.json(theme);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/api/ui/themes/activate", async (c) => {
+  const body = await c.req.json();
+  if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
+  if (typeof body.themeId !== "string") return c.json({ error: "themeId required" }, 400);
+  try {
+    return c.json(activateTheme(body.cwd, body.themeId));
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.patch("/api/ui/themes/:id", async (c) => {
+  const body = await c.req.json();
+  if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
+  try {
+    return c.json(patchTheme(body.cwd, c.req.param("id"), {
+      ...(typeof body.label === "string" ? { label: body.label } : {}),
+      ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+      ...(typeof body.archived === "boolean" ? { archived: body.archived } : {}),
+    }));
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/api/ui/fonts", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  try {
+    return c.json(listFonts(cwd));
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/api/ui/fonts/:id", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  try {
+    const font = getFont(cwd, c.req.param("id"));
+    if (!font) return c.json({ error: "font not found" }, 404);
+    return c.json(font);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.get("/api/ui/font/active", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  try {
+    const font = getActiveFont(cwd);
+    if (!font) return c.json({ error: "active font not found" }, 404);
+    return c.json(font);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/api/ui/fonts/register", async (c) => {
+  const body = await c.req.json();
+  if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
+  if (typeof body.fontId !== "string") return c.json({ error: "fontId required" }, 400);
+  if (typeof body.cssPath !== "string") return c.json({ error: "cssPath required" }, 400);
+  try {
+    const font = registerFont({
+      cwd: body.cwd,
+      fontId: body.fontId,
+      fontName: typeof body.fontName === "string" ? body.fontName : undefined,
+      cssPath: body.cssPath,
+      activate: body.activate === true,
+      notes: typeof body.notes === "string" ? body.notes : undefined,
+      source: typeof body.source === "string" ? body.source : "api",
+    });
+    return c.json(font);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post("/api/ui/fonts/activate", async (c) => {
+  const body = await c.req.json();
+  if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
+  if (typeof body.fontId !== "string") return c.json({ error: "fontId required" }, 400);
+  try {
+    return c.json(activateFont(body.cwd, body.fontId));
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.patch("/api/ui/fonts/:id", async (c) => {
+  const body = await c.req.json();
+  if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
+  try {
+    return c.json(patchFont(body.cwd, c.req.param("id"), {
+      ...(typeof body.label === "string" ? { label: body.label } : {}),
+      ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
+      ...(typeof body.archived === "boolean" ? { archived: body.archived } : {}),
+    }));
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
 });
 
 // ── Memories (reads from agent_memory store) ──

@@ -175,3 +175,89 @@
 }
 .sc-resolved {
 }
+
+/* ── Copy button (inline in message-meta) ── */
+.msg-copy {
+  position: relative;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.message-meta:hover .msg-copy {
+  opacity: 1;
+}
+.msg-copy-btn {
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 4px;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.msg-copy-btn:hover {
+  color: var(--text);
+}
+.msg-copy-check {
+  font-size: 10px;
+  color: var(--accent, #6c8);
+}
+
+/* popup menu — appears above the button on hover.
+   padding-bottom bridges the gap so mouse stays within .msg-copy while moving up */
+.msg-copy-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  padding-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  white-space: nowrap;
+  z-index: 10;
+}
+.msg-copy-menu-inner {
+  background: var(--bg, #141414);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.msg-copy:hover .msg-copy-menu {
+  opacity: 1;
+  pointer-events: auto;
+}
+.msg-copy-item {
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 8px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background 0.1s, color 0.1s;
+}
+.msg-copy-item:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+.msg-copy-item:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.msg-copy-label {
+  flex: 1;
+}

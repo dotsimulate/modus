@@ -5,6 +5,7 @@ import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
 import { StreamingCursor } from "./StreamingCursor";
 import { formatProviderTokenUsage } from "./providerStats";
+import { CopyMessageButton } from "./CopyMessageButton";
 
 /** Count all tool calls recursively, including sub-agent nested tools */
 function countAllTools(toolCalls?: ToolCall[]): number {
@@ -70,6 +71,7 @@ function formatMeta(meta: Message["meta"], provider?: string): string {
   if (meta.duration != null) parts.push(`${(meta.duration / 1000).toFixed(1)}s`);
   return parts.join("  ");
 }
+
 
 export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, children }: Props) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
@@ -194,6 +196,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
           {msg.meta.duration != null && (
             <span className="meta-duration">{(msg.meta.duration / 1000).toFixed(1)}s</span>
           )}
+          <CopyMessageButton msg={msg} />
         </div>
       )}
 

@@ -137,7 +137,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const currentProfile = activeSession?.profile ?? "";
     const pendingProfile = nextProfile && nextProfile !== currentProfile ? nextProfile : undefined;
     setSessionNextProfile(activeSessionId, pendingProfile);
-    setSessionNextAgentConfig(activeSessionId, undefined);
   }, [activeSession?.profile, activeSessionId]);
 
   // ── Refresh sessions ──
@@ -223,6 +222,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       loadProjectSettings: setupState.loadProjectSettings,
     };
   }, [setupState, activeSession, selectedProfile]);
+
+  const getSendSeed = useCallback((sessionState: ReturnType<typeof getSessionState> | null) => {
+    if (activeSession && !activeSession.id.startsWith("pending-")) {
+      return {
+        profile: activeSession.nextProfile ?? activeSession.profile ?? (selectedProfile || undefined),
+        agent: getQueuedAgentConfig(activeSession, sessionState?.agentConfig ?? activeSession.agentConfig),
+        cwd: sessionState?.cwd || activeSession.cwd || setupState.cwd,
+        loadProjectSettings: sessionState?.loadProjectSettings ?? activeSession.loadProjectSettings ?? setupState.loadProjectSettings,
+      };
+    }
+    return getEffectiveSeed();
+  }, [activeSession, getEffectiveSeed, getQueuedAgentConfig, selectedProfile, setupState.cwd, setupState.loadProjectSettings]);
 
   const newSession = useCallback(async () => {
     await saveDraftForCurrent();
@@ -324,7 +335,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (needsNewSession) {
       if (isEmptySession && activeSessionId) archiveSessionApi(activeSessionId).catch(() => {});
 
-      const seedState = getEffectiveSeed();
+      const seedState = getSendSeed(currentState);
       const queuedProfile = seedState.profile;
 
       const rs = createInitialState();
@@ -441,6 +452,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     selectedProfile,
     buildSessionOpts,
     getQueuedAgentConfig,
+    getSendSeed,
     getProfileToolsForStartedSession,
     getLockedSessionProvider,
     hasPendingProfileChange,
