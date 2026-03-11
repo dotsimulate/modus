@@ -305,13 +305,19 @@ export function ChatInput({
               }}
             />
           </div>
-          <button
-            className="send-btn"
-            onClick={handleSend}
-            disabled={!hasContent || disabled}
-          >
-            send
-          </button>
+          {isActive ? (
+            <button className="stop-btn" onClick={onStop}>
+              stop
+            </button>
+          ) : (
+            <button
+              className="send-btn"
+              onClick={handleSend}
+              disabled={!hasContent || disabled}
+            >
+              send
+            </button>
+          )}
         </div>
       </div>
     </div>

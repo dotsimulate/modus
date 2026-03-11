@@ -106,6 +106,10 @@
   overscroll-behavior: contain;
 }
 
+.chat-messages-content {
+  min-height: 100%;
+}
+
 .scroll-to-bottom {
   flex-shrink: 0;
   max-height: 0;

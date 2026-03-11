@@ -27,36 +27,76 @@ type Props = {
 export function ChatView({ messages, provider, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch, onStopTask }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
+  const autoScrollRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const hasMessages = messages.length > 0;
+
+  const isNearBottom = useCallback((el: HTMLDivElement) => {
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    autoScrollRef.current = true;
+    setShowScrollBtn(false);
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
+
+  const syncScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const pinnedToBottom = isNearBottom(el);
+    autoScrollRef.current = pinnedToBottom;
+    setShowScrollBtn(hasMessages && !pinnedToBottom);
+  }, [hasMessages, isNearBottom]);
 
   // Scroll to bottom on initial load and when user sends a message.
-  // All other auto-scrolling is handled by CSS overflow-anchor.
+  // Ongoing stickiness is handled below by explicit bottom-pin tracking.
   useEffect(() => {
-    if (!endRef.current || messages.length === 0) return;
+    if (!hasMessages) return;
     const last = messages[messages.length - 1];
     if (!hasScrolledRef.current || last?.role === "user") {
       hasScrolledRef.current = true;
-      endRef.current.scrollIntoView({ behavior: "instant" });
+      scrollToBottom("auto");
     }
-  }, [messages.length]);
+  }, [hasMessages, messages, scrollToBottom]);
 
-  // Track scroll position for scroll-to-bottom button
-  const hasMessages = messages.length > 0;
+  // Track whether the user is still pinned to the bottom.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const onScroll = () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-      setShowScrollBtn(!atBottom);
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [hasMessages]);
+    syncScrollState();
+    el.addEventListener("scroll", syncScrollState, { passive: true });
+    return () => el.removeEventListener("scroll", syncScrollState);
+  }, [syncScrollState]);
 
-  const scrollToBottom = useCallback(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+  // Keep the viewport pinned while content grows, but only if the user
+  // has not intentionally scrolled away from the bottom.
+  useEffect(() => {
+    const contentEl = contentRef.current;
+    if (!contentEl || !("ResizeObserver" in window)) return;
+    const observer = new ResizeObserver(() => {
+      if (!autoScrollRef.current) return;
+      requestAnimationFrame(() => {
+        if (autoScrollRef.current) scrollToBottom("auto");
+      });
+    });
+    observer.observe(contentEl);
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
+
+  // Streaming updates can change content without changing element size
+  // immediately, so also pin on render while we are in sticky mode.
+  useEffect(() => {
+    if (!autoScrollRef.current || !hasMessages) return;
+    const rafId = requestAnimationFrame(() => {
+      if (autoScrollRef.current) scrollToBottom("auto");
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [hasMessages, messages, streamFeed, streaming, queuedMessage, scrollToBottom]);
 
   // Find last message index per role for animation
   const lastUser = useMemo(() => messages.findLastIndex((m: Message) => m.role === "user"), [messages]);
@@ -114,48 +154,50 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
   return (
     <div className="chat-scroll-wrapper">
       <div className="chat-messages" ref={scrollRef}>
-        {messages.map((msg, i) => {
-          const turnTools = turnFileEdits.get(i);
-          const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
+        <div className="chat-messages-content" ref={contentRef}>
+          {messages.map((msg, i) => {
+            const turnTools = turnFileEdits.get(i);
+            const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
 
-          return msg.role === "system" ? (
-            <div key={msg.id} className="system-divider">
-              <span>{msg.content}</span>
-            </div>
-          ) : (
-            <div key={msg.id}>
-              <MessageBubble
-                msg={msg}
-                provider={provider}
-                isNew={streaming && (
-                  (i === lastUser && msg.role === "user") ||
-                  (i === lastAssistant && msg.role === "assistant" && !msg.meta)
+            return msg.role === "system" ? (
+              <div key={msg.id} className="system-divider">
+                <span>{msg.content}</span>
+              </div>
+            ) : (
+              <div key={msg.id}>
+                <MessageBubble
+                  msg={msg}
+                  provider={provider}
+                  isNew={streaming && (
+                    (i === lastUser && msg.role === "user") ||
+                    (i === lastAssistant && msg.role === "assistant" && !msg.meta)
+                  )}
+                  isStreaming={
+                    streaming && i === messages.length - 1 && msg.role === "assistant"
+                  }
+                  hideRole
+                  showThinking={showThinking}
+                  showMeta={showMeta}
+                  showToolCalls={showToolCalls}
+                  showGitEvents={showGitEvents}
+                  cwd={cwd}
+                  lastTodoId={lastTodoId}
+                  streamFeed={streaming && i === messages.length - 1 && msg.role === "assistant"
+                    ? streamFeed
+                    : undefined}
+                  onBranch={msg.role === "user" && msg.seq != null ? onBranch : undefined}
+                  onStopTask={onStopTask}
+                >
+                  {showFileChanges && <FileChanges toolCalls={turnTools} />}
+                </MessageBubble>
+                {msg.role === "user" && (
+                  <UserMeta msg={msg} onBranch={onBranch} />
                 )}
-                isStreaming={
-                  streaming && i === messages.length - 1 && msg.role === "assistant"
-                }
-                hideRole
-                showThinking={showThinking}
-                showMeta={showMeta}
-                showToolCalls={showToolCalls}
-                showGitEvents={showGitEvents}
-                cwd={cwd}
-                lastTodoId={lastTodoId}
-                streamFeed={streaming && i === messages.length - 1 && msg.role === "assistant"
-                  ? streamFeed
-                  : undefined}
-                onBranch={msg.role === "user" && msg.seq != null ? onBranch : undefined}
-                onStopTask={onStopTask}
-              >
-                {showFileChanges && <FileChanges toolCalls={turnTools} />}
-              </MessageBubble>
-              {msg.role === "user" && (
-                <UserMeta msg={msg} onBranch={onBranch} />
-              )}
-            </div>
-          );
-        })}
-        <div ref={endRef} className="chat-anchor" />
+              </div>
+            );
+          })}
+          <div ref={endRef} className="chat-anchor" />
+        </div>
       </div>
       {queuedMessage && onCancelQueued && (
         <QueuedMessage message={queuedMessage} onCancel={onCancelQueued} />
