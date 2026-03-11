@@ -2,7 +2,7 @@
  * Account widget — Claude Code account info + time-period cost breakdown.
  *
  * Config example (in user profile dashboard.widgets):
- *   { "type": "account" }
+ *   { "id": "account-main", "type": "account" }
  */
 
 import { useState, useEffect } from "react";

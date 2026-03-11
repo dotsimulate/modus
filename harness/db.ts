@@ -204,6 +204,17 @@ export type StoredSessionConfig = {
   loadProjectSettings?: boolean;
 };
 
+// ── Message Content Types ──
+
+export type TurnContent = {
+  role: "user" | "assistant";
+  seq: number;
+  text: string;
+  thinking?: string;
+  toolCalls?: { name: string; input: Record<string, unknown>; result?: string }[];
+  timestamp: number;
+};
+
 // ── Prepared Statements ──
 
 const stmts = {
@@ -766,6 +777,105 @@ export function getNextRunNumber(actionName: string): number {
 
 export function clearActionRuns(actionName: string): void {
   db.prepare(`DELETE FROM action_runs WHERE action_name = $name`).run({ $name: actionName });
+}
+
+// ── Message Content Reconstruction ──
+
+/** Reconstruct structured message content from events for a session.
+ *  Returns user and assistant turns with text, thinking, and tool calls. */
+export function getSessionMessages(sessionId: string): TurnContent[] {
+  const events = db.prepare(
+    `SELECT seq, type, subtype, data, created_at FROM events
+     WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
+     ORDER BY seq ASC`
+  ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
+
+  const turns: TurnContent[] = [];
+  let current: {
+    text: string;
+    thinking: string;
+    toolCalls: Map<string, { name: string; input: Record<string, unknown>; result?: string }>;
+    seq: number;
+    timestamp: number;
+  } | null = null;
+
+  for (const evt of events) {
+    let d: any;
+    try { d = JSON.parse(evt.data); } catch { continue; }
+
+    if (evt.type === "user") {
+      if (evt.subtype === "prompt" || d.subtype === "prompt") {
+        const content = d.message?.content;
+        let text = "";
+        if (typeof content === "string") text = content;
+        else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "text" && block.text) text += block.text;
+          }
+        }
+        if (text) turns.push({ role: "user", seq: evt.seq, text, timestamp: evt.created_at });
+      } else if (current) {
+        // Tool results — attach to current assistant turn
+        const content = d.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "tool_result" && block.tool_use_id) {
+              const tc = current.toolCalls.get(block.tool_use_id);
+              if (tc) {
+                tc.result = typeof block.content === "string"
+                  ? block.content
+                  : JSON.stringify(block.content ?? "");
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (evt.type === "assistant") {
+      if (!current) {
+        current = { text: "", thinking: "", toolCalls: new Map(), seq: evt.seq, timestamp: evt.created_at };
+      }
+      const content = d.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === "text" && block.text) current.text += block.text;
+          if (block.type === "thinking" && block.thinking) current.thinking += block.thinking;
+          if (block.type === "tool_use") {
+            current.toolCalls.set(block.id, { name: block.name, input: block.input ?? {} });
+          }
+        }
+      }
+    }
+
+    if (evt.type === "result" && current) {
+      const turn: TurnContent = {
+        role: "assistant",
+        seq: evt.seq,
+        text: current.text,
+        timestamp: current.timestamp,
+      };
+      if (current.thinking) turn.thinking = current.thinking;
+      if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
+      turns.push(turn);
+      current = null;
+    }
+  }
+
+  // Include incomplete turn (still streaming)
+  if (current) {
+    const turn: TurnContent = {
+      role: "assistant",
+      seq: current.seq,
+      text: current.text,
+      timestamp: current.timestamp,
+    };
+    if (current.thinking) turn.thinking = current.thinking;
+    if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
+    turns.push(turn);
+  }
+
+  return turns;
 }
 
 // ── Full-Text Search (FTS5) ──

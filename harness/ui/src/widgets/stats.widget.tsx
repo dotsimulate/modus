@@ -2,7 +2,7 @@
  * User Stats widget — cost, session counts, project/agent breakdowns, activity.
  *
  * Config example (in user profile dashboard.widgets):
- *   { "type": "stats", "title": "stats" }
+ *   { "id": "stats-main", "type": "stats", "title": "stats" }
  */
 
 import { useState, useEffect, useMemo } from "react";

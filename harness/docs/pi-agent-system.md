@@ -1,3 +1,10 @@
+---
+title: PI Agent System
+audience: agents
+lastUpdated: 2026-03-11
+lastCommit: cf9d454
+---
+
 # PI Agent System
 
 The harness supports two execution backends: **Claude Agent SDK** (for `claude-code` provider)

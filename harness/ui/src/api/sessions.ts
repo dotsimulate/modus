@@ -199,6 +199,23 @@ export async function branchSessionApi(sourceId: string, seq: number): Promise<s
   return data.sessionId;
 }
 
+// ── Message Content ──
+
+export type TurnContent = {
+  role: "user" | "assistant";
+  seq: number;
+  text: string;
+  thinking?: string;
+  toolCalls?: { name: string; input: Record<string, unknown>; result?: string }[];
+  timestamp: number;
+};
+
+export async function fetchMessageContent(sessionId: string, seq?: number): Promise<TurnContent | TurnContent[]> {
+  const params = seq != null ? `?seq=${seq}` : "";
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages-content${params}`, { headers: authHeaders() });
+  return res.json();
+}
+
 // ── Stats ──
 
 export type SessionStats = {

@@ -16,6 +16,8 @@ export type WidgetSize = "full" | "half" | "third";
 
 /** Base fields every widget config has (widget files extend this) */
 export type WidgetBase = {
+  /** Stable instance id for persisted UI state and future layout controls */
+  id?: string;
   type: string;
   title?: string;
   size?: WidgetSize;
@@ -25,6 +27,7 @@ export type WidgetBase = {
 /** Props passed to every widget component */
 export type WidgetProps<C extends WidgetBase = WidgetBase> = {
   config: C;
+  widgetId: string;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
 };
@@ -57,5 +60,8 @@ for (const mod of Object.values(modules)) {
 
 /** Default dashboard when user profile has no dashboard config */
 export const DEFAULT_DASHBOARD: DashboardConfig = {
-  widgets: [{ type: "claude-pricing" }, { type: "sessions" }],
+  widgets: [
+    { id: "claude-pricing-0", type: "claude-pricing" },
+    { id: "sessions-1", type: "sessions" },
+  ],
 };

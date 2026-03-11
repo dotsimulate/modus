@@ -60,6 +60,8 @@ export type Message = {
     inputTokens?: number;
     outputTokens?: number;
   };
+  /** Aggregated full-turn content for copy button. Set on result event. */
+  turnCopy?: { text: string; thinking?: string; toolCalls?: ToolCall[] };
 };
 
 // ── Permission Requests ──
@@ -314,6 +316,35 @@ export type UserProfile = {
   computer?: string;
   /** Preferred editor CLI command for "open in editor" */
   editor?: string;
+};
+
+export type ProjectUiAssetInfo = {
+  id: string;
+  label: string;
+  file: string;
+  createdAt: string;
+  archived: boolean;
+  source?: string;
+  notes?: string;
+  updatedAt?: string;
+  active: boolean;
+  absolutePath: string;
+};
+
+export type ActiveProjectUiAsset = {
+  id: string;
+  label: string;
+  file: string;
+  activeFile: string;
+  css: string;
+  variables: Record<string, string>;
+};
+
+export type ProjectUiState = {
+  themes: ProjectUiAssetInfo[];
+  fonts: ProjectUiAssetInfo[];
+  activeTheme: ActiveProjectUiAsset | null;
+  activeFont: ActiveProjectUiAsset | null;
 };
 
 export type MemoryItem = {

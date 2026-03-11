@@ -24,10 +24,10 @@ export {
   updateSessionConfig, respondToPermission,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
   fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, subscribeEvents, branchSessionApi,
-  fetchGeminiUsage,
+  fetchGeminiUsage, fetchMessageContent,
 } from "./sessions";
 
-export type { SessionStats, AccountInfo, GeminiUsageInfo } from "./sessions";
+export type { SessionStats, AccountInfo, GeminiUsageInfo, TurnContent } from "./sessions";
 
 // Actions
 export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences, reloadActionsApi, addTagApi, removeTagApi } from "./actions";
@@ -37,6 +37,12 @@ export { fetchGitStatus, fetchGitLog, fetchGitShow, fetchGitFileDiff, fetchGitFi
 
 // Projects & Init
 export { fetchInitStatus, initProject, fetchProjects } from "./projects";
+
+// Project UI
+export {
+  fetchProjectUiState, fetchProjectThemes, fetchProjectFonts,
+  activateProjectThemeApi, activateProjectFontApi,
+} from "./ui";
 
 // Memories
 export { fetchMemories } from "./memories";
@@ -56,7 +62,7 @@ export type {
   ProviderCapabilities, ProviderToolGroup,
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,
-  UserProfileState, UserProfile, MemoryItem,
+  UserProfileState, UserProfile, ProjectUiAssetInfo, ActiveProjectUiAsset, ProjectUiState, MemoryItem,
   ActionTrigger, ActionInfo, ActionRun,
   GitStatus, GitCommit, DiffLine, DiffHunk, FileDiff, GitCommitDetail,
   EventStreamCallbacks,

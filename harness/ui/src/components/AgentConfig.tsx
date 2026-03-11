@@ -6,7 +6,7 @@
  * - active session config in the chat view
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchProviderModels } from "../api";
 import type { ProviderModel, AgentConfigState } from "../api";
 import { SearchDropdown } from "./SearchDropdown";
@@ -83,10 +83,15 @@ export function AgentConfig({
 }: Props) {
   const [toolsOpen, setToolsOpen] = useState(!toolsCollapsible);
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
+  const configRef = useRef(config);
   const dropdownClassName = dropdownDirection === "up"
     ? "search-dropdown--compact search-dropdown--up"
     : "search-dropdown--compact";
   const effectiveProvider = config.provider || profileProvider || "claude-code";
+
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   useEffect(() => {
     fetchProviderModels(effectiveProvider).then(setProviderModels).catch(() => setProviderModels([]));
@@ -98,11 +103,30 @@ export function AgentConfig({
 
   const updateProvider = (provider: string) => {
     const switchingToolFamilies = providerToolFamily(config.provider || profileProvider) !== providerToolFamily(provider || profileProvider);
-    update({
+    const nextConfig = {
+      ...config,
       provider,
       model: "",
       ...(switchingToolFamilies ? { toolStates: {} } : {}),
       ...(isCodexProvider(provider || profileProvider) ? {} : { providerControls: {} }),
+    };
+    onChange(nextConfig);
+
+    if (!provider) return;
+
+    const fallbackModel = providerSeedModel(provider);
+    void fetchProviderModels(provider).then((models) => {
+      const latest = configRef.current;
+      if ((latest.provider || profileProvider || "claude-code") !== provider) return;
+      if (latest.model.trim()) return;
+      const seededModel = models[0]?.id ?? fallbackModel;
+      if (!seededModel) return;
+      onChange({ ...latest, model: seededModel });
+    }).catch(() => {
+      const latest = configRef.current;
+      if ((latest.provider || profileProvider || "claude-code") !== provider) return;
+      if (latest.model.trim() || !fallbackModel) return;
+      onChange({ ...latest, model: fallbackModel });
     });
   };
 
@@ -243,6 +267,13 @@ export function AgentConfig({
       )}
     </div>
   );
+}
+
+function providerSeedModel(provider: string): string {
+  if (provider === "codex") return "gpt-5.1-codex";
+  if (provider === "gemini-cli") return "auto-gemini-3";
+  if (provider === "claude-code" || provider === "anthropic") return "claude-opus-4-6";
+  return "";
 }
 
 export function createEmptyAgentConfig(): AgentConfigState {

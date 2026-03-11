@@ -289,6 +289,7 @@ function AppShell() {
                 profileEffort={profileData?.effort}
                 editorProfileEffort={editorProfileData?.effort}
                 editorProfileMaxTurns={editorProfileData?.maxTurns}
+                showProvider={!!activeSession && !sessionProviderLocked}
                 availableTools={activeSession?.availableTools}
                 profiles={visibleProfiles}
                 onSwitchProfile={handleSwitchProfile}

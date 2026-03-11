@@ -5,6 +5,7 @@ import { ProjectSetup } from "./ProjectSetup";
 import { ModusPrompt } from "./ModusPrompt";
 import { WIDGETS, DEFAULT_DASHBOARD } from "../widgets";
 import type { WidgetBase } from "../widgets";
+import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
 
 type Props = {
   onNavigate: (view: View) => void;
@@ -21,14 +22,25 @@ const chevron = (
 
 function WidgetSlot({
   config,
+  widgetId,
+  userProfile,
+  cwd,
   onNavigate,
   onSelectSession,
 }: {
   config: WidgetBase;
+  widgetId: string;
+  userProfile: string | null;
+  cwd?: string;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(config.collapsed ?? false);
+  const [collapsed, setCollapsed] = useWidgetUiState(
+    { userProfile, cwd },
+    widgetId,
+    "collapsed",
+    config.collapsed ?? false,
+  );
   const Widget = WIDGETS[config.type];
   if (!Widget) return null;
 
@@ -44,7 +56,12 @@ function WidgetSlot({
       </button>
       <div className={`panel-collapse ${collapsed ? "" : "panel-collapse--open"}`}>
         <div className="panel-collapse-clip">
-          <Widget config={config} onNavigate={onNavigate} onSelectSession={onSelectSession} />
+          <Widget
+            config={config}
+            widgetId={widgetId}
+            onNavigate={onNavigate}
+            onSelectSession={onSelectSession}
+          />
         </div>
       </div>
     </div>
@@ -59,7 +76,14 @@ function WidgetSlot({
  * setup via prompt presets (explore, set up agents, configure).
  */
 export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone }: Props) {
-  const { activeUP, userProfiles, refreshProfiles, refreshUserProfiles } = useProfiles();
+  const {
+    activeUP,
+    activeCwd,
+    activeUserProfile,
+    userProfiles,
+    refreshProfiles,
+    refreshUserProfiles,
+  } = useProfiles();
   const [setupDismissed, setSetupDismissed] = useState(false);
   const dashboard = activeUP?.dashboard ?? DEFAULT_DASHBOARD;
 
@@ -93,8 +117,11 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
         <div className="dashboard-widgets">
           {dashboard.widgets.map((config: WidgetBase, i: number) => (
             <WidgetSlot
-              key={`${config.type}-${i}`}
+              key={getWidgetInstanceId(config, i)}
               config={config}
+              widgetId={getWidgetInstanceId(config, i)}
+              userProfile={activeUserProfile}
+              cwd={activeCwd}
               onNavigate={onNavigate}
               onSelectSession={onSelectSession}
             />

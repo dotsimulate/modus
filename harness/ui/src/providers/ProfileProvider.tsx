@@ -7,6 +7,7 @@ import {
 import { createDefaultSetupState, type SessionSetupState } from "../components/SessionSetup";
 import { agentConfigToOverrides } from "../components/AgentConfig";
 import { addRecentPath } from "../recentPaths";
+import { loadAndApplyProjectUiState } from "../project-ui-theme";
 
 const USER_PROFILE_KEY = "harness:active-user-profile";
 
@@ -165,6 +166,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (cwd === prevCwdRef.current) return;
     prevCwdRef.current = cwd;
     fetchProfiles(cwd || undefined).then(setProfiles).catch(() => {});
+  }, [setupState.cwd]);
+
+  useEffect(() => {
+    loadAndApplyProjectUiState(setupState.cwd.trim() || undefined);
   }, [setupState.cwd]);
 
   // Reload when user profile changes

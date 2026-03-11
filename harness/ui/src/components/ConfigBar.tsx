@@ -26,6 +26,7 @@ type Props = {
   profileEffort?: string;
   editorProfileEffort?: string;
   editorProfileMaxTurns?: number;
+  showProvider?: boolean;
   /** All tools reported by SDK init (for MCP tool discovery) */
   availableTools?: string[];
   /** Available profiles for live switching */
@@ -79,6 +80,7 @@ export function ConfigBar({
   profileEffort,
   editorProfileEffort,
   editorProfileMaxTurns,
+  showProvider = false,
   availableTools,
   profiles,
   onSwitchProfile,
@@ -193,7 +195,7 @@ export function ConfigBar({
               profileMaxTurns={editorProfileMaxTurns}
               onChange={onAgentConfigChange}
               compact
-              showProvider={false}
+              showProvider={showProvider}
               availableTools={availableTools}
             />
           </div>
