@@ -74,10 +74,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [pendingHashId, setPendingHashId] = useState<string | null>(() => {
     // Extract session UUID from hash: #profile/uuid or #uuid
     const raw = window.location.hash.replace(/^#\/?/, "");
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const slash = raw.indexOf("/");
-    const candidate = slash >= 0 ? raw.slice(slash + 1) : raw;
-    return UUID_RE.test(candidate) ? candidate : null;
+    const SESSION_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ses-\d+-[a-z0-9]+)$/i;
+    // Take the last segment — handles profile/id and malformed profile/id1/id2
+    const segments = raw.split("/");
+    const candidate = segments[segments.length - 1] ?? "";
+    return SESSION_RE.test(candidate) ? candidate : null;
   });
 
   // Derive activeSession from the store

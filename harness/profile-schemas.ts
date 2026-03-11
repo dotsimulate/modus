@@ -89,6 +89,8 @@ const ProviderSchema = z.string().refine(isKnownProvider, {
   message: "unknown provider",
 });
 
+const EffortSchema = z.enum(["off", "low", "medium", "high", "max"]);
+
 // ── Agent Profile ──
 
 export const ProfileSchema = z.object({
@@ -99,7 +101,7 @@ export const ProfileSchema = z.object({
   disallowedTools: z.array(z.string()).optional(),
   model: z.string().optional(),
   maxTurns: z.number().int().positive().optional(),
-  effort: z.enum(["low", "medium", "high", "max"]).optional(),
+  effort: EffortSchema.optional(),
   loadProjectSettings: z.boolean().optional(),
   claudeMdExcludes: ClaudeMdExcludesSchema.optional(),
   promptMode: z.enum(["custom", "append"]).optional(),
@@ -129,6 +131,7 @@ export const UserProfileSchema = z.object({
   defaultAgentProfile: z.string().optional(),
   provider: ProviderSchema.optional(),
   model: z.string().optional(),
+  effort: EffortSchema.optional(),
   memoryFilter: z.string().optional(),
   memory: UserProfileMemorySchema.optional(),
   showAllProjectPaths: z.boolean().optional(),

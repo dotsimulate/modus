@@ -15,6 +15,8 @@ import { isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, ty
 
 export type { AgentConfigState };
 
+const EFFORT_OPTIONS = ["off", "low", "medium", "high", "max"] as const;
+
 export type SessionConfigPatch = {
   provider?: string;
   model?: string;
@@ -180,7 +182,7 @@ export function AgentConfig({
           <SearchDropdown
             className={dropdownClassName}
             value={config.effort}
-            options={["low", "medium", "high", "max"]
+            options={EFFORT_OPTIONS
               .filter((v) => v !== profileEffort)
               .map((v) => ({ value: v }))}
             placeholder={profileEffort ?? "default"}

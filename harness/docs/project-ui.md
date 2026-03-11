@@ -2,7 +2,7 @@
 title: Project UI (Themes & Fonts)
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastCommit: 9c6d78f
 ---
 
 # Project UI — Themes & Fonts
@@ -69,3 +69,14 @@ Project themes override these base variables at runtime. The base CSS provides
 defaults; active theme CSS provides overrides applied after load.
 
 **Source**: `project-ui.ts`, `harness/ui/src/styles/`.
+
+## Frontend Application
+
+`harness/ui/src/project-ui-theme.ts` handles applying theme/font CSS to the live document:
+
+- `loadAndApplyProjectUiState(cwd?)` — fetches `/api/ui/state` for the active cwd and calls `applyProjectUiState()`. Version-fenced to discard stale responses when cwd changes rapidly.
+- `applyProjectUiState(state)` — upserts `<style id="modus-project-theme">` and `<style id="modus-project-font">` into `document.head`. Removes the element if no active CSS.
+
+`ProfileProvider` calls `loadAndApplyProjectUiState` whenever `setupState.cwd` changes, so theme switches on project change automatically.
+
+The `project-theme` widget (`widgets/project-theme.widget.tsx`) is a dashboard widget that lets users pick the active theme and font for the current project. It fetches state via `/api/ui/state`, activates via `/api/ui/themes/activate` or `/api/ui/fonts/activate`, and calls `applyProjectUiState()` immediately on selection so the change is visible without a reload.

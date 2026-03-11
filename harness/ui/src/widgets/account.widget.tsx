@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 import { fetchAccountInfo } from "../api";
 import type { AccountInfo } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
+import { fmtCost, planLabel } from "../utils/format";
 import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
 
 // ── Config ──
@@ -18,23 +19,6 @@ type AccountConfig = WidgetBase & {
 };
 
 // ── Helpers ──
-
-function fmtCost(n: number): string {
-  if (n >= 100) return `$${n.toFixed(0)}`;
-  if (n >= 10) return `$${n.toFixed(1)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function planLabel(sub: string): string {
-  switch (sub) {
-    case "max": return "Max";
-    case "pro": return "Pro";
-    case "free": return "Free";
-    case "team": return "Team";
-    case "enterprise": return "Enterprise";
-    default: return sub;
-  }
-}
 
 function planClass(sub: string): string {
   switch (sub) {
@@ -61,7 +45,7 @@ function AccountWidget(_props: WidgetProps<AccountConfig>) {
       } catch { /* silent */ }
     };
     load();
-    const iv = setInterval(load, 60_000); // refresh every 60s
+    const iv = setInterval(load, 60_000);
     return () => { alive = false; clearInterval(iv); };
   }, [activeUserProfile]);
 

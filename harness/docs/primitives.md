@@ -2,7 +2,8 @@
 title: Core Primitives
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastCommit: 9c6d78f
+covers: harness/db.ts harness/session-manager.ts harness/index.ts
 ---
 
 # Core Primitives
@@ -31,6 +32,12 @@ subscribers simultaneously.
 **Branching**: `POST /api/sessions/:id/branch` creates a new session forked
 from a specific message in the parent. Events are copied up to the branch
 point.
+
+**Message content**: `getSessionMessages(sessionId)` in `db.ts` reconstructs structured
+turns from raw events. Returns `TurnContent[]` — each turn has `role`, `seq`, `text`,
+optional `thinking` and `toolCalls`, and `timestamp`. Tool call results are joined to
+the assistant turn that made the call. Incomplete (still-streaming) turns are included.
+Exposed via `GET /api/sessions/:id/messages-content` (optional `?seq=<n>` for a single turn).
 
 **Managed by**: `session-manager.ts` (lifecycle, routing), `db.ts` (persistence).
 

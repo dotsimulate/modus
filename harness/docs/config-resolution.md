@@ -3,6 +3,7 @@ title: Config Resolution
 audience: agents
 lastUpdated: 2026-03-11
 lastCommit: cf9d454
+covers: harness/config-resolver.ts harness/profiles/
 ---
 
 # Config Resolution

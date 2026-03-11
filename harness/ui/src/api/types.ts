@@ -307,6 +307,7 @@ export type UserProfile = {
   defaultAgentProfile?: string;
   provider?: string;
   model?: string;
+  effort?: string;
   memoryFilter?: string;
   /** Show project paths from ALL user profiles in the CWD picker */
   showAllProjectPaths?: boolean;

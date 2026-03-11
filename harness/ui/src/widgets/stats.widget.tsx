@@ -5,10 +5,13 @@
  *   { "id": "stats-main", "type": "stats", "title": "stats" }
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { fetchSessionStats } from "../api";
 import type { SessionStats } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
+import { fmtCost, fmtNum, basename } from "../utils/format";
+import { ActivityChart } from "../components/ActivityChart";
+import { HBar } from "../components/HBar";
 import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
 
 // ── Config ──
@@ -19,24 +22,6 @@ type StatsConfig = WidgetBase & {
 
 // ── Helpers ──
 
-function fmtCost(n: number): string {
-  if (n >= 100) return `$${n.toFixed(0)}`;
-  if (n >= 10) return `$${n.toFixed(1)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function fmtNum(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function projectName(cwd: string | null): string {
-  if (!cwd || cwd === "(none)") return "(none)";
-  const parts = cwd.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || cwd;
-}
-
 function daysSince(ts: number | null): number {
   if (!ts) return 0;
   return Math.floor((Date.now() - ts) / 86_400_000);
@@ -44,7 +29,6 @@ function daysSince(ts: number | null): number {
 
 function streak(daily: SessionStats["daily"]): number {
   if (daily.length === 0) return 0;
-  // Work backwards from today
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const daySet = new Set(daily.map((d) => d.day));
@@ -53,59 +37,9 @@ function streak(daily: SessionStats["daily"]): number {
     const d = new Date(today.getTime() - i * 86_400_000);
     const key = d.toISOString().slice(0, 10);
     if (daySet.has(key)) count++;
-    else if (i > 0) break; // allow today to be missing (day not over)
+    else if (i > 0) break;
   }
   return count;
-}
-
-// ── Mini bar chart ──
-
-function ActivityChart({ daily }: { daily: SessionStats["daily"] }) {
-  // Fill in missing days for last 30 days
-  const filled = useMemo(() => {
-    const map = new Map(daily.map((d) => [d.day, d]));
-    const days: { day: string; sessions: number; cost: number }[] = [];
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 86_400_000);
-      const key = d.toISOString().slice(0, 10);
-      days.push(map.get(key) ?? { day: key, sessions: 0, cost: 0 });
-    }
-    return days;
-  }, [daily]);
-
-  const maxSessions = Math.max(1, ...filled.map((d) => d.sessions));
-
-  return (
-    <div className="stats-chart">
-      {filled.map((d) => {
-        const h = Math.max(1, Math.round((d.sessions / maxSessions) * 24));
-        return (
-          <div
-            key={d.day}
-            className="stats-chart-bar"
-            style={{ height: `${h}px` }}
-            title={`${d.day}: ${d.sessions} sessions, ${fmtCost(d.cost)}`}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Horizontal bar ──
-
-function HBar({ value, max, color }: { value: number; max: number; color?: string }) {
-  const pct = max > 0 ? Math.max(1, (value / max) * 100) : 0;
-  return (
-    <div className="stats-hbar">
-      <div
-        className="stats-hbar-fill"
-        style={{ width: `${pct}%`, background: color }}
-      />
-    </div>
-  );
 }
 
 // ── Component ──
@@ -124,7 +58,7 @@ function StatsWidget(_props: WidgetProps<StatsConfig>) {
       } catch { /* silent */ }
     };
     load();
-    const iv = setInterval(load, 30_000); // refresh every 30s
+    const iv = setInterval(load, 30_000);
     return () => { alive = false; clearInterval(iv); };
   }, [activeUserProfile]);
 
@@ -186,7 +120,7 @@ function StatsWidget(_props: WidgetProps<StatsConfig>) {
       {/* ── 30-day activity ── */}
       <div className="stats-section">
         <span className="stats-section-label">30-day activity</span>
-        <ActivityChart daily={daily} />
+        <ActivityChart daily={daily} prefix="stats" />
       </div>
 
       {/* ── Toggle: projects / agents ── */}
@@ -207,7 +141,7 @@ function StatsWidget(_props: WidgetProps<StatsConfig>) {
             {byProfile.map((p) => (
               <div key={p.profile} className="stats-row">
                 <span className="stats-row-name">{p.profile}</span>
-                <HBar value={p.cost} max={maxProfileCost} />
+                <HBar value={p.cost} max={maxProfileCost} prefix="stats" />
                 <span className="stats-row-num">{fmtNum(p.sessions)}</span>
                 <span className="stats-row-cost">{fmtCost(p.cost)}</span>
               </div>
@@ -217,8 +151,8 @@ function StatsWidget(_props: WidgetProps<StatsConfig>) {
           <div className="stats-breakdown">
             {byProject.map((p) => (
               <div key={p.project} className="stats-row">
-                <span className="stats-row-name">{projectName(p.project)}</span>
-                <HBar value={p.cost} max={maxProjectCost} />
+                <span className="stats-row-name">{basename(p.project)}</span>
+                <HBar value={p.cost} max={maxProjectCost} prefix="stats" />
                 <span className="stats-row-num">{fmtNum(p.sessions)}</span>
                 <span className="stats-row-cost">{fmtCost(p.cost)}</span>
               </div>

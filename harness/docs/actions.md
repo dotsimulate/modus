@@ -3,6 +3,7 @@ title: Actions
 audience: agents
 lastUpdated: 2026-03-11
 lastCommit: cf9d454
+covers: harness/action-runner.ts harness/action-types.ts
 ---
 
 # Actions

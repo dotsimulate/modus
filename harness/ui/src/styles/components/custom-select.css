@@ -1,0 +1,96 @@
+/**
+ * CustomSelect — dark-themed dropdown replacement for <select>.
+ */
+
+.csel {
+  position: relative;
+}
+
+.csel-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.1s;
+}
+
+.csel-trigger:hover:not(:disabled) {
+  border-color: var(--border-active);
+}
+
+.csel-trigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.csel--open .csel-trigger {
+  border-color: var(--border-active);
+}
+
+.csel-value {
+  color: var(--text);
+}
+
+.csel-placeholder {
+  color: var(--text-dim);
+}
+
+.csel-chevron {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1;
+  transition: transform 0.1s;
+}
+
+.csel--open .csel-chevron {
+  transform: rotate(90deg);
+}
+
+/* ── dropdown ── */
+
+.csel-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-active);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.csel-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s;
+}
+
+.csel-option:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.csel-option--active {
+  color: var(--text);
+}

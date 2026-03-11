@@ -7,17 +7,13 @@ import {
 import type { ProjectUiState } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { applyProjectUiState } from "../project-ui-theme";
+import { CustomSelect } from "../components/CustomSelect";
+import { basename } from "../utils/format";
 import type { WidgetBase, WidgetDef, WidgetProps } from "./index";
 
 type ProjectThemeConfig = WidgetBase & {
   type: "project-theme";
 };
-
-function basename(path: string | undefined): string {
-  if (!path) return "";
-  const parts = path.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || path;
-}
 
 function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
   const { activeCwd, activeUP } = useProfiles();
@@ -95,8 +91,14 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     return <div className="dash-empty">loading themes...</div>;
   }
 
-  const themes = state?.themes.filter((item) => !item.archived) ?? [];
-  const fonts = state?.fonts.filter((item) => !item.archived) ?? [];
+  const themes = (state?.themes.filter((item) => !item.archived) ?? []).map((t) => ({
+    value: t.id,
+    label: t.label,
+  }));
+  const fonts = (state?.fonts.filter((item) => !item.archived) ?? []).map((f) => ({
+    value: f.id,
+    label: f.label,
+  }));
 
   return (
     <div className="project-theme-widget">
@@ -108,45 +110,27 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
         <div className="project-theme-path">{activeCwd}</div>
       </div>
 
-      <div className="project-theme-controls">
-        <label className="project-theme-field">
-          <span className="project-theme-label">theme</span>
-          <select
-            className="project-theme-select"
+      <div className="pt-controls">
+        <label className="pt-field">
+          <span className="pt-label">theme</span>
+          <CustomSelect
+            options={themes}
             value={state?.activeTheme?.id ?? ""}
-            onChange={(e) => handleThemeChange(e.target.value)}
+            placeholder={themes.length ? "select theme" : "no themes"}
             disabled={!themes.length || busy !== null}
-          >
-            <option value="" disabled>{themes.length ? "select theme" : "no themes"}</option>
-            {themes.map((theme) => (
-              <option key={theme.id} value={theme.id}>{theme.label}</option>
-            ))}
-          </select>
+            onChange={handleThemeChange}
+          />
         </label>
-
-        <label className="project-theme-field">
-          <span className="project-theme-label">font</span>
-          <select
-            className="project-theme-select"
+        <label className="pt-field">
+          <span className="pt-label">font</span>
+          <CustomSelect
+            options={fonts}
             value={state?.activeFont?.id ?? ""}
-            onChange={(e) => handleFontChange(e.target.value)}
+            placeholder={fonts.length ? "select font" : "no fonts"}
             disabled={!fonts.length || busy !== null}
-          >
-            <option value="" disabled>{fonts.length ? "select font" : "no fonts"}</option>
-            {fonts.map((font) => (
-              <option key={font.id} value={font.id}>{font.label}</option>
-            ))}
-          </select>
+            onChange={handleFontChange}
+          />
         </label>
-      </div>
-
-      <div className="project-theme-status">
-        <span>
-          active theme: <strong>{state?.activeTheme?.label ?? "default"}</strong>
-        </span>
-        <span>
-          active font: <strong>{state?.activeFont?.label ?? "default"}</strong>
-        </span>
       </div>
 
       {busy && <div className="project-theme-busy">applying {busy}...</div>}

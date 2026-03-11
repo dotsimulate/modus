@@ -341,6 +341,7 @@ function ProfileForm({
             <span>effort</span>
             <select value={effort} onChange={(e) => setEffort(e.target.value)}>
               <option value="">default</option>
+              <option value="off">off</option>
               <option value="low">low</option>
               <option value="medium">medium</option>
               <option value="high">high</option>

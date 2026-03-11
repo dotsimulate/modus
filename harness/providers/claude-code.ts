@@ -74,6 +74,11 @@ function getState(session: ActiveSession): ClaudeCodeState | null {
   return (session._providerState as ClaudeCodeState | null) ?? null;
 }
 
+function normalizeClaudeEffort(effort?: string): string | undefined {
+  if (!effort || effort === "off") return undefined;
+  return effort;
+}
+
 // ── Input Channel (async generator for streaming input mode) ──
 
 function createInputChannel(): { generator: AsyncIterable<any>; channel: InputChannel } {
@@ -447,7 +452,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         includePartialMessages: true,
         resume: resumeTarget,
         model: opts.model ?? profileDef?.model ?? undefined,
-        effort: opts.effort ?? profileDef?.effort ?? undefined,
+        effort: normalizeClaudeEffort(opts.effort ?? profileDef?.effort),
         maxTurns: opts.maxTurns ?? profileDef?.maxTurns ?? undefined,
         allowedTools: undefined,
         disallowedTools: sdkDisallowed,
@@ -584,7 +589,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         state.sdkOptions.model = config.model || undefined;
       }
       if (config.effort !== undefined) {
-        state.sdkOptions.effort = config.effort || undefined;
+        state.sdkOptions.effort = normalizeClaudeEffort(config.effort);
       }
       if (config.maxTurns !== undefined) {
         state.sdkOptions.maxTurns = config.maxTurns || undefined;
@@ -638,7 +643,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       // Update SDK options for next resume
       state.sdkOptions.systemPrompt = systemPrompt;
       state.sdkOptions.model = ctx.opts.model || undefined;
-      state.sdkOptions.effort = ctx.opts.effort || undefined;
+      state.sdkOptions.effort = normalizeClaudeEffort(ctx.opts.effort);
       state.sdkOptions.maxTurns = ctx.opts.maxTurns || undefined;
 
       // Update tools

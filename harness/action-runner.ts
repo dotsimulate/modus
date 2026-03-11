@@ -503,6 +503,8 @@ async function fireAction(
         db,
         trigger: triggerInfo,
         actionDir,
+        cwd: cfg.cwd,
+        inputs: cfg.inputs ?? {},
         stepIndex: 0,
         totalSteps,
         previousStepResult: null,

@@ -3,6 +3,7 @@ title: PI Agent System
 audience: agents
 lastUpdated: 2026-03-11
 lastCommit: cf9d454
+covers: harness/providers/pi-agent.ts harness/providers/mcp-bridge.ts
 ---
 
 # PI Agent System
