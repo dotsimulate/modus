@@ -16,8 +16,6 @@ type Props = {
   sessionStatus: SessionStatus | null;
   disabled: boolean;
   placeholder?: string;
-  activeToolName?: string;
-  activeToolElapsed?: number;
 };
 
 /** Read a File as base64 (strip the data: prefix) */
@@ -37,7 +35,6 @@ function fileToBase64(file: File): Promise<{ data: string; mediaType: string; na
 export function ChatInput({
   value, onChange, onSend, onStop,
   sessionStatus, disabled, placeholder,
-  activeToolName, activeToolElapsed,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const historyIndex = useRef(-1);
@@ -52,21 +49,6 @@ export function ChatInput({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
-
-  // Elapsed timer for streaming bar
-  const [elapsed, setElapsed] = useState(0);
-  const timerStart = useRef(0);
-  useEffect(() => {
-    if (isActive) {
-      timerStart.current = Date.now();
-      setElapsed(0);
-      const id = setInterval(() => setElapsed(Date.now() - timerStart.current), 1000);
-      return () => clearInterval(id);
-    }
-  }, [isActive]);
-  const mins = Math.floor(elapsed / 60000);
-  const secs = Math.floor((elapsed % 60000) / 1000);
-  const timerText = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 
   useEffect(() => {
     const ta = ref.current;
@@ -239,15 +221,6 @@ export function ChatInput({
     }
   };
 
-  // Build status text
-  let statusText = "responding...";
-  if (activeToolName) {
-    statusText = `${activeToolName}`;
-    if (activeToolElapsed != null) statusText += ` (${Math.round(activeToolElapsed)}s)`;
-  } else if (sessionStatus === "starting") {
-    statusText = "starting...";
-  }
-
   const hasContent = value.trim() || attachments.length > 0;
 
   return (
@@ -261,13 +234,6 @@ export function ChatInput({
       {isDragging && (
         <div className="drop-overlay">drop images here</div>
       )}
-
-      <div className={`streaming-bar${isActive ? "" : " streaming-idle"}`}>
-        <span className={`streaming-indicator${activeToolName ? " indicator-tool" : ""}`} />
-        <span>{isActive ? statusText : "idle"}</span>
-        <span className="streaming-timer">{isActive ? timerText : ""}</span>
-        <button className="stop-inline" onClick={onStop} disabled={!isActive}>stop</button>
-      </div>
 
       {attachments.length > 0 && (
         <div className="attachment-strip">

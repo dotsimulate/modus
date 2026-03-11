@@ -8,7 +8,7 @@ import {
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
 import { getAllTools, getToolGroups, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
-import type { Profile } from "../api";
+import type { Profile, SessionStatus } from "../api";
 
 type Props = {
   profileName?: string;
@@ -32,6 +32,8 @@ type Props = {
   profiles?: Profile[];
   /** Called when user switches profile on the live session */
   onSwitchProfile?: (name: string) => void;
+  /** Current session status */
+  status?: SessionStatus | null;
 };
 
 function shortModel(model?: string): string {
@@ -80,6 +82,7 @@ export function ConfigBar({
   availableTools,
   profiles,
   onSwitchProfile,
+  status,
 }: Props) {
   const [open, setOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
@@ -127,7 +130,10 @@ export function ConfigBar({
         </svg>
         <div className="config-bar-items">
           {profileName && (
-            <span className="config-bar-label">{profileName}</span>
+            <div className="config-bar-profile-wrap">
+              <span className={`config-status-dot ${status || "idle"}`} />
+              <span className="config-bar-label">{profileName}</span>
+            </div>
           )}
           {hasPendingProfile && (
             <span className="config-bar-overrides">next: {pendingProfileName}</span>

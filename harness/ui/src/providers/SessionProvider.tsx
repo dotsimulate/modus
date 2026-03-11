@@ -201,22 +201,41 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   // ── Session actions ──
 
+  const getEffectiveSeed = useCallback(() => {
+    if (!setupState.useManualSetup && activeSession && !activeSession.id.startsWith("pending-")) {
+      // Inherit EXACTLY what's in the Config Bar (current or pending changes)
+      return {
+        profile: activeSession.nextProfile ?? activeSession.profile ?? (selectedProfile || undefined),
+        agent: activeSession.nextAgentConfig ?? activeSession.agentConfig,
+        cwd: activeSession.cwd || setupState.cwd,
+        loadProjectSettings: activeSession.loadProjectSettings ?? setupState.loadProjectSettings,
+      };
+    }
+    return {
+      profile: selectedProfile || undefined,
+      agent: setupState.agent,
+      cwd: setupState.cwd,
+      loadProjectSettings: setupState.loadProjectSettings,
+    };
+  }, [setupState, activeSession, selectedProfile]);
+
   const newSession = useCallback(async () => {
     await saveDraftForCurrent();
 
-    const profile = selectedProfile || undefined;
+    const seed = getEffectiveSeed();
+    const profile = seed.profile;
     try {
       const id = await createEmptySession(
         profile,
-        setupState.agent.model || undefined,
-        setupState.agent.provider || undefined,
+        seed.agent.model || undefined,
+        seed.agent.provider || undefined,
       );
       const rs = createInitialState(id);
       rs.status = "idle";
-      rs.agentConfig = setupState.agent;
-      rs.model = setupState.agent.model;
-      rs.cwd = setupState.cwd;
-      rs.loadProjectSettings = setupState.loadProjectSettings;
+      rs.agentConfig = seed.agent;
+      rs.model = seed.agent.model;
+      rs.cwd = seed.cwd;
+      rs.loadProjectSettings = seed.loadProjectSettings;
       setSessionState(id, rs, profile);
       setActiveSessionId(id);
       updateHash(id);
@@ -228,7 +247,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     setInput("");
     setQueuedMessage(null);
-  }, [updateHash, selectedProfile, saveDraftForCurrent, refreshSessions, setupState]);
+  }, [updateHash, saveDraftForCurrent, refreshSessions, getEffectiveSeed]);
 
   const selectSession = useCallback(async (id: string) => {
     await saveDraftForCurrent();
@@ -298,19 +317,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (needsNewSession) {
       if (isEmptySession && activeSessionId) archiveSessionApi(activeSessionId).catch(() => {});
 
-      const queuedProfileName = activeSession?.nextProfile ?? activeSession?.profile ?? selectedProfile;
-      const queuedProfile = queuedProfileName || undefined;
-      const queuedAgentConfig = currentState
-        ? getQueuedAgentConfig(activeSession, currentState.agentConfig)
-        : setupState.agent;
+      const seedState = getEffectiveSeed();
+      const queuedProfile = seedState.profile;
+      const queuedAgentConfig = seedState.agent;
+
       const rs = createInitialState();
-      const seedState = currentState
-        ? {
-            agent: queuedAgentConfig,
-            cwd: currentState.cwd,
-            loadProjectSettings: currentState.loadProjectSettings,
-          }
-        : setupState;
       rs.messages.push({
         id: nextMsgId(), role: "user", content: prompt, timestamp: Date.now(),
         attachments: sendAttachments.length > 0 ? sendAttachments : undefined,
@@ -325,7 +336,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setActiveSessionId(tempId);
 
       try {
-        const opts = buildSessionOpts(prompt, queuedProfile, seedState);
+        const opts = buildSessionOpts(prompt, queuedProfile, seedState as any);
         if (apiAtts) opts.attachments = apiAtts;
         const { sessionId: realId } = await createSession(opts);
 

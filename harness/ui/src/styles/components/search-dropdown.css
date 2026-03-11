@@ -30,7 +30,7 @@
   border: none;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   outline: none;
 }
 .search-dropdown-input::placeholder {
@@ -84,7 +84,7 @@
   width: 100%;
   padding: 6px 8px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
 }
 .search-dropdown-item {
   background: none;

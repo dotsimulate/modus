@@ -209,7 +209,7 @@
 }
 .agent-config-field span {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(10px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -223,7 +223,7 @@
   border-radius: 3px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   width: 100%;
 }
 .agent-config-field input:focus,
@@ -244,7 +244,7 @@
   border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(11px * var(--font-scale, 1));
   cursor: pointer;
   padding: 2px 0;
   letter-spacing: 0.05em;
@@ -264,9 +264,21 @@
   align-items: center;
   justify-content: space-between;
 }
+.tool-grid-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tool-grid--compact .tool-grid-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  column-gap: 10px;
+  row-gap: 6px;
+}
 .tool-grid-count {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(10px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -277,7 +289,7 @@
   border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(10px * var(--font-scale, 1));
   cursor: pointer;
   padding: 0;
   text-decoration: underline;
@@ -291,7 +303,7 @@
 }
 .tool-grid-group-label {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: calc(9px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -313,7 +325,7 @@
   background: var(--bg);
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(11px * var(--font-scale, 1));
   font-weight: 400;
   cursor: pointer;
   transition: all 0.12s ease;
@@ -357,4 +369,3 @@
 .tool-pill--forced-off .tool-pill-dot {
   background: var(--error);
 }
-

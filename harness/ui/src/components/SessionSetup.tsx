@@ -16,6 +16,8 @@ export type SessionSetupState = {
   agent: AgentConfigState;
   cwd: string;
   loadProjectSettings: boolean;
+  /** When true, new sessions use this setup. When false, they inherit from the active chat's Config Bar. */
+  useManualSetup: boolean;
 };
 
 type Props = {
@@ -151,25 +153,6 @@ export function SessionSetup({
         )}
       </div>
 
-      {/* .modus/ init status */}
-      {config.cwd && initStatus && !initStatus.initialized && (
-        <div className="modus-init-banner">
-          <span>no .modus/ in this directory</span>
-          <button
-            className="modus-init-btn"
-            onClick={handleInit}
-            disabled={initLoading}
-          >
-            {initLoading ? "initializing..." : "initialize project"}
-          </button>
-        </div>
-      )}
-      {config.cwd && initStatus?.initialized && (
-        <div className="modus-init-banner modus-init-ok">
-          <span>project: {initStatus.meta?.name ?? initStatus.projectId}</span>
-        </div>
-      )}
-
       {/* Agent config (tools + effort + turns) */}
       {showAgentConfig && (
         <AgentConfig
@@ -184,18 +167,6 @@ export function SessionSetup({
           dropdownDirection="up"
           toolsCollapsible
         />
-      )}
-
-      {/* Load CLAUDE.md */}
-      {showLoadProjectSettings && (
-        <label className="session-setup-check">
-          <input
-            type="checkbox"
-            checked={config.loadProjectSettings}
-            onChange={(e) => update({ loadProjectSettings: e.target.checked })}
-          />
-          <span>load CLAUDE.md</span>
-        </label>
       )}
     </div>
   );
@@ -231,5 +202,6 @@ export function createDefaultSetupState(): SessionSetupState {
     agent: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "", providerControls: {} },
     cwd: "",
     loadProjectSettings: true,
+    useManualSetup: true,
   };
 }

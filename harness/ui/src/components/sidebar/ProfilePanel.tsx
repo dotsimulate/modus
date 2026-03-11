@@ -45,10 +45,12 @@ export function ProfilePanel({
     || selectedProfileData?.provider
     || activeUserProfileObj?.provider
     || "claude-code";
-  const summaryBits = [effectiveProvider];
-  if (setupState.cwd.trim()) summaryBits.push(shortenPath(setupState.cwd.trim()));
+  const profileSummary = effectiveProvider;
 
-  const profileSummary = summaryBits.join(" / ");
+  const toggleManual = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSetupChange({ ...setupState, useManualSetup: !setupState.useManualSetup });
+  };
 
   useEffect(() => {
     setupStateRef.current = setupState;
@@ -103,7 +105,7 @@ export function ProfilePanel({
   };
 
   return (
-    <div className="profile-panel">
+    <div className={`profile-panel ${!setupState.useManualSetup ? "profile-panel--disabled" : ""}`}>
       <button
         className="profile-panel-header"
         onClick={() => setConfigExpanded(!configExpanded)}
@@ -113,13 +115,16 @@ export function ProfilePanel({
           <span className="profile-panel-summary">{profileSummary}</span>
         </div>
         <div className="profile-panel-right">
-          {overrideTags.length > 0 && (
+          {overrideTags.length > 0 && setupState.useManualSetup && (
             <span className="profile-panel-overrides">
               {overrideTags.map((t) => (
                 <span key={t} className="override-tag">{t}*</span>
               ))}
             </span>
           )}
+          <label className="manual-toggle" onClick={toggleManual} title={setupState.useManualSetup ? "Manual seeding enabled" : "Inheriting from active chat"}>
+            <input type="checkbox" checked={setupState.useManualSetup} readOnly />
+          </label>
           <span className={`profile-panel-chevron ${configExpanded ? "profile-panel-chevron--open" : ""}`}>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
               <path d="M3 4l2 2.5L7 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -130,11 +135,11 @@ export function ProfilePanel({
 
       <div className={`panel-collapse ${configExpanded ? "panel-collapse--open" : ""}`}>
         <div className="panel-collapse-clip">
-          <div className="profile-panel-body">
+          <div className={`profile-panel-body ${!setupState.useManualSetup ? "profile-panel-body--disabled" : ""}`}>
             <label className="agent-config-field">
               <span>profile</span>
               <SearchDropdown
-                className="search-dropdown--compact search-dropdown--up"
+                className="search-dropdown--compact"
                 value={selectedProfile}
                 options={profiles.map((p) => ({ value: p.name }))}
                 placeholder="select profile"
@@ -147,7 +152,7 @@ export function ProfilePanel({
             <label className="agent-config-field">
               <span>provider</span>
               <SearchDropdown
-                className="search-dropdown--compact search-dropdown--up"
+                className="search-dropdown--compact"
                 value={setupState.agent.provider}
                 options={(availableProviders ?? []).map((provider) => ({ value: provider }))}
                 placeholder={selectedProfileData?.provider ?? activeUserProfileObj?.provider ?? "claude-code"}
