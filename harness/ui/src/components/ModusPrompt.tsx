@@ -160,7 +160,20 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
         </button>
       </div>
 
-      {/* ── Running: inline MiniSession ── */}
+      {/* ── Running: starting or inline MiniSession ── */}
+      {phase === "running" && !sessionId && (
+        <div className="modus-prompt-running">
+          <div className="mini-session">
+            <div className="mini-session-status">
+              <span className="mini-session-dot mini-session-dot--starting" />
+              <span>starting...</span>
+            </div>
+          </div>
+          <button className="modus-prompt-cancel" onClick={() => setPhase("idle")}>
+            dismiss
+          </button>
+        </div>
+      )}
       {phase === "running" && sessionId && (
         <div className="modus-prompt-running">
           <MiniSession sessionId={sessionId} onNavigate={onSelectSession} />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, patchUserProfileApi } from "./api";
+import { healthCheck, saveUserProfileApi } from "./api";
 import { NAV_VIEWS } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -22,6 +22,7 @@ import { StatusBar } from "./components/sidebar/StatusBar";
 import { UserSettingsModal } from "./components/UserSettingsModal";
 import { createEmptyAgentConfig } from "./components/AgentConfig";
 import { FileViewerProvider } from "./providers/FileViewerProvider";
+import { SessionWindow } from "./components/SessionWindow";
 
 function App() {
   return (
@@ -62,6 +63,7 @@ function AppShell() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [forceSetup, setForceSetup] = useState(false);
   const [showUserSettings, setShowUserSettings] = useState(false);
+  const [floatingSessionId, setFloatingSessionId] = useState<string | null>(null);
 
   // Sync editor pref from active user profile into localStorage
   useEffect(() => {
@@ -118,6 +120,11 @@ function AppShell() {
     selectSession(id);
   }, [navigate, selectSession]);
 
+  // Peek: pop a floating SessionWindow for any session ID
+  const handlePeekSession = useCallback((id: string) => {
+    setFloatingSessionId(id);
+  }, []);
+
   // ── Profile UI resolution ──
   // Config bar shows the active session's profile. Sidebar's selectedProfile
   // is only used when there is NO active session (new chat preview).
@@ -139,12 +146,14 @@ function AppShell() {
   const editorProfileName = activeSession?.nextProfile ?? activeProfileName;
   const editorProfileData = profiles.find((p) => p.name === editorProfileName);
   const sessionProviderLocked = !!activeSession && activeSession.messages.length > 0;
-  const liveProvider = activeSessionInfo?.provider || activeSession?.provider || profileData?.provider;
-  const liveModel = activeSession ? activeSession.model : profileData?.model;
+  const liveProvider = activeSessionInfo?.provider || activeSession?.provider || profileData?.provider || activeUP?.provider;
+  const liveModel = activeSession ? activeSession.model : (profileData?.model || activeUP?.model);
+  const editorProfileProvider = editorProfileData?.provider ?? activeUP?.provider;
+  const editorProfileModel = editorProfileData?.model ?? activeUP?.model;
   const pendingProfileProviderMatches = !sessionProviderLocked
     || !liveProvider
-    || !editorProfileData?.provider
-    || editorProfileData.provider === liveProvider;
+    || !editorProfileProvider
+    || editorProfileProvider === liveProvider;
   const editorAgentConfig = activeSession?.nextAgentConfig
     ?? (
       activeSession?.nextProfile && activeSession.nextProfile !== activeSession.profile
@@ -270,11 +279,11 @@ function AppShell() {
                 editorProfileProvider={
                   sessionProviderLocked
                     ? liveProvider
-                    : editorProfileData?.provider
+                    : editorProfileProvider
                 }
                 editorProfileModel={
                   pendingProfileProviderMatches
-                    ? editorProfileData?.model
+                    ? editorProfileModel
                     : undefined
                 }
                 profileEffort={profileData?.effort}
@@ -316,9 +325,15 @@ function AppShell() {
         )}
 
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
-        {view === "actions" && <Actions onSelectSession={handleViewSession} />}
+        {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
         {view === "git" && <GitPanel cwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd ?? null} />}
       </div>
+
+      <SessionWindow
+        sessionId={floatingSessionId}
+        onClose={() => setFloatingSessionId(null)}
+        onNavigate={(id) => { setFloatingSessionId(null); handleViewSession(id); }}
+      />
 
       {showUserSettings && activeUP && (
         <UserSettingsModal
@@ -326,8 +341,19 @@ function AppShell() {
           onClose={() => setShowUserSettings(false)}
           onSave={async (patch) => {
             if (!activeUserProfile) return;
-            await patchUserProfileApi(activeUserProfile, patch);
+            const { name: _name, ...rest } = activeUP;
+            const nextProfile = {
+              ...rest,
+              ...patch,
+            } as Omit<typeof activeUP, "name"> & Record<string, unknown>;
+            Object.keys(nextProfile).forEach((key) => {
+              if (nextProfile[key] === undefined) delete nextProfile[key];
+            });
+            await saveUserProfileApi(activeUserProfile, nextProfile);
             await refreshUserProfiles();
+            if ("defaultAgentProfile" in patch) {
+              selectProfile(patch.defaultAgentProfile?.trim() || "");
+            }
           }}
         />
       )}

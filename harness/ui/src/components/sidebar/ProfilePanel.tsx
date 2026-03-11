@@ -165,10 +165,10 @@ export function ProfilePanel({
               config={setupState}
               profileTools={selectedProfileData?.tools ?? "all"}
               availableProviders={availableProviders}
-              profileProvider={selectedProfileData?.provider}
+              profileProvider={selectedProfileData?.provider ?? activeUserProfileObj?.provider}
               profileEffort={selectedProfileData?.effort}
               profileMaxTurns={selectedProfileData?.maxTurns}
-              profileModel={selectedProfileData?.model}
+              profileModel={selectedProfileData?.model ?? activeUserProfileObj?.model}
               onChange={onSetupChange}
               projectPaths={
                 activeUserProfileObj?.showAllProjectPaths && userProfiles

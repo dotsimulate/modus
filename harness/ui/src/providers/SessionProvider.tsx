@@ -59,7 +59,7 @@ export const useSession = () => useContext(SessionContext);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
-    selectedProfile, profiles, buildSessionOpts, setupState, activeUserProfile,
+    selectedProfile, profiles, buildSessionOpts, setupState, activeUserProfile, activeUP,
     setSelectedProfile,
   } = useProfiles();
 
@@ -93,17 +93,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return liveConfig;
   }, [hasPendingProfileChange]);
 
+  const resolveProfileProvider = useCallback((profileName?: string) => {
+    const profile = profiles.find((p) => p.name === profileName);
+    return profile?.provider ?? activeUP?.provider;
+  }, [activeUP?.provider, profiles]);
+
   const getLockedSessionProvider = useCallback((session: Session | null) => {
     if (!session) return undefined;
     if (session.agentConfig.provider) return session.agentConfig.provider;
-    return profiles.find((p) => p.name === session.profile)?.provider;
-  }, [profiles]);
+    return resolveProfileProvider(session.profile);
+  }, [resolveProfileProvider]);
 
   const profileProviderMatchesSession = useCallback((session: Session | null, profileName?: string) => {
     const lockedProvider = getLockedSessionProvider(session);
-    const targetProvider = profiles.find((p) => p.name === profileName)?.provider;
+    const targetProvider = resolveProfileProvider(profileName);
     return !lockedProvider || !targetProvider || lockedProvider === targetProvider;
-  }, [getLockedSessionProvider, profiles]);
+  }, [getLockedSessionProvider, resolveProfileProvider]);
 
   const getProfileToolsForStartedSession = useCallback((session: Session | null, profileName?: string) => {
     const targetProfile = profiles.find((p) => p.name === profileName);
@@ -123,8 +128,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (config.model.trim()) return config.model;
     if (!profileProviderMatchesSession(session, profileName)) return fallback ?? "";
     const profile = profiles.find((p) => p.name === profileName);
-    return profile?.model ?? fallback ?? "";
-  }, [profileProviderMatchesSession, profiles]);
+    return profile?.model ?? activeUP?.model ?? fallback ?? "";
+  }, [activeUP?.model, profileProviderMatchesSession, profiles]);
 
   const updateActiveSessionProfile = useCallback((profile: string) => {
     if (!activeSessionId) return;
@@ -224,16 +229,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const seed = getEffectiveSeed();
     const profile = seed.profile;
+    const resolvedProvider = seed.agent.provider.trim() || resolveProfileProvider(profile);
+    const resolvedModel = resolveAppliedModel(seed.agent, null, profile);
     try {
       const id = await createEmptySession(
         profile,
-        seed.agent.model || undefined,
-        seed.agent.provider || undefined,
+        resolvedModel || undefined,
+        resolvedProvider || undefined,
       );
       const rs = createInitialState(id);
       rs.status = "idle";
       rs.agentConfig = seed.agent;
-      rs.model = seed.agent.model;
+      rs.model = resolvedModel;
       rs.cwd = seed.cwd;
       rs.loadProjectSettings = seed.loadProjectSettings;
       setSessionState(id, rs, profile);
@@ -247,7 +254,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     setInput("");
     setQueuedMessage(null);
-  }, [updateHash, saveDraftForCurrent, refreshSessions, getEffectiveSeed]);
+  }, [getEffectiveSeed, refreshSessions, resolveAppliedModel, resolveProfileProvider, saveDraftForCurrent, updateHash]);
 
   const selectSession = useCallback(async (id: string) => {
     await saveDraftForCurrent();
@@ -319,7 +326,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       const seedState = getEffectiveSeed();
       const queuedProfile = seedState.profile;
-      const queuedAgentConfig = seedState.agent;
 
       const rs = createInitialState();
       rs.messages.push({
@@ -442,6 +448,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     updateHash,
     refreshSessions,
     resolveAppliedModel,
+    resolveProfileProvider,
     setupState,
     profiles,
     serverSessions,

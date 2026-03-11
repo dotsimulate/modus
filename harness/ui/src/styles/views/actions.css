@@ -492,6 +492,30 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Peek button — eye icon, sits at right edge of run footer */
+.sched-peek-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 2px 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.sched-run-row:hover .sched-peek-btn {
+  opacity: 0.6;
+}
+.sched-peek-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .sched-run-num {
   font-family: var(--font-mono);
   font-size: 10px;

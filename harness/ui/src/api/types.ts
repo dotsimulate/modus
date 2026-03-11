@@ -302,7 +302,9 @@ export type UserProfile = {
   templateVars?: Record<string, string>;
   projects: string[];
   agentProfiles?: string[];
+  defaultAgentProfile?: string;
   provider?: string;
+  model?: string;
   memoryFilter?: string;
   /** Show project paths from ALL user profiles in the CWD picker */
   showAllProjectPaths?: boolean;
