@@ -322,7 +322,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     status: "starting",
     profile: opts.profile,
     provider: providerName,
-    model: opts.model ?? profileDef?.model,
+    model: opts.model ?? profileDef?.model ?? userProf?.model,
     seq: 0,
     startedAt: Date.now(),
     lastEventAt: Date.now(),

@@ -11,6 +11,7 @@ import { Markdown } from "./Markdown";
 
 type Props = {
   onSelectSession: (id: string) => void;
+  onPeekSession?: (id: string) => void;
 };
 
 function timeAgo(ts: number): string {
@@ -109,12 +110,14 @@ function RunsTab({
   runs,
   action,
   onSelectSession,
+  onPeekSession,
   onClear,
   onReset,
 }: {
   runs: ActionRun[];
   action: ActionInfo;
   onSelectSession: (id: string) => void;
+  onPeekSession?: (id: string) => void;
   onClear: () => void;
   onReset: (skipConfirm: boolean) => void;
 }) {
@@ -138,7 +141,7 @@ function RunsTab({
           <div className="sched-runs-empty">no runs in this cycle</div>
         )}
         {currentRuns.map(r => (
-          <RunRow key={r.id} run={r} onSelect={onSelectSession} />
+          <RunRow key={r.id} run={r} onSelect={onSelectSession} onPeek={onPeekSession} />
         ))}
       </div>
 
@@ -150,7 +153,7 @@ function RunsTab({
             <span className="sched-runs-count">{pastRuns.length}</span>
           </div>
           {pastRuns.map(r => (
-            <RunRow key={r.id} run={r} onSelect={onSelectSession} />
+            <RunRow key={r.id} run={r} onSelect={onSelectSession} onPeek={onPeekSession} />
           ))}
         </div>
       )}
@@ -218,7 +221,7 @@ function copyToClipboard(text: string) {
   document.body.removeChild(ta);
 }
 
-function RunRow({ run, onSelect }: { run: ActionRun; onSelect: (id: string) => void }) {
+function RunRow({ run, onSelect, onPeek }: { run: ActionRun; onSelect: (id: string) => void; onPeek?: (id: string) => void }) {
   const hasSession = !!run.sessionId;
   const isError = run.status === "error" || run.status === "failed-verification" || run.status === "error-transient";
   const elapsed = run.startedAt && run.completedAt
@@ -260,6 +263,18 @@ function RunRow({ run, onSelect }: { run: ActionRun; onSelect: (id: string) => v
         {attempts && <span className="sched-run-attempts">{attempts} attempts</span>}
         <span className="sched-run-meta">${run.costUsd.toFixed(3)}</span>
         {run.startedAt ? <span className="sched-run-ago">{timeAgo(run.startedAt)}</span> : null}
+        {hasSession && onPeek && (
+          <button
+            className="sched-peek-btn"
+            title="peek session"
+            onClick={(e) => { e.stopPropagation(); onPeek(run.sessionId!); }}
+          >
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 3C4.5 3 1.7 5.1 1 8c.7 2.9 3.5 5 7 5s6.3-2.1 7-5c-.7-2.9-3.5-5-7-5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill="none"/>
+              <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -456,6 +471,7 @@ function ActionCard({
   onToggleEnabled,
   onTrigger,
   onSelectSession,
+  onPeekSession,
   onClearRuns,
   onArchive,
 }: {
@@ -465,6 +481,7 @@ function ActionCard({
   onToggleEnabled: (enabled: boolean) => void;
   onTrigger: () => void;
   onSelectSession: (id: string) => void;
+  onPeekSession?: (id: string) => void;
   onClearRuns: () => void;
   onArchive: () => void;
 }) {
@@ -588,6 +605,7 @@ function ActionCard({
                 runs={runs}
                 action={action}
                 onSelectSession={onSelectSession}
+                onPeekSession={onPeekSession}
                 onClear={handleClear}
                 onReset={skipResetConfirm
                   ? () => handleReset(false)
@@ -606,7 +624,7 @@ function ActionCard({
 
 // ── Actions View ──
 
-export function Actions({ onSelectSession }: Props) {
+export function Actions({ onSelectSession, onPeekSession }: Props) {
   const { activeUserProfile } = useProfiles();
   const [actions, setActions] = useState<ActionInfo[]>([]);
   const [expandedName, setExpandedName] = useState<string | null>(null);
@@ -741,6 +759,7 @@ export function Actions({ onSelectSession }: Props) {
             onToggleEnabled={(enabled) => handleToggle(a.name, enabled)}
             onTrigger={() => handleTrigger(a.name)}
             onSelectSession={onSelectSession}
+            onPeekSession={onPeekSession}
             onClearRuns={() => {}}
             onArchive={() => handleArchive(a.name)}
           />

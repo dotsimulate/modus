@@ -209,8 +209,12 @@ export type UserProfile = {
   agentProfiles?: string[];
   /** Visible actions — omit or ["*"] for all */
   actions?: string[];
+  /** Default agent profile selected in the UI for this user profile */
+  defaultAgentProfile?: string;
   /** Default execution provider for sessions under this user profile */
   provider?: string;
+  /** Default model when the selected agent profile does not define one */
+  model?: string;
   memoryFilter?: string;
   memory?: UserProfileMemory;
   /** Show project paths from ALL user profiles in the CWD picker (default: false) */
@@ -219,6 +223,8 @@ export type UserProfile = {
   dashboard?: { widgets: Array<{ type: string; [key: string]: unknown }> };
   /** Computer/machine name — displayed in top-nav status bar */
   computer?: string;
+  /** Preferred editor CLI command for "open in editor" */
+  editor?: string;
 };
 
 // ── Helpers ──

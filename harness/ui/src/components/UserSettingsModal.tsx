@@ -1,22 +1,35 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { UserProfile } from "../api";
-import { changePinApi } from "../api";
+import { changePinApi, fetchProviderModels, type ProviderModel, type UserProfile } from "../api";
+import { useProfiles } from "../providers/ProfileProvider";
+import { SearchDropdown } from "./SearchDropdown";
 
 type Props = {
   userProfile: UserProfile;
   onClose: () => void;
-  onSave: (patch: Partial<UserProfile>) => void;
+  onSave: (patch: Partial<UserProfile>) => Promise<void>;
 };
 
-type Tab = "profile" | "environment" | "project" | "security";
+type Tab = "profile" | "defaults" | "environment" | "project" | "security";
+
+function providerSeedModel(provider: string): string {
+  if (provider === "codex") return "gpt-5.1-codex";
+  if (provider === "gemini-cli") return "auto-gemini-3";
+  if (provider === "claude-code" || provider === "anthropic") return "claude-opus-4-6";
+  return "";
+}
 
 export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [tab, setTab] = useState<Tab>("profile");
+  const { visibleProfiles, availableProviders } = useProfiles();
 
   const [displayName, setDisplayName] = useState(userProfile.displayName ?? "");
+  const [defaultAgentProfile, setDefaultAgentProfile] = useState(userProfile.defaultAgentProfile ?? "");
+  const [defaultProvider, setDefaultProvider] = useState(userProfile.provider ?? "");
+  const [defaultModel, setDefaultModel] = useState(userProfile.model ?? "");
   const [computer, setComputer] = useState(userProfile.computer ?? "");
   const [editor, setEditor] = useState(userProfile.editor ?? "");
+  const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
 
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -29,14 +42,50 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const providerRef = useRef(defaultProvider);
   const toggleGroup = (key: string) =>
     setOpenGroups((g) => ({ ...g, [key]: !g[key] }));
 
   useEffect(() => {
     setDisplayName(userProfile.displayName ?? "");
+    setDefaultAgentProfile(userProfile.defaultAgentProfile ?? "");
+    setDefaultProvider(userProfile.provider ?? "");
+    setDefaultModel(userProfile.model ?? "");
     setComputer(userProfile.computer ?? "");
     setEditor(userProfile.editor ?? "");
   }, [userProfile]);
+
+  useEffect(() => {
+    providerRef.current = defaultProvider;
+  }, [defaultProvider]);
+
+  useEffect(() => {
+    if (!defaultProvider) {
+      setProviderModels([]);
+      return;
+    }
+    fetchProviderModels(defaultProvider).then(setProviderModels).catch(() => setProviderModels([]));
+  }, [defaultProvider]);
+
+  const handleDefaultProviderChange = async (provider: string) => {
+    setDefaultProvider(provider);
+    if (!provider) {
+      setDefaultModel("");
+      return;
+    }
+
+    const seededModel = providerSeedModel(provider);
+    setDefaultModel(seededModel);
+
+    try {
+      const models = await fetchProviderModels(provider);
+      const nextModel = models[0]?.id ?? seededModel;
+      if (!nextModel || providerRef.current !== provider) return;
+      setDefaultModel(nextModel);
+    } catch {
+      // Keep the lightweight fallback model if discovery fails.
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -45,17 +94,24 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
       const patch: Partial<UserProfile> = {};
       if (displayName.trim() !== (userProfile.displayName ?? ""))
         patch.displayName = displayName.trim();
+      if (defaultAgentProfile !== (userProfile.defaultAgentProfile ?? ""))
+        patch.defaultAgentProfile = defaultAgentProfile || undefined;
+      if (defaultProvider !== (userProfile.provider ?? ""))
+        patch.provider = defaultProvider || undefined;
+      if (defaultModel !== (userProfile.model ?? ""))
+        patch.model = defaultModel || undefined;
       if (computer.trim() !== (userProfile.computer ?? ""))
-        patch.computer = computer.trim();
+        patch.computer = computer.trim() || undefined;
       if (editor !== (userProfile.editor ?? "")) {
         patch.editor = editor || undefined;
         if (editor) localStorage.setItem("mo:editor", editor);
         else localStorage.removeItem("mo:editor");
       }
-      if (Object.keys(patch).length > 0) onSave(patch);
+      if (Object.keys(patch).length > 0) await onSave(patch);
       onClose();
     } catch (e) {
       setError(String(e));
+    } finally {
       setSaving(false);
     }
   };
@@ -84,7 +140,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   };
 
   const profile = userProfile as UserProfile & { name?: string };
-  const isEditing = tab === "profile" || tab === "environment";
+  const isEditing = tab === "profile" || tab === "defaults" || tab === "environment";
 
   return createPortal(
     <div className="create-profile-backdrop" onKeyDown={handleKeyDown}>
@@ -97,7 +153,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
         {/* Tabs */}
         <div className="us-tabs">
-          {(["profile", "environment", "project", "security"] as Tab[]).map((t) => (
+          {(["profile", "defaults", "environment", "project", "security"] as Tab[]).map((t) => (
             <button
               key={t}
               className={`us-tab${tab === t ? " active" : ""}`}
@@ -131,6 +187,50 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                   <span className="us-info-val">{profile.name}</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {tab === "defaults" && (
+            <div className="us-section">
+              <div className="agent-config-row">
+                <label className="agent-config-field">
+                  <span>profile</span>
+                  <SearchDropdown
+                    className="search-dropdown--compact"
+                    value={defaultAgentProfile}
+                    options={visibleProfiles.map((profile) => ({ value: profile.name }))}
+                    placeholder="select profile"
+                    searchPlaceholder="search profiles..."
+                    onChange={setDefaultAgentProfile}
+                  />
+                </label>
+                <label className="agent-config-field">
+                  <span>provider</span>
+                  <SearchDropdown
+                    className="search-dropdown--compact"
+                    value={defaultProvider}
+                    options={availableProviders.map((provider) => ({ value: provider }))}
+                    placeholder="claude-code"
+                    searchPlaceholder="search providers..."
+                    onChange={handleDefaultProviderChange}
+                  />
+                </label>
+              </div>
+              <div className="agent-config-row">
+                <label className="agent-config-field">
+                  <span>model</span>
+                  <SearchDropdown
+                    className="search-dropdown--compact"
+                    value={defaultModel}
+                    options={providerModels.map((model) => ({ value: model.id }))}
+                    placeholder={defaultProvider ? "select model" : "choose provider first"}
+                    searchPlaceholder="search models..."
+                    disabled={!defaultProvider}
+                    onChange={setDefaultModel}
+                  />
+                </label>
+              </div>
+              <div className="us-row-hint">applies when the selected agent profile does not override these values</div>
             </div>
           )}
 
@@ -226,7 +326,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                 </div>
               )}
 
-              {(userProfile.provider || userProfile.memoryFilter || userProfile.showAllProjectPaths != null) && (
+              {(userProfile.defaultAgentProfile || userProfile.provider || userProfile.model || userProfile.memoryFilter || userProfile.showAllProjectPaths != null) && (
                 <div className="us-group">
                   <button className="us-group-header" onClick={() => toggleGroup("config")}>
                     <span className="us-group-arrow">{openGroups.config ? "▾" : "▸"}</span>
@@ -234,10 +334,22 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                   </button>
                   <div className={`us-group-body${openGroups.config ? " open" : ""}`}>
                     <div className="us-group-inner">
+                      {userProfile.defaultAgentProfile && (
+                        <div className="us-group-kv">
+                          <span className="us-group-kv-key">default profile</span>
+                          <span className="us-group-kv-val">{userProfile.defaultAgentProfile}</span>
+                        </div>
+                      )}
                       {userProfile.provider && (
                         <div className="us-group-kv">
                           <span className="us-group-kv-key">provider</span>
                           <span className="us-group-kv-val">{userProfile.provider}</span>
+                        </div>
+                      )}
+                      {userProfile.model && (
+                        <div className="us-group-kv">
+                          <span className="us-group-kv-key">model</span>
+                          <span className="us-group-kv-val">{userProfile.model}</span>
                         </div>
                       )}
                       {userProfile.memoryFilter && (
@@ -258,7 +370,8 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
               )}
 
               {!userProfile.projects?.length && !userProfile.agentProfiles?.length &&
-               !userProfile.templateVars && !userProfile.provider && (
+               !userProfile.templateVars && !userProfile.provider && !userProfile.model &&
+               !userProfile.defaultAgentProfile && (
                 <div className="us-empty">no project data</div>
               )}
             </div>

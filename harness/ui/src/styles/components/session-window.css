@@ -1,0 +1,123 @@
+/**
+ * SessionWindow — medium floating session viewer.
+ */
+
+.session-window {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+
+.session-window-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.session-window-head:active {
+  cursor: grabbing;
+}
+
+.session-window-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.session-window-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.session-window-dot--active {
+  background: var(--success);
+  animation: sw-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.session-window-dot--error {
+  background: var(--error-soft);
+}
+
+@keyframes sw-dot-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.session-window-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.session-window-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s ease;
+}
+
+.session-window-btn:hover {
+  color: var(--text);
+}
+
+/* ── Body ── */
+
+.session-window-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.session-window-body .chat-scroll-wrapper {
+  flex: 1;
+  min-height: 0;
+}
+
+.session-window-body .chat-messages {
+  max-height: none;
+}
+
+.session-window-empty {
+  padding: 16px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Permissions ── */
+
+.session-window-permissions {
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.session-window-permissions .permission-overlay {
+  position: static;
+  background: none;
+  padding: 8px 12px;
+  margin: 0;
+}

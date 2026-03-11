@@ -10,6 +10,17 @@ import { addRecentPath } from "../recentPaths";
 
 const USER_PROFILE_KEY = "harness:active-user-profile";
 
+function resolvePreferredProfile(
+  names: string[],
+  lastAgentProfile?: string,
+  defaultAgentProfile?: string,
+): string {
+  if (!names.length) return "";
+  if (lastAgentProfile && names.includes(lastAgentProfile)) return lastAgentProfile;
+  if (defaultAgentProfile && names.includes(defaultAgentProfile)) return defaultAgentProfile;
+  return names[0] ?? "";
+}
+
 type ProfileContextValue = {
   profiles: Profile[];
   visibleProfiles: Profile[];
@@ -133,7 +144,6 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         if (activeUserProfile) {
           const state = await fetchUserProfileState(activeUserProfile);
           setUiState(state);
-          if (state.lastAgentProfile) setSelectedProfile(state.lastAgentProfile);
           initialCwd = state.lastCwd ?? initialCwd;
           if (initialCwd) setSetupState((prev) => ({ ...prev, cwd: initialCwd }));
         } else if (initialCwd) {
@@ -143,8 +153,6 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         // Fetch profiles with resolved CWD for project-local merging
         const p = await fetchProfiles(initialCwd || undefined);
         setProfiles(p);
-        // Default to first profile if none was restored from state
-        setSelectedProfile((cur) => cur || p[0]?.name || "");
       } catch { /* silent — health check will catch */ }
     };
     loadInitial();
@@ -161,6 +169,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   // Reload when user profile changes
   useEffect(() => {
+    setSelectedProfile("");
     Promise.all([
       fetchUserProfiles(),
       activeUserProfile
@@ -173,10 +182,24 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       if (up) {
         const cwd = state.lastCwd ?? up.projects?.[0] ?? "";
         setSetupState((prev) => ({ ...prev, cwd }));
-        if (state.lastAgentProfile) setSelectedProfile(state.lastAgentProfile);
       }
     }).catch(() => {});
   }, [activeUserProfile]);
+
+  useEffect(() => {
+    const availableNames = visibleProfiles.map((profile) => profile.name);
+    if (!availableNames.length) {
+      if (selectedProfile) setSelectedProfile("");
+      return;
+    }
+    if (selectedProfile && availableNames.includes(selectedProfile)) return;
+    const nextProfile = resolvePreferredProfile(
+      availableNames,
+      uiState.lastAgentProfile,
+      activeUP?.defaultAgentProfile,
+    );
+    if (nextProfile !== selectedProfile) setSelectedProfile(nextProfile);
+  }, [activeUP?.defaultAgentProfile, selectedProfile, uiState.lastAgentProfile, visibleProfiles]);
 
   return (
     <ProfileContext.Provider value={{
