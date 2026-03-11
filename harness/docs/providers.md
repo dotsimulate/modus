@@ -2,7 +2,7 @@
 title: Provider System
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastCommit: 119f911
 covers: harness/providers/ harness/session-manager.ts
 ---
 
@@ -53,6 +53,16 @@ Passed to providers by session-manager. Contains:
 PI agent providers share a single implementation (`pi-agent.ts`) parameterized
 by provider name. They implement a lightweight tool-use agent loop with
 compaction support.
+
+## Effort Resolution
+
+`effort` follows the standard cascade: session override → agent profile → user profile default.
+`session-manager.ts` resolves this before creating `TurnContext`, so providers always receive
+the fully-resolved value.
+
+Provider-specific normalization:
+- **claude-code**: `"off"` → `undefined` (no thinking). `"low"/"medium"/"high"/"max"` pass through.
+- **codex**: `"off"` and `"max"` → `undefined` (no reasoning). `"low"/"medium"/"high"` map to SDK `ModelReasoningEffort`.
 
 ## MCP Server Composition
 

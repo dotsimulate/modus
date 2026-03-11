@@ -796,7 +796,9 @@ app.put("/api/sessions/:id/draft", async (c) => {
 // Lists subdirectories at a given path for the CWD folder picker.
 app.get("/api/browse", async (c) => {
   const { homedir } = await import("os");
-  const raw = new URL(c.req.url).searchParams.get("path") ?? homedir();
+  const params = new URL(c.req.url).searchParams;
+  const raw = params.get("path") ?? homedir();
+  const includeHidden = params.get("includeHidden") === "1";
   // Resolve and sanitize — no traversal tricks
   const { resolve } = await import("path");
   const { readdir, stat } = await import("fs/promises");
@@ -806,7 +808,7 @@ app.get("/api/browse", async (c) => {
     if (!info.isDirectory()) return c.json({ error: "not a directory" }, 400);
     const entries = await readdir(target, { withFileTypes: true });
     const dirs = entries
-      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .filter((e) => e.isDirectory() && (includeHidden || !e.name.startsWith(".")))
       .map((e) => e.name)
       .sort();
     // Also provide parent for navigation

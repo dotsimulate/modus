@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ProfileUi } from "./api";
 import { healthCheck, saveUserProfileApi } from "./api";
-import { NAV_VIEWS } from "./views";
+import { NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { SessionProvider, useSession } from "./providers/SessionProvider";
@@ -23,6 +23,7 @@ import { UserSettingsModal } from "./components/UserSettingsModal";
 import { createEmptyAgentConfig } from "./components/AgentConfig";
 import { FileViewerProvider } from "./providers/FileViewerProvider";
 import { SessionWindow } from "./components/SessionWindow";
+import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
 function App() {
   return (
@@ -176,7 +177,11 @@ function AppShell() {
             </svg>
           </button>
         )}
-        <span className="top-nav-logo" onClick={() => navigate("home")}><MoLogo size={16} activeCount={activeAgentCount} /></span>
+        <span className="top-nav-logo" onClick={(e) => {
+          // On mobile (narrow screens), toggle sidebar instead of navigating home
+          if (window.innerWidth <= 640) { setSidebarOpen((o) => !o); e.preventDefault(); }
+          else navigate("home");
+        }}><MoLogo size={16} activeCount={activeAgentCount} /></span>
         <nav className="top-nav-links">
           {NAV_VIEWS.map((nv) => (
             <button
@@ -206,34 +211,38 @@ function AppShell() {
       </div>
 
       <div className="app-body">
+        <Sidebar
+          open={sidebarOpen}
+          collapsed={sidebarCollapsed}
+          sessions={serverSessions.map((s) => {
+            const storeState = getSessionState(s.id);
+            return storeState ? { ...s, status: storeState.status ?? s.status } : s;
+          })}
+          activeSessionId={activeSession?.id ?? null}
+          profiles={visibleProfiles}
+          selectedProfile={selectedProfile}
+          onNewSession={handleNewSession}
+          onSelectSession={handleSelectSession}
+          onArchiveSession={archiveSession}
+          onSelectProfile={selectProfile}
+          onSetupChange={setSetupState}
+          setupState={setupState}
+          onClose={() => setSidebarOpen(false)}
+          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+          initialGroupMode={uiState.sidebarGroupMode}
+          initialCollapsedGroups={uiState.sidebarCollapsedGroups}
+          onGroupModeChange={(mode) => saveUiState({ sidebarGroupMode: mode })}
+          onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
+          activeUserProfileObj={activeUP}
+          availableProviders={availableProviders}
+          navLinks={NAV_VIEWS}
+          currentView={view as View}
+          onNavigate={(v) => navigate(v)}
+          navOnly={view !== "chat"}
+        />
+
         {view === "chat" && (
           <>
-            <Sidebar
-              open={sidebarOpen}
-              collapsed={sidebarCollapsed}
-              sessions={serverSessions.map((s) => {
-                const storeState = getSessionState(s.id);
-                return storeState ? { ...s, status: storeState.status ?? s.status } : s;
-              })}
-              activeSessionId={activeSession?.id ?? null}
-              profiles={visibleProfiles}
-              selectedProfile={selectedProfile}
-              onNewSession={handleNewSession}
-              onSelectSession={handleSelectSession}
-              onArchiveSession={archiveSession}
-              onSelectProfile={selectProfile}
-              onSetupChange={setSetupState}
-              setupState={setupState}
-              onClose={() => setSidebarOpen(false)}
-              onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-              initialGroupMode={uiState.sidebarGroupMode}
-              initialCollapsedGroups={uiState.sidebarCollapsedGroups}
-              onGroupModeChange={(mode) => saveUiState({ sidebarGroupMode: mode })}
-              onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
-              activeUserProfileObj={activeUP}
-              availableProviders={availableProviders}
-            />
-
             <div className="chat">
               <ChatView
                 messages={activeSession?.messages ?? []}
@@ -286,8 +295,8 @@ function AppShell() {
                     ? editorProfileModel
                     : undefined
                 }
-                profileEffort={profileData?.effort ?? activeUP?.effort}
-                editorProfileEffort={editorProfileData?.effort ?? activeUP?.effort}
+                profileEffort={activeSession ? (profileData?.effort ?? activeUP?.effort) : (activeUP?.effort ?? profileData?.effort)}
+                editorProfileEffort={activeSession ? (editorProfileData?.effort ?? activeUP?.effort) : (activeUP?.effort ?? editorProfileData?.effort)}
                 editorProfileMaxTurns={editorProfileData?.maxTurns}
                 showProvider={!!activeSession && !sessionProviderLocked}
                 availableTools={activeSession?.availableTools}
@@ -306,7 +315,11 @@ function AppShell() {
                 sessionId={activeSession?.id}
                 projectCwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
                 userProfile={activeUserProfile ?? undefined}
-                onMoveActivated={() => { refreshSessions(); }}
+                onMoveActivated={() => {
+                  refreshSessions();
+                  const cwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
+                  loadAndApplyProjectUiState(cwd || undefined);
+                }}
               />
             </div>
           </>

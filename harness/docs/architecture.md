@@ -2,7 +2,8 @@
 title: MO Architecture
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: 9c6d78f
+lastCommit: 119f911
+covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/ui/src/
 ---
 
 # MO Architecture

@@ -12,12 +12,12 @@ export function useFileViewer() {
 }
 
 export function FileViewerProvider({ children }: { children: ReactNode }) {
-  const [filePath, setFilePath] = useState<string | null>(null);
+  const [path, setPath] = useState<string | null>(null);
 
   return (
-    <FileViewerContext.Provider value={{ openFile: setFilePath }}>
+    <FileViewerContext.Provider value={{ openFile: setPath }}>
       {children}
-      <ChatFileViewer filePath={filePath} onClose={() => setFilePath(null)} />
+      <ChatFileViewer path={path} onClose={() => setPath(null)} />
     </FileViewerContext.Provider>
   );
 }

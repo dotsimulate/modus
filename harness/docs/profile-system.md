@@ -2,7 +2,7 @@
 title: Profile System
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastCommit: 119f911
 covers: harness/profiles/ harness/profile-schemas.ts harness/profiles.ts
 ---
 
@@ -58,6 +58,8 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 **`provider`**: Execution backend. `"claude-code"` uses the Claude Agent SDK.
 Everything else (`"anthropic"`, `"openai"`, `"litellm"`, `"ollama"`) uses PI AgentSession.
 
+**`effort`**: Reasoning/thinking level. Values: `"off"` (disables thinking), `"low"`, `"medium"`, `"high"`, `"max"`. Provider-specific: claude-code maps `"off"` to no thinking; codex maps `"off"`/`"max"` to no reasoning effort.
+
 **`promptMode`**: `"append"` layers your prompt on top of PI's default system prompt.
 `"custom"` replaces it entirely — you own the whole prompt.
 
@@ -82,9 +84,16 @@ Scoped views of the harness. Filter which projects, agents, and schedules a user
   "projects": ["/home/dot/dev/infra/agent_dev_zone"],
   "agentProfiles": ["dev-agent", "web-ui", "research"],
   "schedules": ["*"],
-  "showAllProjectPaths": true
+  "showAllProjectPaths": true,
+  "provider": "claude-code",
+  "model": "claude-opus-4-6",
+  "effort": "low"
 }
 ```
+
+**`provider`** / **`model`** / **`effort`**: User-level defaults. Used when no session
+override or agent profile value is set. `effort` accepts the same values as agent profiles
+(`"off"`, `"low"`, `"medium"`, `"high"`, `"max"`).
 
 **`templateVars`**: Merged with `_users.json` defaults. Available as `{{key}}` in
 agent prompts. Use for user name, preferred stack, editor, etc.

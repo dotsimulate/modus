@@ -5,7 +5,7 @@
  * Enables deterministic state reconstruction on reconnect.
  */
 
-import type { AgentConfigState, Message, ToolCall, SubTask, SessionStatus, Attachment, PendingPermission } from "./api";
+import type { AgentConfigState, Message, ToolCall, SubTask, SessionStatus, Attachment, PendingPermission, GitActivity } from "./api";
 import { nextMsgId } from "./api";
 
 export type ReducerState = {
@@ -83,11 +83,44 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
       return reduceToolUseSummary(s, m);
     case "result":
       return reduceResult(s, m);
+    case "git_activity":
+      return reduceGitActivity(s, m, ts);
     case "rate_limit_event":
       return s; // could display warning, skip for now
     default:
       return s;
   }
+}
+
+function reduceGitActivity(s: ReducerState, m: any, ts: number): ReducerState {
+  if (m.subtype !== "commit" || !m.hash) return s;
+
+  const activity: GitActivity = {
+    subtype: "commit",
+    cwd: m.cwd ?? s.cwd,
+    hash: m.hash,
+    branch: m.branch,
+    message: m.message ?? "",
+    author: m.author ?? "",
+    date: m.date ?? new Date(ts).toISOString(),
+    filesChanged: m.filesChanged,
+    additions: m.additions,
+    deletions: m.deletions,
+  };
+
+  const last = s.messages[s.messages.length - 1];
+  if (last?.role === "git" && last.gitActivity?.hash === activity.hash) return s;
+
+  return {
+    ...s,
+    messages: [...s.messages, {
+      id: nextMsgId(),
+      role: "git",
+      content: "",
+      gitActivity: activity,
+      timestamp: ts,
+    }],
+  };
 }
 
 /** Append to streamFeed, keeping a rolling tail of ~500 chars */

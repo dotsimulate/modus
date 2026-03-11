@@ -312,9 +312,16 @@ export async function searchSessionsScoped(query: string, limit = 20, userProfil
 
 // ── Directory Browser ──
 
-export async function browsePath(path?: string): Promise<import("./types").BrowseResult> {
-  const params = path ? `?path=${encodeURIComponent(path)}` : "";
-  const res = await fetch(`${API_BASE}/api/browse${params}`, { headers: authHeaders() });
+export async function browsePath(
+  path?: string,
+  options?: { includeHidden?: boolean },
+): Promise<import("./types").BrowseResult> {
+  const params = new URLSearchParams();
+  if (path) params.set("path", path);
+  if (options?.includeHidden) params.set("includeHidden", "1");
+  const query = params.toString();
+  const suffix = query ? `?${query}` : "";
+  const res = await fetch(`${API_BASE}/api/browse${suffix}`, { headers: authHeaders() });
   if (!res.ok) throw new Error("browse failed");
   return res.json();
 }

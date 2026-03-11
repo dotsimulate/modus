@@ -94,6 +94,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return liveConfig;
   }, [hasPendingProfileChange]);
 
+  const applyUserDefaultAgentConfig = useCallback((agent: AgentConfigState): AgentConfigState => ({
+    ...agent,
+    effort: agent.effort.trim() || activeUP?.effort || "",
+  }), [activeUP?.effort]);
+
   const resolveProfileProvider = useCallback((profileName?: string) => {
     const profile = profiles.find((p) => p.name === profileName);
     return profile?.provider ?? activeUP?.provider;
@@ -218,11 +223,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
     return {
       profile: selectedProfile || undefined,
-      agent: setupState.agent,
+      agent: applyUserDefaultAgentConfig(setupState.agent),
       cwd: setupState.cwd,
       loadProjectSettings: setupState.loadProjectSettings,
     };
-  }, [setupState, activeSession, selectedProfile]);
+  }, [setupState, activeSession, selectedProfile, applyUserDefaultAgentConfig]);
 
   const getSendSeed = useCallback((sessionState: ReturnType<typeof getSessionState> | null) => {
     if (activeSession && !activeSession.id.startsWith("pending-")) {
@@ -315,6 +320,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const send = useCallback(async (sendAttachments: Attachment[]) => {
     const prompt = input.trim();
     if (!prompt && sendAttachments.length === 0) return;
+
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
+
     setInput("");
 
     if (activeSessionId) saveDraft(activeSessionId, "").catch(() => {});

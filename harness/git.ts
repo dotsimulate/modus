@@ -64,62 +64,98 @@ export type GitLogEntry = {
   date: string;
   message: string;
   author: string;
+  branch?: string;
   filesChanged?: number;
   additions?: number;
   deletions?: number;
 };
 
+function parseGitLogRaw(raw: string): GitLogEntry[] {
+  const SEP = "---GIT-LOG-SEP---";
+  const END = "---GIT-LOG-END---";
+  const entries: GitLogEntry[] = [];
+  const chunks = raw.split(SEP).filter((s) => s.trim());
+
+  for (const chunk of chunks) {
+    const endIdx = chunk.indexOf(END);
+    if (endIdx === -1) continue;
+
+    const metaAndBody = chunk.slice(0, endIdx).trim();
+    const afterEnd = chunk.slice(endIdx + END.length).trim();
+
+    const firstNl = metaAndBody.indexOf("\n");
+    const secondNl = metaAndBody.indexOf("\n", firstNl + 1);
+    const thirdNl = metaAndBody.indexOf("\n", secondNl + 1);
+    if (firstNl === -1 || secondNl === -1 || thirdNl === -1) continue;
+
+    const hash = metaAndBody.slice(0, firstNl);
+    const date = metaAndBody.slice(firstNl + 1, secondNl);
+    const author = metaAndBody.slice(secondNl + 1, thirdNl);
+    const message = metaAndBody.slice(thirdNl + 1).trim();
+
+    let filesChanged: number | undefined;
+    let additions: number | undefined;
+    let deletions: number | undefined;
+
+    if (afterEnd) {
+      const fm = afterEnd.match(/(\d+) files? changed/);
+      const am = afterEnd.match(/(\d+) insertions?\(\+\)/);
+      const dm = afterEnd.match(/(\d+) deletions?\(-\)/);
+      if (fm) filesChanged = Number(fm[1]);
+      if (am) additions = Number(am[1]);
+      if (dm) deletions = Number(dm[1]);
+    }
+
+    entries.push({ hash, date, message, author, filesChanged, additions, deletions });
+  }
+
+  return entries;
+}
+
 export async function gitLog(cwd: string, limit = 30): Promise<GitLogEntry[]> {
   try {
     const git = simpleGit(cwd);
-    const SEP = "---GIT-LOG-SEP---";
-    const END = "---GIT-LOG-END---";
     const raw = await git.raw([
       "log", `--max-count=${limit}`,
-      `--format=${SEP}%n%H%n%aI%n%an%n%B${END}`,
+      "--format=---GIT-LOG-SEP---%n%H%n%aI%n%an%n%B---GIT-LOG-END---",
       "--shortstat",
     ]);
 
-    const entries: GitLogEntry[] = [];
-    const chunks = raw.split(SEP).filter((s) => s.trim());
-
-    for (const chunk of chunks) {
-      const endIdx = chunk.indexOf(END);
-      if (endIdx === -1) continue;
-
-      const metaAndBody = chunk.slice(0, endIdx).trim();
-      const afterEnd = chunk.slice(endIdx + END.length).trim();
-
-      // First 3 lines are hash, date, author. Rest is the full message body.
-      const firstNl = metaAndBody.indexOf("\n");
-      const secondNl = metaAndBody.indexOf("\n", firstNl + 1);
-      const thirdNl = metaAndBody.indexOf("\n", secondNl + 1);
-      if (firstNl === -1 || secondNl === -1 || thirdNl === -1) continue;
-
-      const hash = metaAndBody.slice(0, firstNl);
-      const date = metaAndBody.slice(firstNl + 1, secondNl);
-      const author = metaAndBody.slice(secondNl + 1, thirdNl);
-      const message = metaAndBody.slice(thirdNl + 1).trim();
-
-      let filesChanged: number | undefined;
-      let additions: number | undefined;
-      let deletions: number | undefined;
-
-      if (afterEnd) {
-        const fm = afterEnd.match(/(\d+) files? changed/);
-        const am = afterEnd.match(/(\d+) insertions?\(\+\)/);
-        const dm = afterEnd.match(/(\d+) deletions?\(-\)/);
-        if (fm) filesChanged = Number(fm[1]);
-        if (am) additions = Number(am[1]);
-        if (dm) deletions = Number(dm[1]);
-      }
-
-      entries.push({ hash, date, message, author, filesChanged, additions, deletions });
-    }
-
-    return entries;
+    return parseGitLogRaw(raw);
   } catch {
     return [];
+  }
+}
+
+export async function gitLogRange(cwd: string, fromExclusive: string, toRef = "HEAD"): Promise<GitLogEntry[]> {
+  try {
+    const git = simpleGit(cwd);
+    const raw = await git.raw([
+      "log",
+      "--reverse",
+      `${fromExclusive}..${toRef}`,
+      "--format=---GIT-LOG-SEP---%n%H%n%aI%n%an%n%B---GIT-LOG-END---",
+      "--shortstat",
+    ]);
+    return parseGitLogRaw(raw);
+  } catch {
+    return [];
+  }
+}
+
+export async function gitHead(cwd: string): Promise<GitLogEntry | null> {
+  const [entry] = await gitLog(cwd, 1);
+  if (!entry) return null;
+
+  try {
+    const git = simpleGit(cwd);
+    const branch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
+    return {
+      ...entry,
+      branch: branch && branch !== "HEAD" ? branch : undefined,
+    };
+  } catch {
+    return entry;
   }
 }
 

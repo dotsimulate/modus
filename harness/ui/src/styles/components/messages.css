@@ -31,6 +31,9 @@
   );
   pointer-events: none;
 }
+.message.message--git {
+  margin-bottom: 14px;
+}
 
 .message-role {
   font-family: var(--font-mono);
@@ -98,6 +101,64 @@
   flex: 1;
   height: 1px;
   background: var(--border);
+}
+
+.git-activity {
+  display: flex;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: calc(12px * var(--font-scale, 1));
+  line-height: 1.5;
+}
+.git-activity-gutter {
+  width: 10px;
+  display: flex;
+  justify-content: center;
+  padding-top: 4px;
+  color: var(--info);
+  flex-shrink: 0;
+}
+.git-activity-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--info);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--info) 25%, transparent);
+}
+.git-activity-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.git-activity-line {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  align-items: baseline;
+}
+.git-activity-label {
+  color: var(--info);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+.git-activity-message {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-activity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.git-activity-hash {
+  color: var(--text-secondary);
 }
 
 

@@ -2,7 +2,7 @@
 title: Actions
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastCommit: 119f911
 covers: harness/action-runner.ts harness/action-types.ts
 ---
 
@@ -57,6 +57,10 @@ transient failures. `maxRetries` handles verify failures.
 **Artifacts**: `artifacts[]` declares expected output files with names and MIME
 types. `ctx.artifactPath(filename)` provides namespaced paths. Verify can check
 artifact existence.
+
+**Static inputs**: `ActionConfig.inputs?: Record<string, unknown>` passes fixed
+data into every run. Available as `ctx.inputs` in gather, verify, and afterRun.
+`ctx.cwd` carries the action's configured working directory (from `cfg.cwd`).
 
 **Source**: `action-runner.ts`, `action-types.ts`.
 

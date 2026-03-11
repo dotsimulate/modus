@@ -119,10 +119,8 @@ export function PromptPicker({
 
   // Sync forceOpen prop → open the picker
   useEffect(() => {
-    console.log("[DBG] PromptPicker forceOpen effect:", forceOpen, "last:", lastForceOpen.current, "open:", open);
     if (forceOpen && forceOpen !== lastForceOpen.current) {
       lastForceOpen.current = forceOpen;
-      console.log("[DBG] PromptPicker calling setOpenAndNotify(true)");
       setOpenAndNotify(true);
     }
   }, [forceOpen, setOpenAndNotify]);
