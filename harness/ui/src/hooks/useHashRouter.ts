@@ -1,25 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { type View, VIEW_SLUGS, DEFAULT_VIEW } from "../views";
+import { isSessionId } from "../sessionIds";
 
 // Re-export for convenience
 export type { View } from "../views";
 
-/** UUID v4 pattern — used to detect session IDs in URLs */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** Parse hash into { profile, view, sessionId }. Format: #[profile/]view or #[profile/]sessionId */
 function parseHash(hash: string): { profile: string | null; view: View; sessionId: string | null } {
   const raw = hash.replace(/^#\/?/, "");
-  if (!raw) return { profile: null, view: DEFAULT_VIEW, sessionId: null };
+  const queryIndex = raw.indexOf("?");
+  const path = queryIndex === -1 ? raw : raw.slice(0, queryIndex);
+  if (!path) return { profile: null, view: DEFAULT_VIEW, sessionId: null };
 
   // Backwards compat: #dashboard → #profiles
-  const compat = raw === "dashboard" ? "profiles" : raw;
+  const compat = path === "dashboard" ? "profiles" : path;
 
   const slash = compat.indexOf("/");
   if (slash === -1) {
     if (VIEW_SLUGS.has(compat)) return { profile: null, view: compat as View, sessionId: null };
-    // Bare UUID = session ID with no profile in URL
-    if (UUID_RE.test(compat)) return { profile: null, view: "chat", sessionId: compat };
+    if (compat.startsWith("page:")) return { profile: null, view: compat as View, sessionId: null };
+    // Bare session ID = chat session with no profile in URL
+    if (isSessionId(compat)) return { profile: null, view: "chat", sessionId: compat };
     return { profile: compat, view: DEFAULT_VIEW, sessionId: null };
   }
 
@@ -28,7 +29,8 @@ function parseHash(hash: string): { profile: string | null; view: View; sessionI
   if (suffix === "dashboard") suffix = "profiles";
 
   // #profile/sessionId
-  if (UUID_RE.test(suffix)) return { profile: prefix || null, view: "chat", sessionId: suffix };
+  if (isSessionId(suffix)) return { profile: prefix || null, view: "chat", sessionId: suffix };
+  if (suffix.startsWith("page:")) return { profile: prefix || null, view: suffix as View, sessionId: null };
 
   const view = VIEW_SLUGS.has(suffix) ? (suffix as View) : DEFAULT_VIEW;
   return { profile: prefix || null, view, sessionId: null };

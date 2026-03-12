@@ -61,11 +61,17 @@ export async function saveDraft(sessionId: string, draft: string): Promise<void>
 
 // ── Empty Session ──
 
-export async function createEmptySession(profile?: string, model?: string, provider?: string): Promise<string> {
+export async function createEmptySession(opts?: {
+  profile?: string;
+  model?: string;
+  provider?: string;
+  cwd?: string;
+  userProfile?: string;
+}): Promise<string> {
   const res = await fetch(`${API_BASE}/api/sessions/empty`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ profile, model, provider }),
+    body: JSON.stringify(opts ?? {}),
   });
   const data = await res.json();
   return data.sessionId;

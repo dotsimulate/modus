@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   activateProjectFontApi,
+  activateProjectMoveApi,
   activateProjectThemeApi,
   fetchProjectUiState,
 } from "../api";
@@ -16,10 +17,11 @@ type ProjectThemeConfig = WidgetBase & {
 };
 
 function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
-  const { activeCwd, activeUP } = useProfiles();
+  const { activeCwd, activeUP, activeUserProfile } = useProfiles();
   const [state, setState] = useState<ProjectUiState | null>(null);
-  const [busy, setBusy] = useState<"theme" | "font" | null>(null);
+  const [busy, setBusy] = useState<"theme" | "font" | "create" | null>(null);
   const [error, setError] = useState<string>("");
+  const [themePrompt, setThemePrompt] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -83,6 +85,32 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     }
   }
 
+  async function handleCreateTheme() {
+    const prompt = themePrompt.trim();
+    if (!activeCwd || !prompt) return;
+    setBusy("create");
+    setError("");
+    try {
+      const result = await activateProjectMoveApi({
+        moveName: "create-theme",
+        inputs: { prompt },
+        cwd: activeCwd,
+        userProfile: activeUserProfile ?? undefined,
+        forceNewSession: true,
+      });
+      setThemePrompt("");
+      if (result.spawnedSessionId) {
+        _props.onSelectSession(result.spawnedSessionId);
+        return;
+      }
+      setError("create-theme did not return a spawned session");
+    } catch (err: any) {
+      setError(err?.message || "failed to start theme creation");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!activeCwd) {
     return <div className="dash-empty">select a project to load themes</div>;
   }
@@ -131,6 +159,27 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
             onChange={handleFontChange}
           />
         </label>
+      </div>
+
+      <div className="pt-create">
+        <label className="pt-field">
+          <span className="pt-label">create theme</span>
+          <textarea
+            className="pt-create-input"
+            value={themePrompt}
+            onChange={(e) => setThemePrompt(e.target.value)}
+            placeholder="describe the vibe, palette, or direction..."
+            rows={3}
+            disabled={busy !== null}
+          />
+        </label>
+        <button
+          className="pt-create-btn"
+          onClick={handleCreateTheme}
+          disabled={!activeCwd || !themePrompt.trim() || busy !== null}
+        >
+          launch theme session
+        </button>
       </div>
 
       {busy && <div className="project-theme-busy">applying {busy}...</div>}

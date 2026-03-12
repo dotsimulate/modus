@@ -932,32 +932,57 @@ export type SearchHit = {
   snippet: string;
 };
 
-export function searchSessions(query: string, limit = 20, cwdPrefixes?: string[]): SearchHit[] {
+export function searchSessions(
+  query: string,
+  limit = 20,
+  scope?: { cwdPrefixes?: string[]; agentProfiles?: string[]; userProfileName?: string },
+): SearchHit[] {
   const ftsQuery = query.trim().split(/\s+/).map(t => `"${t}"*`).join(" ");
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
 
-  // Find matching session IDs ranked by relevance
+  const matchConditions = [
+    `search_index MATCH $fts`,
+    `s.tags NOT LIKE '%"archived"%'`,
+    `s.tags NOT LIKE '%"internal"%'`,
+  ];
+  const matchParams: any[] = [ftsQuery];
+
+  if (scope?.userProfileName) {
+    matchConditions.push(`(s.user_profile = ? OR s.user_profile IS NULL)`);
+    matchParams.push(scope.userProfileName);
+  }
+
+  if (scope?.cwdPrefixes && scope.cwdPrefixes.length > 0) {
+    const cwdConds = scope.cwdPrefixes.map(() => "s.cwd LIKE ?").join(" OR ");
+    matchConditions.push(`(${cwdConds})`);
+    matchParams.push(...scope.cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"));
+  }
+
+  if (scope?.agentProfiles && scope.agentProfiles.length > 0) {
+    const placeholders = scope.agentProfiles.map(() => "?").join(", ");
+    matchConditions.push(`s.profile IN (${placeholders})`);
+    matchParams.push(...scope.agentProfiles);
+  }
+
+  // Find matching session IDs ranked by relevance within the visible session scope.
   const matches = db.prepare(`
-    SELECT session_id AS sid, MIN(rank) AS best_rank
+    SELECT search_index.session_id AS sid, MIN(rank) AS best_rank
     FROM search_index
-    WHERE search_index MATCH $fts
-    GROUP BY session_id
+    JOIN sessions s ON s.id = search_index.session_id
+    WHERE ${matchConditions.join(" AND ")}
+    GROUP BY search_index.session_id
     ORDER BY best_rank
-    LIMIT $limit
-  `).all({ $fts: ftsQuery, $limit: limit }) as { sid: string; best_rank: number }[];
+    LIMIT ?
+  `).all(...matchParams, limit) as { sid: string; best_rank: number }[];
 
   if (matches.length === 0) return [];
 
   const ids = matches.map(m => m.sid);
   const placeholders = ids.map(() => "?").join(",");
-  let sessionsQuery = `SELECT * FROM sessions WHERE id IN (${placeholders}) AND tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'`;
-  const params: any[] = [...ids];
-  if (cwdPrefixes && cwdPrefixes.length > 0) {
-    const cwdConds = cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
-    sessionsQuery += ` AND (${cwdConds})`;
-    params.push(...cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"));
-  }
-  const sessions = db.prepare(sessionsQuery).all(...params) as SessionRow[];
+  const sessions = db.prepare(
+    `SELECT * FROM sessions WHERE id IN (${placeholders}) AND tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'
+    `
+  ).all(...ids) as SessionRow[];
   const sessionMap = new Map(sessions.map(s => [s.id, s]));
 
   // Build snippets from the actual indexed content

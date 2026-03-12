@@ -5,13 +5,15 @@
  *   { "id": "sessions-main", "type": "sessions", "filter": "all", "limit": 50, "sort": { "key": "date", "dir": "desc" } }
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { fetchActiveSessions, fetchSessionsScoped } from "../api";
 import type { ActiveSessionInfo, SessionInfo } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { timeAgo } from "../utils/format";
 import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
 import { useWidgetUiState } from "./ui-state";
+import { useWidgetPollingValue } from "./widget-data";
+import { WidgetEmptyState } from "./widget-components";
 
 // ── Config ──
 
@@ -105,7 +107,6 @@ const SORT_COLS: { key: SortKey; label: string }[] = [
 
 function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<SessionsConfig>) {
   const { activeCwd, activeUserProfile } = useProfiles();
-  const [rows, setRows] = useState<Row[]>([]);
   const [sortBy, setSortBy] = useWidgetUiState<SortKey>(
     { userProfile: activeUserProfile, cwd: activeCwd },
     widgetId,
@@ -122,36 +123,33 @@ function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<Sessi
   const limit = config.limit ?? 50;
   const filter = config.filter ?? "all";
   const userProfile = activeUserProfile ?? undefined;
+  const loadRows = useCallback(async () => {
+    const [active, recent] = await Promise.all([
+      fetchActiveSessions(userProfile),
+      filter === "active"
+        ? Promise.resolve([])
+        : fetchSessionsScoped(limit, userProfile),
+    ]);
+    return merge(active, recent);
+  }, [filter, limit, userProfile]);
+  const { value: rows } = useWidgetPollingValue<Row[]>({
+    load: loadRows,
+    scopeKey: `${filter}:${limit}:${userProfile ?? ""}`,
+    intervalMs: 3000,
+    initialValue: [],
+  });
 
   const toggleSort = (key: SortKey) => {
     if (sortBy === key) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
     else { setSortBy(key); setSortDir("desc"); }
   };
 
-  useEffect(() => {
-    let alive = true;
-    const poll = async () => {
-      try {
-        const [a, r] = await Promise.all([
-          fetchActiveSessions(userProfile),
-          filter === "active"
-            ? Promise.resolve([])
-            : fetchSessionsScoped(limit, userProfile),
-        ]);
-        if (alive) setRows(merge(a, r));
-      } catch { /* silent */ }
-    };
-    poll();
-    const iv = setInterval(poll, 3000);
-    return () => { alive = false; clearInterval(iv); };
-  }, [filter, limit, userProfile]);
-
   const visible = rows.filter((r) => !r.archived);
   const limited = limit < visible.length ? visible.slice(0, limit) : visible;
   const sorted = useMemo(() => sortRows(limited, sortBy, sortDir), [limited, sortBy, sortDir]);
 
   if (visible.length === 0) {
-    return <div className="dash-empty">no sessions</div>;
+    return <WidgetEmptyState>no sessions</WidgetEmptyState>;
   }
 
   return (

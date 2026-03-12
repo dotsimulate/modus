@@ -5,18 +5,13 @@
  *   { "id": "account-main", "type": "account" }
  */
 
-import { useState, useEffect } from "react";
+import { useCallback } from "react";
 import { fetchAccountInfo } from "../api";
-import type { AccountInfo } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { fmtCost, planLabel } from "../utils/format";
-import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
-
-// ── Config ──
-
-type AccountConfig = WidgetBase & {
-  type: "account";
-};
+import type { WidgetDef } from "./index";
+import { useWidgetPollingValue } from "./widget-data";
+import { WidgetEmptyState } from "./widget-components";
 
 // ── Helpers ──
 
@@ -32,25 +27,21 @@ function planClass(sub: string): string {
 
 // ── Component ──
 
-function AccountWidget(_props: WidgetProps<AccountConfig>) {
+function AccountWidget() {
   const { activeUserProfile } = useProfiles();
-  const [info, setInfo] = useState<AccountInfo | null>(null);
+  const loadAccount = useCallback(
+    () => fetchAccountInfo(activeUserProfile ?? undefined),
+    [activeUserProfile],
+  );
+  const { value: info, loading } = useWidgetPollingValue({
+    load: loadAccount,
+    scopeKey: activeUserProfile ?? "",
+    intervalMs: 60_000,
+    initialValue: null,
+  });
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const data = await fetchAccountInfo(activeUserProfile ?? undefined);
-        if (alive) setInfo(data);
-      } catch { /* silent */ }
-    };
-    load();
-    const iv = setInterval(load, 60_000);
-    return () => { alive = false; clearInterval(iv); };
-  }, [activeUserProfile]);
-
-  if (!info) {
-    return <div className="dash-empty">loading account...</div>;
+  if (loading || !info) {
+    return <WidgetEmptyState>loading account...</WidgetEmptyState>;
   }
 
   const { account, costs } = info;

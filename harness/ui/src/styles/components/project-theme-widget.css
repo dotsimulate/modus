@@ -67,6 +67,53 @@
   text-transform: uppercase;
 }
 
+.pt-create {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pt-create-input {
+  min-height: 84px;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.pt-create-input::placeholder {
+  color: var(--text-muted);
+}
+
+.pt-create-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.pt-create-btn {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  cursor: pointer;
+}
+
+.pt-create-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* ── Status ── */
 
 .project-theme-busy,
