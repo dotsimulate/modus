@@ -5,20 +5,14 @@
  * a single tabbed widget for a denser, more focused dashboard.
  */
 
-import { useState, useEffect } from "react";
+import { useCallback, useState } from "react";
 import { fetchAccountInfo, fetchSessionStats } from "../api";
 import type { AccountInfo, SessionStats } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { fmtCost, fmtNum, basename, planLabel } from "../utils/format";
-import { ActivityChart } from "../components/ActivityChart";
-import { HBar } from "../components/HBar";
-import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
-
-// ── Types ──
-
-type PricingConfig = WidgetBase & {
-  type: "claude-pricing";
-};
+import type { WidgetDef } from "./index";
+import { ActivityChart, HBar, WidgetEmptyState } from "./widget-components";
+import { useWidgetPollingValue } from "./widget-data";
 
 type Tab = "overview" | "history" | "breakdown";
 
@@ -34,39 +28,42 @@ function planClass(sub: string): string {
   }
 }
 
+type BreakdownRow =
+  | SessionStats["byProfile"][number]
+  | SessionStats["byProject"][number];
+
 // ── Main Component ──
 
-function ClaudePricingWidget(_props: WidgetProps<PricingConfig>) {
+function ClaudePricingWidget() {
   const { activeUserProfile } = useProfiles();
-  const [account, setAccount] = useState<AccountInfo | null>(null);
-  const [stats, setStats] = useState<SessionStats | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [breakdownView, setBreakdownView] = useState<"agents" | "projects">("agents");
   const [chartMode, setChartMode] = useState<"sessions" | "cost">("cost");
+  const loadPricing = useCallback(
+    async (): Promise<{ account: AccountInfo; stats: SessionStats }> => {
+      const [account, stats] = await Promise.all([
+        fetchAccountInfo(activeUserProfile ?? undefined),
+        fetchSessionStats(activeUserProfile ?? undefined),
+      ]);
+      return { account, stats };
+    },
+    [activeUserProfile],
+  );
+  const {
+    value: pricing,
+    loading,
+  } = useWidgetPollingValue<{ account: AccountInfo; stats: SessionStats } | null>({
+    load: loadPricing,
+    scopeKey: activeUserProfile ?? "",
+    intervalMs: 30_000,
+    initialValue: null,
+  });
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const [a, s] = await Promise.all([
-          fetchAccountInfo(activeUserProfile ?? undefined),
-          fetchSessionStats(activeUserProfile ?? undefined),
-        ]);
-        if (alive) {
-          setAccount(a);
-          setStats(s);
-        }
-      } catch { /* silent */ }
-    };
-    load();
-    const iv = setInterval(load, 30_000);
-    return () => { alive = false; clearInterval(iv); };
-  }, [activeUserProfile]);
-
-  if (!account || !stats) {
-    return <div className="dash-empty">loading pricing...</div>;
+  if (loading || !pricing) {
+    return <WidgetEmptyState>loading pricing...</WidgetEmptyState>;
   }
 
+  const { account, stats } = pricing;
   const { totals, byProject, byProfile, daily, topSessions } = stats;
 
   return (
@@ -186,10 +183,10 @@ function ClaudePricingWidget(_props: WidgetProps<PricingConfig>) {
             </div>
 
             <div className="cpw-list">
-              {(breakdownView === "agents" ? byProfile : byProject).slice(0, 8).map((p: any) => (
-                <div key={p.profile || p.project} className="cpw-list-item cpw-list-item--hbar">
+              {(breakdownView === "agents" ? byProfile : byProject).slice(0, 8).map((p: BreakdownRow) => (
+                <div key={"profile" in p ? p.profile : p.project} className="cpw-list-item cpw-list-item--hbar">
                   <div className="cpw-item-row">
-                    <span className="cpw-item-name">{p.profile || basename(p.project)}</span>
+                    <span className="cpw-item-name">{"profile" in p ? p.profile : basename(p.project)}</span>
                     <span className="cpw-item-val">{fmtCost(p.cost)}</span>
                   </div>
                   <HBar value={p.cost} max={breakdownView === "agents" ? (byProfile[0]?.cost || 1) : (byProject[0]?.cost || 1)} prefix="cpw" />

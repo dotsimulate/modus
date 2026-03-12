@@ -38,7 +38,7 @@ type SessionContextValue = {
   send: (attachments: Attachment[]) => Promise<void>;
   stop: () => Promise<void>;
   stopTask: (taskId: string) => Promise<void>;
-  newSession: () => Promise<void>;
+  newSession: () => Promise<string | null>;
   selectSession: (id: string) => Promise<void>;
   archiveSession: (id: string) => Promise<void>;
   refreshSessions: () => Promise<void>;
@@ -71,16 +71,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevActiveStatusRef = useRef<Session["status"] | null>(null);
-
-  const [pendingHashId, setPendingHashId] = useState<string | null>(() => {
-    // Extract session UUID from hash: #profile/uuid or #uuid
-    const raw = window.location.hash.replace(/^#\/?/, "");
-    const SESSION_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ses-\d+-[a-z0-9]+)$/i;
-    // Take the last segment — handles profile/id and malformed profile/id1/id2
-    const segments = raw.split("/");
-    const candidate = segments[segments.length - 1] ?? "";
-    return SESSION_RE.test(candidate) ? candidate : null;
-  });
 
   // Derive activeSession from the store
   const activeSession = useSessionState(activeSessionId);
@@ -182,14 +172,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // ── URL hash sync ──
 
   const updateHash = useCallback((id: string | null) => {
+    const profile = activeUserProfile ?? "";
+    if (id && !id.startsWith("pending-")) {
+      const hash = profile ? `${profile}/${id}` : id;
+      window.location.hash = hash;
+    } else {
+      const hash = profile ? `${profile}/chat` : "chat";
+      window.location.hash = hash;
+    }
+  }, [activeUserProfile]);
+
+  const replaceHash = useCallback((id: string | null) => {
     if (id && !id.startsWith("pending-")) {
       const profile = activeUserProfile ?? "";
       const hash = profile ? `${profile}/${id}` : id;
       window.history.replaceState(null, "", `#${hash}`);
     } else {
-      // Keep profile in URL even when no session
       const profile = activeUserProfile ?? "";
-      window.history.replaceState(null, "", profile ? `#${profile}` : window.location.pathname);
+      const hash = profile ? `${profile}/chat` : "chat";
+      window.history.replaceState(null, "", `#${hash}`);
     }
   }, [activeUserProfile]);
 
@@ -251,11 +252,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const resolvedProvider = seed.agent.provider.trim() || resolveProfileProvider(profile);
     const resolvedModel = resolveAppliedModel(seed.agent, null, profile);
     try {
-      const id = await createEmptySession(
+      const id = await createEmptySession({
         profile,
-        resolvedModel || undefined,
-        resolvedProvider || undefined,
-      );
+        model: resolvedModel || undefined,
+        provider: resolvedProvider || undefined,
+        cwd: seed.cwd || undefined,
+        userProfile: activeUserProfile ?? undefined,
+      });
       const rs = createInitialState(id);
       rs.status = "idle";
       rs.agentConfig = seed.agent;
@@ -264,16 +267,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       rs.loadProjectSettings = seed.loadProjectSettings;
       setSessionState(id, rs, profile);
       setActiveSessionId(id);
-      updateHash(id);
-      refreshSessions();
+      await refreshSessions();
+      setInput("");
+      setQueuedMessage(null);
+      return id;
     } catch {
       setActiveSessionId(null);
-      updateHash(null);
+      setInput("");
+      setQueuedMessage(null);
+      return null;
     }
-
-    setInput("");
-    setQueuedMessage(null);
-  }, [getEffectiveSeed, refreshSessions, resolveAppliedModel, resolveProfileProvider, saveDraftForCurrent, updateHash]);
+  }, [activeUserProfile, getEffectiveSeed, refreshSessions, resolveAppliedModel, resolveProfileProvider, saveDraftForCurrent]);
 
   const selectSession = useCallback(async (id: string) => {
     await saveDraftForCurrent();
@@ -299,7 +303,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (sessionProfile) setSelectedProfile(sessionProfile);
-    updateHash(id);
 
     const draft = await getDraft(id).catch(() => "");
     setInput(draft);
@@ -470,6 +473,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     getProfileToolsForStartedSession,
     getLockedSessionProvider,
     hasPendingProfileChange,
+    replaceHash,
     profileProviderMatchesSession,
     updateHash,
     refreshSessions,
@@ -530,15 +534,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!activeSessionId) return;
     await respondToPermission(activeSessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
   }, [activeSessionId]);
-
-  // ── Auto-load session from URL hash ──
-
-  useEffect(() => {
-    if (pendingHashId) {
-      selectSession(pendingHashId);
-      setPendingHashId(null);
-    }
-  }, [pendingHashId, selectSession]);
 
   const updateActiveSessionConfig = useCallback(async (config: AgentConfigState) => {
     if (!activeSessionId) return;

@@ -13,6 +13,7 @@ import type { View } from "../views";
 // ── Shared types ──
 
 export type WidgetSize = "full" | "half" | "third";
+export type DashboardModule = Extract<View, "memory" | "actions" | "git">;
 
 /** Base fields every widget config has (widget files extend this) */
 export type WidgetBase = {
@@ -38,9 +39,44 @@ export type WidgetDef = {
   component: ComponentType<WidgetProps<any>>;
 };
 
+export type DashboardWidgetBlock = {
+  kind: "widget";
+  widget: WidgetBase;
+};
+
+export type DashboardModuleBlock = {
+  kind: "module";
+  id?: string;
+  title?: string;
+  size?: WidgetSize;
+  module: DashboardModule;
+  collapsed?: boolean;
+};
+
+export type DashboardTextBlock = {
+  kind: "text";
+  id?: string;
+  title?: string;
+  size?: WidgetSize;
+  markdown: string;
+  collapsed?: boolean;
+};
+
+export type DashboardBlock =
+  | DashboardWidgetBlock
+  | DashboardModuleBlock
+  | DashboardTextBlock;
+
+export type DashboardPage = {
+  id: string;
+  title: string;
+  blocks: DashboardBlock[];
+};
+
 /** Dashboard config shape (on UserProfile.dashboard) */
 export type DashboardConfig = {
-  widgets: WidgetBase[];
+  pages?: DashboardPage[];
+  widgets?: WidgetBase[];
 };
 
 // ── Auto-discovery ──
@@ -61,7 +97,22 @@ for (const mod of Object.values(modules)) {
 /** Default dashboard when user profile has no dashboard config */
 export const DEFAULT_DASHBOARD: DashboardConfig = {
   widgets: [
-    { id: "claude-pricing-0", type: "claude-pricing" },
-    { id: "sessions-1", type: "sessions" },
+    {
+      id: "project-theme-main",
+      type: "project-theme",
+      title: "project theme",
+      size: "full",
+    } as WidgetBase,
+    {
+      id: "claude-pricing-main",
+      type: "claude-pricing",
+      size: "full",
+    } as WidgetBase,
+    {
+      id: "sessions-main",
+      type: "sessions",
+      size: "full",
+      limit: 5,
+    } as WidgetBase,
   ],
 };

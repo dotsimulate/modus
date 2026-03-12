@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { fetchGitStatus, fetchGitLog, fetchGitShow, fetchGitFileDiff, fetchGitReadme, fetchGitFileContent } from "../api";
 import type { GitStatus, GitCommit, GitCommitDetail, FileDiff } from "../api";
 import { getAuthToken } from "../api/_fetch";
+import { replaceGitRouteState, useGitRouteState } from "../git-route";
 import { DiffView } from "./DiffView";
 import { Markdown } from "./Markdown";
 
@@ -369,6 +370,8 @@ function CommitFileDiff({ cwd, hash, file }: { cwd: string; hash: string; file: 
 // ── Main ──
 
 export function GitPanel({ cwd }: { cwd: string | null }) {
+  const route = useGitRouteState();
+  const effectiveCwd = cwd;
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [log, setLog] = useState<GitCommit[]>([]);
   const [openCommit, setOpenCommit] = useState<string | null>(null);
@@ -377,13 +380,13 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
   const [loadingCommit, setLoadingCommit] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!cwd) return;
+    if (!effectiveCwd) return;
     try {
-      const [s, l] = await Promise.all([fetchGitStatus(cwd), fetchGitLog(cwd)]);
+      const [s, l] = await Promise.all([fetchGitStatus(effectiveCwd), fetchGitLog(effectiveCwd)]);
       setStatus(s);
       setLog(l);
     } catch { /* silent */ }
-  }, [cwd]);
+  }, [effectiveCwd]);
 
   useEffect(() => {
     setStatus(null); setLog([]); setOpenCommit(null);
@@ -393,59 +396,75 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
     return () => clearInterval(interval);
   }, [load]);
 
+  useEffect(() => {
+    if (route.wt) {
+      setOpenCommit(null);
+      setDetailState({ kind: "wt-file", file: route.wt });
+      return;
+    }
+    if (route.commit && route.file) {
+      setOpenCommit(route.commit);
+      setDetailState({ kind: "commit-file", hash: route.commit, file: route.file });
+      return;
+    }
+    if (route.commit) {
+      setOpenCommit(route.commit);
+      setDetailState({ kind: "commit", hash: route.commit });
+      return;
+    }
+    setOpenCommit(null);
+    setDetailState({ kind: "overview" });
+  }, [route.commit, route.file, route.wt]);
+
   // Fetch commit detail when opened
   useEffect(() => {
-    if (!openCommit || !cwd || commitDetails.has(openCommit)) return;
+    if (!openCommit || !effectiveCwd || commitDetails.has(openCommit)) return;
     let active = true;
     setLoadingCommit(openCommit);
-    fetchGitShow(cwd, openCommit)
+    fetchGitShow(effectiveCwd, openCommit)
       .then((d) => {
         if (active && d) setCommitDetails((prev) => new Map(prev).set(openCommit, d));
       })
       .catch(() => {})
       .finally(() => { if (active) setLoadingCommit(null); });
     return () => { active = false; };
-  }, [openCommit, cwd]);
+  }, [openCommit, effectiveCwd, commitDetails]);
 
-  if (!cwd) return <div className="git-panel"><div className="git-empty">No working directory selected</div></div>;
+  if (!effectiveCwd) return <div className="git-panel"><div className="git-empty">No working directory selected</div></div>;
   if (status === null) return <div className="git-panel"><div className="git-empty">Loading...</div></div>;
-  if (!status.git) return <div className="git-panel"><div className="git-empty"><span className="git-empty-path">{cwd}</span> is not a git repository</div></div>;
+  if (!status.git) return <div className="git-panel"><div className="git-empty"><span className="git-empty-path">{effectiveCwd}</span> is not a git repository</div></div>;
 
   const maxVolume = Math.max(...log.map(changeVolume), 1);
 
   const handleTopBarClick = () => {
-    setOpenCommit(null);
-    setDetailState({ kind: "overview" });
+    replaceGitRouteState({});
   };
 
   const handleWtFile = (file: string) => {
-    setOpenCommit(null);
-    setDetailState((prev) =>
-      prev.kind === "wt-file" && prev.file === file
-        ? { kind: "overview" }
-        : { kind: "wt-file", file }
+    replaceGitRouteState(
+      detailState.kind === "wt-file" && detailState.file === file
+        ? {}
+        : { wt: file }
     );
   };
 
   const handleCommitRowClick = (hash: string) => {
     if (openCommit === hash) {
       if (detailState.kind === "commit" && detailState.hash === hash) {
-        setOpenCommit(null);
-        setDetailState({ kind: "overview" });
+        replaceGitRouteState({});
       } else {
-        setDetailState({ kind: "commit", hash });
+        replaceGitRouteState({ commit: hash });
       }
     } else {
-      setOpenCommit(hash);
-      setDetailState({ kind: "commit", hash });
+      replaceGitRouteState({ commit: hash });
     }
   };
 
   const handleCommitFile = (hash: string, filePath: string) => {
-    setDetailState((prev) =>
-      prev.kind === "commit-file" && prev.hash === hash && prev.file === filePath
-        ? { kind: "commit", hash }
-        : { kind: "commit-file", hash, file: filePath }
+    replaceGitRouteState(
+      detailState.kind === "commit-file" && detailState.hash === hash && detailState.file === filePath
+        ? { commit: hash }
+        : { commit: hash, file: filePath }
     );
   };
 
@@ -453,7 +472,7 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
 
   return (
     <div className="git-panel">
-      <TopBar status={status} cwd={cwd} commits={log} onClick={handleTopBarClick} />
+      <TopBar status={status} cwd={effectiveCwd} commits={log} onClick={handleTopBarClick} />
       <div className="git-split">
         <div className="git-left">
           <LeftSummary status={status} commits={log} onFileClick={handleWtFile} activeFile={activeWtFile} />
@@ -507,7 +526,7 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
         </div>
 
         <div className="git-right">
-          <DetailPane state={detailState} cwd={cwd} status={status} commits={log} />
+          <DetailPane state={detailState} cwd={effectiveCwd} status={status} commits={log} />
         </div>
       </div>
     </div>

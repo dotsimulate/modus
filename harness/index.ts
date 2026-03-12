@@ -363,7 +363,11 @@ app.get("/api/sessions/search", (c) => {
   if (!q) return c.json([]);
   const limit = Number(params.get("limit") ?? 20);
   const scope = resolveUserProfileScope(c);
-  return c.json(searchSessions(q, limit, scope?.cwdPrefixes));
+  return c.json(searchSessions(q, limit, {
+    cwdPrefixes: scope?.cwdPrefixes,
+    agentProfiles: scope?.agentProfiles,
+    userProfileName: params.get("userProfile") ?? undefined,
+  }));
 });
 
 app.get("/api/sessions", (c) => {
@@ -488,7 +492,7 @@ app.post("/api/sessions", async (c) => {
 // Create empty session (DB row only, no SDK). Used by "new session" button.
 app.post("/api/sessions/empty", async (c) => {
   const body = await c.req.json();
-  const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const id = crypto.randomUUID();
   dbUpsertSession({
     id,
     preview: "",
@@ -499,6 +503,7 @@ app.post("/api/sessions/empty", async (c) => {
     messageCount: 0,
     costUsd: 0,
     cwd: body.cwd ?? null,
+    userProfile: body.userProfile ?? null,
   });
   return c.json({ sessionId: id });
 });

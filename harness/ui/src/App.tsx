@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ProfileUi } from "./api";
 import { healthCheck, saveUserProfileApi } from "./api";
-import { NAV_VIEWS, type View } from "./views";
+import { customPageView, getCustomPageId, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { SessionProvider, useSession } from "./providers/SessionProvider";
@@ -12,10 +12,10 @@ import { ChatView } from "./components/ChatView";
 import { ChatInput } from "./components/ChatInput";
 import { ConfigBar } from "./components/ConfigBar";
 import { Dashboard } from "./components/Dashboard";
+import { PageView } from "./components/PageRenderer";
 import { Profiles } from "./components/Profiles";
 import { MemoryViz } from "./components/MemoryViz";
 import { Actions } from "./components/Actions";
-import { GitPanel } from "./components/GitPanel";
 import { PermissionOverlay } from "./components/PermissionOverlay";
 import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
@@ -56,7 +56,7 @@ function AppShell() {
     handlePermissionResponse, updateActiveSessionConfig, updateActiveSessionProfile,
     queuedMessage, cancelQueued, branchFromMessage,
   } = useSession();
-  const { view, navigate, hashProfile, setUrlProfile, consumeHashProfile } = useHashRouter();
+  const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, consumeHashProfile } = useHashRouter();
 
   // ── Local UI state ──
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
@@ -92,15 +92,21 @@ function AppShell() {
   }, [hashProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wrap session actions with sidebar close
-  const handleNewSession = useCallback(() => {
-    newSession();
+  const handleNewSession = useCallback(async () => {
+    navigate("chat");
+    const id = await newSession();
+    if (id) {
+      setUrlSession(id, activeUserProfile);
+    }
     setSidebarOpen(false);
-  }, [newSession]);
+  }, [activeUserProfile, navigate, newSession, setUrlSession]);
 
   const handleSelectSession = useCallback((id: string) => {
+    navigate("chat");
     selectSession(id);
+    setUrlSession(id, activeUserProfile);
     setSidebarOpen(false);
-  }, [selectSession]);
+  }, [activeUserProfile, navigate, selectSession, setUrlSession]);
 
   // Wrap switchUserProfile to also update URL
   const handleSwitchUserProfile = useCallback((name: string | null) => {
@@ -119,7 +125,8 @@ function AppShell() {
   const handleViewSession = useCallback((id: string) => {
     navigate("chat");
     selectSession(id);
-  }, [navigate, selectSession]);
+    setUrlSession(id, activeUserProfile);
+  }, [activeUserProfile, navigate, selectSession, setUrlSession]);
 
   // Peek: pop a floating SessionWindow for any session ID
   const handlePeekSession = useCallback((id: string) => {
@@ -166,6 +173,45 @@ function AppShell() {
     const status = getSessionState(s.id)?.status ?? s.status;
     return status === "running" || status === "starting";
   }).length;
+  const customPages = activeUP?.dashboard?.pages ?? [];
+  const gitPageBlocks = [
+    {
+      kind: "module" as const,
+      id: "git-main",
+      title: "git",
+      module: "git" as const,
+    },
+  ];
+  const navViews = [
+    ...NAV_VIEWS,
+    ...customPages.map((page) => ({
+      view: customPageView(page.id),
+      label: page.title,
+    })),
+  ];
+  const activeCustomPage = customPages.find((page) => page.id === getCustomPageId(view));
+
+  useEffect(() => {
+    if (getCustomPageId(view) && !activeCustomPage) {
+      navigate("home");
+    }
+  }, [activeCustomPage, navigate, view]);
+
+  useEffect(() => {
+    if (view !== "chat" || !hashSessionId) return;
+    if (activeSession?.id === hashSessionId) return;
+    selectSession(hashSessionId);
+  }, [hashSessionId, selectSession, view]); // activeSession intentionally omitted to avoid hash/session ping-pong
+
+  useEffect(() => {
+    if (view !== "chat" || hashSessionId || !activeSession) return;
+    const isFreshSession =
+      activeSession.status === "idle"
+      && activeSession.messages.length === 0;
+    if (!isFreshSession) {
+      newSession();
+    }
+  }, [activeSession, hashSessionId, newSession, view]);
 
   return (
     <div className="app">
@@ -177,7 +223,7 @@ function AppShell() {
         </button>
         <span className="top-nav-logo" onClick={() => navigate("home")}><MoLogo size={16} activeCount={activeAgentCount} /></span>
         <nav className="top-nav-links">
-          {NAV_VIEWS.map((nv) => (
+          {navViews.map((nv) => (
             <button
               key={nv.view}
               className={`top-nav-link${view === nv.view ? " active" : ""}`}
@@ -229,8 +275,8 @@ function AppShell() {
           onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
           activeUserProfileObj={activeUP}
           availableProviders={availableProviders}
-          navLinks={[{ view: "home" as const, label: "home" }, ...NAV_VIEWS]}
-          currentView={view as View}
+          navLinks={[{ view: "home" as const, label: "home" }, ...navViews]}
+          currentView={view}
           onNavigate={(v) => navigate(v)}
           navOnly={view !== "chat"}
         />
@@ -334,7 +380,20 @@ function AppShell() {
 
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
         {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
-        {view === "git" && <GitPanel cwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd ?? null} />}
+        {view === "git" && (
+          <PageView
+            blocks={gitPageBlocks}
+            onNavigate={navigate}
+            onSelectSession={handleViewSession}
+          />
+        )}
+        {activeCustomPage && (
+          <PageView
+            blocks={activeCustomPage.blocks}
+            onNavigate={navigate}
+            onSelectSession={handleViewSession}
+          />
+        )}
       </div>
 
       <SessionWindow

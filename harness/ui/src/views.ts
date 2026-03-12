@@ -5,10 +5,11 @@
  * nav links, hash router, URL building.
  */
 
-export type View = "home" | "chat" | "profiles" | "memory" | "actions" | "git";
+export type StaticView = "home" | "chat" | "profiles" | "memory" | "actions" | "git";
+export type View = StaticView | `page:${string}`;
 
 /** Views shown as nav links, in display order. "home" is the logo, not a nav link. */
-export const NAV_VIEWS: { view: View; label: string }[] = [
+export const NAV_VIEWS: { view: StaticView; label: string }[] = [
   { view: "chat",     label: "sessions" },
   { view: "profiles", label: "profiles" },
   { view: "actions",  label: "actions" },
@@ -20,4 +21,12 @@ export const NAV_VIEWS: { view: View; label: string }[] = [
 export const VIEW_SLUGS = new Set<string>(["home", ...NAV_VIEWS.map((v) => v.view)]);
 
 /** The default view when no hash is present. */
-export const DEFAULT_VIEW: View = "home";
+export const DEFAULT_VIEW: StaticView = "home";
+
+export function customPageView(pageId: string): View {
+  return `page:${pageId}`;
+}
+
+export function getCustomPageId(view: View): string | null {
+  return view.startsWith("page:") ? view.slice("page:".length) : null;
+}

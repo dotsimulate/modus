@@ -5,20 +5,14 @@
  *   { "id": "stats-main", "type": "stats", "title": "stats" }
  */
 
-import { useState, useEffect } from "react";
+import { useCallback, useState } from "react";
 import { fetchSessionStats } from "../api";
 import type { SessionStats } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { fmtCost, fmtNum, basename } from "../utils/format";
-import { ActivityChart } from "../components/ActivityChart";
-import { HBar } from "../components/HBar";
-import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
-
-// ── Config ──
-
-type StatsConfig = WidgetBase & {
-  type: "stats";
-};
+import type { WidgetDef } from "./index";
+import { ActivityChart, HBar, WidgetEmptyState } from "./widget-components";
+import { useWidgetPollingValue } from "./widget-data";
 
 // ── Helpers ──
 
@@ -44,32 +38,28 @@ function streak(daily: SessionStats["daily"]): number {
 
 // ── Component ──
 
-function StatsWidget(_props: WidgetProps<StatsConfig>) {
+function StatsWidget() {
   const { activeUserProfile } = useProfiles();
-  const [stats, setStats] = useState<SessionStats | null>(null);
   const [view, setView] = useState<"all" | "project">("all");
+  const loadStats = useCallback(
+    () => fetchSessionStats(activeUserProfile ?? undefined),
+    [activeUserProfile],
+  );
+  const { value: stats, loading } = useWidgetPollingValue<SessionStats | null>({
+    load: loadStats,
+    scopeKey: activeUserProfile ?? "",
+    intervalMs: 30_000,
+    initialValue: null,
+  });
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const s = await fetchSessionStats(activeUserProfile ?? undefined);
-        if (alive) setStats(s);
-      } catch { /* silent */ }
-    };
-    load();
-    const iv = setInterval(load, 30_000);
-    return () => { alive = false; clearInterval(iv); };
-  }, [activeUserProfile]);
-
-  if (!stats) {
-    return <div className="dash-empty">loading stats...</div>;
+  if (loading || !stats) {
+    return <WidgetEmptyState>loading stats...</WidgetEmptyState>;
   }
 
   const { totals, byProject, byProfile, byModel, daily, topSessions } = stats;
 
   if (totals.sessions === 0) {
-    return <div className="dash-empty">no sessions yet</div>;
+    return <WidgetEmptyState>no sessions yet</WidgetEmptyState>;
   }
 
   const avgCost = totals.sessions > 0 ? totals.cost / totals.sessions : 0;
