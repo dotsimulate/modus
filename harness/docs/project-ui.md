@@ -2,7 +2,7 @@
 title: Project UI (Themes & Fonts)
 audience: agents
 lastUpdated: 2026-03-11
-lastCommit: 119f911
+lastCommit: 95bd703
 covers: harness/project-ui.ts harness/ui/src/project-ui-theme.ts harness/ui/src/widgets/project-theme.widget.tsx harness/ui/src/styles/
 ---
 
@@ -59,7 +59,7 @@ Each registry (`theme-registry.json`, `font-registry.json`) tracks:
 ## Base Styling
 
 The harness ships with default styles in `harness/ui/src/styles/`:
-- `colors.css` — ~50 CSS custom properties (the base palette)
+- `colors.css` — ~70 CSS custom properties (the base palette, including login-screen vars)
 - `theme.css` — font families, scale, spacing
 - `layout.css` — app structure
 - `mobile.css` — responsive overrides

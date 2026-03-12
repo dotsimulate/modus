@@ -182,18 +182,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeUserProfile]);
 
-  const replaceHash = useCallback((id: string | null) => {
-    if (id && !id.startsWith("pending-")) {
-      const profile = activeUserProfile ?? "";
-      const hash = profile ? `${profile}/${id}` : id;
-      window.history.replaceState(null, "", `#${hash}`);
-    } else {
-      const profile = activeUserProfile ?? "";
-      const hash = profile ? `${profile}/chat` : "chat";
-      window.history.replaceState(null, "", `#${hash}`);
-    }
-  }, [activeUserProfile]);
-
   // ── Draft management ──
 
   const saveDraftForCurrent = useCallback(async (text?: string) => {
@@ -308,7 +296,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setInput(draft);
 
     setQueuedMessage(null);
-  }, [serverSessions, updateHash, saveDraftForCurrent, setSelectedProfile, refreshSessions]);
+  }, [serverSessions, saveDraftForCurrent, setSelectedProfile, refreshSessions]);
 
   const archiveSession = useCallback(async (id: string) => {
     await archiveSessionApi(id).catch(() => {});
@@ -473,7 +461,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     getProfileToolsForStartedSession,
     getLockedSessionProvider,
     hasPendingProfileChange,
-    replaceHash,
     profileProviderMatchesSession,
     updateHash,
     refreshSessions,

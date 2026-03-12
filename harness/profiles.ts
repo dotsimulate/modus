@@ -195,6 +195,7 @@ export type UserProfileState = {
   sidebarConfigExpanded?: boolean;
   lastAgentProfile?: string;
   lastCwd?: string;
+  lastSessionId?: string | null;
 };
 
 export type UserProfileMemory = {
