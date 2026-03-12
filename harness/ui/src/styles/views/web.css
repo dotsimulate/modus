@@ -1,0 +1,349 @@
+/**
+ * Session Web — spatial graph visualization of session handoffs and commits.
+ * Nodes are positioned absolutely over an SVG edge layer.
+ */
+
+/* ── Panel ── */
+
+.web-panel {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: var(--bg);
+  position: relative;
+}
+
+.web-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 32px 20px;
+}
+
+/* ── Canvas ── */
+
+.web-canvas-wrap {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.web-canvas {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+/* ── SVG edge layer ── */
+
+.web-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.web-edge {
+  fill: none;
+  stroke-width: 1;
+  transition: opacity 0.1s ease;
+}
+
+.web-edge--handoff {
+  stroke: var(--text-muted);
+}
+
+.web-edge--commit {
+  stroke: var(--info);
+  opacity: 0.3;
+  stroke-dasharray: 4 3;
+}
+
+.web-edge-active .web-edge--handoff {
+  stroke: var(--text-dim);
+  stroke-width: 1.5;
+}
+
+.web-edge-active .web-edge--commit {
+  opacity: 0.6;
+  stroke-width: 1.5;
+}
+
+/* ── Session Nodes ── */
+
+.web-session-node {
+  position: absolute;
+  width: 150px;
+  height: 52px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 10px;
+  transition: border-color 0.1s ease, background 0.1s ease;
+  font-family: var(--font-mono);
+}
+
+.web-session-node:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-active);
+}
+
+.web-session-node--running { border-color: rgba(51, 204, 51, 0.25); }
+.web-session-node--error { border-color: rgba(255, 51, 51, 0.25); }
+
+.web-node--selected {
+  border-color: var(--border-active);
+}
+.web-node--selected::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+}
+
+.web-session-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.web-session-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.web-session-dot--running { background: var(--dot-running); }
+.web-session-dot--done { background: var(--dot-done); }
+.web-session-dot--error { background: var(--dot-error); }
+
+.web-session-id {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.web-session-time {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.web-session-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.web-session-profile {
+  font-size: 9px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.web-session-handoff-type {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.web-session-preview {
+  font-size: 9px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── Commit Nodes ── */
+
+.web-commit-node {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--info);
+  cursor: pointer;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+.web-commit-node:hover {
+  background: rgba(80, 144, 255, 0.08);
+  border-color: var(--info);
+}
+
+.web-commit-node.web-node--selected {
+  background: rgba(80, 144, 255, 0.12);
+  border-color: var(--info);
+}
+
+.web-commit-hash {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  color: var(--info);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+/* ── Detail Panel ── */
+
+.web-detail {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 260px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 12px 14px;
+  z-index: 10;
+  font-family: var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.web-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.web-detail-type {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.web-detail-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.1s ease;
+}
+.web-detail-close:hover { color: var(--text-dim); }
+
+.web-detail-id,
+.web-detail-hash {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.web-detail-hash { color: var(--info); }
+
+.web-detail-title {
+  font-size: 11px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.web-detail-msg {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.web-detail-preview {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  max-height: 60px;
+  overflow: hidden;
+}
+
+.web-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.web-detail-sep { opacity: 0.3; }
+
+.web-detail-profile {
+  color: var(--text-dim);
+}
+
+.web-detail-status { font-weight: 500; }
+.web-detail-status[data-status="running"] { color: var(--success); }
+.web-detail-status[data-status="error"] { color: var(--error); }
+
+.web-detail-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.web-detail-add { color: var(--success); }
+.web-detail-del { color: var(--error); }
+
+.web-detail-handoff {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.web-detail-handoff span {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.web-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.web-detail-tag {
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 900px) {
+  .web-detail {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    border-radius: 3px 3px 0 0;
+  }
+}
