@@ -2,6 +2,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { extname, join, resolve } from "path";
 
 const MODUS_UI_DIR = ".modus/ui";
+const BUILTIN_THEME_SOURCE = "builtin:harness";
+const BUILTIN_MODUS_DARK_FILE = "ui/themes/modus-dark.css";
 const THEMES_DIR = "themes";
 const FONTS_DIR = "fonts";
 const ACTIVE_DIR = "active";
@@ -57,6 +59,18 @@ export type ActiveCssAsset = {
   variables: Record<string, string>;
 };
 
+const BUILTIN_THEMES: ThemeRecord[] = [
+  {
+    id: "modus-dark",
+    label: "Modus Dark",
+    file: BUILTIN_MODUS_DARK_FILE,
+    createdAt: "2026-03-12T00:00:00.000Z",
+    archived: false,
+    source: BUILTIN_THEME_SOURCE,
+    notes: "Harness default dark theme.",
+  },
+];
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -85,6 +99,10 @@ function fontRegistryPath(cwd: string): string {
 
 function themeFilePath(cwd: string, rel: string): string {
   return join(uiDir(cwd), rel);
+}
+
+function builtinThemeFilePath(rel: string): string {
+  return join(import.meta.dir, rel);
 }
 
 function fontFilePath(cwd: string, rel: string): string {
@@ -203,11 +221,24 @@ function writeFontRegistry(cwd: string, registry: FontRegistry): void {
   writeJsonFile(fontRegistryPath(cwd), registry);
 }
 
+function resolveThemeSourcePath(cwd: string, item: ThemeRecord): string {
+  return item.source === BUILTIN_THEME_SOURCE
+    ? builtinThemeFilePath(item.file)
+    : themeFilePath(cwd, item.file);
+}
+
+function mergedThemes(registry: ThemeRegistry): ThemeRecord[] {
+  const byId = new Map<string, ThemeRecord>();
+  for (const item of BUILTIN_THEMES) byId.set(item.id, item);
+  for (const item of registry.themes) byId.set(item.id, item);
+  return Array.from(byId.values());
+}
+
 function themeInfo(cwd: string, registry: ThemeRegistry, item: ThemeRecord): ThemeInfo {
   return {
     ...item,
     active: registry.activeThemeId === item.id,
-    absolutePath: themeFilePath(cwd, item.file),
+    absolutePath: resolveThemeSourcePath(cwd, item),
   };
 }
 
@@ -221,7 +252,7 @@ function fontInfo(cwd: string, registry: FontRegistry, item: FontRecord): FontIn
 
 export function listThemes(cwd: string): ThemeInfo[] {
   const registry = readThemeRegistry(cwd);
-  return registry.themes.map((item) => themeInfo(cwd, registry, item));
+  return mergedThemes(registry).map((item) => themeInfo(cwd, registry, item));
 }
 
 export function listFonts(cwd: string): FontInfo[] {
@@ -231,7 +262,7 @@ export function listFonts(cwd: string): FontInfo[] {
 
 export function getTheme(cwd: string, id: string): ThemeInfo | null {
   const registry = readThemeRegistry(cwd);
-  const item = registry.themes.find((entry) => entry.id === id);
+  const item = mergedThemes(registry).find((entry) => entry.id === id);
   return item ? themeInfo(cwd, registry, item) : null;
 }
 
@@ -244,7 +275,7 @@ export function getFont(cwd: string, id: string): FontInfo | null {
 export function getActiveTheme(cwd: string): ActiveCssAsset | null {
   const registry = readThemeRegistry(cwd);
   if (!registry.activeThemeId) return null;
-  const item = registry.themes.find((entry) => entry.id === registry.activeThemeId);
+  const item = mergedThemes(registry).find((entry) => entry.id === registry.activeThemeId);
   if (!item) return null;
   const activeFile = registry.activeThemeFile ?? ACTIVE_THEME_FILE;
   const activePath = themeFilePath(cwd, activeFile);
@@ -382,9 +413,9 @@ export function registerFont(opts: {
 export function activateTheme(cwd: string, themeId: string): ActiveCssAsset {
   ensureUiDirs(cwd);
   const registry = readThemeRegistry(cwd);
-  const item = registry.themes.find((entry) => entry.id === themeId);
+  const item = mergedThemes(registry).find((entry) => entry.id === themeId);
   if (!item) throw new Error(`theme not found: ${themeId}`);
-  const sourcePath = themeFilePath(cwd, item.file);
+  const sourcePath = resolveThemeSourcePath(cwd, item);
   if (!existsSync(sourcePath)) throw new Error(`theme file not found: ${item.file}`);
   validateThemeCss(readFileSync(sourcePath, "utf-8"));
   const activeFile = registry.activeThemeFile ?? ACTIVE_THEME_FILE;
@@ -420,7 +451,7 @@ export function patchTheme(cwd: string, id: string, patch: {
 }): ThemeInfo {
   const registry = readThemeRegistry(cwd);
   const item = registry.themes.find((entry) => entry.id === id);
-  if (!item) throw new Error(`theme not found: ${id}`);
+  if (!item) throw new Error(`cannot patch built-in or missing theme: ${id}`);
   if (patch.archived && registry.activeThemeId === id) {
     throw new Error("cannot archive the active theme");
   }
