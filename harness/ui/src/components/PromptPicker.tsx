@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   fetchPrompts, renderPromptApi, browsePath, readFileContent,
-  fetchMoves, activateMoveApi,
+  fetchMoves, activateMoveApi, activateProjectMoveApi,
 } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { Markdown } from "./Markdown";
@@ -31,7 +31,7 @@ type Props = {
   direction?: "up" | "down";
   /** Filter prompts by tag */
   tags?: string[];
-  /** Active session context — required for move activation */
+  /** Active session context — optional for project-scoped branch/background moves */
   sessionId?: string;
   projectCwd?: string;
   userProfile?: string;
@@ -163,7 +163,7 @@ export function PromptPicker({
   useEffect(() => {
     if (!open) return;
     fetchPrompts(tags ? { tags } : undefined).then(setPrompts).catch(() => {});
-    if (sessionId && projectCwd) {
+    if (projectCwd) {
       fetchMoves(projectCwd).then(setMoves).catch(() => setMoves([]));
     } else {
       setMoves([]);
@@ -307,16 +307,19 @@ export function PromptPicker({
   }, [selected, freeText, inputValues, activeUserProfile, activeUP, onInject, onAutoSend]);
 
   const handleActivateMove = useCallback(async () => {
-    if (!selected || selected.kind !== "move" || !sessionId || !projectCwd) return;
+    if (!selected || selected.kind !== "move" || !projectCwd) return;
     setRendering(true);
     setError("");
     try {
-      const result = await activateMoveApi(sessionId, {
+      const body = {
         moveName: selected.item.name,
         inputs: buildMoveInputs(selected.item, inputValues, resolveProfileNames()),
         cwd: projectCwd,
         userProfile: userProfile ?? activeUserProfile ?? undefined,
-      });
+      };
+      const result = sessionId
+        ? await activateMoveApi(sessionId, body)
+        : await activateProjectMoveApi({ ...body, forceNewSession: true });
       onMoveActivated?.(result);
       setOpenAndNotify(false);
       setSelected(null);

@@ -161,12 +161,14 @@ export interface SubmitResult {
 
 export interface MoveToken {
   token: string;
-  sessionId: string;
+  sessionId: string;                    // source session ID, or "" for project-scoped activation
   moveName: string;
   mode: "inline" | "branch" | "background";
   schema: Record<string, unknown> | undefined;
   inputs: Record<string, unknown>;
   gatheredContext: Record<string, unknown>;
+  cwd: string;
+  userProfile: string | undefined;
   createdAt: number;
   ttl: number;                         // ms — default 10 minutes
   status: "pending" | "submitted" | "invalid" | "completed" | "expired";
@@ -180,10 +182,12 @@ export interface MoveToken {
 
 export interface ActivateMoveOpts {
   moveName: string;
-  sessionId: string;
+  sessionId?: string;
   inputs: Record<string, unknown>;
   cwd: string;
   userProfile?: string;
+  modeOverride?: "inline" | "branch" | "background";
+  forceNewSession?: boolean;
 }
 
 // ── Activation Result ──

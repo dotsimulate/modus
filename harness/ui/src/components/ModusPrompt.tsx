@@ -40,6 +40,7 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
   const [error, setError] = useState("");
   const [recentSessions, setRecentSessions] = useState<SessionInfo[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const projectCwd = activeUP?.projects?.[0];
 
   const activeSession = useSessionState(phase === "running" ? sessionId : null);
 
@@ -132,7 +133,7 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
     }
   };
 
-  const handleInject = useCallback((text: string, settings?: PromptSettings) => {
+  const handleInject = useCallback((text: string, _settings?: PromptSettings) => {
     const existing = prompt;
     if (!existing.trim()) {
       setPrompt(text);
@@ -141,6 +142,12 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
     }
     textareaRef.current?.focus();
   }, [prompt]);
+
+  const handleMoveActivated = useCallback((result: { spawnedSessionId?: string }) => {
+    if (result.spawnedSessionId) {
+      onSelectSession(result.spawnedSessionId);
+    }
+  }, [onSelectSession]);
 
   return (
     <div className="modus-prompt">
@@ -232,6 +239,9 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
                 onInject={handleInject}
                 direction="down"
                 tags={tab === "create" ? ["dashboard", "create"] : ["dashboard", "configure"]}
+                projectCwd={projectCwd}
+                userProfile={activeUserProfile ?? undefined}
+                onMoveActivated={handleMoveActivated}
               />
             </div>
             <button

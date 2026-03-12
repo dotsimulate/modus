@@ -15,12 +15,14 @@
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
+import Handlebars from "handlebars";
 import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
   ActivateMoveOpts, ActivateMoveResult, SubmitResult,
   MoveDB, HarnessBridge, MoveRun,
 } from "./move-types";
 import {
+  type StartSessionOpts,
   getActiveSession, queueMessage, startSession,
 } from "./session-manager";
 import {
@@ -39,6 +41,25 @@ const MODUS_MOVES_DIR = ".modus/moves";
 const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
 const TOKEN_CLEANUP_INTERVAL_MS = 60_000;  // sweep every 60s
+const moveTemplates = Handlebars.create();
+
+moveTemplates.registerHelper("date", (fmt?: string) => {
+  const now = new Date();
+  if (typeof fmt !== "string") return now.toISOString().split("T")[0];
+  return fmt
+    .replace("YYYY", String(now.getFullYear()))
+    .replace("MM", String(now.getMonth() + 1).padStart(2, "0"))
+    .replace("DD", String(now.getDate()).padStart(2, "0"))
+    .replace("HH", String(now.getHours()).padStart(2, "0"))
+    .replace("mm", String(now.getMinutes()).padStart(2, "0"))
+    .replace("ss", String(now.getSeconds()).padStart(2, "0"));
+});
+
+moveTemplates.registerHelper("ifCond", function (this: unknown, a: unknown, b: unknown, options: Handlebars.HelperOptions) {
+  return a === b ? options.fn(this) : (options.inverse ? options.inverse(this) : "");
+});
+
+moveTemplates.registerHelper("json", (value: unknown) => JSON.stringify(value, null, 2));
 
 // ── Token Store (in-memory) ──
 
@@ -222,6 +243,66 @@ function buildHarnessBridge(cwd: string, userProfile: string | undefined): Harne
   };
 }
 
+function applySessionSettingsOverride(
+  opts: StartSessionOpts,
+  overrides: Record<string, unknown> | undefined,
+): StartSessionOpts {
+  if (!overrides) return opts;
+
+  return {
+    ...opts,
+    ...(typeof overrides.provider === "string" ? { provider: overrides.provider } : {}),
+    ...(typeof overrides.model === "string" ? { model: overrides.model } : {}),
+    ...(typeof overrides.effort === "string" ? { effort: overrides.effort } : {}),
+    ...(typeof overrides.maxTurns === "number" ? { maxTurns: overrides.maxTurns } : {}),
+    ...(Array.isArray(overrides.tools) ? { tools: overrides.tools.filter((v): v is string => typeof v === "string") } : {}),
+    ...(Array.isArray(overrides.disallowedTools) ? { disallowedTools: overrides.disallowedTools.filter((v): v is string => typeof v === "string") } : {}),
+    ...(overrides.toolStates && typeof overrides.toolStates === "object" ? { toolStates: overrides.toolStates as Record<string, string> } : {}),
+    ...(overrides.providerControls && typeof overrides.providerControls === "object"
+      ? { providerControls: overrides.providerControls as Record<string, unknown> }
+      : {}),
+    ...(typeof overrides.loadProjectSettings === "boolean"
+      ? { loadProjectSettings: overrides.loadProjectSettings }
+      : {}),
+  };
+}
+
+function buildSpawnSessionOpts(
+  config: MoveConfig,
+  prompt: string,
+  cwd: string,
+  userProfile: string | undefined,
+  sourceSessionId: string,
+): StartSessionOpts {
+  const active = sourceSessionId ? getActiveSession(sourceSessionId) : undefined;
+  const explicitProfile = config.agentProfile ?? config.session?.profileOverride ?? undefined;
+
+  const base: StartSessionOpts = explicitProfile
+    ? {
+        prompt,
+        profile: explicitProfile,
+        cwd,
+        userProfile,
+      }
+    : {
+        prompt,
+        profile: active?.profile,
+        userProfile: active?.userProfile ?? userProfile,
+        provider: active?._configOverrides.provider ?? active?.provider,
+        model: active?.model,
+        effort: active?._configOverrides.effort,
+        maxTurns: active?._configOverrides.maxTurns,
+        tools: active?._configOverrides.tools,
+        disallowedTools: active?._configOverrides.disallowedTools,
+        toolStates: active?._configOverrides.toolStates,
+        providerControls: active?._configOverrides.providerControls,
+        loadProjectSettings: active?._configOverrides.loadProjectSettings,
+        cwd: active?.cwd ?? cwd,
+      };
+
+  return applySessionSettingsOverride(base, config.session?.settingsOverride);
+}
+
 // ── Prompt Rendering ──
 
 function renderPrompt(
@@ -230,39 +311,17 @@ function renderPrompt(
   context: Record<string, unknown>,
   token: string,
 ): string {
-  // Load external template or use inline prompt
-  let template = config.prompt ?? "";
-  if (!template) {
-    // Try loading prompt.hbs from the move directory — we don't have cwd here,
-    // so the caller should resolve this. For now, build a default prompt.
-    template = buildDefaultPrompt(config);
-  }
-
-  // Simple {{key}} interpolation
-  const vars: Record<string, string> = {
+  const templateSrc = config.prompt || buildDefaultPrompt(config);
+  const template = moveTemplates.compile(templateSrc, { noEscape: true });
+  return template({
     token,
     schema: config.schemaHint ?? (config.schema ? JSON.stringify(config.schema, null, 2) : "{}"),
     moveName: config.name,
     moveLabel: config.label,
     moveDescription: config.description,
-  };
-
-  // Flatten inputs as input.* vars
-  for (const [k, v] of Object.entries(inputs)) {
-    vars[`input.${k}`] = String(v ?? "");
-  }
-
-  // Flatten context as context.* vars
-  for (const [k, v] of Object.entries(context)) {
-    vars[`context.${k}`] = typeof v === "string" ? v : JSON.stringify(v);
-  }
-
-  let rendered = template;
-  for (const [k, v] of Object.entries(vars)) {
-    rendered = rendered.replaceAll(`{{${k}}}`, v);
-  }
-
-  return rendered;
+    input: inputs,
+    context,
+  });
 }
 
 function buildDefaultPrompt(config: MoveConfig): string {
@@ -343,17 +402,21 @@ function validateSchema(
 // ── Activate Move ──
 
 export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMoveResult | { error: string }> {
-  const { moveName, sessionId, inputs, cwd, userProfile } = opts;
+  const { moveName, sessionId, inputs, cwd, userProfile, modeOverride, forceNewSession } = opts;
+  const sourceSessionId = sessionId ?? "";
 
   // Load move config
   const config = getMove(moveName, cwd);
   if (!config) return { error: `Move not found: ${moveName}` };
   if (config.enabled === false) return { error: `Move is disabled: ${moveName}` };
 
-  const mode = config.mode ?? "inline";
+  let mode = modeOverride ?? config.mode ?? "inline";
+  if (forceNewSession && mode === "inline") {
+    mode = "branch";
+  }
 
   // Build context
-  const moveCtx = buildMoveContext(moveName, sessionId, cwd, userProfile);
+  const moveCtx = buildMoveContext(moveName, sourceSessionId, cwd, userProfile);
 
   // Call gather() if context.ts exists
   let gatheredContext: Record<string, unknown> = {};
@@ -379,7 +442,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   // Create persisted execution record
   const moveRunId = insertMoveRun({
     moveName,
-    sessionId,
+    sessionId: sourceSessionId,
     mode,
     status: "pending",
     inputs: JSON.stringify(inputs),
@@ -390,12 +453,14 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   // Store token
   const moveToken: MoveToken = {
     token,
-    sessionId,
+    sessionId: sourceSessionId,
     moveName,
     mode,
     schema: config.schema,
     inputs,
     gatheredContext,
+    cwd,
+    userProfile,
     createdAt: Date.now(),
     ttl: DEFAULT_TTL_MS,
     status: "pending",
@@ -407,13 +472,18 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   tokenStore.set(token, moveToken);
 
   // Render prompt
-  const prompt = renderPrompt(configWithTemplate, inputs, gatheredContext, token);
+  let prompt: string;
+  try {
+    prompt = renderPrompt(configWithTemplate, inputs, gatheredContext, token);
+  } catch (err) {
+    return { error: `prompt render failed: ${err}` };
+  }
 
   // Log activity
   logActivity({
     userProfile,
     eventType: "move_activated",
-    sessionId,
+    sessionId: sourceSessionId || undefined,
     summary: `Move activated: ${config.label} (${mode})`,
     metadata: { moveName, mode, token },
   });
@@ -421,21 +491,19 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   // Execute based on mode
   if (mode === "inline") {
     // Inject prompt into current session
-    const active = getActiveSession(sessionId);
-    if (!active) return { error: `Session not active: ${sessionId}` };
-    queueMessage(sessionId, prompt);
+    const active = sourceSessionId ? getActiveSession(sourceSessionId) : null;
+    if (!sourceSessionId || !active) {
+      return { error: `Move "${moveName}" requires an active session` };
+    }
+    queueMessage(sourceSessionId, prompt);
     return { token, mode, moveRunId };
   }
 
   if (mode === "branch" || mode === "background") {
     // Spawn a new session with the move prompt
-    const profile = config.agentProfile ?? config.session?.profileOverride ?? undefined;
-    const spawned = startSession({
-      prompt,
-      profile: profile ?? undefined,
-      cwd,
-      userProfile,
-    });
+    const spawned = startSession(
+      buildSpawnSessionOpts(config, prompt, cwd, userProfile, sourceSessionId),
+    );
 
     // Wait for real session ID
     const start = Date.now();
@@ -520,8 +588,8 @@ export async function handleSubmit(
 
   // Load move config to get the CWD
   // We stored the session ID, look up the active session to get cwd
-  const active = getActiveSession(moveToken.sessionId);
-  const cwd = active?.cwd ?? process.cwd();
+  const active = moveToken.sessionId ? getActiveSession(moveToken.sessionId) : undefined;
+  const cwd = moveToken.cwd;
 
   // Call onSubmit() if context.ts exists
   let submitResult: SubmitResult = {};
@@ -532,7 +600,7 @@ export async function handleSubmit(
         moveToken.moveName,
         moveToken.sessionId,
         cwd,
-        active?.userProfile,
+        moveToken.userProfile ?? active?.userProfile,
       );
       submitResult = await mod.onSubmit(ctx, data, moveToken.inputs);
     }
@@ -570,9 +638,9 @@ export async function handleSubmit(
 
   // Log activity
   logActivity({
-    userProfile: active?.userProfile,
+    userProfile: moveToken.userProfile ?? active?.userProfile,
     eventType: "move_completed",
-    sessionId: moveToken.sessionId,
+    sessionId: moveToken.sessionId || undefined,
     summary: `Move completed: ${moveToken.moveName}`,
     metadata: {
       moveName: moveToken.moveName,
