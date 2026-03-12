@@ -7,7 +7,7 @@ import {
 } from "./AgentConfig";
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
-import { getAllTools, getToolGroups, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
+import { getAllTools, getToolGroups, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
 import type { Profile, SessionStatus } from "../api";
 
 type Props = {
@@ -114,6 +114,8 @@ export function ConfigBar({
   const editorProfileName = pendingProfileName || profileName;
   const overrideCount =
     pendingCount;
+  const claudePermissionMode = agentConfig.providerControls?.claude?.permissionMode;
+  const showPermissionMode = isClaudeCodeProvider(effectiveProvider) && !!claudePermissionMode && claudePermissionMode !== "default";
   const toolSummary = isCodexProvider(effectiveProvider)
     ? (codexControls.sandboxMode ?? "sandbox:auto")
     : isGeminiProvider(effectiveProvider)
@@ -160,6 +162,9 @@ export function ConfigBar({
           <span className="config-bar-value">{effort}</span>
           {overrideCount > 0 && (
             <span className="config-bar-overrides">{overrideCount} override{overrideCount > 1 ? "s" : ""}</span>
+          )}
+          {showPermissionMode && (
+            <span className="config-bar-permission">{claudePermissionMode}</span>
           )}
         </div>
         <ChatSettings />

@@ -311,6 +311,8 @@ function AppShell() {
               <ChatView
                 messages={activeSession?.messages ?? []}
                 provider={liveProvider}
+                profileName={activeProfileName}
+                model={liveModel}
                 streaming={isStreaming}
                 streamFeed={activeSession?.streamFeed}
                 showThinking={ui.showThinking}
@@ -379,6 +381,7 @@ function AppShell() {
                 sessionId={activeSession?.id}
                 projectCwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
                 userProfile={activeUserProfile ?? undefined}
+                autoFocus={view === "chat" && !!activeSession?.id}
                 onMoveActivated={() => {
                   refreshSessions();
                   const cwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;

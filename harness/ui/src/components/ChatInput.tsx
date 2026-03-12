@@ -21,6 +21,7 @@ type Props = {
   projectCwd?: string;
   userProfile?: string;
   onMoveActivated?: (result: ActivateMoveResult) => void;
+  autoFocus?: boolean;
 };
 
 /** Read a File as base64 (strip the data: prefix) */
@@ -39,7 +40,7 @@ function fileToBase64(file: File): Promise<{ data: string; mediaType: string; na
 
 export function ChatInput({
   value, onChange, onSend, onStop,
-  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated,
+  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated, autoFocus = false,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const historyIndex = useRef(-1);
@@ -63,12 +64,12 @@ export function ChatInput({
     }
   }, [value]);
 
-  // Auto-focus input when component mounts or session changes
+  // Focus when the visible chat session changes or the chat view becomes active.
   useEffect(() => {
-    if (!disabled && ref.current) {
+    if (autoFocus && !disabled && ref.current) {
       ref.current.focus();
     }
-  }, [sessionStatus, disabled]);
+  }, [autoFocus, disabled, sessionId]);
 
   // Global Escape to stop — works regardless of focus, but not when picker is open
   useEffect(() => {

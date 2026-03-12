@@ -72,6 +72,10 @@ export function isGeminiProvider(provider?: string): boolean {
   return provider === "gemini-cli";
 }
 
+export function isClaudeCodeProvider(provider?: string): boolean {
+  return !provider || provider === "claude-code";
+}
+
 export function providerToolFamily(provider?: string): "claude-code" | "codex" | "gemini-cli" | "pi-agent" {
   if (isPiProvider(provider)) return "pi-agent";
   if (isCodexProvider(provider)) return "codex";

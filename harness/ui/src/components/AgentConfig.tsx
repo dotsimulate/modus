@@ -11,7 +11,7 @@ import { fetchProviderModels } from "../api";
 import type { ProviderModel, AgentConfigState } from "../api";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
-import { isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
+import { isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
 
 export type { AgentConfigState };
 
@@ -110,7 +110,10 @@ export function AgentConfig({
       provider,
       model: "",
       ...(switchingToolFamilies ? { toolStates: {} } : {}),
-      ...(isCodexProvider(provider || profileProvider) ? {} : { providerControls: {} }),
+      providerControls: {
+        ...(isCodexProvider(provider || profileProvider) ? { codex: config.providerControls?.codex } : {}),
+        ...(isClaudeCodeProvider(provider || profileProvider) ? { claude: config.providerControls?.claude } : {}),
+      },
     };
     onChange(nextConfig);
 
@@ -137,10 +140,17 @@ export function AgentConfig({
     update({
       providerControls: {
         ...(config.providerControls ?? {}),
-        codex: {
-          ...codexControls,
-          ...patch,
-        },
+        codex: { ...codexControls, ...patch },
+      },
+    });
+  };
+
+  const claudeControls = config.providerControls?.claude ?? {};
+  const updateClaudeControls = (patch: NonNullable<NonNullable<AgentConfigState["providerControls"]>["claude"]>) => {
+    update({
+      providerControls: {
+        ...(config.providerControls ?? {}),
+        claude: { ...claudeControls, ...patch },
       },
     });
   };
@@ -243,6 +253,30 @@ export function AgentConfig({
         </div>
       ) : null}
 
+      {/* Claude-specific runtime controls */}
+      {isClaudeCodeProvider(effectiveProvider) ? (
+        <div className="agent-config-row">
+          <label className="agent-config-field">
+            <span>permissions</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={claudeControls.permissionMode ?? ""}
+              options={[
+                { value: "default" },
+                { value: "acceptEdits" },
+                { value: "plan" },
+                { value: "dontAsk" },
+              ]}
+              placeholder="profile default"
+              searchPlaceholder="search permission mode..."
+              onChange={(permissionMode) => updateClaudeControls({
+                permissionMode: permissionMode as NonNullable<NonNullable<AgentConfigState["providerControls"]>["claude"]>["permissionMode"],
+              })}
+            />
+          </label>
+        </div>
+      ) : null}
+
       {/* Tools section */}
       {!isCodexProvider(effectiveProvider) && toolsCollapsible ? (
         <button
@@ -305,9 +339,12 @@ function equalProviderControls(
 ): boolean {
   const leftCodex = left?.codex ?? {};
   const rightCodex = right?.codex ?? {};
+  const leftClaude = left?.claude ?? {};
+  const rightClaude = right?.claude ?? {};
   return (
     leftCodex.sandboxMode === rightCodex.sandboxMode
     && leftCodex.webSearchMode === rightCodex.webSearchMode
+    && leftClaude.permissionMode === rightClaude.permissionMode
   );
 }
 
