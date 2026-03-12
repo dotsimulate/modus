@@ -70,6 +70,7 @@ export interface ActionConfig {
   name: string;
   description: string;
   enabled: boolean;
+  origin?: "harness" | "project";
 
   // ── What to run ──
   agentProfile: string;
@@ -377,6 +378,7 @@ export interface ActionState {
   config: ActionConfig;
   /** Filesystem directory containing this action's config + context.ts */
   actionDir: string;
+  origin: "harness" | "project";
   activeExecutions: Map<number, ExecutionState>; // keyed by execution ID
   lastRunAt: number | null;
   nextRunAt: number | null;

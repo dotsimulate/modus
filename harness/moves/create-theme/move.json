@@ -1,0 +1,25 @@
+{
+  "name": "create-theme",
+  "label": "Create project theme",
+  "description": "Author a project-local theme CSS file, register it in .modus/ui, and optionally activate it.",
+  "icon": "palette",
+  "mode": "inline",
+  "inputs": [
+    {
+      "name": "prompt",
+      "label": "Describe the theme",
+      "type": "textarea",
+      "placeholder": "Describe the vibe, palette, mood, or name. The assistant will create the theme."
+    }
+  ],
+  "schemaHint": "{ themeId: string, themeName: string, cssPath: string, activate?: boolean, notes?: string }",
+  "submit": {
+    "required": true,
+    "maxAttempts": 2
+  },
+  "session": {
+    "profileOverride": "web-ui",
+    "afterSubmit": "continue"
+  },
+  "tags": ["ui", "theme", "project-ui", "builtin"]
+}

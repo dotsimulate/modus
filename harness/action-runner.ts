@@ -4,7 +4,10 @@
  * Actions are the automation primitive in MO:
  *   trigger → gather() → session → afterRun()
  *
- * Each action is a directory: actions/<name>/ containing:
+ * Built-in harness actions live in `harness/actions/<name>/`.
+ * Project-local actions live in `.modus/actions/<name>/` and override built-ins.
+ *
+ * Each action is a directory containing:
  *   - action.json  → ActionConfig (trigger, agent profile ref, limits)
  *   - context.ts   → ActionModule (gather function + optional afterRun hook)
  *
@@ -232,6 +235,7 @@ function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
     try {
       const config = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
       config.name = name;
+      config.origin = defaultCwd ? "project" : "harness";
       // Project-local actions default their CWD to the project they came from
       if (defaultCwd && !config.cwd) config.cwd = defaultCwd;
 
@@ -274,6 +278,7 @@ function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
         const state: ActionState = existing ?? {
           config,
           actionDir,
+          origin: config.origin ?? "harness",
           activeExecutions: new Map(),
           lastRunAt: null,
           nextRunAt: null,
@@ -282,6 +287,7 @@ function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
         Object.assign(state, {
           config,
           actionDir,
+          origin: config.origin ?? state.origin,
           lastRunAt: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
           nextRunAt,
           exhausted: deriveExhausted(config, lastRunNumber, currentCycle, cycleRunCount),
@@ -961,6 +967,7 @@ export function stopActions(): void {
 
 /** Get all actions with runtime state — derives flat fields from active executions for API compat */
 export function getActions(): Array<ActionConfig & {
+  origin: "harness" | "project";
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;
@@ -974,6 +981,7 @@ export function getActions(): Array<ActionConfig & {
     const exec = findActiveExecution(s);
     return {
       ...s.config,
+      origin: s.origin,
       nextRunAt: s.nextRunAt,
       lastRunAt: s.lastRunAt,
       lastStatus: exec?.lastStatus ?? null,
