@@ -23,6 +23,7 @@ import {
   subscribeSession, unsubscribeSession, isSubscribed,
   rekeySession, removeSession,
 } from "../sessionStore";
+import { loadAndApplyProjectUiState } from "../project-ui-theme";
 
 export type QueuedMessage = {
   text: string;
@@ -173,9 +174,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       && (next === "idle" || next === "error")
     ) {
       refreshSessions();
+      loadAndApplyProjectUiState(activeSession?.cwd || undefined);
     }
     prevActiveStatusRef.current = next;
-  }, [activeSession?.status, refreshSessions]);
+  }, [activeSession?.cwd, activeSession?.status, refreshSessions]);
 
   // ── URL hash sync ──
 

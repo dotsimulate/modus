@@ -1130,6 +1130,37 @@ export type PeriodCosts = {
   month: { cost: number; sessions: number; messages: number };
 };
 
+export type UsageBucket = {
+  sessions: number;
+  turns: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cost: number;
+};
+
+export type ProviderUsageTotal = UsageBucket & {
+  provider: string;
+};
+
+export type ModelUsageTotal = UsageBucket & {
+  provider: string;
+  model: string;
+};
+
+export type ProviderUsageDaily = UsageBucket & {
+  day: string;
+  provider: string;
+};
+
+export type ProviderUsageAnalytics = {
+  windowDays: number;
+  totals: UsageBucket;
+  providers: ProviderUsageTotal[];
+  models: ModelUsageTotal[];
+  daily: ProviderUsageDaily[];
+};
+
 export function getPeriodCosts(userProfile?: string): PeriodCosts {
   const now = Date.now();
   const todayStart = now - (now % 86_400_000);
@@ -1153,6 +1184,161 @@ export function getPeriodCosts(userProfile?: string): PeriodCosts {
     week: query(weekStart),
     month: query(monthStart),
   };
+}
+
+function createUsageBucket(): UsageBucket {
+  return {
+    sessions: 0,
+    turns: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+  };
+}
+
+function addUsage(
+  bucket: UsageBucket,
+  metrics: { turns: number; inputTokens: number; outputTokens: number; totalTokens: number; cost: number },
+) {
+  bucket.turns += metrics.turns;
+  bucket.inputTokens += metrics.inputTokens;
+  bucket.outputTokens += metrics.outputTokens;
+  bucket.totalTokens += metrics.totalTokens;
+  bucket.cost += metrics.cost;
+}
+
+function usageDay(ts: number): string {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+export function getProviderUsageAnalytics(
+  opts: { userProfile?: string; days?: number } = {},
+): ProviderUsageAnalytics {
+  const windowDays = Math.max(1, Math.min(120, opts.days ?? 30));
+  const since = Date.now() - windowDays * 86_400_000;
+  const upFilter = opts.userProfile ? ` AND (s.user_profile = ? OR s.user_profile IS NULL)` : "";
+  const params: any[] = opts.userProfile ? [since, opts.userProfile] : [since];
+  const rows = db.prepare(`
+    SELECT
+      s.id AS session_id,
+      COALESCE(s.provider, '(unknown)') AS provider,
+      COALESCE(s.model, '(unknown)') AS model,
+      e.data,
+      e.created_at
+    FROM events e
+    JOIN sessions s ON s.id = e.session_id
+    WHERE e.type = 'result'
+      AND s.tags NOT LIKE '%"archived"%'
+      AND s.tags NOT LIKE '%"internal"%'
+      AND e.created_at >= ?
+      ${upFilter}
+    ORDER BY e.created_at ASC
+  `).all(...params) as {
+    session_id: string;
+    provider: string;
+    model: string;
+    data: string;
+    created_at: number;
+  }[];
+
+  const totals = createUsageBucket();
+  const totalSessions = new Set<string>();
+  const providerAgg = new Map<string, UsageBucket & { sessionIds: Set<string> }>();
+  const modelAgg = new Map<string, UsageBucket & { provider: string; model: string; sessionIds: Set<string> }>();
+  const dailyAgg = new Map<string, UsageBucket & { day: string; provider: string; sessionIds: Set<string> }>();
+
+  for (const row of rows) {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(row.data) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    const inputTokens = typeof parsed.input_tokens === "number" ? parsed.input_tokens : 0;
+    const outputTokens = typeof parsed.output_tokens === "number" ? parsed.output_tokens : 0;
+    const totalTokens = typeof parsed.total_tokens === "number"
+      ? parsed.total_tokens
+      : inputTokens + outputTokens;
+    const turns = typeof parsed.num_turns === "number" && parsed.num_turns > 0 ? parsed.num_turns : 1;
+    const cost = typeof parsed.total_cost_usd === "number" ? parsed.total_cost_usd : 0;
+    const metrics = { turns, inputTokens, outputTokens, totalTokens, cost };
+    const provider = row.provider || "(unknown)";
+    const model = row.model || "(unknown)";
+    const day = usageDay(row.created_at);
+
+    addUsage(totals, metrics);
+    totalSessions.add(row.session_id);
+
+    let providerBucket = providerAgg.get(provider);
+    if (!providerBucket) {
+      providerBucket = { ...createUsageBucket(), sessionIds: new Set<string>() };
+      providerAgg.set(provider, providerBucket);
+    }
+    addUsage(providerBucket, metrics);
+    providerBucket.sessionIds.add(row.session_id);
+
+    const modelKey = `${provider}::${model}`;
+    let modelBucket = modelAgg.get(modelKey);
+    if (!modelBucket) {
+      modelBucket = { ...createUsageBucket(), provider, model, sessionIds: new Set<string>() };
+      modelAgg.set(modelKey, modelBucket);
+    }
+    addUsage(modelBucket, metrics);
+    modelBucket.sessionIds.add(row.session_id);
+
+    const dailyKey = `${day}::${provider}`;
+    let dailyBucket = dailyAgg.get(dailyKey);
+    if (!dailyBucket) {
+      dailyBucket = { ...createUsageBucket(), day, provider, sessionIds: new Set<string>() };
+      dailyAgg.set(dailyKey, dailyBucket);
+    }
+    addUsage(dailyBucket, metrics);
+    dailyBucket.sessionIds.add(row.session_id);
+  }
+
+  totals.sessions = totalSessions.size;
+
+  const providers = [...providerAgg.entries()]
+    .map(([provider, bucket]) => ({
+      provider,
+      sessions: bucket.sessionIds.size,
+      turns: bucket.turns,
+      inputTokens: bucket.inputTokens,
+      outputTokens: bucket.outputTokens,
+      totalTokens: bucket.totalTokens,
+      cost: bucket.cost,
+    }))
+    .sort((left, right) => right.totalTokens - left.totalTokens);
+
+  const models = [...modelAgg.values()]
+    .map((bucket) => ({
+      provider: bucket.provider,
+      model: bucket.model,
+      sessions: bucket.sessionIds.size,
+      turns: bucket.turns,
+      inputTokens: bucket.inputTokens,
+      outputTokens: bucket.outputTokens,
+      totalTokens: bucket.totalTokens,
+      cost: bucket.cost,
+    }))
+    .sort((left, right) => right.totalTokens - left.totalTokens);
+
+  const daily = [...dailyAgg.values()]
+    .map((bucket) => ({
+      day: bucket.day,
+      provider: bucket.provider,
+      sessions: bucket.sessionIds.size,
+      turns: bucket.turns,
+      inputTokens: bucket.inputTokens,
+      outputTokens: bucket.outputTokens,
+      totalTokens: bucket.totalTokens,
+      cost: bucket.cost,
+    }))
+    .sort((left, right) => left.day.localeCompare(right.day) || left.provider.localeCompare(right.provider));
+
+  return { windowDays, totals, providers, models, daily };
 }
 
 // ── Startup Cleanup ──

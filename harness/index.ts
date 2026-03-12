@@ -35,6 +35,7 @@ import {
   updateSessionTitle,
   getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
+  getProviderUsageAnalytics,
   getSessionMessages,
 } from "./db";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
@@ -1441,6 +1442,13 @@ app.get("/api/stats/sessions", (c) => {
   return c.json(getSessionStats(userProfile));
 });
 
+app.get("/api/analytics/provider-usage", (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const userProfile = params.get("userProfile") ?? undefined;
+  const days = params.get("days") ? Number(params.get("days")) : undefined;
+  return c.json(getProviderUsageAnalytics({ userProfile, days }));
+});
+
 app.get("/api/account", async (c) => {
   const params = new URL(c.req.url).searchParams;
   const userProfile = params.get("userProfile") ?? undefined;
@@ -1519,6 +1527,36 @@ app.get("/api/moves/:name", (c) => {
   return c.json(move);
 });
 
+// Activate a move without a parent session
+app.post("/api/moves/activate", async (c) => {
+  const body = await c.req.json();
+  const { moveName, inputs, cwd, userProfile, modeOverride, forceNewSession } = body;
+  if (!moveName) return c.json({ error: "moveName required" }, 400);
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+
+  const move = getMove(moveName, cwd);
+  if (!move) return c.json({ error: "move not found" }, 404);
+  const effectiveMode = (() => {
+    const requested = modeOverride ?? move.mode ?? "inline";
+    return forceNewSession && requested === "inline" ? "branch" : requested;
+  })();
+  if (effectiveMode === "inline") {
+    return c.json({ error: `Move "${moveName}" requires an active session` }, 400);
+  }
+
+  const result = await activateMove({
+    moveName,
+    inputs: inputs ?? {},
+    cwd,
+    userProfile,
+    modeOverride,
+    forceNewSession,
+  });
+
+  if ("error" in result) return c.json(result, 400);
+  return c.json(result);
+});
+
 // Get move run history
 app.get("/api/moves/:name/runs", (c) => {
   const name = c.req.param("name");
@@ -1561,7 +1599,7 @@ app.get("/api/sessions/:id/moves/active", (c) => {
 app.post("/api/sessions/:id/moves/activate", async (c) => {
   const sessionId = c.req.param("id");
   const body = await c.req.json();
-  const { moveName, inputs, cwd, userProfile } = body;
+  const { moveName, inputs, cwd, userProfile, modeOverride, forceNewSession } = body;
   if (!moveName) return c.json({ error: "moveName required" }, 400);
   if (!cwd) return c.json({ error: "cwd required" }, 400);
 
@@ -1571,6 +1609,8 @@ app.post("/api/sessions/:id/moves/activate", async (c) => {
     inputs: inputs ?? {},
     cwd,
     userProfile,
+    modeOverride,
+    forceNewSession,
   });
 
   if ("error" in result) return c.json(result, 400);

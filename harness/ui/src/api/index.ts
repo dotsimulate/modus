@@ -52,8 +52,12 @@ export { fetchPrompts, renderPromptApi, reloadPromptsApi } from "./prompts";
 export type { PromptListItem, PromptInput, RenderResult } from "./prompts";
 
 // Moves
-export { fetchMoves, activateMoveApi } from "./moves";
+export { fetchMoves, activateMoveApi, activateProjectMoveApi } from "./moves";
 export type { MoveInput, MoveListItem, ActivateMoveResult } from "./moves";
+
+// Analytics
+export { fetchProviderUsageAnalytics } from "./analytics";
+export type { ProviderUsageAnalytics, ProviderUsageDaily, ProviderUsageTotal, ModelUsageTotal, UsageBucket } from "./analytics";
 
 // All types
 export type {

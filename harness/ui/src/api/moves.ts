@@ -43,9 +43,31 @@ export async function activateMoveApi(
     inputs: Record<string, unknown>;
     cwd: string;
     userProfile?: string;
+    modeOverride?: "inline" | "branch" | "background";
+    forceNewSession?: boolean;
   },
 ): Promise<ActivateMoveResult> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/moves/activate`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({ error: "move activation failed" }));
+  if (!res.ok) {
+    throw new Error(data.error ?? "move activation failed");
+  }
+  return data;
+}
+
+export async function activateProjectMoveApi(body: {
+  moveName: string;
+  inputs: Record<string, unknown>;
+  cwd: string;
+  userProfile?: string;
+  modeOverride?: "inline" | "branch" | "background";
+  forceNewSession?: boolean;
+}): Promise<ActivateMoveResult> {
+  const res = await fetch(`${API_BASE}/api/moves/activate`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(body),
