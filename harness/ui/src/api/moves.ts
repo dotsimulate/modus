@@ -14,6 +14,7 @@ export type MoveListItem = {
   name: string;
   label: string;
   description: string;
+  origin?: "harness" | "project";
   icon?: string;
   mode?: "inline" | "branch" | "background";
   inputs?: MoveInput[];

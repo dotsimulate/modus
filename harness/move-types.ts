@@ -6,7 +6,11 @@
  *   - Actions define WHEN automation runs
  *   - Moves define WHAT the user wants done right now
  *
- * Each move is a directory: .modus/moves/<name>/ containing:
+ * Built-in harness moves live in `harness/moves/<name>/`.
+ * Project-local moves live in `.modus/moves/<name>/`.
+ * Project-local moves override built-ins with the same name.
+ *
+ * Each move is a directory containing:
  *   - move.json   → MoveConfig
  *   - context.ts  → MoveModule (optional gather + onSubmit)
  *   - prompt.hbs  → template (optional, inline prompt is fine)
@@ -24,6 +28,7 @@ export interface MoveConfig {
   label: string;
   description: string;
   icon?: string;
+  origin?: "harness" | "project";
 
   // ── User inputs (form fields before execution) ──
   inputs?: MoveInput[];

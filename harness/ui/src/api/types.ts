@@ -396,6 +396,7 @@ export type NotifySpec = {
 export type ActionInfo = {
   name: string;
   description: string;
+  origin?: "harness" | "project";
   agentProfile: string;
   trigger: ActionTrigger;
   cycleInterval?: string;

@@ -9,6 +9,9 @@
  *   - branch:     spawn a sibling session with move prompt, return link
  *   - background: fire-and-forget session with persisted status
  *
+ * Built-in harness moves live in `harness/moves/<name>/`.
+ * Project-local moves live in `.modus/moves/<name>/` and override built-ins.
+ *
  * Token management is in-memory with TTL expiry.
  * Execution records are persisted to DB for recall.
  */
@@ -37,6 +40,7 @@ import { triggerAction } from "./action-runner";
 
 // ── Constants ──
 
+const BUILTIN_MOVES_DIR = join(import.meta.dir, "moves");
 const MODUS_MOVES_DIR = ".modus/moves";
 const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -80,18 +84,37 @@ setInterval(() => {
 
 // ── Move Loading ──
 
-function movesDir(cwd: string): string {
+function projectMovesDir(cwd: string): string {
   return join(cwd, MODUS_MOVES_DIR);
+}
+
+function resolveMoveLocation(name: string, cwd: string): {
+  dir: string;
+  origin: "harness" | "project";
+} | null {
+  const projectDir = join(projectMovesDir(cwd), name);
+  if (existsSync(join(projectDir, "move.json"))) {
+    return { dir: projectDir, origin: "project" };
+  }
+
+  const builtinDir = join(BUILTIN_MOVES_DIR, name);
+  if (existsSync(join(builtinDir, "move.json"))) {
+    return { dir: builtinDir, origin: "harness" };
+  }
+
+  return null;
 }
 
 /** Load a single move config from disk */
 export function getMove(name: string, cwd: string): MoveConfig | null {
-  const configPath = join(movesDir(cwd), name, "move.json");
-  if (!existsSync(configPath)) return null;
+  const location = resolveMoveLocation(name, cwd);
+  if (!location) return null;
+  const configPath = join(location.dir, "move.json");
   try {
     const raw = readFileSync(configPath, "utf-8");
     const config: MoveConfig = JSON.parse(raw);
     config.name = name; // enforce directory name as canonical
+    config.origin = location.origin;
     return config;
   } catch (err) {
     console.error(`[move-runner] Failed to load move "${name}":`, err);
@@ -101,24 +124,33 @@ export function getMove(name: string, cwd: string): MoveConfig | null {
 
 /** List all available moves for a CWD */
 export function listMoves(cwd: string): MoveConfig[] {
-  const dir = movesDir(cwd);
-  if (!existsSync(dir)) return [];
-  const moves: MoveConfig[] = [];
+  const names = new Set<string>();
   try {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const config = getMove(entry.name, cwd);
-      if (config && config.enabled !== false) moves.push(config);
+    if (existsSync(BUILTIN_MOVES_DIR)) {
+      for (const entry of readdirSync(BUILTIN_MOVES_DIR, { withFileTypes: true })) {
+        if (entry.isDirectory()) names.add(entry.name);
+      }
+    }
+    const projectDir = projectMovesDir(cwd);
+    if (existsSync(projectDir)) {
+      for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) names.add(entry.name);
+      }
     }
   } catch {
     // directory doesn't exist or isn't readable
   }
-  return moves;
+  return Array.from(names)
+    .sort()
+    .map((name) => getMove(name, cwd))
+    .filter((config): config is MoveConfig => !!config && config.enabled !== false);
 }
 
 /** Load move module (context.ts) if it exists */
 async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | null> {
-  const modulePath = join(movesDir(cwd), name, "context.ts");
+  const location = resolveMoveLocation(name, cwd);
+  if (!location) return null;
+  const modulePath = join(location.dir, "context.ts");
   if (!existsSync(modulePath)) return null;
   try {
     const mod = await import(modulePath);
@@ -131,7 +163,9 @@ async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | n
 
 /** Load external prompt template if it exists */
 function loadPromptTemplate(name: string, cwd: string): string | null {
-  const templatePath = join(movesDir(cwd), name, "prompt.hbs");
+  const location = resolveMoveLocation(name, cwd);
+  if (!location) return null;
+  const templatePath = join(location.dir, "prompt.hbs");
   if (!existsSync(templatePath)) return null;
   try {
     return readFileSync(templatePath, "utf-8");

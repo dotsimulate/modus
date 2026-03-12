@@ -29,7 +29,8 @@
   "include": [
     "./*.ts",
     "./providers/**/*.ts",
-    "./actions/**/*.ts"
+    "./actions/**/*.ts",
+    "./moves/**/*.ts"
   ],
   "exclude": [
     "./ui",
