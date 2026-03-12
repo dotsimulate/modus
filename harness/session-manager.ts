@@ -34,7 +34,6 @@ function getOnSessionEvent() {
 import { getProfile, getUserData, getUserProfile } from "./profiles";
 import { getProvider } from "./providers/registry";
 import type { SessionProvider, TurnContext } from "./providers/types";
-import { gitHead, gitLogRange, isGitRepo, type GitLogEntry } from "./git";
 
 // ── Types ──
 
@@ -137,19 +136,6 @@ export function contentPreview(content: MessageContent, maxLen = 80): string {
 // ── Active Sessions Map ──
 
 const activeSessions = new Map<string, ActiveSession>();
-const GIT_WATCH_POLL_MS = 3000;
-
-type GitWatcher = {
-  cwd: string;
-  sessions: Set<string>;
-  isRepo: boolean | null;
-  lastHeadHash: string | null;
-  timer: ReturnType<typeof setInterval> | null;
-  polling: boolean;
-  ready: boolean;
-};
-
-const gitWatchers = new Map<string, GitWatcher>();
 
 export function getActiveSession(id: string): ActiveSession | undefined {
   return activeSessions.get(id);
@@ -172,7 +158,6 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
 
     emitEvent(event: any) {
       persistAndBroadcastEvent(session, event);
-      scheduleGitWatcherPoll(session.cwd);
     },
 
     broadcastEvent(event: any) {
@@ -185,14 +170,9 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
 
     rekeySession(newId: string) {
       const oldId = session.sessionId;
-      const watcher = normalizeWatchCwd(session.cwd) ? gitWatchers.get(normalizeWatchCwd(session.cwd)!) : undefined;
       activeSessions.delete(oldId);
       session.sessionId = newId;
       activeSessions.set(newId, session);
-      if (watcher) {
-        watcher.sessions.delete(oldId);
-        watcher.sessions.add(newId);
-      }
       if (oldId !== newId) {
         renameSession(oldId, newId);
       }
@@ -288,12 +268,6 @@ function configEventPayload(config: {
   };
 }
 
-function normalizeWatchCwd(cwd?: string): string | null {
-  if (!cwd) return null;
-  const trimmed = cwd.trim();
-  return trimmed ? trimmed : null;
-}
-
 function persistAndBroadcastEvent(session: ActiveSession, event: any) {
   session.seq++;
   addEvent(
@@ -311,136 +285,6 @@ function broadcastEventToSession(session: ActiveSession, event: any, seq = sessi
   const seqStr = String(seq);
   for (const sub of session.subscribers) {
     try { sub.write(event.type, data, seqStr); } catch { session.subscribers.delete(sub); }
-  }
-}
-
-async function ensureGitWatcher(cwd?: string): Promise<GitWatcher | null> {
-  const normalized = normalizeWatchCwd(cwd);
-  if (!normalized) return null;
-
-  let watcher = gitWatchers.get(normalized);
-  if (!watcher) {
-    watcher = {
-      cwd: normalized,
-      sessions: new Set(),
-      isRepo: null,
-      lastHeadHash: null,
-      timer: null,
-      polling: false,
-      ready: false,
-    };
-    gitWatchers.set(normalized, watcher);
-  }
-
-  if (watcher.isRepo === null) {
-    watcher.isRepo = await isGitRepo(normalized);
-  }
-
-  if (watcher.isRepo && !watcher.ready) {
-    const head = await gitHead(normalized);
-    watcher.lastHeadHash = head?.hash ?? null;
-    watcher.ready = true;
-  }
-
-  if (watcher.isRepo && !watcher.timer) {
-    watcher.timer = setInterval(() => {
-      void pollGitWatcher(watcher.cwd);
-    }, GIT_WATCH_POLL_MS);
-  }
-
-  return watcher;
-}
-
-async function attachSessionGitWatcher(session: ActiveSession) {
-  const watcher = await ensureGitWatcher(session.cwd);
-  watcher?.sessions.add(session.sessionId);
-}
-
-function detachSessionGitWatcher(session: ActiveSession, previousCwd?: string) {
-  const normalized = normalizeWatchCwd(previousCwd ?? session.cwd);
-  if (!normalized) return;
-  const watcher = gitWatchers.get(normalized);
-  if (!watcher) return;
-  watcher.sessions.delete(session.sessionId);
-  if (watcher.sessions.size === 0) {
-    if (watcher.timer) clearInterval(watcher.timer);
-    gitWatchers.delete(normalized);
-  }
-}
-
-function scheduleGitWatcherPoll(cwd?: string) {
-  const normalized = normalizeWatchCwd(cwd);
-  if (!normalized) return;
-  setTimeout(() => {
-    void pollGitWatcher(normalized);
-  }, 150);
-}
-
-function buildGitActivityEvent(cwd: string, head: GitLogEntry) {
-  return {
-    type: "git_activity",
-    subtype: "commit",
-    cwd,
-    hash: head.hash,
-    branch: head.branch,
-    message: head.message,
-    author: head.author,
-    date: head.date,
-    filesChanged: head.filesChanged,
-    additions: head.additions,
-    deletions: head.deletions,
-  };
-}
-
-async function pollGitWatcher(cwd: string) {
-  const watcher = gitWatchers.get(cwd);
-  if (!watcher || watcher.polling || watcher.sessions.size === 0) return;
-  watcher.polling = true;
-
-  try {
-    if (watcher.isRepo === null) {
-      watcher.isRepo = await isGitRepo(cwd);
-    }
-    if (!watcher.isRepo) return;
-
-    const head = await gitHead(cwd);
-    if (!head) return;
-
-    if (!watcher.ready) {
-      watcher.lastHeadHash = head.hash;
-      watcher.ready = true;
-      return;
-    }
-
-    if (watcher.lastHeadHash === head.hash) return;
-
-    const commits = watcher.lastHeadHash
-      ? await gitLogRange(cwd, watcher.lastHeadHash, head.hash)
-      : [head];
-    watcher.lastHeadHash = head.hash;
-
-    for (const commit of commits.length > 0 ? commits : [head]) {
-      const event = buildGitActivityEvent(cwd, {
-        ...commit,
-        branch: commit.branch ?? head.branch,
-      });
-      for (const sessionId of watcher.sessions) {
-        const session = activeSessions.get(sessionId);
-        if (!session) {
-          watcher.sessions.delete(sessionId);
-          continue;
-        }
-        persistAndBroadcastEvent(session, event);
-      }
-    }
-  } catch (error) {
-    console.error("[git-watch] poll failed:", cwd, error);
-  } finally {
-    watcher.polling = false;
-    if (watcher.sessions.size === 0) {
-      if (watcher.timer) clearInterval(watcher.timer);
-      gitWatchers.delete(cwd);
-    }
   }
 }
 
@@ -525,7 +369,6 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   };
 
   activeSessions.set(tempId, session);
-  void attachSessionGitWatcher(session);
 
   // DB row: always exists before provider starts.
   // Resume: update status on existing row (preserves cost, message count, etc.)
@@ -796,12 +639,7 @@ export function updateSessionConfig(
       || session.provider;
   }
   if (config.cwd !== undefined) {
-    const previousCwd = session.cwd;
     session.cwd = config.cwd;
-    if (previousCwd !== session.cwd) {
-      detachSessionGitWatcher(session, previousCwd);
-      void attachSessionGitWatcher(session);
-    }
   }
   const normalizedTools = config.tools && config.tools.length > 0 ? config.tools : undefined;
   const normalizedDisallowedTools = config.disallowedTools && config.disallowedTools.length > 0
@@ -1020,7 +858,6 @@ export function shutdownAll() {
       session._provider.abort(session);
       session._provider.dispose?.(session).catch(() => {});
     } catch { /* best effort */ }
-    detachSessionGitWatcher(session);
     activeSessions.delete(id);
   }
 }

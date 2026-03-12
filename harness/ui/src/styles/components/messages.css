@@ -33,6 +33,14 @@
 }
 .message.message--git {
   margin-bottom: 14px;
+  padding: 0 32px;
+}
+.message.message--git::before,
+.message.message--git::after {
+  content: "";
+  display: block;
+  height: 1px;
+  background: var(--border);
 }
 
 .message-role {
@@ -105,60 +113,56 @@
 
 .git-activity {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
-  font-size: calc(12px * var(--font-scale, 1));
-  line-height: 1.5;
-}
-.git-activity-gutter {
-  width: 10px;
-  display: flex;
-  justify-content: center;
-  padding-top: 4px;
-  color: var(--info);
-  flex-shrink: 0;
+  font-size: calc(11px * var(--font-scale, 1));
+  padding: 6px 0;
+  min-width: 0;
 }
 .git-activity-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--info);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--info) 25%, transparent);
-}
-.git-activity-body {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.git-activity-line {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-  align-items: baseline;
+  background: var(--tool-commit);
+  flex-shrink: 0;
 }
 .git-activity-label {
-  color: var(--info);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--tool-commit);
   font-size: 10px;
   flex-shrink: 0;
 }
+.git-activity-hash {
+  color: var(--tool-commit);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.1s;
+  text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+}
+.git-activity-hash:hover {
+  opacity: 1;
+}
 .git-activity-message {
-  color: var(--text);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 .git-activity-meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   color: var(--text-muted);
   font-size: 10px;
-}
-.git-activity-hash {
-  color: var(--text-secondary);
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 

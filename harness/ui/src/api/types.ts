@@ -35,19 +35,6 @@ export type Attachment = {
   name?: string;     // original filename if available
 };
 
-export type GitActivity = {
-  subtype: "commit";
-  cwd: string;
-  hash: string;
-  branch?: string;
-  message: string;
-  author: string;
-  date: string;
-  filesChanged?: number;
-  additions?: number;
-  deletions?: number;
-};
-
 // ── Messages ──
 
 let _msgId = 0;
@@ -55,9 +42,8 @@ export function nextMsgId(): string { return `m${++_msgId}`; }
 
 export type Message = {
   id: string;
-  role: "user" | "assistant" | "system" | "git";
+  role: "user" | "assistant" | "system";
   content: string;
-  gitActivity?: GitActivity;
   thinking?: string;
   thinkingDuration?: number;
   toolCalls?: ToolCall[];
