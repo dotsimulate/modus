@@ -143,12 +143,13 @@ export async function onSubmit(
     }
   }
 
-  // Build compact delegate prompt
+  // Build compact delegate prompt — document FIRST, user focus quoted as context
   const parts: string[] = [
     `Handoff from ${ctx.session.profile ?? "previous agent"} — ${type}`,
-    `Focus: ${focus}`,
     "",
-    `Read the full handoff document: ${docPath}`,
+    `Read the full handoff document first: ${docPath}`,
+    "",
+    "The handoff document has grounding, resources, hot prep, and testimony from the previous agent. Read it before taking any action.",
   ];
 
   if (nextSteps?.length) {
@@ -160,9 +161,11 @@ export async function onSubmit(
     parts.push("", `Priority: ${priority}/5`);
   }
 
+  // User's original request — quoted so the agent treats it as context, not instruction
   parts.push(
     "",
-    "Start by reading the handoff document. It has grounding, resources, hot prep, and testimony from the previous agent.",
+    "USER CONTEXT (what the user said when triggering this handoff — for reference, not direct instruction):",
+    `> ${focus}`,
   );
 
   const delegatePrompt = parts.join("\n");

@@ -62,6 +62,9 @@ const stmts = {
   getById: db.prepare(`
     SELECT * FROM move_runs WHERE id = $id
   `),
+  getRecent: db.prepare(`
+    SELECT * FROM move_runs ORDER BY created_at DESC LIMIT $limit
+  `),
 };
 
 // ── Functions ──
@@ -136,4 +139,8 @@ export function getMoveRunByToken(token: string): MoveRun | null {
 export function getMoveRunById(id: number): MoveRun | null {
   const row = stmts.getById.get({ $id: id }) as any;
   return row ? mapRow(row) : null;
+}
+
+export function getRecentMoveRuns(limit = 50): MoveRun[] {
+  return (stmts.getRecent.all({ $limit: limit }) as any[]).map(mapRow);
 }

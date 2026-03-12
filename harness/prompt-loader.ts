@@ -95,6 +95,7 @@ const READ_MAX_BYTES = 50_000;  // ~50KB per file read
 // ── State ──
 
 const loadedPrompts = new Map<string, LoadedPrompt>();
+let _loadFingerprint = "";   // tracks prompt dirs state; reload when stale
 
 // ── Async helper pre-resolution cache (populated before each render) ──
 
@@ -314,6 +315,41 @@ function discoverProjectPromptDirs(): Array<{ promptsDir: string; projectCwd: st
   return result;
 }
 
+// ── Staleness Detection ──
+
+/**
+ * Build a fingerprint string from all prompt directories (built-in + project).
+ * Includes directory names and mtimes so any add/remove/edit triggers a reload.
+ */
+function computePromptFingerprint(): string {
+  const parts: string[] = [];
+
+  const scanDir = (dir: string) => {
+    if (!existsSync(dir)) return;
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => d.name);
+      for (const name of entries) {
+        const full = join(dir, name);
+        try {
+          const mt = statSync(full).mtimeMs;
+          parts.push(`${full}:${mt}`);
+        } catch {
+          parts.push(`${full}:?`);
+        }
+      }
+    } catch { /* dir unreadable */ }
+  };
+
+  scanDir(BUILT_IN_DIR);
+  for (const { promptsDir } of discoverProjectPromptDirs()) {
+    scanDir(promptsDir);
+  }
+
+  return parts.sort().join("|");
+}
+
 // ── Public API ──
 
 export function loadPrompts(): void {
@@ -323,10 +359,18 @@ export function loadPrompts(): void {
   for (const { promptsDir, projectCwd } of discoverProjectPromptDirs()) {
     loadPromptsFromDir(promptsDir, projectCwd, projectCwd);
   }
+  _loadFingerprint = computePromptFingerprint();
   console.log(`[prompts] ${loadedPrompts.size} prompt(s) loaded`);
 }
 
 export function listPrompts(opts?: { tags?: string[]; projectCwd?: string }): PromptListItem[] {
+  // Auto-reload if prompt directories have changed since last load
+  const current = computePromptFingerprint();
+  if (current !== _loadFingerprint) {
+    console.log("[prompts] Prompt directories changed, reloading...");
+    loadPrompts();
+  }
+
   const results: PromptListItem[] = [];
   const seen = new Set<string>();
 
@@ -360,7 +404,13 @@ export function getPrompt(name: string, projectCwd?: string): LoadedPrompt | nul
     const projectKey = `${name}@${projectCwd}`;
     if (loadedPrompts.has(projectKey)) return loadedPrompts.get(projectKey)!;
   }
-  return loadedPrompts.get(name) ?? null;
+  // Try plain name (built-in prompts)
+  if (loadedPrompts.has(name)) return loadedPrompts.get(name)!;
+  // Fallback: scan for any project-scoped entry with this name
+  for (const p of loadedPrompts.values()) {
+    if (p.name === name) return p;
+  }
+  return null;
 }
 
 export async function renderPrompt(

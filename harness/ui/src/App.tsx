@@ -23,6 +23,7 @@ import { UserSettingsModal } from "./components/UserSettingsModal";
 import { createEmptyAgentConfig } from "./components/AgentConfig";
 import { FileViewerProvider } from "./providers/FileViewerProvider";
 import { SessionWindow } from "./components/SessionWindow";
+import { SessionWeb } from "./components/SessionWeb";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
 function App() {
@@ -407,6 +408,7 @@ function AppShell() {
 
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
         {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
+        {view === "web" && <SessionWeb />}
         {view === "git" && (
           <PageView
             blocks={gitPageBlocks}

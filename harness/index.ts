@@ -1513,7 +1513,7 @@ app.get("/api/activity/summary", (c) => {
 // ── Moves ──
 
 import { listMoves, getMove, activateMove, getMoveRuns, getToken, getActiveTokensForSession } from "./move-runner";
-import { getMoveRunsBySession, getMoveRunById } from "./move-db";
+import { getMoveRunsBySession, getMoveRunById, getRecentMoveRuns } from "./move-db";
 import { handleModusMcpRequest } from "./modus-mcp";
 
 // List available moves for a CWD
@@ -1567,6 +1567,12 @@ app.get("/api/moves/:name/runs", (c) => {
   const name = c.req.param("name");
   const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 20);
   return c.json(getMoveRuns(name, limit));
+});
+
+// Get recent move runs across all sessions
+app.get("/api/move-runs/recent", (c) => {
+  const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 50);
+  return c.json(getRecentMoveRuns(limit));
 });
 
 // Get a specific move run by ID
