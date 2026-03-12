@@ -82,6 +82,10 @@ export type TurnContext = {
   /** Re-key the session in the active sessions map (called when SDK provides real ID) */
   rekeySession(newId: string): void;
 
+  /** Notify session-manager of a provider-initiated config change.
+   *  Updates _configOverrides and emits config_updated to subscribers. */
+  notifyConfigChange(patch: Record<string, unknown>): void;
+
   /** Update session row in the DB */
   updateSessionDb(updates: {
     status?: string;

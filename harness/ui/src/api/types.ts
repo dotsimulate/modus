@@ -91,6 +91,9 @@ export type AgentConfigState = {
       sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
       webSearchMode?: "disabled" | "cached" | "live";
     };
+    claude?: {
+      permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk";
+    };
   };
 };
 

@@ -79,6 +79,19 @@ function normalizeClaudeEffort(effort?: string): string | undefined {
   return effort;
 }
 
+const VALID_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "dontAsk"]);
+
+function readClaudePermissionMode(providerControls: unknown): "default" | "acceptEdits" | "plan" | "dontAsk" {
+  if (!providerControls || typeof providerControls !== "object") return "default";
+  const claude = (providerControls as Record<string, unknown>).claude;
+  if (!claude || typeof claude !== "object") return "default";
+  const mode = (claude as Record<string, unknown>).permissionMode;
+  if (typeof mode === "string" && VALID_PERMISSION_MODES.has(mode)) {
+    return mode as "default" | "acceptEdits" | "plan" | "dontAsk";
+  }
+  return "default";
+}
+
 // ── Input Channel (async generator for streaming input mode) ──
 
 function createInputChannel(): { generator: AsyncIterable<any>; channel: InputChannel } {
@@ -464,7 +477,7 @@ export function createClaudeCodeProvider(): SessionProvider {
           profileDef?.claudeMdExcludes,
           opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
         ),
-        permissionMode: "default" as const,
+        permissionMode: readClaudePermissionMode(opts.providerControls),
         canUseTool,
         hooks: {
           PreToolUse: [{
@@ -596,6 +609,9 @@ export function createClaudeCodeProvider(): SessionProvider {
       }
       if (config.systemPrompt !== undefined) {
         state.sdkOptions.systemPrompt = config.systemPrompt || undefined;
+      }
+      if (config.providerControls !== undefined) {
+        state.sdkOptions.permissionMode = readClaudePermissionMode(config.providerControls);
       }
 
       if (config.tools !== undefined && config.tools.length > 0 && hasMcp) {
@@ -749,6 +765,12 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       // Track running status
       if (m.type === "assistant" && m.message?.content) {
         session.status = "running";
+        // If agent called ExitPlanMode, clear permissionMode so next turn is normal
+        const content = m.message.content;
+        if (Array.isArray(content) && content.some((b: any) => b.type === "tool_use" && b.name === "ExitPlanMode")) {
+          state.sdkOptions.permissionMode = "default";
+          ctx.notifyConfigChange({ providerControls: { claude: { permissionMode: "default" } } });
+        }
       }
 
       // Handle result: inject harness timing + token count

@@ -168,6 +168,10 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
       }
     },
 
+    notifyConfigChange(patch: Record<string, unknown>) {
+      updateSessionConfig(session.sessionId, patch);
+    },
+
     rekeySession(newId: string) {
       const oldId = session.sessionId;
       activeSessions.delete(oldId);

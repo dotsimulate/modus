@@ -15,6 +15,8 @@ type DisplayItem =
 type Props = {
   messages: Message[];
   provider?: string;
+  profileName?: string | null;
+  model?: string | null;
   streaming: boolean;
   streamFeed?: string;
   showThinking?: boolean;
@@ -30,7 +32,7 @@ type Props = {
   onStopTask?: (taskId: string) => void;
 };
 
-export function ChatView({ messages, provider, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch, onStopTask }: Props) {
+export function ChatView({ messages, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch, onStopTask }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -39,6 +41,7 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const hasMessages = messages.length > 0;
+  const lastMessage = hasMessages ? messages[messages.length - 1] : null;
 
   const isNearBottom = useCallback((el: HTMLDivElement) => {
     return el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
@@ -235,6 +238,9 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
     return items;
   }, [commits, cwd, messages, showGitEvents]);
 
+  const showAssistantPrelude = streaming && lastMessage?.role === "user";
+  const assistantPreludeLabel = [profileName, model].filter(Boolean).join(" ");
+
   if (messages.length === 0) {
     return (
       <div className="empty-state">
@@ -299,6 +305,18 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
               </div>
             );
           })}
+          {showAssistantPrelude && (
+            <div className="message message--assistant-prelude" data-role="assistant">
+              <div className="message-meta message-meta--assistant-prelude">
+                <span className="sc-noise">
+                  <span className="sc-resolved">
+                    {assistantPreludeLabel || provider || "assistant"}
+                  </span>
+                  <span className="sc-glyphs"> responding ....</span>
+                </span>
+              </div>
+            </div>
+          )}
           <div ref={endRef} className="chat-anchor" />
         </div>
       </div>

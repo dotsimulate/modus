@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { SessionInfo } from "../../api";
-import { updateSessionTitle } from "../../api";
+import { updateSessionTitle, archiveSessionApi } from "../../api";
 import { useSessionState } from "../../sessionStore";
 import { formatSidebarProviderStat, getLatestAssistantUsage } from "../providerStats";
 
@@ -137,7 +137,14 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
             <span>{timeAgo(s.updated_at)}</span>
             <button
               className="session-archive-btn"
-              onClick={(e) => { e.stopPropagation(); onArchive(s.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isEmptySession(s)) {
+                  archiveSessionApi(s.id).catch(() => {});
+                } else {
+                  onArchive(s.id);
+                }
+              }}
               title="Archive session"
             >
               &times;

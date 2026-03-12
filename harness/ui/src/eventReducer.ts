@@ -413,6 +413,19 @@ function readProviderControls(providerControls: any): AgentConfigState["provider
       next.codex.webSearchMode = codex.webSearchMode;
     }
   }
+  const rawClaude = (providerControls as Record<string, unknown>).claude;
+  if (rawClaude && typeof rawClaude === "object") {
+    const claude = rawClaude as Record<string, unknown>;
+    next.claude = {};
+    if (
+      claude.permissionMode === "default"
+      || claude.permissionMode === "acceptEdits"
+      || claude.permissionMode === "plan"
+      || claude.permissionMode === "dontAsk"
+    ) {
+      next.claude.permissionMode = claude.permissionMode;
+    }
+  }
   return next;
 }
 
