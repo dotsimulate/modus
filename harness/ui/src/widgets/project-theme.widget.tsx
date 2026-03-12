@@ -9,7 +9,7 @@ import type { ProjectUiState } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { applyProjectUiState } from "../project-ui-theme";
 import { CustomSelect } from "../components/CustomSelect";
-import { basename } from "../utils/format";
+import { PromptComposer } from "../components/PromptComposer";
 import type { WidgetBase, WidgetDef, WidgetProps } from "./index";
 
 type ProjectThemeConfig = WidgetBase & {
@@ -17,7 +17,7 @@ type ProjectThemeConfig = WidgetBase & {
 };
 
 function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
-  const { activeCwd, activeUP, activeUserProfile } = useProfiles();
+  const { activeCwd, activeUserProfile } = useProfiles();
   const [state, setState] = useState<ProjectUiState | null>(null);
   const [busy, setBusy] = useState<"theme" | "font" | "create" | null>(null);
   const [error, setError] = useState<string>("");
@@ -130,56 +130,46 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
 
   return (
     <div className="project-theme-widget">
-      <div className="project-theme-meta">
-        <div className="project-theme-chip-row">
-          <span className="project-theme-chip">{basename(activeCwd)}</span>
-          {activeUP?.displayName && <span className="project-theme-chip">{activeUP.displayName}</span>}
+      <div className="project-theme-grid">
+        <div className="pt-controls">
+          <label className="pt-field">
+            <span className="pt-label">theme</span>
+            <CustomSelect
+              options={themes}
+              value={state?.activeTheme?.id ?? ""}
+              placeholder={themes.length ? "select theme" : "no themes"}
+              disabled={!themes.length || busy !== null}
+              onChange={handleThemeChange}
+            />
+          </label>
+          <label className="pt-field">
+            <span className="pt-label">font</span>
+            <CustomSelect
+              options={fonts}
+              value={state?.activeFont?.id ?? ""}
+              placeholder={fonts.length ? "select font" : "no fonts"}
+              disabled={!fonts.length || busy !== null}
+              onChange={handleFontChange}
+            />
+          </label>
         </div>
-        <div className="project-theme-path">{activeCwd}</div>
-      </div>
 
-      <div className="pt-controls">
-        <label className="pt-field">
-          <span className="pt-label">theme</span>
-          <CustomSelect
-            options={themes}
-            value={state?.activeTheme?.id ?? ""}
-            placeholder={themes.length ? "select theme" : "no themes"}
-            disabled={!themes.length || busy !== null}
-            onChange={handleThemeChange}
-          />
-        </label>
-        <label className="pt-field">
-          <span className="pt-label">font</span>
-          <CustomSelect
-            options={fonts}
-            value={state?.activeFont?.id ?? ""}
-            placeholder={fonts.length ? "select font" : "no fonts"}
-            disabled={!fonts.length || busy !== null}
-            onChange={handleFontChange}
-          />
-        </label>
-      </div>
-
-      <div className="pt-create">
-        <label className="pt-field">
-          <span className="pt-label">create theme</span>
-          <textarea
-            className="pt-create-input"
-            value={themePrompt}
-            onChange={(e) => setThemePrompt(e.target.value)}
-            placeholder="describe the vibe, palette, or direction..."
-            rows={3}
-            disabled={busy !== null}
-          />
-        </label>
-        <button
-          className="pt-create-btn"
-          onClick={handleCreateTheme}
-          disabled={!activeCwd || !themePrompt.trim() || busy !== null}
-        >
-          launch theme session
-        </button>
+        <div className="pt-create">
+          <label className="pt-field">
+            <span className="pt-label">create theme</span>
+            <PromptComposer
+              compact
+              value={themePrompt}
+              onChange={setThemePrompt}
+              onSubmit={handleCreateTheme}
+              submitLabel="launch theme session"
+              submitDisabled={!activeCwd || !themePrompt.trim() || busy !== null}
+              disabled={busy !== null}
+              placeholder="describe the vibe, palette, or direction..."
+              rows={3}
+            />
+          </label>
+        </div>
       </div>
 
       {busy && <div className="project-theme-busy">applying {busy}...</div>}

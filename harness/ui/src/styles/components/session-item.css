@@ -47,6 +47,13 @@
   min-width: 0;
   flex: 1;
 }
+.session-item-text--empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.session-item-meta--empty {
+  opacity: 0.45;
+}
 .session-title-input {
   background: none;
   border: none;
@@ -66,21 +73,27 @@
 }
 .session-item-meta {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-dim);
   margin-top: 4px;
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+.session-meta-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 .session-meta-left {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 }
 .session-meta-left > * {
   white-space: nowrap;
@@ -91,15 +104,23 @@
   gap: 6px;
   flex-shrink: 0;
   white-space: nowrap;
-  align-self: flex-start;
 }
 .session-profile-tag {
-  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 120px;
+}
+.session-model-tag {
   letter-spacing: 0.02em;
   color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .session-project-tag {
-  font-size: 10px;
   color: var(--text-dim);
   letter-spacing: 0.02em;
 }

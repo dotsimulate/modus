@@ -5,51 +5,22 @@
 .project-theme-widget {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   padding: 2px 0 4px;
 }
 
-/* ── Meta: chips + path ── */
-
-.project-theme-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.project-theme-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(0, 1.4fr);
+  gap: 16px;
+  align-items: start;
 }
 
-.project-theme-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.project-theme-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
-}
-
-.project-theme-path {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1.5;
-  word-break: break-all;
-}
-
-/* ── Controls: two-column selects ── */
+/* ── Controls: left column ── */
 
 .pt-controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
@@ -70,48 +41,6 @@
 .pt-create {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.pt-create-input {
-  min-height: 84px;
-  padding: 10px 11px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface-2);
-  color: var(--text);
-  font: inherit;
-  line-height: 1.45;
-  resize: vertical;
-}
-
-.pt-create-input::placeholder {
-  color: var(--text-muted);
-}
-
-.pt-create-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.pt-create-btn {
-  align-self: flex-start;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--border-strong, var(--border));
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
-  cursor: pointer;
-}
-
-.pt-create-btn:disabled {
-  opacity: 0.55;
-  cursor: default;
 }
 
 /* ── Status ── */
@@ -131,7 +60,7 @@
 }
 
 @media (max-width: 780px) {
-  .pt-controls {
+  .project-theme-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -9,6 +9,7 @@ type Props = {
   active: boolean;
   onSelect: (id: string) => void;
   onArchive: (id: string) => void;
+  draftInput?: string;
 };
 
 function statusDotClass(status: string): string {
@@ -27,26 +28,44 @@ export function timeAgo(ts: number): string {
 }
 
 function displayText(s: SessionInfo): string {
-  return s.title ?? s.last_prompt ?? s.preview;
+  return s.title || s.last_prompt || s.preview || "";
 }
 
-export function SessionItem({ session: s, active, onSelect, onArchive }: Props) {
+function isEmptySession(s: SessionInfo): boolean {
+  return !s.title && !s.last_prompt && !s.preview;
+}
+
+function compactModelName(model: string): string {
+  // Strip date suffixes like -20251101
+  let m = model.replace(/-\d{8}$/, "");
+  // Common shorthands
+  if (m.startsWith("claude-")) m = m.replace("claude-", "");
+  if (m.startsWith("gpt-")) return m;
+  if (m.startsWith("gemini-")) m = m.replace("gemini-", "");
+  return m;
+}
+
+export function SessionItem({ session: s, active, onSelect, onArchive, draftInput }: Props) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const liveSession = useSessionState(s.id);
   const latestUsage = liveSession ? getLatestAssistantUsage(liveSession.messages) : null;
   const provider = liveSession?.agentConfig.provider ?? s.provider;
+  const model = liveSession?.model ?? s.model;
   const costUsd = provider === "claude-code"
     ? s.total_cost_usd
     : (latestUsage?.cost ?? s.total_cost_usd);
   const usageText = formatSidebarProviderStat(provider, {
-    model: liveSession?.model ?? s.model,
+    model,
     costUsd,
     inputTokens: latestUsage?.inputTokens ?? s.last_input_tokens,
     outputTokens: latestUsage?.outputTokens ?? s.last_output_tokens,
   });
   const compactUsageText = usageText?.replace(/\stok$/, "t");
+
+  const agentProfile = liveSession?.profile ?? s.profile;
+  const compactModel = model ? compactModelName(model) : null;
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -76,7 +95,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive }: Props) 
       onClick={() => !editing && onSelect(s.id)}
     >
       <div className="session-item-preview">
-        <span className={`dash-dot ${statusDotClass(s.status)}`} />
+        <span className={`dash-dot ${isEmptySession(s) && draftInput?.trim() ? "dash-dot--draft" : statusDotClass(s.status)}`} />
         {editing ? (
           <input
             ref={inputRef}
@@ -93,31 +112,38 @@ export function SessionItem({ session: s, active, onSelect, onArchive }: Props) 
           />
         ) : (
           <span
-            className="session-item-text"
+            className={`session-item-text${isEmptySession(s) ? " session-item-text--empty" : ""}`}
             onDoubleClick={(e) => { e.stopPropagation(); startEdit(); }}
           >
-            {displayText(s)}
+            {isEmptySession(s)
+              ? (draftInput?.trim() || "new session")
+              : displayText(s)}
           </span>
         )}
       </div>
-      <div className="session-item-meta">
-        <span className="session-meta-left">
-          <span className="session-profile-tag">
-            {provider ?? "unknown"}
+      <div className={`session-item-meta${isEmptySession(s) ? " session-item-meta--empty" : ""}`}>
+        <div className="session-meta-row">
+          <span className="session-meta-left">
+            {agentProfile && <span className="session-profile-tag">{agentProfile}</span>}
+            {compactModel && <span className="session-model-tag">{compactModel}</span>}
           </span>
-          <span>{s.message_count}m</span>
-          {compactUsageText && <span>{compactUsageText}</span>}
-        </span>
-        <span className="session-meta-right">
-          <span>{timeAgo(s.updated_at)}</span>
-          <button
-            className="session-archive-btn"
-            onClick={(e) => { e.stopPropagation(); onArchive(s.id); }}
-            title="Archive session"
-          >
-            &times;
-          </button>
-        </span>
+        </div>
+        <div className="session-meta-row">
+          <span className="session-meta-left">
+            <span>{s.message_count}m</span>
+            {compactUsageText && <span>{compactUsageText}</span>}
+          </span>
+          <span className="session-meta-right">
+            <span>{timeAgo(s.updated_at)}</span>
+            <button
+              className="session-archive-btn"
+              onClick={(e) => { e.stopPropagation(); onArchive(s.id); }}
+              title="Archive session"
+            >
+              &times;
+            </button>
+          </span>
+        </div>
       </div>
     </div>
   );

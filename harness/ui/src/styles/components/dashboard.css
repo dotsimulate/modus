@@ -423,6 +423,7 @@
 .dash-dot--idle { background: var(--dot-idle); }
 .dash-dot--done { background: var(--dot-done); }
 .dash-dot--error { background: var(--dot-error); }
+.dash-dot--draft { background: var(--warning); opacity: 0.6; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
