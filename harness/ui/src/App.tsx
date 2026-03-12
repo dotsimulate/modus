@@ -92,21 +92,26 @@ function AppShell() {
   }, [hashProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wrap session actions with sidebar close
+  const restorableLastSessionId = uiState.lastSessionId
+    && (serverSessions.some((s) => s.id === uiState.lastSessionId) || activeSession?.id === uiState.lastSessionId)
+    ? uiState.lastSessionId
+    : null;
+
   const handleNewSession = useCallback(async () => {
-    navigate("chat");
     const id = await newSession();
     if (id) {
       setUrlSession(id, activeUserProfile);
+    } else {
+      navigate("chat");
     }
     setSidebarOpen(false);
   }, [activeUserProfile, navigate, newSession, setUrlSession]);
 
   const handleSelectSession = useCallback((id: string) => {
-    navigate("chat");
     selectSession(id);
     setUrlSession(id, activeUserProfile);
     setSidebarOpen(false);
-  }, [activeUserProfile, navigate, selectSession, setUrlSession]);
+  }, [activeUserProfile, selectSession, setUrlSession]);
 
   // Wrap switchUserProfile to also update URL
   const handleSwitchUserProfile = useCallback((name: string | null) => {
@@ -123,10 +128,23 @@ function AppShell() {
 
   // View-based session navigation (from dashboard/schedules)
   const handleViewSession = useCallback((id: string) => {
-    navigate("chat");
     selectSession(id);
     setUrlSession(id, activeUserProfile);
-  }, [activeUserProfile, navigate, selectSession, setUrlSession]);
+  }, [activeUserProfile, selectSession, setUrlSession]);
+
+  const handleNavigate = useCallback((target: View) => {
+    if (target !== "chat") {
+      navigate(target);
+      return;
+    }
+    // "sessions" nav → restore last session for this profile, or show empty chat
+    if (restorableLastSessionId) {
+      selectSession(restorableLastSessionId);
+      setUrlSession(restorableLastSessionId, activeUserProfile);
+      return;
+    }
+    navigate("chat");
+  }, [activeUserProfile, navigate, restorableLastSessionId, selectSession, setUrlSession]);
 
   // Peek: pop a floating SessionWindow for any session ID
   const handlePeekSession = useCallback((id: string) => {
@@ -198,20 +216,25 @@ function AppShell() {
   }, [activeCustomPage, navigate, view]);
 
   useEffect(() => {
+    if (!activeUserProfile) return;
+    if (!activeSession?.id || activeSession.id.startsWith("pending-")) return;
+    if (uiState.lastSessionId === activeSession.id) return;
+    saveUiState({ lastSessionId: activeSession.id });
+  }, [activeSession?.id, activeUserProfile, saveUiState, uiState.lastSessionId]);
+
+  useEffect(() => {
     if (view !== "chat" || !hashSessionId) return;
     if (activeSession?.id === hashSessionId) return;
     selectSession(hashSessionId);
   }, [hashSessionId, selectSession, view]); // activeSession intentionally omitted to avoid hash/session ping-pong
 
+  // Bare #profile/chat (no session in URL) → restore last session for this profile
   useEffect(() => {
-    if (view !== "chat" || hashSessionId || !activeSession) return;
-    const isFreshSession =
-      activeSession.status === "idle"
-      && activeSession.messages.length === 0;
-    if (!isFreshSession) {
-      newSession();
-    }
-  }, [activeSession, hashSessionId, newSession, view]);
+    if (view !== "chat" || hashSessionId) return;
+    if (!restorableLastSessionId) return;
+    selectSession(restorableLastSessionId);
+    setUrlSession(restorableLastSessionId, activeUserProfile);
+  }, [view, hashSessionId, restorableLastSessionId, selectSession, setUrlSession, activeUserProfile]);
 
   return (
     <div className="app">
@@ -227,7 +250,7 @@ function AppShell() {
             <button
               key={nv.view}
               className={`top-nav-link${view === nv.view ? " active" : ""}`}
-              onClick={() => navigate(nv.view)}
+              onClick={() => handleNavigate(nv.view)}
             >
               {nv.label}
             </button>
@@ -277,7 +300,7 @@ function AppShell() {
           availableProviders={availableProviders}
           navLinks={[{ view: "home" as const, label: "home" }, ...navViews]}
           currentView={view}
-          onNavigate={(v) => navigate(v)}
+          onNavigate={handleNavigate}
           navOnly={view !== "chat"}
         />
 
