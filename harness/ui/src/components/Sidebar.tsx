@@ -21,6 +21,7 @@ type Props = {
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onArchiveSession: (id: string) => void;
+  activeInput?: string;
   onSelectProfile: (name: string) => void;
   onSetupChange: (setup: SessionSetupState) => void;
   setupState: SessionSetupState;
@@ -50,6 +51,7 @@ export function Sidebar({
   onGroupModeChange, onCollapsedGroupsChange,
   activeUserProfileObj, availableProviders,
   navLinks, currentView, onNavigate, navOnly,
+  activeInput,
 }: Props) {
   const [groupMode, setGroupMode] = useState<GroupMode>(initialGroupMode ?? "time");
   const [searchQuery, setSearchQuery] = useState("");
@@ -173,6 +175,7 @@ export function Sidebar({
               groupMode={groupMode}
               onSelectSession={onSelectSession}
               onArchiveSession={onArchiveSession}
+              activeInput={activeInput}
               projectPaths={activeUserProfileObj?.projects}
               initialCollapsedGroups={initialCollapsedGroups}
               onCollapsedGroupsChange={onCollapsedGroupsChange}

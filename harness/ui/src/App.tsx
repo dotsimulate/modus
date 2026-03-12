@@ -287,6 +287,7 @@ function AppShell() {
           onNewSession={handleNewSession}
           onSelectSession={handleSelectSession}
           onArchiveSession={archiveSession}
+          activeInput={input}
           onSelectProfile={selectProfile}
           onSetupChange={setSetupState}
           setupState={setupState}

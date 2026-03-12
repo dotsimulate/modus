@@ -1,5 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { SessionInfo } from "../../api";
+import { archiveSessionApi } from "../../api";
 import { SessionItem } from "./SessionItem";
 
 type GroupMode = "time" | "agent";
@@ -10,6 +11,7 @@ type Props = {
   groupMode: GroupMode;
   onSelectSession: (id: string) => void;
   onArchiveSession: (id: string) => void;
+  activeInput?: string;
   projectPaths?: string[];
   initialCollapsedGroups?: string[];
   onCollapsedGroupsChange?: (groups: string[]) => void;
@@ -56,12 +58,53 @@ function groupSessionsByTime(list: SessionInfo[]) {
 
 export function SessionList({
   sessions, activeSessionId, groupMode,
-  onSelectSession, onArchiveSession,
+  onSelectSession, onArchiveSession, activeInput,
   projectPaths, initialCollapsedGroups, onCollapsedGroupsChange,
 }: Props) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(initialCollapsedGroups ?? []),
   );
+
+  // Cache draft input per session so it's visible after navigating away
+  const draftCache = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (activeSessionId && activeInput !== undefined) {
+      if (activeInput.trim()) {
+        draftCache.current.set(activeSessionId, activeInput);
+      } else {
+        draftCache.current.delete(activeSessionId);
+      }
+    }
+  }, [activeSessionId, activeInput]);
+
+  const handleSelectSession = useCallback((id: string) => {
+    if (activeSessionId && id !== activeSessionId) {
+      const current = sessions.find((s) => s.id === activeSessionId);
+      console.log("[orphan-drop] leaving session", {
+        id: activeSessionId,
+        message_count: current?.message_count,
+        status: current?.status,
+        title: current?.title,
+        last_prompt: current?.last_prompt,
+        preview: current?.preview,
+      });
+      if (
+        current &&
+        current.message_count === 0 &&
+        !current.title && !current.last_prompt && !current.preview &&
+        !(activeInput?.trim()) &&
+        (current.status === "idle" || current.status === "done")
+      ) {
+        console.log("[orphan-drop] archiving empty session", activeSessionId);
+        archiveSessionApi(activeSessionId).catch(() => {});
+        onSelectSession(id);
+        return;
+      } else {
+        console.log("[orphan-drop] keeping session — conditions not met");
+      }
+    }
+    onSelectSession(id);
+  }, [activeSessionId, sessions, onSelectSession, onArchiveSession]);
 
   const handleToggleGroup = useCallback((label: string) => {
     setCollapsedGroups((prev) => {
@@ -102,8 +145,9 @@ export function SessionList({
                     key={s.id}
                     session={s}
                     active={s.id === activeSessionId}
-                    onSelect={onSelectSession}
+                    onSelect={handleSelectSession}
                     onArchive={onArchiveSession}
+                    draftInput={s.id === activeSessionId ? activeInput : draftCache.current.get(s.id)}
                   />
                 ))}
               </div>

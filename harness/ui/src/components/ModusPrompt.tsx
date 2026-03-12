@@ -12,6 +12,7 @@ import { createSession, fetchSessionsByProfile, renderPromptApi } from "../api";
 import { useSessionState } from "../sessionStore";
 import { PromptPicker } from "./PromptPicker";
 import { MiniSession } from "./MiniSession";
+import { PromptComposer } from "./PromptComposer";
 import type { SessionInfo } from "../api";
 import type { PromptSettings } from "./PromptPicker";
 
@@ -221,36 +222,29 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
       {(phase === "idle" || phase === "done") && (
         <div className="modus-prompt-input-row">
           <div className="modus-prompt-textarea-wrap">
-            <textarea
-              ref={textareaRef}
-              className="modus-prompt-textarea"
+            <PromptComposer
+              textareaRef={textareaRef}
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={setPrompt}
               onKeyDown={handleKeyDown}
+              onSubmit={run}
+              submitDisabled={!prompt.trim()}
               placeholder={tab === "create"
                 ? "describe the agent you want to create..."
                 : "describe what you want to configure..."
               }
               rows={4}
-              spellCheck={false}
+              leftSlot={
+                <PromptPicker
+                  onInject={handleInject}
+                  direction="down"
+                  tags={tab === "create" ? ["dashboard", "create"] : ["dashboard", "configure"]}
+                  projectCwd={projectCwd}
+                  userProfile={activeUserProfile ?? undefined}
+                  onMoveActivated={handleMoveActivated}
+                />
+              }
             />
-            <div className="modus-prompt-picker">
-              <PromptPicker
-                onInject={handleInject}
-                direction="down"
-                tags={tab === "create" ? ["dashboard", "create"] : ["dashboard", "configure"]}
-                projectCwd={projectCwd}
-                userProfile={activeUserProfile ?? undefined}
-                onMoveActivated={handleMoveActivated}
-              />
-            </div>
-            <button
-              className="modus-prompt-run"
-              onClick={run}
-              disabled={!prompt.trim()}
-            >
-              run
-            </button>
           </div>
         </div>
       )}
