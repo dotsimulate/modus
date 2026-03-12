@@ -1,0 +1,82 @@
+You are making a handoff move. You will write a structured markdown handoff document, then submit metadata via `modus_submit`.
+
+Type: {{input.type}}
+To: {{input.targetProfile}}
+Focus: {{input.focus}}
+
+{{#ifCond input.type "task"}}
+This is a **task handoff**. The receiving agent should be able to start working immediately.
+Frame the document as a work order: what to build or change, which files to touch, concrete steps, and what "done" looks like. Lead with what to DO, not what was done.
+{{/ifCond}}
+{{#ifCond input.type "research"}}
+This is a **research handoff**. The receiving agent will continue an investigation.
+Frame the document as a research brief: what's been found, what's still unknown, hypotheses to test, and where to look next.
+{{/ifCond}}
+{{#ifCond input.type "review"}}
+This is a **review handoff**. The receiving agent will evaluate recent work.
+Frame the document as a review brief: what changed, the rationale, what to verify, and any concerns.
+{{/ifCond}}
+{{#ifCond input.type "bug-fix"}}
+This is a **bug-fix handoff**. The receiving agent will diagnose or fix a specific issue.
+Frame the document as a bug report: symptoms, what's been tried, suspected root cause, and reproduction steps. Be precise about where the bug lives.
+{{/ifCond}}
+{{#ifCond input.type "discussion"}}
+This is a **discussion handoff**. The receiving agent will continue a conversation with the user.
+Frame the document as a briefing: the topic, positions explored so far, open questions, and the user's current thinking. The goal is continuity, not action.
+{{/ifCond}}
+
+---
+
+### Session context
+
+Profile: {{context.currentProfile}} | Exchanges: {{context.exchangeCount}} | Branch: {{context.gitBranch}}
+{{#if context.hasUncommittedChanges}}
+**Uncommitted changes in working tree.**
+{{/if}}
+
+{{#if context.recentCommits}}
+Recent commits:
+```
+{{context.recentCommits}}
+```
+{{/if}}
+
+{{#if context.touchedFiles}}
+Files you modified this session:
+```
+{{context.touchedFiles}}
+```
+{{/if}}
+
+---
+
+### Step 1: Write the handoff document
+
+Write a markdown file to `{{context.handoffsDir}}/{{context.handoffFilename}}`
+
+The document must have these sections in order:
+
+**GROUNDING** — What was being worked on, current state, key decisions, open issues or blockers. 4-8 bullets. Raw orientation, not instructions.
+
+**RESOURCES** — File paths and URLs the next agent must consume. Organize as: must-read, context, and produced (if any).
+
+**HOT PREP** — What to run first, environment state, mental model corrections, traps to skip. Save the next agent from rediscovering what you already know. Adapt shape to what's most useful for this specific handoff.
+
+**TESTIMONY** — Direct address to the next agent. "In your position, I would..." — opinionated synthesis of the situation. Where the real leverage is. 3-5 sentences.
+
+{{#ifCond input.includeUserTips "yes"}}
+**WORKING WITH THIS USER** — Preferences, workflow style, what causes friction, what works well. Grounded observations only.
+{{/ifCond}}
+
+Be thorough — this is what the next agent reads to get fully oriented.
+
+### Step 2: Submit via `modus_submit`
+
+`modus_submit` — token: `{{token}}` — data shape: `{{{schema}}}`
+
+- **document** — absolute path to the markdown file you wrote.
+- **nextSteps** — what to do next, in order. Actionable items only. This is the task queue.
+- **priority** — 1-5 (optional). 1 = urgent, 5 = background.
+- **commits** — array of commit hashes you contributed to or that are relevant to this handoff (optional). Check the recent commits list and include any that contain your work or are directly relevant.
+- **filesChanged** — array of file paths you modified this session (optional). Reference the touched files list above — include them here for metadata tracking.
+- **tags** — freeform string tags to categorize this handoff (optional). Examples: "refactor", "ui", "backend", "blocked".

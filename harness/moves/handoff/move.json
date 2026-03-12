@@ -1,0 +1,44 @@
+{
+  "name": "handoff",
+  "label": "Hand off to another agent",
+  "description": "Write a handoff document and delegate to a target profile. The document persists as a structured markdown file the next agent reads. Session metadata and commit tags are tracked for traceability.",
+  "icon": "arrow-right",
+  "mode": "inline",
+  "inputs": [
+    {
+      "name": "targetProfile",
+      "label": "Target agent",
+      "type": "select",
+      "options": "{{agentProfiles}}",
+      "required": true
+    },
+    {
+      "name": "focus",
+      "label": "What to hand off",
+      "type": "textarea",
+      "required": true,
+      "placeholder": "Describe the task or context to transfer..."
+    },
+    {
+      "name": "type",
+      "label": "Handoff type",
+      "type": "select",
+      "options": ["task", "research", "review", "bug-fix", "discussion"],
+      "default": "task"
+    },
+    {
+      "name": "includeUserTips",
+      "label": "Include user working tips",
+      "type": "toggle",
+      "default": "yes"
+    }
+  ],
+  "schemaHint": "{ document: string, nextSteps: string[], priority?: 1-5, commits?: string[], filesChanged?: string[], tags?: string[] }",
+  "submit": {
+    "required": true
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "tags": ["transfer", "collaboration"]
+}
