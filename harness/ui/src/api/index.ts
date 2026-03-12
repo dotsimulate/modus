@@ -57,7 +57,7 @@ export type { MoveInput, MoveListItem, ActivateMoveResult } from "./moves";
 
 // All types
 export type {
-  ToolCall, SubTask, Attachment, GitActivity, Message, PendingPermission, SessionStatus, Session, AgentConfigState,
+  ToolCall, SubTask, Attachment, Message, PendingPermission, SessionStatus, Session, AgentConfigState,
   McpServerConfig, ProfileUi, Profile, GlobalConfig,
   ProviderCapabilities, ProviderToolGroup,
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo,

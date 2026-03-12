@@ -5,7 +5,7 @@
  * other files. Only breakpoint and mobile-specific adjustments belong here.
  */
 
-/* ── Menu button (mobile only — now replaced by MoLogo tap) ── */
+/* ── Menu button (mobile only) ── */
 .menu-btn {
   background: none;
   border: none;
@@ -26,9 +26,9 @@
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
-  /* Hide top-nav links — MoLogo opens sidebar nav instead */
+  /* Hide top-nav links on mobile — sidebar nav handles navigation */
   .top-nav-links { display: none; }
-  .menu-btn { display: none; }
+  .menu-btn { display: flex; }
 
   .sidebar {
     position: fixed;

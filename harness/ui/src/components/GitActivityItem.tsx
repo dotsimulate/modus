@@ -1,7 +1,7 @@
-import type { GitActivity } from "../api";
+import type { GitCommit } from "../api";
 
 type Props = {
-  activity: GitActivity;
+  commit: GitCommit;
 };
 
 function shortHash(hash: string): string {
@@ -19,29 +19,34 @@ function formatWhen(date: string): string {
   }).format(parsed);
 }
 
-export function GitActivityItem({ activity }: Props) {
+function navigateToGit() {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  const slash = hash.indexOf("/");
+  if (slash !== -1) {
+    window.location.hash = `${hash.slice(0, slash)}/git`;
+  } else {
+    window.location.hash = "git";
+  }
+}
+
+export function GitActivityItem({ commit }: Props) {
   return (
-    <div className="git-activity" data-subtype={activity.subtype}>
-      <div className="git-activity-gutter" aria-hidden="true">
-        <span className="git-activity-dot" />
-      </div>
-      <div className="git-activity-body">
-        <div className="git-activity-line">
-          <span className="git-activity-label">commit</span>
-          <span className="git-activity-message">{activity.message || "(no message)"}</span>
-        </div>
-        <div className="git-activity-meta">
-          <span className="git-activity-hash">{shortHash(activity.hash)}</span>
-          {activity.branch && <span>{activity.branch}</span>}
-          {activity.filesChanged != null && (
-            <span>{activity.filesChanged} file{activity.filesChanged === 1 ? "" : "s"}</span>
-          )}
-          {activity.additions ? <span className="diff-stat diff-stat--add">+{activity.additions}</span> : null}
-          {activity.deletions ? <span className="diff-stat diff-stat--del">-{activity.deletions}</span> : null}
-          {activity.author && <span>{activity.author}</span>}
-          <span>{formatWhen(activity.date)}</span>
-        </div>
-      </div>
+    <div className="git-activity">
+      <span className="git-activity-dot" aria-hidden="true" />
+      <span className="git-activity-label">commit</span>
+      <button className="git-activity-hash" onClick={navigateToGit} type="button">
+        {shortHash(commit.hash)}
+      </button>
+      <span className="git-activity-message">{commit.message || "(no message)"}</span>
+      <span className="git-activity-meta">
+        {commit.filesChanged != null && (
+          <span>{commit.filesChanged}f</span>
+        )}
+        {commit.additions ? <span className="diff-stat diff-stat--add">+{commit.additions}</span> : null}
+        {commit.deletions ? <span className="diff-stat diff-stat--del">-{commit.deletions}</span> : null}
+        {commit.author && <span>{commit.author}</span>}
+        <span>{formatWhen(commit.date)}</span>
+      </span>
     </div>
   );
 }

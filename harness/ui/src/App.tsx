@@ -170,18 +170,12 @@ function AppShell() {
   return (
     <div className="app">
       <div className="top-nav">
-        {view === "chat" && (
-          <button className="menu-btn" onClick={() => setSidebarOpen(true)}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
-        )}
-        <span className="top-nav-logo" onClick={(e) => {
-          // On mobile (narrow screens), toggle sidebar instead of navigating home
-          if (window.innerWidth <= 640) { setSidebarOpen((o) => !o); e.preventDefault(); }
-          else navigate("home");
-        }}><MoLogo size={16} activeCount={activeAgentCount} /></span>
+        <button className="menu-btn" onClick={() => setSidebarOpen(true)}>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </button>
+        <span className="top-nav-logo" onClick={() => navigate("home")}><MoLogo size={16} activeCount={activeAgentCount} /></span>
         <nav className="top-nav-links">
           {NAV_VIEWS.map((nv) => (
             <button
@@ -235,7 +229,7 @@ function AppShell() {
           onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
           activeUserProfileObj={activeUP}
           availableProviders={availableProviders}
-          navLinks={NAV_VIEWS}
+          navLinks={[{ view: "home" as const, label: "home" }, ...NAV_VIEWS]}
           currentView={view as View}
           onNavigate={(v) => navigate(v)}
           navOnly={view !== "chat"}

@@ -4,8 +4,13 @@ import { GitActivityItem } from "./GitActivityItem";
 import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
-import type { Message, ToolCall } from "../api";
+import { fetchGitLog } from "../api";
+import type { Message, ToolCall, GitCommit } from "../api";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionProvider";
+
+type DisplayItem =
+  | { kind: "message"; key: string; message: Message; index: number }
+  | { kind: "commit"; key: string; commit: GitCommit };
 
 type Props = {
   messages: Message[];
@@ -32,6 +37,7 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
   const hasScrolledRef = useRef(false);
   const autoScrollRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [commits, setCommits] = useState<GitCommit[]>([]);
   const hasMessages = messages.length > 0;
 
   const isNearBottom = useCallback((el: HTMLDivElement) => {
@@ -164,6 +170,71 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
     return result;
   }, [messages]);
 
+  useEffect(() => {
+    if (!showGitEvents || !cwd) {
+      setCommits([]);
+      return;
+    }
+
+    let active = true;
+    const load = async () => {
+      try {
+        const next = await fetchGitLog(cwd, 200);
+        if (active) setCommits(next);
+      } catch {
+        if (active) setCommits([]);
+      }
+    };
+
+    void load();
+    const timer = setInterval(() => {
+      void load();
+    }, 4000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [cwd, showGitEvents]);
+
+  const displayItems = useMemo<DisplayItem[]>(() => {
+    if (!showGitEvents || !cwd || commits.length === 0 || messages.length === 0) {
+      return messages.map((message, index) => ({
+        kind: "message" as const,
+        key: message.id,
+        message,
+        index,
+      }));
+    }
+
+    const sortedCommits = [...commits].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+    const items: DisplayItem[] = [];
+    let commitIndex = 0;
+
+    for (let i = 0; i < messages.length; i++) {
+      const current = messages[i];
+      items.push({ kind: "message", key: current.id, message: current, index: i });
+
+      const currentTs = current.timestamp;
+      const nextTs = messages[i + 1]?.timestamp;
+      if (currentTs == null || nextTs == null) continue;
+
+      while (commitIndex < sortedCommits.length) {
+        const commit = sortedCommits[commitIndex];
+        const commitTs = Date.parse(commit.date);
+        if (Number.isNaN(commitTs) || commitTs <= currentTs) {
+          commitIndex++;
+          continue;
+        }
+        if (commitTs > nextTs) break;
+        items.push({ kind: "commit", key: `commit-${commit.hash}`, commit });
+        commitIndex++;
+      }
+    }
+
+    return items;
+  }, [commits, cwd, messages, showGitEvents]);
+
   if (messages.length === 0) {
     return (
       <div className="empty-state">
@@ -177,7 +248,17 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
     <div className="chat-scroll-wrapper">
       <div className="chat-messages" ref={scrollRef}>
         <div className="chat-messages-content" ref={contentRef}>
-          {messages.map((msg, i) => {
+          {displayItems.map((item) => {
+            if (item.kind === "commit") {
+              return (
+                <div key={item.key} className="message message--git" data-role="git">
+                  <GitActivityItem commit={item.commit} />
+                </div>
+              );
+            }
+
+            const msg = item.message;
+            const i = item.index;
             const turnTools = turnFileEdits.get(i);
             const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
 
@@ -185,12 +266,6 @@ export function ChatView({ messages, provider, streaming, streamFeed, showThinki
               <div key={msg.id} className="system-divider">
                 <span>{msg.content}</span>
               </div>
-            ) : msg.role === "git" && msg.gitActivity ? (
-              showGitEvents ? (
-              <div key={msg.id} className="message message--git" data-role="git">
-                <GitActivityItem activity={msg.gitActivity} />
-              </div>
-              ) : null
             ) : (
               <div key={msg.id}>
                 <MessageBubble

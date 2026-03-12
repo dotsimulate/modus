@@ -64,7 +64,6 @@ export type GitLogEntry = {
   date: string;
   message: string;
   author: string;
-  branch?: string;
   filesChanged?: number;
   additions?: number;
   deletions?: number;
@@ -124,38 +123,6 @@ export async function gitLog(cwd: string, limit = 30): Promise<GitLogEntry[]> {
     return parseGitLogRaw(raw);
   } catch {
     return [];
-  }
-}
-
-export async function gitLogRange(cwd: string, fromExclusive: string, toRef = "HEAD"): Promise<GitLogEntry[]> {
-  try {
-    const git = simpleGit(cwd);
-    const raw = await git.raw([
-      "log",
-      "--reverse",
-      `${fromExclusive}..${toRef}`,
-      "--format=---GIT-LOG-SEP---%n%H%n%aI%n%an%n%B---GIT-LOG-END---",
-      "--shortstat",
-    ]);
-    return parseGitLogRaw(raw);
-  } catch {
-    return [];
-  }
-}
-
-export async function gitHead(cwd: string): Promise<GitLogEntry | null> {
-  const [entry] = await gitLog(cwd, 1);
-  if (!entry) return null;
-
-  try {
-    const git = simpleGit(cwd);
-    const branch = (await git.revparse(["--abbrev-ref", "HEAD"])).trim();
-    return {
-      ...entry,
-      branch: branch && branch !== "HEAD" ? branch : undefined,
-    };
-  } catch {
-    return entry;
   }
 }
 
