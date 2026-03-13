@@ -179,5 +179,6 @@ export async function onSubmit(
 
   return {
     message: `Handed off to ${targetProfile} — session ${sessionId.slice(0, 12)}… | doc: ${docPath}`,
+    spawnedSessionId: sessionId,
   };
 }
