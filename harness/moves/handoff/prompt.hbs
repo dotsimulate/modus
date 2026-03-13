@@ -39,6 +39,7 @@ Recent commits:
 ```
 {{context.recentCommits}}
 ```
+These are reference context only. Do not claim a commit in `modus_submit` unless you actively contributed work that landed in it.
 {{/if}}
 
 {{#if context.touchedFiles}}
@@ -77,6 +78,6 @@ Be thorough — this is what the next agent reads to get fully oriented.
 - **document** — absolute path to the markdown file you wrote.
 - **nextSteps** — what to do next, in order. Actionable items only. This is the task queue.
 - **priority** — 1-5 (optional). 1 = urgent, 5 = background.
-- **commits** — array of commit hashes you contributed to or that are relevant to this handoff (optional). Check the recent commits list and include any that contain your work or are directly relevant.
+- **commits** — array of commit hashes you actively contributed to in this session (optional). These are provenance claims, not references. Only include commits that contain work you actually wrote or changed. If a commit is merely relevant background, omit it.
 - **filesChanged** — array of file paths you modified this session (optional). Reference the touched files list above — include them here for metadata tracking.
 - **tags** — freeform string tags to categorize this handoff (optional). Examples: "refactor", "ui", "backend", "blocked".
