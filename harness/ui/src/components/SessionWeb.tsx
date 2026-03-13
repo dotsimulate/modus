@@ -1,8 +1,10 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { fetchSessions } from "../api/sessions";
 import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
 import type { SessionInfo, GitCommit } from "../api/types";
+import { ChatFileViewer } from "./ChatFileViewer";
+import { SessionWindow } from "./SessionWindow";
 
 // ── Types ──
 
@@ -16,17 +18,27 @@ type MoveRun = {
   createdAt: number;
   completedAt: number | null;
   spawnedSessionId: string | null;
+  gatheredContext?: string;
+};
+
+type HandoffDoc = {
+  path: string;
+  filename: string;
+  moveRunId: number;
+  fromSessionId: string;
+  toSessionId: string;
 };
 
 type GraphNode = {
   id: string;
-  type: "session" | "commit";
+  type: "session" | "commit" | "document";
   x: number;
   y: number;
   col: number;
   row: number;
   session?: SessionInfo;
   commit?: GitCommit;
+  doc?: HandoffDoc;
   tags?: string[];
   handoffType?: string;
 };
@@ -34,7 +46,7 @@ type GraphNode = {
 type GraphEdge = {
   from: string;
   to: string;
-  type: "handoff" | "commit";
+  type: "handoff" | "commit" | "document";
   moveName?: string;
 };
 
@@ -65,14 +77,17 @@ function formatCost(usd: number): string {
 
 // ── Layout Constants ──
 
-const COL_WIDTH = 200;
-const ROW_HEIGHT = 80;
-const NODE_W = 150;
-const NODE_H = 52;
-const COMMIT_R = 14;
-const PAD_X = 40;
-const PAD_Y = 40;
-const COMMIT_OFFSET_Y = 60;
+const COL_WIDTH = 500;
+const ROW_HEIGHT = 140;
+const NODE_W = 260;
+const NODE_H = 84;
+const COMMIT_W = 200;
+const COMMIT_H = 30;
+const PAD_X = 60;
+const PAD_Y = 60;
+const COMMIT_OFFSET_Y = 104;
+const DOC_W = 180;
+const DOC_H = 32;
 
 // ── Graph Builder ──
 
@@ -84,16 +99,43 @@ function buildGraph(
   const edges: GraphEdge[] = [];
   const sessionMap = new Map(sessions.map(s => [s.id, s]));
 
-  // Handoff edges: source → spawned
-  const handoffEdges = moveRuns
-    .filter(r => r.spawnedSessionId && sessionMap.has(r.sessionId) && sessionMap.has(r.spawnedSessionId!))
-    .map(r => ({
-      from: r.sessionId,
-      to: r.spawnedSessionId!,
-      type: "handoff" as const,
-      moveName: r.moveName,
-    }));
-  edges.push(...handoffEdges);
+  // Handoff edges: source → document → spawned (or source → spawned if no doc)
+  const handoffMoveRuns = moveRuns
+    .filter(r => r.spawnedSessionId && sessionMap.has(r.sessionId) && sessionMap.has(r.spawnedSessionId!));
+
+  const handoffDocs: HandoffDoc[] = [];
+  const handoffEdges: GraphEdge[] = [];
+
+  for (const r of handoffMoveRuns) {
+    let docPath: string | null = null;
+    if (r.gatheredContext) {
+      try {
+        const gc = JSON.parse(r.gatheredContext);
+        if (gc.handoffsDir && gc.handoffFilename) {
+          docPath = `${gc.handoffsDir}/${gc.handoffFilename}`;
+        }
+      } catch { /* ignore */ }
+    }
+
+    if (docPath) {
+      const docId = `doc:${r.id}`;
+      const filename = docPath.split("/").pop() || docPath;
+      handoffDocs.push({
+        path: docPath,
+        filename,
+        moveRunId: r.id,
+        fromSessionId: r.sessionId,
+        toSessionId: r.spawnedSessionId!,
+      });
+      edges.push({ from: r.sessionId, to: docId, type: "document", moveName: r.moveName });
+      edges.push({ from: docId, to: r.spawnedSessionId!, type: "handoff", moveName: r.moveName });
+      handoffEdges.push({ from: r.sessionId, to: r.spawnedSessionId!, type: "handoff", moveName: r.moveName });
+    } else {
+      const e = { from: r.sessionId, to: r.spawnedSessionId!, type: "handoff" as const, moveName: r.moveName };
+      edges.push(e);
+      handoffEdges.push(e);
+    }
+  }
 
   // Build commit tag map: hash → session IDs
   const commitSessionMap = new Map<string, string[]>();
@@ -210,8 +252,29 @@ function buildGraph(
     }
   }
 
-  // Position commit nodes — below the first linked session
+  // Position document nodes — midpoint between source and target sessions
   const sessionNodeMap = new Map(nodes.map(n => [n.id, n]));
+  for (const doc of handoffDocs) {
+    const fromNode = sessionNodeMap.get(doc.fromSessionId);
+    const toNode = sessionNodeMap.get(doc.toSessionId);
+    if (!fromNode || !toNode) continue;
+    // Center doc in the gap between source right edge and target left edge
+    const gapStart = fromNode.x + NODE_W;
+    const gapEnd = toNode.x;
+    const docX = gapStart + (gapEnd - gapStart - DOC_W) / 2;
+    const docY = (fromNode.y + toNode.y) / 2 + (NODE_H - DOC_H) / 2;
+    nodes.push({
+      id: `doc:${doc.moveRunId}`,
+      type: "document",
+      x: docX,
+      y: docY,
+      col: fromNode.col,
+      row: fromNode.row,
+      doc,
+    });
+  }
+
+  // Position commit nodes — below the first linked session
   const commitOffsetCount = new Map<string, number>();
   for (const c of linkedCommits) {
     const h7 = shortHash(c.hash);
@@ -224,7 +287,7 @@ function buildGraph(
     nodes.push({
       id: `commit:${h7}`,
       type: "commit",
-      x: firstSession.x + 20 + count * 44,
+      x: firstSession.x + count * (COMMIT_W + 12),
       y: firstSession.y + COMMIT_OFFSET_Y,
       col: firstSession.col,
       row: firstSession.row,
@@ -237,32 +300,47 @@ function buildGraph(
 
 // ── SVG Edge ──
 
+function nodeRight(n: GraphNode) {
+  if (n.type === "session") return n.x + NODE_W;
+  if (n.type === "document") return n.x + DOC_W;
+  return n.x + COMMIT_W;
+}
+function nodeMidY(n: GraphNode) {
+  if (n.type === "session") return n.y + NODE_H / 2;
+  if (n.type === "document") return n.y + DOC_H / 2;
+  return n.y + COMMIT_H / 2;
+}
+
 function EdgePath({ from, to, type }: {
   from: GraphNode;
   to: GraphNode;
-  type: "handoff" | "commit";
+  type: "handoff" | "commit" | "document";
 }) {
-  const x1 = from.type === "session" ? from.x + NODE_W : from.x + COMMIT_R;
-  const y1 = from.type === "session" ? from.y + NODE_H / 2 : from.y + COMMIT_R;
-  const x2 = to.type === "session" ? to.x : to.x + COMMIT_R;
-  const y2 = to.type === "session" ? to.y + NODE_H / 2 : to.y;
-
   if (type === "commit") {
-    // Straight line down to commit
     const cx = from.x + NODE_W / 2;
     const cy1 = from.y + NODE_H;
     return (
       <line
         x1={cx} y1={cy1}
-        x2={to.x + COMMIT_R} y2={to.y}
+        x2={to.x + COMMIT_W / 2} y2={to.y}
         className="web-edge web-edge--commit"
       />
     );
   }
 
-  // Handoff: cubic bezier curving right
+  const x1 = nodeRight(from);
+  const y1 = nodeMidY(from);
+  const x2 = to.x;
+  const y2 = nodeMidY(to);
+
+  // Document edges: straight dashed line
+  if (type === "document") {
+    return <line x1={x1} y1={y1} x2={x2} y2={y2} className="web-edge web-edge--document" />;
+  }
+
+  // Handoff: cubic bezier — cap control points so they never overshoot the destination
   const dx = Math.abs(x2 - x1);
-  const cp = Math.max(dx * 0.4, 40);
+  const cp = Math.min(Math.max(dx * 0.4, 20), dx * 0.45);
   const d = `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`;
   return <path d={d} className="web-edge web-edge--handoff" />;
 }
@@ -270,6 +348,25 @@ function EdgePath({ from, to, type }: {
 // ── Detail Panel ──
 
 function DetailPanel({ node, onClose }: { node: GraphNode; onClose: () => void }) {
+  if (node.type === "document" && node.doc) {
+    const d = node.doc;
+    return (
+      <div className="web-detail">
+        <div className="web-detail-header">
+          <span className="web-detail-type">handoff document</span>
+          <button className="web-detail-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="web-detail-title">{d.filename}</div>
+        <div className="web-detail-preview">{d.path}</div>
+        <div className="web-detail-meta">
+          <span>{shortId(d.fromSessionId)}</span>
+          <span className="web-detail-sep">&rarr;</span>
+          <span>{shortId(d.toSessionId)}</span>
+        </div>
+      </div>
+    );
+  }
+
   if (node.type === "commit" && node.commit) {
     const c = node.commit;
     return (
@@ -332,6 +429,8 @@ function DetailPanel({ node, onClose }: { node: GraphNode; onClose: () => void }
 
 // ── Main Component ──
 
+type Viewport = { x: number; y: number; scale: number };
+
 export function SessionWeb() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [moveRuns, setMoveRuns] = useState<MoveRun[]>([]);
@@ -339,6 +438,13 @@ export function SessionWeb() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<SelectedNode>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
+  const [miniSessionId, setMiniSessionId] = useState<string | null>(null);
+
+  // Canvas viewport state — start with padding so content isn't at origin
+  const [viewport, setViewport] = useState<Viewport>({ x: PAD_X, y: PAD_Y, scale: 1 });
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ startX: number; startY: number; vpX: number; vpY: number } | null>(null);
 
   // Fetch all data
   useEffect(() => {
@@ -376,17 +482,69 @@ export function SessionWeb() {
 
   // Compute SVG viewport
   const svgW = useMemo(() => {
-    const maxX = Math.max(...nodes.map(n => n.x + (n.type === "session" ? NODE_W : COMMIT_R * 2)), 400);
+    const maxX = Math.max(...nodes.map(n => n.x + (n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W)), 400);
     return maxX + PAD_X;
   }, [nodes]);
 
   const svgH = useMemo(() => {
-    const maxY = Math.max(...nodes.map(n => n.y + (n.type === "session" ? NODE_H : COMMIT_R * 2) + COMMIT_OFFSET_Y), 300);
+    const maxY = Math.max(...nodes.map(n => n.y + (n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H) + COMMIT_OFFSET_Y), 300);
     return maxY + PAD_Y;
   }, [nodes]);
 
+  // Wheel zoom (non-passive to allow preventDefault)
+  useEffect(() => {
+    if (loading) return;
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      setViewport(vp => {
+        const s = Math.max(0.15, Math.min(4, vp.scale * factor));
+        const r = s / vp.scale;
+        return { scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) };
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [loading]);
+
+  // Pan handlers
+  const onPanStart = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, vpX: viewport.x, vpY: viewport.y };
+  };
+  const onPanMove = (e: React.MouseEvent) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    const newX = dragRef.current.vpX + dx;
+    const newY = dragRef.current.vpY + dy;
+    const wrap = wrapRef.current;
+    if (wrap) {
+      const minX = -(svgW * viewport.scale - 100);
+      const minY = -(svgH * viewport.scale - 100);
+      const maxX = wrap.clientWidth - 100;
+      const maxY = wrap.clientHeight - 100;
+      setViewport(vp => ({ ...vp, x: Math.max(minX, Math.min(maxX, newX)), y: Math.max(minY, Math.min(maxY, newY)) }));
+    } else {
+      setViewport(vp => ({ ...vp, x: newX, y: newY }));
+    }
+  };
+  const onPanEnd = () => { dragRef.current = null; };
+
   const handleSelect = useCallback((node: GraphNode) => {
     setSelected(prev => prev?.id === node.id ? null : node);
+  }, []);
+
+  const handleNavigate = useCallback((node: GraphNode) => {
+    if (node.type === "session" && node.session) {
+      const profile = node.session.profile ?? "";
+      window.location.hash = profile ? `${profile}/${node.session.id}` : node.session.id;
+    }
   }, []);
 
   // Edges connected to hovered/selected node
@@ -420,8 +578,22 @@ export function SessionWeb() {
 
   return (
     <div className="web-panel">
-      <div className="web-canvas-wrap">
-        <div className="web-canvas" style={{ width: svgW, height: svgH }}>
+      <div
+        className="web-canvas-wrap"
+        ref={wrapRef}
+        onMouseDown={onPanStart}
+        onMouseMove={onPanMove}
+        onMouseUp={onPanEnd}
+        onMouseLeave={onPanEnd}
+      >
+        <div
+          className="web-canvas"
+          style={{
+            width: svgW,
+            height: svgH,
+            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
+          }}
+        >
           {/* SVG edge layer */}
           <svg className="web-svg" width={svgW} height={svgH}>
             {edges.map((e, i) => {
@@ -440,6 +612,25 @@ export function SessionWeb() {
 
           {/* Node layer */}
           {nodes.map(node => {
+            if (node.type === "document" && node.doc) {
+              const d = node.doc;
+              return (
+                <div
+                  key={node.id}
+                  className={`web-doc-node${selected?.id === node.id ? " web-node--selected" : ""}`}
+                  style={{ left: node.x, top: node.y }}
+                  onClick={() => handleSelect(node)}
+                  onDoubleClick={() => setFileViewerPath(d.path)}
+                  onMouseEnter={() => setHoveredId(node.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  title={d.path}
+                >
+                  <span className="web-doc-icon">&#9654;</span>
+                  <span className="web-doc-name">{d.filename.replace(/-handoff\.md$/, "")}</span>
+                </div>
+              );
+            }
+
             if (node.type === "commit") {
               const c = node.commit!;
               return (
@@ -450,9 +641,10 @@ export function SessionWeb() {
                   onClick={() => handleSelect(node)}
                   onMouseEnter={() => setHoveredId(node.id)}
                   onMouseLeave={() => setHoveredId(null)}
-                  title={`${shortHash(c.hash)} — ${c.message}`}
+                  title={c.message}
                 >
                   <span className="web-commit-hash">{shortHash(c.hash)}</span>
+                  <span className="web-commit-msg">{c.message.split("\n")[0].slice(0, 34)}</span>
                 </div>
               );
             }
@@ -465,6 +657,7 @@ export function SessionWeb() {
                 className={`web-session-node web-session-node--${statusClass}${selected?.id === node.id ? " web-node--selected" : ""}`}
                 style={{ left: node.x, top: node.y }}
                 onClick={() => handleSelect(node)}
+                onDoubleClick={() => setMiniSessionId(s.id)}
                 onMouseEnter={() => setHoveredId(node.id)}
                 onMouseLeave={() => setHoveredId(null)}
               >
@@ -473,21 +666,42 @@ export function SessionWeb() {
                   <span className="web-session-id">{shortId(s.id)}</span>
                   <span className="web-session-time">{timeAgo(s.created_at)}</span>
                 </div>
-                <div className="web-session-bottom">
+                <div className="web-session-title">
+                  {(s.title || s.preview || "").slice(0, 48)}
+                </div>
+                <div className="web-session-meta">
                   {s.profile && <span className="web-session-profile">{s.profile}</span>}
                   {node.handoffType && <span className="web-session-handoff-type">{node.handoffType}</span>}
-                  {!s.profile && !node.handoffType && (
-                    <span className="web-session-preview">{(s.title || s.preview || "").slice(0, 24)}</span>
-                  )}
+                  <span>{s.message_count} msgs</span>
+                  <span>{formatCost(s.total_cost_usd)}</span>
                 </div>
               </div>
             );
           })}
         </div>
+        <button
+          className="web-reset-btn"
+          onMouseDown={e => e.stopPropagation()}
+          onClick={() => setViewport({ x: PAD_X, y: PAD_Y, scale: 1 })}
+          title="Reset view"
+        >⊙</button>
       </div>
 
       {/* Detail panel */}
       {selected && <DetailPanel node={selected} onClose={() => setSelected(null)} />}
+
+      {/* Session window — double-click a session node to open */}
+      <SessionWindow
+        sessionId={miniSessionId}
+        onClose={() => setMiniSessionId(null)}
+        onNavigate={id => {
+          const profile = sessions.find(s => s.id === id)?.profile ?? "";
+          window.location.hash = profile ? `${profile}/${id}` : id;
+        }}
+      />
+
+      {/* File viewer for handoff documents */}
+      <ChatFileViewer path={fileViewerPath} onClose={() => setFileViewerPath(null)} />
     </div>
   );
 }

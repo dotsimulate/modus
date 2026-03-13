@@ -660,6 +660,7 @@ export async function handleSubmit(
   updateMoveRun(moveToken.moveRunId!, {
     status: "completed",
     summary: submitResult.message ?? `Submitted ${Object.keys(data).length} fields`,
+    spawnedSessionId: submitResult.spawnedSessionId ?? undefined,
     completedAt: Date.now(),
   });
 

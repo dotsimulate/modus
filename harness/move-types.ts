@@ -160,6 +160,7 @@ export interface SubmitResult {
   message?: string;
   notify?: { channel: string; body: string };
   error?: string;
+  spawnedSessionId?: string;
 }
 
 // ── Move Token (server-side state for active contracts) ──

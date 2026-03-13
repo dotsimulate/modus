@@ -109,7 +109,7 @@ export function updateMoveRun(id: number | null, updates: {
   });
 }
 
-function mapRow(r: any): MoveRun {
+function mapRow(r: any): MoveRun & { gatheredContext?: string } {
   return {
     id: r.id,
     moveName: r.move_name,
@@ -120,6 +120,7 @@ function mapRow(r: any): MoveRun {
     createdAt: r.created_at,
     completedAt: r.completed_at,
     spawnedSessionId: r.spawned_session_id,
+    gatheredContext: r.gathered_context ?? undefined,
   };
 }
 
