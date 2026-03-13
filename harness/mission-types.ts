@@ -136,6 +136,7 @@ export type MissionOp =
   | "delegate"
   | "report"
   | "gate"
+  | "advance"
   | "pause";
 
 // ── Command Bus Payloads ──
@@ -145,7 +146,30 @@ export type MissionCommand =
   | { op: "delegate"; stepId: string; role: string; brief: string; transferSummary?: string }
   | { op: "report"; stepId: string; status: "completed" | "failed"; summary: string; filesChanged?: string[]; commits?: string[]; testResults?: string; handoffSummary?: string }
   | { op: "gate"; stepId: string; gate: MissionGateType; status: "pass" | "fail"; evidence?: string }
+  | { op: "advance"; stepId: string }
   | { op: "pause"; reason: string };
+
+// ── Structured Response (runner → orchestrator via queueMessage) ──
+
+/** Structured response sent from runner into orchestrator session. */
+export interface MissionResponse {
+  type: "worker_report" | "gate_update";
+  stepId: string;
+  /** Worker report fields (present when type === "worker_report") */
+  workerStatus?: "completed" | "failed";
+  summary?: string;
+  filesChanged?: string[];
+  commits?: string[];
+  testResults?: string;
+  handoffSummary?: string;
+  /** Gate update fields (present when type === "gate_update") */
+  gate?: MissionGateType;
+  gateStatus?: "pass" | "fail";
+  /** Computed by runner — read-only for orchestrator */
+  allGatesPassed: boolean;
+  /** Current status of all gates for this step */
+  gateSnapshot: Array<{ gate: MissionGateType; status: "pass" | "fail" | "pending" }>;
+}
 
 // ── Runtime DB Row Types ──
 
