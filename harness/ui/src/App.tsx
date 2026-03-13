@@ -24,6 +24,7 @@ import { createEmptyAgentConfig } from "./components/AgentConfig";
 import { FileViewerProvider } from "./providers/FileViewerProvider";
 import { SessionWindow } from "./components/SessionWindow";
 import { SessionWeb } from "./components/SessionWeb";
+import { TraceView } from "./components/TraceView";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
 function parseTagList(raw?: string | null): string[] {
@@ -426,6 +427,7 @@ function AppShell() {
         {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
         {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
         {view === "web" && <SessionWeb />}
+        {view === "trace" && <TraceView />}
         {view === "git" && (
           <PageView
             blocks={gitPageBlocks}

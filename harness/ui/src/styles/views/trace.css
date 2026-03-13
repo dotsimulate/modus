@@ -1,0 +1,511 @@
+/**
+ * Trace — attention/touch graph view.
+ * Bipartite layout: sessions on left, files on right, bezier edges between.
+ * Distinct from Session Web — exploratory attention, not provenance.
+ */
+
+/* ── Panel ── */
+
+.trace-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  position: relative;
+}
+
+/* ── Toolbar ── */
+
+.trace-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 38px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-family: var(--font-mono);
+  gap: 12px;
+}
+
+.trace-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.trace-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trace-toolbar-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 3px;
+}
+
+.trace-toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.trace-op-pill,
+.trace-time-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+  line-height: 1;
+}
+
+.trace-op-pill:hover,
+.trace-time-pill:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-active);
+}
+
+.trace-time-pill.active {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: var(--bg-hover);
+}
+
+.trace-op-pill--write.active {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  background: color-mix(in srgb, var(--success) 5%, transparent);
+}
+
+.trace-op-pill--edit.active {
+  color: var(--tool-ok);
+  border-color: color-mix(in srgb, var(--tool-ok) 30%, transparent);
+  background: color-mix(in srgb, var(--tool-ok) 5%, transparent);
+}
+
+.trace-op-pill--read.active {
+  color: var(--info);
+  border-color: color-mix(in srgb, var(--info) 30%, transparent);
+  background: color-mix(in srgb, var(--info) 5%, transparent);
+}
+
+.trace-stats {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.trace-loading {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.trace-error {
+  font-size: 10px;
+  color: var(--error-soft);
+}
+
+/* ── Canvas ── */
+
+.trace-canvas-wrap {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  cursor: grab;
+  user-select: none;
+}
+
+.trace-canvas-wrap:active {
+  cursor: grabbing;
+}
+
+.trace-canvas {
+  position: relative;
+  transform-origin: 0 0;
+}
+
+/* ── SVG edge layer ── */
+
+.trace-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.trace-edge {
+  fill: none;
+  stroke-dasharray: 3000;
+  stroke-dashoffset: 3000;
+  animation: trace-draw 0.45s ease-out forwards;
+}
+
+@keyframes trace-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.trace-edge--write { stroke: var(--success); }
+.trace-edge--read  { stroke: var(--info); }
+.trace-edge--search { stroke: var(--text-dim); }
+
+/* ── Column labels ── */
+
+.trace-col-label {
+  position: absolute;
+  top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* ── Node column containers ── */
+
+.trace-sessions,
+.trace-files {
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+
+/* ── Session nodes ── */
+
+.trace-session-node {
+  position: absolute;
+  width: 210px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 10px;
+  border-radius: 2px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  pointer-events: all;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+.trace-session-node:hover,
+.trace-session-node.hovered {
+  background: var(--bg-hover);
+  border-color: var(--border-active);
+}
+
+.trace-session-node.selected {
+  border-color: var(--border-active);
+  position: absolute; /* keep stacking */
+}
+
+.trace-session-node.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, transparent 70%);
+}
+
+/* ── File nodes ── */
+
+.trace-file-node {
+  position: absolute;
+  width: 240px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px 0 9px;
+  border-radius: 2px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  pointer-events: all;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+.trace-file-node:hover,
+.trace-file-node.hovered {
+  background: var(--bg-hover);
+  border-color: var(--border-active);
+}
+
+.trace-file-node.selected {
+  border-color: var(--border-active);
+}
+
+.trace-file-node.selected::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0.04) 0%, transparent 70%);
+}
+
+/* ── Provider dot ── */
+
+.trace-provider-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--dot-idle);
+}
+
+.trace-provider-dot--claude   { background: var(--flash-assistant); opacity: 0.75; }
+.trace-provider-dot--gemini   { background: var(--info); }
+.trace-provider-dot--codex    { background: var(--tool-ok); }
+.trace-provider-dot--pi       { background: var(--warning); }
+.trace-provider-dot--unknown  { background: var(--dot-idle); }
+
+/* ── Session text ── */
+
+.trace-sess-id {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 500;
+  flex-shrink: 0;
+  letter-spacing: 0.01em;
+}
+
+.trace-sess-time {
+  font-size: 9px;
+  color: var(--text-muted);
+  flex: 1;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.trace-sess-count {
+  font-size: 9px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+/* ── File dot ── */
+
+.trace-file-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.trace-file-dot--code { background: var(--info); opacity: 0.6; }
+.trace-file-dot--docs { background: var(--warning); opacity: 0.7; }
+
+/* ── File text ── */
+
+.trace-file-name {
+  font-size: 10px;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  max-width: 140px;
+}
+
+.trace-file-dir {
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.trace-file-count {
+  font-size: 9px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ── Reset button ── */
+
+.trace-reset-btn {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 7px;
+  cursor: pointer;
+  transition: color 0.1s ease, border-color 0.1s ease;
+}
+
+.trace-reset-btn:hover {
+  color: var(--text-dim);
+  border-color: var(--border-active);
+}
+
+/* ── Detail panel ── */
+
+.trace-detail {
+  position: absolute;
+  top: 52px;
+  right: 16px;
+  width: 260px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 14px 16px;
+  z-index: 20;
+  font-family: var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trace-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.trace-detail-type {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.trace-detail-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.1s ease;
+}
+
+.trace-detail-close:hover { color: var(--text-dim); }
+
+.trace-detail-id {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-detail-id-rest {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.trace-detail-path {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.trace-detail-sep { opacity: 0.4; }
+
+.trace-detail-provider { color: var(--text-dim); }
+
+.trace-detail-stat {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.trace-detail-ops {
+  display: flex;
+  gap: 10px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.trace-detail-op--write { color: var(--success); }
+.trace-detail-op--edit  { color: var(--tool-ok); }
+.trace-detail-op--read  { color: var(--info); }
+
+.trace-detail-kind--code { color: var(--info); }
+.trace-detail-kind--docs { color: var(--warning); }
+
+.trace-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.trace-detail-item {
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+/* ── Empty state ── */
+
+.trace-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 900px) {
+  .trace-detail {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    border-radius: 2px 2px 0 0;
+  }
+}
