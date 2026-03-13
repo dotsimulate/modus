@@ -52,6 +52,52 @@ type GraphEdge = {
 
 type SelectedNode = GraphNode | null;
 
+// ── Layout Config ──
+
+type WebLayoutConfig = {
+  rowWidth: number;
+  colHeight: number;
+  padX: number;
+  padY: number;
+  commitOffsetX: number;
+  siblingGapRows: number;
+  rootGapRows: number;
+  axisMode: "time-x" | "time-y";
+  timeDirection: "ltr" | "rtl";
+};
+
+const LAYOUT_DEFAULTS: WebLayoutConfig = {
+  rowWidth: 500,
+  colHeight: 130,
+  padX: 60,
+  padY: 60,
+  commitOffsetX: 14,
+  siblingGapRows: 0.45,
+  rootGapRows: 0.75,
+  axisMode: "time-x",
+  timeDirection: "ltr",
+};
+
+const PRESETS: Record<string, WebLayoutConfig> = {
+  default: { ...LAYOUT_DEFAULTS },
+  compact: { rowWidth: 360, colHeight: 100, padX: 40, padY: 40, commitOffsetX: 10, siblingGapRows: 0.3, rootGapRows: 0.5, axisMode: "time-x", timeDirection: "ltr" },
+  wide:    { rowWidth: 640, colHeight: 160, padX: 80, padY: 80, commitOffsetX: 20, siblingGapRows: 0.6, rootGapRows: 1.0, axisMode: "time-x", timeDirection: "ltr" },
+};
+
+const STORAGE_KEY = "mo:web-layout";
+
+function loadConfig(): WebLayoutConfig {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return { ...LAYOUT_DEFAULTS, ...JSON.parse(raw) };
+  } catch {}
+  return { ...LAYOUT_DEFAULTS };
+}
+
+function saveConfig(cfg: WebLayoutConfig) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+}
+
 // ── Helpers ──
 
 function parseTags(tags: string): string[] {
@@ -82,23 +128,15 @@ function formatCost(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-// ── Layout Constants ──
+// ── Node Dimensions (fixed — not configurable) ──
 
-const ROW_WIDTH = 500;
-const COL_HEIGHT = 130;
 const NODE_W = 260;
 const NODE_H = 84;
 const COMMIT_W = 200;
 const COMMIT_H = 30;
-const PAD_X = 60;
-const PAD_Y = 60;
-const COMMIT_OFFSET_X = 14;
 const DOC_W = 180;
 const DOC_H = 32;
-const SIBLING_GAP_ROWS = 0.45;
-const ROOT_GAP_ROWS = 0.75;
 const COMMIT_GAP_Y = 6;
-const COMMIT_EDGE_RAIL_GAP = 14;
 
 // ── Graph Builder ──
 
@@ -106,6 +144,7 @@ function buildGraph(
   sessions: SessionInfo[],
   moveRuns: MoveRun[],
   commits: GitCommit[],
+  config: WebLayoutConfig,
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const edges: GraphEdge[] = [];
   const sessionMap = new Map(sessions.map(s => [s.id, s]));
@@ -257,7 +296,7 @@ function buildGraph(
     for (let index = 0; index < children.length; index++) {
       cursor = layoutSubtree(children[index], cursor);
       childRows.push(rowPosition.get(children[index]) ?? cursor - 1);
-      if (index < children.length - 1) cursor += SIBLING_GAP_ROWS;
+      if (index < children.length - 1) cursor += config.siblingGapRows;
     }
     rowPosition.set(sid, (childRows[0] + childRows[childRows.length - 1]) / 2);
     return cursor;
@@ -272,7 +311,7 @@ function buildGraph(
   let nextRootRow = 0;
   for (let index = 0; index < orderedRoots.length; index++) {
     nextRootRow = layoutSubtree(orderedRoots[index], nextRootRow);
-    if (index < orderedRoots.length - 1) nextRootRow += ROOT_GAP_ROWS;
+    if (index < orderedRoots.length - 1) nextRootRow += config.rootGapRows;
   }
 
   // Guard against malformed/cyclic data so every relevant session still renders.
@@ -287,6 +326,16 @@ function buildGraph(
     rowPosition.set(sid, nextRootRow);
     nextRootRow += 1;
   }
+
+  // Axis helpers: map (row, col) to (x, y) based on axisMode
+  const toX = (row: number, col: number) =>
+    config.axisMode === "time-x"
+      ? config.padX + row * config.rowWidth
+      : config.padX + col * config.colHeight;
+  const toY = (row: number, col: number) =>
+    config.axisMode === "time-x"
+      ? config.padY + col * config.colHeight
+      : config.padY + row * config.rowWidth;
 
   // Position session nodes
   const nodes: GraphNode[] = [];
@@ -306,8 +355,8 @@ function buildGraph(
     nodes.push({
       id: s.id,
       type: "session",
-      x: PAD_X + row * ROW_WIDTH,
-      y: PAD_Y + col * COL_HEIGHT,
+      x: toX(row, col),
+      y: toY(row, col),
       col,
       row,
       session: s,
@@ -316,17 +365,40 @@ function buildGraph(
     });
   }
 
+  // Apply timeDirection RTL flip to session nodes before deriving doc/commit positions
+  if (config.timeDirection === "rtl") {
+    const sessionNodes = nodes.filter(n => n.type === "session");
+    if (config.axisMode === "time-x") {
+      const xs = sessionNodes.map(n => n.x);
+      const maxX = Math.max(...xs), minX = Math.min(...xs);
+      for (const n of sessionNodes) n.x = maxX + minX - n.x;
+    } else {
+      const ys = sessionNodes.map(n => n.y);
+      const maxY = Math.max(...ys), minY = Math.min(...ys);
+      for (const n of sessionNodes) n.y = maxY + minY - n.y;
+    }
+  }
+
   // Position document nodes — midpoint between source and target sessions
   const sessionNodeMap = new Map(nodes.map(n => [n.id, n]));
   for (const doc of handoffDocs) {
     const fromNode = sessionNodeMap.get(doc.fromSessionId);
     const toNode = sessionNodeMap.get(doc.toSessionId);
     if (!fromNode || !toNode) continue;
-    // Center doc in the gap between source bottom and target top, midX between both sessions
-    const gapStart = fromNode.y + NODE_H;
-    const gapEnd = toNode.y;
-    const docY = gapStart + (gapEnd - gapStart - DOC_H) / 2;
-    const docX = (fromNode.x + NODE_W / 2 + toNode.x + NODE_W / 2) / 2 - DOC_W / 2;
+    let docX: number, docY: number;
+    if (config.axisMode === "time-y") {
+      // In time-y, handoff gap is horizontal (depth axis = x)
+      const gapStart = fromNode.x + NODE_W;
+      const gapEnd = toNode.x;
+      docX = gapStart + (gapEnd - gapStart - DOC_W) / 2;
+      docY = (fromNode.y + NODE_H / 2 + toNode.y + NODE_H / 2) / 2 - DOC_H / 2;
+    } else {
+      // In time-x, handoff gap is vertical (depth axis = y)
+      const gapStart = fromNode.y + NODE_H;
+      const gapEnd = toNode.y;
+      docY = gapStart + (gapEnd - gapStart - DOC_H) / 2;
+      docX = (fromNode.x + NODE_W / 2 + toNode.x + NODE_W / 2) / 2 - DOC_W / 2;
+    }
     nodes.push({
       id: `doc:${doc.moveRunId}`,
       type: "document",
@@ -338,7 +410,7 @@ function buildGraph(
     });
   }
 
-  // Position commit nodes — center them below the most recent linked session.
+  // Position commit nodes — center them beside the most recent linked session.
   const commitsByAnchor = new Map<string, GitCommit[]>();
   for (const c of linkedCommits) {
     const h7 = shortHash(c.hash);
@@ -361,18 +433,36 @@ function buildGraph(
     const anchorNode = sessionNodeMap.get(anchorSid);
     if (!anchorNode) continue;
     const orderedCommits = [...commitGroup].sort((a, b) => commitTimestamp(b) - commitTimestamp(a));
-    const commitX = anchorNode.x + NODE_W + COMMIT_OFFSET_X;
-    for (let index = 0; index < orderedCommits.length; index++) {
-      const c = orderedCommits[index];
-      nodes.push({
-        id: `commit:${shortHash(c.hash)}`,
-        type: "commit",
-        x: commitX,
-        y: anchorNode.y + index * (COMMIT_H + COMMIT_GAP_Y),
-        col: anchorNode.col,
-        row: anchorNode.row,
-        commit: c,
-      });
+    if (config.axisMode === "time-y") {
+      // time-y: commits sit below the session, stacked left→right
+      const commitY = anchorNode.y + NODE_H + config.commitOffsetX;
+      for (let index = 0; index < orderedCommits.length; index++) {
+        const c = orderedCommits[index];
+        nodes.push({
+          id: `commit:${shortHash(c.hash)}`,
+          type: "commit",
+          x: anchorNode.x + index * (COMMIT_W + COMMIT_GAP_Y),
+          y: commitY,
+          col: anchorNode.col,
+          row: anchorNode.row,
+          commit: c,
+        });
+      }
+    } else {
+      // time-x: commits sit to the right of the session, stacked top→bottom
+      const commitX = anchorNode.x + NODE_W + config.commitOffsetX;
+      for (let index = 0; index < orderedCommits.length; index++) {
+        const c = orderedCommits[index];
+        nodes.push({
+          id: `commit:${shortHash(c.hash)}`,
+          type: "commit",
+          x: commitX,
+          y: anchorNode.y + index * (COMMIT_H + COMMIT_GAP_Y),
+          col: anchorNode.col,
+          row: anchorNode.row,
+          commit: c,
+        });
+      }
     }
   }
 
@@ -391,22 +481,48 @@ function nodeMidX(n: GraphNode) {
   if (n.type === "document") return n.x + DOC_W / 2;
   return n.x + COMMIT_W / 2;
 }
+function nodeRight(n: GraphNode) {
+  if (n.type === "session") return n.x + NODE_W;
+  if (n.type === "document") return n.x + DOC_W;
+  return n.x + COMMIT_W;
+}
+function nodeMidY(n: GraphNode) {
+  if (n.type === "session") return n.y + NODE_H / 2;
+  if (n.type === "document") return n.y + DOC_H / 2;
+  return n.y + COMMIT_H / 2;
+}
 
-function EdgePath({ from, to, type }: {
+function EdgePath({ from, to, type, axisMode }: {
   from: GraphNode;
   to: GraphNode;
   type: "handoff" | "commit" | "document";
+  axisMode: "time-x" | "time-y";
 }) {
   if (type === "commit") {
-    // Commits sit to the right of sessions — horizontal connection at commit center Y
+    if (axisMode === "time-y") {
+      // time-y: commits sit below sessions — vertical stub at commit center X
+      const startY = from.y + NODE_H;
+      const midX = to.x + COMMIT_W / 2;
+      const d = `M ${midX} ${startY} L ${midX} ${to.y}`;
+      return <path d={d} className="web-edge web-edge--commit" />;
+    }
+    // time-x: commits sit to the right — horizontal stub at commit center Y
     const startX = from.x + NODE_W;
     const midY = to.y + COMMIT_H / 2;
     const d = `M ${startX} ${midY} L ${to.x} ${midY}`;
     return <path d={d} className="web-edge web-edge--commit" />;
   }
 
-  // Document edges: straight vertical dashed line
   if (type === "document") {
+    if (axisMode === "time-y") {
+      return (
+        <line
+          x1={nodeRight(from)} y1={nodeMidY(from)}
+          x2={to.x}            y2={nodeMidY(to)}
+          className="web-edge web-edge--document"
+        />
+      );
+    }
     return (
       <line
         x1={nodeMidX(from)} y1={nodeBottom(from)}
@@ -416,13 +532,110 @@ function EdgePath({ from, to, type }: {
     );
   }
 
-  // Handoff: vertical cubic bezier — cap control points so they never overshoot
+  if (axisMode === "time-y") {
+    // Horizontal cubic bezier — exits right of source, enters left of target
+    const x1 = nodeRight(from), y1 = nodeMidY(from);
+    const x2 = to.x,            y2 = nodeMidY(to);
+    const dx = Math.abs(x2 - x1);
+    const cp = Math.min(Math.max(dx * 0.4, 20), dx * 0.45);
+    const d = `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`;
+    return <path d={d} className="web-edge web-edge--handoff" />;
+  }
+
+  // time-x: vertical cubic bezier — exits bottom, enters top
   const x1 = nodeMidX(from), y1 = nodeBottom(from);
   const x2 = nodeMidX(to),   y2 = to.y;
   const dy = Math.abs(y2 - y1);
   const cp = Math.min(Math.max(dy * 0.4, 20), dy * 0.45);
   const d = `M ${x1} ${y1} C ${x1} ${y1 + cp}, ${x2} ${y2 - cp}, ${x2} ${y2}`;
   return <path d={d} className="web-edge web-edge--handoff" />;
+}
+
+// ── Layout Panel ──
+
+function LayoutPanel({ config, onChange }: {
+  config: WebLayoutConfig;
+  onChange: (cfg: WebLayoutConfig) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const set = <K extends keyof WebLayoutConfig>(key: K, value: WebLayoutConfig[K]) =>
+    onChange({ ...config, [key]: value });
+
+  const sliders: [string, keyof WebLayoutConfig, number, number, number][] = [
+    ["row width",    "rowWidth",       200, 800,  10],
+    ["col height",   "colHeight",       80, 400,  10],
+    ["pad x",        "padX",            20, 120,   4],
+    ["pad y",        "padY",            20, 120,   4],
+    ["commit gap",   "commitOffsetX",    4,  60,   2],
+    ["sibling gap",  "siblingGapRows",   0,   2,  0.05],
+    ["root gap",     "rootGapRows",      0,   2,  0.05],
+  ];
+
+  return (
+    <div className="web-layout-panel" onMouseDown={e => e.stopPropagation()}>
+      <button className="web-layout-toggle" onClick={() => setOpen(o => !o)}>
+        layout {open ? "▲" : "▼"}
+      </button>
+      <div className={`web-layout-body${open ? " web-layout-body--open" : ""}`}>
+        <div>
+          <div className="web-layout-inner">
+            <div className="web-layout-section">
+              <div className="web-layout-row">
+                <label>axis</label>
+                <div className="web-layout-toggles">
+                  <button
+                    className={config.axisMode === "time-x" ? "active" : ""}
+                    onClick={() => set("axisMode", "time-x")}
+                  >time-x</button>
+                  <button
+                    className={config.axisMode === "time-y" ? "active" : ""}
+                    onClick={() => set("axisMode", "time-y")}
+                  >time-y</button>
+                </div>
+              </div>
+              <div className="web-layout-row">
+                <label>direction</label>
+                <div className="web-layout-toggles">
+                  <button
+                    className={config.timeDirection === "ltr" ? "active" : ""}
+                    onClick={() => set("timeDirection", "ltr")}
+                  >ltr</button>
+                  <button
+                    className={config.timeDirection === "rtl" ? "active" : ""}
+                    onClick={() => set("timeDirection", "rtl")}
+                  >rtl</button>
+                </div>
+              </div>
+            </div>
+            <div className="web-layout-divider" />
+            <div className="web-layout-section">
+              {sliders.map(([label, key, min, max, step]) => (
+                <div className="web-layout-slider-row" key={key}>
+                  <label>{label}</label>
+                  <input
+                    type="range"
+                    min={min} max={max} step={step}
+                    value={config[key] as number}
+                    onChange={e => set(key, Number(e.target.value))}
+                  />
+                  <span>{(config[key] as number).toFixed(step < 1 ? 2 : 0)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="web-layout-divider" />
+            <div className="web-layout-presets">
+              {Object.keys(PRESETS).map(name => (
+                <button key={name} onClick={() => onChange({ ...PRESETS[name] })}>
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Detail Panel ──
@@ -520,12 +733,21 @@ export function SessionWeb() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
   const [miniSessionId, setMiniSessionId] = useState<string | null>(null);
+  const [config, setConfig] = useState<WebLayoutConfig>(() => loadConfig());
 
   // Canvas viewport state — start with padding so content isn't at origin
-  const [viewport, setViewport] = useState<Viewport>({ x: PAD_X, y: PAD_Y, scale: 1 });
+  const [viewport, setViewport] = useState<Viewport>(() => {
+    const cfg = loadConfig();
+    return { x: cfg.padX, y: cfg.padY, scale: 1 };
+  });
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; vpX: number; vpY: number } | null>(null);
   const autoCenteredRef = useRef(false);
+
+  // Persist config changes to localStorage
+  useEffect(() => {
+    saveConfig(config);
+  }, [config]);
 
   // Fetch all data
   useEffect(() => {
@@ -552,8 +774,8 @@ export function SessionWeb() {
   }, []);
 
   const { nodes, edges } = useMemo(
-    () => buildGraph(sessions, moveRuns, commits),
-    [sessions, moveRuns, commits],
+    () => buildGraph(sessions, moveRuns, commits, config),
+    [sessions, moveRuns, commits, config],
   );
 
   const nodeMap = useMemo(
@@ -575,13 +797,13 @@ export function SessionWeb() {
   // Compute SVG viewport
   const svgW = useMemo(() => {
     const maxX = Math.max(...nodes.map(n => n.x + (n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W)), 400);
-    return maxX + PAD_X;
-  }, [nodes]);
+    return maxX + config.padX;
+  }, [nodes, config.padX]);
 
   const svgH = useMemo(() => {
     const maxY = Math.max(...nodes.map(n => n.y + (n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H)), 300);
-    return maxY + PAD_Y;
-  }, [nodes]);
+    return maxY + config.padY;
+  }, [nodes, config.padY]);
 
   // Wheel zoom (non-passive to allow preventDefault)
   useEffect(() => {
@@ -635,7 +857,7 @@ export function SessionWeb() {
   const handleResetView = useCallback(() => {
     const wrap = wrapRef.current;
     if (!wrap || !newestSessionNode) {
-      setViewport({ x: PAD_X, y: PAD_Y, scale: 1 });
+      setViewport({ x: config.padX, y: config.padY, scale: 1 });
       return;
     }
 
@@ -646,7 +868,7 @@ export function SessionWeb() {
       y: wrap.clientHeight / 2 - targetY,
       scale: 1,
     });
-  }, [newestSessionNode]);
+  }, [newestSessionNode, config.padX, config.padY]);
 
   useLayoutEffect(() => {
     if (loading || autoCenteredRef.current || !newestSessionNode) return;
@@ -716,7 +938,7 @@ export function SessionWeb() {
               const active = activeEdgeSet.has(edgeKey);
               return (
                 <g key={i} className={active ? "web-edge-active" : ""}>
-                  <EdgePath from={from} to={to} type={e.type} />
+                  <EdgePath from={from} to={to} type={e.type} axisMode={config.axisMode} />
                 </g>
               );
             })}
@@ -797,6 +1019,7 @@ export function SessionWeb() {
           onClick={handleResetView}
           title="Reset view"
         >⊙</button>
+        <LayoutPanel config={config} onChange={setConfig} />
       </div>
 
       {/* Detail panel */}
