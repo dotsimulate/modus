@@ -227,7 +227,7 @@ function extractTouchesFromEvent(
  */
 export function queryTouches(db: Database, query: TouchQuery = {}): FileTouch[] {
   const {
-    limit = 5000,
+    limit,
     userProfile,
     cwd: cwdFilter,
     from,
@@ -310,7 +310,7 @@ export function queryTouches(db: Database, query: TouchQuery = {}): FileTouch[] 
       if (opSet && !opSet.has(touch.op)) continue;
       if (confSet && !confSet.has(touch.confidence)) continue;
       touches.push(touch);
-      if (touches.length >= limit) return touches;
+      if (limit != null && limit > 0 && touches.length >= limit) return touches;
     }
   }
 

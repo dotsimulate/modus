@@ -44,6 +44,9 @@ type TraceParticle = {
 
 const SPRING  = 0.038;
 const DAMPING = 0.84;
+const INITIAL_CAMERA = { rotY: 0.3, rotX: -0.15, camZ: -220, panX: 0, panY: 0, autoRotate: true };
+const MIN_CAM_Z = -2800;
+const MAX_CAM_Z = 720;
 
 // ── Colors (canvas — no CSS vars) ──
 
@@ -68,10 +71,10 @@ function computeTargets(graph: TraceGraph): Map<string, Vec3> {
   const sessPos = new Map<string, Vec3>();
   const n = graph.sessions.length;
 
-  // Sessions: temporal ribbon — oldest=far(Z=280), newest=close(Z=0), spread in X
+  // Sessions: temporal ribbon — older sessions farther back, with a longer runway in X/Z.
   graph.sessions.forEach((sess, i) => {
     const t   = n <= 1 ? 0.5 : i / (n - 1);
-    const pos = { x: (t - 0.5) * 620, y: 70, z: (1 - t) * 280 };
+    const pos = { x: (t - 0.5) * 1100, y: 70, z: (1 - t) * 520 };
     sessPos.set(sess.sessionId, pos);
     result.set("s:" + sess.sessionId, pos);
   });
@@ -89,9 +92,9 @@ function computeTargets(graph: TraceGraph): Map<string, Vec3> {
     const seed = file.filePath.split("").reduce((a, c, i) => a + c.charCodeAt(0) * (i + 1), 17);
     const rng  = seededRandom(seed);
     result.set("f:" + file.filePath, {
-      x: cx + (rng() - 0.5) * 160,
+      x: cx + (rng() - 0.5) * 220,
       y: -55 + (rng() - 0.5) * 55,
-      z: cz  + (rng() - 0.5) * 160,
+      z: cz  + (rng() - 0.5) * 220,
     });
   }
 
@@ -207,14 +210,14 @@ export function TraceView() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [activeOps, setActiveOps] = useState<Set<string>>(new Set(["write", "edit"]));
-  const [timeMs, setTimeMs]       = useState<number | null>(30 * 86_400_000);
+  const [timeMs, setTimeMs]       = useState<number | null>(null);
   const [hoveredIdx, setHoveredIdx] = useState(-1);
   const [lockedId, setLockedId]     = useState<string | null>(null);
 
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<TraceParticle[]>([]);
   const graphRef     = useRef<TraceGraph>({ sessions: [], files: [], edges: [] });
-  const cameraRef    = useRef({ rotY: 0.3, rotX: -0.15, camZ: -125, panX: 0, panY: 0, autoRotate: true });
+  const cameraRef    = useRef({ ...INITIAL_CAMERA });
   const dragRef      = useRef({ dragging: false, button: 0, lastX: 0, lastY: 0 });
 
   // Stable refs for rAF loop
@@ -227,7 +230,7 @@ export function TraceView() {
   const fetchKey = `${[...activeOps].sort().join(",")}|${timeMs}`;
   useEffect(() => {
     setLoading(true);
-    const q: TouchQuery = { limit: 3000, ops: [...activeOps] };
+    const q: TouchQuery = { ops: [...activeOps] };
     if (timeMs) q.from = Date.now() - timeMs;
     fetchTouches(q)
       .then(r => { setTouches(r.touches); setError(null); })
@@ -473,8 +476,8 @@ export function TraceView() {
     if (!canvas) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cameraRef.current.camZ -= e.deltaY * 0.8;
-      cameraRef.current.camZ = Math.max(-1500, Math.min(100, cameraRef.current.camZ));
+      cameraRef.current.camZ -= e.deltaY * 1.15;
+      cameraRef.current.camZ = Math.max(MIN_CAM_Z, Math.min(MAX_CAM_Z, cameraRef.current.camZ));
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
@@ -605,8 +608,7 @@ export function TraceView() {
           className="trace-reset-btn"
           onClick={() => {
             const cam = cameraRef.current;
-            cam.rotY = 0.3; cam.rotX = -0.15; cam.camZ = -125; cam.panX = 0; cam.panY = 0;
-            cam.autoRotate = true;
+            Object.assign(cam, INITIAL_CAMERA);
           }}
         >⌖</button>
 

@@ -587,7 +587,10 @@ async function fireAction(
       });
 
       const idStart = Date.now();
-      while (session.sessionId.startsWith("pending-") && Date.now() - idStart < 15_000) {
+      while (
+        (session.sessionId.startsWith("ses-") || session.sessionId.startsWith("pending-"))
+        && Date.now() - idStart < 15_000
+      ) {
         await new Promise(r => setTimeout(r, 200));
       }
 
