@@ -18,7 +18,7 @@
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
-import { startSession, getActiveSession, type StartSessionOpts } from "./session-manager";
+import { startSession, getActiveSession, queueMessage, type StartSessionOpts } from "./session-manager";
 import { logActivity } from "./activity";
 import {
   insertMissionRun, getMissionRun, listMissionRuns, updateMissionRun,
@@ -574,9 +574,12 @@ async function handleReport(
     metadata: { runId: run.id, stepId, status },
   });
 
-  // If completed, check if all gates pass
+  // Check gates and notify orchestrator with the real structured response
+  const allGatesPassed = status === "completed" ? checkStepGates(run, stepId) : false;
+  const orchMessage = buildOrchestratorReportMessage(cmd, allGatesPassed);
+  notifyOrchestrator(run, orchMessage);
+
   if (status === "completed") {
-    const allGatesPassed = checkStepGates(run, stepId);
     if (allGatesPassed) {
       return { ok: true, message: `Step "${stepId}" reported complete. All gates passed — step can advance.` };
     }
@@ -622,9 +625,14 @@ function handleGate(
   });
 
   // Check if all gates now pass
+  let allPassed = false;
+  let stepCompleted = false;
+  let missionCompleted = false;
+
   if (status === "pass") {
-    const allPassed = checkStepGates(run, stepId);
+    allPassed = checkStepGates(run, stepId);
     if (allPassed) {
+      stepCompleted = true;
       // Auto-advance step
       updateMissionStep(step.id, {
         status: "completed",
@@ -635,6 +643,7 @@ function handleGate(
       const allSteps = getMissionSteps(run.id);
       const allComplete = allSteps.every(s => s.status === "completed" || s.status === "skipped");
       if (allComplete) {
+        missionCompleted = true;
         updateMissionRun(run.id, {
           status: "completed",
           completedAt: Date.now(),
@@ -645,13 +654,22 @@ function handleGate(
           summary: `Mission completed: ${run.mission_name}`,
           metadata: { runId: run.id },
         });
-        return { ok: true, message: `Gate ${gate} passed. Step "${stepId}" complete. Mission complete!` };
       }
-
-      return { ok: true, message: `Gate ${gate} passed. Step "${stepId}" complete. Advance to next step.` };
     }
   }
 
+  // Notify orchestrator of gate change (only if the caller is not the orchestrator itself)
+  if (grant.role !== "orchestrator") {
+    const orchMessage = buildOrchestratorGateMessage(stepId, gate, status, allPassed, stepCompleted, missionCompleted);
+    notifyOrchestrator(run, orchMessage);
+  }
+
+  if (missionCompleted) {
+    return { ok: true, message: `Gate ${gate} passed. Step "${stepId}" complete. Mission complete!` };
+  }
+  if (stepCompleted) {
+    return { ok: true, message: `Gate ${gate} passed. Step "${stepId}" complete. Advance to next step.` };
+  }
   return { ok: true, message: `Gate ${gate} recorded as ${status} for step "${stepId}".` };
 }
 
@@ -675,6 +693,94 @@ function handlePause(
   });
 
   return { ok: true, message: `Mission paused: ${cmd.reason}` };
+}
+
+// ── Orchestrator Notification ──
+
+/**
+ * Send a structured message into the orchestrator session so it can
+ * read the real worker/gate response and decide what to do next.
+ * This is the critical "step 4" from the architecture contract:
+ *   runner records state → runner sends response → orchestrator reads and decides.
+ */
+function notifyOrchestrator(run: MissionRunRow, message: string): void {
+  const orchId = run.orchestrator_session_id;
+  if (!orchId) {
+    console.warn(`[mission-runner] Cannot notify orchestrator — no session ID on run ${run.id}`);
+    return;
+  }
+  const orchSession = getActiveSession(orchId);
+  if (!orchSession) {
+    console.warn(`[mission-runner] Orchestrator session ${orchId} not active — cannot deliver response for run ${run.id}`);
+    return;
+  }
+  queueMessage(orchId, message);
+}
+
+/**
+ * Build a structured report message for the orchestrator from a worker report.
+ */
+function buildOrchestratorReportMessage(
+  cmd: Extract<MissionCommand, { op: "report" }>,
+  allGatesPassed: boolean,
+): string {
+  const parts: string[] = [
+    `## Worker Report: Step "${cmd.stepId}"`,
+    "",
+    `**Status:** ${cmd.status}`,
+    `**Summary:** ${cmd.summary}`,
+  ];
+  if (cmd.filesChanged?.length) {
+    parts.push("", "**Files changed:**", ...cmd.filesChanged.map(f => `- ${f}`));
+  }
+  if (cmd.commits?.length) {
+    parts.push("", "**Commits:**", ...cmd.commits.map(c => `- ${c}`));
+  }
+  if (cmd.testResults) {
+    parts.push("", "**Test results:**", cmd.testResults);
+  }
+  if (cmd.handoffSummary) {
+    parts.push("", "**Handoff summary:**", cmd.handoffSummary);
+  }
+  if (cmd.status === "completed") {
+    parts.push("", allGatesPassed
+      ? "All required gates have passed. You may advance to the next step."
+      : "Some gates are still pending. Check gate status before advancing.");
+  } else {
+    parts.push("", "The worker reported failure. Decide whether to retry, reassign, or escalate.");
+  }
+  return parts.join("\n");
+}
+
+/**
+ * Build a structured gate notification for the orchestrator.
+ */
+function buildOrchestratorGateMessage(
+  stepId: string,
+  gate: string,
+  status: "pass" | "fail",
+  allGatesPassed: boolean,
+  stepCompleted: boolean,
+  missionCompleted: boolean,
+): string {
+  const parts: string[] = [
+    `## Gate Update: Step "${stepId}"`,
+    "",
+    `**Gate:** ${gate}`,
+    `**Result:** ${status}`,
+  ];
+  if (stepCompleted && missionCompleted) {
+    parts.push("", "All gates passed. Step completed. **Mission complete.**");
+  } else if (stepCompleted) {
+    parts.push("", "All gates passed. Step completed. Advance to the next step.");
+  } else if (allGatesPassed) {
+    parts.push("", "All required gates have passed for this step.");
+  } else if (status === "fail") {
+    parts.push("", "Gate failed. Decide whether to retry or escalate.");
+  } else {
+    parts.push("", "Gate passed. Other gates still pending.");
+  }
+  return parts.join("\n");
 }
 
 // ── Gate Checking ──
