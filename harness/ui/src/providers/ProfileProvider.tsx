@@ -115,11 +115,13 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     );
     const cwd = source.cwd.trim();
     if (cwd) addRecentPath(cwd);
+    const additionalDirs = (source.additionalDirectories ?? []).filter((d) => d.trim());
     return {
       prompt,
       profile,
       ...(activeUserProfile ? { userProfile: activeUserProfile } : {}),
       ...(cwd ? { cwd } : {}),
+      ...(additionalDirs.length > 0 ? { additionalDirectories: additionalDirs } : {}),
       loadProjectSettings: source.loadProjectSettings,
       ...agentOverrides,
     };

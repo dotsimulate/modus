@@ -15,6 +15,8 @@ export type SessionSetupState = {
   /** Mutable agent config for seeding the next session */
   agent: AgentConfigState;
   cwd: string;
+  /** Additional workspace roots passed alongside cwd */
+  additionalDirectories: string[];
   loadProjectSettings: boolean;
   /** When true, new sessions use this setup. When false, they inherit from the active chat's Config Bar. */
   useManualSetup: boolean;
@@ -57,6 +59,7 @@ export function SessionSetup({
   showLoadProjectSettings = true,
 }: Props) {
   const [browseOpen, setBrowseOpen] = useState(false);
+  const [extraBrowseIdx, setExtraBrowseIdx] = useState<number | null>(null);
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
   const [initLoading, setInitLoading] = useState(false);
 
@@ -89,9 +92,31 @@ export function SessionSetup({
     onChange({ ...config, ...patch });
   };
 
+  const addExtraDir = () => {
+    update({ additionalDirectories: [...config.additionalDirectories, config.cwd] });
+  };
+
+  const updateExtraDir = (idx: number, value: string) => {
+    const next = [...config.additionalDirectories];
+    next[idx] = value;
+    update({ additionalDirectories: next });
+  };
+
+  const removeExtraDir = (idx: number) => {
+    const next = config.additionalDirectories.filter((_, i) => i !== idx);
+    update({ additionalDirectories: next });
+    if (extraBrowseIdx === idx) setExtraBrowseIdx(null);
+  };
+
+  const folderIcon = (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M1.5 3.5V11.5H12.5V5H7L5.5 3.5H1.5Z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" fill="none"/>
+    </svg>
+  );
+
   return (
     <div className="session-setup">
-      {/* CWD — dropdown of recent paths + browse button */}
+      {/* CWD — dropdown of recent paths + browse + add-dir button */}
       <div className="cwd-field">
         <label className="agent-config-field">
           <span>cwd</span>
@@ -129,17 +154,49 @@ export function SessionSetup({
             </select>
             <button
               className="cwd-browse-btn"
-              onClick={() => setBrowseOpen(true)}
+              onClick={() => { setExtraBrowseIdx(null); setBrowseOpen(true); }}
               title="Browse folders"
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M1.5 3.5V11.5H12.5V5H7L5.5 3.5H1.5Z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" fill="none"/>
-              </svg>
+              {folderIcon}
+            </button>
+            <button
+              className="cwd-add-btn"
+              onClick={addExtraDir}
+              title="Add workspace root"
+            >
+              +
             </button>
           </div>
         </label>
 
-        {/* Folder picker — floats over content */}
+        {/* Extra directory rows */}
+        {config.additionalDirectories.map((dir, idx) => (
+          <div key={idx} className="extra-dir-row">
+            <input
+              className="extra-dir-input"
+              value={dir}
+              onChange={(e) => updateExtraDir(idx, e.target.value)}
+              spellCheck={false}
+              placeholder="/path/to/dir"
+            />
+            <button
+              className="cwd-browse-btn"
+              onClick={() => { setBrowseOpen(false); setExtraBrowseIdx(idx); }}
+              title="Browse folders"
+            >
+              {folderIcon}
+            </button>
+            <button
+              className="extra-dir-remove-btn"
+              onClick={() => removeExtraDir(idx)}
+              title="Remove"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+
+        {/* Folder picker for cwd — floats over content */}
         {browseOpen && (
           <FolderPicker
             initialPath={config.cwd || undefined}
@@ -149,6 +206,19 @@ export function SessionSetup({
               setBrowseOpen(false);
             }}
             onCancel={() => setBrowseOpen(false)}
+          />
+        )}
+
+        {/* Folder picker for an extra directory */}
+        {extraBrowseIdx !== null && (
+          <FolderPicker
+            initialPath={config.additionalDirectories[extraBrowseIdx] || config.cwd || undefined}
+            onSelect={(path) => {
+              updateExtraDir(extraBrowseIdx, path);
+              addRecentPath(path);
+              setExtraBrowseIdx(null);
+            }}
+            onCancel={() => setExtraBrowseIdx(null)}
           />
         )}
       </div>
@@ -201,6 +271,7 @@ export function createDefaultSetupState(): SessionSetupState {
   return {
     agent: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "", providerControls: {} },
     cwd: "",
+    additionalDirectories: [],
     loadProjectSettings: true,
     useManualSetup: true,
   };
