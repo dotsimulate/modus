@@ -50,6 +50,7 @@ import './styles/views/memory.css'
 import './styles/views/actions.css'
 import './styles/views/git.css'
 import './styles/views/web.css'
+import './styles/views/trace.css'
 
 // Overrides (last — responsive)
 import './styles/mobile.css'
