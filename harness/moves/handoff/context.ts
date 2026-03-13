@@ -51,6 +51,10 @@ export async function gather(ctx: MoveContext): Promise<string> {
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const handoffFilename = `${ts}-handoff.md`;
 
+  // Expose to move-runner so the session web can render document nodes
+  ctx.meta("handoffsDir", handoffsDir);
+  ctx.meta("handoffFilename", handoffFilename);
+
   let touchedFiles: string[] = [];
   if (ctx.sessionId) {
     try {
