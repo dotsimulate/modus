@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import { fetchSessions } from "../api/sessions";
 import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
@@ -526,6 +526,7 @@ export function SessionWeb() {
   const [viewport, setViewport] = useState<Viewport>({ x: PAD_X, y: PAD_Y, scale: 1 });
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; vpX: number; vpY: number } | null>(null);
+  const autoCenteredRef = useRef(false);
 
   // Fetch all data
   useEffect(() => {
@@ -560,6 +561,17 @@ export function SessionWeb() {
     () => new Map(nodes.map(n => [n.id, n])),
     [nodes],
   );
+
+  const newestSessionNode = useMemo(() => {
+    return nodes
+      .filter((node): node is GraphNode & { type: "session"; session: SessionInfo } => node.type === "session" && !!node.session)
+      .sort((a, b) => {
+        const timeDiff = (a.session?.created_at ?? 0) - (b.session?.created_at ?? 0);
+        if (timeDiff !== 0) return timeDiff;
+        return a.id.localeCompare(b.id);
+      })
+      .at(-1) ?? null;
+  }, [nodes]);
 
   // Compute SVG viewport
   const svgW = useMemo(() => {
@@ -620,6 +632,33 @@ export function SessionWeb() {
   const handleSelect = useCallback((node: GraphNode) => {
     setSelected(prev => prev?.id === node.id ? null : node);
   }, []);
+
+  const handleResetView = useCallback(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || !newestSessionNode) {
+      setViewport({ x: PAD_X, y: PAD_Y, scale: 1 });
+      return;
+    }
+
+    const targetX = newestSessionNode.x + NODE_W / 2;
+    const targetY = newestSessionNode.y + NODE_H / 2;
+    setViewport({
+      x: wrap.clientWidth / 2 - targetX,
+      y: wrap.clientHeight / 2 - targetY,
+      scale: 1,
+    });
+  }, [newestSessionNode]);
+
+  useLayoutEffect(() => {
+    if (loading || autoCenteredRef.current || !newestSessionNode) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      handleResetView();
+      autoCenteredRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, [handleResetView, loading, newestSessionNode]);
 
   // Edges connected to hovered/selected node
   const activeNodeId = hoveredId ?? selected?.id ?? null;
@@ -756,7 +795,7 @@ export function SessionWeb() {
         <button
           className="web-reset-btn"
           onMouseDown={e => e.stopPropagation()}
-          onClick={() => setViewport({ x: PAD_X, y: PAD_Y, scale: 1 })}
+          onClick={handleResetView}
           title="Reset view"
         >⊙</button>
       </div>
