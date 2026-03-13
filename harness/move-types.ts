@@ -105,6 +105,9 @@ export interface MoveContext {
   run: (cmd: string) => Promise<string>;
   harness: HarnessBridge;
 
+  /** Attach metadata for tracing/graph rendering (stored as gatheredContext). */
+  meta: (key: string, value: unknown) => void;
+
   // ── Available during gather() — set by move-runner before calling gather ──
   /** Short-lived move token for modus_submit */
   token?: string;

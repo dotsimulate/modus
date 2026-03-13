@@ -158,9 +158,10 @@ function buildMoveContext(
   sessionId: string,
   cwd: string,
   userProfile: string | undefined,
-  opts?: { inputs?: Record<string, unknown>; token?: string; schema?: string },
+  opts?: { inputs?: Record<string, unknown>; token?: string; schema?: string; metadata?: Record<string, unknown> },
 ): MoveContext {
   const active = getActiveSession(sessionId);
+  const metadata = opts?.metadata ?? {};
 
   return {
     moveName,
@@ -181,6 +182,7 @@ function buildMoveContext(
       return out.trim();
     },
     harness: buildHarnessBridge(cwd, userProfile),
+    meta: (key: string, value: unknown) => { metadata[key] = value; },
     token: opts?.token,
     schema: opts?.schema,
     date: new Date().toISOString().split("T")[0],
@@ -408,16 +410,19 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   const token = generateToken();
   const schema = config.schemaHint ?? (config.schema ? JSON.stringify(config.schema, null, 2) : "{}");
 
+  // Shared metadata bag — gather() populates via ctx.meta()
+  const gatheredContext: Record<string, unknown> = {};
+
   // Build context with inputs, token, and schema available
   const moveCtx = buildMoveContext(moveName, sourceSessionId, cwd, userProfile, {
     inputs,
     token,
     schema,
+    metadata: gatheredContext,
   });
 
   // Call gather() if context.ts exists, otherwise build a default prompt
   let prompt: string;
-  let gatheredContext: Record<string, unknown> = {};
   try {
     const mod = await loadMoveModule(moveName, cwd);
     if (mod?.gather) {
@@ -436,7 +441,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     return { error: `gather() failed: ${err}` };
   }
 
-  // Create persisted execution record
+  // Create persisted execution record (gatheredContext now has meta() values from gather)
   const moveRunId = insertMoveRun({
     moveName,
     sessionId: sourceSessionId,
