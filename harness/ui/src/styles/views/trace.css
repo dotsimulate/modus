@@ -1,8 +1,8 @@
 /**
  * Trace — attention/touch graph view.
- * Spatial layout: sessions arc across the top (temporal order),
- * files cluster in the field below by directory gravity.
- * Everything renders in SVG — no HTML node boxes.
+ * Canvas-based 3D rendering: sessions in temporal ribbon (old→far, new→close),
+ * files in a field below pulled toward their session centroids.
+ * Physics spring system, auto-rotation, depth-sorted glow rendering.
  */
 
 /* ── Panel ── */
@@ -102,193 +102,27 @@
   background: color-mix(in srgb, var(--info) 5%, transparent);
 }
 
-.trace-stats {
-  font-size: 10px;
-  color: var(--text-muted);
-}
+.trace-stats  { font-size: 10px; color: var(--text-muted); }
+.trace-loading { font-size: 10px; color: var(--text-muted); }
+.trace-error   { font-size: 10px; color: var(--error-soft); }
 
-.trace-loading {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.trace-error {
-  font-size: 10px;
-  color: var(--error-soft);
-}
-
-/* ── Canvas ── */
+/* ── Canvas wrap ── */
 
 .trace-canvas-wrap {
   flex: 1;
   overflow: hidden;
   position: relative;
-  cursor: grab;
-  user-select: none;
-}
-
-.trace-canvas-wrap:active {
-  cursor: grabbing;
 }
 
 .trace-canvas {
-  position: relative;
-  transform-origin: 0 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
 }
 
-/* ── SVG layer ── */
-
-.trace-svg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-  overflow: visible;
-}
-
-/* ── Edges ── */
-
-.trace-edge {
-  fill: none;
-  stroke-dasharray: 4000;
-  stroke-dashoffset: 4000;
-  animation: trace-draw 0.5s ease-out forwards;
-}
-
-@keyframes trace-draw {
-  to { stroke-dashoffset: 0; }
-}
-
-.trace-edge--write  { stroke: var(--success); }
-.trace-edge--read   { stroke: var(--info); }
-.trace-edge--search { stroke: var(--text-dim); }
-
-/* ── Cluster halos ── */
-
-.trace-cluster-halo {
-  fill: none;
-  stroke: var(--border);
-  stroke-width: 1;
-  opacity: 0.3;
-}
-
-.trace-cluster-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  fill: var(--text-muted);
-  text-anchor: middle;
-  letter-spacing: 0.09em;
-  pointer-events: none;
-}
-
-/* ── Session nodes (SVG <g>) ── */
-
-.trace-session-node {
-  cursor: pointer;
-  pointer-events: all;
-  transition: opacity 0.2s ease;
-}
-
-/* Dimmed: non-connected nodes during hover — CSS handles this, no React opacity prop */
-.trace-session-node.dimmed {
-  opacity: 0.22;
-}
-
-/* Hover/select ring — invisible by default, CSS reveals it */
-.trace-sess-ring {
-  fill: none;
-  stroke: var(--border-active);
-  stroke-width: 1;
-  opacity: 0;
-  transition: opacity 0.15s ease, r 0.1s ease;
-}
-
-.trace-session-node.hovered .trace-sess-ring {
-  opacity: 0.55;
-}
-
-.trace-session-node.selected .trace-sess-ring {
-  opacity: 0.8;
-  stroke: var(--border-focus);
-}
-
-.trace-sess-id {
-  font-family: var(--font-mono);
-  font-size: 8px;
-  font-weight: 500;
-  fill: var(--text-secondary);
-  transition: fill 0.15s ease;
-}
-
-.trace-session-node.hovered .trace-sess-id,
-.trace-session-node.selected .trace-sess-id {
-  fill: var(--text);
-}
-
-.trace-sess-time {
-  font-family: var(--font-mono);
-  font-size: 7px;
-  fill: var(--text-muted);
-}
-
-/* ── Provider dots (shared: SVG in canvas, HTML in detail panel) ── */
-
-.trace-provider-dot {
-  /* HTML context (detail panel inline spans) */
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--dot-idle);
-}
-
-/* SVG context: fill overrides */
-circle.trace-provider-dot,
-.trace-provider-dot {
-  fill: var(--dot-idle);
-}
-
-.trace-provider-dot--claude   { fill: var(--flash-assistant); background: var(--flash-assistant); opacity: 0.8; }
-.trace-provider-dot--gemini   { fill: var(--info);            background: var(--info); }
-.trace-provider-dot--codex    { fill: var(--tool-ok);         background: var(--tool-ok); }
-.trace-provider-dot--pi       { fill: var(--warning);         background: var(--warning); }
-.trace-provider-dot--unknown  { fill: var(--dot-idle);        background: var(--dot-idle); }
-
-/* ── File nodes (SVG <g>) ── */
-
-.trace-file-node {
-  cursor: pointer;
-  pointer-events: all;
-  transition: opacity 0.2s ease;
-}
-
-.trace-file-node.dimmed {
-  opacity: 0.22;
-}
-
-.trace-file-dot {
-  /* SVG circle in canvas */
-}
-
-.trace-file-dot--code { fill: var(--info);    opacity: 0.65; }
-.trace-file-dot--docs { fill: var(--warning); opacity: 0.75; }
-
-.trace-file-node.hovered .trace-file-dot,
-.trace-file-node.selected .trace-file-dot {
-  opacity: 1;
-}
-
-.trace-file-name {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  fill: var(--text-dim);
-  transition: fill 0.1s ease;
-}
-
-.trace-file-node.hovered .trace-file-name,
-.trace-file-node.selected .trace-file-name {
-  fill: var(--text);
+.trace-canvas:active {
+  cursor: grabbing;
 }
 
 /* ── Reset button ── */
@@ -312,6 +146,21 @@ circle.trace-provider-dot,
 .trace-reset-btn:hover {
   color: var(--text-dim);
   border-color: var(--border-active);
+}
+
+/* ── Controls hint ── */
+
+.trace-controls-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  pointer-events: none;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 /* ── Detail panel ── */
@@ -389,8 +238,7 @@ circle.trace-provider-dot,
   color: var(--text-muted);
 }
 
-.trace-detail-sep { opacity: 0.4; }
-
+.trace-detail-sep      { opacity: 0.4; }
 .trace-detail-provider { color: var(--text-dim); }
 
 .trace-detail-stat {
