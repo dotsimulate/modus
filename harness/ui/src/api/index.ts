@@ -19,6 +19,7 @@ export {
 export {
   fetchSessions, fetchSessionStatus, fetchActiveSessions,
   searchSessions, archiveSessionApi, updateSessionTitle,
+  addSessionTagApi, removeSessionTagApi,
   getDraft, saveDraft, createEmptySession,
   createSession, sendMessage, stopSessionApi, stopTaskApi, switchSessionProfile,
   updateSessionConfig, respondToPermission,

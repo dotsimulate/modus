@@ -43,6 +43,32 @@ export async function updateSessionTitle(id: string, title: string | null): Prom
   });
 }
 
+// ── Tags ──
+
+async function patchSessionTags(
+  id: string,
+  body: { tags?: string[]; add?: string; remove?: string },
+): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/sessions/${id}/tags`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof data?.error === "string" ? data.error : "Failed to update session tags");
+  }
+  return Array.isArray(data?.tags) ? data.tags : [];
+}
+
+export async function addSessionTagApi(id: string, tag: string): Promise<string[]> {
+  return patchSessionTags(id, { add: tag });
+}
+
+export async function removeSessionTagApi(id: string, tag: string): Promise<string[]> {
+  return patchSessionTags(id, { remove: tag });
+}
+
 // ── Draft Text ──
 
 export async function getDraft(sessionId: string): Promise<string> {
