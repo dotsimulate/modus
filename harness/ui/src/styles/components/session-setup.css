@@ -35,6 +35,55 @@
   flex-shrink: 0;
 }
 .cwd-browse-btn:hover { color: var(--text); border-color: var(--border-active); }
+.cwd-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 6px;
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+.cwd-add-btn:hover { color: var(--text); border-color: var(--border-active); }
+
+/* Extra workspace root rows */
+.extra-dir-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.extra-dir-input {
+  flex: 1;
+  padding: 4px 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+}
+.extra-dir-input:focus { border-color: var(--border-active); }
+.extra-dir-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 6px;
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+.extra-dir-remove-btn:hover { color: var(--error); border-color: var(--error); }
 
 /* ── Folder Picker (floats from .cwd-field, opens upward) ── */
 .folder-picker {

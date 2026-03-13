@@ -209,6 +209,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         profile: activeSession.nextProfile ?? activeSession.profile ?? (selectedProfile || undefined),
         agent: activeSession.nextAgentConfig ?? activeSession.agentConfig,
         cwd: activeSession.cwd || setupState.cwd,
+        additionalDirectories: activeSession.additionalDirectories ?? setupState.additionalDirectories,
         loadProjectSettings: activeSession.loadProjectSettings ?? setupState.loadProjectSettings,
       };
     }
@@ -216,6 +217,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       profile: selectedProfile || undefined,
       agent: applyUserDefaultAgentConfig(setupState.agent),
       cwd: setupState.cwd,
+      additionalDirectories: setupState.additionalDirectories,
       loadProjectSettings: setupState.loadProjectSettings,
     };
   }, [setupState, activeSession, selectedProfile, applyUserDefaultAgentConfig]);
@@ -226,11 +228,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         profile: activeSession.nextProfile ?? activeSession.profile ?? (selectedProfile || undefined),
         agent: getQueuedAgentConfig(activeSession, sessionState?.agentConfig ?? activeSession.agentConfig),
         cwd: sessionState?.cwd || activeSession.cwd || setupState.cwd,
+        additionalDirectories: sessionState?.additionalDirectories ?? activeSession.additionalDirectories ?? setupState.additionalDirectories,
         loadProjectSettings: sessionState?.loadProjectSettings ?? activeSession.loadProjectSettings ?? setupState.loadProjectSettings,
       };
     }
     return getEffectiveSeed();
-  }, [activeSession, getEffectiveSeed, getQueuedAgentConfig, selectedProfile, setupState.cwd, setupState.loadProjectSettings]);
+  }, [activeSession, getEffectiveSeed, getQueuedAgentConfig, selectedProfile, setupState.cwd, setupState.additionalDirectories, setupState.loadProjectSettings]);
 
   const newSession = useCallback(async () => {
     await saveDraftForCurrent();
@@ -252,6 +255,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       rs.agentConfig = seed.agent;
       rs.model = resolvedModel;
       rs.cwd = seed.cwd;
+      rs.additionalDirectories = seed.additionalDirectories ?? [];
       rs.loadProjectSettings = seed.loadProjectSettings;
       setSessionState(id, rs, profile);
       setActiveSessionId(id);
@@ -352,6 +356,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       rs.agentConfig = seedState.agent;
       rs.model = resolveAppliedModel(seedState.agent, null, queuedProfile);
       rs.cwd = seedState.cwd;
+      rs.additionalDirectories = seedState.additionalDirectories ?? [];
       rs.loadProjectSettings = seedState.loadProjectSettings;
       const tempId = rs.sessionId;
       setSessionState(tempId, rs, queuedProfile);
@@ -435,6 +440,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           toolStates: overrides.toolStates,
           providerControls: overrides.providerControls,
           cwd: rs.cwd,
+          additionalDirectories: rs.additionalDirectories.length > 0 ? rs.additionalDirectories : undefined,
           loadProjectSettings: rs.loadProjectSettings,
         });
         if (!isSubscribed(activeSessionId!)) {
