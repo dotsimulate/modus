@@ -190,15 +190,25 @@ export function buildGraph(touches: TouchRecord[]): TraceGraph {
     edge.confidences.add(t.confidence);
   }
 
-  // Sort: sessions oldest → newest (left = past, right = recent in arc)
-  const sortedSessions = [...sessionMap.entries()]
-    .sort((a, b) => a[1].firstSeen - b[1].firstSeen)
-    .slice(0, MAX_SESSIONS);
-
-  // Files: most touched first
+  // Files: top by touchCount
   const sortedFiles = [...fileMap.entries()]
     .sort((a, b) => b[1].touchCount - a[1].touchCount)
     .slice(0, MAX_FILES);
+
+  // Sessions: include every session that touched any shown file.
+  // This guarantees no orphan file nodes. Cap per-file at MAX_SESSIONS total,
+  // prioritising sessions with the most total touches.
+  const relevantSessionIds = new Set<string>();
+  for (const [fp] of sortedFiles) {
+    const f = fileMap.get(fp);
+    if (f) for (const sid of f.sessions) relevantSessionIds.add(sid);
+  }
+  const sortedSessions = [...sessionMap.entries()]
+    .filter(([id]) => relevantSessionIds.has(id))
+    .sort((a, b) => b[1].touchCount - a[1].touchCount)
+    .slice(0, MAX_SESSIONS)
+    // Re-sort by firstSeen ascending for temporal arc placement (left = oldest)
+    .sort((a, b) => a[1].firstSeen - b[1].firstSeen);
 
   // ── Directory grouping ──
 
