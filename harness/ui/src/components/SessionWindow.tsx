@@ -7,11 +7,13 @@
  * lighter than the full ChatView page.
  */
 
-import { useEffect, useCallback } from "react";
-import { useSessionState, subscribeSession, isSubscribed } from "../sessionStore";
-import { respondToPermission } from "../api";
+import { useEffect, useCallback, useEffectEvent, useRef, useState } from "react";
+import type { Attachment } from "../api";
+import { getDraft, saveDraft, sendMessage, stopSessionApi, respondToPermission, nextMsgId } from "../api";
+import { useSessionState, subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
 import { FloatingWindow } from "./FloatingWindow";
 import { ChatView } from "./ChatView";
+import { ChatInput } from "./ChatInput";
 import { PermissionOverlay } from "./PermissionOverlay";
 
 type Props = {
@@ -27,6 +29,11 @@ function statusLabel(status: string): string {
 }
 
 export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
+  const [input, setInput] = useState("");
+  const [queuedMessage, setQueuedMessage] = useState<{ text: string; attachments: Attachment[] } | null>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftReadyRef = useRef(false);
+
   useEffect(() => {
     if (sessionId && !isSubscribed(sessionId)) {
       subscribeSession(sessionId, 0);
@@ -34,6 +41,46 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
+  const isActive = session?.status === "running" || session?.status === "starting";
+  const permissions = session?.pendingPermissions ?? [];
+  const resetComposer = useEffectEvent(() => {
+    setInput("");
+    setQueuedMessage(null);
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!sessionId) {
+      draftReadyRef.current = false;
+      resetComposer();
+      return () => { cancelled = true; };
+    }
+    draftReadyRef.current = false;
+    resetComposer();
+    getDraft(sessionId)
+      .then((draft) => {
+        if (cancelled) return;
+        setInput(draft);
+        draftReadyRef.current = true;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInput("");
+        draftReadyRef.current = true;
+      });
+    return () => { cancelled = true; };
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || !draftReadyRef.current) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      saveDraft(sessionId, input).catch(() => {});
+    }, 1000);
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [input, sessionId]);
 
   const handlePermission = useCallback(
     async (
@@ -48,8 +95,110 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     [sessionId],
   );
 
-  const isActive = session?.status === "running" || session?.status === "starting";
-  const permissions = session?.pendingPermissions ?? [];
+  function handleInputChange(text: string) {
+    setInput(text);
+  }
+
+  async function handleStop() {
+    if (!sessionId) return;
+    await stopSessionApi(sessionId).catch(() => {});
+    const current = getSessionState(sessionId);
+    if (current) {
+      setSessionState(sessionId, { ...current, status: "idle" }, session?.profile);
+    }
+  }
+
+  async function sendPrompt(prompt: string, attachments: Attachment[]) {
+    if (!sessionId) return;
+    if (!prompt && attachments.length === 0) return;
+
+    if (isActive) {
+      setQueuedMessage({ text: prompt, attachments });
+      return;
+    }
+
+    const current = getSessionState(sessionId);
+    if (!current) return;
+
+    const updated = {
+      ...current,
+      status: "running" as const,
+      messages: [
+        ...current.messages,
+        {
+          id: nextMsgId(),
+          role: "user" as const,
+          content: prompt,
+          timestamp: Date.now(),
+          attachments: attachments.length > 0 ? attachments : undefined,
+        },
+      ],
+    };
+    setSessionState(sessionId, updated, session?.profile);
+
+    try {
+      await sendMessage(
+        sessionId,
+        prompt,
+        attachments.length > 0 ? attachments.map((att) => ({
+          type: att.type,
+          mediaType: att.mediaType,
+          data: att.data,
+          name: att.name,
+        })) : undefined,
+        {
+          profile: session?.profile ?? undefined,
+          cwd: current.cwd,
+          loadProjectSettings: current.loadProjectSettings,
+        },
+      );
+      if (!isSubscribed(sessionId)) {
+        const latest = getSessionState(sessionId);
+        subscribeSession(sessionId, latest?.lastSeq ?? 0, session?.profile ?? undefined);
+      }
+    } catch (err) {
+      const latest = getSessionState(sessionId);
+      if (latest) {
+        setSessionState(sessionId, {
+          ...latest,
+          status: "error",
+          messages: [
+            ...latest.messages,
+            { id: nextMsgId(), role: "assistant", content: `Error: ${err}` },
+          ],
+        }, session?.profile);
+      }
+    }
+  }
+
+  async function handleSend(attachments: Attachment[]) {
+    if (!sessionId) return;
+    const prompt = input.trim();
+    if (!prompt && attachments.length === 0) return;
+
+    if (draftTimerRef.current) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
+
+    setInput("");
+    saveDraft(sessionId, "").catch(() => {});
+    await sendPrompt(prompt, attachments);
+  }
+
+  const flushQueuedMessage = useEffectEvent((text: string, attachments: Attachment[]) => {
+    setQueuedMessage(null);
+    void sendPrompt(text, attachments);
+  });
+
+  useEffect(() => {
+    if (!queuedMessage || !sessionId) return;
+    if (session?.status === "running" || session?.status === "starting") return;
+    const { text, attachments } = queuedMessage;
+    setTimeout(() => {
+      flushQueuedMessage(text, attachments);
+    }, 0);
+  }, [queuedMessage, session?.status, sessionId]);
 
   return (
     <FloatingWindow
@@ -106,6 +255,22 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
               <div className="session-window-empty">connecting...</div>
             )}
           </div>
+
+          {sessionId && (
+            <div className="session-window-input">
+              <ChatInput
+                value={input}
+                onChange={handleInputChange}
+                onSend={handleSend}
+                onStop={handleStop}
+                sessionStatus={session?.status ?? null}
+                disabled={false}
+                sessionId={sessionId}
+                projectCwd={session?.cwd}
+                autoFocus
+              />
+            </div>
+          )}
 
           {/* ── Permissions ── */}
           {permissions.length > 0 && sessionId && (

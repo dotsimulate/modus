@@ -108,6 +108,20 @@
   color: var(--text-muted);
 }
 
+.session-window-input {
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.session-window-input .chat-input-area {
+  max-width: none;
+  padding: 10px 12px 14px;
+}
+
+.session-window-input .chat-textarea {
+  min-height: 56px;
+}
+
 /* ── Permissions ── */
 
 .session-window-permissions {
