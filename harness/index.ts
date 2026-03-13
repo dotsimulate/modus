@@ -20,6 +20,7 @@ import {
 } from "./profiles";
 import { initProject, getInitStatus } from "./init";
 import { fetchGeminiUsageSnapshot } from "./gemini-usage";
+import { getSessionCommitAttribution } from "./commit-attribution";
 import {
   getUiState, listThemes, listFonts, getTheme, getFont, getActiveTheme, getActiveFont,
   registerTheme, registerFont, activateTheme, activateFont, patchTheme, patchFont,
@@ -516,11 +517,12 @@ app.post("/api/sessions/empty", async (c) => {
 });
 
 // Get session status
-app.get("/api/sessions/:id/status", (c) => {
+app.get("/api/sessions/:id/status", async (c) => {
   const id = c.req.param("id");
   const active = getActiveSession(id);
   if (active) {
     const dbRow = getSession(active.sessionId);
+    const commitAttribution = await getSessionCommitAttribution(active.sessionId);
     return c.json({
       sessionId: active.sessionId,
       status: active.status,
@@ -531,11 +533,13 @@ app.get("/api/sessions/:id/status", (c) => {
       lastEventAt: active.lastEventAt,
       error: active.error,
       archived: dbRow?.archived === 1,
+      commitAttribution,
     });
   }
   // Check DB for completed session
   const dbSession = getSession(id);
   if (dbSession) {
+    const commitAttribution = await getSessionCommitAttribution(id);
     return c.json({
       sessionId: dbSession.id,
       status: dbSession.status,
@@ -546,6 +550,7 @@ app.get("/api/sessions/:id/status", (c) => {
       lastEventAt: dbSession.updated_at,
       error: null,
       archived: dbSession.archived === 1,
+      commitAttribution,
     });
   }
   return c.json({ error: "session not found" }, 404);

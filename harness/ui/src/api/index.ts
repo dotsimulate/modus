@@ -78,7 +78,7 @@ export type {
   ToolCall, SubTask, Attachment, Message, PendingPermission, SessionStatus, Session, AgentConfigState,
   McpServerConfig, ProfileUi, Profile, GlobalConfig,
   ProviderCapabilities, ProviderToolGroup,
-  SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo,
+  SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo, CommitAttribution, CommitAttributionReason,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,
   UserProfileState, UserProfile, ProjectUiAssetInfo, ActiveProjectUiAsset, ProjectUiState, MemoryItem,
   ActionTrigger, ActionInfo, ActionRun,

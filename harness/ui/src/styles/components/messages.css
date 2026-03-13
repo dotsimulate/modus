@@ -35,6 +35,10 @@
   margin-bottom: 14px;
   padding: 0 32px;
 }
+.message.message--git-note {
+  margin-bottom: 4px;
+  padding: 0 32px;
+}
 .message.message--git::before,
 .message.message--git::after {
   content: "";
@@ -225,47 +229,33 @@
 
 .message-commit-detected {
   width: 100%;
-  margin-top: 10px;
+  margin: 0;
   padding: 0;
   display: flex;
+  justify-content: center;
   align-items: baseline;
   gap: 8px;
-  flex-wrap: wrap;
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1.4;
-  text-align: left;
+  font-style: italic;
+  text-align: center;
   cursor: pointer;
 }
 .message-commit-detected:hover,
 .message-commit-detected:focus-visible {
-  color: var(--text-secondary);
+  color: var(--text-muted);
   outline: none;
-}
-.message-commit-detected-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--tool-commit);
-  flex-shrink: 0;
-  margin-top: 4px;
-}
-.message-commit-detected-label {
-  color: var(--tool-commit);
-  letter-spacing: 0.04em;
-}
-.message-commit-detected-hash {
-  color: var(--tool-commit);
-  opacity: 0.8;
 }
 .message-commit-detected-copy {
   min-width: 0;
+  color: inherit;
 }
 .message-commit-detected-meta {
-  color: var(--text-dim);
+  color: var(--text-muted);
 }
 
 .message-meta {
