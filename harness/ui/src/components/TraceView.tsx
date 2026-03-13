@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { fetchTouches, type TouchRecord, type TouchQuery } from "../api/trace";
-import { buildGraph, type TraceGraph, type SessionNode, type FileNode, type TouchEdge, LAYOUT, FILE_X } from "../utils/touch-graph";
+import { buildGraph, type TraceGraph, type SessionNode, type FileNode, type TouchEdge } from "../utils/touch-graph";
 
 // ── Helpers ──
 
@@ -15,13 +15,12 @@ function edgeOpClass(op: string): string {
   return "trace-edge--search";
 }
 
-function edgePath(sessY: number, fileY: number): string {
-  const sx = LAYOUT.SESSION_X + LAYOUT.SESSION_WIDTH;
-  const sy = sessY + LAYOUT.SESSION_HEIGHT / 2;
-  const ex = FILE_X;
-  const ey = fileY + LAYOUT.FILE_HEIGHT / 2;
-  const mid = (sx + ex) / 2;
-  return `M ${sx} ${sy} C ${mid} ${sy}, ${mid} ${ey}, ${ex} ${ey}`;
+function edgePath(sess: SessionNode, file: FileNode): string {
+  const ax = sess.x, ay = sess.y;
+  const bx = file.x, by = file.y;
+  const dy = by - ay;
+  // S-curve: departs downward from session, arrives downward at file
+  return `M ${ax} ${ay} C ${ax} ${ay + dy * 0.42}, ${bx} ${by - dy * 0.3}, ${bx} ${by}`;
 }
 
 // ── Filter config ──
@@ -50,13 +49,12 @@ export function TraceView() {
   const [hoveredSession, setHoveredSession] = useState<string | null>(null);
   const [hoveredFile, setHoveredFile] = useState<string | null>(null);
   const [selected, setSelected]       = useState<{ type: "session" | "file"; id: string } | null>(null);
-  const [pan, setPan]                 = useState({ x: 40, y: 30 });
-  const [scale, setScale]             = useState(0.9);
+  const [pan, setPan]                 = useState({ x: 0, y: 0 });
+  const [scale, setScale]             = useState(0.72);
 
   const isDragging  = useRef(false);
   const dragStart   = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  // Fetch on filter change
   const fetchKey = `${[...activeOps].sort().join(",")}|${timeMs}`;
   useEffect(() => {
     setLoading(true);
@@ -79,9 +77,20 @@ export function TraceView() {
     [graph.files],
   );
 
-  // Pan/zoom handlers
+  // Pre-compute adjacency sets for hover illumination
+  const hoveredSessionFiles = useMemo(() => {
+    if (!hoveredSession) return null;
+    return new Set(graph.edges.filter(e => e.sessionId === hoveredSession).map(e => e.filePath));
+  }, [hoveredSession, graph.edges]);
+
+  const hoveredFileSessions = useMemo(() => {
+    if (!hoveredFile) return null;
+    return new Set(graph.edges.filter(e => e.filePath === hoveredFile).map(e => e.sessionId));
+  }, [hoveredFile, graph.edges]);
+
+  // Pan/zoom
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest("[data-trace-node]")) return;
+    if ((e.target as Element).closest("[data-trace-node]")) return;
     isDragging.current = true;
     dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
   }, [pan]);
@@ -98,10 +107,9 @@ export function TraceView() {
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    setScale(s => Math.max(0.25, Math.min(3, s * (e.deltaY > 0 ? 0.9 : 1.1))));
+    setScale(s => Math.max(0.2, Math.min(3, s * (e.deltaY > 0 ? 0.9 : 1.1))));
   }, []);
 
-  // Op toggle (always keep at least one active)
   function toggleOp(op: string) {
     setActiveOps(prev => {
       const next = new Set(prev);
@@ -111,13 +119,28 @@ export function TraceView() {
     });
   }
 
-  // Edge opacity logic
+  // Edge opacity
   function getEdgeOpacity(edge: TouchEdge): number {
     if (!hoveredSession && !hoveredFile) return edge.opacity;
     const matchS = hoveredSession ? edge.sessionId === hoveredSession : false;
-    const matchF = hoveredFile ? edge.filePath === hoveredFile : false;
-    if (matchS || matchF) return Math.min(0.85, edge.opacity * 2.5);
-    return 0.04;
+    const matchF = hoveredFile   ? edge.filePath  === hoveredFile    : false;
+    if (matchS || matchF) return Math.min(0.9, edge.opacity * 2.8);
+    return 0.025;
+  }
+
+  // Node opacity
+  function getSessionOpacity(sess: SessionNode): number {
+    if (!hoveredSession && !hoveredFile) return 1;
+    if (hoveredSession === sess.sessionId) return 1;
+    if (hoveredFileSessions?.has(sess.sessionId)) return 1;
+    return 0.18;
+  }
+
+  function getFileOpacity(file: FileNode): number {
+    if (!hoveredSession && !hoveredFile) return 1;
+    if (hoveredFile === file.filePath) return 1;
+    if (hoveredSessionFiles?.has(file.filePath)) return 1;
+    return 0.18;
   }
 
   const { layout } = graph;
@@ -175,16 +198,31 @@ export function TraceView() {
           className="trace-canvas"
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
         >
-          {/* Column labels */}
-          <div className="trace-col-label" style={{ left: layout.sessionX }}>sessions</div>
-          <div className="trace-col-label" style={{ left: layout.fileX }}>files</div>
-
-          {/* SVG edge layer */}
           <svg
             className="trace-svg"
             width={layout.svgWidth}
             height={layout.svgHeight}
           >
+            {/* ── Layer 1: Cluster halos ── */}
+            {graph.clusters.map(cluster => (
+              <g key={cluster.dir} className="trace-cluster">
+                <circle
+                  cx={cluster.cx}
+                  cy={cluster.cy}
+                  r={cluster.radius + 28}
+                  className="trace-cluster-halo"
+                />
+                <text
+                  x={cluster.cx}
+                  y={cluster.cy - cluster.radius - 14}
+                  className="trace-cluster-label"
+                >
+                  {cluster.dir.toUpperCase()}
+                </text>
+              </g>
+            ))}
+
+            {/* ── Layer 2: Edges ── */}
             {graph.edges.map((edge, i) => {
               const sess = sessionById.get(edge.sessionId);
               const file = fileByPath.get(edge.filePath);
@@ -193,60 +231,72 @@ export function TraceView() {
                 <path
                   key={`${edge.sessionId}::${edge.filePath}`}
                   className={`trace-edge ${edgeOpClass(edge.dominantOp)}`}
-                  d={edgePath(sess.y, file.y)}
+                  d={edgePath(sess, file)}
                   opacity={getEdgeOpacity(edge)}
-                  strokeWidth={0.8 + Math.min(edge.count / 5, 1.6)}
-                  style={{ animationDelay: `${i * 5}ms` }}
+                  strokeWidth={0.7 + Math.min(edge.count / 5, 1.8)}
+                  style={{ animationDelay: `${i * 4}ms` }}
                 />
               );
             })}
-          </svg>
 
-          {/* Session nodes */}
-          <div className="trace-sessions" style={{ left: layout.sessionX }}>
-            {graph.sessions.map(sess => (
-              <div
-                key={sess.sessionId}
-                data-trace-node="session"
-                className={`trace-session-node${hoveredSession === sess.sessionId ? " hovered" : ""}${selected?.id === sess.sessionId ? " selected" : ""}`}
-                style={{ top: sess.y }}
-                onMouseEnter={() => setHoveredSession(sess.sessionId)}
-                onMouseLeave={() => setHoveredSession(null)}
-                onClick={() => setSelected(s => s?.id === sess.sessionId ? null : { type: "session", id: sess.sessionId })}
-              >
-                <span className={`trace-provider-dot trace-provider-dot--${sess.provider ?? "unknown"}`} />
-                <span className="trace-sess-id">{sess.shortId}</span>
-                <span className="trace-sess-time">{formatDate(sess.lastSeen)}</span>
-                <span className="trace-sess-count">{sess.touchCount}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* File nodes */}
-          <div className="trace-files" style={{ left: layout.fileX }}>
+            {/* ── Layer 3: File nodes ── */}
             {graph.files.map(file => (
-              <div
+              <g
                 key={file.filePath}
                 data-trace-node="file"
                 className={`trace-file-node${hoveredFile === file.filePath ? " hovered" : ""}${selected?.id === file.filePath ? " selected" : ""}`}
-                style={{ top: file.y }}
+                transform={`translate(${Math.round(file.x)},${Math.round(file.y)})`}
+                opacity={getFileOpacity(file)}
                 onMouseEnter={() => setHoveredFile(file.filePath)}
                 onMouseLeave={() => setHoveredFile(null)}
                 onClick={() => setSelected(s => s?.id === file.filePath ? null : { type: "file", id: file.filePath })}
               >
-                <span className={`trace-file-dot trace-file-dot--${file.fileKind}`} />
-                <span className="trace-file-name">{file.basename}</span>
-                <span className="trace-file-dir">{file.dirHint}</span>
-                <span className="trace-file-count">{file.touchCount}</span>
-              </div>
+                <circle
+                  r={3.5}
+                  className={`trace-file-dot trace-file-dot--${file.fileKind}`}
+                />
+                <text className="trace-file-name" x={7} y={4}>
+                  {file.basename}
+                </text>
+              </g>
             ))}
-          </div>
+
+            {/* ── Layer 4: Session nodes (top — renders over files) ── */}
+            {graph.sessions.map(sess => (
+              <g
+                key={sess.sessionId}
+                data-trace-node="session"
+                className={`trace-session-node${hoveredSession === sess.sessionId ? " hovered" : ""}${selected?.id === sess.sessionId ? " selected" : ""}`}
+                transform={`translate(${Math.round(sess.x)},${Math.round(sess.y)})`}
+                opacity={getSessionOpacity(sess)}
+                onMouseEnter={() => setHoveredSession(sess.sessionId)}
+                onMouseLeave={() => setHoveredSession(null)}
+                onClick={() => setSelected(s => s?.id === sess.sessionId ? null : { type: "session", id: sess.sessionId })}
+              >
+                {/* Backdrop circle for hover hit area */}
+                <circle r={18} className="trace-sess-hitarea" />
+                {/* Provider dot */}
+                <circle
+                  r={5}
+                  className={`trace-provider-dot trace-provider-dot--${sess.provider ?? "unknown"}`}
+                />
+                {/* Session shortId below the dot */}
+                <text className="trace-sess-id" textAnchor="middle" y={18}>
+                  {sess.shortId}
+                </text>
+                {/* Date below id */}
+                <text className="trace-sess-time" textAnchor="middle" y={29}>
+                  {formatDate(sess.lastSeen)}
+                </text>
+              </g>
+            ))}
+          </svg>
         </div>
 
         {/* Reset view button */}
         <button
           className="trace-reset-btn"
-          onClick={() => { setPan({ x: 40, y: 30 }); setScale(0.9); }}
+          onClick={() => { setPan({ x: 0, y: 0 }); setScale(0.72); }}
         >
           ⌖
         </button>

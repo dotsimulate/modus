@@ -1,7 +1,8 @@
 /**
  * Trace — attention/touch graph view.
- * Bipartite layout: sessions on left, files on right, bezier edges between.
- * Distinct from Session Web — exploratory attention, not provenance.
+ * Spatial layout: sessions arc across the top (temporal order),
+ * files cluster in the field below by directory gravity.
+ * Everything renders in SVG — no HTML node boxes.
  */
 
 /* ── Panel ── */
@@ -135,7 +136,7 @@
   transform-origin: 0 0;
 }
 
-/* ── SVG edge layer ── */
+/* ── SVG layer ── */
 
 .trace-svg {
   position: absolute;
@@ -145,123 +146,81 @@
   overflow: visible;
 }
 
+/* ── Edges ── */
+
 .trace-edge {
   fill: none;
-  stroke-dasharray: 3000;
-  stroke-dashoffset: 3000;
-  animation: trace-draw 0.45s ease-out forwards;
+  stroke-dasharray: 4000;
+  stroke-dashoffset: 4000;
+  animation: trace-draw 0.5s ease-out forwards;
 }
 
 @keyframes trace-draw {
   to { stroke-dashoffset: 0; }
 }
 
-.trace-edge--write { stroke: var(--success); }
-.trace-edge--read  { stroke: var(--info); }
+.trace-edge--write  { stroke: var(--success); }
+.trace-edge--read   { stroke: var(--info); }
 .trace-edge--search { stroke: var(--text-dim); }
 
-/* ── Column labels ── */
+/* ── Cluster halos ── */
 
-.trace-col-label {
-  position: absolute;
-  top: 6px;
+.trace-cluster-halo {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1;
+  opacity: 0.3;
+}
+
+.trace-cluster-label {
   font-family: var(--font-mono);
   font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  fill: var(--text-muted);
+  text-anchor: middle;
+  letter-spacing: 0.09em;
   pointer-events: none;
 }
 
-/* ── Node column containers ── */
-
-.trace-sessions,
-.trace-files {
-  position: absolute;
-  top: 0;
-  pointer-events: none;
-}
-
-/* ── Session nodes ── */
+/* ── Session nodes (SVG <g>) ── */
 
 .trace-session-node {
-  position: absolute;
-  width: 210px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px 0 10px;
-  border-radius: 2px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
   cursor: pointer;
   pointer-events: all;
+  transition: opacity 0.1s ease;
+}
+
+/* invisible hit-area disc */
+.trace-sess-hitarea {
+  fill: transparent;
+  stroke: none;
+}
+
+.trace-session-node.hovered .trace-sess-hitarea {
+  fill: color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.trace-session-node.selected .trace-sess-hitarea {
+  fill: color-mix(in srgb, var(--border-active) 50%, transparent);
+}
+
+.trace-sess-id {
   font-family: var(--font-mono);
-  overflow: hidden;
-  transition: background 0.1s ease, border-color 0.1s ease;
+  font-size: 8px;
+  font-weight: 500;
+  fill: var(--text-secondary);
 }
 
-.trace-session-node:hover,
-.trace-session-node.hovered {
-  background: var(--bg-hover);
-  border-color: var(--border-active);
-}
-
-.trace-session-node.selected {
-  border-color: var(--border-active);
-  position: absolute; /* keep stacking */
-}
-
-.trace-session-node.selected::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0%, transparent 70%);
-}
-
-/* ── File nodes ── */
-
-.trace-file-node {
-  position: absolute;
-  width: 240px;
-  height: 22px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px 0 9px;
-  border-radius: 2px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  pointer-events: all;
+.trace-sess-time {
   font-family: var(--font-mono);
-  overflow: hidden;
-  transition: background 0.1s ease, border-color 0.1s ease;
+  font-size: 7px;
+  fill: var(--text-muted);
 }
 
-.trace-file-node:hover,
-.trace-file-node.hovered {
-  background: var(--bg-hover);
-  border-color: var(--border-active);
-}
-
-.trace-file-node.selected {
-  border-color: var(--border-active);
-}
-
-.trace-file-node.selected::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(270deg, rgba(255, 255, 255, 0.04) 0%, transparent 70%);
-}
-
-/* ── Provider dot ── */
+/* ── Provider dots (shared: SVG in canvas, HTML in detail panel) ── */
 
 .trace-provider-dot {
+  /* HTML context (detail panel inline spans) */
+  display: inline-block;
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -269,77 +228,48 @@
   background: var(--dot-idle);
 }
 
-.trace-provider-dot--claude   { background: var(--flash-assistant); opacity: 0.75; }
-.trace-provider-dot--gemini   { background: var(--info); }
-.trace-provider-dot--codex    { background: var(--tool-ok); }
-.trace-provider-dot--pi       { background: var(--warning); }
-.trace-provider-dot--unknown  { background: var(--dot-idle); }
-
-/* ── Session text ── */
-
-.trace-sess-id {
-  font-size: 11px;
-  color: var(--text);
-  font-weight: 500;
-  flex-shrink: 0;
-  letter-spacing: 0.01em;
+/* SVG context: fill overrides */
+circle.trace-provider-dot,
+.trace-provider-dot {
+  fill: var(--dot-idle);
 }
 
-.trace-sess-time {
-  font-size: 9px;
-  color: var(--text-muted);
-  flex: 1;
-  text-align: right;
-  white-space: nowrap;
-}
+.trace-provider-dot--claude   { fill: var(--flash-assistant); background: var(--flash-assistant); opacity: 0.8; }
+.trace-provider-dot--gemini   { fill: var(--info);            background: var(--info); }
+.trace-provider-dot--codex    { fill: var(--tool-ok);         background: var(--tool-ok); }
+.trace-provider-dot--pi       { fill: var(--warning);         background: var(--warning); }
+.trace-provider-dot--unknown  { fill: var(--dot-idle);        background: var(--dot-idle); }
 
-.trace-sess-count {
-  font-size: 9px;
-  color: var(--text-dim);
-  flex-shrink: 0;
-  margin-left: 4px;
-}
+/* ── File nodes (SVG <g>) ── */
 
-/* ── File dot ── */
+.trace-file-node {
+  cursor: pointer;
+  pointer-events: all;
+  transition: opacity 0.1s ease;
+}
 
 .trace-file-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  flex-shrink: 0;
+  /* SVG circle in canvas */
 }
 
-.trace-file-dot--code { background: var(--info); opacity: 0.6; }
-.trace-file-dot--docs { background: var(--warning); opacity: 0.7; }
+.trace-file-dot--code { fill: var(--info);    opacity: 0.65; }
+.trace-file-dot--docs { fill: var(--warning); opacity: 0.75; }
 
-/* ── File text ── */
+.trace-file-node.hovered .trace-file-dot,
+.trace-file-node.selected .trace-file-dot {
+  opacity: 1;
+}
 
 .trace-file-name {
-  font-size: 10px;
-  color: var(--text);
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 0;
-  max-width: 140px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--text-dim);
+  transition: fill 0.1s ease;
 }
 
-.trace-file-dir {
-  font-size: 9px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-
-.trace-file-count {
-  font-size: 9px;
-  color: var(--text-dim);
-  flex-shrink: 0;
-  margin-left: auto;
+.trace-file-node.hovered .trace-file-name,
+.trace-file-node.selected .trace-file-name {
+  fill: var(--text);
 }
 
 /* ── Reset button ── */
