@@ -265,7 +265,7 @@
 .web-commit-node {
   position: absolute;
   height: 30px;
-  max-width: 200px;
+  width: 200px;
   border-radius: 3px;
   background: transparent;
   border: 1px solid var(--border);

@@ -85,19 +85,20 @@ function formatCost(usd: number): string {
 // ── Layout Constants ──
 
 const COL_WIDTH = 500;
-const ROW_HEIGHT = 176;
+const ROW_HEIGHT = 208;
 const NODE_W = 260;
 const NODE_H = 84;
 const COMMIT_W = 200;
 const COMMIT_H = 30;
 const PAD_X = 60;
 const PAD_Y = 60;
-const COMMIT_OFFSET_Y = 102;
+const COMMIT_OFFSET_Y = 98;
 const DOC_W = 180;
 const DOC_H = 32;
 const SIBLING_GAP_ROWS = 0.45;
 const ROOT_GAP_ROWS = 0.75;
-const COMMIT_GAP_X = 12;
+const COMMIT_GAP_Y = 6;
+const COMMIT_EDGE_RAIL_GAP = 14;
 
 // ── Graph Builder ──
 
@@ -360,15 +361,14 @@ function buildGraph(
     const anchorNode = sessionNodeMap.get(anchorSid);
     if (!anchorNode) continue;
     const orderedCommits = [...commitGroup].sort((a, b) => commitTimestamp(b) - commitTimestamp(a));
-    const totalWidth = orderedCommits.length * COMMIT_W + Math.max(0, orderedCommits.length - 1) * COMMIT_GAP_X;
-    const startX = anchorNode.x + Math.max((NODE_W - totalWidth) / 2, 0);
+    const stackX = anchorNode.x + (NODE_W - COMMIT_W) / 2;
     for (let index = 0; index < orderedCommits.length; index++) {
       const c = orderedCommits[index];
       nodes.push({
         id: `commit:${shortHash(c.hash)}`,
         type: "commit",
-        x: startX + index * (COMMIT_W + COMMIT_GAP_X),
-        y: anchorNode.y + COMMIT_OFFSET_Y,
+        x: stackX,
+        y: anchorNode.y + COMMIT_OFFSET_Y + index * (COMMIT_H + COMMIT_GAP_Y),
         col: anchorNode.col,
         row: anchorNode.row,
         commit: c,
@@ -398,14 +398,14 @@ function EdgePath({ from, to, type }: {
   type: "handoff" | "commit" | "document";
 }) {
   if (type === "commit") {
-    const cx = from.x + NODE_W / 2;
-    const cy1 = from.y + NODE_H;
+    const startY = from.y + NODE_H;
+    const railX = to.x - COMMIT_EDGE_RAIL_GAP;
+    const endY = to.y + COMMIT_H / 2;
+    const canExitOnRail = railX >= from.x && railX <= from.x + NODE_W;
+    const exitX = canExitOnRail ? railX : from.x + NODE_W / 2;
+    const d = `M ${exitX} ${startY} L ${railX} ${endY} L ${to.x} ${endY}`;
     return (
-      <line
-        x1={cx} y1={cy1}
-        x2={to.x + COMMIT_W / 2} y2={to.y}
-        className="web-edge web-edge--commit"
-      />
+      <path d={d} className="web-edge web-edge--commit" />
     );
   }
 
