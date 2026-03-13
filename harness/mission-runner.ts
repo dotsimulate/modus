@@ -1,19 +1,19 @@
 /**
- * Mission Runner — loads, starts, and orchestrates mission workflows.
+ * Mission Runner — loads, starts, and manages mission workflow state.
  *
- * Missions are the project-level orchestration primitive. They coordinate
- * multiple agents across steps with gates (handoff, tests, commit, review).
+ * Role separation (architecture contract):
+ *   Runner:        records, validates, persists, routes
+ *   Orchestrator:  decides how the mission proceeds (advance, retry, reassign, pause)
+ *   Workers:       do implementation work, report results
  *
- * The runner:
- *   - Loads mission definitions from .modus/missions/<name>/mission.json
- *   - Snapshots the definition into a DB run record at start
- *   - Creates per-step runtime rows
- *   - Spawns the orchestrator session with mission tools
- *   - Mints scoped mission tokens (command bus via modus_submit)
- *   - Validates gates, manages step transitions, pause/resume
+ * The runner NEVER makes progression decisions. Steps advance only when the
+ * orchestrator explicitly calls the "advance" operation. The runner validates
+ * that gates are satisfied before allowing the advance.
  *
- * The model interacts via modus_submit with { token, data: { op, ...payload } }.
+ * Communication: the model interacts via modus_submit with { token, data: { op, ... } }.
  * Token type discrimination happens in modus-mcp.ts.
+ * Worker/gate results are delivered to the orchestrator via queueMessage() as
+ * typed MissionResponse JSON, not ad hoc markdown.
  */
 
 import { readFileSync, readdirSync, existsSync } from "fs";
@@ -23,13 +23,13 @@ import { logActivity } from "./activity";
 import {
   insertMissionRun, getMissionRun, listMissionRuns, updateMissionRun,
   insertMissionStep, getMissionSteps, getMissionStep, updateMissionStep,
-  insertMissionAssignment, getMissionAssignments, getMissionAssignment, updateMissionAssignment,
+  insertMissionAssignment, getMissionAssignments, updateMissionAssignment,
   insertMissionTransfer, getMissionTransfers,
   insertMissionGateResult, getMissionGateResults, getStepGateResults,
   getMissionRunSessionIds,
 } from "./mission-db";
 import type {
-  MissionConfig, MissionCommand, MissionToolGrant, MissionOp,
+  MissionConfig, MissionCommand, MissionToolGrant, MissionOp, MissionResponse,
   MissionRunRow, MissionStepRunRow, MissionGateType,
   MissionListItem, MissionRunSummary, MissionStepRunSummary,
   MissionAssignmentSummary, MissionTransferSummary, MissionGateResultSummary,
@@ -123,7 +123,7 @@ export async function startMission(opts: {
   if (!config) return { error: `Mission not found: ${opts.missionName}` };
   if (config.enabled === false) return { error: `Mission is disabled: ${opts.missionName}` };
 
-  // Validate roles reference real profiles (just warn, don't block)
+  // Validate roles reference real profiles (warn, don't block)
   for (const [role, roleConfig] of Object.entries(config.roles)) {
     if (!roleConfig.profile) {
       console.warn(`[mission-runner] Role "${role}" has no profile mapping`);
@@ -151,7 +151,7 @@ export async function startMission(opts: {
   // Create step rows
   let firstStepRunId: number | null = null;
   for (let i = 0; i < config.steps.length; i++) {
-    const step = config.steps[i];
+    const step = config.steps[i]!;
     const stepRunId = insertMissionStep({
       runId,
       stepId: step.id,
@@ -162,20 +162,23 @@ export async function startMission(opts: {
     if (i === 0) firstStepRunId = stepRunId;
   }
 
-  // Mint orchestrator grant
+  // Resolve orchestrator profile
   const orchestratorRole = "orchestrator";
-  const orchestratorProfile = config.roles[orchestratorRole]?.profile ?? config.roles[Object.keys(config.roles)[0]]?.profile;
+  const firstRoleKey = Object.keys(config.roles)[0];
+  const orchestratorProfile = config.roles[orchestratorRole]?.profile
+    ?? (firstRoleKey ? config.roles[firstRoleKey]?.profile : undefined);
   if (!orchestratorProfile) {
     return { error: "No orchestrator role or fallback profile defined" };
   }
 
+  // Mint orchestrator grant — includes "advance"
   const orchestratorToken = generateToken();
   const orchestratorGrant: MissionToolGrant = {
     token: orchestratorToken,
     runId,
     role: orchestratorRole,
     sessionId: "", // set after session start
-    allowedOps: ["read", "delegate", "report", "gate", "pause"],
+    allowedOps: ["read", "delegate", "report", "gate", "advance", "pause"],
     createdAt: Date.now(),
   };
   grantStore.set(orchestratorToken, orchestratorGrant);
@@ -193,7 +196,7 @@ export async function startMission(opts: {
 
   const session = startSession(sessionOpts);
 
-  // Wait for real session ID
+  // Wait for real session ID (provider rekeys from temp ID)
   const start = Date.now();
   while (session.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
     await Bun.sleep(100);
@@ -212,9 +215,6 @@ export async function startMission(opts: {
       activeAssignmentId: null,
     });
   }
-
-  // Tag the session
-  // (Tags are set via session metadata — the session-manager will pick these up)
 
   logActivity({
     userProfile: opts.userProfile,
@@ -246,6 +246,9 @@ ${config.description}
 ## Your Role
 You are the **orchestrator** for this mission. Your job is delegation, gate-checking, and state management. You do NOT write code, run tests, or implement features yourself. You delegate to worker agents and track their progress.
 
+You make ALL progression decisions. The runner will NOT advance steps automatically.
+When a worker finishes and gates pass, YOU must call the advance operation.
+
 ## Steps (frozen — you cannot add, remove, or reorder)
 ${steps}
 
@@ -257,6 +260,8 @@ ${roles}
 - Each step must pass all its required gates before it can complete.
 - You can refine step briefs and delegation instructions, but NOT the step structure.
 - When delegating, use the \`modus_submit\` tool with your mission token.
+- When you receive a \`[MISSION RESPONSE]\` message, parse the JSON and decide your next action.
+- After confirming gates pass, use the \`advance\` operation to complete a step.
 ${config.policy.requireTestsBeforeAdvance ? "- Tests are REQUIRED before advancing any step with a tests gate." : ""}
 ${config.policy.requireCommitBeforeAdvance ? "- A commit is REQUIRED before advancing any step with a commit gate." : ""}
 ${config.policy.requireHandoffOnTransfer ? "- A handoff summary is REQUIRED on every delegation transfer." : ""}
@@ -287,16 +292,35 @@ Your token: \`${token}\`
 { "token": "${token}", "data": { "op": "gate", "stepId": "...", "gate": "handoff|tests|commit|review", "status": "pass|fail", "evidence": "..." } }
 \`\`\`
 
+**Advance a step (after reviewing report and confirming gates):**
+\`\`\`json
+{ "token": "${token}", "data": { "op": "advance", "stepId": "..." } }
+\`\`\`
+The runner validates that all required gates pass before allowing the advance.
+If gates are not met, the advance will be rejected with details on what is missing.
+
 **Pause the mission:**
 \`\`\`json
 { "token": "${token}", "data": { "op": "pause", "reason": "..." } }
 \`\`\`
 
+## Mission Responses
+When a worker reports or a gate is recorded, you will receive a message in this format:
+
+\`\`\`
+[MISSION RESPONSE]
+{ "type": "worker_report"|"gate_update", "stepId": "...", "allGatesPassed": bool, "gateSnapshot": [...], ... }
+\`\`\`
+
+Parse the JSON. Use \`allGatesPassed\` and \`gateSnapshot\` to decide your next action.
+If all gates pass and the report is satisfactory, call advance. Otherwise, retry, reassign, or pause.
+
 ## Getting Started
 1. Read the mission state to see current status.
 2. Begin with the first step: delegate it to the appropriate role.
-3. Monitor gate completion. Advance when all gates pass.
-4. Continue through all steps until the mission is complete.
+3. When you receive a worker report, review it and check gates.
+4. If satisfied and gates pass, advance the step.
+5. Continue through all steps until the mission is complete.
 
 Mission Run ID: ${runId}
 `;
@@ -369,6 +393,8 @@ export async function handleMissionCommand(
       return handleReport(run, grant, cmd);
     case "gate":
       return handleGate(run, grant, cmd);
+    case "advance":
+      return handleAdvance(run, grant, cmd);
     case "pause":
       return handlePause(run, grant, cmd);
     default:
@@ -423,7 +449,7 @@ async function handleDelegate(
 ): Promise<{ ok: boolean; message?: string; error?: string }> {
   const { stepId, role, brief, transferSummary } = cmd;
 
-  // Validate step exists and is current
+  // Validate step exists and is not already completed
   const step = getMissionStep(run.id, stepId);
   if (!step) return { ok: false, error: `Step "${stepId}" not found` };
   if (step.status === "completed") return { ok: false, error: `Step "${stepId}" is already completed` };
@@ -442,6 +468,7 @@ async function handleDelegate(
     brief,
   });
 
+  // Update step status
   const stepUpdates: {
     status?: "running";
     activeAssignmentId: number;
@@ -456,7 +483,7 @@ async function handleDelegate(
   updateMissionStep(step.id, stepUpdates);
   updateMissionRun(run.id, { currentStepIndex: step.step_order });
 
-  // Mint worker token
+  // Mint worker token — workers get read + report only
   const workerToken = generateToken();
   const workerOps: MissionOp[] = ["read", "report"];
   // Reviewers also get gate
@@ -501,17 +528,15 @@ async function handleDelegate(
   workerGrant.sessionId = session.sessionId;
   updateMissionAssignment(assignmentId, { sessionId: session.sessionId });
 
-  // Record transfer
-  if (transferSummary) {
-    insertMissionTransfer({
-      runId: run.id,
-      stepId,
-      fromSessionId: grant.sessionId,
-      toSessionId: session.sessionId,
-      kind: "delegation",
-      summary: transferSummary,
-    });
-  }
+  // Always record transfer (unconditional — graph traceability)
+  insertMissionTransfer({
+    runId: run.id,
+    stepId,
+    fromSessionId: grant.sessionId,
+    toSessionId: session.sessionId,
+    kind: "delegation",
+    summary: transferSummary ?? `Delegated to ${role}`,
+  });
 
   logActivity({
     userProfile: run.user_profile ?? undefined,
@@ -534,7 +559,7 @@ async function handleReport(
   const step = getMissionStep(run.id, stepId);
   if (!step) return { ok: false, error: `Step "${stepId}" not found` };
 
-  // Find the active assignment for this session
+  // Find active assignment for this session
   const assignments = getMissionAssignments(run.id);
   const assignment = assignments.find(
     a => a.step_id === stepId && a.session_id === grant.sessionId && a.status === "active"
@@ -549,12 +574,12 @@ async function handleReport(
     });
   }
 
-  // Record transfer (report back)
+  // Always record transfer (report back to orchestrator)
   insertMissionTransfer({
     runId: run.id,
     stepId,
     fromSessionId: grant.sessionId,
-    toSessionId: run.orchestrator_session_id,
+    toSessionId: run.orchestrator_session_id ?? undefined,
     kind: "report",
     summary,
     details: JSON.stringify({
@@ -565,28 +590,27 @@ async function handleReport(
     }),
   });
 
-  const eventType = status === "completed" ? "mission_report" : "mission_error";
   logActivity({
     userProfile: run.user_profile ?? undefined,
-    eventType,
+    eventType: status === "completed" ? "mission_report" : "mission_error",
     sessionId: grant.sessionId,
     summary: `Step "${stepId}" ${status}: ${summary}`,
     metadata: { runId: run.id, stepId, status },
   });
 
-  // Check gates and notify orchestrator with the real structured response
-  const allGatesPassed = status === "completed" ? checkStepGates(run, stepId) : false;
-  const orchMessage = buildOrchestratorReportMessage(cmd, allGatesPassed);
-  notifyOrchestrator(run, orchMessage);
+  // Build structured response and deliver to orchestrator
+  const response = buildMissionResponse("worker_report", run, stepId, {
+    workerStatus: status,
+    summary,
+    filesChanged: cmd.filesChanged,
+    commits: cmd.commits,
+    testResults: cmd.testResults,
+    handoffSummary: cmd.handoffSummary,
+  });
+  notifyOrchestrator(run, response);
 
-  if (status === "completed") {
-    if (allGatesPassed) {
-      return { ok: true, message: `Step "${stepId}" reported complete. All gates passed — step can advance.` };
-    }
-    return { ok: true, message: `Step "${stepId}" reported complete. Some gates still pending — check gate status.` };
-  }
-
-  return { ok: true, message: `Step "${stepId}" reported as failed. Orchestrator should decide next action.` };
+  // Minimal ack to the worker — real info goes to orchestrator
+  return { ok: true, message: `Report recorded for step "${stepId}".` };
 }
 
 function handleGate(
@@ -615,62 +639,85 @@ function handleGate(
     evidence,
   });
 
-  const eventType = status === "pass" ? "mission_gate_pass" : "mission_gate_fail";
   logActivity({
     userProfile: run.user_profile ?? undefined,
-    eventType,
+    eventType: status === "pass" ? "mission_gate_pass" : "mission_gate_fail",
     sessionId: grant.sessionId,
     summary: `Gate ${gate} ${status} for step "${stepId}"`,
     metadata: { runId: run.id, stepId, gate, status },
   });
 
-  // Check if all gates now pass
-  let allPassed = false;
-  let stepCompleted = false;
-  let missionCompleted = false;
-
-  if (status === "pass") {
-    allPassed = checkStepGates(run, stepId);
-    if (allPassed) {
-      stepCompleted = true;
-      // Auto-advance step
-      updateMissionStep(step.id, {
-        status: "completed",
-        completedAt: Date.now(),
-      });
-
-      // Check if mission is complete
-      const allSteps = getMissionSteps(run.id);
-      const allComplete = allSteps.every(s => s.status === "completed" || s.status === "skipped");
-      if (allComplete) {
-        missionCompleted = true;
-        updateMissionRun(run.id, {
-          status: "completed",
-          completedAt: Date.now(),
-        });
-        logActivity({
-          userProfile: run.user_profile ?? undefined,
-          eventType: "mission_complete",
-          summary: `Mission completed: ${run.mission_name}`,
-          metadata: { runId: run.id },
-        });
-      }
-    }
-  }
-
-  // Notify orchestrator of gate change (only if the caller is not the orchestrator itself)
+  // Notify orchestrator of gate change (skip if orchestrator is the caller)
   if (grant.role !== "orchestrator") {
-    const orchMessage = buildOrchestratorGateMessage(stepId, gate, status, allPassed, stepCompleted, missionCompleted);
-    notifyOrchestrator(run, orchMessage);
+    const response = buildMissionResponse("gate_update", run, stepId, {
+      gate,
+      gateStatus: status,
+    });
+    notifyOrchestrator(run, response);
   }
 
-  if (missionCompleted) {
-    return { ok: true, message: `Gate ${gate} passed. Step "${stepId}" complete. Mission complete!` };
-  }
-  if (stepCompleted) {
-    return { ok: true, message: `Gate ${gate} passed. Step "${stepId}" complete. Advance to next step.` };
-  }
   return { ok: true, message: `Gate ${gate} recorded as ${status} for step "${stepId}".` };
+}
+
+function handleAdvance(
+  run: MissionRunRow,
+  grant: MissionToolGrant,
+  cmd: Extract<MissionCommand, { op: "advance" }>,
+): { ok: boolean; message?: string; error?: string } {
+  // Only orchestrator can advance steps
+  if (grant.role !== "orchestrator") {
+    return { ok: false, error: "Only the orchestrator can advance steps" };
+  }
+
+  const { stepId } = cmd;
+  const step = getMissionStep(run.id, stepId);
+  if (!step) return { ok: false, error: `Step "${stepId}" not found` };
+  if (step.status === "completed") return { ok: false, error: `Step "${stepId}" is already completed` };
+  if (step.status === "pending") return { ok: false, error: `Step "${stepId}" has not started yet` };
+
+  // Validate all required gates pass — reject if not
+  if (!checkStepGates(run, stepId)) {
+    const snapshot = buildGateSnapshot(run, stepId);
+    const pending = snapshot.filter(g => g.status !== "pass").map(g => g.gate);
+    return {
+      ok: false,
+      error: `Cannot advance "${stepId}" — gates not met: ${pending.join(", ")}`,
+    };
+  }
+
+  // Advance step
+  updateMissionStep(step.id, {
+    status: "completed",
+    completedAt: Date.now(),
+  });
+
+  logActivity({
+    userProfile: run.user_profile ?? undefined,
+    eventType: "mission_step_complete",
+    sessionId: grant.sessionId,
+    summary: `Step "${stepId}" advanced by orchestrator`,
+    metadata: { runId: run.id, stepId },
+  });
+
+  // Check if mission is complete
+  const allSteps = getMissionSteps(run.id);
+  const allComplete = allSteps.every(s => s.status === "completed" || s.status === "skipped");
+
+  if (allComplete) {
+    updateMissionRun(run.id, {
+      status: "completed",
+      completedAt: Date.now(),
+    });
+    logActivity({
+      userProfile: run.user_profile ?? undefined,
+      eventType: "mission_complete",
+      summary: `Mission completed: ${run.mission_name}`,
+      metadata: { runId: run.id },
+    });
+    return { ok: true, message: `Step "${stepId}" complete. All steps done — mission complete.` };
+  }
+
+  return { ok: true, message: `Step "${stepId}" complete. Proceed to next step.` };
 }
 
 function handlePause(
@@ -698,89 +745,63 @@ function handlePause(
 // ── Orchestrator Notification ──
 
 /**
- * Send a structured message into the orchestrator session so it can
- * read the real worker/gate response and decide what to do next.
- * This is the critical "step 4" from the architecture contract:
- *   runner records state → runner sends response → orchestrator reads and decides.
+ * Send a typed MissionResponse into the orchestrator session.
+ * The orchestrator wakes up, parses the JSON, and decides next action.
  */
-function notifyOrchestrator(run: MissionRunRow, message: string): void {
+function notifyOrchestrator(run: MissionRunRow, response: MissionResponse): void {
   const orchId = run.orchestrator_session_id;
   if (!orchId) {
-    console.warn(`[mission-runner] Cannot notify orchestrator — no session ID on run ${run.id}`);
+    console.warn(`[mission-runner] No orchestrator session for run ${run.id}`);
     return;
   }
-  const orchSession = getActiveSession(orchId);
-  if (!orchSession) {
-    console.warn(`[mission-runner] Orchestrator session ${orchId} not active — cannot deliver response for run ${run.id}`);
+  if (!getActiveSession(orchId)) {
+    console.warn(`[mission-runner] Orchestrator ${orchId} not active for run ${run.id}`);
     return;
   }
+  const message = `[MISSION RESPONSE]\n${JSON.stringify(response, null, 2)}`;
   queueMessage(orchId, message);
 }
 
-/**
- * Build a structured report message for the orchestrator from a worker report.
- */
-function buildOrchestratorReportMessage(
-  cmd: Extract<MissionCommand, { op: "report" }>,
-  allGatesPassed: boolean,
-): string {
-  const parts: string[] = [
-    `## Worker Report: Step "${cmd.stepId}"`,
-    "",
-    `**Status:** ${cmd.status}`,
-    `**Summary:** ${cmd.summary}`,
-  ];
-  if (cmd.filesChanged?.length) {
-    parts.push("", "**Files changed:**", ...cmd.filesChanged.map(f => `- ${f}`));
-  }
-  if (cmd.commits?.length) {
-    parts.push("", "**Commits:**", ...cmd.commits.map(c => `- ${c}`));
-  }
-  if (cmd.testResults) {
-    parts.push("", "**Test results:**", cmd.testResults);
-  }
-  if (cmd.handoffSummary) {
-    parts.push("", "**Handoff summary:**", cmd.handoffSummary);
-  }
-  if (cmd.status === "completed") {
-    parts.push("", allGatesPassed
-      ? "All required gates have passed. You may advance to the next step."
-      : "Some gates are still pending. Check gate status before advancing.");
-  } else {
-    parts.push("", "The worker reported failure. Decide whether to retry, reassign, or escalate.");
-  }
-  return parts.join("\n");
+// ── Response Builder ──
+
+function buildMissionResponse(
+  type: MissionResponse["type"],
+  run: MissionRunRow,
+  stepId: string,
+  fields: Partial<MissionResponse>,
+): MissionResponse {
+  const snapshot = buildGateSnapshot(run, stepId);
+  const allGatesPassed = snapshot.length > 0
+    ? snapshot.every(g => g.status === "pass")
+    : true; // no gates required = passed
+
+  return {
+    type,
+    stepId,
+    allGatesPassed,
+    gateSnapshot: snapshot,
+    ...fields,
+  };
 }
 
-/**
- * Build a structured gate notification for the orchestrator.
- */
-function buildOrchestratorGateMessage(
+function buildGateSnapshot(
+  run: MissionRunRow,
   stepId: string,
-  gate: string,
-  status: "pass" | "fail",
-  allGatesPassed: boolean,
-  stepCompleted: boolean,
-  missionCompleted: boolean,
-): string {
-  const parts: string[] = [
-    `## Gate Update: Step "${stepId}"`,
-    "",
-    `**Gate:** ${gate}`,
-    `**Result:** ${status}`,
-  ];
-  if (stepCompleted && missionCompleted) {
-    parts.push("", "All gates passed. Step completed. **Mission complete.**");
-  } else if (stepCompleted) {
-    parts.push("", "All gates passed. Step completed. Advance to the next step.");
-  } else if (allGatesPassed) {
-    parts.push("", "All required gates have passed for this step.");
-  } else if (status === "fail") {
-    parts.push("", "Gate failed. Decide whether to retry or escalate.");
-  } else {
-    parts.push("", "Gate passed. Other gates still pending.");
-  }
-  return parts.join("\n");
+): MissionResponse["gateSnapshot"] {
+  const config: MissionConfig = JSON.parse(run.definition_snapshot);
+  const stepDef = config.steps.find(s => s.id === stepId);
+  if (!stepDef) return [];
+
+  const requiredGates = stepDef.gates.filter(g => g.required !== false);
+  const results = getStepGateResults(run.id, stepId);
+
+  return requiredGates.map(g => {
+    const latest = results.find(r => r.gate_type === g.type);
+    return {
+      gate: g.type,
+      status: (latest?.status ?? "pending") as "pass" | "fail" | "pending",
+    };
+  });
 }
 
 // ── Gate Checking ──
@@ -796,7 +817,6 @@ function checkStepGates(run: MissionRunRow, stepId: string): boolean {
   const gateResults = getStepGateResults(run.id, stepId);
 
   for (const gate of requiredGates) {
-    // Find the latest result for this gate type
     const latest = gateResults.find(r => r.gate_type === gate.type);
     if (!latest || latest.status !== "pass") return false;
   }
