@@ -1665,21 +1665,18 @@ app.get("/api/missions", (c) => {
   return c.json(listMissions(cwd));
 });
 
-// Get a specific mission definition
-app.get("/api/missions/:name", (c) => {
-  const cwd = new URL(c.req.url).searchParams.get("cwd");
-  if (!cwd) return c.json({ error: "cwd required" }, 400);
-  const mission = getMission(c.req.param("name"), cwd);
-  if (!mission) return c.json({ error: "mission not found" }, 404);
-  return c.json(mission);
-});
-
 // Start a mission run
 app.post("/api/missions/start", async (c) => {
   const body = await c.req.json();
-  const { missionName, cwd, userProfile } = body;
+  const { missionName, userProfile } = body;
+  let { cwd } = body;
   if (!missionName) return c.json({ error: "missionName required" }, 400);
-  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  // Resolve cwd from user profile if not explicitly provided
+  if (!cwd && userProfile) {
+    const up = getUserProfile(userProfile);
+    cwd = up?.projects?.[0];
+  }
+  if (!cwd) return c.json({ error: "cwd required — provide cwd or a userProfile with a project path" }, 400);
   const result = await startMission({ missionName, cwd, userProfile });
   if ("error" in result) return c.json(result, 400);
   return c.json(result);
@@ -1737,6 +1734,15 @@ app.get("/api/missions/runs/:id/sessions", (c) => {
   const id = Number(c.req.param("id"));
   if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
   return c.json(listMissionSessionIds(id));
+});
+
+// Get a specific mission definition
+app.get("/api/missions/:name", (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const mission = getMission(c.req.param("name"), cwd);
+  if (!mission) return c.json({ error: "mission not found" }, 404);
+  return c.json(mission);
 });
 
 // Pause a run

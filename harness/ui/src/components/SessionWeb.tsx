@@ -1,10 +1,13 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
-import { fetchSessions } from "../api/sessions";
+import { fetchSessionsScoped } from "../api/sessions";
 import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
+import { fetchMissionRuns, fetchMissionTransfers, fetchMissionSessions } from "../api/missions";
 import type { SessionInfo, GitCommit } from "../api/types";
+import type { MissionRunSummary, MissionTransferSummary } from "../api/missions";
 import { ChatFileViewer } from "./ChatFileViewer";
 import { SessionWindow } from "./SessionWindow";
+import { useProfiles } from "../providers/ProfileProvider";
 
 // ── Types ──
 
@@ -46,7 +49,7 @@ type GraphNode = {
 type GraphEdge = {
   from: string;
   to: string;
-  type: "handoff" | "commit" | "document";
+  type: "handoff" | "commit" | "document" | "delegation";
   moveName?: string;
 };
 
@@ -144,6 +147,7 @@ function buildGraph(
   sessions: SessionInfo[],
   moveRuns: MoveRun[],
   commits: GitCommit[],
+  missionTransfers: MissionTransferSummary[],
   config: WebLayoutConfig,
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const edges: GraphEdge[] = [];
@@ -185,6 +189,15 @@ function buildGraph(
       edges.push(e);
       handoffEdges.push(e);
     }
+  }
+
+  // Mission delegation edges
+  for (const t of missionTransfers) {
+    if (!t.fromSessionId || !t.toSessionId) continue;
+    if (!sessionMap.has(t.fromSessionId) || !sessionMap.has(t.toSessionId)) continue;
+    const e: GraphEdge = { from: t.fromSessionId, to: t.toSessionId, type: "delegation" };
+    edges.push(e);
+    handoffEdges.push(e);
   }
 
   // Build commit tag map: hash → session IDs
@@ -495,7 +508,7 @@ function nodeMidY(n: GraphNode) {
 function EdgePath({ from, to, type, axisMode }: {
   from: GraphNode;
   to: GraphNode;
-  type: "handoff" | "commit" | "document";
+  type: "handoff" | "commit" | "document" | "delegation";
   axisMode: "time-x" | "time-y";
 }) {
   if (type === "commit") {
@@ -532,6 +545,23 @@ function EdgePath({ from, to, type, axisMode }: {
     );
   }
 
+  if (type === "delegation") {
+    if (axisMode === "time-y") {
+      const x1 = nodeRight(from), y1 = nodeMidY(from);
+      const x2 = to.x,            y2 = nodeMidY(to);
+      const dx = Math.abs(x2 - x1);
+      const cp = Math.min(Math.max(dx * 0.4, 20), dx * 0.45);
+      const d = `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`;
+      return <path d={d} className="web-edge web-edge--delegation" />;
+    }
+    const x1 = nodeMidX(from), y1 = nodeBottom(from);
+    const x2 = nodeMidX(to),   y2 = to.y;
+    const dy = Math.abs(y2 - y1);
+    const cp = Math.min(Math.max(dy * 0.4, 20), dy * 0.45);
+    const d = `M ${x1} ${y1} C ${x1} ${y1 + cp}, ${x2} ${y2 - cp}, ${x2} ${y2}`;
+    return <path d={d} className="web-edge web-edge--delegation" />;
+  }
+
   if (axisMode === "time-y") {
     // Horizontal cubic bezier — exits right of source, enters left of target
     const x1 = nodeRight(from), y1 = nodeMidY(from);
@@ -549,6 +579,31 @@ function EdgePath({ from, to, type, axisMode }: {
   const cp = Math.min(Math.max(dy * 0.4, 20), dy * 0.45);
   const d = `M ${x1} ${y1} C ${x1} ${y1 + cp}, ${x2} ${y2 - cp}, ${x2} ${y2}`;
   return <path d={d} className="web-edge web-edge--handoff" />;
+}
+
+// ── Mission Filter Panel ──
+
+function MissionFilterPanel({ runs, activeRunId, onChange }: {
+  runs: MissionRunSummary[];
+  activeRunId: number | null;
+  onChange: (runId: number | null) => void;
+}) {
+  if (runs.length === 0) return null;
+  return (
+    <div className="web-mission-filter" onMouseDown={e => e.stopPropagation()}>
+      <select
+        value={activeRunId ?? ""}
+        onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))}
+      >
+        <option value="">all missions</option>
+        {runs.map(r => (
+          <option key={r.id} value={r.id}>
+            {r.missionName} #{r.id} ({r.status})
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 // ── Layout Panel ──
@@ -725,9 +780,14 @@ function DetailPanel({ node, onClose }: { node: GraphNode; onClose: () => void }
 type Viewport = { x: number; y: number; scale: number };
 
 export function SessionWeb() {
+  const { activeUserProfile, activeUP } = useProfiles();
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [moveRuns, setMoveRuns] = useState<MoveRun[]>([]);
   const [commits, setCommits] = useState<GitCommit[]>([]);
+  const [missionRuns, setMissionRuns] = useState<MissionRunSummary[]>([]);
+  const [missionTransfers, setMissionTransfers] = useState<MissionTransferSummary[]>([]);
+  const [missionFilter, setMissionFilter] = useState<number | null>(null);
+  const [missionFilterSessionIds, setMissionFilterSessionIds] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<SelectedNode>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -754,15 +814,24 @@ export function SessionWeb() {
     let cancelled = false;
     async function load() {
       try {
-        const [sessData, moveData, gitData] = await Promise.all([
-          fetchSessions(100),
+        const projectCwd = activeUP?.projects?.[0];
+        const [sessData, moveData, gitData, runsData] = await Promise.all([
+          fetchSessionsScoped(100, activeUserProfile ?? undefined),
           fetch(`${API_BASE}/api/move-runs/recent?limit=100`, { headers: authHeaders() }).then(r => r.json()),
-          fetchGitLog(".", 50).catch(() => [] as GitCommit[]),
+          fetchGitLog(projectCwd ?? ".", 50).catch(() => [] as GitCommit[]),
+          fetchMissionRuns(projectCwd ? { cwd: projectCwd } : undefined).catch(() => [] as MissionRunSummary[]),
         ]);
+        if (cancelled) return;
+        setSessions(sessData);
+        setMoveRuns(moveData);
+        setCommits(gitData);
+        setMissionRuns(runsData);
+        // Fetch transfers for all runs in parallel
+        const transferArrays = await Promise.all(
+          runsData.map((r: MissionRunSummary) => fetchMissionTransfers(r.id).catch(() => [])),
+        );
         if (!cancelled) {
-          setSessions(sessData);
-          setMoveRuns(moveData);
-          setCommits(gitData);
+          setMissionTransfers(transferArrays.flat());
           setLoading(false);
         }
       } catch {
@@ -771,11 +840,40 @@ export function SessionWeb() {
     }
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [activeUserProfile, activeUP]);
+
+  // When mission filter changes, fetch session IDs for that run
+  useEffect(() => {
+    if (missionFilter === null) {
+      setMissionFilterSessionIds(null);
+      return;
+    }
+    let cancelled = false;
+    fetchMissionSessions(missionFilter).then(ids => {
+      if (!cancelled) setMissionFilterSessionIds(new Set(ids));
+    }).catch(() => {
+      if (!cancelled) setMissionFilterSessionIds(null);
+    });
+    return () => { cancelled = true; };
+  }, [missionFilter]);
+
+  const filteredSessions = useMemo(() => {
+    if (!missionFilterSessionIds) return sessions;
+    return sessions.filter(s => missionFilterSessionIds.has(s.id));
+  }, [sessions, missionFilterSessionIds]);
+
+  const filteredTransfers = useMemo(() => {
+    if (!missionFilter) return missionTransfers;
+    return missionTransfers.filter(t => {
+      if (!missionFilterSessionIds) return true;
+      return (t.fromSessionId && missionFilterSessionIds.has(t.fromSessionId)) ||
+             (t.toSessionId && missionFilterSessionIds.has(t.toSessionId));
+    });
+  }, [missionTransfers, missionFilter, missionFilterSessionIds]);
 
   const { nodes, edges } = useMemo(
-    () => buildGraph(sessions, moveRuns, commits, config),
-    [sessions, moveRuns, commits, config],
+    () => buildGraph(filteredSessions, moveRuns, commits, filteredTransfers, config),
+    [filteredSessions, moveRuns, commits, filteredTransfers, config],
   );
 
   const nodeMap = useMemo(
@@ -1019,6 +1117,11 @@ export function SessionWeb() {
           onClick={handleResetView}
           title="Reset view"
         >⊙</button>
+        <MissionFilterPanel
+          runs={missionRuns}
+          activeRunId={missionFilter}
+          onChange={setMissionFilter}
+        />
         <LayoutPanel config={config} onChange={setConfig} />
       </div>
 

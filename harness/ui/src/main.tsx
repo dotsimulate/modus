@@ -40,6 +40,7 @@ import './styles/components/prompt-composer.css'
 import './styles/components/project-theme-widget.css'
 import './styles/components/provider-usage-widget.css'
 import './styles/components/prompt-picker.css'
+import './styles/components/missions.css'
 
 // Views
 import './styles/views/login.css'

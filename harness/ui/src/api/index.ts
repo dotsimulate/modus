@@ -56,6 +56,19 @@ export type { PromptListItem, PromptInput, RenderResult } from "./prompts";
 export { fetchMoves, activateMoveApi, activateProjectMoveApi } from "./moves";
 export type { MoveInput, MoveListItem, ActivateMoveResult } from "./moves";
 
+// Missions
+export {
+  fetchMissions, fetchMissionRuns, fetchMissionRunDetail,
+  fetchMissionTransfers, fetchMissionSessions,
+  fetchMissionSteps, fetchMissionGates,
+  startMissionApi, pauseMissionApi, resumeMissionApi,
+} from "./missions";
+export type {
+  MissionListItem, MissionRunSummary, MissionStepRunSummary,
+  MissionTransferSummary, MissionGateResultSummary,
+  MissionRunStatus, MissionTransferKind,
+} from "./missions";
+
 // Analytics
 export { fetchProviderUsageAnalytics } from "./analytics";
 export type { ProviderUsageAnalytics, ProviderUsageDaily, ProviderUsageTotal, ModelUsageTotal, UsageBucket } from "./analytics";

@@ -3,6 +3,7 @@ import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileProvider";
 import { ProjectSetup } from "./ProjectSetup";
 import { ModusPrompt } from "./ModusPrompt";
+import { Missions } from "./Missions";
 import { DEFAULT_DASHBOARD } from "../widgets";
 import { PageRenderer } from "./PageRenderer";
 
@@ -23,16 +24,22 @@ type Props = {
 export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone }: Props) {
   const {
     activeUP,
+    profiles,
     userProfiles,
     refreshProfiles,
     refreshUserProfiles,
   } = useProfiles();
   const [setupDismissed, setSetupDismissed] = useState(false);
   const widgets = activeUP?.dashboard?.widgets ?? DEFAULT_DASHBOARD.widgets ?? [];
+  const configuredAgentProfiles = activeUP?.agentProfiles ?? [];
+  const hasLoadedAgentProfile = configuredAgentProfiles.some((name) => profiles.some((profile) => profile.name === name));
 
   const needsProject = userProfiles.length === 0;
-  const needsAgents = activeUP && (!activeUP.agentProfiles || activeUP.agentProfiles.length === 0);
+  const needsAgents = !!activeUP && (configuredAgentProfiles.length === 0 || !hasLoadedAgentProfile);
   const showProjectSetup = forceSetup || (!setupDismissed && needsProject);
+  const missingProfilesHint = configuredAgentProfiles.length > 0
+    ? `Listed agent profiles are missing: ${configuredAgentProfiles.join(", ")}. Use create agent to set them up.`
+    : "No agent profiles are configured for this project yet. Use create agent to set them up.";
 
   const handleSetupComplete = useCallback(() => {
     setSetupDismissed(true);
@@ -50,10 +57,18 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
             onSelectSession={onSelectSession}
           />
         ) : (
-          <ModusPrompt
-            onSelectSession={onSelectSession}
-            isNewProject={!!needsAgents}
-          />
+          <>
+            {needsAgents && (
+              <div className="dashboard-warning-banner">
+                {missingProfilesHint}
+              </div>
+            )}
+            <ModusPrompt
+              onSelectSession={onSelectSession}
+              isNewProject={needsAgents}
+            />
+            <Missions />
+          </>
         )}
 
         <PageRenderer
