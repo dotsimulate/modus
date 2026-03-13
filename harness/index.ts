@@ -1647,6 +1647,26 @@ app.all("/api/mcp/modus/*", async (c) => {
   return handleModusMcpRequest(c.req.raw);
 });
 
+// ── Trace (Attention Trace View) ──
+
+import { queryTouches, touchSummary } from "./trace";
+import { default as traceDb } from "./trace-db";
+
+app.get("/api/trace/touches", (c) => {
+  const q = c.req.query();
+  const touches = queryTouches(traceDb, {
+    limit: q.limit ? parseInt(q.limit, 10) : undefined,
+    userProfile: q.userProfile || undefined,
+    cwd: q.cwd || undefined,
+    from: q.from ? parseInt(q.from, 10) : undefined,
+    to: q.to ? parseInt(q.to, 10) : undefined,
+    ops: q.ops ? q.ops.split(",") : undefined,
+    confidence: q.confidence ? q.confidence.split(",") : undefined,
+    sessionId: q.sessionId || undefined,
+  });
+  return c.json({ touches, summary: touchSummary(touches) });
+});
+
 // ── Start ──
 
 const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: HOST, idleTimeout: 255 });
