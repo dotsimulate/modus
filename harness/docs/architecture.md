@@ -1,8 +1,8 @@
 ---
 title: MO Architecture
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: 119f911
+lastUpdated: 2026-03-12
+lastCommit: 786a447
 covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/ui/src/
 ---
 
@@ -65,6 +65,7 @@ agent_dev_zone/
         styles/            # CSS (see styling doc)
         hooks/             # Custom React hooks
         widgets/           # Dashboard widgets
+        views.ts           # View registry — slugs, nav order, URL parsing
         project-ui-theme.ts  # Applies active theme/font CSS to document.head
         main.tsx           # App entry point
   .modus/                  # Project-local MO config (see modus-dir doc)
@@ -163,6 +164,40 @@ decisions:
 - SSE subscription per active session for real-time events
 - Event reducer transforms raw SDK events into renderable message structure
 - ProfileProvider manages user profile selection and scoped visibility
+
+### View Registry
+
+`ui/src/views.ts` is the single source of truth for navigable views. It defines
+slugs, display labels, and nav order. Registered views: `home`, `sessions`,
+`profiles`, `actions`, `memory`, `git`, `web`. Adding a view here is enough to
+wire it into routing and the nav bar.
+
+### Session Web
+
+The `web` view (`components/SessionWeb.tsx`) renders a zoomable, pannable DAG
+of session relationships. Three node types appear on the canvas:
+
+- **Session** — a card for each session involved in at least one handoff or
+  commit link. Laid out by handoff depth: root sessions on the left, spawned
+  children stepping right. When no handoff relationships exist, the most recent
+  sessions are shown as a flat grid.
+- **Handoff document** — a document node placed between source and target
+  sessions, representing the `.md` briefing written by a handoff move run.
+- **Commit** — git commits linked to a session via `commit:<hash>` session tags,
+  stacked below their associated session node.
+
+Edges encode provenance: handoff edges connect the session that ran the move to
+the session it spawned; document edges route through the handoff document node
+when one exists; commit edges connect sessions to their tagged commits.
+
+Data is fetched from three sources on load: the sessions list, recent move runs
+(used to resolve handoff edges and document paths), and the git log (used to
+resolve commit nodes).
+
+Interactions: click any node to open a detail panel; double-click a session node
+to open it inline in `SessionWindow`; double-click a document node to read it in
+`ChatFileViewer`. The canvas supports scroll-to-zoom and drag-to-pan. A reset
+button re-centers the view on the newest session.
 
 ## Related Docs
 
