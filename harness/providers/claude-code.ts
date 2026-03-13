@@ -461,7 +461,8 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       const sdkOptions: any = {
         pathToClaudeCodeExecutable: CLAUDE_PATH,
-        cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
+        cwd: session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
+        additionalDirectories: session.additionalDirectories.length > 0 ? session.additionalDirectories : undefined,
         includePartialMessages: true,
         resume: resumeTarget,
         model: opts.model ?? profileDef?.model ?? undefined,
@@ -610,6 +611,10 @@ export function createClaudeCodeProvider(): SessionProvider {
       if (config.systemPrompt !== undefined) {
         state.sdkOptions.systemPrompt = config.systemPrompt || undefined;
       }
+      state.sdkOptions.cwd = session.cwd;
+      state.sdkOptions.additionalDirectories = session.additionalDirectories.length > 0
+        ? session.additionalDirectories
+        : undefined;
       if (config.providerControls !== undefined) {
         state.sdkOptions.permissionMode = readClaudePermissionMode(config.providerControls);
       }
@@ -661,6 +666,10 @@ export function createClaudeCodeProvider(): SessionProvider {
       state.sdkOptions.model = ctx.opts.model || undefined;
       state.sdkOptions.effort = normalizeClaudeEffort(ctx.opts.effort);
       state.sdkOptions.maxTurns = ctx.opts.maxTurns || undefined;
+      state.sdkOptions.cwd = session.cwd;
+      state.sdkOptions.additionalDirectories = ctx.opts.additionalDirectories?.length
+        ? ctx.opts.additionalDirectories
+        : undefined;
 
       // Update tools
       const hasMcp = !!state.sdkOptions.mcpServers;
@@ -861,6 +870,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           providerControls: ctx.opts.providerControls ?? {},
         };
         m.cwd = session.cwd;
+        m.additionalDirectories = session.additionalDirectories;
         m.loadProjectSettings = ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true;
       }
       ctx.emitEvent(m);

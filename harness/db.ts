@@ -201,6 +201,7 @@ export type StoredSessionConfig = {
   toolStates?: Record<string, string>;
   providerControls?: Record<string, unknown>;
   cwd?: string;
+  additionalDirectories?: string[];
   loadProjectSettings?: boolean;
 };
 
@@ -525,6 +526,9 @@ export function getStoredSessionConfig(sessionId: string): StoredSessionConfig |
       toolStates: config.toolStates && typeof config.toolStates === "object" ? config.toolStates : undefined,
       providerControls: config.providerControls && typeof config.providerControls === "object" ? config.providerControls : undefined,
       cwd: parsed.cwd || undefined,
+      additionalDirectories: Array.isArray(parsed.additionalDirectories)
+        ? parsed.additionalDirectories
+        : (Array.isArray(config.additionalDirectories) ? config.additionalDirectories : undefined),
       loadProjectSettings: typeof parsed.loadProjectSettings === "boolean" ? parsed.loadProjectSettings : undefined,
     };
   } catch {

@@ -229,6 +229,7 @@ export function deriveSession(
     model: rs.model,
     agentConfig: rs.agentConfig,
     cwd: rs.cwd || undefined,
+    additionalDirectories: rs.additionalDirectories.length > 0 ? rs.additionalDirectories : undefined,
     loadProjectSettings: rs.loadProjectSettings,
     messages: rs.messages,
     totalCost: rs.totalCost,

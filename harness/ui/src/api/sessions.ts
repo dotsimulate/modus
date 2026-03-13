@@ -129,6 +129,7 @@ export async function sendMessage(
     toolStates?: Record<string, "inherit" | "on" | "off">;
     providerControls?: AgentConfigState["providerControls"];
     cwd?: string;
+    additionalDirectories?: string[];
     loadProjectSettings?: boolean;
   },
 ): Promise<{ queued: boolean; status: string }> {
@@ -195,6 +196,7 @@ export async function updateSessionConfig(
     toolStates?: AgentConfigState["toolStates"];
     providerControls?: AgentConfigState["providerControls"];
     cwd?: string;
+    additionalDirectories?: string[];
     loadProjectSettings?: boolean;
   },
 ): Promise<void> {

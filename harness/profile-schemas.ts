@@ -96,6 +96,7 @@ const EffortSchema = z.enum(["off", "low", "medium", "high", "max"]);
 export const ProfileSchema = z.object({
   prompt: z.string(),
   description: z.string(),
+  additionalDirectories: z.array(z.string()).optional(),
   provider: ProviderSchema.optional(),
   tools: z.array(z.string()).optional(),
   disallowedTools: z.array(z.string()).optional(),

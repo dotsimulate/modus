@@ -636,11 +636,12 @@ export function createCodexProvider(): SessionProvider {
       });
       const threadOptions: import("@openai/codex-sdk").ThreadOptions = {
         model: opts.model ?? profileDef?.model ?? "gpt-5.1-codex",
-        workingDirectory: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
+        workingDirectory: session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
         skipGitRepoCheck: true,
         sandboxMode,
         approvalPolicy,
         webSearchMode,
+        additionalDirectories: session.additionalDirectories.length > 0 ? session.additionalDirectories : undefined,
       };
 
       // Map effort levels
@@ -739,6 +740,10 @@ export function createCodexProvider(): SessionProvider {
       if (config.effort !== undefined) {
         state.threadOptions.modelReasoningEffort = mapCodexReasoningEffort(config.effort);
       }
+      state.threadOptions.workingDirectory = session.cwd;
+      state.threadOptions.additionalDirectories = session.additionalDirectories.length > 0
+        ? session.additionalDirectories
+        : undefined;
 
       const profileDef = session.profile ? getProfile(session.profile, session.cwd) : undefined;
       const runtime = resolveCodexRuntimeSettings(profileDef, {
@@ -769,6 +774,10 @@ export function createCodexProvider(): SessionProvider {
       // Update thread options for next turn
       state.threadOptions.model = ctx.opts.model || undefined;
       state.threadOptions.modelReasoningEffort = mapCodexReasoningEffort(ctx.opts.effort);
+      state.threadOptions.workingDirectory = session.cwd;
+      state.threadOptions.additionalDirectories = ctx.opts.additionalDirectories?.length
+        ? ctx.opts.additionalDirectories
+        : undefined;
       // Update permission policy for next turn
       const runtime = resolveCodexRuntimeSettings(ctx.profile, {
         toolStates: ctx.opts.toolStates,
@@ -865,6 +874,7 @@ async function runTurn(
                 providerControls: ctx.opts.providerControls ?? {},
               },
               cwd: session.cwd,
+              additionalDirectories: session.additionalDirectories,
               loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? false,
             });
           }

@@ -22,6 +22,7 @@ import {
   addSessionTag, parseTags,
 } from "./db";
 import { logActivity } from "./activity";
+import { resolve as resolvePath } from "path";
 
 // Lazy import to avoid circular dep (action-runner → session-manager → action-runner)
 let _onSessionEvent: typeof import("./action-runner").onSessionEvent | null = null;
@@ -81,6 +82,7 @@ export type ActiveSession = {
   pendingMessages: MessageContent[];
   turnStartedAt: number;
   cwd?: string;
+  additionalDirectories: string[];
   actionName?: string;
   userProfile?: string;
   pauseRequested: boolean;
@@ -106,6 +108,7 @@ export type ActiveSession = {
     toolStates?: Record<string, string>;
     providerControls?: Record<string, unknown>;
     loadProjectSettings?: boolean;
+    additionalDirectories?: string[];
   };
 };
 
@@ -149,7 +152,8 @@ export function getAllActiveSessions(): ActiveSession[] {
 // Creates the context object that providers use to interact with session-manager.
 
 function createTurnContext(session: ActiveSession, opts: StartSessionOpts): TurnContext {
-  const profile = opts.profile ? getProfile(opts.profile, opts.cwd) : undefined;
+  const effectiveCwd = opts.cwd ?? session.cwd;
+  const profile = opts.profile ? getProfile(opts.profile, effectiveCwd) : undefined;
 
   return {
     session,
@@ -240,6 +244,7 @@ export type StartSessionOpts = {
   maxTurns?: number;
   effort?: string;
   cwd?: string;
+  additionalDirectories?: string[];
   tools?: string[];
   disallowedTools?: string[];
   providerControls?: Record<string, unknown>;
@@ -251,6 +256,27 @@ export type StartSessionOpts = {
   /** For branched sessions: SDK message UUID to resume at */
   branchMessageUUID?: string;
 };
+
+function resolveSessionCwd(cwd?: string): string {
+  return cwd ?? process.env.AGENT_CWD ?? process.cwd();
+}
+
+function normalizeAdditionalDirectories(
+  baseCwd: string,
+  directories?: string[],
+): string[] | undefined {
+  if (!directories) return undefined;
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const dir of directories) {
+    if (typeof dir !== "string" || !dir.trim()) continue;
+    const resolved = resolvePath(baseCwd, dir);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    normalized.push(resolved);
+  }
+  return normalized;
+}
 
 function configEventPayload(config: {
   provider?: string;
@@ -293,7 +319,8 @@ function broadcastEventToSession(session: ActiveSession, event: any, seq = sessi
 }
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
-  const profileDef = opts.profile ? getProfile(opts.profile, opts.cwd) : undefined;
+  const resolvedCwd = resolveSessionCwd(opts.cwd);
+  const profileDef = opts.profile ? getProfile(opts.profile, resolvedCwd) : undefined;
   const userProf = opts.userProfile ? getUserProfile(opts.userProfile) : undefined;
   // Cascade: session override > agent profile > user profile > default
   const providerName = opts.provider ?? profileDef?.provider ?? userProf?.provider ?? "claude-code";
@@ -329,6 +356,13 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     }
   }
 
+  const resolvedAdditionalDirectories = normalizeAdditionalDirectories(
+    resolvedCwd,
+    opts.additionalDirectories !== undefined
+      ? opts.additionalDirectories
+      : profileDef?.additionalDirectories,
+  ) ?? [];
+
   const session: ActiveSession = {
     sessionId: tempId,
     tempId,
@@ -351,7 +385,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     abortController: new AbortController(),
     pendingMessages: [],
     turnStartedAt: Date.now(),
-    cwd: opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
+    cwd: resolvedCwd,
+    additionalDirectories: resolvedAdditionalDirectories,
     actionName: opts.actionName,
     userProfile: opts.userProfile,
     pauseRequested: false,
@@ -369,6 +404,9 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       toolStates: opts.toolStates,
       providerControls: opts.providerControls,
       loadProjectSettings: opts.loadProjectSettings,
+      additionalDirectories: opts.additionalDirectories !== undefined
+        ? (normalizeAdditionalDirectories(resolvedCwd, opts.additionalDirectories) ?? [])
+        : undefined,
     },
   };
 
@@ -409,9 +447,11 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   // Delegate to provider — provider handles init events (user/prompt, system/init)
   const ctx = createTurnContext(session, {
     ...opts,
+    cwd: resolvedCwd,
     provider: providerName,
     model: session.model ?? undefined,
     effort: resolvedEffort,
+    additionalDirectories: session.additionalDirectories,
   });
   provider.startTurn(ctx);
 
@@ -477,6 +517,8 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
     sessionId,
     model: session.model,
     ...session._configOverrides,
+    cwd: session.cwd,
+    additionalDirectories: session.additionalDirectories,
   });
   session._provider.sendMessage(ctx, content);
 
@@ -599,6 +641,8 @@ export function resumeSession(sessionId: string): { ok: boolean; status?: Sessio
       sessionId,
       model: session.model,
       ...session._configOverrides,
+      cwd: session.cwd,
+      additionalDirectories: session.additionalDirectories,
     });
     session.status = "starting";
     updateSessionStatus(session.sessionId, "starting");
@@ -625,11 +669,13 @@ export function updateSessionConfig(
     providerControls?: Record<string, unknown>;
     cwd?: string;
     loadProjectSettings?: boolean;
+    additionalDirectories?: string[];
   },
 ): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
-  const profileDef = getProfile(session.profile ?? "", session.cwd);
+  const nextCwd = config.cwd !== undefined ? resolveSessionCwd(config.cwd) : resolveSessionCwd(session.cwd);
+  const profileDef = getProfile(session.profile ?? "", nextCwd);
   const profileProvider = profileDef?.provider ?? "claude-code";
   const compatibleProfileModel = profileProvider === session.provider
     ? profileDef?.model
@@ -643,7 +689,14 @@ export function updateSessionConfig(
       || session.provider;
   }
   if (config.cwd !== undefined) {
-    session.cwd = config.cwd;
+    session.cwd = nextCwd;
+  }
+  if (config.additionalDirectories !== undefined) {
+    const normalizedAdditionalDirectories = normalizeAdditionalDirectories(nextCwd, config.additionalDirectories) ?? [];
+    session.additionalDirectories = normalizedAdditionalDirectories;
+    session._configOverrides.additionalDirectories = normalizedAdditionalDirectories;
+  } else if (config.cwd !== undefined && session._configOverrides.additionalDirectories === undefined) {
+    session.additionalDirectories = normalizeAdditionalDirectories(nextCwd, profileDef?.additionalDirectories) ?? [];
   }
   const normalizedTools = config.tools && config.tools.length > 0 ? config.tools : undefined;
   const normalizedDisallowedTools = config.disallowedTools && config.disallowedTools.length > 0
@@ -675,6 +728,7 @@ export function updateSessionConfig(
     model: session.model,
     config: configEventPayload(config),
     cwd: session.cwd,
+    additionalDirectories: session.additionalDirectories,
     loadProjectSettings: config.loadProjectSettings,
   }));
   return true;
@@ -738,6 +792,9 @@ export async function switchProfile(
   }
 
   // Step 3–5: Provider swap
+  const nextAdditionalDirectories = session._configOverrides.additionalDirectories
+    ?? normalizeAdditionalDirectories(session.cwd ?? resolveSessionCwd(undefined), newProfile.additionalDirectories)
+    ?? [];
   const ctx = createTurnContext(session, {
     prompt: "",
     profile: newProfileName,
@@ -749,6 +806,7 @@ export async function switchProfile(
     disallowedTools: providerMismatch ? currentDisallowedTools : newProfile.disallowedTools,
     cwd: session.cwd,
     loadProjectSettings: newProfile.loadProjectSettings,
+    additionalDirectories: nextAdditionalDirectories,
   });
 
   if (sameProvider && oldProvider.switchProfile) {
@@ -784,6 +842,7 @@ export async function switchProfile(
   session._configOverrides.disallowedTools = undefined;
   session._configOverrides.toolStates = undefined;
   session._configOverrides.providerControls = undefined;
+  session.additionalDirectories = nextAdditionalDirectories;
   session.abortController = new AbortController();
   session.pendingMessages = [];
 
