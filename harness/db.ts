@@ -150,6 +150,57 @@ try {
   db.run(`ALTER TABLE action_runs ADD COLUMN execution_id INTEGER REFERENCES action_executions(id)`);
 } catch { /* column already exists */ }
 
+function parseTempSessionCreatedAt(sessionId: string): number | null {
+  if (!sessionId.startsWith("ses-")) return null;
+  const rest = sessionId.slice(4);
+  const dash = rest.indexOf("-");
+  if (dash === -1) return null;
+  const createdAt = Number(rest.slice(0, dash));
+  return Number.isFinite(createdAt) ? createdAt : null;
+}
+
+function repairActionRunSessionLinks() {
+  const brokenRuns = db.prepare(`
+    SELECT id, action_name, session_id
+    FROM action_runs
+    WHERE session_id LIKE 'ses-%'
+  `).all() as Array<{ id: number; action_name: string; session_id: string }>;
+  if (brokenRuns.length === 0) return;
+
+  const findSession = db.prepare(`
+    SELECT id
+    FROM sessions
+    WHERE action_name = $action_name
+      AND created_at BETWEEN $created_at_min AND $created_at_max
+    ORDER BY ABS(created_at - $created_at), id
+    LIMIT 1
+  `);
+  const updateRun = db.prepare(`
+    UPDATE action_runs SET session_id = $session_id WHERE id = $id
+  `);
+
+  let repaired = 0;
+  for (const run of brokenRuns) {
+    const createdAt = parseTempSessionCreatedAt(run.session_id);
+    if (!createdAt) continue;
+    const session = findSession.get({
+      $action_name: run.action_name,
+      $created_at: createdAt,
+      $created_at_min: createdAt - 1000,
+      $created_at_max: createdAt + 1000,
+    }) as { id: string } | null;
+    if (!session || session.id === run.session_id) continue;
+    updateRun.run({ $id: run.id, $session_id: session.id });
+    repaired++;
+  }
+
+  if (repaired > 0) {
+    console.log(`[db] Repaired ${repaired} action run session link(s) after temp session rekey`);
+  }
+}
+
+repairActionRunSessionLinks();
+
 // ── Types ──
 
 export type SessionRow = {
@@ -376,6 +427,7 @@ export function renameSession(oldId: string, newId: string) {
   if (oldId === newId) return;
   db.prepare(`UPDATE sessions SET id = $new WHERE id = $old`).run({ $old: oldId, $new: newId });
   db.prepare(`UPDATE events SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+  db.prepare(`UPDATE action_runs SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
 }
 
 export function updateSessionStatus(id: string, status: string) {

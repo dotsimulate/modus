@@ -2,9 +2,6 @@ import type { TouchRecord } from "../api/trace";
 
 // No layout constants — positions are computed in TraceView (3D canvas)
 
-const MAX_SESSIONS = 60;
-const MAX_FILES    = 100;
-
 // ── Node types (data only, no positions) ──
 
 export type SessionNode = {
@@ -114,12 +111,11 @@ export function buildGraph(touches: TouchRecord[]): TraceGraph {
     edge.confidences.add(t.confidence);
   }
 
-  // Files: top by touchCount
+  // Files: keep full set, sorted by touchCount
   const sortedFiles = [...fileMap.entries()]
-    .sort((a, b) => b[1].touchCount - a[1].touchCount)
-    .slice(0, MAX_FILES);
+    .sort((a, b) => b[1].touchCount - a[1].touchCount);
 
-  // Sessions: every session that touched a shown file, then cap by touchCount
+  // Sessions: every session that touched a shown file, re-sorted temporally
   const relevantSessIds = new Set<string>();
   for (const [fp] of sortedFiles) {
     for (const sid of (fileMap.get(fp)?.sessions ?? [])) relevantSessIds.add(sid);
@@ -127,7 +123,6 @@ export function buildGraph(touches: TouchRecord[]): TraceGraph {
   const sortedSessions = [...sessionMap.entries()]
     .filter(([id]) => relevantSessIds.has(id))
     .sort((a, b) => b[1].touchCount - a[1].touchCount)
-    .slice(0, MAX_SESSIONS)
     .sort((a, b) => a[1].firstSeen - b[1].firstSeen); // re-sort temporal (oldest first)
 
   const sessions: SessionNode[] = sortedSessions.map(([sessionId, s]) => ({
