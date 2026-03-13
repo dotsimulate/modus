@@ -223,6 +223,50 @@
   cursor: default;
 }
 
+.message-commit-detected {
+  width: 100%;
+  margin-top: 10px;
+  padding: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.message-commit-detected:hover,
+.message-commit-detected:focus-visible {
+  color: var(--text-secondary);
+  outline: none;
+}
+.message-commit-detected-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tool-commit);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.message-commit-detected-label {
+  color: var(--tool-commit);
+  letter-spacing: 0.04em;
+}
+.message-commit-detected-hash {
+  color: var(--tool-commit);
+  opacity: 0.8;
+}
+.message-commit-detected-copy {
+  min-width: 0;
+}
+.message-commit-detected-meta {
+  color: var(--text-dim);
+}
 
 .message-meta {
   font-family: var(--font-mono);
