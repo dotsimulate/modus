@@ -58,10 +58,13 @@ export function SessionSetup({
   showAgentConfig = true,
   showLoadProjectSettings = true,
 }: Props) {
+  void showLoadProjectSettings;
   const [browseOpen, setBrowseOpen] = useState(false);
   const [extraBrowseIdx, setExtraBrowseIdx] = useState<number | null>(null);
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
   const [initLoading, setInitLoading] = useState(false);
+  void initStatus;
+  void initLoading;
 
   // Check .modus/ init status when CWD changes
   useEffect(() => {
@@ -83,6 +86,7 @@ export function SessionSetup({
       setInitLoading(false);
     }
   };
+  void handleInit;
 
   const recentPaths = getRecentPaths();
   const projectPathSet = new Set(projectPaths ?? []);

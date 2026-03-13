@@ -59,8 +59,9 @@ function groupSessionsByTime(list: SessionInfo[]) {
 export function SessionList({
   sessions, activeSessionId, groupMode,
   onSelectSession, onArchiveSession, activeInput,
-  projectPaths, initialCollapsedGroups, onCollapsedGroupsChange,
+  projectPaths: _projectPaths, initialCollapsedGroups, onCollapsedGroupsChange,
 }: Props) {
+  void _projectPaths;
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(initialCollapsedGroups ?? []),
   );
