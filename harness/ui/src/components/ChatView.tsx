@@ -4,13 +4,40 @@ import { GitActivityItem } from "./GitActivityItem";
 import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
-import { fetchGitLog } from "../api";
+import { fetchGitLog, fetchGitShow } from "../api";
 import type { Message, ToolCall, GitCommit } from "../api";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionProvider";
+import { navigateToGitRoute } from "../git-route";
 
 type DisplayItem =
   | { kind: "message"; key: string; message: Message; index: number }
   | { kind: "commit"; key: string; commit: GitCommit };
+
+type CommitCandidate = {
+  commit: GitCommit;
+  matchedFiles: string[];
+};
+
+const COMMIT_MATCH_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+function shortHash(hash: string): string {
+  return hash.slice(0, 7);
+}
+
+function commitSubject(message: string): string {
+  return message.split("\n")[0]?.trim() || "(no message)";
+}
+
+function formatCommitWhen(date: string): string {
+  const parsed = Date.parse(date);
+  if (Number.isNaN(parsed)) return date;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(parsed);
+}
 
 type Props = {
   messages: Message[];
@@ -43,6 +70,7 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
   const autoScrollRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [commits, setCommits] = useState<GitCommit[]>([]);
+  const [commitFilesByHash, setCommitFilesByHash] = useState<Map<string, string[]>>(new Map());
   const hasMessages = messages.length > 0;
   const lastMessage = hasMessages ? messages[messages.length - 1] : null;
 
@@ -179,6 +207,7 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
   useEffect(() => {
     if (!showGitEvents || !cwd) {
       setCommits([]);
+      setCommitFilesByHash(new Map());
       return;
     }
 
@@ -202,6 +231,45 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
       clearInterval(timer);
     };
   }, [cwd, showGitEvents]);
+
+  useEffect(() => {
+    if (!showGitEvents || !cwd || commits.length === 0) {
+      setCommitFilesByHash(new Map());
+      return;
+    }
+
+    let active = true;
+    const recentCommits = [...commits]
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+      .slice(0, 40);
+    const missing = recentCommits.filter((commit) => !commitFilesByHash.has(commit.hash));
+    if (missing.length === 0) return;
+
+    const load = async () => {
+      const entries = await Promise.all(
+        missing.map(async (commit) => {
+          try {
+            const detail = await fetchGitShow(cwd, commit.hash);
+            return [commit.hash, detail.files.map((file) => file.path)] as const;
+          } catch {
+            return [commit.hash, [] as string[]] as const;
+          }
+        }),
+      );
+
+      if (!active) return;
+      setCommitFilesByHash((prev) => {
+        const next = new Map(prev);
+        for (const [hash, files] of entries) next.set(hash, files);
+        return next;
+      });
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [commitFilesByHash, commits, cwd, showGitEvents]);
 
   const displayItems = useMemo<DisplayItem[]>(() => {
     if (!showGitEvents || !cwd || commits.length === 0 || messages.length === 0) {
@@ -245,6 +313,46 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
     [sessionTags],
   );
 
+  const commitCandidatesByMessage = useMemo(() => {
+    const candidates = new Map<number, CommitCandidate>();
+    if (!showGitEvents || !cwd || commits.length === 0) return candidates;
+
+    const sortedCommits = [...commits].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+
+    for (const [messageIndex, toolCalls] of turnFileEdits.entries()) {
+      const msg = messages[messageIndex];
+      if (!msg || msg.role !== "assistant" || msg.timestamp == null) continue;
+
+      const editedFiles = new Set(extractFileEdits(toolCalls).map((edit) => edit.filePath));
+      if (editedFiles.size === 0) continue;
+
+      const startTs = msg.timestamp;
+      const endTs = Math.min(
+        startTs + COMMIT_MATCH_WINDOW_MS,
+        messages
+          .slice(messageIndex + 1)
+          .find((next) => next.role === "user" && next.timestamp != null)?.timestamp ?? Number.POSITIVE_INFINITY,
+      );
+
+      for (const commit of sortedCommits) {
+        const commitTs = Date.parse(commit.date);
+        if (Number.isNaN(commitTs) || commitTs <= startTs) continue;
+        if (commitTs > endTs) break;
+
+        const commitFiles = commitFilesByHash.get(commit.hash);
+        if (!commitFiles || commitFiles.length === 0) continue;
+
+        const matchedFiles = commitFiles.filter((file) => editedFiles.has(file));
+        if (matchedFiles.length === 0) continue;
+
+        candidates.set(messageIndex, { commit, matchedFiles });
+        break;
+      }
+    }
+
+    return candidates;
+  }, [commitFilesByHash, commits, cwd, messages, showGitEvents, turnFileEdits]);
+
   const showAssistantPrelude = streaming && lastMessage?.role === "user";
   const assistantPreludeLabel = [profileName, model].filter(Boolean).join(" ");
 
@@ -279,6 +387,7 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
             const i = item.index;
             const turnTools = turnFileEdits.get(i);
             const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
+            const commitCandidate = commitCandidatesByMessage.get(i);
 
             return msg.role === "system" ? (
               <div key={msg.id} className="system-divider">
@@ -310,6 +419,28 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
                   onStopTask={onStopTask}
                 >
                   {showFileChanges && <FileChanges toolCalls={turnTools} />}
+                  {commitCandidate && (
+                    <button
+                      className="message-commit-detected"
+                      onClick={() => navigateToGitRoute({ commit: commitCandidate.commit.hash })}
+                      type="button"
+                    >
+                      <span className="message-commit-detected-dot" aria-hidden="true" />
+                      <span className="message-commit-detected-label">commit detected</span>
+                      <span className="message-commit-detected-copy">
+                        could be this session&apos;s work
+                      </span>
+                      <span className="message-commit-detected-hash">{shortHash(commitCandidate.commit.hash)}</span>
+                      <span className="message-commit-detected-copy">
+                        {commitSubject(commitCandidate.commit.message)}
+                      </span>
+                      <span className="message-commit-detected-meta">
+                        {commitCandidate.matchedFiles.length} file{commitCandidate.matchedFiles.length === 1 ? "" : "s"} matched
+                        {" \u00b7 "}
+                        {formatCommitWhen(commitCandidate.commit.date)}
+                      </span>
+                    </button>
+                  )}
                 </MessageBubble>
                 {msg.role === "user" && (
                   <UserMeta msg={msg} onBranch={onBranch} />

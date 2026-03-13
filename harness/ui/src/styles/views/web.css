@@ -597,15 +597,16 @@
 
 .web-edge--delegation {
   stroke: var(--warning);
-  stroke-width: 2;
-  stroke-dasharray: 6 3;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
   fill: none;
-  opacity: 0.6;
+  opacity: 0.72;
 }
 
 .web-edge-active .web-edge--delegation {
   opacity: 1;
-  stroke-width: 2.5;
+  stroke-width: 2;
 }
 
 /* ── Mission Filter Panel ── */

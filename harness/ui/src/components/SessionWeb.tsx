@@ -51,6 +51,8 @@ type GraphEdge = {
   to: string;
   type: "handoff" | "commit" | "document" | "delegation";
   moveName?: string;
+  lane?: number;
+  kind?: MissionTransferSummary["kind"];
 };
 
 type SelectedNode = GraphNode | null;
@@ -152,13 +154,14 @@ function buildGraph(
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
   const edges: GraphEdge[] = [];
   const sessionMap = new Map(sessions.map(s => [s.id, s]));
+  const missionStructuralKinds = new Set<MissionTransferSummary["kind"]>(["delegation", "review", "escalation"]);
 
   // Handoff edges: source → document → spawned (or source → spawned if no doc)
   const handoffMoveRuns = moveRuns
     .filter(r => r.spawnedSessionId && sessionMap.has(r.sessionId) && sessionMap.has(r.spawnedSessionId!));
 
   const handoffDocs: HandoffDoc[] = [];
-  const handoffEdges: GraphEdge[] = [];
+  const lineageEdges: GraphEdge[] = [];
 
   for (const r of handoffMoveRuns) {
     let docPath: string | null = null;
@@ -183,21 +186,37 @@ function buildGraph(
       });
       edges.push({ from: r.sessionId, to: docId, type: "document", moveName: r.moveName });
       edges.push({ from: docId, to: r.spawnedSessionId!, type: "handoff", moveName: r.moveName });
-      handoffEdges.push({ from: r.sessionId, to: r.spawnedSessionId!, type: "handoff", moveName: r.moveName });
+      lineageEdges.push({ from: r.sessionId, to: r.spawnedSessionId!, type: "handoff", moveName: r.moveName });
     } else {
       const e = { from: r.sessionId, to: r.spawnedSessionId!, type: "handoff" as const, moveName: r.moveName };
       edges.push(e);
-      handoffEdges.push(e);
+      lineageEdges.push(e);
     }
   }
 
-  // Mission delegation edges
-  for (const t of missionTransfers) {
-    if (!t.fromSessionId || !t.toSessionId) continue;
-    if (!sessionMap.has(t.fromSessionId) || !sessionMap.has(t.toSessionId)) continue;
-    const e: GraphEdge = { from: t.fromSessionId, to: t.toSessionId, type: "delegation" };
-    edges.push(e);
-    handoffEdges.push(e);
+  // Mission delegation edges stay as overlays; they should not re-parent the handoff tree.
+  const delegationEdgeGroups = new Map<string, MissionTransferSummary[]>();
+  for (const transfer of missionTransfers) {
+    if (!transfer.fromSessionId || !transfer.toSessionId) continue;
+    if (!sessionMap.has(transfer.fromSessionId) || !sessionMap.has(transfer.toSessionId)) continue;
+    const key = `${transfer.fromSessionId}->${transfer.toSessionId}`;
+    const grouped = delegationEdgeGroups.get(key) || [];
+    grouped.push(transfer);
+    delegationEdgeGroups.set(key, grouped);
+  }
+  for (const [key, grouped] of delegationEdgeGroups) {
+    const [from, to] = key.split("->");
+    grouped
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .forEach((transfer, index) => {
+        edges.push({
+          from,
+          to,
+          type: "delegation",
+          lane: index,
+          kind: transfer.kind,
+        });
+      });
   }
 
   // Build commit tag map: hash → session IDs
@@ -229,19 +248,34 @@ function buildGraph(
   }
 
   // Compute session depth via BFS
-  const spawnedSet = new Set(handoffEdges.map(e => e.to));
+  const structuralEdges = lineageEdges.length > 0
+    ? lineageEdges
+    : [...delegationEdgeGroups.entries()]
+      .filter(([, grouped]) => grouped.some(transfer => missionStructuralKinds.has(transfer.kind)))
+      .map(([key]) => {
+        const [from, to] = key.split("->");
+        return { from, to, type: "delegation" as const };
+      });
+
+  const spawnedSet = new Set(structuralEdges.map(e => e.to));
   const childrenOf = new Map<string, string[]>();
-  for (const e of handoffEdges) {
+  for (const e of structuralEdges) {
     const arr = childrenOf.get(e.from) || [];
     arr.push(e.to);
     childrenOf.set(e.from, arr);
   }
 
-  // Sessions that participate in handoffs
+  // Sessions that participate in the structural map
   const handoffSessionIds = new Set<string>();
-  for (const e of handoffEdges) {
+  for (const e of structuralEdges) {
     handoffSessionIds.add(e.from);
     handoffSessionIds.add(e.to);
+  }
+  for (const grouped of delegationEdgeGroups.values()) {
+    for (const transfer of grouped) {
+      if (transfer.fromSessionId) handoffSessionIds.add(transfer.fromSessionId);
+      if (transfer.toSessionId) handoffSessionIds.add(transfer.toSessionId);
+    }
   }
   // Also include sessions with commit links
   for (const [, sids] of commitSessionMap) {
@@ -252,6 +286,19 @@ function buildGraph(
   const relevantSessionIds = handoffSessionIds.size > 0
     ? handoffSessionIds
     : new Set(sessions.slice(0, 12).map(s => s.id));
+
+  const delegationPeers = new Map<string, Set<string>>();
+  for (const grouped of delegationEdgeGroups.values()) {
+    for (const transfer of grouped) {
+      if (!transfer.fromSessionId || !transfer.toSessionId) continue;
+      const fromPeers = delegationPeers.get(transfer.fromSessionId) || new Set<string>();
+      fromPeers.add(transfer.toSessionId);
+      delegationPeers.set(transfer.fromSessionId, fromPeers);
+      const toPeers = delegationPeers.get(transfer.toSessionId) || new Set<string>();
+      toPeers.add(transfer.fromSessionId);
+      delegationPeers.set(transfer.toSessionId, toPeers);
+    }
+  }
 
   const depth = new Map<string, number>();
   const roots: string[] = [];
@@ -278,7 +325,7 @@ function buildGraph(
     if (!depth.has(sid)) depth.set(sid, 0);
   }
 
-  // Lay out the handoff forest by subtree so parents stay visually tied to children.
+  // Lay out the forest by subtree so parents stay visually tied to children.
   const childOrderCache = new Map<string, string[]>();
   function orderedChildren(sid: string): string[] {
     const cached = childOrderCache.get(sid);
@@ -286,6 +333,9 @@ function buildGraph(
     const ordered = [...(childrenOf.get(sid) || [])]
       .filter(child => relevantSessionIds.has(child))
       .sort((a, b) => {
+        const aPeer = delegationPeers.get(a)?.has(sid) ? 1 : 0;
+        const bPeer = delegationPeers.get(b)?.has(sid) ? 1 : 0;
+        if (aPeer !== bPeer) return bPeer - aPeer;
         const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
         if (timeDiff !== 0) return timeDiff;
         return a.localeCompare(b);
@@ -295,12 +345,28 @@ function buildGraph(
   }
 
   const rowPosition = new Map<string, number>();
+  const usedRows = new Set<number>();
   const laidOut = new Set<string>();
+  function setRowPosition(sid: string, row: number) {
+    rowPosition.set(sid, row);
+    if (Number.isInteger(row)) usedRows.add(row);
+  }
+  function nearestOpenRow(anchor: number): number {
+    const base = Math.round(anchor);
+    if (!usedRows.has(base)) return base;
+    for (let distance = 1; distance < 512; distance++) {
+      const above = base - distance;
+      if (!usedRows.has(above)) return above;
+      const below = base + distance;
+      if (!usedRows.has(below)) return below;
+    }
+    return base;
+  }
   function layoutSubtree(sid: string, startRow: number): number {
     laidOut.add(sid);
     const children = orderedChildren(sid).filter(child => !laidOut.has(child));
     if (children.length === 0) {
-      rowPosition.set(sid, startRow);
+      setRowPosition(sid, startRow);
       return startRow + 1;
     }
 
@@ -311,11 +377,14 @@ function buildGraph(
       childRows.push(rowPosition.get(children[index]) ?? cursor - 1);
       if (index < children.length - 1) cursor += config.siblingGapRows;
     }
-    rowPosition.set(sid, (childRows[0] + childRows[childRows.length - 1]) / 2);
+    setRowPosition(sid, (childRows[0] + childRows[childRows.length - 1]) / 2);
     return cursor;
   }
 
   const orderedRoots = [...roots].sort((a, b) => {
+    const aPeers = delegationPeers.get(a)?.size ?? 0;
+    const bPeers = delegationPeers.get(b)?.size ?? 0;
+    if (aPeers !== bPeers) return bPeers - aPeers;
     const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
     if (timeDiff !== 0) return timeDiff;
     return a.localeCompare(b);
@@ -331,13 +400,31 @@ function buildGraph(
   const unplaced = [...relevantSessionIds]
     .filter(sid => !rowPosition.has(sid))
     .sort((a, b) => {
+      const aAnchor = [...(delegationPeers.get(a) || [])]
+        .map(peer => rowPosition.get(peer))
+        .find((row): row is number => row != null);
+      const bAnchor = [...(delegationPeers.get(b) || [])]
+        .map(peer => rowPosition.get(peer))
+        .find((row): row is number => row != null);
+      if (aAnchor != null && bAnchor != null && aAnchor !== bAnchor) return aAnchor - bAnchor;
+      if (aAnchor != null) return -1;
+      if (bAnchor != null) return 1;
       const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
       if (timeDiff !== 0) return timeDiff;
       return a.localeCompare(b);
     });
   for (const sid of unplaced) {
-    rowPosition.set(sid, nextRootRow);
-    nextRootRow += 1;
+    const anchorRows = [...(delegationPeers.get(sid) || [])]
+      .map(peer => rowPosition.get(peer))
+      .filter((row): row is number => row != null)
+      .sort((a, b) => a - b);
+    if (anchorRows.length > 0) {
+      const center = anchorRows.reduce((sum, row) => sum + row, 0) / anchorRows.length;
+      setRowPosition(sid, nearestOpenRow(center));
+    } else {
+      setRowPosition(sid, nearestOpenRow(nextRootRow));
+      nextRootRow += 1;
+    }
   }
 
   // Axis helpers: map (row, col) to (x, y) based on axisMode
@@ -505,11 +592,12 @@ function nodeMidY(n: GraphNode) {
   return n.y + COMMIT_H / 2;
 }
 
-function EdgePath({ from, to, type, axisMode }: {
+function EdgePath({ from, to, type, axisMode, lane = 0 }: {
   from: GraphNode;
   to: GraphNode;
   type: "handoff" | "commit" | "document" | "delegation";
   axisMode: "time-x" | "time-y";
+  lane?: number;
 }) {
   if (type === "commit") {
     if (axisMode === "time-y") {
@@ -546,19 +634,28 @@ function EdgePath({ from, to, type, axisMode }: {
   }
 
   if (type === "delegation") {
+    const laneOffset = 18 + lane * 14;
     if (axisMode === "time-y") {
-      const x1 = nodeRight(from), y1 = nodeMidY(from);
-      const x2 = to.x,            y2 = nodeMidY(to);
-      const dx = Math.abs(x2 - x1);
-      const cp = Math.min(Math.max(dx * 0.4, 20), dx * 0.45);
-      const d = `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`;
+      const fromAbove = nodeMidY(from) <= nodeMidY(to);
+      const y1 = fromAbove ? from.y : nodeBottom(from);
+      const y2 = fromAbove ? nodeBottom(to) : to.y;
+      const x1 = nodeMidX(from);
+      const x2 = nodeMidX(to);
+      const bendY = fromAbove
+        ? Math.min(y1, y2) - laneOffset
+        : Math.max(y1, y2) + laneOffset;
+      const d = `M ${x1} ${y1} C ${x1} ${bendY}, ${x2} ${bendY}, ${x2} ${y2}`;
       return <path d={d} className="web-edge web-edge--delegation" />;
     }
-    const x1 = nodeMidX(from), y1 = nodeBottom(from);
-    const x2 = nodeMidX(to),   y2 = to.y;
-    const dy = Math.abs(y2 - y1);
-    const cp = Math.min(Math.max(dy * 0.4, 20), dy * 0.45);
-    const d = `M ${x1} ${y1} C ${x1} ${y1 + cp}, ${x2} ${y2 - cp}, ${x2} ${y2}`;
+    const fromLeft = nodeMidX(from) <= nodeMidX(to);
+    const x1 = fromLeft ? nodeRight(from) : from.x;
+    const x2 = fromLeft ? to.x : nodeRight(to);
+    const y1 = nodeMidY(from);
+    const y2 = nodeMidY(to);
+    const bendX = fromLeft
+      ? Math.max(x1, x2) + laneOffset
+      : Math.min(x1, x2) - laneOffset;
+    const d = `M ${x1} ${y1} C ${bendX} ${y1}, ${bendX} ${y2}, ${x2} ${y2}`;
     return <path d={d} className="web-edge web-edge--delegation" />;
   }
 
@@ -1036,7 +1133,7 @@ export function SessionWeb() {
               const active = activeEdgeSet.has(edgeKey);
               return (
                 <g key={i} className={active ? "web-edge-active" : ""}>
-                  <EdgePath from={from} to={to} type={e.type} axisMode={config.axisMode} />
+                  <EdgePath from={from} to={to} type={e.type} axisMode={config.axisMode} lane={e.lane} />
                 </g>
               );
             })}
