@@ -149,15 +149,17 @@ export async function startMission(opts: {
   });
 
   // Create step rows
+  let firstStepRunId: number | null = null;
   for (let i = 0; i < config.steps.length; i++) {
     const step = config.steps[i];
-    insertMissionStep({
+    const stepRunId = insertMissionStep({
       runId,
       stepId: step.id,
       stepOrder: i,
       role: step.role,
       title: step.label,
     });
+    if (i === 0) firstStepRunId = stepRunId;
   }
 
   // Mint orchestrator grant
@@ -203,6 +205,13 @@ export async function startMission(opts: {
     status: "running",
     orchestratorSessionId: session.sessionId,
   });
+  if (firstStepRunId !== null) {
+    updateMissionStep(firstStepRunId, {
+      status: "running",
+      startedAt: Date.now(),
+      activeAssignmentId: null,
+    });
+  }
 
   // Tag the session
   // (Tags are set via session metadata — the session-manager will pick these up)
@@ -433,16 +442,19 @@ async function handleDelegate(
     brief,
   });
 
-  // Mark step as running
+  const stepUpdates: {
+    status?: "running";
+    activeAssignmentId: number;
+    startedAt?: number;
+  } = {
+    activeAssignmentId: assignmentId,
+  };
   if (step.status === "pending") {
-    updateMissionStep(step.id, {
-      status: "running",
-      activeAssignmentId: assignmentId,
-      startedAt: Date.now(),
-    });
-    // Update run's current step index
-    updateMissionRun(run.id, { currentStepIndex: step.step_order });
+    stepUpdates.status = "running";
+    stepUpdates.startedAt = Date.now();
   }
+  updateMissionStep(step.id, stepUpdates);
+  updateMissionRun(run.id, { currentStepIndex: step.step_order });
 
   // Mint worker token
   const workerToken = generateToken();
