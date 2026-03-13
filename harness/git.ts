@@ -69,6 +69,22 @@ export type GitLogEntry = {
   deletions?: number;
 };
 
+export type GitLogEntryWithFiles = GitLogEntry & {
+  files: string[];
+};
+
+function parseShortstat(line: string | undefined): Pick<GitLogEntry, "filesChanged" | "additions" | "deletions"> {
+  if (!line) return {};
+  const filesMatch = line.match(/(\d+) files? changed/);
+  const additionsMatch = line.match(/(\d+) insertions?\(\+\)/);
+  const deletionsMatch = line.match(/(\d+) deletions?\(-\)/);
+  return {
+    filesChanged: filesMatch ? Number(filesMatch[1]) : undefined,
+    additions: additionsMatch ? Number(additionsMatch[1]) : undefined,
+    deletions: deletionsMatch ? Number(deletionsMatch[1]) : undefined,
+  };
+}
+
 function parseGitLogRaw(raw: string): GitLogEntry[] {
   const SEP = "---GIT-LOG-SEP---";
   const END = "---GIT-LOG-END---";
@@ -97,15 +113,60 @@ function parseGitLogRaw(raw: string): GitLogEntry[] {
     let deletions: number | undefined;
 
     if (afterEnd) {
-      const fm = afterEnd.match(/(\d+) files? changed/);
-      const am = afterEnd.match(/(\d+) insertions?\(\+\)/);
-      const dm = afterEnd.match(/(\d+) deletions?\(-\)/);
-      if (fm) filesChanged = Number(fm[1]);
-      if (am) additions = Number(am[1]);
-      if (dm) deletions = Number(dm[1]);
+      ({ filesChanged, additions, deletions } = parseShortstat(afterEnd));
     }
 
     entries.push({ hash, date, message, author, filesChanged, additions, deletions });
+  }
+
+  return entries;
+}
+
+function parseGitLogWithFilesRaw(raw: string): GitLogEntryWithFiles[] {
+  const SEP = "---GIT-LOG-SEP---";
+  const META_END = "---GIT-LOG-META-END---";
+  const entries: GitLogEntryWithFiles[] = [];
+  const chunks = raw.split(SEP).filter((s) => s.trim());
+
+  for (const chunk of chunks) {
+    const metaEndIdx = chunk.indexOf(META_END);
+    if (metaEndIdx === -1) continue;
+
+    const meta = chunk.slice(0, metaEndIdx).trim();
+    const rest = chunk.slice(metaEndIdx + META_END.length).trim();
+
+    const firstNl = meta.indexOf("\n");
+    const secondNl = meta.indexOf("\n", firstNl + 1);
+    const thirdNl = meta.indexOf("\n", secondNl + 1);
+    if (firstNl === -1 || secondNl === -1 || thirdNl === -1) continue;
+
+    const hash = meta.slice(0, firstNl);
+    const date = meta.slice(firstNl + 1, secondNl);
+    const author = meta.slice(secondNl + 1, thirdNl);
+    const message = meta.slice(thirdNl + 1).trim();
+
+    const lines = rest
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    let shortstat: string | undefined;
+    if (lines.length > 0 && /(files? changed|insertions?\(\+\)|deletions?\(-\))/.test(lines[lines.length - 1]!)) {
+      shortstat = lines.pop();
+    }
+
+    const files = lines;
+    const { filesChanged, additions, deletions } = parseShortstat(shortstat);
+    entries.push({
+      hash,
+      date,
+      author,
+      message,
+      files,
+      filesChanged,
+      additions,
+      deletions,
+    });
   }
 
   return entries;
@@ -121,6 +182,34 @@ export async function gitLog(cwd: string, limit = 30): Promise<GitLogEntry[]> {
     ]);
 
     return parseGitLogRaw(raw);
+  } catch {
+    return [];
+  }
+}
+
+export async function gitLogWithFiles(
+  cwd: string,
+  opts: {
+    limit?: number;
+    since?: string;
+    until?: string;
+  } = {},
+): Promise<GitLogEntryWithFiles[]> {
+  const { limit = 30, since, until } = opts;
+
+  try {
+    const git = simpleGit(cwd);
+    const args = [
+      "log",
+      `--max-count=${limit}`,
+      "--format=---GIT-LOG-SEP---%n%H%n%aI%n%an%n%B---GIT-LOG-META-END---",
+      "--name-only",
+      "--shortstat",
+    ];
+    if (since) args.push(`--since=${since}`);
+    if (until) args.push(`--until=${until}`);
+    const raw = await git.raw(args);
+    return parseGitLogWithFilesRaw(raw);
   } catch {
     return [];
   }

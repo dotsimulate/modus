@@ -227,6 +227,21 @@ export type SessionStatusInfo = {
   lastEventAt: number;
   error: string | null;
   archived?: boolean;
+  commitAttribution?: CommitAttribution;
+};
+
+export type CommitAttributionReason =
+  | "no-session-cwd"
+  | "no-file-touches"
+  | "no-nearby-commit"
+  | "no-file-overlap";
+
+export type CommitAttribution = {
+  matched: boolean;
+  commit?: GitCommit;
+  matchedFiles?: string[];
+  source?: "session";
+  reason?: CommitAttributionReason;
 };
 
 export type ApiAttachment = {

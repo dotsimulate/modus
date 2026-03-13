@@ -17,7 +17,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import { startSession, getActiveSession, queueMessage, type StartSessionOpts } from "./session-manager";
 import { logActivity } from "./activity";
 import {
@@ -89,6 +89,17 @@ export function getMission(name: string, cwd: string): MissionConfig | null {
   }
 }
 
+function loadMissionBrief(config: MissionConfig, cwd: string): string | null {
+  if (!config.brief) return null;
+  const missionRoot = join(missionsDir(cwd), config.name);
+  const briefPath = resolve(missionRoot, config.brief);
+  try {
+    return readFileSync(briefPath, "utf-8").trim();
+  } catch (err) {
+    throw new Error(`Failed to load mission brief "${config.brief}": ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export function listMissions(cwd: string): MissionListItem[] {
   const dir = missionsDir(cwd);
   if (!existsSync(dir)) return [];
@@ -123,6 +134,17 @@ export async function startMission(opts: {
   if (!config) return { error: `Mission not found: ${opts.missionName}` };
   if (config.enabled === false) return { error: `Mission is disabled: ${opts.missionName}` };
 
+  let resolvedBrief: string | null = null;
+  try {
+    resolvedBrief = loadMissionBrief(config, opts.cwd);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+  const configSnapshot: MissionConfig = {
+    ...config,
+    resolvedBrief: resolvedBrief ?? undefined,
+  };
+
   // Validate roles reference real profiles (warn, don't block)
   for (const [role, roleConfig] of Object.entries(config.roles)) {
     if (!roleConfig.profile) {
@@ -145,7 +167,7 @@ export async function startMission(opts: {
     missionName: opts.missionName,
     cwd: opts.cwd,
     userProfile: opts.userProfile,
-    definitionSnapshot: JSON.stringify(config),
+    definitionSnapshot: JSON.stringify(configSnapshot),
   });
 
   // Create step rows
@@ -184,7 +206,7 @@ export async function startMission(opts: {
   grantStore.set(orchestratorToken, orchestratorGrant);
 
   // Build orchestrator prompt
-  const prompt = buildOrchestratorPrompt(config, runId, orchestratorToken);
+  const prompt = buildOrchestratorPrompt(configSnapshot, runId, orchestratorToken);
 
   // Spawn orchestrator session
   const sessionOpts: StartSessionOpts = {
@@ -243,7 +265,10 @@ function buildOrchestratorPrompt(config: MissionConfig, runId: number, token: st
 ## Objective
 ${config.description}
 
-## Your Role
+${config.resolvedBrief ? `## Mission Brief
+${config.resolvedBrief}
+
+` : ""}## Your Role
 You are the **orchestrator** for this mission. Your job is delegation, gate-checking, and state management. You do NOT write code, run tests, or implement features yourself. You delegate to worker agents and track their progress.
 
 You make ALL progression decisions. The runner will NOT advance steps automatically.
@@ -338,7 +363,10 @@ function buildWorkerPrompt(
 ## Mission: ${config.label}
 ## Step: ${step.label} [${step.id}]
 ${step.description ? `\n${step.description}\n` : ""}
-## Your Brief
+${config.resolvedBrief ? `## Mission Brief
+${config.resolvedBrief}
+
+` : ""}## Your Brief
 ${brief}
 
 ## When Done

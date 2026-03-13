@@ -19,6 +19,10 @@ export interface MissionConfig {
   label: string;
   description: string;
   enabled?: boolean;
+  /** Optional path to a markdown brief file, resolved relative to the mission directory. */
+  brief?: string;
+  /** Resolved brief markdown captured into the run snapshot at mission start. */
+  resolvedBrief?: string;
 
   /** Role-to-profile mapping. Keys are role names, values are agent profile names. */
   roles: Record<string, MissionRoleConfig>;
