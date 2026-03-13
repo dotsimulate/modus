@@ -177,6 +177,7 @@ function FileGroup({ label, files, variant, onFileClick, activeFile }: {
 function DetailPane({ state, cwd, status, commits }: {
   state: DetailState; cwd: string; status: GitStatus; commits: GitCommit[];
 }) {
+  void status;
   if (state.kind === "overview") return <ReadmeDetail cwd={cwd} />;
   if (state.kind === "wt-file") return <WtFileDiff cwd={cwd} file={state.file} />;
   if (state.kind === "commit") return <CommitFullDetail cwd={cwd} hash={state.hash} commits={commits} />;

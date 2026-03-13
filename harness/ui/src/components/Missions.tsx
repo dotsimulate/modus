@@ -123,7 +123,7 @@ export function Missions() {
     try { setRuns(await fetchMissionRuns({ cwd })); } catch { /* silent */ }
   }, [cwd]);
 
-  const withBusy = useCallback(async (name: string, fn: () => Promise<void>) => {
+  const withBusy = useCallback(async (name: string, fn: () => Promise<unknown>) => {
     setBusy(prev => new Set(prev).add(name));
     try { await fn(); await refreshRuns(); } catch { /* silent */ }
     finally { setBusy(prev => { const s = new Set(prev); s.delete(name); return s; }); }

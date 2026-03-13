@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchProviderModels, type Profile, type UserProfile } from "../../api";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { SearchDropdown } from "../SearchDropdown";
-import { SessionSetup, shortenPath, type SessionSetupState } from "../SessionSetup";
+import { SessionSetup, type SessionSetupState } from "../SessionSetup";
 
 type Props = {
   profiles: Profile[];

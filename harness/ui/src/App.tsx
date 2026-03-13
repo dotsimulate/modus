@@ -54,7 +54,7 @@ function App() {
 function AppShell() {
   const { handleLock } = useAuth();
   const {
-    profiles, visibleProfiles, availableProviders, providerCapabilities, userProfiles,
+    profiles, visibleProfiles, availableProviders, userProfiles,
     activeUserProfile, activeUP,
     selectedProfile, selectProfile,
     setupState, setSetupState,
