@@ -528,6 +528,7 @@ function ActionCard({
           checked={action.enabled}
           onChange={(v) => onToggleEnabled(v)}
         />
+        {(action.trigger.type === "manual" || action.trigger.type === "interval") && (
         <button
           className="sched-trigger-btn"
           onClick={(e) => { e.stopPropagation(); onTrigger(); }}
@@ -535,6 +536,7 @@ function ActionCard({
         >
           {action.running ? "..." : "run"}
         </button>
+        )}
         <button
           className="sched-archive-btn"
           onClick={(e) => { e.stopPropagation(); onArchive(); }}

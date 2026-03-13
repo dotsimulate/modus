@@ -1002,6 +1002,13 @@ export function getActionState(name: string): ActionState | undefined {
 export async function triggerAction(name: string, opts?: { userProfile?: string }): Promise<boolean> {
   const state = actionStates.get(name);
   if (!state) return false;
+  // Only manual and interval actions can be manually triggered — session/action/webhook
+  // actions depend on payloads constructed by their trigger path and will crash without them.
+  const triggerType = state.config.trigger.type;
+  if (triggerType !== "manual" && triggerType !== "interval") {
+    console.log(`[actions] Rejecting manual trigger for "${name}" — trigger type is "${triggerType}"`);
+    return false;
+  }
   const maxConcurrency = state.config.concurrency ?? 1;
   if (state.activeExecutions.size >= maxConcurrency) return false;
   const triggerInfo: TriggerInfo = { type: "manual" };
