@@ -106,8 +106,8 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
       try {
         const promptName = tab === "create" ? "setup-agents" : "configure";
         const vars = tab === "create"
-          ? { input: text, description: text, archetype: "custom", project, projectCwd: cwd }
-          : { input: text, mode: "edit", agents: "yes", project, projectCwd: cwd };
+          ? { inputs: { text, description: text, archetype: "custom" }, project, projectCwd: cwd }
+          : { inputs: { text, mode: "edit", agents: "yes" }, project, projectCwd: cwd };
         const result = await renderPromptApi(promptName, vars);
         renderedPrompt = result.rendered;
       } catch {

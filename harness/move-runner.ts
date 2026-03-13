@@ -18,7 +18,6 @@
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
-import Handlebars from "handlebars";
 import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
   ActivateMoveOpts, ActivateMoveResult, SubmitResult,
@@ -45,25 +44,7 @@ const MODUS_MOVES_DIR = ".modus/moves";
 const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
 const TOKEN_CLEANUP_INTERVAL_MS = 60_000;  // sweep every 60s
-const moveTemplates = Handlebars.create();
-
-moveTemplates.registerHelper("date", (fmt?: string) => {
-  const now = new Date();
-  if (typeof fmt !== "string") return now.toISOString().split("T")[0];
-  return fmt
-    .replace("YYYY", String(now.getFullYear()))
-    .replace("MM", String(now.getMonth() + 1).padStart(2, "0"))
-    .replace("DD", String(now.getDate()).padStart(2, "0"))
-    .replace("HH", String(now.getHours()).padStart(2, "0"))
-    .replace("mm", String(now.getMinutes()).padStart(2, "0"))
-    .replace("ss", String(now.getSeconds()).padStart(2, "0"));
-});
-
-moveTemplates.registerHelper("ifCond", function (this: unknown, a: unknown, b: unknown, options: Handlebars.HelperOptions) {
-  return a === b ? options.fn(this) : (options.inverse ? options.inverse(this) : "");
-});
-
-moveTemplates.registerHelper("json", (value: unknown) => JSON.stringify(value, null, 2));
+const GATHER_TIMEOUT_MS = 10_000;          // 10s timeout for gather()
 
 // ── Token Store (in-memory) ──
 
@@ -161,19 +142,6 @@ async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | n
   }
 }
 
-/** Load external prompt template if it exists */
-function loadPromptTemplate(name: string, cwd: string): string | null {
-  const location = resolveMoveLocation(name, cwd);
-  if (!location) return null;
-  const templatePath = join(location.dir, "prompt.hbs");
-  if (!existsSync(templatePath)) return null;
-  try {
-    return readFileSync(templatePath, "utf-8");
-  } catch {
-    return null;
-  }
-}
-
 // ── Token Generation ──
 
 function generateToken(): string {
@@ -190,6 +158,7 @@ function buildMoveContext(
   sessionId: string,
   cwd: string,
   userProfile: string | undefined,
+  opts?: { inputs?: Record<string, unknown>; token?: string; schema?: string },
 ): MoveContext {
   const active = getActiveSession(sessionId);
 
@@ -204,6 +173,7 @@ function buildMoveContext(
     },
     cwd,
     userProfile,
+    inputs: opts?.inputs ?? {},
     db: buildMoveDB(moveName, cwd),
     run: async (cmd: string): Promise<string> => {
       const proc = Bun.spawn(["sh", "-c", cmd], { cwd, stdout: "pipe", stderr: "pipe" });
@@ -211,6 +181,9 @@ function buildMoveContext(
       return out.trim();
     },
     harness: buildHarnessBridge(cwd, userProfile),
+    token: opts?.token,
+    schema: opts?.schema,
+    date: new Date().toISOString().split("T")[0],
   };
 }
 
@@ -337,28 +310,10 @@ function buildSpawnSessionOpts(
   return applySessionSettingsOverride(base, config.session?.settingsOverride);
 }
 
-// ── Prompt Rendering ──
+// ── Default Prompt (for moves without context.ts) ──
 
-function renderPrompt(
-  config: MoveConfig,
-  inputs: Record<string, unknown>,
-  context: Record<string, unknown>,
-  token: string,
-): string {
-  const templateSrc = config.prompt || buildDefaultPrompt(config);
-  const template = moveTemplates.compile(templateSrc, { noEscape: true });
-  return template({
-    token,
-    schema: config.schemaHint ?? (config.schema ? JSON.stringify(config.schema, null, 2) : "{}"),
-    moveName: config.name,
-    moveLabel: config.label,
-    moveDescription: config.description,
-    input: inputs,
-    context,
-  });
-}
-
-function buildDefaultPrompt(config: MoveConfig): string {
+function buildDefaultPrompt(config: MoveConfig, token: string): string {
+  const schema = config.schemaHint ?? (config.schema ? JSON.stringify(config.schema, null, 2) : "{}");
   const parts: string[] = [];
   parts.push(`## Move: ${config.label}`);
   parts.push(config.description);
@@ -367,7 +322,7 @@ function buildDefaultPrompt(config: MoveConfig): string {
   if (config.schemaHint || config.schema) {
     parts.push("### Expected output shape");
     parts.push("```");
-    parts.push(config.schemaHint ?? JSON.stringify(config.schema, null, 2));
+    parts.push(schema);
     parts.push("```");
     parts.push("");
   }
@@ -375,7 +330,7 @@ function buildDefaultPrompt(config: MoveConfig): string {
   if (config.submit?.required !== false) {
     parts.push("### Submission");
     parts.push("When you have completed this move, call the `modus_submit` tool with:");
-    parts.push("- `token`: `{{token}}`");
+    parts.push(`- \`token\`: \`${token}\``);
     parts.push("- `data`: your structured output matching the schema above");
     parts.push("");
   }
@@ -449,29 +404,37 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     mode = "branch";
   }
 
-  // Build context
-  const moveCtx = buildMoveContext(moveName, sourceSessionId, cwd, userProfile);
+  // Generate token first — gather() needs it for prompt construction
+  const token = generateToken();
+  const schema = config.schemaHint ?? (config.schema ? JSON.stringify(config.schema, null, 2) : "{}");
 
-  // Call gather() if context.ts exists
+  // Build context with inputs, token, and schema available
+  const moveCtx = buildMoveContext(moveName, sourceSessionId, cwd, userProfile, {
+    inputs,
+    token,
+    schema,
+  });
+
+  // Call gather() if context.ts exists, otherwise build a default prompt
+  let prompt: string;
   let gatheredContext: Record<string, unknown> = {};
   try {
     const mod = await loadMoveModule(moveName, cwd);
     if (mod?.gather) {
-      gatheredContext = await mod.gather(moveCtx);
+      const result = await Promise.race([
+        mod.gather(moveCtx),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("gather() timed out")), GATHER_TIMEOUT_MS)
+        ),
+      ]);
+      prompt = typeof result === "string" ? result : String(result);
+    } else {
+      prompt = buildDefaultPrompt(config, token);
     }
   } catch (err) {
     console.error(`[move-runner] gather() failed for "${moveName}":`, err);
     return { error: `gather() failed: ${err}` };
   }
-
-  // Load external template if available
-  const externalTemplate = loadPromptTemplate(moveName, cwd);
-  const configWithTemplate = externalTemplate
-    ? { ...config, prompt: externalTemplate }
-    : config;
-
-  // Generate token
-  const token = generateToken();
 
   // Create persisted execution record
   const moveRunId = insertMoveRun({
@@ -504,14 +467,6 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     spawnedSessionId: null,
   };
   tokenStore.set(token, moveToken);
-
-  // Render prompt
-  let prompt: string;
-  try {
-    prompt = renderPrompt(configWithTemplate, inputs, gatheredContext, token);
-  } catch (err) {
-    return { error: `prompt render failed: ${err}` };
-  }
 
   // Log activity
   logActivity({
@@ -635,6 +590,7 @@ export async function handleSubmit(
         moveToken.sessionId,
         cwd,
         moveToken.userProfile ?? active?.userProfile,
+        { inputs: moveToken.inputs },
       );
       submitResult = await mod.onSubmit(ctx, data, moveToken.inputs);
     }
