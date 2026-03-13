@@ -61,6 +61,13 @@ function parseTags(tags: string): string[] {
 
 function shortId(id: string) { return id.slice(0, 8); }
 function shortHash(h: string) { return h.slice(0, 7); }
+function sessionCreatedAt(sessionMap: Map<string, SessionInfo>, sid: string): number {
+  return sessionMap.get(sid)?.created_at ?? 0;
+}
+function commitTimestamp(commit: GitCommit): number {
+  const parsed = Date.parse(commit.date);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
 
 function timeAgo(epoch: number): string {
   const diff = Date.now() - epoch;
@@ -78,16 +85,19 @@ function formatCost(usd: number): string {
 // ── Layout Constants ──
 
 const COL_WIDTH = 500;
-const ROW_HEIGHT = 140;
+const ROW_HEIGHT = 176;
 const NODE_W = 260;
 const NODE_H = 84;
 const COMMIT_W = 200;
 const COMMIT_H = 30;
 const PAD_X = 60;
 const PAD_Y = 60;
-const COMMIT_OFFSET_Y = 104;
+const COMMIT_OFFSET_Y = 102;
 const DOC_W = 180;
 const DOC_H = 32;
+const SIBLING_GAP_ROWS = 0.45;
+const ROOT_GAP_ROWS = 0.75;
+const COMMIT_GAP_X = 12;
 
 // ── Graph Builder ──
 
@@ -215,41 +225,94 @@ function buildGraph(
     if (!depth.has(sid)) depth.set(sid, 0);
   }
 
-  // Group by column, sort by time within column
-  const columns = new Map<number, string[]>();
-  for (const sid of relevantSessionIds) {
-    const col = depth.get(sid) ?? 0;
-    const arr = columns.get(col) || [];
-    arr.push(sid);
-    columns.set(col, arr);
+  // Lay out the handoff forest by subtree so parents stay visually tied to children.
+  const childOrderCache = new Map<string, string[]>();
+  function orderedChildren(sid: string): string[] {
+    const cached = childOrderCache.get(sid);
+    if (cached) return cached;
+    const ordered = [...(childrenOf.get(sid) || [])]
+      .filter(child => relevantSessionIds.has(child))
+      .sort((a, b) => {
+        const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
+        if (timeDiff !== 0) return timeDiff;
+        return a.localeCompare(b);
+      });
+    childOrderCache.set(sid, ordered);
+    return ordered;
   }
-  for (const [, sids] of columns) {
-    sids.sort((a, b) => {
-      const sa = sessionMap.get(a);
-      const sb = sessionMap.get(b);
-      return (sa?.created_at ?? 0) - (sb?.created_at ?? 0);
+
+  const rowPosition = new Map<string, number>();
+  const laidOut = new Set<string>();
+  function layoutSubtree(sid: string, startRow: number): number {
+    laidOut.add(sid);
+    const children = orderedChildren(sid).filter(child => !laidOut.has(child));
+    if (children.length === 0) {
+      rowPosition.set(sid, startRow);
+      return startRow + 1;
+    }
+
+    let cursor = startRow;
+    const childRows: number[] = [];
+    for (let index = 0; index < children.length; index++) {
+      cursor = layoutSubtree(children[index], cursor);
+      childRows.push(rowPosition.get(children[index]) ?? cursor - 1);
+      if (index < children.length - 1) cursor += SIBLING_GAP_ROWS;
+    }
+    rowPosition.set(sid, (childRows[0] + childRows[childRows.length - 1]) / 2);
+    return cursor;
+  }
+
+  const orderedRoots = [...roots].sort((a, b) => {
+    const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
+    if (timeDiff !== 0) return timeDiff;
+    return a.localeCompare(b);
+  });
+
+  let nextRootRow = 0;
+  for (let index = 0; index < orderedRoots.length; index++) {
+    nextRootRow = layoutSubtree(orderedRoots[index], nextRootRow);
+    if (index < orderedRoots.length - 1) nextRootRow += ROOT_GAP_ROWS;
+  }
+
+  // Guard against malformed/cyclic data so every relevant session still renders.
+  const unplaced = [...relevantSessionIds]
+    .filter(sid => !rowPosition.has(sid))
+    .sort((a, b) => {
+      const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
+      if (timeDiff !== 0) return timeDiff;
+      return a.localeCompare(b);
     });
+  for (const sid of unplaced) {
+    rowPosition.set(sid, nextRootRow);
+    nextRootRow += 1;
   }
 
   // Position session nodes
   const nodes: GraphNode[] = [];
-  for (const [col, sids] of columns) {
-    for (let row = 0; row < sids.length; row++) {
-      const s = sessionMap.get(sids[row])!;
-      const tags = parseTags(s.tags);
-      const handoffType = tags.find(t => t.startsWith("handoff:"))?.slice(8);
-      nodes.push({
-        id: s.id,
-        type: "session",
-        x: PAD_X + col * COL_WIDTH,
-        y: PAD_Y + row * ROW_HEIGHT,
-        col,
-        row,
-        session: s,
-        tags,
-        handoffType,
-      });
-    }
+  const orderedSessionIds = [...relevantSessionIds].sort((a, b) => {
+    const colDiff = (depth.get(a) ?? 0) - (depth.get(b) ?? 0);
+    if (colDiff !== 0) return colDiff;
+    const rowDiff = (rowPosition.get(a) ?? 0) - (rowPosition.get(b) ?? 0);
+    if (rowDiff !== 0) return rowDiff;
+    return a.localeCompare(b);
+  });
+  for (const sid of orderedSessionIds) {
+    const s = sessionMap.get(sid)!;
+    const col = depth.get(sid) ?? 0;
+    const row = rowPosition.get(sid) ?? 0;
+    const tags = parseTags(s.tags);
+    const handoffType = tags.find(t => t.startsWith("handoff:"))?.slice(8);
+    nodes.push({
+      id: s.id,
+      type: "session",
+      x: PAD_X + col * COL_WIDTH,
+      y: PAD_Y + row * ROW_HEIGHT,
+      col,
+      row,
+      session: s,
+      tags,
+      handoffType,
+    });
   }
 
   // Position document nodes — midpoint between source and target sessions
@@ -274,25 +337,43 @@ function buildGraph(
     });
   }
 
-  // Position commit nodes — below the first linked session
-  const commitOffsetCount = new Map<string, number>();
+  // Position commit nodes — center them below the most recent linked session.
+  const commitsByAnchor = new Map<string, GitCommit[]>();
   for (const c of linkedCommits) {
     const h7 = shortHash(c.hash);
-    const linked = commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [];
+    const linked = (commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [])
+      .filter(sid => sessionNodeMap.has(sid));
     if (linked.length === 0) continue;
-    const firstSession = sessionNodeMap.get(linked[0]);
-    if (!firstSession) continue;
-    const count = commitOffsetCount.get(linked[0]) || 0;
-    commitOffsetCount.set(linked[0], count + 1);
-    nodes.push({
-      id: `commit:${h7}`,
-      type: "commit",
-      x: firstSession.x + count * (COMMIT_W + 12),
-      y: firstSession.y + COMMIT_OFFSET_Y,
-      col: firstSession.col,
-      row: firstSession.row,
-      commit: c,
-    });
+    const anchorSid = [...linked].sort((a, b) => {
+      const depthDiff = (depth.get(a) ?? 0) - (depth.get(b) ?? 0);
+      if (depthDiff !== 0) return depthDiff;
+      const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
+      if (timeDiff !== 0) return timeDiff;
+      return a.localeCompare(b);
+    }).at(-1)!;
+    const arr = commitsByAnchor.get(anchorSid) || [];
+    arr.push(c);
+    commitsByAnchor.set(anchorSid, arr);
+  }
+
+  for (const [anchorSid, commitGroup] of commitsByAnchor) {
+    const anchorNode = sessionNodeMap.get(anchorSid);
+    if (!anchorNode) continue;
+    const orderedCommits = [...commitGroup].sort((a, b) => commitTimestamp(b) - commitTimestamp(a));
+    const totalWidth = orderedCommits.length * COMMIT_W + Math.max(0, orderedCommits.length - 1) * COMMIT_GAP_X;
+    const startX = anchorNode.x + Math.max((NODE_W - totalWidth) / 2, 0);
+    for (let index = 0; index < orderedCommits.length; index++) {
+      const c = orderedCommits[index];
+      nodes.push({
+        id: `commit:${shortHash(c.hash)}`,
+        type: "commit",
+        x: startX + index * (COMMIT_W + COMMIT_GAP_X),
+        y: anchorNode.y + COMMIT_OFFSET_Y,
+        col: anchorNode.col,
+        row: anchorNode.row,
+        commit: c,
+      });
+    }
   }
 
   return { nodes, edges };
@@ -538,13 +619,6 @@ export function SessionWeb() {
 
   const handleSelect = useCallback((node: GraphNode) => {
     setSelected(prev => prev?.id === node.id ? null : node);
-  }, []);
-
-  const handleNavigate = useCallback((node: GraphNode) => {
-    if (node.type === "session" && node.session) {
-      const profile = node.session.profile ?? "";
-      window.location.hash = profile ? `${profile}/${node.session.id}` : node.session.id;
-    }
   }, []);
 
   // Edges connected to hovered/selected node
