@@ -1676,6 +1676,12 @@ console.log(`Agent harness listening on http://${HOST}:${PORT}${authModes.length
 initActions();
 loadPrompts();
 
+// Suppress AbortError rejections from provider internals (e.g. Gemini CLI retry loops)
+process.on("unhandledRejection", (reason) => {
+  if (reason && typeof reason === "object" && (reason as any).name === "AbortError") return;
+  console.error("Unhandled rejection:", reason);
+});
+
 // Graceful shutdown
 process.on("SIGTERM", () => {
   console.log("Shutting down...");

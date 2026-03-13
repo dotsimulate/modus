@@ -583,8 +583,8 @@ export function createClaudeCodeProvider(): SessionProvider {
 
     abort(session: ActiveSession) {
       const state = getState(session);
-      state?.input.close();
-      session.abortController.abort();
+      try { state?.input.close(); } catch { /* ignore cleanup errors */ }
+      try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
     },
 
     stopTask(session: ActiveSession, taskId: string): boolean {
@@ -634,15 +634,15 @@ export function createClaudeCodeProvider(): SessionProvider {
       }
 
       if (session.status === "running" || session.status === "starting") {
-        session.abortController.abort();
+        try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
       }
     },
 
     async dispose(session: ActiveSession) {
       const state = getState(session);
       if (!state) return;
-      state.input.close();
-      session.abortController.abort();
+      try { state.input.close(); } catch { /* ignore cleanup errors */ }
+      try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
       session._providerState = null;
     },
 

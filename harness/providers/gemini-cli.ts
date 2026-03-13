@@ -1021,8 +1021,8 @@ export function createGeminiCliProvider(): SessionProvider {
       const state = getState(session);
       state.textBuffer = "";
       state.thinkingBuffer = "";
-      state.abortController.abort();
-      session.abortController.abort();
+      try { state.abortController.abort(); } catch { /* AbortError from inflight operations */ }
+      try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
     },
 
     updateConfig(session: ActiveSession, config: Record<string, any>) {
@@ -1034,7 +1034,7 @@ export function createGeminiCliProvider(): SessionProvider {
 
     async dispose(session: ActiveSession) {
       const state = getState(session);
-      state.abortController.abort();
+      try { state.abortController.abort(); } catch { /* AbortError from inflight operations */ }
       try {
         state.client?.dispose();
       } catch {
