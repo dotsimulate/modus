@@ -19,8 +19,7 @@ function edgePath(sess: SessionNode, file: FileNode): string {
   const ax = sess.x, ay = sess.y;
   const bx = file.x, by = file.y;
   const dy = by - ay;
-  // S-curve: departs downward from session, arrives downward at file
-  return `M ${ax} ${ay} C ${ax} ${ay + dy * 0.42}, ${bx} ${by - dy * 0.3}, ${bx} ${by}`;
+  return `M ${ax} ${ay} C ${ax} ${ay + dy * 0.45}, ${bx} ${by - dy * 0.35}, ${bx} ${by}`;
 }
 
 // ── Filter config ──
@@ -52,8 +51,8 @@ export function TraceView() {
   const [pan, setPan]                 = useState({ x: 0, y: 0 });
   const [scale, setScale]             = useState(0.72);
 
-  const isDragging  = useRef(false);
-  const dragStart   = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+  const isDragging = useRef(false);
+  const dragStart  = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
   const fetchKey = `${[...activeOps].sort().join(",")}|${timeMs}`;
   useEffect(() => {
@@ -77,7 +76,7 @@ export function TraceView() {
     [graph.files],
   );
 
-  // Pre-compute adjacency sets for hover illumination
+  // Adjacency sets — for edge opacity only (no node dimming)
   const hoveredSessionFiles = useMemo(() => {
     if (!hoveredSession) return null;
     return new Set(graph.edges.filter(e => e.sessionId === hoveredSession).map(e => e.filePath));
@@ -119,28 +118,40 @@ export function TraceView() {
     });
   }
 
-  // Edge opacity
+  // Edge opacity: dim non-connected edges when hovering; brighten connected
   function getEdgeOpacity(edge: TouchEdge): number {
     if (!hoveredSession && !hoveredFile) return edge.opacity;
     const matchS = hoveredSession ? edge.sessionId === hoveredSession : false;
-    const matchF = hoveredFile   ? edge.filePath  === hoveredFile    : false;
-    if (matchS || matchF) return Math.min(0.9, edge.opacity * 2.8);
-    return 0.025;
+    const matchF = hoveredFile   ? edge.filePath   === hoveredFile   : false;
+    if (matchS || matchF) return Math.min(0.9, edge.opacity * 2.6);
+    return 0.03;
   }
 
-  // Node opacity
-  function getSessionOpacity(sess: SessionNode): number {
-    if (!hoveredSession && !hoveredFile) return 1;
-    if (hoveredSession === sess.sessionId) return 1;
-    if (hoveredFileSessions?.has(sess.sessionId)) return 1;
-    return 0.18;
+  // Node class helpers — CSS transitions handle the visual change, no opacity juggling
+  function sessClass(sess: SessionNode): string {
+    const isHovered  = hoveredSession === sess.sessionId;
+    const isSelected = selected?.id === sess.sessionId;
+    const isConnected = hoveredFile ? hoveredFileSessions?.has(sess.sessionId) : false;
+    const anyHover   = !!(hoveredSession || hoveredFile);
+    return [
+      "trace-session-node",
+      isHovered  ? "hovered"   : "",
+      isSelected ? "selected"  : "",
+      anyHover && !isHovered && !isConnected ? "dimmed" : "",
+    ].filter(Boolean).join(" ");
   }
 
-  function getFileOpacity(file: FileNode): number {
-    if (!hoveredSession && !hoveredFile) return 1;
-    if (hoveredFile === file.filePath) return 1;
-    if (hoveredSessionFiles?.has(file.filePath)) return 1;
-    return 0.18;
+  function fileClass(file: FileNode): string {
+    const isHovered  = hoveredFile === file.filePath;
+    const isSelected = selected?.id === file.filePath;
+    const isConnected = hoveredSession ? hoveredSessionFiles?.has(file.filePath) : false;
+    const anyHover   = !!(hoveredSession || hoveredFile);
+    return [
+      "trace-file-node",
+      isHovered  ? "hovered"   : "",
+      isSelected ? "selected"  : "",
+      anyHover && !isHovered && !isConnected ? "dimmed" : "",
+    ].filter(Boolean).join(" ");
   }
 
   const { layout } = graph;
@@ -209,12 +220,12 @@ export function TraceView() {
                 <circle
                   cx={cluster.cx}
                   cy={cluster.cy}
-                  r={cluster.radius + 28}
+                  r={cluster.radius}
                   className="trace-cluster-halo"
                 />
                 <text
                   x={cluster.cx}
-                  y={cluster.cy - cluster.radius - 14}
+                  y={cluster.cy - cluster.radius - 8}
                   className="trace-cluster-label"
                 >
                   {cluster.dir.toUpperCase()}
@@ -244,47 +255,39 @@ export function TraceView() {
               <g
                 key={file.filePath}
                 data-trace-node="file"
-                className={`trace-file-node${hoveredFile === file.filePath ? " hovered" : ""}${selected?.id === file.filePath ? " selected" : ""}`}
+                className={fileClass(file)}
                 transform={`translate(${Math.round(file.x)},${Math.round(file.y)})`}
-                opacity={getFileOpacity(file)}
                 onMouseEnter={() => setHoveredFile(file.filePath)}
                 onMouseLeave={() => setHoveredFile(null)}
                 onClick={() => setSelected(s => s?.id === file.filePath ? null : { type: "file", id: file.filePath })}
               >
-                <circle
-                  r={3.5}
-                  className={`trace-file-dot trace-file-dot--${file.fileKind}`}
-                />
+                <circle r={3.5} className={`trace-file-dot trace-file-dot--${file.fileKind}`} />
                 <text className="trace-file-name" x={7} y={4}>
                   {file.basename}
                 </text>
               </g>
             ))}
 
-            {/* ── Layer 4: Session nodes (top — renders over files) ── */}
+            {/* ── Layer 4: Session nodes (renders over files) ── */}
             {graph.sessions.map(sess => (
               <g
                 key={sess.sessionId}
                 data-trace-node="session"
-                className={`trace-session-node${hoveredSession === sess.sessionId ? " hovered" : ""}${selected?.id === sess.sessionId ? " selected" : ""}`}
+                className={sessClass(sess)}
                 transform={`translate(${Math.round(sess.x)},${Math.round(sess.y)})`}
-                opacity={getSessionOpacity(sess)}
                 onMouseEnter={() => setHoveredSession(sess.sessionId)}
                 onMouseLeave={() => setHoveredSession(null)}
                 onClick={() => setSelected(s => s?.id === sess.sessionId ? null : { type: "session", id: sess.sessionId })}
               >
-                {/* Backdrop circle for hover hit area */}
-                <circle r={18} className="trace-sess-hitarea" />
+                {/* Hover/select ring — CSS handles visibility */}
+                <circle r={16} className="trace-sess-ring" />
                 {/* Provider dot */}
-                <circle
-                  r={5}
-                  className={`trace-provider-dot trace-provider-dot--${sess.provider ?? "unknown"}`}
-                />
-                {/* Session shortId below the dot */}
+                <circle r={5} className={`trace-provider-dot trace-provider-dot--${sess.provider ?? "unknown"}`} />
+                {/* Label: shortId below */}
                 <text className="trace-sess-id" textAnchor="middle" y={18}>
                   {sess.shortId}
                 </text>
-                {/* Date below id */}
+                {/* Date */}
                 <text className="trace-sess-time" textAnchor="middle" y={29}>
                   {formatDate(sess.lastSeen)}
                 </text>
@@ -293,7 +296,7 @@ export function TraceView() {
           </svg>
         </div>
 
-        {/* Reset view button */}
+        {/* Reset view */}
         <button
           className="trace-reset-btn"
           onClick={() => { setPan({ x: 0, y: 0 }); setScale(0.72); }}

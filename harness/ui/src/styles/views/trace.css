@@ -186,21 +186,30 @@
 .trace-session-node {
   cursor: pointer;
   pointer-events: all;
-  transition: opacity 0.1s ease;
+  transition: opacity 0.2s ease;
 }
 
-/* invisible hit-area disc */
-.trace-sess-hitarea {
-  fill: transparent;
-  stroke: none;
+/* Dimmed: non-connected nodes during hover — CSS handles this, no React opacity prop */
+.trace-session-node.dimmed {
+  opacity: 0.22;
 }
 
-.trace-session-node.hovered .trace-sess-hitarea {
-  fill: color-mix(in srgb, var(--border) 60%, transparent);
+/* Hover/select ring — invisible by default, CSS reveals it */
+.trace-sess-ring {
+  fill: none;
+  stroke: var(--border-active);
+  stroke-width: 1;
+  opacity: 0;
+  transition: opacity 0.15s ease, r 0.1s ease;
 }
 
-.trace-session-node.selected .trace-sess-hitarea {
-  fill: color-mix(in srgb, var(--border-active) 50%, transparent);
+.trace-session-node.hovered .trace-sess-ring {
+  opacity: 0.55;
+}
+
+.trace-session-node.selected .trace-sess-ring {
+  opacity: 0.8;
+  stroke: var(--border-focus);
 }
 
 .trace-sess-id {
@@ -208,6 +217,12 @@
   font-size: 8px;
   font-weight: 500;
   fill: var(--text-secondary);
+  transition: fill 0.15s ease;
+}
+
+.trace-session-node.hovered .trace-sess-id,
+.trace-session-node.selected .trace-sess-id {
+  fill: var(--text);
 }
 
 .trace-sess-time {
@@ -245,7 +260,11 @@ circle.trace-provider-dot,
 .trace-file-node {
   cursor: pointer;
   pointer-events: all;
-  transition: opacity 0.1s ease;
+  transition: opacity 0.2s ease;
+}
+
+.trace-file-node.dimmed {
+  opacity: 0.22;
 }
 
 .trace-file-dot {
