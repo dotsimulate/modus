@@ -130,12 +130,18 @@
 .git-activity {
   display: flex;
   align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 0;
+}
+.git-activity-main {
+  display: flex;
+  align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
   font-size: calc(11px * var(--font-scale, 1));
-  padding: 6px 0;
   min-width: 0;
-  width: 100%;
+  flex: 1;
   text-align: left;
   background: none;
   border: none;
@@ -160,11 +166,11 @@
   transition: opacity 0.1s ease;
   text-decoration: none;
 }
-.git-activity:hover .git-activity-hash,
-.git-activity:focus-visible .git-activity-hash {
+.git-activity-main:hover .git-activity-hash,
+.git-activity-main:focus-visible .git-activity-hash {
   opacity: 1;
 }
-.git-activity:focus-visible {
+.git-activity-main:focus-visible {
   outline: none;
 }
 .git-activity-message {
@@ -183,6 +189,38 @@
   font-size: 10px;
   flex-shrink: 0;
   margin-left: auto;
+}
+.git-activity-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.git-activity-claim {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg)) 84%, transparent);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.git-activity-claim:hover:enabled,
+.git-activity-claim:focus-visible {
+  color: var(--text);
+  border-color: var(--tool-commit);
+  outline: none;
+}
+.git-activity-claim.is-claimed {
+  color: var(--tool-commit);
+  border-color: color-mix(in srgb, var(--tool-commit) 55%, var(--border));
+  background: color-mix(in srgb, var(--tool-commit) 10%, transparent);
+}
+.git-activity-claim:disabled {
+  opacity: 0.65;
+  cursor: default;
 }
 
 

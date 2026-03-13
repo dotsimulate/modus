@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { ProfileUi } from "./api";
 import { healthCheck, saveUserProfileApi } from "./api";
 import { customPageView, getCustomPageId, NAV_VIEWS, type View } from "./views";
@@ -25,6 +25,16 @@ import { FileViewerProvider } from "./providers/FileViewerProvider";
 import { SessionWindow } from "./components/SessionWindow";
 import { SessionWeb } from "./components/SessionWeb";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
+
+function parseTagList(raw?: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 function App() {
   return (
@@ -97,6 +107,10 @@ function AppShell() {
     && (serverSessions.some((s) => s.id === uiState.lastSessionId) || activeSession?.id === uiState.lastSessionId)
     ? uiState.lastSessionId
     : null;
+  const activeSessionTags = useMemo(
+    () => parseTagList(serverSessions.find((s) => s.id === activeSession?.id)?.tags),
+    [activeSession?.id, serverSessions],
+  );
 
   const handleNewSession = useCallback(async () => {
     const id = await newSession();
@@ -311,6 +325,8 @@ function AppShell() {
             <div className="chat">
               <ChatView
                 messages={activeSession?.messages ?? []}
+                sessionId={activeSession?.id ?? null}
+                sessionTags={activeSessionTags}
                 provider={liveProvider}
                 profileName={activeProfileName}
                 model={liveModel}
@@ -325,6 +341,7 @@ function AppShell() {
                 emptySubtitle={ui.emptySubtitle}
                 queuedMessage={queuedMessage}
                 onCancelQueued={cancelQueued}
+                onSessionTagsChange={refreshSessions}
                 onBranch={branchFromMessage}
                 onStopTask={stopTask}
               />

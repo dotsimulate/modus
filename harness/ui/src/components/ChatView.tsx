@@ -14,6 +14,8 @@ type DisplayItem =
 
 type Props = {
   messages: Message[];
+  sessionId?: string | null;
+  sessionTags?: string[];
   provider?: string;
   profileName?: string | null;
   model?: string | null;
@@ -28,11 +30,12 @@ type Props = {
   emptySubtitle?: string;
   queuedMessage?: QueuedMessageType | null;
   onCancelQueued?: () => void;
+  onSessionTagsChange?: () => void;
   onBranch?: (seq: number, prefill?: string) => void;
   onStopTask?: (taskId: string) => void;
 };
 
-export function ChatView({ messages, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onBranch, onStopTask }: Props) {
+export function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -237,6 +240,10 @@ export function ChatView({ messages, provider, profileName, model, streaming, st
 
     return items;
   }, [commits, cwd, messages, showGitEvents]);
+  const claimedCommitTags = useMemo(
+    () => new Set((sessionTags ?? []).filter((tag) => tag.startsWith("commit:"))),
+    [sessionTags],
+  );
 
   const showAssistantPrelude = streaming && lastMessage?.role === "user";
   const assistantPreludeLabel = [profileName, model].filter(Boolean).join(" ");
@@ -258,7 +265,12 @@ export function ChatView({ messages, provider, profileName, model, streaming, st
             if (item.kind === "commit") {
               return (
                 <div key={item.key} className="message message--git" data-role="git">
-                  <GitActivityItem commit={item.commit} />
+                  <GitActivityItem
+                    commit={item.commit}
+                    sessionId={sessionId}
+                    claimedBySession={claimedCommitTags.has(`commit:${item.commit.hash.slice(0, 7)}`)}
+                    onClaimChange={onSessionTagsChange}
+                  />
                 </div>
               );
             }
@@ -325,7 +337,7 @@ export function ChatView({ messages, provider, profileName, model, streaming, st
       )}
       <div
         className={`scroll-to-bottom${showScrollBtn ? " visible" : ""}`}
-        onClick={scrollToBottom}
+        onClick={() => scrollToBottom()}
       >
         <div className="scroll-to-bottom-inner">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
