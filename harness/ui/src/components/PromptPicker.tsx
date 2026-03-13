@@ -205,13 +205,12 @@ export function PromptPicker({
       const paths = activeUP?.projects ?? [];
       try {
         const { rendered } = await renderPromptApi(selected.item.name, {
-          input: freeText.trim() || undefined,
+          inputs: { ...inputValues, text: freeText.trim() || undefined },
           project: {
             name: activeUP?.displayName || slug || "project",
             slug,
             paths,
           },
-          ...inputValues,
         });
         setTokenEstimate(estimateTokens(rendered));
       } catch {
@@ -282,13 +281,12 @@ export function PromptPicker({
 
     try {
       const { rendered, config } = await renderPromptApi(selected.item.name, {
-        input: freeText.trim() || undefined,
+        inputs: { ...inputValues, text: freeText.trim() || undefined },
         project: {
           name: activeUP?.displayName || slug || "project",
           slug,
           paths,
         },
-        ...inputValues,
       });
 
       const settings = config?.settings;

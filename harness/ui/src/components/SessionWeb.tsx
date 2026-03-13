@@ -84,15 +84,15 @@ function formatCost(usd: number): string {
 
 // ── Layout Constants ──
 
-const ROW_WIDTH = 380;
-const COL_HEIGHT = 220;
+const ROW_WIDTH = 500;
+const COL_HEIGHT = 130;
 const NODE_W = 260;
 const NODE_H = 84;
 const COMMIT_W = 200;
 const COMMIT_H = 30;
 const PAD_X = 60;
 const PAD_Y = 60;
-const COMMIT_OFFSET_Y = 98;
+const COMMIT_OFFSET_X = 14;
 const DOC_W = 180;
 const DOC_H = 32;
 const SIBLING_GAP_ROWS = 0.45;
@@ -361,14 +361,14 @@ function buildGraph(
     const anchorNode = sessionNodeMap.get(anchorSid);
     if (!anchorNode) continue;
     const orderedCommits = [...commitGroup].sort((a, b) => commitTimestamp(b) - commitTimestamp(a));
-    const stackX = anchorNode.x + (NODE_W - COMMIT_W) / 2;
+    const commitX = anchorNode.x + NODE_W + COMMIT_OFFSET_X;
     for (let index = 0; index < orderedCommits.length; index++) {
       const c = orderedCommits[index];
       nodes.push({
         id: `commit:${shortHash(c.hash)}`,
         type: "commit",
-        x: stackX,
-        y: anchorNode.y + COMMIT_OFFSET_Y + index * (COMMIT_H + COMMIT_GAP_Y),
+        x: commitX,
+        y: anchorNode.y + index * (COMMIT_H + COMMIT_GAP_Y),
         col: anchorNode.col,
         row: anchorNode.row,
         commit: c,
@@ -398,13 +398,10 @@ function EdgePath({ from, to, type }: {
   type: "handoff" | "commit" | "document";
 }) {
   if (type === "commit") {
-    // Exit from just left of the commit's left edge — non-center, intentional elbow
-    const startY = from.y + NODE_H;
-    const railX = to.x - COMMIT_EDGE_RAIL_GAP;
-    const endY = to.y;
-    const canExitOnRail = railX >= from.x && railX <= from.x + NODE_W;
-    const exitX = canExitOnRail ? railX : from.x + NODE_W / 2;
-    const d = `M ${exitX} ${startY} L ${exitX} ${endY} L ${to.x} ${endY}`;
+    // Commits sit to the right of sessions — horizontal connection at commit center Y
+    const startX = from.x + NODE_W;
+    const midY = to.y + COMMIT_H / 2;
+    const d = `M ${startX} ${midY} L ${to.x} ${midY}`;
     return <path d={d} className="web-edge web-edge--commit" />;
   }
 
@@ -582,7 +579,7 @@ export function SessionWeb() {
   }, [nodes]);
 
   const svgH = useMemo(() => {
-    const maxY = Math.max(...nodes.map(n => n.y + (n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H) + COMMIT_OFFSET_Y), 300);
+    const maxY = Math.max(...nodes.map(n => n.y + (n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H)), 300);
     return maxY + PAD_Y;
   }, [nodes]);
 

@@ -13,7 +13,7 @@
  * Each move is a directory containing:
  *   - move.json   → MoveConfig
  *   - context.ts  → MoveModule (optional gather + onSubmit)
- *   - prompt.hbs  → template (optional, inline prompt is fine)
+ *   - context.ts gathers context and returns the prompt string directly
  *
  * Execution modes:
  *   - inline:     current agent handles it, blocking until submit/completion
@@ -53,7 +53,7 @@ export interface MoveConfig {
     afterSubmit?: "continue" | "end" | `switch:${string}`;
   };
 
-  // ── Prompt (inline or external via prompt.hbs) ──
+  // ── Prompt (inline fallback — used only if no context.ts gather()) ──
   prompt?: string | null;
 
   // ── Agent profile for branch/background modes ──
@@ -79,7 +79,7 @@ export interface MoveInput {
 // ── Move Module (context.ts exports) ──
 
 export interface MoveModule {
-  gather?(ctx: MoveContext): Promise<Record<string, unknown>>;
+  gather?(ctx: MoveContext): Promise<string>;
   onSubmit?(
     ctx: MoveContext,
     data: Record<string, unknown>,
@@ -100,9 +100,18 @@ export interface MoveContext {
   };
   cwd: string;
   userProfile: string | undefined;
+  inputs: Record<string, unknown>;
   db: MoveDB;
   run: (cmd: string) => Promise<string>;
   harness: HarnessBridge;
+
+  // ── Available during gather() — set by move-runner before calling gather ──
+  /** Short-lived move token for modus_submit */
+  token?: string;
+  /** Schema hint string (compact shape for the model) */
+  schema?: string;
+  /** Current ISO date */
+  date?: string;
 }
 
 // ── Harness Bridge (server-side operations available to onSubmit) ──

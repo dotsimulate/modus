@@ -19,10 +19,6 @@ const HANDOFFS_DIR = ".modus/handoffs";
 
 // ── File Extraction ──
 
-/**
- * Scan session events for Write/Edit tool_use blocks and extract file paths.
- * Deterministic — no heuristics, just structured tool call data.
- */
 function extractTouchedFiles(events: EventRow[]): string[] {
   const files = new Set<string>();
   for (const evt of events) {
@@ -33,7 +29,6 @@ function extractTouchedFiles(events: EventRow[]): string[] {
     if (!Array.isArray(content)) continue;
     for (const block of content) {
       if (block.type !== "tool_use") continue;
-      // Only track file modifications, not reads
       if (block.name === "Write" || block.name === "Edit") {
         const fp = block.input?.file_path;
         if (typeof fp === "string") files.add(fp);
@@ -45,8 +40,9 @@ function extractTouchedFiles(events: EventRow[]): string[] {
 
 // ── Gather ──
 
-export async function gather(ctx: MoveContext): Promise<Record<string, unknown>> {
-  // Ensure handoffs directory exists
+export async function gather(ctx: MoveContext): Promise<string> {
+  const { type = "task", targetProfile = "", focus = "", includeUserTips = "yes" } = ctx.inputs as Record<string, string>;
+
   const handoffsDir = join(ctx.cwd, HANDOFFS_DIR);
   if (!existsSync(handoffsDir)) {
     mkdirSync(handoffsDir, { recursive: true });
@@ -55,7 +51,6 @@ export async function gather(ctx: MoveContext): Promise<Record<string, unknown>>
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const handoffFilename = `${ts}-handoff.md`;
 
-  // Extract files touched by the agent this session
   let touchedFiles: string[] = [];
   if (ctx.sessionId) {
     try {
@@ -64,8 +59,6 @@ export async function gather(ctx: MoveContext): Promise<Record<string, unknown>>
     } catch { /* session may not have events */ }
   }
 
-  // Compact git info — branch + recent commits + dirty flag
-  // The agent can always run git commands itself for more detail
   let gitBranch = "unknown";
   let hasUncommittedChanges = false;
   let recentCommits = "";
@@ -88,17 +81,71 @@ export async function gather(ctx: MoveContext): Promise<Record<string, unknown>>
       .join("\n");
   } catch { /* no git */ }
 
-  return {
-    currentProfile: ctx.session.profile ?? "default",
-    exchangeCount: ctx.session.exchangeCount,
-    gitBranch,
-    hasUncommittedChanges,
-    recentCommits,
-    touchedFiles: touchedFiles.length > 0 ? touchedFiles.join("\n") : "",
-    handoffFilename,
-    handoffsDir,
-    date: new Date().toISOString().split("T")[0],
+  const currentProfile = ctx.session.profile ?? "default";
+
+  const typeInstructions: Record<string, string> = {
+    task: "This is a **task handoff**. The receiving agent should be able to start working immediately.\nFrame the document as a work order: what to build or change, which files to touch, concrete steps, and what \"done\" looks like. Lead with what to DO, not what was done.",
+    research: "This is a **research handoff**. The receiving agent will continue an investigation.\nFrame the document as a research brief: what's been found, what's still unknown, hypotheses to test, and where to look next.",
+    review: "This is a **review handoff**. The receiving agent will evaluate recent work.\nFrame the document as a review brief: what changed, the rationale, what to verify, and any concerns.",
+    "bug-fix": "This is a **bug-fix handoff**. The receiving agent will diagnose or fix a specific issue.\nFrame the document as a bug report: symptoms, what's been tried, suspected root cause, and reproduction steps. Be precise about where the bug lives.",
+    discussion: "This is a **discussion handoff**. The receiving agent will continue a conversation with the user.\nFrame the document as a briefing: the topic, positions explored so far, open questions, and the user's current thinking. The goal is continuity, not action.",
   };
+
+  const parts = [
+    "You are making a handoff move. You will write a structured markdown handoff document, then submit metadata via `modus_submit`.",
+    "",
+    `Type: ${type}`,
+    `To: ${targetProfile}`,
+    `Focus: ${focus}`,
+  ];
+
+  if (typeInstructions[type]) parts.push("", typeInstructions[type]!);
+
+  parts.push(
+    "", "---", "",
+    "### Session context", "",
+    `Profile: ${currentProfile} | Exchanges: ${ctx.session.exchangeCount} | Branch: ${gitBranch}`,
+  );
+
+  if (hasUncommittedChanges) parts.push("**Uncommitted changes in working tree.**");
+
+  if (recentCommits) {
+    parts.push("", "Recent commits:", "```", recentCommits, "```",
+      "These are reference context only. Do not claim a commit in `modus_submit` unless you actively contributed work that landed in it.");
+  }
+
+  if (touchedFiles.length > 0) {
+    parts.push("", "Files you modified this session:", "```", touchedFiles.join("\n"), "```");
+  }
+
+  parts.push(
+    "", "---", "",
+    "### Step 1: Write the handoff document", "",
+    `Write a markdown file to \`${handoffsDir}/${handoffFilename}\``, "",
+    "The document must have these sections in order:", "",
+    "**GROUNDING** — What was being worked on, current state, key decisions, open issues or blockers. 4-8 bullets. Raw orientation, not instructions.", "",
+    "**RESOURCES** — File paths and URLs the next agent must consume. Organize as: must-read, context, and produced (if any).", "",
+    "**HOT PREP** — What to run first, environment state, mental model corrections, traps to skip. Save the next agent from rediscovering what you already know. Adapt shape to what's most useful for this specific handoff.", "",
+    `**TESTIMONY** — Direct address to the next agent. "In your position, I would..." — opinionated synthesis of the situation. Where the real leverage is. 3-5 sentences.`,
+  );
+
+  if (includeUserTips === "yes") {
+    parts.push("", "**WORKING WITH THIS USER** — Preferences, workflow style, what causes friction, what works well. Grounded observations only.");
+  }
+
+  parts.push(
+    "", "Be thorough — this is what the next agent reads to get fully oriented.", "",
+    "### Step 2: Submit via `modus_submit`", "",
+    `\`modus_submit\` — token: \`${ctx.token}\` — data shape: \`${ctx.schema}\``, "",
+    "- **document** — absolute path to the markdown file you wrote.",
+    "- **nextSteps** — what to do next, in order. Actionable items only. This is the task queue.",
+    "- **priority** — 1-5 (optional). 1 = urgent, 5 = background.",
+    "- **commits** — array of commit hashes you actively contributed to in this session (optional).",
+    "- **filesChanged** — array of file paths you modified this session (optional).",
+    "- **tags** — freeform string tags to categorize this handoff (optional).",
+  );
+
+  return parts.join("\n");
 }
 
 // ── Submit ──
@@ -115,61 +162,38 @@ export async function onSubmit(
   const nextSteps = data.nextSteps as string[];
   const priority = data.priority as number | undefined;
   const commits = data.commits as string[] | undefined;
-  const filesChanged = data.filesChanged as string[] | undefined;
   const tags = data.tags as string[] | undefined;
 
-  // Tag source session with commits the agent claims
   if (commits?.length && ctx.sessionId) {
     for (const hash of commits) {
-      try {
-        addSessionTag(ctx.sessionId, `commit:${hash.slice(0, 7)}`);
-      } catch { /* non-fatal */ }
+      try { addSessionTag(ctx.sessionId, `commit:${hash.slice(0, 7)}`); } catch { /* non-fatal */ }
     }
   }
 
-  // Tag source session with handoff type
   if (ctx.sessionId) {
-    try {
-      addSessionTag(ctx.sessionId, `handoff:${type}`);
-    } catch { /* non-fatal */ }
+    try { addSessionTag(ctx.sessionId, `handoff:${type}`); } catch { /* non-fatal */ }
   }
 
-  // Tag with custom tags if provided
   if (tags?.length && ctx.sessionId) {
     for (const tag of tags) {
-      try {
-        addSessionTag(ctx.sessionId, tag);
-      } catch { /* non-fatal */ }
+      try { addSessionTag(ctx.sessionId, tag); } catch { /* non-fatal */ }
     }
   }
 
-  // Build compact delegate prompt — document FIRST, user focus quoted as context
   const parts: string[] = [
     `Handoff from ${ctx.session.profile ?? "previous agent"} — ${type}`,
-    "",
-    `Read the full handoff document first: ${docPath}`,
-    "",
-    "The handoff document has grounding, resources, hot prep, and testimony from the previous agent. Read it before taking any action.",
+    "", `Read the full handoff document first: ${docPath}`,
+    "", "The handoff document has grounding, resources, hot prep, and testimony from the previous agent. Read it before taking any action.",
   ];
 
   if (nextSteps?.length) {
     parts.push("", "NEXT STEPS");
     parts.push(...nextSteps.map((s, i) => `${i + 1}. ${s}`));
   }
-
-  if (priority) {
-    parts.push("", `Priority: ${priority}/5`);
-  }
-
-  // User's original request — quoted so the agent treats it as context, not instruction
-  parts.push(
-    "",
-    "USER CONTEXT (what the user said when triggering this handoff — for reference, not direct instruction):",
-    `> ${focus}`,
-  );
+  if (priority) parts.push("", `Priority: ${priority}/5`);
+  parts.push("", "USER CONTEXT (what the user said when triggering this handoff — for reference, not direct instruction):", `> ${focus}`);
 
   const delegatePrompt = parts.join("\n");
-
   const sessionId = await ctx.harness.createSession({
     profile: targetProfile,
     prompt: delegatePrompt,
