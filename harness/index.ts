@@ -1647,6 +1647,117 @@ app.all("/api/mcp/modus/*", async (c) => {
   return handleModusMcpRequest(c.req.raw);
 });
 
+// ── Missions ──
+
+import {
+  listMissions, getMission, startMission,
+  getMissionRunSummary, listMissionRunSummaries,
+  listMissionStepSummaries, listMissionAssignmentSummaries,
+  listMissionTransferSummaries, listMissionGateResultSummaries,
+  listMissionSessionIds,
+  pauseMissionRun, resumeMissionRun,
+} from "./mission-runner";
+
+// List mission definitions
+app.get("/api/missions", (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  return c.json(listMissions(cwd));
+});
+
+// Get a specific mission definition
+app.get("/api/missions/:name", (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const mission = getMission(c.req.param("name"), cwd);
+  if (!mission) return c.json({ error: "mission not found" }, 404);
+  return c.json(mission);
+});
+
+// Start a mission run
+app.post("/api/missions/start", async (c) => {
+  const body = await c.req.json();
+  const { missionName, cwd, userProfile } = body;
+  if (!missionName) return c.json({ error: "missionName required" }, 400);
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const result = await startMission({ missionName, cwd, userProfile });
+  if ("error" in result) return c.json(result, 400);
+  return c.json(result);
+});
+
+// List mission runs
+app.get("/api/missions/runs", (c) => {
+  const q = new URL(c.req.url).searchParams;
+  return c.json(listMissionRunSummaries({
+    cwd: q.get("cwd") ?? undefined,
+    status: q.get("status") ?? undefined,
+    limit: q.get("limit") ? Number(q.get("limit")) : undefined,
+  }));
+});
+
+// Get a specific mission run
+app.get("/api/missions/runs/:id", (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  const run = getMissionRunSummary(id);
+  if (!run) return c.json({ error: "run not found" }, 404);
+  return c.json(run);
+});
+
+// Get steps for a run
+app.get("/api/missions/runs/:id/steps", (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  return c.json(listMissionStepSummaries(id));
+});
+
+// Get assignments for a run
+app.get("/api/missions/runs/:id/assignments", (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  return c.json(listMissionAssignmentSummaries(id));
+});
+
+// Get transfers for a run
+app.get("/api/missions/runs/:id/transfers", (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  return c.json(listMissionTransferSummaries(id));
+});
+
+// Get gate results for a run
+app.get("/api/missions/runs/:id/gates", (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  return c.json(listMissionGateResultSummaries(id));
+});
+
+// Get sessions for a run
+app.get("/api/missions/runs/:id/sessions", (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  return c.json(listMissionSessionIds(id));
+});
+
+// Pause a run
+app.post("/api/missions/runs/:id/pause", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  const body = await c.req.json();
+  const result = pauseMissionRun(id, body.reason ?? "Paused via API");
+  if (!result.ok) return c.json(result, 400);
+  return c.json(result);
+});
+
+// Resume a run
+app.post("/api/missions/runs/:id/resume", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  const result = resumeMissionRun(id);
+  if (!result.ok) return c.json(result, 400);
+  return c.json(result);
+});
+
 // ── Trace (Attention Trace View) ──
 
 import { queryTouches, touchSummary } from "./trace";

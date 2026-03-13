@@ -97,6 +97,7 @@ export function initProject(cwd: string, opts?: { name?: string }): InitResult {
     join(modusDir, "profiles", "agents"),
     join(modusDir, "actions"),
     join(modusDir, "prompts"),
+    join(modusDir, "missions"),
     join(modusDir, "memory"),
   ];
 
