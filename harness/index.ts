@@ -28,6 +28,9 @@ import {
   ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
 } from "./profile-schemas";
 import {
+  CreateSessionRequestSchema, SendMessageRequestSchema, UpdateSessionConfigRequestSchema,
+} from "./session-schemas";
+import {
   listSessions, listSessionsForProjects, listSessionsByAction, listSessionsScoped,
   getSession, getStoredSessionConfig, getLatestSessionUsage, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
@@ -428,6 +431,7 @@ app.get("/api/sessions/active", (c) => {
       seq: s.seq,
       subscribers: s.subscribers.size,
       cwd: s.cwd ?? null,
+      additionalDirectories: s.additionalDirectories.length > 0 ? s.additionalDirectories : null,
       archived: dbRow?.archived === 1,
     };
   });
@@ -447,12 +451,14 @@ app.get("/api/sessions/active", (c) => {
 // Create new session
 app.post("/api/sessions", async (c) => {
   const body = await c.req.json();
+  const v = validate(CreateSessionRequestSchema, body);
+  if (!v.ok) return c.json({ error: "invalid session request", details: v.errors }, 400);
   const { prompt } = body;
-  if (!prompt) return c.json({ error: "prompt required" }, 400);
+  const resolvedCwd = body.cwd ?? process.env.AGENT_CWD ?? process.cwd();
 
-  if (body.profile && !getProfile(body.profile, body.cwd)) {
+  if (body.profile && !getProfile(body.profile, resolvedCwd)) {
     return c.json(
-      { error: `unknown profile: ${body.profile}`, available: listProfileNames(body.cwd) },
+      { error: `unknown profile: ${body.profile}`, available: listProfileNames(resolvedCwd) },
       400,
     );
   }
@@ -467,7 +473,8 @@ app.post("/api/sessions", async (c) => {
     toolStates: body.toolStates,
     maxTurns: body.maxTurns,
     effort: body.effort,
-    cwd: body.cwd,
+    cwd: resolvedCwd,
+    additionalDirectories: body.additionalDirectories,
     tools: body.tools,
     disallowedTools: body.disallowedTools,
     providerControls: body.providerControls,
@@ -614,8 +621,9 @@ app.get("/api/sessions/:id/messages-content", (c) => {
 app.post("/api/sessions/:id/messages", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
+  const v = validate(SendMessageRequestSchema, body);
+  if (!v.ok) return c.json({ error: "invalid message request", details: v.errors }, 400);
   const { prompt } = body;
-  if (!prompt) return c.json({ error: "prompt required" }, 400);
 
   const active = getActiveSession(id);
   if (!active) {
@@ -627,6 +635,7 @@ app.post("/api/sessions/:id/messages", async (c) => {
       attachments: body.attachments,
       sessionId: id,
       cwd: body.cwd ?? storedConfig?.cwd ?? existing?.cwd ?? undefined,
+      additionalDirectories: body.additionalDirectories ?? storedConfig?.additionalDirectories,
       profile: body.profile ?? existing?.profile ?? undefined,
       userProfile: body.userProfile,
       provider: body.provider ?? storedConfig?.provider,
@@ -690,6 +699,8 @@ app.post("/api/sessions/:id/permission-response", async (c) => {
 // Update session config (tools, etc.) — takes effect on next turn
 app.patch("/api/sessions/:id/config", async (c) => {
   const body = await c.req.json();
+  const v = validate(UpdateSessionConfigRequestSchema, body);
+  if (!v.ok) return c.json({ error: "invalid session config", details: v.errors }, 400);
   const ok = updateSessionConfig(c.req.param("id"), body);
   return ok ? c.json({ ok: true }) : c.json({ error: "session not found" }, 404);
 });

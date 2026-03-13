@@ -110,6 +110,7 @@ export type Session = {
   model?: string;
   agentConfig: AgentConfigState;
   cwd?: string;
+  additionalDirectories?: string[];
   loadProjectSettings?: boolean;
   messages: Message[];
   totalCost: number;
@@ -201,6 +202,7 @@ export type ActiveSessionInfo = {
   seq: number;
   subscribers: number;
   cwd: string | null;
+  additionalDirectories: string[] | null;
   archived?: boolean;
 };
 
@@ -245,6 +247,7 @@ export type CreateSessionOpts = {
   maxTurns?: number;
   effort?: string;
   cwd?: string;
+  additionalDirectories?: string[];
   tools?: string[];
   disallowedTools?: string[];
   providerControls?: AgentConfigState["providerControls"];

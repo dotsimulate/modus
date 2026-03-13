@@ -99,6 +99,8 @@ export type Profile = {
   prompt: string;
   /** Agent description (for subagent selection / UI display) */
   description: string;
+  /** Extra workspace roots to grant alongside the primary cwd */
+  additionalDirectories?: string[];
   /** Execution backend — provider names are validated against the runtime registry */
   provider?: string;
   /** Allowed tools — omit to inherit all */

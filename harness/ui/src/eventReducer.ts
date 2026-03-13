@@ -14,6 +14,7 @@ export type ReducerState = {
   model: string;
   agentConfig: AgentConfigState;
   cwd: string;
+  additionalDirectories: string[];
   loadProjectSettings: boolean;
   messages: Message[];
   totalCost: number;
@@ -47,6 +48,7 @@ export function createInitialState(sessionId = ""): ReducerState {
     model: "",
     agentConfig: { toolStates: {}, model: "", provider: "", effort: "", maxTurns: "", providerControls: {} },
     cwd: "",
+    additionalDirectories: [],
     loadProjectSettings: true,
     messages: [],
     totalCost: 0,
@@ -185,6 +187,7 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
       model: m.model ?? s.model,
       agentConfig: nextConfig ?? s.agentConfig,
       cwd: m.cwd ?? s.cwd,
+      additionalDirectories: Array.isArray(m.additionalDirectories) ? m.additionalDirectories : s.additionalDirectories,
       loadProjectSettings: m.loadProjectSettings ?? s.loadProjectSettings,
       status: "running",
       availableTools: Array.isArray(m.tools) ? m.tools : s.availableTools,
@@ -197,6 +200,7 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
       model: m.model ?? s.model,
       agentConfig: nextConfig ?? s.agentConfig,
       cwd: m.cwd ?? s.cwd,
+      additionalDirectories: Array.isArray(m.additionalDirectories) ? m.additionalDirectories : s.additionalDirectories,
       loadProjectSettings: m.loadProjectSettings ?? s.loadProjectSettings,
     };
   }
