@@ -84,8 +84,8 @@ function formatCost(usd: number): string {
 
 // ── Layout Constants ──
 
-const COL_WIDTH = 500;
-const ROW_HEIGHT = 208;
+const ROW_WIDTH = 380;
+const COL_HEIGHT = 220;
 const NODE_W = 260;
 const NODE_H = 84;
 const COMMIT_W = 200;
@@ -306,8 +306,8 @@ function buildGraph(
     nodes.push({
       id: s.id,
       type: "session",
-      x: PAD_X + col * COL_WIDTH,
-      y: PAD_Y + row * ROW_HEIGHT,
+      x: PAD_X + row * ROW_WIDTH,
+      y: PAD_Y + col * COL_HEIGHT,
       col,
       row,
       session: s,
@@ -322,11 +322,11 @@ function buildGraph(
     const fromNode = sessionNodeMap.get(doc.fromSessionId);
     const toNode = sessionNodeMap.get(doc.toSessionId);
     if (!fromNode || !toNode) continue;
-    // Center doc in the gap between source right edge and target left edge
-    const gapStart = fromNode.x + NODE_W;
-    const gapEnd = toNode.x;
-    const docX = gapStart + (gapEnd - gapStart - DOC_W) / 2;
-    const docY = (fromNode.y + toNode.y) / 2 + (NODE_H - DOC_H) / 2;
+    // Center doc in the gap between source bottom and target top, midX between both sessions
+    const gapStart = fromNode.y + NODE_H;
+    const gapEnd = toNode.y;
+    const docY = gapStart + (gapEnd - gapStart - DOC_H) / 2;
+    const docX = (fromNode.x + NODE_W / 2 + toNode.x + NODE_W / 2) / 2 - DOC_W / 2;
     nodes.push({
       id: `doc:${doc.moveRunId}`,
       type: "document",
@@ -381,15 +381,15 @@ function buildGraph(
 
 // ── SVG Edge ──
 
-function nodeRight(n: GraphNode) {
-  if (n.type === "session") return n.x + NODE_W;
-  if (n.type === "document") return n.x + DOC_W;
-  return n.x + COMMIT_W;
+function nodeBottom(n: GraphNode) {
+  if (n.type === "session") return n.y + NODE_H;
+  if (n.type === "document") return n.y + DOC_H;
+  return n.y + COMMIT_H;
 }
-function nodeMidY(n: GraphNode) {
-  if (n.type === "session") return n.y + NODE_H / 2;
-  if (n.type === "document") return n.y + DOC_H / 2;
-  return n.y + COMMIT_H / 2;
+function nodeMidX(n: GraphNode) {
+  if (n.type === "session") return n.x + NODE_W / 2;
+  if (n.type === "document") return n.x + DOC_W / 2;
+  return n.x + COMMIT_W / 2;
 }
 
 function EdgePath({ from, to, type }: {
@@ -398,31 +398,33 @@ function EdgePath({ from, to, type }: {
   type: "handoff" | "commit" | "document";
 }) {
   if (type === "commit") {
+    // Exit from just left of the commit's left edge — non-center, intentional elbow
     const startY = from.y + NODE_H;
     const railX = to.x - COMMIT_EDGE_RAIL_GAP;
-    const endY = to.y + COMMIT_H / 2;
+    const endY = to.y;
     const canExitOnRail = railX >= from.x && railX <= from.x + NODE_W;
     const exitX = canExitOnRail ? railX : from.x + NODE_W / 2;
-    const d = `M ${exitX} ${startY} L ${railX} ${endY} L ${to.x} ${endY}`;
+    const d = `M ${exitX} ${startY} L ${exitX} ${endY} L ${to.x} ${endY}`;
+    return <path d={d} className="web-edge web-edge--commit" />;
+  }
+
+  // Document edges: straight vertical dashed line
+  if (type === "document") {
     return (
-      <path d={d} className="web-edge web-edge--commit" />
+      <line
+        x1={nodeMidX(from)} y1={nodeBottom(from)}
+        x2={nodeMidX(to)}   y2={to.y}
+        className="web-edge web-edge--document"
+      />
     );
   }
 
-  const x1 = nodeRight(from);
-  const y1 = nodeMidY(from);
-  const x2 = to.x;
-  const y2 = nodeMidY(to);
-
-  // Document edges: straight dashed line
-  if (type === "document") {
-    return <line x1={x1} y1={y1} x2={x2} y2={y2} className="web-edge web-edge--document" />;
-  }
-
-  // Handoff: cubic bezier — cap control points so they never overshoot the destination
-  const dx = Math.abs(x2 - x1);
-  const cp = Math.min(Math.max(dx * 0.4, 20), dx * 0.45);
-  const d = `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`;
+  // Handoff: vertical cubic bezier — cap control points so they never overshoot
+  const x1 = nodeMidX(from), y1 = nodeBottom(from);
+  const x2 = nodeMidX(to),   y2 = to.y;
+  const dy = Math.abs(y2 - y1);
+  const cp = Math.min(Math.max(dy * 0.4, 20), dy * 0.45);
+  const d = `M ${x1} ${y1} C ${x1} ${y1 + cp}, ${x2} ${y2 - cp}, ${x2} ${y2}`;
   return <path d={d} className="web-edge web-edge--handoff" />;
 }
 
