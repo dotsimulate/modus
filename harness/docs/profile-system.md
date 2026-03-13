@@ -1,8 +1,8 @@
 ---
 title: Profile System
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: 119f911
+lastUpdated: 2026-03-12
+lastCommit: 03ccdbe
 covers: harness/profiles/ harness/profile-schemas.ts harness/profiles.ts
 ---
 
@@ -102,6 +102,11 @@ agent prompts. Use for user name, preferred stack, editor, etc.
 
 **`projects`**: Working directories available in the CWD picker.
 
+**`dashboard`**: Optional layout config. `widgets?: Array<{type, ...}>` is the legacy flat list. `pages?: Array<{id, title, blocks[]}>` adds named pages; each block is one of:
+- `{ kind: "widget", widget: { type, ... } }` — embeds a widget
+- `{ kind: "module", module: "memory" | "actions" | "git" }` — embeds a built-in module
+- `{ kind: "text", markdown: string }` — static markdown
+
 ## Global Config (`_global.json`)
 
 Two purposes:
@@ -123,7 +128,7 @@ Referenced in agent prompts as `{{name}}`, `{{stack}}`, etc.
 ## Runtime State (`profiles/state/`)
 
 Gitignored. Stores transient UI state per user profile — sidebar collapse state,
-last selected agent, last CWD. Managed by the app, not edited by hand.
+last selected agent, last CWD, last session ID. Managed by the app, not edited by hand.
 
 ## Type Definitions
 

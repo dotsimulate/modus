@@ -1,8 +1,8 @@
 ---
 title: Project UI (Themes & Fonts)
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: 95bd703
+lastUpdated: 2026-03-12
+lastCommit: 03ccdbe
 covers: harness/project-ui.ts harness/ui/src/project-ui-theme.ts harness/ui/src/widgets/project-theme.widget.tsx harness/ui/src/styles/
 ---
 
@@ -27,6 +27,21 @@ are CSS files registered in `.modus/ui/` and served to the frontend via API.
     theme.css
     font.css
 ```
+
+## Built-in Themes
+
+The harness ships with built-in themes that are always available without registration:
+
+| ID | Label | Source |
+|----|-------|--------|
+| `modus-dark` | Modus Dark | `harness/ui/themes/modus-dark.css` |
+
+Built-in themes appear in `GET /api/ui/themes` and can be activated normally. They
+cannot be patched (`PATCH /api/ui/themes/:id` errors on built-ins). Their CSS files
+live in the harness directory (`source: "builtin:harness"`), not in `.modus/ui/themes/`.
+
+Project-registered themes are merged on top of built-ins; a project theme with the
+same ID as a built-in overrides it.
 
 ## How It Works
 
