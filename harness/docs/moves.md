@@ -1,8 +1,8 @@
 ---
 title: Moves
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastUpdated: 2026-03-12
+lastCommit: 03ccdbe
 covers: harness/move-runner.ts harness/move-types.ts
 ---
 
@@ -13,7 +13,10 @@ done right now, with structured submission and validation.
 
 ## Directory Structure
 
-Each move is a directory in `.modus/moves/<name>/`:
+Built-in harness moves live in `harness/moves/<name>/`. Project-local moves live
+in `.modus/moves/<name>/` and override built-ins of the same name.
+
+Each move directory contains:
 ```
 move.json    — MoveConfig (required)
 context.ts   — MoveModule: gather?(), onSubmit?() (optional)
@@ -46,8 +49,11 @@ prompt.hbs   — Handlebars prompt template (optional, inline prompt is fine)
 - `schema` / `schemaHint` — validation contract for modus_submit data
 - `submit.required` — agent must call modus_submit
 - `submit.maxAttempts` — cap on invalid submissions (default 3)
+- `agentProfile` — agent profile for branch/background spawned sessions
 - `session.profileOverride` — swap agent profile for this move
+- `session.settingsOverride` — fine-grained session settings for the spawned/inline session (provider, model, effort, maxTurns, tools, disallowedTools, toolStates, providerControls, loadProjectSettings)
 - `session.afterSubmit` — "continue", "end", or "switch:profileName"
+- `origin` — `"harness"` or `"project"` (set automatically, not written to move.json)
 
 ## MoveContext (passed to gather/onSubmit)
 
@@ -56,6 +62,15 @@ prompt.hbs   — Handlebars prompt template (optional, inline prompt is fine)
 - `db` — read-only queries (listSessions, search, getMoveHistory)
 - `run(cmd)` — shell execution
 - `harness` — HarnessBridge (createSession, sendMessage, triggerAction, notify)
+
+## Prompt Handlebars Helpers
+
+Templates (`.hbs` or inline `prompt`) have access to:
+- `{{date}}` — current date as `YYYY-MM-DD`; `{{date "YYYY-MM-DD HH:mm"}}` for formatted output
+- `{{ifCond a b}}...{{/ifCond}}` — equality conditional block
+- `{{json value}}` — JSON.stringify with 2-space indent
+
+Standard vars: `{{token}}`, `{{input.*}}`, `{{context.*}}`, `{{schema}}`, `{{moveName}}`, `{{moveLabel}}`, `{{moveDescription}}`.
 
 ## modus_submit
 

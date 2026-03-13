@@ -1,8 +1,8 @@
 ---
 title: Provider System
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: 119f911
+lastUpdated: 2026-03-12
+lastCommit: 03ccdbe
 covers: harness/providers/ harness/session-manager.ts
 ---
 
@@ -35,6 +35,7 @@ Passed to providers by session-manager. Contains:
 - `emitEvent()` — persist + broadcast
 - `broadcastEvent()` — broadcast only (no DB)
 - `rekeySession()` — replace temp session ID with real one
+- `notifyConfigChange(patch)` — provider-initiated config change; updates `_configOverrides` and emits `config_updated` to subscribers
 - `updateSessionDb()` — update session row
 
 ## Registered Providers
@@ -63,6 +64,12 @@ the fully-resolved value.
 Provider-specific normalization:
 - **claude-code**: `"off"` → `undefined` (no thinking). `"low"/"medium"/"high"/"max"` pass through.
 - **codex**: `"off"` and `"max"` → `undefined` (no reasoning). `"low"/"medium"/"high"` map to SDK `ModelReasoningEffort`.
+
+## Claude Permission Mode
+
+The claude-code provider reads `opts.providerControls.claude.permissionMode` to set the SDK permission mode at session start. Valid values: `"default"`, `"acceptEdits"`, `"plan"`, `"dontAsk"`. The `updateConfig` path also updates this when `providerControls` changes.
+
+When the agent calls the `ExitPlanMode` tool, the provider automatically resets `permissionMode` to `"default"` and notifies session-manager via `notifyConfigChange`, so the config_updated event reflects the cleared state.
 
 ## MCP Server Composition
 

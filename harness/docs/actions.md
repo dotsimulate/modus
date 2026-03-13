@@ -1,8 +1,8 @@
 ---
 title: Actions
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: 119f911
+lastUpdated: 2026-03-12
+lastCommit: 1592796
 covers: harness/action-runner.ts harness/action-types.ts
 ---
 
@@ -13,7 +13,10 @@ what context, and what happens after.
 
 ## Directory Structure
 
-Each action is a directory in `.modus/actions/<name>/`:
+Built-in harness actions live in `harness/actions/<name>/`. Project-local actions
+live in `.modus/actions/<name>/` and override built-ins of the same name.
+
+Each action directory contains:
 ```
 action.json   — ActionConfig (required)
 context.ts    — ActionModule: gather(), verify?(), afterRun?() (required)
@@ -62,13 +65,16 @@ artifact existence.
 data into every run. Available as `ctx.inputs` in gather, verify, and afterRun.
 `ctx.cwd` carries the action's configured working directory (from `cfg.cwd`).
 
+**Origin**: `origin` (`"harness"` or `"project"`) is set automatically on load.
+Returned by `GET /api/actions` so callers know where the action came from.
+
 **Source**: `action-runner.ts`, `action-types.ts`.
 
 ## API Routes
 
 - `GET /api/actions` — list all actions with state
 - `GET /api/actions/:name` — single action config + state
-- `POST /api/actions/:name/trigger` — manual trigger
+- `POST /api/actions/:name/trigger` — manual trigger (only works for `manual` and `interval` types; other types require a trigger-constructed payload and are rejected)
 - `POST /api/actions/:name/hook` — webhook trigger
 - `GET /api/actions/:name/runs` — run history
 - `GET /api/actions/:name/executions` — execution history

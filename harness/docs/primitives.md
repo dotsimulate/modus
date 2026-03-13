@@ -1,8 +1,8 @@
 ---
 title: Core Primitives
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: 119f911
+lastUpdated: 2026-03-12
+lastCommit: 03ccdbe
 covers: harness/db.ts harness/session-manager.ts harness/index.ts
 ---
 
@@ -38,6 +38,10 @@ turns from raw events. Returns `TurnContent[]` — each turn has `role`, `seq`, 
 optional `thinking` and `toolCalls`, and `timestamp`. Tool call results are joined to
 the assistant turn that made the call. Incomplete (still-streaming) turns are included.
 Exposed via `GET /api/sessions/:id/messages-content` (optional `?seq=<n>` for a single turn).
+
+**Usage analytics**: `getProviderUsageAnalytics({ userProfile?, days? })` in `db.ts` returns token/cost breakdowns by provider, model, and day over a configurable window (default 30 days, max 120). Shape: `{ windowDays, totals, providers[], models[], daily[] }` — each bucket has sessions, turns, inputTokens, outputTokens, totalTokens, cost.
+
+**Search scoping**: `searchSessions(query, limit, scope?)` now accepts `scope.agentProfiles` and `scope.userProfileName` in addition to `scope.cwdPrefixes`. The search index join filters within the visible session scope before ranking.
 
 **Managed by**: `session-manager.ts` (lifecycle, routing), `db.ts` (persistence).
 
