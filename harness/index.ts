@@ -26,6 +26,9 @@ import {
   registerTheme, registerFont, activateTheme, activateFont, patchTheme, patchFont,
 } from "./project-ui";
 import {
+  listClientExtensions, getClientExtensionById,
+} from "./client-extensions";
+import {
   ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
 } from "./profile-schemas";
 import {
@@ -55,6 +58,7 @@ import {
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = "0.0.0.0";
 const AUTH_TOKEN = process.env.HARNESS_TOKEN || "";
+const WHISPER_TRANSCRIBE_URL = "http://127.0.0.1:8080/v1/audio/transcriptions";
 
 const app = new Hono();
 
@@ -1066,6 +1070,83 @@ app.patch("/api/ui/fonts/:id", async (c) => {
     }));
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
+  }
+});
+
+// ── Client Extensions ──
+
+app.get("/api/client-extensions", (c) => {
+  const cwd = c.req.query("cwd");
+  const userProfile = c.req.query("userProfile");
+  const token = new URL(c.req.url).searchParams.get("token");
+  const query = new URLSearchParams();
+  if (cwd) query.set("cwd", cwd);
+  if (userProfile) query.set("userProfile", userProfile);
+  if (token) query.set("token", token);
+
+  const suffix = query.toString();
+  const moduleQuery = suffix ? `?${suffix}` : "";
+  return c.json(
+    listClientExtensions({ cwd, userProfile }).map((extension) => ({
+      id: extension.id,
+      fileName: extension.fileName,
+      source: extension.source,
+      enabled: extension.enabled,
+      moduleUrl: `/api/client-extensions/${encodeURIComponent(extension.id)}/module${moduleQuery}`,
+    })),
+  );
+});
+
+app.get("/api/client-extensions/:id/module", async (c) => {
+  const cwd = c.req.query("cwd");
+  const userProfile = c.req.query("userProfile");
+  const extension = getClientExtensionById(c.req.param("id"), { cwd, userProfile });
+  if (!extension) return c.json({ error: "extension not found" }, 404);
+  const file = Bun.file(extension.absolutePath);
+  if (!(await file.exists())) return c.json({ error: "extension file not found" }, 404);
+  return new Response(file, {
+    headers: {
+      "Content-Type": "text/javascript; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+});
+
+app.post("/api/whisper/transcribe", async (c) => {
+  try {
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) return c.json({ error: "file is required" }, 400);
+    console.log("[whisper/transcribe] received", {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    });
+
+    const whisperBody = new FormData();
+    whisperBody.set("file", file, file.name);
+    whisperBody.set("response_format", "verbose_json");
+
+    const upstream = await fetch(WHISPER_TRANSCRIBE_URL, {
+      method: "POST",
+      body: whisperBody,
+    });
+    const upstreamText = await upstream.text();
+    console.log("[whisper/transcribe] upstream", {
+      ok: upstream.ok,
+      status: upstream.status,
+      body: upstreamText,
+    });
+    if (!upstream.ok) {
+      return c.json({ error: "whisper transcription failed", details: upstreamText.trim() }, 502);
+    }
+
+    const parsed = upstreamText ? JSON.parse(upstreamText) : {};
+    const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
+    return c.json({ text });
+  } catch (err: any) {
+    console.error("[whisper/transcribe]", err);
+    return c.json({ error: err?.message ?? "whisper transcription failed" }, 502);
   }
 });
 

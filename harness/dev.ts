@@ -7,12 +7,14 @@
 
 import { spawn, type Subprocess } from "bun";
 import { randomBytes } from "crypto";
+import { mkdirSync } from "fs";
 import { networkInterfaces, hostname } from "os";
 import { resolve, dirname } from "path";
 
 const BUN = process.execPath;
 const SCRIPT_DIR = dirname(Bun.fileURLToPath(import.meta.url));
 const PORT = process.env.HARNESS_PORT || "3777";
+const VITE_PORT = "5180";
 const TOKEN = process.env.HARNESS_TOKEN ?? randomBytes(16).toString("hex");
 
 // Clear nested-session guard
@@ -21,6 +23,76 @@ delete process.env.CLAUDECODE;
 // Pass to children
 process.env.HARNESS_PORT = PORT;
 process.env.HARNESS_TOKEN = TOKEN;
+
+type TailscaleStatus = {
+  Self?: {
+    DNSName?: string;
+  };
+};
+
+type TailscaleHttpsSetup = {
+  domain: string | null;
+  error: string | null;
+};
+
+function setupTailscaleHttps(): TailscaleHttpsSetup {
+  const status = Bun.spawnSync(["tailscale", "status", "--json"], {
+    cwd: SCRIPT_DIR,
+    env: process.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (!status.success) {
+    return { domain: null, error: null };
+  }
+
+  const payload = JSON.parse(status.stdout.toString()) as TailscaleStatus;
+  const dnsName = payload.Self?.DNSName?.replace(/\.$/, "");
+  if (!dnsName) {
+    return { domain: null, error: null };
+  }
+
+  const tlsDir = resolve(SCRIPT_DIR, ".tailscale");
+  mkdirSync(tlsDir, { recursive: true });
+
+  const certPath = resolve(tlsDir, `${dnsName}.crt`);
+  const keyPath = resolve(tlsDir, `${dnsName}.key`);
+  const cert = Bun.spawnSync([
+    "tailscale",
+    "cert",
+    "--cert-file",
+    certPath,
+    "--key-file",
+    keyPath,
+    dnsName,
+  ], {
+    cwd: SCRIPT_DIR,
+    env: process.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (!cert.success) {
+    const details = cert.stderr.toString().trim();
+    return {
+      domain: null,
+      error: details
+        ? `${details}\nRemote browser mic capture needs HTTPS on the Tailscale name. Run 'sudo tailscale set --operator=$USER' once, then start the harness again.`
+        : "Remote browser mic capture needs HTTPS on the Tailscale name. Run 'sudo tailscale set --operator=$USER' once, then start the harness again.",
+    };
+  }
+
+  process.env.HARNESS_TLS_CERT = certPath;
+  process.env.HARNESS_TLS_KEY = keyPath;
+  process.env.HARNESS_TLS_DOMAIN = dnsName;
+  return { domain: dnsName, error: null };
+}
+
+const { domain: tlsDomain, error: tlsError } = setupTailscaleHttps();
+if (tlsError) {
+  console.warn(`[dev] Tailscale HTTPS unavailable — falling back to plain HTTP`);
+  console.warn(`[dev] (${tlsError.split("\n")[0]})`);
+  console.warn(`[dev] Mic capture over network will require HTTPS — local access still works.`);
+}
 
 // ── Start processes ──────────────────────────────────────────────
 
@@ -83,11 +155,15 @@ setTimeout(() => {
 
   console.log("");
   console.log(`  harness  http://localhost:${PORT}`);
-  console.log(`  frontend http://localhost:5180`);
-  if (lanIp) {
+  if (tlsDomain) {
+    console.log(`  frontend https://${tlsDomain}:${VITE_PORT}`);
+  } else {
+    console.log(`  frontend http://localhost:${VITE_PORT}`);
+  }
+  if (!tlsDomain && lanIp) {
     console.log("");
-    console.log(`  LAN      http://${lanIp}:5180`);
-    console.log(`           http://${host}.local:5180`);
+    console.log(`  LAN      http://${lanIp}:${VITE_PORT}`);
+    console.log(`           http://${host}.local:${VITE_PORT}`);
   }
   if (TOKEN) {
     console.log("");

@@ -19,6 +19,7 @@
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { join, basename, dirname } from "path";
+import { homedir } from "os";
 
 const PROFILES_DIR = join(import.meta.dir, "profiles");
 const AGENTS_DIR = join(PROFILES_DIR, "agents");
@@ -168,10 +169,20 @@ export type NotificationChannel =
   | { type: "webhook"; url: string; method?: string; headers?: Record<string, string> }
   | { type: "file"; path: string };
 
+export type ClientExtensionsConfig = {
+  /** Additional trusted extension roots on disk */
+  paths?: string[];
+  /** Extension IDs enabled by default */
+  enabled?: string[];
+  /** Extension IDs explicitly disabled */
+  disabled?: string[];
+};
+
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
   providerDefaults?: Record<string, ProviderDefaults>;
   notificationChannels?: Record<string, NotificationChannel>;
+  clientExtensions?: ClientExtensionsConfig;
 };
 
 function getBuiltInMcpServers(): Record<string, McpServerConfig> {
@@ -241,6 +252,8 @@ export type UserProfile = {
   computer?: string;
   /** Preferred editor CLI command for "open in editor" */
   editor?: string;
+  /** Client-side UI extensions enabled/disabled for this project-scoped view */
+  clientExtensions?: ClientExtensionsConfig;
 };
 
 // ── Helpers ──
@@ -257,6 +270,32 @@ function readJson<T>(filePath: string): T | undefined {
 
 function writeJson(filePath: string, data: unknown): void {
   writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+}
+
+function uniqueStrings(values: Array<string | undefined> | undefined): string[] | undefined {
+  if (!values) return undefined;
+  const result = values
+    .map((value) => value?.trim())
+    .filter((value): value is string => !!value);
+  return result.length > 0 ? Array.from(new Set(result)) : undefined;
+}
+
+function mergeClientExtensions(
+  base?: ClientExtensionsConfig,
+  override?: ClientExtensionsConfig,
+): ClientExtensionsConfig | undefined {
+  const merged: ClientExtensionsConfig = {
+    paths: uniqueStrings([...(base?.paths ?? []), ...(override?.paths ?? [])]),
+    enabled: uniqueStrings([...(base?.enabled ?? []), ...(override?.enabled ?? [])]),
+    disabled: uniqueStrings([...(base?.disabled ?? []), ...(override?.disabled ?? [])]),
+  };
+  return merged.paths || merged.enabled || merged.disabled ? merged : undefined;
+}
+
+function resolveConfiguredPath(rawPath: string, baseDir: string): string {
+  if (rawPath === "~") return homedir();
+  if (rawPath.startsWith("~/")) return join(homedir(), rawPath.slice(2));
+  return rawPath.startsWith("/") ? rawPath : join(baseDir, rawPath);
 }
 
 /** Save a timestamped copy of a file before overwriting it.
@@ -381,6 +420,31 @@ export function getGlobalConfig(cwd?: string): GlobalConfig {
     mcpServers: { ...builtInMcpServers, ...base.mcpServers, ...proj.mcpServers },
     providerDefaults: { ...base.providerDefaults, ...proj.providerDefaults },
     notificationChannels: { ...base.notificationChannels, ...proj.notificationChannels },
+    clientExtensions: mergeClientExtensions(base.clientExtensions, proj.clientExtensions),
+  };
+}
+
+export function getResolvedClientExtensionsConfig(cwd?: string, userProfileName?: string): ClientExtensionsConfig {
+  const baseFile = join(PROFILES_DIR, "_global.json");
+  const baseConfig = readJson<GlobalConfig>(baseFile);
+  const baseClient = baseConfig?.clientExtensions;
+
+  const projectFile = cwd ? projectGlobalPath(cwd) : undefined;
+  const projectClient = projectFile ? readJson<GlobalConfig>(projectFile)?.clientExtensions : undefined;
+  const userClient = userProfileName ? getUserProfile(userProfileName)?.clientExtensions : undefined;
+
+  const merged = mergeClientExtensions(
+    mergeClientExtensions(baseClient, projectClient),
+    userClient,
+  ) ?? {};
+
+  return {
+    paths: merged.paths?.map((entry) => {
+      const sourceFile = projectClient?.paths?.includes(entry) && projectFile ? projectFile : baseFile;
+      return resolveConfiguredPath(entry, dirname(sourceFile));
+    }),
+    enabled: merged.enabled,
+    disabled: merged.disabled,
   };
 }
 

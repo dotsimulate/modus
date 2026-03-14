@@ -163,6 +163,11 @@ export type Profile = {
 
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
+  clientExtensions?: {
+    paths?: string[];
+    enabled?: string[];
+    disabled?: string[];
+  };
 };
 
 export type SessionInfo = {
@@ -350,6 +355,19 @@ export type UserProfile = {
   computer?: string;
   /** Preferred editor CLI command for "open in editor" */
   editor?: string;
+  clientExtensions?: {
+    paths?: string[];
+    enabled?: string[];
+    disabled?: string[];
+  };
+};
+
+export type ClientExtensionManifestItem = {
+  id: string;
+  fileName: string;
+  source: "project" | "global";
+  enabled: boolean;
+  moduleUrl: string;
 };
 
 export type ProjectUiAssetInfo = {

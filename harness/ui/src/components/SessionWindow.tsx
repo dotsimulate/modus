@@ -171,9 +171,9 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     }
   }
 
-  async function handleSend(attachments: Attachment[]) {
+  async function handleSend(attachments: Attachment[], textOverride?: string) {
     if (!sessionId) return;
-    const prompt = input.trim();
+    const prompt = (textOverride ?? input).trim();
     if (!prompt && attachments.length === 0) return;
 
     if (draftTimerRef.current) {

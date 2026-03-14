@@ -85,6 +85,12 @@ const ProviderDefaultsSchema = z.object({
   compaction: CompactionConfigSchema.optional(),
 });
 
+const ClientExtensionsSchema = z.object({
+  paths: z.array(z.string()).optional(),
+  enabled: z.array(z.string()).optional(),
+  disabled: z.array(z.string()).optional(),
+});
+
 const ProviderSchema = z.string().refine(isKnownProvider, {
   message: "unknown provider",
 });
@@ -138,6 +144,7 @@ export const UserProfileSchema = z.object({
   showAllProjectPaths: z.boolean().optional(),
   computer: z.string().optional(),
   editor: z.string().optional(),
+  clientExtensions: ClientExtensionsSchema.optional(),
 });
 
 // ── Global Config ──
@@ -145,6 +152,19 @@ export const UserProfileSchema = z.object({
 export const GlobalConfigSchema = z.object({
   mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
   providerDefaults: z.record(z.string(), ProviderDefaultsSchema).optional(),
+  notificationChannels: z.record(z.string(), z.union([
+    z.object({
+      type: z.literal("webhook"),
+      url: z.string(),
+      method: z.string().optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+    }),
+    z.object({
+      type: z.literal("file"),
+      path: z.string(),
+    }),
+  ])).optional(),
+  clientExtensions: ClientExtensionsSchema.optional(),
 });
 
 // ── Helpers ──

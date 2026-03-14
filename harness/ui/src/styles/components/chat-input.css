@@ -45,7 +45,7 @@
 .chat-textarea {
   width: 100%;
   resize: none;
-  padding: 12px 14px 36px 14px;
+  padding: 12px 120px 46px 14px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -66,10 +66,63 @@
   bottom: 8px;
 }
 
-.send-btn {
+.chat-controls {
   position: absolute;
   right: 14px;
   bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 28px);
+}
+
+.composer-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.composer-status {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.composer-status--active {
+  color: var(--error);
+  border-color: rgba(255, 68, 68, 0.35);
+  background: rgba(255, 68, 68, 0.08);
+}
+
+.composer-status--busy {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: var(--bg-hover);
+}
+
+.composer-status--error {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.composer-button-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.composer-action-btn,
+.send-btn,
+.stop-btn {
   background: none;
   border: 1px solid var(--text-dim);
   border-radius: 6px;
@@ -81,29 +134,37 @@
   transition: background 0.12s ease, border-color 0.12s ease;
   white-space: nowrap;
 }
+
+.composer-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.composer-action-btn--icon {
+  width: 30px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.composer-action-btn:hover:not(:disabled),
 .send-btn:hover:not(:disabled) {
   background: var(--bg-hover);
   border-color: var(--text);
 }
+
+.composer-action-btn:disabled,
 .send-btn:disabled {
   opacity: 0.35;
   cursor: default;
 }
 
 .stop-btn {
-  position: absolute;
-  right: 14px;
-  bottom: 12px;
   background: none;
   border: 1px solid var(--error);
-  border-radius: 6px;
-  padding: 4px 12px;
-  font-family: var(--font-mono);
-  font-size: calc(12px * var(--font-scale, 1));
   color: var(--error);
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
-  white-space: nowrap;
 }
 .stop-btn:hover {
   background: rgba(255, 68, 68, 0.08);

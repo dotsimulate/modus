@@ -35,7 +35,7 @@ type SessionContextValue = {
   serverSessions: SessionInfo[];
   input: string;
   handleInputChange: (text: string) => void;
-  send: (attachments: Attachment[]) => Promise<void>;
+  send: (attachments: Attachment[], textOverride?: string) => Promise<void>;
   stop: () => Promise<void>;
   stopTask: (taskId: string) => Promise<void>;
   newSession: () => Promise<string | null>;
@@ -314,8 +314,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   // ── Send message ──
 
-  const send = useCallback(async (sendAttachments: Attachment[]) => {
-    const prompt = input.trim();
+  const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string) => {
+    const prompt = (textOverride ?? input).trim();
     if (!prompt && sendAttachments.length === 0) return;
 
     if (draftTimerRef.current) {
