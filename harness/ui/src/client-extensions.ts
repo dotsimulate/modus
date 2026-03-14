@@ -25,7 +25,7 @@ type ShortcutHandler = (ctx: {
   getComposer: () => ComposerTarget | null;
 }) => void | Promise<void>;
 
-type ComposerActionIcon = "mic";
+type ComposerActionIcon = "mic" | "mic-handsfree";
 
 type ComposerActionStatusTone = "default" | "active" | "busy" | "error";
 

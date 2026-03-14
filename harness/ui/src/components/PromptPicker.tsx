@@ -222,9 +222,10 @@ export function PromptPicker({
   }, [selected, inputValues, freeText, activeUserProfile, activeUP]);
 
   const resolveProfileNames = useCallback(() => {
-    return activeUP?.agentProfiles?.length
+    const names = activeUP?.agentProfiles?.length
       ? activeUP.agentProfiles
       : profiles.map((profile) => profile.name);
+    return ["Current profile", ...names];
   }, [activeUP?.agentProfiles, profiles]);
 
   const handlePromptSelect = useCallback((p: PromptListItem) => {
