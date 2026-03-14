@@ -68,20 +68,20 @@
 /* ── Recording / finishing state on the box ── */
 .is-recording .chat-textarea,
 .is-recording .chat-textarea:focus {
-  border-color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 4%, var(--bg));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 20%, transparent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
   animation: recording-box-pulse 2s ease-in-out infinite;
 }
 
 .is-finishing .chat-textarea,
 .is-finishing .chat-textarea:focus {
-  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 
 @keyframes recording-box-pulse {
-  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 20%, transparent); }
-  50%       { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 10%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent); }
+  50%       { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 }
 
 /* ── Icon action buttons — top-left corner ── */
@@ -124,8 +124,8 @@
 /* Active state — mic button glows amber while recording */
 .is-recording .composer-icon-btn,
 .is-finishing .composer-icon-btn {
-  color: var(--warning);
-  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 /* ── Status dot — top-right corner ── */
@@ -192,8 +192,8 @@
 
 .composer-status--active {
   color: var(--error);
-  border-color: rgba(255, 68, 68, 0.35);
-  background: rgba(255, 68, 68, 0.08);
+  border-color: color-mix(in srgb, var(--error) 35%, transparent);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
 }
 
 .composer-status--busy {
@@ -261,8 +261,8 @@
   color: var(--error);
 }
 .stop-btn:hover {
-  background: rgba(255, 68, 68, 0.08);
-  border-color: #ff6666;
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+  border-color: var(--error-soft);
 }
 
 /* ── Drag & Drop Overlay ── */
@@ -274,7 +274,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
   border: 2px dashed var(--border-active);
   border-radius: 6px;
   color: var(--text-dim);
@@ -315,7 +315,7 @@
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.7);
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
   color: var(--accent);
   font-size: 12px;
   line-height: 1;
