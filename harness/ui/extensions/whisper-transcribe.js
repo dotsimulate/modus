@@ -5,7 +5,22 @@ const SILENCE_MS = 1000;
 const MIN_CHUNK_MS = 2000;
 const MAX_CHUNK_MS = 30000;
 const PRE_ROLL_MS = 250;
-const SEND_TRIGGER_RE = /(?:^|[\s"'([{])(send it now|send it|send now|send this|send the message|submit(?: the)? message)\s*["'”’)\].,!?\s]*$/i;
+const SEND_TRIGGER_RE = /(?:^|[\s”’([{])(send it now|send it|send now|send this|send the message|submit(?: the)? message)\s*[“’”’)\].,!?\s]*$/i;
+
+// Whisper commonly hallucinates these on silence — drop the whole chunk if it’s only this
+const AVOID_PHRASES = [
+  /^(thank you|thanks)\.?$/i,
+  /^(ok|okay)\.?$/i,
+  /^(um+|uh+|hmm+|mm+)\.?$/i,
+  /^(you)\.?$/i,
+  /^(bye|goodbye)\.?$/i,
+  /^\.$/ ,
+];
+
+function isAvoidPhrase(text) {
+  const normalized = normalizeLooseText(text);
+  return AVOID_PHRASES.some((re) => re.test(normalized));
+}
 
 function normalizeTranscript(text) {
   return String(text ?? "")
@@ -310,9 +325,7 @@ export default function whisperTranscribeExtension(api) {
     if (!text || disposed) return;
     // Use intendedDraft if animation is in-flight, so we append to the full text not the partial
     const currentDraft = intendedDraft ?? (composer ? composer.getSnapshot().draft : api.getComposer()?.draft ?? "");
-    if (!currentDraft.trim() && normalizeLooseText(text) === "thank you") {
-      return;
-    }
+    if (isAvoidPhrase(text)) return;
 
     const submit = (nextDraft) => {
       flushTyping(composer); // complete any in-flight animation first, then submit full text
