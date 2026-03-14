@@ -45,7 +45,7 @@
 .chat-textarea {
   width: 100%;
   resize: none;
-  padding: 12px 120px 46px 14px;
+  padding: 12px 80px 46px 14px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -55,10 +55,104 @@
   line-height: 1.5;
   min-height: 68px;
   max-height: 200px;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 .chat-textarea:focus { outline: none; border-color: var(--border-active); }
 .chat-textarea::placeholder { color: var(--text-muted); }
+
+/* Textarea shifts right when icon actions occupy the top-left */
+.has-icon-actions .chat-textarea {
+  padding-left: 44px;
+}
+
+/* ── Recording / finishing state on the box ── */
+.is-recording .chat-textarea,
+.is-recording .chat-textarea:focus {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 4%, var(--bg));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 20%, transparent);
+  animation: recording-box-pulse 2s ease-in-out infinite;
+}
+
+.is-finishing .chat-textarea,
+.is-finishing .chat-textarea:focus {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+}
+
+@keyframes recording-box-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--warning) 20%, transparent); }
+  50%       { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 10%, transparent); }
+}
+
+/* ── Icon action buttons — top-left corner ── */
+.composer-icon-actions {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.composer-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+
+.composer-icon-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: var(--bg-hover);
+}
+
+.composer-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Active state — mic button glows amber while recording */
+.is-recording .composer-icon-btn,
+.is-finishing .composer-icon-btn {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+}
+
+/* ── Status dot — top-right corner ── */
+.composer-status-dot {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.composer-status-dot--active {
+  background: var(--error);
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+
+.composer-status-dot--busy {
+  background: var(--warning);
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.75); }
+}
 
 .chat-picker {
   position: absolute;

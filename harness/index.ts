@@ -59,6 +59,10 @@ const PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = "0.0.0.0";
 const AUTH_TOKEN = process.env.HARNESS_TOKEN || "";
 const WHISPER_TRANSCRIBE_URL = "http://127.0.0.1:8080/v1/audio/transcriptions";
+const UI_DIST_DIR = resolve(import.meta.dir, "ui/dist");
+const UI_INDEX_PATH = join(UI_DIST_DIR, "index.html");
+const HARNESS_TLS_CERT = process.env.HARNESS_TLS_CERT;
+const HARNESS_TLS_KEY = process.env.HARNESS_TLS_KEY;
 
 const app = new Hono();
 
@@ -1870,11 +1874,65 @@ app.get("/api/trace/touches", (c) => {
   return c.json({ touches, summary: touchSummary(touches) });
 });
 
+function normalizeUiPath(pathname: string): string {
+  return pathname.split("/").filter((segment) => segment && segment !== "." && segment !== "..").join("/");
+}
+
+async function serveUiFile(pathname: string): Promise<Response | null> {
+  const relativePath = normalizeUiPath(pathname);
+  const targetPath = join(UI_DIST_DIR, relativePath || "index.html");
+  const file = Bun.file(targetPath);
+  if (!(await file.exists())) return null;
+  const cacheControl = relativePath.startsWith("assets/")
+    ? "public, max-age=31536000, immutable"
+    : "no-cache";
+  return new Response(file, {
+    headers: {
+      "Cache-Control": cacheControl,
+    },
+  });
+}
+
+function missingUiBuildResponse(): Response {
+  return new Response("frontend build missing: run the UI build before using the harness app surface", {
+    status: 503,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+app.get("*", async (c) => {
+  const path = c.req.path;
+  if (path === "/api" || path.startsWith("/api/")) return c.notFound();
+  if (!existsSync(UI_INDEX_PATH)) return missingUiBuildResponse();
+
+  const direct = await serveUiFile(path);
+  if (direct) return direct;
+
+  if (extname(path)) return c.notFound();
+
+  return (await serveUiFile("/")) ?? missingUiBuildResponse();
+});
+
 // ── Start ──
 
-const server = Bun.serve({ fetch: app.fetch, port: PORT, hostname: HOST, idleTimeout: 255 });
+const server = Bun.serve({
+  fetch: app.fetch,
+  port: PORT,
+  hostname: HOST,
+  idleTimeout: 255,
+  tls: HARNESS_TLS_CERT && HARNESS_TLS_KEY
+    ? {
+        cert: Bun.file(HARNESS_TLS_CERT),
+        key: Bun.file(HARNESS_TLS_KEY),
+      }
+    : undefined,
+});
 const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
-console.log(`Agent harness listening on http://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
+const protocol = HARNESS_TLS_CERT && HARNESS_TLS_KEY ? "https" : "http";
+console.log(`Agent harness listening on ${protocol}://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
 
 initActions();
 loadPrompts();

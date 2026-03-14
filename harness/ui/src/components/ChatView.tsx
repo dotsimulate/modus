@@ -4,10 +4,14 @@ import { GitActivityItem } from "./GitActivityItem";
 import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
-import { fetchSessionStatus } from "../api";
-import type { Message, ToolCall, CommitAttribution } from "../api";
+import { fetchGitLog, fetchSessionStatus } from "../api";
+import type { Message, ToolCall, CommitAttribution, GitCommit } from "../api";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionProvider";
 import { navigateToGitRoute } from "../git-route";
+
+type DisplayItem =
+  | { kind: "message"; key: string; message: Message; index: number }
+  | { kind: "commit"; key: string; commit: GitCommit };
 
 function formatCommitWhen(date: string): string {
   const parsed = Date.parse(date);
@@ -59,6 +63,7 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
   const hasScrolledRef = useRef(false);
   const autoScrollRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [commits, setCommits] = useState<GitCommit[]>([]);
   const [commitAttribution, setCommitAttribution] = useState<CommitAttribution | null>(null);
   const hasMessages = messages.length > 0;
   const lastMessage = hasMessages ? messages[messages.length - 1] : null;
@@ -194,6 +199,33 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
   }, [messages]);
 
   useEffect(() => {
+    if (!showGitEvents || !cwd) {
+      setCommits([]);
+      return;
+    }
+
+    let active = true;
+    const load = async () => {
+      try {
+        const next = await fetchGitLog(cwd, 200);
+        if (active) setCommits(next);
+      } catch {
+        if (active) setCommits([]);
+      }
+    };
+
+    void load();
+    const timer = setInterval(() => {
+      void load();
+    }, 4000);
+
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [cwd, showGitEvents]);
+
+  useEffect(() => {
     if (!showGitEvents || !sessionId) {
       setCommitAttribution(null);
       return;
@@ -225,6 +257,44 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
     [sessionTags],
   );
 
+  const displayItems = useMemo<DisplayItem[]>(() => {
+    if (!showGitEvents || !cwd || commits.length === 0 || messages.length === 0) {
+      return messages.map((message, index) => ({
+        kind: "message" as const,
+        key: message.id,
+        message,
+        index,
+      }));
+    }
+
+    const sortedCommits = [...commits].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+    const items: DisplayItem[] = [];
+    let commitIndex = 0;
+
+    for (let i = 0; i < messages.length; i++) {
+      const current = messages[i];
+      items.push({ kind: "message", key: current.id, message: current, index: i });
+
+      const currentTs = current.timestamp;
+      const nextTs = messages[i + 1]?.timestamp;
+      if (currentTs == null || nextTs == null) continue;
+
+      while (commitIndex < sortedCommits.length) {
+        const commit = sortedCommits[commitIndex];
+        const commitTs = Date.parse(commit.date);
+        if (Number.isNaN(commitTs) || commitTs <= currentTs) {
+          commitIndex++;
+          continue;
+        }
+        if (commitTs > nextTs) break;
+        items.push({ kind: "commit", key: `commit-${commit.hash}`, commit });
+        commitIndex++;
+      }
+    }
+
+    return items;
+  }, [commits, cwd, messages, showGitEvents]);
+
   const showAssistantPrelude = streaming && lastMessage?.role === "user";
   const assistantPreludeLabel = [profileName, model].filter(Boolean).join(" ");
 
@@ -241,7 +311,22 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
     <div className="chat-scroll-wrapper">
       <div className="chat-messages" ref={scrollRef}>
         <div className="chat-messages-content" ref={contentRef}>
-          {messages.map((msg, i) => {
+          {displayItems.map((item) => {
+            if (item.kind === "commit") {
+              return (
+                <div key={item.key} className="message message--git" data-role="git">
+                  <GitActivityItem
+                    commit={item.commit}
+                    sessionId={sessionId}
+                    claimedBySession={claimedCommitTags.has(`commit:${item.commit.hash.slice(0, 7)}`)}
+                    onClaimChange={onSessionTagsChange}
+                  />
+                </div>
+              );
+            }
+
+            const msg = item.message;
+            const i = item.index;
             const turnTools = turnFileEdits.get(i);
             const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
 

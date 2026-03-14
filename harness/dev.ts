@@ -7,7 +7,6 @@
 
 import { spawn, type Subprocess } from "bun";
 import { randomBytes } from "crypto";
-import { mkdirSync } from "fs";
 import { networkInterfaces, hostname } from "os";
 import { resolve, dirname } from "path";
 
@@ -16,6 +15,7 @@ const SCRIPT_DIR = dirname(Bun.fileURLToPath(import.meta.url));
 const PORT = process.env.HARNESS_PORT || "3777";
 const VITE_PORT = "5180";
 const TOKEN = process.env.HARNESS_TOKEN ?? randomBytes(16).toString("hex");
+const APP_PROTOCOL = process.env.HARNESS_TLS_CERT && process.env.HARNESS_TLS_KEY ? "https" : "http";
 
 // Clear nested-session guard
 delete process.env.CLAUDECODE;
@@ -30,12 +30,12 @@ type TailscaleStatus = {
   };
 };
 
-type TailscaleHttpsSetup = {
-  domain: string | null;
+type TailscaleServeSetup = {
+  remoteUrl: string | null;
   error: string | null;
 };
 
-function setupTailscaleHttps(): TailscaleHttpsSetup {
+function setupTailscaleServe(): TailscaleServeSetup {
   const status = Bun.spawnSync(["tailscale", "status", "--json"], {
     cwd: SCRIPT_DIR,
     env: process.env,
@@ -43,58 +43,37 @@ function setupTailscaleHttps(): TailscaleHttpsSetup {
     stderr: "pipe",
   });
   if (!status.success) {
-    return { domain: null, error: null };
+    return { remoteUrl: null, error: null };
   }
 
   const payload = JSON.parse(status.stdout.toString()) as TailscaleStatus;
-  const dnsName = payload.Self?.DNSName?.replace(/\.$/, "");
-  if (!dnsName) {
-    return { domain: null, error: null };
-  }
+  const dnsName = payload.Self?.DNSName?.replace(/\.$/, "") ?? null;
+  const remoteUrl = dnsName ? `https://${dnsName}` : null;
 
-  const tlsDir = resolve(SCRIPT_DIR, ".tailscale");
-  mkdirSync(tlsDir, { recursive: true });
-
-  const certPath = resolve(tlsDir, `${dnsName}.crt`);
-  const keyPath = resolve(tlsDir, `${dnsName}.key`);
-  const cert = Bun.spawnSync([
-    "tailscale",
-    "cert",
-    "--cert-file",
-    certPath,
-    "--key-file",
-    keyPath,
-    dnsName,
-  ], {
+  const serve = Bun.spawnSync(["tailscale", "serve", "--bg", PORT], {
     cwd: SCRIPT_DIR,
     env: process.env,
     stdout: "pipe",
     stderr: "pipe",
   });
-  if (!cert.success) {
-    const details = cert.stderr.toString().trim();
-    return {
-      domain: null,
-      error: details
-        ? `${details}\nRemote browser mic capture needs HTTPS on the Tailscale name. Run 'sudo tailscale set --operator=$USER' once, then start the harness again.`
-        : "Remote browser mic capture needs HTTPS on the Tailscale name. Run 'sudo tailscale set --operator=$USER' once, then start the harness again.",
-    };
+  if (!serve.success) {
+    const details = serve.stderr.toString().trim() || serve.stdout.toString().trim() || "tailscale serve failed";
+    return { remoteUrl, error: details };
   }
 
-  process.env.HARNESS_TLS_CERT = certPath;
-  process.env.HARNESS_TLS_KEY = keyPath;
-  process.env.HARNESS_TLS_DOMAIN = dnsName;
-  return { domain: dnsName, error: null };
+  return { remoteUrl, error: null };
 }
 
-const { domain: tlsDomain, error: tlsError } = setupTailscaleHttps();
-if (tlsError) {
-  console.warn(`[dev] Tailscale HTTPS unavailable — falling back to plain HTTP`);
-  console.warn(`[dev] (${tlsError.split("\n")[0]})`);
-  console.warn(`[dev] Mic capture over network will require HTTPS — local access still works.`);
-}
+const tailscaleServe = setupTailscaleServe();
 
 // ── Start processes ──────────────────────────────────────────────
+
+const viteBuild: Subprocess = spawn([BUN, "x", "vite", "build", "--watch"], {
+  cwd: resolve(SCRIPT_DIR, "ui"),
+  stdout: "inherit",
+  stderr: "inherit",
+  env: process.env,
+});
 
 const harness: Subprocess = spawn([BUN, "run", "index.ts"], {
   cwd: SCRIPT_DIR,
@@ -131,6 +110,7 @@ function cleanup() {
   stopping = true;
   console.log("\nshutting down...");
   killTree(harness);
+  killTree(viteBuild);
   killTree(vite);
 }
 
@@ -154,28 +134,32 @@ setTimeout(() => {
   const host = hostname();
 
   console.log("");
-  console.log(`  harness  http://localhost:${PORT}`);
-  if (tlsDomain) {
-    console.log(`  frontend https://${tlsDomain}:${VITE_PORT}`);
-  } else {
-    console.log(`  frontend http://localhost:${VITE_PORT}`);
-  }
-  if (!tlsDomain && lanIp) {
+  console.log(`  app      ${APP_PROTOCOL}://localhost:${PORT}`);
+  console.log(`  desktop  http://localhost:${VITE_PORT}`);
+  if (tailscaleServe.remoteUrl) {
     console.log("");
-    console.log(`  LAN      http://${lanIp}:${VITE_PORT}`);
-    console.log(`           http://${host}.local:${VITE_PORT}`);
+    console.log(`  remote   ${tailscaleServe.remoteUrl}`);
+  } else if (lanIp) {
+    console.log("");
+    console.log(`  remote   ${APP_PROTOCOL}://${lanIp}:${PORT}`);
+    console.log(`           ${APP_PROTOCOL}://${host}.local:${PORT}`);
+  }
+  if (tailscaleServe.error) {
+    console.log("");
+    console.log("  tailscale serve setup failed:");
+    console.log(`           ${tailscaleServe.error}`);
   }
   if (TOKEN) {
     console.log("");
     console.log(`  token    ${TOKEN}`);
   }
   console.log("");
-  console.log("  ctrl+c to stop both");
+  console.log("  ctrl+c to stop all");
   console.log("");
 }, 2000);
 
 // ── Wait for either to exit ──────────────────────────────────────
 
-await Promise.race([harness.exited, vite.exited]);
+await Promise.race([harness.exited, viteBuild.exited, vite.exited]);
 cleanup();
 process.exit(0);

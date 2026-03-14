@@ -306,7 +306,22 @@ export function ChatInput({
   };
 
   const hasContent = value.trim() || attachments.length > 0;
-  const composerStatuses = composerActions.filter((action) => action.status?.label);
+
+  // Icon-only actions (no label) go to top-left corner; labelled actions stay in the button row
+  const iconActions = composerActions.filter((a) => a.icon && !a.label);
+  const buttonActions = composerActions.filter((a) => !a.icon || !!a.label);
+  const buttonStatuses = buttonActions.filter((a) => a.status?.label);
+
+  const isRecording = composerActions.some((a) => a.status?.tone === "active");
+  const isFinishing = composerActions.some((a) => a.status?.tone === "busy");
+  const statusDotTone = isRecording ? "active" : isFinishing ? "busy" : null;
+
+  const wrapClass = [
+    "chat-textarea-wrap",
+    isRecording ? "is-recording" : "",
+    isFinishing ? "is-finishing" : "",
+    iconActions.length > 0 ? "has-icon-actions" : "",
+  ].filter(Boolean).join(" ");
 
   return (
     <div
@@ -341,7 +356,27 @@ export function ChatInput({
       )}
 
       <div className="input-row">
-        <div className="chat-textarea-wrap">
+        <div className={wrapClass}>
+          {iconActions.length > 0 && (
+            <div className="composer-icon-actions">
+              {iconActions.map((action) => (
+                <button
+                  key={action.key}
+                  type="button"
+                  className="composer-icon-btn"
+                  onClick={() => { void action.perform(); }}
+                  disabled={disabled || action.disabled}
+                  title={action.title ?? action.extensionId}
+                  aria-label={action.title ?? action.extensionId}
+                >
+                  <ComposerActionIcon icon={action.icon} />
+                </button>
+              ))}
+            </div>
+          )}
+          {statusDotTone && (
+            <div className={`composer-status-dot composer-status-dot--${statusDotTone}`} />
+          )}
           <textarea
             ref={ref}
             className="chat-textarea"
@@ -387,9 +422,9 @@ export function ChatInput({
             />
           </div>
           <div className="chat-controls">
-            {composerStatuses.length > 0 && (
+            {buttonStatuses.length > 0 && (
               <div className="composer-status-row">
-                {composerStatuses.map((action) => (
+                {buttonStatuses.map((action) => (
                   <span
                     key={`${action.key}:status`}
                     className={`composer-status composer-status--${action.status?.tone ?? "default"}`}
@@ -400,14 +435,12 @@ export function ChatInput({
               </div>
             )}
             <div className="composer-button-row">
-              {composerActions.map((action) => (
+              {buttonActions.map((action) => (
                 <button
                   key={action.key}
                   type="button"
                   className={`composer-action-btn${action.label ? "" : " composer-action-btn--icon"}`}
-                  onClick={() => {
-                    void action.perform();
-                  }}
+                  onClick={() => { void action.perform(); }}
                   disabled={disabled || action.disabled}
                   title={action.title ?? action.label ?? action.extensionId}
                   aria-label={action.title ?? action.label ?? action.extensionId}
