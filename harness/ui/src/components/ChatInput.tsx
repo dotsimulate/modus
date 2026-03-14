@@ -458,7 +458,7 @@ export function ChatInput({
                 <button
                   className="send-btn"
                   type="button"
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={!hasContent || disabled}
                 >
                   send
