@@ -10,6 +10,7 @@
       "label": "Target agent",
       "type": "select",
       "options": "{{agentProfiles}}",
+      "default": "Current profile",
       "required": true
     },
     {

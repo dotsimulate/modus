@@ -41,7 +41,10 @@ function extractTouchedFiles(events: EventRow[]): string[] {
 // ── Gather ──
 
 export async function gather(ctx: MoveContext): Promise<string> {
-  const { type = "task", targetProfile = "", focus = "", includeUserTips = "yes" } = ctx.inputs as Record<string, string>;
+  const { type = "task", targetProfile: rawTarget = "", focus = "", includeUserTips = "yes" } = ctx.inputs as Record<string, string>;
+  const targetProfile = rawTarget === "Current profile"
+    ? (ctx.session.profile ?? "default")
+    : rawTarget;
 
   const handoffsDir = join(ctx.cwd, HANDOFFS_DIR);
   if (!existsSync(handoffsDir)) {
@@ -159,7 +162,10 @@ export async function onSubmit(
   data: Record<string, unknown>,
   inputs: Record<string, unknown>,
 ): Promise<SubmitResult> {
-  const targetProfile = inputs.targetProfile as string;
+  const rawTarget = inputs.targetProfile as string;
+  const targetProfile = rawTarget === "Current profile"
+    ? (ctx.session.profile ?? "default")
+    : rawTarget;
   const focus = inputs.focus as string;
   const type = (inputs.type as string) ?? "task";
   const docPath = data.document as string;

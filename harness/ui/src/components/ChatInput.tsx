@@ -39,7 +39,7 @@ function fileToBase64(file: File): Promise<{ data: string; mediaType: string; na
   });
 }
 
-function ComposerActionIcon({ icon }: { icon?: "mic" }) {
+function ComposerActionIcon({ icon }: { icon?: "mic" | "mic-handsfree" }) {
   if (icon === "mic") {
     return (
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -57,6 +57,25 @@ function ComposerActionIcon({ icon }: { icon?: "mic" }) {
           strokeLinecap="round"
           strokeLinejoin="round"
         />
+      </svg>
+    );
+  }
+
+  if (icon === "mic-handsfree") {
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        {/* Radio/signal waves — left */}
+        <path d="M3.5 3.5c1.5-1.5 3-1.5 4 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        <path d="M1.5 1.5c2.5-2.5 5.5-2.5 7.5 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        {/* Radio/signal waves — right (mirrored) */}
+        <path d="M10.5 3.5c-1.5-1.5-3-1.5-4 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        <path d="M12.5 1.5c-2.5-2.5-5.5-2.5-7.5 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        {/* Central dot — signal source */}
+        <circle cx="7" cy="6" r="1.5" fill="currentColor" />
+        {/* Stem */}
+        <line x1="7" y1="7.5" x2="7" y2="11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        {/* Base */}
+        <line x1="5" y1="11.5" x2="9" y2="11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
       </svg>
     );
   }
@@ -312,10 +331,12 @@ export function ChatInput({
   const iconActions = composerActions.filter((a) => a.icon && !a.label);
   const buttonActions = composerActions.filter((a) => !a.icon || !!a.label);
   const buttonStatuses = buttonActions.filter((a) => a.status?.label);
+  const iconStatus = iconActions.find((a) => a.status?.label);
 
   const isRecording = composerActions.some((a) => a.status?.tone === "active");
   const isFinishing = composerActions.some((a) => a.status?.tone === "busy");
-  const statusDotTone = isRecording ? "active" : isFinishing ? "busy" : null;
+  const isGated = iconStatus?.status?.label === "say start listening to me";
+  const statusDotTone = isRecording ? "active" : isFinishing ? "busy" : isGated ? "gated" : null;
 
   const wrapClass = [
     "chat-textarea-wrap",
@@ -375,8 +396,18 @@ export function ChatInput({
               ))}
             </div>
           )}
-          {statusDotTone && (
-            <div className={`composer-status-dot composer-status-dot--${statusDotTone}`} />
+          {/* Status indicator: dot on right, text to its left */}
+          {(statusDotTone || iconStatus) && (
+            <div className="composer-status-area">
+              {iconStatus && (
+                <span className="composer-status-text">
+                  {iconStatus.status?.label}
+                </span>
+              )}
+              {statusDotTone && (
+                <div className={`composer-status-dot composer-status-dot--${statusDotTone}`} />
+              )}
+            </div>
           )}
           <textarea
             ref={ref}
