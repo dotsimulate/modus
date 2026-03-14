@@ -186,12 +186,22 @@ function toComposerTarget(handle: ComposerHandle | null): ComposerTarget | null 
   };
 }
 
+/** Live proxy — re-resolves the handle on every call, survives remounts */
+function toLiveComposerTarget(composerId: string): ComposerTarget {
+  return {
+    getSnapshot: () => composers.get(composerId)?.getSnapshot() ?? { draft: "" },
+    focus: () => composers.get(composerId)?.focus(),
+    setDraft: (text: string) => composers.get(composerId)?.setDraft(text),
+    insertText: (text: string) => composers.get(composerId)?.insertText(text),
+    submit: (text?: string) => composers.get(composerId)?.submit(text),
+  };
+}
+
 async function performComposerAction(action: ComposerActionRegistration, composerId: string): Promise<void> {
-  const composer = composers.get(composerId) ?? null;
-  if (composer) {
+  if (composers.has(composerId)) {
     activeComposerId = composerId;
   }
-  await action.onClick({ composer: toComposerTarget(composer) });
+  await action.onClick({ composer: toLiveComposerTarget(composerId) });
 }
 
 function ensureShortcutListener() {
