@@ -85,40 +85,45 @@ function getState(session: ActiveSession): PiAgentState | null {
 type CostRates = { input: number; output: number; cacheRead: number; cacheWrite: number };
 const ZERO_COST: CostRates = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
-// Cache keyed by model ID, populated lazily from OpenRouter's /api/v1/models
-let openRouterPricing: Map<string, CostRates> | null = null;
+type OpenRouterModelInfo = { cost: CostRates; contextLength: number };
 
-async function fetchOpenRouterPricing(modelId: string): Promise<CostRates> {
-  if (openRouterPricing) return openRouterPricing.get(modelId) ?? ZERO_COST;
+// Cache keyed by model ID, populated lazily from OpenRouter's /api/v1/models
+let openRouterModelCache: Map<string, OpenRouterModelInfo> | null = null;
+
+async function fetchOpenRouterModelInfo(modelId: string): Promise<OpenRouterModelInfo> {
+  const EMPTY: OpenRouterModelInfo = { cost: ZERO_COST, contextLength: 0 };
+  if (openRouterModelCache) return openRouterModelCache.get(modelId) ?? EMPTY;
 
   try {
     const baseUrl = resolveSecret("OPENROUTER_BASE_URL") ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/models`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json() as { data?: { id: string; pricing?: Record<string, string> }[] };
-    openRouterPricing = new Map();
+    const json = await res.json() as { data?: { id: string; context_length?: number; pricing?: Record<string, string> }[] };
+    openRouterModelCache = new Map();
     for (const m of json.data ?? []) {
-      if (!m.pricing) continue;
       // OpenRouter prices are per-token strings; PI SDK wants per-million-token numbers
-      openRouterPricing.set(m.id, {
-        input: parseFloat(m.pricing.prompt || "0") * 1_000_000,
-        output: parseFloat(m.pricing.completion || "0") * 1_000_000,
-        cacheRead: parseFloat(m.pricing.input_cache_read || "0") * 1_000_000,
-        cacheWrite: parseFloat(m.pricing.input_cache_write || "0") * 1_000_000,
+      openRouterModelCache.set(m.id, {
+        contextLength: m.context_length ?? 0,
+        cost: m.pricing ? {
+          input: parseFloat(m.pricing.prompt || "0") * 1_000_000,
+          output: parseFloat(m.pricing.completion || "0") * 1_000_000,
+          cacheRead: parseFloat(m.pricing.input_cache_read || "0") * 1_000_000,
+          cacheWrite: parseFloat(m.pricing.input_cache_write || "0") * 1_000_000,
+        } : ZERO_COST,
       });
     }
-    console.log(`[pi-agent] Cached OpenRouter pricing for ${openRouterPricing.size} models`);
-    return openRouterPricing.get(modelId) ?? ZERO_COST;
+    console.log(`[pi-agent] Cached OpenRouter model info for ${openRouterModelCache.size} models`);
+    return openRouterModelCache.get(modelId) ?? EMPTY;
   } catch (err) {
-    console.error(`[pi-agent] Failed to fetch OpenRouter pricing:`, err);
-    openRouterPricing = new Map(); // don't retry on failure
-    return ZERO_COST;
+    console.error(`[pi-agent] Failed to fetch OpenRouter model info:`, err);
+    openRouterModelCache = new Map(); // don't retry on failure
+    return EMPTY;
   }
 }
 
 // ── Model Construction ──
 
-function buildModel(provider: PiProviderName, modelId: string, profile?: any, cost?: CostRates): Model<any> {
+function buildModel(provider: PiProviderName, modelId: string, profile?: any, cost?: CostRates, contextLengthFromApi?: number): Model<any> {
   // Known providers: use PI's built-in model registry
   if (provider === "anthropic" || provider === "openai") {
     try {
@@ -167,8 +172,8 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any, co
     reasoning: false,
     input: ["text"],
     cost: cost ?? ZERO_COST,
-    contextWindow: profile?.contextWindow ?? providerDefaults?.contextWindow ?? 32768,
-    maxTokens: profile?.maxOutputTokens ?? providerDefaults?.maxOutputTokens ?? 2048,
+    contextWindow: profile?.contextWindow ?? providerDefaults?.contextWindow ?? contextLengthFromApi ?? 128000,
+    maxTokens: profile?.maxOutputTokens ?? providerDefaults?.maxOutputTokens ?? 8192,
     compat: {
       supportsStore: false,
       supportsDeveloperRole: false,
@@ -528,16 +533,21 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       session.status = "running";
 
       try {
-        const cost = providerName === "openrouter"
-          ? await fetchOpenRouterPricing(modelId)
-          : undefined;
-        const model = buildModel(providerName, modelId, profile, cost);
+        const orInfo = providerName === "openrouter"
+          ? await fetchOpenRouterModelInfo(modelId)
+          : null;
+        const model = buildModel(providerName, modelId, profile, orInfo?.cost, orInfo?.contextLength || undefined);
         const authStorage = buildAuthStorage(providerName);
         const sessionManager = SessionManager.inMemory(cwd);
         const providerDefaults = getGlobalConfig(session.cwd).providerDefaults?.[providerName];
+        // reserveTokens = tokens held back for the model's response before compaction triggers.
+        // Default: match model.maxTokens (output budget), minimum 4096.
+        // This prevents early compaction on large-context models (was 16384 flat, which caused
+        // compaction at 50% fill on 32k-window models).
+        const defaultReserveTokens = Math.max(4096, model.maxTokens ?? 4096);
         const compaction = {
           enabled: profile?.compaction?.enabled ?? providerDefaults?.compaction?.enabled ?? true,
-          reserveTokens: profile?.compaction?.reserveTokens ?? providerDefaults?.compaction?.reserveTokens ?? 16384,
+          reserveTokens: profile?.compaction?.reserveTokens ?? providerDefaults?.compaction?.reserveTokens ?? defaultReserveTokens,
           keepRecentTokens: profile?.compaction?.keepRecentTokens ?? providerDefaults?.compaction?.keepRecentTokens ?? 20000,
         };
         const settingsManager = SettingsManager.inMemory({ compaction });
@@ -763,10 +773,10 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
 
       // Model swap via setModel
       const newModelId = ctx.opts.model || DEFAULT_MODELS[providerName] || "default";
-      const cachedCost = providerName === "openrouter" && openRouterPricing
-        ? openRouterPricing.get(newModelId)
+      const cachedInfo = providerName === "openrouter" && openRouterModelCache
+        ? openRouterModelCache.get(newModelId)
         : undefined;
-      const newModel = buildModel(providerName, newModelId, profileDef, cachedCost);
+      const newModel = buildModel(providerName, newModelId, profileDef, cachedInfo?.cost, cachedInfo?.contextLength || undefined);
       state.agentSession.setModel(newModel);
 
       // System prompt via agent reach-through

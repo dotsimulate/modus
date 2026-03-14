@@ -23,6 +23,59 @@
 }
 .message-image:hover { border-color: var(--border-active); }
 
+.message-artifacts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.message-media-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 520px;
+}
+
+.message-media-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.message-audio,
+.message-video {
+  width: min(100%, 520px);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg)) 88%, transparent);
+}
+
+.message-artifact-text {
+  white-space: pre-wrap;
+  font-size: calc(13px * var(--font-scale, 1));
+  line-height: 1.6;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg)) 86%, transparent);
+  color: var(--text);
+}
+
+.message-artifact-link {
+  display: inline-flex;
+  width: fit-content;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.message-artifact-link:hover {
+  border-bottom-color: var(--accent);
+}
+
 /* ── Image Lightbox ── */
 .lightbox-overlay {
   position: fixed;
@@ -52,4 +105,3 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
-

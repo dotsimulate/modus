@@ -196,6 +196,16 @@ describe("type shapes", () => {
       artifactDir: () => "/tmp/test-action/output/exec-42/run-1",
       artifactPath: (f: string) => `/tmp/test-action/output/exec-42/run-1/${f}`,
       artifact: (n: string) => `/tmp/test-action/output/exec-42/run-1/${n}`,
+      attachArtifact: (opts) => ({
+        id: 1,
+        sessionId: opts.sessionId,
+        seq: opts.seq,
+        name: opts.name,
+        mime: opts.mime,
+        url: `/api/sessions/${opts.sessionId}/artifacts/1`,
+        createdAt: Date.now(),
+        ...(opts.previewText ? { previewText: opts.previewText } : {}),
+      }),
       svgToPngBase64: () => null,
     };
     expect(ctx.attempt).toBe(2);

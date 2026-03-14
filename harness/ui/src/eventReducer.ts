@@ -5,7 +5,10 @@
  * Enables deterministic state reconstruction on reconnect.
  */
 
-import type { AgentConfigState, Message, ToolCall, SubTask, SessionStatus, Attachment, PendingPermission } from "./api";
+import type {
+  AgentConfigState, Message, ToolCall, SubTask, SessionStatus,
+  Attachment, PendingPermission, SessionArtifact,
+} from "./api";
 import { nextMsgId } from "./api";
 
 export type ReducerState = {
@@ -95,6 +98,27 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
 /** Append to streamFeed, keeping a rolling tail of ~500 chars */
 function appendFeed(current: string, text: string): string {
   return (current + " " + text).slice(-500);
+}
+
+function attachArtifactToMessage(
+  messages: Message[],
+  targetSeq: number | undefined,
+  targetMessageUuid: string | undefined,
+  artifact: SessionArtifact,
+): Message[] {
+  const next = [...messages];
+  for (let i = next.length - 1; i >= 0; i--) {
+    const msg = next[i];
+    if (msg.role !== "assistant") continue;
+    const matchesUuid = !!targetMessageUuid && msg.uuid === targetMessageUuid;
+    const matchesSeq = targetSeq != null && msg.seq === targetSeq;
+    if (!matchesUuid && !matchesSeq) continue;
+    const existing = msg.artifacts ?? [];
+    if (existing.some((item) => item.id === artifact.id)) return messages;
+    next[i] = { ...msg, artifacts: [...existing, artifact] };
+    return next;
+  }
+  return messages;
 }
 
 // ── Helpers for sub-agent message nesting ──
@@ -244,6 +268,17 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
     return {
       ...s,
       pendingPermissions: s.pendingPermissions.filter((p) => p.requestId !== m.requestId),
+    };
+  }
+  if (m.subtype === "artifact_attached" && m.artifact) {
+    return {
+      ...s,
+      messages: attachArtifactToMessage(
+        s.messages,
+        typeof m.targetSeq === "number" ? m.targetSeq : undefined,
+        typeof m.targetMessageUuid === "string" ? m.targetMessageUuid : undefined,
+        m.artifact as SessionArtifact,
+      ),
     };
   }
   if (m.subtype === "task_started") {
@@ -439,6 +474,7 @@ function readProviderControls(providerControls: any): AgentConfigState["provider
 function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
   const content = m.message?.content;
   if (!content || !Array.isArray(content)) return s;
+  const messageUuid = typeof m.uuid === "string" ? m.uuid : undefined;
 
   let text = "";
   let thinking = "";
@@ -522,6 +558,7 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
         content: text || last.content,
         thinking: thinking || last.thinking,
         toolCalls: [...(last.toolCalls ?? []), ...toolCalls],
+        ...(messageUuid && !last.uuid ? { uuid: messageUuid } : {}),
         ...(thinkingDuration != null && !last.thinkingDuration && { thinkingDuration }),
       };
     } else {
@@ -529,6 +566,7 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
         id: nextMsgId(),
         role: "assistant",
         content: text,
+        ...(messageUuid ? { uuid: messageUuid } : {}),
         timestamp: ts,
         thinking: thinking || undefined,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,

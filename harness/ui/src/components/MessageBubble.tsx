@@ -1,11 +1,36 @@
 import { memo, useState, useEffect, useRef, type ReactNode } from "react";
 import type { Message, ToolCall } from "../api";
+import { tokenParam } from "../api/_fetch";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
 import { StreamingCursor } from "./StreamingCursor";
 import { formatProviderTokenUsage } from "./providerStats";
 import { CopyMessageButton } from "./CopyMessageButton";
+
+function artifactSrc(url: string): string {
+  const tp = tokenParam();
+  if (!tp) return url;
+  return `${url}?${tp}`;
+}
+
+const _playedArtifacts = new Set<number>();
+
+function AudioArtifact({ artifact }: { artifact: NonNullable<Message["artifacts"]>[number] }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  useEffect(() => {
+    if (ref.current && !_playedArtifacts.has(artifact.id)) {
+      _playedArtifacts.add(artifact.id);
+      ref.current.play().catch(() => {});
+    }
+  }, [artifact.id]);
+  return (
+    <div className="message-media-card">
+      <div className="message-media-label">{artifact.name}</div>
+      <audio ref={ref} className="message-audio" controls preload="auto" src={artifactSrc(artifact.url)} />
+    </div>
+  );
+}
 
 /** Count all tool calls recursively, including sub-agent nested tools */
 function countAllTools(toolCalls?: ToolCall[]): number {
@@ -70,6 +95,61 @@ function formatMeta(meta: Message["meta"], provider?: string): string {
   if (usage) parts.push(usage);
   if (meta.duration != null) parts.push(`${(meta.duration / 1000).toFixed(1)}s`);
   return parts.join("  ");
+}
+
+function renderArtifact(
+  artifact: NonNullable<Message["artifacts"]>[number],
+  openImage: (src: string, alt: string) => void,
+) {
+  if (artifact.mime.startsWith("image/")) {
+    return (
+      <img
+        key={artifact.id}
+        className="message-image"
+        src={artifactSrc(artifact.url)}
+        alt={artifact.name}
+        onClick={() => openImage(artifactSrc(artifact.url), artifact.name)}
+      />
+    );
+  }
+  if (artifact.mime.startsWith("audio/")) {
+    return <AudioArtifact key={artifact.id} artifact={artifact} />;
+  }
+  if (artifact.mime.startsWith("video/")) {
+    return (
+      <div key={artifact.id} className="message-media-card">
+        <div className="message-media-label">{artifact.name}</div>
+        <video className="message-video" controls preload="metadata" src={artifactSrc(artifact.url)} />
+      </div>
+    );
+  }
+  if (artifact.mime === "text/plain" && artifact.previewText) {
+    return (
+      <div key={artifact.id} className="message-media-card">
+        <div className="message-media-label">{artifact.name}</div>
+        <div className="message-artifact-text">{artifact.previewText}</div>
+        <a
+          className="message-artifact-link"
+          href={artifact.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          open artifact
+        </a>
+      </div>
+    );
+  }
+  return (
+    <a
+      key={artifact.id}
+      className="message-artifact-link"
+      href={artifact.url}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {artifact.name}
+    </a>
+  );
 }
 
 
@@ -151,6 +231,15 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
               />
             );
           })}
+        </div>
+      )}
+
+      {msg.artifacts && msg.artifacts.length > 0 && (
+        <div className="message-artifacts">
+          {msg.artifacts.map((artifact) => renderArtifact(
+            artifact,
+            (src, alt) => setLightboxSrc({ src, alt }),
+          ))}
         </div>
       )}
 

@@ -91,6 +91,29 @@ db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, 
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, archived, last_message_at DESC)`);
 
+// ── Session Artifacts (media/files attached to a specific session turn) ──
+db.run(`
+  CREATE TABLE IF NOT EXISTS session_artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    target_message_uuid TEXT,
+    action_name TEXT,
+    action_run_id INTEGER REFERENCES action_runs(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    path TEXT NOT NULL,
+    preview_text TEXT,
+    metadata_json TEXT,
+    created_at INTEGER NOT NULL
+  )
+`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_session_artifacts_session_seq ON session_artifacts(session_id, seq, created_at)`);
+try { db.run(`ALTER TABLE session_artifacts ADD COLUMN target_message_uuid TEXT`); } catch { /* already exists */ }
+try { db.run(`ALTER TABLE session_artifacts ADD COLUMN preview_text TEXT`); } catch { /* already exists */ }
+try { db.run(`ALTER TABLE session_artifacts ADD COLUMN metadata_json TEXT`); } catch { /* already exists */ }
+db.run(`CREATE INDEX IF NOT EXISTS idx_session_artifacts_target_uuid ON session_artifacts(session_id, target_message_uuid, created_at)`);
+
 // ── Action Executions (lifecycle instances — one complete pass through run budget) ──
 db.run(`
   CREATE TABLE IF NOT EXISTS action_executions (
@@ -264,7 +287,38 @@ export type TurnContent = {
   text: string;
   thinking?: string;
   toolCalls?: { name: string; input: Record<string, unknown>; result?: string }[];
+  uuid?: string;
+  artifacts?: SessionArtifactValue[];
   timestamp: number;
+};
+
+export type SessionArtifactRow = {
+  id: number;
+  session_id: string;
+  seq: number;
+  target_message_uuid: string | null;
+  action_name: string | null;
+  action_run_id: number | null;
+  name: string;
+  mime: string;
+  path: string;
+  preview_text: string | null;
+  metadata_json: string | null;
+  created_at: number;
+};
+
+export type SessionArtifactValue = {
+  id: number;
+  sessionId: string;
+  seq: number;
+  targetMessageUuid?: string;
+  name: string;
+  mime: string;
+  url: string;
+  sourceAction?: string;
+  createdAt: number;
+  previewText?: string;
+  metadata?: Record<string, unknown>;
 };
 
 // ── Prepared Statements ──
@@ -379,6 +433,28 @@ const stmts = {
   getNextRunNumber: db.prepare(`
     SELECT COALESCE(MAX(run_number), 0) + 1 AS next
     FROM action_runs WHERE action_name = $action_name
+  `),
+  // Session Artifacts
+  insertSessionArtifact: db.prepare(`
+    INSERT INTO session_artifacts (
+      session_id, seq, target_message_uuid, action_name, action_run_id,
+      name, mime, path, preview_text, metadata_json, created_at
+    )
+    VALUES (
+      $session_id, $seq, $target_message_uuid, $action_name, $action_run_id,
+      $name, $mime, $path, $preview_text, $metadata_json, $created_at
+    )
+  `),
+  getSessionArtifact: db.prepare(`
+    SELECT *
+    FROM session_artifacts
+    WHERE session_id = $session_id AND id = $id
+  `),
+  listSessionArtifacts: db.prepare(`
+    SELECT *
+    FROM session_artifacts
+    WHERE session_id = $session_id
+    ORDER BY created_at ASC, id ASC
   `),
 };
 
@@ -835,6 +911,68 @@ export function clearActionRuns(actionName: string): void {
   db.prepare(`DELETE FROM action_runs WHERE action_name = $name`).run({ $name: actionName });
 }
 
+export function insertSessionArtifact(opts: {
+  sessionId: string;
+  seq: number;
+  targetMessageUuid?: string;
+  actionName?: string;
+  actionRunId?: number | null;
+  name: string;
+  mime: string;
+  path: string;
+  createdAt?: number;
+  previewText?: string;
+  metadata?: Record<string, unknown>;
+}): number {
+  stmts.insertSessionArtifact.run({
+    $session_id: opts.sessionId,
+    $seq: opts.seq,
+    $target_message_uuid: opts.targetMessageUuid ?? null,
+    $action_name: opts.actionName ?? null,
+    $action_run_id: opts.actionRunId ?? null,
+    $name: opts.name,
+    $mime: opts.mime,
+    $path: opts.path,
+    $preview_text: opts.previewText ?? null,
+    $metadata_json: opts.metadata ? JSON.stringify(opts.metadata) : null,
+    $created_at: opts.createdAt ?? Date.now(),
+  });
+  return Number((db.query("SELECT last_insert_rowid() as id").get() as any).id);
+}
+
+export function getSessionArtifact(sessionId: string, id: number): SessionArtifactRow | null {
+  return (stmts.getSessionArtifact.get({ $session_id: sessionId, $id: id }) as SessionArtifactRow | null) ?? null;
+}
+
+function parseArtifactMetadata(raw: string | null): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toSessionArtifactValue(row: SessionArtifactRow): SessionArtifactValue {
+  const metadata = parseArtifactMetadata(row.metadata_json);
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    seq: row.seq,
+    ...(row.target_message_uuid ? { targetMessageUuid: row.target_message_uuid } : {}),
+    name: row.name,
+    mime: row.mime,
+    url: `/api/sessions/${encodeURIComponent(row.session_id)}/artifacts/${row.id}`,
+    ...(row.action_name ? { sourceAction: row.action_name } : {}),
+    createdAt: row.created_at,
+    ...(row.preview_text ? { previewText: row.preview_text } : {}),
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
 // ── Message Content Reconstruction ──
 
 /** Reconstruct structured message content from events for a session.
@@ -846,6 +984,21 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
      ORDER BY seq ASC`
   ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
 
+  const artifactRows = stmts.listSessionArtifacts.all({ $session_id: sessionId }) as SessionArtifactRow[];
+  const artifactsBySeq = new Map<number, SessionArtifactValue[]>();
+  const artifactsByUuid = new Map<string, SessionArtifactValue[]>();
+  for (const row of artifactRows) {
+    const artifact = toSessionArtifactValue(row);
+    const seqArtifacts = artifactsBySeq.get(row.seq) ?? [];
+    seqArtifacts.push(artifact);
+    artifactsBySeq.set(row.seq, seqArtifacts);
+    if (row.target_message_uuid) {
+      const uuidArtifacts = artifactsByUuid.get(row.target_message_uuid) ?? [];
+      uuidArtifacts.push(artifact);
+      artifactsByUuid.set(row.target_message_uuid, uuidArtifacts);
+    }
+  }
+
   const turns: TurnContent[] = [];
   let current: {
     text: string;
@@ -853,6 +1006,7 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
     toolCalls: Map<string, { name: string; input: Record<string, unknown>; result?: string }>;
     seq: number;
     timestamp: number;
+    uuid?: string;
   } | null = null;
 
   for (const evt of events) {
@@ -890,7 +1044,16 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
 
     if (evt.type === "assistant") {
       if (!current) {
-        current = { text: "", thinking: "", toolCalls: new Map(), seq: evt.seq, timestamp: evt.created_at };
+        current = {
+          text: "",
+          thinking: "",
+          toolCalls: new Map(),
+          seq: evt.seq,
+          timestamp: evt.created_at,
+          ...(typeof d.uuid === "string" ? { uuid: d.uuid } : {}),
+        };
+      } else if (!current.uuid && typeof d.uuid === "string") {
+        current.uuid = d.uuid;
       }
       const content = d.message?.content;
       if (Array.isArray(content)) {
@@ -910,6 +1073,7 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
         seq: evt.seq,
         text: current.text,
         timestamp: current.timestamp,
+        ...(current.uuid ? { uuid: current.uuid } : {}),
       };
       if (current.thinking) turn.thinking = current.thinking;
       if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
@@ -925,13 +1089,31 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
       seq: current.seq,
       text: current.text,
       timestamp: current.timestamp,
+      ...(current.uuid ? { uuid: current.uuid } : {}),
     };
     if (current.thinking) turn.thinking = current.thinking;
     if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
     turns.push(turn);
   }
 
-  return turns;
+  return turns.map((turn) => {
+    if (turn.role !== "assistant") return turn;
+    const artifacts: SessionArtifactValue[] = [];
+    const seen = new Set<number>();
+    if (turn.uuid) {
+      for (const artifact of artifactsByUuid.get(turn.uuid) ?? []) {
+        if (seen.has(artifact.id)) continue;
+        seen.add(artifact.id);
+        artifacts.push(artifact);
+      }
+    }
+    for (const artifact of artifactsBySeq.get(turn.seq) ?? []) {
+      if (seen.has(artifact.id)) continue;
+      seen.add(artifact.id);
+      artifacts.push(artifact);
+    }
+    return artifacts.length > 0 ? { ...turn, artifacts } : turn;
+  });
 }
 
 // ── Full-Text Search (FTS5) ──
