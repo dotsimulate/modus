@@ -175,17 +175,6 @@ function getActiveComposerHandle(): ComposerHandle | null {
   return last ?? null;
 }
 
-function toComposerTarget(handle: ComposerHandle | null): ComposerTarget | null {
-  if (!handle) return null;
-  return {
-    getSnapshot: handle.getSnapshot,
-    focus: handle.focus,
-    setDraft: handle.setDraft,
-    insertText: handle.insertText,
-    submit: handle.submit,
-  };
-}
-
 /** Live proxy — re-resolves the handle on every call, survives remounts */
 function toLiveComposerTarget(composerId: string): ComposerTarget {
   return {
