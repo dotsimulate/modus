@@ -506,6 +506,10 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       const modelId = session.model || DEFAULT_MODELS[providerName] || "default";
       const cwd = session.cwd ?? process.cwd();
 
+      // Rekey from temp ses- to a real UUID (PI has no external backend to provide one)
+      const realId = crypto.randomUUID();
+      ctx.rekeySession(realId);
+
       // Provider owns init events — emit user prompt + system init
       ctx.emitEvent({
         type: "user",
@@ -515,7 +519,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       ctx.emitEvent({
         type: "system",
         subtype: "init",
-        session_id: session.sessionId,
+        session_id: realId,
         model: session.model,
         provider: providerName,
         config: {
