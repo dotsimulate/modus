@@ -68,7 +68,8 @@ export function ChatInput({
   value, onChange, onSend, onStop,
   sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated, autoFocus = false,
 }: Props) {
-  const composerId = useId();
+  const autoId = useId();
+  const composerId = sessionId ? `composer:${sessionId}` : autoId;
   const ref = useRef<HTMLTextAreaElement>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
