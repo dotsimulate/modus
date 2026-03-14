@@ -3,6 +3,7 @@ import { basename, extname, join, resolve } from "path";
 import { getResolvedClientExtensionsConfig } from "./profiles";
 
 const PROJECT_EXTENSIONS_DIR = ".modus/ui/extensions";
+const BUILTIN_EXTENSIONS_DIR = join(import.meta.dir, "ui/extensions");
 const EXTENSION_EXTENSIONS = new Set([".js", ".mjs"]);
 
 export type ClientExtensionInfo = {
@@ -50,6 +51,11 @@ export function listClientExtensions(opts?: {
   const disabledIds = new Set(config.disabled ?? []);
 
   const discovered = new Map<string, ClientExtensionInfo>();
+
+  // Built-in harness extensions — always enabled, not configurable
+  for (const extension of listExtensionFiles(BUILTIN_EXTENSIONS_DIR, "project")) {
+    discovered.set(extension.id, extension);
+  }
 
   for (const root of config.paths ?? []) {
     for (const extension of listExtensionFiles(root, "global")) {
