@@ -46,7 +46,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "",
     "**Text** — a 7-stop ramp from `--text` (primary) down to `--text-muted` (near-invisible labels). `--accent` is used for markdown headings, strong text, checkboxes, and the logo — it should be the most prominent non-body color. Keep the ramp legible; do not collapse stops together.",
     "",
-    "**Status** — `--success` runs sessions and connected dots. `--warning` colors running tools, in-progress todo items, the login field hover/focus glow, and schedule dots. `--error` colors the stop button and login errors. These carry functional meaning — keep them readable and distinct from each other.",
+    "**Status** — `--success` runs sessions and connected dots. `--warning` colors running tools, in-progress todo items, the login field hover/focus glow, and schedule dots. `--error` colors the stop button and login errors. These carry functional meaning — keep them readable and distinct from each other. **Do NOT default `--warning` to amber or orange.** Choose a color that fits this theme's palette while remaining visually distinct from `--success` and `--error`.",
     "",
     "**Dots** — `--dot-running`, `--dot-idle`, `--dot-done`, `--dot-error`, `--dot-connected` — small 6px status indicators on session items and the status bar.",
     "",

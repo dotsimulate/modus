@@ -25,9 +25,9 @@
   border-radius: 8px;
   background: linear-gradient(
     105deg,
-    rgba(255, 255, 255, 0.08) 0%,
-    rgba(255, 255, 255, 0.04) 50%,
-    rgba(255, 255, 255, 0.015) 100%
+    color-mix(in srgb, var(--accent) 8%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 1.5%, transparent) 100%
   );
   pointer-events: none;
 }
