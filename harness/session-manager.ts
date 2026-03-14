@@ -19,7 +19,7 @@
 import {
   upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
   copyEventsToSession, findAssistantUuid, clearBranchFields,
-  addSessionTag, parseTags,
+  addSessionTag, parseTags, getMaxSeq, insertSessionArtifact,
 } from "./db";
 import { logActivity } from "./activity";
 import { resolve as resolvePath } from "path";
@@ -50,6 +50,20 @@ export type ImageAttachment = {
   mediaType: string;
   data: string;
   name?: string;
+};
+
+export type SessionArtifactRef = {
+  id: number;
+  sessionId: string;
+  seq: number;
+  targetMessageUuid?: string;
+  name: string;
+  mime: string;
+  url: string;
+  sourceAction?: string;
+  createdAt: number;
+  previewText?: string;
+  metadata?: Record<string, unknown>;
 };
 
 /** Content can be a plain string or structured content blocks (for images) */
@@ -221,6 +235,8 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
               preview: session.preview, title: dbRow?.title,
               messageCount: persistedMessageCount,
               lastResponse: updates.lastResponse,
+              assistantSeq: session.seq,
+              assistantMessageUuid: findAssistantUuid(session.sessionId, session.seq) ?? undefined,
             },
           );
         } catch (err) {
@@ -316,6 +332,68 @@ function broadcastEventToSession(session: ActiveSession, event: any, seq = sessi
   for (const sub of session.subscribers) {
     try { sub.write(event.type, data, seqStr); } catch { session.subscribers.delete(sub); }
   }
+}
+
+export function attachArtifactToSession(opts: {
+  sessionId: string;
+  seq: number;
+  targetMessageUuid?: string;
+  path: string;
+  name: string;
+  mime: string;
+  actionName?: string;
+  actionRunId?: number;
+  previewText?: string;
+  metadata?: Record<string, unknown>;
+}): SessionArtifactRef {
+  const createdAt = Date.now();
+  const artifactId = insertSessionArtifact({
+    sessionId: opts.sessionId,
+    seq: opts.seq,
+    targetMessageUuid: opts.targetMessageUuid,
+    actionName: opts.actionName,
+    actionRunId: opts.actionRunId,
+    name: opts.name,
+    mime: opts.mime,
+    path: opts.path,
+    createdAt,
+    previewText: opts.previewText,
+    metadata: opts.metadata,
+  });
+
+  const artifact: SessionArtifactRef = {
+    id: artifactId,
+    sessionId: opts.sessionId,
+    seq: opts.seq,
+    ...(opts.targetMessageUuid ? { targetMessageUuid: opts.targetMessageUuid } : {}),
+    name: opts.name,
+    mime: opts.mime,
+    url: `/api/sessions/${encodeURIComponent(opts.sessionId)}/artifacts/${artifactId}`,
+    ...(opts.actionName ? { sourceAction: opts.actionName } : {}),
+    createdAt,
+    ...(opts.previewText ? { previewText: opts.previewText } : {}),
+    ...(opts.metadata ? { metadata: opts.metadata } : {}),
+  };
+
+  const event = {
+    type: "system",
+    subtype: "artifact_attached",
+    targetSeq: opts.seq,
+    ...(opts.targetMessageUuid ? { targetMessageUuid: opts.targetMessageUuid } : {}),
+    artifact,
+  };
+
+  const nextSeq = getMaxSeq(opts.sessionId) + 1;
+  addEvent(opts.sessionId, nextSeq, "system", "artifact_attached", JSON.stringify(event));
+
+  const active = activeSessions.get(opts.sessionId);
+  if (active) {
+    active.seq = Math.max(active.seq, nextSeq);
+    active.lastEventAt = createdAt;
+    broadcastEventToSession(active, event, nextSeq);
+  }
+
+  return artifact;
 }
 
 export function startSession(opts: StartSessionOpts): ActiveSession {

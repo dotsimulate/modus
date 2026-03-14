@@ -25,11 +25,14 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join } from "path";
 import { getAllUserProfiles } from "./profiles";
-import { startSession, getActiveSession, switchProfile, queueMessage, type ActiveSession } from "./session-manager";
+import {
+  startSession, getActiveSession, switchProfile, queueMessage,
+  attachArtifactToSession, type ActiveSession,
+} from "./session-manager";
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
   getRunSummaries as dbGetRunSummaries, getNextRunNumber, getSession,
-  listSessions, getEvents, searchSessions,
+  listSessions, getEvents, searchSessions, getSessionMessages as dbGetSessionMessages,
   insertExecution, updateExecution as dbUpdateExecution,
   updateSessionTitle, addSessionTag, removeSessionTag,
 } from "./db";
@@ -405,6 +408,7 @@ function buildActionDB(actionName: string): ActionDB {
     getSession: (id) => { const s = getSession(id); return s ? mapSession(s) : null; },
     searchSessions: (query, limit = 20) => searchSessions(query, limit).map(mapSearchHit),
     getEvents: (sessionId, afterSeq = 0) => getEvents(sessionId, afterSeq).map(mapEvent),
+    getSessionMessages: (sessionId) => dbGetSessionMessages(sessionId),
     updateSessionTitle,
     addSessionTag,
     removeSessionTag,
@@ -542,6 +546,20 @@ async function fireAction(
           const spec = cfg.artifacts?.find(a => a.name === artifactName);
           if (!spec) throw new Error(`No artifact "${artifactName}" declared in action.json for "${name}"`);
           return join(ctx.artifactDir(), artifactName + mimeToExtension(spec.mime));
+        },
+        attachArtifact(opts) {
+          return attachArtifactToSession({
+            sessionId: opts.sessionId,
+            seq: opts.seq,
+            targetMessageUuid: opts.targetMessageUuid,
+            path: opts.path,
+            name: opts.name,
+            mime: opts.mime,
+            previewText: opts.previewText,
+            metadata: opts.metadata,
+            actionName: name,
+            actionRunId: runId ?? undefined,
+          });
         },
         svgToPngBase64,
       };
@@ -1204,6 +1222,8 @@ export function onSessionEvent(
     title?: string | null;
     messageCount: number;
     lastResponse?: string;
+    assistantSeq?: number;
+    assistantMessageUuid?: string;
   },
 ): void {
   for (const [name, state] of actionStates) {
@@ -1248,6 +1268,8 @@ export function onSessionEvent(
       round,
       role,
       lastResponse: session.lastResponse,
+      assistantSeq: session.assistantSeq,
+      assistantMessageUuid: session.assistantMessageUuid,
     };
 
     const triggerInfo: TriggerInfo = { type: "session", payload };

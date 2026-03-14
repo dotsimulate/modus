@@ -159,6 +159,10 @@ export type SessionTriggerPayload = {
   role: "user" | "assistant";
   /** Truncated last assistant response (available on assistant round end triggers) */
   lastResponse?: string;
+  /** Exact assistant turn seq when available (assistant round end triggers) */
+  assistantSeq?: number;
+  /** Stable assistant message UUID when the provider supplies one */
+  assistantMessageUuid?: string;
 };
 
 export type TriggerInfo = {
@@ -205,6 +209,29 @@ export interface ActionContext {
    *  Derives extension from the artifact spec's mime type. Only works when
    *  `artifacts` is declared in action.json — throws if name not found. */
   artifact(name: string): string;
+  /** Attach an already-written artifact file to a specific session turn. */
+  attachArtifact(opts: {
+    sessionId: string;
+    seq: number;
+    targetMessageUuid?: string;
+    path: string;
+    name: string;
+    mime: string;
+    previewText?: string;
+    metadata?: Record<string, unknown>;
+  }): {
+    id: number;
+    sessionId: string;
+    seq: number;
+    targetMessageUuid?: string;
+    name: string;
+    mime: string;
+    url: string;
+    sourceAction?: string;
+    createdAt: number;
+    previewText?: string;
+    metadata?: Record<string, unknown>;
+  };
 
   // ── Utilities ──
   /** Render an SVG file to a base64-encoded PNG string. Returns null on failure. */
@@ -275,6 +302,8 @@ export interface ActionDB {
   searchSessions(query: string, limit?: number): SearchResult[];
   /** Get events for a session (optionally after a sequence number) */
   getEvents(sessionId: string, afterSeq?: number): EventInfo[];
+  /** Reconstructed user/assistant turns with text, thinking, and tool calls */
+  getSessionMessages(sessionId: string): SessionTurn[];
 
   // ── Session mutations ──
 
@@ -355,6 +384,29 @@ export interface EventInfo {
   subtype: string | null;
   data: string;
   createdAt: number;
+}
+
+export interface SessionTurn {
+  role: "user" | "assistant";
+  seq: number;
+  text: string;
+  thinking?: string;
+  toolCalls?: { name: string; input: Record<string, unknown>; result?: string }[];
+  uuid?: string;
+  artifacts?: Array<{
+    id: number;
+    sessionId: string;
+    seq: number;
+    targetMessageUuid?: string;
+    name: string;
+    mime: string;
+    url: string;
+    createdAt: number;
+    previewText?: string;
+    metadata?: Record<string, unknown>;
+    sourceAction?: string;
+  }>;
+  timestamp: number;
 }
 
 /** Runtime state per execution (in-memory, tracks one lifecycle instance) */

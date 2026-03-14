@@ -35,6 +35,20 @@ export type Attachment = {
   name?: string;     // original filename if available
 };
 
+export type SessionArtifact = {
+  id: number;
+  sessionId: string;
+  seq: number;
+  targetMessageUuid?: string;
+  name: string;
+  mime: string;
+  url: string;
+  sourceAction?: string;
+  createdAt: number;
+  previewText?: string;
+  metadata?: Record<string, unknown>;
+};
+
 // ── Messages ──
 
 let _msgId = 0;
@@ -44,10 +58,12 @@ export type Message = {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
+  uuid?: string;
   thinking?: string;
   thinkingDuration?: number;
   toolCalls?: ToolCall[];
   attachments?: Attachment[];
+  artifacts?: SessionArtifact[];
   /** Event seq (user prompt or result event) — used as branch point */
   seq?: number;
   /** Epoch ms timestamp from the event's created_at */

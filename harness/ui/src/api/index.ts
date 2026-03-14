@@ -78,7 +78,7 @@ export type { ProviderUsageAnalytics, ProviderUsageDaily, ProviderUsageTotal, Mo
 
 // All types
 export type {
-  ToolCall, SubTask, Attachment, Message, PendingPermission, SessionStatus, Session, AgentConfigState,
+  ToolCall, SubTask, Attachment, SessionArtifact, Message, PendingPermission, SessionStatus, Session, AgentConfigState,
   McpServerConfig, ProfileUi, Profile, GlobalConfig,
   ProviderCapabilities, ProviderToolGroup,
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo, CommitAttribution, CommitAttributionReason,

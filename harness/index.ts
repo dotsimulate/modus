@@ -43,7 +43,7 @@ import {
   getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
   getProviderUsageAnalytics,
-  getSessionMessages,
+  getSessionMessages, getSessionArtifact,
 } from "./db";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
@@ -630,6 +630,24 @@ app.get("/api/sessions/:id/messages-content", (c) => {
   return c.json(messages);
 });
 
+app.get("/api/sessions/:id/artifacts/:artifactId", async (c) => {
+  const sessionId = c.req.param("id");
+  const artifactId = Number(c.req.param("artifactId"));
+  if (!Number.isFinite(artifactId) || artifactId <= 0) {
+    return c.json({ error: "invalid artifact id" }, 400);
+  }
+  const artifact = getSessionArtifact(sessionId, artifactId);
+  if (!artifact) return c.json({ error: "artifact not found" }, 404);
+  const file = Bun.file(artifact.path);
+  if (!(await file.exists())) return c.json({ error: "artifact file not found" }, 404);
+  return new Response(file, {
+    headers: {
+      "Content-Type": artifact.mime,
+      "Cache-Control": "no-store",
+    },
+  });
+});
+
 // Queue a message into a running/idle session
 app.post("/api/sessions/:id/messages", async (c) => {
   const id = c.req.param("id");
@@ -1146,7 +1164,22 @@ app.post("/api/whisper/transcribe", async (c) => {
     }
 
     const parsed = upstreamText ? JSON.parse(upstreamText) : {};
-    const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
+
+    // Filter segments by no_speech_prob to suppress noise hallucinations.
+    // Whisper's verbose_json includes per-segment confidence — segments with
+    // high no_speech_prob are silence/noise that Whisper invented text for.
+    const NO_SPEECH_THRESHOLD = 0.6;
+    let text: string;
+    if (Array.isArray(parsed?.segments) && parsed.segments.length > 0) {
+      text = parsed.segments
+        .filter((seg: any) => (seg.no_speech_prob ?? 0) < NO_SPEECH_THRESHOLD)
+        .map((seg: any) => seg.text)
+        .join("")
+        .trim();
+    } else {
+      text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
+    }
+
     return c.json({ text });
   } catch (err: any) {
     console.error("[whisper/transcribe]", err);

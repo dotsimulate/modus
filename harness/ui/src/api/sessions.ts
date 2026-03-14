@@ -241,6 +241,20 @@ export type TurnContent = {
   text: string;
   thinking?: string;
   toolCalls?: { name: string; input: Record<string, unknown>; result?: string }[];
+  uuid?: string;
+  artifacts?: Array<{
+    id: number;
+    sessionId: string;
+    seq: number;
+    targetMessageUuid?: string;
+    name: string;
+    mime: string;
+    url: string;
+    sourceAction?: string;
+    createdAt: number;
+    previewText?: string;
+    metadata?: Record<string, unknown>;
+  }>;
   timestamp: number;
 };
 

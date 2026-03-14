@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Extensions (third-party cloned repos, local installs)
+extensions/
+
 # Python
 __pycache__/
 *.py[oc]
