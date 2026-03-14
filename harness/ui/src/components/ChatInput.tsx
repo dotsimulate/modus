@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useId } from "react";
 import type { SessionStatus, Attachment } from "../api";
 import type { ActivateMoveResult } from "../api";
 import { PromptPicker } from "./PromptPicker";
+import { activateComposer, registerComposer, useComposerActions } from "../client-extensions";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
 const sentHistory: string[] = [];
@@ -12,7 +13,7 @@ const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/web
 type Props = {
   value: string;
   onChange: (value: string) => void;
-  onSend: (attachments: Attachment[]) => void;
+  onSend: (attachments: Attachment[], textOverride?: string) => void;
   onStop: () => void;
   sessionStatus: SessionStatus | null;
   disabled: boolean;
@@ -38,11 +39,44 @@ function fileToBase64(file: File): Promise<{ data: string; mediaType: string; na
   });
 }
 
+function ComposerActionIcon({ icon }: { icon?: "mic" }) {
+  if (icon === "mic") {
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <path
+          d="M7 1.75a2 2 0 0 0-2 2v3.5a2 2 0 1 0 4 0v-3.5a2 2 0 0 0-2-2Z"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M3.75 6.75a3.25 3.25 0 0 0 6.5 0M7 10.5v1.75M5.25 12.25h3.5"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return null;
+}
+
 export function ChatInput({
   value, onChange, onSend, onStop,
   sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated, autoFocus = false,
 }: Props) {
+  const composerId = useId();
   const ref = useRef<HTMLTextAreaElement>(null);
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  const sessionIdRef = useRef(sessionId);
+  const projectCwdRef = useRef(projectCwd);
+  const userProfileRef = useRef(userProfile);
+  const handleSendRef = useRef<(textOverride?: string) => void>(() => {});
+  const composerActions = useComposerActions(composerId);
   const historyIndex = useRef(-1);
   const draft = useRef("");
   const isActive = sessionStatus === "running" || sessionStatus === "starting";
@@ -55,6 +89,14 @@ export function ChatInput({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const dragCounter = useRef(0);
+
+  useEffect(() => {
+    valueRef.current = value;
+    onChangeRef.current = onChange;
+    sessionIdRef.current = sessionId;
+    projectCwdRef.current = projectCwd;
+    userProfileRef.current = userProfile;
+  }, [onChange, projectCwd, sessionId, userProfile, value]);
 
   useEffect(() => {
     const ta = ref.current;
@@ -70,6 +112,41 @@ export function ChatInput({
       ref.current.focus();
     }
   }, [autoFocus, disabled, sessionId]);
+
+  useEffect(() => {
+    return registerComposer({
+      id: composerId,
+      getSnapshot: () => ({
+        sessionId: sessionIdRef.current,
+        cwd: projectCwdRef.current,
+        userProfile: userProfileRef.current,
+        draft: valueRef.current,
+      }),
+      focus: () => ref.current?.focus(),
+      setDraft: (text: string) => {
+        onChangeRef.current(text);
+      },
+      insertText: (text: string) => {
+        const ta = ref.current;
+        const current = valueRef.current;
+        if (!ta) {
+          onChangeRef.current(current + text);
+          return;
+        }
+        const start = ta.selectionStart ?? current.length;
+        const end = ta.selectionEnd ?? current.length;
+        onChangeRef.current(current.slice(0, start) + text + current.slice(end));
+        requestAnimationFrame(() => {
+          ta.focus();
+          const pos = start + text.length;
+          ta.setSelectionRange(pos, pos);
+        });
+      },
+      submit: (text?: string) => {
+        handleSendRef.current(text);
+      },
+    });
+  }, [composerId]);
 
   // Global Escape to stop — works regardless of focus, but not when picker is open
   useEffect(() => {
@@ -158,8 +235,8 @@ export function ChatInput({
 
   // ── Send ──
 
-  const handleSend = () => {
-    const text = value.trim();
+  function handleSend(textOverride?: string) {
+    const text = (textOverride ?? value).trim();
     if (!text && attachments.length === 0) return;
     if (text) {
       sentHistory.push(text);
@@ -167,9 +244,11 @@ export function ChatInput({
       historyIndex.current = -1;
       draft.current = "";
     }
-    onSend(attachments);
+    onSend(attachments, text);
     setAttachments([]);
-  };
+  }
+
+  handleSendRef.current = handleSend;
 
   // Catch "/" via beforeinput — works even when keyDown doesn't fire (IME, dead keys, etc.)
   const handleBeforeInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
@@ -227,6 +306,7 @@ export function ChatInput({
   };
 
   const hasContent = value.trim() || attachments.length > 0;
+  const composerStatuses = composerActions.filter((action) => action.status?.label);
 
   return (
     <div
@@ -271,6 +351,7 @@ export function ChatInput({
             onKeyDown={handleKeyDown}
             onBeforeInput={handleBeforeInput}
             onPaste={handlePaste}
+            onFocus={() => activateComposer(composerId)}
             rows={1}
             disabled={disabled}
           />
@@ -305,19 +386,52 @@ export function ChatInput({
               }}
             />
           </div>
-          {isActive ? (
-            <button className="stop-btn" onClick={onStop}>
-              stop
-            </button>
-          ) : (
-            <button
-              className="send-btn"
-              onClick={handleSend}
-              disabled={!hasContent || disabled}
-            >
-              send
-            </button>
-          )}
+          <div className="chat-controls">
+            {composerStatuses.length > 0 && (
+              <div className="composer-status-row">
+                {composerStatuses.map((action) => (
+                  <span
+                    key={`${action.key}:status`}
+                    className={`composer-status composer-status--${action.status?.tone ?? "default"}`}
+                  >
+                    {action.status?.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="composer-button-row">
+              {composerActions.map((action) => (
+                <button
+                  key={action.key}
+                  type="button"
+                  className={`composer-action-btn${action.label ? "" : " composer-action-btn--icon"}`}
+                  onClick={() => {
+                    void action.perform();
+                  }}
+                  disabled={disabled || action.disabled}
+                  title={action.title ?? action.label ?? action.extensionId}
+                  aria-label={action.title ?? action.label ?? action.extensionId}
+                >
+                  <ComposerActionIcon icon={action.icon} />
+                  {action.label ? <span>{action.label}</span> : null}
+                </button>
+              ))}
+              {isActive ? (
+                <button className="stop-btn" type="button" onClick={onStop}>
+                  stop
+                </button>
+              ) : (
+                <button
+                  className="send-btn"
+                  type="button"
+                  onClick={handleSend}
+                  disabled={!hasContent || disabled}
+                >
+                  send
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

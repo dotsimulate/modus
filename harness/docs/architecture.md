@@ -1,9 +1,9 @@
 ---
 title: MO Architecture
 audience: agents
-lastUpdated: 2026-03-12
-lastCommit: 786a447
-covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/ui/src/
+lastUpdated: 2026-03-13
+lastCommit: bae0487
+covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
 
 # MO Architecture
@@ -32,6 +32,7 @@ agent_dev_zone/
     secrets.ts             # API key isolation + PIN auth
     init.ts                # Project initialization (.modus/ scaffolding)
     project-ui.ts          # Theme/font registry and activation
+    client-extensions.ts   # Client extension discovery + precedence
     providers/             # Execution backends (see providers doc)
       registry.ts          # Provider name → implementation mapping
       types.ts             # SessionProvider interface + TurnContext
@@ -61,6 +62,7 @@ agent_dev_zone/
       src/
         api/               # API client modules (one per domain)
         components/        # React components
+        client-extensions.ts  # Frontend runtime for browser-side extensions
         providers/         # React context providers
         styles/            # CSS (see styling doc)
         hooks/             # Custom React hooks
@@ -76,6 +78,7 @@ agent_dev_zone/
     moves/                 # User-invoked structured operations
     memory/                # Project-scoped agent memory
     ui/                    # Theme and font assets
+      extensions/          # Project-local browser extension modules
   agent_memory/            # Agent memory MCP server (Python/uv)
   .claude/                 # Claude Code config + skills
 ```
@@ -136,6 +139,7 @@ Key route groups:
 - `/api/user-profiles/*` — User profile CRUD + state
 - `/api/sessions/*` — Session lifecycle, events SSE, messages, branching
 - `/api/actions/*` — Action config, executions, triggers
+- `/api/client-extensions*` — Client extension manifest + module serving
 - `/api/ui/*` — Theme/font registry, activation
 - `/api/providers/*` — Provider listing, model discovery
 - `/api/projects/*` — Project registry
@@ -164,6 +168,7 @@ decisions:
 - SSE subscription per active session for real-time events
 - Event reducer transforms raw SDK events into renderable message structure
 - ProfileProvider manages user profile selection and scoped visibility
+- ClientExtensionsBoot fetches and loads enabled browser-side extension modules
 
 ### View Registry
 
@@ -208,4 +213,5 @@ button re-centers the view on the newest session.
 - [Actions](./actions.md) — automation: triggers, cycles, verify, artifacts
 - [Moves](./moves.md) — user-invoked structured operations via modus_submit
 - [Project UI](./project-ui.md) — theme/font system in .modus/ui/
+- [Client Extensions](./client-extensions.md) — browser-side extension discovery and runtime API
 - [PI Agent](./pi-agent-system.md) — the multi-provider lightweight agent

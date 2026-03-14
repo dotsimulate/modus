@@ -45,6 +45,9 @@ export {
   activateProjectThemeApi, activateProjectFontApi,
 } from "./ui";
 
+// Client extensions
+export { fetchClientExtensions } from "./client-extensions";
+
 // Memories
 export { fetchMemories } from "./memories";
 
@@ -81,6 +84,7 @@ export type {
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo, CommitAttribution, CommitAttributionReason,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,
   UserProfileState, UserProfile, ProjectUiAssetInfo, ActiveProjectUiAsset, ProjectUiState, MemoryItem,
+  ClientExtensionManifestItem,
   ActionTrigger, ActionInfo, ActionRun,
   GitStatus, GitCommit, DiffLine, DiffHunk, FileDiff, GitCommitDetail,
   EventStreamCallbacks,

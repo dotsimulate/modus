@@ -25,6 +25,7 @@ import { FileViewerProvider } from "./providers/FileViewerProvider";
 import { SessionWindow } from "./components/SessionWindow";
 import { SessionWeb } from "./components/SessionWeb";
 import { TraceView } from "./components/TraceView";
+import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
 function parseTagList(raw?: string | null): string[] {
@@ -43,6 +44,7 @@ function App() {
       <ProfileProvider>
         <SessionProvider>
           <FileViewerProvider>
+            <ClientExtensionsBoot />
             <AppShell />
           </FileViewerProvider>
         </SessionProvider>
