@@ -361,7 +361,9 @@
 .web-session-node--error { border-color: rgba(255, 51, 51, 0.25); }
 
 .web-node--selected {
-  border-color: var(--border-active);
+  border-color: var(--info) !important;
+  border-width: 2px !important;
+  box-shadow: 0 0 0 2px rgba(80, 144, 255, 0.25), 0 1px 8px rgba(0, 0, 0, 0.3);
 }
 .web-node--selected::before {
   content: "";
@@ -369,7 +371,12 @@
   inset: 0;
   border-radius: 3px;
   pointer-events: none;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, transparent 60%);
+  background: linear-gradient(135deg, rgba(80, 144, 255, 0.06) 0%, transparent 60%);
+}
+
+.web-node--neighbor {
+  border-color: rgba(80, 144, 255, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(80, 144, 255, 0.08);
 }
 
 .web-session-top {
@@ -447,7 +454,7 @@
   height: 32px;
   width: 180px;
   border-radius: 3px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-surface);
   border: 1px solid var(--text-muted);
   border-style: dashed;
   cursor: pointer;
@@ -492,7 +499,7 @@
   height: 30px;
   width: 200px;
   border-radius: 3px;
-  background: transparent;
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   cursor: pointer;
   z-index: 1;
@@ -534,14 +541,14 @@
 
 .web-detail {
   position: absolute;
-  top: 16px;
+  top: 56px;
   right: 16px;
   width: 280px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 14px 16px;
-  z-index: 10;
+  z-index: 12;
   font-family: var(--font-mono);
   display: flex;
   flex-direction: column;
@@ -938,10 +945,20 @@
 }
 
 .web-mm-viewport {
-  fill: none;
-  stroke: var(--text-dim);
-  stroke-width: 1;
-  opacity: 0.6;
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: var(--text);
+  stroke-width: 1.5;
+  opacity: 0.9;
+}
+
+.web-mm-selected {
+  fill: var(--info);
+  opacity: 1;
+}
+
+.web-mm-pin {
+  fill: var(--warning);
+  opacity: 0.85;
 }
 
 /* ── Day HUD ── */
@@ -972,6 +989,68 @@
 .web-day-hud-stats {
   font-size: 9px;
   color: var(--text-muted);
+}
+
+/* ── Lasso Selection ── */
+
+.web-lasso {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.03);
+  pointer-events: none;
+  z-index: 8;
+  border-radius: 2px;
+}
+
+/* ── Minimap Toolbar Tags ── */
+
+.web-mm-tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.web-toolbar-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 4px 2px 7px;
+  cursor: pointer;
+  background: none;
+  transition: color 0.1s ease, border-color 0.1s ease;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.web-toolbar-tag:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-active);
+}
+
+.web-toolbar-tag-x {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.1s ease;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+}
+
+.web-toolbar-tag-x:hover {
+  color: var(--error);
 }
 
 /* ── Delegation Edges (mission transfers) ── */

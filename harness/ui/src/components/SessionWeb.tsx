@@ -41,6 +41,7 @@ import { solveLayout } from "./SessionWebSolver";
 
 type Viewport = { x: number; y: number; scale: number };
 type CullingState = { left: number; top: number; right: number; bottom: number; scale: number };
+type MinimapTag = { id: string; label: string; x: number; y: number };
 
 // ── Node dimension helper ──
 
@@ -119,16 +120,8 @@ function EdgePath({ from, to, type, lane = 0 }: {
     return <path d={d} className={cls} />;
   }
 
-  // Handoff — smooth bezier
-  const dx = p2.x - p1.x, dy = p2.y - p1.y;
-  const dist = Math.hypot(dx, dy);
-  const cp = Math.min(Math.max(dist * 0.35, 20), dist * 0.45);
-  if (Math.abs(dx) > Math.abs(dy)) {
-    const d = `M ${p1.x} ${p1.y} C ${p1.x + (dx > 0 ? cp : -cp)} ${p1.y}, ${p2.x - (dx > 0 ? cp : -cp)} ${p2.y}, ${p2.x} ${p2.y}`;
-    return <path d={d} className="web-edge web-edge--handoff" />;
-  }
-  const d = `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + (dy > 0 ? cp : -cp)}, ${p2.x} ${p2.y - (dy > 0 ? cp : -cp)}, ${p2.x} ${p2.y}`;
-  return <path d={d} className="web-edge web-edge--handoff" />;
+  // Handoff — straight line
+  return <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} className="web-edge web-edge--handoff" />;
 }
 
 // ── Mission Filter Panel ──
@@ -390,12 +383,13 @@ function ContextMenu({ x, y, onArchive, onClose }: {
 // These only re-render when their own props change.
 // Viewport pan/zoom does NOT touch these — that's the perf win.
 
-const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isDragging, touchCounts, onSelect, onOpen, onDragStart, onContextMenu, onHover, onNodeTouchEnd }: {
+const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isNeighbor, isDragging, touchCounts, onSelect, onOpen, onDragStart, onContextMenu, onHover, onNodeTouchEnd }: {
   node: GraphNode;
   isSelected: boolean;
+  isNeighbor: boolean;
   isDragging: boolean;
   touchCounts: { reads: number; edits: number } | undefined;
-  onSelect: (node: GraphNode) => void;
+  onSelect: (node: GraphNode, e: React.MouseEvent) => void;
   onOpen: (sessionId: string) => void;
   onDragStart: (e: React.MouseEvent, nodeId: string) => void;
   onContextMenu: (e: React.MouseEvent, sessionId: string) => void;
@@ -406,9 +400,9 @@ const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isDragging
   const statusClass = s.status === "running" ? "running" : s.status === "error" ? "error" : "done";
   return (
     <div
-      className={`web-session-node web-session-node--${statusClass}${isSelected ? " web-node--selected" : ""}${isDragging ? " web-session-node--dragging" : ""}`}
+      className={`web-session-node web-session-node--${statusClass}${isSelected ? " web-node--selected" : ""}${!isSelected && isNeighbor ? " web-node--neighbor" : ""}${isDragging ? " web-session-node--dragging" : ""}`}
       style={{ left: node.x, top: node.y }}
-      onClick={() => onSelect(node)}
+      onClick={(e) => onSelect(node, e)}
       onDoubleClick={() => onOpen(s.id)}
       onTouchEnd={() => onNodeTouchEnd(node.id, () => onOpen(s.id))}
       onMouseDown={(e) => onDragStart(e, node.id)}
@@ -440,18 +434,20 @@ const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isDragging
   );
 });
 
-const CommitNodeEl = memo(function CommitNodeEl({ node, isSelected, onSelect, onHover }: {
+const CommitNodeEl = memo(function CommitNodeEl({ node, isSelected, isNeighbor, onSelect, onHover }: {
   node: GraphNode;
   isSelected: boolean;
-  onSelect: (node: GraphNode) => void;
+  isNeighbor: boolean;
+  onSelect: (node: GraphNode, e: React.MouseEvent) => void;
   onHover: (id: string | null) => void;
 }) {
   const c = node.commit!;
   return (
     <div
-      className={`web-commit-node${isSelected ? " web-node--selected" : ""}`}
+      className={`web-commit-node${isSelected ? " web-node--selected" : ""}${!isSelected && isNeighbor ? " web-node--neighbor" : ""}`}
       style={{ left: node.x, top: node.y }}
-      onClick={() => onSelect(node)}
+      onClick={(e) => onSelect(node, e)}
+      onMouseDown={(e) => e.stopPropagation()}
       onMouseEnter={() => onHover(node.id)}
       onMouseLeave={() => onHover(null)}
       title={c.message}
@@ -462,10 +458,11 @@ const CommitNodeEl = memo(function CommitNodeEl({ node, isSelected, onSelect, on
   );
 });
 
-const DocNodeEl = memo(function DocNodeEl({ node, isSelected, onSelect, onOpenFile, onHover, onNodeTouchEnd }: {
+const DocNodeEl = memo(function DocNodeEl({ node, isSelected, isNeighbor, onSelect, onOpenFile, onHover, onNodeTouchEnd }: {
   node: GraphNode;
   isSelected: boolean;
-  onSelect: (node: GraphNode) => void;
+  isNeighbor: boolean;
+  onSelect: (node: GraphNode, e: React.MouseEvent) => void;
   onOpenFile: (path: string) => void;
   onHover: (id: string | null) => void;
   onNodeTouchEnd: (nodeId: string, doubleAction: () => void) => void;
@@ -473,11 +470,12 @@ const DocNodeEl = memo(function DocNodeEl({ node, isSelected, onSelect, onOpenFi
   const d = node.doc!;
   return (
     <div
-      className={`web-doc-node${isSelected ? " web-node--selected" : ""}`}
+      className={`web-doc-node${isSelected ? " web-node--selected" : ""}${!isSelected && isNeighbor ? " web-node--neighbor" : ""}`}
       style={{ left: node.x, top: node.y }}
-      onClick={() => onSelect(node)}
+      onClick={(e) => onSelect(node, e)}
       onDoubleClick={() => onOpenFile(d.path)}
       onTouchEnd={() => onNodeTouchEnd(node.id, () => onOpenFile(d.path))}
+      onMouseDown={(e) => e.stopPropagation()}
       onMouseEnter={() => onHover(node.id)}
       onMouseLeave={() => onHover(null)}
       title={d.path}
@@ -506,8 +504,13 @@ export function SessionWeb() {
   const [loading, setLoading] = useState(true);
 
   // ── UI state ──
-  const [selected, setSelected] = useState<GraphNode | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [lassoRect, setLassoRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [minimapTags, setMinimapTags] = useState<MinimapTag[]>(() => {
+    try { return JSON.parse(localStorage.getItem(`web-mm-tags-${profileName}`) ?? "[]"); }
+    catch { return []; }
+  });
   const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
   const [miniSessionId, setMiniSessionId] = useState<string | null>(null);
   const [config, setConfig] = useState<WebLayoutConfig>(() => loadConfig());
@@ -555,9 +558,12 @@ export function SessionWeb() {
   const lastTapRef = useRef<{ id: string; time: number } | null>(null);
   const nodeDragRef = useRef<{
     nodeId: string; startX: number; startY: number;
-    origX: number; origY: number; chainIds: string[]; hasMoved: boolean;
+    origX: number; origY: number; chainIds: string[];
+    origPositions: Record<string, { x: number; y: number }>;
+    hasMoved: boolean;
   } | null>(null);
   const mmDragRef = useRef<{ startX: number; startY: number; startVpX: number; startVpY: number; hasMoved: boolean } | null>(null);
+  const lassoRef = useRef<{ startClientX: number; startClientY: number; startCanvasX: number; startCanvasY: number } | null>(null);
 
   // ── applyViewport: the single function that drives all viewport updates ──
   // Updates the DOM directly (no React render), then schedules a debounced
@@ -853,11 +859,38 @@ export function SessionWeb() {
   const onPanStart = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (nodeDragRef.current) return;
+    if (e.shiftKey) {
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      const vp = viewportRef.current;
+      const canvasX = (e.clientX - rect.left - vp.x) / vp.scale;
+      const canvasY = (e.clientY - rect.top - vp.y) / vp.scale;
+      lassoRef.current = { startClientX: e.clientX, startClientY: e.clientY, startCanvasX: canvasX, startCanvasY: canvasY };
+      return;
+    }
     const vp = viewportRef.current;
     dragRef.current = { startX: e.clientX, startY: e.clientY, vpX: vp.x, vpY: vp.y, hasMoved: false };
   };
 
   const onPanMove = (e: React.MouseEvent) => {
+    if (lassoRef.current) {
+      const wrap = wrapRef.current;
+      if (!wrap) return;
+      const rect = wrap.getBoundingClientRect();
+      const vp = viewportRef.current;
+      const canvasX = (e.clientX - rect.left - vp.x) / vp.scale;
+      const canvasY = (e.clientY - rect.top - vp.y) / vp.scale;
+      const lasso = lassoRef.current;
+      setLassoRect({
+        x: Math.min(lasso.startCanvasX, canvasX),
+        y: Math.min(lasso.startCanvasY, canvasY),
+        w: Math.abs(canvasX - lasso.startCanvasX),
+        h: Math.abs(canvasY - lasso.startCanvasY),
+      });
+      return;
+    }
+
     if (nodeDragRef.current) {
       const nd = nodeDragRef.current;
       const vp = viewportRef.current;
@@ -865,44 +898,55 @@ export function SessionWeb() {
       const dy = (e.clientY - nd.startY) / vp.scale;
       if (!nd.hasMoved && Math.hypot(dx, dy) > 3) nd.hasMoved = true;
       if (nd.hasMoved) {
-        const dragX = nd.origX + dx;
-        const dragY = nd.origY + dy;
-        setPositionOverrides(prev => ({ ...prev, [nd.nodeId]: { x: dragX, y: dragY } }));
-        const MARGIN = 16;
-        const preview: PositionMap = {};
-        const nearby = nodes.filter(n => n.id !== nd.nodeId && n.type === "session");
-        const getBase = (n: GraphNode) => positionOverrides[n.id] ?? { x: n.x, y: n.y };
-        const pushed = new Set<string>();
-        for (const n of nearby) {
-          const p = getBase(n);
-          const overlapX = (NODE_W + MARGIN) - Math.abs(dragX - p.x);
-          const overlapY = (NODE_H + MARGIN) - Math.abs(dragY - p.y);
-          if (overlapX > 0 && overlapY > 0) {
-            if (overlapY <= overlapX + 20) {
-              preview[n.id] = { x: p.x, y: p.y + (p.y >= dragY ? overlapY : -overlapY) };
-            } else {
-              preview[n.id] = { x: p.x + (p.x >= dragX ? overlapX : -overlapX), y: p.y };
-            }
-            pushed.add(n.id);
+        if (nd.chainIds.length > 1) {
+          // Multi-drag: move all selected nodes by same delta
+          const updates: PositionMap = {};
+          for (const id of nd.chainIds) {
+            const orig = nd.origPositions[id];
+            if (orig) updates[id] = { x: orig.x + dx, y: orig.y + dy };
           }
-        }
-        for (const pid of pushed) {
-          const pp = preview[pid]!;
+          setPositionOverrides(prev => ({ ...prev, ...updates }));
+          setDragPreview({});
+        } else {
+          const dragX = nd.origX + dx;
+          const dragY = nd.origY + dy;
+          setPositionOverrides(prev => ({ ...prev, [nd.nodeId]: { x: dragX, y: dragY } }));
+          const MARGIN = 16;
+          const preview: PositionMap = {};
+          const nearby = nodes.filter(n => n.id !== nd.nodeId && n.type === "session");
+          const getBase = (n: GraphNode) => positionOverrides[n.id] ?? { x: n.x, y: n.y };
+          const pushed = new Set<string>();
           for (const n of nearby) {
-            if (n.id === pid || pushed.has(n.id)) continue;
             const p = getBase(n);
-            const overlapX = (NODE_W + MARGIN) - Math.abs(pp.x - p.x);
-            const overlapY = (NODE_H + MARGIN) - Math.abs(pp.y - p.y);
+            const overlapX = (NODE_W + MARGIN) - Math.abs(dragX - p.x);
+            const overlapY = (NODE_H + MARGIN) - Math.abs(dragY - p.y);
             if (overlapX > 0 && overlapY > 0) {
               if (overlapY <= overlapX + 20) {
-                preview[n.id] = { x: p.x, y: p.y + (p.y >= pp.y ? overlapY : -overlapY) };
+                preview[n.id] = { x: p.x, y: p.y + (p.y >= dragY ? overlapY : -overlapY) };
               } else {
-                preview[n.id] = { x: p.x + (p.x >= pp.x ? overlapX : -overlapX), y: p.y };
+                preview[n.id] = { x: p.x + (p.x >= dragX ? overlapX : -overlapX), y: p.y };
+              }
+              pushed.add(n.id);
+            }
+          }
+          for (const pid of pushed) {
+            const pp = preview[pid]!;
+            for (const n of nearby) {
+              if (n.id === pid || pushed.has(n.id)) continue;
+              const p = getBase(n);
+              const overlapX = (NODE_W + MARGIN) - Math.abs(pp.x - p.x);
+              const overlapY = (NODE_H + MARGIN) - Math.abs(pp.y - p.y);
+              if (overlapX > 0 && overlapY > 0) {
+                if (overlapY <= overlapX + 20) {
+                  preview[n.id] = { x: p.x, y: p.y + (p.y >= pp.y ? overlapY : -overlapY) };
+                } else {
+                  preview[n.id] = { x: p.x + (p.x >= pp.x ? overlapX : -overlapX), y: p.y };
+                }
               }
             }
           }
+          setDragPreview(preview);
         }
-        setDragPreview(preview);
       }
       return;
     }
@@ -930,19 +974,49 @@ export function SessionWeb() {
   };
 
   const onPanEnd = () => {
+    if (lassoRef.current) {
+      setLassoRect(prev => {
+        if (prev && prev.w > 5 && prev.h > 5) {
+          const newSelected = new Set<string>();
+          for (const n of nodes) {
+            const { w, h } = nodeDims(n.type);
+            if (n.x + w > prev.x && n.x < prev.x + prev.w &&
+                n.y + h > prev.y && n.y < prev.y + prev.h) {
+              newSelected.add(n.id);
+            }
+          }
+          if (newSelected.size > 0) setSelectedIds(newSelected);
+        }
+        return null;
+      });
+      lassoRef.current = null;
+      return;
+    }
+
     if (nodeDragRef.current?.hasMoved) {
-      const previewKeys = Object.keys(dragPreview);
-      if (previewKeys.length > 0) {
+      if (nodeDragRef.current.chainIds.length > 1) {
         setPositionOverrides(prev => {
-          const next = { ...prev, ...dragPreview };
-          savePositions(profileName, next);
-          return next;
+          savePositions(profileName, prev);
+          return prev;
         });
       } else {
-        savePositions(profileName, positionOverrides);
+        const previewKeys = Object.keys(dragPreview);
+        if (previewKeys.length > 0) {
+          setPositionOverrides(prev => {
+            const next = { ...prev, ...dragPreview };
+            savePositions(profileName, next);
+            return next;
+          });
+        } else {
+          savePositions(profileName, positionOverrides);
+        }
+        setDragPreview({});
       }
-      setDragPreview({});
+    } else if (dragRef.current && !dragRef.current.hasMoved) {
+      // Clicked empty canvas — deselect all
+      setSelectedIds(new Set());
     }
+
     nodeDragRef.current = null;
     dragRef.current = null;
     setDraggingChain(null);
@@ -1010,16 +1084,34 @@ export function SessionWeb() {
     e.stopPropagation();
     const node = nodeMap.get(nodeId);
     if (!node || node.type !== "session") return;
-    setDraggingChain(new Set([nodeId]));
+    const isGroupDrag = selectedIds.has(nodeId) && selectedIds.size > 1;
+    const ids = isGroupDrag
+      ? [...selectedIds].filter(id => nodeMap.get(id)?.type === "session")
+      : [nodeId];
+    const origPositions: Record<string, { x: number; y: number }> = {};
+    for (const id of ids) {
+      const n = nodeMap.get(id);
+      if (n) origPositions[id] = { x: n.x, y: n.y };
+    }
+    setDraggingChain(new Set(ids));
     nodeDragRef.current = {
       nodeId, startX: e.clientX, startY: e.clientY,
-      origX: node.x, origY: node.y, chainIds: [nodeId], hasMoved: false,
+      origX: node.x, origY: node.y, chainIds: ids, origPositions, hasMoved: false,
     };
-  }, [nodeMap]);
+  }, [nodeMap, selectedIds]);
 
-  const handleSelect = useCallback((node: GraphNode) => {
+  const handleSelect = useCallback((node: GraphNode, e?: React.MouseEvent) => {
     if (dragRef.current?.hasMoved || touchRef.current?.hasMoved || nodeDragRef.current?.hasMoved) return;
-    setSelected(prev => prev?.id === node.id ? null : node);
+    if (e?.shiftKey) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        if (next.has(node.id)) next.delete(node.id);
+        else next.add(node.id);
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => prev.size === 1 && prev.has(node.id) ? new Set() : new Set([node.id]));
+    }
   }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, sessionId: string) => {
@@ -1031,7 +1123,7 @@ export function SessionWeb() {
   const handleArchive = useCallback(async (id: string) => {
     await archiveSessionApi(id).catch(() => {});
     setSessions(prev => prev.filter(s => s.id !== id));
-    setSelected(null);
+    setSelectedIds(new Set());
     setContextMenu(null);
     setPositionOverrides(prev => {
       const next = { ...prev };
@@ -1080,15 +1172,28 @@ export function SessionWeb() {
   }, [handleResetView, loading, newestSessionNode]);
 
   // ── Derived state ──
-  const activeNodeId = hoveredId ?? selected?.id ?? null;
-  const activeEdgeSet = useMemo(() => {
-    if (!activeNodeId) return new Set<string>();
+  const selectedNode = selectedIds.size === 1 ? (nodeMap.get([...selectedIds][0]) ?? null) : null;
+
+  const neighborIds = useMemo(() => {
+    if (!selectedNode) return new Set<string>();
     const s = new Set<string>();
     for (const e of visibleEdges) {
-      if (e.from === activeNodeId || e.to === activeNodeId) s.add(`${e.from}->${e.to}`);
+      if (e.from === selectedNode.id) s.add(e.to);
+      if (e.to === selectedNode.id) s.add(e.from);
     }
     return s;
-  }, [activeNodeId, visibleEdges]);
+  }, [selectedNode, visibleEdges]);
+
+  const activeEdgeSet = useMemo(() => {
+    const hovered = hoveredId ? new Set([hoveredId]) : null;
+    const active = hovered ?? (selectedIds.size > 0 ? selectedIds : null);
+    if (!active) return new Set<string>();
+    const s = new Set<string>();
+    for (const e of visibleEdges) {
+      if (active.has(e.from) || active.has(e.to)) s.add(`${e.from}->${e.to}`);
+    }
+    return s;
+  }, [hoveredId, selectedIds, visibleEdges]);
 
   // ── Render ──
 
@@ -1117,6 +1222,33 @@ export function SessionWeb() {
           className="web-regen-btn"
           onClick={() => { setPositionOverrides({}); savePositions(profileName, {}); }}
         >regenerate</button>
+        {minimapTags.length > 0 && (
+          <div className="web-mm-tags">
+            {minimapTags.map(tag => (
+              <div key={tag.id} className="web-toolbar-tag">
+                <span onClick={() => {
+                  const wrap = wrapRef.current;
+                  const vp = viewportRef.current;
+                  if (wrap) {
+                    applyViewport({
+                      ...vp,
+                      x: -(tag.x * vp.scale) + wrap.clientWidth / 2,
+                      y: -(tag.y * vp.scale) + wrap.clientHeight / 2,
+                    });
+                  }
+                }}>{tag.label}</span>
+                <button className="web-toolbar-tag-x" onClick={e => {
+                  e.stopPropagation();
+                  setMinimapTags(prev => {
+                    const next = prev.filter(t => t.id !== tag.id);
+                    localStorage.setItem(`web-mm-tags-${profileName}`, JSON.stringify(next));
+                    return next;
+                  });
+                }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
         <EdgeLayerPanel layers={edgeLayers} onChange={setEdgeLayers} />
       </div>
 
@@ -1162,6 +1294,13 @@ export function SessionWeb() {
             })}
           </svg>
 
+          {lassoRect && (
+            <div
+              className="web-lasso"
+              style={{ left: lassoRect.x, top: lassoRect.y, width: lassoRect.w, height: lassoRect.h }}
+            />
+          )}
+
           {visibleNodes.map(node => {
             // LOD: simplified rendering at very low zoom
             if (lodSimplified) {
@@ -1187,7 +1326,8 @@ export function SessionWeb() {
                 <DocNodeEl
                   key={node.id}
                   node={node}
-                  isSelected={selected?.id === node.id}
+                  isSelected={selectedIds.has(node.id)}
+                  isNeighbor={neighborIds.has(node.id)}
                   onSelect={handleSelect}
                   onOpenFile={onOpenFile}
                   onHover={onHover}
@@ -1201,7 +1341,8 @@ export function SessionWeb() {
                 <CommitNodeEl
                   key={node.id}
                   node={node}
-                  isSelected={selected?.id === node.id}
+                  isSelected={selectedIds.has(node.id)}
+                  isNeighbor={neighborIds.has(node.id)}
                   onSelect={handleSelect}
                   onHover={onHover}
                 />
@@ -1212,7 +1353,8 @@ export function SessionWeb() {
               <SessionNodeEl
                 key={node.id}
                 node={node}
-                isSelected={selected?.id === node.id}
+                isSelected={selectedIds.has(node.id)}
+                isNeighbor={neighborIds.has(node.id)}
                 isDragging={draggingChain?.has(node.id) ?? false}
                 touchCounts={sessionTouchCounts.get(node.session!.id)}
                 onSelect={handleSelect}
@@ -1257,6 +1399,22 @@ export function SessionWeb() {
           return (
             <div
               className="web-minimap"
+              onContextMenu={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const curScaleX = (wrapRef.current?.clientWidth ?? 800) / svgW;
+                const curScaleY = mmH / svgH;
+                const canvasX = (e.clientX - rect.left) / curScaleX;
+                const canvasY = (e.clientY - rect.top) / curScaleY;
+                const label = `pin ${minimapTags.length + 1}`;
+                const newTag: MinimapTag = { id: crypto.randomUUID(), label, x: canvasX, y: canvasY };
+                setMinimapTags(prev => {
+                  const next = [...prev, newTag];
+                  localStorage.setItem(`web-mm-tags-${profileName}`, JSON.stringify(next));
+                  return next;
+                });
+              }}
               onMouseDown={e => {
                 e.stopPropagation();
                 const startX = e.clientX;
@@ -1379,15 +1537,28 @@ export function SessionWeb() {
                 })()}
                 {nodes.map(n => {
                   const { w, h } = nodeDims(n.type);
-                  const cls = n.type === "session"
+                  const isSelected = selectedIds.has(n.id);
+                  const cls = isSelected ? "web-mm-selected" : (n.type === "session"
                     ? (n.session?.status === "running" ? "web-mm-running" : "web-mm-session")
-                    : n.type === "commit" ? "web-mm-commit" : "web-mm-doc";
+                    : n.type === "commit" ? "web-mm-commit" : "web-mm-doc");
                   return (
                     <rect
                       key={n.id}
                       x={n.x * scaleX} y={n.y * scaleY}
-                      width={Math.max(w * scaleX, 2)} height={Math.max(h * scaleY, 1.5)}
+                      width={Math.max(w * scaleX, isSelected ? 3 : 2)} height={Math.max(h * scaleY, isSelected ? 2 : 1.5)}
                       className={cls}
+                    />
+                  );
+                })}
+                {minimapTags.map(tag => {
+                  const px = tag.x * scaleX;
+                  const py = tag.y * scaleY;
+                  const r = 4;
+                  return (
+                    <polygon
+                      key={tag.id}
+                      points={`${px},${py - r} ${px + r},${py} ${px},${py + r} ${px - r},${py}`}
+                      className="web-mm-pin"
                     />
                   );
                 })}
@@ -1412,7 +1583,7 @@ export function SessionWeb() {
         />
       )}
 
-      {selected && <DetailPanel node={selected} onClose={() => setSelected(null)} onArchive={handleArchive} />}
+      {selectedNode && <DetailPanel node={selectedNode} onClose={() => setSelectedIds(new Set())} onArchive={handleArchive} />}
 
       <SessionWindow
         sessionId={miniSessionId}
