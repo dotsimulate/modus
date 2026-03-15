@@ -53,6 +53,7 @@ const ProfileUiSchema = z.object({
   placeholder: z.string().optional(),
   emptyTitle: z.string().optional(),
   emptySubtitle: z.string().optional(),
+  panelWidgets: z.array(z.string()).optional(),
 });
 
 // ── CLAUDE.md Excludes ──

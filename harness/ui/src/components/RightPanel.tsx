@@ -16,6 +16,11 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p;
 }
 
+function isHtmlFile(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".html") || lower.endsWith(".htm");
+}
+
 type ViewState =
   | { kind: "idle" }
   | { kind: "loading" }
@@ -30,6 +35,8 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [copiedPath, setCopiedPath] = useState(false);
+  const [htmlPreview, setHtmlPreview] = useState(true); // default to preview for HTML
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     setActivePath(path);
@@ -60,7 +67,14 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
     return () => { active = false; };
   }, [activePath]);
 
-  useEffect(() => { if (activePath) setCopiedPath(false); }, [activePath]);
+  // Reset preview mode when switching files
+  useEffect(() => {
+    if (activePath) {
+      setCopiedPath(false);
+      setHtmlPreview(true);
+    }
+  }, [activePath]);
+
   useEffect(() => {
     if (!copiedPath) return;
     const t = window.setTimeout(() => setCopiedPath(false), 1000);
@@ -77,11 +91,13 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
   }, [view]);
 
   const handleClose = () => {
+    setFullscreen(false);
     onClose();
     closeFile();
   };
 
   const handleCloseFile = () => {
+    setFullscreen(false);
     closeFile();
     setActivePath(null);
     setView({ kind: "idle" });
@@ -116,6 +132,7 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
     </>
   );
 
+  const isHtml = activePath ? isHtmlFile(activePath) : false;
   const hasFile = activePath && view.kind !== "idle";
 
   return (
@@ -132,20 +149,57 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
         </button>
       )}
       <div
-        className={`right-panel${open ? " open" : ""}`}
-        style={open ? { width, minWidth: width } : undefined}
+        className={`right-panel${open ? " open" : ""}${fullscreen ? " right-panel--fullscreen" : ""}`}
+        style={open && !fullscreen ? { width, minWidth: width } : undefined}
       >
         <div className="right-panel-header">
           <button
             className="right-panel-close"
-            onClick={handleClose}
-            title="Collapse panel"
+            onClick={fullscreen ? () => setFullscreen(false) : handleClose}
+            title={fullscreen ? "Exit fullscreen" : "Collapse panel"}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M5 2l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              {fullscreen ? (
+                // Minimize icon
+                <path d="M4 1v3H1M8 11V8h3M1 8h3v3M11 4H8V1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              ) : (
+                <path d="M5 2l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              )}
             </svg>
           </button>
           <span className="right-panel-title">viewer</span>
+          <div className="right-panel-header-actions">
+            {/* HTML preview/source toggle */}
+            {hasFile && isHtml && view.kind === "file" && (
+              <button
+                className={`right-panel-header-btn${htmlPreview ? " active" : ""}`}
+                onClick={() => setHtmlPreview(!htmlPreview)}
+                title={htmlPreview ? "Show source" : "Show preview"}
+              >
+                {htmlPreview ? (
+                  // Code icon
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 3L1 6l3 3M8 3l3 3-3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                ) : (
+                  // Eye icon
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6s2-3.5 5-3.5S11 6 11 6s-2 3.5-5 3.5S1 6 1 6z" stroke="currentColor" strokeWidth="1.1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.1"/></svg>
+                )}
+              </button>
+            )}
+            {/* Fullscreen toggle */}
+            {hasFile && (
+              <button
+                className="right-panel-header-btn"
+                onClick={() => setFullscreen(!fullscreen)}
+                title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+              >
+                {fullscreen ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 1v3H1M8 11V8h3M1 8h3v3M11 4H8V1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                )}
+              </button>
+            )}
+          </div>
         </div>
         <div className="right-panel-content">
           {hasFile && view.kind === "directory" ? (
@@ -182,6 +236,27 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
                   </div>
                 </div>
               </div>
+            </div>
+          ) : hasFile && isHtml && htmlPreview && view.kind === "file" ? (
+            <div className="right-panel-file right-panel-canvas">
+              <div className="fcv-head">
+                <div className="fcv-meta">
+                  <div className="fcv-name-row">
+                    <span className="fcv-name">{basename(activePath!)}</span>
+                    <div className="fcv-name-actions">{copyBtn(activePath!)}</div>
+                  </div>
+                </div>
+                <div className="fcv-head-side">
+                  <span className="fcv-count">preview</span>
+                  <div className="fcv-actions">{fileActions(activePath!)}</div>
+                </div>
+              </div>
+              <iframe
+                className="right-panel-iframe"
+                srcDoc={view.content}
+                sandbox="allow-scripts allow-same-origin"
+                title="HTML Preview"
+              />
             </div>
           ) : hasFile ? (
             <div className="right-panel-file">

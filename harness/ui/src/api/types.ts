@@ -159,6 +159,7 @@ export type ProfileUi = {
   placeholder?: string;
   emptyTitle?: string;
   emptySubtitle?: string;
+  panelWidgets?: string[];
 };
 
 export type Profile = {

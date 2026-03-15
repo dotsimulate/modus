@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { onUiEvent } from "../sessionStore";
 
 type FileViewerContextValue = {
   path: string | null;
@@ -18,6 +19,15 @@ export function useFileViewer() {
 
 export function FileViewerProvider({ children }: { children: ReactNode }) {
   const [path, setPath] = useState<string | null>(null);
+
+  // Listen for backend "open-file" UI events
+  useEffect(() => {
+    return onUiEvent("open-file", (_sessionId, event) => {
+      if (typeof event.path === "string") {
+        setPath(event.path);
+      }
+    });
+  }, []);
 
   return (
     <FileViewerContext.Provider value={{ path, openFile: setPath, closeFile: () => setPath(null) }}>
