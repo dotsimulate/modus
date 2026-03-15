@@ -423,6 +423,7 @@ export function SessionWeb() {
     nodeId: string; startX: number; startY: number;
     origX: number; origY: number; chainIds: string[]; hasMoved: boolean;
   } | null>(null);
+  const mmDragRef = useRef<{ startX: number; startVpX: number; hasMoved: boolean } | null>(null);
 
   useEffect(() => { saveConfig(config); }, [config]);
   useEffect(() => { saveDateFilter(profileName, dateFilter); }, [dateFilter, profileName]);
@@ -558,6 +559,19 @@ export function SessionWeb() {
       .at(-1) ?? null;
   }, [nodes]);
 
+  const currentDayCluster = useMemo(() => {
+    if (!clusters.length) return null;
+    const vpW = wrapRef.current?.clientWidth ?? 800;
+    const canvasCenterX = (vpW / 2 - viewport.x) / viewport.scale;
+    const containing = clusters.find(cl => canvasCenterX >= cl.x && canvasCenterX <= cl.x + cl.width);
+    if (containing) return containing;
+    return clusters.reduce((best, cl) => {
+      const clCenter = cl.x + cl.width / 2;
+      const bestCenter = best.x + best.width / 2;
+      return Math.abs(clCenter - canvasCenterX) < Math.abs(bestCenter - canvasCenterX) ? cl : best;
+    });
+  }, [clusters, viewport]);
+
   const svgW = useMemo(() => {
     const maxX = Math.max(...nodes.map(n => n.x + (n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W)), 400);
     return maxX + config.padX;
@@ -580,7 +594,7 @@ export function SessionWeb() {
       const my = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
       setViewport(vp => {
-        const s = Math.max(0.15, Math.min(4, vp.scale * factor));
+        const s = Math.max(0.05, Math.min(4, vp.scale * factor));
         const r = s / vp.scale;
         return { scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) };
       });
@@ -627,6 +641,8 @@ export function SessionWeb() {
       return;
     }
 
+    if (mmDragRef.current) return; // minimap drag handled by window listeners
+
     if (!dragRef.current) return;
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
@@ -647,6 +663,7 @@ export function SessionWeb() {
   const onPanEnd = () => {
     if (nodeDragRef.current?.hasMoved) savePositions(profileName, positionOverrides);
     nodeDragRef.current = null;
+    // mmDragRef cleared by window listeners, not here
     dragRef.current = null;
     setDraggingChain(null);
   };
@@ -689,7 +706,7 @@ export function SessionWeb() {
       const mx = (t1.clientX + t2.clientX) / 2 - rect.left;
       const my = (t1.clientY + t2.clientY) / 2 - rect.top;
       setViewport(vp => {
-        const s = Math.max(0.15, Math.min(4, touchRef.current!.initialScale! * ratio));
+        const s = Math.max(0.05, Math.min(4, touchRef.current!.initialScale! * ratio));
         const r = s / vp.scale;
         return { scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) };
       });
@@ -802,6 +819,10 @@ export function SessionWeb() {
     <div className="web-panel">
       <div className="web-toolbar" onMouseDown={e => e.stopPropagation()}>
         <DateFilterPanel filter={dateFilter} onChange={setDateFilter} />
+        <button
+          className="web-regen-btn"
+          onClick={() => { setPositionOverrides({}); savePositions(profileName, {}); }}
+        >regenerate</button>
         <EdgeLayerPanel layers={edgeLayers} onChange={setEdgeLayers} />
       </div>
 
@@ -945,34 +966,141 @@ export function SessionWeb() {
           onClick={handleResetView}
           title="Reset view"
         >⊙</button>
-        {/* Minimap */}
+        {currentDayCluster && (
+          <div className="web-day-hud">
+            <span className="web-day-hud-label">{currentDayCluster.label}</span>
+            <span className="web-day-hud-stats">
+              {currentDayCluster.sessionCount} sessions{currentDayCluster.commitCount > 0 ? ` · ${currentDayCluster.commitCount}c` : ""}
+            </span>
+          </div>
+        )}
+        {/* Minimap — bottom timeline strip */}
         {nodes.length > 0 && (() => {
-          const mmW = 220, mmH = 140;
-          const scale = Math.min(mmW / svgW, mmH / svgH);
-          const wrap = wrapRef.current;
-          const vpW = wrap ? wrap.clientWidth : 800;
-          const vpH = wrap ? wrap.clientHeight : 600;
-          // Viewport rect in minimap coords
-          const vrX = (-viewport.x / viewport.scale) * scale;
-          const vrY = (-viewport.y / viewport.scale) * scale;
-          const vrW = (vpW / viewport.scale) * scale;
-          const vrH = (vpH / viewport.scale) * scale;
+          const mmH = 80;
+          const mmW = wrapRef.current?.clientWidth ?? 800;
+          const scaleX = mmW / svgW;
+          const scaleY = mmH / svgH;
+          const vpW = wrapRef.current?.clientWidth ?? 800;
+          const vpH = wrapRef.current?.clientHeight ?? 600;
+          const vrX = Math.max(0, (-viewport.x / viewport.scale) * scaleX);
+          const vrY = Math.max(0, (-viewport.y / viewport.scale) * scaleY);
+          const vrW = Math.min(mmW - vrX, (vpW / viewport.scale) * scaleX);
+          const vrH = Math.min(mmH - vrY, (vpH / viewport.scale) * scaleY);
           return (
             <div
               className="web-minimap"
               onMouseDown={e => {
                 e.stopPropagation();
-                const rect = e.currentTarget.getBoundingClientRect();
-                const mx = (e.clientX - rect.left) / scale;
-                const my = (e.clientY - rect.top) / scale;
-                setViewport(vp => ({
-                  ...vp,
-                  x: -(mx - vpW / (2 * vp.scale)) * vp.scale,
-                  y: -(my - vpH / (2 * vp.scale)) * vp.scale,
-                }));
+                const startX = e.clientX;
+                const startVpX = viewport.x;
+                let hasMoved = false;
+                const mmEl = e.currentTarget as HTMLElement;
+                const curScaleX = (wrapRef.current?.clientWidth ?? 800) / svgW;
+                const curVpW = wrapRef.current?.clientWidth ?? 800;
+                const curVpH = wrapRef.current?.clientHeight ?? 600;
+                mmDragRef.current = { startX, startVpX, hasMoved: false };
+
+                const onMove = (ev: MouseEvent) => {
+                  const dx = ev.clientX - startX;
+                  if (Math.abs(dx) > 3) { hasMoved = true; mmDragRef.current!.hasMoved = true; }
+                  if (hasMoved) {
+                    const wrap = wrapRef.current;
+                    if (wrap) {
+                      const minX = -(svgW * viewport.scale - 100);
+                      const maxX = wrap.clientWidth - 100;
+                      setViewport(vp => ({ ...vp, x: Math.max(minX, Math.min(maxX, startVpX - (dx / curScaleX) * vp.scale)) }));
+                    }
+                  }
+                };
+                const onUp = (ev: MouseEvent) => {
+                  window.removeEventListener("mousemove", onMove);
+                  window.removeEventListener("mouseup", onUp);
+                  if (!hasMoved) {
+                    const rect = mmEl.getBoundingClientRect();
+                    const mx = (ev.clientX - rect.left) / curScaleX;
+                    const my = (ev.clientY - rect.top) / (80 / svgH);
+                    setViewport(vp => ({
+                      ...vp,
+                      x: -(mx - curVpW / (2 * vp.scale)) * vp.scale,
+                      y: -(my - curVpH / (2 * vp.scale)) * vp.scale,
+                    }));
+                  }
+                  mmDragRef.current = null;
+                };
+                window.addEventListener("mousemove", onMove);
+                window.addEventListener("mouseup", onUp);
+              }}
+              onTouchStart={e => {
+                e.stopPropagation();
+                if (e.touches.length === 1)
+                  mmDragRef.current = { startX: e.touches[0].clientX, startVpX: viewport.x, hasMoved: false };
+              }}
+              onTouchMove={e => {
+                e.stopPropagation();
+                if (!mmDragRef.current || e.touches.length !== 1) return;
+                const dx = e.touches[0].clientX - mmDragRef.current.startX;
+                if (Math.abs(dx) > 3) mmDragRef.current.hasMoved = true;
+                if (mmDragRef.current.hasMoved) {
+                  const wrap = wrapRef.current;
+                  if (wrap) {
+                    const curScaleX = wrap.clientWidth / svgW;
+                    const minX = -(svgW * viewport.scale - 100);
+                    const maxX = wrap.clientWidth - 100;
+                    setViewport(vp => ({ ...vp, x: Math.max(minX, Math.min(maxX, mmDragRef.current!.startVpX - (dx / curScaleX) * vp.scale)) }));
+                  }
+                }
+              }}
+              onTouchEnd={e => {
+                e.stopPropagation();
+                if (!mmDragRef.current?.hasMoved && e.changedTouches.length === 1) {
+                  const wrap = wrapRef.current;
+                  const curScaleX = (wrap?.clientWidth ?? 800) / svgW;
+                  const curScaleY = 80 / svgH;
+                  const curVpW = wrap?.clientWidth ?? 800;
+                  const curVpH = wrap?.clientHeight ?? 600;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const mx = (e.changedTouches[0].clientX - rect.left) / curScaleX;
+                  const my = (e.changedTouches[0].clientY - rect.top) / curScaleY;
+                  setViewport(vp => ({
+                    ...vp,
+                    x: -(mx - curVpW / (2 * vp.scale)) * vp.scale,
+                    y: -(my - curVpH / (2 * vp.scale)) * vp.scale,
+                  }));
+                }
+                mmDragRef.current = null;
               }}
             >
               <svg width={mmW} height={mmH}>
+                {(() => {
+                  const sorted = [...clusters].sort((a, b) => a.x - b.x);
+                  let prevEnd = -Infinity;
+                  const elements: React.ReactNode[] = [];
+                  let idx = 0;
+                  for (const cl of sorted) {
+                    const bx = Math.max(cl.x, prevEnd);
+                    const bw = cl.x + cl.width - bx;
+                    prevEnd = cl.x + cl.width;
+                    if (bw <= 0) continue;
+                    const px = bx * scaleX;
+                    // separator line at left edge
+                    if (idx > 0) {
+                      elements.push(
+                        <line key={`mm-sep-${cl.id}`} x1={px} y1={0} x2={px} y2={mmH}
+                          stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+                      );
+                    }
+                    elements.push(
+                      <rect
+                        key={`mm-band-${cl.id}`}
+                        x={px} y={0}
+                        width={bw * scaleX} height={mmH}
+                        fill={idx % 2 === 0 ? "rgba(255,255,255,0.015)" : "rgba(255,255,255,0.035)"}
+                      />
+                    );
+                    idx++;
+                  }
+                  return elements;
+                })()}
                 {nodes.map(n => {
                   const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
                   const h = n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H;
@@ -982,8 +1110,8 @@ export function SessionWeb() {
                   return (
                     <rect
                       key={n.id}
-                      x={n.x * scale} y={n.y * scale}
-                      width={Math.max(w * scale, 2)} height={Math.max(h * scale, 1.5)}
+                      x={n.x * scaleX} y={n.y * scaleY}
+                      width={Math.max(w * scaleX, 2)} height={Math.max(h * scaleY, 1.5)}
                       className={cls}
                     />
                   );
@@ -997,10 +1125,6 @@ export function SessionWeb() {
           );
         })()}
         <MissionFilterPanel runs={missionRuns} activeRunId={missionFilter} onChange={setMissionFilter} />
-        <LayoutPanel config={config} onChange={setConfig} onRegenerate={() => {
-          setPositionOverrides({});
-          savePositions(profileName, {});
-        }} />
       </div>
 
       {contextMenu && (

@@ -44,9 +44,35 @@ export async function handleModusMcpRequest(request: Request): Promise<Response>
     "Submit structured data for the active move or mission. The token identifies which contract this submission is for. For moves, data is the structured output. For missions, data must include an 'op' field (read, delegate, report, gate, pause).",
     {
       token: z.string().describe("The contract token provided in the move/mission prompt"),
-      data: z.record(z.string(), z.unknown()).describe("Structured payload — move schema output or mission command with 'op' field"),
+      data: z.union([
+        z.record(z.string(), z.unknown()),
+        z.string(),
+      ]).optional().describe("Structured payload (object or JSON string) — move schema output or mission command with 'op' field"),
     },
-    async ({ token, data }) => {
+    async (params) => {
+      const { token, data: rawData, ...rest } = params as Record<string, unknown> & { token: string; data?: unknown };
+
+      // Three calling patterns:
+      // 1. data is an object (native MCP clients)
+      // 2. data is a JSON string (Claude Code XML serialization)
+      // 3. data is absent, fields passed flat (haiku/smaller models)
+      let data: Record<string, unknown>;
+      if (rawData == null) {
+        // Flat params — everything except token IS the data
+        data = rest;
+      } else if (typeof rawData === "string") {
+        try {
+          const parsed = JSON.parse(rawData);
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            return { content: [{ type: "text" as const, text: "data must be a JSON object, not an array or primitive" }], isError: true };
+          }
+          data = parsed;
+        } catch {
+          return { content: [{ type: "text" as const, text: `data is not valid JSON: ${rawData.slice(0, 200)}` }], isError: true };
+        }
+      } else {
+        data = rawData as Record<string, unknown>;
+      }
       // ── Route by token type ──
       if (isMissionToken(token)) {
         return handleMissionSubmit(token, data as Record<string, unknown>);
