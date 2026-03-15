@@ -1,8 +1,9 @@
 /**
  * Modus MCP Server — serves `modus_submit` as a Streamable HTTP MCP endpoint.
  *
- * One tool, three token types:
+ * One tool, four token types:
  *   - Move tokens  → route to move-runner handleSubmit()
+ *   - Move API tokens (prefix "mapi-") → route to move-scoped API handlers
  *   - Mission tokens (prefix "mis-") → route to mission-runner handleMissionCommand()
  *   - API tokens (prefix "api-") → route to registered API handlers
  *
@@ -19,7 +20,7 @@ import {
   WebStandardStreamableHTTPServerTransport,
 } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
-import { handleSubmit } from "./move-runner";
+import { handleSubmit, isMoveApiToken, handleMoveApiSubmit } from "./move-runner";
 import { isMissionToken, handleMissionCommand } from "./mission-runner";
 import { addSessionTag, getSession } from "./db";
 import { broadcastUiEvent } from "./session-manager";
@@ -79,6 +80,9 @@ export async function handleModusMcpRequest(request: Request): Promise<Response>
         data = rawData as Record<string, unknown>;
       }
       // ── Route by token type ──
+      if (isMoveApiToken(token)) {
+        return handleMoveApiSubmitMcp(token, data as Record<string, unknown>);
+      }
       if (isApiToken(token)) {
         return handleApiSubmit(token, data as Record<string, unknown>);
       }
@@ -91,6 +95,21 @@ export async function handleModusMcpRequest(request: Request): Promise<Response>
 
   await server.connect(transport);
   return transport.handleRequest(request);
+}
+
+// ── Move API token handler (multi-submit, stateful) ──
+
+async function handleMoveApiSubmitMcp(token: string, data: Record<string, unknown>) {
+  const result = await handleMoveApiSubmit(token, data, "agent");
+  if (result.ok) {
+    return {
+      content: [{ type: "text" as const, text: result.message ?? "OK" }],
+    };
+  }
+  return {
+    content: [{ type: "text" as const, text: result.error ?? "Unknown error" }],
+    isError: true,
+  };
 }
 
 // ── Move token handler (existing behavior) ──

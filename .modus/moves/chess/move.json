@@ -1,0 +1,39 @@
+{
+  "name": "chess",
+  "label": "Play chess",
+  "description": "Play a game of chess. User plays through the UI widget, agent plays via modus_submit.",
+  "icon": "crown",
+  "mode": "inline",
+  "inputs": [],
+  "api": {
+    "tokenPrefix": "chess",
+    "ops": {
+      "move": {
+        "description": "Submit a chess move in SAN notation",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "move": { "type": "string", "description": "SAN notation (e.g. e4, Nf3, O-O)" }
+          },
+          "required": ["move"]
+        }
+      },
+      "board": {
+        "description": "View current board state as ASCII"
+      },
+      "resign": {
+        "description": "Resign the current game"
+      }
+    },
+    "state": {
+      "persist": true
+    }
+  },
+  "submit": {
+    "required": false
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "tags": ["game", "chess"]
+}
