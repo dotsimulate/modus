@@ -338,7 +338,7 @@
   justify-content: center;
   gap: 4px;
   padding: 10px 14px;
-  transition: left 100ms ease-out, top 100ms ease-out, border-color 0.1s ease, background 0.1s ease;
+  transition: left 150ms ease-out, top 150ms ease-out, border-color 0.1s ease, background 0.1s ease;
   font-family: var(--font-mono);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
