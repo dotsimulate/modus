@@ -46,13 +46,13 @@ export async function handleModusMcpRequest(request: Request): Promise<Response>
 
   server.tool(
     "modus_submit",
-    "Submit structured data for the active move or mission. The token identifies which contract this submission is for. For moves, data is the structured output. For missions, data must include an 'op' field (read, delegate, report, gate, pause).",
+    "Submit a command to the harness. Provide the token you were given and a data object for the operation.",
     {
-      token: z.string().describe("The contract token provided in the move/mission prompt"),
+      token: z.string().describe("The token you received"),
       data: z.union([
         z.record(z.string(), z.unknown()),
         z.string(),
-      ]).optional().describe("Structured payload (object or JSON string) — move schema output or mission command with 'op' field"),
+      ]).optional().describe("Operation payload (object or JSON string)"),
     },
     async (params) => {
       const { token, data: rawData, ...rest } = params as Record<string, unknown> & { token: string; data?: unknown };
@@ -137,32 +137,28 @@ export function registerApiHandler(name: string, handler: ApiHandler) {
   apiHandlers.set(name, handler);
 }
 
-/**
- * API tokens encode the session ID so the model never needs to know it.
- * Format: "api-<sessionId>-<random>"
- */
 const API_PREFIX = "api-";
+
+/** Short token → sessionId registry. Tokens are session-scoped and in-memory only. */
+const tokenRegistry = new Map<string, string>();
 
 function isApiToken(token: string): boolean {
   return token.startsWith(API_PREFIX);
 }
 
-/** Create an API token for a session. The model receives this opaque string. */
+/** Create a short opaque API token for a session. The session ID is never exposed to the model. */
 export function createApiToken(sessionId: string): string {
-  const bytes = new Uint8Array(8);
+  const bytes = new Uint8Array(5);
   crypto.getRandomValues(bytes);
-  const rand = Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 12);
-  return `${API_PREFIX}${sessionId}-${rand}`;
+  const rand = Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 8);
+  const token = `${API_PREFIX}${rand}`;
+  tokenRegistry.set(token, sessionId);
+  return token;
 }
 
-/** Extract the session ID from an API token */
+/** Resolve an API token to its session ID. */
 function parseApiToken(token: string): string | null {
-  if (!token.startsWith(API_PREFIX)) return null;
-  const rest = token.slice(API_PREFIX.length);
-  // Session ID is everything before the last "-<random>" segment (12 chars)
-  const lastDash = rest.lastIndexOf("-");
-  if (lastDash < 1) return null;
-  return rest.slice(0, lastDash);
+  return tokenRegistry.get(token) ?? null;
 }
 
 async function handleApiSubmit(token: string, data: Record<string, unknown>) {
@@ -182,7 +178,16 @@ async function handleApiSubmit(token: string, data: Record<string, unknown>) {
     };
   }
 
-  const handler = apiHandlers.get(op);
+  let handler = apiHandlers.get(op);
+
+  // Lazy-load from project-local .modus/api-handlers/ if not in global registry
+  if (!handler) {
+    const cwd = getSessionCwd(sessionId);
+    if (cwd) {
+      handler = await loadProjectHandler(cwd, op);
+    }
+  }
+
   if (!handler) {
     return {
       content: [{ type: "text" as const, text: `Unknown API operation: ${op}` }],
@@ -308,6 +313,63 @@ registerApiHandler("create-note", async (sessionId, data) => {
   const meta = { title, created: now, updated: now, tags };
   await writeFile(join(dir, `${id}.md`), buildNoteFrontmatter(meta) + content, "utf-8");
   return { ok: true, message: `Note created: ${id}` };
+});
+
+// ── Project-local API handler lazy-loader ──
+
+/** Cache: cwd → Map<opName, handler>. Busted by reload-handlers op. */
+const projectHandlerCache = new Map<string, Map<string, ApiHandler>>();
+
+async function loadProjectHandler(cwd: string, op: string): Promise<ApiHandler | undefined> {
+  // Check cache first
+  const cached = projectHandlerCache.get(cwd);
+  if (cached) return cached.get(op);
+
+  // Scan .modus/api-handlers/*.ts
+  const handlersDir = join(cwd, ".modus", "api-handlers");
+  let files: string[];
+  try {
+    files = (await readdir(handlersDir)).filter(f => f.endsWith(".ts"));
+  } catch {
+    return undefined;
+  }
+
+  const cwdHandlers = new Map<string, ApiHandler>();
+
+  for (const file of files) {
+    const filePath = join(handlersDir, file);
+    try {
+      const mod = await import(filePath);
+      // Support two export shapes:
+      // 1. Named `handlers` map: export const handlers = { "op-name": fn }
+      // 2. Individual named exports that are functions (excluding non-handler exports)
+      if (mod.handlers && typeof mod.handlers === "object") {
+        for (const [name, fn] of Object.entries(mod.handlers)) {
+          if (typeof fn === "function") cwdHandlers.set(name, fn as ApiHandler);
+        }
+      } else {
+        for (const [name, fn] of Object.entries(mod)) {
+          if (typeof fn === "function" && name !== "default") {
+            // Convert camelCase/snake_case export names to kebab-case op names
+            const opName = name.replace(/([a-z])([A-Z])/g, "$1-$2").replace(/_/g, "-").toLowerCase();
+            cwdHandlers.set(opName, fn as ApiHandler);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[modus] Failed to load API handler ${file}:`, err);
+    }
+  }
+
+  projectHandlerCache.set(cwd, cwdHandlers);
+  return cwdHandlers.get(op);
+}
+
+registerApiHandler("reload-handlers", async (sessionId) => {
+  const cwd = getSessionCwd(sessionId);
+  if (!cwd) return { ok: false, error: "Session has no CWD" };
+  projectHandlerCache.delete(cwd);
+  return { ok: true, message: "Project API handler cache cleared. Next API call will re-scan." };
 });
 
 // ── Mission token handler (command bus) ──
