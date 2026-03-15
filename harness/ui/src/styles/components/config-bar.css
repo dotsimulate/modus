@@ -122,3 +122,23 @@
   padding: 8px 32px 12px;
   background: var(--bg);
 }
+/* ── Copy metadata button ── */
+.config-bar-copy-meta {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+  margin-right: 2px;
+}
+.config-bar-copy-meta:hover {
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+}
+.config-bar-copy-meta.copied {
+  color: var(--success, #33cc33);
+}

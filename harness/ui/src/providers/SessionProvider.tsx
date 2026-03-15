@@ -28,6 +28,8 @@ import { loadAndApplyProjectUiState } from "../project-ui-theme";
 export type QueuedMessage = {
   text: string;
   attachments: Attachment[];
+  /** True when the message has already been committed to the backend queue (survives navigation) */
+  serverQueued?: boolean;
 };
 
 type SessionContextValue = {
@@ -387,8 +389,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const isActive = currentState.status === "running" || currentState.status === "starting";
 
       if (isActive) {
-        // Model is mid-turn — queue for later
-        setQueuedMessage({ text: prompt, attachments: sendAttachments });
+        // Commit to backend queue immediately — survives page navigation
+        apiSendMessage(activeSessionId!, prompt, apiAtts).catch(() => {});
+        setQueuedMessage({ text: prompt, attachments: sendAttachments, serverQueued: true });
         return;
       }
 
@@ -487,11 +490,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!activeSession) return;
     const status = activeSession.status;
     if (status === "running" || status === "starting") return;
-    // Model finished — flush the queued message
+    if (queuedMessage.serverQueued) {
+      // Already committed to backend — backend will process it; just clear the display
+      setQueuedMessage(null);
+      return;
+    }
+    // Legacy path: was queued frontend-only (shouldn't happen with new flow)
     const { text, attachments } = queuedMessage;
     setQueuedMessage(null);
     setInput(text);
-    // Defer send to next tick so input state is set
     setTimeout(() => sendRef.current(attachments), 0);
   }, [activeSession?.status, queuedMessage]);
 

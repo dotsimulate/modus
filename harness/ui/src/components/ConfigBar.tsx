@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   AgentConfig,
   countAgentConfigDifferences,
@@ -8,7 +8,8 @@ import {
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
 import { getAllTools, getToolGroups, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
-import type { Profile, SessionStatus } from "../api";
+import type { Profile, SessionStatus, Message } from "../api";
+import { fetchTouches } from "../api/trace";
 
 type Props = {
   profileName?: string;
@@ -35,6 +36,13 @@ type Props = {
   onSwitchProfile?: (name: string) => void;
   /** Current session status */
   status?: SessionStatus | null;
+  /** Session metadata for copy button */
+  sessionId?: string;
+  messages?: Message[];
+  createdAt?: number;
+  updatedAt?: number;
+  totalCost?: number;
+  cwd?: string;
 };
 
 function shortModel(model?: string): string {
@@ -85,9 +93,79 @@ export function ConfigBar({
   profiles,
   onSwitchProfile,
   status,
+  sessionId,
+  messages,
+  createdAt,
+  updatedAt,
+  totalCost,
+  cwd,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
+
+  const copySessionMetadata = useCallback(async () => {
+    if (!sessionId) return;
+
+    // Extract files touched from tool calls in messages
+    const filesRead = new Set<string>();
+    const filesWritten = new Set<string>();
+    for (const msg of (messages ?? [])) {
+      for (const tc of (msg.toolCalls ?? [])) {
+        const path = (tc.input?.file_path ?? tc.input?.path ?? tc.input?.filePath) as string | undefined;
+        if (!path) continue;
+        if (tc.name === "Read" || tc.name === "Grep" || tc.name === "Glob") {
+          filesRead.add(path);
+        } else if (tc.name === "Write" || tc.name === "Edit") {
+          filesWritten.add(path);
+        }
+      }
+    }
+
+    // Fetch touch data for this session
+    let touchFiles: string[] = [];
+    try {
+      const res = await fetchTouches({ sessionId, limit: 200 });
+      touchFiles = [...new Set(res.touches.map(t => t.filePath))];
+    } catch { /* ignore */ }
+
+    const fmtTime = (ts?: number) => ts ? new Date(ts).toISOString() : "unknown";
+    const msgCount = (messages ?? []).length;
+    const userMsgs = (messages ?? []).filter(m => m.role === "user").length;
+    const assistantMsgs = (messages ?? []).filter(m => m.role === "assistant").length;
+
+    const lines = [
+      `# Session Metadata`,
+      ``,
+      `- **Session ID:** \`${sessionId}\``,
+      `- **Profile:** ${profileName ?? "none"}`,
+      `- **Provider:** ${agentConfig.provider || profileProvider || "unknown"}`,
+      `- **Model:** ${model || "unknown"}`,
+      `- **CWD:** ${cwd || "unknown"}`,
+      `- **Status:** ${status || "unknown"}`,
+      `- **Started:** ${fmtTime(createdAt)}`,
+      `- **Last activity:** ${fmtTime(updatedAt)}`,
+      `- **Cost:** $${(totalCost ?? 0).toFixed(4)}`,
+      `- **Messages:** ${msgCount} total (${userMsgs} user, ${assistantMsgs} assistant)`,
+    ];
+
+    if (filesWritten.size > 0) {
+      lines.push(``, `## Files Written`);
+      for (const f of filesWritten) lines.push(`- \`${f}\``);
+    }
+    if (filesRead.size > 0) {
+      lines.push(``, `## Files Read`);
+      for (const f of filesRead) lines.push(`- \`${f}\``);
+    }
+    if (touchFiles.length > 0) {
+      lines.push(``, `## All Touched Files (from trace)`);
+      for (const f of touchFiles) lines.push(`- \`${f}\``);
+    }
+
+    await navigator.clipboard.writeText(lines.join("\n"));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [sessionId, messages, profileName, agentConfig.provider, profileProvider, model, cwd, status, createdAt, updatedAt, totalCost]);
 
   // Close on outside click
   useEffect(() => {
@@ -167,6 +245,24 @@ export function ConfigBar({
             <span className="config-bar-permission">{claudePermissionMode}</span>
           )}
         </div>
+        {sessionId && (
+          <button
+            className={`config-bar-copy-meta${copied ? " copied" : ""}`}
+            onClick={(e) => { e.stopPropagation(); copySessionMetadata(); }}
+            title="Copy session metadata to clipboard"
+          >
+            {copied ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <rect x="5" y="1" width="9" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M3 4v9.5a1.5 1.5 0 001.5 1.5H12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            )}
+          </button>
+        )}
         <ChatSettings />
       </div>
       <div className={`config-bar-collapse ${open ? "config-bar-collapse--open" : ""}`}>

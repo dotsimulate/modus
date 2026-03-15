@@ -581,6 +581,21 @@ export function createClaudeCodeProvider(): SessionProvider {
       });
     },
 
+    steerMessage(ctx: TurnContext, content: MessageContent): boolean {
+      const { session } = ctx;
+      const state = getState(session);
+      if (!state) return false;
+
+      if (session.status === "running" || session.status === "starting") {
+        // Inject directly into the live input channel — delivered at next tool boundary
+        state.input.push(content);
+        return true;
+      }
+
+      // Not running — fall back to queue (caller will start a new turn)
+      return false;
+    },
+
     abort(session: ActiveSession) {
       const state = getState(session);
       try { state?.input.close(); } catch { /* ignore cleanup errors */ }
@@ -735,7 +750,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
             state.thinkingDurationMs = Date.now() - state.thinkingStartedAt;
             state.thinkingStartedAt = undefined;
           }
-          session.lastAssistantText = (session.lastAssistantText + (delta.text ?? "")).slice(-200);
+          session.lastAssistantText = (session.lastAssistantText + (delta.text ?? "")).slice(-2000);
         }
       }
       if (m.type === "assistant" && state.thinkingStartedAt) {
@@ -810,7 +825,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           messageCount: session.numTurns * 2,
           costUsd: m.total_cost_usd ?? 0,
           lastPrompt: session.preview,
-          lastResponse: (m.result || session.lastAssistantText || "").slice(0, 200),
+          lastResponse: (m.result || session.lastAssistantText || "").slice(0, 2000),
         });
 
         logActivity({

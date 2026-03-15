@@ -21,6 +21,7 @@ import {
   copyEventsToSession, findAssistantUuid, clearBranchFields,
   addSessionTag, parseTags, getMaxSeq, insertSessionArtifact,
 } from "./db";
+import type { SessionOutcome } from "./action-types";
 import { logActivity } from "./activity";
 import { resolve as resolvePath } from "path";
 
@@ -39,6 +40,27 @@ import type { SessionProvider, TurnContext } from "./providers/types";
 // ── Types ──
 
 export type SessionStatus = "starting" | "running" | "idle" | "paused" | "done" | "error";
+
+export type ExchangePayload = {
+  sessionId: string;
+  exchangeCount: number;
+  status: SessionStatus;
+  lastResponse: string | undefined;
+  costUsd: number;
+  seq: number;
+};
+
+type SessionTerminalWatcher = {
+  kind: "terminal";
+  resolve: (outcome: SessionOutcome) => void;
+};
+
+type SessionExchangeWatcher = {
+  kind: "exchange";
+  onExchange: (payload: ExchangePayload) => void;
+};
+
+type SessionWatcher = SessionTerminalWatcher | SessionExchangeWatcher;
 
 export type SSEWriter = {
   write(event: string, data: string, id: string): Promise<void>;
@@ -108,6 +130,7 @@ export type ActiveSession = {
     requestedAt: number;
   }>;
   sessionApprovals: Set<string>;
+  watchers: Set<SessionWatcher>;
   /** Provider implementation for this session */
   _provider: SessionProvider;
   /** Provider-specific state (opaque to session-manager) */
@@ -162,6 +185,67 @@ export function getAllActiveSessions(): ActiveSession[] {
   return Array.from(activeSessions.values());
 }
 
+// ── Session Watchers ──
+
+function fireWatchers(session: ActiveSession, payload: ExchangePayload): void {
+  const toRemove: SessionWatcher[] = [];
+
+  for (const watcher of session.watchers) {
+    if (watcher.kind === "terminal") {
+      watcher.resolve({
+        sessionStatus: payload.status === "error" ? "error" : "done",
+        response: payload.lastResponse ?? null,
+        summary: payload.lastResponse?.slice(0, 500) ?? null,
+        costUsd: payload.costUsd,
+        error: payload.status === "error" ? (session.error ?? "unknown error") : null,
+      });
+      toRemove.push(watcher);
+    } else {
+      watcher.onExchange(payload);
+    }
+  }
+
+  for (const w of toRemove) session.watchers.delete(w);
+}
+
+/** One-shot: resolves when the session reaches idle/done/error. */
+export function watchSession(sessionId: string): Promise<SessionOutcome> {
+  const session = activeSessions.get(sessionId);
+  if (!session) {
+    return Promise.resolve({
+      sessionStatus: "error" as const,
+      response: null, summary: null, costUsd: 0,
+      error: "session not found",
+    });
+  }
+
+  if (session.status === "idle" || session.status === "done" || session.status === "error") {
+    return Promise.resolve({
+      sessionStatus: session.status === "error" ? "error" as const : "done" as const,
+      response: session.lastAssistantText ?? null,
+      summary: session.lastAssistantText?.slice(0, 500) ?? null,
+      costUsd: session.costUsd,
+      error: session.error,
+    });
+  }
+
+  return new Promise<SessionOutcome>((resolve) => {
+    session.watchers.add({ kind: "terminal", resolve });
+  });
+}
+
+/** Persistent: fires on every assistant round end. Returns an unregister function. */
+export function watchSessionExchanges(
+  sessionId: string,
+  onExchange: (payload: ExchangePayload) => void,
+): () => void {
+  const session = activeSessions.get(sessionId);
+  if (!session) return () => {};
+  const watcher: SessionExchangeWatcher = { kind: "exchange", onExchange };
+  session.watchers.add(watcher);
+  return () => { session.watchers.delete(watcher); };
+}
+
 // ── TurnContext Factory ──
 // Creates the context object that providers use to interact with session-manager.
 
@@ -202,6 +286,7 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
 
     updateSessionDb(updates) {
       const completing = updates.status === "idle" || updates.status === "done";
+      const terminal = completing || updates.status === "error";
       const persistedMessageCount = completing
         ? (session.exchangeCount + 1) * 2
         : (updates.messageCount ?? session.exchangeCount * 2);
@@ -242,6 +327,18 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
         } catch (err) {
           console.error(`[session-trigger] onSessionEvent failed:`, err);
         }
+      }
+
+      // Fire session watchers on any terminal status (idle, done, or error)
+      if (terminal) {
+        fireWatchers(session, {
+          sessionId: session.sessionId,
+          exchangeCount: session.exchangeCount,
+          status: updates.status as SessionStatus,
+          lastResponse: updates.lastResponse,
+          costUsd: updates.costUsd ?? session.costUsd,
+          seq: session.seq,
+        });
       }
     },
   };
@@ -471,6 +568,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     pauseResolver: null,
     pendingPermissions: new Map(),
     sessionApprovals: new Set(),
+    watchers: new Set(),
     _provider: provider,
     _providerState: null,
     _configOverrides: {
@@ -603,6 +701,43 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
   return true;
 }
 
+/**
+ * Inject a message at the next tool boundary (steer mode).
+ * Falls back to queue if the provider doesn't support mid-run injection.
+ * Returns false if the session doesn't exist.
+ */
+export function steerMessage(sessionId: string, prompt: string, attachments?: ImageAttachment[]): boolean {
+  const session = activeSessions.get(sessionId);
+  if (!session) return false;
+
+  const content = buildContent(prompt, attachments);
+  const ctx = createTurnContext(session, {
+    prompt,
+    attachments,
+    profile: session.profile,
+    sessionId,
+    model: session.model,
+    ...session._configOverrides,
+    cwd: session.cwd,
+    additionalDirectories: session.additionalDirectories,
+  });
+
+  const steered = session._provider.steerMessage?.(ctx, content) ?? false;
+  if (steered) {
+    // Persist the event so it shows in the transcript
+    session.seq++;
+    addEvent(sessionId, session.seq, "user", "prompt", JSON.stringify({
+      type: "user",
+      subtype: "prompt",
+      message: { role: "user", content },
+    }));
+    return true;
+  }
+
+  // Provider doesn't support steering — fall back to queue
+  return queueMessage(sessionId, prompt, attachments);
+}
+
 export function stopSession(sessionId: string): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
@@ -629,6 +764,16 @@ export function stopSession(sessionId: string): boolean {
   for (const sub of session.subscribers) {
     try { sub.write("system", interruptData, String(session.seq)); } catch { session.subscribers.delete(sub); }
   }
+
+  // Fire watchers for any action monitoring this session
+  fireWatchers(session, {
+    sessionId: session.sessionId,
+    exchangeCount: session.exchangeCount,
+    status: "idle",
+    lastResponse: undefined,
+    costUsd: session.costUsd,
+    seq: session.seq,
+  });
 
   // Delegate to provider for cleanup
   session._provider.abort(session);
@@ -996,6 +1141,17 @@ export function shutdownAll() {
         session.pauseResolver();
         session.pauseResolver = null;
       }
+      // Resolve pending terminal watchers so monitorSession() doesn't hang
+      for (const watcher of session.watchers) {
+        if (watcher.kind === "terminal") {
+          watcher.resolve({
+            sessionStatus: "error",
+            response: null, summary: null, costUsd: 0,
+            error: "session shutdown",
+          });
+        }
+      }
+      session.watchers.clear();
       session._provider.abort(session);
       session._provider.dispose?.(session).catch(() => {});
     } catch { /* best effort */ }

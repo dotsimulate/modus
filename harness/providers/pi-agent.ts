@@ -140,7 +140,7 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any, co
           ? "https://api.anthropic.com"
           : "https://api.openai.com/v1",
         reasoning: false,
-        input: ["text"],
+        input: ["text", "image"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: profile?.contextWindow ?? 200000,
         maxTokens: profile?.maxOutputTokens ?? (provider === "anthropic" ? 8192 : 0),
@@ -170,7 +170,7 @@ function buildModel(provider: PiProviderName, modelId: string, profile?: any, co
     provider: provider,
     baseUrl,
     reasoning: false,
-    input: ["text"],
+    input: ["text", "image"],
     cost: cost ?? ZERO_COST,
     contextWindow: profile?.contextWindow ?? providerDefaults?.contextWindow ?? contextLengthFromApi ?? 128000,
     maxTokens: profile?.maxOutputTokens ?? providerDefaults?.maxOutputTokens ?? 8192,
@@ -426,7 +426,7 @@ function translateEvents(
           status: "idle",
           messageCount: session.numTurns * 2,
           costUsd: session.costUsd,
-          lastResponse: resultText.slice(0, 200),
+          lastResponse: resultText.slice(0, 2000),
         });
       }
 
@@ -506,9 +506,11 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       const modelId = session.model || DEFAULT_MODELS[providerName] || "default";
       const cwd = session.cwd ?? process.cwd();
 
-      // Rekey from temp ses- to a real UUID (PI has no external backend to provide one)
-      const realId = crypto.randomUUID();
-      ctx.rekeySession(realId);
+      // Rekey from temp ses- to a real UUID (PI has no external backend to provide one).
+      // Skip if already a real UUID (resume case — session was already keyed on first start).
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const realId = UUID_RE.test(session.sessionId) ? session.sessionId : crypto.randomUUID();
+      if (realId !== session.sessionId) ctx.rekeySession(realId);
 
       // Provider owns init events — emit user prompt + system init
       ctx.emitEvent({

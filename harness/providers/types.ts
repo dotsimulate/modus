@@ -53,6 +53,14 @@ export interface SessionProvider {
   /** Stop a specific sub-task (optional — only Claude SDK supports this) */
   stopTask?(session: ActiveSession, taskId: string): boolean;
 
+  /**
+   * Inject a message mid-turn at the next tool boundary (steer mode).
+   * Returns true if the message was injected into the running turn.
+   * Returns false if not supported — caller falls back to queue.
+   * Only implement if the provider can genuinely deliver mid-run.
+   */
+  steerMessage?(ctx: TurnContext, content: MessageContent): boolean;
+
   /** Update mutable config mid-session (optional — only Claude SDK needs this) */
   updateConfig?(session: ActiveSession, config: Record<string, any>): void;
 

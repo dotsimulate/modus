@@ -390,6 +390,12 @@ function AppShell() {
                 profiles={visibleProfiles}
                 onSwitchProfile={handleSwitchProfile}
                 status={activeSession?.status}
+                sessionId={activeSession?.id}
+                messages={activeSession?.messages}
+                createdAt={activeSession?.createdAt}
+                updatedAt={activeSession?.updatedAt}
+                totalCost={activeSession?.totalCost}
+                cwd={activeSession?.cwd}
               />
               <ChatInput
                 value={input}
