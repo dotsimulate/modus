@@ -93,5 +93,9 @@ export type {
 
 export type { ProviderModel } from "./profiles";
 
+// Notes
+export { fetchNotes, fetchNote, createNote, updateNote, deleteNote, transcribeAudio } from "./notes";
+export type { NoteListItem, NoteDetail } from "./notes";
+
 // Utility
 export { nextMsgId } from "./types";

@@ -930,6 +930,140 @@ app.get("/api/file-read", async (c) => {
   }
 });
 
+// ── Notes ──
+// Markdown notes stored in <cwd>/.modus/notes/ with YAML frontmatter.
+
+function notesDir(cwd: string): string {
+  return join(cwd, ".modus", "notes");
+}
+
+function parseNoteFrontmatter(raw: string): { meta: Record<string, any>; body: string } {
+  if (!raw.startsWith("---")) return { meta: {}, body: raw };
+  const end = raw.indexOf("\n---", 3);
+  if (end === -1) return { meta: {}, body: raw };
+  const frontmatter = raw.slice(4, end).trim();
+  const body = raw.slice(end + 4).trim();
+  const meta: Record<string, any> = {};
+  for (const line of frontmatter.split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim();
+    let val = line.slice(colon + 1).trim();
+    if (val.startsWith("[") && val.endsWith("]")) {
+      try { val = JSON.parse(val); } catch { /* keep as string */ }
+    }
+    meta[key] = val;
+  }
+  return { meta, body };
+}
+
+function buildNoteFrontmatter(meta: Record<string, any>): string {
+  const lines = Object.entries(meta).map(([k, v]) =>
+    `${k}: ${Array.isArray(v) ? JSON.stringify(v) : v}`
+  );
+  return `---\n${lines.join("\n")}\n---\n\n`;
+}
+
+app.get("/api/notes", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const dir = notesDir(cwd);
+  const { readdir, readFile } = await import("fs/promises");
+  try {
+    const files = await readdir(dir);
+    const notes = await Promise.all(
+      files.filter((f) => f.endsWith(".md")).map(async (f) => {
+        const raw = await readFile(join(dir, f), "utf-8");
+        const { meta, body } = parseNoteFrontmatter(raw);
+        const id = f.replace(/\.md$/, "");
+        return {
+          id,
+          title: meta.title || id,
+          created: meta.created || null,
+          updated: meta.updated || null,
+          tags: meta.tags || [],
+          preview: body.slice(0, 120),
+        };
+      })
+    );
+    notes.sort((a, b) => (b.updated || b.created || "").localeCompare(a.updated || a.created || ""));
+    return c.json(notes);
+  } catch (err: any) {
+    if (err.code === "ENOENT") return c.json([]);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+app.get("/api/notes/:id", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const { readFile } = await import("fs/promises");
+  const filePath = join(notesDir(cwd), `${c.req.param("id")}.md`);
+  try {
+    const raw = await readFile(filePath, "utf-8");
+    const { meta, body } = parseNoteFrontmatter(raw);
+    return c.json({ id: c.req.param("id"), ...meta, content: body });
+  } catch (err: any) {
+    if (err.code === "ENOENT") return c.json({ error: "not found" }, 404);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+app.post("/api/notes", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const { mkdir, writeFile } = await import("fs/promises");
+  const body = await c.req.json();
+  const title = body.title || "untitled";
+  const content = body.content || "";
+  const tags = body.tags || [];
+  const now = new Date().toISOString();
+  const id = `${now.slice(0, 10)}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "").slice(0, 40)}-${Date.now().toString(36)}`;
+  const dir = notesDir(cwd);
+  await mkdir(dir, { recursive: true });
+  const meta = { title, created: now, updated: now, tags };
+  const file = buildNoteFrontmatter(meta) + content;
+  await writeFile(join(dir, `${id}.md`), file, "utf-8");
+  return c.json({ id, title, created: now, updated: now }, 201);
+});
+
+app.put("/api/notes/:id", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const { readFile, writeFile } = await import("fs/promises");
+  const filePath = join(notesDir(cwd), `${c.req.param("id")}.md`);
+  let existing: Record<string, any> = {};
+  try {
+    const raw = await readFile(filePath, "utf-8");
+    existing = parseNoteFrontmatter(raw).meta;
+  } catch { /* new note */ }
+  const body = await c.req.json();
+  const now = new Date().toISOString();
+  const meta = {
+    title: body.title ?? existing.title ?? "untitled",
+    created: existing.created ?? now,
+    updated: now,
+    tags: body.tags ?? existing.tags ?? [],
+  };
+  const file = buildNoteFrontmatter(meta) + (body.content ?? "");
+  await writeFile(filePath, file, "utf-8");
+  return c.json({ id: c.req.param("id"), ...meta });
+});
+
+app.delete("/api/notes/:id", async (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const { unlink } = await import("fs/promises");
+  const filePath = join(notesDir(cwd), `${c.req.param("id")}.md`);
+  try {
+    await unlink(filePath);
+    return c.json({ ok: true });
+  } catch (err: any) {
+    if (err.code === "ENOENT") return c.json({ error: "not found" }, 404);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
 // ── Projects & Init ──
 
 app.get("/api/projects", (c) => {
