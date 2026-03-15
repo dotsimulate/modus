@@ -390,24 +390,3 @@ export function solveLayout(
   return { nodes, clusters };
 }
 
-// ── Drag collision detection (visual only, non-destructive) ──
-// Returns temporary position overrides that show where nodes WOULD go.
-// The caller decides whether to persist these or snap back.
-
-export function resolveDragCollisions(
-  chainIds: string[],
-  draggedId: string,
-  newPositions: PositionMap,
-  nodeMap: Map<string, GraphNode>,
-): PositionMap {
-  // Only return positions for the dragged chain — never modify other nodes
-  const result = { ...newPositions };
-  const chainSet = new Set(chainIds);
-
-  // Remove any non-chain nodes from the result — we don't push neighbors anymore
-  for (const key of Object.keys(result)) {
-    if (!chainSet.has(key)) delete result[key];
-  }
-
-  return result;
-}

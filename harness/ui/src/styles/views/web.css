@@ -178,6 +178,10 @@
   will-change: transform;
 }
 
+.web-canvas--zoomed-out .web-session-node {
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
 /* ── Commit Window Backgrounds ── */
 
 .web-window {

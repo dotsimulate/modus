@@ -877,6 +877,27 @@ export function SessionWeb() {
     return () => { cancelled = true; };
   }, [handleResetView, loading, newestSessionNode]);
 
+  // ── Frustum culling: only render nodes inside the visible viewport ──
+  const visibleNodes = useMemo(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return nodes;
+    const vpW = wrap.clientWidth;
+    const vpH = wrap.clientHeight;
+    const MARGIN = 200; // extra margin in canvas-space to avoid pop-in
+    const left = -viewport.x / viewport.scale - MARGIN;
+    const top = -viewport.y / viewport.scale - MARGIN;
+    const right = left + vpW / viewport.scale + MARGIN * 2;
+    const bottom = top + vpH / viewport.scale + MARGIN * 2;
+    return nodes.filter(n => {
+      const nw = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
+      const nh = n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H;
+      return n.x + nw > left && n.x < right && n.y + nh > top && n.y < bottom;
+    });
+  }, [nodes, viewport]);
+
+  const zoomedOut = viewport.scale < 0.4;
+  const lodSimplified = viewport.scale < 0.25;
+
   const activeNodeId = hoveredId ?? selected?.id ?? null;
   const activeEdgeSet = useMemo(() => {
     if (!activeNodeId) return new Set<string>();
@@ -925,7 +946,7 @@ export function SessionWeb() {
         onTouchEnd={onTouchEnd}
       >
         <div
-          className="web-canvas"
+          className={`web-canvas${zoomedOut ? " web-canvas--zoomed-out" : ""}`}
           style={{ width: svgW, height: svgH, transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})` }}
         >
           {clusters.map(cl => (
@@ -954,7 +975,7 @@ export function SessionWeb() {
             })}
           </svg>
 
-          {nodes.map(node => {
+          {visibleNodes.map(node => {
             const handleTouchEndNode = (e: React.TouchEvent, doubleAction: () => void) => {
               if (touchRef.current?.hasMoved) return;
               const now = Date.now();
@@ -965,6 +986,26 @@ export function SessionWeb() {
                 lastTapRef.current = { id: node.id, time: now };
               }
             };
+
+            // ── LOD: simplified rendering at very low zoom ──
+            if (lodSimplified) {
+              const nw = node.type === "session" ? NODE_W : node.type === "document" ? DOC_W : COMMIT_W;
+              const nh = node.type === "session" ? NODE_H : node.type === "document" ? DOC_H : COMMIT_H;
+              const bg = node.type === "session"
+                ? (node.session?.status === "running" ? "var(--success)" : node.session?.status === "error" ? "var(--error)" : "var(--text-muted)")
+                : node.type === "commit" ? "var(--info)" : "var(--text-muted)";
+              return (
+                <div
+                  key={node.id}
+                  style={{
+                    position: "absolute", left: node.x, top: node.y,
+                    width: nw, height: nh,
+                    background: bg, opacity: node.type === "session" ? 0.5 : 0.25,
+                    borderRadius: 3, pointerEvents: "none",
+                  }}
+                />
+              );
+            }
 
             if (node.type === "document" && node.doc) {
               const d = node.doc;
