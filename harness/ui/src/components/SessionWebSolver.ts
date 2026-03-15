@@ -111,9 +111,12 @@ export function solveLayout(
   spawnedSet: Set<string>,
   commits: GitCommit[],
   config: WebLayoutConfig,
-  positionOverrides: PositionMap,
+  _positionOverrides?: PositionMap,
   touches?: TouchRecord[],
 ): SolverResult {
+  // NOTE: positionOverrides are intentionally ignored here.
+  // The solver computes canonical positions on regenerate.
+  // Overrides are applied post-solve in the component as simple coordinate replacements.
   const sorted = [...sessions].sort((a, b) => a.created_at - b.created_at);
 
   // ── Time baseline ──
@@ -148,11 +151,6 @@ export function solveLayout(
   let nextRootY = config.padY + 40;
 
   for (const s of sorted) {
-    if (positionOverrides[s.id]) {
-      placed.set(s.id, { ...positionOverrides[s.id] });
-      continue;
-    }
-
     const conn = scoreConnections(s.id, edges, placed);
 
     let x: number;
@@ -204,7 +202,7 @@ export function solveLayout(
     }
 
     placed.set(s.id, { x, y });
-    resolveCollision(s.id, placed, positionOverrides);
+    resolveCollision(s.id, placed, {});
   }
 
   // ── Build session nodes ──
@@ -344,7 +342,7 @@ export function solveLayout(
 
   // ── RTL flip ──
   if (config.timeDirection === "rtl") {
-    const movable = nodes.filter(n => !positionOverrides[n.id]);
+    const movable = nodes;
     const xs = movable.map(n => n.x);
     if (xs.length > 0) {
       const maxXr = Math.max(...xs);

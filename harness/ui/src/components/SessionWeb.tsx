@@ -35,7 +35,7 @@ import {
 } from "./SessionWebLayout";
 
 import { buildAllEdges } from "./SessionWebEdges";
-import { solveLayout, resolveDragCollisions } from "./SessionWebSolver";
+import { solveLayout } from "./SessionWebSolver";
 
 // ── Nearest-edge anchor point between two nodes ──
 
@@ -406,6 +406,7 @@ export function SessionWeb() {
   const [positionOverrides, setPositionOverrides] = useState<PositionMap>(() => loadPositions(profileName));
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
   const [draggingChain, setDraggingChain] = useState<Set<string> | null>(null);
+  const [dragPreview, setDragPreview] = useState<PositionMap>({});
 
   const [viewport, setViewport] = useState<Viewport>(() => {
     const cfg = loadConfig();
@@ -423,7 +424,7 @@ export function SessionWeb() {
     nodeId: string; startX: number; startY: number;
     origX: number; origY: number; chainIds: string[]; hasMoved: boolean;
   } | null>(null);
-  const mmDragRef = useRef<{ startX: number; startVpX: number; hasMoved: boolean } | null>(null);
+  const mmDragRef = useRef<{ startX: number; startY: number; startVpX: number; startVpY: number; hasMoved: boolean } | null>(null);
 
   useEffect(() => { saveConfig(config); }, [config]);
   useEffect(() => { saveDateFilter(profileName, dateFilter); }, [dateFilter, profileName]);
@@ -520,13 +521,75 @@ export function SessionWeb() {
     [filteredSessions, moveRuns, commits, filteredTransfers, touches],
   );
 
-  const { nodes, clusters } = useMemo(
+  // Solver computes canonical positions — only re-runs on regenerate / data change
+  const solverResult = useMemo(
     () => solveLayout(
       filteredSessions, edges, handoffDocs, commitSessionMap,
-      childrenOf, spawnedSet, commits, config, positionOverrides, touches,
+      childrenOf, spawnedSet, commits, config, undefined, touches,
     ),
-    [filteredSessions, edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet, commits, config, positionOverrides, touches],
+    [filteredSessions, edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet, commits, config, touches],
   );
+
+  // Apply position overrides + ephemeral drag preview as simple coordinate replacements.
+  // When a session moves, its attached commits and handoff docs follow.
+  const { nodes, clusters } = useMemo(() => {
+    const hasOverrides = Object.keys(positionOverrides).length > 0;
+    const hasPreview = Object.keys(dragPreview).length > 0;
+    if (!hasOverrides && !hasPreview) return solverResult;
+
+    // Build a base-position map from solver result for delta computation
+    const baseMap = new Map(solverResult.nodes.map(n => [n.id, { x: n.x, y: n.y }]));
+
+    // Compute delta for each overridden session
+    const sessionDeltas = new Map<string, { dx: number; dy: number }>();
+    const merged: PositionMap = { ...positionOverrides, ...dragPreview };
+    for (const [id, ov] of Object.entries(merged)) {
+      const base = baseMap.get(id);
+      if (base) sessionDeltas.set(id, { dx: ov.x - base.x, dy: ov.y - base.y });
+    }
+
+    // Map commit node IDs to parent session IDs
+    const commitParent = new Map<string, string>();
+    for (const [hash7, sids] of commitSessionMap) {
+      if (sids.length > 0) commitParent.set(`commit:${hash7}`, sids[0]);
+    }
+
+    // Map doc node IDs to linked session IDs
+    const docSessions = new Map<string, [string, string]>();
+    for (const doc of handoffDocs) {
+      docSessions.set(`doc:${doc.moveRunId}`, [doc.fromSessionId, doc.toSessionId]);
+    }
+
+    const patched = solverResult.nodes.map(n => {
+      // Direct override on this node (session-level)
+      const ov = dragPreview[n.id] ?? positionOverrides[n.id];
+      if (ov) return { ...n, x: ov.x, y: ov.y };
+
+      // Commit follows its parent session
+      if (n.type === "commit") {
+        const pid = commitParent.get(n.id);
+        if (pid) {
+          const d = sessionDeltas.get(pid);
+          if (d) return { ...n, x: n.x + d.dx, y: n.y + d.dy };
+        }
+      }
+
+      // Doc follows the average delta of its two linked sessions
+      if (n.type === "document") {
+        const pair = docSessions.get(n.id);
+        if (pair) {
+          const d1 = sessionDeltas.get(pair[0]);
+          const d2 = sessionDeltas.get(pair[1]);
+          if (d1 && d2) return { ...n, x: n.x + (d1.dx + d2.dx) / 2, y: n.y + (d1.dy + d2.dy) / 2 };
+          if (d1) return { ...n, x: n.x + d1.dx, y: n.y + d1.dy };
+          if (d2) return { ...n, x: n.x + d2.dx, y: n.y + d2.dy };
+        }
+      }
+
+      return n;
+    });
+    return { nodes: patched, clusters: solverResult.clusters };
+  }, [solverResult, positionOverrides, dragPreview, commitSessionMap, handoffDocs]);
 
   const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
 
@@ -594,7 +657,7 @@ export function SessionWeb() {
       const my = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
       setViewport(vp => {
-        const s = Math.max(0.05, Math.min(4, vp.scale * factor));
+        const s = Math.max(0.15, Math.min(4, vp.scale * factor));
         const r = s / vp.scale;
         return { scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) };
       });
@@ -616,27 +679,48 @@ export function SessionWeb() {
       const dy = (e.clientY - nd.startY) / viewport.scale;
       if (!nd.hasMoved && Math.hypot(dx, dy) > 3) nd.hasMoved = true;
       if (nd.hasMoved) {
-        // Only move the dragged chain — never push neighbors
-        setPositionOverrides(prev => {
-          const next = { ...prev };
-          // Only set overrides for the chain being dragged
-          next[nd.nodeId] = { x: nd.origX + dx, y: nd.origY + dy };
-          // Move other chain members relative to the primary
-          for (const cid of nd.chainIds) {
-            if (cid === nd.nodeId) continue;
-            const node = nodeMap.get(cid);
-            if (node) {
-              const origNode = nodeMap.get(cid);
-              if (origNode) {
-                next[cid] = {
-                  x: origNode.x + dx,
-                  y: origNode.y + dy,
-                };
+        const dragX = nd.origX + dx;
+        const dragY = nd.origY + dy;
+        // Move only the dragged node in real overrides
+        setPositionOverrides(prev => ({ ...prev, [nd.nodeId]: { x: dragX, y: dragY } }));
+        // Compute ephemeral collision preview for neighbors
+        const MARGIN = 16;
+        const preview: PositionMap = {};
+        const nearby = nodes.filter(n => n.id !== nd.nodeId && n.type === "session");
+        const getBase = (n: GraphNode) => positionOverrides[n.id] ?? { x: n.x, y: n.y };
+        const pushed = new Set<string>();
+        // Pass 1: nodes overlapping the dragged node
+        for (const n of nearby) {
+          const p = getBase(n);
+          const overlapX = (NODE_W + MARGIN) - Math.abs(dragX - p.x);
+          const overlapY = (NODE_H + MARGIN) - Math.abs(dragY - p.y);
+          if (overlapX > 0 && overlapY > 0) {
+            if (overlapY <= overlapX + 20) {
+              preview[n.id] = { x: p.x, y: p.y + (p.y >= dragY ? overlapY : -overlapY) };
+            } else {
+              preview[n.id] = { x: p.x + (p.x >= dragX ? overlapX : -overlapX), y: p.y };
+            }
+            pushed.add(n.id);
+          }
+        }
+        // Pass 2: pushed nodes push their own neighbors
+        for (const pid of pushed) {
+          const pp = preview[pid]!;
+          for (const n of nearby) {
+            if (n.id === pid || pushed.has(n.id)) continue;
+            const p = getBase(n);
+            const overlapX = (NODE_W + MARGIN) - Math.abs(pp.x - p.x);
+            const overlapY = (NODE_H + MARGIN) - Math.abs(pp.y - p.y);
+            if (overlapX > 0 && overlapY > 0) {
+              if (overlapY <= overlapX + 20) {
+                preview[n.id] = { x: p.x, y: p.y + (p.y >= pp.y ? overlapY : -overlapY) };
+              } else {
+                preview[n.id] = { x: p.x + (p.x >= pp.x ? overlapX : -overlapX), y: p.y };
               }
             }
           }
-          return next;
-        });
+        }
+        setDragPreview(preview);
       }
       return;
     }
@@ -661,7 +745,20 @@ export function SessionWeb() {
     }
   };
   const onPanEnd = () => {
-    if (nodeDragRef.current?.hasMoved) savePositions(profileName, positionOverrides);
+    if (nodeDragRef.current?.hasMoved) {
+      // Commit drag preview into real overrides on drop
+      const previewKeys = Object.keys(dragPreview);
+      if (previewKeys.length > 0) {
+        setPositionOverrides(prev => {
+          const next = { ...prev, ...dragPreview };
+          savePositions(profileName, next);
+          return next;
+        });
+      } else {
+        savePositions(profileName, positionOverrides);
+      }
+      setDragPreview({});
+    }
     nodeDragRef.current = null;
     // mmDragRef cleared by window listeners, not here
     dragRef.current = null;
@@ -706,7 +803,7 @@ export function SessionWeb() {
       const mx = (t1.clientX + t2.clientX) / 2 - rect.left;
       const my = (t1.clientY + t2.clientY) / 2 - rect.top;
       setViewport(vp => {
-        const s = Math.max(0.05, Math.min(4, touchRef.current!.initialScale! * ratio));
+        const s = Math.max(0.15, Math.min(4, touchRef.current!.initialScale! * ratio));
         const r = s / vp.scale;
         return { scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) };
       });
@@ -726,23 +823,13 @@ export function SessionWeb() {
     e.stopPropagation();
     const node = nodeMap.get(nodeId);
     if (!node || node.type !== "session") return;
-    const chainIds = new Set<string>();
-    const structEdges = edges.filter(ed => ed.type === "handoff" || ed.type === "delegation");
-    function walkChain(sid: string) {
-      if (chainIds.has(sid)) return;
-      chainIds.add(sid);
-      for (const ed of structEdges) {
-        if (ed.from === sid && nodeMap.has(ed.to)) walkChain(ed.to);
-        if (ed.to === sid && nodeMap.has(ed.from)) walkChain(ed.from);
-      }
-    }
-    walkChain(nodeId);
-    setDraggingChain(chainIds);
+    // Only drag the single clicked node — no chain walking
+    setDraggingChain(new Set([nodeId]));
     nodeDragRef.current = {
       nodeId, startX: e.clientX, startY: e.clientY,
-      origX: node.x, origY: node.y, chainIds: [...chainIds], hasMoved: false,
+      origX: node.x, origY: node.y, chainIds: [nodeId], hasMoved: false,
     };
-  }, [nodeMap, edges]);
+  }, [nodeMap]);
 
   const handleSelect = useCallback((node: GraphNode) => {
     if (dragRef.current?.hasMoved || touchRef.current?.hasMoved || nodeDragRef.current?.hasMoved) return;
@@ -992,39 +1079,44 @@ export function SessionWeb() {
               onMouseDown={e => {
                 e.stopPropagation();
                 const startX = e.clientX;
-                const startVpX = viewport.x;
-                let hasMoved = false;
+                const startY = e.clientY;
                 const mmEl = e.currentTarget as HTMLElement;
+                const rect = mmEl.getBoundingClientRect();
                 const curScaleX = (wrapRef.current?.clientWidth ?? 800) / svgW;
+                const curScaleY = mmH / svgH;
                 const curVpW = wrapRef.current?.clientWidth ?? 800;
                 const curVpH = wrapRef.current?.clientHeight ?? 600;
-                mmDragRef.current = { startX, startVpX, hasMoved: false };
+
+                // Immediately jump viewport to center on click position
+                const mx = (e.clientX - rect.left) / curScaleX;
+                const my = (e.clientY - rect.top) / curScaleY;
+                const jumpVpX = -(mx - curVpW / (2 * viewport.scale)) * viewport.scale;
+                const jumpVpY = -(my - curVpH / (2 * viewport.scale)) * viewport.scale;
+                setViewport(vp => ({ ...vp, x: jumpVpX, y: jumpVpY }));
+
+                // Use jumped position as drag baseline
+                mmDragRef.current = { startX, startY, startVpX: jumpVpX, startVpY: jumpVpY, hasMoved: false };
 
                 const onMove = (ev: MouseEvent) => {
                   const dx = ev.clientX - startX;
-                  if (Math.abs(dx) > 3) { hasMoved = true; mmDragRef.current!.hasMoved = true; }
-                  if (hasMoved) {
-                    const wrap = wrapRef.current;
-                    if (wrap) {
-                      const minX = -(svgW * viewport.scale - 100);
-                      const maxX = wrap.clientWidth - 100;
-                      setViewport(vp => ({ ...vp, x: Math.max(minX, Math.min(maxX, startVpX - (dx / curScaleX) * vp.scale)) }));
-                    }
-                  }
-                };
-                const onUp = (ev: MouseEvent) => {
-                  window.removeEventListener("mousemove", onMove);
-                  window.removeEventListener("mouseup", onUp);
-                  if (!hasMoved) {
-                    const rect = mmEl.getBoundingClientRect();
-                    const mx = (ev.clientX - rect.left) / curScaleX;
-                    const my = (ev.clientY - rect.top) / (80 / svgH);
+                  const dy = ev.clientY - startY;
+                  if (Math.hypot(dx, dy) > 3) mmDragRef.current!.hasMoved = true;
+                  const wrap = wrapRef.current;
+                  if (wrap) {
+                    const minX = -(svgW * viewport.scale - 100);
+                    const maxX = wrap.clientWidth - 100;
+                    const minY = -(svgH * viewport.scale - 100);
+                    const maxY = wrap.clientHeight - 100;
                     setViewport(vp => ({
                       ...vp,
-                      x: -(mx - curVpW / (2 * vp.scale)) * vp.scale,
-                      y: -(my - curVpH / (2 * vp.scale)) * vp.scale,
+                      x: Math.max(minX, Math.min(maxX, jumpVpX - (dx / curScaleX) * vp.scale)),
+                      y: Math.max(minY, Math.min(maxY, jumpVpY - (dy / curScaleY) * vp.scale)),
                     }));
                   }
+                };
+                const onUp = () => {
+                  window.removeEventListener("mousemove", onMove);
+                  window.removeEventListener("mouseup", onUp);
                   mmDragRef.current = null;
                 };
                 window.addEventListener("mousemove", onMove);
@@ -1032,41 +1124,43 @@ export function SessionWeb() {
               }}
               onTouchStart={e => {
                 e.stopPropagation();
-                if (e.touches.length === 1)
-                  mmDragRef.current = { startX: e.touches[0].clientX, startVpX: viewport.x, hasMoved: false };
+                if (e.touches.length !== 1) return;
+                const touch = e.touches[0];
+                const rect = e.currentTarget.getBoundingClientRect();
+                const wrap = wrapRef.current;
+                const curScaleX = (wrap?.clientWidth ?? 800) / svgW;
+                const curScaleY = mmH / svgH;
+                const curVpW = wrap?.clientWidth ?? 800;
+                const curVpH = wrap?.clientHeight ?? 600;
+                const mx = (touch.clientX - rect.left) / curScaleX;
+                const my = (touch.clientY - rect.top) / curScaleY;
+                const jumpVpX = -(mx - curVpW / (2 * viewport.scale)) * viewport.scale;
+                const jumpVpY = -(my - curVpH / (2 * viewport.scale)) * viewport.scale;
+                setViewport(vp => ({ ...vp, x: jumpVpX, y: jumpVpY }));
+                mmDragRef.current = { startX: touch.clientX, startY: touch.clientY, startVpX: jumpVpX, startVpY: jumpVpY, hasMoved: false };
               }}
               onTouchMove={e => {
                 e.stopPropagation();
                 if (!mmDragRef.current || e.touches.length !== 1) return;
                 const dx = e.touches[0].clientX - mmDragRef.current.startX;
-                if (Math.abs(dx) > 3) mmDragRef.current.hasMoved = true;
-                if (mmDragRef.current.hasMoved) {
-                  const wrap = wrapRef.current;
-                  if (wrap) {
-                    const curScaleX = wrap.clientWidth / svgW;
-                    const minX = -(svgW * viewport.scale - 100);
-                    const maxX = wrap.clientWidth - 100;
-                    setViewport(vp => ({ ...vp, x: Math.max(minX, Math.min(maxX, mmDragRef.current!.startVpX - (dx / curScaleX) * vp.scale)) }));
-                  }
-                }
-              }}
-              onTouchEnd={e => {
-                e.stopPropagation();
-                if (!mmDragRef.current?.hasMoved && e.changedTouches.length === 1) {
-                  const wrap = wrapRef.current;
-                  const curScaleX = (wrap?.clientWidth ?? 800) / svgW;
-                  const curScaleY = 80 / svgH;
-                  const curVpW = wrap?.clientWidth ?? 800;
-                  const curVpH = wrap?.clientHeight ?? 600;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const mx = (e.changedTouches[0].clientX - rect.left) / curScaleX;
-                  const my = (e.changedTouches[0].clientY - rect.top) / curScaleY;
+                const dy = e.touches[0].clientY - mmDragRef.current.startY;
+                if (Math.hypot(dx, dy) > 3) mmDragRef.current.hasMoved = true;
+                const wrap = wrapRef.current;
+                if (wrap) {
+                  const curScaleX = wrap.clientWidth / svgW;
+                  const curScaleY = mmH / svgH;
+                  const minX = -(svgW * viewport.scale - 100);
+                  const maxX = wrap.clientWidth - 100;
+                  const minY = -(svgH * viewport.scale - 100);
+                  const maxY = wrap.clientHeight - 100;
                   setViewport(vp => ({
                     ...vp,
-                    x: -(mx - curVpW / (2 * vp.scale)) * vp.scale,
-                    y: -(my - curVpH / (2 * vp.scale)) * vp.scale,
+                    x: Math.max(minX, Math.min(maxX, mmDragRef.current!.startVpX - (dx / curScaleX) * vp.scale)),
+                    y: Math.max(minY, Math.min(maxY, mmDragRef.current!.startVpY - (dy / curScaleY) * vp.scale)),
                   }));
                 }
+              }}
+              onTouchEnd={() => {
                 mmDragRef.current = null;
               }}
             >
