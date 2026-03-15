@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi } from "./api";
+import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState } from "./api";
 import { customPageView, getCustomPageId, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -25,6 +25,9 @@ import { FileViewerProvider } from "./providers/FileViewerProvider";
 import { SessionWindow } from "./components/SessionWindow";
 import { SessionWeb } from "./components/SessionWeb";
 import { TraceView } from "./components/TraceView";
+import { LeftPanel } from "./components/LeftPanel";
+import { RightPanel } from "./components/RightPanel";
+import { ResizeHandle } from "./components/ResizeHandle";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
@@ -79,6 +82,95 @@ function AppShell() {
   const [forceSetup, setForceSetup] = useState(false);
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [floatingSessionId, setFloatingSessionId] = useState<string | null>(null);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(280);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [rightPanelWidth, setRightPanelWidth] = useState(360);
+  const prevSessionIdRef = useRef<string | null>(null);
+  const panelSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uiCache = useRef<Map<string, Record<string, unknown>>>(new Map());
+
+  // ── Panel state persistence (per-session, backend-stored) ──
+
+  // Capture current panel + scroll state into cache and persist to backend (debounced)
+  const savePanelState = useCallback((sessionId: string) => {
+    if (!sessionId || sessionId.startsWith("pending-")) return;
+    const scrollEl = document.querySelector(".chat-messages");
+    const snapshot: Record<string, unknown> = {
+      leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth,
+      scrollTop: scrollEl ? scrollEl.scrollTop : 0,
+    };
+    uiCache.current.set(sessionId, snapshot);
+    if (panelSaveTimer.current) clearTimeout(panelSaveTimer.current);
+    panelSaveTimer.current = setTimeout(() => {
+      saveSessionUiState(sessionId, snapshot).catch(() => {});
+    }, 300);
+  }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth]);
+
+  // Save panel state on change (debounced)
+  useEffect(() => {
+    const id = activeSession?.id;
+    if (!id || id.startsWith("pending-")) return;
+    savePanelState(id);
+  }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore panel + scroll state on session switch
+  useEffect(() => {
+    const id = activeSession?.id ?? null;
+    const prevId = prevSessionIdRef.current;
+    if (id === prevId) return;
+
+    // Save outgoing session's scroll position before switching
+    if (prevId && !prevId.startsWith("pending-")) {
+      const scrollEl = document.querySelector(".chat-messages");
+      if (scrollEl) {
+        const cached = uiCache.current.get(prevId) ?? {};
+        cached.scrollTop = scrollEl.scrollTop;
+        uiCache.current.set(prevId, cached);
+      }
+    }
+
+    prevSessionIdRef.current = id;
+
+    if (!id || id.startsWith("pending-")) {
+      setLeftPanelOpen(false);
+      setLeftPanelWidth(280);
+      setRightPanelOpen(false);
+      setRightPanelWidth(360);
+      return;
+    }
+
+    // Restore from cache (synchronous — no bounce), backfill from backend
+    const applyState = (state: Record<string, unknown>) => {
+      setLeftPanelOpen(!!state.leftPanelOpen);
+      setLeftPanelWidth(typeof state.leftPanelWidth === "number" ? state.leftPanelWidth : 280);
+      setRightPanelOpen(!!state.rightPanelOpen);
+      setRightPanelWidth(typeof state.rightPanelWidth === "number" ? state.rightPanelWidth : 360);
+      // Restore scroll position after React renders the new layout
+      if (typeof state.scrollTop === "number" && state.scrollTop > 0) {
+        requestAnimationFrame(() => {
+          const scrollEl = document.querySelector(".chat-messages");
+          if (scrollEl) scrollEl.scrollTop = state.scrollTop as number;
+        });
+      }
+    };
+
+    const cached = uiCache.current.get(id);
+    if (cached) {
+      applyState(cached);
+    } else {
+      // First visit this session — fetch from backend, cache it
+      setLeftPanelOpen(false);
+      setLeftPanelWidth(280);
+      setRightPanelOpen(false);
+      setRightPanelWidth(360);
+      fetchSessionUiState(id).then((state) => {
+        uiCache.current.set(id, state);
+        // Only apply if we're still on this session
+        if (prevSessionIdRef.current === id) applyState(state);
+      }).catch(() => {});
+    }
+  }, [activeSession?.id]);
 
   // Sync editor pref from active user profile into localStorage
   useEffect(() => {
@@ -167,6 +259,13 @@ function AppShell() {
   // Peek: pop a floating SessionWindow for any session ID
   const handlePeekSession = useCallback((id: string) => {
     setFloatingSessionId(id);
+  }, []);
+
+  const handleLeftResize = useCallback((delta: number) => {
+    setLeftPanelWidth((w) => Math.max(180, Math.min(600, w + delta)));
+  }, []);
+  const handleRightResize = useCallback((delta: number) => {
+    setRightPanelWidth((w) => Math.max(200, Math.min(800, w + delta)));
   }, []);
 
   // ── Profile UI resolution ──
@@ -325,6 +424,16 @@ function AppShell() {
 
         {view === "chat" && (
           <>
+            <LeftPanel
+              open={leftPanelOpen}
+              width={leftPanelWidth}
+              onOpen={() => setLeftPanelOpen(true)}
+              onClose={() => setLeftPanelOpen(false)}
+              widgets={[{ id: "session-info-left", type: "session-info" }]}
+              onNavigate={handleNavigate}
+              onSelectSession={handleSelectSession}
+            />
+            {leftPanelOpen && <ResizeHandle side="left" onResize={handleLeftResize} />}
             <div className="chat">
               <ChatView
                 messages={activeSession?.messages ?? []}
@@ -416,6 +525,13 @@ function AppShell() {
                 }}
               />
             </div>
+            {rightPanelOpen && <ResizeHandle side="right" onResize={handleRightResize} />}
+            <RightPanel
+              open={rightPanelOpen}
+              width={rightPanelWidth}
+              onOpen={() => setRightPanelOpen(true)}
+              onClose={() => setRightPanelOpen(false)}
+            />
           </>
         )}
 

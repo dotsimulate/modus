@@ -85,6 +85,21 @@ export async function saveDraft(sessionId: string, draft: string): Promise<void>
   });
 }
 
+// ── Session UI State ──
+
+export async function fetchSessionUiState(sessionId: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/ui-state`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function saveSessionUiState(sessionId: string, patch: Record<string, unknown>): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${sessionId}/ui-state`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+}
+
 // ── Empty Session ──
 
 export async function createEmptySession(opts?: {

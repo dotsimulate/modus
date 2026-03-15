@@ -1,11 +1,16 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { ChatFileViewer } from "../components/ChatFileViewer";
 
 type FileViewerContextValue = {
+  path: string | null;
   openFile: (path: string) => void;
+  closeFile: () => void;
 };
 
-const FileViewerContext = createContext<FileViewerContextValue>({ openFile: () => {} });
+const FileViewerContext = createContext<FileViewerContextValue>({
+  path: null,
+  openFile: () => {},
+  closeFile: () => {},
+});
 
 export function useFileViewer() {
   return useContext(FileViewerContext);
@@ -15,9 +20,8 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   const [path, setPath] = useState<string | null>(null);
 
   return (
-    <FileViewerContext.Provider value={{ openFile: setPath }}>
+    <FileViewerContext.Provider value={{ path, openFile: setPath, closeFile: () => setPath(null) }}>
       {children}
-      <ChatFileViewer path={path} onClose={() => setPath(null)} />
     </FileViewerContext.Provider>
   );
 }

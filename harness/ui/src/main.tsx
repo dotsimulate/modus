@@ -41,6 +41,8 @@ import './styles/components/project-theme-widget.css'
 import './styles/components/provider-usage-widget.css'
 import './styles/components/prompt-picker.css'
 import './styles/components/missions.css'
+import './styles/components/panels.css'
+import './styles/components/session-info-widget.css'
 
 // Views
 import './styles/views/login.css'
