@@ -1,0 +1,15 @@
+{
+  "name": "api-access",
+  "label": "Grant API access",
+  "description": "Inject an API token into the session so the agent can tag sessions and perform other API operations via modus_submit.",
+  "icon": "key",
+  "mode": "inline",
+  "inputs": [],
+  "submit": {
+    "required": false
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "tags": ["api", "tooling"]
+}

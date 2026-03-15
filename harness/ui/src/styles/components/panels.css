@@ -1,0 +1,202 @@
+/**
+ * Panels — collapsible left (widgets) and right (viewer) side panels.
+ *
+ * When collapsed, only a slim tab/chevron is visible at the edge.
+ * When open, panel slides in with a border separating it from the chat area.
+ * Panels are resizable via drag handles between them and the chat column.
+ */
+
+/* ── Shared panel tab (collapsed state) ── */
+.panel-tab {
+  position: relative;
+  width: 20px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.panel-tab:hover {
+  opacity: 1;
+  color: var(--text-dim);
+  background: var(--bg-hover);
+}
+
+/* Border only appears on hover */
+.panel-tab--left {
+  border-right: 1px solid transparent;
+}
+.panel-tab--right {
+  border-left: 1px solid transparent;
+}
+.panel-tab:hover.panel-tab--left {
+  border-right-color: var(--border);
+}
+.panel-tab:hover.panel-tab--right {
+  border-left-color: var(--border);
+}
+
+/* Reveal tab subtly on app-body hover */
+.app-body:hover .panel-tab {
+  opacity: 0.25;
+}
+.app-body:hover .panel-tab:hover {
+  opacity: 0.6;
+}
+
+/* ── Resize handle ── */
+.resize-handle {
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  position: relative;
+  z-index: 2;
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+.resize-handle--left::after {
+  right: 2px;
+}
+.resize-handle--right::after {
+  left: 2px;
+}
+.resize-handle:hover::after {
+  background: var(--border-active);
+  width: 3px;
+}
+
+/* ── Left panel ── */
+.left-panel {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+.left-panel.open {
+  /* width/minWidth set via inline style for resize support */
+  overflow: visible;
+}
+
+.left-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+.left-panel-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.left-panel-close,
+.right-panel-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.1s ease;
+}
+.left-panel-close:hover,
+.right-panel-close:hover {
+  color: var(--text);
+}
+
+.left-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px;
+}
+
+/* ── Right panel ── */
+.right-panel {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: var(--bg);
+}
+.right-panel.open {
+  /* width/minWidth set via inline style for resize support */
+  overflow: visible;
+}
+
+.right-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+.right-panel-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.right-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+}
+/* When file viewer is present, remove padding so it fills edge-to-edge */
+.right-panel-content:has(.right-panel-file) {
+  padding: 0;
+}
+
+/* ── File viewer embedded in right panel ── */
+.right-panel-file {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.right-panel-file .fcv-panel {
+  border: none;
+  border-radius: 0;
+}
+.right-panel-file .fcv-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
+}
+
+/* ── Empty state for both panels ── */
+.panel-empty {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  padding: 24px 8px;
+  text-align: center;
+}
