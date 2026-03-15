@@ -1,8 +1,7 @@
 import { memo, useState } from "react";
 import type { ToolCall } from "../api";
-import { openInEditor } from "../api";
 import { API_BASE, tokenParam } from "../api/_fetch";
-import { ChatFileViewer } from "./ChatFileViewer";
+import { useFileViewer } from "../providers/FileViewerProvider";
 
 type FileEdit = {
   filePath: string;
@@ -223,22 +222,16 @@ function rawFileUrl(filePath: string): string {
 function FileCard({
   filePath,
   edits,
-  onViewFile,
 }: {
   filePath: string;
   edits: FileEdit[];
-  onViewFile: (path: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { openFile } = useFileViewer();
   const { additions, deletions } = countChanges(edits);
   const name = basename(filePath);
   const dir = shortPath(filePath).replace(/\/?[^/]+$/, "");
   const previewable = isBrowserPreviewable(filePath);
-
-  const handleOpen = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    openInEditor(filePath);
-  };
 
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -247,7 +240,7 @@ function FileCard({
 
   const handleViewFile = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onViewFile(filePath);
+    openFile(filePath);
   };
 
   return (
@@ -269,16 +262,10 @@ function FileCard({
             </svg>
           </button>
         )}
-        <button className="fc-open-btn" onClick={handleViewFile} title="View current file state">
+        <button className="fc-open-btn" onClick={handleViewFile} title="View in side panel">
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path d="M1 6s1.8-3 5-3 5 3 5 3-1.8 3-5 3-5-3-5-3Z" stroke="currentColor" strokeWidth="1.1"/>
             <circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.1"/>
-          </svg>
-        </button>
-        <button className="fc-open-btn" onClick={handleOpen} title="Open in editor">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M10 6.5V10a1 1 0 01-1 1H2a1 1 0 01-1-1V3a1 1 0 011-1h3.5M7 1h4v4M5 7l6-6"
-              stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
       </div>
@@ -305,7 +292,6 @@ type Props = {
 };
 
 export const FileChanges = memo(function FileChanges({ toolCalls }: Props) {
-  const [viewerPath, setViewerPath] = useState<string | null>(null);
   const edits = extractFileEdits(toolCalls);
   if (edits.length === 0) return null;
 
@@ -331,11 +317,10 @@ export const FileChanges = memo(function FileChanges({ toolCalls }: Props) {
         </div>
         <div className="fc-files">
           {[...grouped.entries()].map(([fp, edits]) => (
-            <FileCard key={fp} filePath={fp} edits={edits} onViewFile={setViewerPath} />
+            <FileCard key={fp} filePath={fp} edits={edits} />
           ))}
         </div>
       </div>
-      <ChatFileViewer path={viewerPath} onClose={() => setViewerPath(null)} />
     </div>
   );
 });

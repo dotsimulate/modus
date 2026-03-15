@@ -259,6 +259,15 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
               </button>
               <button
                 className="rp-tab-close"
+                onClick={(e) => { e.stopPropagation(); openInEditor(tab.path); }}
+                title="Open in editor"
+              >
+                <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
+                  <path d="M10 6.5V10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h3.5M7 1h4v4M5 7l6-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              <button
+                className="rp-tab-close"
                 onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.path); }}
                 title="Close tab"
               >
