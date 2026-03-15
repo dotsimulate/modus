@@ -30,6 +30,8 @@ import { RightPanel } from "./components/RightPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { NowPlaying } from "./components/NowPlaying";
+import { NotesPage } from "./components/NotesPage";
+import { ProductivityPage } from "./components/ProductivityPage";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
 function parseTagList(raw?: string | null): string[] {
@@ -557,6 +559,8 @@ function AppShell() {
         {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
         {view === "web" && <SessionWeb />}
         {view === "trace" && <TraceView />}
+        {view === "notes" && <NotesPage />}
+        {view === "productivity" && <ProductivityPage />}
         {view === "git" && (
           <PageView
             blocks={gitPageBlocks}
