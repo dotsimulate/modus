@@ -30,36 +30,52 @@ type ViewState =
   | { kind: "directory"; result: BrowseResult }
   | { kind: "error"; message: string };
 
+/** Which tab is showing: the project browser or a specific file */
+type ActiveView = "browser" | string;
+
 export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
   const { tabs, activePath, closeFile, setActive, pinFile, unpinFile, openFile } = useFileViewer();
   const { activeCwd } = useProfiles();
 
+  const [activeView, setActiveView] = useState<ActiveView>("browser");
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [copiedPath, setCopiedPath] = useState(false);
   const [htmlPreview, setHtmlPreview] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
 
-  // Open panel when a file is opened
+  // When FileViewerProvider's activePath changes (e.g. agent opens a file), switch to it
   useEffect(() => {
-    if (activePath) onOpen();
+    if (activePath) {
+      setActiveView(activePath);
+      onOpen();
+    }
   }, [activePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load content for active path
+  // Sync activeView → FileViewerProvider active
   useEffect(() => {
-    if (!activePath) { setView({ kind: "idle" }); return; }
+    if (activeView !== "browser" && activeView !== activePath) {
+      setActive(activeView);
+    }
+  }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const viewingFile = activeView !== "browser" ? activeView : null;
+
+  // Load content for the file being viewed
+  useEffect(() => {
+    if (!viewingFile) { setView({ kind: "idle" }); return; }
     let active = true;
     setLoading(true);
     setView({ kind: "loading" });
 
     (async () => {
       try {
-        const dirResult = await browsePath(activePath, { includeHidden: true });
+        const dirResult = await browsePath(viewingFile, { includeHidden: true });
         if (active) setView({ kind: "directory", result: dirResult });
         return;
       } catch {
         try {
-          const text = await readFileContent(activePath);
+          const text = await readFileContent(viewingFile);
           if (!active) return;
           if (text !== null) { setView({ kind: "file", content: text }); return; }
         } catch { /* fall through */ }
@@ -68,15 +84,15 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
     })().finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [activePath]);
+  }, [viewingFile]);
 
   // Reset preview mode when switching files
   useEffect(() => {
-    if (activePath) {
+    if (viewingFile) {
       setCopiedPath(false);
       setHtmlPreview(true);
     }
-  }, [activePath]);
+  }, [viewingFile]);
 
   useEffect(() => {
     if (!copiedPath) return;
@@ -93,14 +109,20 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
     }));
   }, [view]);
 
-  const handleClose = () => {
-    setFullscreen(false);
-    onClose();
-  };
-
   const handleCloseFile = () => {
     setFullscreen(false);
-    closeFile(activePath ?? undefined);
+    if (viewingFile) closeFile(viewingFile);
+    setActiveView("browser");
+  };
+
+  const handleCloseTab = (path: string) => {
+    closeFile(path);
+    if (activeView === path) setActiveView("browser");
+  };
+
+  const handleFileSelect = (path: string) => {
+    openFile(path);
+    setActiveView(path);
   };
 
   const copyBtn = (targetPath: string) => (
@@ -132,9 +154,9 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
     </>
   );
 
-  const isHtml = activePath ? isHtmlFile(activePath) : false;
-  const hasFile = activePath && view.kind !== "idle";
-  const hasTabs = tabs.length > 0;
+  const isHtml = viewingFile ? isHtmlFile(viewingFile) : false;
+  const showFileContent = viewingFile && view.kind !== "idle";
+  const showBrowser = activeView === "browser";
 
   return (
     <>
@@ -154,27 +176,26 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
               </svg>
             </button>
           )}
-          <span className="right-panel-title">viewer</span>
           <div className="right-panel-header-actions">
             {/* Pin/unpin active file */}
-            {hasFile && activePath && (
+            {viewingFile && (
               <button
-                className={`right-panel-header-btn${tabs.find((t) => t.path === activePath)?.pinned ? " active" : ""}`}
+                className={`right-panel-header-btn${tabs.find((t) => t.path === viewingFile)?.pinned ? " active" : ""}`}
                 onClick={() => {
-                  const tab = tabs.find((t) => t.path === activePath);
-                  if (tab?.pinned) unpinFile(activePath);
-                  else pinFile(activePath);
+                  const tab = tabs.find((t) => t.path === viewingFile);
+                  if (tab?.pinned) unpinFile(viewingFile);
+                  else pinFile(viewingFile);
                 }}
-                title={tabs.find((t) => t.path === activePath)?.pinned ? "Unpin file" : "Pin file"}
+                title={tabs.find((t) => t.path === viewingFile)?.pinned ? "Unpin file" : "Pin file"}
               >
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={tabs.find((t) => t.path === activePath)?.pinned ? "currentColor" : "none"}/>
+                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={tabs.find((t) => t.path === viewingFile)?.pinned ? "currentColor" : "none"}/>
                   <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
                 </svg>
               </button>
             )}
             {/* HTML preview/source toggle */}
-            {hasFile && isHtml && view.kind === "file" && (
+            {showFileContent && isHtml && view.kind === "file" && (
               <button
                 className={`right-panel-header-btn${htmlPreview ? " active" : ""}`}
                 onClick={() => setHtmlPreview(!htmlPreview)}
@@ -188,7 +209,7 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
               </button>
             )}
             {/* Fullscreen toggle */}
-            {hasFile && (
+            {showFileContent && (
               <button
                 className="right-panel-header-btn"
                 onClick={() => setFullscreen(!fullscreen)}
@@ -204,43 +225,58 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
           </div>
         </div>
 
-        {/* Tab bar */}
-        {hasTabs && (
-          <div className="rp-tabs">
-            {tabs.map((tab) => (
-              <div
-                key={tab.path}
-                className={`rp-tab${tab.path === activePath ? " rp-tab--active" : ""}${tab.pinned ? " rp-tab--pinned" : ""}`}
-              >
-                <button
-                  className="rp-tab-label"
-                  onClick={() => setActive(tab.path)}
-                  title={tab.path}
-                >
-                  {tab.pinned && (
-                    <svg className="rp-tab-pin" width="7" height="7" viewBox="0 0 12 12" fill="none">
-                      <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="currentColor"/>
-                      <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                  )}
-                  {basename(tab.path)}
-                </button>
-                <button
-                  className="rp-tab-close"
-                  onClick={(e) => { e.stopPropagation(); closeFile(tab.path); }}
-                  title="Close tab"
-                >
-                  <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
-                    <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-                  </svg>
-                </button>
-              </div>
-            ))}
+        {/* Tab bar — always visible: browser tab + file tabs */}
+        <div className="rp-tabs">
+          <div className={`rp-tab${showBrowser ? " rp-tab--active" : ""}`}>
+            <button
+              className="rp-tab-label"
+              onClick={() => setActiveView("browser")}
+              title="Project files"
+            >
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                <path d="M1 3h4l1-1.5h5v8.5H1z" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+              </svg>
+              files
+            </button>
           </div>
-        )}
+          {tabs.map((tab) => (
+            <div
+              key={tab.path}
+              className={`rp-tab${tab.path === activeView ? " rp-tab--active" : ""}${tab.pinned ? " rp-tab--pinned" : ""}`}
+            >
+              <button
+                className="rp-tab-label"
+                onClick={() => setActiveView(tab.path)}
+                title={tab.path}
+              >
+                {tab.pinned && (
+                  <svg className="rp-tab-pin" width="7" height="7" viewBox="0 0 12 12" fill="none">
+                    <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="currentColor"/>
+                    <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                )}
+                {basename(tab.path)}
+              </button>
+              <button
+                className="rp-tab-close"
+                onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.path); }}
+                title="Close tab"
+              >
+                <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
 
         <div className="right-panel-content">
-          {hasFile && view.kind === "directory" ? (
+          {showBrowser ? (
+            <FileBrowser
+              rootPath={activeCwd ?? null}
+              onFileSelect={handleFileSelect}
+            />
+          ) : showFileContent && view.kind === "directory" ? (
             <div className="fcv-panel right-panel-file">
               <div className="fcv-head">
                 <div className="fcv-meta">
@@ -259,13 +295,13 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
                   <div className="fcv-directory-path">{view.result.path}</div>
                   <div className="fcv-directory-list">
                     {view.result.parent && (
-                      <button className="fcv-directory-entry fcv-directory-entry--parent" onClick={() => setActive(view.result.parent!)}>
+                      <button className="fcv-directory-entry fcv-directory-entry--parent" onClick={() => setActiveView(view.result.parent!)}>
                         ..
                       </button>
                     )}
                     {directoryEntries.length === 0 && <div className="fcv-state">No subfolders.</div>}
                     {directoryEntries.map((entry) => (
-                      <button key={entry.key} className="fcv-directory-entry" onClick={() => setActive(entry.path)}>
+                      <button key={entry.key} className="fcv-directory-entry" onClick={() => setActiveView(entry.path)}>
                         <span className="fcv-directory-dot" aria-hidden="true" />
                         <span className="fcv-directory-name">{entry.name}</span>
                         <span className="fcv-directory-type">dir</span>
@@ -275,18 +311,18 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
                 </div>
               </div>
             </div>
-          ) : hasFile && isHtml && htmlPreview && view.kind === "file" ? (
+          ) : showFileContent && isHtml && htmlPreview && view.kind === "file" ? (
             <div className="right-panel-file right-panel-canvas">
               <div className="fcv-head">
                 <div className="fcv-meta">
                   <div className="fcv-name-row">
-                    <span className="fcv-name">{basename(activePath!)}</span>
-                    <div className="fcv-name-actions">{copyBtn(activePath!)}</div>
+                    <span className="fcv-name">{basename(viewingFile!)}</span>
+                    <div className="fcv-name-actions">{copyBtn(viewingFile!)}</div>
                   </div>
                 </div>
                 <div className="fcv-head-side">
                   <span className="fcv-count">preview</span>
-                  <div className="fcv-actions">{fileActions(activePath!)}</div>
+                  <div className="fcv-actions">{fileActions(viewingFile!)}</div>
                 </div>
               </div>
               <iframe
@@ -296,24 +332,19 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
                 title="HTML Preview"
               />
             </div>
-          ) : hasFile ? (
+          ) : showFileContent ? (
             <div className="right-panel-file">
               <FileContentViewer
-                filePath={activePath!}
+                filePath={viewingFile!}
                 content={view.kind === "file" ? view.content : null}
                 loading={loading}
                 error={view.kind === "error" ? view.message : null}
-                nameActions={copyBtn(activePath!)}
-                actions={fileActions(activePath!)}
+                nameActions={copyBtn(viewingFile!)}
+                actions={fileActions(viewingFile!)}
               />
             </div>
           ) : (
-            children || (
-              <FileBrowser
-                rootPath={activeCwd ?? null}
-                onFileSelect={(p) => openFile(p)}
-              />
-            )
+            children || <div className="panel-empty">no file open</div>
           )}
         </div>
       </div>
