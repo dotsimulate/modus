@@ -26,8 +26,8 @@
 .message-artifacts {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .message-media-card {
@@ -52,30 +52,33 @@
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
 }
 
-/* ── Custom audio player ── */
+/* ── Audio player — inline, single-line ── */
 .audio-artifact {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
-  max-width: 420px;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  height: 24px;
 }
 
 .audio-artifact-label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .audio-artifact-player {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-surface);
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
 .audio-artifact-btn {
@@ -83,27 +86,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid var(--border-active);
+  width: 16px;
+  height: 16px;
+  border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-dim);
   cursor: pointer;
   padding: 0;
-  transition: color 0.1s, border-color 0.1s;
+  transition: color 0.1s;
 }
 .audio-artifact-btn:hover {
   color: var(--accent);
-  border-color: var(--border-focus);
 }
 
 .audio-artifact-time {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-tertiary);
+  font-size: 10px;
+  color: var(--text-dim);
   flex-shrink: 0;
-  min-width: 28px;
+  min-width: 24px;
 }
 .audio-artifact-time--total {
   color: var(--text-muted);
@@ -111,16 +112,18 @@
 
 .audio-artifact-track {
   flex: 1;
-  height: 3px;
-  border-radius: 2px;
+  height: 1px;
   background: var(--border-active);
   cursor: pointer;
   position: relative;
+  /* pad the hit target without changing visual height */
+  padding: 6px 0;
+  background-clip: content-box;
 }
 .audio-artifact-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--text-label);
+  height: 1px;
+  margin-top: 6px;
+  background: var(--text-tertiary);
   pointer-events: none;
 }
 
@@ -175,4 +178,70 @@
 @keyframes lightbox-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* ── Now Playing — floating indicator below top-nav ── */
+.now-playing {
+  position: absolute;
+  bottom: 0;
+  right: 16px;
+  transform: translateY(100%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.now-playing:hover {
+  border-color: var(--border-active);
+}
+.now-playing-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.1s;
+}
+.now-playing-toggle:hover {
+  color: var(--accent);
+}
+.now-playing-viz {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 10px;
+}
+.now-playing-bar {
+  width: 2px;
+  background: var(--text-dim);
+  border-radius: 1px;
+  animation: now-playing-bounce 0.6s ease-in-out infinite alternate;
+}
+@keyframes now-playing-bounce {
+  0% { height: 2px; }
+  100% { height: 10px; }
+}
+.now-playing-track {
+  width: 40px;
+  height: 1px;
+  background: var(--border-active);
+}
+.now-playing-fill {
+  height: 100%;
+  background: var(--text-tertiary);
+}
+.now-playing--active .now-playing-toggle {
+  color: var(--text-tertiary);
 }
