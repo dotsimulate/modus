@@ -296,6 +296,7 @@ export type BrowseResult = {
   path: string;
   parent: string | null;
   dirs: string[];
+  files?: string[];
 };
 
 export type PermissionResponse = {
