@@ -161,7 +161,7 @@
 
 .trace-controls-hint {
   position: absolute;
-  bottom: 12px;
+  bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--font-mono);
@@ -300,6 +300,272 @@
   font-size: 12px;
   color: var(--text-muted);
   pointer-events: none;
+}
+
+/* ── Timeline scrubber ── */
+
+.trace-timeline {
+  position: absolute;
+  bottom: 32px;
+  left: 0;
+  right: 0;
+  z-index: 15;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.trace-timeline-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px 12px;
+  pointer-events: auto;
+}
+
+/* Play / Pause button */
+
+.trace-tl-play {
+  font-size: 11px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+  line-height: 1;
+}
+
+.trace-tl-play:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+}
+
+.trace-tl-play.playing {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  background: color-mix(in srgb, var(--success) 6%, transparent);
+}
+
+.trace-tl-play.at-end {
+  color: var(--text-muted);
+}
+
+/* Slider area */
+
+.trace-tl-slider-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trace-tl-dates {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.trace-tl-now {
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.trace-tl-track-wrap {
+  position: relative;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.trace-tl-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Range window fill (dim) */
+.trace-tl-range-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  border-radius: 1px;
+}
+
+/* Played-through fill (bright) */
+.trace-tl-played-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--success);
+  border-radius: 1px;
+  opacity: 0.75;
+}
+
+/* Playhead tick */
+.trace-tl-head {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 10px;
+  background: var(--success);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--success) 80%, transparent);
+}
+
+/* Range inputs — transparent track, styled thumb */
+
+.trace-tl-input {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 20px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+  pointer-events: auto;
+}
+
+.trace-tl-input::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 2px;
+}
+
+.trace-tl-input::-moz-range-track {
+  background: transparent;
+  height: 2px;
+}
+
+.trace-tl-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--success);
+  margin-top: -5px;
+  cursor: pointer;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--success) 20%, transparent),
+    0 0 8px color-mix(in srgb, var(--success) 40%, transparent);
+  transition: box-shadow 0.1s, transform 0.1s;
+}
+
+.trace-tl-input:hover::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--success) 28%, transparent),
+    0 0 14px color-mix(in srgb, var(--success) 60%, transparent);
+  transform: scale(1.2);
+}
+
+.trace-tl-input::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--success);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--success) 40%, transparent);
+}
+
+/* The start handle sits below the end handle in z to avoid overlap issues */
+.trace-tl-input-start { z-index: 1; }
+.trace-tl-input-end   { z-index: 2; }
+
+/* Speed slider */
+
+.trace-tl-speed-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+  width: 80px;
+}
+
+.trace-tl-speed-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  text-align: center;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+/* Range presets */
+
+.trace-tl-presets {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.trace-tl-preset {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 7px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+  line-height: 1;
+}
+
+.trace-tl-preset:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-active);
+}
+
+.trace-tl-preset.active {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: var(--bg-hover);
+}
+
+/* Touch count */
+
+.trace-tl-count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
+.trace-tl-count-sep {
+  opacity: 0.4;
+  margin: 0 1px;
 }
 
 /* ── Responsive ── */
