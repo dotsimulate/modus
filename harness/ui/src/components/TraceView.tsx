@@ -554,7 +554,10 @@ export function TraceView() {
       const revealed = visibleSessionIdsRef.current.has(sess.sessionId);
       const p = prev.get(id);
       if (p) {
-        // Position never changes — do NOT update target from visibleGraph
+        // Always sync target — positions update when range changes, but since
+        // sessionTargets only depends on rangeStart/rangeEnd (not playhead),
+        // sessions don't move during playback.
+        p.target = tgt;
         p.data = sess;
         // Flip visibility as playhead crosses or retreats past firstSeen
         if (revealed && p.visibleSince < 0) p.visibleSince = frame;
