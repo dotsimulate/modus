@@ -44,6 +44,8 @@ import './styles/components/missions.css'
 import './styles/components/panels.css'
 import './styles/components/session-info-widget.css'
 import './styles/components/session-control-widget.css'
+import './styles/components/notes-editor.css'
+import './styles/components/file-browser.css'
 
 // Views
 import './styles/views/login.css'
@@ -55,6 +57,8 @@ import './styles/views/actions.css'
 import './styles/views/git.css'
 import './styles/views/web.css'
 import './styles/views/trace.css'
+import './styles/views/notes.css'
+import './styles/views/productivity.css'
 
 // Overrides (last — responsive)
 import './styles/mobile.css'
