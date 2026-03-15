@@ -88,6 +88,27 @@
   border-color: var(--border-active);
 }
 
+/* ── Toolbar Regenerate Button ── */
+
+.web-regen-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.1s ease, border-color 0.1s ease;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.web-regen-btn:hover {
+  color: var(--text-dim);
+  border-color: var(--border-active);
+}
+
 /* ── Edge Layer Panel ── */
 
 .web-layer-panel {
@@ -154,6 +175,7 @@
   position: relative;
   margin: auto;
   transform-origin: 0 0;
+  will-change: transform;
 }
 
 /* ── Commit Window Backgrounds ── */
@@ -867,16 +889,20 @@
 
 .web-minimap {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  bottom: 0;
+  left: 0;
+  right: 0;
   z-index: 10;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  cursor: crosshair;
+  border-top: 1px solid var(--border);
+  cursor: grab;
   overflow: hidden;
-  opacity: 0.8;
+  opacity: 0.85;
   transition: opacity 0.15s ease;
+}
+
+.web-minimap:active {
+  cursor: grabbing;
 }
 
 .web-minimap:hover {
@@ -903,11 +929,45 @@
   opacity: 0.2;
 }
 
+.web-mm-band {
+  fill: rgba(255, 255, 255, 0.015);
+}
+
 .web-mm-viewport {
   fill: none;
   stroke: var(--text-dim);
   stroke-width: 1;
   opacity: 0.6;
+}
+
+/* ── Day HUD ── */
+
+.web-day-hud {
+  position: absolute;
+  bottom: 92px;
+  left: 12px;
+  z-index: 10;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.web-day-hud-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.web-day-hud-stats {
+  font-size: 9px;
+  color: var(--text-muted);
 }
 
 /* ── Delegation Edges (mission transfers) ── */
