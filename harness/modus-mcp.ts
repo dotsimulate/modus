@@ -21,8 +21,10 @@ import {
 import { z } from "zod";
 import { handleSubmit } from "./move-runner";
 import { isMissionToken, handleMissionCommand } from "./mission-runner";
-import { addSessionTag } from "./db";
+import { addSessionTag, getSession } from "./db";
 import { broadcastUiEvent } from "./session-manager";
+import { join } from "path";
+import { readdir, readFile, writeFile, mkdir } from "fs/promises";
 
 /**
  * Handle an incoming MCP request from Hono.
@@ -218,6 +220,94 @@ registerApiHandler("open-file", async (sessionId, data) => {
   }
   broadcastUiEvent(sessionId, { type: "ui", action: "open-file", path });
   return { ok: true, message: `Opened file: ${path}` };
+});
+
+// ── Notes API handlers ──
+// Agents can create and read notes in the project's .modus/notes/ directory.
+
+function getSessionCwd(sessionId: string): string | null {
+  const row = getSession(sessionId);
+  return row?.cwd ?? null;
+}
+
+function notesDir(cwd: string): string {
+  return join(cwd, ".modus", "notes");
+}
+
+function parseNoteFrontmatter(raw: string): { meta: Record<string, any>; body: string } {
+  if (!raw.startsWith("---")) return { meta: {}, body: raw };
+  const end = raw.indexOf("\n---", 3);
+  if (end === -1) return { meta: {}, body: raw };
+  const frontmatter = raw.slice(4, end).trim();
+  const body = raw.slice(end + 4).trim();
+  const meta: Record<string, any> = {};
+  for (const line of frontmatter.split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim();
+    let val: any = line.slice(colon + 1).trim();
+    if (val.startsWith("[") && val.endsWith("]")) {
+      try { val = JSON.parse(val); } catch { /* keep as string */ }
+    }
+    meta[key] = val;
+  }
+  return { meta, body };
+}
+
+function buildNoteFrontmatter(meta: Record<string, any>): string {
+  const lines = Object.entries(meta).map(([k, v]) =>
+    `${k}: ${Array.isArray(v) ? JSON.stringify(v) : v}`
+  );
+  return `---\n${lines.join("\n")}\n---\n\n`;
+}
+
+registerApiHandler("list-notes", async (sessionId) => {
+  const cwd = getSessionCwd(sessionId);
+  if (!cwd) return { ok: false, error: "Session has no CWD" };
+  const dir = notesDir(cwd);
+  try {
+    const files = await readdir(dir);
+    const notes = await Promise.all(
+      files.filter((f) => f.endsWith(".md")).map(async (f) => {
+        const raw = await readFile(join(dir, f), "utf-8");
+        const { meta, body } = parseNoteFrontmatter(raw);
+        return { id: f.replace(/\.md$/, ""), title: meta.title || f, preview: body.slice(0, 100) };
+      })
+    );
+    return { ok: true, message: JSON.stringify(notes) };
+  } catch (err: any) {
+    if (err.code === "ENOENT") return { ok: true, message: "[]" };
+    return { ok: false, error: err.message };
+  }
+});
+
+registerApiHandler("read-note", async (sessionId, data) => {
+  const cwd = getSessionCwd(sessionId);
+  if (!cwd) return { ok: false, error: "Session has no CWD" };
+  const id = data.id;
+  if (typeof id !== "string") return { ok: false, error: "Missing 'id' field" };
+  try {
+    const raw = await readFile(join(notesDir(cwd), `${id}.md`), "utf-8");
+    const { meta, body } = parseNoteFrontmatter(raw);
+    return { ok: true, message: JSON.stringify({ id, ...meta, content: body }) };
+  } catch (err: any) {
+    return { ok: false, error: err.code === "ENOENT" ? "Note not found" : err.message };
+  }
+});
+
+registerApiHandler("create-note", async (sessionId, data) => {
+  const cwd = getSessionCwd(sessionId);
+  if (!cwd) return { ok: false, error: "Session has no CWD" };
+  const title = typeof data.title === "string" ? data.title : "untitled";
+  const content = typeof data.content === "string" ? data.content : "";
+  const tags = Array.isArray(data.tags) ? data.tags : [];
+  const now = new Date().toISOString();
+  const id = `${now.slice(0, 10)}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "").slice(0, 40)}-${Date.now().toString(36)}`;
+  const dir = notesDir(cwd);
+  await mkdir(dir, { recursive: true });
+  const meta = { title, created: now, updated: now, tags };
+  await writeFile(join(dir, `${id}.md`), buildNoteFrontmatter(meta) + content, "utf-8");
+  return { ok: true, message: `Note created: ${id}` };
 });
 
 // ── Mission token handler (command bus) ──
