@@ -377,11 +377,12 @@ export async function searchSessionsScoped(query: string, limit = 20, userProfil
 
 export async function browsePath(
   path?: string,
-  options?: { includeHidden?: boolean },
+  options?: { includeHidden?: boolean; includeFiles?: boolean },
 ): Promise<import("./types").BrowseResult> {
   const params = new URLSearchParams();
   if (path) params.set("path", path);
   if (options?.includeHidden) params.set("includeHidden", "1");
+  if (options?.includeFiles) params.set("includeFiles", "1");
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   const res = await fetch(`${API_BASE}/api/browse${suffix}`, { headers: authHeaders() });

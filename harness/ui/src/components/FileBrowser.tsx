@@ -28,7 +28,7 @@ type FileBrowserProps = {
 type ViewState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "directory"; result: BrowseResult & { files?: string[] } }
+  | { kind: "directory"; result: BrowseResult }
   | { kind: "file"; path: string; content: string }
   | { kind: "error"; message: string };
 
@@ -66,10 +66,8 @@ export function FileBrowser({ rootPath, compact, onFileSelect, onOpenExternal }:
 
     (async () => {
       try {
-        const result = await browsePath(currentPath, { includeHidden: false });
-        // Also try to get files in the directory
-        const fullResult = await browsePathWithFiles(currentPath);
-        if (active) setView({ kind: "directory", result: { ...result, files: fullResult.files } });
+        const result = await browsePath(currentPath, { includeHidden: false, includeFiles: true });
+        if (active) setView({ kind: "directory", result });
       } catch {
         if (active) setView({ kind: "error", message: "Could not browse this path." });
       }
@@ -212,21 +210,3 @@ export function FileBrowser({ rootPath, compact, onFileSelect, onOpenExternal }:
   );
 }
 
-/**
- * Extended browse that also returns files (not just dirs).
- * The standard /api/browse only returns dirs. We augment with file-read attempt.
- */
-async function browsePathWithFiles(dirPath: string): Promise<{ files: string[] }> {
-  try {
-    // Use the browse API but also request file listing
-    const res = await fetch(
-      `/api/browse?path=${encodeURIComponent(dirPath)}&includeHidden=0&includeFiles=1`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (!res.ok) return { files: [] };
-    const data = await res.json();
-    return { files: data.files ?? [] };
-  } catch {
-    return { files: [] };
-  }
-}

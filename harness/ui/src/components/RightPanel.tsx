@@ -137,36 +137,22 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
 
   return (
     <>
-      {!open && (
-        <button
-          className="panel-tab panel-tab--right"
-          onClick={onOpen}
-          title="Open viewer panel"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M6 2L2 5.5 6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-      )}
       <div
         className={`right-panel${open ? " open" : ""}${fullscreen ? " right-panel--fullscreen" : ""}`}
         style={open && !fullscreen ? { width, minWidth: width } : undefined}
       >
         <div className="right-panel-header">
-          <button
-            className="right-panel-close"
-            onClick={fullscreen ? () => setFullscreen(false) : handleClose}
-            title={fullscreen ? "Exit fullscreen" : "Collapse panel"}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              {fullscreen ? (
-                // Minimize icon
+          {fullscreen && (
+            <button
+              className="right-panel-close"
+              onClick={() => setFullscreen(false)}
+              title="Exit fullscreen"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M4 1v3H1M8 11V8h3M1 8h3v3M11 4H8V1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              ) : (
-                <path d="M5 2l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-              )}
-            </svg>
-          </button>
+              </svg>
+            </button>
+          )}
           <span className="right-panel-title">viewer</span>
           <div className="right-panel-header-actions">
             {/* HTML preview/source toggle */}
