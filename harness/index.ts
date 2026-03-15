@@ -906,9 +906,16 @@ app.get("/api/browse", async (c) => {
       .filter((e) => e.isDirectory() && (includeHidden || !e.name.startsWith(".")))
       .map((e) => e.name)
       .sort();
+    const includeFiles = params.get("includeFiles") === "1";
+    const files = includeFiles
+      ? entries
+          .filter((e) => e.isFile() && (includeHidden || !e.name.startsWith(".")))
+          .map((e) => e.name)
+          .sort()
+      : undefined;
     // Also provide parent for navigation
     const parent = resolve(target, "..");
-    return c.json({ path: target, parent: parent !== target ? parent : null, dirs });
+    return c.json({ path: target, parent: parent !== target ? parent : null, dirs, ...(files ? { files } : {}) });
   } catch (err: any) {
     return c.json({ error: err.code === "ENOENT" ? "not found" : err.message }, 400);
   }
