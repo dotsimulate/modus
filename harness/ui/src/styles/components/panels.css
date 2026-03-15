@@ -49,6 +49,7 @@
   opacity: 0.6;
 }
 
+
 /* ── Resize handle ── */
 .resize-handle {
   width: 5px;
@@ -239,6 +240,82 @@
   min-height: 0;
   border: none;
   background: #fff;
+}
+
+/* ── Right panel tab bar ── */
+.rp-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 8px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+}
+.rp-tabs::-webkit-scrollbar { display: none; }
+
+.rp-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 160px;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.1s ease;
+}
+.rp-tab--active {
+  border-bottom-color: var(--accent);
+}
+.rp-tab--pinned .rp-tab-label {
+  font-style: italic;
+}
+
+.rp-tab-label {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 6px 6px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  transition: color 0.1s ease;
+}
+.rp-tab--active .rp-tab-label {
+  color: var(--text);
+}
+.rp-tab-label:hover {
+  color: var(--text-dim);
+}
+
+.rp-tab-pin {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.rp-tab-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+.rp-tab:hover .rp-tab-close {
+  opacity: 0.6;
+}
+.rp-tab-close:hover {
+  opacity: 1 !important;
+  color: var(--text);
 }
 
 /* ── Empty state for both panels ── */
