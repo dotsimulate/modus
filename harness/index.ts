@@ -48,7 +48,7 @@ import {
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
 import {
-  startSession, queueMessage, stopSession, stopTask,
+  startSession, queueMessage, steerMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
   updateSessionConfig, resolvePermission, switchProfile,
   pauseSession, resumeSession, branchSession,
@@ -688,6 +688,16 @@ app.post("/api/sessions/:id/messages", async (c) => {
 
   const queued = queueMessage(id, prompt, body.attachments);
   return c.json({ queued, status: active.status });
+});
+
+// Steer: inject a message at the next tool boundary (falls back to queue if unsupported)
+app.post("/api/sessions/:id/steer", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+  if (!prompt) return c.json({ error: "prompt required" }, 400);
+  const ok = steerMessage(id, prompt, body.attachments);
+  return c.json({ ok });
 });
 
 // Stop session entirely

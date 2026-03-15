@@ -27,7 +27,7 @@ import { join } from "path";
 import { getAllUserProfiles } from "./profiles";
 import {
   startSession, getActiveSession, switchProfile, queueMessage,
-  attachArtifactToSession, type ActiveSession,
+  attachArtifactToSession, watchSession, type ActiveSession,
 } from "./session-manager";
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
@@ -54,7 +54,6 @@ const ACTIONS_DIR = join(import.meta.dir, "actions");
 const MODUS_ACTIONS = ".modus/actions";
 const TICK_INTERVAL_MS = 10_000;       // check every 10 seconds
 const SESSION_TIMEOUT_MS = 30 * 60_000; // 30 minute max per run
-const POLL_INTERVAL_MS = 2_000;        // poll session status every 2s
 
 // ── Mime → Extension ──
 
@@ -319,43 +318,26 @@ async function monitorSession(
   session: ActiveSession,
   actionName: string,
 ): Promise<SessionOutcome> {
-  const start = Date.now();
-  let pollCount = 0;
+  console.log(`[actions:monitor] "${actionName}" watching ${session.sessionId.slice(0, 20)}`);
 
-  while (Date.now() - start < SESSION_TIMEOUT_MS) {
-    await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-    pollCount++;
+  const timeout = new Promise<SessionOutcome>((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), SESSION_TIMEOUT_MS),
+  );
 
-    // Read status directly from the live object — immune to rekey ID changes
-    const status = session.status;
-    const currentId = session.sessionId;
-
-    if (pollCount <= 5 || pollCount % 10 === 0) {
-      console.log(`[actions:monitor] "${actionName}" poll #${pollCount}: status=${status} id=${currentId.slice(0, 20)}`);
-    }
-
-    if (status === "idle" || status === "done" || status === "error") {
-      const dbSession = getSession(currentId);
-      const sessionStatus = status === "error" ? "error" as const : "done" as const;
-      console.log(`[actions] Session completed for "${actionName}": ${status}`);
-      return {
-        sessionStatus,
-        response: dbSession?.last_response ?? null,
-        summary: dbSession?.last_response?.slice(0, 500) ?? null,
-        costUsd: session.costUsd,
-        error: status === "error" ? (session.error ?? "unknown error") : null,
-      };
-    }
+  try {
+    const outcome = await Promise.race([watchSession(session.sessionId), timeout]);
+    console.log(`[actions] Session completed for "${actionName}": ${outcome.sessionStatus}`);
+    return outcome;
+  } catch {
+    console.error(`[actions] Session timed out for "${actionName}" after ${SESSION_TIMEOUT_MS / 60000}m`);
+    return {
+      sessionStatus: "timeout",
+      response: null,
+      summary: null,
+      costUsd: 0,
+      error: `timeout after ${SESSION_TIMEOUT_MS / 60000} minutes`,
+    };
   }
-
-  console.error(`[actions] Session timed out for "${actionName}" after ${SESSION_TIMEOUT_MS / 60000}m`);
-  return {
-    sessionStatus: "timeout",
-    response: null,
-    summary: null,
-    costUsd: 0,
-    error: `timeout after ${SESSION_TIMEOUT_MS / 60000} minutes`,
-  };
 }
 
 // ── Transient Error Detection ──

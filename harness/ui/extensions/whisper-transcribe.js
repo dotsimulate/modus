@@ -1,3 +1,4 @@
+console.log("[WhisperV1] Loading built-in extension...");
 const SHORTCUT = "Ctrl+Shift+~";
 const BUFFER_SIZE = 4096;
 const RMS_THRESHOLD = 0.015;

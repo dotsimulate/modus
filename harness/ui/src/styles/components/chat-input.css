@@ -169,7 +169,7 @@
 }
 
 .composer-status-dot--gated {
-  background: var(--text-dim);
+  background: var(--success);
   animation: dot-pulse-slow 2.4s ease-in-out infinite;
 }
 
@@ -236,6 +236,12 @@
   color: var(--text);
   border-color: var(--border-active);
   background: var(--bg-hover);
+}
+
+.composer-status--gated {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 25%, transparent);
+  background: color-mix(in srgb, var(--success) 6%, transparent);
 }
 
 .composer-status--error {

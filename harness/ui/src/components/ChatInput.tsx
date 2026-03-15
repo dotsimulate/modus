@@ -335,7 +335,7 @@ export function ChatInput({
 
   const isRecording = composerActions.some((a) => a.status?.tone === "active");
   const isFinishing = composerActions.some((a) => a.status?.tone === "busy");
-  const isGated = iconStatus?.status?.label === "say start listening to me";
+  const isGated = iconStatus?.status?.tone === "gated";
   const statusDotTone = isRecording ? "active" : isFinishing ? "busy" : isGated ? "gated" : null;
 
   const wrapClass = [

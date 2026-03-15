@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef, type ReactNode } from "react";
+import { memo, useState, useEffect, useRef, type ReactNode, type MouseEvent } from "react";
 import type { Message, ToolCall } from "../api";
 import { tokenParam } from "../api/_fetch";
 import { ToolCallView } from "./ToolCall";
@@ -17,17 +17,74 @@ function artifactSrc(url: string): string {
 const _playedArtifacts = new Set<number>();
 
 function AudioArtifact({ artifact }: { artifact: NonNullable<Message["artifacts"]>[number] }) {
-  const ref = useRef<HTMLAudioElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
   useEffect(() => {
-    if (ref.current && !_playedArtifacts.has(artifact.id)) {
+    const el = audioRef.current;
+    if (!el) return;
+    if (!_playedArtifacts.has(artifact.id)) {
       _playedArtifacts.add(artifact.id);
-      ref.current.play().catch(() => {});
+      el.play().catch(() => {});
     }
   }, [artifact.id]);
+
+  function fmt(s: number) {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  function toggle() {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) el.play().catch(() => {});
+    else el.pause();
+  }
+
+  function seek(e: MouseEvent<HTMLDivElement>) {
+    const el = audioRef.current;
+    if (!el || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    el.currentTime = ((e.clientX - rect.left) / rect.width) * duration;
+  }
+
+  const pct = duration ? (currentTime / duration) * 100 : 0;
+
   return (
-    <div className="message-media-card">
-      <div className="message-media-label">{artifact.name}</div>
-      <audio ref={ref} className="message-audio" controls preload="auto" src={artifactSrc(artifact.url)} />
+    <div className="audio-artifact">
+      <div className="audio-artifact-label">{artifact.name}</div>
+      <div className="audio-artifact-player">
+        <button className="audio-artifact-btn" onClick={toggle} aria-label={playing ? "pause" : "play"}>
+          {playing ? (
+            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+              <rect x="0" y="0" width="3" height="12" rx="1"/>
+              <rect x="7" y="0" width="3" height="12" rx="1"/>
+            </svg>
+          ) : (
+            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+              <path d="M0 0 L10 6 L0 12 Z"/>
+            </svg>
+          )}
+        </button>
+        <div className="audio-artifact-time">{fmt(currentTime)}</div>
+        <div className="audio-artifact-track" onClick={seek}>
+          <div className="audio-artifact-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="audio-artifact-time audio-artifact-time--total">{fmt(duration)}</div>
+      </div>
+      <audio
+        ref={audioRef}
+        preload="auto"
+        src={artifactSrc(artifact.url)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
+        onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
+      />
     </div>
   );
 }
@@ -234,15 +291,6 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
         </div>
       )}
 
-      {msg.artifacts && msg.artifacts.length > 0 && (
-        <div className="message-artifacts">
-          {msg.artifacts.map((artifact) => renderArtifact(
-            artifact,
-            (src, alt) => setLightboxSrc({ src, alt }),
-          ))}
-        </div>
-      )}
-
       {lightboxSrc && (
         <ImageLightbox
           src={lightboxSrc.src}
@@ -254,6 +302,15 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
       {msg.content && (
         <div className={`message-content${isNew ? " message-content--new" : ""}`}>
           <Markdown content={msg.content} />
+        </div>
+      )}
+
+      {msg.artifacts && msg.artifacts.length > 0 && (
+        <div className="message-artifacts">
+          {msg.artifacts.map((artifact) => renderArtifact(
+            artifact,
+            (src, alt) => setLightboxSrc({ src, alt }),
+          ))}
         </div>
       )}
 
