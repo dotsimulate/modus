@@ -38,7 +38,7 @@ import {
   listSessions, listSessionsForProjects, listSessionsByAction, listSessionsScoped,
   getSession, getStoredSessionConfig, getLatestSessionUsage, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
-  getDraft, setDraft,
+  getDraft, setDraft, getSessionUiState, patchSessionUiState,
   updateSessionTitle,
   getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
@@ -848,6 +848,19 @@ app.put("/api/sessions/:id/draft", async (c) => {
   const body = await c.req.json();
   setDraft(c.req.param("id"), body.draft ?? "");
   return c.json({ ok: true });
+});
+
+// ── Session UI State ──
+// Persists per-session UI layout (panel widths, open/closed state, etc.)
+
+app.get("/api/sessions/:id/ui-state", (c) => {
+  return c.json(getSessionUiState(c.req.param("id")));
+});
+
+app.patch("/api/sessions/:id/ui-state", async (c) => {
+  const body = await c.req.json();
+  const updated = patchSessionUiState(c.req.param("id"), body);
+  return c.json(updated);
 });
 
 // ── Directory Browser ──

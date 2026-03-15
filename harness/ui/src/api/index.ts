@@ -23,6 +23,7 @@ export {
   getDraft, saveDraft, createEmptySession,
   createSession, sendMessage, stopSessionApi, stopTaskApi, switchSessionProfile,
   updateSessionConfig, respondToPermission,
+  fetchSessionUiState, saveSessionUiState,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
   fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, subscribeEvents, branchSessionApi,
   fetchGeminiUsage, fetchMessageContent,

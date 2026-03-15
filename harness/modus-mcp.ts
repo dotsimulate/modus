@@ -1,9 +1,10 @@
 /**
  * Modus MCP Server — serves `modus_submit` as a Streamable HTTP MCP endpoint.
  *
- * One tool, two token types:
+ * One tool, three token types:
  *   - Move tokens  → route to move-runner handleSubmit()
  *   - Mission tokens (prefix "mis-") → route to mission-runner handleMissionCommand()
+ *   - API tokens (prefix "api-") → route to registered API handlers
  *
  * Token type discrimination happens here. The model sees one tool surface.
  *
@@ -20,6 +21,7 @@ import {
 import { z } from "zod";
 import { handleSubmit } from "./move-runner";
 import { isMissionToken, handleMissionCommand } from "./mission-runner";
+import { addSessionTag } from "./db";
 
 /**
  * Handle an incoming MCP request from Hono.
@@ -74,6 +76,9 @@ export async function handleModusMcpRequest(request: Request): Promise<Response>
         data = rawData as Record<string, unknown>;
       }
       // ── Route by token type ──
+      if (isApiToken(token)) {
+        return handleApiSubmit(token, data as Record<string, unknown>);
+      }
       if (isMissionToken(token)) {
         return handleMissionSubmit(token, data as Record<string, unknown>);
       }
@@ -117,6 +122,93 @@ async function handleMoveSubmit(token: string, data: Record<string, unknown>) {
     isError: true,
   };
 }
+
+// ── API token infrastructure ──
+
+type ApiHandler = (sessionId: string, data: Record<string, unknown>) => Promise<{ ok: boolean; message?: string; error?: string }>;
+
+const apiHandlers = new Map<string, ApiHandler>();
+
+/** Register an API handler by name */
+export function registerApiHandler(name: string, handler: ApiHandler) {
+  apiHandlers.set(name, handler);
+}
+
+/**
+ * API tokens encode the session ID so the model never needs to know it.
+ * Format: "api-<sessionId>-<random>"
+ */
+const API_PREFIX = "api-";
+
+function isApiToken(token: string): boolean {
+  return token.startsWith(API_PREFIX);
+}
+
+/** Create an API token for a session. The model receives this opaque string. */
+export function createApiToken(sessionId: string): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  const rand = Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 12);
+  return `${API_PREFIX}${sessionId}-${rand}`;
+}
+
+/** Extract the session ID from an API token */
+function parseApiToken(token: string): string | null {
+  if (!token.startsWith(API_PREFIX)) return null;
+  const rest = token.slice(API_PREFIX.length);
+  // Session ID is everything before the last "-<random>" segment (12 chars)
+  const lastDash = rest.lastIndexOf("-");
+  if (lastDash < 1) return null;
+  return rest.slice(0, lastDash);
+}
+
+async function handleApiSubmit(token: string, data: Record<string, unknown>) {
+  const sessionId = parseApiToken(token);
+  if (!sessionId) {
+    return {
+      content: [{ type: "text" as const, text: "Invalid API token format" }],
+      isError: true,
+    };
+  }
+
+  const op = data.op;
+  if (typeof op !== "string") {
+    return {
+      content: [{ type: "text" as const, text: "API call requires an 'op' field (string)" }],
+      isError: true,
+    };
+  }
+
+  const handler = apiHandlers.get(op);
+  if (!handler) {
+    return {
+      content: [{ type: "text" as const, text: `Unknown API operation: ${op}` }],
+      isError: true,
+    };
+  }
+
+  const result = await handler(sessionId, data);
+  if (result.ok) {
+    return {
+      content: [{ type: "text" as const, text: result.message ?? "OK" }],
+    };
+  }
+  return {
+    content: [{ type: "text" as const, text: `API error: ${result.error}` }],
+    isError: true,
+  };
+}
+
+// ── Built-in API handlers ──
+
+registerApiHandler("tag-session", async (sessionId, data) => {
+  const tag = data.tag;
+  if (typeof tag !== "string" || tag.length === 0) {
+    return { ok: false, error: "Missing or empty 'tag' field" };
+  }
+  addSessionTag(sessionId, tag);
+  return { ok: true, message: `Tagged session with "${tag}"` };
+});
 
 // ── Mission token handler (command bus) ──
 

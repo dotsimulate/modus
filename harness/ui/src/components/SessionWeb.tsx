@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from "react";
 import { fetchSessionsScoped } from "../api/sessions";
 import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
@@ -37,6 +37,19 @@ import {
 import { buildAllEdges } from "./SessionWebEdges";
 import { solveLayout } from "./SessionWebSolver";
 
+// ── Viewport type ──
+
+type Viewport = { x: number; y: number; scale: number };
+type CullingState = { left: number; top: number; right: number; bottom: number; scale: number };
+
+// ── Node dimension helper ──
+
+function nodeDims(type: GraphNode["type"]): { w: number; h: number } {
+  if (type === "session") return { w: NODE_W, h: NODE_H };
+  if (type === "document") return { w: DOC_W, h: DOC_H };
+  return { w: COMMIT_W, h: COMMIT_H };
+}
+
 // ── Nearest-edge anchor point between two nodes ──
 
 function nearestAnchor(
@@ -44,13 +57,11 @@ function nearestAnchor(
   targetX: number,
   targetY: number,
 ): { x: number; y: number } {
-  const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
-  const h = n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H;
+  const { w, h } = nodeDims(n.type);
   const cx = n.x + w / 2;
   const cy = n.y + h / 2;
   const dx = targetX - cx;
   const dy = targetY - cy;
-  // Which edge is closest to the target direction?
   const scaleX = dx !== 0 ? (w / 2) / Math.abs(dx) : Infinity;
   const scaleY = dy !== 0 ? (h / 2) / Math.abs(dy) : Infinity;
   const scale = Math.min(scaleX, scaleY);
@@ -69,13 +80,9 @@ function EdgePath({ from, to, type, lane = 0 }: {
   type: EdgeType;
   lane?: number;
 }) {
-  // Compute connection points from nearest edge of each node toward the other's center
-  const fromW = from.type === "session" ? NODE_W : from.type === "document" ? DOC_W : COMMIT_W;
-  const fromH = from.type === "session" ? NODE_H : from.type === "document" ? DOC_H : COMMIT_H;
-  const toW = to.type === "session" ? NODE_W : to.type === "document" ? DOC_W : COMMIT_W;
-  const toH = to.type === "session" ? NODE_H : to.type === "document" ? DOC_H : COMMIT_H;
-  const fromCx = from.x + fromW / 2, fromCy = from.y + fromH / 2;
-  const toCx = to.x + toW / 2, toCy = to.y + toH / 2;
+  const fromD = nodeDims(from.type), toD = nodeDims(to.type);
+  const fromCx = from.x + fromD.w / 2, fromCy = from.y + fromD.h / 2;
+  const toCx = to.x + toD.w / 2, toCy = to.y + toD.h / 2;
 
   const p1 = nearestAnchor(from, toCx, toCy);
   const p2 = nearestAnchor(to, fromCx, fromCy);
@@ -116,7 +123,6 @@ function EdgePath({ from, to, type, lane = 0 }: {
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
   const dist = Math.hypot(dx, dy);
   const cp = Math.min(Math.max(dist * 0.35, 20), dist * 0.45);
-  // Bend toward the major axis
   if (Math.abs(dx) > Math.abs(dy)) {
     const d = `M ${p1.x} ${p1.y} C ${p1.x + (dx > 0 ? cp : -cp)} ${p1.y}, ${p2.x - (dx > 0 ? cp : -cp)} ${p2.y}, ${p2.x} ${p2.y}`;
     return <path d={d} className="web-edge web-edge--handoff" />;
@@ -380,13 +386,115 @@ function ContextMenu({ x, y, onArchive, onClose }: {
   );
 }
 
-// ── Main Component ──
+// ── Memoized Node Components ──
+// These only re-render when their own props change.
+// Viewport pan/zoom does NOT touch these — that's the perf win.
 
-type Viewport = { x: number; y: number; scale: number };
+const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isDragging, touchCounts, onSelect, onOpen, onDragStart, onContextMenu, onHover, onNodeTouchEnd }: {
+  node: GraphNode;
+  isSelected: boolean;
+  isDragging: boolean;
+  touchCounts: { reads: number; edits: number } | undefined;
+  onSelect: (node: GraphNode) => void;
+  onOpen: (sessionId: string) => void;
+  onDragStart: (e: React.MouseEvent, nodeId: string) => void;
+  onContextMenu: (e: React.MouseEvent, sessionId: string) => void;
+  onHover: (id: string | null) => void;
+  onNodeTouchEnd: (nodeId: string, doubleAction: () => void) => void;
+}) {
+  const s = node.session!;
+  const statusClass = s.status === "running" ? "running" : s.status === "error" ? "error" : "done";
+  return (
+    <div
+      className={`web-session-node web-session-node--${statusClass}${isSelected ? " web-node--selected" : ""}${isDragging ? " web-session-node--dragging" : ""}`}
+      style={{ left: node.x, top: node.y }}
+      onClick={() => onSelect(node)}
+      onDoubleClick={() => onOpen(s.id)}
+      onTouchEnd={() => onNodeTouchEnd(node.id, () => onOpen(s.id))}
+      onMouseDown={(e) => onDragStart(e, node.id)}
+      onContextMenu={(e) => onContextMenu(e, s.id)}
+      onMouseEnter={() => onHover(node.id)}
+      onMouseLeave={() => onHover(null)}
+    >
+      <div className="web-session-top">
+        <span className={`web-session-dot web-session-dot--${statusClass}`} />
+        <span className="web-session-id">{shortId(s.id)}</span>
+        <span className="web-session-time">{timeAgo(s.created_at)}</span>
+      </div>
+      <div className="web-session-title">
+        {(s.title || s.preview || "").slice(0, 48)}
+      </div>
+      <div className="web-session-meta">
+        {s.profile && <span className="web-session-profile">{s.profile}</span>}
+        {node.handoffType && <span className="web-session-handoff-type">{node.handoffType}</span>}
+        <span>{s.message_count} msgs</span>
+        <span>{formatCost(s.total_cost_usd)}</span>
+        {touchCounts && (
+          <>
+            {touchCounts.reads > 0 && <span className="web-session-reads">{touchCounts.reads}r</span>}
+            {touchCounts.edits > 0 && <span className="web-session-edits">{touchCounts.edits}w</span>}
+          </>
+        )}
+      </div>
+    </div>
+  );
+});
+
+const CommitNodeEl = memo(function CommitNodeEl({ node, isSelected, onSelect, onHover }: {
+  node: GraphNode;
+  isSelected: boolean;
+  onSelect: (node: GraphNode) => void;
+  onHover: (id: string | null) => void;
+}) {
+  const c = node.commit!;
+  return (
+    <div
+      className={`web-commit-node${isSelected ? " web-node--selected" : ""}`}
+      style={{ left: node.x, top: node.y }}
+      onClick={() => onSelect(node)}
+      onMouseEnter={() => onHover(node.id)}
+      onMouseLeave={() => onHover(null)}
+      title={c.message}
+    >
+      <span className="web-commit-hash">{shortHash(c.hash)}</span>
+      <span className="web-commit-msg">{c.message.split("\n")[0].slice(0, 34)}</span>
+    </div>
+  );
+});
+
+const DocNodeEl = memo(function DocNodeEl({ node, isSelected, onSelect, onOpenFile, onHover, onNodeTouchEnd }: {
+  node: GraphNode;
+  isSelected: boolean;
+  onSelect: (node: GraphNode) => void;
+  onOpenFile: (path: string) => void;
+  onHover: (id: string | null) => void;
+  onNodeTouchEnd: (nodeId: string, doubleAction: () => void) => void;
+}) {
+  const d = node.doc!;
+  return (
+    <div
+      className={`web-doc-node${isSelected ? " web-node--selected" : ""}`}
+      style={{ left: node.x, top: node.y }}
+      onClick={() => onSelect(node)}
+      onDoubleClick={() => onOpenFile(d.path)}
+      onTouchEnd={() => onNodeTouchEnd(node.id, () => onOpenFile(d.path))}
+      onMouseEnter={() => onHover(node.id)}
+      onMouseLeave={() => onHover(null)}
+      title={d.path}
+    >
+      <span className="web-doc-icon">&#9654;</span>
+      <span className="web-doc-name">{d.filename.replace(/-handoff\.md$/, "")}</span>
+    </div>
+  );
+});
+
+// ── Main Component ──
 
 export function SessionWeb() {
   const { activeUserProfile, activeUP } = useProfiles();
   const profileName = activeUserProfile ?? "default";
+
+  // ── Data state ──
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [moveRuns, setMoveRuns] = useState<MoveRun[]>([]);
   const [commits, setCommits] = useState<GitCommit[]>([]);
@@ -396,6 +504,8 @@ export function SessionWeb() {
   const [missionFilter, setMissionFilter] = useState<number | null>(null);
   const [missionFilterSessionIds, setMissionFilterSessionIds] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // ── UI state ──
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
@@ -408,11 +518,34 @@ export function SessionWeb() {
   const [draggingChain, setDraggingChain] = useState<Set<string> | null>(null);
   const [dragPreview, setDragPreview] = useState<PositionMap>({});
 
-  const [viewport, setViewport] = useState<Viewport>(() => {
+  // ── Viewport: ref-based for zero-cost pan/zoom ──
+  // viewportRef is the source of truth, updated every frame.
+  // cullingState is a debounced snapshot that triggers React re-renders
+  // ONLY for frustum culling + LOD updates.
+  const viewportRef = useRef<Viewport>(() => {
     const cfg = loadConfig();
     return { x: cfg.padX, y: cfg.padY, scale: 1 };
   });
+  // Initialize eagerly so the ref holds an object, not a function
+  if (typeof viewportRef.current === "function") {
+    viewportRef.current = (viewportRef.current as unknown as () => Viewport)();
+  }
+
+  const [cullingState, setCullingState] = useState<CullingState>(() => {
+    const vp = viewportRef.current;
+    const M = 300;
+    return { left: -vp.x - M, top: -vp.y - M, right: -vp.x + 2000 + M, bottom: -vp.y + 1200 + M, scale: vp.scale };
+  });
+  const cullRafRef = useRef(0);
+
+  // ── DOM refs ──
   const wrapRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const mmRectRef = useRef<SVGRectElement>(null);
+  const svgWRef = useRef(800);
+  const svgHRef = useRef(600);
+
+  // ── Interaction refs ──
   const dragRef = useRef<{ startX: number; startY: number; vpX: number; vpY: number; hasMoved?: boolean } | null>(null);
   const touchRef = useRef<{
     startX: number; startY: number; vpX: number; vpY: number;
@@ -426,11 +559,58 @@ export function SessionWeb() {
   } | null>(null);
   const mmDragRef = useRef<{ startX: number; startY: number; startVpX: number; startVpY: number; hasMoved: boolean } | null>(null);
 
+  // ── applyViewport: the single function that drives all viewport updates ──
+  // Updates the DOM directly (no React render), then schedules a debounced
+  // culling state sync on the next animation frame.
+  function applyViewport(vp: Viewport) {
+    viewportRef.current = vp;
+
+    // Direct DOM: canvas transform
+    if (canvasRef.current) {
+      canvasRef.current.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.scale})`;
+      canvasRef.current.classList.toggle("web-canvas--zoomed-out", vp.scale < 0.4);
+    }
+
+    // Direct DOM: minimap viewport rect
+    const wrap = wrapRef.current;
+    if (mmRectRef.current && wrap) {
+      const mmH = 80;
+      const scaleX = wrap.clientWidth / svgWRef.current;
+      const scaleY = mmH / svgHRef.current;
+      const vpW = wrap.clientWidth;
+      const vpH = wrap.clientHeight;
+      const vrX = Math.max(0, (-vp.x / vp.scale) * scaleX);
+      const vrY = Math.max(0, (-vp.y / vp.scale) * scaleY);
+      const vrW = Math.min(wrap.clientWidth - vrX, (vpW / vp.scale) * scaleX);
+      const vrH = Math.min(mmH - vrY, (vpH / vp.scale) * scaleY);
+      mmRectRef.current.setAttribute("x", String(vrX));
+      mmRectRef.current.setAttribute("y", String(vrY));
+      mmRectRef.current.setAttribute("width", String(vrW));
+      mmRectRef.current.setAttribute("height", String(vrH));
+    }
+
+    // Debounced React state update for frustum culling + LOD
+    cancelAnimationFrame(cullRafRef.current);
+    cullRafRef.current = requestAnimationFrame(() => {
+      const w = wrapRef.current;
+      if (!w) return;
+      const M = 200;
+      setCullingState({
+        left: -vp.x / vp.scale - M,
+        top: -vp.y / vp.scale - M,
+        right: -vp.x / vp.scale + w.clientWidth / vp.scale + M * 2,
+        bottom: -vp.y / vp.scale + w.clientHeight / vp.scale + M * 2,
+        scale: vp.scale,
+      });
+    });
+  }
+
+  // ── Persistence effects ──
   useEffect(() => { saveConfig(config); }, [config]);
   useEffect(() => { saveDateFilter(profileName, dateFilter); }, [dateFilter, profileName]);
   useEffect(() => { saveLayers(profileName, edgeLayers); }, [edgeLayers, profileName]);
 
-  // Fetch all data
+  // ── Fetch all data ──
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -469,7 +649,7 @@ export function SessionWeb() {
     return () => { cancelled = true; };
   }, [activeUserProfile, activeUP]);
 
-  // Mission filter session IDs
+  // ── Mission filter ──
   useEffect(() => {
     if (missionFilter === null) { setMissionFilterSessionIds(null); return; }
     let cancelled = false;
@@ -521,7 +701,6 @@ export function SessionWeb() {
     [filteredSessions, moveRuns, commits, filteredTransfers, touches],
   );
 
-  // Solver computes canonical positions — only re-runs on regenerate / data change
   const solverResult = useMemo(
     () => solveLayout(
       filteredSessions, edges, handoffDocs, commitSessionMap,
@@ -530,17 +709,13 @@ export function SessionWeb() {
     [filteredSessions, edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet, commits, config, touches],
   );
 
-  // Apply position overrides + ephemeral drag preview as simple coordinate replacements.
-  // When a session moves, its attached commits and handoff docs follow.
+  // ── Apply position overrides + drag preview ──
   const { nodes, clusters } = useMemo(() => {
     const hasOverrides = Object.keys(positionOverrides).length > 0;
     const hasPreview = Object.keys(dragPreview).length > 0;
     if (!hasOverrides && !hasPreview) return solverResult;
 
-    // Build a base-position map from solver result for delta computation
     const baseMap = new Map(solverResult.nodes.map(n => [n.id, { x: n.x, y: n.y }]));
-
-    // Compute delta for each overridden session
     const sessionDeltas = new Map<string, { dx: number; dy: number }>();
     const merged: PositionMap = { ...positionOverrides, ...dragPreview };
     for (const [id, ov] of Object.entries(merged)) {
@@ -548,24 +723,20 @@ export function SessionWeb() {
       if (base) sessionDeltas.set(id, { dx: ov.x - base.x, dy: ov.y - base.y });
     }
 
-    // Map commit node IDs to parent session IDs
     const commitParent = new Map<string, string>();
     for (const [hash7, sids] of commitSessionMap) {
       if (sids.length > 0) commitParent.set(`commit:${hash7}`, sids[0]);
     }
 
-    // Map doc node IDs to linked session IDs
     const docSessions = new Map<string, [string, string]>();
     for (const doc of handoffDocs) {
       docSessions.set(`doc:${doc.moveRunId}`, [doc.fromSessionId, doc.toSessionId]);
     }
 
     const patched = solverResult.nodes.map(n => {
-      // Direct override on this node (session-level)
       const ov = dragPreview[n.id] ?? positionOverrides[n.id];
       if (ov) return { ...n, x: ov.x, y: ov.y };
 
-      // Commit follows its parent session
       if (n.type === "commit") {
         const pid = commitParent.get(n.id);
         if (pid) {
@@ -574,7 +745,6 @@ export function SessionWeb() {
         }
       }
 
-      // Doc follows the average delta of its two linked sessions
       if (n.type === "document") {
         const pair = docSessions.get(n.id);
         if (pair) {
@@ -598,7 +768,6 @@ export function SessionWeb() {
     return edges.filter(e => {
       if (e.type === "document") return edgeLayers.handoff;
       if (e.type in edgeLayers && !edgeLayers[e.type as keyof EdgeLayers]) return false;
-      // Hide co-edit/co-read edges that span too far — they're just noise
       if (e.type === "co-edit" || e.type === "co-read") {
         const fromN = nodeMap.get(e.from);
         const toN = nodeMap.get(e.to);
@@ -622,10 +791,10 @@ export function SessionWeb() {
       .at(-1) ?? null;
   }, [nodes]);
 
+  // ── Derived from debounced culling state ──
   const currentDayCluster = useMemo(() => {
     if (!clusters.length) return null;
-    const vpW = wrapRef.current?.clientWidth ?? 800;
-    const canvasCenterX = (vpW / 2 - viewport.x) / viewport.scale;
+    const canvasCenterX = (cullingState.left + cullingState.right) / 2;
     const containing = clusters.find(cl => canvasCenterX >= cl.x && canvasCenterX <= cl.x + cl.width);
     if (containing) return containing;
     return clusters.reduce((best, cl) => {
@@ -633,19 +802,34 @@ export function SessionWeb() {
       const bestCenter = best.x + best.width / 2;
       return Math.abs(clCenter - canvasCenterX) < Math.abs(bestCenter - canvasCenterX) ? cl : best;
     });
-  }, [clusters, viewport]);
+  }, [clusters, cullingState]);
 
   const svgW = useMemo(() => {
-    const maxX = Math.max(...nodes.map(n => n.x + (n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W)), 400);
+    const maxX = Math.max(...nodes.map(n => n.x + nodeDims(n.type).w), 400);
     return maxX + config.padX;
   }, [nodes, config.padX]);
 
   const svgH = useMemo(() => {
-    const maxY = Math.max(...nodes.map(n => n.y + (n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H)), 300);
+    const maxY = Math.max(...nodes.map(n => n.y + nodeDims(n.type).h), 300);
     return maxY + config.padY;
   }, [nodes, config.padY]);
 
-  // Wheel zoom
+  // Keep refs in sync for applyViewport's minimap update
+  svgWRef.current = svgW;
+  svgHRef.current = svgH;
+
+  // ── Frustum culling: driven by debounced culling state, not live viewport ──
+  const visibleNodes = useMemo(() => {
+    return nodes.filter(n => {
+      const { w, h } = nodeDims(n.type);
+      return n.x + w > cullingState.left && n.x < cullingState.right
+          && n.y + h > cullingState.top  && n.y < cullingState.bottom;
+    });
+  }, [nodes, cullingState]);
+
+  const lodSimplified = cullingState.scale < 0.25;
+
+  // ── Wheel zoom ──
   useEffect(() => {
     if (loading) return;
     const el = wrapRef.current;
@@ -656,40 +840,39 @@ export function SessionWeb() {
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-      setViewport(vp => {
-        const s = Math.max(0.15, Math.min(4, vp.scale * factor));
-        const r = s / vp.scale;
-        return { scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) };
-      });
+      const vp = viewportRef.current;
+      const s = Math.max(0.15, Math.min(4, vp.scale * factor));
+      const r = s / vp.scale;
+      applyViewport({ scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [loading]);
 
-  // Pan handlers
+  // ── Pan handlers ──
   const onPanStart = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (nodeDragRef.current) return;
-    dragRef.current = { startX: e.clientX, startY: e.clientY, vpX: viewport.x, vpY: viewport.y, hasMoved: false };
+    const vp = viewportRef.current;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, vpX: vp.x, vpY: vp.y, hasMoved: false };
   };
+
   const onPanMove = (e: React.MouseEvent) => {
     if (nodeDragRef.current) {
       const nd = nodeDragRef.current;
-      const dx = (e.clientX - nd.startX) / viewport.scale;
-      const dy = (e.clientY - nd.startY) / viewport.scale;
+      const vp = viewportRef.current;
+      const dx = (e.clientX - nd.startX) / vp.scale;
+      const dy = (e.clientY - nd.startY) / vp.scale;
       if (!nd.hasMoved && Math.hypot(dx, dy) > 3) nd.hasMoved = true;
       if (nd.hasMoved) {
         const dragX = nd.origX + dx;
         const dragY = nd.origY + dy;
-        // Move only the dragged node in real overrides
         setPositionOverrides(prev => ({ ...prev, [nd.nodeId]: { x: dragX, y: dragY } }));
-        // Compute ephemeral collision preview for neighbors
         const MARGIN = 16;
         const preview: PositionMap = {};
         const nearby = nodes.filter(n => n.id !== nd.nodeId && n.type === "session");
         const getBase = (n: GraphNode) => positionOverrides[n.id] ?? { x: n.x, y: n.y };
         const pushed = new Set<string>();
-        // Pass 1: nodes overlapping the dragged node
         for (const n of nearby) {
           const p = getBase(n);
           const overlapX = (NODE_W + MARGIN) - Math.abs(dragX - p.x);
@@ -703,7 +886,6 @@ export function SessionWeb() {
             pushed.add(n.id);
           }
         }
-        // Pass 2: pushed nodes push their own neighbors
         for (const pid of pushed) {
           const pp = preview[pid]!;
           for (const n of nearby) {
@@ -725,7 +907,7 @@ export function SessionWeb() {
       return;
     }
 
-    if (mmDragRef.current) return; // minimap drag handled by window listeners
+    if (mmDragRef.current) return;
 
     if (!dragRef.current) return;
     const dx = e.clientX - dragRef.current.startX;
@@ -735,18 +917,20 @@ export function SessionWeb() {
     const newY = dragRef.current.vpY + dy;
     const wrap = wrapRef.current;
     if (wrap) {
-      const minX = -(svgW * viewport.scale - 100);
-      const minY = -(svgH * viewport.scale - 100);
+      const vp = viewportRef.current;
+      const minX = -(svgW * vp.scale - 100);
+      const minY = -(svgH * vp.scale - 100);
       const maxX = wrap.clientWidth - 100;
       const maxY = wrap.clientHeight - 100;
-      setViewport(vp => ({ ...vp, x: Math.max(minX, Math.min(maxX, newX)), y: Math.max(minY, Math.min(maxY, newY)) }));
+      applyViewport({ ...vp, x: Math.max(minX, Math.min(maxX, newX)), y: Math.max(minY, Math.min(maxY, newY)) });
     } else {
-      setViewport(vp => ({ ...vp, x: newX, y: newY }));
+      const vp = viewportRef.current;
+      applyViewport({ ...vp, x: newX, y: newY });
     }
   };
+
   const onPanEnd = () => {
     if (nodeDragRef.current?.hasMoved) {
-      // Commit drag preview into real overrides on drop
       const previewKeys = Object.keys(dragPreview);
       if (previewKeys.length > 0) {
         setPositionOverrides(prev => {
@@ -760,25 +944,26 @@ export function SessionWeb() {
       setDragPreview({});
     }
     nodeDragRef.current = null;
-    // mmDragRef cleared by window listeners, not here
     dragRef.current = null;
     setDraggingChain(null);
   };
 
-  // Touch handlers
+  // ── Touch handlers ──
   const onTouchStart = (e: React.TouchEvent) => {
+    const vp = viewportRef.current;
     if (e.touches.length === 1) {
       const touch = e.touches[0];
-      touchRef.current = { startX: touch.clientX, startY: touch.clientY, vpX: viewport.x, vpY: viewport.y, hasMoved: false };
+      touchRef.current = { startX: touch.clientX, startY: touch.clientY, vpX: vp.x, vpY: vp.y, hasMoved: false };
     } else if (e.touches.length === 2) {
       const t1 = e.touches[0], t2 = e.touches[1];
       const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
       touchRef.current = {
         startX: (t1.clientX + t2.clientX) / 2, startY: (t1.clientY + t2.clientY) / 2,
-        vpX: viewport.x, vpY: viewport.y, initialDistance: dist, initialScale: viewport.scale, hasMoved: true,
+        vpX: vp.x, vpY: vp.y, initialDistance: dist, initialScale: vp.scale, hasMoved: true,
       };
     }
   };
+
   const onTouchMove = (e: React.TouchEvent) => {
     if (!touchRef.current) return;
     const wrap = wrapRef.current;
@@ -790,11 +975,12 @@ export function SessionWeb() {
       if (!touchRef.current.hasMoved && Math.hypot(dx, dy) > 5) touchRef.current.hasMoved = true;
       const newX = touchRef.current.vpX + dx;
       const newY = touchRef.current.vpY + dy;
-      const minX = -(svgW * viewport.scale - 100);
-      const minY = -(svgH * viewport.scale - 100);
+      const vp = viewportRef.current;
+      const minX = -(svgW * vp.scale - 100);
+      const minY = -(svgH * vp.scale - 100);
       const maxX = wrap.clientWidth - 100;
       const maxY = wrap.clientHeight - 100;
-      setViewport(vp => ({ ...vp, x: Math.max(minX, Math.min(maxX, newX)), y: Math.max(minY, Math.min(maxY, newY)) }));
+      applyViewport({ ...vp, x: Math.max(minX, Math.min(maxX, newX)), y: Math.max(minY, Math.min(maxY, newY)) });
     } else if (e.touches.length === 2 && touchRef.current.initialDistance && touchRef.current.initialScale) {
       const t1 = e.touches[0], t2 = e.touches[1];
       const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -802,28 +988,28 @@ export function SessionWeb() {
       const rect = wrap.getBoundingClientRect();
       const mx = (t1.clientX + t2.clientX) / 2 - rect.left;
       const my = (t1.clientY + t2.clientY) / 2 - rect.top;
-      setViewport(vp => {
-        const s = Math.max(0.15, Math.min(4, touchRef.current!.initialScale! * ratio));
-        const r = s / vp.scale;
-        return { scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) };
-      });
-    }
-  };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (e.touches.length === 0) touchRef.current = null;
-    else if (e.touches.length === 1) {
-      const touch = e.touches[0];
-      touchRef.current = { startX: touch.clientX, startY: touch.clientY, vpX: viewport.x, vpY: viewport.y };
+      const vp = viewportRef.current;
+      const s = Math.max(0.15, Math.min(4, touchRef.current.initialScale * ratio));
+      const r = s / vp.scale;
+      applyViewport({ scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) });
     }
   };
 
-  // Node drag start
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const vp = viewportRef.current;
+    if (e.touches.length === 0) touchRef.current = null;
+    else if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      touchRef.current = { startX: touch.clientX, startY: touch.clientY, vpX: vp.x, vpY: vp.y };
+    }
+  };
+
+  // ── Node interaction callbacks (stable references for memoized components) ──
   const onNodeDragStart = useCallback((e: React.MouseEvent, nodeId: string) => {
     if (e.button !== 0) return;
     e.stopPropagation();
     const node = nodeMap.get(nodeId);
     if (!node || node.type !== "session") return;
-    // Only drag the single clicked node — no chain walking
     setDraggingChain(new Set([nodeId]));
     nodeDragRef.current = {
       nodeId, startX: e.clientX, startY: e.clientY,
@@ -858,14 +1044,30 @@ export function SessionWeb() {
   const handleResetView = useCallback(() => {
     const wrap = wrapRef.current;
     if (!wrap || !newestSessionNode) {
-      setViewport({ x: config.padX, y: config.padY, scale: 1 });
+      applyViewport({ x: config.padX, y: config.padY, scale: 1 });
       return;
     }
     const targetX = newestSessionNode.x + NODE_W / 2;
     const targetY = newestSessionNode.y + NODE_H / 2;
-    setViewport({ x: wrap.clientWidth / 2 - targetX, y: wrap.clientHeight / 2 - targetY, scale: 1 });
+    applyViewport({ x: wrap.clientWidth / 2 - targetX, y: wrap.clientHeight / 2 - targetY, scale: 1 });
   }, [newestSessionNode, config.padX, config.padY]);
 
+  const onOpenSession = useCallback((id: string) => setMiniSessionId(id), []);
+  const onOpenFile = useCallback((path: string) => setFileViewerPath(path), []);
+  const onHover = useCallback((id: string | null) => setHoveredId(id), []);
+
+  const onNodeTouchEnd = useCallback((nodeId: string, doubleAction: () => void) => {
+    if (touchRef.current?.hasMoved) return;
+    const now = Date.now();
+    if (lastTapRef.current?.id === nodeId && now - lastTapRef.current.time < 300) {
+      doubleAction();
+      lastTapRef.current = null;
+    } else {
+      lastTapRef.current = { id: nodeId, time: now };
+    }
+  }, []);
+
+  // ── Auto-center on newest session ──
   useLayoutEffect(() => {
     if (loading || autoCenteredRef.current || !newestSessionNode) return;
     let cancelled = false;
@@ -877,27 +1079,7 @@ export function SessionWeb() {
     return () => { cancelled = true; };
   }, [handleResetView, loading, newestSessionNode]);
 
-  // ── Frustum culling: only render nodes inside the visible viewport ──
-  const visibleNodes = useMemo(() => {
-    const wrap = wrapRef.current;
-    if (!wrap) return nodes;
-    const vpW = wrap.clientWidth;
-    const vpH = wrap.clientHeight;
-    const MARGIN = 200; // extra margin in canvas-space to avoid pop-in
-    const left = -viewport.x / viewport.scale - MARGIN;
-    const top = -viewport.y / viewport.scale - MARGIN;
-    const right = left + vpW / viewport.scale + MARGIN * 2;
-    const bottom = top + vpH / viewport.scale + MARGIN * 2;
-    return nodes.filter(n => {
-      const nw = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
-      const nh = n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H;
-      return n.x + nw > left && n.x < right && n.y + nh > top && n.y < bottom;
-    });
-  }, [nodes, viewport]);
-
-  const zoomedOut = viewport.scale < 0.4;
-  const lodSimplified = viewport.scale < 0.25;
-
+  // ── Derived state ──
   const activeNodeId = hoveredId ?? selected?.id ?? null;
   const activeEdgeSet = useMemo(() => {
     if (!activeNodeId) return new Set<string>();
@@ -907,6 +1089,8 @@ export function SessionWeb() {
     }
     return s;
   }, [activeNodeId, visibleEdges]);
+
+  // ── Render ──
 
   if (loading) {
     return <div className="web-panel"><div className="web-empty">loading...</div></div>;
@@ -922,6 +1106,8 @@ export function SessionWeb() {
       </div>
     );
   }
+
+  const vp = viewportRef.current;
 
   return (
     <div className="web-panel">
@@ -946,8 +1132,9 @@ export function SessionWeb() {
         onTouchEnd={onTouchEnd}
       >
         <div
-          className={`web-canvas${zoomedOut ? " web-canvas--zoomed-out" : ""}`}
-          style={{ width: svgW, height: svgH, transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})` }}
+          ref={canvasRef}
+          className={`web-canvas${vp.scale < 0.4 ? " web-canvas--zoomed-out" : ""}`}
+          style={{ width: svgW, height: svgH, transform: `translate(${vp.x}px, ${vp.y}px) scale(${vp.scale})` }}
         >
           {clusters.map(cl => (
             <div key={cl.id} className="web-window" style={{ left: cl.x, top: 0, width: cl.width, height: svgH }}>
@@ -976,21 +1163,9 @@ export function SessionWeb() {
           </svg>
 
           {visibleNodes.map(node => {
-            const handleTouchEndNode = (e: React.TouchEvent, doubleAction: () => void) => {
-              if (touchRef.current?.hasMoved) return;
-              const now = Date.now();
-              if (lastTapRef.current?.id === node.id && now - lastTapRef.current.time < 300) {
-                doubleAction();
-                lastTapRef.current = null;
-              } else {
-                lastTapRef.current = { id: node.id, time: now };
-              }
-            };
-
-            // ── LOD: simplified rendering at very low zoom ──
+            // LOD: simplified rendering at very low zoom
             if (lodSimplified) {
-              const nw = node.type === "session" ? NODE_W : node.type === "document" ? DOC_W : COMMIT_W;
-              const nh = node.type === "session" ? NODE_H : node.type === "document" ? DOC_H : COMMIT_H;
+              const { w, h } = nodeDims(node.type);
               const bg = node.type === "session"
                 ? (node.session?.status === "running" ? "var(--success)" : node.session?.status === "error" ? "var(--error)" : "var(--text-muted)")
                 : node.type === "commit" ? "var(--info)" : "var(--text-muted)";
@@ -999,7 +1174,7 @@ export function SessionWeb() {
                   key={node.id}
                   style={{
                     position: "absolute", left: node.x, top: node.y,
-                    width: nw, height: nh,
+                    width: w, height: h,
                     background: bg, opacity: node.type === "session" ? 0.5 : 0.25,
                     borderRadius: 3, pointerEvents: "none",
                   }}
@@ -1008,92 +1183,56 @@ export function SessionWeb() {
             }
 
             if (node.type === "document" && node.doc) {
-              const d = node.doc;
               return (
-                <div
+                <DocNodeEl
                   key={node.id}
-                  className={`web-doc-node${selected?.id === node.id ? " web-node--selected" : ""}`}
-                  style={{ left: node.x, top: node.y }}
-                  onClick={() => handleSelect(node)}
-                  onDoubleClick={() => setFileViewerPath(d.path)}
-                  onTouchEnd={(e) => handleTouchEndNode(e, () => setFileViewerPath(d.path))}
-                  onMouseEnter={() => setHoveredId(node.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  title={d.path}
-                >
-                  <span className="web-doc-icon">&#9654;</span>
-                  <span className="web-doc-name">{d.filename.replace(/-handoff\.md$/, "")}</span>
-                </div>
+                  node={node}
+                  isSelected={selected?.id === node.id}
+                  onSelect={handleSelect}
+                  onOpenFile={onOpenFile}
+                  onHover={onHover}
+                  onNodeTouchEnd={onNodeTouchEnd}
+                />
               );
             }
 
             if (node.type === "commit") {
-              const c = node.commit!;
               return (
-                <div
+                <CommitNodeEl
                   key={node.id}
-                  className={`web-commit-node${selected?.id === node.id ? " web-node--selected" : ""}`}
-                  style={{ left: node.x, top: node.y }}
-                  onClick={() => handleSelect(node)}
-                  onMouseEnter={() => setHoveredId(node.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  title={c.message}
-                >
-                  <span className="web-commit-hash">{shortHash(c.hash)}</span>
-                  <span className="web-commit-msg">{c.message.split("\n")[0].slice(0, 34)}</span>
-                </div>
+                  node={node}
+                  isSelected={selected?.id === node.id}
+                  onSelect={handleSelect}
+                  onHover={onHover}
+                />
               );
             }
 
-            const s = node.session!;
-            const statusClass = s.status === "running" ? "running" : s.status === "error" ? "error" : "done";
             return (
-              <div
+              <SessionNodeEl
                 key={node.id}
-                className={`web-session-node web-session-node--${statusClass}${selected?.id === node.id ? " web-node--selected" : ""}${draggingChain?.has(node.id) ? " web-session-node--dragging" : ""}`}
-                style={{ left: node.x, top: node.y }}
-                onClick={() => handleSelect(node)}
-                onDoubleClick={() => setMiniSessionId(s.id)}
-                onTouchEnd={(e) => handleTouchEndNode(e, () => setMiniSessionId(s.id))}
-                onMouseDown={(e) => onNodeDragStart(e, node.id)}
-                onContextMenu={(e) => handleContextMenu(e, s.id)}
-                onMouseEnter={() => setHoveredId(node.id)}
-                onMouseLeave={() => setHoveredId(null)}
-              >
-                <div className="web-session-top">
-                  <span className={`web-session-dot web-session-dot--${statusClass}`} />
-                  <span className="web-session-id">{shortId(s.id)}</span>
-                  <span className="web-session-time">{timeAgo(s.created_at)}</span>
-                </div>
-                <div className="web-session-title">
-                  {(s.title || s.preview || "").slice(0, 48)}
-                </div>
-                <div className="web-session-meta">
-                  {s.profile && <span className="web-session-profile">{s.profile}</span>}
-                  {node.handoffType && <span className="web-session-handoff-type">{node.handoffType}</span>}
-                  <span>{s.message_count} msgs</span>
-                  <span>{formatCost(s.total_cost_usd)}</span>
-                  {(() => {
-                    const tc = sessionTouchCounts.get(s.id);
-                    if (!tc) return null;
-                    return (
-                      <>
-                        {tc.reads > 0 && <span className="web-session-reads">{tc.reads}r</span>}
-                        {tc.edits > 0 && <span className="web-session-edits">{tc.edits}w</span>}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
+                node={node}
+                isSelected={selected?.id === node.id}
+                isDragging={draggingChain?.has(node.id) ?? false}
+                touchCounts={sessionTouchCounts.get(node.session!.id)}
+                onSelect={handleSelect}
+                onOpen={onOpenSession}
+                onDragStart={onNodeDragStart}
+                onContextMenu={handleContextMenu}
+                onHover={onHover}
+                onNodeTouchEnd={onNodeTouchEnd}
+              />
             );
           })}
         </div>
+
         <button
           className="web-reset-btn"
           onMouseDown={e => e.stopPropagation()}
           onClick={handleResetView}
           title="Reset view"
         >⊙</button>
+
         {currentDayCluster && (
           <div className="web-day-hud">
             <span className="web-day-hud-label">{currentDayCluster.label}</span>
@@ -1102,7 +1241,8 @@ export function SessionWeb() {
             </span>
           </div>
         )}
-        {/* Minimap — bottom timeline strip */}
+
+        {/* Minimap */}
         {nodes.length > 0 && (() => {
           const mmH = 80;
           const mmW = wrapRef.current?.clientWidth ?? 800;
@@ -1110,10 +1250,10 @@ export function SessionWeb() {
           const scaleY = mmH / svgH;
           const vpW = wrapRef.current?.clientWidth ?? 800;
           const vpH = wrapRef.current?.clientHeight ?? 600;
-          const vrX = Math.max(0, (-viewport.x / viewport.scale) * scaleX);
-          const vrY = Math.max(0, (-viewport.y / viewport.scale) * scaleY);
-          const vrW = Math.min(mmW - vrX, (vpW / viewport.scale) * scaleX);
-          const vrH = Math.min(mmH - vrY, (vpH / viewport.scale) * scaleY);
+          const vrX = Math.max(0, (-vp.x / vp.scale) * scaleX);
+          const vrY = Math.max(0, (-vp.y / vp.scale) * scaleY);
+          const vrW = Math.min(mmW - vrX, (vpW / vp.scale) * scaleX);
+          const vrH = Math.min(mmH - vrY, (vpH / vp.scale) * scaleY);
           return (
             <div
               className="web-minimap"
@@ -1127,15 +1267,14 @@ export function SessionWeb() {
                 const curScaleY = mmH / svgH;
                 const curVpW = wrapRef.current?.clientWidth ?? 800;
                 const curVpH = wrapRef.current?.clientHeight ?? 600;
+                const curVp = viewportRef.current;
 
-                // Immediately jump viewport to center on click position
                 const mx = (e.clientX - rect.left) / curScaleX;
                 const my = (e.clientY - rect.top) / curScaleY;
-                const jumpVpX = -(mx - curVpW / (2 * viewport.scale)) * viewport.scale;
-                const jumpVpY = -(my - curVpH / (2 * viewport.scale)) * viewport.scale;
-                setViewport(vp => ({ ...vp, x: jumpVpX, y: jumpVpY }));
+                const jumpVpX = -(mx - curVpW / (2 * curVp.scale)) * curVp.scale;
+                const jumpVpY = -(my - curVpH / (2 * curVp.scale)) * curVp.scale;
+                applyViewport({ ...curVp, x: jumpVpX, y: jumpVpY });
 
-                // Use jumped position as drag baseline
                 mmDragRef.current = { startX, startY, startVpX: jumpVpX, startVpY: jumpVpY, hasMoved: false };
 
                 const onMove = (ev: MouseEvent) => {
@@ -1144,15 +1283,16 @@ export function SessionWeb() {
                   if (Math.hypot(dx, dy) > 3) mmDragRef.current!.hasMoved = true;
                   const wrap = wrapRef.current;
                   if (wrap) {
-                    const minX = -(svgW * viewport.scale - 100);
+                    const liveVp = viewportRef.current;
+                    const minX = -(svgWRef.current * liveVp.scale - 100);
                     const maxX = wrap.clientWidth - 100;
-                    const minY = -(svgH * viewport.scale - 100);
+                    const minY = -(svgHRef.current * liveVp.scale - 100);
                     const maxY = wrap.clientHeight - 100;
-                    setViewport(vp => ({
-                      ...vp,
-                      x: Math.max(minX, Math.min(maxX, jumpVpX - (dx / curScaleX) * vp.scale)),
-                      y: Math.max(minY, Math.min(maxY, jumpVpY - (dy / curScaleY) * vp.scale)),
-                    }));
+                    applyViewport({
+                      ...liveVp,
+                      x: Math.max(minX, Math.min(maxX, jumpVpX - (dx / curScaleX) * liveVp.scale)),
+                      y: Math.max(minY, Math.min(maxY, jumpVpY - (dy / curScaleY) * liveVp.scale)),
+                    });
                   }
                 };
                 const onUp = () => {
@@ -1173,11 +1313,12 @@ export function SessionWeb() {
                 const curScaleY = mmH / svgH;
                 const curVpW = wrap?.clientWidth ?? 800;
                 const curVpH = wrap?.clientHeight ?? 600;
+                const curVp = viewportRef.current;
                 const mx = (touch.clientX - rect.left) / curScaleX;
                 const my = (touch.clientY - rect.top) / curScaleY;
-                const jumpVpX = -(mx - curVpW / (2 * viewport.scale)) * viewport.scale;
-                const jumpVpY = -(my - curVpH / (2 * viewport.scale)) * viewport.scale;
-                setViewport(vp => ({ ...vp, x: jumpVpX, y: jumpVpY }));
+                const jumpVpX = -(mx - curVpW / (2 * curVp.scale)) * curVp.scale;
+                const jumpVpY = -(my - curVpH / (2 * curVp.scale)) * curVp.scale;
+                applyViewport({ ...curVp, x: jumpVpX, y: jumpVpY });
                 mmDragRef.current = { startX: touch.clientX, startY: touch.clientY, startVpX: jumpVpX, startVpY: jumpVpY, hasMoved: false };
               }}
               onTouchMove={e => {
@@ -1190,15 +1331,16 @@ export function SessionWeb() {
                 if (wrap) {
                   const curScaleX = wrap.clientWidth / svgW;
                   const curScaleY = mmH / svgH;
-                  const minX = -(svgW * viewport.scale - 100);
+                  const liveVp = viewportRef.current;
+                  const minX = -(svgWRef.current * liveVp.scale - 100);
                   const maxX = wrap.clientWidth - 100;
-                  const minY = -(svgH * viewport.scale - 100);
+                  const minY = -(svgHRef.current * liveVp.scale - 100);
                   const maxY = wrap.clientHeight - 100;
-                  setViewport(vp => ({
-                    ...vp,
-                    x: Math.max(minX, Math.min(maxX, mmDragRef.current!.startVpX - (dx / curScaleX) * vp.scale)),
-                    y: Math.max(minY, Math.min(maxY, mmDragRef.current!.startVpY - (dy / curScaleY) * vp.scale)),
-                  }));
+                  applyViewport({
+                    ...liveVp,
+                    x: Math.max(minX, Math.min(maxX, mmDragRef.current!.startVpX - (dx / curScaleX) * liveVp.scale)),
+                    y: Math.max(minY, Math.min(maxY, mmDragRef.current!.startVpY - (dy / curScaleY) * liveVp.scale)),
+                  });
                 }
               }}
               onTouchEnd={() => {
@@ -1217,7 +1359,6 @@ export function SessionWeb() {
                     prevEnd = cl.x + cl.width;
                     if (bw <= 0) continue;
                     const px = bx * scaleX;
-                    // separator line at left edge
                     if (idx > 0) {
                       elements.push(
                         <line key={`mm-sep-${cl.id}`} x1={px} y1={0} x2={px} y2={mmH}
@@ -1237,8 +1378,7 @@ export function SessionWeb() {
                   return elements;
                 })()}
                 {nodes.map(n => {
-                  const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
-                  const h = n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H;
+                  const { w, h } = nodeDims(n.type);
                   const cls = n.type === "session"
                     ? (n.session?.status === "running" ? "web-mm-running" : "web-mm-session")
                     : n.type === "commit" ? "web-mm-commit" : "web-mm-doc";
@@ -1252,6 +1392,7 @@ export function SessionWeb() {
                   );
                 })}
                 <rect
+                  ref={mmRectRef}
                   x={vrX} y={vrY} width={vrW} height={vrH}
                   className="web-mm-viewport"
                 />
@@ -1259,6 +1400,7 @@ export function SessionWeb() {
             </div>
           );
         })()}
+
         <MissionFilterPanel runs={missionRuns} activeRunId={missionFilter} onChange={setMissionFilter} />
       </div>
 
