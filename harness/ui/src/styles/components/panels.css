@@ -191,6 +191,56 @@
   background: var(--bg);
 }
 
+/* ── Right panel header actions ── */
+.right-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.right-panel-header-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.1s ease, border-color 0.1s ease;
+}
+.right-panel-header-btn:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.right-panel-header-btn.active {
+  color: var(--accent);
+}
+
+/* ── Fullscreen mode ── */
+.right-panel--fullscreen {
+  position: absolute !important;
+  inset: 0;
+  z-index: 100;
+  width: 100% !important;
+  min-width: 100% !important;
+  overflow: visible;
+}
+
+/* ── HTML canvas/iframe preview ── */
+.right-panel-canvas {
+  flex: 1;
+  min-height: 0;
+}
+.right-panel-iframe {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  background: #fff;
+}
+
 /* ── Empty state for both panels ── */
 .panel-empty {
   color: var(--text-muted);

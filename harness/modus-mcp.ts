@@ -22,6 +22,7 @@ import { z } from "zod";
 import { handleSubmit } from "./move-runner";
 import { isMissionToken, handleMissionCommand } from "./mission-runner";
 import { addSessionTag } from "./db";
+import { broadcastUiEvent } from "./session-manager";
 
 /**
  * Handle an incoming MCP request from Hono.
@@ -208,6 +209,15 @@ registerApiHandler("tag-session", async (sessionId, data) => {
   }
   addSessionTag(sessionId, tag);
   return { ok: true, message: `Tagged session with "${tag}"` };
+});
+
+registerApiHandler("open-file", async (sessionId, data) => {
+  const path = data.path;
+  if (typeof path !== "string" || path.length === 0) {
+    return { ok: false, error: "Missing or empty 'path' field" };
+  }
+  broadcastUiEvent(sessionId, { type: "ui", action: "open-file", path });
+  return { ok: true, message: `Opened file: ${path}` };
 });
 
 // ── Mission token handler (command bus) ──

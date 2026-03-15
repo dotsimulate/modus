@@ -282,6 +282,7 @@ function AppShell() {
     placeholder: profileUi.placeholder ?? "message...",
     emptyTitle: profileUi.emptyTitle ?? activeProfileName,
     emptySubtitle: profileUi.emptySubtitle ?? "start typing to begin",
+    panelWidgets: profileUi.panelWidgets ?? [],
   };
   const isStreaming = activeSession?.status === "running" || activeSession?.status === "starting";
   const profileData = profiles.find((p) => p.name === activeProfileName);
@@ -429,7 +430,9 @@ function AppShell() {
               width={leftPanelWidth}
               onOpen={() => setLeftPanelOpen(true)}
               onClose={() => setLeftPanelOpen(false)}
-              widgets={[{ id: "session-info-left", type: "session-info" }]}
+              widgets={(profileData?.ui?.panelWidgets ?? ["session-info"]).map(
+                (type, i) => ({ id: `left-${type}-${i}`, type })
+              )}
               onNavigate={handleNavigate}
               onSelectSession={handleSelectSession}
             />

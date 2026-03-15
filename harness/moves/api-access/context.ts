@@ -18,6 +18,11 @@ export async function gather(ctx: MoveContext): Promise<string> {
       description: "Add a metadata tag to the current session",
       data: '{ "op": "tag-session", "tag": "<short descriptive tag>" }',
     },
+    {
+      name: "open-file",
+      description: "Open a file in the UI viewer panel (RightPanel)",
+      data: '{ "op": "open-file", "path": "<absolute file path>" }',
+    },
   ];
 
   const lines = [

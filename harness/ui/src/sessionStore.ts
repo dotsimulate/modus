@@ -80,8 +80,30 @@ export function setSessionNextAgentConfig(id: string, nextAgentConfig?: Session[
   notify();
 }
 
+// ── UI Event Bus ──
+// Ephemeral events from backend (type: "ui") that trigger frontend actions
+// without affecting session state. Listeners are per-action.
+
+type UiEventListener = (sessionId: string, event: any) => void;
+const uiEventListeners = new Map<string, Set<UiEventListener>>();
+
+/** Subscribe to a specific UI event action (e.g. "open-file") */
+export function onUiEvent(action: string, listener: UiEventListener): () => void {
+  let set = uiEventListeners.get(action);
+  if (!set) { set = new Set(); uiEventListeners.set(action, set); }
+  set.add(listener);
+  return () => { set!.delete(listener); };
+}
+
 /** Update state for a session via a reducer event */
 export function applyEvent(id: string, event: any, seq: number) {
+  // UI command events — dispatch and skip reducer
+  if (event.type === "ui" && typeof event.action === "string") {
+    const set = uiEventListeners.get(event.action);
+    if (set) for (const fn of set) fn(id, event);
+    return;
+  }
+
   const entry = sessions.get(id);
   if (!entry) return;
   entry.state = reduceEvent(entry.state, event, seq);
