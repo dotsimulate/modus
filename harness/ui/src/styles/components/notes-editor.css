@@ -1,0 +1,249 @@
+/**
+ * NotesEditor — note list + inline markdown editor with speech-to-text.
+ */
+
+.notes-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 0;
+}
+
+/* ── Note list ── */
+
+.notes-list {
+  flex-shrink: 0;
+}
+
+.notes-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.notes-list-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.notes-list-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease;
+  gap: 8px;
+}
+
+.notes-list-item:hover {
+  background: var(--bg-hover);
+}
+
+.notes-list-item.active {
+  background: var(--bg-surface);
+  color: var(--text);
+}
+
+.notes-list-item-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-list-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.notes-list-item-time {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.notes-list-item-delete {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+
+.notes-list-item:hover .notes-list-item-delete {
+  opacity: 1;
+}
+
+.notes-list-item-delete:hover {
+  color: var(--error);
+}
+
+.notes-empty-list {
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.notes-empty {
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Buttons ── */
+
+.notes-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+}
+
+.notes-btn:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: var(--bg-hover);
+}
+
+.notes-btn--mic.active {
+  color: var(--error);
+  border-color: var(--error-dim);
+  background: rgba(255, 51, 51, 0.05);
+}
+
+/* ── Editor ── */
+
+.notes-edit {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  min-height: 0;
+}
+
+.notes-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+.notes-edit-title {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0;
+  outline: none;
+}
+
+.notes-edit-title::placeholder {
+  color: var(--text-muted);
+}
+
+.notes-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notes-edit-saving {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.notes-edit-content {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 0 12px 12px;
+  resize: none;
+  outline: none;
+  min-height: 120px;
+}
+
+.notes-edit-content::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── Speech-to-text indicator ── */
+
+.notes-stt-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  flex-shrink: 0;
+}
+
+.notes-stt-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--error);
+  animation: notes-stt-pulse 1s ease-in-out infinite;
+}
+
+@keyframes notes-stt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.notes-stt-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.notes-stt-error {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--error-soft);
+  padding: 4px 12px;
+}
+
+/* ── Compact mode (sidebar widget) ── */
+
+.notes-editor--compact .notes-edit {
+  max-height: 200px;
+}
+
+.notes-editor--compact .notes-edit-content {
+  min-height: 60px;
+}
