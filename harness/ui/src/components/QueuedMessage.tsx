@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionProvider";
+import type { MoveListItem } from "../api";
 
 type Props = {
   message: QueuedMessageType;
@@ -33,6 +34,41 @@ export function QueuedMessage({ message, onCancel }: Props) {
           {message.text}
         </div>
       )}
+    </div>
+  );
+}
+
+type AttachedMoveProps = {
+  move: MoveListItem;
+  inputs?: Record<string, unknown>;
+  onDetach: () => void;
+};
+
+export function AttachedMove({ move, inputs, onDetach }: AttachedMoveProps) {
+  const filledInputs = (move.inputs ?? []).filter((inp) => {
+    const val = inputs?.[inp.name];
+    return val !== undefined && val !== "" && String(val) !== String(inp.default ?? "");
+  });
+
+  return (
+    <div className="queued-message queued-message--move">
+      <div className="queued-message-header">
+        <span className="queued-message-indicator">
+          <span className="queued-message-dot" />
+        </span>
+        <span className="queued-message-label">move</span>
+        <span className="queued-message-preview">
+          {move.label}
+          {filledInputs.map((inp) => (
+            <span key={inp.name} className="queued-message-move-input">
+              {" · "}{String(inputs![inp.name])}
+            </span>
+          ))}
+        </span>
+        <button className="queued-message-cancel" onClick={onDetach}>
+          detach
+        </button>
+      </div>
     </div>
   );
 }

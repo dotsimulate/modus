@@ -29,6 +29,7 @@ import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
+import { NowPlaying } from "./components/NowPlaying";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
 function parseTagList(raw?: string | null): string[] {
@@ -389,6 +390,7 @@ function AppShell() {
           computer={activeUP?.computer}
           projectPath={activeUP?.projects?.[0]}
         />
+        <NowPlaying onNavigateSession={handleViewSession} />
       </div>
 
       <div className="app-body">

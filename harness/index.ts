@@ -640,9 +640,33 @@ app.get("/api/sessions/:id/artifacts/:artifactId", async (c) => {
   if (!artifact) return c.json({ error: "artifact not found" }, 404);
   const file = Bun.file(artifact.path);
   if (!(await file.exists())) return c.json({ error: "artifact file not found" }, 404);
+  const size = file.size;
+  const rangeHeader = c.req.header("Range");
+
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = Number(match[1]);
+      const end = match[2] ? Number(match[2]) : size - 1;
+      const chunk = file.slice(start, end + 1);
+      return new Response(chunk, {
+        status: 206,
+        headers: {
+          "Content-Type": artifact.mime,
+          "Content-Length": String(end - start + 1),
+          "Content-Range": `bytes ${start}-${end}/${size}`,
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+  }
+
   return new Response(file, {
     headers: {
       "Content-Type": artifact.mime,
+      "Content-Length": String(size),
+      "Accept-Ranges": "bytes",
       "Cache-Control": "no-store",
     },
   });

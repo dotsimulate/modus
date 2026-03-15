@@ -27,6 +27,7 @@ type Props = {
   onInject: (text: string, settings?: PromptSettings) => void;
   onAutoSend?: (text: string, settings?: PromptSettings) => void;
   onMoveActivated?: (result: ActivateMoveResult) => void;
+  onMoveAttach?: (move: MoveListItem, inputs: Record<string, unknown>) => void;
   /** "up" (default, chat input) or "down" (dashboard) */
   direction?: "up" | "down";
   /** Filter prompts by tag */
@@ -104,7 +105,7 @@ function buildMoveInputs(
 }
 
 export function PromptPicker({
-  onInject, onAutoSend, onMoveActivated, direction = "up", tags,
+  onInject, onAutoSend, onMoveActivated, onMoveAttach, direction = "up", tags,
   sessionId, projectCwd, userProfile, forceOpen, onOpenChange,
 }: Props) {
   const { activeUP, activeUserProfile, profiles } = useProfiles();
@@ -339,10 +340,20 @@ export function PromptPicker({
     userProfile,
   ]);
 
+
+  const handleAttachMove = useCallback(() => {
+    if (!selected || selected.kind !== "move") return;
+    const inputs = buildMoveInputs(selected.item, inputValues, resolveProfileNames());
+    onMoveAttach?.(selected.item, inputs);
+    setOpenAndNotify(false);
+    setSelected(null);
+    setSearch("");
+  }, [selected, inputValues, resolveProfileNames, onMoveAttach, setOpenAndNotify]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (selected?.kind === "move") handleActivateMove();
+      if (selected?.kind === "move") { if (onMoveAttach) handleAttachMove(); else handleActivateMove(); }
       else handleRender("inject");
     }
     if (e.key === "Escape") {
@@ -651,10 +662,10 @@ export function PromptPicker({
             ) : (
               <button
                 className="prompt-picker-btn prompt-picker-btn--send"
-                onClick={handleActivateMove}
+                onClick={onMoveAttach ? handleAttachMove : handleActivateMove}
                 disabled={rendering || !moveReady}
               >
-                {rendering ? "..." : "run move"}
+                {rendering ? "..." : onMoveAttach ? "attach" : "run move"}
               </button>
             )}
             <button
