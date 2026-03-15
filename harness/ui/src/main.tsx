@@ -46,6 +46,8 @@ import './styles/components/session-info-widget.css'
 import './styles/components/session-control-widget.css'
 import './styles/components/notes-editor.css'
 import './styles/components/file-browser.css'
+import './styles/components/mini-float.css'
+import './styles/components/agent-portal.css'
 
 // Views
 import './styles/views/login.css'

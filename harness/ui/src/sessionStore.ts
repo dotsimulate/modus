@@ -19,6 +19,8 @@ type SessionEntry = {
   provider?: string;
   nextProfile?: string;
   nextAgentConfig?: Session["nextAgentConfig"];
+  /** True while we're replaying historical SSE events — suppresses spurious "running" status */
+  catchingUp?: boolean;
 };
 
 type Subscription = {
@@ -106,7 +108,12 @@ export function applyEvent(id: string, event: any, seq: number) {
 
   const entry = sessions.get(id);
   if (!entry) return;
+  const prevStatus = entry.state.status;
   entry.state = reduceEvent(entry.state, event, seq);
+  // During SSE catch-up replay of a completed session, suppress spurious "running" status
+  if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting")) {
+    entry.state = { ...entry.state, status: prevStatus };
+  }
   // Profile switch: update the entry-level profile name
   if (event.type === "system" && event.subtype === "switch" && event.toProfile) {
     entry.profile = event.toProfile;
@@ -168,16 +175,27 @@ export function subscribeSession(
     entry.profile = profile;
   }
 
+  // If replaying from the beginning for a session that isn't actively running,
+  // suppress status→running updates so the UI doesn't look like a rerun.
+  if (afterSeq === 0) {
+    const entry = sessions.get(sessionId)!;
+    const knownStatus = entry.state.status;
+    if (knownStatus !== "running" && knownStatus !== "starting") {
+      entry.catchingUp = true;
+    }
+  }
+
   const unsub = subscribeEvents(sessionId, afterSeq, {
     onEvent: (event, seq) => {
       applyEvent(sessionId, event, seq);
     },
     onDone: () => {
       subscriptions.delete(sessionId);
-      // Mark idle if still running
       const entry = sessions.get(sessionId);
       if (entry) {
+        entry.catchingUp = false;
         const st = entry.state;
+        // Mark idle if status got stuck as running (shouldn't happen with catchingUp guard, but safety net)
         if (st.status === "running" || st.status === "starting") {
           entry.state = { ...st, status: "idle" };
           notify();
@@ -187,11 +205,14 @@ export function subscribeSession(
     },
     onDisconnect: () => {
       subscriptions.delete(sessionId);
+      // Clear catch-up mode so reconnect works normally
+      const entry = sessions.get(sessionId);
+      if (entry) entry.catchingUp = false;
       // Reconnect after brief delay
       setTimeout(() => {
-        const entry = sessions.get(sessionId);
-        if (entry) {
-          subscribeSession(sessionId, entry.state.lastSeq, entry.profile, onDone);
+        const entry2 = sessions.get(sessionId);
+        if (entry2) {
+          subscribeSession(sessionId, entry2.state.lastSeq, entry2.profile, onDone);
         }
       }, 2000);
     },
@@ -199,6 +220,7 @@ export function subscribeSession(
       subscriptions.delete(sessionId);
       const entry = sessions.get(sessionId);
       if (entry) {
+        entry.catchingUp = false;
         entry.state = { ...entry.state, status: "error" };
         notify();
       }
@@ -276,6 +298,16 @@ function subscribe(callback: () => void): () => void {
 
 function getSnapshot(): number {
   return snapshot;
+}
+
+/** Subscribe to the entire store — for components that need to react to any session change */
+export function subscribeStore(callback: () => void): () => void {
+  return subscribe(callback);
+}
+
+/** Get the store revision snapshot — use with subscribeStore in useSyncExternalStore */
+export function getStoreSnapshot(): number {
+  return getSnapshot();
 }
 
 /**

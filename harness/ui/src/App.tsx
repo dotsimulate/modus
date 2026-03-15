@@ -29,7 +29,7 @@ import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
-import { NowPlaying } from "./components/NowPlaying";
+import { AgentPortal } from "./components/AgentPortal";
 import { NotesPage } from "./components/NotesPage";
 import { ProductivityPage } from "./components/ProductivityPage";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
@@ -392,7 +392,14 @@ function AppShell() {
           computer={activeUP?.computer}
           projectPath={activeUP?.projects?.[0]}
         />
-        <NowPlaying onNavigateSession={handleViewSession} />
+        <AgentPortal
+          sessions={serverSessions.map((s) => {
+            const storeState = getSessionState(s.id);
+            return storeState ? { ...s, status: storeState.status ?? s.status } : s;
+          })}
+          onNavigateSession={handleViewSession}
+          onPeekSession={handlePeekSession}
+        />
       </div>
 
       <div className="app-body">
@@ -441,6 +448,19 @@ function AppShell() {
               onSelectSession={handleSelectSession}
             />
             {leftPanelOpen && <ResizeHandle side="left" onResize={handleLeftResize} />}
+            <button
+              className="panel-tab panel-tab--left"
+              onClick={leftPanelOpen ? () => setLeftPanelOpen(false) : () => setLeftPanelOpen(true)}
+              title={leftPanelOpen ? "Collapse panel" : "Open widgets panel"}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                {leftPanelOpen ? (
+                  <path d="M6 2L2 5.5 6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                ) : (
+                  <path d="M4 2l4 3.5L4 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                )}
+              </svg>
+            </button>
             <div className="chat">
               <ChatView
                 messages={activeSession?.messages ?? []}
@@ -532,6 +552,19 @@ function AppShell() {
                 }}
               />
             </div>
+            <button
+              className="panel-tab panel-tab--right"
+              onClick={rightPanelOpen ? () => setRightPanelOpen(false) : () => setRightPanelOpen(true)}
+              title={rightPanelOpen ? "Collapse panel" : "Open viewer panel"}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                {rightPanelOpen ? (
+                  <path d="M4 2l4 3.5L4 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                ) : (
+                  <path d="M6 2L2 5.5 6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                )}
+              </svg>
+            </button>
             {rightPanelOpen && <ResizeHandle side="right" onResize={handleRightResize} />}
             <RightPanel
               open={rightPanelOpen}
