@@ -484,13 +484,8 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
 
   // Execute based on mode
   if (mode === "inline") {
-    // Inject prompt into current session
-    const active = sourceSessionId ? getActiveSession(sourceSessionId) : null;
-    if (!sourceSessionId || !active) {
-      return { error: `Move "${moveName}" requires an active session` };
-    }
-    queueMessage(sourceSessionId, prompt);
-    return { token, mode, moveRunId };
+    // Return rendered prompt for client to merge into the current user message
+    return { token, mode, moveRunId, prompt };
   }
 
   if (mode === "branch" || mode === "background") {
