@@ -902,8 +902,9 @@ app.get("/api/browse", async (c) => {
     const info = await stat(target);
     if (!info.isDirectory()) return c.json({ error: "not a directory" }, 400);
     const entries = await readdir(target, { withFileTypes: true });
+    const exposeDirs = new Set([".modus", ".claude"]);
     const dirs = entries
-      .filter((e) => e.isDirectory() && (includeHidden || !e.name.startsWith(".")))
+      .filter((e) => e.isDirectory() && (includeHidden || !e.name.startsWith(".") || exposeDirs.has(e.name)))
       .map((e) => e.name)
       .sort();
     const includeFiles = params.get("includeFiles") === "1";
