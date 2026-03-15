@@ -3,678 +3,125 @@ import { fetchSessionsScoped } from "../api/sessions";
 import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
 import { fetchMissionRuns, fetchMissionTransfers, fetchMissionSessions } from "../api/missions";
+import { fetchTouches } from "../api/trace";
+import { archiveSessionApi } from "../api/sessions";
 import type { SessionInfo, GitCommit } from "../api/types";
 import type { MissionRunSummary, MissionTransferSummary } from "../api/missions";
+import type { TouchRecord } from "../api/trace";
 import { ChatFileViewer } from "./ChatFileViewer";
 import { SessionWindow } from "./SessionWindow";
 import { useProfiles } from "../providers/ProfileProvider";
 
-// ── Types ──
+import {
+  type MoveRun,
+  type GraphNode,
+  type GraphEdge,
+  type EdgeType,
+  type EdgeLayers,
+  type WebLayoutConfig,
+  type PositionMap,
+  type DateFilter,
+  type TimeCluster,
+  NODE_W, NODE_H, DOC_W, DOC_H, COMMIT_W, COMMIT_H,
+  PAD_NODE_W, PAD_NODE_H,
+  DEFAULT_CONFIG, PRESETS, DEFAULT_LAYERS,
+  loadConfig, saveConfig,
+  loadDateFilter, saveDateFilter,
+  loadPositions, savePositions,
+  loadLayers, saveLayers,
+  shortId, shortHash, formatCost, timeAgo,
+  parseTags,
+  nodeBottom, nodeMidX, nodeRight, nodeMidY,
+} from "./SessionWebLayout";
 
-type MoveRun = {
-  id: number;
-  moveName: string;
-  sessionId: string;
-  mode: string;
-  status: string;
-  summary: string | null;
-  createdAt: number;
-  completedAt: number | null;
-  spawnedSessionId: string | null;
-  gatheredContext?: string;
-};
+import { buildAllEdges } from "./SessionWebEdges";
+import { solveLayout, resolveDragCollisions } from "./SessionWebSolver";
 
-type HandoffDoc = {
-  path: string;
-  filename: string;
-  moveRunId: number;
-  fromSessionId: string;
-  toSessionId: string;
-};
+// ── Nearest-edge anchor point between two nodes ──
 
-type GraphNode = {
-  id: string;
-  type: "session" | "commit" | "document";
-  x: number;
-  y: number;
-  col: number;
-  row: number;
-  session?: SessionInfo;
-  commit?: GitCommit;
-  doc?: HandoffDoc;
-  tags?: string[];
-  handoffType?: string;
-};
-
-type GraphEdge = {
-  from: string;
-  to: string;
-  type: "handoff" | "commit" | "document" | "delegation";
-  moveName?: string;
-  lane?: number;
-  kind?: MissionTransferSummary["kind"];
-};
-
-type SelectedNode = GraphNode | null;
-
-// ── Layout Config ──
-
-type WebLayoutConfig = {
-  rowWidth: number;
-  colHeight: number;
-  padX: number;
-  padY: number;
-  commitOffsetX: number;
-  siblingGapRows: number;
-  rootGapRows: number;
-  axisMode: "time-x" | "time-y";
-  timeDirection: "ltr" | "rtl";
-};
-
-const LAYOUT_DEFAULTS: WebLayoutConfig = {
-  rowWidth: 500,
-  colHeight: 130,
-  padX: 60,
-  padY: 60,
-  commitOffsetX: 14,
-  siblingGapRows: 0.45,
-  rootGapRows: 0.75,
-  axisMode: "time-x",
-  timeDirection: "ltr",
-};
-
-const PRESETS: Record<string, WebLayoutConfig> = {
-  default: { ...LAYOUT_DEFAULTS },
-  compact: { rowWidth: 360, colHeight: 100, padX: 40, padY: 40, commitOffsetX: 10, siblingGapRows: 0.3, rootGapRows: 0.5, axisMode: "time-x", timeDirection: "ltr" },
-  wide:    { rowWidth: 640, colHeight: 160, padX: 80, padY: 80, commitOffsetX: 20, siblingGapRows: 0.6, rootGapRows: 1.0, axisMode: "time-x", timeDirection: "ltr" },
-};
-
-const STORAGE_KEY = "mo:web-layout";
-
-function loadConfig(): WebLayoutConfig {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...LAYOUT_DEFAULTS, ...JSON.parse(raw) };
-  } catch {}
-  return { ...LAYOUT_DEFAULTS };
-}
-
-function saveConfig(cfg: WebLayoutConfig) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
-}
-
-// ── Helpers ──
-
-function parseTags(tags: string): string[] {
-  try { return JSON.parse(tags); }
-  catch { return []; }
-}
-
-function shortId(id: string) { return id.slice(0, 8); }
-function shortHash(h: string) { return h.slice(0, 7); }
-function sessionCreatedAt(sessionMap: Map<string, SessionInfo>, sid: string): number {
-  return sessionMap.get(sid)?.created_at ?? 0;
-}
-function commitTimestamp(commit: GitCommit): number {
-  const parsed = Date.parse(commit.date);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function timeAgo(epoch: number): string {
-  const diff = Date.now() - epoch;
-  if (diff < 60000) return `${Math.floor(diff / 1000)}s`;
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-  return `${Math.floor(diff / 86400000)}d`;
-}
-
-function formatCost(usd: number): string {
-  if (usd < 0.01) return "<$0.01";
-  return `$${usd.toFixed(2)}`;
-}
-
-// ── Node Dimensions (fixed — not configurable) ──
-
-const NODE_W = 260;
-const NODE_H = 84;
-const COMMIT_W = 200;
-const COMMIT_H = 30;
-const DOC_W = 180;
-const DOC_H = 32;
-const COMMIT_GAP_Y = 6;
-
-// ── Graph Builder ──
-
-function buildGraph(
-  sessions: SessionInfo[],
-  moveRuns: MoveRun[],
-  commits: GitCommit[],
-  missionTransfers: MissionTransferSummary[],
-  config: WebLayoutConfig,
-): { nodes: GraphNode[]; edges: GraphEdge[] } {
-  const edges: GraphEdge[] = [];
-  const sessionMap = new Map(sessions.map(s => [s.id, s]));
-  const missionStructuralKinds = new Set<MissionTransferSummary["kind"]>(["delegation", "review", "escalation"]);
-
-  // Handoff edges: source → document → spawned (or source → spawned if no doc)
-  const handoffMoveRuns = moveRuns
-    .filter(r => r.spawnedSessionId && sessionMap.has(r.sessionId) && sessionMap.has(r.spawnedSessionId!));
-
-  const handoffDocs: HandoffDoc[] = [];
-  const lineageEdges: GraphEdge[] = [];
-
-  for (const r of handoffMoveRuns) {
-    let docPath: string | null = null;
-    if (r.gatheredContext) {
-      try {
-        const gc = JSON.parse(r.gatheredContext);
-        if (gc.handoffsDir && gc.handoffFilename) {
-          docPath = `${gc.handoffsDir}/${gc.handoffFilename}`;
-        }
-      } catch { /* ignore */ }
-    }
-
-    if (docPath) {
-      const docId = `doc:${r.id}`;
-      const filename = docPath.split("/").pop() || docPath;
-      handoffDocs.push({
-        path: docPath,
-        filename,
-        moveRunId: r.id,
-        fromSessionId: r.sessionId,
-        toSessionId: r.spawnedSessionId!,
-      });
-      edges.push({ from: r.sessionId, to: docId, type: "document", moveName: r.moveName });
-      edges.push({ from: docId, to: r.spawnedSessionId!, type: "handoff", moveName: r.moveName });
-      lineageEdges.push({ from: r.sessionId, to: r.spawnedSessionId!, type: "handoff", moveName: r.moveName });
-    } else {
-      const e = { from: r.sessionId, to: r.spawnedSessionId!, type: "handoff" as const, moveName: r.moveName };
-      edges.push(e);
-      lineageEdges.push(e);
-    }
-  }
-
-  // Mission delegation edges stay as overlays; they should not re-parent the handoff tree.
-  const delegationEdgeGroups = new Map<string, MissionTransferSummary[]>();
-  for (const transfer of missionTransfers) {
-    if (!transfer.fromSessionId || !transfer.toSessionId) continue;
-    if (!sessionMap.has(transfer.fromSessionId) || !sessionMap.has(transfer.toSessionId)) continue;
-    const key = `${transfer.fromSessionId}->${transfer.toSessionId}`;
-    const grouped = delegationEdgeGroups.get(key) || [];
-    grouped.push(transfer);
-    delegationEdgeGroups.set(key, grouped);
-  }
-  for (const [key, grouped] of delegationEdgeGroups) {
-    const [from, to] = key.split("->");
-    grouped
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .forEach((transfer, index) => {
-        edges.push({
-          from,
-          to,
-          type: "delegation",
-          lane: index,
-          kind: transfer.kind,
-        });
-      });
-  }
-
-  // Build commit tag map: hash → session IDs
-  const commitSessionMap = new Map<string, string[]>();
-  for (const s of sessions) {
-    const tags = parseTags(s.tags);
-    for (const t of tags) {
-      if (t.startsWith("commit:")) {
-        const hash = t.slice(7);
-        const arr = commitSessionMap.get(hash) || [];
-        arr.push(s.id);
-        commitSessionMap.set(hash, arr);
-      }
-    }
-  }
-
-  // Only include commits that are linked to sessions
-  const linkedCommits = commits.filter(c =>
-    commitSessionMap.has(shortHash(c.hash)) || commitSessionMap.has(c.hash)
-  );
-
-  // Commit edges
-  for (const c of linkedCommits) {
-    const h7 = shortHash(c.hash);
-    const linked = commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [];
-    for (const sid of linked) {
-      edges.push({ from: sid, to: `commit:${h7}`, type: "commit" });
-    }
-  }
-
-  // Compute session depth via BFS
-  const structuralEdges = lineageEdges.length > 0
-    ? lineageEdges
-    : [...delegationEdgeGroups.entries()]
-      .filter(([, grouped]) => grouped.some(transfer => missionStructuralKinds.has(transfer.kind)))
-      .map(([key]) => {
-        const [from, to] = key.split("->");
-        return { from, to, type: "delegation" as const };
-      });
-
-  const spawnedSet = new Set(structuralEdges.map(e => e.to));
-  const childrenOf = new Map<string, string[]>();
-  for (const e of structuralEdges) {
-    const arr = childrenOf.get(e.from) || [];
-    arr.push(e.to);
-    childrenOf.set(e.from, arr);
-  }
-
-  // Sessions that participate in the structural map
-  const handoffSessionIds = new Set<string>();
-  for (const e of structuralEdges) {
-    handoffSessionIds.add(e.from);
-    handoffSessionIds.add(e.to);
-  }
-  for (const grouped of delegationEdgeGroups.values()) {
-    for (const transfer of grouped) {
-      if (transfer.fromSessionId) handoffSessionIds.add(transfer.fromSessionId);
-      if (transfer.toSessionId) handoffSessionIds.add(transfer.toSessionId);
-    }
-  }
-  // Also include sessions with commit links
-  for (const [, sids] of commitSessionMap) {
-    for (const sid of sids) handoffSessionIds.add(sid);
-  }
-
-  // If no relationships at all, show recent sessions as a simple grid
-  const relevantSessionIds = handoffSessionIds.size > 0
-    ? handoffSessionIds
-    : new Set(sessions.slice(0, 12).map(s => s.id));
-
-  const delegationPeers = new Map<string, Set<string>>();
-  for (const grouped of delegationEdgeGroups.values()) {
-    for (const transfer of grouped) {
-      if (!transfer.fromSessionId || !transfer.toSessionId) continue;
-      const fromPeers = delegationPeers.get(transfer.fromSessionId) || new Set<string>();
-      fromPeers.add(transfer.toSessionId);
-      delegationPeers.set(transfer.fromSessionId, fromPeers);
-      const toPeers = delegationPeers.get(transfer.toSessionId) || new Set<string>();
-      toPeers.add(transfer.fromSessionId);
-      delegationPeers.set(transfer.toSessionId, toPeers);
-    }
-  }
-
-  const depth = new Map<string, number>();
-  const roots: string[] = [];
-  for (const sid of relevantSessionIds) {
-    if (!spawnedSet.has(sid)) {
-      roots.push(sid);
-      depth.set(sid, 0);
-    }
-  }
-  // BFS
-  const queue = [...roots];
-  while (queue.length > 0) {
-    const cur = queue.shift()!;
-    const d = depth.get(cur) ?? 0;
-    for (const child of childrenOf.get(cur) || []) {
-      if (!depth.has(child)) {
-        depth.set(child, d + 1);
-        queue.push(child);
-      }
-    }
-  }
-  // Orphans (in relevantSessionIds but not reachable) get depth 0
-  for (const sid of relevantSessionIds) {
-    if (!depth.has(sid)) depth.set(sid, 0);
-  }
-
-  // Lay out the forest by subtree so parents stay visually tied to children.
-  const childOrderCache = new Map<string, string[]>();
-  function orderedChildren(sid: string): string[] {
-    const cached = childOrderCache.get(sid);
-    if (cached) return cached;
-    const ordered = [...(childrenOf.get(sid) || [])]
-      .filter(child => relevantSessionIds.has(child))
-      .sort((a, b) => {
-        const aPeer = delegationPeers.get(a)?.has(sid) ? 1 : 0;
-        const bPeer = delegationPeers.get(b)?.has(sid) ? 1 : 0;
-        if (aPeer !== bPeer) return bPeer - aPeer;
-        const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
-        if (timeDiff !== 0) return timeDiff;
-        return a.localeCompare(b);
-      });
-    childOrderCache.set(sid, ordered);
-    return ordered;
-  }
-
-  const rowPosition = new Map<string, number>();
-  const usedRows = new Set<number>();
-  const laidOut = new Set<string>();
-  function setRowPosition(sid: string, row: number) {
-    rowPosition.set(sid, row);
-    if (Number.isInteger(row)) usedRows.add(row);
-  }
-  function nearestOpenRow(anchor: number): number {
-    const base = Math.round(anchor);
-    if (!usedRows.has(base)) return base;
-    for (let distance = 1; distance < 512; distance++) {
-      const above = base - distance;
-      if (!usedRows.has(above)) return above;
-      const below = base + distance;
-      if (!usedRows.has(below)) return below;
-    }
-    return base;
-  }
-  function layoutSubtree(sid: string, startRow: number): number {
-    laidOut.add(sid);
-    const children = orderedChildren(sid).filter(child => !laidOut.has(child));
-    if (children.length === 0) {
-      setRowPosition(sid, startRow);
-      return startRow + 1;
-    }
-
-    let cursor = startRow;
-    const childRows: number[] = [];
-    for (let index = 0; index < children.length; index++) {
-      cursor = layoutSubtree(children[index], cursor);
-      childRows.push(rowPosition.get(children[index]) ?? cursor - 1);
-      if (index < children.length - 1) cursor += config.siblingGapRows;
-    }
-    setRowPosition(sid, (childRows[0] + childRows[childRows.length - 1]) / 2);
-    return cursor;
-  }
-
-  const orderedRoots = [...roots].sort((a, b) => {
-    const aPeers = delegationPeers.get(a)?.size ?? 0;
-    const bPeers = delegationPeers.get(b)?.size ?? 0;
-    if (aPeers !== bPeers) return bPeers - aPeers;
-    const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
-    if (timeDiff !== 0) return timeDiff;
-    return a.localeCompare(b);
-  });
-
-  let nextRootRow = 0;
-  for (let index = 0; index < orderedRoots.length; index++) {
-    nextRootRow = layoutSubtree(orderedRoots[index], nextRootRow);
-    if (index < orderedRoots.length - 1) nextRootRow += config.rootGapRows;
-  }
-
-  // Guard against malformed/cyclic data so every relevant session still renders.
-  const unplaced = [...relevantSessionIds]
-    .filter(sid => !rowPosition.has(sid))
-    .sort((a, b) => {
-      const aAnchor = [...(delegationPeers.get(a) || [])]
-        .map(peer => rowPosition.get(peer))
-        .find((row): row is number => row != null);
-      const bAnchor = [...(delegationPeers.get(b) || [])]
-        .map(peer => rowPosition.get(peer))
-        .find((row): row is number => row != null);
-      if (aAnchor != null && bAnchor != null && aAnchor !== bAnchor) return aAnchor - bAnchor;
-      if (aAnchor != null) return -1;
-      if (bAnchor != null) return 1;
-      const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
-      if (timeDiff !== 0) return timeDiff;
-      return a.localeCompare(b);
-    });
-  for (const sid of unplaced) {
-    const anchorRows = [...(delegationPeers.get(sid) || [])]
-      .map(peer => rowPosition.get(peer))
-      .filter((row): row is number => row != null)
-      .sort((a, b) => a - b);
-    if (anchorRows.length > 0) {
-      const center = anchorRows.reduce((sum, row) => sum + row, 0) / anchorRows.length;
-      setRowPosition(sid, nearestOpenRow(center));
-    } else {
-      setRowPosition(sid, nearestOpenRow(nextRootRow));
-      nextRootRow += 1;
-    }
-  }
-
-  // Axis helpers: map (row, col) to (x, y) based on axisMode
-  const toX = (row: number, col: number) =>
-    config.axisMode === "time-x"
-      ? config.padX + row * config.rowWidth
-      : config.padX + col * config.colHeight;
-  const toY = (row: number, col: number) =>
-    config.axisMode === "time-x"
-      ? config.padY + col * config.colHeight
-      : config.padY + row * config.rowWidth;
-
-  // Position session nodes
-  const nodes: GraphNode[] = [];
-  const orderedSessionIds = [...relevantSessionIds].sort((a, b) => {
-    const colDiff = (depth.get(a) ?? 0) - (depth.get(b) ?? 0);
-    if (colDiff !== 0) return colDiff;
-    const rowDiff = (rowPosition.get(a) ?? 0) - (rowPosition.get(b) ?? 0);
-    if (rowDiff !== 0) return rowDiff;
-    return a.localeCompare(b);
-  });
-  for (const sid of orderedSessionIds) {
-    const s = sessionMap.get(sid)!;
-    const col = depth.get(sid) ?? 0;
-    const row = rowPosition.get(sid) ?? 0;
-    const tags = parseTags(s.tags);
-    const handoffType = tags.find(t => t.startsWith("handoff:"))?.slice(8);
-    nodes.push({
-      id: s.id,
-      type: "session",
-      x: toX(row, col),
-      y: toY(row, col),
-      col,
-      row,
-      session: s,
-      tags,
-      handoffType,
-    });
-  }
-
-  // Apply timeDirection RTL flip to session nodes before deriving doc/commit positions
-  if (config.timeDirection === "rtl") {
-    const sessionNodes = nodes.filter(n => n.type === "session");
-    if (config.axisMode === "time-x") {
-      const xs = sessionNodes.map(n => n.x);
-      const maxX = Math.max(...xs), minX = Math.min(...xs);
-      for (const n of sessionNodes) n.x = maxX + minX - n.x;
-    } else {
-      const ys = sessionNodes.map(n => n.y);
-      const maxY = Math.max(...ys), minY = Math.min(...ys);
-      for (const n of sessionNodes) n.y = maxY + minY - n.y;
-    }
-  }
-
-  // Position document nodes — midpoint between source and target sessions
-  const sessionNodeMap = new Map(nodes.map(n => [n.id, n]));
-  for (const doc of handoffDocs) {
-    const fromNode = sessionNodeMap.get(doc.fromSessionId);
-    const toNode = sessionNodeMap.get(doc.toSessionId);
-    if (!fromNode || !toNode) continue;
-    let docX: number, docY: number;
-    if (config.axisMode === "time-y") {
-      // In time-y, handoff gap is horizontal (depth axis = x)
-      const gapStart = fromNode.x + NODE_W;
-      const gapEnd = toNode.x;
-      docX = gapStart + (gapEnd - gapStart - DOC_W) / 2;
-      docY = (fromNode.y + NODE_H / 2 + toNode.y + NODE_H / 2) / 2 - DOC_H / 2;
-    } else {
-      // In time-x, handoff gap is vertical (depth axis = y)
-      const gapStart = fromNode.y + NODE_H;
-      const gapEnd = toNode.y;
-      docY = gapStart + (gapEnd - gapStart - DOC_H) / 2;
-      docX = (fromNode.x + NODE_W / 2 + toNode.x + NODE_W / 2) / 2 - DOC_W / 2;
-    }
-    nodes.push({
-      id: `doc:${doc.moveRunId}`,
-      type: "document",
-      x: docX,
-      y: docY,
-      col: fromNode.col,
-      row: fromNode.row,
-      doc,
-    });
-  }
-
-  // Position commit nodes — center them beside the most recent linked session.
-  const commitsByAnchor = new Map<string, GitCommit[]>();
-  for (const c of linkedCommits) {
-    const h7 = shortHash(c.hash);
-    const linked = (commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [])
-      .filter(sid => sessionNodeMap.has(sid));
-    if (linked.length === 0) continue;
-    const anchorSid = [...linked].sort((a, b) => {
-      const depthDiff = (depth.get(a) ?? 0) - (depth.get(b) ?? 0);
-      if (depthDiff !== 0) return depthDiff;
-      const timeDiff = sessionCreatedAt(sessionMap, a) - sessionCreatedAt(sessionMap, b);
-      if (timeDiff !== 0) return timeDiff;
-      return a.localeCompare(b);
-    }).at(-1)!;
-    const arr = commitsByAnchor.get(anchorSid) || [];
-    arr.push(c);
-    commitsByAnchor.set(anchorSid, arr);
-  }
-
-  for (const [anchorSid, commitGroup] of commitsByAnchor) {
-    const anchorNode = sessionNodeMap.get(anchorSid);
-    if (!anchorNode) continue;
-    const orderedCommits = [...commitGroup].sort((a, b) => commitTimestamp(b) - commitTimestamp(a));
-    if (config.axisMode === "time-y") {
-      // time-y: commits sit below the session, stacked left→right
-      const commitY = anchorNode.y + NODE_H + config.commitOffsetX;
-      for (let index = 0; index < orderedCommits.length; index++) {
-        const c = orderedCommits[index];
-        nodes.push({
-          id: `commit:${shortHash(c.hash)}`,
-          type: "commit",
-          x: anchorNode.x + index * (COMMIT_W + COMMIT_GAP_Y),
-          y: commitY,
-          col: anchorNode.col,
-          row: anchorNode.row,
-          commit: c,
-        });
-      }
-    } else {
-      // time-x: commits sit to the right of the session, stacked top→bottom
-      const commitX = anchorNode.x + NODE_W + config.commitOffsetX;
-      for (let index = 0; index < orderedCommits.length; index++) {
-        const c = orderedCommits[index];
-        nodes.push({
-          id: `commit:${shortHash(c.hash)}`,
-          type: "commit",
-          x: commitX,
-          y: anchorNode.y + index * (COMMIT_H + COMMIT_GAP_Y),
-          col: anchorNode.col,
-          row: anchorNode.row,
-          commit: c,
-        });
-      }
-    }
-  }
-
-  return { nodes, edges };
+function nearestAnchor(
+  n: GraphNode,
+  targetX: number,
+  targetY: number,
+): { x: number; y: number } {
+  const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
+  const h = n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H;
+  const cx = n.x + w / 2;
+  const cy = n.y + h / 2;
+  const dx = targetX - cx;
+  const dy = targetY - cy;
+  // Which edge is closest to the target direction?
+  const scaleX = dx !== 0 ? (w / 2) / Math.abs(dx) : Infinity;
+  const scaleY = dy !== 0 ? (h / 2) / Math.abs(dy) : Infinity;
+  const scale = Math.min(scaleX, scaleY);
+  if (!isFinite(scale)) return { x: cx, y: cy };
+  return {
+    x: cx + dx * Math.min(scale, 1),
+    y: cy + dy * Math.min(scale, 1),
+  };
 }
 
 // ── SVG Edge ──
 
-function nodeBottom(n: GraphNode) {
-  if (n.type === "session") return n.y + NODE_H;
-  if (n.type === "document") return n.y + DOC_H;
-  return n.y + COMMIT_H;
-}
-function nodeMidX(n: GraphNode) {
-  if (n.type === "session") return n.x + NODE_W / 2;
-  if (n.type === "document") return n.x + DOC_W / 2;
-  return n.x + COMMIT_W / 2;
-}
-function nodeRight(n: GraphNode) {
-  if (n.type === "session") return n.x + NODE_W;
-  if (n.type === "document") return n.x + DOC_W;
-  return n.x + COMMIT_W;
-}
-function nodeMidY(n: GraphNode) {
-  if (n.type === "session") return n.y + NODE_H / 2;
-  if (n.type === "document") return n.y + DOC_H / 2;
-  return n.y + COMMIT_H / 2;
-}
-
-function EdgePath({ from, to, type, axisMode, lane = 0 }: {
+function EdgePath({ from, to, type, lane = 0 }: {
   from: GraphNode;
   to: GraphNode;
-  type: "handoff" | "commit" | "document" | "delegation";
-  axisMode: "time-x" | "time-y";
+  type: EdgeType;
   lane?: number;
 }) {
+  // Compute connection points from nearest edge of each node toward the other's center
+  const fromW = from.type === "session" ? NODE_W : from.type === "document" ? DOC_W : COMMIT_W;
+  const fromH = from.type === "session" ? NODE_H : from.type === "document" ? DOC_H : COMMIT_H;
+  const toW = to.type === "session" ? NODE_W : to.type === "document" ? DOC_W : COMMIT_W;
+  const toH = to.type === "session" ? NODE_H : to.type === "document" ? DOC_H : COMMIT_H;
+  const fromCx = from.x + fromW / 2, fromCy = from.y + fromH / 2;
+  const toCx = to.x + toW / 2, toCy = to.y + toH / 2;
+
+  const p1 = nearestAnchor(from, toCx, toCy);
+  const p2 = nearestAnchor(to, fromCx, fromCy);
+
   if (type === "commit") {
-    if (axisMode === "time-y") {
-      // time-y: commits sit below sessions — vertical stub at commit center X
-      const startY = from.y + NODE_H;
-      const midX = to.x + COMMIT_W / 2;
-      const d = `M ${midX} ${startY} L ${midX} ${to.y}`;
-      return <path d={d} className="web-edge web-edge--commit" />;
-    }
-    // time-x: commits sit to the right — horizontal stub at commit center Y
-    const startX = from.x + NODE_W;
-    const midY = to.y + COMMIT_H / 2;
-    const d = `M ${startX} ${midY} L ${to.x} ${midY}`;
+    const d = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
     return <path d={d} className="web-edge web-edge--commit" />;
   }
 
   if (type === "document") {
-    if (axisMode === "time-y") {
-      return (
-        <line
-          x1={nodeRight(from)} y1={nodeMidY(from)}
-          x2={to.x}            y2={nodeMidY(to)}
-          className="web-edge web-edge--document"
-        />
-      );
-    }
-    return (
-      <line
-        x1={nodeMidX(from)} y1={nodeBottom(from)}
-        x2={nodeMidX(to)}   y2={to.y}
-        className="web-edge web-edge--document"
-      />
-    );
+    return <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} className="web-edge web-edge--document" />;
   }
 
   if (type === "delegation") {
     const laneOffset = 18 + lane * 14;
-    if (axisMode === "time-y") {
-      const fromAbove = nodeMidY(from) <= nodeMidY(to);
-      const y1 = fromAbove ? from.y : nodeBottom(from);
-      const y2 = fromAbove ? nodeBottom(to) : to.y;
-      const x1 = nodeMidX(from);
-      const x2 = nodeMidX(to);
-      const bendY = fromAbove
-        ? Math.min(y1, y2) - laneOffset
-        : Math.max(y1, y2) + laneOffset;
-      const d = `M ${x1} ${y1} C ${x1} ${bendY}, ${x2} ${bendY}, ${x2} ${y2}`;
-      return <path d={d} className="web-edge web-edge--delegation" />;
-    }
-    const fromLeft = nodeMidX(from) <= nodeMidX(to);
-    const x1 = fromLeft ? nodeRight(from) : from.x;
-    const x2 = fromLeft ? to.x : nodeRight(to);
-    const y1 = nodeMidY(from);
-    const y2 = nodeMidY(to);
-    const bendX = fromLeft
-      ? Math.max(x1, x2) + laneOffset
-      : Math.min(x1, x2) - laneOffset;
-    const d = `M ${x1} ${y1} C ${bendX} ${y1}, ${bendX} ${y2}, ${x2} ${y2}`;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const dist = Math.hypot(dx, dy);
+    const nx = -dy / (dist || 1) * laneOffset;
+    const ny = dx / (dist || 1) * laneOffset;
+    const mx = (p1.x + p2.x) / 2 + nx;
+    const my = (p1.y + p2.y) / 2 + ny;
+    const d = `M ${p1.x} ${p1.y} Q ${mx} ${my}, ${p2.x} ${p2.y}`;
     return <path d={d} className="web-edge web-edge--delegation" />;
   }
 
-  if (axisMode === "time-y") {
-    // Horizontal cubic bezier — exits right of source, enters left of target
-    const x1 = nodeRight(from), y1 = nodeMidY(from);
-    const x2 = to.x,            y2 = nodeMidY(to);
-    const dx = Math.abs(x2 - x1);
-    const cp = Math.min(Math.max(dx * 0.4, 20), dx * 0.45);
-    const d = `M ${x1} ${y1} C ${x1 + cp} ${y1}, ${x2 - cp} ${y2}, ${x2} ${y2}`;
-    return <path d={d} className="web-edge web-edge--handoff" />;
+  if (type === "co-edit" || type === "co-read") {
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const dist = Math.hypot(dx, dy);
+    const cp = Math.min(dist * 0.25, 50);
+    const nx = -dy / (dist || 1) * cp;
+    const ny = dx / (dist || 1) * cp;
+    const d = `M ${p1.x} ${p1.y} Q ${(p1.x + p2.x) / 2 + nx} ${(p1.y + p2.y) / 2 + ny}, ${p2.x} ${p2.y}`;
+    const cls = type === "co-edit" ? "web-edge web-edge--co-edit" : "web-edge web-edge--co-read";
+    return <path d={d} className={cls} />;
   }
 
-  // time-x: vertical cubic bezier — exits bottom, enters top
-  const x1 = nodeMidX(from), y1 = nodeBottom(from);
-  const x2 = nodeMidX(to),   y2 = to.y;
-  const dy = Math.abs(y2 - y1);
-  const cp = Math.min(Math.max(dy * 0.4, 20), dy * 0.45);
-  const d = `M ${x1} ${y1} C ${x1} ${y1 + cp}, ${x2} ${y2 - cp}, ${x2} ${y2}`;
+  // Handoff — smooth bezier
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const dist = Math.hypot(dx, dy);
+  const cp = Math.min(Math.max(dist * 0.35, 20), dist * 0.45);
+  // Bend toward the major axis
+  if (Math.abs(dx) > Math.abs(dy)) {
+    const d = `M ${p1.x} ${p1.y} C ${p1.x + (dx > 0 ? cp : -cp)} ${p1.y}, ${p2.x - (dx > 0 ? cp : -cp)} ${p2.y}, ${p2.x} ${p2.y}`;
+    return <path d={d} className="web-edge web-edge--handoff" />;
+  }
+  const d = `M ${p1.x} ${p1.y} C ${p1.x} ${p1.y + (dy > 0 ? cp : -cp)}, ${p2.x} ${p2.y - (dy > 0 ? cp : -cp)}, ${p2.x} ${p2.y}`;
   return <path d={d} className="web-edge web-edge--handoff" />;
 }
 
@@ -703,26 +150,76 @@ function MissionFilterPanel({ runs, activeRunId, onChange }: {
   );
 }
 
+// ── Date Filter Panel ──
+
+function DateFilterPanel({ filter, onChange }: {
+  filter: DateFilter;
+  onChange: (f: DateFilter) => void;
+}) {
+  return (
+    <div className="web-date-filter" onMouseDown={e => e.stopPropagation()}>
+      <label>from</label>
+      <input
+        type="date"
+        value={filter.startDate ?? ""}
+        onChange={e => onChange({ ...filter, startDate: e.target.value || null })}
+      />
+      <label>to</label>
+      <input
+        type="date"
+        value={filter.endDate ?? ""}
+        onChange={e => onChange({ ...filter, endDate: e.target.value || null })}
+      />
+      {(filter.startDate || filter.endDate) && (
+        <button
+          className="web-date-filter-clear"
+          onClick={() => onChange({ startDate: null, endDate: null })}
+        >clear</button>
+      )}
+    </div>
+  );
+}
+
+// ── Edge Layer Panel ──
+
+function EdgeLayerPanel({ layers, onChange }: {
+  layers: EdgeLayers;
+  onChange: (l: EdgeLayers) => void;
+}) {
+  const items: [keyof EdgeLayers, string][] = [
+    ["handoff", "handoffs"],
+    ["delegation", "delegations"],
+    ["commit", "commits"],
+    ["co-edit", "co-edits"],
+    ["co-read", "co-reads"],
+  ];
+  return (
+    <div className="web-layer-panel" onMouseDown={e => e.stopPropagation()}>
+      {items.map(([key, label]) => (
+        <label key={key} className={`web-layer-toggle${layers[key] ? " active" : ""}`}>
+          <input
+            type="checkbox"
+            checked={layers[key]}
+            onChange={e => onChange({ ...layers, [key]: e.target.checked })}
+          />
+          {label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 // ── Layout Panel ──
 
-function LayoutPanel({ config, onChange }: {
+function LayoutPanel({ config, onChange, onRegenerate }: {
   config: WebLayoutConfig;
   onChange: (cfg: WebLayoutConfig) => void;
+  onRegenerate: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
   const set = <K extends keyof WebLayoutConfig>(key: K, value: WebLayoutConfig[K]) =>
     onChange({ ...config, [key]: value });
-
-  const sliders: [string, keyof WebLayoutConfig, number, number, number][] = [
-    ["row width",    "rowWidth",       200, 800,  10],
-    ["col height",   "colHeight",       80, 400,  10],
-    ["pad x",        "padX",            20, 120,   4],
-    ["pad y",        "padY",            20, 120,   4],
-    ["commit gap",   "commitOffsetX",    4,  60,   2],
-    ["sibling gap",  "siblingGapRows",   0,   2,  0.05],
-    ["root gap",     "rootGapRows",      0,   2,  0.05],
-  ];
 
   return (
     <div className="web-layout-panel" onMouseDown={e => e.stopPropagation()}>
@@ -761,28 +258,9 @@ function LayoutPanel({ config, onChange }: {
               </div>
             </div>
             <div className="web-layout-divider" />
-            <div className="web-layout-section">
-              {sliders.map(([label, key, min, max, step]) => (
-                <div className="web-layout-slider-row" key={key}>
-                  <label>{label}</label>
-                  <input
-                    type="range"
-                    min={min} max={max} step={step}
-                    value={config[key] as number}
-                    onChange={e => set(key, Number(e.target.value))}
-                  />
-                  <span>{(config[key] as number).toFixed(step < 1 ? 2 : 0)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="web-layout-divider" />
-            <div className="web-layout-presets">
-              {Object.keys(PRESETS).map(name => (
-                <button key={name} onClick={() => onChange({ ...PRESETS[name] })}>
-                  {name}
-                </button>
-              ))}
-            </div>
+            <button className="web-layout-regen" onClick={onRegenerate}>
+              regenerate layout
+            </button>
           </div>
         </div>
       </div>
@@ -792,7 +270,7 @@ function LayoutPanel({ config, onChange }: {
 
 // ── Detail Panel ──
 
-function DetailPanel({ node, onClose }: { node: GraphNode; onClose: () => void }) {
+function DetailPanel({ node, onClose, onArchive }: { node: GraphNode; onClose: () => void; onArchive?: (id: string) => void }) {
   if (node.type === "document" && node.doc) {
     const d = node.doc;
     return (
@@ -868,6 +346,36 @@ function DetailPanel({ node, onClose }: { node: GraphNode; onClose: () => void }
           {tags.map((t, i) => <span key={i} className="web-detail-tag">{t}</span>)}
         </div>
       )}
+      {onArchive && (
+        <button className="web-detail-archive" onClick={() => onArchive(s.id)}>
+          archive
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Context Menu ──
+
+function ContextMenu({ x, y, onArchive, onClose }: {
+  x: number;
+  y: number;
+  onArchive: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handler = () => onClose();
+    window.addEventListener("click", handler);
+    window.addEventListener("contextmenu", handler);
+    return () => {
+      window.removeEventListener("click", handler);
+      window.removeEventListener("contextmenu", handler);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="web-context-menu" style={{ left: x, top: y }} onMouseDown={e => e.stopPropagation()}>
+      <button onClick={onArchive}>archive</button>
     </div>
   );
 }
@@ -878,33 +386,47 @@ type Viewport = { x: number; y: number; scale: number };
 
 export function SessionWeb() {
   const { activeUserProfile, activeUP } = useProfiles();
+  const profileName = activeUserProfile ?? "default";
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [moveRuns, setMoveRuns] = useState<MoveRun[]>([]);
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [missionRuns, setMissionRuns] = useState<MissionRunSummary[]>([]);
   const [missionTransfers, setMissionTransfers] = useState<MissionTransferSummary[]>([]);
+  const [touches, setTouches] = useState<TouchRecord[]>([]);
   const [missionFilter, setMissionFilter] = useState<number | null>(null);
   const [missionFilterSessionIds, setMissionFilterSessionIds] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<SelectedNode>(null);
+  const [selected, setSelected] = useState<GraphNode | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
   const [miniSessionId, setMiniSessionId] = useState<string | null>(null);
   const [config, setConfig] = useState<WebLayoutConfig>(() => loadConfig());
+  const [dateFilter, setDateFilter] = useState<DateFilter>(() => loadDateFilter(profileName));
+  const [edgeLayers, setEdgeLayers] = useState<EdgeLayers>(() => loadLayers(profileName));
+  const [positionOverrides, setPositionOverrides] = useState<PositionMap>(() => loadPositions(profileName));
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
+  const [draggingChain, setDraggingChain] = useState<Set<string> | null>(null);
 
-  // Canvas viewport state — start with padding so content isn't at origin
   const [viewport, setViewport] = useState<Viewport>(() => {
     const cfg = loadConfig();
     return { x: cfg.padX, y: cfg.padY, scale: 1 };
   });
   const wrapRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startX: number; startY: number; vpX: number; vpY: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; vpX: number; vpY: number; hasMoved?: boolean } | null>(null);
+  const touchRef = useRef<{
+    startX: number; startY: number; vpX: number; vpY: number;
+    initialDistance?: number; initialScale?: number; hasMoved?: boolean;
+  } | null>(null);
   const autoCenteredRef = useRef(false);
+  const lastTapRef = useRef<{ id: string; time: number } | null>(null);
+  const nodeDragRef = useRef<{
+    nodeId: string; startX: number; startY: number;
+    origX: number; origY: number; chainIds: string[]; hasMoved: boolean;
+  } | null>(null);
 
-  // Persist config changes to localStorage
-  useEffect(() => {
-    saveConfig(config);
-  }, [config]);
+  useEffect(() => { saveConfig(config); }, [config]);
+  useEffect(() => { saveDateFilter(profileName, dateFilter); }, [dateFilter, profileName]);
+  useEffect(() => { saveLayers(profileName, edgeLayers); }, [edgeLayers, profileName]);
 
   // Fetch all data
   useEffect(() => {
@@ -912,18 +434,24 @@ export function SessionWeb() {
     async function load() {
       try {
         const projectCwd = activeUP?.projects?.[0];
-        const [sessData, moveData, gitData, runsData] = await Promise.all([
-          fetchSessionsScoped(100, activeUserProfile ?? undefined),
-          fetch(`${API_BASE}/api/move-runs/recent?limit=100`, { headers: authHeaders() }).then(r => r.json()),
-          fetchGitLog(projectCwd ?? ".", 50).catch(() => [] as GitCommit[]),
+        const [sessData, moveData, gitData, runsData, touchData] = await Promise.all([
+          fetchSessionsScoped(500, activeUserProfile ?? undefined),
+          fetch(`${API_BASE}/api/move-runs/recent?limit=200`, { headers: authHeaders() }).then(r => r.json()),
+          fetchGitLog(projectCwd ?? ".", 100).catch(() => [] as GitCommit[]),
           fetchMissionRuns(projectCwd ? { cwd: projectCwd } : undefined).catch(() => [] as MissionRunSummary[]),
+          fetchTouches({
+            userProfile: activeUserProfile ?? undefined,
+            cwd: projectCwd ?? undefined,
+            ops: ["write", "edit", "read"],
+            limit: 5000,
+          }).catch(() => ({ touches: [] as TouchRecord[], summary: {} })),
         ]);
         if (cancelled) return;
         setSessions(sessData);
         setMoveRuns(moveData);
         setCommits(gitData);
         setMissionRuns(runsData);
-        // Fetch transfers for all runs in parallel
+        setTouches(touchData.touches);
         const transferArrays = await Promise.all(
           runsData.map((r: MissionRunSummary) => fetchMissionTransfers(r.id).catch(() => [])),
         );
@@ -939,25 +467,30 @@ export function SessionWeb() {
     return () => { cancelled = true; };
   }, [activeUserProfile, activeUP]);
 
-  // When mission filter changes, fetch session IDs for that run
+  // Mission filter session IDs
   useEffect(() => {
-    if (missionFilter === null) {
-      setMissionFilterSessionIds(null);
-      return;
-    }
+    if (missionFilter === null) { setMissionFilterSessionIds(null); return; }
     let cancelled = false;
     fetchMissionSessions(missionFilter).then(ids => {
       if (!cancelled) setMissionFilterSessionIds(new Set(ids));
-    }).catch(() => {
-      if (!cancelled) setMissionFilterSessionIds(null);
-    });
+    }).catch(() => { if (!cancelled) setMissionFilterSessionIds(null); });
     return () => { cancelled = true; };
   }, [missionFilter]);
 
+  // ── Filtered sessions ──
   const filteredSessions = useMemo(() => {
-    if (!missionFilterSessionIds) return sessions;
-    return sessions.filter(s => missionFilterSessionIds.has(s.id));
-  }, [sessions, missionFilterSessionIds]);
+    let result = sessions;
+    if (missionFilterSessionIds) result = result.filter(s => missionFilterSessionIds.has(s.id));
+    if (dateFilter.startDate) {
+      const startTs = new Date(dateFilter.startDate).getTime();
+      result = result.filter(s => s.created_at >= startTs);
+    }
+    if (dateFilter.endDate) {
+      const endTs = new Date(dateFilter.endDate).getTime() + 86400000;
+      result = result.filter(s => s.created_at < endTs);
+    }
+    return result;
+  }, [sessions, missionFilterSessionIds, dateFilter]);
 
   const filteredTransfers = useMemo(() => {
     if (!missionFilter) return missionTransfers;
@@ -968,19 +501,55 @@ export function SessionWeb() {
     });
   }, [missionTransfers, missionFilter, missionFilterSessionIds]);
 
-  const { nodes, edges } = useMemo(
-    () => buildGraph(filteredSessions, moveRuns, commits, filteredTransfers, config),
-    [filteredSessions, moveRuns, commits, filteredTransfers, config],
+  // ── Per-session file touch counts ──
+  const sessionTouchCounts = useMemo(() => {
+    const counts = new Map<string, { reads: number; edits: number }>();
+    for (const t of touches) {
+      const c = counts.get(t.sessionId) || { reads: 0, edits: 0 };
+      if (t.op === "read") c.reads++;
+      else if (t.op === "write" || t.op === "edit") c.edits++;
+      counts.set(t.sessionId, c);
+    }
+    return counts;
+  }, [touches]);
+
+  // ── Build edges then solve layout ──
+  const { edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet } = useMemo(
+    () => buildAllEdges(filteredSessions, moveRuns, commits, filteredTransfers, touches),
+    [filteredSessions, moveRuns, commits, filteredTransfers, touches],
   );
 
-  const nodeMap = useMemo(
-    () => new Map(nodes.map(n => [n.id, n])),
-    [nodes],
+  const { nodes, clusters } = useMemo(
+    () => solveLayout(
+      filteredSessions, edges, handoffDocs, commitSessionMap,
+      childrenOf, spawnedSet, commits, config, positionOverrides, touches,
+    ),
+    [filteredSessions, edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet, commits, config, positionOverrides, touches],
   );
+
+  const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
+
+  const visibleEdges = useMemo(() => {
+    const MAX_TOUCH_EDGE_DIST = 900;
+    return edges.filter(e => {
+      if (e.type === "document") return edgeLayers.handoff;
+      if (e.type in edgeLayers && !edgeLayers[e.type as keyof EdgeLayers]) return false;
+      // Hide co-edit/co-read edges that span too far — they're just noise
+      if (e.type === "co-edit" || e.type === "co-read") {
+        const fromN = nodeMap.get(e.from);
+        const toN = nodeMap.get(e.to);
+        if (fromN && toN) {
+          const dist = Math.hypot(fromN.x - toN.x, fromN.y - toN.y);
+          if (dist > MAX_TOUCH_EDGE_DIST) return false;
+        }
+      }
+      return true;
+    });
+  }, [edges, edgeLayers, nodeMap]);
 
   const newestSessionNode = useMemo(() => {
     return nodes
-      .filter((node): node is GraphNode & { type: "session"; session: SessionInfo } => node.type === "session" && !!node.session)
+      .filter((n): n is GraphNode & { type: "session"; session: SessionInfo } => n.type === "session" && !!n.session)
       .sort((a, b) => {
         const timeDiff = (a.session?.created_at ?? 0) - (b.session?.created_at ?? 0);
         if (timeDiff !== 0) return timeDiff;
@@ -989,7 +558,6 @@ export function SessionWeb() {
       .at(-1) ?? null;
   }, [nodes]);
 
-  // Compute SVG viewport
   const svgW = useMemo(() => {
     const maxX = Math.max(...nodes.map(n => n.x + (n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W)), 400);
     return maxX + config.padX;
@@ -1000,7 +568,7 @@ export function SessionWeb() {
     return maxY + config.padY;
   }, [nodes, config.padY]);
 
-  // Wheel zoom (non-passive to allow preventDefault)
+  // Wheel zoom
   useEffect(() => {
     if (loading) return;
     const el = wrapRef.current;
@@ -1024,12 +592,45 @@ export function SessionWeb() {
   // Pan handlers
   const onPanStart = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
-    dragRef.current = { startX: e.clientX, startY: e.clientY, vpX: viewport.x, vpY: viewport.y };
+    if (nodeDragRef.current) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, vpX: viewport.x, vpY: viewport.y, hasMoved: false };
   };
   const onPanMove = (e: React.MouseEvent) => {
+    if (nodeDragRef.current) {
+      const nd = nodeDragRef.current;
+      const dx = (e.clientX - nd.startX) / viewport.scale;
+      const dy = (e.clientY - nd.startY) / viewport.scale;
+      if (!nd.hasMoved && Math.hypot(dx, dy) > 3) nd.hasMoved = true;
+      if (nd.hasMoved) {
+        // Only move the dragged chain — never push neighbors
+        setPositionOverrides(prev => {
+          const next = { ...prev };
+          // Only set overrides for the chain being dragged
+          next[nd.nodeId] = { x: nd.origX + dx, y: nd.origY + dy };
+          // Move other chain members relative to the primary
+          for (const cid of nd.chainIds) {
+            if (cid === nd.nodeId) continue;
+            const node = nodeMap.get(cid);
+            if (node) {
+              const origNode = nodeMap.get(cid);
+              if (origNode) {
+                next[cid] = {
+                  x: origNode.x + dx,
+                  y: origNode.y + dy,
+                };
+              }
+            }
+          }
+          return next;
+        });
+      }
+      return;
+    }
+
     if (!dragRef.current) return;
     const dx = e.clientX - dragRef.current.startX;
     const dy = e.clientY - dragRef.current.startY;
+    if (!dragRef.current.hasMoved && Math.hypot(dx, dy) > 5) dragRef.current.hasMoved = true;
     const newX = dragRef.current.vpX + dx;
     const newY = dragRef.current.vpY + dy;
     const wrap = wrapRef.current;
@@ -1043,11 +644,112 @@ export function SessionWeb() {
       setViewport(vp => ({ ...vp, x: newX, y: newY }));
     }
   };
-  const onPanEnd = () => { dragRef.current = null; };
+  const onPanEnd = () => {
+    if (nodeDragRef.current?.hasMoved) savePositions(profileName, positionOverrides);
+    nodeDragRef.current = null;
+    dragRef.current = null;
+    setDraggingChain(null);
+  };
+
+  // Touch handlers
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      touchRef.current = { startX: touch.clientX, startY: touch.clientY, vpX: viewport.x, vpY: viewport.y, hasMoved: false };
+    } else if (e.touches.length === 2) {
+      const t1 = e.touches[0], t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      touchRef.current = {
+        startX: (t1.clientX + t2.clientX) / 2, startY: (t1.clientY + t2.clientY) / 2,
+        vpX: viewport.x, vpY: viewport.y, initialDistance: dist, initialScale: viewport.scale, hasMoved: true,
+      };
+    }
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!touchRef.current) return;
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const dx = touch.clientX - touchRef.current.startX;
+      const dy = touch.clientY - touchRef.current.startY;
+      if (!touchRef.current.hasMoved && Math.hypot(dx, dy) > 5) touchRef.current.hasMoved = true;
+      const newX = touchRef.current.vpX + dx;
+      const newY = touchRef.current.vpY + dy;
+      const minX = -(svgW * viewport.scale - 100);
+      const minY = -(svgH * viewport.scale - 100);
+      const maxX = wrap.clientWidth - 100;
+      const maxY = wrap.clientHeight - 100;
+      setViewport(vp => ({ ...vp, x: Math.max(minX, Math.min(maxX, newX)), y: Math.max(minY, Math.min(maxY, newY)) }));
+    } else if (e.touches.length === 2 && touchRef.current.initialDistance && touchRef.current.initialScale) {
+      const t1 = e.touches[0], t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const ratio = dist / touchRef.current.initialDistance;
+      const rect = wrap.getBoundingClientRect();
+      const mx = (t1.clientX + t2.clientX) / 2 - rect.left;
+      const my = (t1.clientY + t2.clientY) / 2 - rect.top;
+      setViewport(vp => {
+        const s = Math.max(0.15, Math.min(4, touchRef.current!.initialScale! * ratio));
+        const r = s / vp.scale;
+        return { scale: s, x: mx - r * (mx - vp.x), y: my - r * (my - vp.y) };
+      });
+    }
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length === 0) touchRef.current = null;
+    else if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      touchRef.current = { startX: touch.clientX, startY: touch.clientY, vpX: viewport.x, vpY: viewport.y };
+    }
+  };
+
+  // Node drag start
+  const onNodeDragStart = useCallback((e: React.MouseEvent, nodeId: string) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const node = nodeMap.get(nodeId);
+    if (!node || node.type !== "session") return;
+    const chainIds = new Set<string>();
+    const structEdges = edges.filter(ed => ed.type === "handoff" || ed.type === "delegation");
+    function walkChain(sid: string) {
+      if (chainIds.has(sid)) return;
+      chainIds.add(sid);
+      for (const ed of structEdges) {
+        if (ed.from === sid && nodeMap.has(ed.to)) walkChain(ed.to);
+        if (ed.to === sid && nodeMap.has(ed.from)) walkChain(ed.from);
+      }
+    }
+    walkChain(nodeId);
+    setDraggingChain(chainIds);
+    nodeDragRef.current = {
+      nodeId, startX: e.clientX, startY: e.clientY,
+      origX: node.x, origY: node.y, chainIds: [...chainIds], hasMoved: false,
+    };
+  }, [nodeMap, edges]);
 
   const handleSelect = useCallback((node: GraphNode) => {
+    if (dragRef.current?.hasMoved || touchRef.current?.hasMoved || nodeDragRef.current?.hasMoved) return;
     setSelected(prev => prev?.id === node.id ? null : node);
   }, []);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, sessionId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, sessionId });
+  }, []);
+
+  const handleArchive = useCallback(async (id: string) => {
+    await archiveSessionApi(id).catch(() => {});
+    setSessions(prev => prev.filter(s => s.id !== id));
+    setSelected(null);
+    setContextMenu(null);
+    setPositionOverrides(prev => {
+      const next = { ...prev };
+      delete next[id];
+      savePositions(profileName, next);
+      return next;
+    });
+  }, [profileName]);
 
   const handleResetView = useCallback(() => {
     const wrap = wrapRef.current;
@@ -1055,14 +757,9 @@ export function SessionWeb() {
       setViewport({ x: config.padX, y: config.padY, scale: 1 });
       return;
     }
-
     const targetX = newestSessionNode.x + NODE_W / 2;
     const targetY = newestSessionNode.y + NODE_H / 2;
-    setViewport({
-      x: wrap.clientWidth / 2 - targetX,
-      y: wrap.clientHeight / 2 - targetY,
-      scale: 1,
-    });
+    setViewport({ x: wrap.clientWidth / 2 - targetX, y: wrap.clientHeight / 2 - targetY, scale: 1 });
   }, [newestSessionNode, config.padX, config.padY]);
 
   useLayoutEffect(() => {
@@ -1076,37 +773,38 @@ export function SessionWeb() {
     return () => { cancelled = true; };
   }, [handleResetView, loading, newestSessionNode]);
 
-  // Edges connected to hovered/selected node
   const activeNodeId = hoveredId ?? selected?.id ?? null;
   const activeEdgeSet = useMemo(() => {
     if (!activeNodeId) return new Set<string>();
     const s = new Set<string>();
-    for (const e of edges) {
-      if (e.from === activeNodeId || e.to === activeNodeId) {
-        s.add(`${e.from}->${e.to}`);
-      }
+    for (const e of visibleEdges) {
+      if (e.from === activeNodeId || e.to === activeNodeId) s.add(`${e.from}->${e.to}`);
     }
     return s;
-  }, [activeNodeId, edges]);
+  }, [activeNodeId, visibleEdges]);
 
   if (loading) {
-    return (
-      <div className="web-panel">
-        <div className="web-empty">loading...</div>
-      </div>
-    );
+    return <div className="web-panel"><div className="web-empty">loading...</div></div>;
   }
 
   if (nodes.length === 0) {
     return (
       <div className="web-panel">
-        <div className="web-empty">no session links yet — handoff sessions to build the web</div>
+        <div className="web-empty">no sessions found{dateFilter.startDate || dateFilter.endDate ? " in date range" : ""}</div>
+        {(dateFilter.startDate || dateFilter.endDate) && (
+          <div className="web-toolbar"><DateFilterPanel filter={dateFilter} onChange={setDateFilter} /></div>
+        )}
       </div>
     );
   }
 
   return (
     <div className="web-panel">
+      <div className="web-toolbar" onMouseDown={e => e.stopPropagation()}>
+        <DateFilterPanel filter={dateFilter} onChange={setDateFilter} />
+        <EdgeLayerPanel layers={edgeLayers} onChange={setEdgeLayers} />
+      </div>
+
       <div
         className="web-canvas-wrap"
         ref={wrapRef}
@@ -1114,18 +812,27 @@ export function SessionWeb() {
         onMouseMove={onPanMove}
         onMouseUp={onPanEnd}
         onMouseLeave={onPanEnd}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
         <div
           className="web-canvas"
-          style={{
-            width: svgW,
-            height: svgH,
-            transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
-          }}
+          style={{ width: svgW, height: svgH, transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})` }}
         >
-          {/* SVG edge layer */}
+          {clusters.map(cl => (
+            <div key={cl.id} className="web-window" style={{ left: cl.x, top: 0, width: cl.width, height: svgH }}>
+              <div className="web-window-header">
+                <span className="web-window-label">{cl.label}</span>
+                <span className="web-window-count">
+                  {cl.sessionCount}{cl.commitCount > 0 ? ` · ${cl.commitCount}c` : ""}
+                </span>
+              </div>
+            </div>
+          ))}
+
           <svg className="web-svg" width={svgW} height={svgH}>
-            {edges.map((e, i) => {
+            {visibleEdges.map((e, i) => {
               const from = nodeMap.get(e.from);
               const to = nodeMap.get(e.to);
               if (!from || !to) return null;
@@ -1133,14 +840,24 @@ export function SessionWeb() {
               const active = activeEdgeSet.has(edgeKey);
               return (
                 <g key={i} className={active ? "web-edge-active" : ""}>
-                  <EdgePath from={from} to={to} type={e.type} axisMode={config.axisMode} lane={e.lane} />
+                  <EdgePath from={from} to={to} type={e.type} lane={e.lane} />
                 </g>
               );
             })}
           </svg>
 
-          {/* Node layer */}
           {nodes.map(node => {
+            const handleTouchEndNode = (e: React.TouchEvent, doubleAction: () => void) => {
+              if (touchRef.current?.hasMoved) return;
+              const now = Date.now();
+              if (lastTapRef.current?.id === node.id && now - lastTapRef.current.time < 300) {
+                doubleAction();
+                lastTapRef.current = null;
+              } else {
+                lastTapRef.current = { id: node.id, time: now };
+              }
+            };
+
             if (node.type === "document" && node.doc) {
               const d = node.doc;
               return (
@@ -1150,6 +867,7 @@ export function SessionWeb() {
                   style={{ left: node.x, top: node.y }}
                   onClick={() => handleSelect(node)}
                   onDoubleClick={() => setFileViewerPath(d.path)}
+                  onTouchEnd={(e) => handleTouchEndNode(e, () => setFileViewerPath(d.path))}
                   onMouseEnter={() => setHoveredId(node.id)}
                   onMouseLeave={() => setHoveredId(null)}
                   title={d.path}
@@ -1183,10 +901,13 @@ export function SessionWeb() {
             return (
               <div
                 key={node.id}
-                className={`web-session-node web-session-node--${statusClass}${selected?.id === node.id ? " web-node--selected" : ""}`}
+                className={`web-session-node web-session-node--${statusClass}${selected?.id === node.id ? " web-node--selected" : ""}${draggingChain?.has(node.id) ? " web-session-node--dragging" : ""}`}
                 style={{ left: node.x, top: node.y }}
                 onClick={() => handleSelect(node)}
                 onDoubleClick={() => setMiniSessionId(s.id)}
+                onTouchEnd={(e) => handleTouchEndNode(e, () => setMiniSessionId(s.id))}
+                onMouseDown={(e) => onNodeDragStart(e, node.id)}
+                onContextMenu={(e) => handleContextMenu(e, s.id)}
                 onMouseEnter={() => setHoveredId(node.id)}
                 onMouseLeave={() => setHoveredId(null)}
               >
@@ -1203,6 +924,16 @@ export function SessionWeb() {
                   {node.handoffType && <span className="web-session-handoff-type">{node.handoffType}</span>}
                   <span>{s.message_count} msgs</span>
                   <span>{formatCost(s.total_cost_usd)}</span>
+                  {(() => {
+                    const tc = sessionTouchCounts.get(s.id);
+                    if (!tc) return null;
+                    return (
+                      <>
+                        {tc.reads > 0 && <span className="web-session-reads">{tc.reads}r</span>}
+                        {tc.edits > 0 && <span className="web-session-edits">{tc.edits}w</span>}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -1214,18 +945,74 @@ export function SessionWeb() {
           onClick={handleResetView}
           title="Reset view"
         >⊙</button>
-        <MissionFilterPanel
-          runs={missionRuns}
-          activeRunId={missionFilter}
-          onChange={setMissionFilter}
-        />
-        <LayoutPanel config={config} onChange={setConfig} />
+        {/* Minimap */}
+        {nodes.length > 0 && (() => {
+          const mmW = 220, mmH = 140;
+          const scale = Math.min(mmW / svgW, mmH / svgH);
+          const wrap = wrapRef.current;
+          const vpW = wrap ? wrap.clientWidth : 800;
+          const vpH = wrap ? wrap.clientHeight : 600;
+          // Viewport rect in minimap coords
+          const vrX = (-viewport.x / viewport.scale) * scale;
+          const vrY = (-viewport.y / viewport.scale) * scale;
+          const vrW = (vpW / viewport.scale) * scale;
+          const vrH = (vpH / viewport.scale) * scale;
+          return (
+            <div
+              className="web-minimap"
+              onMouseDown={e => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const mx = (e.clientX - rect.left) / scale;
+                const my = (e.clientY - rect.top) / scale;
+                setViewport(vp => ({
+                  ...vp,
+                  x: -(mx - vpW / (2 * vp.scale)) * vp.scale,
+                  y: -(my - vpH / (2 * vp.scale)) * vp.scale,
+                }));
+              }}
+            >
+              <svg width={mmW} height={mmH}>
+                {nodes.map(n => {
+                  const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
+                  const h = n.type === "session" ? NODE_H : n.type === "document" ? DOC_H : COMMIT_H;
+                  const cls = n.type === "session"
+                    ? (n.session?.status === "running" ? "web-mm-running" : "web-mm-session")
+                    : n.type === "commit" ? "web-mm-commit" : "web-mm-doc";
+                  return (
+                    <rect
+                      key={n.id}
+                      x={n.x * scale} y={n.y * scale}
+                      width={Math.max(w * scale, 2)} height={Math.max(h * scale, 1.5)}
+                      className={cls}
+                    />
+                  );
+                })}
+                <rect
+                  x={vrX} y={vrY} width={vrW} height={vrH}
+                  className="web-mm-viewport"
+                />
+              </svg>
+            </div>
+          );
+        })()}
+        <MissionFilterPanel runs={missionRuns} activeRunId={missionFilter} onChange={setMissionFilter} />
+        <LayoutPanel config={config} onChange={setConfig} onRegenerate={() => {
+          setPositionOverrides({});
+          savePositions(profileName, {});
+        }} />
       </div>
 
-      {/* Detail panel */}
-      {selected && <DetailPanel node={selected} onClose={() => setSelected(null)} />}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x} y={contextMenu.y}
+          onArchive={() => handleArchive(contextMenu.sessionId)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
-      {/* Session window — double-click a session node to open */}
+      {selected && <DetailPanel node={selected} onClose={() => setSelected(null)} onArchive={handleArchive} />}
+
       <SessionWindow
         sessionId={miniSessionId}
         onClose={() => setMiniSessionId(null)}
@@ -1235,7 +1022,6 @@ export function SessionWeb() {
         }}
       />
 
-      {/* File viewer for handoff documents */}
       <ChatFileViewer path={fileViewerPath} onClose={() => setFileViewerPath(null)} />
     </div>
   );

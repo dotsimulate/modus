@@ -1,4 +1,4 @@
-console.log("[WhisperV1] Loading built-in extension...");
+console.log("[Whisper] Loading extension... version 2.5");
 const SHORTCUT = "Ctrl+Shift+~";
 const BUFFER_SIZE = 4096;
 const RMS_THRESHOLD = 0.015;
@@ -6,16 +6,29 @@ const SILENCE_MS = 1000;
 const MIN_CHUNK_MS = 2000;
 const MAX_CHUNK_MS = 30000;
 const PRE_ROLL_MS = 250;
-const SEND_TRIGGER_RE = /(?:^|[\s”’([{])(send it now|send it|send now|send this|send the message|submit(?: the)? message)\s*[“’”’)\].,!?\s]*$/i;
+const SEND_TRIGGER_RE = /(?:^|[\s"'([{])(send it now|send it|send now|send this|send the message|submit(?: the)? message)\s*["'"')\].,!?\s]*$/i;
 
-// Whisper commonly hallucinates these on silence — drop the whole chunk if it’s only this
+const TRIGGER_WINDOW_WORDS = 4;
+
+const TRIGGERS = {
+  "scrap that": "clear_last",
+  "scrap it": "clear_last",
+  "toss that": "clear_last",
+  "wipe slate": "clear_all",
+  "clear slate": "clear_all",
+  "clear all": "clear_all",
+  "recall swap": "recall_swap",
+  "stop listening to me": "gate_close",
+  "start listening to me": "gate_open",
+};
+
 const AVOID_PHRASES = [
   /^(thank you|thanks)\.?$/i,
   /^(ok|okay)\.?$/i,
   /^(um+|uh+|hmm+|mm+)\.?$/i,
   /^(you)\.?$/i,
   /^(bye|goodbye)\.?$/i,
-  /^\.$/ ,
+  /^\.$/,
 ];
 
 function isAvoidPhrase(text) {
@@ -41,6 +54,27 @@ function normalizeLooseText(text) {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function matchTrigger(normalizedText) {
+  const text = normalizedText;
+  if (!text) return null;
+
+  const textWords = text.split(" ");
+
+  for (const [phrase, command] of Object.entries(TRIGGERS)) {
+    const phraseWords = phrase.split(" ");
+    if (phraseWords.length > textWords.length) continue;
+
+    for (let startPos = 0; startPos <= 3 && startPos + phraseWords.length <= textWords.length; startPos++) {
+      const window = textWords.slice(startPos, startPos + phraseWords.length).join(" ");
+      if (window === phrase) {
+        return { command, confidence: 1.0, phrase, startPos };
+      }
+    }
+  }
+
+  return null;
 }
 
 function estimateDurationMs(sampleCount, sampleRate) {
@@ -240,7 +274,10 @@ export default function whisperTranscribeExtension(api) {
   let uploadChain = Promise.resolve();
   let chunkTimer = null;
   let typingTimer = null;
-  let intendedDraft = null; // full draft after animation completes
+  let intendedDraft = null;
+  let isGated = false;
+  let lastAddedChunks = [];
+  let clearedBuffer = "";
 
   const action = api.registerComposerAction({
     id: "mic",
@@ -253,18 +290,30 @@ export default function whisperTranscribeExtension(api) {
 
   function syncAction() {
     const finishing = !recording && pendingUploads > 0;
+    let label = null;
+    let tone = null;
+
+    if (finishing) {
+      label = "finishing";
+      tone = "busy";
+    } else if (recording) {
+      if (isGated) {
+        label = `say "start listening to me"`;
+        tone = "gated";
+      } else {
+        label = "recording";
+        tone = "active";
+      }
+    }
+
     action.update({
       title: finishing
         ? "Finishing voice transcription"
         : recording
-          ? "Stop voice recording"
+          ? isGated ? "Transcription paused (say start listening to me)" : "Stop voice recording"
           : "Start voice transcription",
       disabled: finishing,
-      status: finishing
-        ? { label: "finishing", tone: "busy" }
-        : recording
-        ? { label: "recording", tone: "active" }
-        : null,
+      status: label ? { label, tone } : null,
     });
   }
 
@@ -283,7 +332,6 @@ export default function whisperTranscribeExtension(api) {
   }
 
   function flushTyping(composer) {
-    // Immediately set the full intended draft and cancel the animation
     if (intendedDraft !== null) {
       if (composer) composer.setDraft(intendedDraft);
       else api.setDraft(intendedDraft);
@@ -295,7 +343,6 @@ export default function whisperTranscribeExtension(api) {
     cancelTyping();
     intendedDraft = fullDraft;
 
-    // Word-by-word for longer text, char-by-char for short phrases
     const useWords = addition.trim().split(/\s+/).length > 4 || addition.length > 50;
     const tokens = useWords
       ? addition.match(/\S+\s*/g) ?? [addition]
@@ -324,12 +371,55 @@ export default function whisperTranscribeExtension(api) {
 
   function appendTranscript(composer, text) {
     if (!text || disposed) return;
-    // Use intendedDraft if animation is in-flight, so we append to the full text not the partial
+    const normalized = normalizeLooseText(text);
+
+    const trigger = matchTrigger(normalized);
+    if (trigger) {
+      if (trigger.command === "gate_close") {
+        isGated = true;
+        syncAction();
+        return;
+      }
+      if (trigger.command === "gate_open") {
+        isGated = false;
+        syncAction();
+        return;
+      }
+      if (trigger.command === "clear_all") {
+        const currentDraftForClear = intendedDraft ?? (composer ? composer.getSnapshot().draft : api.getComposer()?.draft ?? "");
+        clearedBuffer = currentDraftForClear;
+        if (composer) composer.setDraft("");
+        else api.setDraft("");
+        lastAddedChunks = [];
+        return;
+      }
+      if (trigger.command === "recall_swap") {
+        const currentDraftForSwap = intendedDraft ?? (composer ? composer.getSnapshot().draft : api.getComposer()?.draft ?? "");
+        const restored = clearedBuffer;
+        clearedBuffer = currentDraftForSwap;
+        if (composer) composer.setDraft(restored);
+        else api.setDraft(restored);
+        return;
+      }
+      if (trigger.command === "clear_last") {
+        const last = lastAddedChunks.pop();
+        if (last) {
+          if (composer) composer.setDraft(last.draftBeforeAction);
+          else api.setDraft(last.draftBeforeAction);
+        }
+        return;
+      }
+    }
+
+    if (isGated) return;
+
     const currentDraft = intendedDraft ?? (composer ? composer.getSnapshot().draft : api.getComposer()?.draft ?? "");
     if (isAvoidPhrase(text)) return;
 
+    const snapshotBefore = currentDraft;
+
     const submit = (nextDraft) => {
-      flushTyping(composer); // complete any in-flight animation first, then submit full text
+      flushTyping(composer);
       if (composer) {
         composer.setDraft(nextDraft);
         composer.focus();
@@ -341,37 +431,29 @@ export default function whisperTranscribeExtension(api) {
       api.submitComposer(nextDraft);
     };
 
-    if (composer) {
-      const spacer = currentDraft && !/\s$/.test(currentDraft) ? " " : "";
-      const addition = spacer + text;
-      const nextDraft = currentDraft + addition;
-      const trimmedDraft = trimSendTrigger(nextDraft);
-      if (trimmedDraft !== null) {
-        submit(trimmedDraft);
-        return;
-      }
-      if (isDesktop()) {
-        typeInto(composer, currentDraft, addition, nextDraft, () => composer.focus());
-      } else {
-        composer.setDraft(nextDraft);
-        composer.focus();
-      }
-      return;
-    }
-
     const spacer = currentDraft && !/\s$/.test(currentDraft) ? " " : "";
     const addition = spacer + text;
     const nextDraft = currentDraft + addition;
     const trimmedDraft = trimSendTrigger(nextDraft);
+
     if (trimmedDraft !== null) {
       submit(trimmedDraft);
       return;
     }
+
+    lastAddedChunks.push({ text: addition, draftBeforeAction: snapshotBefore });
+    if (lastAddedChunks.length > 20) lastAddedChunks.shift();
+
     if (isDesktop()) {
-      typeInto(null, currentDraft, addition, nextDraft, () => api.focusComposer());
+      typeInto(composer, currentDraft, addition, nextDraft, () => composer?.focus() || api.focusComposer());
     } else {
-      api.setDraft(nextDraft);
-      api.focusComposer();
+      if (composer) {
+        composer.setDraft(nextDraft);
+        composer.focus();
+      } else {
+        api.setDraft(nextDraft);
+        api.focusComposer();
+      }
     }
   }
 
@@ -407,8 +489,6 @@ export default function whisperTranscribeExtension(api) {
       .catch((error) => {
         console.error("[whisper-transcribe] transcription failed", {
           message: error instanceof Error ? error.message : String(error),
-          size: blob?.size,
-          type: blob?.type,
         });
       })
       .finally(() => {
@@ -445,6 +525,7 @@ export default function whisperTranscribeExtension(api) {
         });
       } finally {
         await uploadChain;
+        isGated = false;
         syncAction();
       }
       return;
@@ -455,6 +536,7 @@ export default function whisperTranscribeExtension(api) {
     try {
       recording = await createRecordingSession();
       chunkTimer = setInterval(flushReadyChunk, 250);
+      isGated = false;
       syncAction();
     } catch (error) {
       console.error("[whisper-transcribe] recording failed", {

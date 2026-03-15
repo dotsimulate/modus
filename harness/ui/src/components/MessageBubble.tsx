@@ -14,7 +14,21 @@ function artifactSrc(url: string): string {
   return `${url}?${tp}`;
 }
 
-const _playedArtifacts = new Set<number>();
+const _playedArtifacts = new Set<number>(
+  (() => {
+    try {
+      const raw = sessionStorage.getItem("harness:played-artifacts");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  })()
+);
+
+function _markPlayed(id: number) {
+  _playedArtifacts.add(id);
+  try {
+    sessionStorage.setItem("harness:played-artifacts", JSON.stringify([..._playedArtifacts]));
+  } catch {}
+}
 
 function AudioArtifact({ artifact }: { artifact: NonNullable<Message["artifacts"]>[number] }) {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -26,7 +40,7 @@ function AudioArtifact({ artifact }: { artifact: NonNullable<Message["artifacts"
     const el = audioRef.current;
     if (!el) return;
     if (!_playedArtifacts.has(artifact.id)) {
-      _playedArtifacts.add(artifact.id);
+      _markPlayed(artifact.id);
       el.play().catch(() => {});
     }
   }, [artifact.id]);
