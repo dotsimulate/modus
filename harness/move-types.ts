@@ -214,5 +214,6 @@ export interface ActivateMoveResult {
   token: string;
   mode: "inline" | "branch" | "background";
   spawnedSessionId?: string;           // for branch/background
+  prompt?: string;                     // for inline: rendered text to merge into user message
   moveRunId: number;
 }

@@ -1863,13 +1863,6 @@ app.post("/api/moves/activate", async (c) => {
 
   const move = getMove(moveName, cwd);
   if (!move) return c.json({ error: "move not found" }, 404);
-  const effectiveMode = (() => {
-    const requested = modeOverride ?? move.mode ?? "inline";
-    return forceNewSession && requested === "inline" ? "branch" : requested;
-  })();
-  if (effectiveMode === "inline") {
-    return c.json({ error: `Move "${moveName}" requires an active session` }, 400);
-  }
 
   const result = await activateMove({
     moveName,

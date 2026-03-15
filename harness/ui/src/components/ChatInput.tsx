@@ -267,11 +267,26 @@ export function ChatInput({
       const { item, inputs } = attachedMove;
       setAttachedMove(null);
       if (projectCwd) {
+        const mode = item.mode ?? "inline";
         const body = { moveName: item.name, inputs, cwd: projectCwd, userProfile };
         try {
           const result = sessionId
             ? await activateMoveApi(sessionId, body)
-            : await activateProjectMoveApi({ ...body, forceNewSession: true });
+            : await activateProjectMoveApi(body);
+          if (mode === "inline") {
+            const combined = result.prompt
+              ? text ? `${result.prompt}\n\n${text}` : result.prompt
+              : text;
+            if (combined) {
+              sentHistory.push(combined);
+              if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
+              historyIndex.current = -1;
+              draft.current = "";
+              onSend(attachments, combined);
+              setAttachments([]);
+            }
+            return;
+          }
           onMoveActivated?.(result);
         } catch {}
       }

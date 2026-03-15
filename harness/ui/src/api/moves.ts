@@ -25,6 +25,7 @@ export type ActivateMoveResult = {
   token: string;
   mode: "inline" | "branch" | "background";
   spawnedSessionId?: string;
+  prompt?: string;
   moveRunId: number;
 };
 
