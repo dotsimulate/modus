@@ -19,6 +19,12 @@
  *   - inline:     current agent handles it, blocking until submit/completion
  *   - branch:     spawn a sibling session, return a link/card
  *   - background: fire-and-forget with persisted status and later recall
+ *
+ * API contract moves:
+ *   Moves can declare an `api` field with named ops. On activation, the
+ *   move-runner registers handlers from context.ts, creates a game token
+ *   (mapi- prefix), and passes it to gather(). The token supports repeated
+ *   submissions — handlers manage state via the MoveStateAPI.
  */
 
 // ── Move Config (on-disk definition) ──
@@ -59,6 +65,9 @@ export interface MoveConfig {
   // ── Agent profile for branch/background modes ──
   agentProfile?: string;
 
+  // ── API contract (multi-submit ops) ──
+  api?: MoveApiDeclaration;
+
   // ── Metadata ──
   enabled?: boolean;
   tags?: string[];
@@ -85,6 +94,10 @@ export interface MoveModule {
     data: Record<string, unknown>,
     inputs: Record<string, unknown>,
   ): Promise<SubmitResult>;
+  /** API op handlers — keyed by op name, registered on activation for api moves */
+  handlers?: Record<string, MoveApiHandler>;
+  /** Optional — customize game labels for the resume-game select input */
+  listGames?(states: Array<{ gameId: string; state: unknown }>): Array<{ label: string; value: string }>;
 }
 
 // ── Move Context (passed to gather/onSubmit) ──
@@ -115,6 +128,12 @@ export interface MoveContext {
   schema?: string;
   /** Current ISO date */
   date?: string;
+
+  // ── API contract fields (set when move has api declaration) ──
+  /** Portable game token for modus_submit (mapi- prefix, reusable) */
+  gameToken?: string;
+  /** Portable game identifier (can be shared across sessions) */
+  gameId?: string;
 }
 
 // ── Harness Bridge (server-side operations available to onSubmit) ──
@@ -216,4 +235,63 @@ export interface ActivateMoveResult {
   spawnedSessionId?: string;           // for branch/background
   prompt?: string;                     // for inline: rendered text to merge into user message
   moveRunId: number;
+  gameToken?: string;                  // for api contract moves
+  gameId?: string;                     // for api contract moves
+}
+
+// ── Move API Contract ──
+
+/** Declared in move.json — defines the ops a move provides */
+export interface MoveApiDeclaration {
+  /** Token prefix (default: move name). Tokens are `mapi-{prefix}-{gameId}` */
+  tokenPrefix?: string;
+  /** Named operations this move provides */
+  ops: Record<string, MoveOpDeclaration>;
+  /** State configuration */
+  state?: {
+    /** Persist state to disk (survives restart). Default false (in-memory). */
+    persist?: boolean;
+  };
+}
+
+/** Single op declaration in move.json */
+export interface MoveOpDeclaration {
+  description: string;
+  schema?: Record<string, unknown>;
+}
+
+/** Handler function signature for move API ops */
+export type MoveApiHandler = (
+  ctx: MoveApiContext,
+  data: Record<string, unknown>,
+) => Promise<{ ok: boolean; message?: string; error?: string }>;
+
+/** Context passed to move API handlers on each op call */
+export interface MoveApiContext {
+  gameId: string;
+  sessionId: string;
+  moveName: string;
+  /** Who initiated this call — agent via modus_submit or user via widget */
+  caller: "agent" | "user";
+  /** Game state — get/set/delete */
+  state: MoveStateAPI;
+  /** Push a message into the agent's session (e.g. "User played e4. Your turn.") */
+  notify: (message: string) => void;
+}
+
+/** State API for move handlers — abstracts in-memory vs persisted storage */
+export interface MoveStateAPI {
+  get<T = unknown>(): Promise<T | undefined>;
+  set(value: unknown): Promise<void>;
+  delete(): Promise<void>;
+}
+
+/** In-memory registration for an active move API */
+export interface MoveApiRegistration {
+  moveName: string;
+  gameId: string;
+  sessionId: string;
+  cwd: string;
+  handlers: Record<string, MoveApiHandler>;
+  persist: boolean;
 }

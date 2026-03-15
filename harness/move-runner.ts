@@ -22,6 +22,7 @@ import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
   ActivateMoveOpts, ActivateMoveResult, SubmitResult,
   MoveDB, HarnessBridge, MoveRun,
+  MoveApiHandler, MoveApiContext, MoveApiRegistration, MoveStateAPI,
 } from "./move-types";
 import {
   type StartSessionOpts,
@@ -62,6 +63,142 @@ setInterval(() => {
     }
   }
 }, TOKEN_CLEANUP_INTERVAL_MS);
+
+// ── Move API Registry (game tokens → handlers) ──
+
+const MAPI_PREFIX = "mapi-";
+
+/** token → registration */
+const moveApiRegistry = new Map<string, MoveApiRegistration>();
+
+/** gameId → state (in-memory) */
+const moveApiState = new Map<string, unknown>();
+
+/** Check if a token is a move-api game token */
+export function isMoveApiToken(token: string): boolean {
+  return token.startsWith(MAPI_PREFIX);
+}
+
+/** Generate a game ID */
+function generateGameId(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 8);
+}
+
+/** Create a move-api game token and register handlers */
+function registerMoveApi(
+  moveName: string,
+  gameId: string,
+  sessionId: string,
+  cwd: string,
+  handlers: Record<string, MoveApiHandler>,
+  persist: boolean,
+): string {
+  const config = getMove(moveName, cwd);
+  const prefix = config?.api?.tokenPrefix ?? moveName;
+  const token = `${MAPI_PREFIX}${prefix}-${gameId}`;
+
+  moveApiRegistry.set(token, {
+    moveName,
+    gameId,
+    sessionId,
+    cwd,
+    handlers,
+    persist,
+  });
+
+  // Initialize state if not already present (resume case)
+  if (!moveApiState.has(gameId)) {
+    moveApiState.set(gameId, undefined);
+  }
+
+  return token;
+}
+
+/** Build the state API for a game */
+function buildStateApi(gameId: string, moveName: string, cwd: string, persist: boolean): MoveStateAPI {
+  return {
+    async get<T = unknown>(): Promise<T | undefined> {
+      if (persist) {
+        const path = join(cwd, ".modus/moves", moveName, "state", `${gameId}.json`);
+        try {
+          const raw = readFileSync(path, "utf-8");
+          return JSON.parse(raw) as T;
+        } catch {
+          return moveApiState.get(gameId) as T | undefined;
+        }
+      }
+      return moveApiState.get(gameId) as T | undefined;
+    },
+    async set(value: unknown): Promise<void> {
+      moveApiState.set(gameId, value);
+      if (persist) {
+        const { mkdirSync, writeFileSync } = await import("fs");
+        const dir = join(cwd, ".modus/moves", moveName, "state");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, `${gameId}.json`), JSON.stringify(value, null, 2));
+      }
+    },
+    async delete(): Promise<void> {
+      moveApiState.delete(gameId);
+      if (persist) {
+        const { unlinkSync } = await import("fs");
+        try {
+          unlinkSync(join(cwd, ".modus/moves", moveName, "state", `${gameId}.json`));
+        } catch { /* already gone */ }
+      }
+    },
+  };
+}
+
+/** Handle a move-api op call (called from modus-mcp.ts) */
+export async function handleMoveApiSubmit(
+  token: string,
+  data: Record<string, unknown>,
+  caller: "agent" | "user" = "agent",
+): Promise<{ ok: boolean; message?: string; error?: string }> {
+  const reg = moveApiRegistry.get(token);
+  if (!reg) {
+    return { ok: false, error: "Invalid or expired game token" };
+  }
+
+  const op = data.op;
+  if (typeof op !== "string") {
+    return { ok: false, error: "Missing 'op' field" };
+  }
+
+  const handler = reg.handlers[op];
+  if (!handler) {
+    return { ok: false, error: `Unknown op: ${op}` };
+  }
+
+  const stateApi = buildStateApi(reg.gameId, reg.moveName, reg.cwd, reg.persist);
+
+  const ctx: MoveApiContext = {
+    gameId: reg.gameId,
+    sessionId: reg.sessionId,
+    moveName: reg.moveName,
+    caller,
+    state: stateApi,
+    notify: (message: string) => {
+      queueMessage(reg.sessionId, message);
+    },
+  };
+
+  return handler(ctx, data);
+}
+
+/** List active games for a move (for {{openGames}} template var resolution) */
+export function listMoveApiGames(moveName: string): Array<{ gameId: string; state: unknown }> {
+  const games: Array<{ gameId: string; state: unknown }> = [];
+  for (const [, reg] of moveApiRegistry) {
+    if (reg.moveName === moveName) {
+      games.push({ gameId: reg.gameId, state: moveApiState.get(reg.gameId) });
+    }
+  }
+  return games;
+}
 
 // ── Move Loading ──
 
@@ -421,6 +558,33 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     metadata: gatheredContext,
   });
 
+  // ── API contract: register handlers and create game token ──
+  let gameToken: string | undefined;
+  let gameId: string | undefined;
+
+  if (config.api) {
+    gameId = typeof inputs?.gameId === "string" && inputs.gameId
+      ? inputs.gameId            // resume existing game
+      : generateGameId();        // new game
+
+    const mod = await loadMoveModule(moveName, cwd);
+    if (mod?.handlers) {
+      gameToken = registerMoveApi(
+        moveName,
+        gameId,
+        sourceSessionId,
+        cwd,
+        mod.handlers,
+        config.api.state?.persist ?? false,
+      );
+      // Make game token available in context for gather()
+      moveCtx.gameToken = gameToken;
+      moveCtx.gameId = gameId;
+    } else {
+      return { error: `Move "${moveName}" declares api but context.ts has no handlers export` };
+    }
+  }
+
   // Call gather() if context.ts exists, otherwise build a default prompt
   let prompt: string;
   try {
@@ -479,13 +643,13 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     eventType: "move_activated",
     sessionId: sourceSessionId || undefined,
     summary: `Move activated: ${config.label} (${mode})`,
-    metadata: { moveName, mode, token },
+    metadata: { moveName, mode, token, ...(gameToken ? { gameToken, gameId } : {}) },
   });
 
   // Execute based on mode
   if (mode === "inline") {
     // Return rendered prompt for client to merge into the current user message
-    return { token, mode, moveRunId, prompt };
+    return { token, mode, moveRunId, prompt, gameToken, gameId };
   }
 
   if (mode === "branch" || mode === "background") {
@@ -512,6 +676,8 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
       mode,
       spawnedSessionId: spawned.sessionId,
       moveRunId,
+      gameToken,
+      gameId,
     };
   }
 
