@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useFileViewer } from "../providers/FileViewerProvider";
 import { useProfiles } from "../providers/ProfileProvider";
-import { browsePath, openInEditor, readFileContent, type BrowseResult, type MoveWidgetInfo } from "../api";
+import { browsePath, readFileContent, type BrowseResult, type MoveWidgetInfo } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser } from "./FileBrowser";
 import { MoveWidget } from "./MoveWidget";
+import { CodeMirrorEditor } from "./CodeMirrorEditor";
 
 type Props = {
   open: boolean;
@@ -43,7 +44,10 @@ type ViewState =
 type ActiveView = "browser" | "move-widget" | string;
 
 export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange }: Props) {
-  const { tabs, activePath, closeFile, setActive, pinFile, unpinFile, openFile } = useFileViewer();
+  const {
+    tabs, activePath, closeFile, setActive, pinFile, unpinFile, openFile,
+    setEditing, markDirty, saveFile, saving, saveError,
+  } = useFileViewer();
   const { activeCwd } = useProfiles();
 
   const [activeView, setActiveView] = useState<ActiveView>("browser");
@@ -79,10 +83,12 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const viewingFile = activeView !== "browser" && !activeView.startsWith("widget:") ? activeView : null;
+  const activeTab = viewingFile ? tabs.find((t) => t.path === viewingFile) : null;
+  const isEditMode = activeTab?.editing ?? false;
 
-  // Load content for the file being viewed
+  // Load content for the file being viewed (only in view mode — edit mode loads via provider)
   useEffect(() => {
-    if (!viewingFile) { setView({ kind: "idle" }); return; }
+    if (!viewingFile || isEditMode) { if (!viewingFile) setView({ kind: "idle" }); return; }
     let active = true;
     setLoading(true);
     setView({ kind: "loading" });
@@ -103,7 +109,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     })().finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [viewingFile]);
+  }, [viewingFile, isEditMode]);
 
   // Reset preview mode when switching files
   useEffect(() => {
@@ -150,6 +156,20 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     setActiveView(path);
   };
 
+  const handleToggleEdit = () => {
+    if (!viewingFile) return;
+    setEditing(viewingFile, !isEditMode);
+  };
+
+  const handleSave = async (content: string) => {
+    if (!viewingFile) return;
+    await saveFile(viewingFile, content);
+  };
+
+  const handleDirty = () => {
+    if (viewingFile) markDirty(viewingFile);
+  };
+
   const copyBtn = (targetPath: string) => (
     <button
       className={`chat-file-viewer-btn chat-file-viewer-btn--inline${copiedPath ? " is-copied" : ""}`}
@@ -184,13 +204,6 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
         ) : (
           <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="4.25" y="2.25" width="5.5" height="7.5" rx="0.9" stroke="currentColor" strokeWidth="1.1"/><path d="M2.25 8V3.1c0-.5.4-.85.9-.85h3.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
         )}
-      </button>
-      <button
-        className="chat-file-viewer-btn"
-        onClick={() => openInEditor(targetPath)}
-        title="Open in editor"
-      >
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M10 6.5V10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h3.5M7 1h4v4M5 7l6-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
       </button>
       <button className="chat-file-viewer-btn" onClick={handleCloseFile} title="Close file">
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
@@ -236,13 +249,14 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
           {tabs.map((tab) => (
             <div
               key={tab.path}
-              className={`rp-tab${tab.path === activeView ? " rp-tab--active" : ""}${tab.pinned ? " rp-tab--pinned" : ""}`}
+              className={`rp-tab${tab.path === activeView ? " rp-tab--active" : ""}${tab.pinned ? " rp-tab--pinned" : ""}${tab.dirty ? " rp-tab--dirty" : ""}`}
             >
               <button
                 className="rp-tab-label"
                 onClick={() => setActiveView(tab.path)}
                 title={tab.path}
               >
+                {tab.dirty && <span className="rp-tab-dot" />}
                 {tab.pinned && (
                   <svg className="rp-tab-pin" width="7" height="7" viewBox="0 0 12 12" fill="none">
                     <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="currentColor"/>
@@ -250,15 +264,6 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                   </svg>
                 )}
                 {basename(tab.path)}
-              </button>
-              <button
-                className="rp-tab-close"
-                onClick={(e) => { e.stopPropagation(); openInEditor(tab.path); }}
-                title="Open in editor"
-              >
-                <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
-                  <path d="M10 6.5V10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h3.5M7 1h4v4M5 7l6-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
               </button>
               <button
                 className="rp-tab-close"
@@ -272,23 +277,36 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
             </div>
           ))}
           <div className="rp-tabs-actions">
-            {viewingFile && (
+            {/* Edit/view toggle */}
+            {viewingFile && view.kind !== "directory" && (
               <button
-                className={`right-panel-header-btn${tabs.find((t) => t.path === viewingFile)?.pinned ? " active" : ""}`}
-                onClick={() => {
-                  const tab = tabs.find((t) => t.path === viewingFile);
-                  if (tab?.pinned) unpinFile(viewingFile);
-                  else pinFile(viewingFile);
-                }}
-                title={tabs.find((t) => t.path === viewingFile)?.pinned ? "Unpin file" : "Pin file"}
+                className={`right-panel-header-btn${isEditMode ? " active" : ""}`}
+                onClick={handleToggleEdit}
+                title={isEditMode ? "Switch to view" : "Edit file"}
               >
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={tabs.find((t) => t.path === viewingFile)?.pinned ? "currentColor" : "none"}/>
+                  <path d="M8.5 1.5l2 2L4 10H2v-2l6.5-6.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            )}
+            {/* Pin */}
+            {viewingFile && (
+              <button
+                className={`right-panel-header-btn${activeTab?.pinned ? " active" : ""}`}
+                onClick={() => {
+                  if (activeTab?.pinned) unpinFile(viewingFile);
+                  else pinFile(viewingFile);
+                }}
+                title={activeTab?.pinned ? "Unpin file" : "Pin file"}
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={activeTab?.pinned ? "currentColor" : "none"}/>
                   <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
                 </svg>
               </button>
             )}
-            {showFileContent && isHtml && view.kind === "file" && (
+            {/* HTML preview toggle */}
+            {!isEditMode && showFileContent && isHtml && view.kind === "file" && (
               <button
                 className={`right-panel-header-btn${htmlPreview ? " active" : ""}`}
                 onClick={() => setHtmlPreview(!htmlPreview)}
@@ -301,7 +319,8 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 )}
               </button>
             )}
-            {showFileContent && (
+            {/* Fullscreen */}
+            {(showFileContent || isEditMode) && (
               <button
                 className="right-panel-header-btn"
                 onClick={() => setFullscreen(!fullscreen)}
@@ -314,14 +333,31 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 )}
               </button>
             )}
+            {/* Save status */}
+            {saving && <span className="rp-status rp-status--saving">saving...</span>}
+            {saveError && <span className="rp-status rp-status--error">{saveError}</span>}
           </div>
         </div>
 
-        <div className="right-panel-content">
+        <div className={`right-panel-content${isEditMode ? " right-panel-content--editing" : ""}`}>
+          {/* Move widget */}
           {activeView.startsWith("widget:") && moveWidgets ? (() => {
             const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
             return w ? <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} /> : null;
-          })() : showBrowser ? (
+          })() : isEditMode && viewingFile && activeTab?.content !== null ? (
+            /* ── Edit mode: CodeMirror ── */
+            <div className="right-panel-editor">
+              <CodeMirrorEditor
+                key={viewingFile}
+                content={activeTab!.content!}
+                path={viewingFile}
+                onSave={handleSave}
+                onDirty={handleDirty}
+              />
+            </div>
+          ) : isEditMode && viewingFile ? (
+            <div className="panel-empty">loading...</div>
+          ) : showBrowser ? (
             <FileBrowser
               rootPath={activeCwd ?? null}
               initialPath={initialBrowserPath}
@@ -363,7 +399,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 </div>
               </div>
             </div>
-          ) : showFileContent && isHtml && htmlPreview && view.kind === "file" ? (
+          ) : !isEditMode && showFileContent && isHtml && htmlPreview && view.kind === "file" ? (
             <div className="right-panel-file right-panel-canvas">
               <div className="fcv-head">
                 <div className="fcv-meta">

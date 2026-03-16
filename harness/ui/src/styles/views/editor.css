@@ -1,82 +1,41 @@
 /**
- * Editor view — full-page IDE layout.
+ * CodeMirror editor — styles for the embedded editor surface.
  *
- * [left: file browser] [resize] [center: tabs+editor] [resize] [right: git]
+ * Used by RightPanel when a file tab is in edit mode.
+ * No page-layout styles — the editor is a content renderer, not a view.
  */
 
-.editor-page {
-  display: flex;
+/* ── CodeMirror container ── */
+
+.cm-editor-container {
+  flex: 1;
+  min-height: 0;
   height: 100%;
+  overflow: auto;
+}
+
+.cm-editor-container .cm-editor {
+  height: 100%;
+}
+
+/* ── Editor host in right panel ── */
+
+.right-panel-editor {
+  flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-/* ── Left: file browser ── */
-
-.editor-left {
-  flex-shrink: 0;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
+/* Remove padding when editing — CodeMirror manages its own gutters */
+.right-panel-content--editing {
+  padding: 0 !important;
 }
 
-/* Override compact list height cap — we want full height here */
-.editor-left .file-browser--compact .fb-list {
-  max-height: none;
-  flex: 1;
-}
+/* ── Dirty tab indicator ── */
 
-/* Make the file browser fill its column */
-.editor-left .file-browser {
-  flex: 1;
-  min-height: 0;
-}
-
-/* Slightly larger entries for full-screen IDE feel */
-.editor-left .fb-entry {
-  font-size: 12.5px;
-  padding: 5px 14px;
-}
-
-.editor-left .fb-breadcrumb-path {
-  font-size: 11px;
-}
-
-/* ── Center: tab bar + CodeMirror ── */
-
-.editor-center {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.editor-tabs {
-  background: var(--bg-raised);
-  border-bottom: 1px solid var(--border);
-  padding: 0 4px;
-  align-items: center;
-}
-
-.editor-tabs-spacer {
-  flex: 1;
-}
-
-.editor-status {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  padding: 0 8px;
-  align-self: center;
-  flex-shrink: 0;
-}
-
-.editor-status--saving { color: var(--text-dim); }
-.editor-status--error  { color: var(--error-soft); }
-
-.editor-tab-dot {
+.rp-tab-dot {
   display: inline-block;
   width: 5px;
   height: 5px;
@@ -85,7 +44,6 @@
   flex-shrink: 0;
 }
 
-/* Dirty tab: italic filename + warning-tinted color */
 .rp-tab--dirty .rp-tab-label {
   font-style: italic;
   color: var(--text-label);
@@ -94,200 +52,15 @@
   color: var(--text-secondary);
 }
 
-/* Git toggle button in tab bar */
-.editor-git-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 4px;
-  flex-shrink: 0;
-  margin-right: 4px;
-  transition: color 0.1s, background 0.1s;
-}
+/* ── Save status in tab bar ── */
 
-.editor-git-toggle:hover {
-  color: var(--text-dim);
-  background: var(--bg-hover);
-}
-
-.editor-git-toggle--on {
-  color: var(--text-secondary);
-}
-
-/* ── Editor content ── */
-
-.editor-content {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.editor-cm-container {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  overflow: auto;
-}
-
-.editor-cm-container .cm-editor {
-  height: 100%;
-}
-
-.editor-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-/* ── Right: git info panel ── */
-
-.editor-right {
-  flex-shrink: 0;
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.editor-git-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.editor-git-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  background: var(--bg-raised);
-}
-
-.editor-git-branch {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+.rp-status {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--text-dim);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.editor-git-badge {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 0 6px;
+  align-self: center;
   flex-shrink: 0;
 }
 
-.editor-git-badge--modified  { color: var(--warning);   background: color-mix(in srgb, var(--warning) 8%, transparent); }
-.editor-git-badge--staged    { color: var(--success);   background: color-mix(in srgb, var(--success) 8%, transparent); }
-.editor-git-badge--untracked { color: var(--text-dim);  background: var(--bg-hover); }
-
-.editor-git-path {
-  padding: 6px 12px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.editor-git-body {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.editor-git-empty {
-  padding: 16px 12px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.editor-git-stats {
-  display: flex;
-  gap: 8px;
-  padding: 6px 12px 4px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.editor-git-add { color: var(--success); }
-.editor-git-del { color: var(--error-soft); }
-
-.editor-git-hunk {
-  margin: 4px 0;
-}
-
-.editor-git-hunk-header {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
-  padding: 3px 12px;
-  background: var(--bg-hover);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.editor-git-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 0 8px;
-  min-height: 16px;
-}
-
-.editor-git-line--add { background: color-mix(in srgb, var(--success) 6%, transparent); }
-.editor-git-line--del { background: color-mix(in srgb, var(--error-soft) 7%, transparent); }
-.editor-git-line--ctx { }
-
-.editor-git-line-num {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  min-width: 24px;
-  text-align: right;
-  user-select: none;
-}
-
-.editor-git-line-content {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  white-space: pre;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text-secondary);
-}
-
-.editor-git-line--add .editor-git-line-content { color: var(--success); }
-.editor-git-line--del .editor-git-line-content { color: var(--error-soft); }
+.rp-status--saving { color: var(--text-dim); }
+.rp-status--error  { color: var(--error-soft); }
