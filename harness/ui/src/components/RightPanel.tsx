@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useFileViewer } from "../providers/FileViewerProvider";
 import { useProfiles } from "../providers/ProfileProvider";
 import { browsePath, readFileContent, type BrowseResult, type MoveWidgetInfo } from "../api";
@@ -6,6 +6,9 @@ import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser } from "./FileBrowser";
 import { MoveWidget } from "./MoveWidget";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
+import { CopyButton } from "./CopyButton";
+import { DirectoryViewer } from "./DirectoryViewer";
+import { HtmlPreview } from "./HtmlPreview";
 
 type Props = {
   open: boolean;
@@ -53,8 +56,6 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   const [activeView, setActiveView] = useState<ActiveView>("browser");
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
-  const [copiedPath, setCopiedPath] = useState(false);
-  const [copiedContent, setCopiedContent] = useState(false);
   const [htmlPreview, setHtmlPreview] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -113,32 +114,10 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
 
   // Reset preview mode when switching files
   useEffect(() => {
-    if (viewingFile) {
-      setCopiedPath(false);
-      setHtmlPreview(true);
-    }
+    if (viewingFile) setHtmlPreview(true);
   }, [viewingFile]);
 
-  useEffect(() => {
-    if (!copiedPath) return;
-    const t = window.setTimeout(() => setCopiedPath(false), 1000);
-    return () => window.clearTimeout(t);
-  }, [copiedPath]);
-
-  useEffect(() => {
-    if (!copiedContent) return;
-    const t = window.setTimeout(() => setCopiedContent(false), 1000);
-    return () => window.clearTimeout(t);
-  }, [copiedContent]);
-
-  const directoryEntries = useMemo(() => {
-    if (view.kind !== "directory") return [];
-    return view.result.dirs.map((dir) => ({
-      key: `dir:${dir}`,
-      name: dir,
-      path: `${view.result.path}/${dir}`,
-    }));
-  }, [view]);
+  // ── Handlers ──
 
   const handleCloseFile = () => {
     setFullscreen(false);
@@ -170,50 +149,121 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     if (viewingFile) markDirty(viewingFile);
   };
 
-  const copyBtn = (targetPath: string) => (
-    <button
-      className={`chat-file-viewer-btn chat-file-viewer-btn--inline${copiedPath ? " is-copied" : ""}`}
-      onClick={() => navigator.clipboard.writeText(targetPath).then(() => setCopiedPath(true)).catch(() => {})}
-      title={copiedPath ? "Copied" : "Copy path"}
-    >
-      {copiedPath ? (
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.2 6.4 4.6 8.8 9.8 3.6" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round"/></svg>
-      ) : (
-        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="4.25" y="2.25" width="5.5" height="7.5" rx="0.9" stroke="currentColor" strokeWidth="1.1"/><path d="M2.25 8V3.1c0-.5.4-.85.9-.85h3.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
-      )}
+  // ── Shared action slots passed to content components ──
+
+  const copyPathBtn = (targetPath: string) => (
+    <CopyButton value={targetPath} size="inline" title="Copy path" />
+  );
+
+  const closeBtn = (
+    <button className="chat-file-viewer-btn" onClick={handleCloseFile} title="Close file">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
     </button>
   );
 
   const fileActions = (targetPath: string) => (
     <>
-      <button
-        className={`chat-file-viewer-btn${copiedContent ? " is-copied" : ""}`}
-        onClick={() => {
-          if (view.kind === "file") {
-            navigator.clipboard.writeText(view.content).then(() => setCopiedContent(true)).catch(() => {});
-          } else {
-            readFileContent(targetPath).then((text) => {
-              if (text !== null) navigator.clipboard.writeText(text).then(() => setCopiedContent(true)).catch(() => {});
-            }).catch(() => {});
-          }
+      <CopyButton
+        getValue={async () => {
+          if (view.kind === "file") return view.content;
+          return readFileContent(targetPath);
         }}
-        title={copiedContent ? "Copied!" : "Copy file contents"}
-      >
-        {copiedContent ? (
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.2 6.4 4.6 8.8 9.8 3.6" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        ) : (
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="4.25" y="2.25" width="5.5" height="7.5" rx="0.9" stroke="currentColor" strokeWidth="1.1"/><path d="M2.25 8V3.1c0-.5.4-.85.9-.85h3.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
-        )}
-      </button>
-      <button className="chat-file-viewer-btn" onClick={handleCloseFile} title="Close file">
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
-      </button>
+        title="Copy file contents"
+      />
+      {closeBtn}
     </>
   );
+
+  // ── Derived state ──
 
   const isHtml = viewingFile ? isHtmlFile(viewingFile) : false;
   const showFileContent = viewingFile && view.kind !== "idle";
   const showBrowser = activeView === "browser";
+
+  // ── Content renderer — flat early-return instead of nested ternaries ──
+
+  function renderContent() {
+    // Move widget
+    if (activeView.startsWith("widget:") && moveWidgets) {
+      const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
+      return w ? <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} /> : null;
+    }
+
+    // Edit mode
+    if (isEditMode && viewingFile) {
+      if (activeTab?.content !== null) {
+        return (
+          <div className="right-panel-editor">
+            <CodeMirrorEditor
+              key={viewingFile}
+              content={activeTab!.content!}
+              path={viewingFile}
+              onSave={handleSave}
+              onDirty={handleDirty}
+            />
+          </div>
+        );
+      }
+      return <div className="panel-empty">loading...</div>;
+    }
+
+    // File browser
+    if (showBrowser) {
+      return (
+        <FileBrowser
+          rootPath={activeCwd ?? null}
+          initialPath={initialBrowserPath}
+          onFileSelect={handleFileSelect}
+          onPathChange={onBrowserPathChange}
+        />
+      );
+    }
+
+    // Directory listing
+    if (showFileContent && view.kind === "directory") {
+      return (
+        <DirectoryViewer
+          path={view.result.path}
+          dirs={view.result.dirs}
+          parent={view.result.parent ?? null}
+          onNavigate={setActiveView}
+          nameActions={copyPathBtn(view.result.path)}
+          actions={fileActions(view.result.path)}
+        />
+      );
+    }
+
+    // HTML preview
+    if (!isEditMode && showFileContent && isHtml && htmlPreview && view.kind === "file") {
+      return (
+        <HtmlPreview
+          filePath={viewingFile!}
+          content={view.content}
+          nameActions={copyPathBtn(viewingFile!)}
+          actions={fileActions(viewingFile!)}
+        />
+      );
+    }
+
+    // File viewer (code, markdown, loading, error)
+    if (showFileContent) {
+      return (
+        <div className="right-panel-file">
+          <FileContentViewer
+            filePath={viewingFile!}
+            content={view.kind === "file" ? view.content : null}
+            loading={loading}
+            error={view.kind === "error" ? view.message : null}
+            nameActions={copyPathBtn(viewingFile!)}
+            actions={fileActions(viewingFile!)}
+          />
+        </div>
+      );
+    }
+
+    // Fallback
+    return children || <div className="panel-empty">no file open</div>;
+  }
 
   return (
     <>
@@ -340,100 +390,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
         </div>
 
         <div className={`right-panel-content${isEditMode ? " right-panel-content--editing" : ""}`}>
-          {/* Move widget */}
-          {activeView.startsWith("widget:") && moveWidgets ? (() => {
-            const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
-            return w ? <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} /> : null;
-          })() : isEditMode && viewingFile && activeTab?.content !== null ? (
-            /* ── Edit mode: CodeMirror ── */
-            <div className="right-panel-editor">
-              <CodeMirrorEditor
-                key={viewingFile}
-                content={activeTab!.content!}
-                path={viewingFile}
-                onSave={handleSave}
-                onDirty={handleDirty}
-              />
-            </div>
-          ) : isEditMode && viewingFile ? (
-            <div className="panel-empty">loading...</div>
-          ) : showBrowser ? (
-            <FileBrowser
-              rootPath={activeCwd ?? null}
-              initialPath={initialBrowserPath}
-              onFileSelect={handleFileSelect}
-              onPathChange={onBrowserPathChange}
-            />
-          ) : showFileContent && view.kind === "directory" ? (
-            <div className="fcv-panel right-panel-file">
-              <div className="fcv-head">
-                <div className="fcv-meta">
-                  <div className="fcv-name-row">
-                    <span className="fcv-name">{basename(view.result.path) || "/"}</span>
-                    <div className="fcv-name-actions">{copyBtn(view.result.path)}</div>
-                  </div>
-                </div>
-                <div className="fcv-head-side">
-                  <span className="fcv-count">{directoryEntries.length} folder{directoryEntries.length === 1 ? "" : "s"}</span>
-                  <div className="fcv-actions">{fileActions(view.result.path)}</div>
-                </div>
-              </div>
-              <div className="fcv-body">
-                <div className="fcv-directory">
-                  <div className="fcv-directory-path">{view.result.path}</div>
-                  <div className="fcv-directory-list">
-                    {view.result.parent && (
-                      <button className="fcv-directory-entry fcv-directory-entry--parent" onClick={() => setActiveView(view.result.parent!)}>
-                        ..
-                      </button>
-                    )}
-                    {directoryEntries.length === 0 && <div className="fcv-state">No subfolders.</div>}
-                    {directoryEntries.map((entry) => (
-                      <button key={entry.key} className="fcv-directory-entry" onClick={() => setActiveView(entry.path)}>
-                        <span className="fcv-directory-dot" aria-hidden="true" />
-                        <span className="fcv-directory-name">{entry.name}</span>
-                        <span className="fcv-directory-type">dir</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : !isEditMode && showFileContent && isHtml && htmlPreview && view.kind === "file" ? (
-            <div className="right-panel-file right-panel-canvas">
-              <div className="fcv-head">
-                <div className="fcv-meta">
-                  <div className="fcv-name-row">
-                    <span className="fcv-name">{basename(viewingFile!)}</span>
-                    <div className="fcv-name-actions">{copyBtn(viewingFile!)}</div>
-                  </div>
-                </div>
-                <div className="fcv-head-side">
-                  <span className="fcv-count">preview</span>
-                  <div className="fcv-actions">{fileActions(viewingFile!)}</div>
-                </div>
-              </div>
-              <iframe
-                className="right-panel-iframe"
-                srcDoc={view.content}
-                sandbox="allow-scripts allow-same-origin"
-                title="HTML Preview"
-              />
-            </div>
-          ) : showFileContent ? (
-            <div className="right-panel-file">
-              <FileContentViewer
-                filePath={viewingFile!}
-                content={view.kind === "file" ? view.content : null}
-                loading={loading}
-                error={view.kind === "error" ? view.message : null}
-                nameActions={copyBtn(viewingFile!)}
-                actions={fileActions(viewingFile!)}
-              />
-            </div>
-          ) : (
-            children || <div className="panel-empty">no file open</div>
-          )}
+          {renderContent()}
         </div>
       </div>
     </>
