@@ -1,8 +1,8 @@
 ---
 title: Config Resolution
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastUpdated: 2026-03-16
+lastCommit: a9adf68
 covers: harness/config-resolver.ts harness/profiles/
 ---
 
@@ -26,17 +26,18 @@ might want compaction disabled entirely.
 Per-provider overrides. If your llama-server runs `-c 65536`, set it once here and
 every litellm agent inherits it. Optional — most users never touch this.
 
-**TypeScript fallback** (in `pi-agent.ts`): Ships with sane defaults. 32768 context,
-2048 max output, compaction enabled with 16384 reserve and 20000 keep-recent.
+**TypeScript fallback** (in `pi-agent.ts`): Ships with sane defaults. 128000 context
+(or API-provided for openrouter), 8192 max output, compaction enabled with
+`Math.max(4096, model.maxTokens)` reserve and 20000 keep-recent.
 
 ## What's Configurable
 
 | Field | Profile | Provider Default | TS Fallback | Notes |
 |-------|---------|-----------------|-------------|-------|
-| `contextWindow` | ✓ | ✓ | 32768 | Must match your inference server's `-c` flag for local models |
-| `maxOutputTokens` | ✓ | ✓ | 2048 | Max tokens per response |
+| `contextWindow` | ✓ | ✓ | 128000 (or openrouter API) | Must match your inference server's `-c` flag for local models |
+| `maxOutputTokens` | ✓ | ✓ | 8192 | Max tokens per response |
 | `compaction.enabled` | ✓ | ✓ | true | Threshold compaction at ~75% context usage |
-| `compaction.reserveTokens` | ✓ | ✓ | 16384 | Tokens reserved for the next response |
+| `compaction.reserveTokens` | ✓ | ✓ | max(4096, maxOutputTokens) | Tokens reserved for the next response |
 | `compaction.keepRecentTokens` | ✓ | ✓ | 20000 | Recent context preserved during compaction |
 
 ## Examples

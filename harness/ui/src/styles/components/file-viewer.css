@@ -73,8 +73,14 @@
 
 .fcv-body {
   min-height: 0;
-  max-height: min(65dvh, 720px);
+  flex: 1;
   overflow: auto;
+}
+
+/* Floating window context: cap height so it doesn't blow out the popup */
+.chat-file-viewer-popup .fcv-body {
+  flex: none;
+  max-height: min(65dvh, 720px);
 }
 
 .fcv-state {

@@ -23,8 +23,9 @@ export {
   getDraft, saveDraft, createEmptySession,
   createSession, sendMessage, stopSessionApi, stopTaskApi, switchSessionProfile,
   updateSessionConfig, respondToPermission,
+  fetchSessionUiState, saveSessionUiState,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
-  fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, subscribeEvents, branchSessionApi,
+  fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, writeFileContent, subscribeEvents, branchSessionApi,
   fetchGeminiUsage, fetchMessageContent,
 } from "./sessions";
 
@@ -56,8 +57,8 @@ export { fetchPrompts, renderPromptApi, reloadPromptsApi } from "./prompts";
 export type { PromptListItem, PromptInput, RenderResult } from "./prompts";
 
 // Moves
-export { fetchMoves, activateMoveApi, activateProjectMoveApi } from "./moves";
-export type { MoveInput, MoveListItem, ActivateMoveResult } from "./moves";
+export { fetchMoves, activateMoveApi, activateProjectMoveApi, callMoveOp, fetchActiveWidget, rekeyMoveSession } from "./moves";
+export type { MoveInput, MoveListItem, ActivateMoveResult, MoveWidgetInfo } from "./moves";
 
 // Missions
 export {

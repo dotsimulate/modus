@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useId } from "react";
-import type { SessionStatus, Attachment } from "../api";
+import type { SessionStatus, Attachment, MoveListItem } from "../api";
+import { activateMoveApi, activateProjectMoveApi } from "../api";
 import type { ActivateMoveResult } from "../api";
 import { PromptPicker } from "./PromptPicker";
+import { AttachedMove } from "./QueuedMessage";
 import { activateComposer, registerComposer, useComposerActions } from "../client-extensions";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
@@ -108,6 +110,7 @@ export function ChatInput({
   // Attachment state
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [attachedMove, setAttachedMove] = useState<{ item: MoveListItem; inputs: Record<string, unknown> } | null>(null);
   const dragCounter = useRef(0);
 
   useEffect(() => {
@@ -255,20 +258,54 @@ export function ChatInput({
 
   // ── Send ──
 
-  function handleSend(textOverride?: string) {
+  async function handleSend(textOverride?: string) {
     const text = (textOverride ?? value).trim();
-    if (!text && attachments.length === 0) return;
-    if (text) {
-      sentHistory.push(text);
-      if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
-      historyIndex.current = -1;
-      draft.current = "";
+    const hasText = !!text || attachments.length > 0;
+    if (!attachedMove && !hasText) return;
+
+    if (attachedMove) {
+      const { item, inputs } = attachedMove;
+      setAttachedMove(null);
+      if (projectCwd) {
+        const mode = item.mode ?? "inline";
+        const body = { moveName: item.name, inputs, cwd: projectCwd, userProfile };
+        try {
+          const result = sessionId
+            ? await activateMoveApi(sessionId, body)
+            : await activateProjectMoveApi(body);
+          if (mode === "inline") {
+            const combined = result.prompt
+              ? text ? `${result.prompt}\n\n${text}` : result.prompt
+              : text;
+            if (combined) {
+              sentHistory.push(combined);
+              if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
+              historyIndex.current = -1;
+              draft.current = "";
+              onSend(attachments, combined);
+              setAttachments([]);
+            }
+            onMoveActivated?.(result);
+            return;
+          }
+          onMoveActivated?.(result);
+        } catch {}
+      }
     }
-    onSend(attachments, text);
-    setAttachments([]);
+
+    if (hasText) {
+      if (text) {
+        sentHistory.push(text);
+        if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
+        historyIndex.current = -1;
+        draft.current = "";
+      }
+      onSend(attachments, text);
+      setAttachments([]);
+    }
   }
 
-  handleSendRef.current = handleSend;
+  handleSendRef.current = (text) => { void handleSend(text); };
 
   // Catch "/" via beforeinput — works even when keyDown doesn't fire (IME, dead keys, etc.)
   const handleBeforeInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
@@ -325,7 +362,7 @@ export function ChatInput({
     }
   };
 
-  const hasContent = value.trim() || attachments.length > 0;
+  const hasContent = value.trim() || attachments.length > 0 || !!attachedMove;
 
   // Icon-only actions (no label) go to top-left corner; labelled actions stay in the button row
   const iconActions = composerActions.filter((a) => a.icon && !a.label);
@@ -377,6 +414,13 @@ export function ChatInput({
         </div>
       )}
 
+      {attachedMove && (
+        <AttachedMove
+          move={attachedMove.item}
+          inputs={attachedMove.inputs}
+          onDetach={() => setAttachedMove(null)}
+        />
+      )}
       <div className="input-row">
         <div className={wrapClass}>
           {iconActions.length > 0 && (
@@ -412,7 +456,7 @@ export function ChatInput({
           <textarea
             ref={ref}
             className="chat-textarea"
-            placeholder={placeholder ?? "message... (drop or paste images)"}
+            placeholder={attachedMove ? "add context... (optional)" : (placeholder ?? "message... (drop or paste images)")}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -429,6 +473,7 @@ export function ChatInput({
               projectCwd={projectCwd}
               userProfile={userProfile}
               onMoveActivated={onMoveActivated}
+              onMoveAttach={(move, inputs) => setAttachedMove({ item: move, inputs })}
               onOpenChange={(isOpen) => {
                 setPickerOpen(isOpen);
                 if (!isOpen) {

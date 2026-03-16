@@ -19,6 +19,12 @@
  *   - inline:     current agent handles it, blocking until submit/completion
  *   - branch:     spawn a sibling session, return a link/card
  *   - background: fire-and-forget with persisted status and later recall
+ *
+ * API contract moves:
+ *   Moves can declare an `api` field with named ops. On activation, the
+ *   move-runner registers handlers from context.ts, creates an API token
+ *   (mapi- prefix), and passes it to gather(). The token supports repeated
+ *   submissions — handlers manage state via the MoveStateAPI.
  */
 
 // ── Move Config (on-disk definition) ──
@@ -59,6 +65,12 @@ export interface MoveConfig {
   // ── Agent profile for branch/background modes ──
   agentProfile?: string;
 
+  // ── API contract (multi-submit ops) ──
+  api?: MoveApiDeclaration;
+
+  // ── Widget (move-local UI component) ──
+  widget?: MoveWidgetDeclaration;
+
   // ── Metadata ──
   enabled?: boolean;
   tags?: string[];
@@ -85,6 +97,10 @@ export interface MoveModule {
     data: Record<string, unknown>,
     inputs: Record<string, unknown>,
   ): Promise<SubmitResult>;
+  /** API op handlers — keyed by op name, registered on activation for api moves */
+  handlers?: Record<string, MoveApiHandler>;
+  /** Optional — customize instance labels for the resume select input */
+  listInstances?(states: Array<{ instanceId: string; state: unknown }>): Array<{ label: string; value: string }>;
 }
 
 // ── Move Context (passed to gather/onSubmit) ──
@@ -115,6 +131,12 @@ export interface MoveContext {
   schema?: string;
   /** Current ISO date */
   date?: string;
+
+  // ── API contract fields (set when move has api declaration) ──
+  /** API token for modus_submit (mapi- prefix, reusable across submissions) */
+  apiToken?: string;
+  /** Instance identifier (portable, can be shared across sessions) */
+  instanceId?: string;
 }
 
 // ── Harness Bridge (server-side operations available to onSubmit) ──
@@ -214,5 +236,90 @@ export interface ActivateMoveResult {
   token: string;
   mode: "inline" | "branch" | "background";
   spawnedSessionId?: string;           // for branch/background
+  prompt?: string;                     // for inline: rendered text to merge into user message
   moveRunId: number;
+  apiToken?: string;                   // for api contract moves
+  instanceId?: string;                 // for api contract moves
+  widget?: {                           // for moves with a widget declaration
+    label: string;
+    icon?: string;
+    autoOpen?: boolean;
+    moduleUrl: string;                 // "/api/moves/<name>/widget?cwd=..."
+    moveName: string;
+  };
+}
+
+// ── Move API Contract ──
+
+/** Declared in move.json — UI component shipped with the move */
+export interface MoveWidgetDeclaration {
+  /** Filename in the move directory (e.g. "widget.tsx") */
+  component: string;
+  /** Where to render — only "right" (RightPanel) for now */
+  panel?: "right";
+  /** Tab label in the panel */
+  label: string;
+  /** Optional icon for the tab */
+  icon?: string;
+  /** Auto-open the panel when the move activates. Default false. */
+  autoOpen?: boolean;
+}
+
+/** Declared in move.json — defines the ops a move provides */
+export interface MoveApiDeclaration {
+  /** Token prefix (default: move name). Tokens are `mapi-{prefix}-{instanceId}` */
+  tokenPrefix?: string;
+  /** Named operations this move provides */
+  ops: Record<string, MoveOpDeclaration>;
+  /** State configuration */
+  state?: {
+    /** Persist state to disk (survives restart). Default false (in-memory). */
+    persist?: boolean;
+  };
+}
+
+/** Single op declaration in move.json */
+export interface MoveOpDeclaration {
+  description: string;
+  schema?: Record<string, unknown>;
+}
+
+/** Handler function signature for move API ops */
+export type MoveApiHandler = (
+  ctx: MoveApiContext,
+  data: Record<string, unknown>,
+) => Promise<{ ok: boolean; message?: string; error?: string }>;
+
+/** Context passed to move API handlers on each op call */
+export interface MoveApiContext {
+  instanceId: string;
+  sessionId: string;
+  moveName: string;
+  /** Who initiated this call — agent via modus_submit or user via widget */
+  caller: "agent" | "user";
+  /** Instance state — get/set/delete */
+  state: MoveStateAPI;
+  /**
+   * Push a message into the agent's session.
+   * Pass an optional typed payload to emit a structured signal the agent can branch on.
+   * With a payload, the agent receives: `[modus:{type}] {json}\n{message}`
+   */
+  notify: (message: string, emit?: { type: string; [key: string]: unknown }) => void;
+}
+
+/** State API for move handlers — abstracts in-memory vs persisted storage */
+export interface MoveStateAPI {
+  get<T = unknown>(): Promise<T | undefined>;
+  set(value: unknown): Promise<void>;
+  delete(): Promise<void>;
+}
+
+/** In-memory registration for an active move API */
+export interface MoveApiRegistration {
+  moveName: string;
+  instanceId: string;
+  sessionId: string;
+  cwd: string;
+  handlers: Record<string, MoveApiHandler>;
+  persist: boolean;
 }

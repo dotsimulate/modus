@@ -1,0 +1,150 @@
+/**
+ * FileBrowser — modular file/folder browser.
+ */
+
+.file-browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Breadcrumb ── */
+
+.fb-breadcrumb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.fb-breadcrumb-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.fb-breadcrumb-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Buttons ── */
+
+.fb-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  transition: color 0.1s ease;
+}
+
+.fb-btn:hover {
+  color: var(--text);
+}
+
+/* ── Entry list ── */
+
+.fb-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.fb-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 12px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease;
+}
+
+.fb-entry:hover {
+  background: var(--bg-hover);
+}
+
+.fb-entry--parent {
+  color: var(--text-dim);
+}
+
+.fb-entry--parent .fb-entry-icon {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.fb-entry--dir .fb-entry-name {
+  color: var(--text);
+}
+
+.fb-entry--file .fb-entry-name {
+  color: var(--text-secondary);
+}
+
+.fb-entry-icon {
+  flex-shrink: 0;
+  width: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.fb-entry-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-state {
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.fb-empty {
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── File preview ── */
+
+.fb-preview {
+  border-top: 1px solid var(--border);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── Compact mode ── */
+
+.file-browser--compact .fb-list {
+  max-height: 250px;
+}
+
+.file-browser--compact .fb-entry {
+  padding: 4px 12px;
+}

@@ -431,6 +431,16 @@ function broadcastEventToSession(session: ActiveSession, event: any, seq = sessi
   }
 }
 
+/**
+ * Broadcast a UI command event to a session's SSE subscribers.
+ * These are ephemeral (not persisted to DB) — they trigger frontend actions.
+ */
+export function broadcastUiEvent(sessionId: string, event: { type: "ui"; action: string; [key: string]: unknown }) {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+  broadcastEventToSession(session, event);
+}
+
 export function attachArtifactToSession(opts: {
   sessionId: string;
   seq: number;

@@ -57,6 +57,8 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`);
 db.run(`UPDATE sessions SET tags = '["archived"]' WHERE archived = 1 AND tags = '[]'`);
 // Migration: add provider — resolved execution backend for sidebar/display
 try { db.run(`ALTER TABLE sessions ADD COLUMN provider TEXT`); } catch { /* already exists */ }
+// Migration: add ui_state — per-session UI layout persistence (panel widths, open state, etc.)
+try { db.run(`ALTER TABLE sessions ADD COLUMN ui_state TEXT DEFAULT '{}'`); } catch { /* already exists */ }
 
 // ── Messages (high-level conversation history) ──
 db.run(`
@@ -373,6 +375,9 @@ const stmts = {
   // Drafts
   getDraft: db.prepare(`SELECT draft_text FROM sessions WHERE id = $id`),
   setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text WHERE id = $id`),
+  // UI State
+  getUiState: db.prepare(`SELECT ui_state FROM sessions WHERE id = $id`),
+  setUiState: db.prepare(`UPDATE sessions SET ui_state = $ui_state WHERE id = $id`),
   // Action Executions
   insertExecution: db.prepare(`
     INSERT INTO action_executions (action_name, status, started_at, config_snapshot)
@@ -716,6 +721,20 @@ export function getDraft(sessionId: string): string {
 
 export function setDraft(sessionId: string, text: string) {
   stmts.setDraft.run({ $id: sessionId, $draft_text: text });
+}
+
+// ── Session UI State ──
+
+export function getSessionUiState(sessionId: string): Record<string, unknown> {
+  const row = stmts.getUiState.get({ $id: sessionId }) as { ui_state: string } | null;
+  try { return JSON.parse(row?.ui_state ?? "{}"); } catch { return {}; }
+}
+
+export function patchSessionUiState(sessionId: string, patch: Record<string, unknown>): Record<string, unknown> {
+  const current = getSessionUiState(sessionId);
+  const merged = { ...current, ...patch };
+  stmts.setUiState.run({ $id: sessionId, $ui_state: JSON.stringify(merged) });
+  return merged;
 }
 
 // ── Branching Functions ──

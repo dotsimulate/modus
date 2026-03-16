@@ -1,6 +1,7 @@
-import { memo, useState, useEffect, useRef, type ReactNode, type MouseEvent } from "react";
+import { memo, useState, useEffect, useRef, useSyncExternalStore, type ReactNode, type MouseEvent } from "react";
 import type { Message, ToolCall } from "../api";
 import { tokenParam } from "../api/_fetch";
+import * as audioPlayer from "../audio-player";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
@@ -14,91 +15,66 @@ function artifactSrc(url: string): string {
   return `${url}?${tp}`;
 }
 
-const _playedArtifacts = new Set<number>(
-  (() => {
-    try {
-      const raw = sessionStorage.getItem("harness:played-artifacts");
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  })()
-);
+function useAudioPlayer() {
+  return useSyncExternalStore(audioPlayer.subscribe, audioPlayer.getState);
+}
 
-function _markPlayed(id: number) {
-  _playedArtifacts.add(id);
-  try {
-    sessionStorage.setItem("harness:played-artifacts", JSON.stringify([..._playedArtifacts]));
-  } catch {}
+function sessionIdFromUrl(url: string): string | undefined {
+  const m = url.match(/\/api\/sessions\/([^/]+)\/artifacts\//);
+  return m?.[1];
 }
 
 function AudioArtifact({ artifact }: { artifact: NonNullable<Message["artifacts"]>[number] }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const state = useAudioPlayer();
+  const isActive = state.activeId === artifact.id;
+  const playing = isActive && state.playing;
+  const currentTime = isActive ? state.currentTime : 0;
+  const duration = isActive ? state.duration : 0;
+  const sid = sessionIdFromUrl(artifact.url);
 
   useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (!_playedArtifacts.has(artifact.id)) {
-      _markPlayed(artifact.id);
-      el.play().catch(() => {});
-    }
-  }, [artifact.id]);
+    audioPlayer.autoPlay(artifact.id, artifact.url, sid);
+  }, [artifact.id, artifact.url, sid]);
 
   function fmt(s: number) {
+    if (!s || !isFinite(s)) return "0:00";
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, "0")}`;
   }
 
-  function toggle() {
-    const el = audioRef.current;
-    if (!el) return;
-    if (el.paused) el.play().catch(() => {});
-    else el.pause();
+  function handleToggle() {
+    audioPlayer.toggle(artifact.id, artifact.url, sid);
   }
 
-  function seek(e: MouseEvent<HTMLDivElement>) {
-    const el = audioRef.current;
-    if (!el || !duration) return;
+  function handleSeek(e: MouseEvent<HTMLDivElement>) {
+    if (!isActive || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    el.currentTime = ((e.clientX - rect.left) / rect.width) * duration;
+    audioPlayer.seek(((e.clientX - rect.left) / rect.width) * duration);
   }
 
   const pct = duration ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="audio-artifact">
-      <div className="audio-artifact-label">{artifact.name}</div>
+    <div className="audio-artifact" title={artifact.name}>
       <div className="audio-artifact-player">
-        <button className="audio-artifact-btn" onClick={toggle} aria-label={playing ? "pause" : "play"}>
+        <button className="audio-artifact-btn" onClick={handleToggle} aria-label={playing ? "pause" : "play"}>
           {playing ? (
-            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-              <rect x="0" y="0" width="3" height="12" rx="1"/>
-              <rect x="7" y="0" width="3" height="12" rx="1"/>
+            <svg width="7" height="8" viewBox="0 0 7 8" fill="currentColor">
+              <rect x="0" y="0" width="2" height="8" rx="0.5"/>
+              <rect x="5" y="0" width="2" height="8" rx="0.5"/>
             </svg>
           ) : (
-            <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
-              <path d="M0 0 L10 6 L0 12 Z"/>
+            <svg width="7" height="8" viewBox="0 0 7 8" fill="currentColor">
+              <path d="M0 0 L7 4 L0 8 Z"/>
             </svg>
           )}
         </button>
-        <div className="audio-artifact-time">{fmt(currentTime)}</div>
-        <div className="audio-artifact-track" onClick={seek}>
+        <div className="audio-artifact-track" onClick={handleSeek}>
           <div className="audio-artifact-fill" style={{ width: `${pct}%` }} />
         </div>
-        <div className="audio-artifact-time audio-artifact-time--total">{fmt(duration)}</div>
+        <div className="audio-artifact-time">{fmt(currentTime)}<span className="audio-artifact-time--total">/{fmt(duration)}</span></div>
       </div>
-      <audio
-        ref={audioRef}
-        preload="auto"
-        src={artifactSrc(artifact.url)}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => setPlaying(false)}
-        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
-        onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
-      />
     </div>
   );
 }

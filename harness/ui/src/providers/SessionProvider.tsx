@@ -5,6 +5,7 @@ import {
   createEmptySession, getDraft, saveDraft,
   updateSessionConfig, respondToPermission, nextMsgId,
   branchSessionApi, switchSessionProfile,
+  rekeyMoveSession,
 } from "../api";
 import type { Session, SessionInfo, Attachment, ApiAttachment } from "../api";
 import { createInitialState } from "../eventReducer";
@@ -63,7 +64,6 @@ export const useSession = () => useContext(SessionContext);
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
     selectedProfile, profiles, buildSessionOpts, setupState, activeUserProfile, activeUP,
-    setSelectedProfile,
   } = useProfiles();
 
   const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
@@ -287,6 +287,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       rs.model = info?.model ?? "";
       rs.cwd = info?.cwd ?? "";
       setSessionState(id, rs, sessionProfile);
+    } else {
+      // Sync profile and fill missing model from server info even when reusing
+      // a store entry — events may not have arrived yet and profile may be stale.
+      const updatedState = !existing.model && info?.model
+        ? { ...existing, model: info.model }
+        : existing;
+      setSessionState(id, updatedState, sessionProfile);
     }
     setActiveSessionId(id);
 
@@ -296,13 +303,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       subscribeSession(id, afterSeq, sessionProfile, refreshSessions);
     }
 
-    if (sessionProfile) setSelectedProfile(sessionProfile);
+    // NOTE: do NOT write selectedProfile here. selectedProfile is the sidebar's
+    // seed for the next new session (Domain B) and must not be contaminated by
+    // which session the user navigates to (Domain A).
 
     const draft = await getDraft(id).catch(() => "");
     setInput(draft);
 
     setQueuedMessage(null);
-  }, [serverSessions, saveDraftForCurrent, setSelectedProfile, refreshSessions]);
+  }, [serverSessions, saveDraftForCurrent, refreshSessions]);
 
   const archiveSession = useCallback(async (id: string) => {
     await archiveSessionApi(id).catch(() => {});
@@ -344,6 +353,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       && !hasPersistedHistory;
     const needsNewSession = !activeSessionId || !currentState || currentState.status === "done" || currentState.status === "error" || activeSessionId.startsWith("pending-") || isEmptySession;
     if (needsNewSession) {
+      const prevSessionId = activeSessionId; // capture before archiving — move registry may reference this
       if (isEmptySession && activeSessionId) archiveSessionApi(activeSessionId).catch(() => {});
 
       const seedState = getSendSeed(currentState);
@@ -369,7 +379,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (apiAtts) opts.attachments = apiAtts;
         const { sessionId: realId } = await createSession(opts);
 
+        console.log(`[session] rekey: tempId=${tempId} prevSessionId=${prevSessionId} → ${realId}`);
         rekeySession(tempId, realId);
+        // Rekey move registry from the previous session ID (the empty session where the move was registered)
+        const moveOldId = prevSessionId || tempId;
+        if (moveOldId) {
+          rekeyMoveSession(moveOldId, realId).then(() => {
+            console.log(`[session] rekeyMoveSession completed: ${moveOldId} → ${realId}`);
+          }).catch((e) => {
+            console.error(`[session] rekeyMoveSession FAILED:`, e);
+          });
+        }
         setSessionNextProfile(realId, undefined);
         setSessionNextAgentConfig(realId, undefined);
         setActiveSessionId(realId);

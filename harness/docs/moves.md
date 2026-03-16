@@ -1,8 +1,8 @@
 ---
 title: Moves
 audience: agents
-lastUpdated: 2026-03-12
-lastCommit: 03ccdbe
+lastUpdated: 2026-03-16
+lastCommit: a9adf68
 covers: harness/move-runner.ts harness/move-types.ts
 ---
 
@@ -19,24 +19,39 @@ in `.modus/moves/<name>/` and override built-ins of the same name.
 Each move directory contains:
 ```
 move.json    — MoveConfig (required)
-context.ts   — MoveModule: gather?(), onSubmit?() (optional)
-prompt.hbs   — Handlebars prompt template (optional, inline prompt is fine)
+context.ts   — MoveModule: gather?(), onSubmit?(), handlers?, listInstances?() (optional)
+widget.tsx   — React component (optional, for api moves with a widget)
 ```
+
+No Handlebars templates. `gather()` returns the full prompt string directly.
+The move.json `prompt` field is a fallback used only when context.ts has no `gather()`.
 
 ## Execution Modes
 
 | Mode | Behavior |
 |------|----------|
-| `inline` | Injected as a message into the current session |
+| `inline` | Returns rendered prompt to client; client merges into user message |
 | `branch` | Spawns a new sibling session |
 | `background` | Fire-and-forget, persisted status for later recall |
 
-## Token Flow
+## Submit vs API Contract
+
+**Submit moves**: one-shot. `gather()` returns the prompt, agent calls `modus_submit(token, data)`
+once, `onSubmit()` fires. Token has 10min TTL.
+
+**API contract moves** (`api` field in move.json): support repeated submission. On activation,
+the runner registers `handlers` from context.ts, creates a `mapi-{prefix}-{instanceId}` token
+(no TTL), and passes it to `gather()` as `ctx.apiToken`. The agent can call
+`modus_submit(apiToken, { op: "...", ...data })` repeatedly. Handlers manage state via
+`MoveStateAPI`. With `api.state.persist: true`, state and the registry survive server restart.
+
+## Token Flow (submit moves)
 
 1. UI activates move → `POST /api/sessions/:id/moves/activate`
-2. `gather()` runs (if defined) — collects context from DB, filesystem, etc.
-3. Token generated (short opaque string, 10min TTL)
-4. Prompt rendered with `{{token}}`, `{{input.*}}`, `{{context.*}}`, `{{schema}}`
+2. Token generated (short opaque string, 10min TTL)
+3. `gather()` runs (if defined, 10s timeout) — builds and returns the full prompt string
+4. For inline: prompt returned in `ActivateMoveResult.prompt` for client to send
+   For branch/background: session spawned, prompt sent as first message
 5. Agent receives prompt, does work, calls `modus_submit(token, data)`
 6. Harness validates data against schema (if defined)
 7. If invalid: retry feedback sent to agent (up to maxAttempts)
@@ -53,24 +68,71 @@ prompt.hbs   — Handlebars prompt template (optional, inline prompt is fine)
 - `session.profileOverride` — swap agent profile for this move
 - `session.settingsOverride` — fine-grained session settings for the spawned/inline session (provider, model, effort, maxTurns, tools, disallowedTools, toolStates, providerControls, loadProjectSettings)
 - `session.afterSubmit` — "continue", "end", or "switch:profileName"
+- `api` — API contract declaration (see below)
+- `widget` — widget declaration (see below)
 - `origin` — `"harness"` or `"project"` (set automatically, not written to move.json)
+
+## API Contract (`api` field)
+
+```json
+{
+  "api": {
+    "tokenPrefix": "chess",
+    "ops": {
+      "move": { "description": "Play a move", "schema": { ... } },
+      "resign": { "description": "Resign the game" }
+    },
+    "state": { "persist": true }
+  }
+}
+```
+
+- `tokenPrefix` — token becomes `mapi-{prefix}-{instanceId}` (default: move name)
+- `ops` — declares what ops exist; unknown ops are rejected
+- `state.persist` — write state and registry to `.modus/moves/<name>/state/` for restart survival
+
+`context.ts` exports `handlers: Record<string, MoveApiHandler>`. Each handler receives
+`MoveApiContext` (instanceId, sessionId, caller, state API, notify) and the submitted data.
+
+`ctx.state.get/set/delete` is the state API. Typed interface; shape is your contract.
+
+`ctx.notify(message, emit?)` pushes a message into the agent's session. Optional `emit`
+injects a typed signal prefix: `[modus:{type}] {json}\n{message}`.
+
+`listInstances(states)` export in context.ts customizes instance labels for the resume UI.
+
+API calls from the widget use `POST /api/moves/:name/op` with `{ token, data }`.
+
+## Widget Declaration (`widget` field)
+
+```json
+{
+  "widget": {
+    "component": "widget.tsx",
+    "panel": "right",
+    "label": "Chess",
+    "icon": "♟",
+    "autoOpen": true
+  }
+}
+```
+
+Widget module is served at `/api/moves/:name/widget?cwd=...`. Active widgets for a session
+are returned by `GET /api/sessions/:id/moves/widget` as `{ widget, apiToken, instanceId }[]`.
 
 ## MoveContext (passed to gather/onSubmit)
 
-- `moveName`, `sessionId`, `cwd`, `userProfile`
+- `moveName`, `sessionId`, `cwd`, `userProfile`, `inputs`
 - `session` — lastAssistantText, seq, profile, exchangeCount
-- `db` — read-only queries (listSessions, search, getMoveHistory)
+- `db` — read-only queries (listSessions, search, getMoveHistory, getSessionMessages)
 - `run(cmd)` — shell execution
 - `harness` — HarnessBridge (createSession, sendMessage, triggerAction, notify)
-
-## Prompt Handlebars Helpers
-
-Templates (`.hbs` or inline `prompt`) have access to:
-- `{{date}}` — current date as `YYYY-MM-DD`; `{{date "YYYY-MM-DD HH:mm"}}` for formatted output
-- `{{ifCond a b}}...{{/ifCond}}` — equality conditional block
-- `{{json value}}` — JSON.stringify with 2-space indent
-
-Standard vars: `{{token}}`, `{{input.*}}`, `{{context.*}}`, `{{schema}}`, `{{moveName}}`, `{{moveLabel}}`, `{{moveDescription}}`.
+- `meta(key, value)` — attach metadata (stored as gatheredContext for tracing)
+- `token` — short-lived submit token (available during gather)
+- `schema` — schema hint string (compact shape for the model)
+- `date` — current ISO date (YYYY-MM-DD)
+- `apiToken` — API contract token (only when move has `api` declaration)
+- `instanceId` — instance identifier (only when move has `api` declaration)
 
 ## modus_submit
 
@@ -78,4 +140,6 @@ Built-in MCP tool injected into every session via the `modus` MCP server at
 `/api/mcp/modus`. Takes `{ token, data }`. The token ties submission to a
 specific move activation. Without a valid token, submission is rejected.
 
-**Source**: `move-runner.ts`, `move-types.ts`, `modus-mcp.ts`, `prompt-loader.ts`.
+For API contract moves, `data` must include an `op` field matching a declared op name.
+
+**Source**: `move-runner.ts`, `move-types.ts`, `modus-mcp.ts`.

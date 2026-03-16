@@ -85,6 +85,21 @@ export async function saveDraft(sessionId: string, draft: string): Promise<void>
   });
 }
 
+// ── Session UI State ──
+
+export async function fetchSessionUiState(sessionId: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/ui-state`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function saveSessionUiState(sessionId: string, patch: Record<string, unknown>): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${sessionId}/ui-state`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+}
+
 // ── Empty Session ──
 
 export async function createEmptySession(opts?: {
@@ -362,11 +377,12 @@ export async function searchSessionsScoped(query: string, limit = 20, userProfil
 
 export async function browsePath(
   path?: string,
-  options?: { includeHidden?: boolean },
+  options?: { includeHidden?: boolean; includeFiles?: boolean },
 ): Promise<import("./types").BrowseResult> {
   const params = new URLSearchParams();
   if (path) params.set("path", path);
   if (options?.includeHidden) params.set("includeHidden", "1");
+  if (options?.includeFiles) params.set("includeFiles", "1");
   const query = params.toString();
   const suffix = query ? `?${query}` : "";
   const res = await fetch(`${API_BASE}/api/browse${suffix}`, { headers: authHeaders() });
@@ -375,6 +391,15 @@ export async function browsePath(
 }
 
 // ── File Reader ──
+
+export async function writeFileContent(path: string, content: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/file-write`, {
+    method: "PUT",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ path, content }),
+  });
+  return res.ok;
+}
 
 export async function readFileContent(path: string): Promise<string | null> {
   const res = await fetch(`${API_BASE}/api/file-read?path=${encodeURIComponent(path)}`, { headers: authHeaders() });

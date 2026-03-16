@@ -157,6 +157,8 @@ export type Profile = {
     emptyTitle?: string;
     emptySubtitle?: string;
     showGitEvents?: boolean;
+    /** Widget types to show in the LeftPanel when this profile is active */
+    panelWidgets?: string[];
   };
 };
 
