@@ -345,14 +345,6 @@ export function AgentPortal({ sessions, onNavigateSession, onPeekSession }: Prop
     });
   }, []);
 
-  const headerLabel = hasAgents
-    ? `${activeSessions.length} active`
-    : hasAudio
-      ? "audio"
-      : visibleSessions.length > 0
-        ? `${visibleSessions.length} pinned`
-        : "idle";
-
   // ── Render ──
 
   return (
@@ -367,9 +359,8 @@ export function AgentPortal({ sessions, onNavigateSession, onPeekSession }: Prop
       style={{ top: pos.top, right: pos.right }}
       aria-label="Agent monitor"
     >
-      {/* Head — label (expanded only) + eye (always) */}
+      {/* Eye — always at top-right, the only head element */}
       <div className="ap-head">
-        <span className="ap-head-label">{headerLabel}</span>
         <button
           className="ap-eye-btn"
           onPointerDown={handleEyePointerDown}

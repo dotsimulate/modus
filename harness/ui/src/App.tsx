@@ -30,8 +30,7 @@ import { RightPanel } from "./components/RightPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { AgentPortal } from "./components/AgentPortal";
-import { NotesPage } from "./components/NotesPage";
-import { ProductivityPage } from "./components/ProductivityPage";
+import { EditorPage } from "./components/EditorPage";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
 function parseTagList(raw?: string | null): string[] {
@@ -92,7 +91,7 @@ function AppShell() {
   const [rightPanelWidth, setRightPanelWidth] = useState(360);
   const [rightPanelBrowserPath, setRightPanelBrowserPath] = useState<string | null>(null);
   const [activeMoveWidgets, setActiveMoveWidgets] = useState<Array<{
-    widget: import("../api").MoveWidgetInfo;
+    widget: import("./api").MoveWidgetInfo;
     apiToken: string;
     instanceId: string;
     sessionId: string;
@@ -664,8 +663,7 @@ function AppShell() {
         {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
         {view === "web" && <SessionWeb />}
         {view === "trace" && <TraceView />}
-        {view === "notes" && <NotesPage />}
-        {view === "productivity" && <ProductivityPage />}
+        {view === "editor" && <EditorPage />}
         {view === "git" && (
           <PageView
             blocks={gitPageBlocks}

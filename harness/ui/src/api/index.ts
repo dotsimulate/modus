@@ -25,7 +25,7 @@ export {
   updateSessionConfig, respondToPermission,
   fetchSessionUiState, saveSessionUiState,
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
-  fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, subscribeEvents, branchSessionApi,
+  fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, writeFileContent, subscribeEvents, branchSessionApi,
   fetchGeminiUsage, fetchMessageContent,
 } from "./sessions";
 
@@ -92,10 +92,6 @@ export type {
 } from "./types";
 
 export type { ProviderModel } from "./profiles";
-
-// Notes
-export { fetchNotes, fetchNote, createNote, updateNote, deleteNote, transcribeAudio } from "./notes";
-export type { NoteListItem, NoteDetail } from "./notes";
 
 // Utility
 export { nextMsgId } from "./types";

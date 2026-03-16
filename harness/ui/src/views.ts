@@ -5,7 +5,7 @@
  * nav links, hash router, URL building.
  */
 
-export type StaticView = "home" | "chat" | "profiles" | "memory" | "actions" | "git" | "web" | "trace" | "notes" | "productivity";
+export type StaticView = "home" | "chat" | "profiles" | "memory" | "actions" | "git" | "web" | "trace" | "editor";
 export type View = StaticView | `page:${string}`;
 
 /** Views shown as nav links, in display order. "home" is the logo, not a nav link. */
@@ -17,8 +17,7 @@ export const NAV_VIEWS: { view: StaticView; label: string }[] = [
   { view: "git",      label: "git" },
   { view: "web",      label: "web" },
   { view: "trace",    label: "trace" },
-  { view: "notes",    label: "notes" },
-  { view: "productivity", label: "productivity" },
+  { view: "editor",   label: "editor" },
 ];
 
 /** Set of all valid view slugs (for URL parsing). */

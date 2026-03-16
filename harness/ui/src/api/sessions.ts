@@ -392,6 +392,15 @@ export async function browsePath(
 
 // ── File Reader ──
 
+export async function writeFileContent(path: string, content: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/file-write`, {
+    method: "PUT",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ path, content }),
+  });
+  return res.ok;
+}
+
 export async function readFileContent(path: string): Promise<string | null> {
   const res = await fetch(`${API_BASE}/api/file-read?path=${encodeURIComponent(path)}`, { headers: authHeaders() });
   if (!res.ok) return null;
