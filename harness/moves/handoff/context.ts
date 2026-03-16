@@ -6,6 +6,14 @@
  *   - db.ts for event scanning (extract touched files from tool_use blocks)
  *   - db.ts for session tagging (link commits to sessions)
  *   - git.ts for compact git state (branch, recent commits, dirty flag)
+ *
+ * Document styles:
+ *   - briefing: Full structured document (GROUNDING/RESOURCES/HOT PREP/TESTIMONY).
+ *              Thorough, opinionated, designed for cold-start agents.
+ *   - compact:  Minimal structured transfer (STATE/CHANGED/DO NEXT/WATCH OUT).
+ *              Dense, fact-only. For tight context windows or quick lateral handoffs.
+ *   - narrative: Flowing prose memo addressed to the receiving agent.
+ *              Captures reasoning and nuance. For research continuations and discussions.
  */
 
 import { existsSync, mkdirSync } from "fs";
@@ -38,10 +46,91 @@ function extractTouchedFiles(events: EventRow[]): string[] {
   return [...files].sort();
 }
 
+// ── Style: Document Instructions ──
+
+type HandoffStyle = "briefing" | "compact" | "narrative" | "adaptive";
+
+function buildDocumentInstructions(
+  style: HandoffStyle,
+  handoffsDir: string,
+  handoffFilename: string,
+  includeUserTips: boolean,
+): string[] {
+  const parts: string[] = [
+    "", "---", "",
+    "### Step 1: Write the handoff document", "",
+    `Write a markdown file to \`${handoffsDir}/${handoffFilename}\``, "",
+  ];
+
+  if (style === "briefing") {
+    parts.push(
+      "The document must have these sections in order:", "",
+      "**GROUNDING** — What was being worked on, current state, key decisions, open issues or blockers. 4-8 bullets. Raw orientation, not instructions.", "",
+      "**RESOURCES** — File paths and URLs the next agent must consume. Organize as: must-read, context, and produced (if any).", "",
+      "**HOT PREP** — What to run first, environment state, mental model corrections, traps to skip. Save the next agent from rediscovering what you already know. Adapt shape to what's most useful for this specific handoff.", "",
+      `**TESTIMONY** — Direct address to the next agent. "In your position, I would..." — opinionated synthesis of the situation. Where the real leverage is. 3-5 sentences.`,
+    );
+    if (includeUserTips) {
+      parts.push("", "**WORKING WITH THIS USER** — Preferences, workflow style, what causes friction, what works well. Grounded observations only.");
+    }
+    parts.push("", "Be thorough — this is what the next agent reads to get fully oriented.");
+  } else if (style === "compact") {
+    parts.push(
+      "Use this exact structure — no prose, no opinions, maximum density:", "",
+      "**STATE** — What exists right now. 3-5 bullets. Facts only — current branch state, what's built, what's broken. No history, no narrative.", "",
+      "**CHANGED** — Files modified this session. Path + one-line description of what changed. Omit if no files changed.", "",
+      "**DO NEXT** — Ordered action items for the receiving agent. Each item is a single imperative sentence. This is the task queue.", "",
+      "**WATCH OUT** — 1-3 known pitfalls or traps. Only include if they'd cost the next agent real time. Omit if none.", "",
+      "Keep the entire document under 40 lines. Density over completeness.",
+    );
+  } else if (style === "narrative") {
+    parts.push(
+      "Write a single flowing narrative addressed directly to the receiving agent. No rigid sections — organize by what matters most. Cover:", "",
+      "- Where things stand and what led here",
+      "- What the receiving agent should do and in what order",
+      "- File paths, specifics, and gotchas woven into the narrative where relevant",
+      "- Your honest assessment of where the real leverage is", "",
+      "Write it the way you'd brief a colleague taking over mid-task: natural, opinionated, complete enough to act on. Aim for 2-4 paragraphs. Front-load the most important information.",
+    );
+    if (includeUserTips) {
+      parts.push("", "Include a closing note on working with this user — their style, preferences, what works well. Weave it naturally, don't make it a separate section.");
+    }
+  } else if (style === "adaptive") {
+    parts.push(
+      "You decide the document structure. Consider what the receiving agent actually needs given the handoff type, the complexity of the work, and how much context exists.", "",
+      "You may use any combination of sections, prose, bullet lists, or structured formats. You may borrow from known patterns (briefing sections, compact state transfers, narrative memos) or invent your own structure if that serves the handoff better.", "",
+      "Your only constraints:",
+      "- The document must give the receiving agent enough to start working without asking clarifying questions.",
+      "- File paths must be absolute.",
+      "- Don't pad. If the handoff is simple, keep the document short. If it's complex, be thorough.",
+    );
+    if (includeUserTips) {
+      parts.push("", "Include observations about working with this user if relevant to the handoff.");
+    }
+  }
+
+  return parts;
+}
+
+// ── Style: Delegate Prompt ──
+
+const delegateHints: Record<HandoffStyle, string> = {
+  briefing: "The handoff document has grounding, resources, hot prep, and testimony from the previous agent. Read it before taking any action.",
+  compact: "The handoff document is a compact state transfer — current state, changed files, next steps, and pitfalls. Short and dense. Read it, then start working.",
+  narrative: "The handoff document is a narrative briefing from the previous agent. Read it fully — the reasoning and context are woven into the prose.",
+  adaptive: "The handoff document was structured by the previous agent in whatever format they judged best. Read it fully before taking any action.",
+};
+
 // ── Gather ──
 
 export async function gather(ctx: MoveContext): Promise<string> {
-  const { type = "task", targetProfile: rawTarget = "", focus = "", includeUserTips = "yes" } = ctx.inputs as Record<string, string>;
+  const {
+    type = "task",
+    style = "briefing",
+    targetProfile: rawTarget = "",
+    focus = "",
+    includeUserTips = "yes",
+  } = ctx.inputs as Record<string, string>;
   const targetProfile = rawTarget === "Current profile"
     ? (ctx.session.profile ?? "default")
     : rawTarget;
@@ -57,6 +146,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
   // Expose to move-runner so the session web can render document nodes
   ctx.meta("handoffsDir", handoffsDir);
   ctx.meta("handoffFilename", handoffFilename);
+  ctx.meta("handoffStyle", style);
 
   let touchedFiles: string[] = [];
   if (ctx.sessionId) {
@@ -89,6 +179,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
   } catch { /* no git */ }
 
   const currentProfile = ctx.session.profile ?? "default";
+  const handoffStyle = style as HandoffStyle;
 
   const typeInstructions: Record<string, string> = {
     task: "This is a **task handoff**. The receiving agent should be able to start working immediately.\nFrame the document as a work order: what to build or change, which files to touch, concrete steps, and what \"done\" looks like. Lead with what to DO, not what was done.",
@@ -99,9 +190,10 @@ export async function gather(ctx: MoveContext): Promise<string> {
   };
 
   const parts = [
-    "You are making a handoff move. You will write a structured markdown handoff document, then submit metadata via `modus_submit`.",
+    `You are making a handoff move. You will write a ${handoffStyle} handoff document, then submit metadata via \`modus_submit\`.`,
     "",
     `Type: ${type}`,
+    `Style: ${handoffStyle}`,
     `To: ${targetProfile}`,
     `Focus: ${focus}`,
   ];
@@ -125,24 +217,16 @@ export async function gather(ctx: MoveContext): Promise<string> {
     parts.push("", "Files you modified this session:", "```", touchedFiles.join("\n"), "```");
   }
 
-  parts.push(
-    "", "---", "",
-    "### Step 1: Write the handoff document", "",
-    `Write a markdown file to \`${handoffsDir}/${handoffFilename}\``, "",
-    "The document must have these sections in order:", "",
-    "**GROUNDING** — What was being worked on, current state, key decisions, open issues or blockers. 4-8 bullets. Raw orientation, not instructions.", "",
-    "**RESOURCES** — File paths and URLs the next agent must consume. Organize as: must-read, context, and produced (if any).", "",
-    "**HOT PREP** — What to run first, environment state, mental model corrections, traps to skip. Save the next agent from rediscovering what you already know. Adapt shape to what's most useful for this specific handoff.", "",
-    `**TESTIMONY** — Direct address to the next agent. "In your position, I would..." — opinionated synthesis of the situation. Where the real leverage is. 3-5 sentences.`,
-  );
-
-  if (includeUserTips === "yes") {
-    parts.push("", "**WORKING WITH THIS USER** — Preferences, workflow style, what causes friction, what works well. Grounded observations only.");
-  }
+  // Style-specific document instructions
+  parts.push(...buildDocumentInstructions(
+    handoffStyle,
+    handoffsDir,
+    handoffFilename,
+    includeUserTips === "yes",
+  ));
 
   parts.push(
-    "", "Be thorough — this is what the next agent reads to get fully oriented.", "",
-    "### Step 2: Submit via `modus_submit`", "",
+    "", "### Step 2: Submit via `modus_submit`", "",
     `\`modus_submit\` — token: \`${ctx.token}\` — data shape: \`${ctx.schema}\``, "",
     "- **document** — absolute path to the markdown file you wrote.",
     "- **nextSteps** — what to do next, in order. Actionable items only. This is the task queue.",
@@ -168,6 +252,7 @@ export async function onSubmit(
     : rawTarget;
   const focus = inputs.focus as string;
   const type = (inputs.type as string) ?? "task";
+  const style = ((inputs.style as string) ?? "briefing") as HandoffStyle;
   const docPath = data.document as string;
   const nextSteps = data.nextSteps as string[];
   const priority = data.priority as number | undefined;
@@ -182,6 +267,7 @@ export async function onSubmit(
 
   if (ctx.sessionId) {
     try { addSessionTag(ctx.sessionId, `handoff:${type}`); } catch { /* non-fatal */ }
+    try { addSessionTag(ctx.sessionId, `style:${style}`); } catch { /* non-fatal */ }
   }
 
   if (tags?.length && ctx.sessionId) {
@@ -193,7 +279,7 @@ export async function onSubmit(
   const parts: string[] = [
     `Handoff from ${ctx.session.profile ?? "previous agent"} — ${type}`,
     "", `Read the full handoff document first: ${docPath}`,
-    "", "The handoff document has grounding, resources, hot prep, and testimony from the previous agent. Read it before taking any action.",
+    "", delegateHints[style],
   ];
 
   if (nextSteps?.length) {
@@ -212,7 +298,7 @@ export async function onSubmit(
   });
 
   return {
-    message: `Handed off to ${targetProfile} — session ${sessionId.slice(0, 12)}… | doc: ${docPath}`,
+    message: `Handed off to ${targetProfile} (${style}) — session ${sessionId.slice(0, 12)}… | doc: ${docPath}`,
     spawnedSessionId: sessionId,
   };
 }

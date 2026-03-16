@@ -716,6 +716,25 @@
   color: var(--text);
 }
 
+.web-context-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.web-context-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 4px 14px 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.web-context-menu button.web-context-danger:hover {
+  color: var(--error, #e55);
+}
+
 /* ── Layout Panel ── */
 
 .web-layout-panel {
