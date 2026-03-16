@@ -1,6 +1,7 @@
 /**
- * WebComposer — floating ConfigBar + ChatInput for the SessionWeb canvas.
+ * WebComposer — inline ConfigBar + ChatInput for the SessionWeb canvas.
  *
+ * Rendered inside the canvas transform container at canvas coordinates.
  * Appears on double-click of empty canvas. User configures profile/model,
  * types a prompt, and sends. On send, a session is created and the
  * sessionId is returned via onSessionCreated.
@@ -15,7 +16,7 @@ import { useSessionComposer } from "../hooks/useSessionComposer";
 import type { Attachment } from "../api";
 
 type Props = {
-  /** Screen position to anchor the panel */
+  /** Canvas-space position */
   x: number;
   y: number;
   /** Called when a session is created (after first message sent) */
@@ -65,18 +66,15 @@ export function WebComposer({ x, y, onSessionCreated, onClose }: Props) {
     // No-op in pre-session mode
   }, []);
 
-  // Clamp position so the panel doesn't overflow the viewport
-  const panelWidth = 420;
-  const panelX = Math.min(x, window.innerWidth - panelWidth - 16);
-  const panelY = Math.min(y, window.innerHeight - 280);
-
   return (
     <div
       ref={panelRef}
       className="web-composer"
-      style={{ left: panelX, top: panelY }}
+      style={{ left: x, top: y }}
       onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
+      onDoubleClick={e => e.stopPropagation()}
+      onWheel={e => e.stopPropagation()}
     >
       <ConfigBar
         profileName={composer.activeProfileName}

@@ -1203,15 +1203,27 @@ export function SessionWeb() {
   }, [activeUserProfile, activeUP]);
 
   const handleComposerSessionCreated = useCallback(async (sessionId: string) => {
+    // Optimistic: place the new session node at the composer's canvas position
+    if (composerPos) {
+      setPositionOverrides(prev => {
+        const next = { ...prev, [sessionId]: { x: composerPos.x, y: composerPos.y } };
+        savePositions(profileName, next);
+        return next;
+      });
+    }
     setComposerPos(null);
     await reloadData();
-    setMiniSessionId(sessionId);
-  }, [reloadData]);
+  }, [reloadData, composerPos, profileName]);
 
   const handleCanvasDoubleClick = useCallback((e: React.MouseEvent) => {
     // Only trigger on actual canvas background, not on nodes
     if ((e.target as HTMLElement).closest(".web-session-node, .web-commit-node, .web-doc-node")) return;
-    setComposerPos({ x: e.clientX, y: e.clientY });
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const v = viewportRef.current;
+    const canvasX = (e.clientX - rect.left - v.x) / v.scale;
+    const canvasY = (e.clientY - rect.top - v.y) / v.scale;
+    setComposerPos({ x: canvasX, y: canvasY });
   }, []);
 
   const handleNewSession = useCallback(async (profile?: string) => {
@@ -1470,6 +1482,15 @@ export function SessionWeb() {
               />
             );
           })}
+
+          {composerPos && (
+            <WebComposer
+              x={composerPos.x}
+              y={composerPos.y}
+              onSessionCreated={handleComposerSessionCreated}
+              onClose={() => setComposerPos(null)}
+            />
+          )}
         </div>
 
         <button
@@ -1710,15 +1731,6 @@ export function SessionWeb() {
           window.location.hash = profile ? `${profile}/${id}` : id;
         }}
       />
-
-      {composerPos && (
-        <WebComposer
-          x={composerPos.x}
-          y={composerPos.y}
-          onSessionCreated={handleComposerSessionCreated}
-          onClose={() => setComposerPos(null)}
-        />
-      )}
 
       <ChatFileViewer path={fileViewerPath} onClose={() => setFileViewerPath(null)} />
     </div>
