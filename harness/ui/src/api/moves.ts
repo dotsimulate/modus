@@ -21,13 +21,52 @@ export type MoveListItem = {
   tags?: string[];
 };
 
+export type MoveWidgetInfo = {
+  label: string;
+  icon?: string;
+  autoOpen?: boolean;
+  moduleUrl: string;
+  moveName: string;
+};
+
 export type ActivateMoveResult = {
   token: string;
   mode: "inline" | "branch" | "background";
   spawnedSessionId?: string;
   prompt?: string;
   moveRunId: number;
+  apiToken?: string;
+  instanceId?: string;
+  widget?: MoveWidgetInfo;
 };
+
+/** Call a move API op from the frontend (caller: "user") */
+export async function callMoveOp(
+  moveName: string,
+  apiToken: string,
+  op: string,
+  data?: Record<string, unknown>,
+): Promise<{ ok: boolean; message?: string; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/moves/${moveName}/op`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ apiToken, op, ...data }),
+  });
+  return res.json();
+}
+
+/** Restore active widget for a session (survives refresh) */
+export async function fetchActiveWidget(sessionId: string): Promise<{
+  widget: MoveWidgetInfo;
+  apiToken: string;
+  instanceId: string;
+} | null> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/moves/widget`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
 
 export async function fetchMoves(projectCwd: string): Promise<MoveListItem[]> {
   const res = await fetch(
@@ -59,6 +98,15 @@ export async function activateMoveApi(
     throw new Error(data.error ?? "move activation failed");
   }
   return data;
+}
+
+/** Notify backend that a session ID changed so move registry entries get updated */
+export async function rekeyMoveSession(oldSessionId: string, newSessionId: string): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${oldSessionId}/moves/rekey`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ newSessionId }),
+  });
 }
 
 export async function activateProjectMoveApi(body: {

@@ -285,6 +285,7 @@ export function ChatInput({
               onSend(attachments, combined);
               setAttachments([]);
             }
+            onMoveActivated?.(result);
             return;
           }
           onMoveActivated?.(result);

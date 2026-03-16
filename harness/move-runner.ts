@@ -16,8 +16,8 @@
  * Execution records are persisted to DB for recall.
  */
 
-import { readFileSync, readdirSync, existsSync } from "fs";
-import { join } from "path";
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
+import { join, resolve } from "path";
 import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
   ActivateMoveOpts, ActivateMoveResult, SubmitResult,
@@ -64,32 +64,51 @@ setInterval(() => {
   }
 }, TOKEN_CLEANUP_INTERVAL_MS);
 
-// ── Move API Registry (game tokens → handlers) ──
+// ── Move API Registry (api tokens → handlers) ──
 
 const MAPI_PREFIX = "mapi-";
 
 /** token → registration */
 const moveApiRegistry = new Map<string, MoveApiRegistration>();
 
-/** gameId → state (in-memory) */
+/** instanceId → state (in-memory) */
 const moveApiState = new Map<string, unknown>();
 
-/** Check if a token is a move-api game token */
+/** Check if a token is a move-api token */
 export function isMoveApiToken(token: string): boolean {
   return token.startsWith(MAPI_PREFIX);
 }
 
-/** Generate a game ID */
-function generateGameId(): string {
+/** Generate an instance ID */
+function generateInstanceId(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 8);
 }
 
-/** Create a move-api game token and register handlers */
+// ── Registry Persistence ──
+
+/** Read the _registry.json for a move's state directory */
+function readMoveRegistry(cwd: string, moveName: string): Record<string, { instanceId: string; sessionId: string; cwd: string; createdAt: number }> {
+  const path = join(cwd, ".modus/moves", moveName, "state", "_registry.json");
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+/** Write the _registry.json for a move's state directory */
+function writeMoveRegistry(cwd: string, moveName: string, registry: Record<string, unknown>): void {
+  const dir = join(cwd, ".modus/moves", moveName, "state");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "_registry.json"), JSON.stringify(registry, null, 2));
+}
+
+/** Create a move-api token and register handlers */
 function registerMoveApi(
   moveName: string,
-  gameId: string,
+  instanceId: string,
   sessionId: string,
   cwd: string,
   handlers: Record<string, MoveApiHandler>,
@@ -97,56 +116,68 @@ function registerMoveApi(
 ): string {
   const config = getMove(moveName, cwd);
   const prefix = config?.api?.tokenPrefix ?? moveName;
-  const token = `${MAPI_PREFIX}${prefix}-${gameId}`;
+  const token = `${MAPI_PREFIX}${prefix}-${instanceId}`;
 
   moveApiRegistry.set(token, {
     moveName,
-    gameId,
+    instanceId,
     sessionId,
     cwd,
     handlers,
     persist,
   });
+  console.log(`[move-reg] registerMoveApi: token=${token} sessionId=${sessionId} move=${moveName}`);
 
   // Initialize state if not already present (resume case)
-  if (!moveApiState.has(gameId)) {
-    moveApiState.set(gameId, undefined);
+  if (!moveApiState.has(instanceId)) {
+    moveApiState.set(instanceId, undefined);
+  }
+
+  // Persist registration for restart survival
+  if (persist) {
+    const registry = readMoveRegistry(cwd, moveName);
+    registry[token] = { instanceId, sessionId, cwd, createdAt: Date.now() };
+    writeMoveRegistry(cwd, moveName, registry);
   }
 
   return token;
 }
 
-/** Build the state API for a game */
-function buildStateApi(gameId: string, moveName: string, cwd: string, persist: boolean): MoveStateAPI {
+/** Build the state API for an instance */
+function buildStateApi(instanceId: string, moveName: string, cwd: string, persist: boolean): MoveStateAPI {
   return {
     async get<T = unknown>(): Promise<T | undefined> {
       if (persist) {
-        const path = join(cwd, ".modus/moves", moveName, "state", `${gameId}.json`);
+        const path = join(cwd, ".modus/moves", moveName, "state", `${instanceId}.json`);
         try {
           const raw = readFileSync(path, "utf-8");
           return JSON.parse(raw) as T;
         } catch {
-          return moveApiState.get(gameId) as T | undefined;
+          return moveApiState.get(instanceId) as T | undefined;
         }
       }
-      return moveApiState.get(gameId) as T | undefined;
+      return moveApiState.get(instanceId) as T | undefined;
     },
     async set(value: unknown): Promise<void> {
-      moveApiState.set(gameId, value);
+      moveApiState.set(instanceId, value);
       if (persist) {
-        const { mkdirSync, writeFileSync } = await import("fs");
         const dir = join(cwd, ".modus/moves", moveName, "state");
         mkdirSync(dir, { recursive: true });
-        writeFileSync(join(dir, `${gameId}.json`), JSON.stringify(value, null, 2));
+        writeFileSync(join(dir, `${instanceId}.json`), JSON.stringify(value, null, 2));
       }
     },
     async delete(): Promise<void> {
-      moveApiState.delete(gameId);
+      moveApiState.delete(instanceId);
       if (persist) {
-        const { unlinkSync } = await import("fs");
         try {
-          unlinkSync(join(cwd, ".modus/moves", moveName, "state", `${gameId}.json`));
+          unlinkSync(join(cwd, ".modus/moves", moveName, "state", `${instanceId}.json`));
         } catch { /* already gone */ }
+        // Remove from registry
+        const registry = readMoveRegistry(cwd, moveName);
+        for (const [tok, entry] of Object.entries(registry)) {
+          if ((entry as any).instanceId === instanceId) delete registry[tok];
+        }
+        writeMoveRegistry(cwd, moveName, registry);
       }
     },
   };
@@ -160,7 +191,7 @@ export async function handleMoveApiSubmit(
 ): Promise<{ ok: boolean; message?: string; error?: string }> {
   const reg = moveApiRegistry.get(token);
   if (!reg) {
-    return { ok: false, error: "Invalid or expired game token" };
+    return { ok: false, error: "Invalid or expired API token" };
   }
 
   const op = data.op;
@@ -173,31 +204,82 @@ export async function handleMoveApiSubmit(
     return { ok: false, error: `Unknown op: ${op}` };
   }
 
-  const stateApi = buildStateApi(reg.gameId, reg.moveName, reg.cwd, reg.persist);
+  const stateApi = buildStateApi(reg.instanceId, reg.moveName, reg.cwd, reg.persist);
 
   const ctx: MoveApiContext = {
-    gameId: reg.gameId,
+    instanceId: reg.instanceId,
     sessionId: reg.sessionId,
     moveName: reg.moveName,
     caller,
     state: stateApi,
     notify: (message: string) => {
-      queueMessage(reg.sessionId, message);
+      const queued = queueMessage(reg.sessionId, message);
+      if (!queued) {
+        // Session not active (e.g. after restart) — resume it with the message
+        startSession({
+          sessionId: reg.sessionId,
+          prompt: message,
+          cwd: reg.cwd,
+        });
+      }
     },
   };
 
   return handler(ctx, data);
 }
 
-/** List active games for a move (for {{openGames}} template var resolution) */
-export function listMoveApiGames(moveName: string): Array<{ gameId: string; state: unknown }> {
-  const games: Array<{ gameId: string; state: unknown }> = [];
+/** List active instances for a move (for {{openInstances}} template var resolution) */
+export function listMoveApiInstances(moveName: string): Array<{ instanceId: string; state: unknown }> {
+  const instances: Array<{ instanceId: string; state: unknown }> = [];
   for (const [, reg] of moveApiRegistry) {
     if (reg.moveName === moveName) {
-      games.push({ gameId: reg.gameId, state: moveApiState.get(reg.gameId) });
+      instances.push({ instanceId: reg.instanceId, state: moveApiState.get(reg.instanceId) });
     }
   }
-  return games;
+  return instances;
+}
+
+/** Update all move registry entries that reference oldSessionId to use newSessionId */
+export function rekeyMoveRegistrySession(oldSessionId: string, newSessionId: string): void {
+  let matched = 0;
+  for (const [token, reg] of moveApiRegistry) {
+    if (reg.sessionId === oldSessionId) {
+      reg.sessionId = newSessionId;
+      matched++;
+      console.log(`[move-reg] rekey: token=${token} ${oldSessionId} → ${newSessionId}`);
+    }
+  }
+  if (matched === 0) {
+    console.log(`[move-reg] rekey: NO MATCH for oldSessionId=${oldSessionId} (registry has ${moveApiRegistry.size} entries: ${[...moveApiRegistry.values()].map(r => r.sessionId).join(", ")})`);
+  }
+}
+
+/** Get the active move widget for a session (if any) */
+export function getActiveWidgetForSession(sessionId: string): {
+  widget: { label: string; icon?: string; autoOpen?: boolean; moduleUrl: string; moveName: string };
+  apiToken: string;
+  instanceId: string;
+} | null {
+  console.log(`[move-reg] getActiveWidgetForSession(${sessionId}) — registry has ${moveApiRegistry.size} entries: ${[...moveApiRegistry.entries()].map(([t, r]) => `${t}→${r.sessionId}`).join(", ") || "empty"}`);
+  for (const [token, reg] of moveApiRegistry) {
+    if (reg.sessionId === sessionId) {
+      const config = getMove(reg.moveName, reg.cwd);
+      if (config?.widget?.component) {
+        return {
+          widget: {
+            label: config.widget.label ?? reg.moveName,
+            icon: config.widget.icon,
+            autoOpen: config.widget.autoOpen,
+            moduleUrl: `/api/moves/${reg.moveName}/widget?cwd=${encodeURIComponent(reg.cwd)}`,
+            moveName: reg.moveName,
+          },
+          apiToken: token,
+          instanceId: reg.instanceId,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 // ── Move Loading ──
@@ -206,7 +288,7 @@ function projectMovesDir(cwd: string): string {
   return join(cwd, MODUS_MOVES_DIR);
 }
 
-function resolveMoveLocation(name: string, cwd: string): {
+export function resolveMoveLocation(name: string, cwd: string): {
   dir: string;
   origin: "harness" | "project";
 } | null {
@@ -558,28 +640,28 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     metadata: gatheredContext,
   });
 
-  // ── API contract: register handlers and create game token ──
-  let gameToken: string | undefined;
-  let gameId: string | undefined;
+  // ── API contract: register handlers and create API token ──
+  let apiToken: string | undefined;
+  let instanceId: string | undefined;
 
   if (config.api) {
-    gameId = typeof inputs?.gameId === "string" && inputs.gameId
-      ? inputs.gameId            // resume existing game
-      : generateGameId();        // new game
+    instanceId = typeof inputs?.instanceId === "string" && inputs.instanceId
+      ? inputs.instanceId        // resume existing instance
+      : generateInstanceId();    // new instance
 
     const mod = await loadMoveModule(moveName, cwd);
     if (mod?.handlers) {
-      gameToken = registerMoveApi(
+      apiToken = registerMoveApi(
         moveName,
-        gameId,
+        instanceId,
         sourceSessionId,
         cwd,
         mod.handlers,
         config.api.state?.persist ?? false,
       );
-      // Make game token available in context for gather()
-      moveCtx.gameToken = gameToken;
-      moveCtx.gameId = gameId;
+      // Make API token available in context for gather()
+      moveCtx.apiToken = apiToken;
+      moveCtx.instanceId = instanceId;
     } else {
       return { error: `Move "${moveName}" declares api but context.ts has no handlers export` };
     }
@@ -643,13 +725,22 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     eventType: "move_activated",
     sessionId: sourceSessionId || undefined,
     summary: `Move activated: ${config.label} (${mode})`,
-    metadata: { moveName, mode, token, ...(gameToken ? { gameToken, gameId } : {}) },
+    metadata: { moveName, mode, token, ...(apiToken ? { apiToken, instanceId } : {}) },
   });
+
+  // Build widget metadata if declared
+  const widget = config.widget ? {
+    label: config.widget.label,
+    icon: config.widget.icon,
+    autoOpen: config.widget.autoOpen,
+    moduleUrl: `/api/moves/${moveName}/widget?cwd=${encodeURIComponent(cwd)}`,
+    moveName,
+  } : undefined;
 
   // Execute based on mode
   if (mode === "inline") {
     // Return rendered prompt for client to merge into the current user message
-    return { token, mode, moveRunId, prompt, gameToken, gameId };
+    return { token, mode, moveRunId, prompt, apiToken, instanceId, widget };
   }
 
   if (mode === "branch" || mode === "background") {
@@ -666,6 +757,12 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
 
     moveToken.spawnedSessionId = spawned.sessionId;
 
+    // Update registry so getActiveWidgetForSession(spawnedSessionId) works
+    if (apiToken) {
+      const reg = moveApiRegistry.get(apiToken);
+      if (reg) reg.sessionId = spawned.sessionId;
+    }
+
     updateMoveRun(moveRunId, {
       status: "running",
       spawnedSessionId: spawned.sessionId,
@@ -676,8 +773,9 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
       mode,
       spawnedSessionId: spawned.sessionId,
       moveRunId,
-      gameToken,
-      gameId,
+      apiToken,
+      instanceId,
+      widget,
     };
   }
 
@@ -827,6 +925,7 @@ export async function handleSubmit(
   };
 }
 
+
 // ── Token Queries ──
 
 export function getToken(token: string): MoveToken | undefined {
@@ -842,6 +941,94 @@ export function getActiveTokensForSession(sessionId: string): MoveToken[] {
   }
   return tokens;
 }
+
+// ── Registry Rehydration (restart survival) ──
+
+/**
+ * On startup, scan all moves with `api` + `persist` declarations.
+ * For each, read `_registry.json` and re-register handlers from context.ts.
+ * Tokens remain stable — the same token that was active before restart
+ * continues working after.
+ */
+async function rehydrateMoveApiRegistry(): Promise<void> {
+  // Determine project root — harness runs from harness/, project root is one level up
+  const cwd = resolve(import.meta.dir, "..");
+
+  // Collect all move names (builtin + project-local)
+  const names = new Set<string>();
+  try {
+    if (existsSync(BUILTIN_MOVES_DIR)) {
+      for (const entry of readdirSync(BUILTIN_MOVES_DIR, { withFileTypes: true })) {
+        if (entry.isDirectory()) names.add(entry.name);
+      }
+    }
+    const projectDir = join(cwd, MODUS_MOVES_DIR);
+    if (existsSync(projectDir)) {
+      for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) names.add(entry.name);
+      }
+    }
+  } catch { /* directories don't exist */ }
+
+  let rehydrated = 0;
+
+  for (const name of names) {
+    const config = getMove(name, cwd);
+    if (!config?.api || !config.api.state?.persist) continue;
+
+    // State is always stored relative to project CWD (even for builtin moves)
+    const registry = readMoveRegistry(cwd, name);
+    if (Object.keys(registry).length === 0) continue;
+
+    // Load handlers once per move
+    const mod = await loadMoveModule(name, cwd);
+    if (!mod?.handlers) {
+      console.warn(`[move-runner] rehydrate: ${name} has _registry.json but no handlers in context.ts`);
+      continue;
+    }
+
+    for (const [token, entry] of Object.entries(registry)) {
+      const { instanceId, sessionId } = entry as { instanceId: string; sessionId: string; cwd: string };
+      const entryCwd = (entry as any).cwd ?? cwd;
+
+      // Check that state file still exists
+      const statePath = join(entryCwd, ".modus/moves", name, "state", `${instanceId}.json`);
+      if (!existsSync(statePath)) {
+        console.log(`[move-runner] rehydrate: skipping ${name}/${instanceId} — state file missing`);
+        continue;
+      }
+
+      // Re-register in-memory (skip writeMoveRegistry since it's already persisted)
+      moveApiRegistry.set(token, {
+        moveName: name,
+        instanceId,
+        sessionId,
+        cwd: entryCwd,
+        handlers: mod.handlers,
+        persist: true,
+      });
+
+      // Load persisted state into memory
+      try {
+        const raw = readFileSync(statePath, "utf-8");
+        moveApiState.set(instanceId, JSON.parse(raw));
+      } catch {
+        moveApiState.set(instanceId, undefined);
+      }
+
+      rehydrated++;
+    }
+  }
+
+  if (rehydrated > 0) {
+    console.log(`[move-runner] rehydrated ${rehydrated} API move instance(s) from disk`);
+  }
+}
+
+// Run rehydration on module load (harness boot)
+rehydrateMoveApiRegistry().catch((err) => {
+  console.error("[move-runner] registry rehydration failed:", err);
+});
 
 // ── Public API for move run history ──
 

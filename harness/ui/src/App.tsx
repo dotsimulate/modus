@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState } from "./api";
+import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget } from "./api";
 import { customPageView, getCustomPageId, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -89,6 +89,13 @@ function AppShell() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(280);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState(360);
+  const [activeMoveWidget, setActiveMoveWidget] = useState<{
+    widget: import("../api").MoveWidgetInfo;
+    apiToken: string;
+    instanceId: string;
+    sessionId: string;
+  } | null>(null);
+  const widgetJustSetRef = useRef(false);
   const prevSessionIdRef = useRef<string | null>(null);
   const panelSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uiCache = useRef<Map<string, Record<string, unknown>>>(new Map());
@@ -173,6 +180,33 @@ function AppShell() {
         if (prevSessionIdRef.current === id) applyState(state);
       }).catch(() => {});
     }
+  }, [activeSession?.id]);
+
+  // Restore active move widget on session switch / page load
+  useEffect(() => {
+    const id = activeSession?.id;
+    console.log(`[widget-effect] activeSession.id=${id} widgetJustSet=${widgetJustSetRef.current}`);
+    if (!id || id.startsWith("pending-")) { setActiveMoveWidget(null); return; }
+    // Skip backend fetch if widget was just set by onMoveActivated — the backend
+    // registry may not have the rekeyed session ID yet. Just update the sessionId.
+    if (widgetJustSetRef.current) {
+      widgetJustSetRef.current = false;
+      console.log(`[widget-effect] SKIP fetch, updating sessionId to ${id}`);
+      setActiveMoveWidget(prev => prev ? { ...prev, sessionId: id } : null);
+      return;
+    }
+    fetchActiveWidget(id).then((data) => {
+      console.log(`[widget-effect] fetch(${id}) →`, data);
+      if (!data) {
+        setActiveMoveWidget(prev => {
+          const keep = prev?.sessionId === id;
+          console.log(`[widget-effect] no data, prev.sessionId=${prev?.sessionId} keep=${keep}`);
+          return keep ? prev : null;
+        });
+        return;
+      }
+      setActiveMoveWidget({ ...data, sessionId: id });
+    }).catch(() => setActiveMoveWidget(null));
   }, [activeSession?.id]);
 
   // Sync editor pref from active user profile into localStorage
@@ -545,10 +579,26 @@ function AppShell() {
                 projectCwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
                 userProfile={activeUserProfile ?? undefined}
                 autoFocus={view === "chat" && !!activeSession?.id}
-                onMoveActivated={() => {
+                onMoveActivated={(result) => {
                   refreshSessions();
                   const cwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
                   loadAndApplyProjectUiState(cwd || undefined);
+                  if (result.spawnedSessionId) {
+                    selectSession(result.spawnedSessionId);
+                    setUrlSession(result.spawnedSessionId, activeUserProfile);
+                  }
+                  if (result.widget && result.apiToken && result.instanceId && activeSession?.id) {
+                    const widgetSessionId = result.spawnedSessionId ?? activeSession.id;
+                    console.log(`[onMoveActivated] widget set: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
+                    widgetJustSetRef.current = true;
+                    setActiveMoveWidget({
+                      widget: result.widget,
+                      apiToken: result.apiToken,
+                      instanceId: result.instanceId,
+                      sessionId: widgetSessionId,
+                    });
+                    if (result.widget.autoOpen) setRightPanelOpen(true);
+                  }
                 }}
               />
             </div>
@@ -571,6 +621,7 @@ function AppShell() {
               width={rightPanelWidth}
               onOpen={() => setRightPanelOpen(true)}
               onClose={() => setRightPanelOpen(false)}
+              moveWidget={activeMoveWidget}
             />
           </>
         )}

@@ -101,8 +101,15 @@ export const COMMIT_GAP_Y = 6;
 export const WINDOW_PAD = 24;
 export const WINDOW_HEADER_H = 22;
 export const CLUSTER_GAP = 16;
-export const PAD_NODE_W = NODE_W + 20;
-export const PAD_NODE_H = NODE_H + 20;
+export const PAD_NODE_W = NODE_W + 28;
+
+// Base padding for collision detection (8px more per side)
+export const BASE_PAD_NODE_W = PAD_NODE_W - 4;
+
+// Default jitter ranges for placement
+// Handoff: tighter, co-edit/co-read: more constrained
+// No-conn: slightly looser for roots
+export const PAD_NODE_H = NODE_H + 28;
 
 export const DEFAULT_CONFIG: WebLayoutConfig = {
   axisMode: "time-x",
