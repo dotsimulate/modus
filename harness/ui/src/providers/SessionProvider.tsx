@@ -5,6 +5,7 @@ import {
   createEmptySession, getDraft, saveDraft,
   updateSessionConfig, respondToPermission, nextMsgId,
   branchSessionApi, switchSessionProfile,
+  rekeyMoveSession,
 } from "../api";
 import type { Session, SessionInfo, Attachment, ApiAttachment } from "../api";
 import { createInitialState } from "../eventReducer";
@@ -344,6 +345,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       && !hasPersistedHistory;
     const needsNewSession = !activeSessionId || !currentState || currentState.status === "done" || currentState.status === "error" || activeSessionId.startsWith("pending-") || isEmptySession;
     if (needsNewSession) {
+      const prevSessionId = activeSessionId; // capture before archiving — move registry may reference this
       if (isEmptySession && activeSessionId) archiveSessionApi(activeSessionId).catch(() => {});
 
       const seedState = getSendSeed(currentState);
@@ -369,7 +371,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (apiAtts) opts.attachments = apiAtts;
         const { sessionId: realId } = await createSession(opts);
 
+        console.log(`[session] rekey: tempId=${tempId} prevSessionId=${prevSessionId} → ${realId}`);
         rekeySession(tempId, realId);
+        // Rekey move registry from the previous session ID (the empty session where the move was registered)
+        const moveOldId = prevSessionId || tempId;
+        if (moveOldId) {
+          rekeyMoveSession(moveOldId, realId).then(() => {
+            console.log(`[session] rekeyMoveSession completed: ${moveOldId} → ${realId}`);
+          }).catch((e) => {
+            console.error(`[session] rekeyMoveSession FAILED:`, e);
+          });
+        }
         setSessionNextProfile(realId, undefined);
         setSessionNextAgentConfig(realId, undefined);
         setActiveSessionId(realId);

@@ -75,17 +75,43 @@ function resolveCollision(
   newId: string,
   positions: Map<string, { x: number; y: number }>,
   overrides: PositionMap,
+  placedOrder?: string[],
+  effectiveH?: Map<string, number>,
 ) {
   const p = positions.get(newId);
   if (!p || overrides[newId]) return;
 
-  // Multiple passes since nudging away from one node might push into another
-  for (let pass = 0; pass < 4; pass++) {
+  const padH = (id: string) => effectiveH?.get(id) ?? PAD_NODE_H;
+
+  // Priority pass: resolve against the last 5 placed nodes first.
+  // These are the densest spatial neighbors — clearing them before the general
+  // sweep means the general passes start from a better initial position.
+  if (placedOrder && placedOrder.length > 0) {
+    const last5 = placedOrder.slice(-5);
+    for (let pass = 0; pass < 3; pass++) {
+      for (const otherId of last5) {
+        const op = positions.get(otherId);
+        if (!op) continue;
+        const overlapX = PAD_NODE_W - Math.abs(p.x - op.x);
+        const overlapY = padH(otherId) - Math.abs(p.y - op.y);
+        if (overlapX > 0 && overlapY > 0) {
+          if (overlapY <= overlapX + 20) {
+            p.y += (p.y >= op.y ? overlapY : -overlapY) + 4;
+          } else {
+            p.x += (p.x >= op.x ? overlapX : -overlapX) + 4;
+          }
+        }
+      }
+    }
+  }
+
+  // General passes — sweep all placed nodes to catch any remaining overlaps
+  for (let pass = 0; pass < 5; pass++) {
     let hadOverlap = false;
     for (const [otherId, op] of positions) {
       if (otherId === newId) continue;
       const overlapX = PAD_NODE_W - Math.abs(p.x - op.x);
-      const overlapY = PAD_NODE_H - Math.abs(p.y - op.y);
+      const overlapY = padH(otherId) - Math.abs(p.y - op.y);
       if (overlapX > 0 && overlapY > 0) {
         hadOverlap = true;
         // Prefer pushing in Y to keep time-X alignment
@@ -143,11 +169,33 @@ export function solveLayout(
     }
   }
 
+  // ── Pre-compute commit counts per session (used for effective-height in collision) ──
+  // Commits are drawn BELOW their parent session, so a session with many commits
+  // occupies more vertical space than NODE_H alone. We pre-compute this so the
+  // collision resolver can treat such sessions as taller obstacles.
+  const COMMIT_COLS = 3;
+  const sessionCommitCounts = new Map<string, number>();
+  for (const c of commits) {
+    const h7 = shortHash(c.hash);
+    const parentSids = commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [];
+    if (parentSids.length > 0) {
+      const pid = parentSids[0];
+      sessionCommitCounts.set(pid, (sessionCommitCounts.get(pid) ?? 0) + 1);
+    }
+  }
+  // effectiveH: PAD_NODE_H + rows of commits below the session (+ gap)
+  const effectiveH = new Map<string, number>();
+  for (const [sid, count] of sessionCommitCounts) {
+    const rows = Math.ceil(count / COMMIT_COLS);
+    effectiveH.set(sid, PAD_NODE_H + rows * (COMMIT_H + 6) + 18);
+  }
+
   // ── Track how many children each parent has placed so far ──
   const childCounters = new Map<string, number>();
 
   // ── Place sessions one at a time ──
   const placed = new Map<string, { x: number; y: number }>();
+  const placedOrder: string[] = []; // insertion-order list for last-N priority in collision
   let nextRootY = config.padY + 40;
 
   for (const s of sorted) {
@@ -163,17 +211,19 @@ export function solveLayout(
       childCounters.set(conn.anchorId, counter + 1);
 
       x = anchor.x + NODE_W + 50;
-      y = anchor.y + counter * (NODE_H + 16) + stableJitter(s.id, 8);
+      y = anchor.y + counter * (NODE_H + 16) + stableJitter(s.id, 5);
 
     } else if (conn && conn.type === "co-edit") {
       const anchor = placed.get(conn.anchorId)!;
+      const anchorCommitH = effectiveH.get(conn.anchorId) ?? PAD_NODE_H;
       x = timeToX(s.created_at);
-      y = anchor.y + NODE_H + 20 + stableJitter(s.id, 15);
+      y = anchor.y + anchorCommitH + 12 + stableJitter(s.id, 10);
 
     } else if (conn && conn.type === "co-read") {
       const anchor = placed.get(conn.anchorId)!;
+      const anchorCommitH = effectiveH.get(conn.anchorId) ?? PAD_NODE_H;
       x = timeToX(s.created_at);
-      y = anchor.y + NODE_H + 10 + stableJitter(s.id, NODE_H * 0.5);
+      y = anchor.y + anchorCommitH + 6 + stableJitter(s.id, NODE_H * 0.3);
 
     } else {
       // No connection — root session
@@ -183,26 +233,30 @@ export function solveLayout(
 
       // Try to find a nearby session in time and place at similar Y
       let nearbyY: number | null = null;
+      let nearbyId: string | null = null;
       const TIME_NEARBY = 3600000 * 3; // 3 hours
       for (const [pid, pp] of placed) {
         const ps = sorted.find(ss => ss.id === pid);
         if (!ps) continue;
         if (Math.abs(ps.created_at - s.created_at) < TIME_NEARBY) {
           nearbyY = pp.y;
+          nearbyId = pid;
           break;
         }
       }
 
       if (nearbyY !== null) {
-        y = nearbyY + NODE_H + 20 + stableJitter(s.id, 15);
+        const nearbyCommitH = nearbyId ? (effectiveH.get(nearbyId) ?? PAD_NODE_H) : PAD_NODE_H;
+        y = nearbyY + nearbyCommitH + 10 + stableJitter(s.id, 10);
       } else {
         y = nextRootY;
-        nextRootY += NODE_H + 24;
+        nextRootY += NODE_H + 40;
       }
     }
 
     placed.set(s.id, { x, y });
-    resolveCollision(s.id, placed, {});
+    resolveCollision(s.id, placed, {}, placedOrder, effectiveH);
+    placedOrder.push(s.id);
   }
 
   // ── Build session nodes ──
@@ -255,7 +309,6 @@ export function solveLayout(
   }
 
   // Place each parent's commits in a small 2D grid below-right of the session
-  const COMMIT_COLS = 3;
   for (const [pid, pCommits] of commitsByParent) {
     const parentPos = placed.get(pid);
     if (!parentPos) continue;

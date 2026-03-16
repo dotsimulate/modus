@@ -1834,7 +1834,7 @@ app.get("/api/activity/summary", (c) => {
 
 // ── Moves ──
 
-import { listMoves, getMove, activateMove, getMoveRuns, getToken, getActiveTokensForSession } from "./move-runner";
+import { listMoves, getMove, activateMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession } from "./move-runner";
 import { getMoveRunsBySession, getMoveRunById, getRecentMoveRuns } from "./move-db";
 import { handleModusMcpRequest } from "./modus-mcp";
 
@@ -1921,6 +1921,24 @@ app.get("/api/sessions/:id/moves/active", (c) => {
   })));
 });
 
+// Get active move widget for a session (for restoring on refresh)
+app.get("/api/sessions/:id/moves/widget", (c) => {
+  const sessionId = c.req.param("id");
+  const widget = getActiveWidgetForSession(sessionId);
+  if (!widget) return c.json(null);
+  return c.json(widget);
+});
+
+// Rekey move registry entries when a session ID changes (empty session → real session)
+app.post("/api/sessions/:id/moves/rekey", async (c) => {
+  const oldId = c.req.param("id");
+  const { newSessionId } = await c.req.json();
+  if (!newSessionId) return c.json({ error: "newSessionId required" }, 400);
+  console.log(`[move-reg] rekey endpoint called: ${oldId} → ${newSessionId}`);
+  rekeyMoveRegistrySession(oldId, newSessionId);
+  return c.json({ ok: true });
+});
+
 // Activate a move on a session
 app.post("/api/sessions/:id/moves/activate", async (c) => {
   const sessionId = c.req.param("id");
@@ -1941,6 +1959,66 @@ app.post("/api/sessions/:id/moves/activate", async (c) => {
 
   if ("error" in result) return c.json(result, 400);
   return c.json(result);
+});
+
+// ── Move Widget Serving ──
+
+// Serve a move's widget component (on-the-fly transpile)
+const widgetCache = new Map<string, { mtime: number; js: string }>();
+
+app.get("/api/moves/:name/widget", async (c) => {
+  const name = c.req.param("name");
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+
+  const move = getMove(name, cwd);
+  if (!move?.widget?.component) return c.json({ error: "move has no widget" }, 404);
+
+  const location = resolveMoveLocation(name, cwd);
+  if (!location) return c.json({ error: "move not found" }, 404);
+
+  const srcPath = join(location.dir, move.widget.component);
+  try {
+    const { statSync } = await import("fs");
+    const mtime = statSync(srcPath).mtimeMs;
+
+    const cached = widgetCache.get(srcPath);
+    if (cached && cached.mtime === mtime) {
+      return new Response(cached.js, { headers: { "Content-Type": "application/javascript" } });
+    }
+
+    const result = await Bun.build({
+      entrypoints: [srcPath],
+      format: "esm",
+      target: "browser",
+      external: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
+      // Force production JSX (jsx/jsxs from jsx-runtime, not jsxDEV from jsx-dev-runtime)
+      // so widgets work in both dev and production React environments
+      define: { "process.env.NODE_ENV": '"production"' },
+    });
+
+    if (!result.success) {
+      console.error(`[widget] Build failed for ${srcPath}:`, result.logs);
+      return c.json({ error: "widget build failed" }, 500);
+    }
+
+    const js = await result.outputs[0].text();
+    widgetCache.set(srcPath, { mtime, js });
+    return new Response(js, { headers: { "Content-Type": "application/javascript" } });
+  } catch (err) {
+    return c.json({ error: `widget load failed: ${err}` }, 500);
+  }
+});
+
+// Call a move API op from the frontend (caller: "user")
+app.post("/api/moves/:name/op", async (c) => {
+  const body = await c.req.json();
+  const { apiToken, op, ...rest } = body;
+  if (typeof apiToken !== "string") return c.json({ error: "apiToken required" }, 400);
+  if (typeof op !== "string") return c.json({ error: "op required" }, 400);
+
+  const result = await handleMoveApiSubmit(apiToken, { op, ...rest }, "user");
+  return c.json(result, result.ok ? 200 : 400);
 });
 
 // Modus MCP endpoint — Streamable HTTP transport for modus_submit

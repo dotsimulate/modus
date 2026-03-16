@@ -3,7 +3,7 @@
  *
  * One tool, four token types:
  *   - Move tokens  → route to move-runner handleSubmit()
- *   - Move API tokens (prefix "mapi-") → route to move-scoped API handlers
+ *   - Move API tokens (prefix "mapi-") → route to move API handlers
  *   - Mission tokens (prefix "mis-") → route to mission-runner handleMissionCommand()
  *   - API tokens (prefix "api-") → route to registered API handlers
  *

@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useFileViewer } from "../providers/FileViewerProvider";
 import { useProfiles } from "../providers/ProfileProvider";
-import { browsePath, openInEditor, readFileContent, type BrowseResult } from "../api";
+import { browsePath, openInEditor, readFileContent, type BrowseResult, type MoveWidgetInfo } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser } from "./FileBrowser";
+import { MoveWidget } from "./MoveWidget";
 
 type Props = {
   open: boolean;
@@ -11,6 +12,12 @@ type Props = {
   onOpen: () => void;
   onClose: () => void;
   children?: ReactNode;
+  moveWidget?: {
+    widget: MoveWidgetInfo;
+    apiToken: string;
+    instanceId: string;
+    sessionId: string;
+  } | null;
 };
 
 function basename(p: string): string {
@@ -30,10 +37,10 @@ type ViewState =
   | { kind: "directory"; result: BrowseResult }
   | { kind: "error"; message: string };
 
-/** Which tab is showing: the project browser or a specific file */
-type ActiveView = "browser" | string;
+/** Which tab is showing: the project browser, a file, or a move widget */
+type ActiveView = "browser" | "move-widget" | string;
 
-export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
+export function RightPanel({ open, width, onOpen, onClose, children, moveWidget }: Props) {
   const { tabs, activePath, closeFile, setActive, pinFile, unpinFile, openFile } = useFileViewer();
   const { activeCwd } = useProfiles();
 
@@ -52,14 +59,22 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
     }
   }, [activePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-switch to move widget tab when one appears
+  useEffect(() => {
+    if (moveWidget?.widget?.autoOpen) {
+      setActiveView("move-widget");
+      if (!open) onOpen();
+    }
+  }, [moveWidget]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Sync activeView → FileViewerProvider active
   useEffect(() => {
-    if (activeView !== "browser" && activeView !== activePath) {
+    if (activeView !== "browser" && activeView !== "move-widget" && activeView !== activePath) {
       setActive(activeView);
     }
   }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const viewingFile = activeView !== "browser" ? activeView : null;
+  const viewingFile = activeView !== "browser" && activeView !== "move-widget" ? activeView : null;
 
   // Load content for the file being viewed
   useEffect(() => {
@@ -164,67 +179,6 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
         className={`right-panel${open ? " open" : ""}${fullscreen ? " right-panel--fullscreen" : ""}`}
         style={open && !fullscreen ? { width, minWidth: width } : undefined}
       >
-        <div className="right-panel-header">
-          {fullscreen && (
-            <button
-              className="right-panel-close"
-              onClick={() => setFullscreen(false)}
-              title="Exit fullscreen"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M4 1v3H1M8 11V8h3M1 8h3v3M11 4H8V1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          )}
-          <div className="right-panel-header-actions">
-            {/* Pin/unpin active file */}
-            {viewingFile && (
-              <button
-                className={`right-panel-header-btn${tabs.find((t) => t.path === viewingFile)?.pinned ? " active" : ""}`}
-                onClick={() => {
-                  const tab = tabs.find((t) => t.path === viewingFile);
-                  if (tab?.pinned) unpinFile(viewingFile);
-                  else pinFile(viewingFile);
-                }}
-                title={tabs.find((t) => t.path === viewingFile)?.pinned ? "Unpin file" : "Pin file"}
-              >
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={tabs.find((t) => t.path === viewingFile)?.pinned ? "currentColor" : "none"}/>
-                  <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-                </svg>
-              </button>
-            )}
-            {/* HTML preview/source toggle */}
-            {showFileContent && isHtml && view.kind === "file" && (
-              <button
-                className={`right-panel-header-btn${htmlPreview ? " active" : ""}`}
-                onClick={() => setHtmlPreview(!htmlPreview)}
-                title={htmlPreview ? "Show source" : "Show preview"}
-              >
-                {htmlPreview ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 3L1 6l3 3M8 3l3 3-3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                ) : (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6s2-3.5 5-3.5S11 6 11 6s-2 3.5-5 3.5S1 6 1 6z" stroke="currentColor" strokeWidth="1.1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.1"/></svg>
-                )}
-              </button>
-            )}
-            {/* Fullscreen toggle */}
-            {showFileContent && (
-              <button
-                className="right-panel-header-btn"
-                onClick={() => setFullscreen(!fullscreen)}
-                title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-              >
-                {fullscreen ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 1v3H1M8 11V8h3M1 8h3v3M11 4H8V1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                ) : (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
-
         {/* Tab bar — always visible: browser tab + file tabs */}
         <div className="rp-tabs">
           <div className={`rp-tab${showBrowser ? " rp-tab--active" : ""}`}>
@@ -239,6 +193,17 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
               files
             </button>
           </div>
+          {moveWidget && (
+            <div className={`rp-tab${activeView === "move-widget" ? " rp-tab--active" : ""}`}>
+              <button
+                className="rp-tab-label"
+                onClick={() => setActiveView("move-widget")}
+                title={moveWidget.widget.label}
+              >
+                {moveWidget.widget.label}
+              </button>
+            </div>
+          )}
           {tabs.map((tab) => (
             <div
               key={tab.path}
@@ -277,10 +242,61 @@ export function RightPanel({ open, width, onOpen, onClose, children }: Props) {
               </button>
             </div>
           ))}
+          <div className="rp-tabs-actions">
+            {viewingFile && (
+              <button
+                className={`right-panel-header-btn${tabs.find((t) => t.path === viewingFile)?.pinned ? " active" : ""}`}
+                onClick={() => {
+                  const tab = tabs.find((t) => t.path === viewingFile);
+                  if (tab?.pinned) unpinFile(viewingFile);
+                  else pinFile(viewingFile);
+                }}
+                title={tabs.find((t) => t.path === viewingFile)?.pinned ? "Unpin file" : "Pin file"}
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={tabs.find((t) => t.path === viewingFile)?.pinned ? "currentColor" : "none"}/>
+                  <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
+            {showFileContent && isHtml && view.kind === "file" && (
+              <button
+                className={`right-panel-header-btn${htmlPreview ? " active" : ""}`}
+                onClick={() => setHtmlPreview(!htmlPreview)}
+                title={htmlPreview ? "Show source" : "Show preview"}
+              >
+                {htmlPreview ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 3L1 6l3 3M8 3l3 3-3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6s2-3.5 5-3.5S11 6 11 6s-2 3.5-5 3.5S1 6 1 6z" stroke="currentColor" strokeWidth="1.1"/><circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.1"/></svg>
+                )}
+              </button>
+            )}
+            {showFileContent && (
+              <button
+                className="right-panel-header-btn"
+                onClick={() => setFullscreen(!fullscreen)}
+                title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+              >
+                {fullscreen ? (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 1v3H1M8 11V8h3M1 8h3v3M11 4H8V1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="right-panel-content">
-          {showBrowser ? (
+          {activeView === "move-widget" && moveWidget ? (
+            <MoveWidget
+              widget={moveWidget.widget}
+              apiToken={moveWidget.apiToken}
+              instanceId={moveWidget.instanceId}
+              sessionId={moveWidget.sessionId}
+            />
+          ) : showBrowser ? (
             <FileBrowser
               rootPath={activeCwd ?? null}
               onFileSelect={handleFileSelect}
