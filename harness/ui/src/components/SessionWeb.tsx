@@ -4,7 +4,9 @@ import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
 import { fetchMissionRuns, fetchMissionTransfers, fetchMissionSessions } from "../api/missions";
 import { fetchTouches } from "../api/trace";
-import { archiveSessionApi } from "../api/sessions";
+import { archiveSessionApi, createSession, sendMessage } from "../api/sessions";
+import { fetchMoves } from "../api/moves";
+import type { MoveListItem } from "../api/moves";
 import type { SessionInfo, GitCommit } from "../api/types";
 import type { MissionRunSummary, MissionTransferSummary } from "../api/missions";
 import type { TouchRecord } from "../api/trace";
@@ -356,9 +358,15 @@ function DetailPanel({ node, onClose, onArchive }: { node: GraphNode; onClose: (
 
 // ── Context Menu ──
 
-function ContextMenu({ x, y, onArchive, onClose }: {
+type ContextMenuState =
+  | { kind: "session"; x: number; y: number; sessionId: string }
+  | { kind: "canvas"; x: number; y: number; canvasX: number; canvasY: number };
+
+function SessionContextMenu({ x, y, session, onCopyId, onArchive, onClose }: {
   x: number;
   y: number;
+  session: SessionInfo;
+  onCopyId: () => void;
   onArchive: () => void;
   onClose: () => void;
 }) {
@@ -374,7 +382,116 @@ function ContextMenu({ x, y, onArchive, onClose }: {
 
   return (
     <div className="web-context-menu" style={{ left: x, top: y }} onMouseDown={e => e.stopPropagation()}>
-      <button onClick={onArchive}>archive</button>
+      <button onClick={onCopyId}>copy id</button>
+      <div className="web-context-sep" />
+      <button className="web-context-danger" onClick={onArchive}>archive</button>
+    </div>
+  );
+}
+
+// ── Inline Prompt Bar (double-click canvas to start a session) ──
+
+function WebPromptBar({ x, y, profiles, onSubmit, onClose }: {
+  x: number;
+  y: number;
+  profiles: string[];
+  onSubmit: (prompt: string, profile?: string) => void;
+  onClose: () => void;
+}) {
+  const [prompt, setPrompt] = useState("");
+  const [profile, setProfile] = useState(profiles[0] ?? "");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const handleSubmit = () => {
+    const trimmed = prompt.trim();
+    if (!trimmed) return;
+    onSubmit(trimmed, profile || undefined);
+  };
+
+  return (
+    <div
+      className="web-prompt-bar"
+      style={{ left: x, top: y }}
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="web-prompt-bar-header">
+        {profiles.length > 1 && (
+          <select
+            className="web-prompt-bar-profile"
+            value={profile}
+            onChange={e => setProfile(e.target.value)}
+          >
+            {profiles.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        )}
+        {profiles.length <= 1 && profile && (
+          <span className="web-prompt-bar-profile-label">{profile}</span>
+        )}
+      </div>
+      <textarea
+        ref={inputRef}
+        className="web-prompt-bar-input"
+        value={prompt}
+        onChange={e => setPrompt(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit();
+          }
+        }}
+        placeholder="start a conversation..."
+        rows={2}
+      />
+      <div className="web-prompt-bar-footer">
+        <span className="web-prompt-bar-hint">enter to send · esc to cancel</span>
+        <button className="web-prompt-bar-send" onClick={handleSubmit} disabled={!prompt.trim()}>send</button>
+      </div>
+    </div>
+  );
+}
+
+function CanvasContextMenu({ x, y, profiles, onNewSession, onClose }: {
+  x: number;
+  y: number;
+  profiles: string[];
+  onNewSession: (profile?: string) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handler = () => onClose();
+    window.addEventListener("click", handler);
+    window.addEventListener("contextmenu", handler);
+    return () => {
+      window.removeEventListener("click", handler);
+      window.removeEventListener("contextmenu", handler);
+    };
+  }, [onClose]);
+
+  return (
+    <div className="web-context-menu" style={{ left: x, top: y }} onMouseDown={e => e.stopPropagation()}>
+      {profiles.length <= 1 ? (
+        <button onClick={() => onNewSession(profiles[0])}>new session</button>
+      ) : (
+        <>
+          <div className="web-context-label">new session</div>
+          {profiles.map(p => (
+            <button key={p} onClick={() => onNewSession(p)}>&nbsp;&nbsp;{p}</button>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -489,7 +606,7 @@ const DocNodeEl = memo(function DocNodeEl({ node, isSelected, isNeighbor, onSele
 // ── Main Component ──
 
 export function SessionWeb() {
-  const { activeUserProfile, activeUP } = useProfiles();
+  const { activeUserProfile, activeUP, visibleProfiles } = useProfiles();
   const profileName = activeUserProfile ?? "default";
 
   // ── Data state ──
@@ -517,7 +634,8 @@ export function SessionWeb() {
   const [dateFilter, setDateFilter] = useState<DateFilter>(() => loadDateFilter(profileName));
   const [edgeLayers, setEdgeLayers] = useState<EdgeLayers>(() => loadLayers(profileName));
   const [positionOverrides, setPositionOverrides] = useState<PositionMap>(() => loadPositions(profileName));
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [promptBar, setPromptBar] = useState<{ x: number; y: number } | null>(null);
   const [draggingChain, setDraggingChain] = useState<Set<string> | null>(null);
   const [dragPreview, setDragPreview] = useState<PositionMap>({});
 
@@ -1117,7 +1235,7 @@ export function SessionWeb() {
   const handleContextMenu = useCallback((e: React.MouseEvent, sessionId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, sessionId });
+    setContextMenu({ kind: "session", x: e.clientX, y: e.clientY, sessionId });
   }, []);
 
   const handleArchive = useCallback(async (id: string) => {
@@ -1132,6 +1250,72 @@ export function SessionWeb() {
       return next;
     });
   }, [profileName]);
+
+  const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const vp = viewportRef.current;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const canvasX = (e.clientX - rect.left - vp.x) / vp.scale;
+    const canvasY = (e.clientY - rect.top - vp.y) / vp.scale;
+    setContextMenu({ kind: "canvas", x: e.clientX, y: e.clientY, canvasX, canvasY });
+  }, []);
+
+  const reloadData = useCallback(async () => {
+    const projectCwd = activeUP?.projects?.[0];
+    const [sessData, moveData, touchData] = await Promise.all([
+      fetchSessionsScoped(500, activeUserProfile ?? undefined),
+      fetch(`${API_BASE}/api/move-runs/recent?limit=200`, { headers: authHeaders() }).then(r => r.json()),
+      fetchTouches({
+        userProfile: activeUserProfile ?? undefined,
+        cwd: projectCwd ?? undefined,
+        ops: ["write", "edit", "read"],
+        limit: 5000,
+      }).catch(() => ({ touches: [] as TouchRecord[], summary: {} })),
+    ]);
+    setSessions(sessData);
+    setMoveRuns(moveData);
+    setTouches(touchData.touches);
+  }, [activeUserProfile, activeUP]);
+
+  const handlePromptSubmit = useCallback(async (prompt: string, profile?: string) => {
+    setPromptBar(null);
+    setContextMenu(null);
+    const projectCwd = activeUP?.projects?.[0];
+    try {
+      const { sessionId } = await createSession({
+        prompt,
+        profile,
+        userProfile: activeUserProfile ?? undefined,
+        cwd: projectCwd ?? undefined,
+      });
+      await reloadData();
+      // Open the new session in the session window
+      setMiniSessionId(sessionId);
+    } catch (err) {
+      console.error("Failed to create session:", err);
+    }
+  }, [activeUserProfile, activeUP, reloadData]);
+
+  const handleNewSession = useCallback(async (profile?: string) => {
+    setContextMenu(null);
+    const projectCwd = activeUP?.projects?.[0];
+    try {
+      await createSession({
+        prompt: "",
+        profile,
+        userProfile: activeUserProfile ?? undefined,
+        cwd: projectCwd ?? undefined,
+      });
+      await reloadData();
+    } catch (err) {
+      console.error("Failed to create session:", err);
+    }
+  }, [activeUserProfile, activeUP, reloadData]);
+
+  const handleCopyId = useCallback((id: string) => {
+    navigator.clipboard.writeText(id).catch(() => {});
+    setContextMenu(null);
+  }, []);
 
   const handleResetView = useCallback(() => {
     const wrap = wrapRef.current;
@@ -1255,6 +1439,7 @@ export function SessionWeb() {
       <div
         className="web-canvas-wrap"
         ref={wrapRef}
+        onContextMenu={handleCanvasContextMenu}
         onMouseDown={onPanStart}
         onMouseMove={onPanMove}
         onMouseUp={onPanEnd}
@@ -1575,10 +1760,25 @@ export function SessionWeb() {
         <MissionFilterPanel runs={missionRuns} activeRunId={missionFilter} onChange={setMissionFilter} />
       </div>
 
-      {contextMenu && (
-        <ContextMenu
+      {contextMenu?.kind === "session" && (() => {
+        const sess = sessions.find(s => s.id === contextMenu.sessionId);
+        return sess ? (
+          <SessionContextMenu
+            x={contextMenu.x} y={contextMenu.y}
+            session={sess}
+            onOpen={() => { setContextMenu(null); setMiniSessionId(contextMenu.sessionId); }}
+            onConversation={() => handleStartConversation(contextMenu.sessionId)}
+            onCopyId={() => handleCopyId(contextMenu.sessionId)}
+            onArchive={() => handleArchive(contextMenu.sessionId)}
+            onClose={() => setContextMenu(null)}
+          />
+        ) : null;
+      })()}
+      {contextMenu?.kind === "canvas" && (
+        <CanvasContextMenu
           x={contextMenu.x} y={contextMenu.y}
-          onArchive={() => handleArchive(contextMenu.sessionId)}
+          profiles={visibleProfiles.map(p => p.name)}
+          onNewSession={handleNewSession}
           onClose={() => setContextMenu(null)}
         />
       )}

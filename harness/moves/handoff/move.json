@@ -28,6 +28,13 @@
       "default": "task"
     },
     {
+      "name": "style",
+      "label": "Document style",
+      "type": "select",
+      "options": ["briefing", "compact", "narrative", "adaptive"],
+      "default": "briefing"
+    },
+    {
       "name": "includeUserTips",
       "label": "Include user working tips",
       "type": "toggle",
