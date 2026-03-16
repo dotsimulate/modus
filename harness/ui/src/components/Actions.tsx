@@ -662,8 +662,8 @@ export function Actions({ onSelectSession, onPeekSession }: Props) {
   }, []);
 
   const handleTrigger = useCallback(async (name: string) => {
-    await triggerActionApi(name, activeUserProfile).catch(() => {});
-  }, [activeUserProfile]);
+    await triggerActionApi(name).catch(() => {});
+  }, []);
 
   const handleArchive = useCallback(async (name: string) => {
     const action = actions.find(a => a.name === name);
