@@ -735,6 +735,33 @@
   color: var(--error, #e55);
 }
 
+/* ── Web Composer (floating ConfigBar + ChatInput) ── */
+
+.web-composer {
+  position: fixed;
+  z-index: 200;
+  width: 420px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.web-composer .config-bar {
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+}
+
+.web-composer .chat-input-area {
+  border-top: none;
+  padding: 8px;
+}
+
+.web-composer .chat-textarea-wrap {
+  background: var(--bg);
+}
+
 /* ── Layout Panel ── */
 
 .web-layout-panel {

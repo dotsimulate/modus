@@ -4,14 +4,13 @@ import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
 import { fetchMissionRuns, fetchMissionTransfers, fetchMissionSessions } from "../api/missions";
 import { fetchTouches } from "../api/trace";
-import { archiveSessionApi, createSession, sendMessage } from "../api/sessions";
-import { fetchMoves } from "../api/moves";
-import type { MoveListItem } from "../api/moves";
+import { archiveSessionApi, createSession } from "../api/sessions";
 import type { SessionInfo, GitCommit } from "../api/types";
 import type { MissionRunSummary, MissionTransferSummary } from "../api/missions";
 import type { TouchRecord } from "../api/trace";
 import { ChatFileViewer } from "./ChatFileViewer";
 import { SessionWindow } from "./SessionWindow";
+import { WebComposer } from "./WebComposer";
 import { useProfiles } from "../providers/ProfileProvider";
 
 import {
@@ -389,80 +388,6 @@ function SessionContextMenu({ x, y, session, onCopyId, onArchive, onClose }: {
   );
 }
 
-// ── Inline Prompt Bar (double-click canvas to start a session) ──
-
-function WebPromptBar({ x, y, profiles, onSubmit, onClose }: {
-  x: number;
-  y: number;
-  profiles: string[];
-  onSubmit: (prompt: string, profile?: string) => void;
-  onClose: () => void;
-}) {
-  const [prompt, setPrompt] = useState("");
-  const [profile, setProfile] = useState(profiles[0] ?? "");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  const handleSubmit = () => {
-    const trimmed = prompt.trim();
-    if (!trimmed) return;
-    onSubmit(trimmed, profile || undefined);
-  };
-
-  return (
-    <div
-      className="web-prompt-bar"
-      style={{ left: x, top: y }}
-      onMouseDown={e => e.stopPropagation()}
-      onClick={e => e.stopPropagation()}
-    >
-      <div className="web-prompt-bar-header">
-        {profiles.length > 1 && (
-          <select
-            className="web-prompt-bar-profile"
-            value={profile}
-            onChange={e => setProfile(e.target.value)}
-          >
-            {profiles.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-        )}
-        {profiles.length <= 1 && profile && (
-          <span className="web-prompt-bar-profile-label">{profile}</span>
-        )}
-      </div>
-      <textarea
-        ref={inputRef}
-        className="web-prompt-bar-input"
-        value={prompt}
-        onChange={e => setPrompt(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handleSubmit();
-          }
-        }}
-        placeholder="start a conversation..."
-        rows={2}
-      />
-      <div className="web-prompt-bar-footer">
-        <span className="web-prompt-bar-hint">enter to send · esc to cancel</span>
-        <button className="web-prompt-bar-send" onClick={handleSubmit} disabled={!prompt.trim()}>send</button>
-      </div>
-    </div>
-  );
-}
-
 function CanvasContextMenu({ x, y, profiles, onNewSession, onClose }: {
   x: number;
   y: number;
@@ -635,7 +560,7 @@ export function SessionWeb() {
   const [edgeLayers, setEdgeLayers] = useState<EdgeLayers>(() => loadLayers(profileName));
   const [positionOverrides, setPositionOverrides] = useState<PositionMap>(() => loadPositions(profileName));
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [promptBar, setPromptBar] = useState<{ x: number; y: number } | null>(null);
+  const [composerPos, setComposerPos] = useState<{ x: number; y: number } | null>(null);
   const [draggingChain, setDraggingChain] = useState<Set<string> | null>(null);
   const [dragPreview, setDragPreview] = useState<PositionMap>({});
 
@@ -1277,24 +1202,17 @@ export function SessionWeb() {
     setTouches(touchData.touches);
   }, [activeUserProfile, activeUP]);
 
-  const handlePromptSubmit = useCallback(async (prompt: string, profile?: string) => {
-    setPromptBar(null);
-    setContextMenu(null);
-    const projectCwd = activeUP?.projects?.[0];
-    try {
-      const { sessionId } = await createSession({
-        prompt,
-        profile,
-        userProfile: activeUserProfile ?? undefined,
-        cwd: projectCwd ?? undefined,
-      });
-      await reloadData();
-      // Open the new session in the session window
-      setMiniSessionId(sessionId);
-    } catch (err) {
-      console.error("Failed to create session:", err);
-    }
-  }, [activeUserProfile, activeUP, reloadData]);
+  const handleComposerSessionCreated = useCallback(async (sessionId: string) => {
+    setComposerPos(null);
+    await reloadData();
+    setMiniSessionId(sessionId);
+  }, [reloadData]);
+
+  const handleCanvasDoubleClick = useCallback((e: React.MouseEvent) => {
+    // Only trigger on actual canvas background, not on nodes
+    if ((e.target as HTMLElement).closest(".web-session-node, .web-commit-node, .web-doc-node")) return;
+    setComposerPos({ x: e.clientX, y: e.clientY });
+  }, []);
 
   const handleNewSession = useCallback(async (profile?: string) => {
     setContextMenu(null);
@@ -1440,6 +1358,7 @@ export function SessionWeb() {
         className="web-canvas-wrap"
         ref={wrapRef}
         onContextMenu={handleCanvasContextMenu}
+        onDoubleClick={handleCanvasDoubleClick}
         onMouseDown={onPanStart}
         onMouseMove={onPanMove}
         onMouseUp={onPanEnd}
@@ -1766,8 +1685,6 @@ export function SessionWeb() {
           <SessionContextMenu
             x={contextMenu.x} y={contextMenu.y}
             session={sess}
-            onOpen={() => { setContextMenu(null); setMiniSessionId(contextMenu.sessionId); }}
-            onConversation={() => handleStartConversation(contextMenu.sessionId)}
             onCopyId={() => handleCopyId(contextMenu.sessionId)}
             onArchive={() => handleArchive(contextMenu.sessionId)}
             onClose={() => setContextMenu(null)}
@@ -1793,6 +1710,15 @@ export function SessionWeb() {
           window.location.hash = profile ? `${profile}/${id}` : id;
         }}
       />
+
+      {composerPos && (
+        <WebComposer
+          x={composerPos.x}
+          y={composerPos.y}
+          onSessionCreated={handleComposerSessionCreated}
+          onClose={() => setComposerPos(null)}
+        />
+      )}
 
       <ChatFileViewer path={fileViewerPath} onClose={() => setFileViewerPath(null)} />
     </div>
