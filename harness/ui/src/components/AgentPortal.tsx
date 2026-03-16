@@ -91,7 +91,9 @@ function loadPanel(pill: Pos): Bounds {
         return clampBounds(b);
     }
   } catch {}
-  return clampBounds({ top: pill.top + 44, left: pill.left - 260, width: 300, height: 220 });
+  // Panel's top-right corner anchors to the pill — eye becomes the cornerstone
+  const w = 300;
+  return clampBounds({ top: pill.top, left: pill.left + 36 - w, width: w, height: 220 });
 }
 
 /* ── Hooks ── */
