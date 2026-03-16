@@ -12,12 +12,12 @@ type Props = {
   onOpen: () => void;
   onClose: () => void;
   children?: ReactNode;
-  moveWidget?: {
+  moveWidgets?: Array<{
     widget: MoveWidgetInfo;
     apiToken: string;
     instanceId: string;
     sessionId: string;
-  } | null;
+  }> | null;
   initialBrowserPath?: string | null;
   onBrowserPathChange?: (path: string) => void;
 };
@@ -42,7 +42,7 @@ type ViewState =
 /** Which tab is showing: the project browser, a file, or a move widget */
 type ActiveView = "browser" | "move-widget" | string;
 
-export function RightPanel({ open, width, onOpen, onClose, children, moveWidget, initialBrowserPath, onBrowserPathChange }: Props) {
+export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange }: Props) {
   const { tabs, activePath, closeFile, setActive, pinFile, unpinFile, openFile } = useFileViewer();
   const { activeCwd } = useProfiles();
 
@@ -61,22 +61,23 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidget,
     }
   }, [activePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-switch to move widget tab when one appears
+  // Auto-switch to a widget tab when a new widget with autoOpen appears
   useEffect(() => {
-    if (moveWidget?.widget?.autoOpen) {
-      setActiveView("move-widget");
+    const latest = moveWidgets?.findLast(w => w.widget.autoOpen);
+    if (latest) {
+      setActiveView(`widget:${latest.instanceId}`);
       if (!open) onOpen();
     }
-  }, [moveWidget]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [moveWidgets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync activeView → FileViewerProvider active
   useEffect(() => {
-    if (activeView !== "browser" && activeView !== "move-widget" && activeView !== activePath) {
+    if (activeView !== "browser" && !activeView.startsWith("widget:") && activeView !== activePath) {
       setActive(activeView);
     }
   }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const viewingFile = activeView !== "browser" && activeView !== "move-widget" ? activeView : null;
+  const viewingFile = activeView !== "browser" && !activeView.startsWith("widget:") ? activeView : null;
 
   // Load content for the file being viewed
   useEffect(() => {
@@ -195,17 +196,17 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidget,
               files
             </button>
           </div>
-          {moveWidget && (
-            <div className={`rp-tab${activeView === "move-widget" ? " rp-tab--active" : ""}`}>
+          {moveWidgets?.map((w) => (
+            <div key={w.instanceId} className={`rp-tab${activeView === `widget:${w.instanceId}` ? " rp-tab--active" : ""}`}>
               <button
                 className="rp-tab-label"
-                onClick={() => setActiveView("move-widget")}
-                title={moveWidget.widget.label}
+                onClick={() => setActiveView(`widget:${w.instanceId}`)}
+                title={w.widget.label}
               >
-                {moveWidget.widget.label}
+                {w.widget.label}
               </button>
             </div>
-          )}
+          ))}
           {tabs.map((tab) => (
             <div
               key={tab.path}
@@ -291,14 +292,10 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidget,
         </div>
 
         <div className="right-panel-content">
-          {activeView === "move-widget" && moveWidget ? (
-            <MoveWidget
-              widget={moveWidget.widget}
-              apiToken={moveWidget.apiToken}
-              instanceId={moveWidget.instanceId}
-              sessionId={moveWidget.sessionId}
-            />
-          ) : showBrowser ? (
+          {activeView.startsWith("widget:") && moveWidgets ? (() => {
+            const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
+            return w ? <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} /> : null;
+          })() : showBrowser ? (
             <FileBrowser
               rootPath={activeCwd ?? null}
               initialPath={initialBrowserPath}

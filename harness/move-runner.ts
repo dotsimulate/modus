@@ -212,13 +212,16 @@ export async function handleMoveApiSubmit(
     moveName: reg.moveName,
     caller,
     state: stateApi,
-    notify: (message: string) => {
-      const queued = queueMessage(reg.sessionId, message);
+    notify: (message: string, emit?: { type: string; [key: string]: unknown }) => {
+      const injected = emit
+        ? `[modus:${emit.type}] ${JSON.stringify(emit)}\n${message}`.trim()
+        : message;
+      const queued = queueMessage(reg.sessionId, injected);
       if (!queued) {
         // Session not active (e.g. after restart) — resume it with the message
         startSession({
           sessionId: reg.sessionId,
-          prompt: message,
+          prompt: injected,
           cwd: reg.cwd,
         });
       }
@@ -254,18 +257,19 @@ export function rekeyMoveRegistrySession(oldSessionId: string, newSessionId: str
   }
 }
 
-/** Get the active move widget for a session (if any) */
-export function getActiveWidgetForSession(sessionId: string): {
+/** Get all active move widgets for a session */
+export function getActiveWidgetForSession(sessionId: string): Array<{
   widget: { label: string; icon?: string; autoOpen?: boolean; moduleUrl: string; moveName: string };
   apiToken: string;
   instanceId: string;
-} | null {
+}> {
   console.log(`[move-reg] getActiveWidgetForSession(${sessionId}) — registry has ${moveApiRegistry.size} entries: ${[...moveApiRegistry.entries()].map(([t, r]) => `${t}→${r.sessionId}`).join(", ") || "empty"}`);
+  const results: Array<{ widget: { label: string; icon?: string; autoOpen?: boolean; moduleUrl: string; moveName: string }; apiToken: string; instanceId: string }> = [];
   for (const [token, reg] of moveApiRegistry) {
     if (reg.sessionId === sessionId) {
       const config = getMove(reg.moveName, reg.cwd);
       if (config?.widget?.component) {
-        return {
+        results.push({
           widget: {
             label: config.widget.label ?? reg.moveName,
             icon: config.widget.icon,
@@ -275,11 +279,11 @@ export function getActiveWidgetForSession(sessionId: string): {
           },
           apiToken: token,
           instanceId: reg.instanceId,
-        };
+        });
       }
     }
   }
-  return null;
+  return results;
 }
 
 // ── Move Loading ──

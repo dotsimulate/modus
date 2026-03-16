@@ -91,12 +91,12 @@ function AppShell() {
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState(360);
   const [rightPanelBrowserPath, setRightPanelBrowserPath] = useState<string | null>(null);
-  const [activeMoveWidget, setActiveMoveWidget] = useState<{
+  const [activeMoveWidgets, setActiveMoveWidgets] = useState<Array<{
     widget: import("../api").MoveWidgetInfo;
     apiToken: string;
     instanceId: string;
     sessionId: string;
-  } | null>(null);
+  }>>([]);
   const widgetJustSetRef = useRef(false);
   const prevSessionIdRef = useRef<string | null>(null);
   const panelSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -204,31 +204,29 @@ function AppShell() {
     }
   }, [activeSession?.id]);
 
-  // Restore active move widget on session switch / page load
+  // Restore active move widgets on session switch / page load
   useEffect(() => {
     const id = activeSession?.id;
     console.log(`[widget-effect] activeSession.id=${id} widgetJustSet=${widgetJustSetRef.current}`);
-    if (!id || id.startsWith("pending-")) { setActiveMoveWidget(null); return; }
+    if (!id || id.startsWith("pending-")) { setActiveMoveWidgets([]); return; }
     // Skip backend fetch if widget was just set by onMoveActivated — the backend
     // registry may not have the rekeyed session ID yet. Just update the sessionId.
     if (widgetJustSetRef.current) {
       widgetJustSetRef.current = false;
       console.log(`[widget-effect] SKIP fetch, updating sessionId to ${id}`);
-      setActiveMoveWidget(prev => prev ? { ...prev, sessionId: id } : null);
+      setActiveMoveWidgets(prev => prev.map(w => ({ ...w, sessionId: id })));
       return;
     }
-    fetchActiveWidget(id).then((data) => {
-      console.log(`[widget-effect] fetch(${id}) →`, data);
-      if (!data) {
-        setActiveMoveWidget(prev => {
-          const keep = prev?.sessionId === id;
-          console.log(`[widget-effect] no data, prev.sessionId=${prev?.sessionId} keep=${keep}`);
-          return keep ? prev : null;
-        });
+    fetchActiveWidget(id).then((widgets) => {
+      console.log(`[widget-effect] fetch(${id}) →`, widgets);
+      if (!widgets.length) {
+        // Keep existing widgets already tagged to this session (onMoveActivated set them
+        // before the rekey completed); clear any that belong to a different session.
+        setActiveMoveWidgets(prev => prev.filter(w => w.sessionId === id));
         return;
       }
-      setActiveMoveWidget({ ...data, sessionId: id });
-    }).catch(() => setActiveMoveWidget(null));
+      setActiveMoveWidgets(widgets.map(w => ({ ...w, sessionId: id })));
+    }).catch(() => setActiveMoveWidgets([]));
   }, [activeSession?.id]);
 
   // Sync editor pref from active user profile into localStorage
@@ -350,7 +348,9 @@ function AppShell() {
   const editorProfileData = profiles.find((p) => p.name === editorProfileName);
   const sessionProviderLocked = !!activeSession && activeSession.messages.length > 0;
   const liveProvider = activeSessionInfo?.provider || activeSession?.provider || profileData?.provider || activeUP?.provider;
-  const liveModel = activeSession ? activeSession.model : (profileData?.model || activeUP?.model);
+  // Use session model when available; fall back to profile default while events
+  // are still in-flight (activeSession.model may be "" before system:init arrives).
+  const liveModel = activeSession?.model || profileData?.model || activeUP?.model || "";
   const editorProfileProvider = editorProfileData?.provider ?? activeUP?.provider;
   const editorProfileModel = editorProfileData?.model ?? activeUP?.model;
   const pendingProfileProviderMatches = !sessionProviderLocked
@@ -613,11 +613,16 @@ function AppShell() {
                     const widgetSessionId = result.spawnedSessionId ?? activeSession.id;
                     console.log(`[onMoveActivated] widget set: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
                     widgetJustSetRef.current = true;
-                    setActiveMoveWidget({
+                    const newWidget = {
                       widget: result.widget,
                       apiToken: result.apiToken,
                       instanceId: result.instanceId,
                       sessionId: widgetSessionId,
+                    };
+                    // Replace existing entry for same instanceId, or append
+                    setActiveMoveWidgets(prev => {
+                      const filtered = prev.filter(w => w.instanceId !== result.instanceId);
+                      return [...filtered, newWidget];
                     });
                     if (result.widget.autoOpen) setRightPanelOpen(true);
                   }
@@ -643,7 +648,7 @@ function AppShell() {
               width={rightPanelWidth}
               onOpen={() => setRightPanelOpen(true)}
               onClose={() => setRightPanelOpen(false)}
-              moveWidget={activeMoveWidget}
+              moveWidgets={activeMoveWidgets}
               initialBrowserPath={rightPanelBrowserPath}
               onBrowserPathChange={setRightPanelBrowserPath}
             />
