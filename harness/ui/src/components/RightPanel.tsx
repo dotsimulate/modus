@@ -58,6 +58,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [htmlPreview, setHtmlPreview] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenBrowser, setFullscreenBrowser] = useState(false);
 
   // When FileViewerProvider's activePath changes (e.g. agent opens a file), switch to it
   useEffect(() => {
@@ -369,11 +370,23 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 )}
               </button>
             )}
+            {/* File browser toggle (fullscreen only) */}
+            {fullscreen && (
+              <button
+                className={`right-panel-header-btn${fullscreenBrowser ? " active" : ""}`}
+                onClick={() => setFullscreenBrowser((b) => !b)}
+                title={fullscreenBrowser ? "Hide file browser" : "Show file browser"}
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <path d="M1 3h4l1-1.5h5v8.5H1z" stroke="currentColor" strokeWidth="1.1" fill="none"/>
+                </svg>
+              </button>
+            )}
             {/* Fullscreen */}
             {(showFileContent || isEditMode) && (
               <button
                 className="right-panel-header-btn"
-                onClick={() => setFullscreen(!fullscreen)}
+                onClick={() => { setFullscreen(!fullscreen); if (fullscreen) setFullscreenBrowser(false); }}
                 title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
               >
                 {fullscreen ? (
@@ -389,8 +402,20 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
           </div>
         </div>
 
-        <div className={`right-panel-content${isEditMode ? " right-panel-content--editing" : ""}`}>
-          {renderContent()}
+        <div className={`right-panel-body${fullscreen && fullscreenBrowser ? " right-panel-body--split" : ""}`}>
+          {fullscreen && fullscreenBrowser && (
+            <div className="right-panel-fs-browser">
+              <FileBrowser
+                rootPath={activeCwd ?? null}
+                initialPath={initialBrowserPath}
+                onFileSelect={handleFileSelect}
+                onPathChange={onBrowserPathChange}
+              />
+            </div>
+          )}
+          <div className={`right-panel-content${isEditMode ? " right-panel-content--editing" : ""}`}>
+            {renderContent()}
+          </div>
         </div>
       </div>
     </>

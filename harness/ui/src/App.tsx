@@ -28,6 +28,7 @@ import { TraceView } from "./components/TraceView";
 import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
+import { PanelCollapseTab } from "./components/PanelCollapseTab";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { AgentPortal } from "./components/AgentPortal";
 
@@ -495,19 +496,13 @@ function AppShell() {
               onSelectSession={handleSelectSession}
             />
             {leftPanelOpen && <ResizeHandle side="left" onResize={handleLeftResize} />}
-            <button
-              className="panel-tab panel-tab--left"
-              onClick={leftPanelOpen ? () => setLeftPanelOpen(false) : () => setLeftPanelOpen(true)}
-              title={leftPanelOpen ? "Collapse panel" : "Open widgets panel"}
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                {leftPanelOpen ? (
-                  <path d="M6 2L2 5.5 6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                ) : (
-                  <path d="M4 2l4 3.5L4 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                )}
-              </svg>
-            </button>
+            <PanelCollapseTab
+              side="left"
+              open={leftPanelOpen}
+              onToggle={() => setLeftPanelOpen((o) => !o)}
+              openTitle="Open widgets panel"
+              closeTitle="Collapse panel"
+            />
             <div className="chat">
               <ChatView
                 messages={activeSession?.messages ?? []}
@@ -620,19 +615,13 @@ function AppShell() {
                 }}
               />
             </div>
-            <button
-              className="panel-tab panel-tab--right"
-              onClick={rightPanelOpen ? () => setRightPanelOpen(false) : () => setRightPanelOpen(true)}
-              title={rightPanelOpen ? "Collapse panel" : "Open viewer panel"}
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                {rightPanelOpen ? (
-                  <path d="M4 2l4 3.5L4 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                ) : (
-                  <path d="M6 2L2 5.5 6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                )}
-              </svg>
-            </button>
+            <PanelCollapseTab
+              side="right"
+              open={rightPanelOpen}
+              onToggle={() => setRightPanelOpen((o) => !o)}
+              openTitle="Open viewer panel"
+              closeTitle="Collapse panel"
+            />
             {rightPanelOpen && <ResizeHandle side="right" onResize={handleRightResize} />}
             <RightPanel
               open={rightPanelOpen}
