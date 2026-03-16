@@ -1,8 +1,8 @@
 ---
 title: Core Primitives
 audience: agents
-lastUpdated: 2026-03-12
-lastCommit: 03ccdbe
+lastUpdated: 2026-03-16
+lastCommit: a9adf68
 covers: harness/db.ts harness/session-manager.ts harness/index.ts
 ---
 
@@ -23,7 +23,8 @@ Sessions do NOT transition to "done" in normal use. They stay idle.
 with sequence numbers. FTS5 search index built from event content.
 
 **Key fields**: id, profile, model, provider, status, cwd, user_profile,
-tags (JSON array), parent_session_id (for branches), title.
+tags (JSON array), parent_session_id (for branches), title, additionalDirectories,
+ui_state (JSON blob for panel/layout persistence).
 
 **SSE streaming**: clients subscribe to `/api/sessions/:id/events` for
 real-time event delivery. Events are persisted to DB and broadcast to
@@ -33,6 +34,20 @@ subscribers simultaneously.
 from a specific message in the parent. Events are copied up to the branch
 point.
 
+**Steer**: `POST /api/sessions/:id/steer` injects a message mid-turn at the next
+tool boundary (claude-code only). Falls back to queue if session is not running.
+
+**UI state**: `GET/PATCH /api/sessions/:id/ui-state` — per-session JSON blob for
+panel widths, open/closed state, etc. Persisted to `ui_state` column.
+
+**Artifacts**: the `session_artifacts` table stores media/files attached to a specific
+session turn (seq + optional target UUID). Created by action `afterRun` via
+`ctx.attachArtifact()`. Served at `GET /api/sessions/:id/artifacts/:artifactId`.
+
+**Session watchers**: `watchSession(id)` returns a promise that resolves when the session
+reaches idle/done/error — used by action-runner instead of polling. `watchSessionExchanges()`
+fires a callback on each assistant round end.
+
 **Message content**: `getSessionMessages(sessionId)` in `db.ts` reconstructs structured
 turns from raw events. Returns `TurnContent[]` — each turn has `role`, `seq`, `text`,
 optional `thinking` and `toolCalls`, and `timestamp`. Tool call results are joined to
@@ -41,7 +56,7 @@ Exposed via `GET /api/sessions/:id/messages-content` (optional `?seq=<n>` for a 
 
 **Usage analytics**: `getProviderUsageAnalytics({ userProfile?, days? })` in `db.ts` returns token/cost breakdowns by provider, model, and day over a configurable window (default 30 days, max 120). Shape: `{ windowDays, totals, providers[], models[], daily[] }` — each bucket has sessions, turns, inputTokens, outputTokens, totalTokens, cost.
 
-**Search scoping**: `searchSessions(query, limit, scope?)` now accepts `scope.agentProfiles` and `scope.userProfileName` in addition to `scope.cwdPrefixes`. The search index join filters within the visible session scope before ranking.
+**Search scoping**: `searchSessions(query, limit, scope?)` accepts `scope.agentProfiles` and `scope.userProfileName` in addition to `scope.cwdPrefixes`.
 
 **Managed by**: `session-manager.ts` (lifecycle, routing), `db.ts` (persistence).
 

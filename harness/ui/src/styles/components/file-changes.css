@@ -82,7 +82,11 @@
 .fc-file-name {
   color: var(--text);
   font-weight: 500;
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
 }
 
 .fc-file-dir {

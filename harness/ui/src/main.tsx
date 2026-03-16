@@ -41,6 +41,12 @@ import './styles/components/project-theme-widget.css'
 import './styles/components/provider-usage-widget.css'
 import './styles/components/prompt-picker.css'
 import './styles/components/missions.css'
+import './styles/components/panels.css'
+import './styles/components/session-info-widget.css'
+import './styles/components/session-control-widget.css'
+import './styles/components/file-browser.css'
+import './styles/components/mini-float.css'
+import './styles/components/agent-portal.css'
 
 // Views
 import './styles/views/login.css'
@@ -52,6 +58,7 @@ import './styles/views/actions.css'
 import './styles/views/git.css'
 import './styles/views/web.css'
 import './styles/views/trace.css'
+import './styles/views/editor.css'
 
 // Overrides (last — responsive)
 import './styles/mobile.css'

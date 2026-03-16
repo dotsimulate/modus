@@ -1,0 +1,115 @@
+/**
+ * Session Info widget — active session metadata display.
+ */
+
+.si-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 8px;
+}
+
+/* ── Status row ── */
+
+.si-status-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.si-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.si-dot--running {
+  background: var(--success);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--success) 50%, transparent);
+  animation: si-pulse 1.8s ease-in-out infinite;
+}
+
+.si-dot--starting {
+  background: var(--warning);
+  animation: si-pulse 1.2s ease-in-out infinite;
+}
+
+.si-dot--idle {
+  background: var(--text-muted);
+}
+
+.si-dot--done {
+  background: var(--text-muted);
+}
+
+.si-dot--error {
+  background: var(--error);
+}
+
+@keyframes si-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.si-status-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.si-status-text--running {
+  color: var(--success);
+}
+
+.si-status-text--starting {
+  color: var(--warning);
+}
+
+.si-status-text--error {
+  color: var(--error);
+}
+
+/* ── Metadata rows ── */
+
+.si-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.si-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.si-row:last-child {
+  border-bottom: none;
+}
+
+.si-row-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.si-row-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

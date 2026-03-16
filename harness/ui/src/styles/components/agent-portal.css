@@ -1,0 +1,486 @@
+/**
+ * AgentPortal
+ *
+ * One fixed element. Two states: eye and panel.
+ * The transition between them is clip-path — a circle expanding
+ * into a rounded rect, origin at the eye's center.
+ *
+ * The eye is always at top-right of the widget.
+ * It is the drag handle. It is the toggle. It is the close.
+ * There is no X. There is only the eye.
+ */
+
+/* ══════════════════════════════════════════════════════════════
+   Widget — the single fixed element.
+
+   Width is always 300px. When collapsed, clip-path cuts it
+   to a 20px-radius circle centered on the eye (top-right).
+   When expanded, clip-path reveals the full rounded rect.
+
+   pointer-events: none prevents the invisible collapsed area
+   from eating clicks on content below it.
+   ══════════════════════════════════════════════════════════════ */
+
+.ap-widget {
+  position: fixed;
+  z-index: 1200;
+  width: 240px;
+  pointer-events: none; /* only interactive children handle events */
+
+  /* Surface — invisible when collapsed */
+  background: transparent;
+  border: 1px solid transparent;
+
+  /* Clip to eye circle: 20px radius at eye center (right: 18px, top: 18px) */
+  clip-path: circle(20px at calc(100% - 18px) 18px);
+
+  /* Smooth morphs */
+  transition:
+    clip-path  0.32s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.18s ease,
+    border-color 0.18s ease;
+
+  display: flex;
+  flex-direction: column;
+}
+
+/* Expanded: reveal full panel with top-right radius matching eye */
+.ap-widget--open {
+  clip-path: inset(0 round 12px 20px 12px 12px);
+  background: var(--bg-raised);
+  border-color: color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Head — just the eye, right-aligned.
+   ══════════════════════════════════════════════════════════════ */
+
+.ap-head {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  z-index: 2;
+  height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Eye button — drag handle, toggle, close. All three.
+   Always at top-right. Always interactive.
+   ══════════════════════════════════════════════════════════════ */
+
+.ap-eye-btn {
+  pointer-events: auto; /* always interactive even when widget is collapsed */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  padding: 2px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  color: var(--text-muted);
+  border-radius: 50%;
+  transition: color 0.2s, filter 0.3s;
+}
+
+.ap-eye-btn:active { cursor: grabbing; }
+.ap-eye-btn:hover  { color: var(--text-dim); }
+
+/* States propagated from widget */
+.ap-widget--active .ap-eye-btn {
+  color: var(--text-dim);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--dot-running) 25%, transparent));
+}
+
+.ap-widget--active.ap-widget--playing .ap-eye-btn {
+  animation: ap-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes ap-breathe {
+  0%, 100% { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--dot-running) 20%, transparent)); }
+  50%      { filter: drop-shadow(0 0 14px color-mix(in srgb, var(--dot-running) 40%, transparent)); }
+}
+
+.ap-widget--open .ap-eye-btn {
+  color: var(--text-secondary);
+}
+
+.ap-widget--idle .ap-eye-btn {
+  color: var(--text-secondary);
+}
+
+/* ── PortalEye SVG ── */
+
+.ap-eye {
+  display: block;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+/* Ring transitions: all three visual properties animate between states */
+.ap-eye-ring {
+  transition: opacity 0.4s ease, stroke-width 0.3s ease, stroke 0.4s ease;
+  opacity: 0.8;
+  stroke-width: 1;
+}
+
+/* Active agents — ring goes green + thickens */
+.ap-widget--active .ap-eye-ring {
+  opacity: 1;
+  stroke-width: 1.6;
+  stroke: var(--dot-running);
+}
+
+/* Audio playing (no agents) — slight brightening */
+.ap-widget--playing .ap-eye-ring {
+  opacity: 0.9;
+  stroke-width: 1.2;
+}
+
+/* Active + playing — full ring */
+.ap-widget--active.ap-widget--playing .ap-eye-ring {
+  opacity: 1;
+  stroke-width: 1.8;
+  stroke: var(--dot-running);
+}
+
+/* Open panel — ring settles, matches panel border weight */
+.ap-widget--open .ap-eye-ring {
+  opacity: 0.7;
+  stroke-width: 1.2;
+}
+
+/* Open + active — keep the green but softer */
+.ap-widget--open.ap-widget--active .ap-eye-ring {
+  opacity: 0.85;
+  stroke-width: 1.4;
+  stroke: var(--dot-running);
+}
+
+/* Idle — present but quiet */
+.ap-widget--idle .ap-eye-ring {
+  opacity: 0.8;
+  stroke-width: 1;
+}
+
+.ap-eye-dot {
+  animation: ap-wander 9s ease-in-out infinite;
+}
+
+.ap-eye-dot--0 { fill: var(--dot-running); animation-delay: 0s; }
+.ap-eye-dot--1 { fill: var(--dot-running); animation-delay: -3s; }
+.ap-eye-dot--2 { fill: var(--dot-running); animation-delay: -6s; }
+
+@keyframes ap-wander {
+  0%   { transform: translate(0, 0); }
+  8%   { transform: translate(4px, -2.5px); }
+  16%  { transform: translate(4px, -2.5px); }
+  24%  { transform: translate(-3px, -4px); }
+  32%  { transform: translate(-3px, -4px); }
+  40%  { transform: translate(1.5px, 5px); }
+  48%  { transform: translate(1.5px, 5px); }
+  56%  { transform: translate(-5px, 1px); }
+  64%  { transform: translate(-5px, 1px); }
+  72%  { transform: translate(3px, 3.5px); }
+  80%  { transform: translate(3px, 3.5px); }
+  88%  { transform: translate(-2px, -2px); }
+  94%  { transform: translate(-2px, -2px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Audio dot — pulsing center presence when anything is speaking */
+.ap-eye-audio-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0.5;
+}
+
+.ap-eye-audio-dot--playing {
+  animation: ap-audio-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes ap-audio-pulse {
+  0%, 100% { transform: scale(0.6); opacity: 0.5; }
+  50%      { transform: scale(1.5); opacity: 1; }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Body — always in DOM, clipped by parent when collapsed.
+   pointer-events: none when collapsed (invisible region must
+   not intercept clicks on underlying content).
+   ══════════════════════════════════════════════════════════════ */
+
+.ap-body {
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ap-widget--open .ap-body {
+  pointer-events: auto;
+}
+
+.ap-section { padding: 4px 0; }
+
+.ap-section--sep {
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Agent rows
+   ══════════════════════════════════════════════════════════════ */
+
+.ap-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  min-height: 30px;
+  transition: background 0.08s;
+}
+
+.ap-row:hover { background: var(--bg-hover); }
+.ap-row--idle { opacity: 0.5; }
+.ap-row--idle:hover { opacity: 1; }
+
+.ap-row-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--dot-idle);
+}
+
+.ap-row-dot--running {
+  background: var(--dot-running);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--dot-running) 35%, transparent);
+  animation: ap-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.ap-row-dot--starting {
+  background: var(--warning);
+  animation: ap-dot-pulse 0.8s ease-in-out infinite;
+}
+
+.ap-row-dot--pinned {
+  background: var(--warning);
+  opacity: 0.35;
+}
+
+@keyframes ap-dot-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+.ap-row-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ap-row-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ap-row-detail {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ap-row-detail--tool { color: var(--tool-running); }
+
+.ap-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.ap-row:hover .ap-row-actions,
+.ap-audio-meta:hover .ap-row-actions { opacity: 1; }
+
+.ap-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  transition: color 0.1s, background 0.1s;
+  touch-action: manipulation;
+}
+
+.ap-btn:hover {
+  color: var(--text-dim);
+  background: var(--bg-hover);
+}
+
+.ap-btn-pin { opacity: 0.5; }
+
+.ap-btn-pin:hover {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 6%, transparent);
+  opacity: 1;
+}
+
+.ap-btn-pin--on {
+  color: var(--warning) !important;
+  opacity: 1 !important;
+}
+
+.ap-btn-pin--on:hover {
+  background: color-mix(in srgb, var(--warning) 10%, transparent) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Audio
+   ══════════════════════════════════════════════════════════════ */
+
+.ap-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 12px;
+}
+
+.ap-audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ap-audio-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 0.1s;
+  touch-action: manipulation;
+}
+
+.ap-audio-toggle:hover { color: var(--text-secondary); }
+
+.ap-audio-viz {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.ap-audio-viz-bar {
+  width: 2px;
+  background: var(--text-dim);
+  border-radius: 1px;
+  animation: ap-viz-bounce 0.65s ease-in-out infinite alternate;
+}
+
+@keyframes ap-viz-bounce {
+  0%   { height: 3px; }
+  100% { height: 10px; }
+}
+
+.ap-audio-track {
+  flex: 1;
+  height: 2px;
+  background: var(--border-active);
+  cursor: pointer;
+  position: relative;
+  border-radius: 1px;
+  padding: 6px 0;
+  background-clip: content-box;
+}
+
+.ap-audio-fill {
+  height: 2px;
+  margin-top: 6px;
+  background: var(--text-tertiary);
+  border-radius: 1px;
+  pointer-events: none;
+  transition: width 0.1s linear;
+}
+
+.ap-audio-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ap-audio-time-total { color: var(--text-muted); }
+
+.ap-audio-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ap-audio-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Empty
+   ══════════════════════════════════════════════════════════════ */
+
+.ap-empty {
+  padding: 12px 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Touch
+   ══════════════════════════════════════════════════════════════ */
+
+@media (pointer: coarse) {
+  .ap-eye-btn { width: 44px; height: 44px; padding: 6px; }
+  .ap-btn { width: 36px; height: 36px; }
+  .ap-audio-toggle { width: 36px; height: 36px; }
+  .ap-row { padding: 10px 12px; min-height: 48px; }
+  .ap-row-actions { opacity: 1; }
+  .ap-audio-track { padding: 10px 0; }
+}

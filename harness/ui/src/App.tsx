@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi } from "./api";
+import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget } from "./api";
 import { customPageView, getCustomPageId, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -21,11 +21,16 @@ import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
 import { UserSettingsModal } from "./components/UserSettingsModal";
 import { createEmptyAgentConfig } from "./components/AgentConfig";
-import { FileViewerProvider } from "./providers/FileViewerProvider";
+import { FileViewerProvider, useFileViewer } from "./providers/FileViewerProvider";
 import { SessionWindow } from "./components/SessionWindow";
 import { SessionWeb } from "./components/SessionWeb";
 import { TraceView } from "./components/TraceView";
+import { LeftPanel } from "./components/LeftPanel";
+import { RightPanel } from "./components/RightPanel";
+import { ResizeHandle } from "./components/ResizeHandle";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
+import { AgentPortal } from "./components/AgentPortal";
+import { EditorPage } from "./components/EditorPage";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
 function parseTagList(raw?: string | null): string[] {
@@ -71,6 +76,7 @@ function AppShell() {
     queuedMessage, cancelQueued, branchFromMessage,
   } = useSession();
   const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, consumeHashProfile } = useHashRouter();
+  const { tabs: fileViewerTabs, activePath: fileViewerActivePath, hydrate: hydrateFileViewer } = useFileViewer();
 
   // ── Local UI state ──
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
@@ -79,6 +85,148 @@ function AppShell() {
   const [forceSetup, setForceSetup] = useState(false);
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [floatingSessionId, setFloatingSessionId] = useState<string | null>(null);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(280);
+  const [rightPanelOpen, setRightPanelOpen] = useState(false);
+  const [rightPanelWidth, setRightPanelWidth] = useState(360);
+  const [rightPanelBrowserPath, setRightPanelBrowserPath] = useState<string | null>(null);
+  const [activeMoveWidgets, setActiveMoveWidgets] = useState<Array<{
+    widget: import("./api").MoveWidgetInfo;
+    apiToken: string;
+    instanceId: string;
+    sessionId: string;
+  }>>([]);
+  const widgetJustSetRef = useRef(false);
+  const prevSessionIdRef = useRef<string | null>(null);
+  const panelSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uiCache = useRef<Map<string, Record<string, unknown>>>(new Map());
+  const fileViewerTabsRef = useRef(fileViewerTabs);
+  const fileViewerActivePathRef = useRef(fileViewerActivePath);
+  const rightPanelBrowserPathRef = useRef(rightPanelBrowserPath);
+  fileViewerTabsRef.current = fileViewerTabs;
+  fileViewerActivePathRef.current = fileViewerActivePath;
+  rightPanelBrowserPathRef.current = rightPanelBrowserPath;
+
+  // ── Panel state persistence (per-session, backend-stored) ──
+
+  // Capture current panel + scroll state into cache and persist to backend (debounced)
+  const savePanelState = useCallback((sessionId: string) => {
+    if (!sessionId || sessionId.startsWith("pending-")) return;
+    const scrollEl = document.querySelector(".chat-messages");
+    const snapshot: Record<string, unknown> = {
+      leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth,
+      scrollTop: scrollEl ? scrollEl.scrollTop : 0,
+      fileViewerTabs: fileViewerTabsRef.current,
+      fileViewerActivePath: fileViewerActivePathRef.current,
+      browserPath: rightPanelBrowserPathRef.current,
+    };
+    uiCache.current.set(sessionId, snapshot);
+    if (panelSaveTimer.current) clearTimeout(panelSaveTimer.current);
+    panelSaveTimer.current = setTimeout(() => {
+      saveSessionUiState(sessionId, snapshot).catch(() => {});
+    }, 300);
+  }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth]);
+
+  // Save panel state on change (debounced)
+  useEffect(() => {
+    const id = activeSession?.id;
+    if (!id || id.startsWith("pending-")) return;
+    savePanelState(id);
+  }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth, rightPanelBrowserPath, fileViewerTabs, fileViewerActivePath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Restore panel + scroll state on session switch
+  useEffect(() => {
+    const id = activeSession?.id ?? null;
+    const prevId = prevSessionIdRef.current;
+    if (id === prevId) return;
+
+    // Save outgoing session's scroll position before switching
+    if (prevId && !prevId.startsWith("pending-")) {
+      const scrollEl = document.querySelector(".chat-messages");
+      if (scrollEl) {
+        const cached = uiCache.current.get(prevId) ?? {};
+        cached.scrollTop = scrollEl.scrollTop;
+        uiCache.current.set(prevId, cached);
+      }
+    }
+
+    prevSessionIdRef.current = id;
+
+    if (!id || id.startsWith("pending-")) {
+      setLeftPanelOpen(false);
+      setLeftPanelWidth(280);
+      setRightPanelOpen(false);
+      setRightPanelWidth(360);
+      setRightPanelBrowserPath(null);
+      hydrateFileViewer([], null);
+      return;
+    }
+
+    // Restore from cache (synchronous — no bounce), backfill from backend
+    const applyState = (state: Record<string, unknown>) => {
+      setLeftPanelOpen(!!state.leftPanelOpen);
+      setLeftPanelWidth(typeof state.leftPanelWidth === "number" ? state.leftPanelWidth : 280);
+      setRightPanelOpen(!!state.rightPanelOpen);
+      setRightPanelWidth(typeof state.rightPanelWidth === "number" ? state.rightPanelWidth : 360);
+      setRightPanelBrowserPath(typeof state.browserPath === "string" ? state.browserPath : null);
+      // Restore file viewer tabs and active path
+      const savedTabs = Array.isArray(state.fileViewerTabs)
+        ? (state.fileViewerTabs as { path: string; pinned: boolean }[]).filter(
+            (t) => typeof t?.path === "string"
+          )
+        : [];
+      const savedActivePath = typeof state.fileViewerActivePath === "string" ? state.fileViewerActivePath : null;
+      hydrateFileViewer(savedTabs, savedActivePath);
+      // Restore scroll position after React renders the new layout
+      if (typeof state.scrollTop === "number" && state.scrollTop > 0) {
+        requestAnimationFrame(() => {
+          const scrollEl = document.querySelector(".chat-messages");
+          if (scrollEl) scrollEl.scrollTop = state.scrollTop as number;
+        });
+      }
+    };
+
+    const cached = uiCache.current.get(id);
+    if (cached) {
+      applyState(cached);
+    } else {
+      // First visit this session — fetch from backend, cache it
+      setLeftPanelOpen(false);
+      setLeftPanelWidth(280);
+      setRightPanelOpen(false);
+      setRightPanelWidth(360);
+      fetchSessionUiState(id).then((state) => {
+        uiCache.current.set(id, state);
+        // Only apply if we're still on this session
+        if (prevSessionIdRef.current === id) applyState(state);
+      }).catch(() => {});
+    }
+  }, [activeSession?.id]);
+
+  // Restore active move widgets on session switch / page load
+  useEffect(() => {
+    const id = activeSession?.id;
+    console.log(`[widget-effect] activeSession.id=${id} widgetJustSet=${widgetJustSetRef.current}`);
+    if (!id || id.startsWith("pending-")) { setActiveMoveWidgets([]); return; }
+    // Skip backend fetch if widget was just set by onMoveActivated — the backend
+    // registry may not have the rekeyed session ID yet. Just update the sessionId.
+    if (widgetJustSetRef.current) {
+      widgetJustSetRef.current = false;
+      console.log(`[widget-effect] SKIP fetch, updating sessionId to ${id}`);
+      setActiveMoveWidgets(prev => prev.map(w => ({ ...w, sessionId: id })));
+      return;
+    }
+    fetchActiveWidget(id).then((widgets) => {
+      console.log(`[widget-effect] fetch(${id}) →`, widgets);
+      if (!widgets.length) {
+        // Keep existing widgets already tagged to this session (onMoveActivated set them
+        // before the rekey completed); clear any that belong to a different session.
+        setActiveMoveWidgets(prev => prev.filter(w => w.sessionId === id));
+        return;
+      }
+      setActiveMoveWidgets(widgets.map(w => ({ ...w, sessionId: id })));
+    }).catch(() => setActiveMoveWidgets([]));
+  }, [activeSession?.id]);
 
   // Sync editor pref from active user profile into localStorage
   useEffect(() => {
@@ -169,6 +317,13 @@ function AppShell() {
     setFloatingSessionId(id);
   }, []);
 
+  const handleLeftResize = useCallback((delta: number) => {
+    setLeftPanelWidth((w) => Math.max(180, Math.min(600, w + delta)));
+  }, []);
+  const handleRightResize = useCallback((delta: number) => {
+    setRightPanelWidth((w) => Math.max(200, Math.min(800, w + delta)));
+  }, []);
+
   // ── Profile UI resolution ──
   // Config bar shows the active session's profile. Sidebar's selectedProfile
   // is only used when there is NO active session (new chat preview).
@@ -183,6 +338,7 @@ function AppShell() {
     placeholder: profileUi.placeholder ?? "message...",
     emptyTitle: profileUi.emptyTitle ?? activeProfileName,
     emptySubtitle: profileUi.emptySubtitle ?? "start typing to begin",
+    panelWidgets: profileUi.panelWidgets ?? [],
   };
   const isStreaming = activeSession?.status === "running" || activeSession?.status === "starting";
   const profileData = profiles.find((p) => p.name === activeProfileName);
@@ -191,7 +347,9 @@ function AppShell() {
   const editorProfileData = profiles.find((p) => p.name === editorProfileName);
   const sessionProviderLocked = !!activeSession && activeSession.messages.length > 0;
   const liveProvider = activeSessionInfo?.provider || activeSession?.provider || profileData?.provider || activeUP?.provider;
-  const liveModel = activeSession ? activeSession.model : (profileData?.model || activeUP?.model);
+  // Use session model when available; fall back to profile default while events
+  // are still in-flight (activeSession.model may be "" before system:init arrives).
+  const liveModel = activeSession?.model || profileData?.model || activeUP?.model || "";
   const editorProfileProvider = editorProfileData?.provider ?? activeUP?.provider;
   const editorProfileModel = editorProfileData?.model ?? activeUP?.model;
   const pendingProfileProviderMatches = !sessionProviderLocked
@@ -325,6 +483,31 @@ function AppShell() {
 
         {view === "chat" && (
           <>
+            <LeftPanel
+              open={leftPanelOpen}
+              width={leftPanelWidth}
+              onOpen={() => setLeftPanelOpen(true)}
+              onClose={() => setLeftPanelOpen(false)}
+              widgets={(profileData?.ui?.panelWidgets ?? ["session-info"]).map(
+                (type, i) => ({ id: `left-${type}-${i}`, type })
+              )}
+              onNavigate={handleNavigate}
+              onSelectSession={handleSelectSession}
+            />
+            {leftPanelOpen && <ResizeHandle side="left" onResize={handleLeftResize} />}
+            <button
+              className="panel-tab panel-tab--left"
+              onClick={leftPanelOpen ? () => setLeftPanelOpen(false) : () => setLeftPanelOpen(true)}
+              title={leftPanelOpen ? "Collapse panel" : "Open widgets panel"}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                {leftPanelOpen ? (
+                  <path d="M6 2L2 5.5 6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                ) : (
+                  <path d="M4 2l4 3.5L4 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                )}
+              </svg>
+            </button>
             <div className="chat">
               <ChatView
                 messages={activeSession?.messages ?? []}
@@ -409,13 +592,57 @@ function AppShell() {
                 projectCwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
                 userProfile={activeUserProfile ?? undefined}
                 autoFocus={view === "chat" && !!activeSession?.id}
-                onMoveActivated={() => {
+                onMoveActivated={(result) => {
                   refreshSessions();
                   const cwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
                   loadAndApplyProjectUiState(cwd || undefined);
+                  if (result.spawnedSessionId) {
+                    selectSession(result.spawnedSessionId);
+                    setUrlSession(result.spawnedSessionId, activeUserProfile);
+                  }
+                  if (result.widget && result.apiToken && result.instanceId && activeSession?.id) {
+                    const widgetSessionId = result.spawnedSessionId ?? activeSession.id;
+                    console.log(`[onMoveActivated] widget set: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
+                    widgetJustSetRef.current = true;
+                    const newWidget = {
+                      widget: result.widget,
+                      apiToken: result.apiToken,
+                      instanceId: result.instanceId,
+                      sessionId: widgetSessionId,
+                    };
+                    // Replace existing entry for same instanceId, or append
+                    setActiveMoveWidgets(prev => {
+                      const filtered = prev.filter(w => w.instanceId !== result.instanceId);
+                      return [...filtered, newWidget];
+                    });
+                    if (result.widget.autoOpen) setRightPanelOpen(true);
+                  }
                 }}
               />
             </div>
+            <button
+              className="panel-tab panel-tab--right"
+              onClick={rightPanelOpen ? () => setRightPanelOpen(false) : () => setRightPanelOpen(true)}
+              title={rightPanelOpen ? "Collapse panel" : "Open viewer panel"}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                {rightPanelOpen ? (
+                  <path d="M4 2l4 3.5L4 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                ) : (
+                  <path d="M6 2L2 5.5 6 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                )}
+              </svg>
+            </button>
+            {rightPanelOpen && <ResizeHandle side="right" onResize={handleRightResize} />}
+            <RightPanel
+              open={rightPanelOpen}
+              width={rightPanelWidth}
+              onOpen={() => setRightPanelOpen(true)}
+              onClose={() => setRightPanelOpen(false)}
+              moveWidgets={activeMoveWidgets}
+              initialBrowserPath={rightPanelBrowserPath}
+              onBrowserPathChange={setRightPanelBrowserPath}
+            />
           </>
         )}
 
@@ -436,6 +663,7 @@ function AppShell() {
         {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
         {view === "web" && <SessionWeb />}
         {view === "trace" && <TraceView />}
+        {view === "editor" && <EditorPage />}
         {view === "git" && (
           <PageView
             blocks={gitPageBlocks}
@@ -456,6 +684,15 @@ function AppShell() {
         sessionId={floatingSessionId}
         onClose={() => setFloatingSessionId(null)}
         onNavigate={(id) => { setFloatingSessionId(null); handleViewSession(id); }}
+      />
+
+      <AgentPortal
+        sessions={serverSessions.map((s) => {
+          const storeState = getSessionState(s.id);
+          return storeState ? { ...s, status: storeState.status ?? s.status } : s;
+        })}
+        onNavigateSession={handleViewSession}
+        onPeekSession={handlePeekSession}
       />
 
       {showUserSettings && activeUP && (

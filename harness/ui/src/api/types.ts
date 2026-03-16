@@ -159,6 +159,7 @@ export type ProfileUi = {
   placeholder?: string;
   emptyTitle?: string;
   emptySubtitle?: string;
+  panelWidgets?: string[];
 };
 
 export type Profile = {
@@ -295,6 +296,7 @@ export type BrowseResult = {
   path: string;
   parent: string | null;
   dirs: string[];
+  files?: string[];
 };
 
 export type PermissionResponse = {

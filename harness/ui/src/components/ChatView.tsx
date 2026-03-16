@@ -65,6 +65,7 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [commitAttribution, setCommitAttribution] = useState<CommitAttribution | null>(null);
+  const [commitAttributionExpanded, setCommitAttributionExpanded] = useState(false);
   const hasMessages = messages.length > 0;
   const lastMessage = hasMessages ? messages[messages.length - 1] : null;
 
@@ -379,32 +380,40 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
               </div>
             </div>
           )}
-          {showGitEvents && commitAttribution?.matched && commitAttribution.commit && (
-            <>
-              <div className="message message--git-note" data-role="git-note">
-                <button
-                  className="message-commit-detected"
-                  onClick={() => navigateToGitRoute({ commit: commitAttribution.commit!.hash })}
-                  type="button"
-                >
-                  <span className="message-commit-detected-copy">
-                    {commitMatchLabel(commitAttribution.matchedFiles)}
-                  </span>
-                  <span className="message-commit-detected-meta">
-                    {formatCommitWhen(commitAttribution.commit.date)}
-                  </span>
-                </button>
-              </div>
-              <div className="message message--git" data-role="git">
-                <GitActivityItem
-                  commit={commitAttribution.commit}
-                  sessionId={sessionId}
-                  claimedBySession={claimedCommitTags.has(`commit:${commitAttribution.commit.hash.slice(0, 7)}`)}
-                  onClaimChange={onSessionTagsChange}
-                />
-              </div>
-            </>
-          )}
+          {showGitEvents && commitAttribution?.matched && commitAttribution.commit && (() => {
+            const attrHash = commitAttribution.commit.hash.slice(0, 7);
+            const attrClaimed = claimedCommitTags.has(`commit:${attrHash}`);
+            return (
+              <>
+                <div className="message message--git-note" data-role="git-note">
+                  <button
+                    className="message-commit-detected"
+                    onClick={attrClaimed
+                      ? () => setCommitAttributionExpanded(x => !x)
+                      : () => navigateToGitRoute({ commit: commitAttribution.commit!.hash })}
+                    type="button"
+                  >
+                    <span className="message-commit-detected-copy">
+                      {commitMatchLabel(commitAttribution.matchedFiles)}
+                    </span>
+                    <span className="message-commit-detected-meta">
+                      {formatCommitWhen(commitAttribution.commit.date)}
+                    </span>
+                  </button>
+                </div>
+                {(!attrClaimed || commitAttributionExpanded) && (
+                  <div className="message message--git" data-role="git">
+                    <GitActivityItem
+                      commit={commitAttribution.commit}
+                      sessionId={sessionId}
+                      claimedBySession={attrClaimed}
+                      onClaimChange={onSessionTagsChange}
+                    />
+                  </div>
+                )}
+              </>
+            );
+          })()}
           <div ref={endRef} className="chat-anchor" />
         </div>
       </div>

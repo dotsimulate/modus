@@ -1,8 +1,8 @@
 ---
 title: Provider System
 audience: agents
-lastUpdated: 2026-03-12
-lastCommit: 03ccdbe
+lastUpdated: 2026-03-16
+lastCommit: a9adf68
 covers: harness/providers/ harness/session-manager.ts
 ---
 
@@ -18,6 +18,8 @@ startTurn(ctx)           — kick off a turn, emit events via ctx
 sendMessage(ctx, content) — follow-up message to idle/running session
 abort(session)           — stop current turn
 stopTask?(session, id)   — stop a sub-task (Claude SDK only)
+steerMessage?(ctx, content) — inject mid-turn at next tool boundary (Claude SDK only)
+                              returns true if injected, false to fall back to queue
 updateConfig?(session, config) — mutate config mid-session
 switchProfile?(session, ctx, contextMode) — swap profile mid-session
 dispose?(session)        — cleanup on shutdown

@@ -122,7 +122,7 @@ export function ProfilePanel({
               ))}
             </span>
           )}
-          <label className="manual-toggle" onClick={toggleManual} title={setupState.useManualSetup ? "Manual seeding enabled" : "Inheriting from active chat"}>
+          <label className="manual-toggle" onClick={toggleManual} title={setupState.useManualSetup ? "Switch to inherit from active chat" : "Switch to manual seed config"}>
             <input type="checkbox" checked={setupState.useManualSetup} readOnly />
           </label>
           <span className={`profile-panel-chevron ${configExpanded ? "profile-panel-chevron--open" : ""}`}>
