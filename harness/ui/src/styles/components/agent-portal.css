@@ -1,12 +1,13 @@
 /**
- * AgentPortal — ambient HUD: floating eye + dropdown panel.
+ * AgentPortal — ambient floating HUD.
  *
- * Pill: fixed draggable PortalEye with state-driven glow.
- * Panel: purpose-built portal with agent rows + audio player.
+ * The eye is the anchor. When open, the panel grows from it —
+ * its border IS the eye's ring extended. They share one outline.
+ * When closed, the eye is a quiet presence. No hard edges.
  */
 
 /* ══════════════════════════════════════════════════════════════
-   Pill — the PortalEye, fixed position, draggable
+   Pill — the eye, fixed + draggable
    ══════════════════════════════════════════════════════════════ */
 
 .ap-pill {
@@ -17,62 +18,39 @@
   justify-content: center;
   border: none;
   background: transparent;
-  padding: 4px;
+  padding: 2px;
   cursor: grab;
   touch-action: none;
   user-select: none;
-  color: var(--text-dim);
+  color: var(--text-muted);
   border-radius: 50%;
   transition: color 0.2s, filter 0.3s;
 }
 
-.ap-pill:active {
-  cursor: grabbing;
-}
+.ap-pill:active { cursor: grabbing; }
+.ap-pill:hover  { color: var(--text-dim); }
 
-.ap-pill:hover {
-  color: var(--text-tertiary);
-}
-
-/* Active agents — eye brightens, subtle green halo */
 .ap-pill--active {
-  color: var(--text-secondary);
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--dot-running) 25%, transparent));
+  color: var(--text-dim);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--dot-running) 20%, transparent));
 }
 
-/* Audio playing */
-.ap-pill--playing {
-  color: var(--text-secondary);
-}
+.ap-pill--playing { color: var(--text-dim); }
 
-/* Expanded — full brightness */
-.ap-pill--open {
-  color: var(--text);
-}
+.ap-pill--open { color: var(--text-dim); }
 
-/* Active + playing — breathing glow */
 .ap-pill--active.ap-pill--playing {
-  animation: ap-pill-glow 2.4s ease-in-out infinite;
+  animation: ap-pill-breathe 2.4s ease-in-out infinite;
 }
 
-@keyframes ap-pill-glow {
-  0%, 100% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--dot-running) 25%, transparent)); }
-  50%      { filter: drop-shadow(0 0 14px color-mix(in srgb, var(--dot-running) 40%, transparent)); }
+@keyframes ap-pill-breathe {
+  0%, 100% { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--dot-running) 20%, transparent)); }
+  50%      { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--dot-running) 30%, transparent)); }
 }
 
-/* Pinned — amber tint */
-.ap-pill--pinned {
-  color: var(--text-dim);
-}
-
-/* Idle — present, subdued */
-.ap-pill--idle {
-  color: var(--text-muted);
-}
-
-.ap-pill--idle:hover {
-  color: var(--text-dim);
-}
+.ap-pill--pinned { color: var(--text-muted); }
+.ap-pill--idle   { color: var(--text-muted); }
+.ap-pill--idle:hover { color: var(--text-dim); }
 
 /* ── PortalEye SVG ── */
 
@@ -82,26 +60,29 @@
   overflow: visible;
 }
 
+/* Ring — whisper-thin, barely there. The border of everything. */
 .ap-eye-ring {
-  transition: opacity 0.2s, stroke-width 0.2s;
-  opacity: 0.4;
+  transition: opacity 0.25s, stroke-width 0.25s;
+  opacity: 0.2;
+  stroke-width: 0.7;
 }
 
 .ap-pill--active .ap-eye-ring,
 .ap-pill--playing .ap-eye-ring {
-  opacity: 0.7;
-}
-
-.ap-pill--open .ap-eye-ring {
-  opacity: 0.9;
-  stroke-width: 1.2;
-}
-
-.ap-pill--idle .ap-eye-ring {
   opacity: 0.35;
 }
 
-/* Agent dots — wander inside the ring */
+/* Open: ring becomes the shared border with the panel */
+.ap-pill--open .ap-eye-ring {
+  opacity: 0.25;
+  stroke-width: 1;
+}
+
+.ap-pill--idle .ap-eye-ring {
+  opacity: 0.15;
+}
+
+/* Dots wander inside the ring */
 .ap-eye-dot {
   animation: ap-wander 9s ease-in-out infinite;
 }
@@ -127,15 +108,15 @@
   100% { transform: translate(0, 0); }
 }
 
-/* Audio wave bars (audio-only, no agents) */
+/* Audio wave (audio-only, no agents) */
 .ap-eye-wave .ap-eye-wave-bar {
-  opacity: 0.35;
+  opacity: 0.3;
   transform-box: fill-box;
   transform-origin: center;
 }
 
 .ap-eye-wave--playing .ap-eye-wave-bar {
-  opacity: 0.7;
+  opacity: 0.6;
   animation: ap-wave 0.7s ease-in-out infinite alternate;
 }
 
@@ -145,7 +126,12 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Panel — dropdown portal, draggable + resizable
+   Panel — grows from the eye. Same border, same weight.
+
+   The top-right corner is the eye's territory. The panel's
+   border fades into nothing there — the ring IS the corner.
+   Everything else is whisper-thin: var(--border) at the edges,
+   no box-shadow screaming for attention.
    ══════════════════════════════════════════════════════════════ */
 
 .ap-panel {
@@ -155,40 +141,43 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  /* Top-right: no border, eye's ring takes over. Generous radius so the
+     curve reads as continuous with the circular ring. */
+  border-top: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  border-top-right-radius: 20px;
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
   cursor: grab;
   user-select: none;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 3%, transparent),
-    0 12px 32px rgba(0, 0, 0, 0.55),
-    0 2px 8px rgba(0, 0, 0, 0.35);
-  animation: ap-panel-in 0.14s ease-out;
+  /* Shadow: just enough to lift it off the page, nothing dramatic */
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  animation: ap-panel-in 0.12s ease-out;
 }
 
-.ap-panel:active {
-  cursor: grabbing;
-}
+.ap-panel:active { cursor: grabbing; }
 
 @keyframes ap-panel-in {
-  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  from { opacity: 0; transform: scale(0.97) translateY(-3px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* ── Panel head ── */
+/* ── Head ── */
 
 .ap-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px 4px 12px;
+  padding: 7px 10px 3px 12px;
   flex-shrink: 0;
 }
 
 .ap-panel-label {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   color: var(--text-muted);
 }
 
@@ -205,21 +194,18 @@
   border-radius: 3px;
   padding: 0;
   opacity: 0;
-  transition: color 0.1s, background 0.1s, opacity 0.12s;
+  transition: color 0.1s, background 0.1s, opacity 0.1s;
   touch-action: manipulation;
 }
 
-.ap-panel:hover .ap-panel-close {
-  opacity: 1;
-}
+.ap-panel:hover .ap-panel-close { opacity: 1; }
 
 .ap-panel-close:hover {
-  color: var(--text-tertiary);
+  color: var(--text-dim);
   background: var(--bg-hover);
-  opacity: 1;
 }
 
-/* ── Panel body ── */
+/* ── Body ── */
 
 .ap-panel-body {
   flex: 1;
@@ -229,14 +215,10 @@
   flex-direction: column;
 }
 
-/* ── Sections ── */
-
-.ap-section {
-  padding: 4px 0;
-}
+.ap-section { padding: 3px 0; }
 
 .ap-section--sep {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 
 /* ── Agent rows ── */
@@ -246,23 +228,15 @@
   align-items: center;
   gap: 8px;
   padding: 5px 12px;
-  min-height: 32px;
+  min-height: 30px;
   transition: background 0.08s;
 }
 
-.ap-row:hover {
-  background: var(--bg-hover);
-}
+.ap-row:hover { background: var(--bg-hover); }
 
-.ap-row--idle {
-  opacity: 0.55;
-}
+.ap-row--idle { opacity: 0.5; }
+.ap-row--idle:hover { opacity: 1; }
 
-.ap-row--idle:hover {
-  opacity: 1;
-}
-
-/* Status dot */
 .ap-row-dot {
   width: 5px;
   height: 5px;
@@ -273,7 +247,7 @@
 
 .ap-row-dot--running {
   background: var(--dot-running);
-  box-shadow: 0 0 4px color-mix(in srgb, var(--dot-running) 40%, transparent);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--dot-running) 35%, transparent);
   animation: ap-dot-pulse 1.4s ease-in-out infinite;
 }
 
@@ -284,15 +258,14 @@
 
 .ap-row-dot--pinned {
   background: var(--warning);
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 @keyframes ap-dot-pulse {
-  0%, 100% { opacity: 0.45; }
+  0%, 100% { opacity: 0.4; }
   50%      { opacity: 1; }
 }
 
-/* Info block */
 .ap-row-info {
   flex: 1;
   min-width: 0;
@@ -323,7 +296,7 @@
   color: var(--tool-running);
 }
 
-/* Action buttons — shown on row hover */
+/* Actions — appear on hover */
 .ap-row-actions {
   display: flex;
   align-items: center;
@@ -355,18 +328,15 @@
 }
 
 .ap-btn:hover {
-  color: var(--text-tertiary);
+  color: var(--text-dim);
   background: var(--bg-hover);
 }
 
-/* Pin button */
-.ap-btn-pin {
-  opacity: 0.6;
-}
+.ap-btn-pin { opacity: 0.5; }
 
 .ap-btn-pin:hover {
   color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  background: color-mix(in srgb, var(--warning) 6%, transparent);
   opacity: 1;
 }
 
@@ -376,10 +346,10 @@
 }
 
 .ap-btn-pin--on:hover {
-  background: color-mix(in srgb, var(--warning) 12%, transparent) !important;
+  background: color-mix(in srgb, var(--warning) 10%, transparent) !important;
 }
 
-/* ── Audio section ── */
+/* ── Audio ── */
 
 .ap-audio {
   display: flex;
@@ -410,9 +380,7 @@
   touch-action: manipulation;
 }
 
-.ap-audio-toggle:hover {
-  color: var(--text-secondary);
-}
+.ap-audio-toggle:hover { color: var(--text-secondary); }
 
 .ap-audio-viz {
   display: inline-flex;
@@ -462,9 +430,7 @@
   white-space: nowrap;
 }
 
-.ap-audio-time-total {
-  color: var(--text-muted);
-}
+.ap-audio-time-total { color: var(--text-muted); }
 
 .ap-audio-meta {
   display: flex;
@@ -482,10 +448,10 @@
   white-space: nowrap;
 }
 
-/* ── Empty state ── */
+/* ── Empty ── */
 
 .ap-empty {
-  padding: 16px 12px;
+  padding: 14px 12px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -493,7 +459,7 @@
   text-align: center;
 }
 
-/* ── Resize handle ── */
+/* ── Resize ── */
 
 .ap-panel-resize {
   position: absolute;
@@ -519,39 +485,17 @@
   pointer-events: none;
 }
 
-.ap-panel:hover .ap-panel-resize::after {
-  opacity: 0.6;
-}
+.ap-panel:hover .ap-panel-resize::after { opacity: 0.4; }
 
 /* ══════════════════════════════════════════════════════════════
-   Touch / coarse pointer
+   Touch
    ══════════════════════════════════════════════════════════════ */
 
 @media (pointer: coarse) {
-  .ap-pill {
-    padding: 8px;
-  }
-
-  .ap-btn {
-    width: 36px;
-    height: 36px;
-  }
-
-  .ap-audio-toggle {
-    width: 36px;
-    height: 36px;
-  }
-
-  .ap-row {
-    padding: 10px 12px;
-    min-height: 48px;
-  }
-
-  .ap-row-actions {
-    opacity: 1;
-  }
-
-  .ap-audio-track {
-    padding: 10px 0;
-  }
+  .ap-pill { padding: 8px; }
+  .ap-btn { width: 36px; height: 36px; }
+  .ap-audio-toggle { width: 36px; height: 36px; }
+  .ap-row { padding: 10px 12px; min-height: 48px; }
+  .ap-row-actions { opacity: 1; }
+  .ap-audio-track { padding: 10px 0; }
 }
