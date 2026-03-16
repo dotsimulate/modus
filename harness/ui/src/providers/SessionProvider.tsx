@@ -64,7 +64,6 @@ export const useSession = () => useContext(SessionContext);
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
     selectedProfile, profiles, buildSessionOpts, setupState, activeUserProfile, activeUP,
-    setSelectedProfile,
   } = useProfiles();
 
   const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
@@ -288,6 +287,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       rs.model = info?.model ?? "";
       rs.cwd = info?.cwd ?? "";
       setSessionState(id, rs, sessionProfile);
+    } else {
+      // Sync profile and fill missing model from server info even when reusing
+      // a store entry — events may not have arrived yet and profile may be stale.
+      const updatedState = !existing.model && info?.model
+        ? { ...existing, model: info.model }
+        : existing;
+      setSessionState(id, updatedState, sessionProfile);
     }
     setActiveSessionId(id);
 
@@ -297,13 +303,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       subscribeSession(id, afterSeq, sessionProfile, refreshSessions);
     }
 
-    if (sessionProfile) setSelectedProfile(sessionProfile);
+    // NOTE: do NOT write selectedProfile here. selectedProfile is the sidebar's
+    // seed for the next new session (Domain B) and must not be contaminated by
+    // which session the user navigates to (Domain A).
 
     const draft = await getDraft(id).catch(() => "");
     setInput(draft);
 
     setQueuedMessage(null);
-  }, [serverSessions, saveDraftForCurrent, setSelectedProfile, refreshSessions]);
+  }, [serverSessions, saveDraftForCurrent, refreshSessions]);
 
   const archiveSession = useCallback(async (id: string) => {
     await archiveSessionApi(id).catch(() => {});

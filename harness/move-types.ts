@@ -299,8 +299,12 @@ export interface MoveApiContext {
   caller: "agent" | "user";
   /** Instance state — get/set/delete */
   state: MoveStateAPI;
-  /** Push a message into the agent's session (e.g. "Step complete. Your turn.") */
-  notify: (message: string) => void;
+  /**
+   * Push a message into the agent's session.
+   * Pass an optional typed payload to emit a structured signal the agent can branch on.
+   * With a payload, the agent receives: `[modus:{type}] {json}\n{message}`
+   */
+  notify: (message: string, emit?: { type: string; [key: string]: unknown }) => void;
 }
 
 /** State API for move handlers — abstracts in-memory vs persisted storage */

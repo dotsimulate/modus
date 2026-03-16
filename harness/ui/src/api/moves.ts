@@ -55,16 +55,16 @@ export async function callMoveOp(
   return res.json();
 }
 
-/** Restore active widget for a session (survives refresh) */
-export async function fetchActiveWidget(sessionId: string): Promise<{
+/** Restore all active widgets for a session (survives refresh) */
+export async function fetchActiveWidget(sessionId: string): Promise<Array<{
   widget: MoveWidgetInfo;
   apiToken: string;
   instanceId: string;
-} | null> {
+}>> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/moves/widget`, {
     headers: authHeaders(),
   });
-  if (!res.ok) return null;
+  if (!res.ok) return [];
   return res.json();
 }
 

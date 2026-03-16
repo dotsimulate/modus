@@ -1921,12 +1921,10 @@ app.get("/api/sessions/:id/moves/active", (c) => {
   })));
 });
 
-// Get active move widget for a session (for restoring on refresh)
+// Get all active move widgets for a session (for restoring on refresh)
 app.get("/api/sessions/:id/moves/widget", (c) => {
   const sessionId = c.req.param("id");
-  const widget = getActiveWidgetForSession(sessionId);
-  if (!widget) return c.json(null);
-  return c.json(widget);
+  return c.json(getActiveWidgetForSession(sessionId));
 });
 
 // Rekey move registry entries when a session ID changes (empty session → real session)
