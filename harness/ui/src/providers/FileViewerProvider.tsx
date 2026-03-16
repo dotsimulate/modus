@@ -14,6 +14,8 @@ type FileViewerContextValue = {
   pinFile: (path: string) => void;
   unpinFile: (path: string) => void;
   setActive: (path: string) => void;
+  /** Restore saved state on session switch */
+  hydrate: (tabs: Tab[], activePath: string | null) => void;
   /** Compat: single current path */
   path: string | null;
 };
@@ -26,6 +28,7 @@ const FileViewerContext = createContext<FileViewerContextValue>({
   pinFile: () => {},
   unpinFile: () => {},
   setActive: () => {},
+  hydrate: () => {},
   path: null,
 });
 
@@ -70,6 +73,11 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
     setActivePath(path);
   }, []);
 
+  const hydrate = useCallback((hydratedTabs: Tab[], hydratedActivePath: string | null) => {
+    setTabs(hydratedTabs);
+    setActivePath(hydratedActivePath);
+  }, []);
+
   // Listen for backend "open-file" UI events
   useEffect(() => {
     return onUiEvent("open-file", (_sessionId, event) => {
@@ -89,6 +97,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
         pinFile,
         unpinFile,
         setActive,
+        hydrate,
         path: activePath,
       }}
     >

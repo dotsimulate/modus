@@ -21,7 +21,7 @@ import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
 import { UserSettingsModal } from "./components/UserSettingsModal";
 import { createEmptyAgentConfig } from "./components/AgentConfig";
-import { FileViewerProvider } from "./providers/FileViewerProvider";
+import { FileViewerProvider, useFileViewer } from "./providers/FileViewerProvider";
 import { SessionWindow } from "./components/SessionWindow";
 import { SessionWeb } from "./components/SessionWeb";
 import { TraceView } from "./components/TraceView";
@@ -77,6 +77,7 @@ function AppShell() {
     queuedMessage, cancelQueued, branchFromMessage,
   } = useSession();
   const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, consumeHashProfile } = useHashRouter();
+  const { tabs: fileViewerTabs, activePath: fileViewerActivePath, hydrate: hydrateFileViewer } = useFileViewer();
 
   // ── Local UI state ──
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
@@ -89,6 +90,7 @@ function AppShell() {
   const [leftPanelWidth, setLeftPanelWidth] = useState(280);
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState(360);
+  const [rightPanelBrowserPath, setRightPanelBrowserPath] = useState<string | null>(null);
   const [activeMoveWidget, setActiveMoveWidget] = useState<{
     widget: import("../api").MoveWidgetInfo;
     apiToken: string;
@@ -99,6 +101,12 @@ function AppShell() {
   const prevSessionIdRef = useRef<string | null>(null);
   const panelSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uiCache = useRef<Map<string, Record<string, unknown>>>(new Map());
+  const fileViewerTabsRef = useRef(fileViewerTabs);
+  const fileViewerActivePathRef = useRef(fileViewerActivePath);
+  const rightPanelBrowserPathRef = useRef(rightPanelBrowserPath);
+  fileViewerTabsRef.current = fileViewerTabs;
+  fileViewerActivePathRef.current = fileViewerActivePath;
+  rightPanelBrowserPathRef.current = rightPanelBrowserPath;
 
   // ── Panel state persistence (per-session, backend-stored) ──
 
@@ -109,6 +117,9 @@ function AppShell() {
     const snapshot: Record<string, unknown> = {
       leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth,
       scrollTop: scrollEl ? scrollEl.scrollTop : 0,
+      fileViewerTabs: fileViewerTabsRef.current,
+      fileViewerActivePath: fileViewerActivePathRef.current,
+      browserPath: rightPanelBrowserPathRef.current,
     };
     uiCache.current.set(sessionId, snapshot);
     if (panelSaveTimer.current) clearTimeout(panelSaveTimer.current);
@@ -122,7 +133,7 @@ function AppShell() {
     const id = activeSession?.id;
     if (!id || id.startsWith("pending-")) return;
     savePanelState(id);
-  }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth, rightPanelBrowserPath, fileViewerTabs, fileViewerActivePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore panel + scroll state on session switch
   useEffect(() => {
@@ -147,6 +158,8 @@ function AppShell() {
       setLeftPanelWidth(280);
       setRightPanelOpen(false);
       setRightPanelWidth(360);
+      setRightPanelBrowserPath(null);
+      hydrateFileViewer([], null);
       return;
     }
 
@@ -156,6 +169,15 @@ function AppShell() {
       setLeftPanelWidth(typeof state.leftPanelWidth === "number" ? state.leftPanelWidth : 280);
       setRightPanelOpen(!!state.rightPanelOpen);
       setRightPanelWidth(typeof state.rightPanelWidth === "number" ? state.rightPanelWidth : 360);
+      setRightPanelBrowserPath(typeof state.browserPath === "string" ? state.browserPath : null);
+      // Restore file viewer tabs and active path
+      const savedTabs = Array.isArray(state.fileViewerTabs)
+        ? (state.fileViewerTabs as { path: string; pinned: boolean }[]).filter(
+            (t) => typeof t?.path === "string"
+          )
+        : [];
+      const savedActivePath = typeof state.fileViewerActivePath === "string" ? state.fileViewerActivePath : null;
+      hydrateFileViewer(savedTabs, savedActivePath);
       // Restore scroll position after React renders the new layout
       if (typeof state.scrollTop === "number" && state.scrollTop > 0) {
         requestAnimationFrame(() => {
@@ -622,6 +644,8 @@ function AppShell() {
               onOpen={() => setRightPanelOpen(true)}
               onClose={() => setRightPanelOpen(false)}
               moveWidget={activeMoveWidget}
+              initialBrowserPath={rightPanelBrowserPath}
+              onBrowserPathChange={setRightPanelBrowserPath}
             />
           </>
         )}
