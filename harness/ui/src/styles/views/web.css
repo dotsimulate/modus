@@ -738,7 +738,7 @@
 /* ── Web Composer (floating ConfigBar + ChatInput) ── */
 
 .web-composer {
-  position: fixed;
+  position: absolute;
   z-index: 200;
   width: 420px;
   background: var(--bg-surface);
