@@ -66,11 +66,17 @@ export function WebComposer({ x, y, onSessionCreated, onClose }: Props) {
     // No-op in pre-session mode
   }, []);
 
+  // Anchor: ChatInput bottom edge at the click point, centered horizontally.
+  // CSS translateY(-100%) shifts the whole panel upward so the input sits at (x, y).
+  const panelWidth = 420;
+  const anchorX = x - panelWidth / 2;
+  const anchorY = y;
+
   return (
     <div
       ref={panelRef}
       className="web-composer"
-      style={{ left: x, top: y }}
+      style={{ left: anchorX, top: anchorY }}
       onMouseDown={e => e.stopPropagation()}
       onClick={e => e.stopPropagation()}
       onDoubleClick={e => e.stopPropagation()}
