@@ -50,6 +50,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [copiedPath, setCopiedPath] = useState(false);
+  const [copiedContent, setCopiedContent] = useState(false);
   const [htmlPreview, setHtmlPreview] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -118,6 +119,12 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     return () => window.clearTimeout(t);
   }, [copiedPath]);
 
+  useEffect(() => {
+    if (!copiedContent) return;
+    const t = window.setTimeout(() => setCopiedContent(false), 1000);
+    return () => window.clearTimeout(t);
+  }, [copiedContent]);
+
   const directoryEntries = useMemo(() => {
     if (view.kind !== "directory") return [];
     return view.result.dirs.map((dir) => ({
@@ -159,6 +166,25 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
 
   const fileActions = (targetPath: string) => (
     <>
+      <button
+        className={`chat-file-viewer-btn${copiedContent ? " is-copied" : ""}`}
+        onClick={() => {
+          if (view.kind === "file") {
+            navigator.clipboard.writeText(view.content).then(() => setCopiedContent(true)).catch(() => {});
+          } else {
+            readFileContent(targetPath).then((text) => {
+              if (text !== null) navigator.clipboard.writeText(text).then(() => setCopiedContent(true)).catch(() => {});
+            }).catch(() => {});
+          }
+        }}
+        title={copiedContent ? "Copied!" : "Copy file contents"}
+      >
+        {copiedContent ? (
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.2 6.4 4.6 8.8 9.8 3.6" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        ) : (
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="4.25" y="2.25" width="5.5" height="7.5" rx="0.9" stroke="currentColor" strokeWidth="1.1"/><path d="M2.25 8V3.1c0-.5.4-.85.9-.85h3.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
+        )}
+      </button>
       <button
         className="chat-file-viewer-btn"
         onClick={() => openInEditor(targetPath)}

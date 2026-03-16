@@ -1,8 +1,8 @@
 ---
 title: Actions
 audience: agents
-lastUpdated: 2026-03-12
-lastCommit: 1592796
+lastUpdated: 2026-03-16
+lastCommit: a9adf68
 covers: harness/action-runner.ts harness/action-types.ts
 ---
 
@@ -30,7 +30,7 @@ context.ts    — ActionModule: gather(), verify?(), afterRun?() (required)
 | `webhook` | HTTP POST to `/api/actions/:name/hook` | `token` (auto-generated) |
 | `manual` | API call to `/api/actions/:name/trigger` | — |
 | `action` | Another action completes | `source` (action name), `condition` ("any"/"done"/"error") |
-| `session` | Session event fires | `on` (role + round + at, or "archived"/"deleted"), `excludeTags` |
+| `session` | Session event fires | `on` (role + round + at, or "archived"/"deleted"), `excludeTags` — payload includes `assistantSeq` + `assistantMessageUuid` on assistant rounds |
 
 ## Execution Model
 
@@ -59,7 +59,9 @@ transient failures. `maxRetries` handles verify failures.
 
 **Artifacts**: `artifacts[]` declares expected output files with names and MIME
 types. `ctx.artifactPath(filename)` provides namespaced paths. Verify can check
-artifact existence.
+artifact existence. `ctx.attachArtifact({ sessionId, seq, path, name, mime, ... })`
+attaches an already-written file to a specific session turn, making it accessible
+via `/api/sessions/:id/artifacts/:artifactId`.
 
 **Static inputs**: `ActionConfig.inputs?: Record<string, unknown>` passes fixed
 data into every run. Available as `ctx.inputs` in gather, verify, and afterRun.

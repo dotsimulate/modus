@@ -1,8 +1,8 @@
 ---
 title: PI Agent System
 audience: agents
-lastUpdated: 2026-03-11
-lastCommit: cf9d454
+lastUpdated: 2026-03-16
+lastCommit: a9adf68
 covers: harness/providers/pi-agent.ts harness/providers/mcp-bridge.ts
 ---
 
@@ -52,10 +52,13 @@ ui/src/
 `buildModel()` creates a PI `Model` object for the session:
 
 - **anthropic / openai**: Uses PI's built-in `getModel()` registry. Falls back to
-  manual construction for unknown model IDs.
+  manual construction for unknown model IDs. Fallback sets `input: ["text", "image"]`.
 - **litellm / ollama**: Always manually constructed as OpenAI-compatible. Base URLs
   come from `LITELLM_BASE_URL` / `OLLAMA_BASE_URL` env vars (or harness secrets),
-  defaulting to `localhost:4000/v1` and `localhost:11434/v1`.
+  defaulting to `localhost:4000/v1` and `localhost:11434/v1`. `input: ["text", "image"]`.
+- **openrouter**: Fetches model metadata (pricing + context length) from OpenRouter's
+  `/api/v1/models` on first use, cached for the process lifetime. `contextLengthFromApi`
+  is passed to `buildModel()` to override the default 128000 context window.
 
 ### Auth
 
@@ -65,7 +68,8 @@ highest priority — bypasses PI's own env var lookup (which doesn't know litell
 
 ### Session Lifecycle
 
-1. **startTurn**: Creates `AgentSession` with model, tools, resource loader, MCP tools.
+1. **startTurn**: Rekeys temp session ID to a real UUID (skips if already a UUID —
+   resume case). Creates `AgentSession` with model, tools, resource loader, MCP tools.
    Subscribes to events. Sends the initial prompt via `agentSession.prompt()`.
 2. **sendMessage**: If session is idle, sends directly via `sendUserMessage()`.
    If running, queues in `session.pendingMessages` for delivery after `agent_end`.

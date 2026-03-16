@@ -1,8 +1,8 @@
 ---
 title: Profile System
 audience: agents
-lastUpdated: 2026-03-12
-lastCommit: 03ccdbe
+lastUpdated: 2026-03-16
+lastCommit: a9adf68
 covers: harness/profiles/ harness/profile-schemas.ts harness/profiles.ts
 ---
 
@@ -43,20 +43,26 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
   "loadProjectSettings": true,
   "effort": "low",
   "maxTurns": 30,
+  "additionalDirectories": ["/home/dot/shared-notes"],
   "tools": ["Read", "Edit", "Bash"],
   "contextWindow": 65536,
   "maxOutputTokens": 2048,
   "compaction": { "enabled": true, "reserveTokens": 16384 },
   "mcpServers": { ... },
   "permissionPolicy": "bypass",
-  "ui": { "showThinking": true, "placeholder": "Ask me anything..." }
+  "ui": { "showThinking": true, "placeholder": "Ask me anything...", "panelWidgets": ["session-info"] }
 }
 ```
 
 ### Key Fields
 
 **`provider`**: Execution backend. `"claude-code"` uses the Claude Agent SDK.
-Everything else (`"anthropic"`, `"openai"`, `"litellm"`, `"ollama"`) uses PI AgentSession.
+Everything else (`"anthropic"`, `"openai"`, `"litellm"`, `"ollama"`, `"openrouter"`) uses PI AgentSession.
+
+**`additionalDirectories`**: Extra workspace roots to grant alongside the primary cwd.
+Passed to the Claude Agent SDK as `additionalDirectories`.
+
+**`ui.panelWidgets`**: Widget types shown in the LeftPanel when this profile is active.
 
 **`effort`**: Reasoning/thinking level. Values: `"off"` (disables thinking), `"low"`, `"medium"`, `"high"`, `"max"`. Provider-specific: claude-code maps `"off"` to no thinking; codex maps `"off"`/`"max"` to no reasoning effort.
 
@@ -98,6 +104,9 @@ override or agent profile value is set. `effort` accepts the same values as agen
 **`templateVars`**: Merged with `_users.json` defaults. Available as `{{key}}` in
 agent prompts. Use for user name, preferred stack, editor, etc.
 
+**`clientExtensions`**: Per-user `paths/enabled/disabled` config merged with global and
+project layers. See `docs/client-extensions.md`.
+
 **`agentProfiles`**: Which agent profiles appear in the UI sidebar. Omit for all.
 
 **`projects`**: Working directories available in the CWD picker.
@@ -109,11 +118,15 @@ agent prompts. Use for user name, preferred stack, editor, etc.
 
 ## Global Config (`_global.json`)
 
-Two purposes:
+Three purposes:
 
 1. **MCP servers** — merged into every session (agent profiles can add more).
 2. **Provider defaults** — per-provider fallbacks for `contextWindow`, `maxOutputTokens`,
    and `compaction`. See `docs/config-resolution.md` for the full resolution chain.
+3. **Client extensions** — `clientExtensions.paths/enabled/disabled` configures
+   global browser-side extension roots. See `docs/client-extensions.md`.
+4. **Notification channels** — `notificationChannels` defines named webhook or file
+   channels used by action notifications.
 
 ## Template Variables (`_users.json`)
 
