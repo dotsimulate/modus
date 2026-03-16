@@ -10,19 +10,23 @@
  *   - Any container that needs file navigation
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { browsePath, readFileContent, openInEditor, type BrowseResult } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
 
 type FileBrowserProps = {
   /** Starting directory path */
   rootPath: string | null;
+  /** Override the initial browse path (e.g. restored from session state) */
+  initialPath?: string | null;
   /** Compact mode for sidebar — shorter list, no file preview */
   compact?: boolean;
   /** Called when a file is selected (path) */
   onFileSelect?: (path: string) => void;
   /** Called when user wants to open file externally */
   onOpenExternal?: (path: string) => void;
+  /** Called whenever the current browse path changes */
+  onPathChange?: (path: string) => void;
 };
 
 type ViewState =
@@ -46,15 +50,19 @@ function shortenPath(full: string, root: string | null): string {
   return full;
 }
 
-export function FileBrowser({ rootPath, compact, onFileSelect, onOpenExternal }: FileBrowserProps) {
-  const [currentPath, setCurrentPath] = useState<string | null>(rootPath);
+export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOpenExternal, onPathChange }: FileBrowserProps) {
+  const [currentPath, setCurrentPath] = useState<string | null>(initialPath ?? rootPath);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [fileView, setFileView] = useState<{ path: string; content: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Sync rootPath changes
+  // Only reset to rootPath when rootPath itself changes (project switch), not on every render
+  const prevRootRef = useRef<string | null>(rootPath);
   useEffect(() => {
-    setCurrentPath(rootPath);
+    if (rootPath !== prevRootRef.current) {
+      prevRootRef.current = rootPath;
+      setCurrentPath(rootPath);
+    }
   }, [rootPath]);
 
   // Load directory listing
@@ -79,7 +87,8 @@ export function FileBrowser({ rootPath, compact, onFileSelect, onOpenExternal }:
   const navigateTo = useCallback((path: string) => {
     setCurrentPath(path);
     setFileView(null);
-  }, []);
+    onPathChange?.(path);
+  }, [onPathChange]);
 
   const openFile = useCallback(async (path: string) => {
     onFileSelect?.(path);

@@ -18,6 +18,8 @@ type Props = {
     instanceId: string;
     sessionId: string;
   } | null;
+  initialBrowserPath?: string | null;
+  onBrowserPathChange?: (path: string) => void;
 };
 
 function basename(p: string): string {
@@ -40,7 +42,7 @@ type ViewState =
 /** Which tab is showing: the project browser, a file, or a move widget */
 type ActiveView = "browser" | "move-widget" | string;
 
-export function RightPanel({ open, width, onOpen, onClose, children, moveWidget }: Props) {
+export function RightPanel({ open, width, onOpen, onClose, children, moveWidget, initialBrowserPath, onBrowserPathChange }: Props) {
   const { tabs, activePath, closeFile, setActive, pinFile, unpinFile, openFile } = useFileViewer();
   const { activeCwd } = useProfiles();
 
@@ -299,7 +301,9 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidget 
           ) : showBrowser ? (
             <FileBrowser
               rootPath={activeCwd ?? null}
+              initialPath={initialBrowserPath}
               onFileSelect={handleFileSelect}
+              onPathChange={onBrowserPathChange}
             />
           ) : showFileContent && view.kind === "directory" ? (
             <div className="fcv-panel right-panel-file">
