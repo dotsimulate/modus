@@ -81,7 +81,7 @@ function ensureElement(): HTMLAudioElement {
 
   el.addEventListener("play", () => update({ playing: true }));
   el.addEventListener("pause", () => update({ playing: false }));
-  el.addEventListener("ended", () => update({ playing: false }));
+  el.addEventListener("ended", () => update({ activeId: null, src: null, sessionId: null, playing: false, currentTime: 0, duration: 0 }));
   el.addEventListener("timeupdate", () =>
     update({ currentTime: el.currentTime }),
   );

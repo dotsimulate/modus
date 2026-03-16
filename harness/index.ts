@@ -937,6 +937,16 @@ app.get("/api/file-read", async (c) => {
   }
 });
 
+app.put("/api/file-write", async (c) => {
+  const { path: rawPath, content } = await c.req.json<{ path: string; content: string }>();
+  if (!rawPath || typeof content !== "string") return c.json({ error: "path and content required" }, 400);
+  const { resolve } = await import("path");
+  const { writeFile } = await import("fs/promises");
+  const target = resolve(rawPath);
+  await writeFile(target, content, "utf-8");
+  return c.json({ ok: true, path: target });
+});
+
 // ── Notes ──
 // Markdown notes stored in <cwd>/.modus/notes/ with YAML frontmatter.
 
