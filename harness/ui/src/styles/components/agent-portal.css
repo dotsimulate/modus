@@ -1,36 +1,80 @@
 /**
- * AgentPortal — ambient HUD: active agents + audio player.
+ * AgentPortal — ambient HUD: floating eye + dropdown panel.
  *
- * Pill: inline top-nav indicator with PortalEye (MO-logo visual language).
- * Window: FloatingWindow portal, compact-adaptive via container queries.
+ * Pill: fixed draggable PortalEye with state-driven glow.
+ * Panel: purpose-built portal with agent rows + audio player.
  */
 
 /* ══════════════════════════════════════════════════════════════
-   Pill — just the PortalEye circle, no chrome
-   The ring IS the visual affordance. No extra border/background.
+   Pill — the PortalEye, fixed position, draggable
    ══════════════════════════════════════════════════════════════ */
 
-.agent-portal-pill {
-  display: inline-flex;
+.ap-pill {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
   align-items: center;
   justify-content: center;
-  /* No border, no background, no padding chrome */
   border: none;
   background: transparent;
   padding: 4px;
-  cursor: pointer;
-  flex-shrink: 0;
-  /* color flows into SVG stroke/fill */
-  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  color: var(--text-dim);
   border-radius: 50%;
-  transition: color 0.15s;
+  transition: color 0.2s, filter 0.3s;
 }
 
-.agent-portal-pill:hover {
+.ap-pill:active {
+  cursor: grabbing;
+}
+
+.ap-pill:hover {
   color: var(--text-tertiary);
 }
 
-/* ── PortalEye — 32px circle ring + state inside ── */
+/* Active agents — eye brightens, subtle green halo */
+.ap-pill--active {
+  color: var(--text-secondary);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--dot-running) 25%, transparent));
+}
+
+/* Audio playing */
+.ap-pill--playing {
+  color: var(--text-secondary);
+}
+
+/* Expanded — full brightness */
+.ap-pill--open {
+  color: var(--text);
+}
+
+/* Active + playing — breathing glow */
+.ap-pill--active.ap-pill--playing {
+  animation: ap-pill-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes ap-pill-glow {
+  0%, 100% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--dot-running) 25%, transparent)); }
+  50%      { filter: drop-shadow(0 0 14px color-mix(in srgb, var(--dot-running) 40%, transparent)); }
+}
+
+/* Pinned — amber tint */
+.ap-pill--pinned {
+  color: var(--text-dim);
+}
+
+/* Idle — present, subdued */
+.ap-pill--idle {
+  color: var(--text-muted);
+}
+
+.ap-pill--idle:hover {
+  color: var(--text-dim);
+}
+
+/* ── PortalEye SVG ── */
 
 .ap-eye {
   display: block;
@@ -38,45 +82,35 @@
   overflow: visible;
 }
 
-/* Ring: dim when idle, lit when active, full when open */
 .ap-eye-ring {
   transition: opacity 0.2s, stroke-width 0.2s;
-  opacity: 0.25;
+  opacity: 0.4;
 }
 
-.agent-portal-pill--agents .ap-eye-ring,
-.agent-portal-pill--playing .ap-eye-ring {
+.ap-pill--active .ap-eye-ring,
+.ap-pill--playing .ap-eye-ring {
   opacity: 0.7;
 }
 
-.agent-portal-pill--open .ap-eye-ring {
+.ap-pill--open .ap-eye-ring {
   opacity: 0.9;
   stroke-width: 1.2;
 }
 
-/* Ring pulse when agents active + audio */
-.agent-portal-pill--agents.agent-portal-pill--playing .ap-eye-ring {
-  animation: ap-ring-pulse 2.4s ease-in-out infinite;
+.ap-pill--idle .ap-eye-ring {
+  opacity: 0.35;
 }
 
-@keyframes ap-ring-pulse {
-  0%, 100% { opacity: 0.7; }
-  50%       { opacity: 1; }
-}
-
-/* ── Agent dots — wander inside the ring ── */
-
+/* Agent dots — wander inside the ring */
 .ap-eye-dot {
-  animation: ap-eye-wander 9s ease-in-out infinite;
+  animation: ap-wander 9s ease-in-out infinite;
 }
 
-/* Each dot: green, staggered start so they move independently */
 .ap-eye-dot--0 { fill: var(--dot-running); animation-delay: 0s; }
 .ap-eye-dot--1 { fill: var(--dot-running); animation-delay: -3s; }
 .ap-eye-dot--2 { fill: var(--dot-running); animation-delay: -6s; }
 
-/* Wander — hold-and-drift, scaled to r=13 circle (safe range ±6px) */
-@keyframes ap-eye-wander {
+@keyframes ap-wander {
   0%   { transform: translate(0, 0); }
   8%   { transform: translate(4px, -2.5px); }
   16%  { transform: translate(4px, -2.5px); }
@@ -93,50 +127,73 @@
   100% { transform: translate(0, 0); }
 }
 
-/* ── Audio wave bars (audio-only, no agents) ── */
-
+/* Audio wave bars (audio-only, no agents) */
 .ap-eye-wave .ap-eye-wave-bar {
   opacity: 0.35;
-  /* static when paused */
-}
-
-.ap-eye-wave--playing .ap-eye-wave-bar {
-  opacity: 0.7;
-  animation: ap-wave-bounce 0.7s ease-in-out infinite alternate;
-}
-
-@keyframes ap-wave-bounce {
-  0%   { transform: scaleY(0.4); }
-  100% { transform: scaleY(1.6); }
-}
-
-/* transform-origin for the bars is their own center (SVG default = 0,0).
-   We set it per-bar with style. Bars are centered vertically around y=16. */
-.ap-eye-wave-bar {
   transform-box: fill-box;
   transform-origin: center;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   Floating island — no header bar, content floats edge-to-edge
-   ══════════════════════════════════════════════════════════════ */
-
-.agent-portal-window {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  /* container-type/name comes from .mini-float */
-  /* Island feel: top padding so rows don't sit at the border edge */
-  padding-top: 6px;
+.ap-eye-wave--playing .ap-eye-wave-bar {
+  opacity: 0.7;
+  animation: ap-wave 0.7s ease-in-out infinite alternate;
 }
 
-/* Floating close — absolutely positioned, appears on hover of island */
-.ap-close {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  z-index: 3;
-  display: inline-flex;
+@keyframes ap-wave {
+  0%   { transform: scaleY(0.4); }
+  100% { transform: scaleY(1.6); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Panel — dropdown portal, draggable + resizable
+   ══════════════════════════════════════════════════════════════ */
+
+.ap-panel {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: grab;
+  user-select: none;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 3%, transparent),
+    0 12px 32px rgba(0, 0, 0, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+  animation: ap-panel-in 0.14s ease-out;
+}
+
+.ap-panel:active {
+  cursor: grabbing;
+}
+
+@keyframes ap-panel-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── Panel head ── */
+
+.ap-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 4px 12px;
+  flex-shrink: 0;
+}
+
+.ap-panel-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.ap-panel-close {
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 18px;
@@ -152,19 +209,19 @@
   touch-action: manipulation;
 }
 
-.mini-float:hover .ap-close {
+.ap-panel:hover .ap-panel-close {
   opacity: 1;
 }
 
-.ap-close:hover {
+.ap-panel-close:hover {
   color: var(--text-tertiary);
   background: var(--bg-hover);
   opacity: 1;
 }
 
-/* ── Body ── */
+/* ── Panel body ── */
 
-.ap-body {
+.ap-panel-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -175,30 +232,38 @@
 /* ── Sections ── */
 
 .ap-section {
-  padding: 5px 0;
+  padding: 4px 0;
 }
 
-.ap-section--bordered {
+.ap-section--sep {
   border-top: 1px solid var(--border);
 }
 
 /* ── Agent rows ── */
 
-.ap-agent-row {
+.ap-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  min-height: 34px;
-  transition: background 0.1s;
-  touch-action: manipulation;
+  padding: 5px 12px;
+  min-height: 32px;
+  transition: background 0.08s;
 }
 
-.ap-agent-row:hover {
+.ap-row:hover {
   background: var(--bg-hover);
 }
 
-.ap-dot {
+.ap-row--idle {
+  opacity: 0.55;
+}
+
+.ap-row--idle:hover {
+  opacity: 1;
+}
+
+/* Status dot */
+.ap-row-dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -206,22 +271,29 @@
   background: var(--dot-idle);
 }
 
-.ap-dot--running {
+.ap-row-dot--running {
   background: var(--dot-running);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--dot-running) 40%, transparent);
   animation: ap-dot-pulse 1.4s ease-in-out infinite;
 }
 
-.ap-dot--starting {
+.ap-row-dot--starting {
   background: var(--warning);
   animation: ap-dot-pulse 0.8s ease-in-out infinite;
 }
 
-@keyframes ap-dot-pulse {
-  0%, 100% { opacity: 0.45; }
-  50%       { opacity: 1; }
+.ap-row-dot--pinned {
+  background: var(--warning);
+  opacity: 0.4;
 }
 
-.ap-agent-info {
+@keyframes ap-dot-pulse {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+
+/* Info block */
+.ap-row-info {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -229,7 +301,7 @@
   gap: 1px;
 }
 
-.ap-agent-profile {
+.ap-row-name {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
@@ -238,16 +310,7 @@
   text-overflow: ellipsis;
 }
 
-.ap-agent-tool {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--tool-running);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ap-agent-preview {
+.ap-row-detail {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
@@ -256,9 +319,12 @@
   text-overflow: ellipsis;
 }
 
-/* ── Action buttons (shared between agent rows + audio row) ── */
+.ap-row-detail--tool {
+  color: var(--tool-running);
+}
 
-.ap-agent-actions {
+/* Action buttons — shown on row hover */
+.ap-row-actions {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -267,12 +333,12 @@
   transition: opacity 0.1s;
 }
 
-.ap-agent-row:hover .ap-agent-actions,
-.ap-audio-meta:hover .ap-agent-actions {
+.ap-row:hover .ap-row-actions,
+.ap-audio-meta:hover .ap-row-actions {
   opacity: 1;
 }
 
-.ap-action-btn {
+.ap-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -288,58 +354,38 @@
   touch-action: manipulation;
 }
 
-.ap-action-btn:hover {
+.ap-btn:hover {
   color: var(--text-tertiary);
   background: var(--bg-hover);
 }
 
-/* Pin button — always visible when active, subtler otherwise */
-.ap-pin-btn {
-  color: var(--text-muted);
+/* Pin button */
+.ap-btn-pin {
   opacity: 0.6;
 }
 
-.ap-pin-btn:hover {
+.ap-btn-pin:hover {
   color: var(--warning);
   background: color-mix(in srgb, var(--warning) 8%, transparent);
   opacity: 1;
 }
 
-.ap-pin-btn--active {
+.ap-btn-pin--on {
   color: var(--warning) !important;
   opacity: 1 !important;
 }
 
-.ap-pin-btn--active:hover {
+.ap-btn-pin--on:hover {
   background: color-mix(in srgb, var(--warning) 12%, transparent) !important;
-}
-
-/* Idle (pinned-but-not-active) row */
-.ap-agent-row--idle {
-  opacity: 0.65;
-}
-
-.ap-agent-row--idle:hover {
-  opacity: 1;
-}
-
-/* Pinned-idle dot */
-.ap-dot--pinned {
-  background: var(--warning);
-  opacity: 0.4;
 }
 
 /* ── Audio section ── */
 
-.ap-section--audio {
-  padding: 7px 0 6px;
-}
-
-.ap-audio-row {
+.ap-audio {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  padding: 0 12px;
+  padding: 6px 12px;
 }
 
 .ap-audio-controls {
@@ -348,7 +394,7 @@
   gap: 7px;
 }
 
-.ap-audio-btn {
+.ap-audio-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -364,7 +410,7 @@
   touch-action: manipulation;
 }
 
-.ap-audio-btn:hover {
+.ap-audio-toggle:hover {
   color: var(--text-secondary);
 }
 
@@ -381,6 +427,11 @@
   background: var(--text-dim);
   border-radius: 1px;
   animation: ap-viz-bounce 0.65s ease-in-out infinite alternate;
+}
+
+@keyframes ap-viz-bounce {
+  0%   { height: 3px; }
+  100% { height: 10px; }
 }
 
 .ap-audio-track {
@@ -411,7 +462,7 @@
   white-space: nowrap;
 }
 
-.ap-audio-time--total {
+.ap-audio-time-total {
   color: var(--text-muted);
 }
 
@@ -420,7 +471,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 0 1px;
 }
 
 .ap-audio-label {
@@ -435,7 +485,7 @@
 /* ── Empty state ── */
 
 .ap-empty {
-  padding: 14px 12px;
+  padding: 16px 12px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -443,71 +493,61 @@
   text-align: center;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   Container queries — compact adaptation
-   Window shrinks gracefully: header collapses, secondary text
-   hides, rows get tighter.
-   ══════════════════════════════════════════════════════════════ */
+/* ── Resize handle ── */
 
-/* Short window: tighten rows */
-@container mini-float (max-height: 120px) {
-  .agent-portal-window {
-    padding-top: 2px;
-  }
-  .ap-agent-row {
-    padding: 4px 10px;
-    min-height: 28px;
-  }
-  .ap-section {
-    padding: 2px 0;
-  }
+.ap-panel-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: se-resize;
+  z-index: 2;
 }
 
-/* Narrow: hide secondary text */
-@container mini-float (max-width: 220px) {
-  .ap-agent-preview { display: none; }
-  .ap-audio-time    { display: none; }
+.ap-panel-resize::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid var(--text-muted);
+  border-bottom: 1px solid var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
 }
 
-/* Very narrow: truncate profile, hide tool */
-@container mini-float (max-width: 180px) {
-  .ap-agent-profile { max-width: 64px; }
-  .ap-agent-tool    { display: none; }
+.ap-panel:hover .ap-panel-resize::after {
+  opacity: 0.6;
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Touch / coarse pointer — fat targets, always-visible actions
+   Touch / coarse pointer
    ══════════════════════════════════════════════════════════════ */
 
 @media (pointer: coarse) {
-  .agent-portal-pill {
-    height: 36px;
-    padding: 6px 12px;
-    border-radius: 18px;
+  .ap-pill {
+    padding: 8px;
   }
 
-  .ap-head-btn {
+  .ap-btn {
     width: 36px;
     height: 36px;
   }
 
-  .ap-action-btn {
+  .ap-audio-toggle {
     width: 36px;
     height: 36px;
   }
 
-  .ap-audio-btn {
-    width: 36px;
-    height: 36px;
-  }
-
-  .ap-agent-row {
+  .ap-row {
     padding: 10px 12px;
     min-height: 48px;
   }
 
-  /* Always show action buttons on touch — no hover state */
-  .ap-agent-actions {
+  .ap-row-actions {
     opacity: 1;
   }
 

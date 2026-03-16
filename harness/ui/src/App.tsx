@@ -448,14 +448,6 @@ function AppShell() {
           computer={activeUP?.computer}
           projectPath={activeUP?.projects?.[0]}
         />
-        <AgentPortal
-          sessions={serverSessions.map((s) => {
-            const storeState = getSessionState(s.id);
-            return storeState ? { ...s, status: storeState.status ?? s.status } : s;
-          })}
-          onNavigateSession={handleViewSession}
-          onPeekSession={handlePeekSession}
-        />
       </div>
 
       <div className="app-body">
@@ -694,6 +686,15 @@ function AppShell() {
         sessionId={floatingSessionId}
         onClose={() => setFloatingSessionId(null)}
         onNavigate={(id) => { setFloatingSessionId(null); handleViewSession(id); }}
+      />
+
+      <AgentPortal
+        sessions={serverSessions.map((s) => {
+          const storeState = getSessionState(s.id);
+          return storeState ? { ...s, status: storeState.status ?? s.status } : s;
+        })}
+        onNavigateSession={handleViewSession}
+        onPeekSession={handlePeekSession}
       />
 
       {showUserSettings && activeUP && (
