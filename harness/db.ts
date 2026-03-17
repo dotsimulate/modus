@@ -60,6 +60,19 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN provider TEXT`); } catch { /* alre
 // Migration: add ui_state — per-session UI layout persistence (panel widths, open state, etc.)
 try { db.run(`ALTER TABLE sessions ADD COLUMN ui_state TEXT DEFAULT '{}'`); } catch { /* already exists */ }
 
+// ── Web Positions (spatial layout for session web view) ──
+db.run(`
+  CREATE TABLE IF NOT EXISTS web_positions (
+    node_id   TEXT NOT NULL,
+    scope     TEXT NOT NULL,
+    x         REAL NOT NULL,
+    y         REAL NOT NULL,
+    pinned    INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    PRIMARY KEY (node_id, scope)
+  )
+`);
+
 // ── Messages (high-level conversation history) ──
 db.run(`
   CREATE TABLE IF NOT EXISTS messages (
@@ -461,6 +474,22 @@ const stmts = {
     WHERE session_id = $session_id
     ORDER BY created_at ASC, id ASC
   `),
+  // Web Positions
+  getWebPositions: db.prepare(`
+    SELECT node_id, x, y, pinned FROM web_positions WHERE scope = $scope
+  `),
+  upsertWebPosition: db.prepare(`
+    INSERT INTO web_positions (node_id, scope, x, y, pinned, updated_at)
+    VALUES ($node_id, $scope, $x, $y, $pinned, $now)
+    ON CONFLICT(node_id, scope) DO UPDATE SET
+      x = $x, y = $y, pinned = $pinned, updated_at = $now
+  `),
+  deleteWebPositions: db.prepare(`
+    DELETE FROM web_positions WHERE scope = $scope
+  `),
+  deleteWebPosition: db.prepare(`
+    DELETE FROM web_positions WHERE node_id = $node_id AND scope = $scope
+  `),
 };
 
 // ── Session Functions ──
@@ -735,6 +764,39 @@ export function patchSessionUiState(sessionId: string, patch: Record<string, unk
   const merged = { ...current, ...patch };
   stmts.setUiState.run({ $id: sessionId, $ui_state: JSON.stringify(merged) });
   return merged;
+}
+
+// ── Web Positions ──
+
+export type WebPosition = { nodeId: string; x: number; y: number; pinned: boolean };
+
+export function getWebPositions(scope: string): WebPosition[] {
+  const rows = stmts.getWebPositions.all({ $scope: scope }) as { node_id: string; x: number; y: number; pinned: number }[];
+  return rows.map(r => ({ nodeId: r.node_id, x: r.x, y: r.y, pinned: r.pinned === 1 }));
+}
+
+export function upsertWebPositions(scope: string, positions: { nodeId: string; x: number; y: number; pinned?: boolean }[]) {
+  const now = Date.now();
+  db.transaction(() => {
+    for (const p of positions) {
+      stmts.upsertWebPosition.run({
+        $node_id: p.nodeId,
+        $scope: scope,
+        $x: p.x,
+        $y: p.y,
+        $pinned: p.pinned ? 1 : 0,
+        $now: now,
+      });
+    }
+  })();
+}
+
+export function deleteWebPositions(scope: string) {
+  stmts.deleteWebPositions.run({ $scope: scope });
+}
+
+export function deleteWebPosition(scope: string, nodeId: string) {
+  stmts.deleteWebPosition.run({ $node_id: nodeId, $scope: scope });
 }
 
 // ── Branching Functions ──

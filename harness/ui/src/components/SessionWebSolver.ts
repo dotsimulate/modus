@@ -137,12 +137,14 @@ export function solveLayout(
   spawnedSet: Set<string>,
   commits: GitCommit[],
   config: WebLayoutConfig,
-  _positionOverrides?: PositionMap,
+  fixedPositions?: PositionMap,
   touches?: TouchRecord[],
 ): SolverResult {
-  // NOTE: positionOverrides are intentionally ignored here.
-  // The solver computes canonical positions on regenerate.
-  // Overrides are applied post-solve in the component as simple coordinate replacements.
+  // fixedPositions: positions already stored in the DB. Sessions with a fixed position
+  // are placed at that position (as immovable anchors). Sessions WITHOUT a fixed position
+  // get solved relative to the fixed ones. This makes the solver incremental — it only
+  // computes positions for new/unsolved nodes.
+  const fixed = fixedPositions ?? {};
   const sorted = [...sessions].sort((a, b) => a.created_at - b.created_at);
 
   // ── Time baseline ──
@@ -198,7 +200,18 @@ export function solveLayout(
   const placedOrder: string[] = []; // insertion-order list for last-N priority in collision
   let nextRootY = config.padY + 40;
 
+  // Pre-seed placed map with fixed positions (already stored in DB)
   for (const s of sorted) {
+    if (fixed[s.id]) {
+      placed.set(s.id, { x: fixed[s.id].x, y: fixed[s.id].y });
+      placedOrder.push(s.id);
+    }
+  }
+
+  for (const s of sorted) {
+    // Skip sessions that already have fixed positions
+    if (fixed[s.id]) continue;
+
     const conn = scoreConnections(s.id, edges, placed);
 
     let x: number;

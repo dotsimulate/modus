@@ -43,6 +43,8 @@ type Props = {
   updatedAt?: number;
   totalCost?: number;
   cwd?: string;
+  /** When true, don't close the expanded panel on outside clicks */
+  persistOpen?: boolean;
 };
 
 function shortModel(model?: string): string {
@@ -99,6 +101,7 @@ export function ConfigBar({
   updatedAt,
   totalCost,
   cwd,
+  persistOpen,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -167,9 +170,9 @@ export function ConfigBar({
     setTimeout(() => setCopied(false), 2000);
   }, [sessionId, messages, profileName, agentConfig.provider, profileProvider, model, cwd, status, createdAt, updatedAt, totalCost]);
 
-  // Close on outside click
+  // Close on outside click (skipped when persistOpen is set)
   useEffect(() => {
-    if (!open) return;
+    if (!open || persistOpen) return;
     const handler = (e: MouseEvent) => {
       if (barRef.current && !barRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -177,7 +180,7 @@ export function ConfigBar({
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, persistOpen]);
 
   const effectiveProvider = agentConfig.provider || profileProvider;
   const mcpCount = (availableTools ?? []).filter(t => t.startsWith("mcp__")).length;

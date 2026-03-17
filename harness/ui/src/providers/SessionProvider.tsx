@@ -379,14 +379,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (apiAtts) opts.attachments = apiAtts;
         const { sessionId: realId } = await createSession(opts);
 
-        console.log(`[session] rekey: tempId=${tempId} prevSessionId=${prevSessionId} → ${realId}`);
         rekeySession(tempId, realId);
         // Rekey move registry from the previous session ID (the empty session where the move was registered)
         const moveOldId = prevSessionId || tempId;
         if (moveOldId) {
-          rekeyMoveSession(moveOldId, realId).then(() => {
-            console.log(`[session] rekeyMoveSession completed: ${moveOldId} → ${realId}`);
-          }).catch((e) => {
+          rekeyMoveSession(moveOldId, realId).catch((e) => {
             console.error(`[session] rekeyMoveSession FAILED:`, e);
           });
         }

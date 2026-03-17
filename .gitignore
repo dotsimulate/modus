@@ -57,6 +57,9 @@ TODO/
 # Claude settings (personal per-user)
 .claude/settings.local.json
 
+# Sandbox — local experiments, not for commit (e.g. Remotion)
+sandbox/
+
 # Archive (local reference docs)
 archive/
 

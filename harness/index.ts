@@ -39,6 +39,7 @@ import {
   getSession, getStoredSessionConfig, getLatestSessionUsage, archiveSession, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft, getSessionUiState, patchSessionUiState,
+  getWebPositions, upsertWebPositions, deleteWebPositions,
   updateSessionTitle,
   getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
@@ -2172,6 +2173,31 @@ app.get("/api/trace/touches", (c) => {
     sessionId: q.sessionId || undefined,
   });
   return c.json({ touches, summary: touchSummary(touches) });
+});
+
+// ── Web Positions (spatial layout for session web view) ──
+
+app.get("/api/web/positions", (c) => {
+  const scope = c.req.query("scope");
+  if (!scope) return c.json({ error: "scope is required" }, 400);
+  return c.json(getWebPositions(scope));
+});
+
+app.patch("/api/web/positions", async (c) => {
+  const body = await c.req.json();
+  const { scope, positions } = body;
+  if (!scope || !Array.isArray(positions)) {
+    return c.json({ error: "scope and positions[] are required" }, 400);
+  }
+  upsertWebPositions(scope, positions);
+  return c.json({ ok: true, count: positions.length });
+});
+
+app.delete("/api/web/positions", (c) => {
+  const scope = c.req.query("scope");
+  if (!scope) return c.json({ error: "scope is required" }, 400);
+  deleteWebPositions(scope);
+  return c.json({ ok: true });
 });
 
 function normalizeUiPath(pathname: string): string {

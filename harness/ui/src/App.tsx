@@ -207,18 +207,15 @@ function AppShell() {
   // Restore active move widgets on session switch / page load
   useEffect(() => {
     const id = activeSession?.id;
-    console.log(`[widget-effect] activeSession.id=${id} widgetJustSet=${widgetJustSetRef.current}`);
     if (!id || id.startsWith("pending-")) { setActiveMoveWidgets([]); return; }
     // Skip backend fetch if widget was just set by onMoveActivated — the backend
     // registry may not have the rekeyed session ID yet. Just update the sessionId.
     if (widgetJustSetRef.current) {
       widgetJustSetRef.current = false;
-      console.log(`[widget-effect] SKIP fetch, updating sessionId to ${id}`);
       setActiveMoveWidgets(prev => prev.map(w => ({ ...w, sessionId: id })));
       return;
     }
     fetchActiveWidget(id).then((widgets) => {
-      console.log(`[widget-effect] fetch(${id}) →`, widgets);
       if (!widgets.length) {
         // Keep existing widgets already tagged to this session (onMoveActivated set them
         // before the rekey completed); clear any that belong to a different session.
