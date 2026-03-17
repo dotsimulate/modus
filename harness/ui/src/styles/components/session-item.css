@@ -138,6 +138,22 @@
 .session-item:hover .session-archive-btn { opacity: 1; }
 .session-archive-btn:hover { color: var(--text); }
 
+.session-pin-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 3px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  line-height: 1;
+}
+.session-item:hover .session-pin-btn { opacity: 0.6; }
+.session-pin-btn--pinned { opacity: 0.7 !important; color: var(--text-secondary); }
+.session-pin-btn:hover { opacity: 1 !important; color: var(--text); }
+
 .harness-status {
   display: flex;
   align-items: center;

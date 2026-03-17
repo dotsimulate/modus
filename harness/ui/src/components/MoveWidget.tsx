@@ -24,6 +24,7 @@ export type MoveWidgetProps = {
     message?: string;
     error?: string;
   }>;
+  submitMessage: (prompt: string) => Promise<void>;
 };
 
 type Props = {
@@ -101,6 +102,14 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId }: Props) {
     return callMoveOp(widget.moveName, apiToken, op, data);
   };
 
+  const submitMessage = async (prompt: string) => {
+    await fetch(`/api/sessions/${sessionId}/messages`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ prompt }),
+    });
+  };
+
   if (error) {
     return <div className="panel-empty" style={{ color: "var(--color-error, #e55)" }}>{error}</div>;
   }
@@ -116,6 +125,7 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId }: Props) {
       sessionId={sessionId}
       moveName={widget.moveName}
       callOp={callOp}
+      submitMessage={submitMessage}
     />
   );
 }

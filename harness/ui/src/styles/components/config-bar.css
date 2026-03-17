@@ -142,3 +142,30 @@
 .config-bar-copy-meta.copied {
   color: var(--success, #33cc33);
 }
+
+.config-bar-pin-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  opacity: 0.5;
+  transition: color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  margin-right: 2px;
+}
+.config-bar-pin-btn:hover {
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  opacity: 1;
+}
+.config-bar-pin-btn--pinned {
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+.config-bar-pin-btn--pinned:hover {
+  color: var(--text);
+  opacity: 1;
+}

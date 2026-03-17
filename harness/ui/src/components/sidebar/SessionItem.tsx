@@ -10,6 +10,8 @@ type Props = {
   onSelect: (id: string) => void;
   onArchive: (id: string) => void;
   draftInput?: string;
+  tags?: string[];
+  onTogglePin?: () => void;
 };
 
 function statusDotClass(status: string): string {
@@ -45,7 +47,7 @@ function compactModelName(model: string): string {
   return m;
 }
 
-export function SessionItem({ session: s, active, onSelect, onArchive, draftInput }: Props) {
+export function SessionItem({ session: s, active, onSelect, onArchive, draftInput, tags, onTogglePin }: Props) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,6 +66,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
   });
   const compactUsageText = usageText?.replace(/\stok$/, "t");
 
+  const isPinned = (tags ?? []).includes("pinned");
   const agentProfile = liveSession?.profile ?? s.profile;
   const compactModel = model ? compactModelName(model) : null;
 
@@ -135,6 +138,18 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
           </span>
           <span className="session-meta-right">
             <span>{timeAgo(s.updated_at)}</span>
+            {onTogglePin && (
+              <button
+                className={`session-pin-btn${isPinned ? " session-pin-btn--pinned" : ""}`}
+                onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
+                title={isPinned ? "Unpin" : "Pin"}
+              >
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                  <circle cx="5" cy="3.5" r="2" stroke="currentColor" strokeWidth="1.2" fill={isPinned ? "currentColor" : "none"}/>
+                  <path d="M5 5.5V8.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
             <button
               className="session-archive-btn"
               onClick={(e) => {

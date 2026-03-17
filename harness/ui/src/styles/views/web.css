@@ -424,6 +424,15 @@
   letter-spacing: 0.02em;
 }
 
+.web-session-pin {
+  font-size: 7px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  flex-shrink: 0;
+  margin-top: 2px;
+  letter-spacing: 0;
+}
+
 .web-session-sub {
   display: flex;
   align-items: center;
@@ -708,8 +717,14 @@
   color: var(--text-muted);
 }
 
-.web-detail-archive {
+.web-detail-actions {
+  display: flex;
+  gap: 4px;
   margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.web-detail-archive {
   background: none;
   border: none;
   border-radius: 6px;
@@ -726,6 +741,27 @@
 .web-detail-archive:hover {
   color: var(--error);
   background: rgba(255, 51, 51, 0.06);
+}
+
+.web-detail-pin {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.1s ease, background 0.1s ease;
+  letter-spacing: 0.04em;
+  align-self: flex-start;
+}
+.web-detail-pin:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+.web-detail-pin--pinned {
+  color: var(--text-secondary);
 }
 
 /* ── Context Menu ── */

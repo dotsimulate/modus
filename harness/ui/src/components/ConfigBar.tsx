@@ -45,6 +45,8 @@ type Props = {
   cwd?: string;
   /** When true, don't close the expanded panel on outside clicks */
   persistOpen?: boolean;
+  sessionTags?: string[];
+  onTogglePin?: () => void;
 };
 
 function shortModel(model?: string): string {
@@ -102,7 +104,10 @@ export function ConfigBar({
   totalCost,
   cwd,
   persistOpen,
+  sessionTags,
+  onTogglePin,
 }: Props) {
+  const isPinned = sessionTags?.includes("pinned") ?? false;
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
@@ -264,6 +269,18 @@ export function ConfigBar({
                 <path d="M3 4v9.5a1.5 1.5 0 001.5 1.5H12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
               </svg>
             )}
+          </button>
+        )}
+        {onTogglePin && (
+          <button
+            className={`config-bar-pin-btn${isPinned ? " config-bar-pin-btn--pinned" : ""}`}
+            onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
+            title={isPinned ? "Unpin session" : "Pin session"}
+          >
+            <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
+              <circle cx="5" cy="3.5" r="2" stroke="currentColor" strokeWidth="1.2" fill={isPinned ? "currentColor" : "none"}/>
+              <path d="M5 5.5V8.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
           </button>
         )}
         <ChatSettings />
