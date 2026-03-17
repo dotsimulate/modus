@@ -15,7 +15,14 @@ type Props = {
   projectPaths?: string[];
   initialCollapsedGroups?: string[];
   onCollapsedGroupsChange?: (groups: string[]) => void;
+  onTogglePin?: (id: string) => void;
 };
+
+function parseTagList(raw?: string | null): string[] {
+  if (!raw) return [];
+  try { const p = JSON.parse(raw); return Array.isArray(p) ? p.filter((t): t is string => typeof t === "string") : []; }
+  catch { return []; }
+}
 
 function groupSessionsByAgent(list: SessionInfo[]) {
   const map = new Map<string, SessionInfo[]>();
@@ -60,6 +67,7 @@ export function SessionList({
   sessions, activeSessionId, groupMode,
   onSelectSession, onArchiveSession, activeInput,
   projectPaths: _projectPaths, initialCollapsedGroups, onCollapsedGroupsChange,
+  onTogglePin,
 }: Props) {
   void _projectPaths;
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
@@ -106,12 +114,35 @@ export function SessionList({
     });
   }, [onCollapsedGroupsChange]);
 
+  const pinnedSessions = sessions.filter(s => parseTagList(s.tags).includes("pinned"));
+  const unpinnedSessions = sessions.filter(s => !parseTagList(s.tags).includes("pinned"));
+
   const groups = groupMode === "agent"
-    ? groupSessionsByAgent(sessions)
-    : groupSessionsByTime(sessions);
+    ? groupSessionsByAgent(unpinnedSessions)
+    : groupSessionsByTime(unpinnedSessions);
 
   return (
     <>
+      {pinnedSessions.length > 0 && (
+        <div>
+          <div className="sidebar-section-label">
+            <span>pinned</span>
+            <span className="section-count">{pinnedSessions.length}</span>
+          </div>
+          {pinnedSessions.map((s) => (
+            <SessionItem
+              key={s.id}
+              session={s}
+              active={s.id === activeSessionId}
+              onSelect={handleSelectSession}
+              onArchive={onArchiveSession}
+              draftInput={s.id === activeSessionId ? activeInput : draftCache.current.get(s.id)}
+              tags={parseTagList(s.tags)}
+              onTogglePin={onTogglePin ? () => onTogglePin(s.id) : undefined}
+            />
+          ))}
+        </div>
+      )}
       {groups.map((group) => {
         const isGroupCollapsed = collapsedGroups.has(group.label);
         return (
@@ -138,6 +169,8 @@ export function SessionList({
                     onSelect={handleSelectSession}
                     onArchive={onArchiveSession}
                     draftInput={s.id === activeSessionId ? activeInput : draftCache.current.get(s.id)}
+                    tags={parseTagList(s.tags)}
+                    onTogglePin={onTogglePin ? () => onTogglePin(s.id) : undefined}
                   />
                 ))}
               </div>

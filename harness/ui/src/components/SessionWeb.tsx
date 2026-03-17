@@ -4,7 +4,7 @@ import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
 import { fetchMissionRuns, fetchMissionTransfers, fetchMissionSessions } from "../api/missions";
 import { fetchTouches } from "../api/trace";
-import { archiveSessionApi, createSession, createEmptySession } from "../api/sessions";
+import { archiveSessionApi, createSession, createEmptySession, addSessionTagApi, removeSessionTagApi } from "../api/sessions";
 import { fetchWebPositions, patchWebPositions } from "../api/web-positions";
 import type { SessionInfo, GitCommit } from "../api/types";
 import type { MissionRunSummary, MissionTransferSummary } from "../api/missions";
@@ -267,7 +267,7 @@ function LayoutPanel({ config, onChange, onRegenerate }: {
 
 // ── Detail Panel ──
 
-function DetailPanel({ node, onClose, onArchive }: { node: GraphNode; onClose: () => void; onArchive?: (id: string) => void }) {
+function DetailPanel({ node, onClose, onArchive, onPinToggle }: { node: GraphNode; onClose: () => void; onArchive?: (id: string) => void; onPinToggle?: (id: string) => void }) {
   if (node.type === "document" && node.doc) {
     const d = node.doc;
     return (
@@ -343,11 +343,18 @@ function DetailPanel({ node, onClose, onArchive }: { node: GraphNode; onClose: (
           {tags.map((t, i) => <span key={i} className="web-detail-tag">{t}</span>)}
         </div>
       )}
-      {onArchive && (
-        <button className="web-detail-archive" onClick={() => onArchive(s.id)}>
-          archive
-        </button>
-      )}
+      <div className="web-detail-actions">
+        {onPinToggle && (
+          <button className={`web-detail-pin${tags.includes("pinned") ? " web-detail-pin--pinned" : ""}`} onClick={() => onPinToggle(s.id)}>
+            {tags.includes("pinned") ? "unpin" : "pin"}
+          </button>
+        )}
+        {onArchive && (
+          <button className="web-detail-archive" onClick={() => onArchive(s.id)}>
+            archive
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -358,14 +365,16 @@ type ContextMenuState =
   | { kind: "session"; x: number; y: number; sessionId: string }
   | { kind: "canvas"; x: number; y: number; canvasX: number; canvasY: number };
 
-function SessionContextMenu({ x, y, session, onCopyId, onArchive, onClose }: {
+function SessionContextMenu({ x, y, session, onCopyId, onPinToggle, onArchive, onClose }: {
   x: number;
   y: number;
   session: SessionInfo;
   onCopyId: () => void;
+  onPinToggle: () => void;
   onArchive: () => void;
   onClose: () => void;
 }) {
+  const isPinned = parseTags(session.tags).includes("pinned");
   useEffect(() => {
     const handler = () => onClose();
     window.addEventListener("click", handler);
@@ -379,6 +388,7 @@ function SessionContextMenu({ x, y, session, onCopyId, onArchive, onClose }: {
   return (
     <div className="web-context-menu" style={{ left: x, top: y }} onMouseDown={e => e.stopPropagation()}>
       <button onClick={onCopyId}>copy id</button>
+      <button onClick={onPinToggle}>{isPinned ? "unpin" : "pin"}</button>
       <div className="web-context-sep" />
       <button className="web-context-danger" onClick={onArchive}>archive</button>
     </div>
@@ -437,6 +447,7 @@ const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isNeighbor
 }) {
   const s = node.session!;
   const statusClass = s.status === "running" ? "running" : s.status === "error" ? "error" : "done";
+  const isPinned = (node.tags || []).includes("pinned");
   return (
     <div
       className={`web-session-node web-session-node--${statusClass}${isSelected ? " web-node--selected" : ""}${!isSelected && isNeighbor ? " web-node--neighbor" : ""}${isDragging ? " web-session-node--dragging" : ""}`}
@@ -454,6 +465,7 @@ const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isNeighbor
         <span className="web-session-title">
           {(s.title || s.preview || "—").slice(0, 52)}
         </span>
+        {isPinned && <span className="web-session-pin">◆</span>}
       </div>
       <div className="web-session-sub">
         {s.profile && <span className="web-session-profile">{s.profile}</span>}
@@ -1291,6 +1303,24 @@ export function SessionWeb() {
     setContextMenu({ kind: "session", x: e.clientX, y: e.clientY, sessionId });
   }, []);
 
+  const handlePinToggle = useCallback(async (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    const currentTags = parseTags(session?.tags ?? "");
+    const isPinned = currentTags.includes("pinned");
+    setSessions(prev => prev.map(s => {
+      if (s.id !== id) return s;
+      const tags = parseTags(s.tags);
+      const newTags = isPinned ? tags.filter(t => t !== "pinned") : [...tags, "pinned"];
+      return { ...s, tags: JSON.stringify(newTags) };
+    }));
+    setContextMenu(null);
+    if (isPinned) {
+      await removeSessionTagApi(id, "pinned").catch(() => {});
+    } else {
+      await addSessionTagApi(id, "pinned").catch(() => {});
+    }
+  }, [sessions]);
+
   const handleArchive = useCallback(async (id: string) => {
     await archiveSessionApi(id).catch(() => {});
     setSessions(prev => prev.filter(s => s.id !== id));
@@ -1870,6 +1900,7 @@ export function SessionWeb() {
             x={contextMenu.x} y={contextMenu.y}
             session={sess}
             onCopyId={() => handleCopyId(contextMenu.sessionId)}
+            onPinToggle={() => handlePinToggle(contextMenu.sessionId)}
             onArchive={() => handleArchive(contextMenu.sessionId)}
             onClose={() => setContextMenu(null)}
           />
@@ -1884,7 +1915,7 @@ export function SessionWeb() {
         />
       )}
 
-      {selectedNode && <DetailPanel node={selectedNode} onClose={() => setSelectedIds(new Set())} onArchive={handleArchive} />}
+      {selectedNode && <DetailPanel node={selectedNode} onClose={() => setSelectedIds(new Set())} onArchive={handleArchive} onPinToggle={handlePinToggle} />}
 
       <SessionWindow
         sessionId={miniSessionId}

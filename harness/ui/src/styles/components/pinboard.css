@@ -1,0 +1,182 @@
+/* ── Pinboard — cross-session pinned file groups ── */
+
+.pinboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Group tab bar ── */
+.pinboard-groups {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 6px 8px 0;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+}
+.pinboard-groups::-webkit-scrollbar { display: none; }
+
+.pinboard-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px 5px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.1s ease;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.pinboard-group--active {
+  border-bottom-color: var(--text-muted);
+}
+
+.pinboard-group-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: color 0.1s ease;
+}
+.pinboard-group--active .pinboard-group-name {
+  color: var(--text-secondary);
+}
+.pinboard-group:hover .pinboard-group-name {
+  color: var(--text-dim);
+}
+.pinboard-group--active:hover .pinboard-group-name {
+  color: var(--text);
+}
+
+.pinboard-group-count {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.pinboard-group-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+.pinboard-group:hover .pinboard-group-remove {
+  opacity: 0.5;
+}
+.pinboard-group-remove:hover {
+  opacity: 1 !important;
+  color: var(--text);
+}
+
+.pinboard-group-rename {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-active);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 0 2px;
+  width: 80px;
+  outline: none;
+}
+
+.pinboard-add-group {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 6px 6px;
+  display: flex;
+  align-items: center;
+  opacity: 0.4;
+  transition: opacity 0.1s ease, color 0.1s ease;
+  flex-shrink: 0;
+}
+.pinboard-add-group:hover {
+  opacity: 0.8;
+  color: var(--text);
+}
+
+/* ── File list ── */
+.pinboard-files {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.pinboard-file {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.08s ease;
+}
+.pinboard-file:hover {
+  background: var(--bg-hover);
+}
+
+.pinboard-file-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.1s ease;
+}
+.pinboard-file:hover .pinboard-file-name {
+  color: var(--text);
+}
+
+.pinboard-file-path {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.pinboard-file-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+.pinboard-file:hover .pinboard-file-remove {
+  opacity: 0.5;
+}
+.pinboard-file-remove:hover {
+  opacity: 1 !important;
+  color: var(--text);
+}
+
+/* ── Empty state ── */
+.pinboard-empty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px 8px;
+  opacity: 0.5;
+}

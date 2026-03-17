@@ -1,5 +1,6 @@
 import { useState, useEffect, type ReactNode } from "react";
 import { useFileViewer } from "../providers/FileViewerProvider";
+import { usePinboard } from "../providers/PinboardProvider";
 import { useProfiles } from "../providers/ProfileProvider";
 import { browsePath, readFileContent, type BrowseResult, type MoveWidgetInfo } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
@@ -9,6 +10,7 @@ import { CodeMirrorEditor } from "./CodeMirrorEditor";
 import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
 import { HtmlPreview } from "./HtmlPreview";
+import { PinboardView } from "./PinboardView";
 
 type Props = {
   open: boolean;
@@ -49,14 +51,15 @@ type ViewState =
   | { kind: "directory"; result: BrowseResult }
   | { kind: "error"; message: string };
 
-/** Which tab is showing: the project browser, a file, or a move widget */
-type ActiveView = "browser" | "move-widget" | string;
+/** Which tab is showing: the project browser, pinboard, a file, or a move widget */
+type ActiveView = "browser" | "pins" | "move-widget" | string;
 
 export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange }: Props) {
   const {
-    tabs, activePath, closeFile, setActive, pinFile, unpinFile, openFile,
+    tabs, activePath, closeFile, setActive, openFile,
     setEditing, markDirty, saveFile, saving, saveError,
   } = useFileViewer();
+  const { pinToActive, unpinFromActive, isFilePinned } = usePinboard();
   const { activeCwd } = useProfiles();
 
   const [activeView, setActiveView] = useState<ActiveView>("browser");
@@ -85,12 +88,12 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
 
   // Sync activeView → FileViewerProvider active
   useEffect(() => {
-    if (activeView !== "browser" && !activeView.startsWith("widget:") && activeView !== activePath) {
+    if (activeView !== "browser" && activeView !== "pins" && !activeView.startsWith("widget:") && activeView !== activePath) {
       setActive(activeView);
     }
   }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const viewingFile = activeView !== "browser" && !activeView.startsWith("widget:") ? activeView : null;
+  const viewingFile = activeView !== "browser" && activeView !== "pins" && !activeView.startsWith("widget:") ? activeView : null;
   const activeTab = viewingFile ? tabs.find((t) => t.path === viewingFile) : null;
   const isEditMode = activeTab?.editing ?? false;
 
@@ -188,6 +191,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   const isHtml = viewingFile ? isHtmlFile(viewingFile) : false;
   const showFileContent = viewingFile && view.kind !== "idle";
   const showBrowser = activeView === "browser";
+  const showPins = activeView === "pins";
 
   // ── Content renderer — flat early-return instead of nested ternaries ──
 
@@ -196,6 +200,18 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     if (activeView.startsWith("widget:") && moveWidgets) {
       const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
       return w ? <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} /> : null;
+    }
+
+    // Pinboard
+    if (showPins) {
+      return (
+        <PinboardView
+          onOpenFile={(path) => {
+            openFile(path);
+            setActiveView(path);
+          }}
+        />
+      );
     }
 
     // Edit mode
@@ -313,6 +329,19 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
               files
             </button>
           </div>
+          <div className={`rp-tab${showPins ? " rp-tab--active" : ""}`}>
+            <button
+              className="rp-tab-label"
+              onClick={() => setActiveView("pins")}
+              title="Pinned files"
+            >
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
+                <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={showPins ? "currentColor" : "none"}/>
+                <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+              pins
+            </button>
+          </div>
           {moveWidgets?.map((w) => (
             <div key={w.instanceId} className={`rp-tab${activeView === `widget:${w.instanceId}` ? " rp-tab--active" : ""}`}>
               <button
@@ -327,7 +356,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
           {tabs.map((tab) => (
             <div
               key={tab.path}
-              className={`rp-tab${tab.path === activeView ? " rp-tab--active" : ""}${tab.pinned ? " rp-tab--pinned" : ""}${tab.dirty ? " rp-tab--dirty" : ""}`}
+              className={`rp-tab${tab.path === activeView ? " rp-tab--active" : ""}${isFilePinned(tab.path) ? " rp-tab--pinned" : ""}${tab.dirty ? " rp-tab--dirty" : ""}`}
             >
               <button
                 className="rp-tab-label"
@@ -335,7 +364,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 title={tab.path}
               >
                 {tab.dirty && <span className="rp-tab-dot" />}
-                {tab.pinned && (
+                {isFilePinned(tab.path) && (
                   <svg className="rp-tab-pin" width="7" height="7" viewBox="0 0 12 12" fill="none">
                     <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="currentColor"/>
                     <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -367,18 +396,18 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 </svg>
               </button>
             )}
-            {/* Pin */}
+            {/* Pin to cross-session pinboard */}
             {viewingFile && (
               <button
-                className={`right-panel-header-btn${activeTab?.pinned ? " active" : ""}`}
+                className={`right-panel-header-btn${isFilePinned(viewingFile) ? " active" : ""}`}
                 onClick={() => {
-                  if (activeTab?.pinned) unpinFile(viewingFile);
-                  else pinFile(viewingFile);
+                  if (isFilePinned(viewingFile)) unpinFromActive(viewingFile);
+                  else pinToActive(viewingFile);
                 }}
-                title={activeTab?.pinned ? "Unpin file" : "Pin file"}
+                title={isFilePinned(viewingFile) ? "Unpin file" : "Pin file"}
               >
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={activeTab?.pinned ? "currentColor" : "none"}/>
+                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={isFilePinned(viewingFile) ? "currentColor" : "none"}/>
                   <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
                 </svg>
               </button>

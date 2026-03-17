@@ -39,6 +39,7 @@ type Props = {
   onNavigate?: (view: View) => void;
   /** When true, hide session-specific content (used on non-chat views) */
   navOnly?: boolean;
+  onTogglePin?: (id: string) => void;
 };
 
 export function Sidebar({
@@ -51,7 +52,7 @@ export function Sidebar({
   onGroupModeChange, onCollapsedGroupsChange,
   activeUserProfileObj, availableProviders,
   navLinks, currentView, onNavigate, navOnly,
-  activeInput,
+  activeInput, onTogglePin,
 }: Props) {
   const [groupMode, setGroupMode] = useState<GroupMode>(initialGroupMode ?? "time");
   const [searchQuery, setSearchQuery] = useState("");
@@ -179,6 +180,7 @@ export function Sidebar({
               projectPaths={activeUserProfileObj?.projects}
               initialCollapsedGroups={initialCollapsedGroups}
               onCollapsedGroupsChange={onCollapsedGroupsChange}
+              onTogglePin={onTogglePin}
             />
           )}
         </div>

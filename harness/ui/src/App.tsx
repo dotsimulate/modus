@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget } from "./api";
+import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi } from "./api";
 import { customPageView, getCustomPageId, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -22,6 +22,7 @@ import { StatusBar } from "./components/sidebar/StatusBar";
 import { UserSettingsModal } from "./components/UserSettingsModal";
 import { createEmptyAgentConfig } from "./components/AgentConfig";
 import { FileViewerProvider, useFileViewer } from "./providers/FileViewerProvider";
+import { PinboardProvider } from "./providers/PinboardProvider";
 import { SessionWindow } from "./components/SessionWindow";
 import { SessionWeb } from "./components/SessionWeb";
 import { TraceView } from "./components/TraceView";
@@ -50,8 +51,10 @@ function App() {
       <ProfileProvider>
         <SessionProvider>
           <FileViewerProvider>
-            <ClientExtensionsBoot />
-            <AppShell />
+            <PinboardProvider>
+              <ClientExtensionsBoot />
+              <AppShell />
+            </PinboardProvider>
           </FileViewerProvider>
         </SessionProvider>
       </ProfileProvider>
@@ -315,6 +318,17 @@ function AppShell() {
     setFloatingSessionId(id);
   }, []);
 
+  const handleTogglePin = useCallback(async (id: string) => {
+    const session = serverSessions.find(s => s.id === id);
+    const tags = parseTagList(session?.tags);
+    if (tags.includes("pinned")) {
+      await removeSessionTagApi(id, "pinned").catch(() => {});
+    } else {
+      await addSessionTagApi(id, "pinned").catch(() => {});
+    }
+    refreshSessions();
+  }, [serverSessions, refreshSessions]);
+
   const handleLeftResize = useCallback((delta: number) => {
     setLeftPanelWidth((w) => Math.max(180, Math.min(600, w + delta)));
   }, []);
@@ -477,6 +491,7 @@ function AppShell() {
           currentView={view}
           onNavigate={handleNavigate}
           navOnly={view !== "chat"}
+          onTogglePin={handleTogglePin}
         />
 
         {view === "chat" && (
@@ -564,6 +579,8 @@ function AppShell() {
                 availableTools={activeSession?.availableTools}
                 profiles={visibleProfiles}
                 onSwitchProfile={handleSwitchProfile}
+                sessionTags={activeSessionTags}
+                onTogglePin={activeSession?.id && !activeSession.id.startsWith("pending-") ? () => handleTogglePin(activeSession.id) : undefined}
                 status={activeSession?.status}
                 sessionId={activeSession?.id}
                 messages={activeSession?.messages}
