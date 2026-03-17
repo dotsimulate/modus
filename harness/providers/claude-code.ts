@@ -170,6 +170,28 @@ function resolveEnvVars(
   return resolved;
 }
 
+// ── Project CWD MCP Discovery ──
+
+/**
+ * Read MCP server configs from a project's .claude/mcp.json (same file
+ * Claude Code CLI discovers when launched from that directory).
+ */
+function readProjectMcpServers(cwd: string | undefined): Record<string, McpServerConfig> {
+  if (!cwd) return {};
+  const mcpJsonPath = join(cwd, ".claude", "mcp.json");
+  try {
+    if (!existsSync(mcpJsonPath)) return {};
+    const raw = JSON.parse(require("fs").readFileSync(mcpJsonPath, "utf-8"));
+    const servers = raw?.mcpServers ?? {};
+    if (typeof servers !== "object" || Array.isArray(servers)) return {};
+    console.log(`[claude-code] Discovered project MCP servers at ${mcpJsonPath}: ${Object.keys(servers).join(", ")}`);
+    return servers as Record<string, McpServerConfig>;
+  } catch (err) {
+    console.warn(`[claude-code] Failed to read ${mcpJsonPath}:`, err);
+    return {};
+  }
+}
+
 // ── CLAUDE.md Exclude Resolution ──
 
 function resolveClaudeMdExcludes(
@@ -224,23 +246,30 @@ export function createClaudeCodeProvider(): SessionProvider {
         }
       }
 
-      // Merge MCP servers: global + project-local + profile
+      // Merge MCP servers: project CWD .claude/mcp.json + global + profile
+      // Priority: profile > global > project CWD (project CWD is lowest, gets overridden)
       const globalConfig = getGlobalConfig(session.cwd);
-      console.log(`[claude-code] MCP merge: cwd=${session.cwd} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))}`);
+      const sessionCwdMcp = readProjectMcpServers(opts.cwd ?? session.cwd);
+      console.log(`[claude-code] MCP merge: cwd=${session.cwd} projectMcp=${JSON.stringify(Object.keys(sessionCwdMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))}`);
       const mergedMcp = {
+        ...sessionCwdMcp,
         ...(globalConfig.mcpServers ?? {}),
         ...(profileDef?.mcpServers ?? {}),
       };
 
-      // Resolve relative --directory args to absolute (configs use paths relative to harness root)
+      // Resolve relative --directory args to absolute
+      // Project CWD servers: resolve relative to session CWD
+      // Harness servers (global/profile): resolve relative to harness root
       const harnessRoot = dirname(import.meta.dir.endsWith("/") ? import.meta.dir.slice(0, -1) : import.meta.dir);
-      for (const server of Object.values(mergedMcp) as any[]) {
+      const projectCwdNames = new Set(Object.keys(sessionCwdMcp));
+      for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
         const args = server.args as string[] | undefined;
         if (!args) continue;
         const dirIdx = args.indexOf("--directory");
         const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
         if (dirVal && !isAbsolute(dirVal)) {
-          args[dirIdx + 1] = join(harnessRoot, dirVal);
+          const anchor = projectCwdNames.has(name) ? (opts.cwd ?? session.cwd) : harnessRoot;
+          args[dirIdx + 1] = join(anchor, dirVal);
         }
       }
 
