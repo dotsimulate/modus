@@ -36,8 +36,18 @@ build/
 # Agent memory store (personal per-user)
 agent_memory/memory/
 
-# Project-local .modus/ — runtime/personal data, fully ignored
-.modus/
+# Project-local .modus/ — runtime/personal data, mostly ignored
+# Selectively track example moves (chess, wordle, nano-banana) for reference
+.modus/*
+!.modus/moves/
+.modus/moves/*
+!.modus/moves/chess/
+!.modus/moves/wordle/
+!.modus/moves/nano-banana/
+.modus/moves/chess/state/
+.modus/moves/wordle/state/
+.modus/moves/nano-banana/state/
+.modus/moves/nano-banana/outputs/
 
 # Harness runtime (auto-generated, personal per-user)
 harness/profiles/_users.json

@@ -1,0 +1,67 @@
+{
+  "name": "nano-banana",
+  "label": "Nano Banana",
+  "description": "Generate images using Gemini's Nano Banana image generation. Agent provides a prompt, harness calls the API and saves outputs.",
+  "icon": "image",
+  "mode": "inline",
+  "inputs": [
+    {
+      "name": "count",
+      "label": "Images per generate",
+      "type": "select",
+      "options": ["1", "2", "3", "4", "custom"],
+      "default": "1",
+      "required": true
+    },
+    {
+      "name": "unique",
+      "label": "Unique images",
+      "type": "toggle",
+      "default": false
+    },
+    {
+      "name": "model",
+      "label": "Model",
+      "type": "select",
+      "options": ["nano-banana-2", "nano-banana-pro", "nano-banana-og"],
+      "default": "nano-banana-2",
+      "required": true
+    }
+  ],
+  "api": {
+    "tokenPrefix": "banana",
+    "ops": {
+      "generate": {
+        "description": "Generate image(s) from a text prompt. Returns file paths of saved images.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "prompt": { "type": "string", "description": "Detailed image description / generation prompt" },
+            "count": { "type": "number", "description": "Number of images to generate (default 1, no cap)" }
+          },
+          "required": ["prompt"]
+        }
+      },
+      "list": {
+        "description": "List all generated images in the outputs folder"
+      }
+    },
+    "state": {
+      "persist": true
+    }
+  },
+  "submit": {
+    "required": false
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "widget": {
+    "component": "widget.tsx",
+    "panel": "right",
+    "label": "Nano Banana",
+    "icon": "image",
+    "autoOpen": true
+  },
+  "tags": ["image", "generation", "nano-banana"]
+}

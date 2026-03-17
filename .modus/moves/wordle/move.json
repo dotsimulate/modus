@@ -1,0 +1,46 @@
+{
+  "name": "wordle",
+  "label": "Play Wordle",
+  "description": "Agent guesses a 5-letter word in 6 tries. Harness holds the answer — the agent can never see it.",
+  "icon": "grid",
+  "mode": "inline",
+  "inputs": [],
+  "api": {
+    "tokenPrefix": "wordle",
+    "ops": {
+      "guess": {
+        "description": "Submit a 5-letter word guess",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "word": { "type": "string", "description": "Exactly 5 letters, alphabetic" }
+          },
+          "required": ["word"]
+        }
+      },
+      "status": {
+        "description": "View current board — your guesses and results so far"
+      },
+      "new": {
+        "description": "Start a new game. Optionally pass { word } to set a specific 5-letter answer (user only)."
+      }
+    },
+    "state": {
+      "persist": true
+    }
+  },
+  "submit": {
+    "required": false
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "widget": {
+    "component": "widget.tsx",
+    "panel": "right",
+    "label": "Wordle",
+    "icon": "grid",
+    "autoOpen": true
+  },
+  "tags": ["game", "wordle"]
+}
