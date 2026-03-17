@@ -122,6 +122,7 @@ export const ProfileSchema = z.object({
   skills: z.array(z.string()).optional(),
   codexSandboxMode: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
   codexRules: z.array(z.string()).optional(),
+  cwdSuggestions: z.array(z.string()).optional(),
 });
 
 // ── User Profile ──

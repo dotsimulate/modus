@@ -357,7 +357,18 @@ async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | n
   const modulePath = join(location.dir, "context.ts");
   if (!existsSync(modulePath)) return null;
   try {
+    // Bust module cache so move code changes take effect on re-activation
+    const resolved = require.resolve(modulePath);
+    delete require.cache[resolved];
     const mod = await import(modulePath);
+    // Ensure context.ts reloads on subsequent calls for hot-reloads
+    if (mod?.gather || mod?.onSubmit) {
+      const futureResolved = require.resolve(modulePath);
+      if (futureResolved !== resolved) {
+        delete require.cache[futureResolved];
+        require.cache[resolved] = null;
+      }
+    }
     return mod as MoveModule;
   } catch (err) {
     console.error(`[move-runner] Failed to load context.ts for move "${name}":`, err);

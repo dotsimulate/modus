@@ -938,6 +938,28 @@ app.get("/api/file-read", async (c) => {
   }
 });
 
+app.get("/api/file-serve", async (c) => {
+  const raw = new URL(c.req.url).searchParams.get("path");
+  if (!raw) return c.json({ error: "path required" }, 400);
+  const { resolve, extname } = await import("path");
+  const { readFile } = await import("fs/promises");
+  const target = resolve(raw);
+  const ext = extname(target).toLowerCase();
+  const mimeMap: Record<string, string> = {
+    ".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg", ".gif": "image/gif", ".bmp": "image/bmp",
+    ".ico": "image/x-icon", ".svg": "image/svg+xml", ".avif": "image/avif",
+    ".tiff": "image/tiff", ".tif": "image/tiff",
+  };
+  const mime = mimeMap[ext] ?? "application/octet-stream";
+  try {
+    const buf = await readFile(target);
+    return new Response(buf, { headers: { "Content-Type": mime, "Cache-Control": "max-age=60" } });
+  } catch (err: any) {
+    return c.json({ error: err.code === "ENOENT" ? "not found" : err.message }, 400);
+  }
+});
+
 app.put("/api/file-write", async (c) => {
   const { path: rawPath, content } = await c.req.json<{ path: string; content: string }>();
   if (!rawPath || typeof content !== "string") return c.json({ error: "path and content required" }, 400);
