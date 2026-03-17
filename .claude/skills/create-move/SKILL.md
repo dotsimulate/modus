@@ -45,7 +45,7 @@ Built-in moves live in `harness/moves/`. Project-local moves live in `.modus/mov
 **"Agent needs to interact with something repeatedly via API ops"** (games, tools, capabilities)
   → **API contract move**. Read [references/api-contract-moves.md](references/api-contract-moves.md).
   Key: `api` block in move.json, `handlers` export in context.ts.
-  Examples: chess, wordle, tamagotchi, session-research.
+  Examples: chess, wordle, nano-banana.
 
 **"Just inject context/instructions into the session"** (prompt-only, no submission needed)
   → **Gather-only move**. Simplest type. `gather()` returns a prompt string. No API, no submit.
