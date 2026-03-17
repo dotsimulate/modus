@@ -49,6 +49,14 @@ agent_memory/memory/
 .modus/moves/nano-banana/state/
 .modus/moves/nano-banana/outputs/
 
+# Scraps, research, and local experiments
+TODO/
+harness/TODO/
+research_output/
+research_scraps/
+test_website/
+/package.json
+
 # Harness runtime (auto-generated, personal per-user)
 harness/profiles/_users.json
 harness/profiles/_projects.json
