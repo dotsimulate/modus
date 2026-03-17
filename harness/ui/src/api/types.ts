@@ -176,6 +176,7 @@ export type Profile = {
   loadProjectSettings?: boolean;
   mcpServers?: Record<string, McpServerConfig>;
   ui?: ProfileUi;
+  cwdSuggestions?: string[];
 };
 
 export type GlobalConfig = {

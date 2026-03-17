@@ -36,6 +36,12 @@ function isHtmlFile(path: string): boolean {
   return lower.endsWith(".html") || lower.endsWith(".htm");
 }
 
+const IMAGE_EXTS = new Set([".webp", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".avif", ".tiff", ".tif", ".svg"]);
+function isImageFile(path: string): boolean {
+  const dot = path.lastIndexOf(".");
+  return dot !== -1 && IMAGE_EXTS.has(path.slice(dot).toLowerCase());
+}
+
 type ViewState =
   | { kind: "idle" }
   | { kind: "loading" }
@@ -91,6 +97,8 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   // Load content for the file being viewed (only in view mode — edit mode loads via provider)
   useEffect(() => {
     if (!viewingFile || isEditMode) { if (!viewingFile) setView({ kind: "idle" }); return; }
+    // Images are served via /api/file-serve — no need to load text content
+    if (isImageFile(viewingFile)) { setView({ kind: "file", content: "" }); setLoading(false); return; }
     let active = true;
     setLoading(true);
     setView({ kind: "loading" });
@@ -234,6 +242,25 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
       );
     }
 
+    // Image viewer
+    if (!isEditMode && viewingFile && isImageFile(viewingFile)) {
+      const src = `/api/file-serve?path=${encodeURIComponent(viewingFile)}`;
+      return (
+        <div className="right-panel-image-viewer">
+          <div className="right-panel-image-header">
+            <span className="right-panel-image-name">{basename(viewingFile)}</span>
+            <div className="right-panel-image-actions">
+              {copyPathBtn(viewingFile)}
+              {closeBtn}
+            </div>
+          </div>
+          <div className="right-panel-image-body">
+            <img src={src} alt={basename(viewingFile)} className="right-panel-image" />
+          </div>
+        </div>
+      );
+    }
+
     // HTML preview
     if (!isEditMode && showFileContent && isHtml && htmlPreview && view.kind === "file") {
       return (
@@ -329,7 +356,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
           ))}
           <div className="rp-tabs-actions">
             {/* Edit/view toggle */}
-            {viewingFile && view.kind !== "directory" && (
+            {viewingFile && view.kind !== "directory" && !isImageFile(viewingFile) && (
               <button
                 className={`right-panel-header-btn${isEditMode ? " active" : ""}`}
                 onClick={handleToggleEdit}

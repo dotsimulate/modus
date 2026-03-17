@@ -208,6 +208,30 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (nextProfile !== selectedProfile) setSelectedProfile(nextProfile);
   }, [activeUP?.defaultAgentProfile, selectedProfile, uiState.lastAgentProfile, visibleProfiles]);
 
+  // When selected profile changes, auto-fill CWD + additional dirs from cwdSuggestions.
+  // If the profile has no suggestions, reset additional dirs and restore user profile default CWD.
+  const prevSelectedProfileRef = useRef<string>("");
+  useEffect(() => {
+    if (selectedProfile === prevSelectedProfileRef.current) return;
+    prevSelectedProfileRef.current = selectedProfile;
+    const profileData = profiles.find((p) => p.name === selectedProfile);
+    const suggestions = profileData?.cwdSuggestions;
+    if (suggestions && suggestions.length > 0) {
+      setSetupState((prev) => ({
+        ...prev,
+        cwd: suggestions[0],
+        additionalDirectories: suggestions.slice(1),
+      }));
+    } else {
+      const defaultCwd = activeUP?.projects?.[0] ?? "";
+      setSetupState((prev) => ({
+        ...prev,
+        cwd: defaultCwd || prev.cwd,
+        additionalDirectories: [],
+      }));
+    }
+  }, [selectedProfile, profiles, activeUP]);
+
   return (
     <ProfileContext.Provider value={{
       profiles, visibleProfiles, availableProviders, userProfiles,
