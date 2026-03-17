@@ -81,14 +81,6 @@ export function SessionList({
   const handleSelectSession = useCallback((id: string) => {
     if (activeSessionId && id !== activeSessionId) {
       const current = sessions.find((s) => s.id === activeSessionId);
-      console.log("[orphan-drop] leaving session", {
-        id: activeSessionId,
-        message_count: current?.message_count,
-        status: current?.status,
-        title: current?.title,
-        last_prompt: current?.last_prompt,
-        preview: current?.preview,
-      });
       if (
         current &&
         current.message_count === 0 &&
@@ -96,12 +88,9 @@ export function SessionList({
         !(activeInput?.trim()) &&
         (current.status === "idle" || current.status === "done")
       ) {
-        console.log("[orphan-drop] archiving empty session", activeSessionId);
         archiveSessionApi(activeSessionId).catch(() => {});
         onSelectSession(id);
         return;
-      } else {
-        console.log("[orphan-drop] keeping session — conditions not met");
       }
     }
     onSelectSession(id);

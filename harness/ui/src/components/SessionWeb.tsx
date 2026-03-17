@@ -4,19 +4,20 @@ import { fetchGitLog } from "../api/git";
 import { API_BASE, authHeaders } from "../api/_fetch";
 import { fetchMissionRuns, fetchMissionTransfers, fetchMissionSessions } from "../api/missions";
 import { fetchTouches } from "../api/trace";
-import { archiveSessionApi, createSession } from "../api/sessions";
+import { archiveSessionApi, createSession, createEmptySession } from "../api/sessions";
+import { fetchWebPositions, patchWebPositions } from "../api/web-positions";
 import type { SessionInfo, GitCommit } from "../api/types";
 import type { MissionRunSummary, MissionTransferSummary } from "../api/missions";
 import type { TouchRecord } from "../api/trace";
 import { ChatFileViewer } from "./ChatFileViewer";
 import { SessionWindow } from "./SessionWindow";
 import { WebComposer } from "./WebComposer";
+import { CustomSelect, type SelectOption } from "./CustomSelect";
 import { useProfiles } from "../providers/ProfileProvider";
 
 import {
   type MoveRun,
   type GraphNode,
-  type GraphEdge,
   type EdgeType,
   type EdgeLayers,
   type WebLayoutConfig,
@@ -24,15 +25,12 @@ import {
   type DateFilter,
   type TimeCluster,
   NODE_W, NODE_H, DOC_W, DOC_H, COMMIT_W, COMMIT_H,
-  PAD_NODE_W, PAD_NODE_H,
-  DEFAULT_CONFIG, PRESETS, DEFAULT_LAYERS,
   loadConfig, saveConfig,
   loadDateFilter, saveDateFilter,
-  loadPositions, savePositions,
   loadLayers, saveLayers,
   shortId, shortHash, formatCost, timeAgo,
   parseTags,
-  nodeBottom, nodeMidX, nodeRight, nodeMidY,
+  dayKey,
 } from "./SessionWebLayout";
 
 import { buildAllEdges } from "./SessionWebEdges";
@@ -133,19 +131,18 @@ function MissionFilterPanel({ runs, activeRunId, onChange }: {
   onChange: (runId: number | null) => void;
 }) {
   if (runs.length === 0) return null;
+  const options: SelectOption[] = [
+    { value: "", label: "all missions" },
+    ...runs.map(r => ({ value: String(r.id), label: `${r.missionName} #${r.id} (${r.status})` })),
+  ];
   return (
     <div className="web-mission-filter" onMouseDown={e => e.stopPropagation()}>
-      <select
-        value={activeRunId ?? ""}
-        onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))}
-      >
-        <option value="">all missions</option>
-        {runs.map(r => (
-          <option key={r.id} value={r.id}>
-            {r.missionName} #{r.id} ({r.status})
-          </option>
-        ))}
-      </select>
+      <CustomSelect
+        options={options}
+        value={activeRunId != null ? String(activeRunId) : ""}
+        placeholder="all missions"
+        onChange={v => onChange(v === "" ? null : Number(v))}
+      />
     </div>
   );
 }
@@ -454,23 +451,24 @@ const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isNeighbor
     >
       <div className="web-session-top">
         <span className={`web-session-dot web-session-dot--${statusClass}`} />
-        <span className="web-session-id">{shortId(s.id)}</span>
-        <span className="web-session-time">{timeAgo(s.created_at)}</span>
+        <span className="web-session-title">
+          {(s.title || s.preview || "—").slice(0, 52)}
+        </span>
       </div>
-      <div className="web-session-title">
-        {(s.title || s.preview || "").slice(0, 48)}
-      </div>
-      <div className="web-session-meta">
+      <div className="web-session-sub">
         {s.profile && <span className="web-session-profile">{s.profile}</span>}
         {node.handoffType && <span className="web-session-handoff-type">{node.handoffType}</span>}
+      </div>
+      <div className="web-session-meta">
         <span>{s.message_count} msgs</span>
-        <span>{formatCost(s.total_cost_usd)}</span>
+        {s.total_cost_usd > 0 && <span>{formatCost(s.total_cost_usd)}</span>}
         {touchCounts && (
           <>
             {touchCounts.reads > 0 && <span className="web-session-reads">{touchCounts.reads}r</span>}
             {touchCounts.edits > 0 && <span className="web-session-edits">{touchCounts.edits}w</span>}
           </>
         )}
+        <span className="web-session-time">{timeAgo(s.created_at)}</span>
       </div>
     </div>
   );
@@ -528,6 +526,9 @@ const DocNodeEl = memo(function DocNodeEl({ node, isSelected, isNeighbor, onSele
   );
 });
 
+// ── Stable empty positions object — returned by solver when nothing to solve ──
+const EMPTY_POS: PositionMap = {};
+
 // ── Main Component ──
 
 export function SessionWeb() {
@@ -558,9 +559,14 @@ export function SessionWeb() {
   const [config, setConfig] = useState<WebLayoutConfig>(() => loadConfig());
   const [dateFilter, setDateFilter] = useState<DateFilter>(() => loadDateFilter(profileName));
   const [edgeLayers, setEdgeLayers] = useState<EdgeLayers>(() => loadLayers(profileName));
-  const [positionOverrides, setPositionOverrides] = useState<PositionMap>(() => loadPositions(profileName));
+  // Positions from backend — the single source of truth
+  const [storedPositions, setStoredPositions] = useState<PositionMap>({});
+  // Gate: solver must NOT run until positions have been fetched from the API.
+  // Without this, the solver sees an empty positionMap on mount and re-solves
+  // every session from scratch, overwriting the stored positions.
+  const [positionsLoaded, setPositionsLoaded] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [composerPos, setComposerPos] = useState<{ x: number; y: number } | null>(null);
+  const [composerState, setComposerState] = useState<{ x: number; y: number; sessionId: string } | null>(null);
   const [draggingChain, setDraggingChain] = useState<Set<string> | null>(null);
   const [dragPreview, setDragPreview] = useState<PositionMap>({});
 
@@ -662,10 +668,12 @@ export function SessionWeb() {
   // ── Fetch all data ──
   useEffect(() => {
     let cancelled = false;
+    // Reset gate while fetching — solver must wait for fresh positions
+    setPositionsLoaded(false);
     async function load() {
       try {
         const projectCwd = activeUP?.projects?.[0];
-        const [sessData, moveData, gitData, runsData, touchData] = await Promise.all([
+        const [sessData, moveData, gitData, runsData, touchData, posData] = await Promise.all([
           fetchSessionsScoped(500, activeUserProfile ?? undefined),
           fetch(`${API_BASE}/api/move-runs/recent?limit=200`, { headers: authHeaders() }).then(r => r.json()),
           fetchGitLog(projectCwd ?? ".", 100).catch(() => [] as GitCommit[]),
@@ -676,6 +684,7 @@ export function SessionWeb() {
             ops: ["write", "edit", "read"],
             limit: 5000,
           }).catch(() => ({ touches: [] as TouchRecord[], summary: {} })),
+          fetchWebPositions(profileName),
         ]);
         if (cancelled) return;
         setSessions(sessData);
@@ -683,6 +692,11 @@ export function SessionWeb() {
         setCommits(gitData);
         setMissionRuns(runsData);
         setTouches(touchData.touches);
+        // Convert API positions array to PositionMap
+        const posMap: PositionMap = {};
+        for (const p of posData) posMap[p.nodeId] = { x: p.x, y: p.y };
+        setStoredPositions(posMap);
+        setPositionsLoaded(true);
         const transferArrays = await Promise.all(
           runsData.map((r: MissionRunSummary) => fetchMissionTransfers(r.id).catch(() => [])),
         );
@@ -750,65 +764,185 @@ export function SessionWeb() {
     [filteredSessions, moveRuns, commits, filteredTransfers, touches],
   );
 
-  const solverResult = useMemo(
-    () => solveLayout(
+  // ── Solver: only runs for sessions with no stored position ──
+  // CRITICAL: Do NOT run until positionsLoaded is true. Otherwise the solver
+  // sees an empty storedPositions map on mount and re-solves every session,
+  // overwriting the persisted DB positions. This was the core bug.
+  const solvedPositions = useMemo((): PositionMap => {
+    if (!positionsLoaded) return EMPTY_POS;
+    const unsolvedSessions = filteredSessions.filter(s => !storedPositions[s.id]);
+    if (unsolvedSessions.length === 0) return EMPTY_POS;
+    const result = solveLayout(
       filteredSessions, edges, handoffDocs, commitSessionMap,
-      childrenOf, spawnedSet, commits, config, undefined, touches,
-    ),
-    [filteredSessions, edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet, commits, config, touches],
-  );
+      childrenOf, spawnedSet, commits, config, storedPositions, touches,
+    );
+    const newPositions: PositionMap = {};
+    for (const n of result.nodes) {
+      if (n.type === "session" && !storedPositions[n.id]) {
+        newPositions[n.id] = { x: n.x, y: n.y };
+      }
+    }
+    return Object.keys(newPositions).length > 0 ? newPositions : EMPTY_POS;
+  }, [positionsLoaded, filteredSessions, edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet, commits, config, storedPositions, touches]);
 
-  // ── Apply position overrides + drag preview ──
+  // ── Persist newly solved positions and lock them into storedPositions ──
+  // Runs only when solvedPositions actually changes (new sessions appeared).
+  useEffect(() => {
+    const keys = Object.keys(solvedPositions);
+    if (keys.length === 0) return;
+    const batch = keys.map(nodeId => ({
+      nodeId, x: solvedPositions[nodeId].x, y: solvedPositions[nodeId].y, pinned: false,
+    }));
+    patchWebPositions(profileName, batch);
+    setStoredPositions(prev => ({ ...prev, ...solvedPositions }));
+  }, [solvedPositions, profileName]);
+
+  // ── Build nodes from positions ──
+  // Pure node-building — no solver, no side effects.
+  // Re-runs only when: sessions change, positions change (load/drag-end), or dragPreview changes (during drag).
   const { nodes, clusters } = useMemo(() => {
-    const hasOverrides = Object.keys(positionOverrides).length > 0;
-    const hasPreview = Object.keys(dragPreview).length > 0;
-    if (!hasOverrides && !hasPreview) return solverResult;
+    // Merge: solvedPositions fill gaps, storedPositions win for placed nodes, dragPreview wins during drag
+    const allPositions: PositionMap = { ...solvedPositions, ...storedPositions, ...dragPreview };
 
-    const baseMap = new Map(solverResult.nodes.map(n => [n.id, { x: n.x, y: n.y }]));
-    const sessionDeltas = new Map<string, { dx: number; dy: number }>();
-    const merged: PositionMap = { ...positionOverrides, ...dragPreview };
-    for (const [id, ov] of Object.entries(merged)) {
-      const base = baseMap.get(id);
-      if (base) sessionDeltas.set(id, { dx: ov.x - base.x, dy: ov.y - base.y });
+    // Build session nodes from positions
+    const nodeList: GraphNode[] = [];
+    const sorted = [...filteredSessions].sort((a, b) => a.created_at - b.created_at);
+    for (const s of sorted) {
+      const pos = allPositions[s.id];
+      if (!pos) continue; // shouldn't happen after solve, but guard
+      const tags = parseTags(s.tags);
+      const handoffType = tags.find(t => t.startsWith("handoff:"))?.slice(8);
+      nodeList.push({
+        id: s.id,
+        type: "session",
+        x: pos.x, y: pos.y,
+        col: spawnedSet.has(s.id) ? 1 : 0,
+        row: 0,
+        session: s,
+        tags,
+        handoffType,
+        dayKey: dayKey(s.created_at),
+      });
     }
 
-    const commitParent = new Map<string, string>();
-    for (const [hash7, sids] of commitSessionMap) {
-      if (sids.length > 0) commitParent.set(`commit:${hash7}`, sids[0]);
+    // Build commit nodes — placed relative to parent session
+    const COMMIT_COLS = 3;
+    const commitsByParent = new Map<string, GitCommit[]>();
+    const orphanCommits: GitCommit[] = [];
+    for (const c of commits) {
+      const h7 = shortHash(c.hash);
+      const parentSids = commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [];
+      if (parentSids.length > 0) {
+        const pid = parentSids[0];
+        const arr = commitsByParent.get(pid) || [];
+        arr.push(c);
+        commitsByParent.set(pid, arr);
+      } else {
+        orphanCommits.push(c);
+      }
     }
 
-    const docSessions = new Map<string, [string, string]>();
+    for (const [pid, pCommits] of commitsByParent) {
+      const parentPos = allPositions[pid];
+      if (!parentPos) continue;
+      const sortedC = [...pCommits].sort((a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      for (let i = 0; i < sortedC.length; i++) {
+        const col = i % COMMIT_COLS;
+        const row = Math.floor(i / COMMIT_COLS);
+        nodeList.push({
+          id: `commit:${shortHash(sortedC[i].hash)}`,
+          type: "commit",
+          x: parentPos.x + config.commitOffsetX + col * (COMMIT_W + 8),
+          y: parentPos.y + NODE_H + 14 + row * (COMMIT_H + 6),
+          col, row,
+          commit: sortedC[i],
+          dayKey: dayKey(new Date(sortedC[i].date).getTime()),
+        });
+      }
+    }
+
+    // Orphan commits: nearest session in time
+    for (const c of orphanCommits) {
+      const ct = new Date(c.date).getTime();
+      let bestSid: string | null = null;
+      let bestDist = Infinity;
+      for (const s of sorted) {
+        const dist = Math.abs(s.created_at - ct);
+        if (dist < bestDist && allPositions[s.id]) { bestDist = dist; bestSid = s.id; }
+      }
+      if (bestSid && allPositions[bestSid]) {
+        const sp = allPositions[bestSid];
+        const existing = nodeList.filter(
+          n => n.type === "commit" && Math.abs(n.x - sp.x) < NODE_W * 2 && Math.abs(n.y - (sp.y + NODE_H)) < 100,
+        );
+        const idx = existing.length;
+        const col = idx % COMMIT_COLS;
+        const row = Math.floor(idx / COMMIT_COLS);
+        nodeList.push({
+          id: `commit:${shortHash(c.hash)}`,
+          type: "commit",
+          x: sp.x + config.commitOffsetX + col * (COMMIT_W + 8),
+          y: sp.y + NODE_H + 14 + row * (COMMIT_H + 6),
+          col, row, commit: c,
+          dayKey: dayKey(ct),
+        });
+      }
+    }
+
+    // Document nodes — midpoint between linked sessions
+    const nodeMapLocal = new Map(nodeList.map(n => [n.id, n]));
     for (const doc of handoffDocs) {
-      docSessions.set(`doc:${doc.moveRunId}`, [doc.fromSessionId, doc.toSessionId]);
+      const fromNode = nodeMapLocal.get(doc.fromSessionId);
+      const toNode = nodeMapLocal.get(doc.toSessionId);
+      if (!fromNode || !toNode) continue;
+      nodeList.push({
+        id: `doc:${doc.moveRunId}`,
+        type: "document",
+        x: (fromNode.x + NODE_W / 2 + toNode.x + NODE_W / 2) / 2 - DOC_W / 2,
+        y: (fromNode.y + NODE_H / 2 + toNode.y + NODE_H / 2) / 2 - DOC_H / 2,
+        col: fromNode.col, row: fromNode.row,
+        doc,
+      });
     }
 
-    const patched = solverResult.nodes.map(n => {
-      const ov = dragPreview[n.id] ?? positionOverrides[n.id];
-      if (ov) return { ...n, x: ov.x, y: ov.y };
+    // Build day clusters from actual positions
+    const dayGroups = new Map<string, GraphNode[]>();
+    for (const n of nodeList) {
+      const dk = n.dayKey ?? (n.commit ? dayKey(new Date(n.commit.date).getTime()) : null);
+      if (!dk) continue;
+      const arr = dayGroups.get(dk) || [];
+      arr.push(n);
+      dayGroups.set(dk, arr);
+    }
 
-      if (n.type === "commit") {
-        const pid = commitParent.get(n.id);
-        if (pid) {
-          const d = sessionDeltas.get(pid);
-          if (d) return { ...n, x: n.x + d.dx, y: n.y + d.dy };
-        }
+    const clusterList: TimeCluster[] = [];
+    const sortedDays = [...dayGroups.keys()].sort();
+    for (let di = 0; di < sortedDays.length; di++) {
+      const dk = sortedDays[di];
+      const dayNodes = dayGroups.get(dk)!;
+      let minX = Infinity, maxX = -Infinity;
+      let sessionCount = 0, commitCount = 0;
+      for (const n of dayNodes) {
+        const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
+        if (n.x < minX) minX = n.x;
+        if (n.x + w > maxX) maxX = n.x + w;
+        if (n.type === "session") sessionCount++;
+        if (n.type === "commit") commitCount++;
       }
+      clusterList.push({
+        id: `cluster:${di}`,
+        label: dayKey(Date.now()) === dk ? "today" : dk,
+        x: minX - 24,
+        width: (maxX - minX) + 48,
+        sessionCount, commitCount,
+      });
+    }
 
-      if (n.type === "document") {
-        const pair = docSessions.get(n.id);
-        if (pair) {
-          const d1 = sessionDeltas.get(pair[0]);
-          const d2 = sessionDeltas.get(pair[1]);
-          if (d1 && d2) return { ...n, x: n.x + (d1.dx + d2.dx) / 2, y: n.y + (d1.dy + d2.dy) / 2 };
-          if (d1) return { ...n, x: n.x + d1.dx, y: n.y + d1.dy };
-          if (d2) return { ...n, x: n.x + d2.dx, y: n.y + d2.dy };
-        }
-      }
-
-      return n;
-    });
-    return { nodes: patched, clusters: solverResult.clusters };
-  }, [solverResult, positionOverrides, dragPreview, commitSessionMap, handoffDocs]);
+    return { nodes: nodeList, clusters: clusterList };
+  }, [filteredSessions, solvedPositions, storedPositions, dragPreview, handoffDocs,
+      commitSessionMap, spawnedSet, commits, config]);
 
   const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
 
@@ -948,16 +1082,15 @@ export function SessionWeb() {
             const orig = nd.origPositions[id];
             if (orig) updates[id] = { x: orig.x + dx, y: orig.y + dy };
           }
-          setPositionOverrides(prev => ({ ...prev, ...updates }));
-          setDragPreview({});
+          setDragPreview(updates);
         } else {
           const dragX = nd.origX + dx;
           const dragY = nd.origY + dy;
-          setPositionOverrides(prev => ({ ...prev, [nd.nodeId]: { x: dragX, y: dragY } }));
           const MARGIN = 16;
-          const preview: PositionMap = {};
+          // Dragged node is in preview so storedPositions never mutates during drag
+          const preview: PositionMap = { [nd.nodeId]: { x: dragX, y: dragY } };
           const nearby = nodes.filter(n => n.id !== nd.nodeId && n.type === "session");
-          const getBase = (n: GraphNode) => positionOverrides[n.id] ?? { x: n.x, y: n.y };
+          const getBase = (n: GraphNode) => storedPositions[n.id] ?? { x: n.x, y: n.y };
           const pushed = new Set<string>();
           for (const n of nearby) {
             const p = getBase(n);
@@ -1037,24 +1170,19 @@ export function SessionWeb() {
     }
 
     if (nodeDragRef.current?.hasMoved) {
-      if (nodeDragRef.current.chainIds.length > 1) {
-        setPositionOverrides(prev => {
-          savePositions(profileName, prev);
-          return prev;
-        });
-      } else {
-        const previewKeys = Object.keys(dragPreview);
-        if (previewKeys.length > 0) {
-          setPositionOverrides(prev => {
-            const next = { ...prev, ...dragPreview };
-            savePositions(profileName, next);
-            return next;
-          });
-        } else {
-          savePositions(profileName, positionOverrides);
+      const dragNode = nodeDragRef.current;
+      // dragPreview holds all moved positions (dragged node + any pushed neighbors)
+      const capturedPreview = { ...dragPreview };
+      const changed: { nodeId: string; x: number; y: number; pinned: boolean }[] = [];
+      setStoredPositions(prev => {
+        const next = { ...prev, ...capturedPreview };
+        for (const id of Object.keys(capturedPreview)) {
+          if (next[id]) changed.push({ nodeId: id, x: next[id].x, y: next[id].y, pinned: id === dragNode.nodeId });
         }
-        setDragPreview({});
-      }
+        patchWebPositions(profileName, changed);
+        return next;
+      });
+      setDragPreview({});
     } else if (dragRef.current && !dragRef.current.hasMoved) {
       // Clicked empty canvas — deselect all
       setSelectedIds(new Set());
@@ -1168,10 +1296,10 @@ export function SessionWeb() {
     setSessions(prev => prev.filter(s => s.id !== id));
     setSelectedIds(new Set());
     setContextMenu(null);
-    setPositionOverrides(prev => {
+    setStoredPositions(prev => {
       const next = { ...prev };
       delete next[id];
-      savePositions(profileName, next);
+      // Position will be ignored since the session is archived — no need to delete from DB
       return next;
     });
   }, [profileName]);
@@ -1202,20 +1330,7 @@ export function SessionWeb() {
     setTouches(touchData.touches);
   }, [activeUserProfile, activeUP]);
 
-  const handleComposerSessionCreated = useCallback(async (sessionId: string) => {
-    // Optimistic: place the new session node at the composer's canvas position
-    if (composerPos) {
-      setPositionOverrides(prev => {
-        const next = { ...prev, [sessionId]: { x: composerPos.x, y: composerPos.y } };
-        savePositions(profileName, next);
-        return next;
-      });
-    }
-    setComposerPos(null);
-    await reloadData();
-  }, [reloadData, composerPos, profileName]);
-
-  const handleCanvasDoubleClick = useCallback((e: React.MouseEvent) => {
+  const handleCanvasDoubleClick = useCallback(async (e: React.MouseEvent) => {
     // Only trigger on actual canvas background, not on nodes
     if ((e.target as HTMLElement).closest(".web-session-node, .web-commit-node, .web-doc-node")) return;
     const rect = wrapRef.current?.getBoundingClientRect();
@@ -1223,8 +1338,24 @@ export function SessionWeb() {
     const v = viewportRef.current;
     const canvasX = (e.clientX - rect.left - v.x) / v.scale;
     const canvasY = (e.clientY - rect.top - v.y) / v.scale;
-    setComposerPos({ x: canvasX, y: canvasY });
-  }, []);
+
+    try {
+      const projectCwd = activeUP?.projects?.[0];
+      const sessionId = await createEmptySession({
+        profile: activeUserProfile ?? undefined,
+        userProfile: activeUserProfile ?? undefined,
+        cwd: projectCwd ?? undefined,
+      });
+      // Pin the new node at the click position
+      const pos = { x: canvasX, y: canvasY };
+      setStoredPositions(prev => ({ ...prev, [sessionId]: pos }));
+      patchWebPositions(profileName, [{ nodeId: sessionId, ...pos, pinned: true }]);
+      await reloadData();
+      setComposerState({ x: canvasX, y: canvasY, sessionId });
+    } catch (err) {
+      console.error("Failed to create session:", err);
+    }
+  }, [activeUserProfile, activeUP, profileName, reloadData]);
 
   const handleNewSession = useCallback(async (profile?: string) => {
     setContextMenu(null);
@@ -1334,7 +1465,18 @@ export function SessionWeb() {
         <DateFilterPanel filter={dateFilter} onChange={setDateFilter} />
         <button
           className="web-regen-btn"
-          onClick={() => { setPositionOverrides({}); savePositions(profileName, {}); }}
+          onClick={async () => {
+            // 1. Gate the solver so it doesn't fire with stale/empty positions
+            setPositionsLoaded(false);
+            setStoredPositions({});
+            // 2. Delete all positions from backend for this scope
+            await fetch(`${API_BASE}/api/web/positions?scope=${encodeURIComponent(profileName)}`, {
+              method: "DELETE", headers: authHeaders(),
+            });
+            // 3. Re-open the gate — solver will now run with empty storedPositions
+            //    and solve all sessions fresh, then persist via the useEffect
+            setPositionsLoaded(true);
+          }}
         >regenerate</button>
         {minimapTags.length > 0 && (
           <div className="web-mm-tags">
@@ -1483,12 +1625,19 @@ export function SessionWeb() {
             );
           })}
 
-          {composerPos && (
+          {composerState && (
             <WebComposer
-              x={composerPos.x}
-              y={composerPos.y}
-              onSessionCreated={handleComposerSessionCreated}
-              onClose={() => setComposerPos(null)}
+              sessionId={composerState.sessionId}
+              x={composerState.x}
+              y={composerState.y}
+              onClose={() => setComposerState(null)}
+              onSent={reloadData}
+              onMove={(nx, ny) => {
+                setComposerState(prev => prev ? { ...prev, x: nx, y: ny } : null);
+                // Also update the session node position to match
+                setStoredPositions(prev => ({ ...prev, [composerState.sessionId]: { x: nx, y: ny } }));
+                patchWebPositions(profileName, [{ nodeId: composerState.sessionId, x: nx, y: ny, pinned: true }]);
+              }}
             />
           )}
         </div>
@@ -1642,19 +1791,33 @@ export function SessionWeb() {
                     prevEnd = cl.x + cl.width;
                     if (bw <= 0) continue;
                     const px = bx * scaleX;
-                    if (idx > 0) {
-                      elements.push(
-                        <line key={`mm-sep-${cl.id}`} x1={px} y1={0} x2={px} y2={mmH}
-                          stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
-                      );
-                    }
                     elements.push(
                       <rect
                         key={`mm-band-${cl.id}`}
                         x={px} y={0}
                         width={bw * scaleX} height={mmH}
-                        fill={idx % 2 === 0 ? "rgba(255,255,255,0.015)" : "rgba(255,255,255,0.035)"}
+                        className={idx % 2 === 0 ? "web-mm-band" : "web-mm-band--alt"}
                       />
+                    );
+                    if (idx > 0) {
+                      // faint full-height separator
+                      elements.push(
+                        <line key={`mm-sep-${cl.id}`} x1={px} y1={0} x2={px} y2={mmH}
+                          stroke="rgba(255,255,255,0.03)" strokeWidth={1} />
+                      );
+                      // visible bottom tick
+                      elements.push(
+                        <line key={`mm-tick-${cl.id}`} x1={px} y1={mmH - 10} x2={px} y2={mmH}
+                          stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
+                      );
+                    }
+                    // day label at bottom
+                    elements.push(
+                      <text
+                        key={`mm-lbl-${cl.id}`}
+                        x={px + 3} y={mmH - 2}
+                        className="web-mm-day-label"
+                      >{cl.label}</text>
                     );
                     idx++;
                   }
