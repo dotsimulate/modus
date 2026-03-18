@@ -348,6 +348,8 @@ export interface MoveApiContext {
   instanceId: string;
   sessionId: string;
   moveName: string;
+  /** Project working directory from the move registration */
+  cwd: string;
   /** Who initiated this call — agent via modus_submit or user via widget */
   caller: "agent" | "user";
   /** Instance state — get/set/delete */

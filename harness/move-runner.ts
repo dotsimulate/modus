@@ -295,6 +295,7 @@ export async function handleMoveApiSubmit(
     instanceId: reg.instanceId,
     sessionId: reg.sessionId,
     moveName: reg.moveName,
+    cwd: reg.cwd,
     caller,
     state: stateApi,
     notify: (message: string, emit?: { type: string; [key: string]: unknown }) => {
@@ -349,7 +350,7 @@ export function getActiveWidgetForSession(sessionId: string): Array<{
   instanceId: string;
 }> {
   console.log(`[move-reg] getActiveWidgetForSession(${sessionId}) — registry has ${moveApiRegistry.size} entries: ${[...moveApiRegistry.entries()].map(([t, r]) => `${t}→${r.sessionId}`).join(", ") || "empty"}`);
-  const results: Array<{ widget: { label: string; icon?: string; autoOpen?: boolean; moduleUrl: string; moveName: string }; apiToken: string; instanceId: string }> = [];
+  const results: Array<{ widget: { label: string; icon?: string; autoOpen?: boolean; mountOnAttach?: boolean; moduleUrl: string; moveName: string }; apiToken: string; instanceId: string }> = [];
   for (const [token, reg] of moveApiRegistry) {
     if (reg.sessionId === sessionId) {
       const config = getMove(reg.moveName, reg.cwd);
@@ -359,6 +360,7 @@ export function getActiveWidgetForSession(sessionId: string): Array<{
             label: config.widget.label ?? reg.moveName,
             icon: config.widget.icon,
             autoOpen: config.widget.autoOpen,
+            mountOnAttach: config.widget.mountOnAttach,
             moduleUrl: `/api/moves/${reg.moveName}/widget?cwd=${encodeURIComponent(reg.cwd)}`,
             moveName: reg.moveName,
           },
