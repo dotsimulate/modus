@@ -231,6 +231,36 @@ function AppShell() {
     }).catch(() => setActiveMoveWidgets([]));
   }, [activeSession?.id]);
 
+  // Listen for widget-change signals from move widgets (e.g. move-launcher activating another move)
+  useEffect(() => {
+    const id = activeSession?.id;
+    if (!id || id.startsWith("pending-")) return;
+    const handler = () => {
+      fetchActiveWidget(id).then((widgets) => {
+        if (widgets.length) {
+          setActiveMoveWidgets(prev => {
+            // Merge: keep existing, add new ones
+            const existing = new Set(prev.map(w => w.instanceId));
+            const next = [...prev];
+            for (const w of widgets) {
+              if (!existing.has(w.instanceId)) {
+                next.push({
+                  ...w,
+                  sessionId: id,
+                  mountedOnAttach: w.widget.mountOnAttach ?? false,
+                });
+              }
+            }
+            return next;
+          });
+          setRightPanelOpen(true);
+        }
+      }).catch(() => {});
+    };
+    window.addEventListener("modus:widgets-changed", handler);
+    return () => window.removeEventListener("modus:widgets-changed", handler);
+  }, [activeSession?.id]);
+
   // Sync editor pref from active user profile into localStorage
   useEffect(() => {
     if (!activeUP) return;
