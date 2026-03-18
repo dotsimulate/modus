@@ -54,9 +54,10 @@ type Props = {
   onSessionTagsChange?: () => void;
   onBranch?: (seq: number, prefill?: string) => void;
   onStopTask?: (taskId: string) => void;
+  onOpenSessionEdits?: () => void;
 };
 
-export function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask }: Props) {
+export function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -360,7 +361,26 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
                   onBranch={msg.role === "user" && msg.seq != null ? onBranch : undefined}
                   onStopTask={onStopTask}
                 >
-                  {showFileChanges && <FileChanges toolCalls={turnTools} />}
+                  {showFileChanges && (
+                    <>
+                      <FileChanges toolCalls={turnTools} />
+                      {onOpenSessionEdits && (
+                        <div className="turn-session-edits-row">
+                          <button
+                            className="turn-session-edits-btn"
+                            onClick={onOpenSessionEdits}
+                            title="View all files edited this session"
+                          >
+                            <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                              <rect x="1" y="1" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+                              <rect x="1" y="5.5" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+                            </svg>
+                            session edits
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </MessageBubble>
                 {msg.role === "user" && (
                   <UserMeta msg={msg} onBranch={onBranch} />

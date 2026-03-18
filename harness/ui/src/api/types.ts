@@ -75,6 +75,9 @@ export type Message = {
     turns?: number;
     inputTokens?: number;
     outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    contextWindow?: number;
   };
   /** Aggregated full-turn content for copy button. Set on result event. */
   turnCopy?: { text: string; thinking?: string; toolCalls?: ToolCall[] };
@@ -130,6 +133,8 @@ export type Session = {
   loadProjectSettings?: boolean;
   messages: Message[];
   totalCost: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
   lastSeq: number;
   createdAt: number;
   updatedAt: number;

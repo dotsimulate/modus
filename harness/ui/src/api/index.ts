@@ -57,8 +57,8 @@ export { fetchPrompts, renderPromptApi, reloadPromptsApi } from "./prompts";
 export type { PromptListItem, PromptInput, RenderResult } from "./prompts";
 
 // Moves
-export { fetchMoves, activateMoveApi, activateProjectMoveApi, callMoveOp, fetchActiveWidget, rekeyMoveSession } from "./moves";
-export type { MoveInput, MoveListItem, ActivateMoveResult, MoveWidgetInfo } from "./moves";
+export { fetchMoves, activateMoveApi, activateProjectMoveApi, callMoveOp, fetchActiveWidget, rekeyMoveSession, fetchAmbientMoves, deactivateAmbientMoveApi } from "./moves";
+export type { MoveInput, MoveListItem, ActivateMoveResult, MoveWidgetInfo, AmbientMoveInfo } from "./moves";
 
 // Missions
 export {

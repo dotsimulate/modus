@@ -17,6 +17,7 @@ export type MoveListItem = {
   origin?: "harness" | "project";
   icon?: string;
   mode?: "inline" | "branch" | "background";
+  persistent?: boolean;
   inputs?: MoveInput[];
   tags?: string[];
 };
@@ -31,13 +32,20 @@ export type MoveWidgetInfo = {
 
 export type ActivateMoveResult = {
   token: string;
-  mode: "inline" | "branch" | "background";
+  mode: "inline" | "branch" | "background" | "persistent";
+  persistent?: boolean;
   spawnedSessionId?: string;
   prompt?: string;
   moveRunId: number;
   apiToken?: string;
   instanceId?: string;
   widget?: MoveWidgetInfo;
+};
+
+export type AmbientMoveInfo = {
+  moveName: string;
+  activatedAt: number;
+  inputs: Record<string, unknown>;
 };
 
 /** Call a move API op from the frontend (caller: "user") */
@@ -127,4 +135,26 @@ export async function activateProjectMoveApi(body: {
     throw new Error(data.error ?? "move activation failed");
   }
   return data;
+}
+
+// ── Ambient (persistent) moves ──
+
+export async function fetchAmbientMoves(sessionId: string): Promise<AmbientMoveInfo[]> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/moves/ambient`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function deactivateAmbientMoveApi(
+  sessionId: string,
+  moveName: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/moves/deactivate`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ moveName }),
+  });
+  return res.json();
 }

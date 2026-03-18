@@ -83,7 +83,7 @@ export function extractFileEdits(toolCalls: ToolCall[]): FileEdit[] {
 }
 
 /** Group edits by file path */
-function groupByFile(edits: FileEdit[]): Map<string, FileEdit[]> {
+export function groupByFile(edits: FileEdit[]): Map<string, FileEdit[]> {
   const map = new Map<string, FileEdit[]>();
   for (const edit of edits) {
     const list = map.get(edit.filePath) ?? [];
@@ -94,7 +94,7 @@ function groupByFile(edits: FileEdit[]): Map<string, FileEdit[]> {
 }
 
 /** Count additions and deletions from edit strings */
-function countChanges(edits: FileEdit[]): { additions: number; deletions: number } {
+export function countChanges(edits: FileEdit[]): { additions: number; deletions: number } {
   let additions = 0;
   let deletions = 0;
   for (const edit of edits) {
@@ -219,7 +219,7 @@ function rawFileUrl(filePath: string): string {
 }
 
 /** A single file card with collapsible edits */
-function FileCard({
+export function FileCard({
   filePath,
   edits,
 }: {

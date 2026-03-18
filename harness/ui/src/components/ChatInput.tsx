@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useId } from "react";
-import type { SessionStatus, Attachment, MoveListItem } from "../api";
-import { activateMoveApi, activateProjectMoveApi } from "../api";
+import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo } from "../api";
+import { activateMoveApi, activateProjectMoveApi, fetchAmbientMoves, deactivateAmbientMoveApi } from "../api";
 import type { ActivateMoveResult } from "../api";
 import { PromptPicker } from "./PromptPicker";
 import { AttachedMove } from "./QueuedMessage";
@@ -112,6 +112,23 @@ export function ChatInput({
   const [isDragging, setIsDragging] = useState(false);
   const [attachedMove, setAttachedMove] = useState<{ item: MoveListItem; inputs: Record<string, unknown> } | null>(null);
   const dragCounter = useRef(0);
+
+  // Ambient (persistent) moves
+  const [ambientMoves, setAmbientMoves] = useState<AmbientMoveInfo[]>([]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    fetchAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
+  }, [sessionId]);
+
+  // Refresh ambient moves when a persistent move is activated
+  const origOnMoveActivated = onMoveActivated;
+  const handleMoveActivated = useCallback((result: ActivateMoveResult) => {
+    origOnMoveActivated?.(result);
+    if (result.persistent && sessionId) {
+      fetchAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
+    }
+  }, [origOnMoveActivated, sessionId]);
 
   useEffect(() => {
     valueRef.current = value;
@@ -273,6 +290,11 @@ export function ChatInput({
           const result = sessionId
             ? await activateMoveApi(sessionId, body)
             : await activateProjectMoveApi(body);
+          if (result.persistent) {
+            // Persistent move — just refresh chips, don't send a message
+            handleMoveActivated(result);
+            return;
+          }
           if (mode === "inline") {
             const combined = result.prompt
               ? text ? `${result.prompt}\n\n${text}` : result.prompt
@@ -285,10 +307,10 @@ export function ChatInput({
               onSend(attachments, combined);
               setAttachments([]);
             }
-            onMoveActivated?.(result);
+            handleMoveActivated(result);
             return;
           }
-          onMoveActivated?.(result);
+          handleMoveActivated(result);
         } catch {}
       }
     }
@@ -421,6 +443,30 @@ export function ChatInput({
           onDetach={() => setAttachedMove(null)}
         />
       )}
+
+      {ambientMoves.length > 0 && (
+        <div className="ambient-move-chips">
+          {ambientMoves.map((m) => (
+            <span key={m.moveName} className="ambient-chip">
+              <span className="ambient-chip-dot" />
+              {m.moveName}
+              <button
+                className="ambient-chip-remove"
+                onClick={() => {
+                  if (!sessionId) return;
+                  deactivateAmbientMoveApi(sessionId, m.moveName).then(() => {
+                    setAmbientMoves((prev) => prev.filter((x) => x.moveName !== m.moveName));
+                  });
+                }}
+                title={`Deactivate ${m.moveName}`}
+              >
+                &times;
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="input-row">
         <div className={wrapClass}>
           {iconActions.length > 0 && (
@@ -472,7 +518,7 @@ export function ChatInput({
               sessionId={sessionId}
               projectCwd={projectCwd}
               userProfile={userProfile}
-              onMoveActivated={onMoveActivated}
+              onMoveActivated={handleMoveActivated}
               onMoveAttach={(move, inputs) => setAttachedMove({ item: move, inputs })}
               onOpenChange={(isOpen) => {
                 setPickerOpen(isOpen);

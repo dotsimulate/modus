@@ -1,50 +1,36 @@
 /**
  * AgentPortal
  *
- * One fixed element. Two states: eye and panel.
- * The transition between them is clip-path — a circle expanding
- * into a rounded rect, origin at the eye's center.
- *
- * The eye is always at top-right of the widget.
- * It is the drag handle. It is the toggle. It is the close.
- * There is no X. There is only the eye.
+ * Eye is position:absolute top-right — no dead zone at top of panel.
+ * Body has right-padding to clear the eye; text truncates cleanly.
+ * All interactive row elements live on the LEFT side.
  */
 
 /* ══════════════════════════════════════════════════════════════
-   Widget — the single fixed element.
-
-   Width is always 300px. When collapsed, clip-path cuts it
-   to a 20px-radius circle centered on the eye (top-right).
-   When expanded, clip-path reveals the full rounded rect.
-
-   pointer-events: none prevents the invisible collapsed area
-   from eating clicks on content below it.
+   Widget root
    ══════════════════════════════════════════════════════════════ */
 
 .ap-widget {
   position: fixed;
   z-index: 1200;
   width: 240px;
-  pointer-events: none; /* only interactive children handle events */
+  pointer-events: none;
 
-  /* Surface — invisible when collapsed */
+  display: flex;
+  flex-direction: column;
+
   background: transparent;
   border: 1px solid transparent;
 
-  /* Clip to eye circle: 20px radius at eye center (right: 18px, top: 18px) */
+  /* Collapsed: clip to the eye circle (top-right) */
   clip-path: circle(20px at calc(100% - 18px) 18px);
 
-  /* Smooth morphs */
   transition:
     clip-path  0.32s cubic-bezier(0.16, 1, 0.3, 1),
     background 0.18s ease,
     border-color 0.18s ease;
-
-  display: flex;
-  flex-direction: column;
 }
 
-/* Expanded: reveal full panel with top-right radius matching eye */
 .ap-widget--open {
   clip-path: inset(0 round 12px 20px 12px 12px);
   background: var(--bg-raised);
@@ -52,7 +38,8 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Head — just the eye, right-aligned.
+   Head — absolute top-right. Always interactive.
+   No height contribution → no dead zone.
    ══════════════════════════════════════════════════════════════ */
 
 .ap-head {
@@ -66,12 +53,11 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Eye button — drag handle, toggle, close. All three.
-   Always at top-right. Always interactive.
+   Eye button
    ══════════════════════════════════════════════════════════════ */
 
 .ap-eye-btn {
-  pointer-events: auto; /* always interactive even when widget is collapsed */
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -92,13 +78,12 @@
 .ap-eye-btn:active { cursor: grabbing; }
 .ap-eye-btn:hover  { color: var(--text-dim); }
 
-/* States propagated from widget */
 .ap-widget--active .ap-eye-btn {
   color: var(--text-dim);
   filter: drop-shadow(0 0 7px color-mix(in srgb, var(--dot-running) 25%, transparent));
 }
 
-.ap-widget--active.ap-widget--playing .ap-eye-btn {
+.ap-widget--active .ap-eye-btn {
   animation: ap-breathe 2.4s ease-in-out infinite;
 }
 
@@ -107,13 +92,8 @@
   50%      { filter: drop-shadow(0 0 14px color-mix(in srgb, var(--dot-running) 40%, transparent)); }
 }
 
-.ap-widget--open .ap-eye-btn {
-  color: var(--text-secondary);
-}
-
-.ap-widget--idle .ap-eye-btn {
-  color: var(--text-secondary);
-}
+.ap-widget--open .ap-eye-btn { color: var(--text-secondary); }
+.ap-widget--idle .ap-eye-btn { color: var(--text-secondary); }
 
 /* ── PortalEye SVG ── */
 
@@ -123,47 +103,29 @@
   overflow: visible;
 }
 
-/* Ring transitions: all three visual properties animate between states */
 .ap-eye-ring {
   transition: opacity 0.4s ease, stroke-width 0.3s ease, stroke 0.4s ease;
   opacity: 0.8;
   stroke-width: 1;
 }
 
-/* Active agents — ring goes green + thickens */
 .ap-widget--active .ap-eye-ring {
   opacity: 1;
   stroke-width: 1.6;
   stroke: var(--dot-running);
 }
 
-/* Audio playing (no agents) — slight brightening */
-.ap-widget--playing .ap-eye-ring {
-  opacity: 0.9;
-  stroke-width: 1.2;
-}
-
-/* Active + playing — full ring */
-.ap-widget--active.ap-widget--playing .ap-eye-ring {
-  opacity: 1;
-  stroke-width: 1.8;
-  stroke: var(--dot-running);
-}
-
-/* Open panel — ring settles, matches panel border weight */
 .ap-widget--open .ap-eye-ring {
   opacity: 0.7;
   stroke-width: 1.2;
 }
 
-/* Open + active — keep the green but softer */
 .ap-widget--open.ap-widget--active .ap-eye-ring {
   opacity: 0.85;
   stroke-width: 1.4;
   stroke: var(--dot-running);
 }
 
-/* Idle — present but quiet */
 .ap-widget--idle .ap-eye-ring {
   opacity: 0.8;
   stroke-width: 1;
@@ -194,26 +156,10 @@
   100% { transform: translate(0, 0); }
 }
 
-/* Audio dot — pulsing center presence when anything is speaking */
-.ap-eye-audio-dot {
-  transform-box: fill-box;
-  transform-origin: center;
-  opacity: 0.5;
-}
-
-.ap-eye-audio-dot--playing {
-  animation: ap-audio-pulse 1.1s ease-in-out infinite;
-}
-
-@keyframes ap-audio-pulse {
-  0%, 100% { transform: scale(0.6); opacity: 0.5; }
-  50%      { transform: scale(1.5); opacity: 1; }
-}
-
 /* ══════════════════════════════════════════════════════════════
-   Body — always in DOM, clipped by parent when collapsed.
-   pointer-events: none when collapsed (invisible region must
-   not intercept clicks on underlying content).
+   Body — starts at y:0, right-padded to clear the eye area.
+   The eye (36px) is at right:2px, so 40px clears it cleanly.
+   pointer-events disabled until expanded.
    ══════════════════════════════════════════════════════════════ */
 
 .ap-body {
@@ -222,20 +168,25 @@
   flex-direction: column;
   max-height: 400px;
   overflow-y: auto;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
 .ap-widget--open .ap-body {
   pointer-events: auto;
+  padding-right: 40px; /* clear the eye */
 }
 
-.ap-section { padding: 4px 0; }
+.ap-section { padding: 2px 0; }
 
 .ap-section--sep {
   border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  margin-top: 2px;
+  padding-top: 4px;
 }
 
 /* ══════════════════════════════════════════════════════════════
-   Agent rows
+   Agent rows — dot + text. Click = navigate. Nothing else.
    ══════════════════════════════════════════════════════════════ */
 
 .ap-row {
@@ -244,12 +195,15 @@
   gap: 8px;
   padding: 5px 12px;
   min-height: 30px;
+  cursor: pointer;
+  outline: none;
   transition: background 0.08s;
 }
 
-.ap-row:hover { background: var(--bg-hover); }
-.ap-row--idle { opacity: 0.5; }
-.ap-row--idle:hover { opacity: 1; }
+.ap-row:hover         { background: var(--bg-hover); }
+.ap-row:focus-visible { background: var(--bg-hover); }
+.ap-row--idle         { opacity: 0.5; }
+.ap-row--idle:hover   { opacity: 1; }
 
 .ap-row-dot {
   width: 5px;
@@ -308,155 +262,12 @@
 
 .ap-row-detail--tool { color: var(--tool-running); }
 
-.ap-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.1s;
-}
-
-.ap-row:hover .ap-row-actions,
-.ap-audio-meta:hover .ap-row-actions { opacity: 1; }
-
-.ap-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 4px;
-  padding: 0;
-  transition: color 0.1s, background 0.1s;
-  touch-action: manipulation;
-}
-
-.ap-btn:hover {
-  color: var(--text-dim);
-  background: var(--bg-hover);
-}
-
-.ap-btn-pin { opacity: 0.5; }
-
-.ap-btn-pin:hover {
-  color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 6%, transparent);
-  opacity: 1;
-}
-
-.ap-btn-pin--on {
-  color: var(--warning) !important;
-  opacity: 1 !important;
-}
-
-.ap-btn-pin--on:hover {
-  background: color-mix(in srgb, var(--warning) 10%, transparent) !important;
-}
-
 /* ══════════════════════════════════════════════════════════════
-   Audio
+   Extra content slot (injected by caller — audio player, etc.)
    ══════════════════════════════════════════════════════════════ */
 
-.ap-audio {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 6px 12px;
-}
-
-.ap-audio-controls {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.ap-audio-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-  transition: color 0.1s;
-  touch-action: manipulation;
-}
-
-.ap-audio-toggle:hover { color: var(--text-secondary); }
-
-.ap-audio-viz {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 1.5px;
-  height: 10px;
-  flex-shrink: 0;
-}
-
-.ap-audio-viz-bar {
-  width: 2px;
-  background: var(--text-dim);
-  border-radius: 1px;
-  animation: ap-viz-bounce 0.65s ease-in-out infinite alternate;
-}
-
-@keyframes ap-viz-bounce {
-  0%   { height: 3px; }
-  100% { height: 10px; }
-}
-
-.ap-audio-track {
-  flex: 1;
-  height: 2px;
-  background: var(--border-active);
-  cursor: pointer;
-  position: relative;
-  border-radius: 1px;
-  padding: 6px 0;
-  background-clip: content-box;
-}
-
-.ap-audio-fill {
-  height: 2px;
-  margin-top: 6px;
-  background: var(--text-tertiary);
-  border-radius: 1px;
-  pointer-events: none;
-  transition: width 0.1s linear;
-}
-
-.ap-audio-time {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-dim);
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.ap-audio-time-total { color: var(--text-muted); }
-
-.ap-audio-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.ap-audio-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.ap-extra {
+  padding: 6px 10px;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -464,7 +275,7 @@
    ══════════════════════════════════════════════════════════════ */
 
 .ap-empty {
-  padding: 12px 12px 14px;
+  padding: 12px 10px 14px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -478,9 +289,6 @@
 
 @media (pointer: coarse) {
   .ap-eye-btn { width: 44px; height: 44px; padding: 6px; }
-  .ap-btn { width: 36px; height: 36px; }
-  .ap-audio-toggle { width: 36px; height: 36px; }
   .ap-row { padding: 10px 12px; min-height: 48px; }
-  .ap-row-actions { opacity: 1; }
-  .ap-audio-track { padding: 10px 0; }
+  .ap-widget--open .ap-body { padding-right: 48px; }
 }

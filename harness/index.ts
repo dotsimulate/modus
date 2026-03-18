@@ -1867,7 +1867,7 @@ app.get("/api/activity/summary", (c) => {
 
 // ── Moves ──
 
-import { listMoves, getMove, activateMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession } from "./move-runner";
+import { listMoves, getMove, activateMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
 import { getMoveRunsBySession, getMoveRunById, getRecentMoveRuns } from "./move-db";
 import { handleModusMcpRequest } from "./modus-mcp";
 
@@ -1990,6 +1990,27 @@ app.post("/api/sessions/:id/moves/activate", async (c) => {
 
   if ("error" in result) return c.json(result, 400);
   return c.json(result);
+});
+
+// List active ambient (persistent) moves for a session
+app.get("/api/sessions/:id/moves/ambient", (c) => {
+  const sessionId = c.req.param("id");
+  const moves = getActiveAmbientMoves(sessionId);
+  return c.json(moves.map(m => ({
+    moveName: m.moveName,
+    activatedAt: m.activatedAt,
+    inputs: m.inputs,
+  })));
+});
+
+// Deactivate an ambient (persistent) move
+app.post("/api/sessions/:id/moves/deactivate", async (c) => {
+  const sessionId = c.req.param("id");
+  const { moveName } = await c.req.json();
+  if (!moveName) return c.json({ error: "moveName required" }, 400);
+  const removed = deactivateAmbientMove(sessionId, moveName);
+  if (!removed) return c.json({ error: "Ambient move not found on this session" }, 404);
+  return c.json({ ok: true, moveName });
 });
 
 // ── Move Widget Serving ──

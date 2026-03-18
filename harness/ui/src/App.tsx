@@ -94,6 +94,7 @@ function AppShell() {
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState(360);
   const [rightPanelBrowserPath, setRightPanelBrowserPath] = useState<string | null>(null);
+  const [requestRightPanelView, setRequestRightPanelView] = useState<string | null>(null);
   const [activeMoveWidgets, setActiveMoveWidgets] = useState<Array<{
     widget: import("./api").MoveWidgetInfo;
     apiToken: string;
@@ -537,6 +538,7 @@ function AppShell() {
                 onSessionTagsChange={refreshSessions}
                 onBranch={branchFromMessage}
                 onStopTask={stopTask}
+                onOpenSessionEdits={() => { setRightPanelOpen(true); setRequestRightPanelView("session-edits"); }}
               />
 
               {activeSession?.pendingPermissions && activeSession.pendingPermissions.length > 0 && (
@@ -645,6 +647,9 @@ function AppShell() {
               moveWidgets={activeMoveWidgets}
               initialBrowserPath={rightPanelBrowserPath}
               onBrowserPathChange={setRightPanelBrowserPath}
+              messages={activeSession?.messages}
+              requestView={requestRightPanelView}
+              onRequestViewHandled={() => setRequestRightPanelView(null)}
             />
           </>
         )}

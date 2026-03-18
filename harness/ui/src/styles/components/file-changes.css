@@ -166,3 +166,30 @@
   padding: 0 4px;
 }
 
+/* ── Session edits open button (below per-turn FileChanges) ── */
+
+.turn-session-edits-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.turn-session-edits-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0.5;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+.turn-session-edits-btn:hover {
+  opacity: 1;
+  color: var(--text-dim);
+}

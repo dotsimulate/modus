@@ -19,6 +19,8 @@
  *   - inline:     current agent handles it, blocking until submit/completion
  *   - branch:     spawn a sibling session, return a link/card
  *   - background: fire-and-forget with persisted status and later recall
+ *   - persistent: ambient gather — gather() re-runs per turn, injecting context
+ *                 into every user message. No token/submit lifecycle. Toggle on/off.
  *
  * API contract moves:
  *   Moves can declare an `api` field with named ops. On activation, the
@@ -51,6 +53,12 @@ export interface MoveConfig {
 
   // ── Execution mode ──
   mode?: "inline" | "branch" | "background";  // default: "inline"
+
+  // ── Persistent (ambient gather) ──
+  /** When true, this move runs as an ambient gather — no token/submit lifecycle.
+   *  gather() re-runs on every user turn and appends context to the prompt.
+   *  The move stays active until explicitly deactivated. */
+  persistent?: boolean;
 
   // ── Session behavior ──
   session?: {
@@ -91,7 +99,8 @@ export interface MoveInput {
 // ── Move Module (context.ts exports) ──
 
 export interface MoveModule {
-  gather?(ctx: MoveContext): Promise<string>;
+  /** Gather context for this move. Return null to skip/bail (no injection this turn). */
+  gather?(ctx: MoveContext): Promise<string | null>;
   onSubmit?(
     ctx: MoveContext,
     data: Record<string, unknown>,
@@ -218,6 +227,18 @@ export interface MoveToken {
   spawnedSessionId: string | null;     // for branch/background modes
 }
 
+// ── Ambient Move Registration (persistent/gather-only moves) ──
+
+export interface AmbientMoveRegistration {
+  moveName: string;
+  sessionId: string;
+  cwd: string;
+  userProfile: string | undefined;
+  inputs: Record<string, unknown>;
+  activatedAt: number;
+  moveRunId: number;
+}
+
 // ── Activation Request (from UI/API) ──
 
 export interface ActivateMoveOpts {
@@ -234,7 +255,8 @@ export interface ActivateMoveOpts {
 
 export interface ActivateMoveResult {
   token: string;
-  mode: "inline" | "branch" | "background";
+  mode: "inline" | "branch" | "background" | "persistent";
+  persistent?: boolean;                // true for ambient gather moves
   spawnedSessionId?: string;           // for branch/background
   prompt?: string;                     // for inline: rendered text to merge into user message
   moveRunId: number;

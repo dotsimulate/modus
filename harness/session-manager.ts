@@ -25,13 +25,21 @@ import type { SessionOutcome } from "./action-types";
 import { logActivity } from "./activity";
 import { resolve as resolvePath } from "path";
 
-// Lazy import to avoid circular dep (action-runner → session-manager → action-runner)
+// Lazy imports to avoid circular deps
 let _onSessionEvent: typeof import("./action-runner").onSessionEvent | null = null;
 function getOnSessionEvent() {
   if (!_onSessionEvent) {
     _onSessionEvent = require("./action-runner").onSessionEvent;
   }
   return _onSessionEvent!;
+}
+
+let _gatherAmbientContext: typeof import("./move-runner").gatherAmbientContext | null = null;
+function getGatherAmbientContext() {
+  if (!_gatherAmbientContext) {
+    _gatherAmbientContext = require("./move-runner").gatherAmbientContext;
+  }
+  return _gatherAmbientContext!;
 }
 import { getProfile, getUserData, getUserProfile } from "./profiles";
 import { getProvider } from "./providers/registry";
@@ -669,7 +677,30 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
-  const content = buildContent(prompt, attachments);
+  // Gather ambient move context (async, fire-and-forget wrapper)
+  // We need to do this before sending so context is included in the user message.
+  void _queueMessageAsync(session, sessionId, prompt, attachments);
+  return true;
+}
+
+async function _queueMessageAsync(
+  session: ActiveSession,
+  sessionId: string,
+  prompt: string,
+  attachments?: ImageAttachment[],
+): Promise<void> {
+  // Run ambient gathers before building content
+  let augmentedPrompt = prompt;
+  try {
+    const ambientContext = await getGatherAmbientContext()(sessionId);
+    if (ambientContext) {
+      augmentedPrompt = `${ambientContext}\n\n${prompt}`;
+    }
+  } catch (err) {
+    console.error(`[session-manager] ambient gather failed for ${sessionId}:`, err);
+  }
+
+  const content = buildContent(augmentedPrompt, attachments);
 
   // Persist user event for catch-up replay
   session.seq++;
@@ -682,7 +713,7 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
   // If paused, queue the message — it will be flushed on resume
   if (session.status === "paused") {
     session.pendingMessages.push(content);
-    return true;
+    return;
   }
 
   // Emit session trigger: user round start (exchangeCount is 0-based before this exchange completes)
@@ -697,7 +728,7 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
   // Delegate to provider (provider sets status to "running" internally)
   // Include stored config overrides so provider init events reflect current state
   const ctx = createTurnContext(session, {
-    prompt,
+    prompt: augmentedPrompt,
     attachments,
     profile: session.profile,
     sessionId,
@@ -707,8 +738,6 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
     additionalDirectories: session.additionalDirectories,
   });
   session._provider.sendMessage(ctx, content);
-
-  return true;
 }
 
 /**

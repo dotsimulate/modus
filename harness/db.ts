@@ -716,6 +716,12 @@ export function getLatestSessionUsage(sessionId: string, provider?: string | nul
           outputTokens += parsed.output_tokens;
           sawUsage = true;
         }
+        if (parsed.modelUsage && typeof parsed.modelUsage === "object") {
+          for (const model of Object.values(parsed.modelUsage as Record<string, any>)) {
+            inputTokens += (model?.cacheReadInputTokens ?? 0) + (model?.cacheCreationInputTokens ?? 0);
+            sawUsage = true;
+          }
+        }
       } catch {
         // Ignore malformed historical events and keep aggregating.
       }
@@ -727,8 +733,16 @@ export function getLatestSessionUsage(sessionId: string, provider?: string | nul
   if (!row) return null;
   try {
     const parsed = JSON.parse(row.data);
+    let cacheRead = 0, cacheWrite = 0;
+    if (parsed.modelUsage && typeof parsed.modelUsage === "object") {
+      for (const model of Object.values(parsed.modelUsage as Record<string, any>)) {
+        cacheRead += (model?.cacheReadInputTokens ?? 0);
+        cacheWrite += (model?.cacheCreationInputTokens ?? 0);
+      }
+    }
+    const rawInput = typeof parsed.input_tokens === "number" ? parsed.input_tokens : null;
     return {
-      inputTokens: typeof parsed.input_tokens === "number" ? parsed.input_tokens : null,
+      inputTokens: rawInput !== null ? rawInput + cacheRead + cacheWrite : null,
       outputTokens: typeof parsed.output_tokens === "number" ? parsed.output_tokens : null,
     };
   } catch {
@@ -1600,11 +1614,20 @@ export function getProviderUsageAnalytics(
       continue;
     }
 
-    const inputTokens = typeof parsed.input_tokens === "number" ? parsed.input_tokens : 0;
+    // Sum cache tokens from modelUsage (present in all stored events since SDK always includes it)
+    // New events also have top-level cache_read_tokens/cache_write_tokens, but modelUsage is
+    // the authoritative source and works for all historical data too.
+    let cacheRead = 0, cacheWrite = 0;
+    if (parsed.modelUsage && typeof parsed.modelUsage === "object") {
+      for (const model of Object.values(parsed.modelUsage as Record<string, any>)) {
+        cacheRead += (model?.cacheReadInputTokens ?? 0);
+        cacheWrite += (model?.cacheCreationInputTokens ?? 0);
+      }
+    }
+    const rawInput = typeof parsed.input_tokens === "number" ? parsed.input_tokens : 0;
     const outputTokens = typeof parsed.output_tokens === "number" ? parsed.output_tokens : 0;
-    const totalTokens = typeof parsed.total_tokens === "number"
-      ? parsed.total_tokens
-      : inputTokens + outputTokens;
+    const inputTokens = rawInput + cacheRead + cacheWrite;
+    const totalTokens = inputTokens + outputTokens;
     const turns = typeof parsed.num_turns === "number" && parsed.num_turns > 0 ? parsed.num_turns : 1;
     const cost = typeof parsed.total_cost_usd === "number" ? parsed.total_cost_usd : 0;
     const metrics = { turns, inputTokens, outputTokens, totalTokens, cost };

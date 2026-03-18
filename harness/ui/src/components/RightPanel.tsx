@@ -3,6 +3,7 @@ import { useFileViewer } from "../providers/FileViewerProvider";
 import { usePinboard } from "../providers/PinboardProvider";
 import { useProfiles } from "../providers/ProfileProvider";
 import { browsePath, readFileContent, type BrowseResult, type MoveWidgetInfo } from "../api";
+import type { Message } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser } from "./FileBrowser";
 import { MoveWidget } from "./MoveWidget";
@@ -11,6 +12,7 @@ import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
 import { HtmlPreview } from "./HtmlPreview";
 import { PinboardView } from "./PinboardView";
+import { SessionEditsView } from "./SessionEditsView";
 
 type Props = {
   open: boolean;
@@ -26,6 +28,9 @@ type Props = {
   }> | null;
   initialBrowserPath?: string | null;
   onBrowserPathChange?: (path: string) => void;
+  messages?: Message[];
+  requestView?: string | null;
+  onRequestViewHandled?: () => void;
 };
 
 function basename(p: string): string {
@@ -54,20 +59,30 @@ type ViewState =
 /** Which tab is showing: the project browser, pinboard, a file, or a move widget */
 type ActiveView = "browser" | "pins" | "move-widget" | string;
 
-export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange }: Props) {
+export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled }: Props) {
   const {
     tabs, activePath, closeFile, setActive, openFile,
     setEditing, markDirty, saveFile, saving, saveError,
   } = useFileViewer();
-  const { pinToActive, unpinFromActive, isFilePinned } = usePinboard();
+  const { pinToActive, unpinFromActive, isFilePinned, activeGroup } = usePinboard();
   const { activeCwd } = useProfiles();
 
   const [activeView, setActiveView] = useState<ActiveView>("browser");
+  const [sessionEditsOpen, setSessionEditsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [htmlPreview, setHtmlPreview] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenBrowser, setFullscreenBrowser] = useState(false);
+
+  // Handle imperative view requests (e.g. open session-edits from chat)
+  useEffect(() => {
+    if (!requestView) return;
+    if (requestView === "session-edits") setSessionEditsOpen(true);
+    setActiveView(requestView);
+    onOpen();
+    onRequestViewHandled?.();
+  }, [requestView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When FileViewerProvider's activePath changes (e.g. agent opens a file), switch to it
   useEffect(() => {
@@ -88,12 +103,12 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
 
   // Sync activeView → FileViewerProvider active
   useEffect(() => {
-    if (activeView !== "browser" && activeView !== "pins" && !activeView.startsWith("widget:") && activeView !== activePath) {
+    if (activeView !== "browser" && activeView !== "pins" && activeView !== "session-edits" && !activeView.startsWith("widget:") && activeView !== activePath) {
       setActive(activeView);
     }
   }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const viewingFile = activeView !== "browser" && activeView !== "pins" && !activeView.startsWith("widget:") ? activeView : null;
+  const viewingFile = activeView !== "browser" && activeView !== "pins" && activeView !== "session-edits" && !activeView.startsWith("widget:") ? activeView : null;
   const activeTab = viewingFile ? tabs.find((t) => t.path === viewingFile) : null;
   const isEditMode = activeTab?.editing ?? false;
 
@@ -196,6 +211,11 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   // ── Content renderer — flat early-return instead of nested ternaries ──
 
   function renderContent() {
+    // Session edits
+    if (activeView === "session-edits") {
+      return <SessionEditsView messages={messages ?? []} />;
+    }
+
     // Move widget
     if (activeView.startsWith("widget:") && moveWidgets) {
       const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
@@ -342,6 +362,30 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
               pins
             </button>
           </div>
+          {sessionEditsOpen && (
+            <div className={`rp-tab${activeView === "session-edits" ? " rp-tab--active" : ""}`}>
+              <button
+                className="rp-tab-label"
+                onClick={() => setActiveView("session-edits")}
+                title="Files edited this session"
+              >
+                <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                  <rect x="1" y="1" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+                  <rect x="1" y="5.5" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+                </svg>
+                edits
+              </button>
+              <button
+                className="rp-tab-close"
+                onClick={(e) => { e.stopPropagation(); setSessionEditsOpen(false); if (activeView === "session-edits") setActiveView("browser"); }}
+                title="Close tab"
+              >
+                <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          )}
           {moveWidgets?.map((w) => (
             <div key={w.instanceId} className={`rp-tab${activeView === `widget:${w.instanceId}` ? " rp-tab--active" : ""}`}>
               <button
@@ -399,17 +443,18 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
             {/* Pin to cross-session pinboard */}
             {viewingFile && (
               <button
-                className={`right-panel-header-btn${isFilePinned(viewingFile) ? " active" : ""}`}
+                className={`right-panel-header-btn rp-pin-btn${isFilePinned(viewingFile) ? " active" : ""}`}
                 onClick={() => {
                   if (isFilePinned(viewingFile)) unpinFromActive(viewingFile);
                   else pinToActive(viewingFile);
                 }}
-                title={isFilePinned(viewingFile) ? "Unpin file" : "Pin file"}
+                title={isFilePinned(viewingFile) ? `Unpin from "${activeGroup?.name}"` : `Pin to "${activeGroup?.name}"`}
               >
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
                   <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" fill={isFilePinned(viewingFile) ? "currentColor" : "none"}/>
                   <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
                 </svg>
+                {activeGroup && <span className="rp-pin-group">{activeGroup.name}</span>}
               </button>
             )}
             {/* HTML preview toggle */}
