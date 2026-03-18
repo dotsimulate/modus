@@ -370,7 +370,7 @@ export type UserProfile = {
       title: string;
       blocks: Array<
         | { kind: "widget"; widget: { type: string; [key: string]: unknown } }
-        | { kind: "module"; module: "memory" | "actions" | "git"; [key: string]: unknown }
+        | { kind: "module"; module: "actions" | "git"; [key: string]: unknown }
         | { kind: "text"; markdown: string; [key: string]: unknown }
       >;
     }>;

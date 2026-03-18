@@ -13,7 +13,7 @@ import type { View } from "../views";
 // ── Shared types ──
 
 export type WidgetSize = "full" | "half" | "third";
-export type DashboardModule = Extract<View, "memory" | "actions" | "git">;
+export type DashboardModule = Extract<View, "actions" | "git">;
 
 /** Base fields every widget config has (widget files extend this) */
 export type WidgetBase = {

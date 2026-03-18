@@ -4,7 +4,6 @@ import { useProfiles } from "../providers/ProfileProvider";
 import { Markdown } from "./Markdown";
 import { Actions } from "./Actions";
 import { GitPanel } from "./GitPanel";
-import { MemoryViz } from "./MemoryViz";
 import { WIDGETS } from "../widgets";
 import type { DashboardBlock, DashboardModule, WidgetBase, WidgetSize } from "../widgets";
 import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
@@ -108,9 +107,6 @@ function ModuleBlock({
   }
   if (module === "git") {
     return <GitPanel cwd={cwd ?? null} />;
-  }
-  if (module === "memory") {
-    return <MemoryViz />;
   }
   return null;
 }
