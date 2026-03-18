@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi } from "./api";
-import { customPageView, getCustomPageId, NAV_VIEWS, type View } from "./views";
+import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves } from "./api";
+import type { MoveListItem } from "./api";
+import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
 import { SessionProvider, useSession } from "./providers/SessionProvider";
@@ -14,8 +15,8 @@ import { ConfigBar } from "./components/ConfigBar";
 import { Dashboard } from "./components/Dashboard";
 import { PageView } from "./components/PageRenderer";
 import { Profiles } from "./components/Profiles";
-import { MemoryViz } from "./components/MemoryViz";
 import { Actions } from "./components/Actions";
+import { MovePageView } from "./components/MovePageView";
 import { PermissionOverlay } from "./components/PermissionOverlay";
 import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
@@ -411,6 +412,17 @@ function AppShell() {
     const status = getSessionState(s.id)?.status ?? s.status;
     return status === "running" || status === "starting";
   }).length;
+  // ── Move pages (moves that declare a page field) ──
+  const [movePages, setMovePages] = useState<MoveListItem[]>([]);
+  const projectCwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
+  useEffect(() => {
+    if (!projectCwd) return;
+    fetchMoves(projectCwd).then((moves) => {
+      setMovePages(moves.filter((m) => m.page && m.page.nav !== false));
+    }).catch(() => setMovePages([]));
+  }, [projectCwd]);
+  const activeMovePageName = getMovePageName(view);
+
   const customPages = activeUP?.dashboard?.pages ?? [];
   const gitPageBlocks = [
     {
@@ -422,6 +434,10 @@ function AppShell() {
   ];
   const navViews = [
     ...NAV_VIEWS,
+    ...movePages.map((m) => ({
+      view: movePageView(m.name),
+      label: m.page!.title,
+    })),
     ...customPages.map((page) => ({
       view: customPageView(page.id),
       label: page.title,
@@ -724,7 +740,13 @@ function AppShell() {
           <Profiles onSelectSession={handleViewSession} onNavigate={navigate} />
         )}
 
-        {view === "memory" && <MemoryViz initialTagFilter={activeUP?.memoryFilter} />}
+        {activeMovePageName && projectCwd && (
+          <MovePageView
+            moveName={activeMovePageName}
+            cwd={projectCwd}
+            userProfile={activeUserProfile ?? undefined}
+          />
+        )}
         {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
         {view === "web" && <SessionWeb />}
         {view === "trace" && <TraceView />}

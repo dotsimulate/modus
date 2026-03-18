@@ -44,10 +44,12 @@ agent_memory/memory/
 !.modus/moves/chess/
 !.modus/moves/wordle/
 !.modus/moves/nano-banana/
+!.modus/moves/council/
 .modus/moves/chess/state/
 .modus/moves/wordle/state/
 .modus/moves/nano-banana/state/
 .modus/moves/nano-banana/outputs/
+.modus/moves/council/state/
 
 # Scraps, research, and local experiments
 TODO/

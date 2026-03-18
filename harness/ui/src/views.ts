@@ -5,15 +5,14 @@
  * nav links, hash router, URL building.
  */
 
-export type StaticView = "home" | "chat" | "profiles" | "memory" | "actions" | "git" | "web" | "trace";
-export type View = StaticView | `page:${string}`;
+export type StaticView = "home" | "chat" | "profiles" | "actions" | "git" | "web" | "trace";
+export type View = StaticView | `page:${string}` | `move-page:${string}`;
 
 /** Views shown as nav links, in display order. "home" is the logo, not a nav link. */
 export const NAV_VIEWS: { view: StaticView; label: string }[] = [
   { view: "chat",     label: "sessions" },
   { view: "profiles", label: "profiles" },
   { view: "actions",  label: "actions" },
-  { view: "memory",   label: "memory" },
   { view: "git",      label: "git" },
   { view: "web",      label: "web" },
   { view: "trace",    label: "trace" },
@@ -31,4 +30,12 @@ export function customPageView(pageId: string): View {
 
 export function getCustomPageId(view: View): string | null {
   return view.startsWith("page:") ? view.slice("page:".length) : null;
+}
+
+export function movePageView(moveName: string): View {
+  return `move-page:${moveName}`;
+}
+
+export function getMovePageName(view: View): string | null {
+  return view.startsWith("move-page:") ? view.slice("move-page:".length) : null;
 }
