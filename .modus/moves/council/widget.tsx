@@ -727,11 +727,7 @@ function PastCouncilView({ instanceId, callOp, onBack }: {
   const [state, setState] = useState<CouncilState | null>(null);
 
   useEffect(() => {
-    // We need to read state for a specific instance — but our read-state op
-    // reads the current instance. For past councils we'd need to read the file
-    // directly. For now, use read-state which works if this IS the current instance.
-    // TODO: add a read-instance op that accepts instanceId
-    callOp("read-state").then(res => {
+    callOp("read-instance", { instanceId }).then(res => {
       if (res.ok && res.message) {
         try { setState(JSON.parse(res.message)); } catch {}
       }

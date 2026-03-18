@@ -37,6 +37,16 @@
       "read-state": {
         "description": "Read the current council state (messages, round, status)"
       },
+      "read-instance": {
+        "description": "Read state of a specific council instance by ID",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "instanceId": { "type": "string" }
+          },
+          "required": ["instanceId"]
+        }
+      },
       "list-councils": {
         "description": "List all past and current council instances with summaries"
       },

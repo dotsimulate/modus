@@ -497,6 +497,15 @@ export const handlers: Record<string, MoveApiHandler> = {
     };
   },
 
+  "read-instance": async (ctx: MoveApiContext, data: Record<string, unknown>) => {
+    const targetId = data.instanceId as string;
+    if (!targetId) return { ok: false, error: "instanceId required" };
+    const stateApi = buildStateApi(targetId, "council", ctx.cwd, true);
+    const state = await stateApi.get<CouncilState>();
+    if (!state) return { ok: false, error: `No council found: ${targetId}` };
+    return { ok: true, message: JSON.stringify(state) };
+  },
+
   "list-councils": async (ctx: MoveApiContext) => {
     const stateDir = join(ctx.cwd, ".modus/moves/council/state");
     try {
