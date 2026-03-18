@@ -600,9 +600,13 @@ function buildSpawnSessionOpts(
   cwd: string,
   userProfile: string | undefined,
   sourceSessionId: string,
+  inputs?: Record<string, unknown>,
 ): StartSessionOpts {
   const active = sourceSessionId ? getActiveSession(sourceSessionId) : undefined;
-  const explicitProfile = config.agentProfile ?? config.session?.profileOverride ?? undefined;
+  const inputProfile = typeof inputs?.agentProfile === "string" && inputs.agentProfile !== "Current profile"
+    ? inputs.agentProfile
+    : undefined;
+  const explicitProfile = inputProfile ?? config.agentProfile ?? config.session?.profileOverride ?? undefined;
 
   const base: StartSessionOpts = explicitProfile
     ? {
@@ -903,7 +907,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   if (mode === "branch" || mode === "background") {
     // Spawn a new session with the move prompt
     const spawned = startSession(
-      buildSpawnSessionOpts(config, prompt, cwd, userProfile, sourceSessionId),
+      buildSpawnSessionOpts(config, prompt, cwd, userProfile, sourceSessionId, inputs),
     );
 
     // Wait for real session ID
