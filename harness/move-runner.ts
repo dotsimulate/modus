@@ -228,8 +228,8 @@ function registerMoveApi(
   return token;
 }
 
-/** Build the state API for an instance */
-function buildStateApi(instanceId: string, moveName: string, cwd: string, persist: boolean): MoveStateAPI {
+/** Build the state API for an instance — exported for use outside handler context (e.g. watcher callbacks) */
+export function buildStateApi(instanceId: string, moveName: string, cwd: string, persist: boolean): MoveStateAPI {
   return {
     async get<T = unknown>(): Promise<T | undefined> {
       if (persist) {
@@ -345,12 +345,12 @@ export function rekeyMoveRegistrySession(oldSessionId: string, newSessionId: str
 
 /** Get all active move widgets for a session */
 export function getActiveWidgetForSession(sessionId: string): Array<{
-  widget: { label: string; icon?: string; autoOpen?: boolean; moduleUrl: string; moveName: string };
+  widget: { label: string; icon?: string; autoOpen?: boolean; cache?: string; moduleUrl: string; moveName: string };
   apiToken: string;
   instanceId: string;
 }> {
   console.log(`[move-reg] getActiveWidgetForSession(${sessionId}) — registry has ${moveApiRegistry.size} entries: ${[...moveApiRegistry.entries()].map(([t, r]) => `${t}→${r.sessionId}`).join(", ") || "empty"}`);
-  const results: Array<{ widget: { label: string; icon?: string; autoOpen?: boolean; mountOnAttach?: boolean; moduleUrl: string; moveName: string }; apiToken: string; instanceId: string }> = [];
+  const results: Array<{ widget: { label: string; icon?: string; autoOpen?: boolean; mountOnAttach?: boolean; cache?: string; moduleUrl: string; moveName: string }; apiToken: string; instanceId: string }> = [];
   for (const [token, reg] of moveApiRegistry) {
     if (reg.sessionId === sessionId) {
       const config = getMove(reg.moveName, reg.cwd);
@@ -361,6 +361,7 @@ export function getActiveWidgetForSession(sessionId: string): Array<{
             icon: config.widget.icon,
             autoOpen: config.widget.autoOpen,
             mountOnAttach: config.widget.mountOnAttach,
+            cache: config.widget.cache,
             moduleUrl: `/api/moves/${reg.moveName}/widget?cwd=${encodeURIComponent(reg.cwd)}`,
             moveName: reg.moveName,
           },
@@ -553,6 +554,7 @@ function buildHarnessBridge(cwd: string, userProfile: string | undefined): Harne
         profile: opts.profile,
         cwd: opts.cwd ?? cwd,
         userProfile: opts.userProfile ?? userProfile,
+        tags: opts.tags,
       });
       // Wait for real session ID
       const start = Date.now();
@@ -764,6 +766,7 @@ export async function attachMove(opts: AttachMoveOpts): Promise<AttachMoveResult
       icon: config.widget.icon,
       autoOpen: true,
       mountOnAttach: true,
+      cache: config.widget.cache,
       moduleUrl: `/api/moves/${moveName}/widget?cwd=${encodeURIComponent(cwd)}`,
       moveName,
     },
@@ -1054,6 +1057,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     icon: config.widget.icon,
     autoOpen: config.widget.autoOpen,
     mountOnAttach: config.widget.mountOnAttach,
+    cache: config.widget.cache,
     moduleUrl: `/api/moves/${moveName}/widget?cwd=${encodeURIComponent(cwd)}`,
     moveName,
   } : undefined;
