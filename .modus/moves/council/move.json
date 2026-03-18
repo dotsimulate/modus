@@ -1,0 +1,69 @@
+{
+  "name": "council",
+  "label": "Council",
+  "description": "Convene a multi-agent council to debate a topic autonomously",
+  "icon": "users",
+  "mode": "inline",
+  "inputs": [],
+  "api": {
+    "tokenPrefix": "council",
+    "ops": {
+      "setup": {
+        "description": "Configure council before starting (topic, rounds, members, response length)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "topic": { "type": "string" },
+            "roundLimit": { "type": "number" },
+            "responseLength": { "type": "string", "enum": ["rapid", "short", "medium", "long"] },
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "profile": { "type": "string" },
+                  "stance": { "type": "string" },
+                  "isJudge": { "type": "boolean" }
+                },
+                "required": ["name", "profile", "stance", "isJudge"]
+              },
+              "minItems": 2
+            }
+          },
+          "required": ["topic", "members"]
+        }
+      },
+      "read-state": {
+        "description": "Read the current council state (messages, round, status)"
+      },
+      "list-councils": {
+        "description": "List all past and current council instances with summaries"
+      },
+      "broadcast": {
+        "description": "Post a moderator message visible to all council members on their next turn",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "message": { "type": "string" }
+          },
+          "required": ["message"]
+        }
+      }
+    },
+    "state": {
+      "persist": true
+    }
+  },
+  "submit": { "required": false },
+  "session": { "afterSubmit": "continue" },
+  "widget": {
+    "component": "widget.tsx",
+    "panel": "right",
+    "label": "Council",
+    "icon": "users",
+    "autoOpen": true,
+    "mountOnAttach": true
+  },
+  "tags": ["council", "multi-agent"]
+}
