@@ -277,6 +277,8 @@ export function deriveSession(
     loadProjectSettings: rs.loadProjectSettings,
     messages: rs.messages,
     totalCost: rs.totalCost,
+    totalInputTokens: rs.totalInputTokens,
+    totalOutputTokens: rs.totalOutputTokens,
     lastSeq: rs.lastSeq,
     createdAt: rs.createdAt,
     updatedAt: Date.now(),

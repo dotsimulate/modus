@@ -331,7 +331,13 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             </span>
           )}
           {msg.meta.duration != null && (
-            <span className="meta-duration">{(msg.meta.duration / 1000).toFixed(1)}s</span>
+            <span className="meta-duration">
+              {msg.timestamp
+                ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                : null}
+              {msg.timestamp && <span className="meta-duration-elapsed"> ({(msg.meta.duration / 1000).toFixed(1)}s)</span>}
+              {!msg.timestamp && `${(msg.meta.duration / 1000).toFixed(1)}s`}
+            </span>
           )}
           <CopyMessageButton msg={msg} />
         </div>

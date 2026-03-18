@@ -353,7 +353,7 @@ export function PromptPicker({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (selected?.kind === "move") { if (onMoveAttach) handleAttachMove(); else handleActivateMove(); }
+      if (selected?.kind === "move") { if (selected.item.persistent) handleActivateMove(); else if (onMoveAttach) handleAttachMove(); else handleActivateMove(); }
       else handleRender("inject");
     }
     if (e.key === "Escape") {
@@ -662,10 +662,10 @@ export function PromptPicker({
             ) : (
               <button
                 className="prompt-picker-btn prompt-picker-btn--send"
-                onClick={onMoveAttach ? handleAttachMove : handleActivateMove}
+                onClick={selected?.kind === "move" && selected.item.persistent ? handleActivateMove : onMoveAttach ? handleAttachMove : handleActivateMove}
                 disabled={rendering || !moveReady}
               >
-                {rendering ? "..." : onMoveAttach ? "attach" : "run move"}
+                {rendering ? "..." : selected?.kind === "move" && selected.item.persistent ? "activate" : onMoveAttach ? "attach" : "run move"}
               </button>
             )}
             <button

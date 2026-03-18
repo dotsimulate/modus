@@ -1,4 +1,6 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { useSession } from "./SessionProvider";
+import { saveSessionUiState } from "../api";
 
 const STORAGE_KEY = "mo:pinboards";
 
@@ -74,6 +76,7 @@ function save(state: PinboardState) {
 
 export function PinboardProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PinboardState>(() => load());
+  const { activeSession } = useSession();
 
   const update = useCallback((updater: (s: PinboardState) => PinboardState) => {
     setState((prev) => {
@@ -82,6 +85,14 @@ export function PinboardProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
+
+  // Sync active group paths to session UI state so server-side moves can read live pinboard state
+  const activeGroup = state.groups.find((g) => g.id === state.activeGroupId) ?? null;
+  useEffect(() => {
+    const sessionId = activeSession?.id;
+    if (!sessionId || sessionId.startsWith("pending-")) return;
+    saveSessionUiState(sessionId, { pinnedFiles: activeGroup?.paths ?? [] }).catch(() => {});
+  }, [activeGroup?.paths, activeSession?.id]);
 
   const setActiveGroup = useCallback((id: string) => {
     update((s) => ({ ...s, activeGroupId: id }));
@@ -140,8 +151,6 @@ export function PinboardProvider({ children }: { children: ReactNode }) {
   const isFilePinned = useCallback((path: string): boolean => {
     return state.groups.some((g) => g.paths.includes(path));
   }, [state.groups]);
-
-  const activeGroup = state.groups.find((g) => g.id === state.activeGroupId) ?? null;
 
   return (
     <PinboardContext.Provider value={{

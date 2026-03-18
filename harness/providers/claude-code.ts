@@ -836,14 +836,18 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         state.thinkingDurationMs = undefined;
 
         if (m.modelUsage && typeof m.modelUsage === "object") {
-          let totalIn = 0, totalOut = 0;
+          let totalIn = 0, totalOut = 0, totalCacheRead = 0, totalCacheWrite = 0;
           for (const model of Object.values(m.modelUsage) as any[]) {
             totalIn += model.inputTokens ?? 0;
             totalOut += model.outputTokens ?? 0;
+            totalCacheRead += model.cacheReadInputTokens ?? 0;
+            totalCacheWrite += model.cacheCreationInputTokens ?? 0;
           }
-          m.total_tokens = totalIn + totalOut;
           m.input_tokens = totalIn;
           m.output_tokens = totalOut;
+          m.cache_read_tokens = totalCacheRead;
+          m.cache_write_tokens = totalCacheWrite;
+          m.total_tokens = totalIn + totalOut + totalCacheRead + totalCacheWrite;
         }
 
         session.costUsd += m.total_cost_usd ?? 0;

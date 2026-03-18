@@ -23,6 +23,7 @@ import type {
   ActivateMoveOpts, ActivateMoveResult, SubmitResult,
   MoveDB, HarnessBridge, MoveRun,
   MoveApiHandler, MoveApiContext, MoveApiRegistration, MoveStateAPI,
+  AmbientMoveRegistration,
 } from "./move-types";
 import {
   type StartSessionOpts,
@@ -63,6 +64,89 @@ setInterval(() => {
     }
   }
 }, TOKEN_CLEANUP_INTERVAL_MS);
+
+// ── Ambient Move Registry (persistent/gather-only moves) ──
+
+/** sessionId → active ambient move registrations */
+const ambientMoveRegistry = new Map<string, AmbientMoveRegistration[]>();
+
+/** Register an ambient move for a session */
+function registerAmbientMove(reg: AmbientMoveRegistration): void {
+  const list = ambientMoveRegistry.get(reg.sessionId) ?? [];
+  // Prevent duplicate registration of same move on same session
+  if (list.some(r => r.moveName === reg.moveName)) return;
+  list.push(reg);
+  ambientMoveRegistry.set(reg.sessionId, list);
+  console.log(`[move-runner] ambient registered: ${reg.moveName} on session ${reg.sessionId}`);
+}
+
+/** Deactivate an ambient move for a session. Returns true if found and removed. */
+export function deactivateAmbientMove(sessionId: string, moveName: string): boolean {
+  const list = ambientMoveRegistry.get(sessionId);
+  if (!list) return false;
+  const idx = list.findIndex(r => r.moveName === moveName);
+  if (idx === -1) return false;
+  const removed = list.splice(idx, 1)[0]!;
+  if (list.length === 0) ambientMoveRegistry.delete(sessionId);
+  // Update DB record
+  updateMoveRun(removed.moveRunId, { status: "completed", completedAt: Date.now() });
+  logActivity({
+    userProfile: removed.userProfile,
+    eventType: "move_completed",
+    sessionId,
+    summary: `Ambient move deactivated: ${moveName}`,
+    metadata: { moveName, persistent: true },
+  });
+  console.log(`[move-runner] ambient deactivated: ${moveName} on session ${sessionId}`);
+  return true;
+}
+
+/** Get active ambient moves for a session */
+export function getActiveAmbientMoves(sessionId: string): AmbientMoveRegistration[] {
+  return ambientMoveRegistry.get(sessionId) ?? [];
+}
+
+/**
+ * Gather ambient context for a session — called per-turn by session-manager.
+ * Runs gather() for each active ambient move. Returns concatenated context
+ * or null if no ambient moves produced output (all bailed or none active).
+ */
+export async function gatherAmbientContext(sessionId: string): Promise<string | null> {
+  const moves = ambientMoveRegistry.get(sessionId);
+  if (!moves || moves.length === 0) return null;
+
+  const parts: string[] = [];
+
+  for (const reg of moves) {
+    try {
+      const mod = await loadMoveModule(reg.moveName, reg.cwd);
+      if (!mod?.gather) continue;
+
+      const ctx = buildMoveContext(reg.moveName, sessionId, reg.cwd, reg.userProfile, {
+        inputs: reg.inputs,
+      });
+
+      const result = await Promise.race([
+        mod.gather(ctx),
+        new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), GATHER_TIMEOUT_MS)
+        ),
+      ]);
+
+      // Gather-bail: null means skip this turn
+      if (result === null) continue;
+
+      const text = typeof result === "string" ? result : String(result);
+      if (text.trim()) {
+        parts.push(`<!-- ambient:${reg.moveName} -->\n${text}\n<!-- /ambient:${reg.moveName} -->`);
+      }
+    } catch (err) {
+      console.error(`[move-runner] ambient gather failed for "${reg.moveName}":`, err);
+    }
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : null;
+}
 
 // ── Move API Registry (api tokens → handlers) ──
 
@@ -635,6 +719,53 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   if (!config) return { error: `Move not found: ${moveName}` };
   if (config.enabled === false) return { error: `Move is disabled: ${moveName}` };
 
+  // ── Persistent (ambient) activation — separate path, no token/submit ──
+  if (config.persistent) {
+    if (!sourceSessionId) return { error: "Persistent moves require a session" };
+
+    // Check if already active
+    const existing = getActiveAmbientMoves(sourceSessionId);
+    if (existing.some(r => r.moveName === moveName)) {
+      return { error: `Ambient move "${moveName}" is already active on this session` };
+    }
+
+    // Create DB record
+    const moveRunId = insertMoveRun({
+      moveName,
+      sessionId: sourceSessionId,
+      mode: "persistent",
+      status: "active",
+      inputs: JSON.stringify(inputs),
+      gatheredContext: "{}",
+    });
+
+    // Register in ambient registry
+    registerAmbientMove({
+      moveName,
+      sessionId: sourceSessionId,
+      cwd,
+      userProfile,
+      inputs,
+      activatedAt: Date.now(),
+      moveRunId,
+    });
+
+    logActivity({
+      userProfile,
+      eventType: "move_activated",
+      sessionId: sourceSessionId,
+      summary: `Ambient move activated: ${config.label}`,
+      metadata: { moveName, persistent: true },
+    });
+
+    return {
+      token: "",  // no token for persistent moves
+      mode: "persistent" as any,
+      persistent: true,
+      moveRunId,
+    };
+  }
+
   let mode = modeOverride ?? config.mode ?? "inline";
   if (forceNewSession && mode === "inline") {
     mode = "branch";
@@ -693,6 +824,17 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
           setTimeout(() => reject(new Error("gather() timed out")), GATHER_TIMEOUT_MS)
         ),
       ]);
+      // Gather-bail: null means skip this activation
+      if (result === null) {
+        logActivity({
+          userProfile,
+          eventType: "move_activated",
+          sessionId: sourceSessionId || undefined,
+          summary: `Move gather bailed: ${config.label}`,
+          metadata: { moveName, gatherBail: true },
+        });
+        return { error: "gather() returned null — activation skipped" };
+      }
       prompt = typeof result === "string" ? result : String(result);
     } else {
       prompt = buildDefaultPrompt(config, token);

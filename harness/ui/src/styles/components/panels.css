@@ -373,6 +373,21 @@
   color: var(--text);
 }
 
+/* ── Pin button with group label ── */
+.rp-pin-btn {
+  gap: 3px;
+}
+.rp-pin-group {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.rp-pin-btn.active .rp-pin-group {
+  color: var(--accent);
+  opacity: 0.5;
+}
+
 /* ── Empty state for both panels ── */
 .panel-empty {
   color: var(--text-muted);

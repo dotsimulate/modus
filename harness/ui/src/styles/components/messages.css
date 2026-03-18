@@ -271,6 +271,9 @@
   font-style: italic;
   font-size: 9px;
 }
+.meta-duration-elapsed {
+  color: var(--text-muted);
+}
 .meta-tokens {
   font-size: 9px;
   color: var(--text-secondary);

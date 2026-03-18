@@ -21,6 +21,8 @@ export type ReducerState = {
   loadProjectSettings: boolean;
   messages: Message[];
   totalCost: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
   lastSeq: number;
   createdAt: number;
   activeToolName?: string;
@@ -55,6 +57,8 @@ export function createInitialState(sessionId = ""): ReducerState {
     loadProjectSettings: true,
     messages: [],
     totalCost: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
     lastSeq: 0,
     createdAt: Date.now(),
     availableTools: [],
@@ -855,6 +859,20 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     if (turnToolCalls.length > 0) turnCopy.toolCalls = turnToolCalls;
 
     const modelName = m.modelUsage ? Object.keys(m.modelUsage)[0] : s.model;
+
+    // Derive cache tokens from modelUsage (authoritative source, present in all Claude events)
+    // Fall back to top-level fields for newer events that already have them computed.
+    let cacheRead = m.cache_read_tokens ?? 0;
+    let cacheWrite = m.cache_write_tokens ?? 0;
+    let contextWindow = 0;
+    if (m.modelUsage && typeof m.modelUsage === "object") {
+      for (const model of Object.values(m.modelUsage) as any[]) {
+        if (cacheRead === 0) cacheRead += model?.cacheReadInputTokens ?? 0;
+        if (cacheWrite === 0) cacheWrite += model?.cacheCreationInputTokens ?? 0;
+        if (!contextWindow) contextWindow = model?.contextWindow ?? 0;
+      }
+    }
+
     msgs[msgs.length - 1] = {
       ...last,
       seq: s.lastSeq, // result event seq — used as branch point
@@ -868,6 +886,9 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
         turns: m.num_turns,
         inputTokens: m.input_tokens,
         outputTokens: m.output_tokens,
+        cacheReadTokens: cacheRead,
+        cacheWriteTokens: cacheWrite,
+        contextWindow,
       },
     };
   }
@@ -882,6 +903,8 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     status: (m.subtype === "success" || m.subtype === "error_max_turns") ? "idle" : "error",
     messages: msgs,
     totalCost: s.totalCost + (m.total_cost_usd ?? 0),
+    totalInputTokens: s.totalInputTokens + (m.input_tokens ?? 0),
+    totalOutputTokens: s.totalOutputTokens + (m.output_tokens ?? 0),
     _streamingText: "",
     _streamingThinking: "",
     _pendingToolCalls: new Map(),
