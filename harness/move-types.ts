@@ -79,6 +79,9 @@ export interface MoveConfig {
   // ── Widget (move-local UI component) ──
   widget?: MoveWidgetDeclaration;
 
+  // ── Page (move-owned full page in the nav) ──
+  page?: MovePageDeclaration;
+
   // ── Metadata ──
   enabled?: boolean;
   tags?: string[];
@@ -156,6 +159,7 @@ export interface HarnessBridge {
     prompt: string;
     cwd?: string;
     userProfile?: string;
+    tags?: string[];
   }) => Promise<string>;
   sendMessage: (sessionId: string, content: string) => Promise<void>;
   triggerAction: (actionName: string) => Promise<void>;
@@ -257,6 +261,7 @@ export interface AttachMoveResult {
     icon?: string;
     autoOpen: true;
     mountOnAttach: true;
+    cache?: "instance" | "module" | "none";
     moduleUrl: string;
     moveName: string;
   };
@@ -290,12 +295,25 @@ export interface ActivateMoveResult {
     icon?: string;
     autoOpen?: boolean;
     mountOnAttach?: boolean;
+    cache?: "instance" | "module" | "none";
     moduleUrl: string;                 // "/api/moves/<name>/widget?cwd=..."
     moveName: string;
   };
 }
 
 // ── Move API Contract ──
+
+/** Declared in move.json — move registers a full page in the nav */
+export interface MovePageDeclaration {
+  /** Page ID used in URL hash (e.g. #move-page:memory → id: "memory") */
+  id: string;
+  /** Display title in the nav bar */
+  title: string;
+  /** Optional icon for the nav link */
+  icon?: string;
+  /** Show in the main nav bar. Default true. */
+  nav?: boolean;
+}
 
 /** Declared in move.json — UI component shipped with the move */
 export interface MoveWidgetDeclaration {
@@ -316,6 +334,14 @@ export interface MoveWidgetDeclaration {
    * declaration on the move. Default false.
    */
   mountOnAttach?: boolean;
+  /**
+   * Widget caching strategy. Controls how the widget survives React re-renders.
+   *   - "instance" (default): DOM stays alive when hidden — full state preservation.
+   *   - "module": JS module is cached but React can unmount/remount freely.
+   *     Component state resets but no import flash.
+   *   - "none": always re-import the module. For development/iteration.
+   */
+  cache?: "instance" | "module" | "none";
 }
 
 /** Declared in move.json — defines the ops a move provides */

@@ -372,6 +372,8 @@ export type StartSessionOpts = {
   loadProjectSettings?: boolean;
   sessionId?: string;
   actionName?: string;
+  /** Tags to apply to the session on creation (e.g. "move:council", "role:advocate") */
+  tags?: string[];
   /** For branched sessions: parent session ID to fork from (SDK resume source) */
   branchParentId?: string;
   /** For branched sessions: SDK message UUID to resume at */
@@ -635,6 +637,12 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     // Auto-tag action-spawned sessions as internal (prevents cascade triggers)
     if (session.actionName) {
       addSessionTag(tempId, "internal");
+    }
+    // Apply caller-provided tags (e.g. move-spawned sessions)
+    if (opts.tags?.length) {
+      for (const tag of opts.tags) {
+        addSessionTag(tempId, tag);
+      }
     }
   }
 
