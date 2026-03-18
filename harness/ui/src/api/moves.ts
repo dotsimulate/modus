@@ -20,12 +20,14 @@ export type MoveListItem = {
   persistent?: boolean;
   inputs?: MoveInput[];
   tags?: string[];
+  widget?: { mountOnAttach?: boolean };
 };
 
 export type MoveWidgetInfo = {
   label: string;
   icon?: string;
   autoOpen?: boolean;
+  mountOnAttach?: boolean;
   moduleUrl: string;
   moveName: string;
 };
@@ -135,6 +137,56 @@ export async function activateProjectMoveApi(body: {
     throw new Error(data.error ?? "move activation failed");
   }
   return data;
+}
+
+// ── Widget-first activation (attach/activate) ──
+
+export type AttachMoveResult = {
+  apiToken: string;
+  instanceId: string;
+  widget: MoveWidgetInfo;
+};
+
+/** Phase 1: attach a move — creates API registration + widget, no gather/message */
+export async function attachMoveApi(body: {
+  moveName: string;
+  inputs: Record<string, unknown>;
+  cwd: string;
+  sessionId?: string;
+  userProfile?: string;
+}): Promise<AttachMoveResult> {
+  const res = await fetch(`${API_BASE}/api/moves/${body.moveName}/attach`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({ error: "attach failed" }));
+  if (!res.ok) throw new Error(data.error ?? "attach failed");
+  return data;
+}
+
+/** Phase 2: activate an attached move — run gather + send message from widget */
+export async function activateAttachedMoveApi(
+  moveName: string,
+  apiToken: string,
+  text?: string,
+  userProfile?: string,
+): Promise<{ ok: boolean; prompt?: string; moveRunId?: number; error?: string }> {
+  const res = await fetch(`${API_BASE}/api/moves/${moveName}/activate-attached`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ apiToken, text, userProfile }),
+  });
+  return res.json();
+}
+
+/** Clean up an attached move without activating */
+export async function detachMoveApi(moveName: string, apiToken: string): Promise<void> {
+  await fetch(`${API_BASE}/api/moves/${moveName}/detach`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ apiToken }),
+  });
 }
 
 // ── Ambient (persistent) moves ──

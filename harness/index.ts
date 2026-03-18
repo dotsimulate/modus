@@ -1867,7 +1867,7 @@ app.get("/api/activity/summary", (c) => {
 
 // ── Moves ──
 
-import { listMoves, getMove, activateMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
+import { listMoves, getMove, activateMove, attachMove, activateAttachedMove, detachMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
 import { getMoveRunsBySession, getMoveRunById, getRecentMoveRuns } from "./move-db";
 import { handleModusMcpRequest } from "./modus-mcp";
 
@@ -2011,6 +2011,48 @@ app.post("/api/sessions/:id/moves/deactivate", async (c) => {
   const removed = deactivateAmbientMove(sessionId, moveName);
   if (!removed) return c.json({ error: "Ambient move not found on this session" }, 404);
   return c.json({ ok: true, moveName });
+});
+
+// ── Widget-First Activation (attach/activate-attached) ──
+
+// Attach a move (phase 1): create API registration + widget, no gather/message
+app.post("/api/moves/:name/attach", async (c) => {
+  const name = c.req.param("name");
+  const body = await c.req.json();
+  const { inputs, cwd, userProfile, sessionId } = body;
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+
+  const result = await attachMove({
+    moveName: name,
+    sessionId,
+    inputs: inputs ?? {},
+    cwd,
+    userProfile,
+  });
+
+  if ("error" in result) return c.json(result, 400);
+  return c.json(result);
+});
+
+// Activate an attached move (phase 2): run gather + send message
+app.post("/api/moves/:name/activate-attached", async (c) => {
+  const body = await c.req.json();
+  const { apiToken, text, userProfile } = body;
+  if (typeof apiToken !== "string") return c.json({ error: "apiToken required" }, 400);
+
+  const result = await activateAttachedMove({ apiToken, text, userProfile });
+  return c.json(result, result.ok ? 200 : 400);
+});
+
+// Detach a move (cleanup): remove API registration without activating
+app.post("/api/moves/:name/detach", async (c) => {
+  const body = await c.req.json();
+  const { apiToken } = body;
+  if (typeof apiToken !== "string") return c.json({ error: "apiToken required" }, 400);
+
+  const removed = detachMove(apiToken);
+  if (!removed) return c.json({ error: "Move not found or already detached" }, 404);
+  return c.json({ ok: true });
 });
 
 // ── Move Widget Serving ──

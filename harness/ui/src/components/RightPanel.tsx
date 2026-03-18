@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode, type WheelEvent } from "react";
 import { useFileViewer } from "../providers/FileViewerProvider";
 import { usePinboard } from "../providers/PinboardProvider";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -25,12 +25,15 @@ type Props = {
     apiToken: string;
     instanceId: string;
     sessionId: string;
+    mountedOnAttach?: boolean;
   }> | null;
   initialBrowserPath?: string | null;
   onBrowserPathChange?: (path: string) => void;
   messages?: Message[];
   requestView?: string | null;
   onRequestViewHandled?: () => void;
+  /** Called when user closes a widget tab (for detach cleanup) */
+  onWidgetClose?: (apiToken: string, moveName: string) => void;
 };
 
 function basename(p: string): string {
@@ -59,7 +62,7 @@ type ViewState =
 /** Which tab is showing: the project browser, pinboard, a file, or a move widget */
 type ActiveView = "browser" | "pins" | "move-widget" | string;
 
-export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled }: Props) {
+export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled, onWidgetClose }: Props) {
   const {
     tabs, activePath, closeFile, setActive, openFile,
     setEditing, markDirty, saveFile, saving, saveError,
@@ -67,6 +70,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   const { pinToActive, unpinFromActive, isFilePinned, activeGroup } = usePinboard();
   const { activeCwd } = useProfiles();
 
+  const tabsRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<ActiveView>("browser");
   const [sessionEditsOpen, setSessionEditsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -219,7 +223,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     // Move widget
     if (activeView.startsWith("widget:") && moveWidgets) {
       const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
-      return w ? <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} /> : null;
+      return w ? <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} mountedOnAttach={w.mountedOnAttach} /> : null;
     }
 
     // Pinboard
@@ -336,7 +340,15 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
         style={open && !fullscreen ? { width, minWidth: width } : undefined}
       >
         {/* Tab bar — always visible: browser tab + file tabs */}
-        <div className="rp-tabs">
+        <div
+          className="rp-tabs"
+          ref={tabsRef}
+          onWheel={(e: WheelEvent<HTMLDivElement>) => {
+            if (!tabsRef.current) return;
+            e.preventDefault();
+            tabsRef.current.scrollLeft += e.deltaY + e.deltaX;
+          }}
+        >
           <div className={`rp-tab${showBrowser ? " rp-tab--active" : ""}`}>
             <button
               className="rp-tab-label"
@@ -394,6 +406,19 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 title={w.widget.label}
               >
                 {w.widget.label}
+              </button>
+              <button
+                className="rp-tab-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWidgetClose?.(w.apiToken, w.widget.moveName);
+                  if (activeView === `widget:${w.instanceId}`) setActiveView("browser");
+                }}
+                title="Close widget"
+              >
+                <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
               </button>
             </div>
           ))}

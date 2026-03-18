@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useId } from "react";
-import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo } from "../api";
-import { activateMoveApi, activateProjectMoveApi, fetchAmbientMoves, deactivateAmbientMoveApi } from "../api";
+import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMoveResult } from "../api";
+import { activateMoveApi, activateProjectMoveApi, fetchAmbientMoves, deactivateAmbientMoveApi, attachMoveApi, detachMoveApi } from "../api";
 import type { ActivateMoveResult } from "../api";
 import { PromptPicker } from "./PromptPicker";
 import { AttachedMove } from "./QueuedMessage";
@@ -24,6 +24,10 @@ type Props = {
   projectCwd?: string;
   userProfile?: string;
   onMoveActivated?: (result: ActivateMoveResult) => void;
+  /** Called when a mountOnAttach move is attached — widget should be mounted immediately */
+  onMoveAttached?: (result: AttachMoveResult) => void;
+  /** Called when a mountOnAttach move is detached — widget should be unmounted */
+  onMoveDetached?: (apiToken: string) => void;
   autoFocus?: boolean;
 };
 
@@ -87,7 +91,7 @@ function ComposerActionIcon({ icon }: { icon?: "mic" | "mic-handsfree" }) {
 
 export function ChatInput({
   value, onChange, onSend, onStop,
-  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated, autoFocus = false,
+  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated, onMoveAttached, onMoveDetached, autoFocus = false,
 }: Props) {
   const autoId = useId();
   const composerId = sessionId ? `composer:${sessionId}` : autoId;
@@ -110,7 +114,12 @@ export function ChatInput({
   // Attachment state
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [attachedMove, setAttachedMove] = useState<{ item: MoveListItem; inputs: Record<string, unknown> } | null>(null);
+  const [attachedMove, setAttachedMove] = useState<{
+    item: MoveListItem;
+    inputs: Record<string, unknown>;
+    apiToken?: string;     // set for mountOnAttach moves (from attach phase)
+    instanceId?: string;   // set for mountOnAttach moves (from attach phase)
+  } | null>(null);
   const dragCounter = useRef(0);
 
   // Ambient (persistent) moves
@@ -281,11 +290,13 @@ export function ChatInput({
     if (!attachedMove && !hasText) return;
 
     if (attachedMove) {
-      const { item, inputs } = attachedMove;
+      const { item, inputs, apiToken: attachApiToken, instanceId: attachInstanceId } = attachedMove;
       setAttachedMove(null);
       if (projectCwd) {
         const mode = item.mode ?? "inline";
-        const body = { moveName: item.name, inputs, cwd: projectCwd, userProfile };
+        // If mountOnAttach, pass the existing instanceId so activation reuses the registration
+        const moveInputs = attachInstanceId ? { ...inputs, instanceId: attachInstanceId } : inputs;
+        const body = { moveName: item.name, inputs: moveInputs, cwd: projectCwd, userProfile };
         try {
           const result = sessionId
             ? await activateMoveApi(sessionId, body)
@@ -440,7 +451,13 @@ export function ChatInput({
         <AttachedMove
           move={attachedMove.item}
           inputs={attachedMove.inputs}
-          onDetach={() => setAttachedMove(null)}
+          onDetach={() => {
+            if (attachedMove.apiToken) {
+              detachMoveApi(attachedMove.item.name, attachedMove.apiToken).catch(() => {});
+              onMoveDetached?.(attachedMove.apiToken);
+            }
+            setAttachedMove(null);
+          }}
         />
       )}
 
@@ -519,7 +536,27 @@ export function ChatInput({
               projectCwd={projectCwd}
               userProfile={userProfile}
               onMoveActivated={handleMoveActivated}
-              onMoveAttach={(move, inputs) => setAttachedMove({ item: move, inputs })}
+              onMoveAttach={async (move, inputs) => {
+                if (move.widget?.mountOnAttach && projectCwd) {
+                  // Widget-first: don't store in attachedMove — widget IS the interface.
+                  // Call attach API to create registration + mount widget immediately.
+                  try {
+                    const result = await attachMoveApi({
+                      moveName: move.name,
+                      inputs,
+                      cwd: projectCwd,
+                      sessionId,
+                      userProfile,
+                    });
+                    onMoveAttached?.(result);
+                  } catch (err) {
+                    console.error("[ChatInput] attach failed:", err);
+                  }
+                } else {
+                  // Normal flow: store as attached move chip
+                  setAttachedMove({ item: move, inputs });
+                }
+              }}
               onOpenChange={(isOpen) => {
                 setPickerOpen(isOpen);
                 if (!isOpen) {

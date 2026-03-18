@@ -1,13 +1,23 @@
 {
   "name": "chess",
   "label": "Play chess",
-  "description": "Play a game of chess. User plays through the UI widget, agent plays via modus_submit.",
+  "description": "Play a game of chess. Pick your color from the widget, then start the game.",
   "icon": "crown",
   "mode": "inline",
   "inputs": [],
   "api": {
     "tokenPrefix": "chess",
     "ops": {
+      "setup": {
+        "description": "Set game config before starting (color choice)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "userColor": { "type": "string", "enum": ["w", "b"], "description": "User's color: w or b" }
+          },
+          "required": ["userColor"]
+        }
+      },
       "move": {
         "description": "Submit a chess move in SAN notation",
         "schema": {
@@ -40,7 +50,8 @@
     "panel": "right",
     "label": "Chess",
     "icon": "crown",
-    "autoOpen": true
+    "autoOpen": true,
+    "mountOnAttach": true
   },
   "tags": ["game", "chess"]
 }

@@ -1,9 +1,10 @@
 /**
- * Chess widget — renders an interactive board in the RightPanel.
+ * Chess widget — widget-first (mountOnAttach).
  *
- * User plays White by clicking pieces and target squares.
- * Sends { from, to } coordinates — the backend handles SAN conversion.
- * Polls board state when it's the agent's turn.
+ * 1. Setup screen: pick white or black
+ * 2. "Start Game" calls setup op + activate()
+ * 3. Board renders, oriented from user's perspective
+ * 4. Polls when it's the agent's turn
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -51,7 +52,6 @@ function fenToSquareMap(fen: string): Record<string, string | null> {
   return map;
 }
 
-/** Find which squares changed between two FENs — returns { from, to } of the moved piece. */
 function diffFen(oldFen: string, newFen: string): { from: string; to: string } | null {
   const oldMap = fenToSquareMap(oldFen);
   const newMap = fenToSquareMap(newFen);
@@ -60,9 +60,9 @@ function diffFen(oldFen: string, newFen: string): { from: string; to: string } |
   for (const sq of Object.keys(oldMap)) {
     const was = oldMap[sq];
     const is = newMap[sq];
-    if (was && !is) from = sq;           // piece left this square
-    if (!was && is) to = sq;             // piece arrived on this square
-    if (was && is && was !== is) to = sq; // capture: different piece arrived
+    if (was && !is) from = sq;
+    if (!was && is) to = sq;
+    if (was && is && was !== is) to = sq;
   }
   if (from && to) return { from, to };
   return null;
@@ -80,14 +80,28 @@ function isWhite(piece: string): boolean {
   return piece === piece.toUpperCase();
 }
 
-// ── Styles — uses CSS vars from the host app's theme ──
+function isUserPiece(piece: string, userColor: "w" | "b"): boolean {
+  return userColor === "w" ? isWhite(piece) : !isWhite(piece);
+}
+
+// ── Styles ──
 
 const boardColors = {
-  light: "var(--bg-surface, #111)",   // --bg-surface
-  dark: "var(--bg, #000)",            // --bg
+  light: "var(--bg-surface, #111)",
+  dark: "var(--bg, #000)",
   selected: "rgba(80, 144, 255, 0.5)",
   lastMoveUser: "rgba(80, 144, 255, 0.2)",
   lastMoveAgent: "rgba(232, 155, 80, 0.25)",
+};
+
+const c = {
+  bg: "var(--bg, #000)",
+  surface: "var(--bg-surface, #111)",
+  border: "var(--border, #2a2a2a)",
+  text: "var(--text, #e0e0e0)",
+  textDim: "var(--text-dim, #666)",
+  textLabel: "var(--text-label, #aaa)",
+  accent: "var(--accent, #5090ff)",
 };
 
 const styles = {
@@ -96,7 +110,7 @@ const styles = {
     flexDirection: "column" as const,
     height: "100%",
     fontFamily: "var(--font-mono, monospace)",
-    background: "var(--bg, #000)",
+    background: c.bg,
     gap: "8px",
     padding: "8px",
   },
@@ -105,7 +119,7 @@ const styles = {
     gridTemplateColumns: "repeat(8, 1fr)",
     gridTemplateRows: "repeat(8, 1fr)",
     aspectRatio: "1",
-    border: "1px solid var(--border, #1e1e1e)",
+    border: `1px solid ${c.border}`,
     borderRadius: "4px",
     overflow: "hidden",
     maxWidth: "480px",
@@ -117,7 +131,7 @@ const styles = {
     textAlign: "center" as const,
     padding: "6px",
     fontSize: "12px",
-    color: "var(--text-label, #aaa)",
+    color: c.textLabel,
     letterSpacing: "0.03em",
   },
   moveList: {
@@ -125,7 +139,7 @@ const styles = {
     overflow: "auto" as const,
     fontSize: "11px",
     padding: "4px 8px",
-    color: "var(--text-dim, #666)",
+    color: c.textDim,
     lineHeight: "1.8",
   },
   error: {
@@ -136,10 +150,94 @@ const styles = {
   },
 };
 
-// ── Component ──
+// ── Setup Screen ──
 
-export default function ChessWidget({ callOp }: MoveWidgetProps) {
-  const [fen, setFen] = useState("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+function SetupScreen({ onStart }: { onStart: (color: "w" | "b") => void }) {
+  const [hover, setHover] = useState<"w" | "b" | null>(null);
+
+  const btnBase = {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: "8px",
+    padding: "24px",
+    border: `1px solid ${c.border}`,
+    borderRadius: "6px",
+    background: c.surface,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    transition: "border-color 0.15s, background 0.15s",
+    flex: 1,
+  };
+
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      height: "100%",
+      gap: "24px",
+      padding: "24px",
+      fontFamily: "var(--font-mono, monospace)",
+      background: c.bg,
+    }}>
+      <div style={{
+        fontSize: "11px",
+        color: c.textLabel,
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+      }}>
+        Choose your color
+      </div>
+
+      <div style={{ display: "flex", gap: "16px", width: "100%", maxWidth: "320px" }}>
+        <button
+          style={{
+            ...btnBase,
+            borderColor: hover === "w" ? c.accent : c.border,
+            background: hover === "w" ? "rgba(80, 144, 255, 0.06)" : c.surface,
+          }}
+          onClick={() => onStart("w")}
+          onMouseOver={() => setHover("w")}
+          onMouseOut={() => setHover(null)}
+        >
+          <span style={{ fontSize: "40px", lineHeight: 1 }}>♔</span>
+          <span style={{ fontSize: "12px", color: "#e8d5b5" }}>White</span>
+          <span style={{ fontSize: "10px", color: c.textDim }}>You move first</span>
+        </button>
+
+        <button
+          style={{
+            ...btnBase,
+            borderColor: hover === "b" ? c.accent : c.border,
+            background: hover === "b" ? "rgba(80, 144, 255, 0.06)" : c.surface,
+          }}
+          onClick={() => onStart("b")}
+          onMouseOver={() => setHover("b")}
+          onMouseOut={() => setHover(null)}
+        >
+          <span style={{ fontSize: "40px", lineHeight: 1 }}>♚</span>
+          <span style={{ fontSize: "12px", color: "#b58863" }}>Black</span>
+          <span style={{ fontSize: "10px", color: c.textDim }}>Agent moves first</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Board Component ──
+
+function BoardView({
+  callOp,
+  userColor,
+}: {
+  callOp: MoveWidgetProps["callOp"];
+  userColor: "w" | "b";
+}) {
+  const startFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  const [fen, setFen] = useState(startFen);
   const [moves, setMoves] = useState<string[]>([]);
   const [gameStatus, setGameStatus] = useState<string>("active");
   const [selected, setSelected] = useState<{ file: number; rank: number } | null>(null);
@@ -150,7 +248,8 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevFenRef = useRef<string | null>(null);
 
-  // ── Fetch board state ──
+  const agentColor = userColor === "w" ? "b" : "w";
+
   const refreshBoard = useCallback(async () => {
     const res = await callOp("board");
     if (!res.ok) return;
@@ -160,8 +259,7 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
     if (fenMatch) {
       const newFen = fenMatch[1].trim();
       setFen(prev => {
-        // Detect agent move: if it was black's turn and now it's white's, diff the boards
-        if (prevFenRef.current && turnFromFen(prevFenRef.current) === "b" && turnFromFen(newFen) === "w") {
+        if (prevFenRef.current && turnFromFen(prevFenRef.current) === agentColor && turnFromFen(newFen) === userColor) {
           const diff = diffFen(prevFenRef.current, newFen);
           if (diff) setLastAgentMove(diff);
         }
@@ -184,15 +282,14 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
       );
       setGameStatus(statusLine ?? "Game over");
     }
-  }, [callOp]);
+  }, [callOp, agentColor, userColor]);
 
-  // Initial load
   useEffect(() => { refreshBoard(); }, [refreshBoard]);
 
   // Poll when it's the agent's turn
   useEffect(() => {
     const turn = turnFromFen(fen);
-    if (turn === "b" && gameStatus === "active") {
+    if (turn === agentColor && gameStatus === "active") {
       setThinking(true);
       pollRef.current = setInterval(refreshBoard, 2000);
     } else {
@@ -201,19 +298,18 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
       pollRef.current = null;
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [fen, gameStatus, refreshBoard]);
+  }, [fen, gameStatus, refreshBoard, agentColor]);
 
-  // ── Handle square click ──
   const handleClick = async (file: number, rank: number, piece: string | null) => {
     if (gameStatus !== "active") return;
-    if (turnFromFen(fen) !== "w") return;
+    if (turnFromFen(fen) !== userColor) return;
 
     if (selected) {
       const from = squareName(selected.file, selected.rank);
       const to = squareName(file, rank);
 
       if (from === to) { setSelected(null); return; }
-      if (piece && isWhite(piece)) { setSelected({ file, rank }); return; }
+      if (piece && isUserPiece(piece, userColor)) { setSelected({ file, rank }); return; }
 
       setSelected(null);
       setError(null);
@@ -221,7 +317,10 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
       const fromBoard = parseFen(fen);
       const fromRow = 7 - selected.rank;
       const movingPiece = fromBoard[fromRow]?.[selected.file]?.piece;
-      const promotion = movingPiece?.toUpperCase() === "P" && rank === 7 ? "q" : undefined;
+      // Auto-promote pawns: user white pawn reaching rank 8, user black pawn reaching rank 1
+      const promotion = userColor === "w"
+        ? (movingPiece?.toUpperCase() === "P" && rank === 7 ? "q" : undefined)
+        : (movingPiece?.toLowerCase() === "p" && rank === 0 ? "q" : undefined);
 
       const res = await callOp("move", { from, to, promotion });
       if (!res.ok) {
@@ -233,45 +332,47 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
       setError(null);
       await refreshBoard();
     } else {
-      if (piece && isWhite(piece)) {
+      if (piece && isUserPiece(piece, userColor)) {
         setSelected({ file, rank });
         setError(null);
       }
     }
   };
 
-  // ── Render ──
-  const board = parseFen(fen);
+  // Orient board from user's perspective
+  const rawBoard = parseFen(fen);
+  const board = userColor === "b" ? [...rawBoard].reverse().map(row => [...row].reverse()) : rawBoard;
   const turn = turnFromFen(fen);
 
   return (
     <div style={styles.container}>
-      {/* Status bar */}
       <div style={styles.status}>
         {gameStatus !== "active"
           ? gameStatus
           : thinking
             ? "Agent is thinking..."
-            : turn === "w"
-              ? "Your move (White)"
+            : turn === userColor
+              ? `Your move (${userColor === "w" ? "White" : "Black"})`
               : "Waiting for agent..."}
       </div>
 
-      {/* Board */}
       <div style={styles.board}>
         {board.map((row, ri) =>
           row.map((sq, fi) => {
-            const light = (ri + fi) % 2 === 0;
-            const isSelected = selected?.file === fi && selected?.rank === sq.rank;
-            const sqName = squareName(fi, sq.rank);
-            const isUserMove = lastUserMove && (lastUserMove.from === sqName || lastUserMove.to === sqName);
-            const isAgentMove = lastAgentMove && (lastAgentMove.from === sqName || lastAgentMove.to === sqName);
+            // Visual position for coloring
+            const visualRow = userColor === "b" ? (7 - ri) : ri;
+            const visualCol = userColor === "b" ? (7 - fi) : fi;
+            const light = (visualRow + visualCol) % 2 === 0;
+            const isSelected = selected?.file === sq.file && selected?.rank === sq.rank;
+            const sqName = squareName(sq.file, sq.rank);
+            const isUserMoveSquare = lastUserMove && (lastUserMove.from === sqName || lastUserMove.to === sqName);
+            const isAgentMoveSquare = lastAgentMove && (lastAgentMove.from === sqName || lastAgentMove.to === sqName);
 
             const bg = isSelected
               ? boardColors.selected
-              : isUserMove
+              : isUserMoveSquare
                 ? boardColors.lastMoveUser
-                : isAgentMove
+                : isAgentMoveSquare
                   ? boardColors.lastMoveAgent
                   : light ? boardColors.light : boardColors.dark;
 
@@ -283,7 +384,7 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
 
             return (
               <div
-                key={`${ri}-${fi}`}
+                key={`${sq.file}-${sq.rank}`}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -296,7 +397,7 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
                   transition: "background-color 0.1s",
                   ...pieceStyle,
                 }}
-                onClick={() => handleClick(fi, sq.rank, sq.piece)}
+                onClick={() => handleClick(sq.file, sq.rank, sq.piece)}
               >
                 {sq.piece ? PIECE_CHARS[sq.piece] ?? "" : ""}
               </div>
@@ -305,10 +406,8 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
         )}
       </div>
 
-      {/* Error */}
       {error && <div style={styles.error}>{error}</div>}
 
-      {/* Move list */}
       <div style={styles.moveList}>
         {moves.length === 0
           ? "No moves yet"
@@ -321,4 +420,56 @@ export default function ChessWidget({ callOp }: MoveWidgetProps) {
       </div>
     </div>
   );
+}
+
+// ── Main Widget ──
+
+export default function ChessWidget({ callOp, activate }: MoveWidgetProps) {
+  const [userColor, setUserColor] = useState<"w" | "b" | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  // Check if there's already a game in progress (resuming)
+  useEffect(() => {
+    callOp("board").then(res => {
+      if (res.ok && res.message) {
+        const colorMatch = res.message.match(/UserColor:\s*(w|b)/);
+        if (colorMatch) {
+          setUserColor(colorMatch[1] as "w" | "b");
+        }
+      }
+    });
+  }, [callOp]);
+
+  const handleStart = async (color: "w" | "b") => {
+    setStarting(true);
+    await callOp("setup", { userColor: color });
+    if (activate) {
+      await activate();
+    }
+    setUserColor(color);
+    setStarting(false);
+  };
+
+  if (starting) {
+    return (
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100%",
+        fontFamily: "var(--font-mono, monospace)",
+        background: c.bg,
+        color: c.textLabel,
+        fontSize: "12px",
+      }}>
+        Starting game...
+      </div>
+    );
+  }
+
+  if (!userColor) {
+    return <SetupScreen onStart={handleStart} />;
+  }
+
+  return <BoardView callOp={callOp} userColor={userColor} />;
 }

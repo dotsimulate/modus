@@ -21,6 +21,7 @@ import { join, resolve } from "path";
 import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
   ActivateMoveOpts, ActivateMoveResult, SubmitResult,
+  AttachMoveOpts, AttachMoveResult,
   MoveDB, HarnessBridge, MoveRun,
   MoveApiHandler, MoveApiContext, MoveApiRegistration, MoveStateAPI,
   AmbientMoveRegistration,
@@ -712,6 +713,162 @@ function validateSchema(
   return { valid: errors.length === 0, errors };
 }
 
+// ── Attach Move (widget-first activation, phase 1) ──
+
+/**
+ * Phase 1 of widget-first activation. Creates API registration + widget
+ * metadata WITHOUT running gather() or creating a move run. The widget
+ * mounts immediately and the user configures it. Phase 2 (activation)
+ * happens when the user sends a message or the widget calls activate().
+ */
+export async function attachMove(opts: AttachMoveOpts): Promise<AttachMoveResult | { error: string }> {
+  const { moveName, inputs, cwd, userProfile } = opts;
+  const sessionId = opts.sessionId ?? "";
+
+  const config = getMove(moveName, cwd);
+  if (!config) return { error: `Move not found: ${moveName}` };
+  if (!config.widget?.mountOnAttach) return { error: "Move does not support mountOnAttach" };
+  if (!config.api) return { error: "mountOnAttach requires an api declaration" };
+
+  const instanceId = typeof inputs?.instanceId === "string" && inputs.instanceId
+    ? inputs.instanceId
+    : generateInstanceId();
+
+  const mod = await loadMoveModule(moveName, cwd);
+  if (!mod?.handlers) return { error: `Move "${moveName}" declares api but context.ts has no handlers export` };
+
+  const apiToken = registerMoveApi(
+    moveName,
+    instanceId,
+    sessionId,
+    cwd,
+    mod.handlers,
+    config.api.state?.persist ?? false,
+  );
+
+  logActivity({
+    userProfile,
+    eventType: "move_activated",
+    sessionId: sessionId || undefined,
+    summary: `Move attached (widget-first): ${config.label}`,
+    metadata: { moveName, apiToken, instanceId, phase: "attach" },
+  });
+
+  return {
+    apiToken,
+    instanceId,
+    widget: {
+      label: config.widget.label,
+      icon: config.widget.icon,
+      autoOpen: true,
+      mountOnAttach: true,
+      moduleUrl: `/api/moves/${moveName}/widget?cwd=${encodeURIComponent(cwd)}`,
+      moveName,
+    },
+  };
+}
+
+/**
+ * Phase 2 of widget-first activation (called from widget or detach cleanup).
+ * Runs gather(), creates move run, sends the message to the session.
+ * The API registration already exists from the attach phase.
+ */
+export async function activateAttachedMove(opts: {
+  apiToken: string;
+  text?: string;
+  userProfile?: string;
+}): Promise<{ ok: boolean; prompt?: string; moveRunId?: number; error?: string }> {
+  const reg = moveApiRegistry.get(opts.apiToken);
+  if (!reg) return { ok: false, error: "Invalid API token — move not attached" };
+
+  const config = getMove(reg.moveName, reg.cwd);
+  if (!config) return { ok: false, error: `Move not found: ${reg.moveName}` };
+
+  // Build context — API token/instanceId are already registered
+  const gatheredContext: Record<string, unknown> = {};
+  const moveCtx = buildMoveContext(reg.moveName, reg.sessionId, reg.cwd, opts.userProfile, {
+    inputs: {},
+    metadata: gatheredContext,
+  });
+  moveCtx.apiToken = opts.apiToken;
+  moveCtx.instanceId = reg.instanceId;
+
+  // Run gather()
+  let prompt: string;
+  try {
+    const mod = await loadMoveModule(reg.moveName, reg.cwd);
+    if (mod?.gather) {
+      const result = await Promise.race([
+        mod.gather(moveCtx),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("gather() timed out")), GATHER_TIMEOUT_MS)
+        ),
+      ]);
+      if (result === null) return { ok: false, error: "gather() returned null — activation skipped" };
+      prompt = typeof result === "string" ? result : String(result);
+    } else {
+      prompt = `## ${config.label}\n${config.description}`;
+    }
+  } catch (err) {
+    return { ok: false, error: `gather() failed: ${err}` };
+  }
+
+  // Create move run
+  const moveRunId = insertMoveRun({
+    moveName: reg.moveName,
+    sessionId: reg.sessionId,
+    mode: "inline",
+    status: "running",
+    inputs: "{}",
+    gatheredContext: JSON.stringify(gatheredContext),
+  });
+
+  // Combine with user text
+  const finalPrompt = opts.text ? `${prompt}\n\n${opts.text}` : prompt;
+
+  // Send message to session
+  const queued = queueMessage(reg.sessionId, finalPrompt);
+  if (!queued) {
+    startSession({
+      sessionId: reg.sessionId,
+      prompt: finalPrompt,
+      cwd: reg.cwd,
+    });
+  }
+
+  logActivity({
+    userProfile: opts.userProfile,
+    eventType: "move_activated",
+    sessionId: reg.sessionId || undefined,
+    summary: `Move activated (from widget): ${config.label}`,
+    metadata: { moveName: reg.moveName, apiToken: opts.apiToken, instanceId: reg.instanceId, phase: "activate" },
+  });
+
+  return { ok: true, prompt: finalPrompt, moveRunId };
+}
+
+/**
+ * Clean up an attached move (user closed widget / detached).
+ * Removes the API registration and cleans up persisted registry if applicable.
+ */
+export function detachMove(apiToken: string): boolean {
+  const reg = moveApiRegistry.get(apiToken);
+  if (!reg) return false;
+
+  // Clean up persisted registry entry
+  if (reg.persist) {
+    const registry = readMoveRegistry(reg.cwd, reg.moveName);
+    if (registry[apiToken]) {
+      delete registry[apiToken];
+      writeMoveRegistry(reg.cwd, reg.moveName, registry);
+    }
+  }
+
+  moveApiRegistry.delete(apiToken);
+  console.log(`[move-runner] detached: ${reg.moveName} token=${apiToken}`);
+  return true;
+}
+
 // ── Activate Move ──
 
 export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMoveResult | { error: string }> {
@@ -894,6 +1051,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     label: config.widget.label,
     icon: config.widget.icon,
     autoOpen: config.widget.autoOpen,
+    mountOnAttach: config.widget.mountOnAttach,
     moduleUrl: `/api/moves/${moveName}/widget?cwd=${encodeURIComponent(cwd)}`,
     moveName,
   } : undefined;

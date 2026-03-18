@@ -239,6 +239,29 @@ export interface AmbientMoveRegistration {
   moveRunId: number;
 }
 
+// ── Attach Request (widget-first activation, phase 1) ──
+
+export interface AttachMoveOpts {
+  moveName: string;
+  sessionId?: string;
+  inputs: Record<string, unknown>;
+  cwd: string;
+  userProfile?: string;
+}
+
+export interface AttachMoveResult {
+  apiToken: string;
+  instanceId: string;
+  widget: {
+    label: string;
+    icon?: string;
+    autoOpen: true;
+    mountOnAttach: true;
+    moduleUrl: string;
+    moveName: string;
+  };
+}
+
 // ── Activation Request (from UI/API) ──
 
 export interface ActivateMoveOpts {
@@ -266,6 +289,7 @@ export interface ActivateMoveResult {
     label: string;
     icon?: string;
     autoOpen?: boolean;
+    mountOnAttach?: boolean;
     moduleUrl: string;                 // "/api/moves/<name>/widget?cwd=..."
     moveName: string;
   };
@@ -285,6 +309,13 @@ export interface MoveWidgetDeclaration {
   icon?: string;
   /** Auto-open the panel when the move activates. Default false. */
   autoOpen?: boolean;
+  /**
+   * Mount the widget immediately when the move is attached to the composer,
+   * BEFORE any message is sent. The widget opens, the user configures it
+   * (writing to state via callOp), then triggers activation. Requires `api`
+   * declaration on the move. Default false.
+   */
+  mountOnAttach?: boolean;
 }
 
 /** Declared in move.json — defines the ops a move provides */
