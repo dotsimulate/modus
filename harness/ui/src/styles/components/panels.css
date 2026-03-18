@@ -313,8 +313,9 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  min-width: 0;
+  min-width: 80px;
   max-width: 160px;
+  flex-shrink: 0;
   border-bottom: 2px solid transparent;
   transition: border-color 0.1s ease;
 }

@@ -11,7 +11,7 @@ import React, { useState, useEffect, useRef, type ComponentType } from "react";
 import * as ReactModule from "react";
 import * as ReactJSXRuntime from "react/jsx-runtime";
 import * as ReactJSXDevRuntime from "react/jsx-dev-runtime";
-import { callMoveOp, type MoveWidgetInfo } from "../api";
+import { callMoveOp, activateAttachedMoveApi, type MoveWidgetInfo } from "../api";
 import { authHeaders } from "../api/_fetch";
 
 export type MoveWidgetProps = {
@@ -25,6 +25,13 @@ export type MoveWidgetProps = {
     error?: string;
   }>;
   submitMessage: (prompt: string) => Promise<void>;
+  /**
+   * Widget-first activation: triggers gather() + message send from the widget.
+   * Only available for mountOnAttach moves. Runs gather() (which reads from
+   * state the widget populated via callOp), then sends the resulting prompt
+   * as a message to the session. Optional text is appended after gather output.
+   */
+  activate?: (text?: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
 type Props = {
@@ -32,6 +39,8 @@ type Props = {
   apiToken: string;
   instanceId: string;
   sessionId: string;
+  /** Whether this widget was mounted via mountOnAttach (enables activate prop) */
+  mountedOnAttach?: boolean;
 };
 
 /**
@@ -82,7 +91,7 @@ ${js.replace(/import\s*\{([^}]+)\}\s*from\s*["']__MODUS_REACT__["']/g, 'const {$
   }
 }
 
-export function MoveWidget({ widget, apiToken, instanceId, sessionId }: Props) {
+export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnAttach }: Props) {
   const [Component, setComponent] = useState<ComponentType<MoveWidgetProps> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const loadedUrl = useRef<string | null>(null);
@@ -110,6 +119,13 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId }: Props) {
     });
   };
 
+  const activate = mountedOnAttach
+    ? async (text?: string) => {
+        const result = await activateAttachedMoveApi(widget.moveName, apiToken, text);
+        return { ok: result.ok, error: result.error };
+      }
+    : undefined;
+
   if (error) {
     return <div className="panel-empty" style={{ color: "var(--color-error, #e55)" }}>{error}</div>;
   }
@@ -126,6 +142,7 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId }: Props) {
       moveName={widget.moveName}
       callOp={callOp}
       submitMessage={submitMessage}
+      activate={activate}
     />
   );
 }

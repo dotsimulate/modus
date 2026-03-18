@@ -1,9 +1,9 @@
 /**
- * Chess move — API contract move.
+ * Chess move — API contract move (widget-first).
  *
- * Declares handlers for chess ops. State managed via ctx.state API.
- * User plays White (via UI widget). Agent plays Black (via modus_submit).
- * Game state persists to disk — games are resumable across sessions.
+ * User picks their color from the widget, then hits "Start Game" which
+ * calls the setup op + activate(). gather() reads state to know who
+ * plays what. Handlers validate turns based on userColor.
  */
 
 import { Chess } from "chess.js";
@@ -15,13 +15,15 @@ interface ChessState {
   fen: string;
   moves: string[];
   status: "active" | "checkmate" | "stalemate" | "draw" | "resigned";
+  userColor: "w" | "b";
 }
 
-function newGameState(): ChessState {
+function newGameState(userColor: "w" | "b" = "w"): ChessState {
   return {
     fen: new Chess().fen(),
     moves: [],
     status: "active",
+    userColor,
   };
 }
 
@@ -50,7 +52,21 @@ function statusFromChess(chess: Chess): ChessState["status"] {
 // ── gather() ──
 
 export async function gather(ctx: MoveContext): Promise<string> {
-  return `You are playing chess as Black. The user plays White through the UI.
+  // Read state to determine color assignment (set by widget setup op)
+  const stateDir = `${ctx.cwd}/.modus/moves/chess/state`;
+  let userColor: "w" | "b" = "w";
+  if (ctx.instanceId) {
+    try {
+      const raw = await Bun.file(`${stateDir}/${ctx.instanceId}.json`).text();
+      const parsed = JSON.parse(raw) as ChessState;
+      if (parsed.userColor) userColor = parsed.userColor;
+    } catch { /* default to white */ }
+  }
+
+  const agentColor = userColor === "w" ? "Black" : "White";
+  const userColorName = userColor === "w" ? "White" : "Black";
+
+  return `You are playing chess as ${agentColor}. The user plays ${userColorName} through the UI.
 
 Game token: \`${ctx.apiToken}\`
 Game ID: \`${ctx.instanceId}\`
@@ -67,8 +83,9 @@ Game ID: \`${ctx.instanceId}\`
 \`{ "op": "resign" }\`
 
 ## Rules
-- Standard chess. You are Black.
-- Wait for the user's move before playing yours. You'll be notified when they move.
+- Standard chess. You are ${agentColor}.
+- ${userColor === "w" ? "The user moves first. Wait for their move before playing yours." : "You move first (White). Make your opening move now."}
+- You'll be notified when the user moves.
 - Illegal moves return an error. No hints. Figure it out.
 - Play to win.`;
 }
@@ -76,6 +93,16 @@ Game ID: \`${ctx.instanceId}\`
 // ── Handlers ──
 
 export const handlers: Record<string, MoveApiHandler> = {
+  setup: async (ctx: MoveApiContext, data: Record<string, unknown>) => {
+    const userColor = data.userColor as "w" | "b";
+    if (userColor !== "w" && userColor !== "b") {
+      return { ok: false, error: "userColor must be 'w' or 'b'" };
+    }
+    const state = newGameState(userColor);
+    await ctx.state.set(state);
+    return { ok: true, message: `Game ready. User plays ${userColor === "w" ? "White" : "Black"}.` };
+  },
+
   move: async (ctx: MoveApiContext, data: Record<string, unknown>) => {
     const raw = await ctx.state.get<ChessState>();
     const { chess, state } = loadGame(raw);
@@ -94,8 +121,8 @@ export const handlers: Record<string, MoveApiHandler> = {
       return { ok: false, error: "Provide 'move' (SAN) or 'from'+'to' (coordinates)" };
     }
 
-    // Validate turn — user is White, agent is Black
-    const expectedTurn = ctx.caller === "user" ? "w" : "b";
+    // Validate turn — user plays userColor, agent plays the other
+    const expectedTurn = ctx.caller === "user" ? state.userColor : (state.userColor === "w" ? "b" : "w");
     if (chess.turn() !== expectedTurn) {
       return { ok: false, error: "Not your turn" };
     }
@@ -141,12 +168,19 @@ export const handlers: Record<string, MoveApiHandler> = {
 
   board: async (ctx: MoveApiContext) => {
     const raw = await ctx.state.get<ChessState>();
+    if (!raw) {
+      return { ok: false, error: "No game in progress" };
+    }
     const { chess, state } = loadGame(raw);
+    const userLabel = state.userColor === "w" ? "White (user)" : "Black (user)";
+    const agentLabel = state.userColor === "w" ? "Black (agent)" : "White (agent)";
+    const turnLabel = chess.turn() === state.userColor ? userLabel : agentLabel;
     const lines: string[] = [
       chess.ascii(),
       `FEN: ${state.fen}`,
-      `Turn: ${chess.turn() === "w" ? "White (user)" : "Black (you)"}`,
+      `Turn: ${turnLabel}`,
       `Moves: ${state.moves.join(" ")}`,
+      `UserColor: ${state.userColor}`,
     ];
     if (chess.isCheck()) lines.push("CHECK");
     if (state.status !== "active") lines.push(gameOverReason(chess));

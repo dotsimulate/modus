@@ -59,8 +59,14 @@ Built-in moves live in `harness/moves/`. Project-local moves live in `.modus/mov
   → **Branch/background move**. `mode: "branch"` or `"background"`, set `agentProfile`.
   Read [references/branch-moves.md](references/branch-moves.md) (same patterns as submit moves but spawned).
 
-**"Needs a UI widget"** (interactive visual component)
-  → Any move type can add a `widget` block. Read [references/widget-moves.md](references/widget-moves.md).
+**"Standalone tool/UI that optionally involves the agent"** (widget-first)
+  → **mountOnAttach move**. Widget opens immediately on attach, no agent until user triggers.
+  Read [references/widget-moves.md](references/widget-moves.md).
+  Key: `widget.mountOnAttach: true`, `api` block required, `activate()` prop in widget.
+  Examples: calendar, chess (color selection → start game).
+
+**"Needs a UI widget alongside the agent"** (agent-first with visual feedback)
+  → Any move type can add a `widget` block. Same reference: [references/widget-moves.md](references/widget-moves.md).
 
 ## Three Execution Modes
 
@@ -145,6 +151,48 @@ export const handlers: Record<string, MoveApiHandler> = {
   },
 };
 ```
+
+### Widget-first (mountOnAttach) move
+
+```json
+{
+  "name": "my-widget",
+  "label": "My Widget",
+  "description": "Standalone widget, optionally brings in agent",
+  "icon": "layout",
+  "mode": "inline",
+  "inputs": [],
+  "api": {
+    "tokenPrefix": "mywid",
+    "ops": {
+      "get-state": { "description": "Read current state" },
+      "configure": {
+        "description": "Set config before activation",
+        "schema": {
+          "type": "object",
+          "properties": { "key": { "type": "string" }, "value": { "type": "string" } },
+          "required": ["key", "value"]
+        }
+      }
+    },
+    "state": { "persist": true }
+  },
+  "submit": { "required": false },
+  "session": { "afterSubmit": "continue" },
+  "widget": {
+    "component": "widget.tsx",
+    "panel": "right",
+    "label": "My Widget",
+    "icon": "layout",
+    "autoOpen": true,
+    "mountOnAttach": true
+  },
+  "tags": ["widget-first"]
+}
+```
+
+Widget receives `activate` prop — call it to trigger gather() + agent involvement.
+No composer chip. No agent until the widget says so. See [references/widget-moves.md](references/widget-moves.md).
 
 ## Key Rules
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi } from "./api";
+import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi } from "./api";
 import { customPageView, getCustomPageId, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -100,6 +100,7 @@ function AppShell() {
     apiToken: string;
     instanceId: string;
     sessionId: string;
+    mountedOnAttach?: boolean;
   }>>([]);
   const widgetJustSetRef = useRef(false);
   const prevSessionIdRef = useRef<string | null>(null);
@@ -603,6 +604,28 @@ function AppShell() {
                 projectCwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
                 userProfile={activeUserProfile ?? undefined}
                 autoFocus={view === "chat" && !!activeSession?.id}
+                onMoveAttached={(result) => {
+                  // Widget-first: mount widget immediately on attach (before any message)
+                  const widgetSessionId = activeSession?.id ?? "";
+                  console.log(`[onMoveAttached] widget pre-mount: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
+                  widgetJustSetRef.current = true;
+                  const newWidget = {
+                    widget: result.widget,
+                    apiToken: result.apiToken,
+                    instanceId: result.instanceId,
+                    sessionId: widgetSessionId,
+                    mountedOnAttach: true,
+                  };
+                  setActiveMoveWidgets(prev => {
+                    const filtered = prev.filter(w => w.instanceId !== result.instanceId);
+                    return [...filtered, newWidget];
+                  });
+                  setRightPanelOpen(true);
+                }}
+                onMoveDetached={(apiToken) => {
+                  // Remove widget when move is detached
+                  setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
+                }}
                 onMoveActivated={(result) => {
                   refreshSessions();
                   const cwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
@@ -650,6 +673,10 @@ function AppShell() {
               messages={activeSession?.messages}
               requestView={requestRightPanelView}
               onRequestViewHandled={() => setRequestRightPanelView(null)}
+              onWidgetClose={(apiToken, moveName) => {
+                setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
+                detachMoveApi(moveName, apiToken).catch(() => {});
+              }}
             />
           </>
         )}
