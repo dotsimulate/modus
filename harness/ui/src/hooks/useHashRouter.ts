@@ -19,6 +19,7 @@ function parseHash(hash: string): { profile: string | null; view: View; sessionI
   if (slash === -1) {
     if (VIEW_SLUGS.has(compat)) return { profile: null, view: compat as View, sessionId: null };
     if (compat.startsWith("page:")) return { profile: null, view: compat as View, sessionId: null };
+    if (compat.startsWith("move-page:")) return { profile: null, view: compat as View, sessionId: null };
     // Bare session ID = chat session with no profile in URL
     if (isSessionId(compat)) return { profile: null, view: "chat", sessionId: compat };
     return { profile: compat, view: DEFAULT_VIEW, sessionId: null };
@@ -31,6 +32,7 @@ function parseHash(hash: string): { profile: string | null; view: View; sessionI
   // #profile/sessionId
   if (isSessionId(suffix)) return { profile: prefix || null, view: "chat", sessionId: suffix };
   if (suffix.startsWith("page:")) return { profile: prefix || null, view: suffix as View, sessionId: null };
+  if (suffix.startsWith("move-page:")) return { profile: prefix || null, view: suffix as View, sessionId: null };
 
   const view = VIEW_SLUGS.has(suffix) ? (suffix as View) : DEFAULT_VIEW;
   return { profile: prefix || null, view, sessionId: null };
