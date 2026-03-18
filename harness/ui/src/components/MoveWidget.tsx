@@ -5,9 +5,13 @@
  * transpiled on-the-fly from the move's directory. The component receives
  * MoveWidgetProps including a `callOp` helper for calling move API ops
  * as the user (caller: "user").
+ *
+ * Module-level cache: loaded widget components are cached by URL so that
+ * React unmount/remount cycles don't re-fetch and re-parse the module.
+ * The cache persists for the lifetime of the page (survives React tree changes).
  */
 
-import React, { useState, useEffect, useRef, type ComponentType } from "react";
+import React, { useState, useEffect, useRef, useCallback, type ComponentType } from "react";
 import * as ReactModule from "react";
 import * as ReactJSXRuntime from "react/jsx-runtime";
 import * as ReactJSXDevRuntime from "react/jsx-dev-runtime";
@@ -34,7 +38,7 @@ export type MoveWidgetProps = {
   activate?: (text?: string) => Promise<{ ok: boolean; error?: string }>;
 };
 
-type Props = {
+export type Props = {
   widget: MoveWidgetInfo;
   apiToken: string;
   instanceId: string;
@@ -43,12 +47,25 @@ type Props = {
   mountedOnAttach?: boolean;
 };
 
+// ── Module-level widget cache ──
+// Persists across React unmount/remount cycles. Keyed by module URL.
+const moduleCache = new Map<string, ComponentType<MoveWidgetProps>>();
+
+/** Evict a module from the cache (for reload). Returns true if it was cached. */
+export function evictWidgetModule(url: string): boolean {
+  return moduleCache.delete(url);
+}
+
 /**
  * Fetch widget JS, inject the host app's React into it via blob URL,
  * then dynamically import the blob. This avoids Vite intercepting the
  * import and appending ?import which breaks the harness route.
  */
 async function loadWidgetModule(url: string, moveName: string): Promise<ComponentType<MoveWidgetProps>> {
+  // Check module cache first (unless cache: "none" — handled by caller)
+  const cached = moduleCache.get(url);
+  if (cached) return cached;
+
   const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) throw new Error(`Widget fetch failed: ${res.status}`);
   let js = await res.text();
@@ -85,6 +102,8 @@ ${js.replace(/import\s*\{([^}]+)\}\s*from\s*["']__MODUS_REACT__["']/g, 'const {$
     const mod = await import(/* @vite-ignore */ blobUrl);
     const Comp = mod.default ?? mod.Widget ?? mod[moveName];
     if (!Comp) throw new Error("Widget module has no default export");
+    // Store in module cache
+    moduleCache.set(url, Comp);
     return Comp;
   } finally {
     URL.revokeObjectURL(blobUrl);
@@ -92,32 +111,48 @@ ${js.replace(/import\s*\{([^}]+)\}\s*from\s*["']__MODUS_REACT__["']/g, 'const {$
 }
 
 export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnAttach }: Props) {
-  const [Component, setComponent] = useState<ComponentType<MoveWidgetProps> | null>(null);
+  const [Component, setComponent] = useState<ComponentType<MoveWidgetProps> | null>(
+    // Synchronous cache hit — no loading flash on remount
+    () => moduleCache.get(widget.moduleUrl) ?? null,
+  );
   const [error, setError] = useState<string | null>(null);
-  const loadedUrl = useRef<string | null>(null);
+  const loadedUrl = useRef<string | null>(widget.moduleUrl);
 
   useEffect(() => {
-    if (loadedUrl.current === widget.moduleUrl) return;
+    if (loadedUrl.current === widget.moduleUrl && Component) return;
     loadedUrl.current = widget.moduleUrl;
+
+    // For cache: "none", evict before loading
+    if (widget.cache === "none") {
+      evictWidgetModule(widget.moduleUrl);
+    }
+
+    // Synchronous cache check (module or instance cache mode)
+    const cached = moduleCache.get(widget.moduleUrl);
+    if (cached) {
+      setComponent(() => cached);
+      return;
+    }
+
     setComponent(null);
     setError(null);
 
     loadWidgetModule(widget.moduleUrl, widget.moveName)
       .then(Comp => setComponent(() => Comp))
       .catch(err => setError(`Failed to load widget: ${err}`));
-  }, [widget.moduleUrl, widget.moveName]);
+  }, [widget.moduleUrl, widget.moveName, widget.cache]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const callOp = async (op: string, data?: Record<string, unknown>) => {
+  const callOp = useCallback(async (op: string, data?: Record<string, unknown>) => {
     return callMoveOp(widget.moveName, apiToken, op, data);
-  };
+  }, [widget.moveName, apiToken]);
 
-  const submitMessage = async (prompt: string) => {
+  const submitMessage = useCallback(async (prompt: string) => {
     await fetch(`/api/sessions/${sessionId}/messages`, {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt }),
     });
-  };
+  }, [sessionId]);
 
   const activate = mountedOnAttach
     ? async (text?: string) => {

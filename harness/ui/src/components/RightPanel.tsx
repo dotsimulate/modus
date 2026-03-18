@@ -6,7 +6,7 @@ import { browsePath, readFileContent, type BrowseResult, type MoveWidgetInfo } f
 import type { Message } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser } from "./FileBrowser";
-import { MoveWidget } from "./MoveWidget";
+import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { CodeMirrorEditor } from "./CodeMirrorEditor";
 import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
@@ -78,6 +78,8 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   const [htmlPreview, setHtmlPreview] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenBrowser, setFullscreenBrowser] = useState(false);
+  // Reload counter per widget — incrementing forces a remount by changing the key
+  const [widgetReloadKeys, setWidgetReloadKeys] = useState<Record<string, number>>({});
 
   // Handle imperative view requests (e.g. open session-edits from chat)
   useEffect(() => {
@@ -96,11 +98,16 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     }
   }, [activePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-switch to a widget tab when a new widget with autoOpen appears
+  // Auto-switch to a widget tab when a genuinely new widget with autoOpen appears
+  const prevWidgetIds = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const latest = moveWidgets?.findLast(w => w.widget.autoOpen);
-    if (latest) {
-      setActiveView(`widget:${latest.instanceId}`);
+    const currentIds = new Set(moveWidgets?.map(w => w.instanceId) ?? []);
+    const newAutoOpen = moveWidgets?.findLast(
+      w => w.widget.autoOpen && !prevWidgetIds.current.has(w.instanceId),
+    );
+    prevWidgetIds.current = currentIds;
+    if (newAutoOpen) {
+      setActiveView(`widget:${newAutoOpen.instanceId}`);
       if (!open) onOpen();
     }
   }, [moveWidgets]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -220,10 +227,14 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
       return <SessionEditsView messages={messages ?? []} />;
     }
 
-    // Move widget
+    // Move widget — for non-instance-cached widgets, render inline (instance-cached render below)
     if (activeView.startsWith("widget:") && moveWidgets) {
       const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
-      return w ? <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} mountedOnAttach={w.mountedOnAttach} /> : null;
+      if (w && (w.widget.cache ?? "instance") !== "instance") {
+        return <MoveWidget key={`${w.instanceId}-${widgetReloadKeys[w.instanceId] ?? 0}`} widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} mountedOnAttach={w.mountedOnAttach} />;
+      }
+      // instance-cached widgets are rendered persistently below — return null so the persistent layer shows
+      if (w) return null;
     }
 
     // Pinboard
@@ -408,6 +419,20 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 {w.widget.label}
               </button>
               <button
+                className="rp-tab-close rp-tab-refresh"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  evictWidgetModule(w.widget.moduleUrl);
+                  setWidgetReloadKeys(prev => ({ ...prev, [w.instanceId]: (prev[w.instanceId] ?? 0) + 1 }));
+                }}
+                title="Reload widget"
+              >
+                <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
+                  <path d="M10 2v3H7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9.5 7.5a4 4 0 1 1-.9-4.1L10 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                </svg>
+              </button>
+              <button
                 className="rp-tab-close"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -541,6 +566,15 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
           )}
           <div className={`right-panel-content${isEditMode ? " right-panel-content--editing" : ""}`}>
             {renderContent()}
+            {/* Persistent widget layer — instance-cached widgets stay mounted, hidden when not active */}
+            {moveWidgets?.filter(w => (w.widget.cache ?? "instance") === "instance").map(w => (
+              <div
+                key={`${w.instanceId}-${widgetReloadKeys[w.instanceId] ?? 0}`}
+                style={{ display: activeView === `widget:${w.instanceId}` ? "contents" : "none" }}
+              >
+                <MoveWidget widget={w.widget} apiToken={w.apiToken} instanceId={w.instanceId} sessionId={w.sessionId} mountedOnAttach={w.mountedOnAttach} />
+              </div>
+            ))}
           </div>
         </div>
       </div>
