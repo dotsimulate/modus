@@ -10,6 +10,13 @@ export type MoveInput = {
   placeholder?: string;
 };
 
+export type MovePageInfo = {
+  id: string;
+  title: string;
+  icon?: string;
+  nav?: boolean;
+};
+
 export type MoveListItem = {
   name: string;
   label: string;
@@ -21,6 +28,7 @@ export type MoveListItem = {
   inputs?: MoveInput[];
   tags?: string[];
   widget?: { mountOnAttach?: boolean };
+  page?: MovePageInfo;
 };
 
 export type MoveWidgetInfo = {
@@ -30,6 +38,8 @@ export type MoveWidgetInfo = {
   mountOnAttach?: boolean;
   moduleUrl: string;
   moveName: string;
+  /** Widget caching strategy: "instance" (default) keeps DOM alive, "module" caches JS only, "none" always reimports */
+  cache?: "instance" | "module" | "none";
 };
 
 export type ActivateMoveResult = {
