@@ -1,82 +1,18 @@
-import { memo, useState, useEffect, useRef, useSyncExternalStore, type ReactNode, type MouseEvent } from "react";
+import { memo, useState, useEffect, useRef, type ReactNode } from "react";
 import type { Message, ToolCall } from "../api";
 import { tokenParam } from "../api/_fetch";
-import * as audioPlayer from "../audio-player";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
 import { StreamingCursor } from "./StreamingCursor";
 import { formatProviderTokenUsage } from "./providerStats";
 import { CopyMessageButton } from "./CopyMessageButton";
+import { AudioArtifact } from "./AudioArtifact";
 
 function artifactSrc(url: string): string {
   const tp = tokenParam();
   if (!tp) return url;
   return `${url}?${tp}`;
-}
-
-function useAudioPlayer() {
-  return useSyncExternalStore(audioPlayer.subscribe, audioPlayer.getState);
-}
-
-function sessionIdFromUrl(url: string): string | undefined {
-  const m = url.match(/\/api\/sessions\/([^/]+)\/artifacts\//);
-  return m?.[1];
-}
-
-function AudioArtifact({ artifact }: { artifact: NonNullable<Message["artifacts"]>[number] }) {
-  const state = useAudioPlayer();
-  const isActive = state.activeId === artifact.id;
-  const playing = isActive && state.playing;
-  const currentTime = isActive ? state.currentTime : 0;
-  const duration = isActive ? state.duration : 0;
-  const sid = sessionIdFromUrl(artifact.url);
-
-  useEffect(() => {
-    audioPlayer.autoPlay(artifact.id, artifact.url, sid);
-  }, [artifact.id, artifact.url, sid]);
-
-  function fmt(s: number) {
-    if (!s || !isFinite(s)) return "0:00";
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${sec.toString().padStart(2, "0")}`;
-  }
-
-  function handleToggle() {
-    audioPlayer.toggle(artifact.id, artifact.url, sid);
-  }
-
-  function handleSeek(e: MouseEvent<HTMLDivElement>) {
-    if (!isActive || !duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    audioPlayer.seek(((e.clientX - rect.left) / rect.width) * duration);
-  }
-
-  const pct = duration ? (currentTime / duration) * 100 : 0;
-
-  return (
-    <div className="audio-artifact" title={artifact.name}>
-      <div className="audio-artifact-player">
-        <button className="audio-artifact-btn" onClick={handleToggle} aria-label={playing ? "pause" : "play"}>
-          {playing ? (
-            <svg width="7" height="8" viewBox="0 0 7 8" fill="currentColor">
-              <rect x="0" y="0" width="2" height="8" rx="0.5"/>
-              <rect x="5" y="0" width="2" height="8" rx="0.5"/>
-            </svg>
-          ) : (
-            <svg width="7" height="8" viewBox="0 0 7 8" fill="currentColor">
-              <path d="M0 0 L7 4 L0 8 Z"/>
-            </svg>
-          )}
-        </button>
-        <div className="audio-artifact-track" onClick={handleSeek}>
-          <div className="audio-artifact-fill" style={{ width: `${pct}%` }} />
-        </div>
-        <div className="audio-artifact-time">{fmt(currentTime)}<span className="audio-artifact-time--total">/{fmt(duration)}</span></div>
-      </div>
-    </div>
-  );
 }
 
 /** Count all tool calls recursively, including sub-agent nested tools */
@@ -160,7 +96,7 @@ function renderArtifact(
     );
   }
   if (artifact.mime.startsWith("audio/")) {
-    return <AudioArtifact key={artifact.id} artifact={artifact} />;
+    return <AudioArtifact key={artifact.id} artifact={artifact} autoPlay />;
   }
   if (artifact.mime.startsWith("video/")) {
     return (

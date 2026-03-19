@@ -942,22 +942,49 @@ app.get("/api/file-serve", async (c) => {
   const raw = new URL(c.req.url).searchParams.get("path");
   if (!raw) return c.json({ error: "path required" }, 400);
   const { resolve, extname } = await import("path");
-  const { readFile } = await import("fs/promises");
   const target = resolve(raw);
+  const file = Bun.file(target);
+  if (!(await file.exists())) return c.json({ error: "not found" }, 400);
   const ext = extname(target).toLowerCase();
   const mimeMap: Record<string, string> = {
     ".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg", ".gif": "image/gif", ".bmp": "image/bmp",
     ".ico": "image/x-icon", ".svg": "image/svg+xml", ".avif": "image/avif",
     ".tiff": "image/tiff", ".tif": "image/tiff",
+    ".wav": "audio/wav", ".mp3": "audio/mpeg", ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4", ".aac": "audio/aac",
   };
   const mime = mimeMap[ext] ?? "application/octet-stream";
-  try {
-    const buf = await readFile(target);
-    return new Response(buf, { headers: { "Content-Type": mime, "Cache-Control": "max-age=60" } });
-  } catch (err: any) {
-    return c.json({ error: err.code === "ENOENT" ? "not found" : err.message }, 400);
+  const size = file.size;
+  const rangeHeader = c.req.header("Range");
+
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = Number(match[1]);
+      const end = match[2] ? Number(match[2]) : size - 1;
+      const chunk = file.slice(start, end + 1);
+      return new Response(chunk, {
+        status: 206,
+        headers: {
+          "Content-Type": mime,
+          "Content-Length": String(end - start + 1),
+          "Content-Range": `bytes ${start}-${end}/${size}`,
+          "Accept-Ranges": "bytes",
+          "Cache-Control": "max-age=60",
+        },
+      });
+    }
   }
+
+  return new Response(file, {
+    headers: {
+      "Content-Type": mime,
+      "Content-Length": String(size),
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "max-age=60",
+    },
+  });
 });
 
 app.put("/api/file-write", async (c) => {

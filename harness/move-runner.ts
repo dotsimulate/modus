@@ -24,15 +24,15 @@ import type {
   AttachMoveOpts, AttachMoveResult,
   MoveDB, HarnessBridge, MoveRun,
   MoveApiHandler, MoveApiContext, MoveApiRegistration, MoveStateAPI,
-  AmbientMoveRegistration,
+  AmbientMoveRegistration, MoveAssistantTurnContext,
 } from "./move-types";
 import {
   type StartSessionOpts,
-  getActiveSession, queueMessage, startSession,
+  broadcastUiEvent, getActiveSession, queueMessage, startSession, watchSessionExchanges,
 } from "./session-manager";
 import {
   listSessions as dbListSessions, getSession as dbGetSession,
-  searchSessions as dbSearchSessions,
+  searchSessions as dbSearchSessions, getSessionMessages, type TurnContent,
 } from "./db";
 import {
   insertMoveRun, updateMoveRun, getMoveRuns,
@@ -159,6 +159,20 @@ const moveApiRegistry = new Map<string, MoveApiRegistration>();
 /** instanceId → state (in-memory) */
 const moveApiState = new Map<string, unknown>();
 
+type SessionTurnListener = {
+  sessionId: string;
+  onTurn: (turn: TurnContent) => void | Promise<void>;
+};
+
+/** sessionId → listenerKey → listener */
+const sessionTurnListeners = new Map<string, Map<string, SessionTurnListener>>();
+
+/** sessionId → session-manager unsubscribe */
+const sessionTurnWatchers = new Map<string, () => void>();
+
+/** apiToken → bound sessionId for move assistant hook cleanup/rebind */
+const moveAssistantTurnBindings = new Map<string, string>();
+
 /** Check if a token is a move-api token */
 export function isMoveApiToken(token: string): boolean {
   return token.startsWith(MAPI_PREFIX);
@@ -169,6 +183,69 @@ function generateInstanceId(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 8);
+}
+
+function latestAssistantTurnForSession(sessionId: string, maxSeq: number, fallbackText?: string): TurnContent {
+  const turns = getSessionMessages(sessionId);
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i]!;
+    if (turn.role === "assistant" && turn.seq <= maxSeq) return turn;
+  }
+  return {
+    role: "assistant",
+    seq: maxSeq,
+    text: fallbackText ?? "",
+    timestamp: Date.now(),
+  };
+}
+
+function ensureSessionTurnWatcher(sessionId: string): void {
+  if (sessionTurnWatchers.has(sessionId)) return;
+  const unsubscribe = watchSessionExchanges(sessionId, (payload) => {
+    const listeners = sessionTurnListeners.get(sessionId);
+    if (!listeners || listeners.size === 0) return;
+    const turn = latestAssistantTurnForSession(sessionId, payload.seq, payload.lastResponse);
+    for (const listener of listeners.values()) {
+      Promise.resolve(listener.onTurn(turn)).catch((err) => {
+        console.error(`[move-runner] session turn listener failed for ${sessionId}:`, err);
+      });
+    }
+  });
+  sessionTurnWatchers.set(sessionId, unsubscribe);
+}
+
+function registerSessionTurnListener(
+  listenerKey: string,
+  sessionId: string,
+  onTurn: (turn: TurnContent) => void | Promise<void>,
+): void {
+  if (!sessionId) return;
+  const listeners = sessionTurnListeners.get(sessionId) ?? new Map<string, SessionTurnListener>();
+  listeners.set(listenerKey, { sessionId, onTurn });
+  sessionTurnListeners.set(sessionId, listeners);
+  ensureSessionTurnWatcher(sessionId);
+}
+
+function unregisterSessionTurnListener(listenerKey: string, sessionId: string): void {
+  const listeners = sessionTurnListeners.get(sessionId);
+  if (!listeners) return;
+  listeners.delete(listenerKey);
+  if (listeners.size > 0) return;
+  sessionTurnListeners.delete(sessionId);
+  const unsubscribe = sessionTurnWatchers.get(sessionId);
+  if (unsubscribe) {
+    unsubscribe();
+    sessionTurnWatchers.delete(sessionId);
+  }
+}
+
+export function watchMoveSessionTurns(
+  sessionId: string,
+  onTurn: (turn: TurnContent) => void | Promise<void>,
+): () => void {
+  const listenerKey = `adhoc:${generateToken()}`;
+  registerSessionTurnListener(listenerKey, sessionId, onTurn);
+  return () => unregisterSessionTurnListener(listenerKey, sessionId);
 }
 
 // ── Registry Persistence ──
@@ -198,6 +275,7 @@ function registerMoveApi(
   cwd: string,
   handlers: Record<string, MoveApiHandler>,
   persist: boolean,
+  userProfile?: string,
 ): string {
   const config = getMove(moveName, cwd);
   const prefix = config?.api?.tokenPrefix ?? moveName;
@@ -208,6 +286,7 @@ function registerMoveApi(
     instanceId,
     sessionId,
     cwd,
+    userProfile,
     handlers,
     persist,
   });
@@ -266,6 +345,58 @@ export function buildStateApi(instanceId: string, moveName: string, cwd: string,
       }
     },
   };
+}
+
+async function syncMoveAssistantTurnListener(
+  apiToken: string,
+  mod: MoveModule | null | undefined,
+): Promise<void> {
+  const reg = moveApiRegistry.get(apiToken);
+  const previousSessionId = moveAssistantTurnBindings.get(apiToken);
+  if (previousSessionId && previousSessionId !== reg?.sessionId) {
+    unregisterSessionTurnListener(apiToken, previousSessionId);
+    moveAssistantTurnBindings.delete(apiToken);
+  }
+
+  if (!reg?.sessionId || !mod?.onAssistantTurn) return;
+
+  registerSessionTurnListener(apiToken, reg.sessionId, async (assistantTurn) => {
+    const active = getActiveSession(reg.sessionId);
+    const ctx: MoveAssistantTurnContext = {
+      instanceId: reg.instanceId,
+      sessionId: reg.sessionId,
+      moveName: reg.moveName,
+      cwd: reg.cwd,
+      userProfile: reg.userProfile,
+      state: buildStateApi(reg.instanceId, reg.moveName, reg.cwd, reg.persist),
+      session: {
+        lastAssistantText: active?.lastAssistantText ?? assistantTurn.text,
+        seq: active?.seq ?? assistantTurn.seq,
+        profile: active?.profile,
+        exchangeCount: active?.exchangeCount ?? 0,
+      },
+      assistant: assistantTurn,
+      emit: (event) => {
+        broadcastUiEvent(reg.sessionId, {
+          type: "ui",
+          action: "move-widget-event",
+          moveName: reg.moveName,
+          instanceId: reg.instanceId,
+          apiToken,
+          event,
+        });
+      },
+    };
+    await mod.onAssistantTurn!(ctx);
+  });
+  moveAssistantTurnBindings.set(apiToken, reg.sessionId);
+}
+
+function clearMoveAssistantTurnListener(apiToken: string): void {
+  const sessionId = moveAssistantTurnBindings.get(apiToken);
+  if (!sessionId) return;
+  unregisterSessionTurnListener(apiToken, sessionId);
+  moveAssistantTurnBindings.delete(apiToken);
 }
 
 /** Handle a move-api op call (called from modus-mcp.ts) */
@@ -339,6 +470,7 @@ export function rekeyMoveRegistrySession(oldSessionId: string, newSessionId: str
   for (const [token, reg] of moveApiRegistry) {
     if (reg.sessionId === oldSessionId) {
       reg.sessionId = newSessionId;
+      void loadMoveModule(reg.moveName, reg.cwd).then((mod) => syncMoveAssistantTurnListener(token, mod));
       matched++;
       console.log(`[move-reg] rekey: token=${token} ${oldSessionId} → ${newSessionId}`);
     }
@@ -455,11 +587,11 @@ async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | n
     delete require.cache[resolved];
     const mod = await import(modulePath);
     // Ensure context.ts reloads on subsequent calls for hot-reloads
-    if (mod?.gather || mod?.onSubmit) {
+    if (mod?.gather || mod?.onSubmit || mod?.onAssistantTurn) {
       const futureResolved = require.resolve(modulePath);
       if (futureResolved !== resolved) {
         delete require.cache[futureResolved];
-        require.cache[resolved] = null;
+        delete require.cache[resolved];
       }
     }
     return mod as MoveModule;
@@ -753,7 +885,9 @@ export async function attachMove(opts: AttachMoveOpts): Promise<AttachMoveResult
     cwd,
     mod.handlers,
     config.api.state?.persist ?? false,
+    userProfile,
   );
+  await syncMoveAssistantTurnListener(apiToken, mod);
 
   logActivity({
     userProfile,
@@ -874,6 +1008,7 @@ export function detachMove(apiToken: string): boolean {
     }
   }
 
+  clearMoveAssistantTurnListener(apiToken);
   moveApiRegistry.delete(apiToken);
   console.log(`[move-runner] detached: ${reg.moveName} token=${apiToken}`);
   return true;
@@ -975,10 +1110,12 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
         cwd,
         mod.handlers,
         config.api.state?.persist ?? false,
+        userProfile,
       );
       // Make API token available in context for gather()
       moveCtx.apiToken = apiToken;
       moveCtx.instanceId = instanceId;
+      await syncMoveAssistantTurnListener(apiToken, mod);
     } else {
       return { error: `Move "${moveName}" declares api but context.ts has no handlers export` };
     }
@@ -1092,7 +1229,11 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     // Update registry so getActiveWidgetForSession(spawnedSessionId) works
     if (apiToken) {
       const reg = moveApiRegistry.get(apiToken);
-      if (reg) reg.sessionId = spawned.sessionId;
+      if (reg) {
+        reg.sessionId = spawned.sessionId;
+        const mod = await loadMoveModule(moveName, cwd);
+        await syncMoveAssistantTurnListener(apiToken, mod);
+      }
     }
 
     updateMoveRun(moveRunId, {

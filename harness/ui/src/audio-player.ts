@@ -26,6 +26,21 @@ export type PlaybackState = {
 
 type Listener = (state: PlaybackState) => void;
 
+declare global {
+  interface Window {
+    __MODUS_AUDIO_PLAYER__?: {
+      play: typeof play;
+      autoPlay: typeof autoPlay;
+      toggle: typeof toggle;
+      seek: typeof seek;
+      stop: typeof stop;
+      hasPlayed: typeof hasPlayed;
+      getState: typeof getState;
+      subscribe: typeof subscribe;
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Played-tracking (persisted in sessionStorage)
 // ---------------------------------------------------------------------------
@@ -100,7 +115,8 @@ function ensureElement(): HTMLAudioElement {
 
 function resolveUrl(url: string): string {
   const tp = tokenParam();
-  return tp ? `${url}?${tp}` : url;
+  if (!tp) return url;
+  return url.includes("?") ? `${url}&${tp}` : `${url}?${tp}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,4 +184,17 @@ export function getState(): PlaybackState {
 export function subscribe(fn: Listener): () => void {
   _listeners.add(fn);
   return () => _listeners.delete(fn);
+}
+
+if (typeof window !== "undefined") {
+  window.__MODUS_AUDIO_PLAYER__ = {
+    play,
+    autoPlay,
+    toggle,
+    seek,
+    stop,
+    hasPlayed,
+    getState,
+    subscribe,
+  };
 }

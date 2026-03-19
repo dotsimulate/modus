@@ -6,9 +6,9 @@ import type {
 } from "../../../harness/move-types";
 import {
   buildStateApi,
+  watchMoveSessionTurns,
 } from "../../../harness/move-runner";
 import {
-  watchSessionExchanges,
   queueMessage,
 } from "../../../harness/session-manager";
 import { readdirSync, readFileSync } from "fs";
@@ -394,8 +394,8 @@ export async function gather(ctx: MoveContext): Promise<string> {
   councils.set(instanceId, tracker);
 
   for (const member of members) {
-    const unsub = watchSessionExchanges(member.sessionId, (payload) => {
-      onMemberExchange(instanceId, member, payload.lastResponse);
+    const unsub = watchMoveSessionTurns(member.sessionId, (turn) => {
+      onMemberExchange(instanceId, member, turn.text);
     });
     watchers.push(unsub);
   }

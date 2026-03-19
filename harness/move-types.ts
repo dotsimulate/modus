@@ -1,3 +1,5 @@
+import type { TurnContent } from "./db";
+
 /**
  * Move Types — shared contracts for the move system.
  *
@@ -109,6 +111,8 @@ export interface MoveModule {
     data: Record<string, unknown>,
     inputs: Record<string, unknown>,
   ): Promise<SubmitResult>;
+  /** Optional hook for assistant round-end reactions on an active move instance */
+  onAssistantTurn?(ctx: MoveAssistantTurnContext): Promise<void>;
   /** API op handlers — keyed by op name, registered on activation for api moves */
   handlers?: Record<string, MoveApiHandler>;
   /** Optional — customize instance labels for the resume select input */
@@ -390,6 +394,24 @@ export interface MoveApiContext {
   notify: (message: string, emit?: { type: string; [key: string]: unknown }) => void;
 }
 
+/** Context passed to assistant turn hooks on active move instances */
+export interface MoveAssistantTurnContext {
+  instanceId: string;
+  sessionId: string;
+  moveName: string;
+  cwd: string;
+  userProfile: string | undefined;
+  state: MoveStateAPI;
+  session: {
+    lastAssistantText: string;
+    seq: number;
+    profile: string | undefined;
+    exchangeCount: number;
+  };
+  assistant: TurnContent;
+  emit: (event: { type: string; payload?: Record<string, unknown> }) => void;
+}
+
 /** State API for move handlers — abstracts in-memory vs persisted storage */
 export interface MoveStateAPI {
   get<T = unknown>(): Promise<T | undefined>;
@@ -403,6 +425,7 @@ export interface MoveApiRegistration {
   instanceId: string;
   sessionId: string;
   cwd: string;
+  userProfile?: string;
   handlers: Record<string, MoveApiHandler>;
   persist: boolean;
 }
