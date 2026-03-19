@@ -229,6 +229,8 @@ export interface MoveToken {
   maxAttempts: number;
   moveRunId: number | null;            // DB row for tracking
   spawnedSessionId: string | null;     // for branch/background modes
+  apiToken?: string;                   // API contract token (so onSubmit can pass it to spawned sessions)
+  instanceId?: string;                 // API contract instance ID
 }
 
 // ── Ambient Move Registration (persistent/gather-only moves) ──
