@@ -314,7 +314,12 @@ export async function handleMoveApiSubmit(
     },
   };
 
-  return handler(ctx, data);
+  // Pass the inner data payload to the handler, not the full {op, data} envelope.
+  // Agents may send {op: "log", data: {message: "..."}} or flat {op: "log", message: "..."}.
+  const payload = (typeof data.data === "object" && data.data !== null)
+    ? data.data as Record<string, unknown>
+    : data;
+  return handler(ctx, payload);
 }
 
 /** List active instances for a move (for {{openInstances}} template var resolution) */
@@ -1039,6 +1044,8 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     maxAttempts: config.submit?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
     moveRunId,
     spawnedSessionId: null,
+    apiToken,
+    instanceId,
   };
   tokenStore.set(token, moveToken);
 
@@ -1181,6 +1188,9 @@ export async function handleSubmit(
         moveToken.userProfile ?? active?.userProfile,
         { inputs: moveToken.inputs },
       );
+      // Carry API contract fields so onSubmit can pass them to spawned sessions
+      if (moveToken.apiToken) ctx.apiToken = moveToken.apiToken;
+      if (moveToken.instanceId) ctx.instanceId = moveToken.instanceId;
       submitResult = await mod.onSubmit(ctx, data, moveToken.inputs);
     }
   } catch (err) {
