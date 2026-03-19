@@ -11,12 +11,18 @@
  * The cache persists for the lifetime of the page (survives React tree changes).
  */
 
-import React, { useState, useEffect, useRef, useCallback, type ComponentType } from "react";
+import { useState, useEffect, useRef, useCallback, type ComponentType } from "react";
 import * as ReactModule from "react";
 import * as ReactJSXRuntime from "react/jsx-runtime";
 import * as ReactJSXDevRuntime from "react/jsx-dev-runtime";
 import { callMoveOp, activateAttachedMoveApi, type MoveWidgetInfo } from "../api";
 import { authHeaders } from "../api/_fetch";
+import { onUiEvent } from "../sessionStore";
+
+export type MoveWidgetEvent = {
+  type: string;
+  payload?: Record<string, unknown>;
+};
 
 export type MoveWidgetProps = {
   apiToken: string;
@@ -36,6 +42,7 @@ export type MoveWidgetProps = {
    * as a message to the session. Optional text is appended after gather output.
    */
   activate?: (text?: string) => Promise<{ ok: boolean; error?: string }>;
+  subscribe?: (listener: (event: MoveWidgetEvent) => void) => () => void;
 };
 
 export type Props = {
@@ -161,6 +168,16 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
       }
     : undefined;
 
+  const subscribe = useCallback((listener: (event: MoveWidgetEvent) => void) => (
+    onUiEvent("move-widget-event", (eventSessionId, event) => {
+      if (eventSessionId !== sessionId) return;
+      if (event.instanceId !== instanceId) return;
+      if (event.apiToken !== apiToken) return;
+      if (!event.event || typeof event.event.type !== "string") return;
+      listener(event.event as MoveWidgetEvent);
+    })
+  ), [apiToken, instanceId, sessionId]);
+
   if (error) {
     return <div className="panel-empty" style={{ color: "var(--color-error, #e55)" }}>{error}</div>;
   }
@@ -178,6 +195,7 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
       callOp={callOp}
       submitMessage={submitMessage}
       activate={activate}
+      subscribe={subscribe}
     />
   );
 }
