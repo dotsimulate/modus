@@ -404,3 +404,91 @@ export async function gitFileContent(cwd: string, hash: string, path: string): P
     return null;
   }
 }
+
+// ── Worktree utilities ──
+
+export type WorktreeInfo = {
+  path: string;
+  head: string;
+  branch: string | null;
+  bare: boolean;
+  detached: boolean;
+};
+
+/** List all worktrees for the repo at `cwd` */
+export async function gitWorktreeList(cwd: string): Promise<WorktreeInfo[]> {
+  try {
+    const git = simpleGit(cwd);
+    const raw = await git.raw(["worktree", "list", "--porcelain"]);
+    const worktrees: WorktreeInfo[] = [];
+    let current: Partial<WorktreeInfo> = {};
+
+    for (const line of raw.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        if (current.path) worktrees.push(current as WorktreeInfo);
+        current = { path: line.slice(9), bare: false, detached: false, branch: null, head: "" };
+      } else if (line.startsWith("HEAD ")) {
+        current.head = line.slice(5);
+      } else if (line.startsWith("branch ")) {
+        current.branch = line.slice(7).replace(/^refs\/heads\//, "");
+      } else if (line === "bare") {
+        current.bare = true;
+      } else if (line === "detached") {
+        current.detached = true;
+      }
+    }
+    if (current.path) worktrees.push(current as WorktreeInfo);
+    return worktrees;
+  } catch {
+    return [];
+  }
+}
+
+/** Create a new worktree at `wtPath` on a new branch forked from `baseBranch` (default: HEAD) */
+export async function gitWorktreeAdd(
+  cwd: string,
+  wtPath: string,
+  branch: string,
+  baseBranch?: string,
+): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+  try {
+    const git = simpleGit(cwd);
+    const args = ["worktree", "add", "-b", branch, wtPath];
+    if (baseBranch) args.push(baseBranch);
+    await git.raw(args);
+    return { ok: true, path: wtPath };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Remove a worktree. Fails if there are uncommitted changes unless `force` is true. */
+export async function gitWorktreeRemove(
+  cwd: string,
+  wtPath: string,
+  force = false,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const git = simpleGit(cwd);
+    const args = ["worktree", "remove", wtPath];
+    if (force) args.push("--force");
+    await git.raw(args);
+    return { ok: true };
+  } catch (e: unknown) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Compare two branches — returns a diffstat summary string */
+export async function gitWorktreeDiffSummary(
+  cwd: string,
+  branchA: string,
+  branchB: string,
+): Promise<string> {
+  try {
+    const git = simpleGit(cwd);
+    return await git.raw(["diff", "--stat", branchA, branchB]);
+  } catch {
+    return "(could not diff)";
+  }
+}

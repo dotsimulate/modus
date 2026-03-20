@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type WheelEvent } from "react";
 import { usePinboard } from "../providers/PinboardProvider";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { openInEditor } from "../api";
 
 type Props = {
   onOpenFile: (path: string) => void;
@@ -15,7 +16,7 @@ export function PinboardView({ onOpenFile }: Props) {
   const {
     groups, activeGroupId, activeGroup,
     setActiveGroup, addGroup, removeGroup, renameGroup,
-    unpinFromActive,
+    unpinFromActive, pinToGroup,
   } = usePinboard();
 
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -23,6 +24,7 @@ export function PinboardView({ onOpenFile }: Props) {
   const renameRef = useRef<HTMLInputElement>(null);
   const groupsRef = useRef<HTMLDivElement>(null);
   const groupCtxMenu = useContextMenu();
+  const fileCtxMenu = useContextMenu();
 
   useEffect(() => {
     if (editingGroupId && renameRef.current) renameRef.current.focus();
@@ -53,6 +55,30 @@ export function PinboardView({ onOpenFile }: Props) {
     if (e.key === "Enter") commitRename(id);
     if (e.key === "Escape") setEditingGroupId(null);
   };
+
+  const handleFileContextMenu = useCallback((e: React.MouseEvent, path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const items: ContextMenuItem[] = [
+      { kind: "action", label: "Open", onClick: () => onOpenFile(path) },
+      { kind: "separator" },
+      { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(path) },
+      { kind: "action", label: "Open in external editor", onClick: () => openInEditor(path) },
+      { kind: "separator" },
+      { kind: "action", label: "Unpin", onClick: () => unpinFromActive(path) },
+    ];
+    const otherGroups = groups.filter((g) => g.id !== activeGroupId);
+    if (otherGroups.length > 0) {
+      otherGroups.forEach((g) => {
+        items.push({
+          kind: "action",
+          label: `Move to ${g.name}`,
+          onClick: () => { unpinFromActive(path); pinToGroup(g.id, path); },
+        });
+      });
+    }
+    fileCtxMenu.open(e, items);
+  }, [groups, activeGroupId, onOpenFile, unpinFromActive, pinToGroup, fileCtxMenu]);
 
   const handleGroupContextMenu = useCallback((e: React.MouseEvent, groupId: string, groupName: string) => {
     const items: ContextMenuItem[] = [
@@ -139,7 +165,7 @@ export function PinboardView({ onOpenFile }: Props) {
           </div>
         ) : (
           activeGroup.paths.map((path) => (
-            <div key={path} className="pinboard-file" onClick={() => onOpenFile(path)}>
+            <div key={path} className="pinboard-file" onClick={() => onOpenFile(path)} onContextMenu={(e) => handleFileContextMenu(e, path)}>
               <span className="pinboard-file-name">{basename(path)}</span>
               <span className="pinboard-file-path">{path}</span>
               <button
@@ -156,6 +182,7 @@ export function PinboardView({ onOpenFile }: Props) {
         )}
       </div>
       {groupCtxMenu.portal}
+      {fileCtxMenu.portal}
     </div>
   );
 }

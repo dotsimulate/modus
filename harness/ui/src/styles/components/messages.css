@@ -15,20 +15,30 @@
 }
 .message[data-role="user"] {
   position: relative;
-  padding-top: 12px;
-  padding-bottom: 12px;
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 .message[data-role="user"]::before {
   content: "";
   position: absolute;
   inset: 0 20px;
-  border-radius: 8px;
+  border-radius: 6px;
   background: linear-gradient(
     105deg,
-    color-mix(in srgb, var(--accent) 8%, transparent) 0%,
-    color-mix(in srgb, var(--accent) 4%, transparent) 50%,
-    color-mix(in srgb, var(--accent) 1.5%, transparent) 100%
+    color-mix(in srgb, var(--info) 7%, transparent) 0%,
+    color-mix(in srgb, var(--info) 3%, transparent) 50%,
+    color-mix(in srgb, var(--info) 1%, transparent) 100%
   );
+  pointer-events: none;
+}
+.message[data-role="user"]::after {
+  content: "";
+  position: absolute;
+  inset: 0 20px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 4%, var(--border));
+  mask-image: linear-gradient(to bottom right, transparent 40%, black 100%);
+  -webkit-mask-image: linear-gradient(to bottom right, transparent 40%, black 100%);
   pointer-events: none;
 }
 .message.message--git {
@@ -91,7 +101,7 @@
 @keyframes fade-assistant {
   0% { color: var(--flash-assistant); opacity: 0; transform: translateY(4px); }
   40% { opacity: 1; transform: translateY(0); }
-  100% { color: var(--text); }
+  100% { color: var(--accent); }
 }
 .message[data-role="user"] .message-content--new { animation: fade-user 1s ease-out; }
 .message[data-role="assistant"] .message-content--new { animation: fade-assistant 1s ease-out; }
@@ -313,13 +323,20 @@
   font-size: 10px;
   color: var(--text-muted);
 }
+.user-meta-time {
+  font-style: italic;
+  font-size: 9px;
+}
 .user-meta-branch {
   cursor: pointer;
-  opacity: 0.7;
+  opacity: 0;
   transition: opacity 0.15s;
 }
+.user-meta:hover .user-meta-branch {
+  opacity: 0.6;
+}
 .user-meta-branch:hover {
-  opacity: 1;
+  opacity: 1 !important;
   color: var(--text);
 }
 
@@ -349,7 +366,7 @@
 .msg-copy-btn {
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
   padding: 1px 4px;
@@ -397,7 +414,7 @@
 .msg-copy-item {
   background: none;
   border: none;
-  border-radius: 3px;
+  border-radius: 6px;
   color: var(--text-muted);
   cursor: pointer;
   font-family: var(--font-mono);

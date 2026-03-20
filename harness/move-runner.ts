@@ -53,6 +53,24 @@ const GATHER_TIMEOUT_MS = 10_000;          // 10s timeout for gather()
 
 const tokenStore = new Map<string, MoveToken>();
 
+// ── Process-scoped Instance Store ──
+// Survives move module cache busts. Keyed by instanceId.
+// Moves use store()/setStore() to persist orchestration state (trackers, watchers, etc.)
+// across handler calls without relying on module-level Maps.
+const instanceStore = new Map<string, unknown>();
+
+export function getInstanceStore<T = unknown>(instanceId: string): T | undefined {
+  return instanceStore.get(instanceId) as T | undefined;
+}
+
+export function setInstanceStore(instanceId: string, value: unknown): void {
+  instanceStore.set(instanceId, value);
+}
+
+export function deleteInstanceStore(instanceId: string): void {
+  instanceStore.delete(instanceId);
+}
+
 // Periodic cleanup of expired tokens
 setInterval(() => {
   const now = Date.now();
@@ -429,6 +447,8 @@ export async function handleMoveApiSubmit(
     cwd: reg.cwd,
     caller,
     state: stateApi,
+    store: <T = unknown>() => instanceStore.get(reg.instanceId) as T | undefined,
+    setStore: (value: unknown) => { instanceStore.set(reg.instanceId, value); },
     notify: (message: string, emit?: { type: string; [key: string]: unknown }) => {
       const injected = emit
         ? `[modus:${emit.type}] ${JSON.stringify(emit)}\n${message}`.trim()
@@ -1041,6 +1061,7 @@ export function detachMove(apiToken: string): boolean {
   }
 
   clearMoveAssistantTurnListener(apiToken);
+  instanceStore.delete(reg.instanceId);
   moveApiRegistry.delete(apiToken);
   console.log(`[move-runner] detached: ${reg.moveName} token=${apiToken}`);
   return true;
@@ -1144,9 +1165,11 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
         config.api.state?.persist ?? false,
         userProfile,
       );
-      // Make API token available in context for gather()
+      // Make API token and store available in context for gather()
       moveCtx.apiToken = apiToken;
       moveCtx.instanceId = instanceId;
+      moveCtx.store = <T = unknown>() => instanceStore.get(instanceId!) as T | undefined;
+      moveCtx.setStore = (value: unknown) => { instanceStore.set(instanceId!, value); };
       await syncMoveAssistantTurnListener(apiToken, mod);
     } else {
       return { error: `Move "${moveName}" declares api but context.ts has no handlers export` };

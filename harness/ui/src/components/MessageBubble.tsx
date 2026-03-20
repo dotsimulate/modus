@@ -1,4 +1,5 @@
 import { memo, useState, useEffect, useRef, type ReactNode } from "react";
+import { ThinkingBlock } from "./ThinkingBlock";
 import type { Message, ToolCall } from "../api";
 import { tokenParam } from "../api/_fetch";
 import { ToolCallView } from "./ToolCall";
@@ -138,7 +139,6 @@ function renderArtifact(
 
 export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, children }: Props) {
   void onBranch;
-  const [thinkingExpanded, setThinkingExpanded] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
   const wasStreamingRef = useRef(false);
@@ -172,23 +172,12 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
       )}
 
       {showThinking && msg.thinking && (
-        <>
-          {msg.thinkingDuration != null ? (
-            <div className="thinking-meta">
-              thought for {(msg.thinkingDuration / 1000).toFixed(1)}s
-            </div>
-          ) : isStreaming && !msg.content && (
-            <div className="thinking-meta">
-              thinking…
-            </div>
-          )}
-          <div
-            className={`message-thinking ${thinkingExpanded ? "expanded" : ""}`}
-            onClick={() => setThinkingExpanded(!thinkingExpanded)}
-          >
-            {msg.thinking}
-          </div>
-        </>
+        <ThinkingBlock
+          thinking={msg.thinking}
+          duration={msg.thinkingDuration}
+          isStreaming={isStreaming}
+          hasContent={!!msg.content}
+        />
       )}
 
       {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (

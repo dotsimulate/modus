@@ -1,9 +1,9 @@
 /**
- * Moves widget — compact grid of available moves with lucide icons.
+ * Moves widget — compact list of available moves with inline expand.
  *
  * Harness-level widget: always available on dashboard or left panel.
- * Click a chip to expand it inline: shows description, inputs (if any),
- * and an "attach" button. Replaces the grid while expanded.
+ * Click a row to expand it inline: shows description, inputs (if any),
+ * and an "attach" button. Uses CSS grid collapse (0fr/1fr) for expand.
  *
  * Always attaches to the composer — never activates directly.
  * Dispatches "modus:attach-move" event; ChatInput picks it up and
@@ -183,20 +183,18 @@ function InputField({
   );
 }
 
-// ── Expanded move detail ──
+// ── Inline detail (expanded under a row) ──
 
 function MoveDetail({
   move,
   profileNames,
   onAttach,
-  onClose,
   busy,
   error,
 }: {
   move: MoveListItem;
   profileNames: string[];
   onAttach: (inputs: Record<string, string>) => void;
-  onClose: () => void;
   busy: boolean;
   error: string | null;
 }) {
@@ -210,19 +208,30 @@ function MoveDetail({
 
   const hasInputs = (move.inputs ?? []).length > 0;
   const ready = !hasInputs || isMoveInputReady(move, values, profileNames);
-  const Icon = resolveIcon(move.icon);
+
+  // Button label reflects what actually happens
+  const isWidgetOnly = !!move.widget?.mountOnAttach;
+  const isPersistent = !!move.persistent;
+  const actionLabel = isWidgetOnly ? "open widget"
+    : isPersistent ? "enable"
+    : "attach";
+  const busyLabel = isWidgetOnly ? "opening..."
+    : isPersistent ? "enabling..."
+    : "attaching...";
+  // Hint for moves that will send a message to the LLM
+  const sendsMessage = !isWidgetOnly && !isPersistent;
 
   return (
     <div className="moves-detail">
-      <div className="moves-detail-header">
-        <div className="moves-detail-title">
-          {Icon && <Icon size={14} strokeWidth={1.5} className="moves-tile-icon" />}
-          <span>{move.label}</span>
-        </div>
-        <button className="moves-detail-close" onClick={onClose}>×</button>
-      </div>
       {move.description && (
         <div className="moves-detail-desc">{move.description}</div>
+      )}
+      {move.tags && move.tags.length > 0 && (
+        <div className="moves-detail-tags">
+          {move.tags.map((t) => (
+            <span key={t} className="moves-detail-tag">{t}</span>
+          ))}
+        </div>
       )}
       {hasInputs && (move.inputs ?? []).map((inp) => (
         <InputField
@@ -240,10 +249,63 @@ function MoveDetail({
           disabled={!ready || busy}
           onClick={() => onAttach(values)}
         >
-          {busy ? "attaching..." : "attach"}
+          {busy ? busyLabel : actionLabel}
         </button>
+        {sendsMessage && (
+          <span className="moves-action-hint">sends to chat</span>
+        )}
       </div>
     </div>
+  );
+}
+
+// ── Single move row with inline expand ──
+
+function MoveRow({
+  move,
+  expanded,
+  profileNames,
+  onToggle,
+  onAttach,
+  error,
+}: {
+  move: MoveListItem;
+  expanded: boolean;
+  profileNames: string[];
+  onToggle: () => void;
+  onAttach: (move: MoveListItem, values: Record<string, string>) => void;
+  error: string | null;
+}) {
+  const Icon = resolveIcon(move.icon);
+
+  return (
+    <>
+      <button
+        className={`moves-row${expanded ? " moves-row--expanded" : ""}`}
+        onClick={onToggle}
+      >
+        <span className="moves-row-icon">
+          {Icon
+            ? <Icon size={12} strokeWidth={1.5} />
+            : <span className="moves-row-icon--letter">{move.label[0]}</span>
+          }
+        </span>
+        <span className="moves-row-label">{move.label}</span>
+      </button>
+      <div className={`moves-expand${expanded ? " moves-expand--open" : ""}`}>
+        <div className="moves-expand-clip">
+          {expanded && (
+            <MoveDetail
+              move={move}
+              profileNames={profileNames}
+              onAttach={(values) => onAttach(move, values)}
+              busy={false}
+              error={error}
+            />
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -276,8 +338,6 @@ function MovesWidget(_props: WidgetProps) {
 
   const doAttach = (move: MoveListItem, rawValues: Record<string, string>) => {
     const inputs = buildMoveInputs(move, rawValues, profileNames);
-    // Dispatch to ChatInput — it handles all attach paths:
-    // mountOnAttach widgets, regular composer chips, persistent moves
     window.dispatchEvent(new CustomEvent("modus:attach-move", {
       detail: { move, inputs },
     }));
@@ -295,23 +355,6 @@ function MovesWidget(_props: WidgetProps) {
     return <WidgetEmptyState>no moves available</WidgetEmptyState>;
   }
 
-  const expandedMove = expanded ? moves.find((m) => m.name === expanded) : null;
-
-  if (expandedMove) {
-    return (
-      <div className="moves-widget">
-        <MoveDetail
-          move={expandedMove}
-          profileNames={profileNames}
-          onAttach={(values) => doAttach(expandedMove, values)}
-          onClose={() => { setExpanded(null); setError(null); }}
-          busy={false}
-          error={error}
-        />
-      </div>
-    );
-  }
-
   const q = search.toLowerCase().trim();
   const filtered = q
     ? moves.filter((m) =>
@@ -325,32 +368,39 @@ function MovesWidget(_props: WidgetProps) {
   return (
     <div className="moves-widget">
       {error && <div className="moves-widget-error">{error}</div>}
-      <input
-        className="moves-search"
-        type="text"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="filter moves..."
-        spellCheck={false}
-      />
-      <div className="moves-grid">
-        {filtered.map((m) => {
-          const Icon = resolveIcon(m.icon);
-          return (
+      {moves.length > 5 && (
+        <div className="moves-search-wrap">
+          {search && (
             <button
-              key={m.name}
-              className="moves-tile"
-              onClick={() => setExpanded(m.name)}
-              title={m.description}
+              className="moves-search-clear"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
             >
-              {Icon
-                ? <Icon size={14} strokeWidth={1.5} className="moves-tile-icon" />
-                : <span className="moves-tile-icon moves-tile-icon--letter">{m.label[0]}</span>
-              }
-              <span className="moves-tile-label">{m.label}</span>
+              <icons.X size={10} strokeWidth={2} />
             </button>
-          );
-        })}
+          )}
+          <input
+            className="moves-search"
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="search..."
+            spellCheck={false}
+          />
+        </div>
+      )}
+      <div className="moves-list">
+        {filtered.map((m) => (
+          <MoveRow
+            key={m.name}
+            move={m}
+            expanded={expanded === m.name}
+            profileNames={profileNames}
+            onToggle={() => setExpanded(expanded === m.name ? null : m.name)}
+            onAttach={doAttach}
+            error={expanded === m.name ? error : null}
+          />
+        ))}
       </div>
     </div>
   );
