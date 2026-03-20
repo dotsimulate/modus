@@ -77,7 +77,8 @@
   transition: background 0.1s ease;
 }
 
-.fb-entry:hover {
+.fb-entry:hover,
+.fb-entry--ctx {
   background: var(--bg-hover);
 }
 
@@ -92,7 +93,7 @@
 }
 
 .fb-entry--dir .fb-entry-name {
-  color: var(--text);
+  color: var(--text-dim);
 }
 
 .fb-entry--file .fb-entry-name {

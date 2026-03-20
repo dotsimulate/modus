@@ -1,18 +1,20 @@
-import { useState, useEffect, useRef, type ReactNode, type WheelEvent } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode, type WheelEvent } from "react";
 import { useFileViewer } from "../providers/FileViewerProvider";
 import { usePinboard } from "../providers/PinboardProvider";
 import { useProfiles } from "../providers/ProfileProvider";
-import { browsePath, readFileContent, type BrowseResult, type MoveWidgetInfo } from "../api";
+import { browsePath, readFileContent, openInEditor, type BrowseResult, type MoveWidgetInfo } from "../api";
 import type { Message } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser } from "./FileBrowser";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
-import { CodeMirrorEditor } from "./CodeMirrorEditor";
+import { CodeMirrorEditor, type CodeMirrorContextInfo } from "./CodeMirrorEditor";
 import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
 import { HtmlPreview } from "./HtmlPreview";
 import { PinboardView } from "./PinboardView";
 import { SessionEditsView } from "./SessionEditsView";
+import { AgentActivityView } from "./AgentActivityView";
+import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 
 type Props = {
   open: boolean;
@@ -34,6 +36,8 @@ type Props = {
   onRequestViewHandled?: () => void;
   /** Called when user closes a widget tab (for detach cleanup) */
   onWidgetClose?: (apiToken: string, moveName: string) => void;
+  /** Called when user wants to send a code snippet to the chat input */
+  onSendToAgent?: (text: string) => void;
 };
 
 function basename(p: string): string {
@@ -62,17 +66,17 @@ type ViewState =
 /** Which tab is showing: the project browser, pinboard, a file, or a move widget */
 type ActiveView = "browser" | "pins" | "move-widget" | string;
 
-export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled, onWidgetClose }: Props) {
+export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled, onWidgetClose, onSendToAgent }: Props) {
   const {
     tabs, activePath, closeFile, setActive, openFile,
     setEditing, markDirty, saveFile, saving, saveError,
   } = useFileViewer();
-  const { pinToActive, unpinFromActive, isFilePinned, activeGroup } = usePinboard();
+  const { groups, pinToActive, pinToGroup, unpinFromActive, isFilePinned, activeGroup } = usePinboard();
   const { activeCwd } = useProfiles();
 
   const tabsRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<ActiveView>("browser");
-  const [sessionEditsOpen, setSessionEditsOpen] = useState(false);
+  const NON_FILE_VIEWS = new Set(["browser", "pins", "session-edits", "activity"]);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [htmlPreview, setHtmlPreview] = useState(true);
@@ -84,7 +88,6 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   // Handle imperative view requests (e.g. open session-edits from chat)
   useEffect(() => {
     if (!requestView) return;
-    if (requestView === "session-edits") setSessionEditsOpen(true);
     setActiveView(requestView);
     onOpen();
     onRequestViewHandled?.();
@@ -114,12 +117,12 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
 
   // Sync activeView → FileViewerProvider active
   useEffect(() => {
-    if (activeView !== "browser" && activeView !== "pins" && activeView !== "session-edits" && !activeView.startsWith("widget:") && activeView !== activePath) {
+    if (!NON_FILE_VIEWS.has(activeView) && !activeView.startsWith("widget:") && activeView !== activePath) {
       setActive(activeView);
     }
   }, [activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const viewingFile = activeView !== "browser" && activeView !== "pins" && activeView !== "session-edits" && !activeView.startsWith("widget:") ? activeView : null;
+  const viewingFile = !NON_FILE_VIEWS.has(activeView) && !activeView.startsWith("widget:") ? activeView : null;
   const activeTab = viewingFile ? tabs.find((t) => t.path === viewingFile) : null;
   const isEditMode = activeTab?.editing ?? false;
 
@@ -212,6 +215,110 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     </>
   );
 
+  // ── Context menus ──
+
+  const editorCtxMenu = useContextMenu();
+  const tabCtxMenu = useContextMenu();
+
+  const pinIcon = (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+      <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
+      <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    </svg>
+  );
+
+  const buildPinItems = useCallback((path: string): ContextMenuItem[] => {
+    return groups.map((g) => {
+      const pinned = g.paths.includes(path);
+      return {
+        kind: "action" as const,
+        icon: pinIcon,
+        label: pinned ? `Unpin from ${g.name}` : `Pin to ${g.name}`,
+        onClick: () => { if (pinned) unpinFromActive(path); else pinToGroup(g.id, path); },
+      };
+    });
+  }, [groups, pinToGroup, unpinFromActive]);
+
+  /** Collapses pin actions into a submenu when there are multiple groups */
+  const buildPinSubmenu = useCallback((path: string): ContextMenuItem => {
+    const items = buildPinItems(path);
+    if (items.length === 1) return items[0];
+    return { kind: "submenu", icon: pinIcon, label: "Pin to pinboard…", items };
+  }, [buildPinItems, pinIcon]);
+
+  const handleEditorContextMenu = useCallback((e: React.MouseEvent, info: CodeMirrorContextInfo) => {
+    const items: ContextMenuItem[] = [];
+    if (info.selection) {
+      items.push({
+        kind: "action",
+        label: "Copy selection",
+        onClick: () => navigator.clipboard.writeText(info.selection),
+      });
+      items.push({
+        kind: "action",
+        label: "Copy as code block",
+        onClick: () => navigator.clipboard.writeText(`\`\`\`\n${info.selection}\n\`\`\``),
+      });
+    }
+    items.push({
+      kind: "action",
+      label: "Copy reference",
+      onClick: () => navigator.clipboard.writeText(`${info.path}:${info.line}`),
+    });
+    items.push({
+      kind: "action",
+      label: "Copy file path",
+      onClick: () => navigator.clipboard.writeText(info.path),
+    });
+    items.push({
+      kind: "action",
+      label: "Open in external editor",
+      onClick: () => openInEditor(info.path, info.line),
+    });
+    if (groups.length > 0) {
+      items.push({ kind: "separator" });
+      items.push(buildPinSubmenu(info.path));
+    }
+    if (onSendToAgent) {
+      items.push({ kind: "separator" });
+      const snippet = info.selection
+        ? `${info.path}:${info.line}\n\`\`\`\n${info.selection}\n\`\`\``
+        : `${info.path}:${info.line}`;
+      items.push({
+        kind: "action",
+        label: info.selection ? "Send selection to agent" : "Send reference to agent",
+        onClick: () => onSendToAgent(snippet),
+      });
+    }
+    editorCtxMenu.open(e, items);
+  }, [buildPinSubmenu, groups.length, onSendToAgent, editorCtxMenu]);
+
+  const handleTabContextMenu = useCallback((e: React.MouseEvent, tabPath: string) => {
+    const items: ContextMenuItem[] = [
+      { kind: "action", label: "Close", onClick: () => handleCloseTab(tabPath) },
+      {
+        kind: "action",
+        label: "Close others",
+        disabled: tabs.length <= 1,
+        onClick: () => tabs.filter(t => t.path !== tabPath).forEach(t => closeFile(t.path)),
+      },
+      {
+        kind: "action",
+        label: "Close all",
+        disabled: tabs.length === 0,
+        onClick: () => { tabs.forEach(t => closeFile(t.path)); setActiveView("browser"); },
+      },
+      { kind: "separator" },
+      { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(tabPath) },
+      { kind: "action", label: "Open in external editor", onClick: () => openInEditor(tabPath) },
+    ];
+    if (groups.length > 0) {
+      items.push({ kind: "separator" });
+      items.push(buildPinSubmenu(tabPath));
+    }
+    tabCtxMenu.open(e, items);
+  }, [tabs, closeFile, handleCloseTab, buildPinSubmenu, groups.length, tabCtxMenu]);
+
   // ── Derived state ──
 
   const isHtml = viewingFile ? isHtmlFile(viewingFile) : false;
@@ -225,6 +332,11 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     // Session edits
     if (activeView === "session-edits") {
       return <SessionEditsView messages={messages ?? []} />;
+    }
+
+    // Agent activity
+    if (activeView === "activity") {
+      return <AgentActivityView messages={messages ?? []} />;
     }
 
     // Move widget — for non-instance-cached widgets, render inline (instance-cached render below)
@@ -260,6 +372,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
               path={viewingFile}
               onSave={handleSave}
               onDirty={handleDirty}
+              onEditorContextMenu={handleEditorContextMenu}
             />
           </div>
         );
@@ -335,6 +448,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
             error={view.kind === "error" ? view.message : null}
             nameActions={copyPathBtn(viewingFile!)}
             actions={fileActions(viewingFile!)}
+            onEditorContextMenu={handleEditorContextMenu}
           />
         </div>
       );
@@ -360,7 +474,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
             tabsRef.current.scrollLeft += e.deltaY + e.deltaX;
           }}
         >
-          <div className={`rp-tab${showBrowser ? " rp-tab--active" : ""}`}>
+          <div className={`rp-tab rp-tab--icon-only${showBrowser ? " rp-tab--active" : ""}`}>
             <button
               className="rp-tab-label"
               onClick={() => setActiveView("browser")}
@@ -369,10 +483,9 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
               <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
                 <path d="M1 3h4l1-1.5h5v8.5H1z" stroke="currentColor" strokeWidth="1.2" fill="none"/>
               </svg>
-              files
             </button>
           </div>
-          <div className={`rp-tab${showPins ? " rp-tab--active" : ""}`}>
+          <div className={`rp-tab rp-tab--icon-only${showPins ? " rp-tab--active" : ""}`}>
             <button
               className="rp-tab-label"
               onClick={() => setActiveView("pins")}
@@ -382,33 +495,31 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
                 <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={showPins ? "currentColor" : "none"}/>
                 <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
               </svg>
-              pins
             </button>
           </div>
-          {sessionEditsOpen && (
-            <div className={`rp-tab${activeView === "session-edits" ? " rp-tab--active" : ""}`}>
-              <button
-                className="rp-tab-label"
-                onClick={() => setActiveView("session-edits")}
-                title="Files edited this session"
-              >
-                <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
-                  <rect x="1" y="1" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
-                  <rect x="1" y="5.5" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
-                </svg>
-                edits
-              </button>
-              <button
-                className="rp-tab-close"
-                onClick={(e) => { e.stopPropagation(); setSessionEditsOpen(false); if (activeView === "session-edits") setActiveView("browser"); }}
-                title="Close tab"
-              >
-                <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
-                  <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-                </svg>
-              </button>
-            </div>
-          )}
+          <div className={`rp-tab rp-tab--icon-only${activeView === "activity" ? " rp-tab--active" : ""}`}>
+            <button
+              className="rp-tab-label"
+              onClick={() => setActiveView("activity")}
+              title="Agent activity"
+            >
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                <path d="M1 6h2l1.5-3 2 6L8.5 3 10 6h1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div className={`rp-tab rp-tab--icon-only${activeView === "session-edits" ? " rp-tab--active" : ""}`}>
+            <button
+              className="rp-tab-label"
+              onClick={() => setActiveView("session-edits")}
+              title="Files edited this session"
+            >
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                <rect x="1" y="1" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+                <rect x="1" y="5.5" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+              </svg>
+            </button>
+          </div>
           {moveWidgets?.map((w) => (
             <div key={w.instanceId} className={`rp-tab${activeView === `widget:${w.instanceId}` ? " rp-tab--active" : ""}`}>
               <button
@@ -451,6 +562,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
             <div
               key={tab.path}
               className={`rp-tab${tab.path === activeView ? " rp-tab--active" : ""}${isFilePinned(tab.path) ? " rp-tab--pinned" : ""}${tab.dirty ? " rp-tab--dirty" : ""}`}
+              onContextMenu={(e) => handleTabContextMenu(e, tab.path)}
             >
               <button
                 className="rp-tab-label"
@@ -578,6 +690,8 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
           </div>
         </div>
       </div>
+      {editorCtxMenu.portal}
+      {tabCtxMenu.portal}
     </>
   );
 }

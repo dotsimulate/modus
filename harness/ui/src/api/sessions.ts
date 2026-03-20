@@ -408,6 +408,24 @@ export async function readFileContent(path: string): Promise<string | null> {
   return data.content ?? null;
 }
 
+export async function createFile(path: string, content?: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/file-create`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ path, content }),
+  });
+  return res.ok;
+}
+
+export async function createDirectory(path: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/dir-create`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  return res.ok;
+}
+
 // ── Event Stream (SSE) ──
 
 /**
