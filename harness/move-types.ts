@@ -153,6 +153,12 @@ export interface MoveContext {
   apiToken?: string;
   /** Instance identifier (portable, can be shared across sessions) */
   instanceId?: string;
+
+  // ── Process-scoped store (set when move has api declaration) ──
+  /** Read from the process-scoped instance store. Survives module reloads. */
+  store?: <T = unknown>() => T | undefined;
+  /** Write to the process-scoped instance store. Survives module reloads. */
+  setStore?: (value: unknown) => void;
 }
 
 // ── Harness Bridge (server-side operations available to onSubmit) ──
@@ -392,6 +398,11 @@ export interface MoveApiContext {
    * With a payload, the agent receives: `[modus:{type}] {json}\n{message}`
    */
   notify: (message: string, emit?: { type: string; [key: string]: unknown }) => void;
+
+  /** Read from the process-scoped instance store. Survives module reloads. */
+  store: <T = unknown>() => T | undefined;
+  /** Write to the process-scoped instance store. Survives module reloads. */
+  setStore: (value: unknown) => void;
 }
 
 /** Context passed to assistant turn hooks on active move instances */

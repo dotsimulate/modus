@@ -65,39 +65,50 @@ html, body, #root {
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 600; }
 
-.message-thinking {
-  font-family: var(--font-mono);
-  font-size: calc(11px * var(--font-scale, 1));
-  line-height: 1.5;
-  font-style: italic;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
+.thinking-block {
+  display: flex;
+  gap: 0;
   margin-bottom: 8px;
+}
+.thinking-block:not(.expanded) {
   cursor: pointer;
+}
+.thinking-gutter {
+  flex-shrink: 0;
+  width: 20px;
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
+  cursor: pointer;
+}
+.thinking-gutter-line {
+  display: block;
+  width: 1px;
+  height: 100%;
+  min-height: 14px;
+  background: var(--text-tertiary);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.thinking-block.expanded .thinking-gutter-line {
+  opacity: 0.08;
+}
+.thinking-block.expanded .thinking-gutter:hover .thinking-gutter-line {
+  opacity: 0.28;
+  transition: opacity 0.1s ease;
+}
+.thinking-body {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-  white-space: pre-wrap;
   position: relative;
-  transition: background 0.15s ease;
 }
-.message-thinking:hover {
-  background: var(--bg-raised);
-}
-.thinking-meta {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-style: italic;
-  color: var(--text-dim);
-  margin-bottom: 2px;
-  padding-left: 12px;
-}
-.message-thinking:not(.expanded) {
-  max-height: calc(11px * 1.5 * 2 + 12px);
+.thinking-block:not(.expanded) .thinking-body {
+  max-height: calc(11px * 1.5 * 2 + 20px);
   overflow: hidden;
 }
-.message-thinking:not(.expanded)::after {
+.thinking-block:not(.expanded) .thinking-body::after {
   content: "";
   position: absolute;
   bottom: 0;
@@ -106,4 +117,22 @@ html, body, #root {
   height: calc(11px * 1.5 * 2);
   background: linear-gradient(to bottom, transparent, var(--bg));
   pointer-events: none;
+}
+.message-thinking {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  line-height: 1.5;
+  font-style: italic;
+  color: var(--text-tertiary);
+  white-space: pre-wrap;
+  padding: 0 4px 6px 0;
+}
+.thinking-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: italic;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+  cursor: pointer;
+  user-select: none;
 }

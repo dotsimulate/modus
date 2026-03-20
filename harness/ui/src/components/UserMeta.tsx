@@ -7,15 +7,7 @@ type Props = {
 };
 
 function formatDateTime(ts: number): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  if (d.toDateString() === now.toDateString()) return time;
-  const date = d.toLocaleDateString([], { month: "short", day: "numeric" });
-  if (d.getFullYear() !== now.getFullYear()) {
-    return `${date}, ${d.getFullYear()} ${time}`;
-  }
-  return `${date} ${time}`;
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export const UserMeta = memo(function UserMeta({ msg, onBranch }: Props) {
