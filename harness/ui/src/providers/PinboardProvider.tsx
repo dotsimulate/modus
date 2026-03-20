@@ -24,6 +24,7 @@ type PinboardContextValue = {
   removeGroup: (id: string) => void;
   renameGroup: (id: string, name: string) => void;
   pinToActive: (path: string) => void;
+  pinToGroup: (groupId: string, path: string) => void;
   unpinFromActive: (path: string) => void;
   isFilePinned: (path: string) => boolean;
 };
@@ -37,6 +38,7 @@ const PinboardContext = createContext<PinboardContextValue>({
   removeGroup: () => {},
   renameGroup: () => {},
   pinToActive: () => {},
+  pinToGroup: () => {},
   unpinFromActive: () => {},
   isFilePinned: () => false,
 });
@@ -137,6 +139,17 @@ export function PinboardProvider({ children }: { children: ReactNode }) {
     }));
   }, [update]);
 
+  const pinToGroup = useCallback((groupId: string, path: string) => {
+    update((s) => ({
+      ...s,
+      groups: s.groups.map((g) =>
+        g.id === groupId && !g.paths.includes(path)
+          ? { ...g, paths: [...g.paths, path] }
+          : g
+      ),
+    }));
+  }, [update]);
+
   const unpinFromActive = useCallback((path: string) => {
     update((s) => ({
       ...s,
@@ -162,6 +175,7 @@ export function PinboardProvider({ children }: { children: ReactNode }) {
       removeGroup,
       renameGroup,
       pinToActive,
+      pinToGroup,
       unpinFromActive,
       isFilePinned,
     }}>
