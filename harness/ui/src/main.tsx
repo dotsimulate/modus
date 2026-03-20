@@ -48,6 +48,9 @@ import './styles/components/file-browser.css'
 import './styles/components/mini-float.css'
 import './styles/components/agent-portal.css'
 import './styles/components/pinboard.css'
+import './styles/components/moves-widget.css'
+import './styles/components/activity.css'
+import './styles/components/context-menu.css'
 
 // Views
 import './styles/views/login.css'
@@ -64,6 +67,9 @@ import './styles/views/editor.css'
 // Overrides (last — responsive)
 import './styles/mobile.css'
 import App from './App'
+import { initFavicon } from './favicon'
+
+initFavicon()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

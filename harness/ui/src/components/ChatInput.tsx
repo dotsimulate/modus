@@ -3,7 +3,8 @@ import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMo
 import { activateMoveApi, activateProjectMoveApi, fetchAmbientMoves, deactivateAmbientMoveApi, attachMoveApi, detachMoveApi } from "../api";
 import type { ActivateMoveResult } from "../api";
 import { PromptPicker } from "./PromptPicker";
-import { AttachedMove } from "./QueuedMessage";
+import { AttachedMove, AttachedWidgetContent } from "./QueuedMessage";
+import type { ComposerAttachResult } from "./MoveWidget";
 import { activateComposer, registerComposer, useComposerActions } from "../client-extensions";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
@@ -120,6 +121,15 @@ export function ChatInput({
     apiToken?: string;     // set for mountOnAttach moves (from attach phase)
     instanceId?: string;   // set for mountOnAttach moves (from attach phase)
   } | null>(null);
+  const [widgetContent, setWidgetContent] = useState<{
+    moveName: string;
+    label: string;
+    data?: Record<string, unknown>;
+    resolve: (result: ComposerAttachResult) => void;
+    reject: (reason: Error) => void;
+  } | null>(null);
+  const widgetContentRef = useRef(widgetContent);
+  widgetContentRef.current = widgetContent;
   const dragCounter = useRef(0);
 
   // Ambient (persistent) moves
@@ -129,6 +139,62 @@ export function ChatInput({
     if (!sessionId) return;
     fetchAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
   }, [sessionId]);
+
+  // Listen for attach-move events from sidebar moves widget
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const { move, inputs } = (e as CustomEvent).detail as {
+        move: MoveListItem;
+        inputs: Record<string, unknown>;
+      };
+      if (move.widget?.mountOnAttach && projectCwd) {
+        try {
+          const result = await attachMoveApi({
+            moveName: move.name,
+            inputs,
+            cwd: projectCwd,
+            sessionId,
+            userProfile,
+          });
+          onMoveAttached?.(result);
+        } catch (err) {
+          console.error("[ChatInput] attach from sidebar failed:", err);
+        }
+      } else {
+        setAttachedMove({ item: move, inputs });
+      }
+    };
+    window.addEventListener("modus:attach-move", handler);
+    return () => window.removeEventListener("modus:attach-move", handler);
+  }, [projectCwd, sessionId, userProfile, onMoveAttached]);
+
+  // Listen for widget-composer-attach events from move widgets
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        moveName: string;
+        label: string;
+        data?: Record<string, unknown>;
+        resolve: (result: ComposerAttachResult) => void;
+        reject: (reason: Error) => void;
+        accept: () => void;
+      };
+      // Signal that a composer is available
+      detail.accept();
+      // Reject any existing widget content attachment
+      widgetContentRef.current?.reject(new Error("replaced"));
+      setWidgetContent({
+        moveName: detail.moveName,
+        label: detail.label,
+        data: detail.data,
+        resolve: detail.resolve,
+        reject: detail.reject,
+      });
+      ref.current?.focus();
+    };
+    window.addEventListener("modus:widget-composer-attach", handler);
+    return () => window.removeEventListener("modus:widget-composer-attach", handler);
+  }, []);
 
   // Refresh ambient moves when a persistent move is activated
   const origOnMoveActivated = onMoveActivated;
@@ -287,7 +353,17 @@ export function ChatInput({
   async function handleSend(textOverride?: string) {
     const text = (textOverride ?? value).trim();
     const hasText = !!text || attachments.length > 0;
-    if (!attachedMove && !hasText) return;
+    if (!attachedMove && !widgetContent && !hasText) return;
+
+    // Widget content attachment — resolve the promise and prepend label
+    if (widgetContent) {
+      const wc = widgetContent;
+      setWidgetContent(null);
+      wc.resolve({ sent: true, userText: text });
+      // The widget's move is responsible for the actual message content;
+      // we just send whatever the user typed (the widget label is informational).
+      // If there's also an attachedMove, let it fall through to that branch.
+    }
 
     if (attachedMove) {
       const { item, inputs, apiToken: attachApiToken, instanceId: attachInstanceId } = attachedMove;
@@ -395,7 +471,7 @@ export function ChatInput({
     }
   };
 
-  const hasContent = value.trim() || attachments.length > 0 || !!attachedMove;
+  const hasContent = value.trim() || attachments.length > 0 || !!attachedMove || !!widgetContent;
 
   // Icon-only actions (no label) go to top-left corner; labelled actions stay in the button row
   const iconActions = composerActions.filter((a) => a.icon && !a.label);
@@ -461,6 +537,17 @@ export function ChatInput({
         />
       )}
 
+      {widgetContent && (
+        <AttachedWidgetContent
+          label={widgetContent.label}
+          moveName={widgetContent.moveName}
+          onDetach={() => {
+            widgetContent.reject(new Error("detached"));
+            setWidgetContent(null);
+          }}
+        />
+      )}
+
       {ambientMoves.length > 0 && (
         <div className="ambient-move-chips">
           {ambientMoves.map((m) => (
@@ -519,7 +606,7 @@ export function ChatInput({
           <textarea
             ref={ref}
             className="chat-textarea"
-            placeholder={attachedMove ? "add context... (optional)" : (placeholder ?? "message... (drop or paste images)")}
+            placeholder={attachedMove || widgetContent ? "add context... (optional)" : (placeholder ?? "message... (drop or paste images)")}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}

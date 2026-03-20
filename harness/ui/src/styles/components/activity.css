@@ -1,0 +1,222 @@
+/**
+ * Agent Activity Feed — live tool call feed in the right sidebar.
+ */
+
+/* ── Feed container ── */
+.aa-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  overflow-y: auto;
+  height: 100%;
+  background: var(--bg);
+}
+
+.aa-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.aa-empty-icon { opacity: 0.3; }
+
+/* ── Feed item (clickable wrapper) ── */
+.aa-feed-item {
+  cursor: pointer;
+  transition: background 0.1s ease;
+  border-bottom: 1px solid var(--border);
+}
+.aa-feed-item:hover {
+  background: var(--bg-hover);
+}
+.aa-feed-item--active {
+  background: rgba(232, 155, 80, 0.03);
+  border-left: 2px solid var(--tool-running);
+}
+.aa-feed-item--active:hover {
+  background: rgba(232, 155, 80, 0.06);
+}
+
+/* ── Card ── */
+.aa-card { padding: 0; }
+
+.aa-card-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  min-height: 22px;
+  line-height: 1.3;
+}
+
+/* ── SVG Icons ── */
+.aa-svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* ── Text elements ── */
+.aa-file {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.aa-dir {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 10;
+  min-width: 0;
+  font-size: calc(9px * var(--font-scale, 1));
+}
+
+.aa-cmd {
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.aa-pattern {
+  color: #9977dd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.aa-sep {
+  color: var(--text-muted);
+  margin: 0 1px;
+}
+
+.aa-tag {
+  color: var(--text-muted);
+  font-size: calc(9px * var(--font-scale, 1));
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: rgba(255,255,255,0.03);
+  padding: 0 3px;
+  border-radius: 2px;
+}
+
+.aa-diff-stat {
+  font-size: calc(9px * var(--font-scale, 1));
+  flex-shrink: 0;
+  font-weight: 600;
+}
+.aa-diff-stat--add { color: var(--success); }
+.aa-diff-stat--del { color: var(--error-soft); }
+
+/* ── Status ── */
+.aa-status {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.aa-dur {
+  color: var(--text-muted);
+  font-size: calc(9px * var(--font-scale, 1));
+}
+
+.aa-err {
+  color: var(--tool-error);
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* ── Snippet preview ── */
+.aa-snippet {
+  margin: 0;
+  padding: 2px 8px 3px 26px;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  line-height: 1.35;
+  color: var(--text-muted);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 56px;
+  border-top: 1px solid var(--border);
+}
+.aa-snippet--dim {
+  color: var(--text-dim);
+}
+
+/* ── Inline diff preview ── */
+.aa-inline-diff {
+  padding: 2px 8px 3px 26px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  line-height: 1.35;
+  max-height: 48px;
+  overflow: hidden;
+}
+
+.aa-diff-line {
+  margin: 0;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aa-diff-line--add { color: var(--success); }
+.aa-diff-line--del { color: var(--error-soft); opacity: 0.6; }
+
+/* ── Todo progress bar ── */
+.aa-todo-bar {
+  height: 2px;
+  background: var(--border);
+  margin: 0 8px 3px 26px;
+  border-radius: 1px;
+  overflow: hidden;
+}
+.aa-todo-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 1px;
+  transition: width 0.3s ease;
+}
+
+/* ── Highlight pulse when scrolling chat to a tool call ── */
+@keyframes aa-pulse {
+  0% { outline-color: var(--tool-running); }
+  100% { outline-color: transparent; }
+}
+.aa-highlight-pulse {
+  outline: 2px solid var(--tool-running);
+  outline-offset: -1px;
+  border-radius: 3px;
+  animation: aa-pulse 1.2s ease-out forwards;
+}
+
+/* ── Icon-only tab style (always-on tabs) ── */
+.rp-tab--icon-only .rp-tab-label {
+  padding: 4px 5px;
+  min-width: 0;
+}
+.rp-tab--icon-only {
+  min-width: unset;
+  max-width: unset;
+}

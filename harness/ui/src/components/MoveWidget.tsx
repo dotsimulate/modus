@@ -24,6 +24,16 @@ export type MoveWidgetEvent = {
   payload?: Record<string, unknown>;
 };
 
+export type ComposerAttachPayload = {
+  label: string;
+  data?: Record<string, unknown>;
+};
+
+export type ComposerAttachResult = {
+  sent: boolean;
+  userText: string;
+};
+
 export type MoveWidgetProps = {
   apiToken: string;
   instanceId: string;
@@ -43,6 +53,13 @@ export type MoveWidgetProps = {
    */
   activate?: (text?: string) => Promise<{ ok: boolean; error?: string }>;
   subscribe?: (listener: (event: MoveWidgetEvent) => void) => () => void;
+  /**
+   * Attach content to the active chat composer instead of sending immediately.
+   * Shows a chip in the composer; the user can add context and send when ready.
+   * Resolves when the user sends the message (with their text), or rejects if detached.
+   * Returns null if no composer is available.
+   */
+  attachToComposer?: (payload: ComposerAttachPayload) => Promise<ComposerAttachResult> | null;
 };
 
 export type Props = {
@@ -168,6 +185,31 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
       }
     : undefined;
 
+  const attachToComposer = useCallback((payload: ComposerAttachPayload): Promise<ComposerAttachResult> | null => {
+    // Check if a composer is listening by dispatching a probe event
+    let accepted = false;
+    let resolve!: (result: ComposerAttachResult) => void;
+    let reject!: (reason: Error) => void;
+    const promise = new Promise<ComposerAttachResult>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+
+    const detail = {
+      moveName: widget.moveName,
+      apiToken,
+      instanceId,
+      label: payload.label,
+      data: payload.data,
+      resolve,
+      reject,
+      accept: () => { accepted = true; },
+    };
+
+    window.dispatchEvent(new CustomEvent("modus:widget-composer-attach", { detail }));
+    return accepted ? promise : null;
+  }, [widget.moveName, apiToken, instanceId]);
+
   const subscribe = useCallback((listener: (event: MoveWidgetEvent) => void) => (
     onUiEvent("move-widget-event", (eventSessionId, event) => {
       if (eventSessionId !== sessionId) return;
@@ -196,6 +238,7 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
       submitMessage={submitMessage}
       activate={activate}
       subscribe={subscribe}
+      attachToComposer={attachToComposer}
     />
   );
 }
