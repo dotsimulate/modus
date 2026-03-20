@@ -337,7 +337,7 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
                 <span>{msg.content}</span>
               </div>
             ) : (
-              <div key={msg.id}>
+              <div key={msg.id} className={msg.role === "assistant" && msg.toolCalls?.length && !msg.content ? "message-wrap--tools-only" : undefined}>
                 <MessageBubble
                   msg={msg}
                   provider={provider}

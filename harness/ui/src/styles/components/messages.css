@@ -13,6 +13,11 @@
   margin-right: auto;
   width: 100%;
 }
+
+/* Collapse gap between consecutive tool-only assistant messages */
+.message-wrap--tools-only + .message-wrap--tools-only > .message {
+  margin-top: -20px;
+}
 .message[data-role="user"] {
   position: relative;
   padding-top: 8px;
