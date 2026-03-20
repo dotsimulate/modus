@@ -27,6 +27,7 @@ export {
   fetchSessionsScoped, fetchSessionsByProfile, searchSessionsScoped,
   fetchSessionStats, fetchAccountInfo, browsePath, readFileContent, writeFileContent, subscribeEvents, branchSessionApi,
   fetchGeminiUsage, fetchMessageContent,
+  createFile, createDirectory,
 } from "./sessions";
 
 export type { SessionStats, AccountInfo, GeminiUsageInfo, TurnContent } from "./sessions";

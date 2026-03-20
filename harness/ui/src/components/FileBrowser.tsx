@@ -11,8 +11,10 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { browsePath, readFileContent, openInEditor, type BrowseResult } from "../api";
+import { browsePath, readFileContent, openInEditor, createFile, createDirectory, type BrowseResult } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
+import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { usePinboard } from "../providers/PinboardProvider";
 
 type FileBrowserProps = {
   /** Starting directory path */
@@ -51,6 +53,7 @@ function shortenPath(full: string, root: string | null): string {
 }
 
 export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOpenExternal, onPathChange }: FileBrowserProps) {
+  const { groups, pinToActive, pinToGroup, unpinFromActive, isFilePinned, activeGroup } = usePinboard();
   const [currentPath, setCurrentPath] = useState<string | null>(initialPath ?? rootPath);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [fileView, setFileView] = useState<{ path: string; content: string } | null>(null);
@@ -111,6 +114,100 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
     }
   }, [onOpenExternal]);
 
+  // ── Context menu ──
+  const ctxMenu = useContextMenu();
+  const [ctxTarget, setCtxTarget] = useState<string | null>(null);
+
+  // Clear highlight when context menu closes
+  useEffect(() => {
+    if (!ctxMenu.isOpen) setCtxTarget(null);
+  }, [ctxMenu.isOpen]);
+
+  const openCtx = useCallback((e: React.MouseEvent, items: ContextMenuItem[], targetPath?: string) => {
+    setCtxTarget(targetPath ?? null);
+    ctxMenu.open(e, items);
+  }, [ctxMenu]);
+
+  const [creating, setCreating] = useState<{ kind: "file" | "dir"; dir: string } | null>(null);
+  const [createName, setCreateName] = useState("");
+  const createInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (creating) {
+      setCreateName("");
+      requestAnimationFrame(() => createInputRef.current?.focus());
+    }
+  }, [creating]);
+
+  const handleCreate = useCallback(async () => {
+    if (!creating || !createName.trim()) { setCreating(null); return; }
+    const target = `${creating.dir}/${createName.trim()}`;
+    const ok = creating.kind === "file"
+      ? await createFile(target)
+      : await createDirectory(target);
+    setCreating(null);
+    if (ok) {
+      // Refresh the listing
+      setCurrentPath((p) => { setCurrentPath(null); return null; });
+      requestAnimationFrame(() => setCurrentPath(creating.dir));
+      if (creating.kind === "file") onFileSelect?.(target);
+    }
+  }, [creating, createName, onFileSelect]);
+
+  const reload = useCallback(() => {
+    if (!currentPath) return;
+    const p = currentPath;
+    setCurrentPath(null);
+    requestAnimationFrame(() => setCurrentPath(p));
+  }, [currentPath]);
+
+  const pinIcon = (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+      <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill="none"/>
+      <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    </svg>
+  );
+
+  const buildPinItems = useCallback((path: string): ContextMenuItem[] => {
+    return groups.map((g) => {
+      const pinned = g.paths.includes(path);
+      return {
+        kind: "action" as const,
+        icon: pinIcon,
+        label: pinned ? `Unpin from ${g.name}` : `Pin to ${g.name}`,
+        onClick: () => { if (pinned) unpinFromActive(path); else pinToGroup(g.id, path); },
+      };
+    });
+  }, [groups, pinToGroup, unpinFromActive]);
+
+  const buildFileItems = useCallback((path: string): ContextMenuItem[] => [
+    { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(path) },
+    { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(path) },
+    { kind: "separator" },
+    ...buildPinItems(path),
+  ], [handleOpenExternal, buildPinItems]);
+
+  const buildDirItems = useCallback((path: string): ContextMenuItem[] => [
+    { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(path) },
+    { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(path) },
+    { kind: "separator" },
+    { kind: "action", label: "New file...", onClick: () => setCreating({ kind: "file", dir: path }) },
+    { kind: "action", label: "New folder...", onClick: () => setCreating({ kind: "dir", dir: path }) },
+  ], [handleOpenExternal]);
+
+  const buildBgItems = useCallback((): ContextMenuItem[] => {
+    const dir = view.kind === "directory" ? view.result.path : currentPath;
+    if (!dir) return [];
+    return [
+      { kind: "action", label: "New file...", onClick: () => setCreating({ kind: "file", dir }) },
+      { kind: "action", label: "New folder...", onClick: () => setCreating({ kind: "dir", dir }) },
+      { kind: "separator" },
+      { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(dir) },
+      { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(dir) },
+      { kind: "action", label: "Refresh", onClick: reload },
+    ];
+  }, [view, currentPath, handleOpenExternal, reload]);
+
   const entries = useMemo(() => {
     if (view.kind !== "directory") return { dirs: [], files: [] };
     const dirs = view.result.dirs.map((name) => ({
@@ -151,7 +248,7 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
       )}
 
       {/* Directory listing */}
-      <div className="fb-list">
+      <div className="fb-list" onContextMenu={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("fb-state")) ctxMenu.open(e, buildBgItems()); }}>
         {loading && <div className="fb-state">loading...</div>}
         {view.kind === "error" && <div className="fb-state">{view.message}</div>}
 
@@ -164,7 +261,7 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
               </button>
             )}
             {entries.dirs.map((d) => (
-              <button key={d.path} className="fb-entry fb-entry--dir" onClick={() => navigateTo(d.path)}>
+              <button key={d.path} className={`fb-entry fb-entry--dir${ctxTarget === d.path ? " fb-entry--ctx" : ""}`} onClick={() => navigateTo(d.path)} onContextMenu={(e) => openCtx(e, buildDirItems(d.path), d.path)}>
                 <span className="fb-entry-icon">
                   <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
                     <path d="M1 3h4l1-1.5h5v8.5H1z" stroke="currentColor" strokeWidth="1" fill="none"/>
@@ -174,7 +271,7 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
               </button>
             ))}
             {entries.files.map((f) => (
-              <button key={f.path} className="fb-entry fb-entry--file" onClick={() => openFile(f.path)}>
+              <button key={f.path} className={`fb-entry fb-entry--file${ctxTarget === f.path ? " fb-entry--ctx" : ""}`} onClick={() => openFile(f.path)} onContextMenu={(e) => openCtx(e, buildFileItems(f.path), f.path)}>
                 <span className="fb-entry-icon">
                   <svg width="9" height="10" viewBox="0 0 10 12" fill="none">
                     <path d="M1 1h5l3 3v7H1z" stroke="currentColor" strokeWidth="1" fill="none"/>
@@ -184,12 +281,30 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
                 <span className="fb-entry-name">{f.name}</span>
               </button>
             ))}
-            {entries.dirs.length === 0 && entries.files.length === 0 && (
+            {entries.dirs.length === 0 && entries.files.length === 0 && !creating && (
               <div className="fb-state">empty directory</div>
+            )}
+            {/* Inline creation row */}
+            {creating && (
+              <div className="ctx-menu-input-row">
+                <span style={{ fontSize: 10, opacity: 0.5 }}>{creating.kind === "file" ? "file:" : "dir:"}</span>
+                <input
+                  ref={createInputRef}
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreate();
+                    if (e.key === "Escape") setCreating(null);
+                  }}
+                  onBlur={handleCreate}
+                  placeholder={creating.kind === "file" ? "filename" : "folder name"}
+                />
+              </div>
             )}
           </>
         )}
       </div>
+      {ctxMenu.portal}
 
       {/* File preview (non-compact only) */}
       {!compact && fileView && (
