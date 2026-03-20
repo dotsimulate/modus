@@ -8,7 +8,7 @@ Your MO for working with AI agents. Personal infrastructure designed to be forke
 
 ## Architecture
 
-A locally configured agent wrangler designed for you to hone your agents. Built on the Claude Agent SDK — concurrent sessions, configurable profiles, persistent memory, live streaming UI, and scheduled automation from one `bun run dev`.
+A multi-provider agent harness — concurrent sessions, configurable profiles, persistent memory, structured automation, and a live streaming UI from one `bun run dev`.
 
 ```
 ┌──────────────────────────────────┐
@@ -21,13 +21,15 @@ A locally configured agent wrangler designed for you to hone your agents. Built 
 │   Sessions, profiles, scheduler  │
 │   SQLite, auth, git integration  │
 └──────────────┬───────────────────┘
-               │ Agent SDK subprocess
-┌──────────────▼───────────────────┐
-│   Claude Agent SDK               │
-│   Tool execution, MCP, streaming │
-└──────────────┬───────────────────┘
-               │ MCP (stdio)
-┌──────────────▼───────────────────┐
+               │ SessionProvider interface
+       ┌───────┼───────┬───────┬───────┐
+       ▼       ▼       ▼       ▼       ▼
+   Claude   Codex   Gemini  Cursor   PI Agent
+    Code     CLI     CLI     CLI    (Anthropic,
+    SDK                              OpenAI,
+                                     LiteLLM,
+               │ MCP (stdio/http)    Ollama,
+┌──────────────▼───────────────────┐ OpenRouter)
 │   Agent Memory — FastMCP/Python  │
 │   query() + save() over markdown │
 └──────────────────────────────────┘
@@ -57,48 +59,65 @@ cd /your/project
 modus init            # scaffolds .modus/ with memory MCP and starter profile
 ```
 
+## Providers
+
+Each provider is an execution backend that implements the `SessionProvider` interface. Use whichever you have access to — install only what you need.
+
+| Provider | Backend | What you need |
+|----------|---------|---------------|
+| `claude-code` | Claude Agent SDK | [Claude Code](https://claude.com/claude-code) CLI installed |
+| `codex` | OpenAI Codex SDK | `CODEX_API_KEY` or `OPENAI_API_KEY` env var |
+| `gemini-cli` | Google Gemini CLI | [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed |
+| `cursor` | Cursor Agent CLI | `cursor-agent login` (Cursor subscription) |
+| `litellm` | LiteLLM proxy | LiteLLM running locally |
+| `ollama` | Ollama API | Ollama running locally |
+| `openrouter` | OpenRouter API | `OPENROUTER_API_KEY` env var |
+
+The last three (`litellm`, `ollama`, `openrouter`) are PI agent variants — a lightweight agent loop for local models and routing services.
+
+See [harness/docs/providers.md](harness/docs/providers.md) for the full provider system documentation.
+
+## Profiles
+
+**Agent profiles** define how an agent behaves — model, tools, system prompt, permissions, and MCP servers. Stored in `harness/profiles/agents/` as JSON.
+
+**User profiles** define who is using the system — project scope, visible agents, memory isolation, and UI state. Stored in `harness/profiles/users/`.
+
+Profiles compose through a cascade: session override > agent profile > user profile > default. MCP servers merge additively across all layers.
+
+See [harness/docs/profile-system.md](harness/docs/profile-system.md) and [harness/profiles/README.md](harness/profiles/README.md).
+
+## Moves
+
+Moves are structured, user-invoked operations — the universal interaction primitive. A move can combine API operations, widgets, multi-agent orchestration, and persistence. Examples: memory queries, session handoffs, council debates, interactive games.
+
+Each move is a directory in `.modus/moves/<name>/` with a `move.json` config and `context.ts` module.
+
+See [harness/docs/moves.md](harness/docs/moves.md).
+
+## Actions
+
+Actions are automated agent workflows — scheduled, triggered by webhook, or chained from other actions. Each action gathers context dynamically, runs an agent session, and can execute side effects based on the response.
+
+Each action is a directory in `.modus/actions/<name>/` with an `action.json` config and `context.ts` module.
+
+See [harness/docs/actions.md](harness/docs/actions.md).
+
 ## Watchdog
 
-`modus.sh` / `modus.bat` wrap the harness in a watchdog that keeps it running unattended.
-
-| Feature | Detail |
-|---|---|
-| Auto-restart | Restarts on crash, skips clean exits and Ctrl+C |
-| Health polling | `GET /health` every 30s — catches hangs, not just crashes |
-| Exponential backoff | Quick crashes (< 30s uptime) double the restart delay (3s → 6s → ... → 60s) |
-| Git rollback | `MODUS_GIT_ROLLBACK=1` — quick crash + dirty tree → `git stash` and retry |
-| Crash log | Appends to `harness/watchdog.log` |
-| Push notifications | Optional — via [ntfy.sh](https://ntfy.sh), no account needed |
-
 ```bash
-# Linux / macOS
-./modus.sh              # watchdog only (production)
-./modus.sh watch:dev    # watchdog + auto-reload on .ts file changes (development)
+./modus.sh              # auto-restart, health polling, crash log
+./modus.sh watch:dev    # + auto-reload on .ts changes (development)
 
-# Windows
-modus.bat               # watchdog only
-modus.bat watch:dev     # watchdog + file watcher
-```
-
-**Crash notifications** — subscribe to a free ntfy.sh topic on your phone, then:
-
-```bash
+# Optional crash notifications via ntfy.sh
 MODUS_NOTIFY_TOPIC=your-topic ./modus.sh
 ```
-
-You'll get a push with exit code, uptime, and the last 50 lines of stderr when Modus goes down.
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) — runtime and package manager
 - [uv](https://docs.astral.sh/uv/) — Python package manager (for the memory server)
-- [Claude Code](https://claude.com/claude-code) — provides the Agent SDK and CLI
-
-## Profiles
-
-Agent profiles are JSON files in `harness/profiles/`. Each defines model, tools, prompt, permissions, and MCP servers. See `harness/profiles/README.md` for the full schema.
-
-User profiles (`_user_*.json`) scope the UI to a person — project paths, agent profile selection, memory scoping, and persisted UI state.
+- At least one provider backend (see [Providers](#providers) above)
 
 ## License
 

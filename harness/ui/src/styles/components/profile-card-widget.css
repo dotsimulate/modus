@@ -1,0 +1,42 @@
+/**
+ * Profile Card widget — compact key/value rows.
+ */
+
+.pcw-widget {
+  padding: 0;
+}
+
+.pcw-desc {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+  padding: 0 0 4px;
+  line-height: 1.3;
+}
+
+.pcw-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.pcw-label {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 44px;
+}
+
+.pcw-value {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

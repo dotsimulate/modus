@@ -51,6 +51,10 @@ import './styles/components/pinboard.css'
 import './styles/components/moves-widget.css'
 import './styles/components/activity.css'
 import './styles/components/context-menu.css'
+import './styles/components/provider-status-widget.css'
+import './styles/components/profile-card-widget.css'
+import './styles/components/default-agent-widget.css'
+import './styles/components/config-inspector-widget.css'
 
 // Views
 import './styles/views/login.css'

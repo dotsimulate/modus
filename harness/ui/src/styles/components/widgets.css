@@ -55,3 +55,11 @@
   transform: rotate(0deg);
 }
 
+/* ── Mobile: stack half-width widgets ── */
+@media (max-width: 640px) {
+  .dashboard-widgets {
+    grid-template-columns: 1fr;
+  }
+  .widget--half { grid-column: 1 / -1; }
+}
+

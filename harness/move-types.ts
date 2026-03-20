@@ -253,6 +253,8 @@ export interface AmbientMoveRegistration {
   inputs: Record<string, unknown>;
   activatedAt: number;
   moveRunId: number;
+  apiToken?: string;
+  instanceId?: string;
 }
 
 // ── Attach Request (widget-first activation, phase 1) ──

@@ -10,7 +10,7 @@ export { authStatus, setupNewPin, verifyPin, fetchMe, lockAll, checkToken, chang
 export {
   fetchProfiles, fetchProfile, saveProfileApi, deleteProfileApi,
   fetchGlobalConfig, saveGlobalConfigApi, checkSecrets,
-  fetchProviders, fetchProviderCapabilities, fetchProviderModels,
+  fetchProviders, fetchProviderCapabilities, fetchProviderHealth, fetchProviderModels,
   fetchUserProfiles, fetchUserProfile, saveUserProfileApi, patchUserProfileApi,
   fetchUserProfileState, patchUserProfileStateApi,
 } from "./profiles";
@@ -58,7 +58,7 @@ export { fetchPrompts, renderPromptApi, reloadPromptsApi } from "./prompts";
 export type { PromptListItem, PromptInput, RenderResult } from "./prompts";
 
 // Moves
-export { fetchMoves, activateMoveApi, activateProjectMoveApi, callMoveOp, fetchActiveWidget, rekeyMoveSession, fetchAmbientMoves, deactivateAmbientMoveApi, attachMoveApi, activateAttachedMoveApi, detachMoveApi } from "./moves";
+export { fetchMoves, activateMoveApi, activateProjectMoveApi, callMoveOp, fetchActiveWidget, rekeyMoveSession, rekeyMoveByTokenApi, fetchAmbientMoves, deactivateAmbientMoveApi, attachMoveApi, activateAttachedMoveApi, detachMoveApi } from "./moves";
 export type { MoveInput, MoveListItem, MovePageInfo, ActivateMoveResult, MoveWidgetInfo, AmbientMoveInfo, AttachMoveResult } from "./moves";
 
 // Missions
@@ -82,7 +82,7 @@ export type { ProviderUsageAnalytics, ProviderUsageDaily, ProviderUsageTotal, Mo
 export type {
   ToolCall, SubTask, Attachment, SessionArtifact, Message, PendingPermission, SessionStatus, Session, AgentConfigState,
   McpServerConfig, ProfileUi, Profile, GlobalConfig,
-  ProviderCapabilities, ProviderToolGroup,
+  ProviderCapabilities, ProviderToolGroup, ProviderHealthInfo, ProviderHealthCheck,
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo, CommitAttribution, CommitAttributionReason,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,
   UserProfileState, UserProfile, ProjectUiAssetInfo, ActiveProjectUiAsset, ProjectUiState, MemoryItem,

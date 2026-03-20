@@ -55,10 +55,11 @@
 /* ── Audio player — inline, single-line ── */
 .audio-artifact {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   max-width: 280px;
-  height: 24px;
+  min-height: 24px;
 }
 
 .audio-artifact-label {
@@ -128,10 +129,13 @@
 }
 
 .audio-artifact-error {
-  font-size: 10px;
+  flex-basis: 100%;
+  font-size: 11px;
+  line-height: 1.4;
   color: #f44;
   margin-top: 2px;
   opacity: 0.8;
+  word-break: break-word;
 }
 
 .message-artifact-text {
