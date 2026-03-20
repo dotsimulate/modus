@@ -1,0 +1,217 @@
+/* ── Moves widget ── */
+
+.moves-widget {
+  padding: 6px;
+}
+
+.moves-widget-error {
+  padding: 5px 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--warning, #e89b50);
+  background: color-mix(in srgb, var(--warning, #e89b50) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning, #e89b50) 20%, transparent);
+  border-radius: 3px;
+  word-break: break-word;
+}
+
+.moves-search {
+  width: 100%;
+  padding: 4px 6px;
+  margin-bottom: 6px;
+  background: var(--bg-surface, #111);
+  border: 1px solid var(--border, #1e1e1e);
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text, #e0e0e0);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.moves-search:focus {
+  border-color: var(--border-active, #333);
+}
+
+.moves-search::placeholder {
+  color: var(--text-dim, #666);
+}
+
+.moves-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.moves-tile {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  background: var(--bg-surface, #111);
+  border: 1px solid var(--border, #1e1e1e);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  font-family: inherit;
+  color: var(--text-secondary, #bbb);
+  white-space: nowrap;
+}
+
+.moves-tile:hover {
+  border-color: var(--border-active, #333);
+  color: var(--text, #e0e0e0);
+}
+
+.moves-tile--busy {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.moves-tile-icon {
+  flex-shrink: 0;
+  color: var(--text-dim, #666);
+}
+
+.moves-tile:hover .moves-tile-icon {
+  color: var(--text-tertiary, #999);
+}
+
+.moves-tile-icon--letter {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  width: 14px;
+  text-align: center;
+}
+
+.moves-tile-label {
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ── Expanded detail panel (replaces grid) ── */
+
+.moves-detail {
+  padding: 0;
+}
+
+.moves-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.moves-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text, #e0e0e0);
+}
+
+.moves-detail-close {
+  background: none;
+  border: none;
+  color: var(--text-dim, #666);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  font-family: inherit;
+}
+
+.moves-detail-close:hover {
+  color: var(--text, #e0e0e0);
+}
+
+.moves-detail-desc {
+  font-size: 10px;
+  color: var(--text-dim, #666);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+/* ── Input fields ── */
+
+.moves-input-field {
+  margin-bottom: 6px;
+}
+
+.moves-input-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim, #666);
+  margin-bottom: 2px;
+}
+
+.moves-input-required {
+  color: var(--warning, #e89b50);
+  margin-left: 2px;
+}
+
+.moves-input-control {
+  width: 100%;
+  padding: 3px 6px;
+  background: var(--bg-surface, #111);
+  border: 1px solid var(--border, #1e1e1e);
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text, #e0e0e0);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.moves-input-control:focus {
+  border-color: var(--border-active, #333);
+}
+
+.moves-input-textarea {
+  resize: vertical;
+  min-height: 40px;
+}
+
+.moves-input-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-dim, #666);
+  cursor: pointer;
+}
+
+.moves-input-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.moves-input-btn {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-family: inherit;
+  border-radius: 3px;
+  border: 1px solid var(--border, #1e1e1e);
+  cursor: pointer;
+  background: var(--bg-surface, #111);
+  color: var(--text-secondary, #bbb);
+}
+
+.moves-input-btn:hover {
+  border-color: var(--border-active, #333);
+  color: var(--text, #e0e0e0);
+}
+
+.moves-input-btn--submit {
+  background: var(--accent-dim, #1a3a2a);
+  border-color: var(--accent-border, #2a5a3a);
+}
+
+.moves-input-btn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}

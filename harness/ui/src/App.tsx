@@ -549,7 +549,7 @@ function AppShell() {
               width={leftPanelWidth}
               onOpen={() => setLeftPanelOpen(true)}
               onClose={() => setLeftPanelOpen(false)}
-              widgets={(profileData?.ui?.panelWidgets ?? ["session-info"]).map(
+              widgets={(profileData?.ui?.panelWidgets ?? ["session-info", "moves"]).map(
                 (type, i) => ({ id: `left-${type}-${i}`, type })
               )}
               onNavigate={handleNavigate}
@@ -723,6 +723,7 @@ function AppShell() {
                 setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
                 detachMoveApi(moveName, apiToken).catch(() => {});
               }}
+              onSendToAgent={(text) => handleInputChange(input ? `${input}\n${text}` : text)}
             />
           </>
         )}

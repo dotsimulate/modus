@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { usePinboard } from "../providers/PinboardProvider";
+import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 
 type Props = {
   onOpenFile: (path: string) => void;
@@ -20,6 +21,7 @@ export function PinboardView({ onOpenFile }: Props) {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const renameRef = useRef<HTMLInputElement>(null);
+  const groupCtxMenu = useContextMenu();
 
   useEffect(() => {
     if (editingGroupId && renameRef.current) renameRef.current.focus();
@@ -36,8 +38,7 @@ export function PinboardView({ onOpenFile }: Props) {
     }, 0);
   };
 
-  const startRename = (id: string, currentName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const startRename = (id: string, currentName: string) => {
     setEditingGroupId(id);
     setEditingName(currentName);
   };
@@ -52,10 +53,20 @@ export function PinboardView({ onOpenFile }: Props) {
     if (e.key === "Escape") setEditingGroupId(null);
   };
 
-  const handleRemoveGroup = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    removeGroup(id);
-  };
+  const handleGroupContextMenu = useCallback((e: React.MouseEvent, groupId: string, groupName: string) => {
+    const items: ContextMenuItem[] = [
+      { kind: "action", label: "Rename", onClick: () => startRename(groupId, groupName) },
+      {
+        kind: "action",
+        label: "Delete group",
+        disabled: groups.length <= 1,
+        onClick: () => removeGroup(groupId),
+      },
+      { kind: "separator" },
+      { kind: "action", label: "New group", onClick: handleAddGroup },
+    ];
+    groupCtxMenu.open(e, items);
+  }, [groups.length, removeGroup, groupCtxMenu]);
 
   return (
     <div className="pinboard">
@@ -66,6 +77,7 @@ export function PinboardView({ onOpenFile }: Props) {
             key={g.id}
             className={`pinboard-group${g.id === activeGroupId ? " pinboard-group--active" : ""}`}
             onClick={() => setActiveGroup(g.id)}
+            onContextMenu={(e) => handleGroupContextMenu(e, g.id, g.name)}
           >
             {editingGroupId === g.id ? (
               <input
@@ -81,7 +93,7 @@ export function PinboardView({ onOpenFile }: Props) {
               <>
                 <span
                   className="pinboard-group-name"
-                  onDoubleClick={(e) => startRename(g.id, g.name, e)}
+                  onDoubleClick={(e) => { e.stopPropagation(); startRename(g.id, g.name); }}
                 >
                   {g.name}
                 </span>
@@ -91,7 +103,7 @@ export function PinboardView({ onOpenFile }: Props) {
                 {groups.length > 1 && (
                   <button
                     className="pinboard-group-remove"
-                    onClick={(e) => handleRemoveGroup(g.id, e)}
+                    onClick={(e) => { e.stopPropagation(); removeGroup(g.id); }}
                     title="Remove group"
                   >
                     <svg width="6" height="6" viewBox="0 0 10 10" fill="none">
@@ -134,6 +146,7 @@ export function PinboardView({ onOpenFile }: Props) {
           ))
         )}
       </div>
+      {groupCtxMenu.portal}
     </div>
   );
 }

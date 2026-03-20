@@ -38,6 +38,29 @@ export function QueuedMessage({ message, onCancel }: Props) {
   );
 }
 
+type AttachedWidgetContentProps = {
+  label: string;
+  moveName: string;
+  onDetach: () => void;
+};
+
+export function AttachedWidgetContent({ label, moveName, onDetach }: AttachedWidgetContentProps) {
+  return (
+    <div className="queued-message queued-message--move">
+      <div className="queued-message-header">
+        <span className="queued-message-indicator">
+          <span className="queued-message-dot" />
+        </span>
+        <span className="queued-message-label">{moveName}</span>
+        <span className="queued-message-preview">{label}</span>
+        <button className="queued-message-cancel" onClick={onDetach}>
+          detach
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type AttachedMoveProps = {
   move: MoveListItem;
   inputs?: Record<string, unknown>;
