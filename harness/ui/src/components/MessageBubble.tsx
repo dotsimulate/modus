@@ -180,6 +180,12 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
         />
       )}
 
+      {msg.content && (
+        <div className={`message-content${isNew ? " message-content--new" : ""}`}>
+          <Markdown content={msg.content} />
+        </div>
+      )}
+
       {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
         <div className="message-tools">
           {msg.toolCalls.map((tc, index) => (
@@ -220,12 +226,6 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
           alt={lightboxSrc.alt}
           onClose={() => setLightboxSrc(null)}
         />
-      )}
-
-      {msg.content && (
-        <div className={`message-content${isNew ? " message-content--new" : ""}`}>
-          <Markdown content={msg.content} />
-        </div>
       )}
 
       {msg.artifacts && msg.artifacts.length > 0 && (
