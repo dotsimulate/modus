@@ -193,8 +193,16 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
 
       {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
         <div className="message-tools">
-          {msg.toolCalls.map((tc) => (
-            <ToolCallView key={tc.id} tool={tc} defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined} showGitEvents={showGitEvents} cwd={cwd} onStopTask={onStopTask} />
+          {msg.toolCalls.map((tc, index) => (
+            <ToolCallView
+              key={`${msg.id}:${index}:${tc.id}`}
+              tool={tc}
+              anchorId={`${msg.id}:${index}:${tc.id}`}
+              defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
+              showGitEvents={showGitEvents}
+              cwd={cwd}
+              onStopTask={onStopTask}
+            />
           ))}
         </div>
       )}

@@ -2,6 +2,72 @@
  * Agent Activity Feed — live tool call feed in the right sidebar.
  */
 
+/* ── Panel shell ── */
+.aa-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.aa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.aa-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.aa-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.aa-header-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.aa-header-stat {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.aa-header-stat--running { color: var(--tool-running); }
+.aa-header-stat--error { color: var(--tool-error); }
+
+.aa-header-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.aa-header-toggle:hover {
+  color: var(--text);
+}
+
 /* ── Feed container ── */
 .aa-feed {
   display: flex;
@@ -10,6 +76,7 @@
   padding: 0;
   overflow-y: auto;
   height: 100%;
+  min-height: 0;
   background: var(--bg);
 }
 
@@ -19,28 +86,52 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 100%;
+  min-height: 100px;
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 11px;
+  padding: 16px 0;
 }
 .aa-empty-icon { opacity: 0.3; }
 
 /* ── Feed item (clickable wrapper) ── */
 .aa-feed-item {
-  cursor: pointer;
-  transition: background 0.1s ease;
   border-bottom: 1px solid var(--border);
-}
-.aa-feed-item:hover {
-  background: var(--bg-hover);
 }
 .aa-feed-item--active {
   background: rgba(232, 155, 80, 0.03);
   border-left: 2px solid var(--tool-running);
 }
-.aa-feed-item--active:hover {
-  background: rgba(232, 155, 80, 0.06);
+
+.aa-icon-toggle {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.1s ease, opacity 0.1s ease;
+}
+.aa-icon-toggle:hover:not(:disabled) {
+  color: var(--text);
+}
+.aa-icon-toggle:disabled {
+  cursor: default;
+}
+.aa-icon-toggle--static {
+  color: inherit;
+}
+.aa-item-main {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.aa-item-main:hover {
+  background: var(--bg-hover);
 }
 
 /* ── Card ── */
@@ -50,9 +141,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 4px 12px;
   font-family: var(--font-mono);
-  font-size: calc(10px * var(--font-scale, 1));
+  font-size: 11px;
   min-height: 22px;
   line-height: 1.3;
 }
@@ -62,6 +153,10 @@
   width: 12px;
   height: 12px;
   flex-shrink: 0;
+}
+
+.aa-icon-toggle .aa-svg {
+  opacity: 0.9;
 }
 
 /* ── Text elements ── */
@@ -109,16 +204,13 @@
 
 .aa-tag {
   color: var(--text-muted);
-  font-size: calc(9px * var(--font-scale, 1));
+  font-size: 10px;
   flex-shrink: 0;
   white-space: nowrap;
-  background: rgba(255,255,255,0.03);
-  padding: 0 3px;
-  border-radius: 2px;
 }
 
 .aa-diff-stat {
-  font-size: calc(9px * var(--font-scale, 1));
+  font-size: 10px;
   flex-shrink: 0;
   font-weight: 600;
 }
@@ -135,7 +227,7 @@
 
 .aa-dur {
   color: var(--text-muted);
-  font-size: calc(9px * var(--font-scale, 1));
+  font-size: 10px;
 }
 
 .aa-err {
@@ -149,9 +241,9 @@
 /* ── Snippet preview ── */
 .aa-snippet {
   margin: 0;
-  padding: 2px 8px 3px 26px;
+  padding: 2px 12px 4px 30px;
   font-family: var(--font-mono);
-  font-size: calc(9px * var(--font-scale, 1));
+  font-size: 10px;
   line-height: 1.35;
   color: var(--text-muted);
   white-space: pre;
@@ -160,19 +252,25 @@
   max-height: 56px;
   border-top: 1px solid var(--border);
 }
+.aa-snippet--full {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  max-height: 320px;
+}
 .aa-snippet--dim {
   color: var(--text-dim);
 }
 
 /* ── Inline diff preview ── */
 .aa-inline-diff {
-  padding: 2px 8px 3px 26px;
+  padding: 2px 12px 4px 30px;
   border-top: 1px solid var(--border);
   font-family: var(--font-mono);
-  font-size: calc(9px * var(--font-scale, 1));
+  font-size: 10px;
   line-height: 1.35;
-  max-height: 48px;
-  overflow: hidden;
+  overflow: auto;
+  max-height: 320px;
 }
 
 .aa-diff-line {
@@ -188,7 +286,7 @@
 .aa-todo-bar {
   height: 2px;
   background: var(--border);
-  margin: 0 8px 3px 26px;
+  margin: 0 12px 4px 30px;
   border-radius: 1px;
   overflow: hidden;
 }
@@ -197,6 +295,22 @@
   background: var(--success);
   border-radius: 1px;
   transition: width 0.3s ease;
+}
+
+.aa-todo-list {
+  padding: 0 12px 6px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.aa-todo-item {
+  color: var(--text-dim);
+}
+.aa-todo-item--completed {
+  color: var(--text-muted);
+  text-decoration: line-through;
 }
 
 /* ── Highlight pulse when scrolling chat to a tool call ── */

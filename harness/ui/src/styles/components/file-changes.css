@@ -12,10 +12,24 @@
   margin: 12px 0 4px;
 }
 
+.session-edits-view.fc-container {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+}
+
 .fc-container-inner {
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
+}
+
+.session-edits-view .fc-container-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: none;
+  border-radius: 0;
 }
 
 .fc-header {
@@ -27,6 +41,11 @@
   border-bottom: 1px solid var(--border);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+.session-edits-view .fc-header {
+  padding: 6px 12px;
+  background: var(--bg);
 }
 
 .fc-header-label {
@@ -45,6 +64,12 @@
 .fc-files {
   display: flex;
   flex-direction: column;
+}
+
+.session-edits-view .fc-files {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* ── File card ── */
@@ -66,6 +91,10 @@
   transition: background 0.1s ease;
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+.session-edits-view .fc-file-header {
+  padding: 5px 12px;
 }
 
 .fc-file-header:hover {

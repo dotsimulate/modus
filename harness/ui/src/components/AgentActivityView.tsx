@@ -8,7 +8,7 @@
  *   - Order is configurable: set NEWEST_FIRST to flip
  */
 
-import { useMemo, useEffect, useRef, type ReactNode } from "react";
+import { useMemo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Message, ToolCall } from "../api";
 
 // ── Config ──
@@ -21,13 +21,21 @@ const NEWEST_FIRST = true;
 type FeedItem = {
   tool: ToolCall;
   msgIndex: number;
+  anchorId: string;
 };
 
 type ToolCardProps = {
   tool: ToolCall;
+  expanded: boolean;
+  toggleControl?: (icon: ReactNode) => ReactNode;
 };
 
-type ToolCardComponent = (props: ToolCardProps) => ReactNode;
+type ToolCardRender = {
+  summary: ReactNode;
+  detail?: ReactNode;
+};
+
+type ToolCardComponent = (props: ToolCardProps) => ToolCardRender;
 
 // ── Utility ──
 
@@ -78,12 +86,6 @@ function countLines(s: string): number {
   return n;
 }
 
-function previewLines(s: string, n: number): string {
-  const lines = s.split("\n");
-  if (lines.length <= n) return s;
-  return lines.slice(0, n).join("\n");
-}
-
 function countDiffChanges(old_str: string, new_str: string): { adds: number; dels: number } {
   const oldLines = (old_str || "").split("\n").length;
   const newLines = (new_str || "").split("\n").length;
@@ -92,8 +94,9 @@ function countDiffChanges(old_str: string, new_str: string): { adds: number; del
 
 // ── Scroll-to-chat ──
 
-function scrollChatToTool(toolId: string) {
-  const el = document.querySelector(`[data-tool-id="${toolId}"]`);
+function scrollChatToTool(anchorId: string, toolId: string) {
+  const el = document.querySelector(`[data-tool-anchor="${anchorId}"]`)
+    ?? document.querySelector(`[data-tool-id="${toolId}"]`);
   if (el) {
     el.scrollIntoView({ behavior: "smooth", block: "center" });
     el.classList.add("aa-highlight-pulse");
@@ -177,7 +180,7 @@ const Icons = {
 
 // ── Card Components ──
 
-function ReadCard({ tool }: ToolCardProps) {
+function ReadCard({ tool, toggleControl }: ToolCardProps) {
   const fp = (tool.input.file_path as string) ?? (tool.input.path as string) ?? "";
   const offset = tool.input.offset as number | undefined;
   const limit = tool.input.limit as number | undefined;
@@ -188,27 +191,26 @@ function ReadCard({ tool }: ToolCardProps) {
     ? `L${offset}\u2013${offset + limit}`
     : offset ? `L${offset}+` : limit ? `${limit}L` : "";
 
-  const preview = text ? previewLines(text, 4) : null;
   const dir = dirOf(fp);
 
-  return (
-    <div className="aa-card aa-card--read">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.read}
+        {toggleControl ? toggleControl(Icons.read) : Icons.read}
         <span className="aa-file" title={fp}>{basename(fp)}</span>
         {dir && <span className="aa-dir" title={fp}>{dir}</span>}
         {rangeLabel && <span className="aa-tag">{rangeLabel}</span>}
         {lineCount != null && <span className="aa-tag">{lineCount}L</span>}
         <ToolStatus tool={tool} />
       </div>
-      {preview && (
-        <pre className="aa-snippet">{preview}{lineCount! > 4 ? `\n\u2026 ${lineCount! - 4} more` : ""}</pre>
-      )}
-    </div>
-  );
+    ),
+    detail: text ? (
+      <pre className="aa-snippet aa-snippet--full">{text}</pre>
+    ) : undefined,
+  };
 }
 
-function EditCard({ tool }: ToolCardProps) {
+function EditCard({ tool, expanded, toggleControl }: ToolCardProps) {
   const fp = (tool.input.file_path as string) ?? "";
   const isWrite = tool.name === "Write" || tool.name === "write";
 
@@ -233,10 +235,10 @@ function EditCard({ tool }: ToolCardProps) {
   const newStr = (tool.input.new_string as string) ?? "";
   const dir = dirOf(fp);
 
-  return (
-    <div className="aa-card aa-card--edit">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {isWrite ? Icons.write : Icons.edit}
+        {toggleControl ? toggleControl(isWrite ? Icons.write : Icons.edit) : (isWrite ? Icons.write : Icons.edit)}
         <span className="aa-file" title={fp}>{basename(fp)}</span>
         {dir && <span className="aa-dir" title={fp}>{dir}</span>}
         {editCount > 1 && <span className="aa-tag">{editCount} edits</span>}
@@ -244,167 +246,182 @@ function EditCard({ tool }: ToolCardProps) {
         {dels > 0 && <span className="aa-diff-stat aa-diff-stat--del">{"\u2212"}{dels}</span>}
         <ToolStatus tool={tool} />
       </div>
-      {showPreview && (oldStr || newStr) && (
+    ),
+    detail: (showPreview && (oldStr || newStr)) || (isWrite && expanded && (tool.input.content as string))
+      ? (
         <div className="aa-inline-diff">
-          {oldStr && <pre className="aa-diff-line aa-diff-line--del">{"\u2212"} {previewLines(oldStr, 2)}</pre>}
-          {newStr && <pre className="aa-diff-line aa-diff-line--add">+ {previewLines(newStr, 2)}</pre>}
+          {oldStr && <pre className="aa-diff-line aa-diff-line--del">{"\u2212"} {oldStr}</pre>}
+          {newStr && <pre className="aa-diff-line aa-diff-line--add">+ {newStr}</pre>}
+          {isWrite && (tool.input.content as string) && (
+            <pre className="aa-diff-line aa-diff-line--add">+ {tool.input.content as string}</pre>
+          )}
         </div>
-      )}
-    </div>
-  );
+      ) : undefined,
+  };
 }
 
-function BashCard({ tool }: ToolCardProps) {
+function BashCard({ tool, toggleControl }: ToolCardProps) {
   const cmd = (tool.input.command as string) ?? "";
   const desc = (tool.input.description as string) ?? "";
 
-  return (
-    <div className="aa-card aa-card--bash">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.bash}
+        {toggleControl ? toggleControl(Icons.bash) : Icons.bash}
         <span className="aa-cmd">{truncate(desc || cmd, 70)}</span>
         <ToolStatus tool={tool} />
       </div>
-      {tool.result && (
-        <pre className="aa-snippet aa-snippet--dim">{previewLines(unwrapResult(tool.result), 3)}</pre>
-      )}
-    </div>
-  );
+    ),
+    detail: tool.result ? (
+      <pre className="aa-snippet aa-snippet--dim aa-snippet--full">{unwrapResult(tool.result)}</pre>
+    ) : undefined,
+  };
 }
 
-function GrepCard({ tool }: ToolCardProps) {
+function GrepCard({ tool, toggleControl }: ToolCardProps) {
   const pattern = (tool.input.pattern as string) ?? "";
   const path = (tool.input.path as string) ?? "";
   const result = tool.result ? unwrapResult(tool.result) : "";
   const matchCount = result ? result.split("\n").filter(Boolean).length : null;
 
-  return (
-    <div className="aa-card aa-card--grep">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.search}
+        {toggleControl ? toggleControl(Icons.search) : Icons.search}
         <span className="aa-pattern">/{pattern}/</span>
         {path && <span className="aa-dir">{basename(path)}</span>}
         {matchCount != null && <span className="aa-tag">{matchCount} hits</span>}
         <ToolStatus tool={tool} />
       </div>
-    </div>
-  );
+    ),
+  };
 }
 
-function GlobCard({ tool }: ToolCardProps) {
+function GlobCard({ tool, toggleControl }: ToolCardProps) {
   const pattern = (tool.input.pattern as string) ?? "";
   const path = (tool.input.path as string) ?? "";
   const result = tool.result ? unwrapResult(tool.result) : "";
   const fileCount = result ? result.split("\n").filter(Boolean).length : null;
 
-  return (
-    <div className="aa-card aa-card--glob">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.glob}
+        {toggleControl ? toggleControl(Icons.glob) : Icons.glob}
         <span className="aa-cmd">{pattern}</span>
         {path && <span className="aa-dir">{basename(path)}</span>}
         {fileCount != null && <span className="aa-tag">{fileCount} files</span>}
         <ToolStatus tool={tool} />
       </div>
-    </div>
-  );
+    ),
+  };
 }
 
-function AgentCard({ tool }: ToolCardProps) {
+function AgentCard({ tool, toggleControl }: ToolCardProps) {
   const desc = (tool.input.description as string) ?? "";
   const subCount = tool.subMessages?.reduce((n, m) => n + (m.toolCalls?.length ?? 0), 0) ?? 0;
 
-  return (
-    <div className="aa-card aa-card--agent">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.agent}
+        {toggleControl ? toggleControl(Icons.agent) : Icons.agent}
         <span className="aa-cmd">{truncate(desc, 55)}</span>
         {subCount > 0 && <span className="aa-tag">{subCount} calls</span>}
         <ToolStatus tool={tool} />
       </div>
-    </div>
-  );
+    ),
+  };
 }
 
-function TodoCard({ tool }: ToolCardProps) {
+function TodoCard({ tool, toggleControl }: ToolCardProps) {
   const raw = tool.input.todos;
   const todos = Array.isArray(raw) ? raw as Array<{ content: string; status: string }> : null;
-  if (!todos?.length) return null;
+  if (!todos?.length) return { summary: null };
   const done = todos.filter(t => t.status === "completed").length;
   const total = todos.length;
 
-  return (
-    <div className="aa-card aa-card--todo">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.todo}
+        {toggleControl ? toggleControl(Icons.todo) : Icons.todo}
         <span className="aa-cmd">tasks</span>
         <span className="aa-tag">{done}/{total}</span>
         <ToolStatus tool={tool} />
       </div>
-      <div className="aa-todo-bar">
-        <div className="aa-todo-fill" style={{ width: `${(done / total) * 100}%` }} />
-      </div>
-    </div>
-  );
+    ),
+    detail: (
+      <>
+        <div className="aa-todo-bar">
+          <div className="aa-todo-fill" style={{ width: `${(done / total) * 100}%` }} />
+        </div>
+        <div className="aa-todo-list">
+          {todos.map((todo, index) => (
+            <div key={index} className={`aa-todo-item aa-todo-item--${todo.status}`}>
+              {todo.content}
+            </div>
+          ))}
+        </div>
+      </>
+    ),
+  };
 }
 
-function McpCard({ tool }: ToolCardProps) {
+function McpCard({ tool, toggleControl }: ToolCardProps) {
   const parts = tool.name.split("__");
   const server = parts[1] ?? "";
   const method = parts[2] ?? "";
 
-  return (
-    <div className="aa-card aa-card--mcp">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.mcp}
+        {toggleControl ? toggleControl(Icons.mcp) : Icons.mcp}
         <span className="aa-cmd">{server}<span className="aa-sep">/</span>{method}</span>
         <ToolStatus tool={tool} />
       </div>
-    </div>
-  );
+    ),
+  };
 }
 
-function WebCard({ tool }: ToolCardProps) {
+function WebCard({ tool, toggleControl }: ToolCardProps) {
   const query = (tool.input.query as string) ?? (tool.input.url as string) ?? "";
 
-  return (
-    <div className="aa-card aa-card--web">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.web}
+        {toggleControl ? toggleControl(Icons.web) : Icons.web}
         <span className="aa-cmd">{truncate(query, 55)}</span>
         <ToolStatus tool={tool} />
       </div>
-    </div>
-  );
+    ),
+  };
 }
 
-function SkillCard({ tool }: ToolCardProps) {
+function SkillCard({ tool, toggleControl }: ToolCardProps) {
   const skill = (tool.input.skill as string) ?? "";
 
-  return (
-    <div className="aa-card aa-card--skill">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.skill}
+        {toggleControl ? toggleControl(Icons.skill) : Icons.skill}
         <span className="aa-cmd">/{skill}</span>
         <ToolStatus tool={tool} />
       </div>
-    </div>
-  );
+    ),
+  };
 }
 
-function GenericCard({ tool }: ToolCardProps) {
+function GenericCard({ tool, toggleControl }: ToolCardProps) {
   const summary = toolSummary(tool);
 
-  return (
-    <div className="aa-card aa-card--generic">
+  return {
+    summary: (
       <div className="aa-card-row">
-        {Icons.generic}
+        {toggleControl ? toggleControl(Icons.generic) : Icons.generic}
         <span className="aa-cmd">{displayToolName(tool.name)}</span>
         {summary && <span className="aa-dir">{summary}</span>}
         <ToolStatus tool={tool} />
       </div>
-    </div>
-  );
+    ),
+  };
 }
 
 // ── Shared sub-components ──
@@ -478,8 +495,9 @@ function collectAllToolCalls(messages: Message[]): FeedItem[] {
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (msg.role === "assistant" && msg.toolCalls?.length) {
-      for (const tool of msg.toolCalls) {
-        items.push({ tool, msgIndex: i });
+      for (let j = 0; j < msg.toolCalls.length; j++) {
+        const tool = msg.toolCalls[j];
+        items.push({ tool, msgIndex: i, anchorId: `${msg.id}:${j}:${tool.id}` });
       }
     }
   }
@@ -495,6 +513,7 @@ type Props = {
 export function AgentActivityView({ messages }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef(0);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
 
   const feed = useMemo(() => {
     const items = collectAllToolCalls(messages);
@@ -508,31 +527,93 @@ export function AgentActivityView({ messages }: Props) {
     prevCountRef.current = feed.length;
   }, [feed.length]);
 
-  if (feed.length === 0) {
-    return (
-      <div className="aa-empty">
-        <svg className="aa-empty-icon" width="20" height="20" viewBox="0 0 12 12" fill="none">
-          <path d="M1 6h2l1.5-3 2 6L8.5 3 10 6h1" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        <span>no activity yet</span>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const validIds = new Set(feed.map((item) => item.anchorId));
+    setExpandedItems((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (validIds.has(id)) next.add(id);
+      }
+      return next;
+    });
+  }, [feed]);
+
+  const allExpanded = feed.length > 0 && expandedItems.size === feed.length;
 
   return (
-    <div className="aa-feed" ref={scrollRef}>
-      {feed.map((item) => {
-        const Card = getCard(item.tool.name);
-        return (
-          <div
-            key={item.tool.id}
-            className={`aa-feed-item${item.tool.status === "running" ? " aa-feed-item--active" : ""}`}
-            onClick={() => scrollChatToTool(item.tool.id)}
+    <div className="aa-panel">
+      <div className="aa-header">
+        <div className="aa-header-meta">
+          <span className="aa-header-title">activity</span>
+        </div>
+        <div className="aa-header-actions">
+          <button
+            className="aa-header-toggle"
+            onClick={() => setExpandedItems(allExpanded ? new Set() : new Set(feed.map((item) => item.anchorId)))}
+            title={allExpanded ? "Collapse all activity items" : "Expand all activity items"}
           >
-            <Card tool={item.tool} />
-          </div>
-        );
-      })}
+            {allExpanded ? "collapse all" : "expand all"}
+          </button>
+        </div>
+      </div>
+
+      {feed.length === 0 ? (
+        <div className="aa-empty">
+          <svg className="aa-empty-icon" width="20" height="20" viewBox="0 0 12 12" fill="none">
+            <path d="M1 6h2l1.5-3 2 6L8.5 3 10 6h1" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span>no activity yet</span>
+        </div>
+      ) : (
+        <div className="aa-feed" ref={scrollRef}>
+          {feed.map((item) => {
+            const expanded = expandedItems.has(item.anchorId);
+            const preview = getCard(item.tool.name)({ tool: item.tool, expanded });
+            const hasDetail = !!preview.detail;
+            const toggleControl = (icon: ReactNode) => (
+              <button
+                className={`aa-icon-toggle${expanded ? " aa-icon-toggle--open" : ""}${hasDetail ? "" : " aa-icon-toggle--static"}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!hasDetail) return;
+                  setExpandedItems((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(item.anchorId)) next.delete(item.anchorId);
+                    else next.add(item.anchorId);
+                    return next;
+                  });
+                }}
+                title={hasDetail ? (expanded ? "Collapse item" : "Expand item") : undefined}
+                disabled={!hasDetail}
+              >
+                {icon}
+              </button>
+            );
+            const rendered = getCard(item.tool.name)({ tool: item.tool, expanded, toggleControl });
+
+            return (
+              <div
+                key={item.anchorId}
+                className={`aa-feed-item${item.tool.status === "running" ? " aa-feed-item--active" : ""}`}
+              >
+                <div
+                  className="aa-item-main"
+                  onClick={() => scrollChatToTool(item.anchorId, item.tool.id)}
+                >
+                  {rendered.summary}
+                </div>
+                {hasDetail && (
+                  <div className={`panel-collapse ${expanded ? "panel-collapse--open" : ""}`}>
+                    <div className="panel-collapse-clip">
+                      {rendered.detail}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

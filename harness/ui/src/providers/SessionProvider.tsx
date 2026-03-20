@@ -226,8 +226,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const getSendSeed = useCallback((sessionState: ReturnType<typeof getSessionState> | null) => {
     if (activeSession && !activeSession.id.startsWith("pending-")) {
+      // Use the session's own profile — never fall back to selectedProfile
+      // (the sidebar seed). If the session has no profile, use user default.
+      const sessionOwnProfile = activeSession.nextProfile
+        ?? activeSession.profile
+        ?? activeUP?.defaultAgentProfile
+        ?? (selectedProfile || undefined);
       return {
-        profile: activeSession.nextProfile ?? activeSession.profile ?? (selectedProfile || undefined),
+        profile: sessionOwnProfile,
         agent: getQueuedAgentConfig(activeSession, sessionState?.agentConfig ?? activeSession.agentConfig),
         cwd: sessionState?.cwd || activeSession.cwd || setupState.cwd,
         additionalDirectories: sessionState?.additionalDirectories ?? activeSession.additionalDirectories ?? setupState.additionalDirectories,
@@ -235,7 +241,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       };
     }
     return getEffectiveSeed();
-  }, [activeSession, getEffectiveSeed, getQueuedAgentConfig, selectedProfile, setupState.cwd, setupState.additionalDirectories, setupState.loadProjectSettings]);
+  }, [activeSession, activeUP?.defaultAgentProfile, getEffectiveSeed, getQueuedAgentConfig, selectedProfile, setupState.cwd, setupState.additionalDirectories, setupState.loadProjectSettings]);
 
   const newSession = useCallback(async () => {
     await saveDraftForCurrent();
@@ -274,12 +280,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [activeUserProfile, getEffectiveSeed, refreshSessions, resolveAppliedModel, resolveProfileProvider, saveDraftForCurrent]);
 
   const selectSession = useCallback(async (id: string) => {
-    await saveDraftForCurrent();
-
+    // Set up the new session SYNCHRONOUSLY before any async work.
+    // This prevents a render gap where activeSession is stale/null and
+    // the ConfigBar falls back to the sidebar's selectedProfile.
     const info = serverSessions.find((s) => s.id === id);
     const sessionProfile = info?.profile ?? undefined;
 
-    // Reuse existing store entry if available, otherwise create fresh
     const existing = getSessionState(id);
     if (!existing) {
       const rs = createInitialState(id);
@@ -288,14 +294,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       rs.cwd = info?.cwd ?? "";
       setSessionState(id, rs, sessionProfile);
     } else {
-      // Sync profile and fill missing model from server info even when reusing
-      // a store entry — events may not have arrived yet and profile may be stale.
       const updatedState = !existing.model && info?.model
         ? { ...existing, model: info.model }
         : existing;
       setSessionState(id, updatedState, sessionProfile);
     }
     setActiveSessionId(id);
+
+    // Save draft for previous session (fire-and-forget — uses captured refs
+    // from the previous render, so it saves the OLD session's draft).
+    saveDraftForCurrent();
 
     // Subscribe from last known seq (avoids full replay if store has state)
     const afterSeq = existing?.lastSeq ?? 0;
