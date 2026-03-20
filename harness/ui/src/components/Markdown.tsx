@@ -2,7 +2,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import hljs from "highlight.js/lib/core";
-import { memo, useState, type ReactElement } from "react";
+import { memo, useEffect, useId, useRef, useState, type ReactElement } from "react";
+import mermaid from "mermaid";
 import { useFileViewer } from "../providers/FileViewerProvider";
 
 // Register languages — core set for dev/AI chat
@@ -44,6 +45,75 @@ const langs: Record<string, any> = {
 
 for (const [name, lang] of Object.entries(langs)) {
   hljs.registerLanguage(name, lang);
+}
+
+// Register no-op languages for DSLs that appear in code fences but have no hljs grammar
+const noop = () => ({ name: "noop", contains: [] });
+for (const alias of ["toml", "graphql", "gql", "proto", "protobuf", "hcl", "terraform"]) {
+  hljs.registerLanguage(alias, noop);
+}
+
+// Mermaid — dark theme matching our terminal aesthetic
+mermaid.initialize({
+  startOnLoad: false,
+  theme: "dark",
+  themeVariables: {
+    darkMode: true,
+    background: "#000000",
+    primaryColor: "#1a1a1a",
+    primaryTextColor: "#e0e0e0",
+    primaryBorderColor: "#333333",
+    secondaryColor: "#111111",
+    secondaryTextColor: "#bbbbbb",
+    secondaryBorderColor: "#333333",
+    tertiaryColor: "#0a0a0a",
+    lineColor: "#555555",
+    textColor: "#e0e0e0",
+    mainBkg: "#111111",
+    nodeBorder: "#333333",
+    clusterBkg: "#0a0a0a",
+    clusterBorder: "#1e1e1e",
+    titleColor: "#e0e0e0",
+    edgeLabelBackground: "#0a0a0a",
+    nodeTextColor: "#e0e0e0",
+  },
+  fontFamily: "var(--font-mono, monospace)",
+  fontSize: 13,
+});
+
+function MermaidDiagram({ code }: { code: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const id = useId().replace(/:/g, "_");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { svg } = await mermaid.render(`mermaid${id}`, code);
+        if (!cancelled && ref.current) {
+          ref.current.innerHTML = svg;
+          setError(null);
+        }
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Diagram render failed");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [code, id]);
+
+  if (error) {
+    return (
+      <div className="code-block">
+        <div className="code-block-header">
+          <span className="code-block-lang">mermaid</span>
+        </div>
+        <pre><code>{code}</code></pre>
+      </div>
+    );
+  }
+
+  return <div className="mermaid-diagram" ref={ref} />;
 }
 
 function highlight(code: string, lang: string | null): string {
@@ -123,6 +193,11 @@ const markdownComponents: Record<string, any> = {
     const match = /language-(\w+)/.exec(className);
     const lang = match?.[1] || null;
     const raw = String(props.children ?? "").replace(/\n$/, "");
+
+    if (lang === "mermaid") {
+      return <MermaidDiagram code={raw} />;
+    }
+
     const html = highlight(raw, lang);
 
     return (

@@ -12,22 +12,31 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { indentOnInput, bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { langFromPath, moTheme } from "./codemirror-shared";
 
+export type CodeMirrorContextInfo = {
+  selection: string;
+  line: number;
+  path: string;
+};
+
 // ── Component ──
 
 export function CodeMirrorEditor({
-  content, path, onSave, onDirty,
+  content, path, onSave, onDirty, onEditorContextMenu,
 }: {
   content: string;
   path: string;
   onSave: (content: string) => void;
   onDirty: (dirty: boolean) => void;
+  onEditorContextMenu?: (e: React.MouseEvent, info: CodeMirrorContextInfo) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onSaveRef = useRef(onSave);
   const onDirtyRef = useRef(onDirty);
+  const onCtxRef = useRef(onEditorContextMenu);
   onSaveRef.current = onSave;
   onDirtyRef.current = onDirty;
+  onCtxRef.current = onEditorContextMenu;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -61,5 +70,16 @@ export function CodeMirrorEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
-  return <div ref={containerRef} className="cm-editor-container" />;
+  const handleContextMenu = (e: React.MouseEvent) => {
+    const view = viewRef.current;
+    if (!view || !onCtxRef.current) return;
+    const sel = view.state.sliceDoc(
+      view.state.selection.main.from,
+      view.state.selection.main.to,
+    );
+    const line = view.state.doc.lineAt(view.state.selection.main.head).number;
+    onCtxRef.current(e, { selection: sel, line, path });
+  };
+
+  return <div ref={containerRef} className="cm-editor-container" onContextMenu={handleContextMenu} />;
 }

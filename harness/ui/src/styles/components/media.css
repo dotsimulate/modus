@@ -127,6 +127,13 @@
   pointer-events: none;
 }
 
+.audio-artifact-error {
+  font-size: 10px;
+  color: #f44;
+  margin-top: 2px;
+  opacity: 0.8;
+}
+
 .message-artifact-text {
   white-space: pre-wrap;
   font-size: calc(13px * var(--font-scale, 1));
