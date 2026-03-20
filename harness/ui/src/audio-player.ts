@@ -22,6 +22,8 @@ export type PlaybackState = {
   playing: boolean;
   currentTime: number;
   duration: number;
+  /** Last playback error message (cleared on successful play) */
+  error: string | null;
 };
 
 type Listener = (state: PlaybackState) => void;
@@ -74,7 +76,28 @@ let _state: PlaybackState = {
   playing: false,
   currentTime: 0,
   duration: 0,
+  error: null,
 };
+
+// Mobile unlock: some browsers require a user-gesture play() before
+// programmatic playback works.  We listen for the first touchstart/click
+// and silently play+pause an empty source to unlock the element.
+let _unlocked = false;
+function unlockAudio() {
+  if (_unlocked) return;
+  _unlocked = true;
+  const el = ensureElement();
+  // Play a tiny silent buffer to unlock the audio element on iOS/Android
+  el.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+  const p = el.play();
+  if (p) p.then(() => { el.pause(); el.removeAttribute("src"); }).catch(() => {});
+  document.removeEventListener("touchstart", unlockAudio, true);
+  document.removeEventListener("click", unlockAudio, true);
+}
+if (typeof document !== "undefined") {
+  document.addEventListener("touchstart", unlockAudio, { capture: true, once: true });
+  document.addEventListener("click", unlockAudio, { capture: true, once: true });
+}
 const _listeners = new Set<Listener>();
 const _played = loadPlayed();
 
@@ -96,7 +119,7 @@ function ensureElement(): HTMLAudioElement {
 
   el.addEventListener("play", () => update({ playing: true }));
   el.addEventListener("pause", () => update({ playing: false }));
-  el.addEventListener("ended", () => update({ activeId: null, src: null, sessionId: null, playing: false, currentTime: 0, duration: 0 }));
+  el.addEventListener("ended", () => update({ activeId: null, src: null, sessionId: null, playing: false, currentTime: 0, duration: 0, error: null }));
   el.addEventListener("timeupdate", () =>
     update({ currentTime: el.currentTime }),
   );
@@ -107,6 +130,12 @@ function ensureElement(): HTMLAudioElement {
   el.addEventListener("durationchange", () => {
     const d = el.duration;
     if (isFinite(d) && d > 0) update({ duration: d });
+  });
+  el.addEventListener("error", () => {
+    const e = el.error;
+    const msg = e ? `${e.code}: ${e.message || "media error"}` : "unknown audio error";
+    console.error("[audio-player] element error:", msg);
+    update({ playing: false, error: msg });
   });
 
   _el = el;
@@ -123,19 +152,46 @@ function resolveUrl(url: string): string {
 // Public API
 // ---------------------------------------------------------------------------
 
+function handlePlayError(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error("[audio-player] play failed:", msg);
+  update({ playing: false, error: msg });
+}
+
+/** Pre-flight: fetch the URL with a HEAD request to check for auth/network errors. */
+async function preflight(src: string): Promise<string | null> {
+  try {
+    const res = await fetch(src, { method: "HEAD" });
+    if (!res.ok) return `HTTP ${res.status} ${res.statusText}`;
+    const ct = res.headers.get("content-type") || "";
+    if (!ct.startsWith("audio/")) return `bad content-type: ${ct}`;
+    return null;
+  } catch (e) {
+    return `network: ${e instanceof Error ? e.message : e}`;
+  }
+}
+
 /** Play an artifact. If it's already playing, this is a no-op. */
 export function play(id: number, url: string, sessionId?: string) {
   const el = ensureElement();
   if (_state.activeId === id && _state.src === url) {
-    if (el.paused) el.play().catch(() => {});
+    if (el.paused) el.play().then(() => update({ error: null })).catch(handlePlayError);
     return;
   }
   const src = resolveUrl(url);
-  el.src = src;
-  update({ activeId: id, src: url, sessionId: sessionId ?? null, currentTime: 0, duration: 0, playing: false });
+  update({ activeId: id, src: url, sessionId: sessionId ?? null, currentTime: 0, duration: 0, playing: false, error: null });
   _played.add(id);
   savePlayed(_played);
-  el.play().catch(() => {});
+
+  // Pre-flight check so we get a useful error instead of opaque code 4
+  preflight(src).then((err) => {
+    if (err) {
+      update({ playing: false, error: err });
+      return;
+    }
+    el.src = src;
+    el.play().then(() => update({ error: null })).catch(handlePlayError);
+  });
 }
 
 /** Auto-play an artifact only if it hasn't been played yet this session. */
@@ -148,7 +204,7 @@ export function autoPlay(id: number, url: string, sessionId?: string) {
 export function toggle(id: number, url: string, sessionId?: string) {
   const el = ensureElement();
   if (_state.activeId === id) {
-    if (el.paused) el.play().catch(() => {});
+    if (el.paused) el.play().then(() => update({ error: null })).catch(handlePlayError);
     else el.pause();
   } else {
     play(id, url, sessionId);
@@ -167,7 +223,7 @@ export function stop() {
   _el.pause();
   _el.removeAttribute("src");
   _el.load();
-  update({ activeId: null, src: null, sessionId: null, playing: false, currentTime: 0, duration: 0 });
+  update({ activeId: null, src: null, sessionId: null, playing: false, currentTime: 0, duration: 0, error: null });
 }
 
 /** Check if an artifact has already been played this session. */

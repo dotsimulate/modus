@@ -21,6 +21,8 @@
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.40.0",
     "highlight.js": "^11.11.1",
+    "lucide-react": "^0.577.0",
+    "mermaid": "^11.13.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",

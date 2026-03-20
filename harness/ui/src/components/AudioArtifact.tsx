@@ -27,6 +27,7 @@ export function AudioArtifact({
   const state = useAudioPlayer();
   const isActive = state.activeId === artifact.id;
   const playing = isActive && state.playing;
+  const error = isActive ? state.error : null;
   const currentTime = isActive ? state.currentTime : 0;
   const duration = isActive ? state.duration : 0;
   const sid = sessionIdFromUrl(artifact.url);
@@ -74,6 +75,7 @@ export function AudioArtifact({
         </div>
         <div className="audio-artifact-time">{fmt(currentTime)}<span className="audio-artifact-time--total">/{fmt(duration)}</span></div>
       </div>
+      {error && <div className="audio-artifact-error">{error}</div>}
     </div>
   );
 }

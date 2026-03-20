@@ -283,7 +283,7 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
   const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
 
   return (
-    <div className={`tool-call ${tool.status} ${isAgent ? "tool-call--agent" : ""}`}>
+    <div className={`tool-call ${tool.status} ${isAgent ? "tool-call--agent" : ""}`} data-tool-id={tool.id}>
       <div className="tool-call-header" onClick={() => setExpanded(!expanded)}>
         <span className="tool-call-indicator">
           {tool.status === "running" && <span className="tool-spinner" />}

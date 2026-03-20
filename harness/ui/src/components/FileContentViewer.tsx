@@ -2,6 +2,7 @@ import { memo } from "react";
 import type { PointerEventHandler, ReactNode } from "react";
 import { Markdown } from "./Markdown";
 import { CodeMirrorViewer } from "./CodeMirrorViewer";
+import type { CodeMirrorContextInfo } from "./CodeMirrorEditor";
 
 type Props = {
   filePath: string;
@@ -11,6 +12,7 @@ type Props = {
   actions?: ReactNode;
   nameActions?: ReactNode;
   onHeaderPointerDown?: PointerEventHandler<HTMLDivElement>;
+  onEditorContextMenu?: (e: React.MouseEvent, info: CodeMirrorContextInfo) => void;
 };
 
 function basename(p: string): string {
@@ -26,6 +28,7 @@ export const FileContentViewer = memo(function FileContentViewer({
   actions,
   nameActions,
   onHeaderPointerDown,
+  onEditorContextMenu,
 }: Props) {
   const name = basename(filePath);
   const isMarkdown = /\.mdx?$/i.test(filePath);
@@ -55,7 +58,7 @@ export const FileContentViewer = memo(function FileContentViewer({
           </div>
         )}
         {!loading && !error && content !== null && !isMarkdown && (
-          <CodeMirrorViewer content={content} path={filePath} />
+          <CodeMirrorViewer content={content} path={filePath} onEditorContextMenu={onEditorContextMenu} />
         )}
       </div>
     </div>
