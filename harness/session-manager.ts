@@ -348,6 +348,17 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
           seq: session.seq,
         });
       }
+
+      // Notify global subscribers (SessionWeb real-time updates)
+      if (updates.status) {
+        emitGlobalSessionEvent({
+          type: "session:status",
+          sessionId: session.sessionId,
+          status: updates.status as SessionStatus,
+          costUsd: updates.costUsd ?? session.costUsd,
+          preview: session.preview,
+        });
+      }
     },
   };
 }
@@ -646,6 +657,16 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     }
   }
 
+  // Notify global subscribers (SessionWeb real-time updates)
+  emitGlobalSessionEvent({
+    type: "session:created",
+    sessionId: tempId,
+    status: session.status,
+    profile: session.profile,
+    userProfile: session.userProfile,
+    preview: session.preview,
+  });
+
   // Delegate to provider — provider handles init events (user/prompt, system/init)
   const ctx = createTurnContext(session, {
     ...opts,
@@ -805,6 +826,7 @@ export function stopSession(sessionId: string): boolean {
   // Force idle IMMEDIATELY — don't wait for the provider to propagate
   session.status = "idle";
   updateSessionStatus(session.sessionId, "idle");
+  emitGlobalSessionEvent({ type: "session:status", sessionId: session.sessionId, status: "idle" });
   const interruptData = JSON.stringify({ type: "system", subtype: "interrupted" });
   session.seq++;
   addEvent(session.sessionId, session.seq, "system", "interrupted", interruptData);
@@ -1177,6 +1199,34 @@ export function subscribe(sessionId: string, writer: SSEWriter): () => void {
     return () => { session.subscribers.delete(writer); };
   }
   return () => {};
+}
+
+// ── Global Session Event Bus ──
+// Broadcasts lifecycle events (created, status-changed, archived) to all
+// subscribers. SessionWeb uses this for real-time updates without polling.
+
+export type GlobalSessionEvent =
+  | { type: "session:created"; sessionId: string; status: SessionStatus; profile?: string; userProfile?: string; preview?: string }
+  | { type: "session:status"; sessionId: string; status: SessionStatus; costUsd?: number; preview?: string }
+  | { type: "session:archived"; sessionId: string };
+
+type GlobalSSEWriter = {
+  write(data: string): Promise<void>;
+  close(): void;
+};
+
+const globalSubscribers = new Set<GlobalSSEWriter>();
+
+export function subscribeGlobal(writer: GlobalSSEWriter): () => void {
+  globalSubscribers.add(writer);
+  return () => { globalSubscribers.delete(writer); };
+}
+
+export function emitGlobalSessionEvent(event: GlobalSessionEvent) {
+  const data = JSON.stringify(event);
+  for (const sub of globalSubscribers) {
+    try { sub.write(data); } catch { globalSubscribers.delete(sub); }
+  }
 }
 
 // ── Cleanup ──

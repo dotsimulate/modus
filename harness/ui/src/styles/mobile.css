@@ -109,5 +109,39 @@
     width: calc(100vw - 32px);
     max-width: 320px;
   }
+
+  /* ── Left panel + left controls — hide on mobile ── */
+  .left-panel,
+  .panel-tab--left,
+  .resize-handle--left,
+  .resize-handle--right { display: none !important; }
+
+  /* ── Right panel tab — always-visible fixed toggle on mobile ── */
+  .panel-tab--right {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 95;
+    width: 20px;
+    height: 44px;
+    opacity: 0.45;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-active);
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+    transition: opacity 0.15s ease;
+  }
+  .panel-tab--right:hover { opacity: 0.85; }
+
+  /* ── Right panel — full-screen fixed overlay when open on mobile ── */
+  .right-panel.open {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    width: 100% !important;
+    min-width: 100% !important;
+    overflow: visible;
+  }
 }
 
