@@ -13,6 +13,7 @@ type Props = {
   nameActions?: ReactNode;
   onHeaderPointerDown?: PointerEventHandler<HTMLDivElement>;
   onEditorContextMenu?: (e: React.MouseEvent, info: CodeMirrorContextInfo) => void;
+  onMarkdownContextMenu?: (e: React.MouseEvent) => void;
 };
 
 function basename(p: string): string {
@@ -29,6 +30,7 @@ export const FileContentViewer = memo(function FileContentViewer({
   nameActions,
   onHeaderPointerDown,
   onEditorContextMenu,
+  onMarkdownContextMenu,
 }: Props) {
   const name = basename(filePath);
   const isMarkdown = /\.mdx?$/i.test(filePath);
@@ -53,7 +55,7 @@ export const FileContentViewer = memo(function FileContentViewer({
           <div className="fcv-state">File could not be read.</div>
         )}
         {!loading && !error && content !== null && isMarkdown && (
-          <div className="message-content fcv-markdown">
+          <div className="message-content fcv-markdown" onContextMenu={onMarkdownContextMenu}>
             <Markdown content={content} />
           </div>
         )}

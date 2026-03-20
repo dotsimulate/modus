@@ -239,13 +239,6 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     });
   }, [groups, pinToGroup, unpinFromActive]);
 
-  /** Collapses pin actions into a submenu when there are multiple groups */
-  const buildPinSubmenu = useCallback((path: string): ContextMenuItem => {
-    const items = buildPinItems(path);
-    if (items.length === 1) return items[0];
-    return { kind: "submenu", icon: pinIcon, label: "Pin to pinboard…", items };
-  }, [buildPinItems, pinIcon]);
-
   const handleEditorContextMenu = useCallback((e: React.MouseEvent, info: CodeMirrorContextInfo) => {
     const items: ContextMenuItem[] = [];
     if (info.selection) {
@@ -277,7 +270,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     });
     if (groups.length > 0) {
       items.push({ kind: "separator" });
-      items.push(buildPinSubmenu(info.path));
+      items.push(...buildPinItems(info.path));
     }
     if (onSendToAgent) {
       items.push({ kind: "separator" });
@@ -291,7 +284,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
       });
     }
     editorCtxMenu.open(e, items);
-  }, [buildPinSubmenu, groups.length, onSendToAgent, editorCtxMenu]);
+  }, [buildPinItems, groups.length, onSendToAgent, editorCtxMenu]);
 
   const handleTabContextMenu = useCallback((e: React.MouseEvent, tabPath: string) => {
     const items: ContextMenuItem[] = [
@@ -314,10 +307,56 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     ];
     if (groups.length > 0) {
       items.push({ kind: "separator" });
-      items.push(buildPinSubmenu(tabPath));
+      items.push(...buildPinItems(tabPath));
     }
     tabCtxMenu.open(e, items);
-  }, [tabs, closeFile, handleCloseTab, buildPinSubmenu, groups.length, tabCtxMenu]);
+  }, [tabs, closeFile, handleCloseTab, buildPinItems, groups.length, tabCtxMenu]);
+
+  const markdownCtxMenu = useContextMenu();
+
+  const handleMarkdownContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!viewingFile) return;
+    const items: ContextMenuItem[] = [];
+    const sel = window.getSelection()?.toString() ?? "";
+    if (sel) {
+      items.push({
+        kind: "action",
+        label: "Copy selection",
+        onClick: () => navigator.clipboard.writeText(sel),
+      });
+      items.push({
+        kind: "action",
+        label: "Copy as code block",
+        onClick: () => navigator.clipboard.writeText(`\`\`\`\n${sel}\n\`\`\``),
+      });
+    }
+    items.push({
+      kind: "action",
+      label: "Copy file path",
+      onClick: () => navigator.clipboard.writeText(viewingFile),
+    });
+    items.push({
+      kind: "action",
+      label: "Open in external editor",
+      onClick: () => openInEditor(viewingFile),
+    });
+    if (groups.length > 0) {
+      items.push({ kind: "separator" });
+      items.push(...buildPinItems(viewingFile));
+    }
+    if (onSendToAgent) {
+      items.push({ kind: "separator" });
+      const snippet = sel
+        ? `${viewingFile}\n\`\`\`\n${sel}\n\`\`\``
+        : viewingFile;
+      items.push({
+        kind: "action",
+        label: sel ? "Send selection to agent" : "Send reference to agent",
+        onClick: () => onSendToAgent(snippet),
+      });
+    }
+    markdownCtxMenu.open(e, items);
+  }, [viewingFile, buildPinItems, groups.length, onSendToAgent, markdownCtxMenu]);
 
   // ── Derived state ──
 
@@ -449,6 +488,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
             nameActions={copyPathBtn(viewingFile!)}
             actions={fileActions(viewingFile!)}
             onEditorContextMenu={handleEditorContextMenu}
+            onMarkdownContextMenu={handleMarkdownContextMenu}
           />
         </div>
       );
@@ -692,6 +732,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
       </div>
       {editorCtxMenu.portal}
       {tabCtxMenu.portal}
+      {markdownCtxMenu.portal}
     </>
   );
 }

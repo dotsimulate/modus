@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type WheelEvent } from "react";
 import { usePinboard } from "../providers/PinboardProvider";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 
@@ -21,6 +21,7 @@ export function PinboardView({ onOpenFile }: Props) {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const renameRef = useRef<HTMLInputElement>(null);
+  const groupsRef = useRef<HTMLDivElement>(null);
   const groupCtxMenu = useContextMenu();
 
   useEffect(() => {
@@ -71,7 +72,15 @@ export function PinboardView({ onOpenFile }: Props) {
   return (
     <div className="pinboard">
       {/* Group tabs */}
-      <div className="pinboard-groups">
+      <div
+        className="pinboard-groups"
+        ref={groupsRef}
+        onWheel={(e: WheelEvent<HTMLDivElement>) => {
+          if (!groupsRef.current) return;
+          e.preventDefault();
+          groupsRef.current.scrollLeft += e.deltaY + e.deltaX;
+        }}
+      >
         {groups.map((g) => (
           <div
             key={g.id}
