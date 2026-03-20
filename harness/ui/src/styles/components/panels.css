@@ -155,8 +155,12 @@
   display: flex;
   flex-direction: column;
 }
-/* When file viewer is present, remove padding so it fills edge-to-edge */
-.right-panel-content:has(.right-panel-file) {
+/* When content fills edge-to-edge, remove padding */
+.right-panel-content:has(.right-panel-file),
+.right-panel-content:has(.file-browser),
+.right-panel-content:has(.aa-panel),
+.right-panel-content:has(.pinboard),
+.right-panel-content:has(.session-edits-view) {
   padding: 0;
 }
 

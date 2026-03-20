@@ -1,5 +1,5 @@
 /**
- * FileBrowser — modular file/folder browser.
+ * FileBrowser — tree-style file/folder browser.
  */
 
 .file-browser {
@@ -64,9 +64,9 @@
 .fb-entry {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   width: 100%;
-  padding: 5px 12px;
+  padding: 3px 8px;
   background: none;
   border: none;
   color: var(--text-secondary);
@@ -82,14 +82,16 @@
   background: var(--bg-hover);
 }
 
-.fb-entry--parent {
-  color: var(--text-dim);
+/* ── Sticky folder headers ── */
+
+.fb-entry--dir {
+  position: sticky;
+  background: var(--bg);
 }
 
-.fb-entry--parent .fb-entry-icon {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
+.fb-entry--dir:hover,
+.fb-entry--dir.fb-entry--ctx {
+  background: var(--bg-hover);
 }
 
 .fb-entry--dir .fb-entry-name {
@@ -98,6 +100,53 @@
 
 .fb-entry--file .fb-entry-name {
   color: var(--text-secondary);
+}
+
+/* ── Indent guide ── */
+
+.fb-group {
+  position: relative;
+}
+
+.fb-group::before {
+  content: "";
+  position: absolute;
+  left: var(--guide-left, 11px);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* ── Chevron (expand/collapse indicator) ── */
+
+.fb-entry-chevron {
+  flex-shrink: 0;
+  width: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.fb-entry:hover .fb-entry-chevron {
+  opacity: 1;
+}
+
+/* ── File type icon (lucide) ── */
+
+.fb-file-icon {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
 }
 
 .fb-entry-icon {
@@ -147,5 +196,5 @@
 }
 
 .file-browser--compact .fb-entry {
-  padding: 4px 12px;
+  padding: 2px 8px;
 }

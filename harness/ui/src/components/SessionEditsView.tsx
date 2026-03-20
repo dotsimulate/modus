@@ -25,7 +25,7 @@ export function SessionEditsView({ messages }: Props) {
   const total = countChanges(allEdits);
 
   return (
-    <div className="fc-container">
+    <div className="fc-container session-edits-view">
       <div className="fc-container-inner">
         <div className="fc-header">
           <span className="fc-header-label">

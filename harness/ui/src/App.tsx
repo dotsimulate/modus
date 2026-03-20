@@ -371,8 +371,12 @@ function AppShell() {
 
   // ── Profile UI resolution ──
   // Config bar shows the active session's profile. Sidebar's selectedProfile
-  // is only used when there is NO active session (new chat preview).
-  const activeProfileName = activeSession?.profile ?? selectedProfile;
+  // is the seed for NEW sessions only — it must never leak into the active
+  // session's display. When an active session has no profile (null from server),
+  // fall back to the user profile default, not the sidebar selection.
+  const activeProfileName = activeSession
+    ? (activeSession.profile || activeUP?.defaultAgentProfile || visibleProfiles[0]?.name || selectedProfile)
+    : selectedProfile;
   const profileUi = profiles.find((p) => p.name === activeProfileName)?.ui ?? {};
   const ui: Required<ProfileUi> = {
     label: profileUi.label ?? "agent",
