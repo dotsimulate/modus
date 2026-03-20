@@ -930,8 +930,15 @@ export async function activateAttachedMove(opts: {
 
   // Build context — API token/instanceId are already registered
   const gatheredContext: Record<string, unknown> = {};
+
+  // Generate submit token + schema if the move uses submit
+  const token = config.submit?.required !== false ? generateToken() : undefined;
+  const schema = config.schemaHint ?? (config.schema ? JSON.stringify(config.schema, null, 2) : undefined);
+
   const moveCtx = buildMoveContext(reg.moveName, reg.sessionId, reg.cwd, opts.userProfile, {
     inputs: {},
+    token,
+    schema,
     metadata: gatheredContext,
   });
   moveCtx.apiToken = opts.apiToken;
@@ -966,6 +973,31 @@ export async function activateAttachedMove(opts: {
     inputs: "{}",
     gatheredContext: JSON.stringify(gatheredContext),
   });
+
+  // Register submit token if the move uses submit
+  if (token) {
+    const moveToken: MoveToken = {
+      token,
+      sessionId: reg.sessionId,
+      moveName: reg.moveName,
+      mode: "inline",
+      schema: config.schema,
+      inputs: {},
+      gatheredContext,
+      cwd: reg.cwd,
+      userProfile: opts.userProfile,
+      createdAt: Date.now(),
+      ttl: DEFAULT_TTL_MS,
+      status: "pending",
+      attempts: 0,
+      maxAttempts: config.submit?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+      moveRunId,
+      spawnedSessionId: null,
+      apiToken: opts.apiToken,
+      instanceId: reg.instanceId,
+    };
+    tokenStore.set(token, moveToken);
+  }
 
   // Combine with user text
   const finalPrompt = opts.text ? `${prompt}\n\n${opts.text}` : prompt;

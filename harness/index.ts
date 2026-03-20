@@ -997,6 +997,29 @@ app.put("/api/file-write", async (c) => {
   return c.json({ ok: true, path: target });
 });
 
+app.post("/api/file-create", async (c) => {
+  const { path: rawPath, content } = await c.req.json<{ path: string; content?: string }>();
+  if (!rawPath) return c.json({ error: "path required" }, 400);
+  const { resolve, dirname } = await import("path");
+  const { writeFile, mkdir, stat } = await import("fs/promises");
+  const target = resolve(rawPath);
+  try { await stat(target); return c.json({ error: "already exists" }, 409); } catch { /* ok */ }
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, content ?? "", "utf-8");
+  return c.json({ ok: true, path: target });
+});
+
+app.post("/api/dir-create", async (c) => {
+  const { path: rawPath } = await c.req.json<{ path: string }>();
+  if (!rawPath) return c.json({ error: "path required" }, 400);
+  const { resolve } = await import("path");
+  const { mkdir, stat } = await import("fs/promises");
+  const target = resolve(rawPath);
+  try { await stat(target); return c.json({ error: "already exists" }, 409); } catch { /* ok */ }
+  await mkdir(target, { recursive: true });
+  return c.json({ ok: true, path: target });
+});
+
 // ── Notes ──
 // Markdown notes stored in <cwd>/.modus/notes/ with YAML frontmatter.
 
@@ -1802,6 +1825,7 @@ const MIME_MAP: Record<string, string> = {
   ".json": "application/json", ".xml": "application/xml",
   ".pdf": "application/pdf", ".md": "text/markdown",
   ".txt": "text/plain",
+  ".mp4": "video/mp4", ".webm": "video/webm", ".ogg": "video/ogg",
 };
 
 app.get("/api/file/raw", async (c) => {
