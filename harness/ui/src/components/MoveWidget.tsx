@@ -75,6 +75,28 @@ export type Props = {
 // Persists across React unmount/remount cycles. Keyed by module URL.
 const moduleCache = new Map<string, ComponentType<MoveWidgetProps>>();
 
+// ── Widget CSS cache ──
+// Tracks which move CSS stylesheets have been injected into <head>.
+const cssInjected = new Set<string>();
+
+/** Inject a move's widget.css into <head> if it exists and hasn't been injected yet. */
+async function loadWidgetCSS(cssUrl: string, moveName: string): Promise<void> {
+  if (cssInjected.has(moveName)) return;
+  try {
+    const res = await fetch(cssUrl, { headers: authHeaders() });
+    if (!res.ok) return; // no CSS file — that's fine
+    const css = await res.text();
+    if (!css.trim()) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-move-widget", moveName);
+    style.textContent = css;
+    document.head.appendChild(style);
+    cssInjected.add(moveName);
+  } catch {
+    // CSS loading is best-effort
+  }
+}
+
 /** Evict a module from the cache (for reload). Returns true if it was cached. */
 export function evictWidgetModule(url: string): boolean {
   return moduleCache.delete(url);
@@ -160,6 +182,10 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
 
     setComponent(null);
     setError(null);
+
+    // Derive CSS URL from module URL: /api/moves/:name/widget?cwd=... → /api/moves/:name/widget.css?cwd=...
+    const cssUrl = widget.moduleUrl.replace("/widget?", "/widget.css?").replace(/\/widget$/, "/widget.css");
+    loadWidgetCSS(cssUrl, widget.moveName);
 
     loadWidgetModule(widget.moduleUrl, widget.moveName)
       .then(Comp => setComponent(() => Comp))

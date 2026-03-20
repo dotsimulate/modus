@@ -2155,6 +2155,25 @@ app.get("/api/moves/:name/widget", async (c) => {
   }
 });
 
+// Serve a move's widget CSS (optional — auto-loaded by MoveWidget if it exists)
+app.get("/api/moves/:name/widget.css", async (c) => {
+  const name = c.req.param("name");
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+
+  const location = resolveMoveLocation(name, cwd);
+  if (!location) return new Response("", { status: 404 });
+
+  const cssPath = join(location.dir, "widget.css");
+  try {
+    const { readFileSync } = await import("fs");
+    const css = readFileSync(cssPath, "utf-8");
+    return new Response(css, { headers: { "Content-Type": "text/css" } });
+  } catch {
+    return new Response("", { status: 404 });
+  }
+});
+
 // Call a move API op from the frontend (caller: "user")
 app.post("/api/moves/:name/op", async (c) => {
   const body = await c.req.json();
