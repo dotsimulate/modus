@@ -129,6 +129,15 @@ export async function rekeyMoveSession(oldSessionId: string, newSessionId: strin
   });
 }
 
+/** Rekey a specific move registration by its apiToken — works even when old sessionId is empty */
+export async function rekeyMoveByTokenApi(apiToken: string, newSessionId: string): Promise<void> {
+  await fetch(`${API_BASE}/api/moves/rekey-by-token`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ apiToken, newSessionId }),
+  });
+}
+
 export async function activateProjectMoveApi(body: {
   moveName: string;
   inputs: Record<string, unknown>;

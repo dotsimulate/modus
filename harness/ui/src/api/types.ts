@@ -321,7 +321,7 @@ export type ProviderToolGroup = {
 export type ProviderCapabilities = {
   name: string;
   label: string;
-  family: "claude-code" | "codex" | "gemini-cli" | "pi-agent";
+  family: "claude-code" | "codex" | "cursor" | "gemini-cli" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
   builtInToolMode: "explicit" | "event-derived";
@@ -338,6 +338,21 @@ export type ProviderCapabilities = {
     profileSwitch: "allowed" | "provider-locked";
     configApplies: "immediate" | "next-turn";
   };
+};
+
+export type ProviderHealthCheck = {
+  type: "cli" | "env" | "local";
+  label: string;
+  passed: boolean;
+  detail?: string;
+};
+
+export type ProviderHealthInfo = {
+  name: string;
+  label: string;
+  family: string;
+  status: "ready" | "misconfigured" | "unavailable" | "unknown";
+  checks: ProviderHealthCheck[];
 };
 
 export type UserProfileState = {

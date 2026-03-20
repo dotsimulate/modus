@@ -1,0 +1,61 @@
+/**
+ * Config Inspector widget — compact key/value rows with origin tags.
+ */
+
+.ciw-widget {
+  padding: 0;
+}
+
+.ciw-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.ciw-label {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  min-width: 48px;
+}
+
+.ciw-value {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
+/* ── Origin indicators — plain colored text, no chrome ── */
+
+.ciw-origin {
+  font-family: var(--font-mono);
+  font-size: calc(8px * var(--font-scale, 1));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.ciw-origin--profile {
+  color: var(--text-muted);
+}
+
+.ciw-origin--user {
+  color: var(--info);
+}
+
+.ciw-origin--session {
+  color: var(--warning);
+}
+
+.ciw-origin--default {
+  color: var(--text-muted);
+}

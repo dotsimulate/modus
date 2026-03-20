@@ -45,13 +45,12 @@ Passed to providers by session-manager. Contains:
 | Name | Family | Implementation | Notes |
 |------|--------|---------------|-------|
 | `claude-code` | claude-code | Claude Agent SDK subprocess | Full MCP, tool permissions, sub-agents |
-| `codex` | codex | OpenAI Codex CLI | Sandbox modes, no MCP |
-| `gemini-cli` | gemini-cli | Gemini CLI subprocess | Streaming, no MCP |
-| `anthropic` | pi-agent | Direct Anthropic API | PI agent loop |
-| `openai` | pi-agent | OpenAI-compatible API | PI agent loop |
-| `litellm` | pi-agent | LiteLLM proxy | PI agent loop, local models |
-| `ollama` | pi-agent | Ollama API | PI agent loop, local models |
-| `openrouter` | pi-agent | OpenRouter API | PI agent loop |
+| `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP (via .cursor/mcp.json), --approve-mcps |
+| `codex` | codex | OpenAI Codex CLI | Full MCP (HTTP transport via config object) |
+| `gemini-cli` | gemini-cli | Gemini CLI subprocess | Full MCP (via settings.json) |
+| `litellm` | pi-agent | LiteLLM proxy | PI agent loop, MCP via mcp-bridge |
+| `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge |
+| `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge |
 
 PI agent providers share a single implementation (`pi-agent.ts`) parameterized
 by provider name. They implement a lightweight tool-use agent loop with
@@ -90,5 +89,7 @@ Environment variables injected into MCP servers:
 
 Relative `--directory` args are resolved from harness root.
 
-**Source**: `providers/claude-code.ts` (MCP merge), `providers/mcp-bridge.ts`
-(MCP lifecycle), `providers/registry.ts` (provider lookup).
+**Source**: `providers/claude-code.ts` (MCP merge), `providers/cursor.ts`
+(MCP via .cursor/mcp.json), `providers/codex.ts` (MCP via config object),
+`providers/mcp-bridge.ts` (MCP lifecycle for PI agents),
+`providers/registry.ts` (provider lookup).

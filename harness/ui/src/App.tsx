@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves } from "./api";
+import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
 import type { MoveListItem } from "./api";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
@@ -218,7 +218,17 @@ function AppShell() {
     // registry may not have the rekeyed session ID yet. Just update the sessionId.
     if (widgetJustSetRef.current) {
       widgetJustSetRef.current = false;
-      setActiveMoveWidgets(prev => prev.map(w => ({ ...w, sessionId: id })));
+      setActiveMoveWidgets(prev => {
+        // Rekey backend registrations for each widget whose sessionId differs
+        for (const w of prev) {
+          if (w.apiToken && w.sessionId !== id) {
+            rekeyMoveByTokenApi(w.apiToken, id).catch((e) =>
+              console.error(`[App] rekeyMoveByToken FAILED for ${w.apiToken}:`, e)
+            );
+          }
+        }
+        return prev.map(w => ({ ...w, sessionId: id }));
+      });
       return;
     }
     fetchActiveWidget(id).then((widgets) => {
@@ -553,7 +563,7 @@ function AppShell() {
               width={leftPanelWidth}
               onOpen={() => setLeftPanelOpen(true)}
               onClose={() => setLeftPanelOpen(false)}
-              widgets={(profileData?.ui?.panelWidgets ?? ["session-info", "moves"]).map(
+              widgets={(profileData?.ui?.panelWidgets ?? ["config-inspector", "session-info", "moves"]).map(
                 (type, i) => ({ id: `left-${type}-${i}`, type })
               )}
               onNavigate={handleNavigate}

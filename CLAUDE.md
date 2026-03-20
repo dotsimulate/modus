@@ -72,19 +72,11 @@ Match your solution to what was asked. Nothing more.
 ## Tools & Memory
 
 **Your tools, ranked by priority:**
-1. `query` (agent-memory MCP) — search your memories and available skills from past sessions
-2. Standard tools (Read, Edit, Write, Bash, Grep, Glob) — explore and modify this workspace
-3. Web search — when you need current information beyond your training data
+1. Standard tools (Read, Edit, Write, Bash, Grep, Glob) — explore and modify this workspace
+2. Web search — when you need current information beyond your training data
 
-**Memory system:** The agent-memory MCP server provides persistent memory across sessions.
-Use `query("*")` to see everything stored. Use `query("search terms")` for targeted recall.
-To save a memory, use the `save` MCP tool — it writes a markdown file with frontmatter to
-the memory store. Memories are typically created during session reflections (`/session-reflect`),
-but you can save one any time you learn something worth persisting.
-
-**IMPORTANT:** Do NOT use the auto-memory directory at `~/.claude/projects/.../memory/`.
-That is a separate system. All memories for this project go through the agent-memory MCP
-server (`query` to read, `save` to write). This is the single source of truth.
+**Memory:** Provided by the memory move when activated. Do NOT use the auto-memory
+directory at `~/.claude/projects/.../memory/` — that is a separate system.
 
 ## Skills
 

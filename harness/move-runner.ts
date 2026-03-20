@@ -107,6 +107,10 @@ export function deactivateAmbientMove(sessionId: string, moveName: string): bool
   if (idx === -1) return false;
   const removed = list.splice(idx, 1)[0]!;
   if (list.length === 0) ambientMoveRegistry.delete(sessionId);
+  // Clean up API registration if present
+  if (removed.apiToken) {
+    moveApiRegistry.delete(removed.apiToken);
+  }
   // Update DB record
   updateMoveRun(removed.moveRunId, { status: "completed", completedAt: Date.now() });
   logActivity({
@@ -143,6 +147,8 @@ export async function gatherAmbientContext(sessionId: string): Promise<string | 
 
       const ctx = buildMoveContext(reg.moveName, sessionId, reg.cwd, reg.userProfile, {
         inputs: reg.inputs,
+        apiToken: reg.apiToken,
+        instanceId: reg.instanceId,
       });
 
       const result = await Promise.race([
@@ -500,6 +506,20 @@ export function rekeyMoveRegistrySession(oldSessionId: string, newSessionId: str
   }
 }
 
+/** Rekey a specific move registration by its apiToken — precise, no sessionId guessing */
+export function rekeyMoveByToken(apiToken: string, newSessionId: string): boolean {
+  const reg = moveApiRegistry.get(apiToken);
+  if (!reg) {
+    console.log(`[move-reg] rekey-by-token: token=${apiToken} not found in registry`);
+    return false;
+  }
+  const oldSessionId = reg.sessionId;
+  reg.sessionId = newSessionId;
+  void loadMoveModule(reg.moveName, reg.cwd).then((mod) => syncMoveAssistantTurnListener(apiToken, mod));
+  console.log(`[move-reg] rekey-by-token: token=${apiToken} ${oldSessionId} → ${newSessionId}`);
+  return true;
+}
+
 /** Get all active move widgets for a session */
 export function getActiveWidgetForSession(sessionId: string): Array<{
   widget: { label: string; icon?: string; autoOpen?: boolean; cache?: string; moduleUrl: string; moveName: string };
@@ -637,7 +657,7 @@ function buildMoveContext(
   sessionId: string,
   cwd: string,
   userProfile: string | undefined,
-  opts?: { inputs?: Record<string, unknown>; token?: string; schema?: string; metadata?: Record<string, unknown> },
+  opts?: { inputs?: Record<string, unknown>; token?: string; schema?: string; metadata?: Record<string, unknown>; apiToken?: string; instanceId?: string },
 ): MoveContext {
   const active = getActiveSession(sessionId);
   const metadata = opts?.metadata ?? {};
@@ -665,6 +685,8 @@ function buildMoveContext(
     token: opts?.token,
     schema: opts?.schema,
     date: new Date().toISOString().split("T")[0],
+    apiToken: opts?.apiToken,
+    instanceId: opts?.instanceId,
   };
 }
 
@@ -1078,7 +1100,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   if (!config) return { error: `Move not found: ${moveName}` };
   if (config.enabled === false) return { error: `Move is disabled: ${moveName}` };
 
-  // ── Persistent (ambient) activation — separate path, no token/submit ──
+  // ── Persistent (ambient) activation ──
   if (config.persistent) {
     if (!sourceSessionId) return { error: "Persistent moves require a session" };
 
@@ -1098,6 +1120,14 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
       gatheredContext: "{}",
     });
 
+    // Register API handlers if the move declares ops
+    let apiToken: string | undefined;
+    let instanceId: string | undefined;
+    if (config.api?.ops && mod?.handlers) {
+      instanceId = generateInstanceId();
+      apiToken = registerMoveApi(moveName, instanceId, sourceSessionId, cwd, mod.handlers, false, userProfile);
+    }
+
     // Register in ambient registry
     registerAmbientMove({
       moveName,
@@ -1107,6 +1137,8 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
       inputs,
       activatedAt: Date.now(),
       moveRunId,
+      apiToken,
+      instanceId,
     });
 
     logActivity({
@@ -1118,7 +1150,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     });
 
     return {
-      token: "",  // no token for persistent moves
+      token: apiToken ?? "",
       mode: "persistent" as any,
       persistent: true,
       moveRunId,

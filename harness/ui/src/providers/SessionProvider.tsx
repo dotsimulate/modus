@@ -6,6 +6,7 @@ import {
   updateSessionConfig, respondToPermission, nextMsgId,
   branchSessionApi, switchSessionProfile,
   rekeyMoveSession,
+  rekeyMoveByTokenApi,
 } from "../api";
 import type { Session, SessionInfo, Attachment, ApiAttachment } from "../api";
 import { createInitialState } from "../eventReducer";

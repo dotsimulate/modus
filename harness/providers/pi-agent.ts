@@ -28,11 +28,9 @@ import { resolveSecret } from "../secrets";
 
 // ── Provider Names ──
 
-export type PiProviderName = "anthropic" | "openai" | "litellm" | "ollama" | "openrouter";
+export type PiProviderName = "litellm" | "ollama" | "openrouter";
 
 const DEFAULT_MODELS: Record<PiProviderName, string> = {
-  anthropic: "claude-sonnet-4-6",
-  openai: "gpt-4o",
   litellm: "default",
   ollama: "default",
   openrouter: "anthropic/claude-sonnet-4.5",
@@ -124,31 +122,6 @@ async function fetchOpenRouterModelInfo(modelId: string): Promise<OpenRouterMode
 // ── Model Construction ──
 
 function buildModel(provider: PiProviderName, modelId: string, profile?: any, cost?: CostRates, contextLengthFromApi?: number): Model<any> {
-  // Known providers: use PI's built-in model registry
-  if (provider === "anthropic" || provider === "openai") {
-    try {
-      return getModel(provider as any, modelId as any);
-    } catch {
-      // Unknown model ID for known provider — construct manually
-      const api = provider === "anthropic" ? "anthropic-messages" : "openai-completions";
-      return {
-        id: modelId,
-        name: modelId,
-        api,
-        provider,
-        baseUrl: provider === "anthropic"
-          ? "https://api.anthropic.com"
-          : "https://api.openai.com/v1",
-        reasoning: false,
-        input: ["text", "image"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: profile?.contextWindow ?? 200000,
-        maxTokens: profile?.maxOutputTokens ?? (provider === "anthropic" ? 8192 : 0),
-        compat: provider === "openai" ? {} : undefined,
-      } as Model<any>;
-    }
-  }
-
   // OpenAI-compat providers (litellm, ollama, openrouter)
   const baseUrlEnv = provider === "litellm" 
     ? "LITELLM_BASE_URL" 
@@ -602,17 +575,8 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
           customTools: mcpTools.length > 0 ? mcpTools : undefined,
         });
 
-        // Configure compaction based on provider type
-        if (providerName === "anthropic" || providerName === "openai") {
-          // Cloud providers: enable auto-compaction, disable auto-retry
-          agentSession.setAutoRetryEnabled(false);
-        } else {
-          // Local models (litellm/ollama): enable threshold compaction, no retry
-          // Overflow compaction uses the same (slow) local model to generate summaries
-          // which can hang — but threshold compaction fires proactively at 75% usage
-          // so overflow should rarely happen if contextWindow matches the server's -c flag
-          agentSession.setAutoRetryEnabled(false);
-        }
+        // Disable auto-retry — harness manages retries at session level
+        agentSession.setAutoRetryEnabled(false);
 
         // Apply tool allowlist from profile
         if (profile?.tools && profile.tools.length > 0) {

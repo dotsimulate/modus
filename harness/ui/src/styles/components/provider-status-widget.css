@@ -1,0 +1,52 @@
+/**
+ * Provider Status widget — compact single-line rows.
+ */
+
+.psw-widget {
+  padding: 0;
+}
+
+.psw-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.psw-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.psw-dot--ready {
+  background: var(--success);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--success) 40%, transparent);
+}
+
+.psw-dot--warn {
+  background: var(--warning);
+}
+
+.psw-dot--off {
+  background: var(--text-muted);
+}
+
+.psw-name {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.psw-detail {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}

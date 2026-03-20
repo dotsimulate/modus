@@ -40,6 +40,31 @@ function readCodexModelsCache(): ModelInfo[] {
   }
 }
 
+/** Fetch models from cursor-agent CLI by parsing its `models` command output. */
+async function fetchCursorModels(): Promise<ModelInfo[]> {
+  try {
+    const { execSync } = await import("child_process");
+    const raw = execSync("cursor-agent models 2>/dev/null", { timeout: 15000, encoding: "utf-8" });
+    // Parse lines like: "composer-2-fast - Composer 2 Fast"
+    const models: ModelInfo[] = [];
+    for (const line of raw.split("\n")) {
+      const match = line.match(/^(\S+)\s+-\s+(.+)$/);
+      if (match) {
+        models.push({ id: match[1], owned_by: "cursor" });
+      }
+    }
+    return models.length > 0 ? models : CURSOR_FALLBACK_MODELS;
+  } catch {
+    return CURSOR_FALLBACK_MODELS;
+  }
+}
+
+const CURSOR_FALLBACK_MODELS: ModelInfo[] = [
+  { id: "composer-2-fast", owned_by: "cursor" },
+  { id: "composer-2", owned_by: "cursor" },
+  { id: "composer-1.5", owned_by: "cursor" },
+];
+
 function getBaseURL(provider: string): { url: string; apiKey: string } {
   switch (provider) {
     case "litellm":
@@ -68,8 +93,8 @@ function getBaseURL(provider: string): { url: string; apiKey: string } {
 }
 
 export async function fetchProviderModels(provider: string): Promise<ModelInfo[]> {
-  // Static list for claude-code / anthropic
-  if (provider === "claude-code" || provider === "anthropic") {
+  // Static list for claude-code
+  if (provider === "claude-code") {
     return CLAUDE_MODELS;
   }
 
@@ -80,6 +105,11 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
 
   if (provider === "gemini-cli") {
     return GEMINI_MODELS;
+  }
+
+  // Cursor: shell out to cursor-agent models and parse output
+  if (provider === "cursor") {
+    return fetchCursorModels();
   }
 
   const { url, apiKey } = getBaseURL(provider);

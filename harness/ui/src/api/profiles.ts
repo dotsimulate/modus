@@ -1,5 +1,5 @@
 import { API_BASE, authHeaders } from "./_fetch";
-import type { Profile, GlobalConfig, ProviderCapabilities, UserProfile, UserProfileState } from "./types";
+import type { Profile, GlobalConfig, ProviderCapabilities, ProviderHealthInfo, UserProfile, UserProfileState } from "./types";
 
 export async function fetchProfiles(cwd?: string): Promise<Profile[]> {
   const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
@@ -71,6 +71,11 @@ export async function fetchProviders(): Promise<string[]> {
 
 export async function fetchProviderCapabilities(): Promise<ProviderCapabilities[]> {
   const res = await fetch(`${API_BASE}/api/provider-capabilities`, { headers: authHeaders() });
+  return res.json();
+}
+
+export async function fetchProviderHealth(): Promise<ProviderHealthInfo[]> {
+  const res = await fetch(`${API_BASE}/api/provider-health`, { headers: authHeaders() });
   return res.json();
 }
 

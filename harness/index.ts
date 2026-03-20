@@ -346,6 +346,11 @@ app.get("/api/provider-capabilities", async (c) => {
   return c.json(listProviderCapabilities());
 });
 
+app.get("/api/provider-health", async (c) => {
+  const { checkAllProviderHealth } = await import("./providers/registry");
+  return c.json(await checkAllProviderHealth());
+});
+
 app.get("/api/providers/:name/models", async (c) => {
   const { fetchProviderModels } = await import("./providers/models");
   const name = c.req.param("name");
@@ -1952,7 +1957,7 @@ app.get("/api/activity/summary", (c) => {
 
 // ── Moves ──
 
-import { listMoves, getMove, activateMove, attachMove, activateAttachedMove, detachMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
+import { listMoves, getMove, activateMove, attachMove, activateAttachedMove, detachMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession, rekeyMoveByToken, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
 import { getMoveRunsBySession, getMoveRunById, getRecentMoveRuns } from "./move-db";
 import { handleModusMcpRequest } from "./modus-mcp";
 
@@ -2053,6 +2058,13 @@ app.post("/api/sessions/:id/moves/rekey", async (c) => {
   console.log(`[move-reg] rekey endpoint called: ${oldId} → ${newSessionId}`);
   rekeyMoveRegistrySession(oldId, newSessionId);
   return c.json({ ok: true });
+});
+
+app.post("/api/moves/rekey-by-token", async (c) => {
+  const { apiToken, newSessionId } = await c.req.json();
+  if (!apiToken || !newSessionId) return c.json({ error: "apiToken and newSessionId required" }, 400);
+  const ok = rekeyMoveByToken(apiToken, newSessionId);
+  return c.json({ ok });
 });
 
 // Activate a move on a session
