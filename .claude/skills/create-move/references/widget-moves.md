@@ -1,129 +1,143 @@
-# Widget-First (mountOnAttach) Moves — Full Reference
+# Widget Moves — Full Reference
 
-Widget-first moves open their widget immediately when attached to the composer,
-BEFORE any message is sent or agent is involved. The user interacts with the widget
-(configuring state via `callOp`), then optionally triggers agent involvement via
-the `activate()` prop.
+Any move can have a widget. Widgets are React components that live in the move directory
+and render in the right panel (or as a full page). Two primary patterns:
 
-## When to use mountOnAttach
+1. **Agent-first** — agent activates the move, widget opens alongside
+2. **Standalone (mountOnAttach)** — widget opens immediately, agent involvement optional
 
-- The move is primarily a **standalone tool** (calendar, game setup, config panel)
-- The user should **see and interact with UI before the agent knows about it**
-- Agent involvement is **optional or deferred** ("Bring in agent" button)
-
-## move.json — widget block with mountOnAttach
+## Widget declaration in move.json
 
 ```json
 {
-  "name": "my-widget-move",
-  "label": "My Widget",
-  "description": "A standalone widget that optionally involves the agent",
-  "icon": "layout",
-  "mode": "inline",
-  "inputs": [],
-  "api": {
-    "tokenPrefix": "mywid",
-    "ops": {
-      "get-state": { "description": "Read current state" },
-      "set-config": {
-        "description": "Set a config value",
-        "schema": {
-          "type": "object",
-          "properties": { "key": { "type": "string" }, "value": { "type": "string" } },
-          "required": ["key", "value"]
-        }
-      }
-    },
-    "state": { "persist": true }
-  },
-  "submit": { "required": false },
-  "session": { "afterSubmit": "continue" },
+  "widget": {
+    "component": "widget.tsx",
+    "panel": "right",
+    "label": "Tab Label",
+    "icon": "icon-name",
+    "autoOpen": true,
+    "mountOnAttach": false,
+    "cache": "instance"
+  }
+}
+```
+
+### Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `component` | yes | Filename in the move directory (e.g. `"widget.tsx"`) |
+| `panel` | no | Only `"right"` for now |
+| `label` | yes | Tab label in the panel |
+| `icon` | no | Tab icon |
+| `autoOpen` | no | Auto-open the panel on activation. Default `false`. |
+| `mountOnAttach` | no | Mount widget before any agent involvement. Default `false`. Requires `api`. |
+| `cache` | no | `"instance"` (default): DOM stays alive when hidden. `"module"`: JS cached, React can remount. `"none"`: always re-import. |
+
+## Widget CSS
+
+Put styles in `widget.css` next to `widget.tsx`. The harness auto-loads it when the
+widget mounts — no imports in `main.tsx` or any harness file needed. CSS is served via
+`/api/moves/:name/widget.css` and injected as a `<style>` tag in `<head>`.
+
+Rules for widget CSS:
+- Use `var(--*)` color tokens from `colors.css` — no hardcoded hex values
+- Use `calc(Npx * var(--font-scale, 1))` for every `font-size`
+- Set `accent-color: var(--text-secondary)` on native form controls
+- Follow the compact panel guide: header (6px 12px) / body (flex:1, scroll) / footer
+- Prefix all classes with a short move-specific prefix (e.g. `council-`, `wt-`) to avoid collisions
+
+## Agent-first widgets
+
+Default pattern. The move activates (gather runs, agent gets prompt), then the widget
+opens in the right panel showing state.
+
+```json
+{
   "widget": {
     "component": "widget.tsx",
     "panel": "right",
     "label": "My Widget",
-    "icon": "layout",
-    "autoOpen": true,
-    "mountOnAttach": true
-  },
-  "tags": ["widget-first"]
+    "autoOpen": true
+  }
 }
 ```
 
-### Key fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `widget.mountOnAttach` | yes | `true` — widget opens on attach, before any message |
-| `widget.autoOpen` | recommended | `true` — auto-opens the right panel |
-| `api` | yes | Required — mountOnAttach needs API registration for `callOp` to work pre-activation |
-| `submit.required` | typically `false` | Agent doesn't need to submit; the widget drives interaction |
-
-## Lifecycle
-
-```
-User picks move from prompt picker
-  → UI calls POST /api/moves/:name/attach (NOT activate)
-  → Backend creates API registration + instance + state file
-  → Widget opens in right panel with callOp ready
-  → No message sent, no agent involvement yet
-
-User interacts with widget
-  → callOp("set-config", { ... }) writes to state
-  → Widget reads state back via callOp("get-state")
-  → All UI-driven, agent unaware
-
-User clicks "Bring in agent" (optional)
-  → Widget calls activate(optionalText)
-  → Backend runs gather() which reads the state the widget populated
-  → Prompt injected into session as a message
-  → Agent now has context and API token
-
-User clicks X on widget tab
-  → Frontend calls detach API
-  → Backend cleans up registration + disk state
-  → Widget removed from panel
-```
-
-**Critical:** mountOnAttach moves do NOT create an attached chip in the composer.
-The widget is the sole interface. Regular messages send normally without triggering
-the move. The agent only gets involved when `activate()` is called from the widget.
-
-## widget.tsx — using activate()
-
-The widget receives `activate` as a prop (only for mountOnAttach moves).
-It's `undefined` for non-mountOnAttach widgets.
+Widget receives `callOp` to interact with the move's API handlers:
 
 ```tsx
-import { useState } from "react";
+import type { MoveWidgetProps } from "../../../../harness/ui/src/components/MoveWidget";
+
+export default function MyWidget({ callOp }: MoveWidgetProps) {
+  const handleAction = async () => {
+    const result = await callOp("do-thing", { input: "hello" });
+    console.log(result);
+  };
+  return <button onClick={handleAction}>Do Thing</button>;
+}
+```
+
+## Standalone widgets (mountOnAttach)
+
+Widget opens immediately on attach — before any message or agent involvement.
+The user configures state via `callOp`, then optionally triggers the agent.
+
+**Requires `api` declaration** — `callOp` needs registered handlers to work pre-activation.
+
+```json
+{
+  "api": { "tokenPrefix": "mywid", "ops": { ... }, "state": { "persist": true } },
+  "widget": {
+    "component": "widget.tsx",
+    "panel": "right",
+    "label": "My Widget",
+    "autoOpen": true,
+    "mountOnAttach": true
+  }
+}
+```
+
+### Lifecycle
+
+```
+User picks move → POST /api/moves/:name/attach (NOT activate)
+  → API registration + instance + state file created
+  → Widget opens with callOp ready
+  → No message sent, no agent yet
+
+User interacts via callOp → state populated through handlers
+
+User clicks "Bring in agent" → widget calls activate(optionalText)
+  → gather() runs (reads state populated by widget)
+  → Agent gets prompt + API token
+
+User closes widget → detach → cleanup
+```
+
+### activate() prop
+
+mountOnAttach widgets receive `activate` as a prop. **It is one-shot** — after the first
+call, `activate` becomes `undefined`. Plan accordingly.
+
+```tsx
 import type { MoveWidgetProps } from "../../../../harness/ui/src/components/MoveWidget";
 
 export default function MyWidget({ callOp, activate }: MoveWidgetProps) {
-  const [config, setConfig] = useState<string>("default");
+  const [ready, setReady] = useState(false);
 
-  // Save config to state via API op
-  const handleSave = async () => {
-    await callOp("set-config", { key: "mode", value: config });
+  const handleSetup = async () => {
+    await callOp("set-config", { key: "mode", value: "advanced" });
+    setReady(true);
   };
 
-  // Bring agent in — runs gather() which reads the config from state
   const handleActivate = async () => {
-    if (activate) {
-      await activate(); // optional text arg appended after gather output
-    }
+    if (activate) await activate(); // one-shot — becomes undefined after
   };
 
   return (
     <div>
-      {/* ... widget UI ... */}
-      <select value={config} onChange={e => setConfig(e.target.value)}>
-        <option value="a">Option A</option>
-        <option value="b">Option B</option>
-      </select>
-      <button onClick={handleSave}>Save</button>
-
-      {/* Only shown for mountOnAttach moves */}
-      {activate && (
+      <button onClick={handleSetup}>Configure</button>
+      {activate && ready && (
         <button onClick={handleActivate}>Bring in agent</button>
       )}
     </div>
@@ -131,48 +145,84 @@ export default function MyWidget({ callOp, activate }: MoveWidgetProps) {
 }
 ```
 
-## context.ts — reading widget-populated state in gather()
+**Critical:** If the user needs to re-engage the agent after activation (e.g., reissue a key),
+use an API op as a fallback — don't rely on `activate()` being available again.
 
-```ts
-import type { MoveContext, MoveApiContext, MoveApiHandler } from "../../../harness/move-types";
+### No composer chip
 
-interface MyState {
-  config: Record<string, string>;
+mountOnAttach moves do NOT create a chip in the composer. The widget is the sole interface.
+Regular messages send normally without triggering the move.
+
+## Full page moves
+
+A move can own a page in the app nav via the `page` declaration. This is independent of
+the `widget` — a move can have both (widget in right panel + full page in nav), or just one.
+
+```json
+{
+  "page": {
+    "id": "memory",
+    "title": "memory",
+    "icon": "brain",
+    "nav": true
+  }
 }
-
-export async function gather(ctx: MoveContext): Promise<string> {
-  // State was populated by the widget via callOp before activate() was called
-  // We don't have ctx.state in gather — read via a handler pattern or
-  // access persisted state from disk if needed
-  return `You have access to My Widget.\n\nToken: \`${ctx.apiToken}\`\n\n...`;
-}
-
-export const handlers: Record<string, MoveApiHandler> = {
-  "get-state": async (ctx: MoveApiContext) => {
-    const state = await ctx.state.get<MyState>();
-    return { ok: true, message: JSON.stringify(state ?? { config: {} }) };
-  },
-  "set-config": async (ctx: MoveApiContext, data: Record<string, unknown>) => {
-    const state = (await ctx.state.get<MyState>()) ?? { config: {} };
-    state.config[data.key as string] = data.value as string;
-    await ctx.state.set(state);
-    return { ok: true, message: "Saved" };
-  },
-};
 ```
 
-## Comparison: normal widget vs mountOnAttach
+| Field | Description |
+|-------|-------------|
+| `id` | Page ID used in URL hash (`#move-page:memory`) |
+| `title` | Display title in the nav bar |
+| `icon` | Optional nav link icon |
+| `nav` | Show in main nav bar. Default `true`. |
 
-| Aspect | Normal widget | mountOnAttach widget |
-|--------|--------------|---------------------|
-| When widget opens | After activation (message sent) | Immediately on attach |
-| Agent involved | Always (gather runs on attach) | Only when activate() called |
-| Composer chip | Yes (move attached to message) | No chip — widget is the interface |
-| activate() prop | `undefined` | Function available |
-| API registration | Created during activate | Created during attach (pre-message) |
+The page component is the same `widget.tsx` — it renders full-width when accessed via the nav.
+Example: the `memory` move has both a right-panel widget tab and a full-page nav entry.
+
+## Widget caching strategies
+
+| Strategy | Behavior | Use case |
+|----------|----------|----------|
+| `"instance"` (default) | DOM stays alive when tab is hidden | Games, media players — full state preservation |
+| `"module"` | JS module cached, React unmounts/remounts freely | Dashboards — no import flash, component state resets |
+| `"none"` | Always re-import the module | Development/iteration |
+
+## Widget event subscription (SSE)
+
+Widgets can subscribe to real-time state updates pushed from handlers via SSE.
+When a handler calls `ctx.notify("msg", { type: "event-type" })`, the widget
+receives the event through the existing SSE infrastructure.
+
+The widget receives events via the `callOp` response or by polling `read-state`.
+For real-time updates, the harness emits `widget-change` events that the UI listens for.
+
+## Comparison: agent-first vs mountOnAttach
+
+| Aspect | Agent-first | mountOnAttach |
+|--------|-------------|---------------|
+| When widget opens | After activation | Immediately on attach |
+| Agent involved | Always | Only when activate() called |
+| Composer chip | Yes | No |
+| activate() prop | `undefined` | Function (one-shot) |
+| API registration | During activate | During attach (pre-message) |
 | Use case | Agent-driven with UI feedback | User-driven with optional agent |
 
-## Examples in this project
+## CSS and styling
 
-- **Calendar** (`.modus/moves/calendar/`) — standalone calendar widget, "Bring in agent" for queries
-- **Chess** (`.modus/moves/chess/`) — color selection screen, then "Start Game" activates agent
+Move widgets are dynamically loaded — they render inside the right panel's tab system.
+Follow the compact panel CSS guide (`TODO/2026-03-19-compact-panel-css-guide.md`):
+
+- Use `var(--*)` color tokens from `colors.css` — no hardcoded hex
+- Use `calc(Npx * var(--font-scale, 1))` for all font sizes
+- Use `--font-mono` for data-heavy content
+- Set `accent-color` on native form controls
+
+## Shipped examples
+
+| Move | Pattern | Notable |
+|------|---------|---------|
+| `chess` | mountOnAttach, API contract | Color selection → game loop |
+| `fal-image` | mountOnAttach, budget/security | Param locking, key registry |
+| `memory` | Agent-first widget + full page | Dual surface (panel tab + nav page) |
+| `animate-this` | Agent-first, instance cache | Video preview in widget |
+| `council` | mountOnAttach, multi-agent | Config panel → debate orchestration |

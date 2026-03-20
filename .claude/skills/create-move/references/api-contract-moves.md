@@ -2,7 +2,7 @@
 
 API contract moves give an agent persistent, token-authenticated access to a set of operations.
 The agent calls ops via `modus_submit` with an API token. Handlers manage state and can notify
-the agent of events (e.g., opponent's turn in a game).
+the agent of events.
 
 ## move.json — api block
 
@@ -40,55 +40,38 @@ the agent of events (e.g., opponent's turn in a game).
 ```ts
 import type { MoveContext, MoveApiContext, MoveApiHandler } from "../../../harness/move-types";
 
-// State type — define the shape of your persisted state
 interface MyState {
   score: number;
   history: string[];
 }
 
-// gather() — called once on activation, returns prompt for the agent
 export async function gather(ctx: MoveContext): Promise<string> {
-  // ctx.apiToken — the token the agent uses with modus_submit
-  // ctx.instanceId — unique instance ID (can resume across sessions)
-  // ctx.db — read-only database access
-  // ctx.run — shell command execution
-  // ctx.cwd — working directory
-  // ctx.userProfile — user profile name
-  // ctx.inputs — user form inputs from move.json inputs[]
   return `Instructions for the agent.\n\nToken: \`${ctx.apiToken}\`\n\n...`;
 }
 
-// handlers — one per op declared in move.json
 export const handlers: Record<string, MoveApiHandler> = {
   "op-name": async (ctx: MoveApiContext, data: Record<string, unknown>) => {
-    // Read state
     const state = await ctx.state.get<MyState>();
-
-    // Validate input
     const input = data.someField;
     if (!input) return { ok: false, error: "someField is required" };
 
-    // Do work, update state
-    const newState: MyState = { score: 1, history: ["first"] };
-    await ctx.state.set(newState);
+    await ctx.state.set({ score: 1, history: ["first"] });
 
-    // Notify agent (pushes message into their session)
+    // Notify agent (pushes message into session)
     ctx.notify("Something happened");
-
-    // Notify with structured payload (agent sees: [modus:event-type] {...}\nmessage)
+    // With structured payload: agent sees [modus:event-type] {...}\nmessage
     ctx.notify("Event occurred", { type: "game-event", detail: "..." });
 
-    // Return result — agent sees this as the modus_submit response
     return { ok: true, message: "Success" };
-    // or: return { ok: false, error: "What went wrong" };
   },
 };
 ```
 
-## Caller distinction
+## Caller distinction and security
 
-`ctx.caller` is `"agent"` when called via modus_submit, `"user"` when called via widget.
-Use this to gate operations:
+`ctx.caller` is `"agent"` (via modus_submit) or `"user"` (via widget).
+
+**Default-deny for sensitive operations:**
 
 ```ts
 // Only user can reset
@@ -98,41 +81,59 @@ if (ctx.caller === "agent") return { ok: false, error: "Only user can reset" };
 if (ctx.caller === "user") ctx.notify("User made a move");
 ```
 
+**Budget and access control pattern** (proven in fal-image):
+
+```ts
+interface KeyRecord {
+  instanceId: string;
+  used: number;
+  budget: number;
+  revoked: boolean;
+}
+
+// In handler — reject if no record, revoked, or over budget
+const key = keys.find(k => k.instanceId === ctx.instanceId);
+if (!key) return { ok: false, error: "No key issued" };
+if (key.revoked) return { ok: false, error: "Key revoked" };
+if (key.used >= key.budget) return { ok: false, error: "Budget exhausted" };
+```
+
+**Security rules (learned from production):**
+- Never store full API tokens on disk — display hints only
+- The harness token registry is in-memory; resets on restart (file state survives, tokens don't)
+- Default-deny: if no record exists for a caller, reject
+- Param locking: user can lock parameters so agent overrides are silently corrected
+
 ## Accessing the database from handlers
 
-Handlers get `ctx.sessionId` but NOT `ctx.db`. To query sessions/messages from handlers,
-import db functions directly:
+Handlers get `ctx.sessionId` and `ctx.cwd` but NOT `ctx.db`. Import db functions directly:
 
 ```ts
 import { getSession, searchSessions, getSessionMessages } from "../../../harness/db";
 
-// In a handler:
 const session = getSession(ctx.sessionId);
-const hits = searchSessions("query", 10);
 ```
 
 ## Stateless vs stateful
 
-- **Stateful** (games, pets): `state.persist: true`, use `ctx.state.get/set` in every handler
-- **Stateless** (search, tools): `state.persist: false`, handlers just query and return results.
-  State API is still available for caching but won't survive restart.
+- **Stateful** (games, registries): `state.persist: true`, `ctx.state.get/set` in every handler
+- **Stateless** (search, tools): `state.persist: false`, handlers query and return. State available
+  for caching but won't survive restart.
 
 ## Instance lifecycle
 
 - Each activation creates a new instance with a unique `instanceId`
 - Token format: `mapi-{tokenPrefix}-{instanceId}`
-- Persisted state lives in `.modus/moves/<name>/state/{instanceId}.json`
-- Instances can be resumed across sessions (agent provides the token again)
-
-## Scoping to caller context
-
-Handlers don't get `cwd` or `userProfile` directly. To scope queries to the calling
-session's project, look up the session:
+- Persisted state: `.modus/moves/<name>/state/{instanceId}.json`
+- Instances can be resumed across sessions
+- Customize resume picker with `listInstances`:
 
 ```ts
-function getCallerScope(ctx: MoveApiContext) {
-  const s = getSession(ctx.sessionId);
-  return { cwd: s?.cwd, userProfile: s?.user_profile };
+export function listInstances(states: Array<{ instanceId: string; state: unknown }>) {
+  return states.map(({ instanceId, state }) => ({
+    label: (state as any)?.title ?? instanceId,
+    value: instanceId,
+  }));
 }
 ```
 
@@ -141,9 +142,9 @@ function getCallerScope(ctx: MoveApiContext) {
 ```json
 {
   "name": "string (required)",
-  "label": "string (required, display name)",
+  "label": "string (required)",
   "description": "string (required)",
-  "icon": "string (optional, icon name)",
+  "icon": "string (optional)",
   "mode": "inline | branch | background",
   "inputs": [],
   "api": {
@@ -151,20 +152,15 @@ function getCallerScope(ctx: MoveApiContext) {
     "ops": {
       "op-name": {
         "description": "string",
-        "schema": { "JSON Schema object (optional)" }
+        "schema": { "JSON Schema (optional)" }
       }
     },
     "state": { "persist": true }
   },
   "submit": { "required": false },
   "session": { "afterSubmit": "continue | end | switch:<moveName>" },
-  "widget": {
-    "component": "widget.tsx",
-    "panel": "right",
-    "label": "Tab Label",
-    "icon": "icon-name",
-    "autoOpen": true
-  },
+  "widget": { "..." },
+  "page": { "..." },
   "tags": ["string"]
 }
 ```
