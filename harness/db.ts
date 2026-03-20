@@ -531,12 +531,18 @@ export function upsertSession(opts: {
     $branch_message_uuid: opts.branchMessageUuid ?? null,
     $title: opts.title ?? null,
   });
+  // Index title/preview in FTS for search
+  if (opts.title || opts.preview) {
+    indexSessionTitle(opts.id, opts.title ?? "", opts.preview);
+  }
 }
 
 export function renameSession(oldId: string, newId: string) {
   if (oldId === newId) return;
   db.prepare(`UPDATE sessions SET id = $new WHERE id = $old`).run({ $old: oldId, $new: newId });
   db.prepare(`UPDATE events SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+  // FTS5 virtual tables don't support UPDATE on session_id, so delete + re-insert
+  db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $old`).run({ $old: oldId });
   db.prepare(`UPDATE action_runs SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
 }
 
@@ -552,6 +558,9 @@ export function updateSessionStatus(id: string, status: string) {
 
 export function updateSessionTitle(id: string, title: string | null) {
   stmts.updateTitle.run({ $id: id, $title: title, $now: Date.now() });
+  // Re-index title in FTS
+  const row = stmts.get.get({ $id: id }) as SessionRow | null;
+  if (row) indexSessionTitle(id, title ?? "", row.preview);
 }
 
 export function listSessions(limit = 50): SessionRow[] {
@@ -1211,47 +1220,105 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
   });
 }
 
-// ── Full-Text Search (FTS5) ──
+// ── Full-Text Search (FTS5 v2) ──
+// v2: adds title column (weight 10x), indexes assistant text, recency-blended ranking
 
-db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+// Drop v1 table if it exists (schema changed — needs rebuild)
+try { db.run(`DROP TABLE IF EXISTS search_index`); } catch { /* already gone */ }
+
+db.run(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index_v2 USING fts5(
   session_id UNINDEXED,
   role,
   content,
-  tokenize = 'porter unicode61'
+  title,
+  tokenize = 'porter unicode61',
+  columnsize = 0
 )`);
 
-// Populate FTS from existing events (only if empty — avoids duplicates on restart)
-const ftsCount = (db.prepare(`SELECT COUNT(*) as n FROM search_index`).get() as any).n;
+// Set default rank to bm25 with column weights: role=1, content=1, title=10
+try { db.run(`INSERT INTO search_index_v2(search_index_v2, rank) VALUES('rank', 'bm25(1.0, 1.0, 10.0)')`); } catch { /* already set */ }
+
+/** Extract text blocks from an assistant event's message.content array */
+function extractAssistantText(data: string): string | null {
+  try {
+    const content = JSON.parse(data)?.message?.content;
+    if (!Array.isArray(content)) return null;
+    const parts: string[] = [];
+    for (const block of content) {
+      if (block.type === "text" && block.text) parts.push(block.text);
+      if (block.type === "tool_use" && block.name) parts.push(`[tool: ${block.name}]`);
+    }
+    return parts.length > 0 ? parts.join(" ") : null;
+  } catch { return null; }
+}
+
+// Populate FTS from existing events + session titles (only if empty)
+const ftsCount = (db.prepare(`SELECT COUNT(*) as n FROM search_index_v2`).get() as any).n;
 if (ftsCount === 0) {
-  const rebuildStmt = db.prepare(`INSERT INTO search_index (session_id, role, content) VALUES ($sid, $role, $text)`);
-  const events = db.prepare(`SELECT session_id, type, data FROM events WHERE type IN ('user', 'result')`).all() as any[];
+  const rebuildStmt = db.prepare(
+    `INSERT INTO search_index_v2 (session_id, role, content, title) VALUES ($sid, $role, $text, $title)`
+  );
+  // Index events: user prompts, result summaries, assistant text
+  const events = db.prepare(
+    `SELECT session_id, type, data FROM events WHERE type IN ('user', 'result', 'assistant')`
+  ).all() as any[];
   db.transaction(() => {
     for (const ev of events) {
       let text: string | null = null;
       if (ev.type === "user") {
         try { text = JSON.parse(ev.data)?.message?.content; } catch { /* skip */ }
+        if (typeof text !== "string") text = null;
       } else if (ev.type === "result") {
         try { text = JSON.parse(ev.data)?.result; } catch { /* skip */ }
+      } else if (ev.type === "assistant") {
+        text = extractAssistantText(ev.data);
       }
       if (typeof text === "string" && text.length > 0) {
-        rebuildStmt.run({ $sid: ev.session_id, $role: ev.type, $text: text });
+        rebuildStmt.run({ $sid: ev.session_id, $role: ev.type, $text: text, $title: "" });
+      }
+    }
+    // Index session titles/previews as high-signal rows
+    const sessions = db.prepare(`SELECT id, preview, title FROM sessions`).all() as any[];
+    for (const s of sessions) {
+      const titleText = [s.title, s.preview].filter(Boolean).join(" — ");
+      if (titleText) {
+        rebuildStmt.run({ $sid: s.id, $role: "title", $text: "", $title: titleText });
       }
     }
   })();
 }
 
-/** Insert into FTS index — call alongside addEvent for user/result events */
+/** Insert into FTS index — call alongside addEvent for user/result/assistant events */
 export function indexEvent(sessionId: string, type: string, data: string) {
-  if (type !== "user" && type !== "result") return;
   let text: string | null = null;
-  try {
-    const parsed = JSON.parse(data);
-    text = type === "user" ? parsed?.message?.content : parsed?.result;
-  } catch { return; }
+  if (type === "user") {
+    try {
+      const parsed = JSON.parse(data);
+      text = parsed?.message?.content;
+      if (typeof text !== "string") text = null;
+    } catch { return; }
+  } else if (type === "result") {
+    try { text = JSON.parse(data)?.result; } catch { return; }
+  } else if (type === "assistant") {
+    text = extractAssistantText(data);
+  } else {
+    return;
+  }
   if (typeof text === "string" && text.length > 0) {
-    db.prepare(`INSERT INTO search_index (session_id, role, content) VALUES ($sid, $role, $text)`)
+    db.prepare(`INSERT INTO search_index_v2 (session_id, role, content, title) VALUES ($sid, $role, $text, '')`)
       .run({ $sid: sessionId, $role: type, $text: text });
   }
+}
+
+/** Index or re-index a session's title/preview in FTS */
+export function indexSessionTitle(sessionId: string, title: string, preview?: string) {
+  const titleText = [title, preview].filter(Boolean).join(" — ");
+  if (!titleText) return;
+  // Remove old title row for this session, then insert fresh
+  db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $sid AND role = 'title'`)
+    .run({ $sid: sessionId });
+  db.prepare(`INSERT INTO search_index_v2 (session_id, role, content, title) VALUES ($sid, 'title', '', $title)`)
+    .run({ $sid: sessionId, $title: titleText });
 }
 
 export type SearchHit = {
@@ -1274,7 +1341,7 @@ export function searchSessions(
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
 
   const matchConditions = [
-    `search_index MATCH $fts`,
+    `search_index_v2 MATCH $fts`,
     `s.tags NOT LIKE '%"archived"%'`,
     `s.tags NOT LIKE '%"internal"%'`,
   ];
@@ -1297,48 +1364,68 @@ export function searchSessions(
     matchParams.push(...scope.agentProfiles);
   }
 
-  // Find matching session IDs ranked by relevance within the visible session scope.
+  // Recency-blended ranking: FTS5 rank (bm25 with title weight 10x) is blended
+  // with a recency bonus so recent sessions float up when relevance is similar.
+  // rank is negative (lower = better), recency term is 0..2 (higher = more recent).
+  const now = Date.now();
   const matches = db.prepare(`
-    SELECT search_index.session_id AS sid, MIN(rank) AS best_rank
-    FROM search_index
-    JOIN sessions s ON s.id = search_index.session_id
-    WHERE ${matchConditions.join(" AND ")}
-    GROUP BY search_index.session_id
-    ORDER BY best_rank
+    SELECT sid, best_rank, lma,
+      (best_rank - 2.0 * (CAST(lma AS REAL) / ${now})) AS blended
+    FROM (
+      SELECT
+        search_index_v2.session_id AS sid,
+        MIN(rank) AS best_rank,
+        s.last_message_at AS lma
+      FROM search_index_v2
+      JOIN sessions s ON s.id = search_index_v2.session_id
+      WHERE ${matchConditions.join(" AND ")}
+      GROUP BY search_index_v2.session_id
+    )
+    ORDER BY blended
     LIMIT ?
-  `).all(...matchParams, limit) as { sid: string; best_rank: number }[];
+  `).all(...matchParams, limit) as { sid: string; best_rank: number; lma: number }[];
 
   if (matches.length === 0) return [];
 
   const ids = matches.map(m => m.sid);
   const placeholders = ids.map(() => "?").join(",");
   const sessions = db.prepare(
-    `SELECT * FROM sessions WHERE id IN (${placeholders}) AND tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'
-    `
+    `SELECT * FROM sessions WHERE id IN (${placeholders}) AND tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%'`
   ).all(...ids) as SessionRow[];
   const sessionMap = new Map(sessions.map(s => [s.id, s]));
 
-  // Build snippets from the actual indexed content
+  // Build snippets: prefer title matches, then content matches with context
   const snippetStmt = db.prepare(
-    `SELECT content FROM search_index WHERE session_id = $sid AND content LIKE $pattern LIMIT 1`
+    `SELECT role, content, title FROM search_index_v2 WHERE session_id = $sid AND search_index_v2 MATCH $fts ORDER BY rank LIMIT 1`
   );
 
   return matches.flatMap(m => {
     const s = sessionMap.get(m.sid);
     if (!s) return [];
-    const pattern = `%${terms[0]}%`;
-    const row = snippetStmt.get({ $sid: m.sid, $pattern: pattern }) as { content: string } | null;
+
     let snippet = s.last_prompt ?? s.preview;
-    if (row?.content) {
-      const lower = row.content.toLowerCase();
-      const idx = lower.indexOf(terms[0] ?? "");
-      const start = Math.max(0, idx - 60);
-      const raw = row.content.slice(start, start + 160);
-      snippet = (start > 0 ? "..." : "") + raw + (start + 160 < row.content.length ? "..." : "");
-    }
+    try {
+      const row = snippetStmt.get({ $sid: m.sid, $fts: ftsQuery }) as { role: string; content: string; title: string } | null;
+      if (row) {
+        // If the best match is from the title column, use it directly
+        const source = row.role === "title" ? row.title : row.content;
+        if (source) {
+          const lower = source.toLowerCase();
+          const idx = lower.indexOf(terms[0] ?? "");
+          if (idx >= 0) {
+            const start = Math.max(0, idx - 60);
+            const raw = source.slice(start, start + 160);
+            snippet = (start > 0 ? "..." : "") + raw + (start + 160 < source.length ? "..." : "");
+          } else {
+            snippet = source.slice(0, 160) + (source.length > 160 ? "..." : "");
+          }
+        }
+      }
+    } catch { /* fallback to default snippet */ }
+
     return [{
       session_id: s.id,
-      preview: s.preview,
+      preview: s.title || s.preview,
       profile: s.profile,
       model: s.model,
       cwd: s.cwd,

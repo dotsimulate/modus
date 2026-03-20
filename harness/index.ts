@@ -53,6 +53,7 @@ import {
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
   updateSessionConfig, resolvePermission, switchProfile,
   pauseSession, resumeSession, branchSession,
+  subscribeGlobal, emitGlobalSessionEvent,
   type SSEWriter,
 } from "./session-manager";
 
@@ -522,6 +523,13 @@ app.post("/api/sessions/empty", async (c) => {
     cwd: body.cwd ?? null,
     userProfile: body.userProfile ?? null,
   });
+  emitGlobalSessionEvent({
+    type: "session:created",
+    sessionId: id,
+    status: "idle",
+    profile: body.profile ?? undefined,
+    userProfile: body.userProfile ?? undefined,
+  });
   return c.json({ sessionId: id });
 });
 
@@ -614,6 +622,31 @@ app.get("/api/sessions/:id/events", (c) => {
       // Session already finished — send done immediately after catch-up
       await stream.writeSSE({ event: "done", data: "{}", id: "done" });
     }
+  });
+});
+
+// Global session lifecycle events (SSE) — used by SessionWeb for real-time updates
+app.get("/api/events/sessions", (c) => {
+  return streamSSE(c, async (stream) => {
+    let resolve: () => void;
+    const done = new Promise<void>((r) => { resolve = r; });
+
+    const keepAlive = setInterval(async () => {
+      try { await stream.writeSSE({ event: "ping", data: "{}", id: "" }); } catch { /* dead */ }
+    }, 30_000);
+
+    const writer = {
+      async write(data: string) {
+        await stream.writeSSE({ event: "session", data, id: String(Date.now()) });
+      },
+      close() { resolve(); },
+    };
+
+    const unsubscribe = subscribeGlobal(writer);
+    stream.onAbort(() => { clearInterval(keepAlive); unsubscribe(); resolve(); });
+
+    await done;
+    clearInterval(keepAlive);
   });
 });
 
@@ -805,6 +838,7 @@ app.delete("/api/sessions/:id", (c) => {
   stopSession(id);
   const dbRow = getSession(id);
   archiveSession(id);
+  emitGlobalSessionEvent({ type: "session:archived", sessionId: id });
   // Emit session trigger for "archived" event
   if (dbRow) {
     onSessionEvent("archived", {

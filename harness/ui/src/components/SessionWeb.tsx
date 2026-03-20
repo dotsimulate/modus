@@ -1360,6 +1360,41 @@ export function SessionWeb() {
     setTouches(touchData.touches);
   }, [activeUserProfile, activeUP]);
 
+  // ── Global SSE: real-time session lifecycle events ──
+  useEffect(() => {
+    const token = localStorage.getItem("harness_token") || "";
+    const url = `${API_BASE}/api/events/sessions${token ? `?token=${token}` : ""}`;
+    const es = new EventSource(url);
+
+    es.addEventListener("session", (e) => {
+      try {
+        const evt = JSON.parse(e.data);
+        if (evt.type === "session:created") {
+          reloadData();
+        } else if (evt.type === "session:status") {
+          setSessions(prev => prev.map(s =>
+            s.id === evt.sessionId
+              ? { ...s, status: evt.status, total_cost_usd: evt.costUsd ?? s.total_cost_usd, preview: evt.preview ?? s.preview }
+              : s,
+          ));
+        } else if (evt.type === "session:archived") {
+          setSessions(prev => prev.filter(s => s.id !== evt.sessionId));
+          setStoredPositions(prev => {
+            const next = { ...prev };
+            delete next[evt.sessionId];
+            return next;
+          });
+        }
+      } catch { /* ignore malformed events */ }
+    });
+
+    es.onerror = () => {
+      // EventSource auto-reconnects — no action needed
+    };
+
+    return () => es.close();
+  }, [reloadData]);
+
   const handleCanvasDoubleClick = useCallback(async (e: React.MouseEvent) => {
     // Only trigger on actual canvas background, not on nodes
     if ((e.target as HTMLElement).closest(".web-session-node, .web-commit-node, .web-doc-node")) return;
@@ -1593,12 +1628,14 @@ export function SessionWeb() {
             // LOD: simplified rendering at very low zoom
             if (lodSimplified) {
               const { w, h } = nodeDims(node.type);
+              const isRunning = node.type === "session" && node.session?.status === "running";
               const bg = node.type === "session"
-                ? (node.session?.status === "running" ? "var(--success)" : node.session?.status === "error" ? "var(--error)" : "var(--text-muted)")
+                ? (isRunning ? "var(--success)" : node.session?.status === "error" ? "var(--error)" : "var(--text-muted)")
                 : node.type === "commit" ? "var(--info)" : "var(--text-muted)";
               return (
                 <div
                   key={node.id}
+                  className={isRunning ? "web-lod-running" : undefined}
                   style={{
                     position: "absolute", left: node.x, top: node.y,
                     width: w, height: h,

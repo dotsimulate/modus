@@ -365,8 +365,22 @@
 }
 
 .web-session-node--running {
-  border-color: color-mix(in srgb, var(--success) 20%, transparent);
-  background: color-mix(in srgb, var(--success) 3%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  background: color-mix(in srgb, var(--success) 4%, var(--bg-surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 18%, transparent);
+  animation: session-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes session-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 18%, transparent);
+    border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 30%, transparent),
+                0 0 12px color-mix(in srgb, var(--success) 10%, transparent);
+    border-color: color-mix(in srgb, var(--success) 50%, transparent);
+  }
 }
 .web-session-node--error {
   border-color: color-mix(in srgb, var(--error) 20%, transparent);
@@ -406,7 +420,13 @@
 }
 .web-session-dot--running {
   background: var(--dot-running);
-  box-shadow: 0 0 4px var(--dot-running);
+  box-shadow: 0 0 6px var(--dot-running);
+  animation: dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 4px var(--dot-running); opacity: 1; }
+  50% { box-shadow: 0 0 8px var(--dot-running), 0 0 14px var(--dot-running); opacity: 0.85; }
 }
 .web-session-dot--done { background: var(--dot-done); }
 .web-session-dot--error { background: var(--dot-error); }
@@ -1109,6 +1129,12 @@
 .web-mm-running {
   fill: var(--success);
   opacity: 0.7;
+  animation: mm-running-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes mm-running-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .web-mm-commit {
@@ -1184,6 +1210,17 @@
 .web-day-hud-stats {
   font-size: 9px;
   color: var(--text-muted);
+}
+
+/* ── LOD Running (zoomed-out pulse for active sessions) ── */
+
+.web-lod-running {
+  animation: lod-running-pulse 2.5s ease-in-out infinite !important;
+}
+
+@keyframes lod-running-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.85; box-shadow: 0 0 8px var(--success); }
 }
 
 /* ── Lasso Selection ── */
