@@ -1,0 +1,41 @@
+.itabs {
+  display: flex;
+  gap: 0;
+  padding: 2px 0 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.itabs::-webkit-scrollbar { display: none; }
+
+.itabs-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  padding: 4px 6px;
+  transition: color 0.1s ease, border-color 0.1s ease;
+  white-space: nowrap;
+}
+
+.itabs--md .itabs-tab {
+  font-size: calc(10px * var(--font-scale, 1));
+  margin-right: 6px;
+}
+
+.itabs--sm .itabs-tab {
+  font-size: calc(10px * var(--font-scale, 1));
+  margin-right: 4px;
+}
+
+.itabs-tab:hover {
+  color: var(--text-dim);
+}
+
+.itabs-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}

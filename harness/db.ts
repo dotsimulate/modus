@@ -1622,6 +1622,100 @@ export type ProviderUsageAnalytics = {
   daily: ProviderUsageDaily[];
 };
 
+export type DeepAnalyticsMetricRow = {
+  key: string;
+  sessions: number;
+  userMessages: number;
+  assistantMessages: number;
+  assistantTurns: number;
+  toolCalls: number;
+  totalDurationMs: number;
+  avgDurationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cost: number;
+};
+
+export type DeepAnalyticsBucket = {
+  start: number;
+  end: number;
+  sessionsStarted: number;
+  userMessages: number;
+  assistantMessages: number;
+  assistantTurns: number;
+  toolCalls: number;
+  totalDurationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cost: number;
+  touches: number;
+};
+
+export type DeepAnalyticsSessionRow = {
+  id: string;
+  preview: string;
+  profile: string | null;
+  provider: string | null;
+  model: string | null;
+  cwd: string | null;
+  createdAt: number;
+  lastMessageAt: number;
+  totalMessages: number;
+  totalCost: number;
+  userMessages: number;
+  assistantMessages: number;
+  assistantTurns: number;
+  toolCalls: number;
+  totalDurationMs: number;
+  avgDurationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+export type DeepAnalyticsHourRow = {
+  hour: number;
+  userMessages: number;
+  assistantTurns: number;
+  toolCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cost: number;
+};
+
+export type DeepAnalytics = {
+  range: {
+    start: number;
+    end: number;
+    bucketMs: number;
+    bucketCount: number;
+  };
+  totals: {
+    sessionsStarted: number;
+    sessionsActive: number;
+    userMessages: number;
+    assistantMessages: number;
+    assistantTurns: number;
+    toolCalls: number;
+    totalDurationMs: number;
+    avgDurationMs: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cost: number;
+  };
+  buckets: DeepAnalyticsBucket[];
+  byProvider: DeepAnalyticsMetricRow[];
+  byModel: DeepAnalyticsMetricRow[];
+  byProfile: DeepAnalyticsMetricRow[];
+  byProject: DeepAnalyticsMetricRow[];
+  byHour: DeepAnalyticsHourRow[];
+  sessions: DeepAnalyticsSessionRow[];
+};
+
 export function getPeriodCosts(userProfile?: string): PeriodCosts {
   const now = Date.now();
   const todayStart = now - (now % 86_400_000);
@@ -1809,6 +1903,595 @@ export function getProviderUsageAnalytics(
     .sort((left, right) => left.day.localeCompare(right.day) || left.provider.localeCompare(right.provider));
 
   return { windowDays, totals, providers, models, daily };
+}
+
+function createDeepMetricAccumulator(key: string) {
+  return {
+    key,
+    sessionIds: new Set<string>(),
+    userMessages: 0,
+    assistantMessages: 0,
+    assistantTurns: 0,
+    toolCalls: 0,
+    totalDurationMs: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+  };
+}
+
+function toDeepMetricRow(acc: ReturnType<typeof createDeepMetricAccumulator>): DeepAnalyticsMetricRow {
+  const avgDurationMs = acc.assistantTurns > 0 ? Math.round(acc.totalDurationMs / acc.assistantTurns) : 0;
+  return {
+    key: acc.key,
+    sessions: acc.sessionIds.size,
+    userMessages: acc.userMessages,
+    assistantMessages: acc.assistantMessages,
+    assistantTurns: acc.assistantTurns,
+    toolCalls: acc.toolCalls,
+    totalDurationMs: acc.totalDurationMs,
+    avgDurationMs,
+    inputTokens: acc.inputTokens,
+    outputTokens: acc.outputTokens,
+    totalTokens: acc.totalTokens,
+    cost: acc.cost,
+  };
+}
+
+function createDeepBucket(start: number, end: number): DeepAnalyticsBucket {
+  return {
+    start,
+    end,
+    sessionsStarted: 0,
+    userMessages: 0,
+    assistantMessages: 0,
+    assistantTurns: 0,
+    toolCalls: 0,
+    totalDurationMs: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+    touches: 0,
+  };
+}
+
+function clampBucketMs(raw?: number): number {
+  const allowed = [
+    5 * 60_000,
+    15 * 60_000,
+    30 * 60_000,
+    60 * 60_000,
+    2 * 60 * 60_000,
+    6 * 60 * 60_000,
+    12 * 60 * 60_000,
+    24 * 60 * 60_000,
+  ];
+  if (!raw || !Number.isFinite(raw)) return 60 * 60_000;
+  return allowed.reduce((best, next) =>
+    Math.abs(next - raw) < Math.abs(best - raw) ? next : best,
+  );
+}
+
+function bucketIndex(ts: number, start: number, bucketMs: number, bucketCount: number): number | null {
+  if (ts < start) return null;
+  const idx = Math.floor((ts - start) / bucketMs);
+  if (idx < 0 || idx >= bucketCount) return null;
+  return idx;
+}
+
+function countAssistantToolUses(raw: string): number {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, any>;
+    const content = parsed.message?.content;
+    if (!Array.isArray(content)) return 0;
+    let count = 0;
+    for (const block of content) {
+      if (block?.type === "tool_use") count++;
+    }
+    return count;
+  } catch {
+    return 0;
+  }
+}
+
+function parseResultUsage(raw: string): {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cost: number;
+  durationMs: number;
+} {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, any>;
+    let cacheRead = 0;
+    let cacheWrite = 0;
+    if (parsed.modelUsage && typeof parsed.modelUsage === "object") {
+      for (const model of Object.values(parsed.modelUsage as Record<string, any>)) {
+        cacheRead += model?.cacheReadInputTokens ?? 0;
+        cacheWrite += model?.cacheCreationInputTokens ?? 0;
+      }
+    }
+    const rawInput = typeof parsed.input_tokens === "number" ? parsed.input_tokens : 0;
+    const outputTokens = typeof parsed.output_tokens === "number" ? parsed.output_tokens : 0;
+    const inputTokens = rawInput + cacheRead + cacheWrite;
+    const totalTokens = inputTokens + outputTokens;
+    const cost = typeof parsed.total_cost_usd === "number" ? parsed.total_cost_usd : 0;
+    const durationMs = typeof parsed.duration_ms === "number" ? parsed.duration_ms : 0;
+    return { inputTokens, outputTokens, totalTokens, cost, durationMs };
+  } catch {
+    return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0, durationMs: 0 };
+  }
+}
+
+export function getDeepAnalytics(
+  opts: { userProfile?: string; cwd?: string; provider?: string; start?: number; end?: number; bucketMs?: number } = {},
+): DeepAnalytics {
+  const end = Number.isFinite(opts.end) ? Math.max(0, Math.floor(opts.end!)) : Date.now();
+  const start = Number.isFinite(opts.start)
+    ? Math.max(0, Math.floor(opts.start!))
+    : end - 48 * 60 * 60_000;
+  const safeStart = Math.min(start, end);
+  const safeEnd = Math.max(start, end);
+  const bucketMs = clampBucketMs(opts.bucketMs);
+  const bucketCount = Math.max(1, Math.min(512, Math.ceil((safeEnd - safeStart || bucketMs) / bucketMs)));
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const bucketStart = safeStart + index * bucketMs;
+    return createDeepBucket(bucketStart, Math.min(safeEnd, bucketStart + bucketMs));
+  });
+
+  const base = `s.tags NOT LIKE '%"archived"%' AND s.tags NOT LIKE '%"internal"%'`;
+  const filters: string[] = [];
+  const params: any[] = [];
+  if (opts.userProfile) {
+    filters.push(`(s.user_profile = ? OR s.user_profile IS NULL)`);
+    params.push(opts.userProfile);
+  }
+  if (opts.cwd) {
+    filters.push(`s.cwd LIKE ? ESCAPE '\\'`);
+    params.push(opts.cwd.replace(/[%_]/g, "\\$&") + "%");
+  }
+  if (opts.provider) {
+    filters.push(`COALESCE(s.provider, '(unknown)') = ?`);
+    params.push(opts.provider);
+  }
+  const where = filters.length > 0 ? ` AND ${filters.join(" AND ")}` : "";
+
+  const totals = {
+    sessionsStarted: 0,
+    sessionsActive: 0,
+    userMessages: 0,
+    assistantMessages: 0,
+    assistantTurns: 0,
+    toolCalls: 0,
+    totalDurationMs: 0,
+    avgDurationMs: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+  };
+
+  const providerAgg = new Map<string, ReturnType<typeof createDeepMetricAccumulator>>();
+  const modelAgg = new Map<string, ReturnType<typeof createDeepMetricAccumulator>>();
+  const profileAgg = new Map<string, ReturnType<typeof createDeepMetricAccumulator>>();
+  const projectAgg = new Map<string, ReturnType<typeof createDeepMetricAccumulator>>();
+  const hours = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    userMessages: 0,
+    assistantTurns: 0,
+    toolCalls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+  }));
+
+  const sessions = new Map<string, DeepAnalyticsSessionRow>();
+
+  const ensureSession = (row: {
+    id: string;
+    preview: string;
+    profile: string | null;
+    provider: string | null;
+    model: string | null;
+    cwd: string | null;
+    created_at: number;
+    last_message_at: number;
+    message_count: number;
+    total_cost_usd: number;
+  }) => {
+    let session = sessions.get(row.id);
+    if (!session) {
+      session = {
+        id: row.id,
+        preview: row.preview,
+        profile: row.profile,
+        provider: row.provider,
+        model: row.model,
+        cwd: row.cwd,
+        createdAt: row.created_at,
+        lastMessageAt: row.last_message_at,
+        totalMessages: row.message_count,
+        totalCost: row.total_cost_usd,
+        userMessages: 0,
+        assistantMessages: 0,
+        assistantTurns: 0,
+        toolCalls: 0,
+        totalDurationMs: 0,
+        avgDurationMs: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      };
+      sessions.set(row.id, session);
+    }
+    return session;
+  };
+
+  const ensureMetric = (
+    map: Map<string, ReturnType<typeof createDeepMetricAccumulator>>,
+    key: string,
+  ) => {
+    let acc = map.get(key);
+    if (!acc) {
+      acc = createDeepMetricAccumulator(key);
+      map.set(key, acc);
+    }
+    return acc;
+  };
+
+  const addMetricSession = (row: DeepAnalyticsSessionRow) => {
+    ensureMetric(providerAgg, row.provider || "(unknown)").sessionIds.add(row.id);
+    ensureMetric(modelAgg, row.model || "(unknown)").sessionIds.add(row.id);
+    ensureMetric(profileAgg, row.profile || "(default)").sessionIds.add(row.id);
+    ensureMetric(projectAgg, row.cwd || "(none)").sessionIds.add(row.id);
+  };
+
+  const overlappingSessions = db.prepare(`
+    SELECT
+      s.id,
+      s.preview,
+      s.profile,
+      s.provider,
+      s.model,
+      s.cwd,
+      s.created_at,
+      COALESCE(s.last_message_at, s.updated_at, s.created_at) AS last_message_at,
+      s.message_count,
+      s.total_cost_usd
+    FROM sessions s
+    WHERE ${base}
+      ${where}
+      AND s.created_at <= ?
+      AND COALESCE(s.last_message_at, s.updated_at, s.created_at) >= ?
+    ORDER BY COALESCE(s.last_message_at, s.updated_at, s.created_at) DESC
+  `).all(...params, safeEnd, safeStart) as Array<{
+    id: string;
+    preview: string;
+    profile: string | null;
+    provider: string | null;
+    model: string | null;
+    cwd: string | null;
+    created_at: number;
+    last_message_at: number;
+    message_count: number;
+    total_cost_usd: number;
+  }>;
+
+  for (const row of overlappingSessions) {
+    addMetricSession(ensureSession(row));
+  }
+  totals.sessionsActive = sessions.size;
+
+  const startedSessions = db.prepare(`
+    SELECT
+      s.id,
+      s.preview,
+      s.profile,
+      s.provider,
+      s.model,
+      s.cwd,
+      s.created_at,
+      COALESCE(s.last_message_at, s.updated_at, s.created_at) AS last_message_at,
+      s.message_count,
+      s.total_cost_usd
+    FROM sessions s
+    WHERE ${base}
+      ${where}
+      AND s.created_at >= ?
+      AND s.created_at <= ?
+  `).all(...params, safeStart, safeEnd) as Array<{
+    id: string;
+    preview: string;
+    profile: string | null;
+    provider: string | null;
+    model: string | null;
+    cwd: string | null;
+    created_at: number;
+    last_message_at: number;
+    message_count: number;
+    total_cost_usd: number;
+  }>;
+
+  for (const row of startedSessions) {
+    const session = ensureSession(row);
+    addMetricSession(session);
+    totals.sessionsStarted += 1;
+    const idx = bucketIndex(row.created_at, safeStart, bucketMs, bucketCount);
+    if (idx != null) buckets[idx].sessionsStarted += 1;
+  }
+
+  const userPromptRows = db.prepare(`
+    SELECT
+      e.session_id,
+      e.created_at,
+      s.id,
+      s.preview,
+      s.profile,
+      s.provider,
+      s.model,
+      s.cwd,
+      s.created_at AS session_created_at,
+      COALESCE(s.last_message_at, s.updated_at, s.created_at) AS last_message_at,
+      s.message_count,
+      s.total_cost_usd
+    FROM events e
+    JOIN sessions s ON s.id = e.session_id
+    WHERE ${base}
+      ${where}
+      AND e.type = 'user'
+      AND (e.subtype = 'prompt' OR e.data LIKE '%\"subtype\":\"prompt\"%')
+      AND e.created_at >= ?
+      AND e.created_at <= ?
+    ORDER BY e.created_at ASC
+  `).all(...params, safeStart, safeEnd) as Array<{
+    session_id: string;
+    created_at: number;
+    id: string;
+    preview: string;
+    profile: string | null;
+    provider: string | null;
+    model: string | null;
+    cwd: string | null;
+    session_created_at: number;
+    last_message_at: number;
+    message_count: number;
+    total_cost_usd: number;
+  }>;
+
+  for (const row of userPromptRows) {
+    const session = ensureSession({
+      id: row.id,
+      preview: row.preview,
+      profile: row.profile,
+      provider: row.provider,
+      model: row.model,
+      cwd: row.cwd,
+      created_at: row.session_created_at,
+      last_message_at: row.last_message_at,
+      message_count: row.message_count,
+      total_cost_usd: row.total_cost_usd,
+    });
+    addMetricSession(session);
+    const metrics = [
+      ensureMetric(providerAgg, session.provider || "(unknown)"),
+      ensureMetric(modelAgg, session.model || "(unknown)"),
+      ensureMetric(profileAgg, session.profile || "(default)"),
+      ensureMetric(projectAgg, session.cwd || "(none)"),
+    ];
+    const idx = bucketIndex(row.created_at, safeStart, bucketMs, bucketCount);
+    const hour = new Date(row.created_at).getHours();
+    totals.userMessages += 1;
+    session.userMessages += 1;
+    for (const metric of metrics) metric.userMessages += 1;
+    if (idx != null) buckets[idx].userMessages += 1;
+    hours[hour].userMessages += 1;
+  }
+
+  const resultRows = db.prepare(`
+    SELECT
+      e.session_id,
+      e.data,
+      e.created_at,
+      s.id,
+      s.preview,
+      s.profile,
+      s.provider,
+      s.model,
+      s.cwd,
+      s.created_at AS session_created_at,
+      COALESCE(s.last_message_at, s.updated_at, s.created_at) AS last_message_at,
+      s.message_count,
+      s.total_cost_usd
+    FROM events e
+    JOIN sessions s ON s.id = e.session_id
+    WHERE e.type = 'result'
+      AND ${base}
+      ${where}
+      AND e.created_at >= ?
+      AND e.created_at <= ?
+    ORDER BY e.created_at ASC
+  `).all(...params, safeStart, safeEnd) as Array<{
+    session_id: string;
+    data: string;
+    created_at: number;
+    id: string;
+    preview: string;
+    profile: string | null;
+    provider: string | null;
+    model: string | null;
+    cwd: string | null;
+    session_created_at: number;
+    last_message_at: number;
+    message_count: number;
+    total_cost_usd: number;
+  }>;
+
+  for (const row of resultRows) {
+    const session = ensureSession({
+      id: row.id,
+      preview: row.preview,
+      profile: row.profile,
+      provider: row.provider,
+      model: row.model,
+      cwd: row.cwd,
+      created_at: row.session_created_at,
+      last_message_at: row.last_message_at,
+      message_count: row.message_count,
+      total_cost_usd: row.total_cost_usd,
+    });
+    addMetricSession(session);
+    const metrics = [
+      ensureMetric(providerAgg, session.provider || "(unknown)"),
+      ensureMetric(modelAgg, session.model || "(unknown)"),
+      ensureMetric(profileAgg, session.profile || "(default)"),
+      ensureMetric(projectAgg, session.cwd || "(none)"),
+    ];
+    const usage = parseResultUsage(row.data);
+    const idx = bucketIndex(row.created_at, safeStart, bucketMs, bucketCount);
+    const hour = new Date(row.created_at).getHours();
+
+    totals.assistantTurns += 1;
+    totals.assistantMessages += 1;
+    totals.inputTokens += usage.inputTokens;
+    totals.outputTokens += usage.outputTokens;
+    totals.totalTokens += usage.totalTokens;
+    totals.cost += usage.cost;
+    totals.totalDurationMs += usage.durationMs;
+
+    session.assistantMessages += 1;
+    session.assistantTurns += 1;
+    session.totalDurationMs += usage.durationMs;
+    session.inputTokens += usage.inputTokens;
+    session.outputTokens += usage.outputTokens;
+    session.totalTokens += usage.totalTokens;
+
+    for (const metric of metrics) {
+      metric.assistantMessages += 1;
+      metric.assistantTurns += 1;
+      metric.totalDurationMs += usage.durationMs;
+      metric.inputTokens += usage.inputTokens;
+      metric.outputTokens += usage.outputTokens;
+      metric.totalTokens += usage.totalTokens;
+      metric.cost += usage.cost;
+    }
+
+    if (idx != null) {
+      buckets[idx].assistantMessages += 1;
+      buckets[idx].assistantTurns += 1;
+      buckets[idx].totalDurationMs += usage.durationMs;
+      buckets[idx].inputTokens += usage.inputTokens;
+      buckets[idx].outputTokens += usage.outputTokens;
+      buckets[idx].totalTokens += usage.totalTokens;
+      buckets[idx].cost += usage.cost;
+    }
+
+    hours[hour].assistantTurns += 1;
+    hours[hour].inputTokens += usage.inputTokens;
+    hours[hour].outputTokens += usage.outputTokens;
+    hours[hour].totalTokens += usage.totalTokens;
+    hours[hour].cost += usage.cost;
+  }
+
+  const assistantRows = db.prepare(`
+    SELECT
+      e.session_id,
+      e.data,
+      e.created_at,
+      s.id,
+      s.preview,
+      s.profile,
+      s.provider,
+      s.model,
+      s.cwd,
+      s.created_at AS session_created_at,
+      COALESCE(s.last_message_at, s.updated_at, s.created_at) AS last_message_at,
+      s.message_count,
+      s.total_cost_usd
+    FROM events e
+    JOIN sessions s ON s.id = e.session_id
+    WHERE e.type = 'assistant'
+      AND ${base}
+      ${where}
+      AND e.created_at >= ?
+      AND e.created_at <= ?
+    ORDER BY e.created_at ASC
+  `).all(...params, safeStart, safeEnd) as Array<{
+    session_id: string;
+    data: string;
+    created_at: number;
+    id: string;
+    preview: string;
+    profile: string | null;
+    provider: string | null;
+    model: string | null;
+    cwd: string | null;
+    session_created_at: number;
+    last_message_at: number;
+    message_count: number;
+    total_cost_usd: number;
+  }>;
+
+  for (const row of assistantRows) {
+    const toolCalls = countAssistantToolUses(row.data);
+    if (toolCalls <= 0) continue;
+
+    const session = ensureSession({
+      id: row.id,
+      preview: row.preview,
+      profile: row.profile,
+      provider: row.provider,
+      model: row.model,
+      cwd: row.cwd,
+      created_at: row.session_created_at,
+      last_message_at: row.last_message_at,
+      message_count: row.message_count,
+      total_cost_usd: row.total_cost_usd,
+    });
+    addMetricSession(session);
+    const metrics = [
+      ensureMetric(providerAgg, session.provider || "(unknown)"),
+      ensureMetric(modelAgg, session.model || "(unknown)"),
+      ensureMetric(profileAgg, session.profile || "(default)"),
+      ensureMetric(projectAgg, session.cwd || "(none)"),
+    ];
+    const idx = bucketIndex(row.created_at, safeStart, bucketMs, bucketCount);
+    const hour = new Date(row.created_at).getHours();
+
+    totals.toolCalls += toolCalls;
+    session.toolCalls += toolCalls;
+    for (const metric of metrics) metric.toolCalls += toolCalls;
+    if (idx != null) buckets[idx].toolCalls += toolCalls;
+    hours[hour].toolCalls += toolCalls;
+  }
+
+  totals.avgDurationMs = totals.assistantTurns > 0
+    ? Math.round(totals.totalDurationMs / totals.assistantTurns)
+    : 0;
+
+  return {
+    range: {
+      start: safeStart,
+      end: safeEnd,
+      bucketMs,
+      bucketCount,
+    },
+    totals,
+    buckets,
+    byProvider: [...providerAgg.values()].map(toDeepMetricRow).sort((a, b) => b.totalTokens - a.totalTokens || b.cost - a.cost),
+    byModel: [...modelAgg.values()].map(toDeepMetricRow).sort((a, b) => b.totalTokens - a.totalTokens || b.cost - a.cost),
+    byProfile: [...profileAgg.values()].map(toDeepMetricRow).sort((a, b) => b.totalTokens - a.totalTokens || b.cost - a.cost),
+    byProject: [...projectAgg.values()].map(toDeepMetricRow).sort((a, b) => b.totalTokens - a.totalTokens || b.cost - a.cost),
+    byHour: hours,
+    sessions: [...sessions.values()]
+      .map((row) => ({
+        ...row,
+        avgDurationMs: row.assistantTurns > 0 ? Math.round(row.totalDurationMs / row.assistantTurns) : 0,
+      }))
+      .sort((a, b) => b.totalTokens - a.totalTokens || b.toolCalls - a.toolCalls || b.lastMessageAt - a.lastMessageAt),
+  };
 }
 
 // ── Startup Cleanup ──

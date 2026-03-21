@@ -109,6 +109,12 @@ export const DEFAULT_DASHBOARD: DashboardConfig = {
       size: "full",
     } as WidgetBase,
     {
+      id: "deep-analytics-main",
+      type: "deep-analytics",
+      title: "deep analytics",
+      size: "full",
+    } as WidgetBase,
+    {
       id: "sessions-main",
       type: "sessions",
       size: "full",

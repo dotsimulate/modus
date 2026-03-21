@@ -1,0 +1,26 @@
+.time-axis {
+  position: relative;
+  height: 18px;
+  margin-top: 4px;
+}
+
+.time-axis-label {
+  position: absolute;
+  top: 0;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.time-axis-label--left {
+  transform: translateX(0);
+}
+
+.time-axis-label--mid {
+  transform: translateX(-50%);
+}
+
+.time-axis-label--right {
+  transform: translateX(-100%);
+}

@@ -1,0 +1,53 @@
+.dtf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 156px;
+}
+
+.dtf-label {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dtf-control {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
+.dtf-input {
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  accent-color: var(--text-secondary);
+  color-scheme: dark;
+}
+
+.dtf-control:hover,
+.dtf-control:has(.dtf-input:focus) {
+  border-color: var(--border-active);
+  background: color-mix(in srgb, var(--bg-surface) 84%, var(--bg-hover));
+}
+
+.dtf-input::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.dtf-input:focus {
+  outline: none;
+}
