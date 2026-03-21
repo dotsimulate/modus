@@ -23,7 +23,7 @@ import {
   setSessionNextAgentConfig,
   setSessionNextProfile,
   subscribeSession, unsubscribeSession, isSubscribed,
-  rekeySession, removeSession,
+  rekeySession, removeSession, evictInactiveSessions,
 } from "../sessionStore";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
 
@@ -268,6 +268,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       rs.loadProjectSettings = seed.loadProjectSettings;
       setSessionState(id, rs, profile);
       setActiveSessionId(id);
+      evictInactiveSessions(id);
       await refreshSessions();
       setInput("");
       setQueuedMessage(null);
@@ -305,6 +306,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // Save draft for previous session (fire-and-forget — uses captured refs
     // from the previous render, so it saves the OLD session's draft).
     saveDraftForCurrent();
+
+    // Evict old inactive sessions from the store to free memory
+    evictInactiveSessions(id);
 
     // Subscribe from last known seq (avoids full replay if store has state)
     const afterSeq = existing?.lastSeq ?? 0;

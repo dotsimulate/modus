@@ -245,6 +245,21 @@ export function isSubscribed(sessionId: string): boolean {
   return subscriptions.has(sessionId);
 }
 
+/** Evict all inactive sessions from the store, keeping the active one and any running sessions */
+export function evictInactiveSessions(keepId: string) {
+  let changed = false;
+  for (const [id, entry] of sessions) {
+    if (id === keepId) continue;
+    if (id.startsWith("pending-")) continue;
+    const status = entry.state.status;
+    if (status === "running" || status === "starting") continue;
+    unsubscribeSession(id);
+    sessions.delete(id);
+    changed = true;
+  }
+  if (changed) notify();
+}
+
 /** Unsubscribe all sessions */
 export function unsubscribeAll() {
   for (const sub of subscriptions.values()) {

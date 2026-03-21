@@ -18,10 +18,13 @@ import { useProfiles } from "../providers/ProfileProvider";
 import type { WidgetDef, WidgetProps } from "./index";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
-import * as icons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { type ComponentType, useState as _useState, useEffect as _useEffect } from "react";
 
-// ── Icon resolution ──
+// ── Icon resolution (lazy) ──
+// Dynamically import individual icons to avoid pulling the entire 46MB lucide-react barrel.
+
+const iconCache = new Map<string, ComponentType<{ size?: number; strokeWidth?: number }>>();
 
 function resolveIcon(name?: string): LucideIcon | null {
   if (!name) return null;
@@ -29,7 +32,24 @@ function resolveIcon(name?: string): LucideIcon | null {
     .split("-")
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join("");
-  return (icons as Record<string, unknown>)[pascal] as LucideIcon | undefined ?? null;
+  return (iconCache.get(pascal) as LucideIcon) ?? null;
+}
+
+function useIcon(name?: string): LucideIcon | null {
+  const [icon, setIcon] = _useState<LucideIcon | null>(() => resolveIcon(name));
+  _useEffect(() => {
+    if (!name) return;
+    const pascal = name
+      .split("-")
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join("");
+    if (iconCache.has(pascal)) { setIcon(iconCache.get(pascal) as LucideIcon); return; }
+    import("lucide-react").then((mod) => {
+      const comp = (mod as Record<string, unknown>)[pascal] as LucideIcon | undefined;
+      if (comp) { iconCache.set(pascal, comp); setIcon(comp); }
+    }).catch(() => {});
+  }, [name]);
+  return icon;
 }
 
 // ── Input helpers (match PromptPicker's buildMoveInputs) ──
@@ -276,7 +296,7 @@ function MoveRow({
   onAttach: (move: MoveListItem, values: Record<string, string>) => void;
   error: string | null;
 }) {
-  const Icon = resolveIcon(move.icon);
+  const Icon = useIcon(move.icon);
 
   return (
     <>
@@ -376,7 +396,7 @@ function MovesWidget(_props: WidgetProps) {
               onClick={() => setSearch("")}
               aria-label="Clear search"
             >
-              <icons.X size={10} strokeWidth={2} />
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           )}
           <input

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { flushSync } from "react-dom";
 import type { ProfileUi } from "./api";
 import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
 import type { MoveListItem } from "./api";
@@ -129,6 +128,11 @@ function AppShell() {
       browserPath: rightPanelBrowserPathRef.current,
     };
     uiCache.current.set(sessionId, snapshot);
+    // Cap cache at 20 entries — evict oldest
+    if (uiCache.current.size > 20) {
+      const oldest = uiCache.current.keys().next().value;
+      if (oldest && oldest !== sessionId) uiCache.current.delete(oldest);
+    }
     if (panelSaveTimer.current) clearTimeout(panelSaveTimer.current);
     panelSaveTimer.current = setTimeout(() => {
       saveSessionUiState(sessionId, snapshot).catch(() => {});
@@ -319,18 +323,9 @@ function AppShell() {
   }, [activeUserProfile, navigate, newSession, setUrlSession]);
 
   const handleSelectSession = useCallback((id: string) => {
-    const apply = () => {
-      flushSync(() => {
-        selectSession(id);
-        setUrlSession(id, activeUserProfile);
-        setSidebarOpen(false);
-      });
-    };
-    if ((document as any).startViewTransition) {
-      (document as any).startViewTransition(apply);
-    } else {
-      apply();
-    }
+    selectSession(id);
+    setUrlSession(id, activeUserProfile);
+    setSidebarOpen(false);
   }, [activeUserProfile, selectSession, setUrlSession]);
 
   // Wrap switchUserProfile to also update URL

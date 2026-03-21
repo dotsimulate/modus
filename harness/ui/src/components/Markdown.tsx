@@ -3,7 +3,6 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import hljs from "highlight.js/lib/core";
 import { memo, useEffect, useId, useRef, useState, type ReactElement } from "react";
-import mermaid from "mermaid";
 import { useFileViewer } from "../providers/FileViewerProvider";
 
 // Register languages — core set for dev/AI chat
@@ -53,33 +52,43 @@ for (const alias of ["toml", "graphql", "gql", "proto", "protobuf", "hcl", "terr
   hljs.registerLanguage(alias, noop);
 }
 
-// Mermaid — dark theme matching our terminal aesthetic
-mermaid.initialize({
-  startOnLoad: false,
-  theme: "dark",
-  themeVariables: {
-    darkMode: true,
-    background: "#000000",
-    primaryColor: "#1a1a1a",
-    primaryTextColor: "#e0e0e0",
-    primaryBorderColor: "#333333",
-    secondaryColor: "#111111",
-    secondaryTextColor: "#bbbbbb",
-    secondaryBorderColor: "#333333",
-    tertiaryColor: "#0a0a0a",
-    lineColor: "#555555",
-    textColor: "#e0e0e0",
-    mainBkg: "#111111",
-    nodeBorder: "#333333",
-    clusterBkg: "#0a0a0a",
-    clusterBorder: "#1e1e1e",
-    titleColor: "#e0e0e0",
-    edgeLabelBackground: "#0a0a0a",
-    nodeTextColor: "#e0e0e0",
-  },
-  fontFamily: "var(--font-mono, monospace)",
-  fontSize: 13,
-});
+// Mermaid — lazy loaded (71MB package, only needed for mermaid code fences)
+let mermaidReady: Promise<typeof import("mermaid")["default"]> | null = null;
+
+function getMermaid() {
+  if (!mermaidReady) {
+    mermaidReady = import("mermaid").then((mod) => {
+      mod.default.initialize({
+        startOnLoad: false,
+        theme: "dark",
+        themeVariables: {
+          darkMode: true,
+          background: "#000000",
+          primaryColor: "#1a1a1a",
+          primaryTextColor: "#e0e0e0",
+          primaryBorderColor: "#333333",
+          secondaryColor: "#111111",
+          secondaryTextColor: "#bbbbbb",
+          secondaryBorderColor: "#333333",
+          tertiaryColor: "#0a0a0a",
+          lineColor: "#555555",
+          textColor: "#e0e0e0",
+          mainBkg: "#111111",
+          nodeBorder: "#333333",
+          clusterBkg: "#0a0a0a",
+          clusterBorder: "#1e1e1e",
+          titleColor: "#e0e0e0",
+          edgeLabelBackground: "#0a0a0a",
+          nodeTextColor: "#e0e0e0",
+        },
+        fontFamily: "var(--font-mono, monospace)",
+        fontSize: 13,
+      });
+      return mod.default;
+    });
+  }
+  return mermaidReady;
+}
 
 function MermaidDiagram({ code }: { code: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -88,9 +97,9 @@ function MermaidDiagram({ code }: { code: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    getMermaid().then(async (m) => {
       try {
-        const { svg } = await mermaid.render(`mermaid${id}`, code);
+        const { svg } = await m.render(`mermaid${id}`, code);
         if (!cancelled && ref.current) {
           ref.current.innerHTML = svg;
           setError(null);
@@ -98,7 +107,9 @@ function MermaidDiagram({ code }: { code: string }) {
       } catch (e: any) {
         if (!cancelled) setError(e?.message || "Diagram render failed");
       }
-    })();
+    }).catch((e: any) => {
+      if (!cancelled) setError(e?.message || "Failed to load mermaid");
+    });
     return () => { cancelled = true; };
   }, [code, id]);
 
