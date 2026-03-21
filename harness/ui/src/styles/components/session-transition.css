@@ -1,0 +1,28 @@
+/**
+ * Session Transition — View Transitions API styling for session switches.
+ *
+ * The browser captures a screenshot of the old state, React swaps content
+ * via flushSync, then the browser animates between old and new at the
+ * compositor level. No intermediate frames leak through.
+ *
+ * Customize the transition by restyling the ::view-transition pseudo-elements.
+ */
+
+/* Default crossfade — fast and clean */
+::view-transition-old(root) {
+  animation: session-out 0.14s ease-out both;
+}
+
+::view-transition-new(root) {
+  animation: session-in 0.14s ease-in both;
+}
+
+@keyframes session-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes session-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

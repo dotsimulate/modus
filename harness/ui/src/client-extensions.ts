@@ -64,6 +64,7 @@ type ClientExtensionApi = {
   focusComposer: () => void;
   submitComposer: (text?: string) => void;
   request: (path: string, init?: RequestInit) => Promise<Response>;
+  getSettings: () => Record<string, unknown>;
 };
 
 type ClientExtensionDefinition =
@@ -236,7 +237,7 @@ export function useComposerActions(composerId: string): ComposerActionView[] {
     }));
 }
 
-function createApi(extensionId: string): ClientExtensionApi {
+function createApi(extensionId: string, settings: Record<string, unknown> = {}): ClientExtensionApi {
   return {
     registerShortcut(binding, handler) {
       const registration: ShortcutRegistration = {
@@ -313,6 +314,9 @@ function createApi(extensionId: string): ClientExtensionApi {
       if (isFormDataBody) headers.delete("Content-Type");
       return fetch(url, { ...init, headers });
     },
+    getSettings() {
+      return { ...settings };
+    },
   };
 }
 
@@ -349,7 +353,7 @@ export async function loadClientExtensions(items: ClientExtensionManifestItem[])
     if (!definition) continue;
     const onLoad = typeof definition === "function" ? definition : definition.onLoad;
     if (!onLoad) continue;
-    const cleanup = await onLoad(createApi(item.id));
+    const cleanup = await onLoad(createApi(item.id, item.settingsValues));
     loadedExtensions.push({
       id: item.id,
       cleanup: typeof cleanup === "function" ? cleanup : undefined,

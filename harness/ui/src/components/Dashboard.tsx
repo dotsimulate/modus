@@ -30,7 +30,11 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
     refreshUserProfiles,
   } = useProfiles();
   const [setupDismissed, setSetupDismissed] = useState(false);
-  const widgets = activeUP?.dashboard?.widgets ?? DEFAULT_DASHBOARD.widgets ?? [];
+  const configuredWidgets = activeUP?.dashboard?.widgets ?? DEFAULT_DASHBOARD.widgets ?? [];
+  const hasExtensions = configuredWidgets.some((w) => w.type === "extensions");
+  const widgets = hasExtensions
+    ? configuredWidgets
+    : [...configuredWidgets, { id: "extensions-auto", type: "extensions", title: "extensions", size: "full" as const }];
   const configuredAgentProfiles = activeUP?.agentProfiles ?? [];
   const hasLoadedAgentProfile = configuredAgentProfiles.some((name) => profiles.some((profile) => profile.name === name));
 

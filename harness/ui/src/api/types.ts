@@ -341,7 +341,7 @@ export type ProviderCapabilities = {
 };
 
 export type ProviderHealthCheck = {
-  type: "cli" | "env" | "local";
+  type: "cli" | "env" | "local" | "auth";
   label: string;
   passed: boolean;
   detail?: string;
@@ -401,12 +401,28 @@ export type UserProfile = {
   };
 };
 
+export type ExtensionSettingSchema = {
+  type: "string" | "number" | "boolean" | "select";
+  label: string;
+  description?: string;
+  default?: string | number | boolean;
+  options?: Array<{ value: string; label: string }>;
+};
+
+export type ExtensionMeta = {
+  name?: string;
+  description?: string;
+  settings?: Record<string, ExtensionSettingSchema>;
+};
+
 export type ClientExtensionManifestItem = {
   id: string;
   fileName: string;
   source: "project" | "global";
   enabled: boolean;
   moduleUrl: string;
+  meta: ExtensionMeta;
+  settingsValues: Record<string, unknown>;
 };
 
 export type ProjectUiAssetInfo = {

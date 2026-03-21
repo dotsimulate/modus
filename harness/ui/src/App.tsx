@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
 import type { ProfileUi } from "./api";
 import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
 import type { MoveListItem } from "./api";
@@ -318,9 +319,18 @@ function AppShell() {
   }, [activeUserProfile, navigate, newSession, setUrlSession]);
 
   const handleSelectSession = useCallback((id: string) => {
-    selectSession(id);
-    setUrlSession(id, activeUserProfile);
-    setSidebarOpen(false);
+    const apply = () => {
+      flushSync(() => {
+        selectSession(id);
+        setUrlSession(id, activeUserProfile);
+        setSidebarOpen(false);
+      });
+    };
+    if ((document as any).startViewTransition) {
+      (document as any).startViewTransition(apply);
+    } else {
+      apply();
+    }
   }, [activeUserProfile, selectSession, setUrlSession]);
 
   // Wrap switchUserProfile to also update URL
@@ -579,6 +589,7 @@ function AppShell() {
             />
             <div className="chat">
               <ChatView
+                key={activeSession?.id ?? "empty"}
                 messages={activeSession?.messages ?? []}
                 sessionId={activeSession?.id ?? null}
                 sessionTags={activeSessionTags}

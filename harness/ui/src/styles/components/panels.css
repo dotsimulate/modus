@@ -87,6 +87,7 @@
   flex-direction: column;
   flex-shrink: 0;
   background: var(--bg);
+  transition: width 0.18s ease, min-width 0.18s ease;
 }
 .left-panel.open {
   /* width/minWidth set via inline style for resize support */
@@ -140,6 +141,7 @@
   flex-direction: column;
   flex-shrink: 0;
   background: var(--bg);
+  transition: width 0.18s ease, min-width 0.18s ease;
 }
 .right-panel.open {
   /* width/minWidth set via inline style for resize support */

@@ -389,9 +389,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const { sessionId: realId } = await createSession(opts);
 
         rekeySession(tempId, realId);
-        // Rekey move registry from the previous session ID (the empty session where the move was registered)
+        // Rekey move registry — mountOnAttach moves registered with empty sessionId
+        // need an explicit rekey from "" since prevSessionId/tempId won't match them
+        rekeyMoveSession("", realId).catch(() => {});
         const moveOldId = prevSessionId || tempId;
-        if (moveOldId) {
+        if (moveOldId && moveOldId !== "") {
           rekeyMoveSession(moveOldId, realId).catch((e) => {
             console.error(`[session] rekeyMoveSession FAILED:`, e);
           });

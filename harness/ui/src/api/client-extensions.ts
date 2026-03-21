@@ -13,3 +13,16 @@ export async function fetchClientExtensions(cwd?: string, userProfile?: string |
   });
   return res.json();
 }
+
+export async function patchClientExtension(
+  id: string,
+  userProfile: string,
+  patch: { enabled?: boolean; settings?: Record<string, unknown> },
+): Promise<void> {
+  const params = new URLSearchParams({ userProfile });
+  await fetch(`${API_BASE}/api/client-extensions/${encodeURIComponent(id)}?${params}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}

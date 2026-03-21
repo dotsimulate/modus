@@ -33,6 +33,15 @@ export async function archiveSessionApi(id: string): Promise<void> {
   await fetch(`${API_BASE}/api/sessions/${id}`, { method: "DELETE", headers: authHeaders() });
 }
 
+export async function unarchiveSessionApi(id: string): Promise<void> {
+  await fetch(`${API_BASE}/api/sessions/${id}/unarchive`, { method: "POST", headers: authHeaders() });
+}
+
+export async function fetchArchivedSessions(limit = 50): Promise<SessionInfo[]> {
+  const res = await fetch(`${API_BASE}/api/sessions/archived?limit=${limit}`, { headers: authHeaders() });
+  return res.json();
+}
+
 // ── Title ──
 
 export async function updateSessionTitle(id: string, title: string | null): Promise<void> {

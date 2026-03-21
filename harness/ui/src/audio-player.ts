@@ -119,7 +119,7 @@ function ensureElement(): HTMLAudioElement {
 
   el.addEventListener("play", () => update({ playing: true }));
   el.addEventListener("pause", () => update({ playing: false }));
-  el.addEventListener("ended", () => update({ activeId: null, src: null, sessionId: null, playing: false, currentTime: 0, duration: 0, error: null }));
+  el.addEventListener("ended", () => { revokeBlobUrl(); update({ activeId: null, src: null, sessionId: null, playing: false, currentTime: 0, duration: 0, error: null }); });
   el.addEventListener("timeupdate", () =>
     update({ currentTime: el.currentTime }),
   );
@@ -133,8 +133,18 @@ function ensureElement(): HTMLAudioElement {
   });
   el.addEventListener("error", () => {
     const e = el.error;
-    const msg = e ? `${e.code}: ${e.message || "media error"}` : "unknown audio error";
-    console.error("[audio-player] element error:", msg);
+    const codeNames: Record<number, string> = {
+      1: "MEDIA_ERR_ABORTED",
+      2: "MEDIA_ERR_NETWORK",
+      3: "MEDIA_ERR_DECODE",
+      4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
+    };
+    const codeName = e ? (codeNames[e.code] || `code ${e.code}`) : "unknown";
+    const ct = el.dataset.contentType || "unknown";
+    const msg = e
+      ? `${codeName}: ${e.message || "media error"} (type: ${ct})`
+      : "unknown audio error";
+    console.error("[audio-player] element error:", msg, "src:", el.src);
     update({ playing: false, error: msg });
   });
 
@@ -159,16 +169,22 @@ function handlePlayError(err: unknown) {
 }
 
 /** Pre-flight: fetch the URL with a HEAD request to check for auth/network errors. */
-async function preflight(src: string): Promise<string | null> {
+async function preflight(src: string): Promise<{ error: string } | { contentType: string }> {
   try {
     const res = await fetch(src, { method: "HEAD" });
-    if (!res.ok) return `HTTP ${res.status} ${res.statusText}`;
+    if (!res.ok) return { error: `HTTP ${res.status} ${res.statusText}` };
     const ct = res.headers.get("content-type") || "";
-    if (!ct.startsWith("audio/")) return `bad content-type: ${ct}`;
-    return null;
+    if (!ct.startsWith("audio/")) return { error: `bad content-type: ${ct}` };
+    return { contentType: ct };
   } catch (e) {
-    return `network: ${e instanceof Error ? e.message : e}`;
+    return { error: `network: ${e instanceof Error ? e.message : e}` };
   }
+}
+
+/** Revoke the previous blob URL if any. */
+let _blobUrl: string | null = null;
+function revokeBlobUrl() {
+  if (_blobUrl) { URL.revokeObjectURL(_blobUrl); _blobUrl = null; }
 }
 
 /** Play an artifact. If it's already playing, this is a no-op. */
@@ -183,15 +199,25 @@ export function play(id: number, url: string, sessionId?: string) {
   _played.add(id);
   savePlayed(_played);
 
-  // Pre-flight check so we get a useful error instead of opaque code 4
-  preflight(src).then((err) => {
-    if (err) {
-      update({ playing: false, error: err });
-      return;
-    }
-    el.src = src;
-    el.play().then(() => update({ error: null })).catch(handlePlayError);
-  });
+  // Fetch audio as blob so auth goes through fetch() headers/params,
+  // then use a blob URL for the <audio> element. This avoids issues where
+  // the browser's <audio> element doesn't forward query-param tokens
+  // (e.g. through Tailscale proxies or mobile browsers).
+  revokeBlobUrl();
+  fetch(src)
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.startsWith("audio/")) throw new Error(`bad content-type: ${ct}`);
+      return res.blob();
+    })
+    .then((blob) => {
+      _blobUrl = URL.createObjectURL(blob);
+      el.src = _blobUrl;
+      return el.play();
+    })
+    .then(() => update({ error: null }))
+    .catch(handlePlayError);
 }
 
 /** Auto-play an artifact only if it hasn't been played yet this session. */

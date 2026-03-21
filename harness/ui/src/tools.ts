@@ -56,6 +56,13 @@ export const GEMINI_TOOL_GROUPS: ToolGroup[] = [
   { label: "web", tools: ["google_web_search"] },
 ];
 
+// Cursor Agent tools (matches cursor.ts builtInToolGroups)
+export const CURSOR_TOOL_GROUPS: ToolGroup[] = [
+  { label: "exec", tools: ["Bash"] },
+  { label: "files", tools: ["Read", "Edit", "Grep", "Glob"] },
+  { label: "web", tools: ["WebSearch"] },
+];
+
 // PI Agent providers use lowercase tool names (read, write, edit, bash, ...)
 // Claude Code and Codex both use PascalCase tool names (Read, Write, Edit, Bash, ...)
 const PI_PROVIDER_NAMES = new Set(["anthropic", "openai", "litellm", "ollama", "openrouter"]);
@@ -72,14 +79,19 @@ export function isGeminiProvider(provider?: string): boolean {
   return provider === "gemini-cli";
 }
 
+export function isCursorProvider(provider?: string): boolean {
+  return provider === "cursor";
+}
+
 export function isClaudeCodeProvider(provider?: string): boolean {
   return !provider || provider === "claude-code";
 }
 
-export function providerToolFamily(provider?: string): "claude-code" | "codex" | "gemini-cli" | "pi-agent" {
+export function providerToolFamily(provider?: string): "claude-code" | "codex" | "cursor" | "gemini-cli" | "pi-agent" {
   if (isPiProvider(provider)) return "pi-agent";
   if (isCodexProvider(provider)) return "codex";
   if (isGeminiProvider(provider)) return "gemini-cli";
+  if (isCursorProvider(provider)) return "cursor";
   return "claude-code";
 }
 
@@ -91,6 +103,8 @@ export function getToolGroups(provider?: string): ToolGroup[] {
       return CODEX_TOOL_GROUPS;
     case "gemini-cli":
       return GEMINI_TOOL_GROUPS;
+    case "cursor":
+      return CURSOR_TOOL_GROUPS;
     default:
       return TOOL_GROUPS;
   }

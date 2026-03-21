@@ -18,7 +18,7 @@ export {
 // Sessions
 export {
   fetchSessions, fetchSessionStatus, fetchActiveSessions,
-  searchSessions, archiveSessionApi, updateSessionTitle,
+  searchSessions, archiveSessionApi, unarchiveSessionApi, fetchArchivedSessions, updateSessionTitle,
   addSessionTagApi, removeSessionTagApi,
   getDraft, saveDraft, createEmptySession,
   createSession, sendMessage, stopSessionApi, stopTaskApi, switchSessionProfile,
@@ -48,7 +48,7 @@ export {
 } from "./ui";
 
 // Client extensions
-export { fetchClientExtensions } from "./client-extensions";
+export { fetchClientExtensions, patchClientExtension } from "./client-extensions";
 
 // Memories
 export { fetchMemories } from "./memories";
@@ -86,7 +86,7 @@ export type {
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo, CommitAttribution, CommitAttributionReason,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,
   UserProfileState, UserProfile, ProjectUiAssetInfo, ActiveProjectUiAsset, ProjectUiState, MemoryItem,
-  ClientExtensionManifestItem,
+  ClientExtensionManifestItem, ExtensionSettingSchema, ExtensionMeta,
   ActionTrigger, ActionInfo, ActionRun,
   GitStatus, GitCommit, DiffLine, DiffHunk, FileDiff, GitCommitDetail,
   EventStreamCallbacks,
