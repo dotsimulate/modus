@@ -437,9 +437,6 @@ function ActionMeters({ action }: { action: ActionInfo }) {
   let nextPct = 0;
   if (off) {
     nextLabel = "paused";
-  } else if (action.running) {
-    nextLabel = "running";
-    nextPct = 100;
   } else if (action.trigger.type === "interval" && action.nextRunAt) {
     const intervalMs = parseIntervalMs(action.trigger.every);
     if (intervalMs > 0) {

@@ -129,7 +129,8 @@ function isExecutionExhausted(exec: ExecutionState, config: ActionConfig): boole
 /** Find the first active execution for an action, or null */
 function findActiveExecution(state: ActionState): ExecutionState | null {
   for (const exec of state.activeExecutions.values()) {
-    if (exec.status === "running") return exec;
+    // Skip executions that already have a session running (they're busy)
+    if (exec.status === "running" && exec.currentSessionId === null) return exec;
   }
   return null;
 }
@@ -147,6 +148,7 @@ function createExecution(actionName: string, config: ActionConfig): ExecutionSta
     cycleRunCount: 0,
     cycleStartedAt: null,
     currentSessionId: null,
+    runStartedAt: null,
     lastStatus: null,
     totalCostUsd: 0,
     transientAttempts: 0,
@@ -320,24 +322,60 @@ async function monitorSession(
 ): Promise<SessionOutcome> {
   console.log(`[actions:monitor] "${actionName}" watching ${session.sessionId.slice(0, 20)}`);
 
-  const timeout = new Promise<SessionOutcome>((_, reject) =>
-    setTimeout(() => reject(new Error("timeout")), SESSION_TIMEOUT_MS),
-  );
-
-  try {
-    const outcome = await Promise.race([watchSession(session.sessionId), timeout]);
-    console.log(`[actions] Session completed for "${actionName}": ${outcome.sessionStatus}`);
-    return outcome;
-  } catch {
-    console.error(`[actions] Session timed out for "${actionName}" after ${SESSION_TIMEOUT_MS / 60000}m`);
-    return {
-      sessionStatus: "timeout",
-      response: null,
-      summary: null,
-      costUsd: 0,
-      error: `timeout after ${SESSION_TIMEOUT_MS / 60000} minutes`,
+  return new Promise<SessionOutcome>((resolve) => {
+    let resolved = false;
+    const finish = (outcome: SessionOutcome, source: string) => {
+      if (resolved) return;
+      resolved = true;
+      clearInterval(pollTimer);
+      clearTimeout(timeoutTimer);
+      console.log(`[actions:monitor] "${actionName}" resolved via ${source}: ${outcome.sessionStatus}`);
+      resolve(outcome);
     };
-  }
+
+    // Primary: watcher-based (fires when session-manager detects terminal state)
+    watchSession(session.sessionId).then(outcome =>
+      finish(outcome, "watcher"),
+    );
+
+    // Fallback: poll DB + in-memory status every 5s to catch missed watchers
+    const pollTimer = setInterval(() => {
+      // Check in-memory status (mutated by provider directly)
+      const memStatus = session.status;
+      if (memStatus === "idle" || memStatus === "done" || memStatus === "error") {
+        finish({
+          sessionStatus: memStatus === "error" ? "error" : "done",
+          response: session.lastAssistantText ?? null,
+          summary: session.lastAssistantText?.slice(0, 500) ?? null,
+          costUsd: session.costUsd,
+          error: session.error,
+        }, `poll(mem:${memStatus})`);
+        return;
+      }
+      // Check DB status (updated by updateSessionStatus / updateSessionDb)
+      const dbRow = getSession(session.sessionId);
+      if (dbRow && (dbRow.status === "idle" || dbRow.status === "done" || dbRow.status === "error")) {
+        finish({
+          sessionStatus: dbRow.status === "error" ? "error" : "done",
+          response: session.lastAssistantText ?? null,
+          summary: session.lastAssistantText?.slice(0, 500) ?? null,
+          costUsd: session.costUsd,
+          error: session.error,
+        }, `poll(db:${dbRow.status})`);
+      }
+    }, 5_000);
+
+    // Timeout: 30 minutes max
+    const timeoutTimer = setTimeout(() => {
+      finish({
+        sessionStatus: "timeout",
+        response: null,
+        summary: null,
+        costUsd: 0,
+        error: `timeout after ${SESSION_TIMEOUT_MS / 60000} minutes`,
+      }, "timeout");
+    }, SESSION_TIMEOUT_MS);
+  });
 }
 
 // ── Transient Error Detection ──
@@ -418,10 +456,11 @@ async function fireAction(
     return;
   }
 
-  // Concurrency guard
+  // Concurrency guard — count sessions with active work, not total executions
   const maxConcurrency = state.config.concurrency ?? 1;
-  if (state.activeExecutions.size >= maxConcurrency) {
-    console.log(`[actions] "${name}" at concurrency limit (${maxConcurrency}) — dropping ${triggerInfo.type} trigger`);
+  const activeSessions = [...state.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
+  if (activeSessions >= maxConcurrency) {
+    console.log(`[actions] "${name}" at concurrency limit (${activeSessions}/${maxConcurrency}) — dropping ${triggerInfo.type} trigger`);
     return;
   }
 
@@ -433,12 +472,20 @@ async function fireAction(
   }
 
   const runStartedAt = Date.now();
+  exec.runStartedAt = runStartedAt;
   const runNumber = getNextRunNumber(name);
   exec.runNumber++;
   const execRunNumber = exec.runNumber; // per-execution run number
   const cfg = state.config;
   const effectiveUserProfile = overrides?.userProfile ?? cfg.userProfile;
   const actionDir = state.actionDir;
+
+  // For "from: start" triggers, set nextRunAt immediately so the timer
+  // runs independently of session completion (works around session-hang bug)
+  if (cfg.trigger.type === "interval" && cfg.trigger.from === "start") {
+    const intervalMs = parseInterval(cfg.trigger.every);
+    state.nextRunAt = cfg.enabled ? runStartedAt + intervalMs : null;
+  }
 
   // Start cycle clock on first run of a cycle
   if (!exec.cycleStartedAt) {
@@ -790,6 +837,7 @@ async function fireAction(
           });
         }
         exec.currentSessionId = null;
+        exec.runStartedAt = null;
         await new Promise(r => setTimeout(r, bkoff));
         return fireAction(name, triggerInfo, chainDepth, overrides);
       }
@@ -819,6 +867,7 @@ async function fireAction(
     }
   } finally {
     exec.currentSessionId = null;
+    exec.runStartedAt = null;
     state.lastRunAt = Date.now();
 
     logActivity({
@@ -852,11 +901,14 @@ async function fireAction(
     }
 
     // Recalculate nextRunAt for interval triggers
+    // For "from: start", nextRunAt is set at run start (line ~483) — don't overwrite here
+    // as concurrent runs finishing out-of-order would clobber it with stale values
     if (state.config.trigger.type === "interval") {
       const trigger = state.config.trigger;
-      const intervalMs = parseInterval(trigger.every);
-      const base = trigger.from === "start" ? runStartedAt : Date.now();
-      state.nextRunAt = state.config.enabled ? base + intervalMs : null;
+      if (trigger.from !== "start") {
+        const intervalMs = parseInterval(trigger.every);
+        state.nextRunAt = state.config.enabled ? Date.now() + intervalMs : null;
+      }
     }
   }
 
@@ -891,11 +943,23 @@ function tick(): void {
     if (!state.config.enabled) continue;
     if (state.config.trigger.type !== "interval") continue;
 
-    // Skip if a session is currently running (don't double-fire)
-    const hasRunningSession = [...state.activeExecutions.values()].some(e => e.currentSessionId !== null);
-    if (hasRunningSession) continue;
-
     const trigger = state.config.trigger;
+
+    // Force-clear sessions stuck longer than 15 min (hard safety net —
+    // by 15 min the agent has committed to a directory, safe to reuse the slot)
+    const STUCK_TIMEOUT_MS = 15 * 60_000;
+    for (const e of state.activeExecutions.values()) {
+      if (e.currentSessionId !== null && e.runStartedAt && now - e.runStartedAt > STUCK_TIMEOUT_MS) {
+        console.log(`[actions] "${name}" session ${e.currentSessionId} stuck for ${Math.round((now - e.runStartedAt) / 1000)}s — force-clearing`);
+        e.currentSessionId = null;
+        e.runStartedAt = null;
+      }
+    }
+
+    // Check concurrency — count running sessions and skip if at limit
+    const maxConcurrency = state.config.concurrency ?? 1;
+    const runningSessions = [...state.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
+    if (runningSessions >= maxConcurrency) continue;
 
     // Find or create an execution to check cycle state
     // For tick, we check if we need to advance cycles on the most recent execution

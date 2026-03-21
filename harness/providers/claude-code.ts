@@ -546,7 +546,11 @@ export function createClaudeCodeProvider(): SessionProvider {
         console.error(`[claude-code] drain error for ${session.sessionId}:`, err);
         session.status = "error";
         session.error = String(err);
-        updateSessionStatus(session.sessionId, "error");
+        ctx.updateSessionDb({
+          status: "error",
+          costUsd: session.costUsd,
+          lastResponse: session.lastAssistantText?.slice(0, 2000),
+        });
       });
 
       // Startup timeout — only fires if this specific turn is still starting.
@@ -606,7 +610,11 @@ export function createClaudeCodeProvider(): SessionProvider {
         console.error(`[claude-code] resume drain error for ${session.sessionId}:`, err);
         session.status = "error";
         session.error = String(err);
-        updateSessionStatus(session.sessionId, "error");
+        ctx.updateSessionDb({
+          status: "error",
+          costUsd: session.costUsd,
+          lastResponse: session.lastAssistantText?.slice(0, 2000),
+        });
       });
     },
 
@@ -934,11 +942,19 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     if (isAbort) {
       console.log(`[claude-code] aborted ${session.sessionId}`);
       session.status = "idle";
-      updateSessionStatus(session.sessionId, "idle");
+      ctx.updateSessionDb({
+        status: "idle",
+        costUsd: session.costUsd,
+        lastResponse: session.lastAssistantText?.slice(0, 2000),
+      });
     } else {
       session.error = String(err);
       session.status = "error";
-      updateSessionStatus(session.sessionId, "error");
+      ctx.updateSessionDb({
+        status: "error",
+        costUsd: session.costUsd,
+        lastResponse: session.lastAssistantText?.slice(0, 2000),
+      });
       ctx.broadcastEvent({ type: "error", error: String(err) });
     }
   }
@@ -964,17 +980,25 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         console.error(`[claude-code] restart drain error for ${session.sessionId}:`, err);
         session.status = "error";
         session.error = String(err);
-        updateSessionStatus(session.sessionId, "error");
+        ctx.updateSessionDb({
+          status: "error",
+          costUsd: session.costUsd,
+          lastResponse: session.lastAssistantText?.slice(0, 2000),
+        });
       });
       return;
     }
     return;
   }
 
-  // Query finished normally or with error
+  // Query finished normally or with error — fire watchers so monitorSession resolves
   if (session.status !== "error") {
     session.status = "done";
-    updateSessionStatus(session.sessionId, "done");
+    ctx.updateSessionDb({
+      status: "done",
+      costUsd: session.costUsd,
+      lastResponse: session.lastAssistantText?.slice(0, 2000),
+    });
   }
 
   ctx.broadcastEvent({ type: "done" });
