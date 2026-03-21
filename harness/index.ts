@@ -44,7 +44,7 @@ import {
   updateSessionTitle,
   getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
-  getProviderUsageAnalytics,
+  getProviderUsageAnalytics, getDeepAnalytics,
   getSessionMessages, getSessionArtifact,
 } from "./db";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
@@ -1946,6 +1946,81 @@ app.get("/api/analytics/provider-usage", (c) => {
   const userProfile = params.get("userProfile") ?? undefined;
   const days = params.get("days") ? Number(params.get("days")) : undefined;
   return c.json(getProviderUsageAnalytics({ userProfile, days }));
+});
+
+app.get("/api/analytics/deep", (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const userProfile = params.get("userProfile") ?? undefined;
+  const cwd = params.get("cwd") ?? undefined;
+  const provider = params.get("provider") ?? undefined;
+  const start = params.get("start") ? Number(params.get("start")) : undefined;
+  const end = params.get("end") ? Number(params.get("end")) : undefined;
+  const bucketMs = params.get("bucketMs") ? Number(params.get("bucketMs")) : undefined;
+
+  const analytics = getDeepAnalytics({ userProfile, cwd, provider, start, end, bucketMs });
+  const touches = queryTouches(traceDb, {
+    userProfile,
+    cwd,
+    from: analytics.range.start,
+    to: analytics.range.end,
+  });
+  const summary = touchSummary(touches);
+  const sessionTouchCount = new Map<string, number>();
+  const fileAgg = new Map<string, {
+    filePath: string;
+    fileKind: "code" | "docs";
+    touches: number;
+    sessions: Set<string>;
+    lastTouched: number;
+    provider: string | null;
+  }>();
+
+  for (const touch of touches) {
+    sessionTouchCount.set(touch.sessionId, (sessionTouchCount.get(touch.sessionId) ?? 0) + 1);
+
+    const idx = Math.floor((touch.timestamp - analytics.range.start) / analytics.range.bucketMs);
+    if (idx >= 0 && idx < analytics.buckets.length) analytics.buckets[idx].touches += 1;
+
+    const existing = fileAgg.get(touch.filePath);
+    if (existing) {
+      existing.touches += 1;
+      existing.sessions.add(touch.sessionId);
+      if (touch.timestamp > existing.lastTouched) existing.lastTouched = touch.timestamp;
+    } else {
+      fileAgg.set(touch.filePath, {
+        filePath: touch.filePath,
+        fileKind: touch.fileKind,
+        touches: 1,
+        sessions: new Set([touch.sessionId]),
+        lastTouched: touch.timestamp,
+        provider: touch.provider,
+      });
+    }
+  }
+
+  const sessions = analytics.sessions.map((session) => ({
+    ...session,
+    touches: sessionTouchCount.get(session.id) ?? 0,
+  }));
+
+  return c.json({
+    ...analytics,
+    sessions,
+    trace: {
+      summary,
+      topFiles: [...fileAgg.values()]
+        .map((row) => ({
+          filePath: row.filePath,
+          fileKind: row.fileKind,
+          touches: row.touches,
+          sessions: row.sessions.size,
+          lastTouched: row.lastTouched,
+          provider: row.provider,
+        }))
+        .sort((a, b) => b.touches - a.touches || b.lastTouched - a.lastTouched)
+        .slice(0, 20),
+    },
+  });
 });
 
 app.get("/api/account", async (c) => {

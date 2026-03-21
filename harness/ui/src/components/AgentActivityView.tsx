@@ -28,6 +28,8 @@ type ToolCardProps = {
   tool: ToolCall;
   expanded: boolean;
   toggleControl?: (icon: ReactNode) => ReactNode;
+  /** Ms from last user message in this turn to tool result (completed/error); null if unknown */
+  intoTurnMs: number | null;
 };
 
 type ToolCardRender = {
@@ -57,6 +59,32 @@ function dirOf(fp: string): string {
 function truncate(s: string | undefined, max: number): string {
   if (!s) return "";
   return s.length > max ? s.slice(0, max) + "\u2026" : s;
+}
+
+/** Epoch ms of the last user message before this assistant message (turn anchor). */
+function lastUserTimestampBefore(messages: Message[], beforeIndex: number): number | undefined {
+  for (let i = beforeIndex - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "user" && m.timestamp != null) return m.timestamp;
+  }
+  return undefined;
+}
+
+/** Elapsed from turn start to tool completion; null if anchor or finish time missing. */
+function intoTurnMsForTool(messages: Message[], msgIndex: number, tool: ToolCall): number | null {
+  if (tool.status === "running") return null;
+  const anchor = lastUserTimestampBefore(messages, msgIndex);
+  if (anchor == null) return null;
+  const finishMs = tool.startedAt + (tool.duration ?? 0);
+  return Math.max(0, finishMs - anchor);
+}
+
+function formatIntoTurn(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m > 0) return `+${m}:${s.toString().padStart(2, "0")}`;
+  return `+${sec}s`;
 }
 
 function unwrapResult(s: string): string {
@@ -180,7 +208,7 @@ const Icons = {
 
 // ── Card Components ──
 
-function ReadCard({ tool, toggleControl }: ToolCardProps) {
+function ReadCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const fp = (tool.input.file_path as string) ?? (tool.input.path as string) ?? "";
   const offset = tool.input.offset as number | undefined;
   const limit = tool.input.limit as number | undefined;
@@ -201,7 +229,7 @@ function ReadCard({ tool, toggleControl }: ToolCardProps) {
         {dir && <span className="aa-dir" title={fp}>{dir}</span>}
         {rangeLabel && <span className="aa-tag">{rangeLabel}</span>}
         {lineCount != null && <span className="aa-tag">{lineCount}L</span>}
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
     detail: text ? (
@@ -210,7 +238,7 @@ function ReadCard({ tool, toggleControl }: ToolCardProps) {
   };
 }
 
-function EditCard({ tool, expanded, toggleControl }: ToolCardProps) {
+function EditCard({ tool, expanded, toggleControl, intoTurnMs }: ToolCardProps) {
   const fp = (tool.input.file_path as string) ?? "";
   const isWrite = tool.name === "Write" || tool.name === "write";
 
@@ -244,7 +272,7 @@ function EditCard({ tool, expanded, toggleControl }: ToolCardProps) {
         {editCount > 1 && <span className="aa-tag">{editCount} edits</span>}
         {adds > 0 && <span className="aa-diff-stat aa-diff-stat--add">+{adds}</span>}
         {dels > 0 && <span className="aa-diff-stat aa-diff-stat--del">{"\u2212"}{dels}</span>}
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
     detail: (showPreview && (oldStr || newStr)) || (isWrite && expanded && (tool.input.content as string))
@@ -260,7 +288,7 @@ function EditCard({ tool, expanded, toggleControl }: ToolCardProps) {
   };
 }
 
-function BashCard({ tool, toggleControl }: ToolCardProps) {
+function BashCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const cmd = (tool.input.command as string) ?? "";
   const desc = (tool.input.description as string) ?? "";
 
@@ -269,7 +297,7 @@ function BashCard({ tool, toggleControl }: ToolCardProps) {
       <div className="aa-card-row">
         {toggleControl ? toggleControl(Icons.bash) : Icons.bash}
         <span className="aa-cmd">{truncate(desc || cmd, 70)}</span>
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
     detail: tool.result ? (
@@ -278,7 +306,7 @@ function BashCard({ tool, toggleControl }: ToolCardProps) {
   };
 }
 
-function GrepCard({ tool, toggleControl }: ToolCardProps) {
+function GrepCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const pattern = (tool.input.pattern as string) ?? "";
   const path = (tool.input.path as string) ?? "";
   const result = tool.result ? unwrapResult(tool.result) : "";
@@ -291,13 +319,13 @@ function GrepCard({ tool, toggleControl }: ToolCardProps) {
         <span className="aa-pattern">/{pattern}/</span>
         {path && <span className="aa-dir">{basename(path)}</span>}
         {matchCount != null && <span className="aa-tag">{matchCount} hits</span>}
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
   };
 }
 
-function GlobCard({ tool, toggleControl }: ToolCardProps) {
+function GlobCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const pattern = (tool.input.pattern as string) ?? "";
   const path = (tool.input.path as string) ?? "";
   const result = tool.result ? unwrapResult(tool.result) : "";
@@ -310,13 +338,13 @@ function GlobCard({ tool, toggleControl }: ToolCardProps) {
         <span className="aa-cmd">{pattern}</span>
         {path && <span className="aa-dir">{basename(path)}</span>}
         {fileCount != null && <span className="aa-tag">{fileCount} files</span>}
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
   };
 }
 
-function AgentCard({ tool, toggleControl }: ToolCardProps) {
+function AgentCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const desc = (tool.input.description as string) ?? "";
   const subCount = tool.subMessages?.reduce((n, m) => n + (m.toolCalls?.length ?? 0), 0) ?? 0;
 
@@ -326,13 +354,13 @@ function AgentCard({ tool, toggleControl }: ToolCardProps) {
         {toggleControl ? toggleControl(Icons.agent) : Icons.agent}
         <span className="aa-cmd">{truncate(desc, 55)}</span>
         {subCount > 0 && <span className="aa-tag">{subCount} calls</span>}
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
   };
 }
 
-function TodoCard({ tool, toggleControl }: ToolCardProps) {
+function TodoCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const raw = tool.input.todos;
   const todos = Array.isArray(raw) ? raw as Array<{ content: string; status: string }> : null;
   if (!todos?.length) return { summary: null };
@@ -345,7 +373,7 @@ function TodoCard({ tool, toggleControl }: ToolCardProps) {
         {toggleControl ? toggleControl(Icons.todo) : Icons.todo}
         <span className="aa-cmd">tasks</span>
         <span className="aa-tag">{done}/{total}</span>
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
     detail: (
@@ -365,7 +393,7 @@ function TodoCard({ tool, toggleControl }: ToolCardProps) {
   };
 }
 
-function McpCard({ tool, toggleControl }: ToolCardProps) {
+function McpCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const parts = tool.name.split("__");
   const server = parts[1] ?? "";
   const method = parts[2] ?? "";
@@ -375,13 +403,13 @@ function McpCard({ tool, toggleControl }: ToolCardProps) {
       <div className="aa-card-row">
         {toggleControl ? toggleControl(Icons.mcp) : Icons.mcp}
         <span className="aa-cmd">{server}<span className="aa-sep">/</span>{method}</span>
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
   };
 }
 
-function WebCard({ tool, toggleControl }: ToolCardProps) {
+function WebCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const query = (tool.input.query as string) ?? (tool.input.url as string) ?? "";
 
   return {
@@ -389,13 +417,13 @@ function WebCard({ tool, toggleControl }: ToolCardProps) {
       <div className="aa-card-row">
         {toggleControl ? toggleControl(Icons.web) : Icons.web}
         <span className="aa-cmd">{truncate(query, 55)}</span>
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
   };
 }
 
-function SkillCard({ tool, toggleControl }: ToolCardProps) {
+function SkillCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const skill = (tool.input.skill as string) ?? "";
 
   return {
@@ -403,13 +431,13 @@ function SkillCard({ tool, toggleControl }: ToolCardProps) {
       <div className="aa-card-row">
         {toggleControl ? toggleControl(Icons.skill) : Icons.skill}
         <span className="aa-cmd">/{skill}</span>
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
   };
 }
 
-function GenericCard({ tool, toggleControl }: ToolCardProps) {
+function GenericCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const summary = toolSummary(tool);
 
   return {
@@ -418,7 +446,7 @@ function GenericCard({ tool, toggleControl }: ToolCardProps) {
         {toggleControl ? toggleControl(Icons.generic) : Icons.generic}
         <span className="aa-cmd">{displayToolName(tool.name)}</span>
         {summary && <span className="aa-dir">{summary}</span>}
-        <ToolStatus tool={tool} />
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
   };
@@ -426,14 +454,24 @@ function GenericCard({ tool, toggleControl }: ToolCardProps) {
 
 // ── Shared sub-components ──
 
-function ToolStatus({ tool }: { tool: ToolCall }) {
+function ToolStatus({ tool, intoTurnMs }: { tool: ToolCall; intoTurnMs: number | null }) {
   return (
     <span className="aa-status">
       {tool.status === "running" && <span className="tool-spinner" />}
-      {tool.status === "completed" && tool.duration != null && (
-        <span className="aa-dur">{(tool.duration / 1000).toFixed(1)}s</span>
+      {tool.status === "completed" && (
+        intoTurnMs != null ? (
+          <span className="aa-dur">{formatIntoTurn(intoTurnMs)}</span>
+        ) : tool.duration != null ? (
+          <span className="aa-dur">{(tool.duration / 1000).toFixed(1)}s</span>
+        ) : null
       )}
-      {tool.status === "error" && <span className="aa-err">err</span>}
+      {tool.status === "error" && (
+        <>
+          {intoTurnMs != null && <span className="aa-dur">{formatIntoTurn(intoTurnMs)}</span>}
+          {intoTurnMs != null ? " " : null}
+          <span className="aa-err">err</span>
+        </>
+      )}
     </span>
   );
 }
@@ -568,7 +606,8 @@ export function AgentActivityView({ messages }: Props) {
         <div className="aa-feed" ref={scrollRef}>
           {feed.map((item) => {
             const expanded = expandedItems.has(item.anchorId);
-            const preview = getCard(item.tool.name)({ tool: item.tool, expanded });
+            const intoTurnMs = intoTurnMsForTool(messages, item.msgIndex, item.tool);
+            const preview = getCard(item.tool.name)({ tool: item.tool, expanded, intoTurnMs });
             const hasDetail = !!preview.detail;
             const toggleControl = (icon: ReactNode) => (
               <button
@@ -589,7 +628,7 @@ export function AgentActivityView({ messages }: Props) {
                 {icon}
               </button>
             );
-            const rendered = getCard(item.tool.name)({ tool: item.tool, expanded, toggleControl });
+            const rendered = getCard(item.tool.name)({ tool: item.tool, expanded, toggleControl, intoTurnMs });
 
             return (
               <div

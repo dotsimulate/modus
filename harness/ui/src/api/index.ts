@@ -75,8 +75,11 @@ export type {
 } from "./missions";
 
 // Analytics
-export { fetchProviderUsageAnalytics } from "./analytics";
-export type { ProviderUsageAnalytics, ProviderUsageDaily, ProviderUsageTotal, ModelUsageTotal, UsageBucket } from "./analytics";
+export { fetchProviderUsageAnalytics, fetchDeepAnalytics } from "./analytics";
+export type {
+  ProviderUsageAnalytics, ProviderUsageDaily, ProviderUsageTotal, ModelUsageTotal, UsageBucket,
+  DeepAnalytics, DeepAnalyticsBucket, DeepAnalyticsMetricRow, DeepAnalyticsHourRow, DeepAnalyticsSessionRow,
+} from "./analytics";
 
 // All types
 export type {
