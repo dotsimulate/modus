@@ -29,12 +29,14 @@ function detail(p: ProviderHealthInfo): string {
   if (fail) {
     if (fail.type === "cli") return "no cli";
     if (fail.type === "env") return "no key";
+    if (fail.type === "auth") return "no auth";
     if (fail.type === "local") return "offline";
     return fail.detail ?? "—";
   }
   return p.checks.map(c => {
     if (c.type === "cli") return "cli";
     if (c.type === "env") return "key";
+    if (c.type === "auth") return c.detail ?? "auth";
     if (c.type === "local") return "up";
     return c.label;
   }).join(" · ");

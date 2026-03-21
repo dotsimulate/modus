@@ -178,6 +178,8 @@ export type ClientExtensionsConfig = {
   enabled?: string[];
   /** Extension IDs explicitly disabled */
   disabled?: string[];
+  /** Per-extension settings values (extensionId → key/value pairs) */
+  settings?: Record<string, Record<string, unknown>>;
 };
 
 export type GlobalConfig = {
@@ -282,6 +284,18 @@ function uniqueStrings(values: Array<string | undefined> | undefined): string[] 
   return result.length > 0 ? Array.from(new Set(result)) : undefined;
 }
 
+function mergeExtensionSettings(
+  base?: Record<string, Record<string, unknown>>,
+  override?: Record<string, Record<string, unknown>>,
+): Record<string, Record<string, unknown>> | undefined {
+  if (!base && !override) return undefined;
+  const merged: Record<string, Record<string, unknown>> = {};
+  for (const id of new Set([...Object.keys(base ?? {}), ...Object.keys(override ?? {})])) {
+    merged[id] = { ...base?.[id], ...override?.[id] };
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function mergeClientExtensions(
   base?: ClientExtensionsConfig,
   override?: ClientExtensionsConfig,
@@ -290,8 +304,9 @@ function mergeClientExtensions(
     paths: uniqueStrings([...(base?.paths ?? []), ...(override?.paths ?? [])]),
     enabled: uniqueStrings([...(base?.enabled ?? []), ...(override?.enabled ?? [])]),
     disabled: uniqueStrings([...(base?.disabled ?? []), ...(override?.disabled ?? [])]),
+    settings: mergeExtensionSettings(base?.settings, override?.settings),
   };
-  return merged.paths || merged.enabled || merged.disabled ? merged : undefined;
+  return merged.paths || merged.enabled || merged.disabled || merged.settings ? merged : undefined;
 }
 
 function resolveConfiguredPath(rawPath: string, baseDir: string): string {
@@ -447,6 +462,7 @@ export function getResolvedClientExtensionsConfig(cwd?: string, userProfileName?
     }),
     enabled: merged.enabled,
     disabled: merged.disabled,
+    settings: merged.settings,
   };
 }
 

@@ -26,8 +26,9 @@ import {
   registerTheme, registerFont, activateTheme, activateFont, patchTheme, patchFont,
 } from "./project-ui";
 import {
-  listClientExtensions, getClientExtensionById,
+  listClientExtensions, getClientExtensionById, resolveExtensionSettings,
 } from "./client-extensions";
+import { getResolvedClientExtensionsConfig } from "./profiles";
 import {
   ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
 } from "./profile-schemas";
@@ -36,7 +37,7 @@ import {
 } from "./session-schemas";
 import {
   listSessions, listSessionsForProjects, listSessionsByAction, listSessionsScoped,
-  getSession, getStoredSessionConfig, getLatestSessionUsage, archiveSession, searchSessions,
+  getSession, getStoredSessionConfig, getLatestSessionUsage, archiveSession, unarchiveSession, listArchivedSessions, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
   getDraft, setDraft, getSessionUiState, patchSessionUiState,
   getWebPositions, upsertWebPositions, deleteWebPositions,
@@ -858,6 +859,19 @@ app.delete("/api/sessions/:id", (c) => {
   return c.json({ ok: true });
 });
 
+// List archived sessions (ordered by most recently archived)
+app.get("/api/sessions/archived", (c) => {
+  const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 50);
+  return c.json(listArchivedSessions(limit));
+});
+
+// Unarchive a session — restore it to the active list
+app.post("/api/sessions/:id/unarchive", (c) => {
+  const id = c.req.param("id");
+  unarchiveSession(id);
+  return c.json({ ok: true });
+});
+
 // Rename session (set/clear title)
 app.patch("/api/sessions/:id/title", async (c) => {
   const id = c.req.param("id");
@@ -1418,6 +1432,7 @@ app.get("/api/client-extensions", (c) => {
 
   const suffix = query.toString();
   const moduleQuery = suffix ? `?${suffix}` : "";
+  const config = getResolvedClientExtensionsConfig(cwd, userProfile);
   return c.json(
     listClientExtensions({ cwd, userProfile }).map((extension) => ({
       id: extension.id,
@@ -1425,6 +1440,8 @@ app.get("/api/client-extensions", (c) => {
       source: extension.source,
       enabled: extension.enabled,
       moduleUrl: `/api/client-extensions/${encodeURIComponent(extension.id)}/module${moduleQuery}`,
+      meta: extension.meta,
+      settingsValues: resolveExtensionSettings(extension.meta.settings, config.settings?.[extension.id]),
     })),
   );
 });
@@ -1442,6 +1459,38 @@ app.get("/api/client-extensions/:id/module", async (c) => {
       "Cache-Control": "no-store",
     },
   });
+});
+
+app.patch("/api/client-extensions/:id", async (c) => {
+  const userProfileName = c.req.query("userProfile");
+  if (!userProfileName) return c.json({ error: "userProfile query param required" }, 400);
+  const profile = getUserProfile(userProfileName);
+  if (!profile) return c.json({ error: "user profile not found" }, 404);
+
+  const id = c.req.param("id");
+  const body = await c.req.json() as { enabled?: boolean; settings?: Record<string, unknown> };
+  const ext = profile.clientExtensions ?? {};
+
+  if (typeof body.enabled === "boolean") {
+    const enabledSet = new Set(ext.enabled ?? []);
+    const disabledSet = new Set(ext.disabled ?? []);
+    if (body.enabled) {
+      enabledSet.add(id);
+      disabledSet.delete(id);
+    } else {
+      disabledSet.add(id);
+      enabledSet.delete(id);
+    }
+    ext.enabled = enabledSet.size > 0 ? Array.from(enabledSet) : undefined;
+    ext.disabled = disabledSet.size > 0 ? Array.from(disabledSet) : undefined;
+  }
+
+  if (body.settings) {
+    ext.settings = { ...(ext.settings ?? {}), [id]: { ...(ext.settings?.[id] ?? {}), ...body.settings } };
+  }
+
+  patchUserProfile(userProfileName, { clientExtensions: ext });
+  return c.json({ ok: true });
 });
 
 app.post("/api/whisper/transcribe", async (c) => {

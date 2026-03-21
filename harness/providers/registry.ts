@@ -10,6 +10,10 @@ import { createCodexProvider } from "./codex";
 import { createCursorProvider } from "./cursor";
 import { createGeminiCliProvider } from "./gemini-cli";
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
+import { existsSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
+import { isSecretSet } from "../secrets";
 
 const PI_PROVIDERS: PiProviderName[] = ["litellm", "ollama", "openrouter"];
 const STANDALONE_PROVIDERS = ["claude-code", "codex", "cursor", "gemini-cli"] as const;
@@ -58,7 +62,7 @@ export function listProviderCapabilities(): ProviderCapabilities[] {
 // ── Provider Health ──
 
 type ProviderHealthCheck = {
-  type: "cli" | "env" | "local";
+  type: "cli" | "env" | "local" | "auth";
   label: string;
   passed: boolean;
   detail?: string;
@@ -75,9 +79,9 @@ export type ProviderHealthInfo = {
 /** Per-provider prerequisites: which CLI binary and/or env vars are required. */
 const PROVIDER_PREREQS: Record<string, { cli?: string; envAny?: string[] }> = {
   "claude-code": { cli: "claude" },
-  "codex": { cli: "codex", envAny: ["CODEX_API_KEY", "OPENAI_API_KEY"] },
+  // codex: SDK-based, auth checked separately (secrets + ~/.codex/auth.json)
   "cursor": { cli: "cursor-agent" },
-  "gemini-cli": { cli: "gemini" },
+  // gemini-cli: SDK-based, auth checked separately (Google OAuth)
   "openrouter": { envAny: ["OPENROUTER_API_KEY"] },
   // litellm and ollama: local services, checked via ping below
 };
@@ -89,6 +93,31 @@ async function pingLocal(url: string, timeoutMs = 2000): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Check if Codex SDK auth is available (API key in secrets/env OR ~/.codex/auth.json). */
+function checkCodexAuth(): ProviderHealthCheck {
+  if (isSecretSet("CODEX_API_KEY") || isSecretSet("OPENAI_API_KEY")) {
+    return { type: "auth", label: "api key", passed: true, detail: "key set" };
+  }
+  const authFile = join(homedir(), ".codex", "auth.json");
+  if (existsSync(authFile)) {
+    return { type: "auth", label: "auth", passed: true, detail: "oauth" };
+  }
+  return { type: "auth", label: "api key", passed: false, detail: "no key or oauth" };
+}
+
+/** Check if Gemini CLI core has Google OAuth credentials. */
+function checkGeminiAuth(): ProviderHealthCheck {
+  const credsFile = join(homedir(), ".gemini", "oauth_creds.json");
+  if (existsSync(credsFile)) {
+    return { type: "auth", label: "google oauth", passed: true, detail: "authenticated" };
+  }
+  // Also check for API key as alternative
+  if (isSecretSet("GEMINI_API_KEY") || isSecretSet("GOOGLE_API_KEY")) {
+    return { type: "auth", label: "api key", passed: true, detail: "key set" };
+  }
+  return { type: "auth", label: "google oauth", passed: false, detail: "not authenticated" };
 }
 
 /** Check availability of all registered providers. Returns health info per provider. */
@@ -109,15 +138,23 @@ export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
       });
     }
 
-    // Environment variable check (any one of the listed vars)
+    // Environment variable check — uses isSecretSet to cover secrets file + env
     if (spec?.envAny?.length) {
-      const found = spec.envAny.find(v => !!process.env[v]);
+      const found = spec.envAny.find(v => isSecretSet(v));
       checks.push({
         type: "env",
         label: spec.envAny.join(" / "),
         passed: !!found,
         detail: found ? `${found} set` : "not set",
       });
+    }
+
+    // SDK-based provider auth checks
+    if (name === "codex") {
+      checks.push(checkCodexAuth());
+    }
+    if (name === "gemini-cli") {
+      checks.push(checkGeminiAuth());
     }
 
     // Local service reachability

@@ -1,12 +1,12 @@
 /**
- * Sessions widget — sortable session list.
+ * Sessions widget — sortable session list with archived mode.
  *
  * Config example (in user profile dashboard.widgets):
  *   { "id": "sessions-main", "type": "sessions", "filter": "all", "limit": 50, "sort": { "key": "date", "dir": "desc" } }
  */
 
 import { useCallback, useMemo } from "react";
-import { fetchActiveSessions, fetchSessionsScoped } from "../api";
+import { fetchActiveSessions, fetchSessionsScoped, fetchArchivedSessions, unarchiveSessionApi } from "../api";
 import type { ActiveSessionInfo, SessionInfo } from "../api";
 import { useProfiles } from "../providers/ProfileProvider";
 import { timeAgo } from "../utils/format";
@@ -28,6 +28,7 @@ type SessionsConfig = WidgetBase & {
 
 type SortKey = "date" | "messages" | "cost" | "agent";
 type SortDir = "desc" | "asc";
+type ViewMode = "recent" | "archived";
 
 type Row = {
   id: string;
@@ -71,6 +72,15 @@ function merge(active: ActiveSessionInfo[], recent: SessionInfo[]): Row[] {
   return rows;
 }
 
+function archivedRows(sessions: SessionInfo[]): Row[] {
+  return sessions.map((s) => ({
+    id: s.id, status: "done", profile: s.profile, model: s.model,
+    cost: s.total_cost_usd, turns: s.message_count,
+    preview: s.last_prompt ?? s.preview, lastMessageAt: s.last_message_at,
+    active: false, archived: true, cwd: s.cwd,
+  }));
+}
+
 function dotClass(row: Row): string {
   if (!row.active) return "dash-dot--done";
   if (row.status === "running") return "dash-dot--streaming";
@@ -107,6 +117,12 @@ const SORT_COLS: { key: SortKey; label: string }[] = [
 
 function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<SessionsConfig>) {
   const { activeCwd, activeUserProfile } = useProfiles();
+  const [viewMode, setViewMode] = useWidgetUiState<ViewMode>(
+    { userProfile: activeUserProfile, cwd: activeCwd },
+    widgetId,
+    "view-mode",
+    "recent",
+  );
   const [sortBy, setSortBy] = useWidgetUiState<SortKey>(
     { userProfile: activeUserProfile, cwd: activeCwd },
     widgetId,
@@ -123,7 +139,9 @@ function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<Sessi
   const limit = config.limit ?? 50;
   const filter = config.filter ?? "all";
   const userProfile = activeUserProfile ?? undefined;
-  const loadRows = useCallback(async () => {
+
+  // Recent sessions loader
+  const loadRecent = useCallback(async () => {
     const [active, recent] = await Promise.all([
       fetchActiveSessions(userProfile),
       filter === "active"
@@ -132,10 +150,24 @@ function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<Sessi
     ]);
     return merge(active, recent);
   }, [filter, limit, userProfile]);
-  const { value: rows } = useWidgetPollingValue<Row[]>({
-    load: loadRows,
-    scopeKey: `${filter}:${limit}:${userProfile ?? ""}`,
+
+  // Archived sessions loader
+  const loadArchived = useCallback(async () => {
+    const sessions = await fetchArchivedSessions(limit);
+    return archivedRows(sessions);
+  }, [limit]);
+
+  const { value: recentRows } = useWidgetPollingValue<Row[]>({
+    load: loadRecent,
+    scopeKey: `recent:${filter}:${limit}:${userProfile ?? ""}`,
     intervalMs: 3000,
+    initialValue: [],
+  });
+
+  const { value: archivedRowsData, refresh: refreshArchived } = useWidgetPollingValue<Row[]>({
+    load: loadArchived,
+    scopeKey: `archived:${limit}`,
+    intervalMs: viewMode === "archived" ? 5000 : 60000,
     initialValue: [],
   });
 
@@ -144,18 +176,37 @@ function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<Sessi
     else { setSortBy(key); setSortDir("desc"); }
   };
 
-  const visible = rows.filter((r) => !r.archived);
-  const limited = limit < visible.length ? visible.slice(0, limit) : visible;
+  const handleUnarchive = useCallback(async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    await unarchiveSessionApi(id);
+    refreshArchived();
+  }, [refreshArchived]);
+
+  const isArchived = viewMode === "archived";
+  const sourceRows = isArchived ? archivedRowsData : recentRows.filter((r) => !r.archived);
+  const limited = limit < sourceRows.length ? sourceRows.slice(0, limit) : sourceRows;
   const sorted = useMemo(() => sortRows(limited, sortBy, sortDir), [limited, sortBy, sortDir]);
 
-  if (visible.length === 0) {
-    return <WidgetEmptyState>no sessions</WidgetEmptyState>;
-  }
+  const archivedCount = archivedRowsData.length;
 
   return (
     <div className="sessions-table">
       <div className="sessions-table-header">
-        <span className="sessions-th sessions-th--preview">session</span>
+        <span className="sessions-th sessions-th--preview">
+          <button
+            className={`sessions-mode-toggle ${!isArchived ? "sessions-mode-toggle--active" : ""}`}
+            onClick={() => setViewMode("recent")}
+          >
+            sessions
+          </button>
+          <button
+            className={`sessions-mode-toggle ${isArchived ? "sessions-mode-toggle--active" : ""}`}
+            onClick={() => setViewMode("archived")}
+            title="Recently archived sessions"
+          >
+            archived{archivedCount > 0 ? ` (${archivedCount})` : ""}
+          </button>
+        </span>
         {SORT_COLS.map((col) => (
           <button
             key={col.key}
@@ -166,14 +217,26 @@ function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<Sessi
           </button>
         ))}
       </div>
-      {sorted.map((r) => (
+      {sorted.length === 0 ? (
+        <WidgetEmptyState>{isArchived ? "no archived sessions" : "no sessions"}</WidgetEmptyState>
+      ) : sorted.map((r) => (
         <div key={r.id} className="sessions-table-row" onClick={() => onSelectSession(r.id)}>
-          <span className={`dash-dot ${dotClass(r)}`} />
+          <span className={`dash-dot ${isArchived ? "dash-dot--archived" : dotClass(r)}`} />
           <span className="sessions-cell sessions-cell--preview">{r.preview || "new session"}</span>
           <span className="sessions-cell sessions-cell--date">{timeAgo(r.lastMessageAt)}</span>
           <span className="sessions-cell sessions-cell--agent">{r.profile ?? ""}</span>
           <span className="sessions-cell sessions-cell--msgs">{r.turns}</span>
-          <span className="sessions-cell sessions-cell--cost">${r.cost.toFixed(2)}</span>
+          {isArchived ? (
+            <button
+              className="sessions-cell sessions-cell--unarchive"
+              onClick={(e) => handleUnarchive(e, r.id)}
+              title="Restore session"
+            >
+              restore
+            </button>
+          ) : (
+            <span className="sessions-cell sessions-cell--cost">${r.cost.toFixed(2)}</span>
+          )}
         </div>
       ))}
     </div>

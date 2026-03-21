@@ -967,6 +967,20 @@ export async function activateAttachedMove(opts: {
   const reg = moveApiRegistry.get(opts.apiToken);
   if (!reg) return { ok: false, error: "Invalid API token — move not attached" };
 
+  // mountOnAttach: move was registered before a session existed.
+  // Session creation + rekey is in flight — wait for it to land.
+  if (!reg.sessionId) {
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (reg.sessionId) break;
+    }
+    if (!reg.sessionId) {
+      console.log(`[move-reg] activateAttachedMove: timed out waiting for session rekey (token=${opts.apiToken})`);
+      return { ok: false, error: "No session created — activate timed out waiting for session" };
+    }
+    console.log(`[move-reg] activateAttachedMove: session rekey arrived → ${reg.sessionId}`);
+  }
+
   const config = getMove(reg.moveName, reg.cwd);
   if (!config) return { ok: false, error: `Move not found: ${reg.moveName}` };
 

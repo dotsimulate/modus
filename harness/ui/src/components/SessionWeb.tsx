@@ -694,7 +694,6 @@ export function SessionWeb() {
             userProfile: activeUserProfile ?? undefined,
             cwd: projectCwd ?? undefined,
             ops: ["write", "edit", "read"],
-            limit: 5000,
           }).catch(() => ({ touches: [] as TouchRecord[], summary: {} })),
           fetchWebPositions(profileName),
         ]);
@@ -1352,7 +1351,6 @@ export function SessionWeb() {
         userProfile: activeUserProfile ?? undefined,
         cwd: projectCwd ?? undefined,
         ops: ["write", "edit", "read"],
-        limit: 5000,
       }).catch(() => ({ touches: [] as TouchRecord[], summary: {} })),
     ]);
     setSessions(sessData);

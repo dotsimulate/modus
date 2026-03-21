@@ -273,7 +273,7 @@ export function queryTouches(db: Database, query: TouchQuery = {}): FileTouch[] 
     FROM events e
     JOIN sessions s ON e.session_id = s.id
     ${where}
-    ORDER BY e.created_at ASC
+    ORDER BY e.created_at DESC
   `;
 
   const rows = db.prepare(sql).all(params) as Array<{

@@ -59,6 +59,10 @@ db.run(`UPDATE sessions SET tags = '["archived"]' WHERE archived = 1 AND tags = 
 try { db.run(`ALTER TABLE sessions ADD COLUMN provider TEXT`); } catch { /* already exists */ }
 // Migration: add ui_state — per-session UI layout persistence (panel widths, open state, etc.)
 try { db.run(`ALTER TABLE sessions ADD COLUMN ui_state TEXT DEFAULT '{}'`); } catch { /* already exists */ }
+// Migration: add archived_at — timestamp when session was archived (for recent-archive browsing)
+try { db.run(`ALTER TABLE sessions ADD COLUMN archived_at INTEGER`); } catch { /* already exists */ }
+// Backfill: seed archived_at from updated_at for already-archived sessions
+db.run(`UPDATE sessions SET archived_at = updated_at WHERE archived = 1 AND archived_at IS NULL`);
 
 // ── Web Positions (spatial layout for session web view) ──
 db.run(`
@@ -263,6 +267,7 @@ export type SessionRow = {
   branch_message_uuid: string | null;
   title: string | null;
   tags: string; // JSON array of strings, e.g. '["archived"]'
+  archived_at: number | null;
 };
 
 export type EventRow = {
@@ -358,7 +363,9 @@ const stmts = {
   updateStatus: db.prepare(`UPDATE sessions SET status = $status, updated_at = $now WHERE id = $id`),
   updateTitle: db.prepare(`UPDATE sessions SET title = $title, updated_at = $now WHERE id = $id`),
   list: db.prepare(`SELECT * FROM sessions WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%' ORDER BY last_message_at DESC LIMIT $limit`),
-  archive: db.prepare(`UPDATE sessions SET archived = 1, updated_at = $now WHERE id = $id`),
+  archive: db.prepare(`UPDATE sessions SET archived = 1, archived_at = $now, updated_at = $now WHERE id = $id`),
+  unarchive: db.prepare(`UPDATE sessions SET archived = 0, archived_at = NULL, updated_at = $now WHERE id = $id`),
+  listArchived: db.prepare(`SELECT * FROM sessions WHERE tags LIKE '%"archived"%' ORDER BY archived_at DESC, updated_at DESC LIMIT $limit`),
   updateTags: db.prepare(`UPDATE sessions SET tags = $tags, updated_at = $now WHERE id = $id`),
   get: db.prepare(`SELECT * FROM sessions WHERE id = $id`),
   // Events
@@ -625,6 +632,15 @@ export function getSession(id: string): SessionRow | null {
 export function archiveSession(id: string) {
   stmts.archive.run({ $id: id, $now: Date.now() });
   addSessionTag(id, "archived");
+}
+
+export function unarchiveSession(id: string) {
+  stmts.unarchive.run({ $id: id, $now: Date.now() });
+  removeSessionTag(id, "archived");
+}
+
+export function listArchivedSessions(limit = 50): SessionRow[] {
+  return stmts.listArchived.all({ $limit: limit }) as SessionRow[];
 }
 
 // ── Tag Functions ──

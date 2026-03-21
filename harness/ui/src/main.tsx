@@ -55,6 +55,8 @@ import './styles/components/provider-status-widget.css'
 import './styles/components/profile-card-widget.css'
 import './styles/components/default-agent-widget.css'
 import './styles/components/config-inspector-widget.css'
+import './styles/components/session-transition.css'
+import './styles/components/extensions-widget.css'
 
 // Views
 import './styles/views/login.css'

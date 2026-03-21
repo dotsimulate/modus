@@ -435,6 +435,40 @@
 .dash-dot--done { background: var(--dot-done); }
 .dash-dot--error { background: var(--dot-error); }
 .dash-dot--draft { background: var(--warning); opacity: 0.6; }
+.dash-dot--archived { background: var(--text-muted); opacity: 0.4; }
+
+/* Sessions mode toggle (recent / archived) */
+.sessions-mode-toggle {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0 6px 0 0;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.sessions-mode-toggle:hover { color: var(--text-dim); }
+.sessions-mode-toggle--active { color: var(--text); }
+
+/* Unarchive (restore) button in archived mode */
+.sessions-cell--unarchive {
+  flex-shrink: 0;
+  width: 56px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.sessions-cell--unarchive:hover { color: var(--text); }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

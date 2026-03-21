@@ -1,0 +1,179 @@
+/**
+ * Extensions widget — extension list with toggle + settings.
+ */
+
+.exw-widget {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exw-ext {
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+}
+
+.exw-ext--off {
+  opacity: 0.6;
+}
+
+.exw-ext-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Toggle switch */
+.exw-toggle {
+  width: 28px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--border);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.exw-toggle--on {
+  background: var(--success);
+}
+
+.exw-toggle-dot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bg);
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left 0.15s;
+}
+
+.exw-toggle--on .exw-toggle-dot {
+  left: 16px;
+}
+
+.exw-ext-info {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.exw-ext-name {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.exw-ext-source {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.exw-ext-desc {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+  padding: 2px 0 0 36px;
+  line-height: 1.4;
+}
+
+.exw-gear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: calc(13px * var(--font-scale, 1));
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.exw-gear:hover {
+  color: var(--text-dim);
+}
+
+/* Settings panel */
+.exw-settings {
+  margin-top: 6px;
+  padding: 6px 0 2px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exw-setting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exw-setting--toggle {
+  cursor: pointer;
+}
+
+.exw-setting-label {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.exw-setting-input {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.exw-setting-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.exw-setting input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.exw-save {
+  align-self: flex-end;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: 3px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.exw-save:hover {
+  opacity: 0.9;
+}
+
+.exw-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
