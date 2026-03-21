@@ -94,6 +94,7 @@ Desktop.ini
 
 # Editor / IDE
 .idea/
+.cursor/
 *.suo
 *.ntvs*
 *.njsproj
