@@ -420,6 +420,7 @@ export interface ExecutionState {
   cycleRunCount: number;
   cycleStartedAt: number | null;
   currentSessionId: string | null;
+  runStartedAt: number | null;         // wall-clock start of current run (for stuck detection)
   lastStatus: string | null;
   totalCostUsd: number;
   transientAttempts: number;           // network error retry counter

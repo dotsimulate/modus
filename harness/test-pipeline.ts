@@ -294,6 +294,7 @@ describe("type shapes", () => {
       cycleRunCount: 1,
       cycleStartedAt: Date.now(),
       currentSessionId: "sess-123",
+      runStartedAt: Date.now(),
       lastStatus: "done",
       totalCostUsd: 0.15,
       transientAttempts: 0,
@@ -312,7 +313,7 @@ describe("type shapes", () => {
       const exec: import("./action-types").ExecutionState = {
         id: 1, actionName: "test", status, startedAt: Date.now(),
         runNumber: 0, cycleNumber: 1, cycleRunCount: 0,
-        cycleStartedAt: null, currentSessionId: null,
+        cycleStartedAt: null, currentSessionId: null, runStartedAt: null,
         lastStatus: null, totalCostUsd: 0, transientAttempts: 0,
       };
       expect(exec.status).toBe(status);
@@ -323,7 +324,7 @@ describe("type shapes", () => {
     const exec: import("./action-types").ExecutionState = {
       id: 1, actionName: "test", status: "running", startedAt: Date.now(),
       runNumber: 2, cycleNumber: 1, cycleRunCount: 2,
-      cycleStartedAt: Date.now(), currentSessionId: "sess-1",
+      cycleStartedAt: Date.now(), currentSessionId: "sess-1", runStartedAt: Date.now(),
       lastStatus: "done", totalCostUsd: 0.1, transientAttempts: 0,
     };
     const state: import("./action-types").ActionState = {
