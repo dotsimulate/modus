@@ -11,10 +11,9 @@ import type { ActiveSession, MessageContent } from "../session-manager";
 import { getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, type PermissionPolicy } from "../profiles";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
-import { dirname, isAbsolute, join, parse as parsePath } from "path";
+import { dirname, isAbsolute, join } from "path";
 import { existsSync } from "fs";
 import { resolveSecret } from "../secrets";
-import type { ClaudeMdExcludes } from "../profiles";
 import type { ProviderCapabilities } from "./types";
 
 // On Windows, Bun's subprocess needs the .cmd wrapper to resolve correctly via PATH.
@@ -79,15 +78,16 @@ function normalizeClaudeEffort(effort?: string): string | undefined {
   return effort;
 }
 
-const VALID_PERMISSION_MODES = new Set(["default", "acceptEdits", "plan", "dontAsk"]);
+type ClaudePermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk";
+const VALID_PERMISSION_MODES = new Set<ClaudePermissionMode>(["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"]);
 
-function readClaudePermissionMode(providerControls: unknown): "default" | "acceptEdits" | "plan" | "dontAsk" {
+function readClaudePermissionMode(providerControls: unknown): ClaudePermissionMode {
   if (!providerControls || typeof providerControls !== "object") return "default";
   const claude = (providerControls as Record<string, unknown>).claude;
   if (!claude || typeof claude !== "object") return "default";
   const mode = (claude as Record<string, unknown>).permissionMode;
-  if (typeof mode === "string" && VALID_PERMISSION_MODES.has(mode)) {
-    return mode as "default" | "acceptEdits" | "plan" | "dontAsk";
+  if (typeof mode === "string" && VALID_PERMISSION_MODES.has(mode as ClaudePermissionMode)) {
+    return mode as ClaudePermissionMode;
   }
   return "default";
 }
@@ -190,38 +190,6 @@ function readProjectMcpServers(cwd: string | undefined): Record<string, McpServe
     console.warn(`[claude-code] Failed to read ${mcpJsonPath}:`, err);
     return {};
   }
-}
-
-// ── CLAUDE.md Exclude Resolution ──
-
-function resolveClaudeMdExcludes(
-  config: ClaudeMdExcludes | undefined,
-  cwd: string,
-): string[] | undefined {
-  if (!config) return undefined;
-  if (Array.isArray(config)) return config.length > 0 ? config : undefined;
-
-  const patterns: string[] = [...(config.custom ?? [])];
-  for (const rule of config.rules ?? []) {
-    switch (rule) {
-      case "no-parent-walk": {
-        const normalized = cwd.replace(/\\/g, "/");
-        let dir = dirname(normalized);
-        const { root } = parsePath(normalized);
-        const rootNorm = root.replace(/\\/g, "/");
-        while (dir !== rootNorm && dir !== dirname(dir)) {
-          patterns.push(join(dir, "CLAUDE.md"));
-          patterns.push(join(dir, ".claude", "CLAUDE.md"));
-          dir = dirname(dir);
-        }
-        break;
-      }
-      case "no-node-modules":
-        patterns.push("**/node_modules/**/CLAUDE.md");
-        break;
-    }
-  }
-  return patterns.length > 0 ? patterns : undefined;
 }
 
 // ── Provider Implementation ──
@@ -497,17 +465,15 @@ export function createClaudeCodeProvider(): SessionProvider {
         model: opts.model ?? profileDef?.model ?? undefined,
         effort: normalizeClaudeEffort(opts.effort ?? profileDef?.effort),
         maxTurns: opts.maxTurns ?? profileDef?.maxTurns ?? undefined,
-        allowedTools: undefined,
         disallowedTools: sdkDisallowed,
         tools: sdkTools,
         systemPrompt,
-        skills: profileDef?.skills,
         settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
-        claudeMdExcludes: resolveClaudeMdExcludes(
-          profileDef?.claudeMdExcludes,
-          opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
-        ),
         permissionMode: readClaudePermissionMode(opts.providerControls),
+        maxBudgetUsd: profileDef?.maxBudgetUsd,
+        env: profileDef?.env ? { ...process.env, ...profileDef.env } : undefined,
+        plugins: profileDef?.plugins,
+        sandbox: profileDef?.sandbox,
         canUseTool,
         hooks: {
           PreToolUse: [{

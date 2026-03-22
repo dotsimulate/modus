@@ -525,8 +525,14 @@ export function attachArtifactToSession(opts: {
 }
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
-  const resolvedCwd = resolveSessionCwd(opts.cwd);
-  const profileDef = opts.profile ? getProfile(opts.profile, resolvedCwd) : undefined;
+  const baseCwd = resolveSessionCwd(opts.cwd);
+  const profileDef = opts.profile ? getProfile(opts.profile, baseCwd) : undefined;
+  // Profile CWD override: absolute paths used as-is, relative resolved against baseCwd.
+  // This lets agent profiles force a subfolder (e.g. "td-nav") so the SDK auto-discovers
+  // skills from <profileCwd>/.claude/skills/ — scoping skills to this agent only.
+  const resolvedCwd = profileDef?.cwd
+    ? resolvePath(baseCwd, profileDef.cwd)
+    : baseCwd;
   const userProf = opts.userProfile ? getUserProfile(opts.userProfile) : undefined;
   // Cascade: session override > agent profile > user profile > default
   const providerName = opts.provider ?? profileDef?.provider ?? userProf?.provider ?? "claude-code";

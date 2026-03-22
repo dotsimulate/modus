@@ -100,6 +100,10 @@ export type Profile = {
   prompt: string;
   /** Agent description (for subagent selection / UI display) */
   description: string;
+  /** Working directory override — absolute path or relative to the session CWD.
+   *  When set, the agent session runs from this directory. Skills in <cwd>/.claude/skills/
+   *  are scoped to this agent only. */
+  cwd?: string;
   /** Extra workspace roots to grant alongside the primary cwd */
   additionalDirectories?: string[];
   /** Execution backend — provider names are validated against the runtime registry */
@@ -130,8 +134,28 @@ export type Profile = {
   maxOutputTokens?: number;
   /** Compaction tuning — overrides providerDefaults when set */
   compaction?: CompactionConfig;
-  /** Skills to preload into agent context (skill names from .claude/skills/) */
-  skills?: string[];
+  /** CWD suggestions — soft UI hints for the CWD picker. First entry auto-fills CWD,
+   *  rest fill additionalDirectories. Unlike `cwd`, these are overridable by the user. */
+  cwdSuggestions?: string[];
+  /** Maximum budget in USD — session stops if exceeded (Claude SDK only) */
+  maxBudgetUsd?: number;
+  /** Environment variables passed to the Claude Code process (Claude SDK only) */
+  env?: Record<string, string>;
+  /** Local plugins to load — each entry is { type: "local", path: "./my-plugin" } (Claude SDK only) */
+  plugins?: Array<{ type: "local"; path: string }>;
+  /** Sandbox settings for command execution isolation (Claude SDK only) */
+  sandbox?: {
+    enabled?: boolean;
+    autoAllowBashIfSandboxed?: boolean;
+    allowUnsandboxedCommands?: boolean;
+    network?: {
+      allowedDomains?: string[];
+      allowManagedDomainsOnly?: boolean;
+      allowUnixSockets?: string[];
+      allowAllUnixSockets?: boolean;
+      allowLocalBinding?: boolean;
+    };
+  };
   /**
    * Codex-specific sandbox mode — overrides the sandboxMode derived from permissionPolicy.
    * Only read by the Codex provider; ignored by Claude and other providers.

@@ -172,6 +172,7 @@ export type Profile = {
   description: string;
   prompt: string;
   promptMode?: "custom" | "append";
+  cwd?: string;
   provider?: string;
   model?: string;
   effort?: string;
