@@ -60,6 +60,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const uiSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [setupState, setSetupState] = useState<SessionSetupState>(createDefaultSetupState());
+  // Profile CWD override — stored separately so it doesn't pollute setupState.cwd
+  // (which drives UI scope: profile discovery, theme, file browser).
+  // Only consumed by buildSessionOpts at session creation time.
+  const [profileCwdOverride, setProfileCwdOverride] = useState<string | null>(null);
 
   // Derived
   const activeUP = userProfiles.find((p) => p.name === activeUserProfile) ?? null;
@@ -113,7 +117,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       source.agent,
       profileData?.tools ?? "all",
     );
-    const cwd = source.cwd.trim();
+    const cwd = profileCwdOverride ?? source.cwd.trim();
     if (cwd) addRecentPath(cwd);
     const additionalDirs = (source.additionalDirectories ?? []).filter((d) => d.trim());
     return {
@@ -125,7 +129,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       loadProjectSettings: source.loadProjectSettings,
       ...agentOverrides,
     };
-  }, [setupState, profiles, activeUserProfile]);
+  }, [setupState, profiles, activeUserProfile, profileCwdOverride]);
 
   // Initial load
   useEffect(() => {
@@ -167,7 +171,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const cwd = setupState.cwd.trim();
     if (cwd === prevCwdRef.current) return;
     prevCwdRef.current = cwd;
-    fetchProfiles(cwd || undefined).then(setProfiles).catch(() => {});
+    console.log("[ProfileProvider] cwd changed, refetching profiles with cwd:", cwd);
+    fetchProfiles(cwd || undefined).then((p) => { console.log("[ProfileProvider] refetched profiles:", p.map(x => x.name)); setProfiles(p); }).catch(() => {});
   }, [setupState.cwd]);
 
   useEffect(() => {
@@ -196,15 +201,20 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const availableNames = visibleProfiles.map((profile) => profile.name);
     if (!availableNames.length) {
+      console.log("[ProfileProvider] auto-select: no available profiles, clearing");
       if (selectedProfile) setSelectedProfile("");
       return;
     }
-    if (selectedProfile && availableNames.includes(selectedProfile)) return;
+    if (selectedProfile && availableNames.includes(selectedProfile)) {
+      console.log("[ProfileProvider] auto-select: keeping", selectedProfile);
+      return;
+    }
     const nextProfile = resolvePreferredProfile(
       availableNames,
       uiState.lastAgentProfile,
       activeUP?.defaultAgentProfile,
     );
+    console.log("[ProfileProvider] auto-select: switching from", selectedProfile, "to", nextProfile, "available:", availableNames, "lastAgent:", uiState.lastAgentProfile);
     if (nextProfile !== selectedProfile) setSelectedProfile(nextProfile);
   }, [activeUP?.defaultAgentProfile, selectedProfile, uiState.lastAgentProfile, visibleProfiles]);
 
@@ -215,21 +225,33 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (selectedProfile === prevSelectedProfileRef.current) return;
     prevSelectedProfileRef.current = selectedProfile;
     const profileData = profiles.find((p) => p.name === selectedProfile);
+    console.log("[ProfileProvider] profile changed:", selectedProfile, "profileData:", profileData, "profileData?.cwd:", profileData?.cwd, "activeUP?.projects:", activeUP?.projects);
     if (profileData?.cwd) {
-      // Profile has a hard CWD — use it. additionalDirectories from profile or cwdSuggestions.
+      // Profile has a hard CWD override — store it separately so it doesn't change
+      // the UI's project scope (theme, profile discovery, file browser).
+      // It only flows into buildSessionOpts at session creation time.
+      const baseCwd = activeUP?.projects?.[0] ?? "";
+      let resolved = profileData.cwd;
+      if (resolved && !resolved.match(/^(?:\/|[A-Za-z]:)/)) {
+        // Use the same separator as the base path (backslash on Windows, forward on Unix)
+        const sep = baseCwd.includes("\\") ? "\\" : "/";
+        resolved = baseCwd ? `${baseCwd.replace(/[/\\]+$/, "")}${sep}${resolved.replace(/^\.\//, "").replace(/^\.\\/, "")}` : resolved;
+      }
+      console.log("[ProfileProvider] profile cwd override:", resolved, "raw:", profileData.cwd);
+      setProfileCwdOverride(resolved);
       const suggestions = profileData.cwdSuggestions;
-      setSetupState((prev) => ({
-        ...prev,
-        cwd: profileData.cwd!,
-        additionalDirectories: suggestions?.slice(0) ?? [],
-      }));
+      if (suggestions?.length) {
+        setSetupState((prev) => ({ ...prev, additionalDirectories: suggestions }));
+      }
     } else if (profileData?.cwdSuggestions && profileData.cwdSuggestions.length > 0) {
+      setProfileCwdOverride(null);
       setSetupState((prev) => ({
         ...prev,
         cwd: profileData!.cwdSuggestions![0],
         additionalDirectories: profileData!.cwdSuggestions!.slice(1),
       }));
     } else {
+      setProfileCwdOverride(null);
       const defaultCwd = activeUP?.projects?.[0] ?? "";
       setSetupState((prev) => ({
         ...prev,
@@ -244,7 +266,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       profiles, visibleProfiles, availableProviders, userProfiles,
       providerCapabilities,
       activeUserProfile, activeUP,
-      activeCwd: setupState.cwd.trim() || undefined,
+      activeCwd: profileCwdOverride ?? (setupState.cwd.trim() || undefined),
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,
       uiState, saveUiState, switchUserProfile, refreshProfiles, refreshUserProfiles,
