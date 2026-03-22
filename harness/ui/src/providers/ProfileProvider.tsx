@@ -60,16 +60,16 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const uiSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [setupState, setSetupState] = useState<SessionSetupState>(createDefaultSetupState());
-  // Profile CWD override — stored separately so it doesn't pollute setupState.cwd
-  // (which drives UI scope: profile discovery, theme, file browser).
-  // Only consumed by buildSessionOpts at session creation time.
-  const [profileCwdOverride, setProfileCwdOverride] = useState<string | null>(null);
 
   // Derived
   const activeUP = userProfiles.find((p) => p.name === activeUserProfile) ?? null;
   const visibleProfiles = activeUP?.agentProfiles?.length
     ? profiles.filter((p) => activeUP.agentProfiles!.includes(p.name))
     : profiles;
+
+  // The project root for profile discovery and theme — always the user profile's
+  // first project, NOT setupState.cwd (which may be a profile subfolder override).
+  const projectRoot = activeUP?.projects?.[0] ?? "";
 
   // Switch user profile
   const switchUserProfile = useCallback((name: string | null) => {
@@ -81,12 +81,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setActiveUserProfile(name);
   }, []);
 
-  // Refresh agent profiles from server (scoped to current CWD for project-local merging)
+  // Refresh agent profiles from server — always scoped to project root
   const refreshProfiles = useCallback(async () => {
-    const cwd = setupState.cwd.trim() || undefined;
+    const cwd = projectRoot || setupState.cwd.trim() || undefined;
     const p = await fetchProfiles(cwd);
     setProfiles(p);
-  }, [setupState.cwd]);
+  }, [projectRoot, setupState.cwd]);
 
   // Refresh user profiles from server
   const refreshUserProfiles = useCallback(async () => {
@@ -117,7 +117,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       source.agent,
       profileData?.tools ?? "all",
     );
-    const cwd = profileCwdOverride ?? source.cwd.trim();
+    const cwd = source.cwd.trim();
     if (cwd) addRecentPath(cwd);
     const additionalDirs = (source.additionalDirectories ?? []).filter((d) => d.trim());
     return {
@@ -129,7 +129,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       loadProjectSettings: source.loadProjectSettings,
       ...agentOverrides,
     };
-  }, [setupState, profiles, activeUserProfile, profileCwdOverride]);
+  }, [setupState, profiles, activeUserProfile]);
 
   // Initial load
   useEffect(() => {
@@ -165,19 +165,22 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     loadInitial();
   }, []);
 
-  // Reload profiles when CWD changes (project-local profiles may differ)
-  const prevCwdRef = useRef<string>("");
+  // Reload profiles when project root changes (project-local profiles may differ).
+  // Uses projectRoot, NOT setupState.cwd — a profile's subfolder cwd override
+  // should not trigger a profile refetch that loses project-local profiles.
+  const prevProjectRootRef = useRef<string>("");
   useEffect(() => {
-    const cwd = setupState.cwd.trim();
-    if (cwd === prevCwdRef.current) return;
-    prevCwdRef.current = cwd;
-    console.log("[ProfileProvider] cwd changed, refetching profiles with cwd:", cwd);
-    fetchProfiles(cwd || undefined).then((p) => { console.log("[ProfileProvider] refetched profiles:", p.map(x => x.name)); setProfiles(p); }).catch(() => {});
-  }, [setupState.cwd]);
+    const cwd = projectRoot || setupState.cwd.trim();
+    if (cwd === prevProjectRootRef.current) return;
+    prevProjectRootRef.current = cwd;
+    fetchProfiles(cwd || undefined).then(setProfiles).catch(() => {});
+  }, [projectRoot, setupState.cwd]);
 
+  // Apply project theme — always from project root, not a profile subfolder
   useEffect(() => {
-    loadAndApplyProjectUiState(setupState.cwd.trim() || undefined);
-  }, [setupState.cwd]);
+    const cwd = projectRoot || setupState.cwd.trim();
+    loadAndApplyProjectUiState(cwd || undefined);
+  }, [projectRoot, setupState.cwd]);
 
   // Reload when user profile changes
   useEffect(() => {
@@ -201,20 +204,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const availableNames = visibleProfiles.map((profile) => profile.name);
     if (!availableNames.length) {
-      console.log("[ProfileProvider] auto-select: no available profiles, clearing");
       if (selectedProfile) setSelectedProfile("");
       return;
     }
-    if (selectedProfile && availableNames.includes(selectedProfile)) {
-      console.log("[ProfileProvider] auto-select: keeping", selectedProfile);
-      return;
-    }
+    if (selectedProfile && availableNames.includes(selectedProfile)) return;
     const nextProfile = resolvePreferredProfile(
       availableNames,
       uiState.lastAgentProfile,
       activeUP?.defaultAgentProfile,
     );
-    console.log("[ProfileProvider] auto-select: switching from", selectedProfile, "to", nextProfile, "available:", availableNames, "lastAgent:", uiState.lastAgentProfile);
     if (nextProfile !== selectedProfile) setSelectedProfile(nextProfile);
   }, [activeUP?.defaultAgentProfile, selectedProfile, uiState.lastAgentProfile, visibleProfiles]);
 
@@ -225,33 +223,28 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (selectedProfile === prevSelectedProfileRef.current) return;
     prevSelectedProfileRef.current = selectedProfile;
     const profileData = profiles.find((p) => p.name === selectedProfile);
-    console.log("[ProfileProvider] profile changed:", selectedProfile, "profileData:", profileData, "profileData?.cwd:", profileData?.cwd, "activeUP?.projects:", activeUP?.projects);
     if (profileData?.cwd) {
-      // Profile has a hard CWD override — store it separately so it doesn't change
-      // the UI's project scope (theme, profile discovery, file browser).
-      // It only flows into buildSessionOpts at session creation time.
+      // Profile has a hard CWD — resolve relative paths and set into setupState.cwd
+      // so the sidebar dropdown displays the session's working directory.
       const baseCwd = activeUP?.projects?.[0] ?? "";
       let resolved = profileData.cwd;
       if (resolved && !resolved.match(/^(?:\/|[A-Za-z]:)/)) {
-        // Use the same separator as the base path (backslash on Windows, forward on Unix)
         const sep = baseCwd.includes("\\") ? "\\" : "/";
         resolved = baseCwd ? `${baseCwd.replace(/[/\\]+$/, "")}${sep}${resolved.replace(/^\.\//, "").replace(/^\.\\/, "")}` : resolved;
       }
-      console.log("[ProfileProvider] profile cwd override:", resolved, "raw:", profileData.cwd);
-      setProfileCwdOverride(resolved);
       const suggestions = profileData.cwdSuggestions;
-      if (suggestions?.length) {
-        setSetupState((prev) => ({ ...prev, additionalDirectories: suggestions }));
-      }
+      setSetupState((prev) => ({
+        ...prev,
+        cwd: resolved,
+        additionalDirectories: suggestions?.slice(0) ?? [],
+      }));
     } else if (profileData?.cwdSuggestions && profileData.cwdSuggestions.length > 0) {
-      setProfileCwdOverride(null);
       setSetupState((prev) => ({
         ...prev,
         cwd: profileData!.cwdSuggestions![0],
         additionalDirectories: profileData!.cwdSuggestions!.slice(1),
       }));
     } else {
-      setProfileCwdOverride(null);
       const defaultCwd = activeUP?.projects?.[0] ?? "";
       setSetupState((prev) => ({
         ...prev,
@@ -266,7 +259,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       profiles, visibleProfiles, availableProviders, userProfiles,
       providerCapabilities,
       activeUserProfile, activeUP,
-      activeCwd: profileCwdOverride ?? (setupState.cwd.trim() || undefined),
+      activeCwd: setupState.cwd.trim() || undefined,
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,
       uiState, saveUiState, switchUserProfile, refreshProfiles, refreshUserProfiles,
