@@ -63,11 +63,157 @@
   color: var(--text-muted);
 }
 
+/* ── Tag group picker ── */
+
+.moves-tag-groups {
+  border-bottom: 1px solid var(--border);
+}
+
+.moves-tag-groups-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: color 0.1s ease;
+}
+
+.moves-tag-groups-header:hover {
+  color: var(--text-secondary);
+}
+
+.moves-tag-groups-label {
+  flex: 1;
+  text-align: left;
+}
+
+.moves-tag-groups-summary {
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.moves-tag-groups-body {
+  padding: 0 8px 8px;
+}
+
+.moves-tag-groups-empty {
+  padding: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+}
+
+.moves-tag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.moves-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  width: 100%;
+  padding: 0 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  text-align: left;
+  transition: color 0.1s ease, background 0.1s ease;
+}
+
+.moves-tag-row:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.moves-tag-row--active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text-secondary) 7%, transparent);
+}
+
+.moves-tag-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moves-tag-row-count {
+  color: var(--text-dim);
+  font-size: calc(9px * var(--font-scale, 1));
+  line-height: 1;
+}
+
 /* ── Move list ── */
 
 .moves-list {
   display: flex;
   flex-direction: column;
+}
+
+/* ── Group sections ── */
+
+.moves-group + .moves-group {
+  border-top: 1px solid var(--border);
+}
+
+.moves-group-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: color 0.1s ease;
+}
+
+.moves-group-header:hover {
+  color: var(--text-secondary);
+}
+
+.moves-group-chevron {
+  display: flex;
+  align-items: center;
+  transition: transform 0.15s ease;
+}
+
+.moves-group-chevron--open {
+  transform: rotate(90deg);
+}
+
+.moves-group-label {
+  flex: 1;
+  text-align: left;
+}
+
+.moves-group-count {
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-dim);
 }
 
 /* ── Move row ── */

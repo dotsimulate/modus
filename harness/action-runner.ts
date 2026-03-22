@@ -47,6 +47,7 @@ import { MAX_CHAIN_DEPTH } from "./action-types";
 import { sendNotifications, sendActionNotification } from "./notify";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { svgToPngBase64 } from "./svg-render";
+import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken } from "./move-runner";
 
 // ── Constants ──
 
@@ -471,6 +472,12 @@ async function fireAction(
     state.activeExecutions.set(exec.id, exec);
   }
 
+  // Synchronous guard: mark the execution as occupied BEFORE any async work.
+  // Without this, the tick loop (which checks currentSessionId !== null for
+  // concurrency) can fire another run on the same execution while gather(),
+  // startSession(), and the session-ID polling loop are still in progress.
+  exec.currentSessionId = "pending";
+
   const runStartedAt = Date.now();
   exec.runStartedAt = runStartedAt;
   const runNumber = getNextRunNumber(name);
@@ -618,6 +625,39 @@ async function fireAction(
         throw gatherErr;
       }
 
+      // ── Inline move context (non-persistent moves: gather once, prepend to prompt) ──
+      const moveApiTokens: string[] = []; // tokens to rekey after session spawn
+      if (cfg.moves?.length) {
+        const effectiveCwd = cfg.cwd ?? process.cwd();
+        const inlineParts: string[] = [];
+        for (const moveSpec of cfg.moves) {
+          const moveCfg = getMove(moveSpec.name, effectiveCwd);
+          if (!moveCfg) {
+            console.warn(`[actions:${name}] move "${moveSpec.name}" not found, skipping`);
+            continue;
+          }
+          if (moveCfg.persistent) continue; // handled after session spawn
+          try {
+            const result = await gatherMoveOnce(moveSpec.name, "", effectiveCwd, effectiveUserProfile, moveSpec.inputs ?? {});
+            if (result) {
+              inlineParts.push(`<!-- move:${moveSpec.name} -->\n${result.text}\n<!-- /move:${moveSpec.name} -->`);
+              if (result.apiToken) moveApiTokens.push(result.apiToken);
+            }
+          } catch (err) {
+            console.error(`[actions:${name}] move gather failed for "${moveSpec.name}":`, err);
+          }
+        }
+        if (inlineParts.length > 0) {
+          const moveContext = inlineParts.join("\n\n");
+          if (typeof prompt === "string") {
+            prompt = `${moveContext}\n\n${prompt}`;
+          } else {
+            // Multipart content — prepend as text block
+            prompt = [{ type: "text", text: moveContext }, ...prompt];
+          }
+        }
+      }
+
       const session = startSession({
         prompt,
         profile: cfg.agentProfile,
@@ -642,6 +682,32 @@ async function fireAction(
       }
 
       exec.currentSessionId = session.sessionId;
+
+      // ── Rekey inline API move registrations to the real session ID ──
+      for (const token of moveApiTokens) {
+        rekeyMoveByToken(token, session.sessionId);
+      }
+
+      // ── Persistent moves (ambient gather — register on spawned session) ──
+      if (cfg.moves?.length) {
+        const effectiveCwd = cfg.cwd ?? process.cwd();
+        for (const moveSpec of cfg.moves) {
+          const moveCfg = getMove(moveSpec.name, effectiveCwd);
+          if (!moveCfg?.persistent) continue;
+          try {
+            await activateMove({
+              moveName: moveSpec.name,
+              sessionId: session.sessionId,
+              inputs: moveSpec.inputs ?? {},
+              cwd: effectiveCwd,
+              userProfile: effectiveUserProfile,
+            });
+            console.log(`[actions:${name}] persistent move "${moveSpec.name}" activated on ${session.sessionId}`);
+          } catch (err) {
+            console.error(`[actions:${name}] persistent move activation failed for "${moveSpec.name}":`, err);
+          }
+        }
+      }
       console.log(`[actions] Run #${runNumber} for "${name}" → session ${session.sessionId} (attempt ${attempt})`);
 
       updateActionRun(runId, {
@@ -1039,6 +1105,7 @@ export function getActions(): Array<ActionConfig & {
   lastRunAt: number | null;
   lastStatus: string | null;
   running: boolean;
+  activeSessions: number;
   cycleNumber: number;
   cycleRunCount: number;
   exhausted: boolean;
@@ -1046,13 +1113,15 @@ export function getActions(): Array<ActionConfig & {
   return Array.from(actionStates.values()).map(s => {
     // Derive flat fields from most recent active execution
     const exec = findActiveExecution(s);
+    const activeSessions = [...s.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
     return {
       ...s.config,
       origin: s.origin,
       nextRunAt: s.nextRunAt,
       lastRunAt: s.lastRunAt,
       lastStatus: exec?.lastStatus ?? null,
-      running: s.activeExecutions.size > 0,
+      running: activeSessions > 0,
+      activeSessions,
       cycleNumber: exec?.cycleNumber ?? 1,
       cycleRunCount: exec?.cycleRunCount ?? 0,
       exhausted: s.exhausted,
@@ -1077,7 +1146,9 @@ export async function triggerAction(name: string, opts?: { userProfile?: string 
     return false;
   }
   const maxConcurrency = state.config.concurrency ?? 1;
-  if (state.activeExecutions.size >= maxConcurrency) return false;
+  // Match fireAction's concurrency check: count running sessions, not total executions
+  const activeSessions = [...state.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
+  if (activeSessions >= maxConcurrency) return false;
   const triggerInfo: TriggerInfo = { type: "manual" };
   fireAction(name, triggerInfo, 0, opts).catch(err => {
     console.error(`[actions] Manual trigger error for "${name}":`, err);
@@ -1118,6 +1189,12 @@ export function setActionEnabled(name: string, enabled: boolean): boolean {
     state.nextRunAt = Date.now() + parseInterval(state.config.trigger.every);
   } else if (!enabled) {
     state.nextRunAt = null;
+    // Close idle executions (no active session) so UI stops showing "RUNNING"
+    for (const [execId, exec] of state.activeExecutions) {
+      if (exec.currentSessionId === null) {
+        closeExecution(exec, state);
+      }
+    }
   }
   return true;
 }

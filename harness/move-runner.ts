@@ -591,6 +591,55 @@ export function getMove(name: string, cwd: string): MoveConfig | null {
   }
 }
 
+/**
+ * Run a move's gather() once and return the prompt text.
+ * Used by action-runner to prepend move context to action prompts.
+ * Returns null if the move doesn't exist, has no gather(), or gather bails.
+ *
+ * For API moves (moves with ops + handlers), registers the handlers and
+ * passes the apiToken to gather() so the agent can call ops via modus_submit.
+ */
+export async function gatherMoveOnce(
+  moveName: string,
+  sessionId: string,
+  cwd: string,
+  userProfile: string | undefined,
+  inputs: Record<string, unknown>,
+): Promise<{ text: string; apiToken?: string } | null> {
+  const mod = await loadMoveModule(moveName, cwd);
+  if (!mod?.gather) return null;
+
+  const config = getMove(moveName, cwd);
+  let apiToken: string | undefined;
+  let instanceId: string | undefined;
+
+  // Register API handlers if this move declares ops and has handlers
+  if (config?.api?.ops && mod.handlers) {
+    instanceId = generateInstanceId();
+    apiToken = registerMoveApi(
+      moveName,
+      instanceId,
+      sessionId,
+      cwd,
+      mod.handlers,
+      config.api.state?.persist ?? false,
+      userProfile,
+    );
+    await syncMoveAssistantTurnListener(apiToken, mod);
+  }
+
+  const ctx = buildMoveContext(moveName, sessionId, cwd, userProfile, { inputs, apiToken, instanceId });
+  const result = await Promise.race([
+    mod.gather(ctx),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), GATHER_TIMEOUT_MS)),
+  ]);
+  if (result === null) return null;
+  const text = typeof result === "string" ? result : String(result);
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  return { text: trimmed, apiToken };
+}
+
 /** List all available moves for a CWD */
 export function listMoves(cwd: string): MoveConfig[] {
   const names = new Set<string>();
@@ -1137,6 +1186,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     // Register API handlers if the move declares ops
     let apiToken: string | undefined;
     let instanceId: string | undefined;
+    const mod = await loadMoveModule(moveName, cwd);
     if (config.api?.ops && mod?.handlers) {
       instanceId = generateInstanceId();
       apiToken = registerMoveApi(moveName, instanceId, sourceSessionId, cwd, mod.handlers, false, userProfile);

@@ -14,6 +14,7 @@ import { HtmlPreview } from "./HtmlPreview";
 import { PinboardView } from "./PinboardView";
 import { SessionEditsView } from "./SessionEditsView";
 import { AgentActivityView } from "./AgentActivityView";
+import { TerminalView } from "./TerminalView";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 
 type Props = {
@@ -38,6 +39,8 @@ type Props = {
   onWidgetClose?: (apiToken: string, moveName: string) => void;
   /** Called when user wants to send a code snippet to the chat input */
   onSendToAgent?: (text: string) => void;
+  /** Active session ID — terminals are scoped to this session */
+  sessionId?: string | null;
 };
 
 function basename(p: string): string {
@@ -66,7 +69,7 @@ type ViewState =
 /** Which tab is showing: the project browser, pinboard, a file, or a move widget */
 type ActiveView = "browser" | "pins" | "move-widget" | string;
 
-export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled, onWidgetClose, onSendToAgent }: Props) {
+export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled, onWidgetClose, onSendToAgent, sessionId }: Props) {
   const {
     tabs, activePath, closeFile, setActive, openFile,
     setEditing, markDirty, saveFile, saving, saveError,
@@ -76,7 +79,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
 
   const tabsRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<ActiveView>("browser");
-  const NON_FILE_VIEWS = new Set(["browser", "pins", "session-edits", "activity"]);
+  const NON_FILE_VIEWS = new Set(["browser", "pins", "session-edits", "activity", "terminal"]);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [htmlPreview, setHtmlPreview] = useState(true);
@@ -378,6 +381,11 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
       return <AgentActivityView messages={messages ?? []} />;
     }
 
+    // Terminal — rendered persistently below, return null so persistent layer shows
+    if (activeView === "terminal") {
+      return null;
+    }
+
     // Move widget — for non-instance-cached widgets, render inline (instance-cached render below)
     if (activeView.startsWith("widget:") && moveWidgets) {
       const w = moveWidgets.find(w => `widget:${w.instanceId}` === activeView);
@@ -560,6 +568,18 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
               </svg>
             </button>
           </div>
+          <div className={`rp-tab rp-tab--icon-only${activeView === "terminal" ? " rp-tab--active" : ""}`}>
+            <button
+              className="rp-tab-label"
+              onClick={() => setActiveView("terminal")}
+              title="Terminal"
+            >
+              <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                <path d="M2 3l3 3-3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M7 9h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
           {moveWidgets?.map((w) => (
             <div key={w.instanceId} className={`rp-tab${activeView === `widget:${w.instanceId}` ? " rp-tab--active" : ""}`}>
               <button
@@ -718,6 +738,10 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
           )}
           <div className={`right-panel-content${isEditMode ? " right-panel-content--editing" : ""}`}>
             {renderContent()}
+            {/* Persistent terminal layer — stays mounted, hidden when not active */}
+            <div style={{ display: activeView === "terminal" ? "contents" : "none" }}>
+              <TerminalView cwd={activeCwd} visible={activeView === "terminal"} sessionId={sessionId} />
+            </div>
             {/* Persistent widget layer — instance-cached widgets stay mounted, hidden when not active */}
             {moveWidgets?.filter(w => (w.widget.cache ?? "instance") === "instance").map(w => (
               <div

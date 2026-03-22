@@ -57,6 +57,12 @@ import {
   subscribeGlobal, emitGlobalSessionEvent,
   type SSEWriter,
 } from "./session-manager";
+import {
+  createTerminal, killTerminal, resizeTerminal as resizeTerminalPty,
+  getActiveTerminal, getAllActiveTerminals, getTerminalInfo, listAllTerminals,
+  shutdownAllTerminals,
+} from "./terminal-manager";
+import { tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker } from "./terminal-ws";
 
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = "0.0.0.0";
@@ -2554,6 +2560,86 @@ function missingUiBuildResponse(): Response {
   });
 }
 
+// ── Terminals ──
+
+app.post("/api/terminals", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const term = createTerminal({
+    shell: body.shell,
+    cwd: body.cwd,
+    cols: body.cols,
+    rows: body.rows,
+    sessionId: body.sessionId,
+    env: body.env,
+  });
+  return c.json({
+    id: term.id,
+    shell: term.shell,
+    cwd: term.cwd,
+    cols: term.cols,
+    rows: term.rows,
+    sessionId: term.sessionId,
+    createdAt: term.createdAt,
+  });
+});
+
+app.get("/api/terminals", (c) => {
+  const filterSessionId = c.req.query("sessionId") ?? null;
+  const active = getAllActiveTerminals()
+    .filter(t => !filterSessionId || t.sessionId === filterSessionId)
+    .map(t => ({
+      id: t.id,
+      shell: t.shell,
+      cwd: t.cwd,
+      cols: t.cols,
+      rows: t.rows,
+      sessionId: t.sessionId,
+      createdAt: t.createdAt,
+      clients: t.clients.size,
+    }));
+  return c.json(active);
+});
+
+app.get("/api/terminals/:id", (c) => {
+  const id = c.req.param("id");
+  const active = getActiveTerminal(id);
+  if (active) {
+    return c.json({
+      id: active.id,
+      shell: active.shell,
+      cwd: active.cwd,
+      cols: active.cols,
+      rows: active.rows,
+      sessionId: active.sessionId,
+      createdAt: active.createdAt,
+      clients: active.clients.size,
+      status: "running",
+    });
+  }
+  const row = getTerminalInfo(id);
+  if (row) return c.json(row);
+  return c.json({ error: "terminal not found" }, 404);
+});
+
+app.delete("/api/terminals/:id", (c) => {
+  const id = c.req.param("id");
+  const killed = killTerminal(id);
+  if (!killed) return c.json({ error: "terminal not found or already exited" }, 404);
+  return c.json({ ok: true });
+});
+
+app.post("/api/terminals/:id/resize", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const { cols, rows } = body;
+  if (typeof cols !== "number" || typeof rows !== "number") {
+    return c.json({ error: "cols and rows required" }, 400);
+  }
+  const ok = resizeTerminalPty(id, cols, rows);
+  if (!ok) return c.json({ error: "terminal not found" }, 404);
+  return c.json({ ok: true, cols, rows });
+});
+
 app.get("*", async (c) => {
   const path = c.req.path;
   if (path === "/api" || path.startsWith("/api/")) return c.notFound();
@@ -2569,8 +2655,23 @@ app.get("*", async (c) => {
 
 // ── Start ──
 
+// Wire terminal auth checker (reuses same PIN + token auth as REST)
+setAuthChecker((token: string) => {
+  if (!AUTH_TOKEN && !getPin()) return true;  // no auth configured
+  if (AUTH_TOKEN && token === AUTH_TOKEN) return true;
+  if (pinSessions.has(token)) return true;
+  return false;
+});
+
 const server = Bun.serve({
-  fetch: app.fetch,
+  fetch(req, server) {
+    // Intercept WebSocket upgrade requests before Hono
+    const wsResult = tryUpgradeTerminalWS(req, server);
+    if (wsResult !== null) return wsResult;
+    // Fall through to Hono for everything else
+    return app.fetch(req, server);
+  },
+  websocket: terminalWebSocket,
   port: PORT,
   hostname: HOST,
   idleTimeout: 255,
@@ -2599,6 +2700,7 @@ process.on("SIGTERM", () => {
   console.log("Shutting down...");
   stopActions();
   shutdownAll();
+  shutdownAllTerminals();
   server.stop();
   setTimeout(() => process.exit(0), 3000);
 });

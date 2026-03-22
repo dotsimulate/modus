@@ -22,6 +22,11 @@
   gap: 24px;
 }
 
+.dashboard-widgets-picker {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .dashboard-warning-banner {
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);

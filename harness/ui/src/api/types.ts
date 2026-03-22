@@ -390,6 +390,10 @@ export type UserProfile = {
       >;
     }>;
   };
+  /** Left panel widget layout */
+  leftPanel?: {
+    widgets?: string[];
+  };
   /** Computer/machine name — displayed in top-nav status bar */
   computer?: string;
   /** Preferred editor CLI command for "open in editor" */
@@ -506,6 +510,7 @@ export type ActionInfo = {
   lastRunAt: number | null;
   lastStatus: string | null;
   running: boolean;
+  activeSessions: number;
   cycleNumber: number;
   cycleRunCount: number;
   exhausted: boolean;

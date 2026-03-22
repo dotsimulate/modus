@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { WIDGETS, type WidgetBase, type WidgetProps } from "../widgets";
 import { useWidgetUiState } from "../widgets/ui-state";
 import { useProfiles } from "../providers/ProfileProvider";
+import { WidgetPicker } from "./WidgetPicker";
 import type { View } from "../views";
 
 type Props = {
@@ -10,6 +11,7 @@ type Props = {
   onOpen: () => void;
   onClose: () => void;
   widgets?: WidgetBase[];
+  onWidgetsChange?: (types: string[]) => void;
   onNavigate?: (view: View) => void;
   onSelectSession?: (id: string) => void;
   children?: ReactNode;
@@ -41,10 +43,10 @@ function CollapsibleWidget({ widget, widgetId, onNavigate, onSelectSession }: {
   return (
     <div className="widget">
       <button className="widget-header" onClick={() => setCollapsed(!collapsed)}>
-        <span className="widget-title">{widget.title ?? widget.type}</span>
         <span className={`widget-chevron ${collapsed ? "" : "widget-chevron--open"}`}>
           {chevron}
         </span>
+        <span className="widget-title">{widget.title ?? widget.type}</span>
       </button>
       <div className={`panel-collapse ${collapsed ? "" : "panel-collapse--open"}`}>
         <div className="panel-collapse-clip">
@@ -60,18 +62,28 @@ function CollapsibleWidget({ widget, widgetId, onNavigate, onSelectSession }: {
   );
 }
 
-export function LeftPanel({ open, width, onOpen, onClose, widgets, onNavigate, onSelectSession, children }: Props) {
+export function LeftPanel({ open, width, onOpen, onClose, widgets, onWidgetsChange, onNavigate, onSelectSession, children }: Props) {
   const validWidgets = (widgets ?? []).filter((w) => WIDGETS[w.type]);
+
+  const handlePickerChange = (next: WidgetBase[]) => {
+    onWidgetsChange?.(next.map((w) => w.type));
+  };
 
   return (
     <div
       className={`left-panel${open ? " open" : ""}`}
       style={open ? { width, minWidth: width } : undefined}
     >
-      <div className="left-panel-header">
-        <span className="left-panel-title">widgets</span>
-      </div>
       <div className="left-panel-content">
+        {onWidgetsChange && (
+          <div className="left-panel-picker">
+            <WidgetPicker
+              zone="left-panel"
+              current={validWidgets}
+              onChange={handlePickerChange}
+            />
+          </div>
+        )}
         {validWidgets.length > 0 ? validWidgets.map((w, i) => {
           const widgetId = w.id ?? `left-${w.type}-${i}`;
           return (

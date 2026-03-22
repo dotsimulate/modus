@@ -144,6 +144,13 @@ export const UserProfileSchema = z.object({
   memoryFilter: z.string().optional(),
   memory: UserProfileMemorySchema.optional(),
   showAllProjectPaths: z.boolean().optional(),
+  dashboard: z.object({
+    widgets: z.array(z.record(z.string(), z.unknown())).optional(),
+    pages: z.array(z.record(z.string(), z.unknown())).optional(),
+  }).optional(),
+  leftPanel: z.object({
+    widgets: z.array(z.string()).optional(),
+  }).optional(),
   computer: z.string().optional(),
   editor: z.string().optional(),
   clientExtensions: ClientExtensionsSchema.optional(),
