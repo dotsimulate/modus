@@ -121,6 +121,9 @@ export interface ActionConfig {
   // ── Static inputs (passed to ctx.inputs in gather/verify/afterRun) ──
   inputs?: Record<string, unknown>;
 
+  // ── Moves (activate moves on the spawned session) ──
+  moves?: ActionMoveSpec[];
+
   // ── Tags (freeform labels — used for filtering, grouping, archiving) ──
   tags?: string[];
 
@@ -460,6 +463,16 @@ export interface ActivitySummaryEntry {
   event_type: string;
   count: number;
   latest: number;
+}
+
+// ── Action Move Spec ──
+
+/** Declares a move to activate on the action's spawned session */
+export interface ActionMoveSpec {
+  /** Move name (must exist in harness/moves/ or .modus/moves/) */
+  name: string;
+  /** Inputs to pass to the move's gather() */
+  inputs?: Record<string, unknown>;
 }
 
 /** Max depth for action→action chain triggers to prevent infinite loops */

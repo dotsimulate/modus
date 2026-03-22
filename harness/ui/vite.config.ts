@@ -13,6 +13,10 @@ export default defineConfig({
     proxy: {
       '/api': `http://localhost:${harnessPort}`,
       '/health': `http://localhost:${harnessPort}`,
+      '/ws': {
+        target: `ws://localhost:${harnessPort}`,
+        ws: true,
+      },
     },
   },
 })

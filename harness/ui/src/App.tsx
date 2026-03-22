@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
+import { healthCheck, saveUserProfileApi, patchUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
 import type { MoveListItem } from "./api";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
@@ -377,6 +377,12 @@ function AppShell() {
     refreshSessions();
   }, [serverSessions, refreshSessions]);
 
+  const handleLeftPanelWidgetsChange = useCallback((types: string[]) => {
+    if (!activeUserProfile) return;
+    patchUserProfileApi(activeUserProfile, { leftPanel: { widgets: types } })
+      .then(() => refreshUserProfiles()).catch(() => {});
+  }, [activeUserProfile, refreshUserProfiles]);
+
   const handleLeftResize = useCallback((delta: number) => {
     setLeftPanelWidth((w) => Math.max(180, Math.min(600, w + delta)));
   }, []);
@@ -568,9 +574,10 @@ function AppShell() {
               width={leftPanelWidth}
               onOpen={() => setLeftPanelOpen(true)}
               onClose={() => setLeftPanelOpen(false)}
-              widgets={(profileData?.ui?.panelWidgets ?? ["config-inspector", "session-info", "moves"]).map(
+              widgets={(activeUP?.leftPanel?.widgets ?? profileData?.ui?.panelWidgets ?? ["config-inspector", "session-info", "moves"]).map(
                 (type, i) => ({ id: `left-${type}-${i}`, type })
               )}
+              onWidgetsChange={handleLeftPanelWidgetsChange}
               onNavigate={handleNavigate}
               onSelectSession={handleSelectSession}
             />
@@ -743,6 +750,7 @@ function AppShell() {
                 setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
                 detachMoveApi(moveName, apiToken).catch(() => {});
               }}
+              sessionId={activeSession?.id}
               onSendToAgent={(text) => handleInputChange(input ? `${input}\n${text}` : text)}
             />
           </>

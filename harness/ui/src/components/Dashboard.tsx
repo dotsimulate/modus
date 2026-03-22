@@ -4,8 +4,10 @@ import { useProfiles } from "../providers/ProfileProvider";
 import { ProjectSetup } from "./ProjectSetup";
 import { ModusPrompt } from "./ModusPrompt";
 import { Missions } from "./Missions";
-import { DEFAULT_DASHBOARD } from "../widgets";
+import { WidgetPicker } from "./WidgetPicker";
+import { DEFAULT_DASHBOARD, type WidgetBase } from "../widgets";
 import { PageRenderer } from "./PageRenderer";
+import { patchUserProfileApi } from "../api";
 
 type Props = {
   onNavigate: (view: View) => void;
@@ -24,6 +26,7 @@ type Props = {
 export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone }: Props) {
   const {
     activeUP,
+    activeUserProfile,
     profiles,
     userProfiles,
     refreshProfiles,
@@ -35,6 +38,13 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
   const widgets = hasExtensions
     ? configuredWidgets
     : [...configuredWidgets, { id: "extensions-auto", type: "extensions", title: "extensions", size: "full" as const }];
+
+  const handleDashboardWidgetsChange = useCallback((next: WidgetBase[]) => {
+    if (!activeUserProfile) return;
+    patchUserProfileApi(activeUserProfile, {
+      dashboard: { ...activeUP?.dashboard, widgets: next },
+    }).then(() => refreshUserProfiles()).catch(() => {});
+  }, [activeUserProfile, activeUP?.dashboard, refreshUserProfiles]);
   const configuredAgentProfiles = activeUP?.agentProfiles ?? [];
   const hasLoadedAgentProfile = configuredAgentProfiles.some((name) => profiles.some((profile) => profile.name === name));
 
@@ -75,6 +85,15 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
           </>
         )}
 
+        {activeUserProfile && (
+          <div className="dashboard-widgets-picker">
+            <WidgetPicker
+              zone="dashboard"
+              current={widgets as WidgetBase[]}
+              onChange={handleDashboardWidgetsChange}
+            />
+          </div>
+        )}
         <PageRenderer
           blocks={widgets.map((widget) => ({ kind: "widget" as const, widget }))}
           onNavigate={onNavigate}

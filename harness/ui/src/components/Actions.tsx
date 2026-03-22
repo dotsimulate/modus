@@ -529,9 +529,9 @@ function ActionCard({
         <button
           className="sched-trigger-btn"
           onClick={(e) => { e.stopPropagation(); onTrigger(); }}
-          disabled={action.running}
+          disabled={action.activeSessions >= (action.concurrency ?? 1)}
         >
-          {action.running ? "..." : "run"}
+          {action.activeSessions > 0 ? `run (${action.activeSessions}/${action.concurrency ?? 1})` : "run"}
         </button>
         )}
         <button

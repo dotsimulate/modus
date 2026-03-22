@@ -1,0 +1,159 @@
+/**
+ * Terminal panel — xterm.js terminal in the right sidebar.
+ */
+
+/* ── Panel shell ── */
+.term-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* ── Empty state ── */
+.term-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+}
+
+.term-create-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.term-create-btn:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-active);
+}
+
+/* ── Tab bar ── */
+.term-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 26px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.term-tabs::-webkit-scrollbar { display: none; }
+
+.term-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+}
+.term-tab--active {
+  border-bottom-color: var(--text-dim);
+}
+.term-tab--dead .term-tab-label {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.term-tab-label {
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.1s;
+}
+.term-tab-label:hover {
+  color: var(--text-secondary);
+}
+.term-tab--active .term-tab-label {
+  color: var(--text-secondary);
+}
+
+.term-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, background 0.1s;
+}
+.term-tab:hover .term-tab-close {
+  opacity: 1;
+}
+.term-tab-close:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.term-tab-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.1s;
+}
+.term-tab-add:hover {
+  color: var(--text-secondary);
+}
+
+/* ── Terminal viewport ── */
+.term-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Instance wrapper — the persistent div that xterm opens into */
+.term-instance {
+  width: 100%;
+  height: 100%;
+  padding: 4px 0 0 4px;
+}
+
+/* xterm.js overrides — seamless integration */
+.term-viewport .xterm,
+.term-instance .xterm {
+  height: 100%;
+}
+.term-viewport .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-active) transparent;
+}
+.term-viewport .xterm-viewport::-webkit-scrollbar {
+  width: 4px;
+}
+.term-viewport .xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--border-active);
+  border-radius: 2px;
+}
+.term-viewport .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}

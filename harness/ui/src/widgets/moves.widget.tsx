@@ -18,6 +18,7 @@ import { useProfiles } from "../providers/ProfileProvider";
 import type { WidgetDef, WidgetProps } from "./index";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
+import { useWidgetUiState } from "./ui-state";
 import type { LucideIcon } from "lucide-react";
 import { type ComponentType, useState as _useState, useEffect as _useEffect } from "react";
 
@@ -329,13 +330,173 @@ function MoveRow({
   );
 }
 
+// ── Group helpers ──
+
+type MoveGroup = { key: string; label: string; moves: MoveListItem[] };
+const EMPTY_SELECTED_TAGS: string[] = [];
+
+function classifyMove(m: MoveListItem): "mine" | "other" {
+  const tags = m.tags ?? [];
+  if (tags.includes("factory-v2") || tags.includes("factory-r1")) return "other";
+  return "mine";
+}
+
+function collectTags(moves: MoveListItem[]): Array<{ tag: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const move of moves) {
+    for (const tag of move.tags ?? []) {
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([tag, count]) => ({ tag, count }));
+}
+
+function orderTagOptions(
+  tags: Array<{ tag: string; count: number }>,
+  selectedTags: string[],
+): Array<{ tag: string; count: number }> {
+  const selected = selectedTags
+    .map((tag) => tags.find((entry) => entry.tag === tag))
+    .filter((entry): entry is { tag: string; count: number } => !!entry);
+  const rest = tags.filter((entry) => !selectedTags.includes(entry.tag));
+  return [...selected, ...rest];
+}
+
+function groupMoves(moves: MoveListItem[], selectedTags: string[]): MoveGroup[] {
+  const buckets: Record<"mine" | "other", MoveListItem[]> = { mine: [], other: [] };
+  for (const m of moves) buckets[classifyMove(m)].push(m);
+
+  const groups: MoveGroup[] = [];
+  if (buckets.mine.length) groups.push({ key: "mine", label: "mine", moves: buckets.mine });
+
+  const remaining = [...buckets.other];
+  for (const tag of selectedTags) {
+    const tagged = remaining.filter((move) => move.tags?.includes(tag));
+    if (!tagged.length) continue;
+    groups.push({ key: `tag:${tag}`, label: `#${tag}`, moves: tagged });
+    for (const move of tagged) {
+      const idx = remaining.indexOf(move);
+      if (idx >= 0) remaining.splice(idx, 1);
+    }
+  }
+
+  if (remaining.length) {
+    groups.push({
+      key: "other",
+      label: groups.length === 0 ? "moves" : selectedTags.length > 0 ? "everything else" : "others",
+      moves: remaining,
+    });
+  }
+
+  return groups;
+}
+
+function TagGroupsControl({
+  availableTags,
+  selectedTags,
+  open,
+  onToggleOpen,
+  onToggleTag,
+}: {
+  availableTags: Array<{ tag: string; count: number }>;
+  selectedTags: string[];
+  open: boolean;
+  onToggleOpen: () => void;
+  onToggleTag: (tag: string) => void;
+}) {
+  const selectedCount = selectedTags.length;
+
+  return (
+    <div className="moves-tag-groups">
+      <button type="button" className="moves-tag-groups-header" onClick={onToggleOpen}>
+        <span className={`moves-group-chevron${open ? " moves-group-chevron--open" : ""}`}>
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
+            <path d="M2 1l4 3-4 3z" />
+          </svg>
+        </span>
+        <span className="moves-tag-groups-label">tag groups</span>
+        <span className="moves-tag-groups-summary">
+          {selectedCount > 0 ? `${selectedCount} selected` : "none selected"}
+        </span>
+      </button>
+      <div className={`moves-expand${open ? " moves-expand--open" : ""}`}>
+        <div className="moves-expand-clip">
+          <div className="moves-tag-groups-body">
+            {availableTags.length === 0 ? (
+              <div className="moves-tag-groups-empty">no tags in this view</div>
+            ) : (
+              <div className="moves-tag-list">
+                {availableTags.map(({ tag, count }) => {
+                  const active = selectedTags.includes(tag);
+                  return (
+                    <button
+                      type="button"
+                      key={tag}
+                      className={`moves-tag-row${active ? " moves-tag-row--active" : ""}`}
+                      onClick={() => onToggleTag(tag)}
+                    >
+                      <span className="moves-tag-row-name">{tag}</span>
+                      <span className="moves-tag-row-count">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Collapsible group header ──
+
+function GroupHeader({
+  label,
+  count,
+  collapsed,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button type="button" className="moves-group-header" onClick={onToggle}>
+      <span className={`moves-group-chevron${collapsed ? "" : " moves-group-chevron--open"}`}>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
+          <path d="M2 1l4 3-4 3z" />
+        </svg>
+      </span>
+      <span className="moves-group-label">{label}</span>
+      <span className="moves-group-count">{count}</span>
+    </button>
+  );
+}
+
 // ── Main widget ──
 
-function MovesWidget(_props: WidgetProps) {
+function MovesWidget({ widgetId }: WidgetProps) {
   const { activeCwd, activeUserProfile, profiles, activeUP } = useProfiles();
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [tagGroupsOpen, setTagGroupsOpen] = useWidgetUiState<boolean>(
+    { userProfile: activeUserProfile, cwd: activeCwd },
+    widgetId,
+    "tag-groups-open",
+    false,
+  );
+  const [selectedTags, setSelectedTags] = useWidgetUiState<string[]>(
+    { userProfile: activeUserProfile, cwd: activeCwd },
+    widgetId,
+    "selected-tags",
+    EMPTY_SELECTED_TAGS,
+  );
 
   const profileNames = (() => {
     const names = activeUP?.agentProfiles?.length
@@ -385,6 +546,21 @@ function MovesWidget(_props: WidgetProps) {
       )
     : moves;
 
+  const availableTags = orderTagOptions(
+    collectTags(filtered.length > 0 ? filtered : moves),
+    selectedTags,
+  );
+  const isSearching = q.length > 0;
+  const groups = groupMoves(filtered, selectedTags);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) => (
+      prev.includes(tag)
+        ? prev.filter((t) => t !== tag)
+        : [...prev, tag]
+    ));
+  };
+
   return (
     <div className="moves-widget">
       {error && <div className="moves-widget-error">{error}</div>}
@@ -392,6 +568,7 @@ function MovesWidget(_props: WidgetProps) {
         <div className="moves-search-wrap">
           {search && (
             <button
+              type="button"
               className="moves-search-clear"
               onClick={() => setSearch("")}
               aria-label="Clear search"
@@ -409,18 +586,40 @@ function MovesWidget(_props: WidgetProps) {
           />
         </div>
       )}
+      <TagGroupsControl
+        availableTags={availableTags}
+        selectedTags={selectedTags}
+        open={tagGroupsOpen}
+        onToggleOpen={() => setTagGroupsOpen((v) => !v)}
+        onToggleTag={toggleTag}
+      />
       <div className="moves-list">
-        {filtered.map((m) => (
-          <MoveRow
-            key={m.name}
-            move={m}
-            expanded={expanded === m.name}
-            profileNames={profileNames}
-            onToggle={() => setExpanded(expanded === m.name ? null : m.name)}
-            onAttach={doAttach}
-            error={expanded === m.name ? error : null}
-          />
-        ))}
+        {groups.map((g) => {
+          const isCollapsed = !isSearching && !!collapsed[g.key];
+          return (
+            <div key={g.key} className="moves-group">
+              <GroupHeader
+                label={g.label}
+                count={g.moves.length}
+                collapsed={isCollapsed}
+                onToggle={() =>
+                  setCollapsed((prev) => ({ ...prev, [g.key]: !prev[g.key] }))
+                }
+              />
+              {!isCollapsed && g.moves.map((m) => (
+                <MoveRow
+                  key={m.name}
+                  move={m}
+                  expanded={expanded === m.name}
+                  profileNames={profileNames}
+                  onToggle={() => setExpanded(expanded === m.name ? null : m.name)}
+                  onAttach={doAttach}
+                  error={expanded === m.name ? error : null}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

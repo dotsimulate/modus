@@ -1,0 +1,139 @@
+/**
+ * WidgetPicker — compact popover for adding/removing widgets from a zone.
+ */
+
+.widget-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+.widget-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.5;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.widget-picker-trigger:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+.widget-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-active);
+  border-radius: 3px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 200;
+}
+
+.widget-picker-header {
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.widget-picker-list {
+  padding: 2px 0;
+}
+
+.widget-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 4px 0 0;
+}
+
+.widget-picker-item--active {
+  background: var(--bg-hover);
+}
+
+.widget-picker-item-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+}
+.widget-picker-item-toggle:hover {
+  color: var(--text);
+}
+
+.widget-picker-check {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.widget-picker-item--active .widget-picker-check {
+  color: var(--accent);
+}
+
+.widget-picker-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.widget-picker-item-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.widget-picker-size-select {
+  padding: 1px 2px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.widget-picker-move {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  border-radius: 2px;
+}
+.widget-picker-move:hover {
+  color: var(--text);
+  background: var(--bg-surface);
+}
