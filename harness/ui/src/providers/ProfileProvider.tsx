@@ -117,7 +117,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       source.agent,
       profileData?.tools ?? "all",
     );
-    const cwd = source.cwd.trim();
+    // When the profile has a cwd override, send the project root as the session cwd.
+    // The backend resolves the profile's cwd field against this root in startSession().
+    // This ensures getProfile() can find the profile at the project root's .modus/.
+    const cwd = (profileData?.cwd ? projectRoot : source.cwd.trim()) || source.cwd.trim();
     if (cwd) addRecentPath(cwd);
     const additionalDirs = (source.additionalDirectories ?? []).filter((d) => d.trim());
     return {
