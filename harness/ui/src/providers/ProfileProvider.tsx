@@ -233,7 +233,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const baseCwd = activeUP?.projects?.[0] ?? "";
       let resolved = profileData.cwd;
       if (resolved && !resolved.match(/^(?:\/|[A-Za-z]:)/)) {
-        resolved = baseCwd ? `${baseCwd.replace(/\/+$/, "")}/${resolved.replace(/^\.\//, "")}` : resolved;
+        // Use the same separator as the base path (backslash on Windows, forward on Unix)
+        const sep = baseCwd.includes("\\") ? "\\" : "/";
+        resolved = baseCwd ? `${baseCwd.replace(/[/\\]+$/, "")}${sep}${resolved.replace(/^\.\//, "").replace(/^\.\\/, "")}` : resolved;
       }
       console.log("[ProfileProvider] profile cwd override:", resolved, "raw:", profileData.cwd);
       setProfileCwdOverride(resolved);
