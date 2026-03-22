@@ -97,5 +97,9 @@ export type {
 
 export type { ProviderModel } from "./profiles";
 
+// Filesystem events
+export { onFsChange, setFsWatchRoot, disconnectFsEvents } from "./fs-events";
+export type { FsChangeEvent } from "./fs-events";
+
 // Utility
 export { nextMsgId } from "./types";

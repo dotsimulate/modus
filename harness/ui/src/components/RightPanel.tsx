@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode, type WheelEve
 import { useFileViewer } from "../providers/FileViewerProvider";
 import { usePinboard } from "../providers/PinboardProvider";
 import { useProfiles } from "../providers/ProfileProvider";
-import { browsePath, readFileContent, openInEditor, type BrowseResult, type MoveWidgetInfo } from "../api";
+import { browsePath, readFileContent, openInEditor, setFsWatchRoot, type BrowseResult, type MoveWidgetInfo } from "../api";
 import type { Message } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser } from "./FileBrowser";
@@ -73,9 +73,15 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
   const {
     tabs, activePath, closeFile, setActive, openFile,
     setEditing, markDirty, saveFile, saving, saveError,
+    contentVersion,
   } = useFileViewer();
   const { groups, pinToActive, pinToGroup, unpinFromActive, isFilePinned, activeGroup } = usePinboard();
   const { activeCwd } = useProfiles();
+
+  // Start/update the filesystem watcher when the project cwd changes
+  useEffect(() => {
+    setFsWatchRoot(activeCwd ?? null);
+  }, [activeCwd]);
 
   const tabsRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<ActiveView>("browser");
@@ -154,7 +160,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     })().finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [viewingFile, isEditMode]);
+  }, [viewingFile, isEditMode, contentVersion]);
 
   // Reset preview mode when switching files
   useEffect(() => {
@@ -427,16 +433,9 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
       return <div className="panel-empty">loading...</div>;
     }
 
-    // File browser
+    // File browser — rendered persistently below, return null so persistent layer shows
     if (showBrowser) {
-      return (
-        <FileBrowser
-          rootPath={activeCwd ?? null}
-          initialPath={initialBrowserPath}
-          onFileSelect={handleFileSelect}
-          onPathChange={onBrowserPathChange}
-        />
-      );
+      return null;
     }
 
     // Directory listing
@@ -738,6 +737,15 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
           )}
           <div className={`right-panel-content${isEditMode ? " right-panel-content--editing" : ""}`}>
             {renderContent()}
+            {/* Persistent file browser — stays mounted, hidden when not active */}
+            <div style={{ display: showBrowser ? "contents" : "none" }}>
+              <FileBrowser
+                rootPath={activeCwd ?? null}
+                initialPath={initialBrowserPath}
+                onFileSelect={handleFileSelect}
+                onPathChange={onBrowserPathChange}
+              />
+            </div>
             {/* Persistent terminal layer — stays mounted, hidden when not active */}
             <div style={{ display: activeView === "terminal" ? "contents" : "none" }}>
               <TerminalView cwd={activeCwd} visible={activeView === "terminal"} sessionId={sessionId} />

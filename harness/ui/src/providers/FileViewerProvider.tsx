@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { onUiEvent } from "../sessionStore";
-import { readFileContent, writeFileContent } from "../api";
+import { readFileContent, writeFileContent, onFsChange } from "../api";
 
 type Tab = {
   path: string;
@@ -33,6 +33,8 @@ type FileViewerContextValue = {
   saving: boolean;
   /** Last save error (auto-clears after 3s) */
   saveError: string | null;
+  /** Increments when a viewed (non-editing) file changes on disk — triggers re-fetch */
+  contentVersion: number;
 };
 
 const FileViewerContext = createContext<FileViewerContextValue>({
@@ -50,6 +52,7 @@ const FileViewerContext = createContext<FileViewerContextValue>({
   path: null,
   saving: false,
   saveError: null,
+  contentVersion: 0,
 });
 
 export function useFileViewer() {
@@ -61,6 +64,22 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [contentVersion, setContentVersion] = useState(0);
+
+  // ── Live refresh: bump contentVersion when a viewed (non-editing) file changes on disk ──
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  useEffect(() => {
+    return onFsChange((event) => {
+      const openTabs = tabsRef.current;
+      if (!openTabs.length || !event.entry) return;
+      const changedPath = `${event.dir}/${event.entry}`;
+      const match = openTabs.find((t) => t.path === changedPath && !t.editing && !t.dirty);
+      if (match) {
+        setContentVersion((v) => v + 1);
+      }
+    });
+  }, []);
 
   // Auto-clear save error
   useEffect(() => {
@@ -201,6 +220,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
         path: activePath,
         saving,
         saveError,
+        contentVersion,
       }}
     >
       {children}

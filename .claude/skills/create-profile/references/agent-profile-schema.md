@@ -25,7 +25,7 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
 
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
-  // Options: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama" | "openrouter"
+  // Options: "claude-code" | "cursor" | "codex" | "gemini-cli" | "litellm" | "ollama" | "openrouter"
 
   // Model ID (omit for provider's default)
   "model": "claude-opus-4-6",
@@ -84,7 +84,8 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
   // object = granular per-tool control
   "permissionPolicy": "bypass",
 
-  // ── Provider Tuning (PI providers only: anthropic, openai, litellm, ollama, openrouter) ──
+  // ── Provider Tuning (PI providers only: litellm, ollama, openrouter) ──
+  // These fields are ignored by claude-code, cursor, codex, and gemini-cli.
 
   // Context window size (must match inference server's -c flag for local models)
   "contextWindow": 65536,
@@ -105,6 +106,37 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
   // First entry → cwd, remaining entries → additionalDirectories.
   // Cleared when switching to a profile without this field.
   "cwdSuggestions": ["/home/user/project", "/home/user/project/subdir"],
+
+  // ── Session Environment ──
+
+  // Inject env vars into the agent session (resolved before start)
+  "env": {
+    "MY_VAR": "value"
+  },
+
+  // Spending cap — session errors out if cost exceeds this (claude-code only)
+  "maxBudgetUsd": 5.0,
+
+  // ── Sandbox (claude-code only) ──
+
+  // See harness/docs/profile-system.md for the full network ACL sub-schema.
+  // Stub — don't template this in profile creation; configure manually if needed.
+  "sandbox": { /* enabled, network.allowedDomains, autoAllowBashIfSandboxed, ... */ },
+
+  // ── Codex-specific ──
+
+  // Override the sandbox mode derived from permissionPolicy (codex only)
+  // "danger-full-access" = full shell + filesystem
+  // "workspace-write"    = filesystem writes, no arbitrary shell
+  // "read-only"          = read-only, no exec
+  "codexSandboxMode": "danger-full-access",
+
+  // Starlark rules written to ~/.codex/rules/ for command-level enforcement (codex only)
+  // Use this instead of permissionPolicy:"ask" — Codex cannot surface interactive approvals
+  "codexRules": [
+    "prefix_rule(pattern=[\"rm\", \"-rf\"], decision=\"forbidden\")",
+    "prefix_rule(pattern=[\"curl\"], decision=\"ask\")"
+  ],
 
   // ── UI Hints (frontend display only) ──
 

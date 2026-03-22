@@ -62,8 +62,8 @@ If CWD has no `.modus/`, create it.
 ### For agent profiles, ask:
 
 1. **What should it do?** (coding, research, creative, ops, monitoring, etc.)
-2. **What provider/model?** Default is `claude-code` with Claude Opus. Alternatives:
-   `anthropic`, `openai`, `litellm` (local models), `ollama`
+2. **What provider/model?** Default is `claude-code` with Claude Opus. If not claude-code,
+   read the matching reference file for that provider before writing JSON.
 3. **What tools should it have?** Full access, read-only, or specific allowlist?
 4. **Should it load project settings?** (CLAUDE.md from the working directory)
 5. **Any MCP servers?** (web search, memory, databases, custom tools)
@@ -150,14 +150,19 @@ MCP tools use the pattern: `mcp__<server-name>__<tool-name>`
 
 ## Available Providers
 
-| Provider | Models | Use case |
-|----------|--------|----------|
-| `claude-code` | Claude Opus/Sonnet/Haiku (Anthropic) | Full agent features, sub-agents, permissions |
-| `anthropic` | Same models via PI framework | Simpler, auto-compaction |
-| `openai` | GPT-4o, GPT models | OpenAI API |
-| `litellm` | Any OpenAI-compatible endpoint | Local models, vLLM, llama.cpp |
-| `ollama` | Ollama models | Local Ollama server |
-| `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers |
+| Provider | Models | Use case | Reference |
+|----------|--------|----------|-----------|
+| `claude-code` | Claude Opus/Sonnet/Haiku | Full agent features, sub-agents, permissions | (default, no ref needed) |
+| `cursor` | composer-2-fast (default), others | Cursor Agent CLI; auto-approve, no per-tool approval | [references/cursor.md](references/cursor.md) |
+| `codex` | codex-1, o4-mini, others | OpenAI Codex SDK; sandbox modes, Starlark rules | [references/codex.md](references/codex.md) |
+| `gemini-cli` | gemini-2.5-pro (default) | Gemini CLI SDK; Google OAuth or API key | [references/gemini-cli.md](references/gemini-cli.md) |
+| `litellm` | Any OpenAI-compatible endpoint | Local models, vLLM, llama.cpp | — |
+| `ollama` | Ollama models | Local Ollama server | — |
+| `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers | — |
+
+For `cursor`, `codex`, and `gemini-cli`: read the linked reference file before writing
+the profile JSON. These providers have meaningfully different behavior around permissions,
+tools, and MCP that will affect which profile fields actually do something.
 
 ## Output Format
 

@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { browsePath, readFileContent, openInEditor, createFile, createDirectory, type BrowseResult } from "../api";
+import { browsePath, readFileContent, openInEditor, createFile, createDirectory, onFsChange, type BrowseResult } from "../api";
 import { FileContentViewer } from "./FileContentViewer";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { usePinboard } from "../providers/PinboardProvider";
@@ -172,6 +172,22 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
       fetchDir(rootPath);
     }
   }, [rootPath, fetchDir]);
+
+  // ── Live refresh via fs-watcher events ──
+  useEffect(() => {
+    return onFsChange((event) => {
+      // Only refresh directories we already have cached (i.e. expanded)
+      setDirCache((cache) => {
+        if (cache.has(event.dir)) {
+          // Re-fetch this directory in the background
+          browsePath(event.dir, { includeHidden: true, includeFiles: true })
+            .then((result) => setDirCache((m) => new Map(m).set(event.dir, result)))
+            .catch(() => {});
+        }
+        return cache;
+      });
+    });
+  }, []);
 
   const toggleDir = useCallback((dirPath: string) => {
     setExpanded((prev) => {

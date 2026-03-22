@@ -63,6 +63,7 @@ import {
   shutdownAllTerminals,
 } from "./terminal-manager";
 import { tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker } from "./terminal-ws";
+import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
 
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = "0.0.0.0";
@@ -656,6 +657,38 @@ app.get("/api/events/sessions", (c) => {
 
     const unsubscribe = subscribeGlobal(writer);
     stream.onAbort(() => { clearInterval(keepAlive); unsubscribe(); resolve(); });
+
+    await done;
+    clearInterval(keepAlive);
+  });
+});
+
+// ── Filesystem change events (SSE) — used by FileBrowser and FileViewer for live refresh ──
+app.get("/api/events/fs", (c) => {
+  // Optional: start watching a specific root (defaults to whatever is already being watched)
+  const watchPath = new URL(c.req.url).searchParams.get("root");
+  if (watchPath) startWatching(watchPath);
+
+  return streamSSE(c, async (stream) => {
+    let resolve: () => void;
+    const done = new Promise<void>((r) => { resolve = r; });
+
+    const keepAlive = setInterval(async () => {
+      try { await stream.writeSSE({ event: "ping", data: "{}", id: "" }); } catch { /* dead */ }
+    }, 30_000);
+
+    const unsub = subscribeFsEvents({
+      write(event: FsChangeEvent) {
+        stream.writeSSE({
+          event: "fs",
+          data: JSON.stringify(event),
+          id: String(Date.now()),
+        }).catch(() => {});
+      },
+      close() { resolve(); },
+    });
+
+    stream.onAbort(() => { clearInterval(keepAlive); unsub(); resolve(); });
 
     await done;
     clearInterval(keepAlive);
