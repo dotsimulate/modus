@@ -264,7 +264,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       profiles, visibleProfiles, availableProviders, userProfiles,
       providerCapabilities,
       activeUserProfile, activeUP,
-      activeCwd: profileCwdOverride ?? setupState.cwd.trim() || undefined,
+      activeCwd: profileCwdOverride ?? (setupState.cwd.trim() || undefined),
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,
       uiState, saveUiState, switchUserProfile, refreshProfiles, refreshUserProfiles,
