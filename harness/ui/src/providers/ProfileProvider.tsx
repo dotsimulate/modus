@@ -218,11 +218,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (profileData?.cwd) {
       // Profile has a hard CWD — use it. additionalDirectories from profile or cwdSuggestions.
       const suggestions = profileData.cwdSuggestions;
-      setSetupState((prev) => ({
-        ...prev,
-        cwd: profileData.cwd!,
-        additionalDirectories: suggestions?.slice(0) ?? [],
-      }));
+      setSetupState((prev) => {
+        const baseCwd = activeUP?.projects?.[0] ?? prev.cwd;
+        let resolved = profileData.cwd!;
+        if (resolved && !resolved.match(/^(?:\/|[A-Za-z]:)/)) {
+          resolved = baseCwd ? `${baseCwd.replace(/\/+$/, "")}/${resolved.replace(/^\.\//, "")}` : resolved;
+        }
+        return { ...prev, cwd: resolved, additionalDirectories: suggestions?.slice(0) ?? [] };
+      });
     } else if (profileData?.cwdSuggestions && profileData.cwdSuggestions.length > 0) {
       setSetupState((prev) => ({
         ...prev,
