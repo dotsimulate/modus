@@ -208,19 +208,26 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (nextProfile !== selectedProfile) setSelectedProfile(nextProfile);
   }, [activeUP?.defaultAgentProfile, selectedProfile, uiState.lastAgentProfile, visibleProfiles]);
 
-  // When selected profile changes, auto-fill CWD + additional dirs from cwdSuggestions.
-  // If the profile has no suggestions, reset additional dirs and restore user profile default CWD.
+  // When selected profile changes, auto-fill CWD from profile.cwd (hard default),
+  // cwdSuggestions (soft hint), or user profile's first project (fallback).
   const prevSelectedProfileRef = useRef<string>("");
   useEffect(() => {
     if (selectedProfile === prevSelectedProfileRef.current) return;
     prevSelectedProfileRef.current = selectedProfile;
     const profileData = profiles.find((p) => p.name === selectedProfile);
-    const suggestions = profileData?.cwdSuggestions;
-    if (suggestions && suggestions.length > 0) {
+    if (profileData?.cwd) {
+      // Profile has a hard CWD — use it. additionalDirectories from profile or cwdSuggestions.
+      const suggestions = profileData.cwdSuggestions;
       setSetupState((prev) => ({
         ...prev,
-        cwd: suggestions[0],
-        additionalDirectories: suggestions.slice(1),
+        cwd: profileData.cwd!,
+        additionalDirectories: suggestions?.slice(0) ?? [],
+      }));
+    } else if (profileData?.cwdSuggestions && profileData.cwdSuggestions.length > 0) {
+      setSetupState((prev) => ({
+        ...prev,
+        cwd: profileData!.cwdSuggestions![0],
+        additionalDirectories: profileData!.cwdSuggestions!.slice(1),
       }));
     } else {
       const defaultCwd = activeUP?.projects?.[0] ?? "";
