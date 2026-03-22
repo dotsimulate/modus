@@ -68,7 +68,7 @@ These fields can be set per-provider in `_global.json`:
 | `compaction.reserveTokens` | 16384 | Tokens reserved for the next response |
 | `compaction.keepRecentTokens` | 20000 | Recent context preserved during compaction |
 
-These only apply to PI providers (`anthropic`, `openai`, `litellm`, `ollama`).
+These only apply to PI providers (`litellm`, `ollama`, `openrouter`).
 Claude Code provider manages context through the SDK directly.
 
 ## MCP Server Merging
