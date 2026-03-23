@@ -2291,6 +2291,7 @@ app.post("/api/moves/:name/attach", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json();
   const { inputs, cwd, userProfile, sessionId } = body;
+  console.log(`[attach] name=${name} cwd=${cwd} sessionId=${sessionId} userProfile=${userProfile}`);
   if (!cwd) return c.json({ error: "cwd required" }, 400);
 
   const result = await attachMove({

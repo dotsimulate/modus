@@ -67,7 +67,7 @@ function AppShell() {
   const { handleLock } = useAuth();
   const {
     profiles, visibleProfiles, availableProviders, userProfiles,
-    activeUserProfile, activeUP,
+    activeUserProfile, activeUP, projectRoot,
     selectedProfile, selectProfile,
     setupState, setSetupState,
     uiState, saveUiState, switchUserProfile, refreshUserProfiles,
@@ -674,7 +674,7 @@ function AppShell() {
                 disabled={harnessUp === false}
                 placeholder={ui.placeholder}
                 sessionId={activeSession?.id}
-                projectCwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
+                projectCwd={projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
                 userProfile={activeUserProfile ?? undefined}
                 autoFocus={view === "chat" && !!activeSession?.id}
                 onMoveAttached={(result) => {

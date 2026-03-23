@@ -11,6 +11,7 @@ import { useEffect, useCallback, useEffectEvent, useRef, useState } from "react"
 import type { Attachment } from "../api";
 import { getDraft, saveDraft, sendMessage, stopSessionApi, respondToPermission, nextMsgId } from "../api";
 import { useSessionState, subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
+import { useProfiles } from "../providers/ProfileProvider";
 import { FloatingWindow } from "./FloatingWindow";
 import { ChatView } from "./ChatView";
 import { ChatInput } from "./ChatInput";
