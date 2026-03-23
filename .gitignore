@@ -73,6 +73,8 @@ TODO/
 
 # Claude skills — scaffolded per-project by modus init from harness/templates/
 .claude/skills/
+!.claude/skills/create-action/
+!.claude/skills/create-move/
 
 # Claude settings (personal per-user)
 .claude/settings.local.json
