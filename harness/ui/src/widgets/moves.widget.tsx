@@ -480,7 +480,8 @@ function GroupHeader({
 // ── Main widget ──
 
 function MovesWidget({ widgetId }: WidgetProps) {
-  const { activeCwd, activeUserProfile, profiles, activeUP } = useProfiles();
+  const { activeCwd, projectRoot, activeUserProfile, profiles, activeUP } = useProfiles();
+  const movesCwd = projectRoot ?? activeCwd;
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -506,13 +507,13 @@ function MovesWidget({ widgetId }: WidgetProps) {
   })();
 
   const loadMoves = useCallback(
-    () => (activeCwd ? fetchMoves(activeCwd) : Promise.resolve([])),
-    [activeCwd],
+    () => (movesCwd ? fetchMoves(movesCwd) : Promise.resolve([])),
+    [movesCwd],
   );
 
   const { value: moves, loading } = useWidgetPollingValue<MoveListItem[]>({
     load: loadMoves,
-    scopeKey: activeCwd ?? "",
+    scopeKey: movesCwd ?? "",
     intervalMs: 60_000,
     initialValue: [],
   });
@@ -526,7 +527,7 @@ function MovesWidget({ widgetId }: WidgetProps) {
     setError(null);
   };
 
-  if (!activeCwd) {
+  if (!movesCwd) {
     return <WidgetEmptyState>no project selected</WidgetEmptyState>;
   }
   if (loading && moves.length === 0) {

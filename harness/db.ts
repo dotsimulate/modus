@@ -670,6 +670,17 @@ export function addSessionTag(id: string, tag: string) {
   }
 }
 
+/** Find the most recent non-archived session that has a given tag */
+export function getSessionByTag(tag: string): SessionRow | null {
+  // Tags column stores JSON arrays: '["tag1","tag2"]'
+  // LIKE-match the JSON-quoted tag value within the array
+  const pattern = `%"${tag.replace(/[%_]/g, "\\$&")}"%`;
+  const row = db.prepare(
+    `SELECT * FROM sessions WHERE tags LIKE $pattern ESCAPE '\\' AND tags NOT LIKE '%"archived"%' ORDER BY last_message_at DESC LIMIT 1`,
+  ).get({ $pattern: pattern }) as SessionRow | null;
+  return row ?? null;
+}
+
 /** Remove a tag if present */
 export function removeSessionTag(id: string, tag: string) {
   const tags = getSessionTags(id);

@@ -31,6 +31,8 @@ type ProfileContextValue = {
   activeUserProfile: string | null;
   activeUP: UserProfile | null;
   activeCwd: string | undefined;
+  /** Project root — always the user profile's first project, not a profile subfolder */
+  projectRoot: string | undefined;
   selectedProfile: string;
   selectProfile: (name: string) => void;
   setSelectedProfile: (name: string) => void;
@@ -263,6 +265,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       providerCapabilities,
       activeUserProfile, activeUP,
       activeCwd: setupState.cwd.trim() || undefined,
+      projectRoot: projectRoot || setupState.cwd.trim() || undefined,
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,
       uiState, saveUiState, switchUserProfile, refreshProfiles, refreshUserProfiles,

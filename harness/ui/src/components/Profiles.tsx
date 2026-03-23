@@ -62,7 +62,8 @@ const editIcon = (
 );
 
 export function Profiles({ onSelectSession, onNavigate }: Props) {
-  const { visibleProfiles, selectProfile, activeUserProfile, activeCwd } = useProfiles();
+  const { visibleProfiles, selectProfile, activeUserProfile, activeCwd, projectRoot } = useProfiles();
+  const profilesCwd = projectRoot ?? activeCwd;
   const { newSession } = useSession();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSessionInfo[]>([]);
@@ -74,7 +75,7 @@ export function Profiles({ onSelectSession, onNavigate }: Props) {
     const load = async () => {
       try {
         const [p, s] = await Promise.all([
-          fetchProfiles(activeCwd),
+          fetchProfiles(profilesCwd),
           fetchActiveSessions(activeUserProfile ?? undefined),
         ]);
         setProfiles(p);
@@ -106,7 +107,7 @@ export function Profiles({ onSelectSession, onNavigate }: Props) {
   };
 
   const reloadProfiles = async () => {
-    try { setProfiles(await fetchProfiles(activeCwd)); } catch { return; }
+    try { setProfiles(await fetchProfiles(profilesCwd)); } catch { return; }
   };
 
   // Editor takes over the full view

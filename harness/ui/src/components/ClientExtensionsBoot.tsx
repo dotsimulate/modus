@@ -4,12 +4,13 @@ import { loadClientExtensions, unloadClientExtensions } from "../client-extensio
 import { useProfiles } from "../providers/ProfileProvider";
 
 export function ClientExtensionsBoot() {
-  const { activeCwd, activeUserProfile } = useProfiles();
+  const { activeCwd, projectRoot, activeUserProfile } = useProfiles();
+  const extCwd = projectRoot ?? activeCwd;
 
   useEffect(() => {
     let cancelled = false;
 
-    fetchClientExtensions(activeCwd, activeUserProfile)
+    fetchClientExtensions(extCwd, activeUserProfile)
       .then((items) => {
         if (cancelled) return;
         return loadClientExtensions(items);
@@ -20,7 +21,7 @@ export function ClientExtensionsBoot() {
       cancelled = true;
       void unloadClientExtensions();
     };
-  }, [activeCwd, activeUserProfile]);
+  }, [extCwd, activeUserProfile]);
 
   return null;
 }

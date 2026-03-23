@@ -3,14 +3,15 @@
 The `context.ts` module builds dynamic prompts, verifies results, and can act on them.
 
 **IMPORTANT:** context.ts lives in `.modus/actions/<name>/` which can be in ANY project
-directory. Never import harness internals with relative paths. Everything you need is on
-`ctx` — the `ActionContext` object passed to every function.
-
-The only import you need is the type import (erased at compile time, no runtime resolution):
+directory. Everything you need is on `ctx` — the `ActionContext` object passed to every
+function. The only import you need is the type import (erased at compile time):
 
 ```typescript
 import type { ActionContext, RunResult, VerifyResult } from "../../action-types";
 ```
+
+Use `fs` for reading project files. Use `moves` on the action for structured context
+gathering (memory, status, etc.).
 
 ## Module Interface
 
@@ -68,25 +69,30 @@ export async function afterRun(ctx: ActionContext, result: RunResult): Promise<v
 
 ## Database API (ctx.db)
 
+ctx.db is scoped to what the action needs — its own run history and targeted session
+mutations. It does NOT provide general-purpose queries across all sessions or projects.
+
 ```typescript
-// ── Read operations ──
+// ── This action's run history (scoped to current action) ──
 ctx.db.getRunSummaries(limit?: number): RunSummary[]    // this action's summaries (oldest first)
 ctx.db.getRunHistory(limit?: number): RunMeta[]          // this action's runs (newest first)
-ctx.db.getActionRuns(name: string, limit?: number): RunMeta[]  // any action's runs
-ctx.db.listSessions(limit?: number): SessionInfo[]       // recent sessions
-ctx.db.getSession(id: string): SessionInfo | null
-ctx.db.searchSessions(query: string, limit?: number): SearchResult[]
-ctx.db.getEvents(sessionId: string, afterSeq?: number): EventInfo[]
+ctx.db.getActionRuns(name: string, limit?: number): RunMeta[]  // another action's runs
 
-// ── Session mutations ──
+// ── Targeted session mutations (use with session IDs from trigger payloads) ──
 ctx.db.updateSessionTitle(id: string, title: string | null): void
 ctx.db.addSessionTag(id: string, tag: string): void      // no-op if already present
 ctx.db.removeSessionTag(id: string, tag: string): void    // no-op if not present
-
-// ── Activity log ──
-ctx.db.getActivityLog(opts?: { userProfile?: string; since?: number; limit?: number; eventType?: string }): ActivityEntry[]
-ctx.db.getActivitySummary(opts?: { userProfile?: string; hours?: number }): ActivitySummaryEntry[]
 ```
+
+**Use run history** (`getRunSummaries`, `getRunHistory`) to build context from previous
+runs of this action. These are scoped — they only return this action's data.
+
+**Use session mutations** (`updateSessionTitle`, `addSessionTag`) only with specific
+session IDs from trigger payloads (e.g., auto-titling a session that triggered the action).
+
+**For project-local context** (memory files, config, status), read files from the
+project directory using `fs` and `ctx.actionDir`. For structured context gathering,
+use `moves` on the action — attach a companion move that reads memory and builds prompts.
 
 ## VerifyResult
 
@@ -158,25 +164,6 @@ export async function afterRun(ctx: ActionContext, result: RunResult): Promise<v
 
   ctx.db.updateSessionTitle(payload.sessionId, title);
   ctx.db.addSessionTag(payload.sessionId, "auto-titled");
-}
-```
-
-## Pattern: Activity Log Inspection
-
-```typescript
-import type { ActionContext } from "../../action-types";
-
-export async function gather(ctx: ActionContext): Promise<string> {
-  const since = ctx.lastRunAt ? ctx.lastRunAt.getTime() : Date.now() - 24 * 3_600_000;
-
-  const activity = ctx.db.getActivityLog({ since, limit: 200 });
-  const summary = ctx.db.getActivitySummary({ hours: 24 });
-
-  const summaryBlock = summary.map(s =>
-    `- ${s.event_type}: ${s.count} events`
-  ).join("\n") || "No activity.";
-
-  return `Review recent activity:\n\n${summaryBlock}\n\nFlag anything unusual.`;
 }
 ```
 
@@ -395,6 +382,49 @@ export async function gather(ctx: ActionContext): Promise<string> {
   return `Create a cartoon SVG at ${cartoonPath}. Log debug info to ${logPath}.`;
 }
 ```
+
+## Pattern: Action + Move Composition
+
+When an action declares `moves`, each move's gather() runs and the output is prepended
+to the action's prompt. The action's context.ts gather() provides additional context on
+top of what the moves provide.
+
+```json
+{
+  "name": "morning-checkin",
+  "agentProfile": "buddy",
+  "trigger": { "type": "interval", "every": "1d",
+    "activeHours": { "start": "09:00", "end": "10:00" } },
+  "moves": [{ "name": "check-in" }],
+  "maxTurns": 20
+}
+```
+
+```typescript
+import type { ActionContext } from "../../action-types";
+
+export async function gather(ctx: ActionContext): Promise<string> {
+  // The check-in move's gather() already ran and its output is prepended.
+  // This gather() adds action-specific context on top.
+  const history = ctx.db.getRunSummaries(5);
+  const lastCheckin = history.length > 0
+    ? `Last check-in: ${history[0].summary}`
+    : "This is the first scheduled check-in.";
+
+  return [
+    "This is a scheduled morning check-in.",
+    lastCheckin,
+    "Have a natural conversation. When done, save what you learned.",
+  ].join("\n");
+}
+```
+
+The move handles structured context gathering (reading memory files, building
+conversational prompts). The action handles scheduling and run history. Neither
+needs to duplicate the other's logic.
+
+For API contract moves in the `moves` array, the API token is automatically
+registered on the spawned session — the agent can call ops immediately.
 
 ## Cost Awareness
 
