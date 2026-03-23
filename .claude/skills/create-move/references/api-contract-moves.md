@@ -104,15 +104,10 @@ if (key.used >= key.budget) return { ok: false, error: "Budget exhausted" };
 - Default-deny: if no record exists for a caller, reject
 - Param locking: user can lock parameters so agent overrides are silently corrected
 
-## Accessing the database from handlers
+## Handler data access
 
-Handlers get `ctx.sessionId` and `ctx.cwd` but NOT `ctx.db`. Import db functions directly:
-
-```ts
-import { getSession, searchSessions, getSessionMessages } from "../../../harness/db";
-
-const session = getSession(ctx.sessionId);
-```
+Handlers are self-contained. Use `ctx.state` for structured data across calls
+and read/write files under `ctx.cwd` with `fs` for anything else.
 
 ## Stateless vs stateful
 

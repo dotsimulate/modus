@@ -42,7 +42,7 @@ import {
   getDraft, setDraft, getSessionUiState, patchSessionUiState,
   getWebPositions, upsertWebPositions, deleteWebPositions,
   updateSessionTitle,
-  getSessionTags, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
+  getSessionTags, getSessionByTag, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
   getProviderUsageAnalytics, getDeepAnalytics,
   getSessionMessages, getSessionArtifact,
@@ -153,6 +153,9 @@ app.post("/api/auth/change-pin", async (c) => {
 app.use("/api/*", async (c, next) => {
   // Auth endpoints are always open
   if (c.req.path.startsWith("/api/auth/")) return next();
+
+  // Webhook action endpoints use their own token auth (action-level, not harness-level)
+  if (/^\/api\/actions\/[^/]+\/hook$/.test(c.req.path)) return next();
 
   // If neither HARNESS_TOKEN nor HARNESS_PIN is set, no auth at all
   if (!AUTH_TOKEN && !getPin()) return next();
@@ -940,6 +943,14 @@ app.patch("/api/sessions/:id/tags", async (c) => {
     return c.json({ error: "provide tags (array), add (string), or remove (string)" }, 400);
   }
   return c.json({ ok: true, tags: getSessionTags(id) });
+});
+
+// Look up session by tag — returns most recent non-archived session with this tag
+app.get("/api/sessions/by-tag/:tag", (c) => {
+  const tag = decodeURIComponent(c.req.param("tag"));
+  const row = getSessionByTag(tag);
+  if (!row) return c.json({ error: "no session with that tag" }, 404);
+  return c.json({ id: row.id, status: row.status, profile: row.profile, tags: parseTags(row.tags), createdAt: row.created_at, updatedAt: row.updated_at });
 });
 
 // Branch session — fork from a specific point in a past conversation
@@ -1759,7 +1770,7 @@ app.post("/api/actions/:name/hook", async (c) => {
   const payload = await c.req.json().catch(() => ({}));
   const result = await handleWebhook(name, token, payload);
   if (!result.ok) return c.json({ error: result.error }, 400);
-  return c.json({ ok: true });
+  return c.json({ ok: true, ...(result.sessionId ? { sessionId: result.sessionId } : {}), ...(result.continued ? { continued: true } : {}) });
 });
 
 app.get("/api/actions/:name/info", async (c) => {

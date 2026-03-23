@@ -25,6 +25,11 @@ export type IntervalTrigger = {
 export type WebhookTrigger = {
   type: "webhook";
   token?: string;                      // auto-generated if absent, stored in config
+  /** When set, extract payload[sessionKey] as a tag to route to an existing session.
+   *  If a session with that tag exists, the payload is sent as a follow-up message
+   *  instead of creating a new action run. If no session exists, a new run fires
+   *  and the resulting session is tagged for future lookups. */
+  sessionKey?: string;
 };
 
 export type ManualTrigger = {
@@ -172,6 +177,8 @@ export type TriggerInfo = {
   type: "interval" | "webhook" | "manual" | "action" | "session";
   payload?: unknown;                   // webhook body, source RunResult, or SessionTriggerPayload
   source?: string;                     // source action name (for action chains)
+  /** Tag to apply to the session created by this webhook (for session routing) */
+  webhookSessionTag?: string;
 };
 
 // ── Context & Module ──

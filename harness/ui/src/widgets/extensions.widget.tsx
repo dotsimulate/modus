@@ -170,11 +170,12 @@ function ExtensionRow({
 }
 
 function ExtensionsWidget() {
-  const { activeUserProfile, activeCwd } = useProfiles();
+  const { activeUserProfile, activeCwd, projectRoot } = useProfiles();
+  const extCwd = projectRoot ?? activeCwd;
 
   const load = useCallback(
-    () => fetchClientExtensions(activeCwd, activeUserProfile),
-    [activeCwd, activeUserProfile],
+    () => fetchClientExtensions(extCwd, activeUserProfile),
+    [extCwd, activeUserProfile],
   );
 
   const { value: extensions, loading, refresh } = useWidgetPollingValue<ClientExtensionManifestItem[]>({

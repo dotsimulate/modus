@@ -17,7 +17,8 @@ type ProjectThemeConfig = WidgetBase & {
 };
 
 function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
-  const { activeCwd, activeUserProfile } = useProfiles();
+  const { activeCwd, projectRoot, activeUserProfile } = useProfiles();
+  const themeCwd = projectRoot ?? activeCwd;
   const [state, setState] = useState<ProjectUiState | null>(null);
   const [busy, setBusy] = useState<"theme" | "font" | "create" | null>(null);
   const [error, setError] = useState<string>("");
@@ -27,7 +28,7 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     let alive = true;
 
     async function load() {
-      if (!activeCwd) {
+      if (!themeCwd) {
         if (alive) {
           setState(null);
           setError("");
@@ -36,7 +37,7 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
       }
 
       try {
-        const next = await fetchProjectUiState(activeCwd);
+        const next = await fetchProjectUiState(themeCwd);
         if (!alive) return;
         setState(next);
         setError("");
@@ -51,14 +52,14 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     return () => {
       alive = false;
     };
-  }, [activeCwd]);
+  }, [themeCwd]);
 
   async function handleThemeChange(themeId: string) {
-    if (!activeCwd || !state || !themeId || themeId === state.activeTheme?.id) return;
+    if (!themeCwd || !state || !themeId || themeId === state.activeTheme?.id) return;
     setBusy("theme");
     setError("");
     try {
-      const activeTheme = await activateProjectThemeApi(activeCwd, themeId);
+      const activeTheme = await activateProjectThemeApi(themeCwd, themeId);
       const next = { ...state, activeTheme };
       setState(next);
       applyProjectUiState(next);
@@ -70,11 +71,11 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
   }
 
   async function handleFontChange(fontId: string) {
-    if (!activeCwd || !state || !fontId || fontId === state.activeFont?.id) return;
+    if (!themeCwd || !state || !fontId || fontId === state.activeFont?.id) return;
     setBusy("font");
     setError("");
     try {
-      const activeFont = await activateProjectFontApi(activeCwd, fontId);
+      const activeFont = await activateProjectFontApi(themeCwd, fontId);
       const next = { ...state, activeFont };
       setState(next);
       applyProjectUiState(next);
@@ -87,14 +88,14 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
 
   async function handleCreateTheme() {
     const prompt = themePrompt.trim();
-    if (!activeCwd || !prompt) return;
+    if (!themeCwd || !prompt) return;
     setBusy("create");
     setError("");
     try {
       const result = await activateProjectMoveApi({
         moveName: "create-theme",
         inputs: { prompt },
-        cwd: activeCwd,
+        cwd: themeCwd,
         userProfile: activeUserProfile ?? undefined,
         forceNewSession: true,
       });
@@ -111,7 +112,7 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     }
   }
 
-  if (!activeCwd) {
+  if (!themeCwd) {
     return <div className="dash-empty">select a project to load themes</div>;
   }
 
@@ -163,7 +164,7 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
               onChange={setThemePrompt}
               onSubmit={handleCreateTheme}
               submitLabel="launch theme session"
-              submitDisabled={!activeCwd || !themePrompt.trim() || busy !== null}
+              submitDisabled={!themeCwd || !themePrompt.trim() || busy !== null}
               disabled={busy !== null}
               placeholder="describe the vibe, palette, or direction..."
               rows={3}

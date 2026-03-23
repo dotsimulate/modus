@@ -428,7 +428,8 @@ export function ProfileEditor({
   initialProfile = null,
   onCancel,
 }: Props) {
-  const { activeUserProfile, activeUP, activeCwd, refreshProfiles, refreshUserProfiles } = useProfiles();
+  const { activeUserProfile, activeUP, activeCwd, projectRoot, refreshProfiles, refreshUserProfiles } = useProfiles();
+  const profileCwd = projectRoot ?? activeCwd;
 
   const isOpen = mode !== "closed";
   const isNew = mode === "new";
@@ -441,7 +442,7 @@ export function ProfileEditor({
   const handleSave = async (data: Omit<Profile, "name"> & { name?: string }) => {
     const saveName = isNew ? (data.name ?? "untitled") : initialProfile!;
     const { name: _n, ...rest } = data as any;
-    await saveProfileApi(saveName, rest, activeCwd);
+    await saveProfileApi(saveName, rest, profileCwd);
     if (isNew && activeUserProfile && activeUP?.agentProfiles) {
       const updated = [...activeUP.agentProfiles, saveName];
       await patchUserProfileApi(activeUserProfile, { agentProfiles: updated });
@@ -452,7 +453,7 @@ export function ProfileEditor({
 
   const handleDelete = async () => {
     if (!initialProfile) return;
-    await deleteProfileApi(initialProfile, activeCwd);
+    await deleteProfileApi(initialProfile, profileCwd);
     onProfilesChange();
   };
 

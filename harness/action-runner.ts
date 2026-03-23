@@ -32,9 +32,10 @@ import {
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
   getRunSummaries as dbGetRunSummaries, getNextRunNumber, getSession,
-  listSessions, getEvents, searchSessions, getSessionMessages as dbGetSessionMessages,
+  listSessions, listSessionsForProjects, getEvents, searchSessions,
+  getSessionMessages as dbGetSessionMessages,
   insertExecution, updateExecution as dbUpdateExecution,
-  updateSessionTitle, addSessionTag, removeSessionTag,
+  updateSessionTitle, addSessionTag, removeSessionTag, getSessionByTag,
 } from "./db";
 import type { SessionRow, EventRow, SearchHit } from "./db";
 import type {
@@ -420,14 +421,24 @@ function mapEvent(r: EventRow): EventInfo {
   };
 }
 
-function buildActionDB(actionName: string): ActionDB {
+function buildActionDB(
+  actionName: string,
+  projectCwd: string | undefined,
+  origin: "harness" | "project",
+): ActionDB {
+  // Harness-internal actions see everything. Project actions are scoped to their CWD.
+  const cwdScope = origin === "project" && projectCwd
+    ? { cwdPrefixes: [projectCwd] } : undefined;
+
   return {
     getRunSummaries: (limit = 20) => dbGetRunSummaries(actionName, limit),
     getRunHistory: (limit = 20) => dbGetActionRuns(actionName, limit),
     getActionRuns: (name, limit = 20) => dbGetActionRuns(name, limit),
-    listSessions: (limit = 50) => listSessions(limit).map(mapSession),
+    listSessions: (limit = 50) => cwdScope
+      ? listSessionsForProjects(cwdScope.cwdPrefixes, limit).map(mapSession)
+      : listSessions(limit).map(mapSession),
     getSession: (id) => { const s = getSession(id); return s ? mapSession(s) : null; },
-    searchSessions: (query, limit = 20) => searchSessions(query, limit).map(mapSearchHit),
+    searchSessions: (query, limit = 20) => searchSessions(query, limit, cwdScope).map(mapSearchHit),
     getEvents: (sessionId, afterSeq = 0) => getEvents(sessionId, afterSeq).map(mapEvent),
     getSessionMessages: (sessionId) => dbGetSessionMessages(sessionId),
     updateSessionTitle,
@@ -537,7 +548,7 @@ async function fireAction(
       const runDir = join(actionDir, "output", `exec-${exec.id}`, `run-${execRunNumber}`);
       let artifactDirCreated = false;
 
-      const db = buildActionDB(name);
+      const db = buildActionDB(name, cfg.cwd, state.origin);
       const totalSteps = (cfg.steps?.length ?? 0) + 1;
       const ctx: ActionContext = {
         actionName: name,
@@ -682,6 +693,12 @@ async function fireAction(
       }
 
       exec.currentSessionId = session.sessionId;
+
+      // ── Tag session for webhook session routing ──
+      if (triggerInfo.webhookSessionTag) {
+        addSessionTag(session.sessionId, triggerInfo.webhookSessionTag);
+        console.log(`[actions] Tagged session ${session.sessionId} with "${triggerInfo.webhookSessionTag}"`);
+      }
 
       // ── Rekey inline API move registrations to the real session ID ──
       for (const token of moveApiTokens) {
@@ -1157,12 +1174,30 @@ export async function triggerAction(name: string, opts?: { userProfile?: string 
 }
 
 /** Handle incoming webhook — validates token, fires the action */
-export async function handleWebhook(name: string, token: string, payload?: unknown): Promise<{ ok: boolean; error?: string }> {
+export async function handleWebhook(name: string, token: string, payload?: unknown): Promise<{ ok: boolean; error?: string; sessionId?: string; continued?: boolean }> {
   const state = actionStates.get(name);
   if (!state) return { ok: false, error: "unknown action" };
   if (state.config.trigger.type !== "webhook") return { ok: false, error: "action is not webhook-triggered" };
   if (state.config.trigger.token !== token) return { ok: false, error: "invalid token" };
   if (!state.config.enabled) return { ok: false, error: "action is disabled" };
+
+  // ── Session routing: if sessionKey is configured, try to continue an existing session ──
+  const sessionKey = state.config.trigger.sessionKey;
+  if (sessionKey && payload && typeof payload === "object" && (payload as any)[sessionKey]) {
+    const keyValue = String((payload as any)[sessionKey]);
+    const tag = `${name}:${sessionKey}:${keyValue}`;
+    const existing = getSessionByTag(tag);
+    if (existing) {
+      // Route to existing session — send payload content as a follow-up message
+      const content = (payload as any).content ?? (payload as any).message ?? (payload as any).prompt ?? JSON.stringify(payload);
+      const queued = queueMessage(existing.id, String(content));
+      console.log(`[actions] Webhook "${name}" routed to existing session ${existing.id} (tag: ${tag}, queued: ${queued})`);
+      return { ok: true, sessionId: existing.id, continued: true };
+    }
+    // No existing session — fall through to fire a new action run.
+    // The session will be tagged after creation (see webhookSessionTag in triggerInfo).
+    console.log(`[actions] Webhook "${name}" no existing session for tag "${tag}" — creating new run`);
+  }
 
   const maxConcurrency = state.config.concurrency ?? 1;
   if (state.activeExecutions.size >= maxConcurrency) {
@@ -1170,7 +1205,13 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
     return { ok: false, error: "action at concurrency limit" };
   }
 
-  const triggerInfo: TriggerInfo = { type: "webhook", payload };
+  // Build session tag for new sessions when sessionKey is configured
+  let webhookSessionTag: string | undefined;
+  if (sessionKey && payload && typeof payload === "object" && (payload as any)[sessionKey]) {
+    webhookSessionTag = `${name}:${sessionKey}:${String((payload as any)[sessionKey])}`;
+  }
+
+  const triggerInfo: TriggerInfo = { type: "webhook", payload, webhookSessionTag };
   fireAction(name, triggerInfo).catch(err => {
     console.error(`[actions] Webhook trigger error for "${name}":`, err);
   });

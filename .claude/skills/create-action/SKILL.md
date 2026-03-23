@@ -97,6 +97,49 @@ actions/<name>/
 }
 ```
 
+### Heartbeat with moves: scheduled companion check-in
+
+```json
+{
+  "name": "morning-checkin",
+  "description": "Daily check-in conversation with structured context",
+  "agentProfile": "buddy",
+  "trigger": { "type": "interval", "every": "1d",
+    "activeHours": { "start": "09:00", "end": "10:00" } },
+  "moves": [
+    { "name": "check-in" }
+  ],
+  "maxTurns": 20, "enabled": false
+}
+```
+
+The `moves` array attaches moves to the action's spawned session. Each move's
+`gather()` runs and its output is prepended to the action's prompt. This means:
+
+- The **action** handles WHEN (schedule, triggers, retries)
+- The **move** handles WHAT (structured context — reading memory, building prompts)
+- They compose without either needing to know about the other's internals
+
+This is particularly powerful for companion agents. Instead of duplicating memory-reading
+logic in the action's context.ts, you reference a companion move that already knows how
+to read memory, reference previous status, and guide a conversation. The action just
+provides the schedule.
+
+Moves with `api` blocks also work — the API token is automatically registered on the
+spawned session, so the agent can call ops immediately.
+
+```json
+{
+  "moves": [
+    { "name": "check-in" },
+    { "name": "catalog", "inputs": { "scope": "recent" } }
+  ]
+}
+```
+
+Multiple moves compose — each gather() output is prepended in order. Persistent moves
+are skipped (they activate after session spawn through the normal ambient registry).
+
 For the complete schema: [references/action-schema.md](references/action-schema.md).
 
 For context.ts patterns (dynamic prompts, DB queries, afterRun hooks, webhook payloads):
@@ -203,9 +246,12 @@ or calls `gather()` again with `ctx.stepIndex` set.
 ## Key Rules
 
 - **context.ts is portable** — it can live in ANY project's `.modus/actions/` directory.
-  Never import harness internals (`../../db`, `../../activity`, etc.) with relative paths.
-  Everything you need is on `ctx`: database ops via `ctx.db`, SVG rendering via
-  `ctx.svgToPngBase64()`, logging via `ctx.log()`. Type imports are fine (erased at runtime).
+  The only import you need is the type import: `import type { ... } from "../../action-types"`.
+  Everything else is on `ctx`: run history via `ctx.db.getRunSummaries()`, SVG rendering
+  via `ctx.svgToPngBase64()`, logging via `ctx.log()`. Use `fs` for reading project files.
+- **For project-local context** — read files from the project directory using `fs` and
+  `ctx.actionDir`. For structured context gathering, use `moves` on the action to attach
+  companion moves that read memory and build prompts.
 - Every action MUST reference an `agentProfile` in `<cwd>/.modus/profiles/agents/`
 - Actions start `enabled: false` — user enables them deliberately
 - Interval format: `"30s"`, `"5m"`, `"1h"`, `"4h"`, `"1d"`

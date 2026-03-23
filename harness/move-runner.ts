@@ -31,7 +31,8 @@ import {
   broadcastUiEvent, getActiveSession, queueMessage, startSession, watchSessionExchanges,
 } from "./session-manager";
 import {
-  listSessions as dbListSessions, getSession as dbGetSession,
+  listSessions as dbListSessions, listSessionsForProjects as dbListSessionsForProjects,
+  getSession as dbGetSession,
   searchSessions as dbSearchSessions, getSessionMessages, type TurnContent,
 } from "./db";
 import {
@@ -161,7 +162,12 @@ export async function gatherAmbientContext(sessionId: string): Promise<string | 
       // Gather-bail: null means skip this turn
       if (result === null) continue;
 
-      const text = typeof result === "string" ? result : String(result);
+      let text = typeof result === "string" ? result : String(result);
+      // Append modus_submit protocol for API moves
+      if (reg.apiToken) {
+        const moveCfg = getMove(reg.moveName, reg.cwd);
+        if (moveCfg?.api?.ops) text += buildApiOpsProtocol(reg.apiToken, moveCfg);
+      }
       if (text.trim()) {
         parts.push(`<!-- ambient:${reg.moveName} -->\n${text}\n<!-- /ambient:${reg.moveName} -->`);
       }
@@ -592,6 +598,41 @@ export function getMove(name: string, cwd: string): MoveConfig | null {
 }
 
 /**
+ * Build modus_submit protocol instructions for an API move.
+ * Appended to gather output so the agent knows how to call ops.
+ * The move author should NOT need to explain this — the harness owns the protocol.
+ */
+function buildApiOpsProtocol(apiToken: string, config: MoveConfig): string {
+  if (!config.api?.ops) return "";
+  const lines: string[] = [];
+  lines.push("");
+  lines.push("## How to call ops");
+  lines.push("");
+  lines.push("Use the `modus_submit` tool:");
+  lines.push("```");
+  lines.push(`modus_submit({ token: "${apiToken}", data: { op: "<op-name>", ...params } })`);
+  lines.push("```");
+  lines.push("");
+  lines.push("Do NOT use Bash, curl, or raw HTTP. Always use `modus_submit`.");
+  lines.push("");
+  lines.push("Available ops:");
+  for (const [opName, opDecl] of Object.entries(config.api.ops)) {
+    lines.push(`- \`${opName}\` — ${opDecl.description}`);
+    if (opDecl.schema && (opDecl.schema as any).properties) {
+      const props = (opDecl.schema as any).properties as Record<string, any>;
+      const required = new Set((opDecl.schema as any).required ?? []);
+      for (const [param, info] of Object.entries(props)) {
+        const req = required.has(param) ? " (required)" : "";
+        const desc = info.description ?? "";
+        lines.push(`  - \`${param}\`${req}: ${desc}`);
+      }
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+/**
  * Run a move's gather() once and return the prompt text.
  * Used by action-runner to prepend move context to action prompts.
  * Returns null if the move doesn't exist, has no gather(), or gather bails.
@@ -637,7 +678,10 @@ export async function gatherMoveOnce(
   const text = typeof result === "string" ? result : String(result);
   const trimmed = text.trim();
   if (!trimmed) return null;
-  return { text: trimmed, apiToken };
+
+  // Append modus_submit protocol for API moves
+  const opsProtocol = (apiToken && config?.api?.ops) ? buildApiOpsProtocol(apiToken, config) : "";
+  return { text: trimmed + opsProtocol, apiToken };
 }
 
 /** List all available moves for a CWD */
@@ -740,9 +784,12 @@ function buildMoveContext(
 }
 
 function buildMoveDB(moveName: string, cwd: string): MoveDB {
+  // Scope session queries to the move's project CWD
+  const cwdScope = { cwdPrefixes: [cwd] };
+
   return {
     listSessions(limit = 20) {
-      return dbListSessions(limit).map((s) => ({
+      return dbListSessionsForProjects(cwdScope.cwdPrefixes, limit).map((s) => ({
         id: s.id,
         preview: s.preview,
         profile: s.profile,
@@ -762,7 +809,7 @@ function buildMoveDB(moveName: string, cwd: string): MoveDB {
       };
     },
     searchSessions(query: string, limit = 10) {
-      return dbSearchSessions(query, limit).map((h) => ({
+      return dbSearchSessions(query, limit, cwdScope).map((h) => ({
         sessionId: h.session_id,
         snippet: h.snippet,
         profile: h.profile,
@@ -1065,6 +1112,11 @@ export async function activateAttachedMove(opts: {
     } else {
       prompt = `## ${config.label}\n${config.description}`;
     }
+
+    // Append modus_submit protocol for API moves
+    if (opts.apiToken && config.api?.ops) {
+      prompt += buildApiOpsProtocol(opts.apiToken, config);
+    }
   } catch (err) {
     return { ok: false, error: `gather() failed: ${err}` };
   }
@@ -1297,6 +1349,11 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
       prompt = typeof result === "string" ? result : String(result);
     } else {
       prompt = buildDefaultPrompt(config, token);
+    }
+
+    // Append modus_submit protocol for API moves
+    if (apiToken && config.api?.ops) {
+      prompt += buildApiOpsProtocol(apiToken, config);
     }
   } catch (err) {
     console.error(`[move-runner] gather() failed for "${moveName}":`, err);
