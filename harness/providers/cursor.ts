@@ -297,6 +297,18 @@ export function createCursorProvider(): SessionProvider {
     startTurn(ctx: TurnContext) {
       const { session, opts, profile: profileDef } = ctx;
 
+      // Pre-check: ensure cursor-agent binary is available
+      const bin = resolveCursorAgentBin();
+      if (!Bun.which(bin)) {
+        const reason = `Provider binary "${bin}" not found in PATH. Install cursor-agent or set CURSOR_AGENT_BIN to the correct path.`;
+        console.error(`[cursor] ${reason}`);
+        session.status = "error";
+        session.error = reason;
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: reason });
+        return;
+      }
+
       const model = opts.model ?? profileDef?.model ?? "composer-2-fast";
 
       const state: CursorState = {
@@ -321,6 +333,7 @@ export function createCursorProvider(): SessionProvider {
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: String(err) });
       });
 
       // Startup timeout
