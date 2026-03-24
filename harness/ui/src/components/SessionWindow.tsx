@@ -30,6 +30,7 @@ function statusLabel(status: string): string {
 }
 
 export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
+  const { projectRoot } = useProfiles();
   const [input, setInput] = useState("");
   const [queuedMessage, setQueuedMessage] = useState<{ text: string; attachments: Attachment[] } | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -267,7 +268,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
                 sessionStatus={session?.status ?? null}
                 disabled={false}
                 sessionId={sessionId}
-                projectCwd={session?.cwd}
+                projectCwd={projectRoot ?? session?.cwd}
                 autoFocus
               />
             </div>
