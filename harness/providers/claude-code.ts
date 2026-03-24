@@ -199,6 +199,18 @@ export function createClaudeCodeProvider(): SessionProvider {
     capabilities: CLAUDE_CAPABILITIES,
     startTurn(ctx: TurnContext) {
       const { session, opts, profile: profileDef } = ctx;
+
+      // Pre-check: ensure claude binary is available
+      if (!Bun.which(CLAUDE_PATH)) {
+        const reason = `Provider binary "${CLAUDE_PATH}" not found in PATH. Install Claude Code CLI or set CLAUDE_PATH.`;
+        console.error(`[claude-code] ${reason}`);
+        session.status = "error";
+        session.error = reason;
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: reason });
+        return;
+      }
+
       const { generator, channel } = createInputChannel();
 
       // Build system prompt — resolve {{key}} template vars
@@ -679,6 +691,78 @@ export function createClaudeCodeProvider(): SessionProvider {
         }
       }
 
+      // Re-merge MCP servers for the new profile
+      const globalConfig = getGlobalConfig(session.cwd);
+      const sessionCwdMcp = readProjectMcpServers(ctx.opts.cwd ?? session.cwd);
+      const mergedMcp = {
+        ...sessionCwdMcp,
+        ...(globalConfig.mcpServers ?? {}),
+        ...(profileDef?.mcpServers ?? {}),
+      };
+
+      // Resolve relative --directory args to absolute
+      const harnessRoot = dirname(import.meta.dir.endsWith("/") ? import.meta.dir.slice(0, -1) : import.meta.dir);
+      const projectCwdNames = new Set(Object.keys(sessionCwdMcp));
+      for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
+        const args = server.args as string[] | undefined;
+        if (!args) continue;
+        const dirIdx = args.indexOf("--directory");
+        const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
+        if (dirVal && !isAbsolute(dirVal)) {
+          const anchor = projectCwdNames.has(name) ? (ctx.opts.cwd ?? session.cwd) : harnessRoot;
+          args[dirIdx + 1] = join(anchor, dirVal);
+        }
+      }
+
+      // Inject AGENT_PROFILE + memory scoping env vars into agent-memory MCP server
+      if (mergedMcp["agent-memory"]) {
+        const am = mergedMcp["agent-memory"] as any;
+        const env: Record<string, string> = { ...(am.env ?? {}) };
+        if (ctx.opts.profile) env.AGENT_PROFILE = ctx.opts.profile;
+        if (ctx.opts.userProfile) env.USER_PROFILE = ctx.opts.userProfile;
+
+        const sessionCwd = ctx.opts.cwd ?? process.env.AGENT_CWD;
+        if (sessionCwd) {
+          const projectMemoryDir = join(sessionCwd, ".modus", "memory");
+          if (existsSync(projectMemoryDir)) {
+            env.AGENT_MEMORY_DIR = projectMemoryDir;
+            const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
+            const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
+            if (agentMemoryRoot) {
+              env.AGENT_MEMORY_READ_DIRS = `${agentMemoryRoot}/memory`;
+            }
+          }
+        }
+
+        if (ctx.opts.userProfile) {
+          const userProf = getUserProfile(ctx.opts.userProfile);
+          if (userProf?.projects?.length) {
+            env.AGENT_MEMORY_SKILLS_DIRS = userProf.projects
+              .map(p => join(p, ".claude", "skills"))
+              .join(",");
+          } else {
+            env.AGENT_MEMORY_SKILLS_DIRS = "";
+          }
+          if (userProf?.memory?.scope === "profile") {
+            const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
+            const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
+            if (agentMemoryRoot) {
+              const globalDir = `${agentMemoryRoot}/memory`;
+              const profileDir = `${agentMemoryRoot}/memory/profiles/${ctx.opts.userProfile}`;
+              env.AGENT_MEMORY_DIR = profileDir;
+              if (userProf.memory.inheritGlobal !== false) {
+                env.AGENT_MEMORY_READ_DIRS = globalDir;
+              }
+            }
+          }
+        }
+        am.env = env;
+      }
+
+      const hasMcpNew = Object.keys(mergedMcp).length > 0;
+      state.sdkOptions.mcpServers = hasMcpNew ? resolveEnvVars(mergedMcp) : undefined;
+      console.log(`[claude-code] switchProfile MCP re-merge: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
+
       // Update SDK options for next resume
       state.sdkOptions.systemPrompt = systemPrompt;
       state.sdkOptions.model = ctx.opts.model || undefined;
@@ -690,7 +774,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         : undefined;
 
       // Update tools
-      const hasMcp = !!state.sdkOptions.mcpServers;
+      const hasMcp = hasMcpNew;
       const providerLockedToDifferentProfile = !!ctx.opts.provider
         && !!profileDef?.provider
         && ctx.opts.provider !== profileDef.provider;

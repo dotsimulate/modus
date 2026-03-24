@@ -859,9 +859,10 @@ app.patch("/api/sessions/:id/profile", async (c) => {
   const { profile, contextMode } = body;
   if (!profile) return c.json({ error: "profile required" }, 400);
   const active = getActiveSession(id);
-  if (!getProfile(profile, active?.cwd)) {
+  const sessionCwd = active?.cwd ?? getSession(id)?.cwd ?? undefined;
+  if (!getProfile(profile, sessionCwd)) {
     return c.json(
-      { error: `unknown profile: ${profile}`, available: listProfileNames(active?.cwd) },
+      { error: `unknown profile: ${profile}`, available: listProfileNames(sessionCwd) },
       400,
     );
   }
