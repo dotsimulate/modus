@@ -439,7 +439,7 @@ function AppShell() {
   }).length;
   // ── Move pages (moves that declare a page field) ──
   const [movePages, setMovePages] = useState<MoveListItem[]>([]);
-  const projectCwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
+  const projectCwd = projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
   useEffect(() => {
     if (!projectCwd) return;
     fetchMoves(projectCwd).then((moves) => {
