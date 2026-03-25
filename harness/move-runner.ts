@@ -25,6 +25,7 @@ import type {
   MoveDB, HarnessBridge, MoveRun,
   MoveApiHandler, MoveApiContext, MoveApiRegistration, MoveStateAPI,
   AmbientMoveRegistration, MoveAssistantTurnContext,
+  MoveCapabilities,
 } from "./move-types";
 import {
   type StartSessionOpts,
@@ -486,6 +487,13 @@ export async function handleMoveApiSubmit(
           cwd: reg.cwd,
         });
       }
+      // ── Audit: log handler notify (message injection) ──
+      logActivity({
+        eventType: "move_handler_notify",
+        sessionId: reg.sessionId || undefined,
+        summary: `${reg.moveName}:${op} notify → ${message.slice(0, 80)}`,
+        metadata: { moveName: reg.moveName, op, emitType: emit?.type, resumed: !queued },
+      });
     },
   };
 
@@ -494,7 +502,24 @@ export async function handleMoveApiSubmit(
   const payload = (typeof data.data === "object" && data.data !== null)
     ? data.data as Record<string, unknown>
     : data;
-  return handler(ctx, payload);
+  const result = await handler(ctx, payload);
+
+  // ── Audit: log every op call ──
+  logActivity({
+    eventType: "move_op",
+    sessionId: reg.sessionId || undefined,
+    summary: `${reg.moveName}:${op} [${caller}] → ${result.ok ? "ok" : "error"}`,
+    metadata: {
+      moveName: reg.moveName,
+      op,
+      caller,
+      instanceId: reg.instanceId,
+      ok: result.ok,
+      ...(result.error ? { error: result.error } : {}),
+    },
+  });
+
+  return result;
 }
 
 /** List active instances for a move (for {{openInstances}} template var resolution) */
@@ -835,6 +860,56 @@ function generateToken(): string {
   return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 16);
 }
 
+// ── Trust & Capability Enforcement ──
+
+type ResolveTrust = "builtin" | "reviewed" | "experimental";
+
+/** Resolve trust tier for a move — inferred from origin when not declared */
+function resolveTrust(config: MoveConfig | undefined): ResolveTrust {
+  if (config?.trust) return config.trust;
+  return config?.origin === "harness" ? "builtin" : "experimental";
+}
+
+/**
+ * Check a capability and enforce based on trust tier.
+ *   - builtin:      never blocked (trusted code)
+ *   - reviewed:     blocked if capability is explicitly false
+ *   - experimental: never blocked, but denial is logged as a warning
+ */
+function assertCapability(
+  caps: MoveCapabilities,
+  capability: keyof MoveCapabilities,
+  moveName: string,
+  detail?: string,
+  trust?: ResolveTrust,
+): void {
+  const tier = trust ?? "experimental";
+
+  // Builtin moves are fully trusted — skip checks
+  if (tier === "builtin") return;
+
+  if (caps[capability] === false) {
+    const msg = `Move "${moveName}" declared capabilities.${capability}: false${detail ? ` — ${detail}` : ""}`;
+
+    if (tier === "reviewed") {
+      // Reviewed moves: hard enforcement
+      logActivity({
+        eventType: "move_capability_denied",
+        summary: msg,
+        metadata: { moveName, capability, trust: tier },
+      });
+      throw new Error(msg);
+    }
+
+    // Experimental moves: log warning but don't block
+    logActivity({
+      eventType: "move_capability_warning",
+      summary: `[experimental] ${msg}`,
+      metadata: { moveName, capability, trust: tier },
+    });
+  }
+}
+
 // ── Context Builder ──
 
 function buildMoveContext(
@@ -846,6 +921,9 @@ function buildMoveContext(
 ): MoveContext {
   const active = getActiveSession(sessionId);
   const metadata = opts?.metadata ?? {};
+  const moveCfg = getMove(moveName, cwd);
+  const caps = moveCfg?.capabilities ?? {};
+  const trust = resolveTrust(moveCfg);
 
   return {
     moveName,
@@ -861,11 +939,19 @@ function buildMoveContext(
     inputs: opts?.inputs ?? {},
     db: buildMoveDB(moveName, cwd),
     run: async (cmd: string): Promise<string> => {
+      assertCapability(caps, "shell", moveName, `cmd: ${cmd.slice(0, 80)}`, trust);
       const proc = Bun.spawn(["sh", "-c", cmd], { cwd, stdout: "pipe", stderr: "pipe" });
       const out = await new Response(proc.stdout).text();
+      // ── Audit: log shell execution ──
+      logActivity({
+        eventType: "move_shell",
+        sessionId: sessionId || undefined,
+        summary: `${moveName}: ${cmd.length > 120 ? cmd.slice(0, 120) + "…" : cmd}`,
+        metadata: { moveName, cmd: cmd.slice(0, 500), trust },
+      });
       return out.trim();
     },
-    harness: buildHarnessBridge(cwd, userProfile),
+    harness: buildHarnessBridge(moveName, sessionId, cwd, userProfile, caps, trust),
     meta: (key: string, value: unknown) => { metadata[key] = value; },
     token: opts?.token,
     schema: opts?.schema,
@@ -913,9 +999,10 @@ function buildMoveDB(moveName: string, cwd: string): MoveDB {
   };
 }
 
-function buildHarnessBridge(cwd: string, userProfile: string | undefined): HarnessBridge {
+function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: string, userProfile: string | undefined, caps: MoveCapabilities = {}, trust?: ResolveTrust): HarnessBridge {
   return {
     async createSession(opts) {
+      assertCapability(caps, "sessionSpawn", moveName, `profile: ${opts.profile}`, trust);
       const session = startSession({
         prompt: opts.prompt,
         profile: opts.profile,
@@ -928,16 +1015,49 @@ function buildHarnessBridge(cwd: string, userProfile: string | undefined): Harne
       while (session.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
         await Bun.sleep(100);
       }
+      // ── Audit: log session spawn ──
+      logActivity({
+        eventType: "move_session_spawn",
+        sessionId: sourceSessionId || undefined,
+        agentProfile: opts.profile,
+        summary: `${moveName} spawned session ${session.sessionId} (profile: ${opts.profile})`,
+        metadata: { moveName, spawnedSessionId: session.sessionId, profile: opts.profile },
+      });
       return session.sessionId;
     },
-    async sendMessage(sessionId, content) {
-      queueMessage(sessionId, content);
+    async sendMessage(targetSessionId, content) {
+      assertCapability(caps, "sessionMessage", moveName, `target: ${targetSessionId}`, trust);
+      queueMessage(targetSessionId, content);
+      // ── Audit: log message send ──
+      logActivity({
+        eventType: "move_send_message",
+        sessionId: sourceSessionId || undefined,
+        summary: `${moveName} → session ${targetSessionId}: ${String(content).slice(0, 80)}`,
+        metadata: { moveName, targetSessionId, contentLength: String(content).length },
+      });
     },
     async triggerAction(actionName) {
+      assertCapability(caps, "actionTrigger", moveName, `action: ${actionName}`, trust);
       await triggerAction(actionName);
+      // ── Audit: log action trigger ──
+      logActivity({
+        eventType: "move_trigger_action",
+        sessionId: sourceSessionId || undefined,
+        actionName,
+        summary: `${moveName} triggered action "${actionName}"`,
+        metadata: { moveName },
+      });
     },
     async notify(spec) {
+      assertCapability(caps, "notify", moveName, `channel: ${spec.channel}`, trust);
       console.log(`[move-runner] notify requested on channel "${spec.channel}": ${spec.body}`);
+      // ── Audit: log notification ──
+      logActivity({
+        eventType: "move_notify",
+        sessionId: sourceSessionId || undefined,
+        summary: `${moveName} notify → ${spec.channel}: ${spec.body.slice(0, 80)}`,
+        metadata: { moveName, channel: spec.channel },
+      });
     },
   };
 }
@@ -1585,6 +1705,20 @@ export async function handleSubmit(
 
   // Increment attempts
   moveToken.attempts++;
+
+  // ── Audit: log every submit attempt ──
+  logActivity({
+    eventType: "move_submit",
+    sessionId: moveToken.sessionId || undefined,
+    summary: `${moveToken.moveName} submit attempt ${moveToken.attempts}/${moveToken.maxAttempts}`,
+    metadata: {
+      moveName: moveToken.moveName,
+      mode: moveToken.mode,
+      attempt: moveToken.attempts,
+      maxAttempts: moveToken.maxAttempts,
+      fields: Object.keys(data),
+    },
+  });
 
   // Validate against schema if present
   if (moveToken.schema) {
