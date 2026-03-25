@@ -22,8 +22,9 @@ export async function fetchGeminiUsageSnapshot(opts: {
   const cwd = opts.cwd ?? process.cwd();
   const model = opts.model ?? "auto-gemini-3";
 
+  let config: Config | null = null;
   try {
-    const config = new Config({
+    config = new Config({
       sessionId: `gemini-usage-${crypto.randomUUID()}`,
       targetDir: cwd,
       cwd,
@@ -42,7 +43,7 @@ export async function fetchGeminiUsageSnapshot(opts: {
     const limit = config.getQuotaLimit();
     const resetTime = config.getQuotaResetTime();
 
-    return {
+    const result: GeminiUsageSnapshot = {
       available: remaining != null || limit != null || !!resetTime,
       authType: AuthType.LOGIN_WITH_GOOGLE,
       model,
@@ -55,7 +56,11 @@ export async function fetchGeminiUsageSnapshot(opts: {
       tier: config.getUserTierName(),
       paidTier: config.getUserPaidTier() ? String(config.getUserPaidTier()) : undefined,
     };
+
+    await config.dispose();
+    return result;
   } catch (error) {
+    try { await config?.dispose(); } catch { /* best effort */ }
     return {
       available: false,
       authType: AuthType.LOGIN_WITH_GOOGLE,
