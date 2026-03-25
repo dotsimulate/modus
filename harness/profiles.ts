@@ -5,6 +5,7 @@
  *   profiles/agents/   — agent profile definitions (config, edit deliberately)
  *   profiles/users/    — user profile definitions (config, edit deliberately)
  *   profiles/state/    — runtime UI state (app-managed, gitignored)
+ *   profiles/ui/       — interface-specific UI config sidecars
  *   profiles/_global.json — shared MCP servers merged into every session
  *   profiles/_users.json  — template var defaults
  *
@@ -25,8 +26,11 @@ const PROFILES_DIR = join(import.meta.dir, "profiles");
 const AGENTS_DIR = join(PROFILES_DIR, "agents");
 const USERS_DIR = join(PROFILES_DIR, "users");
 const STATE_DIR = join(PROFILES_DIR, "state");
+const UI_DIR = join(PROFILES_DIR, "ui");
+const UI_AGENTS_DIR = join(UI_DIR, "agents");
+const UI_USERS_DIR = join(UI_DIR, "users");
 
-for (const dir of [PROFILES_DIR, USERS_DIR, STATE_DIR]) {
+for (const dir of [PROFILES_DIR, USERS_DIR, STATE_DIR, UI_DIR, UI_AGENTS_DIR, UI_USERS_DIR]) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
@@ -36,6 +40,10 @@ const MODUS_DIR = ".modus";
 
 function projectAgentsDir(cwd: string): string {
   return join(cwd, MODUS_DIR, "profiles", "agents");
+}
+
+function projectProfileUiDir(cwd: string): string {
+  return join(cwd, MODUS_DIR, "ui", "profiles", "agents");
 }
 
 function projectGlobalPath(cwd: string): string {
@@ -219,6 +227,16 @@ export type ClientExtensionsConfig = {
   settings?: Record<string, Record<string, unknown>>;
 };
 
+export type ProfileUiConfig = NonNullable<Profile["ui"]>;
+
+export type UserProfileUiConfig = {
+  dashboard?: UserProfile["dashboard"];
+  leftPanel?: { widgets?: string[] };
+  computer?: string;
+  editor?: string;
+  clientExtensions?: ClientExtensionsConfig;
+};
+
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
   providerDefaults?: Record<string, ProviderDefaults>;
@@ -289,6 +307,10 @@ export type UserProfile = {
       >;
     }>;
   };
+  /** Left panel widget layout — read by frontend */
+  leftPanel?: {
+    widgets?: string[];
+  };
   /** Computer/machine name — displayed in top-nav status bar */
   computer?: string;
   /** Preferred editor CLI command for "open in editor" */
@@ -321,6 +343,10 @@ function uniqueStrings(values: Array<string | undefined> | undefined): string[] 
   return result.length > 0 ? Array.from(new Set(result)) : undefined;
 }
 
+function hasOwnKeys(value: Record<string, unknown> | undefined): boolean {
+  return !!value && Object.keys(value).length > 0;
+}
+
 function mergeExtensionSettings(
   base?: Record<string, Record<string, unknown>>,
   override?: Record<string, Record<string, unknown>>,
@@ -344,6 +370,60 @@ function mergeClientExtensions(
     settings: mergeExtensionSettings(base?.settings, override?.settings),
   };
   return merged.paths || merged.enabled || merged.disabled || merged.settings ? merged : undefined;
+}
+
+function mergeProfileUi(
+  base?: ProfileUiConfig,
+  override?: ProfileUiConfig,
+): ProfileUiConfig | undefined {
+  if (!base && !override) return undefined;
+  const merged: ProfileUiConfig = { ...(base ?? {}), ...(override ?? {}) };
+  return hasOwnKeys(merged as Record<string, unknown>) ? merged : undefined;
+}
+
+function mergeUserProfileUi(
+  base?: UserProfileUiConfig,
+  override?: UserProfileUiConfig,
+): UserProfileUiConfig | undefined {
+  if (!base && !override) return undefined;
+  const merged: UserProfileUiConfig = {
+    dashboard: (base?.dashboard || override?.dashboard)
+      ? { ...(base?.dashboard ?? {}), ...(override?.dashboard ?? {}) }
+      : undefined,
+    leftPanel: (base?.leftPanel || override?.leftPanel)
+      ? { ...(base?.leftPanel ?? {}), ...(override?.leftPanel ?? {}) }
+      : undefined,
+    computer: override?.computer ?? base?.computer,
+    editor: override?.editor ?? base?.editor,
+    clientExtensions: mergeClientExtensions(base?.clientExtensions, override?.clientExtensions),
+  };
+  return hasOwnKeys(merged as Record<string, unknown>) ? merged : undefined;
+}
+
+function profileUiPath(name: string, cwd?: string): string {
+  return cwd
+    ? join(projectProfileUiDir(cwd), `${name}.json`)
+    : join(UI_AGENTS_DIR, `${name}.json`);
+}
+
+function userProfileUiPath(name: string): string {
+  return join(UI_USERS_DIR, `${name}.json`);
+}
+
+function legacyProfileUi(profile?: Profile): ProfileUiConfig | undefined {
+  return profile?.ui ? { ...profile.ui } : undefined;
+}
+
+function legacyUserProfileUi(profile?: UserProfile): UserProfileUiConfig | undefined {
+  if (!profile) return undefined;
+  const ui: UserProfileUiConfig = {
+    dashboard: profile.dashboard,
+    leftPanel: profile.leftPanel,
+    computer: profile.computer,
+    editor: profile.editor,
+    clientExtensions: profile.clientExtensions,
+  };
+  return hasOwnKeys(ui as Record<string, unknown>) ? ui : undefined;
 }
 
 function resolveConfiguredPath(rawPath: string, baseDir: string): string {
@@ -370,13 +450,27 @@ function readProfileFile(name: string): Profile | undefined {
   return readJson<Profile>(join(AGENTS_DIR, `${name}.json`));
 }
 
-/** Resolve an agent profile — checks project-local .modus/ first when cwd is provided */
-export function getProfile(name: string, cwd?: string): Profile | undefined {
+/** Read an agent profile config without applying UI sidecars. */
+export function getProfileConfig(name: string, cwd?: string): Profile | undefined {
   if (cwd) {
     const proj = readJson<Profile>(join(projectAgentsDir(cwd), `${name}.json`));
     if (proj) return proj;
   }
   return readProfileFile(name);
+}
+
+export function getProfileUiConfig(name: string, cwd?: string): ProfileUiConfig | undefined {
+  const legacy = legacyProfileUi(getProfileConfig(name, cwd));
+  const sidecar = readJson<ProfileUiConfig>(profileUiPath(name, cwd));
+  return mergeProfileUi(legacy, sidecar);
+}
+
+/** Resolve an agent profile — checks project-local .modus/ first when cwd is provided */
+export function getProfile(name: string, cwd?: string): Profile | undefined {
+  const profile = getProfileConfig(name, cwd);
+  if (!profile) return undefined;
+  const ui = getProfileUiConfig(name, cwd);
+  return ui ? { ...profile, ui } : profile;
 }
 
 /** List all agent profile names — merges project-local when cwd is provided */
@@ -400,21 +494,10 @@ export function listProfileNames(cwd?: string): string[] {
 
 /** Get all agent profiles as a Record — merges project-local when cwd is provided */
 export function getAllProfiles(cwd?: string): Record<string, Profile> {
-  // Base profiles first, then project-local overrides on top
   const result: Record<string, Profile> = {};
-  for (const name of listProfileNames()) {
-    const p = readProfileFile(name);
+  for (const name of listProfileNames(cwd)) {
+    const p = getProfile(name, cwd);
     if (p) result[name] = p;
-  }
-  if (cwd) {
-    const projDir = projectAgentsDir(cwd);
-    if (existsSync(projDir)) {
-      for (const f of readdirSync(projDir).filter(f => f.endsWith(".json"))) {
-        const name = basename(f, ".json");
-        const p = readJson<Profile>(join(projDir, f));
-        if (p) result[name] = p;
-      }
-    }
   }
   return result;
 }
@@ -440,14 +523,29 @@ export function saveProfile(name: string, profile: Profile, cwd?: string): void 
   writeJson(filePath, profile);
 }
 
+export function saveProfileUiConfig(name: string, ui: ProfileUiConfig, cwd?: string): void {
+  const filePath = profileUiPath(name, cwd);
+  if (cwd) mkdirSync(projectProfileUiDir(cwd), { recursive: true });
+  snapshot(filePath);
+  writeJson(filePath, ui);
+}
+
+export function patchProfileUiConfig(name: string, patch: Partial<ProfileUiConfig>, cwd?: string): ProfileUiConfig {
+  const merged = { ...(getProfileUiConfig(name, cwd) ?? {}), ...patch } as ProfileUiConfig;
+  saveProfileUiConfig(name, merged, cwd);
+  return merged;
+}
+
 /** Delete an agent profile.
  *  When cwd is provided, deletes from <cwd>/.modus/profiles/agents/. */
 export function deleteProfile(name: string, cwd?: string): boolean {
   const dir = cwd ? projectAgentsDir(cwd) : AGENTS_DIR;
   const filePath = join(dir, `${name}.json`);
-  if (!existsSync(filePath)) return false;
-  unlinkSync(filePath);
-  return true;
+  const uiFilePath = profileUiPath(name, cwd);
+  const deletedCore = existsSync(filePath);
+  if (deletedCore) unlinkSync(filePath);
+  if (existsSync(uiFilePath)) unlinkSync(uiFilePath);
+  return deletedCore;
 }
 
 // ── Global Config ──
@@ -485,7 +583,7 @@ export function getResolvedClientExtensionsConfig(cwd?: string, userProfileName?
 
   const projectFile = cwd ? projectGlobalPath(cwd) : undefined;
   const projectClient = projectFile ? readJson<GlobalConfig>(projectFile)?.clientExtensions : undefined;
-  const userClient = userProfileName ? getUserProfile(userProfileName)?.clientExtensions : undefined;
+  const userClient = userProfileName ? getUserProfileUiConfig(userProfileName)?.clientExtensions : undefined;
 
   const merged = mergeClientExtensions(
     mergeClientExtensions(baseClient, projectClient),
@@ -521,8 +619,22 @@ function readUserProfileFile(name: string): UserProfile | undefined {
   return readJson<UserProfile>(join(USERS_DIR, `${name}.json`));
 }
 
-export function getUserProfile(name: string): UserProfile | undefined {
+/** Read a user profile config without applying UI sidecars. */
+export function getUserProfileConfig(name: string): UserProfile | undefined {
   return readUserProfileFile(name);
+}
+
+export function getUserProfileUiConfig(name: string): UserProfileUiConfig | undefined {
+  const legacy = legacyUserProfileUi(getUserProfileConfig(name));
+  const sidecar = readJson<UserProfileUiConfig>(userProfileUiPath(name));
+  return mergeUserProfileUi(legacy, sidecar);
+}
+
+export function getUserProfile(name: string): UserProfile | undefined {
+  const profile = getUserProfileConfig(name);
+  if (!profile) return undefined;
+  const ui = getUserProfileUiConfig(name);
+  return ui ? { ...profile, ...ui } : profile;
 }
 
 export function listUserProfileNames(): string[] {
@@ -536,7 +648,7 @@ export function listUserProfileNames(): string[] {
 export function getAllUserProfiles(): Record<string, UserProfile> {
   const result: Record<string, UserProfile> = {};
   for (const name of listUserProfileNames()) {
-    const p = readUserProfileFile(name);
+    const p = getUserProfile(name);
     if (p) result[name] = p;
   }
   return result;
@@ -550,9 +662,11 @@ export function saveUserProfile(name: string, profile: UserProfile): void {
 
 export function deleteUserProfile(name: string): boolean {
   const filePath = join(USERS_DIR, `${name}.json`);
-  if (!existsSync(filePath)) return false;
-  unlinkSync(filePath);
-  return true;
+  const uiFilePath = userProfileUiPath(name);
+  const deletedCore = existsSync(filePath);
+  if (deletedCore) unlinkSync(filePath);
+  if (existsSync(uiFilePath)) unlinkSync(uiFilePath);
+  return deletedCore;
 }
 
 /** Partial update — merges provided fields into existing user profile config */
@@ -561,6 +675,18 @@ export function patchUserProfile(name: string, patch: Partial<UserProfile>): Use
   if (!existing) return undefined;
   const merged = { ...existing, ...patch };
   saveUserProfile(name, merged);
+  return merged;
+}
+
+export function saveUserProfileUiConfig(name: string, ui: UserProfileUiConfig): void {
+  const filePath = userProfileUiPath(name);
+  snapshot(filePath);
+  writeJson(filePath, ui);
+}
+
+export function patchUserProfileUiConfig(name: string, patch: Partial<UserProfileUiConfig>): UserProfileUiConfig {
+  const merged = mergeUserProfileUi(getUserProfileUiConfig(name), patch as UserProfileUiConfig) ?? {};
+  saveUserProfileUiConfig(name, merged);
   return merged;
 }
 

@@ -1,7 +1,10 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
-import type { Profile, ProviderCapabilities, UserProfile, UserProfileState, CreateSessionOpts } from "../api";
+import type {
+  Profile, ProfileUi, ProviderCapabilities, UserProfile, UserProfileState, UserProfileUiConfig, CreateSessionOpts,
+} from "../api";
 import {
-  fetchProfiles, fetchProviderCapabilities, fetchProviders, fetchUserProfiles, fetchUserProfileState,
+  fetchProfiles, fetchProfileUiConfig, fetchProviderCapabilities, fetchProviders,
+  fetchUserProfiles, fetchUserProfileState, fetchUserProfileUiConfig,
   patchUserProfileStateApi,
 } from "../api";
 import { createDefaultSetupState, type SessionSetupState } from "../components/SessionSetup";
@@ -83,18 +86,53 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setActiveUserProfile(name);
   }, []);
 
+  const hydrateProfilesWithUi = useCallback(async (items: Profile[], cwd?: string): Promise<Profile[]> => {
+    const uiByName = Object.fromEntries(await Promise.all(items.map(async (profile) => {
+      try {
+        return [profile.name, await fetchProfileUiConfig(profile.name, cwd)] as const;
+      } catch {
+        return [profile.name, profile.ui ?? {}] as const;
+      }
+    }))) as Record<string, ProfileUi>;
+    return items.map((profile) => {
+      const ui = uiByName[profile.name];
+      return ui && Object.keys(ui).length > 0 ? { ...profile, ui } : profile;
+    });
+  }, []);
+
+  const hydrateUserProfilesWithUi = useCallback(async (items: UserProfile[]): Promise<UserProfile[]> => {
+    const uiByName = Object.fromEntries(await Promise.all(items.map(async (profile) => {
+      try {
+        return [profile.name, await fetchUserProfileUiConfig(profile.name)] as const;
+      } catch {
+        const fallback: UserProfileUiConfig = {
+          dashboard: profile.dashboard,
+          leftPanel: profile.leftPanel,
+          computer: profile.computer,
+          editor: profile.editor,
+          clientExtensions: profile.clientExtensions,
+        };
+        return [profile.name, fallback] as const;
+      }
+    }))) as Record<string, UserProfileUiConfig>;
+    return items.map((profile) => ({
+      ...profile,
+      ...uiByName[profile.name],
+    }));
+  }, []);
+
   // Refresh agent profiles from server — always scoped to project root
   const refreshProfiles = useCallback(async () => {
     const cwd = projectRoot || setupState.cwd.trim() || undefined;
-    const p = await fetchProfiles(cwd);
+    const p = await hydrateProfilesWithUi(await fetchProfiles(cwd), cwd);
     setProfiles(p);
-  }, [projectRoot, setupState.cwd]);
+  }, [hydrateProfilesWithUi, projectRoot, setupState.cwd]);
 
   // Refresh user profiles from server
   const refreshUserProfiles = useCallback(async () => {
-    const ups = await fetchUserProfiles();
+    const ups = await hydrateUserProfilesWithUi(await fetchUserProfiles());
     setUserProfiles(ups);
-  }, []);
+  }, [hydrateUserProfilesWithUi]);
 
   // Debounced UI state save
   const saveUiState = useCallback((patch: Partial<UserProfileState>) => {
@@ -141,7 +179,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const loadInitial = async () => {
       try {
         const [up, prov, caps] = await Promise.all([
-          fetchUserProfiles(),
+          fetchUserProfiles().then(hydrateUserProfilesWithUi),
           fetchProviders(),
           fetchProviderCapabilities(),
         ]);
@@ -163,12 +201,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Fetch profiles with resolved CWD for project-local merging
-        const p = await fetchProfiles(initialCwd || undefined);
+        const p = await hydrateProfilesWithUi(await fetchProfiles(initialCwd || undefined), initialCwd || undefined);
         setProfiles(p);
       } catch { /* silent — health check will catch */ }
     };
     loadInitial();
-  }, []);
+  }, [activeUserProfile, hydrateProfilesWithUi, hydrateUserProfilesWithUi]);
 
   // Reload profiles when project root changes (project-local profiles may differ).
   // Uses projectRoot, NOT setupState.cwd — a profile's subfolder cwd override
@@ -178,8 +216,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const cwd = projectRoot || setupState.cwd.trim();
     if (cwd === prevProjectRootRef.current) return;
     prevProjectRootRef.current = cwd;
-    fetchProfiles(cwd || undefined).then(setProfiles).catch(() => {});
-  }, [projectRoot, setupState.cwd]);
+    fetchProfiles(cwd || undefined)
+      .then((items) => hydrateProfilesWithUi(items, cwd || undefined))
+      .then(setProfiles)
+      .catch(() => {});
+  }, [hydrateProfilesWithUi, projectRoot, setupState.cwd]);
 
   // Apply project theme — always from project root, not a profile subfolder
   useEffect(() => {
@@ -191,7 +232,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSelectedProfile("");
     Promise.all([
-      fetchUserProfiles(),
+      fetchUserProfiles().then(hydrateUserProfilesWithUi),
       activeUserProfile
         ? fetchUserProfileState(activeUserProfile)
         : Promise.resolve({} as UserProfileState),
@@ -204,7 +245,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         setSetupState((prev) => ({ ...prev, cwd }));
       }
     }).catch(() => {});
-  }, [activeUserProfile]);
+  }, [activeUserProfile, hydrateUserProfilesWithUi]);
 
   useEffect(() => {
     const availableNames = visibleProfiles.map((profile) => profile.name);

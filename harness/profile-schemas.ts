@@ -45,11 +45,12 @@ const PermissionPolicySchema = z.union([
 
 // ── Profile UI ──
 
-const ProfileUiSchema = z.object({
+export const ProfileUiSchema = z.object({
   label: z.string().optional(),
   showThinking: z.boolean().optional(),
   showMeta: z.boolean().optional(),
   showToolCalls: z.boolean().optional(),
+  showGitEvents: z.boolean().optional(),
   placeholder: z.string().optional(),
   emptyTitle: z.string().optional(),
   emptySubtitle: z.string().optional(),
@@ -86,10 +87,20 @@ const ProviderDefaultsSchema = z.object({
   compaction: CompactionConfigSchema.optional(),
 });
 
-const ClientExtensionsSchema = z.object({
+export const ClientExtensionsSchema = z.object({
   paths: z.array(z.string()).optional(),
   enabled: z.array(z.string()).optional(),
   disabled: z.array(z.string()).optional(),
+  settings: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+});
+
+const DashboardConfigSchema = z.object({
+  widgets: z.array(z.record(z.string(), z.unknown())).optional(),
+  pages: z.array(z.record(z.string(), z.unknown())).optional(),
+});
+
+const LeftPanelConfigSchema = z.object({
+  widgets: z.array(z.string()).optional(),
 });
 
 const ProviderSchema = z.string().refine(isKnownProvider, {
@@ -144,6 +155,8 @@ export const ProfileSchema = z.object({
   })).optional(),
 });
 
+export const ProfileCoreSchema = ProfileSchema.omit({ ui: true });
+
 // ── User Profile ──
 
 const UserProfileMemorySchema = z.object({
@@ -163,16 +176,27 @@ export const UserProfileSchema = z.object({
   memoryFilter: z.string().optional(),
   memory: UserProfileMemorySchema.optional(),
   showAllProjectPaths: z.boolean().optional(),
-  dashboard: z.object({
-    widgets: z.array(z.record(z.string(), z.unknown())).optional(),
-    pages: z.array(z.record(z.string(), z.unknown())).optional(),
-  }).optional(),
-  leftPanel: z.object({
-    widgets: z.array(z.string()).optional(),
-  }).optional(),
+  dashboard: DashboardConfigSchema.optional(),
+  leftPanel: LeftPanelConfigSchema.optional(),
   computer: z.string().optional(),
   editor: z.string().optional(),
   clientExtensions: ClientExtensionsSchema.optional(),
+});
+
+export const UserProfileUiConfigSchema = z.object({
+  dashboard: DashboardConfigSchema.optional(),
+  leftPanel: LeftPanelConfigSchema.optional(),
+  computer: z.string().optional(),
+  editor: z.string().optional(),
+  clientExtensions: ClientExtensionsSchema.optional(),
+});
+
+export const UserProfileCoreSchema = UserProfileSchema.omit({
+  dashboard: true,
+  leftPanel: true,
+  computer: true,
+  editor: true,
+  clientExtensions: true,
 });
 
 // ── Global Config ──

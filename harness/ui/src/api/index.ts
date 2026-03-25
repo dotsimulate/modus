@@ -8,10 +8,10 @@ export { authStatus, setupNewPin, verifyPin, fetchMe, lockAll, checkToken, chang
 
 // Profiles
 export {
-  fetchProfiles, fetchProfile, saveProfileApi, deleteProfileApi,
+  fetchProfiles, fetchProfile, fetchProfileUiConfig, saveProfileApi, patchProfileUiConfigApi, deleteProfileApi,
   fetchGlobalConfig, saveGlobalConfigApi, checkSecrets,
   fetchProviders, fetchProviderCapabilities, fetchProviderHealth, fetchProviderModels,
-  fetchUserProfiles, fetchUserProfile, saveUserProfileApi, patchUserProfileApi,
+  fetchUserProfiles, fetchUserProfile, fetchUserProfileUiConfig, saveUserProfileApi, patchUserProfileApi, patchUserProfileUiConfigApi,
   fetchUserProfileState, patchUserProfileStateApi,
 } from "./profiles";
 
@@ -88,7 +88,7 @@ export type {
   ProviderCapabilities, ProviderToolGroup, ProviderHealthInfo, ProviderHealthCheck,
   SessionInfo, ActiveSessionInfo, SearchHit, SessionStatusInfo, CommitAttribution, CommitAttributionReason,
   ApiAttachment, CreateSessionOpts, BrowseResult, PermissionResponse,
-  UserProfileState, UserProfile, ProjectUiAssetInfo, ActiveProjectUiAsset, ProjectUiState, MemoryItem,
+  UserProfileState, UserProfile, UserProfileUiConfig, ProjectUiAssetInfo, ActiveProjectUiAsset, ProjectUiState, MemoryItem,
   ClientExtensionManifestItem, ExtensionSettingSchema, ExtensionMeta,
   ActionTrigger, ActionInfo, ActionRun,
   GitStatus, GitCommit, DiffLine, DiffHunk, FileDiff, GitCommitDetail,

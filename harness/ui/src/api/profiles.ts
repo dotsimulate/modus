@@ -1,5 +1,8 @@
 import { API_BASE, authHeaders } from "./_fetch";
-import type { Profile, GlobalConfig, ProviderCapabilities, ProviderHealthInfo, UserProfile, UserProfileState } from "./types";
+import type {
+  Profile, ProfileUi, GlobalConfig, ProviderCapabilities, ProviderHealthInfo,
+  UserProfile, UserProfileState, UserProfileUiConfig,
+} from "./types";
 
 export async function fetchProfiles(cwd?: string): Promise<Profile[]> {
   const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
@@ -13,6 +16,13 @@ export async function fetchProfile(name: string): Promise<Profile> {
   return res.json();
 }
 
+export async function fetchProfileUiConfig(name: string, cwd?: string): Promise<ProfileUi> {
+  const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+  const res = await fetch(`${API_BASE}/api/profiles/${encodeURIComponent(name)}/ui-config${params}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Profile UI config not found: ${name}`);
+  return res.json();
+}
+
 export async function saveProfileApi(name: string, profile: Omit<Profile, "name">, cwd?: string): Promise<void> {
   const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
   const res = await fetch(`${API_BASE}/api/profiles/${name}${params}`, {
@@ -23,6 +33,19 @@ export async function saveProfileApi(name: string, profile: Omit<Profile, "name"
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(body || `Failed to save profile: ${name}`);
+  }
+}
+
+export async function patchProfileUiConfigApi(name: string, patch: Partial<ProfileUi>, cwd?: string): Promise<void> {
+  const params = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+  const res = await fetch(`${API_BASE}/api/profiles/${encodeURIComponent(name)}/ui-config${params}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `Failed to update profile UI config: ${name}`);
   }
 }
 
@@ -100,6 +123,12 @@ export async function fetchUserProfile(name: string): Promise<UserProfile> {
   return res.json();
 }
 
+export async function fetchUserProfileUiConfig(name: string): Promise<UserProfileUiConfig> {
+  const res = await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}/ui-config`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`User profile UI config not found: ${name}`);
+  return res.json();
+}
+
 export async function saveUserProfileApi(name: string, profile: Omit<UserProfile, "name">): Promise<void> {
   const res = await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}`, {
     method: "PUT",
@@ -121,6 +150,18 @@ export async function patchUserProfileApi(name: string, patch: Partial<UserProfi
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(body || `Failed to update user profile: ${name}`);
+  }
+}
+
+export async function patchUserProfileUiConfigApi(name: string, patch: Partial<UserProfileUiConfig>): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/user-profiles/${encodeURIComponent(name)}/ui-config`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `Failed to update user profile UI config: ${name}`);
   }
 }
 

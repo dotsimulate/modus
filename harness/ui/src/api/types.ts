@@ -167,6 +167,32 @@ export type ProfileUi = {
   panelWidgets?: string[];
 };
 
+export type UserProfileUiConfig = {
+  dashboard?: {
+    widgets?: Array<{ type: string; [key: string]: unknown }>;
+    pages?: Array<{
+      id: string;
+      title: string;
+      blocks: Array<
+        | { kind: "widget"; widget: { type: string; [key: string]: unknown } }
+        | { kind: "module"; module: "actions" | "git"; [key: string]: unknown }
+        | { kind: "text"; markdown: string; [key: string]: unknown }
+      >;
+    }>;
+  };
+  leftPanel?: {
+    widgets?: string[];
+  };
+  computer?: string;
+  editor?: string;
+  clientExtensions?: {
+    paths?: string[];
+    enabled?: string[];
+    disabled?: string[];
+    settings?: Record<string, Record<string, unknown>>;
+  };
+};
+
 export type Profile = {
   name: string;
   description: string;
@@ -191,6 +217,7 @@ export type GlobalConfig = {
     paths?: string[];
     enabled?: string[];
     disabled?: string[];
+    settings?: Record<string, Record<string, unknown>>;
   };
 };
 
@@ -403,6 +430,7 @@ export type UserProfile = {
     paths?: string[];
     enabled?: string[];
     disabled?: string[];
+    settings?: Record<string, Record<string, unknown>>;
   };
 };
 
