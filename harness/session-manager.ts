@@ -126,6 +126,9 @@ export type ActiveSession = {
   pendingMessages: MessageContent[];
   turnStartedAt: number;
   cwd?: string;
+  /** The project root where .modus/ lives — before profile CWD override is applied.
+   *  Used for profile/config lookups that must find .modus/ at the project root. */
+  projectRoot?: string;
   additionalDirectories: string[];
   actionName?: string;
   userProfile?: string;
@@ -258,8 +261,10 @@ export function watchSessionExchanges(
 // Creates the context object that providers use to interact with session-manager.
 
 function createTurnContext(session: ActiveSession, opts: StartSessionOpts): TurnContext {
-  const effectiveCwd = opts.cwd ?? session.cwd;
-  const profile = opts.profile ? getProfile(opts.profile, effectiveCwd) : undefined;
+  // Profile lookup must use the project root (where .modus/ lives), not the resolved
+  // session CWD — which may be a profile-scoped subfolder (e.g. td_navigator/).
+  const profileLookupCwd = session.projectRoot ?? opts.cwd ?? session.cwd;
+  const profile = opts.profile ? getProfile(opts.profile, profileLookupCwd) : undefined;
 
   return {
     session,
@@ -598,6 +603,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     pendingMessages: [],
     turnStartedAt: Date.now(),
     cwd: resolvedCwd,
+    projectRoot: baseCwd,
     additionalDirectories: resolvedAdditionalDirectories,
     actionName: opts.actionName,
     userProfile: opts.userProfile,

@@ -494,11 +494,32 @@ async function runTurn(
 
   console.log(`[cursor] spawning: ${bin} -p --model ${state.model} ${isResume && state.sessionId ? `--resume ${state.sessionId}` : "(new)"}`);
 
-  const proc = spawn(bin, args, {
-    env,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  let proc: ChildProcess;
+  try {
+    proc = spawn(bin, args, {
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+  } catch (err: any) {
+    const msg = err?.code === "ENOENT"
+      ? `Cursor CLI not found: "${bin}". Install cursor-agent or set CURSOR_AGENT_BIN to its path.`
+      : `Failed to spawn cursor-agent: ${err?.message ?? err}`;
+    console.error(`[cursor] ${msg}`);
+    throw new Error(msg);
+  }
   state.proc = proc;
+
+  // Catch early spawn errors (e.g. ENOENT if binary not found)
+  // so they don't become unhandled before we reach the exit-wait promise.
+  let earlySpawnError: Error | null = null;
+  proc.on("error", (err: any) => {
+    if (!earlySpawnError) {
+      const msg = err?.code === "ENOENT"
+        ? `Cursor CLI not found: "${bin}". Install cursor-agent or set CURSOR_AGENT_BIN to its path.`
+        : `Failed to spawn cursor-agent: ${err?.message ?? err}`;
+      earlySpawnError = new Error(msg);
+    }
+  });
 
   // Close stdin immediately — cursor-agent reads prompt from args
   proc.stdin?.end();
@@ -690,7 +711,9 @@ async function runTurn(
     }
 
     // Wait for process to exit
+    if (earlySpawnError) throw earlySpawnError;
     await new Promise<void>((resolve, reject) => {
+      if (earlySpawnError) return reject(earlySpawnError);
       if (proc.exitCode !== null) return resolve();
       proc.on("close", (code) => {
         if (code !== 0 && code !== null && !state.abortController.signal.aborted) {
@@ -699,7 +722,7 @@ async function runTurn(
           resolve();
         }
       });
-      proc.on("error", reject);
+      proc.on("error", (err) => reject(earlySpawnError ?? err));
     });
 
     // Stream completed — emit result

@@ -1,9 +1,12 @@
 /**
  * Terminal Manager — PTY lifecycle, registry, and WebSocket broadcast.
  *
- * Each terminal is a persistent pseudo-terminal (via Bun.Terminal + Bun.spawn)
- * with zero or more WebSocket clients subscribed to its output. Input arrives
- * from WebSocket clients and is piped to the PTY's stdin.
+ * Each terminal is a persistent pseudo-terminal with zero or more WebSocket
+ * clients subscribed to its output. Input arrives from WebSocket clients
+ * and is piped to the PTY's stdin.
+ *
+ * - Linux/macOS: uses Bun.spawn with `terminal` option (native PTY)
+ * - Windows: uses bun-pty (ConPTY via Rust FFI)
  *
  * Designed so agent-attached terminals (Phase 2) can use the same primitives:
  * create, write, read, resize, kill.
@@ -15,11 +18,28 @@ import {
   type TerminalRow,
 } from "./terminal-db";
 
+// ── Platform ──
+
+const IS_WINDOWS = process.platform === "win32";
+
+function getDefaultShell(): string {
+  if (IS_WINDOWS) {
+    return process.env.COMSPEC ?? "powershell.exe";
+  }
+  return process.env.SHELL ?? "/bin/bash";
+}
+
 // ── Types ──
 
 export type TerminalClient = {
   send(data: string | ArrayBuffer | Uint8Array): void;
   close(): void;
+};
+
+/** Minimal process handle — abstracts Bun.spawn and bun-pty */
+type TerminalProcess = {
+  kill(signal?: string): void;
+  exited: Promise<number | null>;
 };
 
 export type ActiveTerminal = {
@@ -30,7 +50,7 @@ export type ActiveTerminal = {
   rows: number;
   sessionId: string | null;
   createdAt: number;
-  proc: ReturnType<typeof Bun.spawn>;
+  proc: TerminalProcess;
   terminal: { write(data: string | Uint8Array): void; resize(cols: number, rows: number): void; close(): void };
   clients: Set<TerminalClient>;
   scrollback: Uint8Array[];
@@ -49,6 +69,8 @@ function generateId(): string {
   return `term_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const encoder = new TextEncoder();
+
 // ── Public API ──
 
 export type CreateTerminalOpts = {
@@ -62,7 +84,7 @@ export type CreateTerminalOpts = {
 
 export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
   const id = generateId();
-  const shell = opts.shell ?? process.env.SHELL ?? "/bin/bash";
+  const shell = opts.shell ?? getDefaultShell();
   const cwd = opts.cwd ?? process.cwd();
   const cols = opts.cols ?? 80;
   const rows = opts.rows ?? 24;
@@ -72,37 +94,87 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
   const scrollback: Uint8Array[] = [];
   let scrollbackBytes = 0;
 
-  const proc = Bun.spawn([shell], {
-    cwd,
-    env: { ...process.env, ...opts.env, TERM: "xterm-256color" },
-    terminal: {
+  // `active` is referenced via closure — assigned after construction below
+  let active: ActiveTerminal;
+  function onData(data: Uint8Array) {
+    scrollback.push(data);
+    scrollbackBytes += data.byteLength;
+
+    while (scrollbackBytes > MAX_SCROLLBACK_BYTES && scrollback.length > 1) {
+      const removed = scrollback.shift()!;
+      scrollbackBytes -= removed.byteLength;
+    }
+    if (active) active.scrollbackBytes = scrollbackBytes;
+
+    for (const client of clients) {
+      try {
+        client.send(data);
+      } catch {
+        clients.delete(client);
+      }
+    }
+  }
+
+  let proc: TerminalProcess;
+  let terminal: ActiveTerminal["terminal"];
+
+  if (IS_WINDOWS) {
+    // Windows: real PTY via bun-pty (ConPTY)
+    const { spawn: ptySpawn } = require("bun-pty");
+    const pty = ptySpawn(shell, [], {
+      name: "xterm-256color",
       cols,
       rows,
-      data(_term: unknown, data: Uint8Array) {
-        // Accumulate scrollback
-        scrollback.push(data);
-        scrollbackBytes += data.byteLength;
+      cwd,
+      env: { ...process.env, ...opts.env },
+    });
 
-        // Evict oldest chunks if over limit
-        while (scrollbackBytes > MAX_SCROLLBACK_BYTES && scrollback.length > 1) {
-          const removed = scrollback.shift()!;
-          scrollbackBytes -= removed.byteLength;
-        }
-        active.scrollbackBytes = scrollbackBytes;
+    // bun-pty onData delivers strings — encode to Uint8Array for our pipeline
+    pty.onData((data: string) => {
+      onData(encoder.encode(data));
+    });
 
-        // Broadcast to all connected WebSocket clients
-        for (const client of clients) {
-          try {
-            client.send(data);
-          } catch {
-            clients.delete(client);
-          }
-        }
+    // Build exited promise from onExit event
+    const exitedPromise = new Promise<number | null>((resolve) => {
+      pty.onExit((e: { exitCode: number }) => {
+        resolve(e.exitCode);
+      });
+    });
+
+    proc = {
+      kill(signal?: string) { pty.kill(signal); },
+      exited: exitedPromise,
+    };
+
+    terminal = {
+      write(data: string | Uint8Array) {
+        pty.write(typeof data === "string" ? data : new TextDecoder().decode(data));
       },
-    },
-  });
+      resize(c: number, r: number) { pty.resize(c, r); },
+      close() { pty.kill(); },
+    };
+  } else {
+    // Unix: native PTY via Bun.spawn
+    const bunProc = Bun.spawn([shell], {
+      cwd,
+      env: { ...process.env, ...opts.env, TERM: "xterm-256color" },
+      terminal: {
+        cols,
+        rows,
+        data(_term: unknown, data: Uint8Array) {
+          onData(data);
+        },
+      },
+    });
 
-  const active: ActiveTerminal = {
+    proc = {
+      kill(signal?: string) { bunProc.kill(signal as any); },
+      exited: bunProc.exited.then((code) => code ?? null),
+    };
+    terminal = bunProc.terminal!;
+  }
+
+  active = {
     id,
     shell,
     cwd,
@@ -111,7 +183,7 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
     sessionId,
     createdAt: Date.now(),
     proc,
-    terminal: proc.terminal!,
+    terminal,
     clients,
     scrollback,
     scrollbackBytes,
@@ -123,7 +195,6 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
   // Handle process exit
   proc.exited.then((code) => {
     markTerminalExited(id, code ?? null);
-    // Notify all clients the terminal exited
     const exitMsg = JSON.stringify({ type: "exit", code });
     for (const client of clients) {
       try {
@@ -158,11 +229,14 @@ export function killTerminal(id: string): boolean {
   const t = terminals.get(id);
   if (!t) return false;
   try {
-    t.proc.kill("SIGTERM");
-    // Force kill after 3s if still alive
-    setTimeout(() => {
-      try { t.proc.kill("SIGKILL"); } catch { /* already dead */ }
-    }, 3000);
+    if (IS_WINDOWS) {
+      t.proc.kill();
+    } else {
+      t.proc.kill("SIGTERM");
+      setTimeout(() => {
+        try { t.proc.kill("SIGKILL"); } catch { /* already dead */ }
+      }, 3000);
+    }
   } catch { /* already dead */ }
   return true;
 }

@@ -2610,23 +2610,28 @@ function missingUiBuildResponse(): Response {
 
 app.post("/api/terminals", async (c) => {
   const body = await c.req.json().catch(() => ({}));
-  const term = createTerminal({
-    shell: body.shell,
-    cwd: body.cwd,
-    cols: body.cols,
-    rows: body.rows,
-    sessionId: body.sessionId,
-    env: body.env,
-  });
-  return c.json({
-    id: term.id,
-    shell: term.shell,
-    cwd: term.cwd,
-    cols: term.cols,
-    rows: term.rows,
-    sessionId: term.sessionId,
-    createdAt: term.createdAt,
-  });
+  try {
+    const term = createTerminal({
+      shell: body.shell,
+      cwd: body.cwd,
+      cols: body.cols,
+      rows: body.rows,
+      sessionId: body.sessionId,
+      env: body.env,
+    });
+    return c.json({
+      id: term.id,
+      shell: term.shell,
+      cwd: term.cwd,
+      cols: term.cols,
+      rows: term.rows,
+      sessionId: term.sessionId,
+      createdAt: term.createdAt,
+    });
+  } catch (err) {
+    console.error("Failed to create terminal:", err);
+    return c.json({ error: String(err) }, 500);
+  }
 });
 
 app.get("/api/terminals", (c) => {

@@ -264,7 +264,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       profiles, visibleProfiles, availableProviders, userProfiles,
       providerCapabilities,
       activeUserProfile, activeUP,
-      activeCwd: setupState.cwd.trim() || undefined,
+      activeCwd: projectRoot || setupState.cwd.trim() || undefined,
       projectRoot: projectRoot || setupState.cwd.trim() || undefined,
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,

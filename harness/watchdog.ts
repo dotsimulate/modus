@@ -20,9 +20,10 @@
  */
 
 import simpleGit from "simple-git";
-import { appendFileSync, watch as fsWatch, existsSync, readdirSync, statSync, renameSync, unlinkSync } from "fs";
+import { appendFileSync, readFileSync, watch as fsWatch, existsSync, readdirSync, statSync, renameSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 import { createConnection } from "net";
+import { createHash } from "crypto";
 
 const HARNESS_DIR = import.meta.dir;
 const REPO_DIR = resolve(HARNESS_DIR, "..");
@@ -85,6 +86,8 @@ function killOrphanedAgents() {
 }
 let healthTimer: ReturnType<typeof setInterval> | null = null;
 let fileChangeRestart = false;
+let restarting = false;  // true while restart is in progress — suppresses file watcher
+let restartCooldownUntil = 0; // timestamp — ignore file changes until this time
 let pendingReloadFile: string | null = null;  // file change waiting for sessions to clear
 let pendingReloadTimer: ReturnType<typeof setInterval> | null = null;
 const PENDING_RELOAD_POLL_MS = 5_000; // check sessions every 5s when reload is pending
@@ -194,7 +197,7 @@ function isPortInUse(port: number): Promise<boolean> {
 }
 
 /** Wait until a port is free, polling every interval. Returns false on timeout. */
-async function waitForPortFree(port: number, timeoutMs = 15_000, intervalMs = 500): Promise<boolean> {
+async function waitForPortFree(port: number, timeoutMs = 30_000, intervalMs = 500): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!(await isPortInUse(port))) return true;
@@ -203,26 +206,56 @@ async function waitForPortFree(port: number, timeoutMs = 15_000, intervalMs = 50
   return false;
 }
 
-/** Wait for both harness and Vite ports to free up. Kills orphaned agents if needed. */
-async function waitForCleanRestart(): Promise<void> {
+/**
+ * On Windows, find the PID listening on a port and force-kill it.
+ * This is the only reliable way to free a port held by a zombie bun process.
+ */
+function killPortHolder(port: number) {
+  if (process.platform !== "win32") return;
+  try {
+    const result = Bun.spawnSync(["powershell", "-NoProfile", "-Command",
+      `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue).OwningProcess`
+    ], { stdout: "pipe", stderr: "ignore" });
+    const pid = new TextDecoder().decode(result.stdout).trim();
+    if (pid && /^\d+$/.test(pid)) {
+      log("warn", `killing PID ${pid} holding port ${port}`);
+      Bun.spawnSync(["taskkill", "/T", "/F", "/PID", pid], { stdout: "ignore", stderr: "ignore" });
+    }
+  } catch { /* best effort */ }
+}
+
+/** Wait for both harness and Vite ports to free up. Kills whatever holds them. Returns true if ports are free. */
+async function waitForCleanRestart(): Promise<boolean> {
+  // Quick check — ports may already be free
   const [harnessFree, viteFree] = await Promise.all([
-    waitForPortFree(PORT),
-    waitForPortFree(VITE_PORT),
+    waitForPortFree(PORT, 3_000),
+    waitForPortFree(VITE_PORT, 3_000),
   ]);
-  if (!harnessFree || !viteFree) {
-    // Ports still held — likely orphaned agent subprocesses
-    const stuck = [!harnessFree && PORT, !viteFree && VITE_PORT].filter(Boolean);
-    log("warn", `port(s) ${stuck.join(", ")} still in use — killing orphaned agents`);
-    killOrphanedAgents();
-    // Give processes a moment to die, then re-check
-    await Bun.sleep(1000);
-    if (!harnessFree && await isPortInUse(PORT)) {
-      log("warn", `port ${PORT} still in use after orphan cleanup — restarting anyway`);
-    }
-    if (!viteFree && await isPortInUse(VITE_PORT)) {
-      log("warn", `port ${VITE_PORT} still in use after orphan cleanup — restarting anyway`);
-    }
+
+  if (harnessFree && viteFree) return true;
+
+  // Kill orphaned agent subprocesses (claude, codex)
+  killOrphanedAgents();
+
+  // On Windows: directly kill whatever process holds the port
+  if (!harnessFree) killPortHolder(PORT);
+  if (!viteFree) killPortHolder(VITE_PORT);
+
+  // Wait for ports to actually free after kills
+  const [h, v] = await Promise.all([
+    !harnessFree ? waitForPortFree(PORT, 15_000, 500) : Promise.resolve(true),
+    !viteFree ? waitForPortFree(VITE_PORT, 15_000, 500) : Promise.resolve(true),
+  ]);
+
+  if (!h || !v) {
+    const stuck = [!h && PORT, !v && VITE_PORT].filter(Boolean);
+    log("error", `port(s) ${stuck.join(", ")} still held after kill — NOT launching (would EADDRINUSE)`);
+    // Try one more aggressive kill round
+    if (!h) killPortHolder(PORT);
+    if (!v) killPortHolder(VITE_PORT);
+    return false;
   }
+  return true;
 }
 
 // ── File watcher (dev mode) ──
@@ -252,6 +285,7 @@ function executePendingReload() {
   log("info", `file changed: ${pendingReloadFile} — reloading...`);
   pendingReloadFile = null;
   fileChangeRestart = true;
+  restarting = true;
   killTree(currentProc);
 }
 
@@ -274,15 +308,44 @@ function startPendingReloadPoll() {
 
 function startFileWatcher() {
   let debounce: ReturnType<typeof setTimeout> | null = null;
+  const hashCache = new Map<string, string>(); // track last-seen content hash per file
+
+  /** Check if a file's content actually changed since we last saw it (hash-based, immune to Windows mtime noise). */
+  function fileActuallyChanged(filename: string): boolean {
+    try {
+      const filepath = join(HARNESS_DIR, filename);
+      const content = readFileSync(filepath);
+      const hash = createHash("md5").update(content).digest("hex");
+      const prev = hashCache.get(filename);
+      hashCache.set(filename, hash);
+      if (prev === undefined) {
+        log("info", `[hash] ${filename} — first seen, seeding cache (${hash.slice(0, 8)}), ignoring`);
+        return false;
+      }
+      if (hash === prev) {
+        log("info", `[hash] ${filename} — content unchanged (${hash.slice(0, 8)}), ignoring`);
+        return false;
+      }
+      log("info", `[hash] ${filename} — content CHANGED (${prev.slice(0, 8)} → ${hash.slice(0, 8)})`);
+      return true;
+    } catch (e) {
+      log("warn", `[hash] ${filename} — read failed: ${e}, ignoring`);
+      return false;
+    }
+  }
 
   const triggerReload = (_: string, filename: string | null) => {
     if (!filename) return;
     const ext = filename.slice(filename.lastIndexOf("."));
     if (!WATCH_EXTS.has(ext)) return;
     if (filename === "watchdog.ts") return; // don't self-restart
+    if (restarting) return; // suppress file events during restart
+    if (Date.now() < restartCooldownUntil) return; // post-restart cooldown
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(async () => {
-      if (!currentProc || stopping) return;
+      if (!currentProc || stopping || restarting || Date.now() < restartCooldownUntil) return;
+      // On Windows, fs.watch fires on access — verify file actually changed
+      if (!fileActuallyChanged(filename)) return;
       const count = await getActiveSessionCount();
       if (count > 0) {
         // Sessions active — queue the reload, poll until they clear
@@ -294,7 +357,7 @@ function startFileWatcher() {
       // No sessions — reload immediately
       pendingReloadFile = filename;
       executePendingReload();
-    }, 500);
+    }, process.platform === "win32" ? 2000 : 500);
   };
 
   // Watch harness root
@@ -322,6 +385,19 @@ async function run() {
   log("info", `watchdog started (port :${PORT}, notify: ${NTFY_TOPIC || "off"}, file-watch: ${WATCH_FILES ? "on" : "off"})`);
   if (WATCH_FILES) startFileWatcher();
 
+  // Ensure ports are free before first launch (zombie from previous run)
+  if (await isPortInUse(PORT) || await isPortInUse(VITE_PORT)) {
+    log("warn", "port(s) still held from previous run — cleaning up...");
+    if (!await waitForCleanRestart()) {
+      log("error", "could not free ports for first launch — waiting 10s and retrying...");
+      await Bun.sleep(10_000);
+      if (!await waitForCleanRestart()) {
+        log("error", "ports still stuck after retry — exiting");
+        process.exit(1);
+      }
+    }
+  }
+
   while (!stopping) {
     const startedAt = Date.now();
     const logBuffer: string[] = [];
@@ -339,6 +415,8 @@ async function run() {
       env: { ...process.env },
     });
     currentProc = proc;
+    restarting = false; // new process spawned — re-enable file watcher
+    restartCooldownUntil = Date.now() + 15_000; // ignore ghost file events for 15s after restart
 
     // Tee stderr: forward to process.stderr + buffer last N lines for crash reports
     (async () => {
@@ -374,7 +452,11 @@ async function run() {
     if (existsSync(RESTART_SENTINEL)) {
       try { unlinkSync(RESTART_SENTINEL); } catch { /* best effort */ }
       log("info", "controlled restart requested — waiting for ports...");
-      await waitForCleanRestart();
+      if (!await waitForCleanRestart()) {
+        log("warn", "ports not free after controlled restart kill — retrying in 5s...");
+        await Bun.sleep(5_000);
+        await waitForCleanRestart(); // best effort second try
+      }
       restarts++;
       delay = BASE_DELAY_MS;
       continue;
@@ -384,7 +466,11 @@ async function run() {
     if (fileChangeRestart) {
       fileChangeRestart = false;
       restarts++;
-      await waitForCleanRestart();
+      if (!await waitForCleanRestart()) {
+        log("warn", "ports not free after file-change kill — retrying in 5s...");
+        await Bun.sleep(5_000);
+        await waitForCleanRestart(); // best effort second try
+      }
       continue;
     }
 

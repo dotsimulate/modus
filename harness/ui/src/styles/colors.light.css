@@ -1,0 +1,84 @@
+/**
+ * Colors — every color token for the entire UI.
+ *
+ * This is the ONLY file where colors are defined. All component CSS
+ * references these via var(--*). Edit this file to retheme the app.
+ * Safe to hand to an agent — no selectors, no layout, just values.
+ */
+
+:root {
+  /* ── Backgrounds ── */
+  --bg: #dedad3;
+  --bg-raised: #d4d0c9;
+  --bg-surface: #cac6bf;
+  --bg-hover: #bfbbb4;
+  --thinking: #d8d4cd;
+
+  /* ── Borders ── */
+  --border: #aaa79f;
+  --border-active: #8a877f;
+  --border-mid: #70706a;
+  --border-visible: #555550;
+  --border-focus: #333330;
+
+  /* ── Text ── */
+  --text: #0a0a0a;
+  --text-secondary: #1a1a1a;
+  --text-label: #252525;
+  --text-tertiary: #333333;
+  --text-placeholder: #444444;
+  --text-dim: #4a4a4a;
+  --text-muted: #555555;
+  --accent: #000000;
+
+  /* ── Status ── */
+  --success: #1a8f1a;
+  --warning: #c47a2a;
+  --error: #cc1a1a;
+  --error-soft: #aa3333;
+  --error-dim: #883333;
+  --info: #2060cc;
+
+  /* ── Dots — session/tool/dashboard status indicators ── */
+  --dot-running: #1a8f1a;
+  --dot-idle: #666660;
+  --dot-done: #666660;
+  --dot-error: #883333;
+  --dot-connected: #1a8f1a;
+
+  /* ── Tool calls ── */
+  --tool-running: #c47a2a;
+  --tool-ok: #1a8f1a;
+  --tool-error: #cc1a1a;
+  --tool-commit: #2060cc;
+  --tool-push: #1a8f1a;
+  --tool-border-running: #c47a2a;
+
+  /* ── Memory tags ── */
+  --mem-tag-bg: rgba(0, 0, 0, 0.03);
+  --mem-tag-text: rgba(0, 0, 0, 0.35);
+  --mem-tag-border: rgba(0, 0, 0, 0.08);
+  --mem-tag-hover-text: rgba(0, 0, 0, 0.5);
+  --mem-tag-hover-border: rgba(0, 0, 0, 0.12);
+
+  /* ── Message flash ── */
+  --flash-user: #c47a2a;
+  --flash-assistant: #7a20cc;
+
+  /* ── Syntax highlighting (One Light) ── */
+  --syn-keyword: #a626a4;
+  --syn-builtin: #c18401;
+  --syn-type: #c18401;
+  --syn-literal: #986801;
+  --syn-number: #986801;
+  --syn-string: #50a14f;
+  --syn-regexp: #50a14f;
+  --syn-symbol: #0184bc;
+  --syn-comment: #666666;
+  --syn-function: #4078f2;
+  --syn-variable: #e45649;
+  --syn-tag: #e45649;
+  --syn-attr: #986801;
+  --syn-addition: #50a14f;
+  --syn-deletion: #e45649;
+}
