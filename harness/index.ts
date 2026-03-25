@@ -1980,6 +1980,56 @@ app.get("/api/file/raw", async (c) => {
   return new Response(file, { headers: { "Content-Type": mime } });
 });
 
+// ── Resource Observability ──
+
+function getResourceSnapshot() {
+  const mem = process.memoryUsage();
+  const sessions = getAllActiveSessions();
+  const terminals = getAllActiveTerminals();
+  let totalSubscribers = 0;
+  const sessionsByStatus: Record<string, number> = {};
+  for (const s of sessions) {
+    sessionsByStatus[s.status] = (sessionsByStatus[s.status] ?? 0) + 1;
+    totalSubscribers += s.subscribers.size;
+  }
+  return {
+    uptimeSeconds: Math.floor(process.uptime()),
+    memory: {
+      heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotalMB: Math.round(mem.heapTotal / 1024 / 1024),
+      rssMB: Math.round(mem.rss / 1024 / 1024),
+      externalMB: Math.round(mem.external / 1024 / 1024),
+      arrayBuffersMB: Math.round(mem.arrayBuffers / 1024 / 1024),
+    },
+    sessions: {
+      active: sessions.length,
+      byStatus: sessionsByStatus,
+    },
+    terminals: {
+      active: terminals.length,
+    },
+    sseSubscribers: totalSubscribers,
+    timestamp: Date.now(),
+  };
+}
+
+app.get("/api/stats/resources", (c) => {
+  return c.json(getResourceSnapshot());
+});
+
+// Log resource snapshot every 5 minutes to activity.db for trend analysis
+const RESOURCE_LOG_INTERVAL_MS = 5 * 60 * 1000;
+const resourceLogTimer = setInterval(() => {
+  const snap = getResourceSnapshot();
+  logActivity({
+    eventType: "resource_snapshot",
+    summary: `heap=${snap.memory.heapUsedMB}MB rss=${snap.memory.rssMB}MB sessions=${snap.sessions.active} terminals=${snap.terminals.active} subs=${snap.sseSubscribers}`,
+    metadata: snap,
+  });
+}, RESOURCE_LOG_INTERVAL_MS);
+// Don't block process exit
+if (resourceLogTimer.unref) resourceLogTimer.unref();
+
 // ── Storage Stats & Compaction ──
 
 app.get("/api/stats/storage", (c) => {

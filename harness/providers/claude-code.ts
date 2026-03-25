@@ -62,8 +62,6 @@ type ClaudeCodeState = {
   thinkingStartedAt?: number;
   thinkingDurationMs?: number;
   stderrBuf: string;
-  /** True while a drainEvents loop is active — prevents overlapping SDK queries */
-  drainActive?: boolean;
 };
 
 type InputChannel = {
@@ -562,7 +560,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         throw new Error("claude-code provider state missing during sendMessage");
       }
 
-      if (session.status === "running" || session.status === "starting" || state.drainActive) {
+      if (session.status === "running" || session.status === "starting") {
         session.pendingMessages.push(content);
         return;
       }
@@ -829,7 +827,6 @@ export function createClaudeCodeProvider(): SessionProvider {
 async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIterable<any>) {
   const { session } = ctx;
   let initSeen = false;
-  state.drainActive = true;
 
   try {
     for await (const msg of q) {
@@ -1019,10 +1016,6 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       ctx.broadcastEvent({ type: "error", error: String(err) });
     }
   }
-
-  // Drain is no longer actively consuming events.
-  // If post-drain starts a new drain, it re-sets drainActive synchronously (before first await).
-  state.drainActive = false;
 
   // Post-drain: handle pending messages after abort
   if (session.status === "idle") {
