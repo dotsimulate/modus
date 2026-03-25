@@ -313,7 +313,7 @@ function resolveCodexRuntimeSettings(
 } {
   const controls = readCodexProviderControls(opts.providerControls);
   const { approvalPolicy, sandboxMode: derivedSandbox } = mapPermissionPolicy(
-    profileDef?.permissionPolicy,
+    opts.permissionPolicy ?? profileDef?.permissionPolicy,
     profileDef?.codexSandboxMode,
   );
 

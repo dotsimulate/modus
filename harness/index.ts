@@ -34,6 +34,7 @@ import {
 } from "./profile-schemas";
 import {
   CreateSessionRequestSchema, SendMessageRequestSchema, UpdateSessionConfigRequestSchema,
+  InteractRequestSchema,
 } from "./session-schemas";
 import {
   listSessions, listSessionsForProjects, listSessionsByAction, listSessionsScoped,
@@ -519,6 +520,102 @@ app.post("/api/sessions", async (c) => {
   });
 });
 
+// ── Canonical interaction endpoint ──
+// One call to create-or-resume a session, send a prompt (with optional moves),
+// and optionally subscribe to the SSE event stream.
+app.post("/api/sessions/interact", async (c) => {
+  const body = await c.req.json();
+  const v = validate(InteractRequestSchema, body);
+  if (!v.ok) return c.json({ error: "invalid interact request", details: v.errors }, 400);
+
+  const { prompt, sessionId, moves, attachments } = body;
+  const shouldSubscribe = body.subscribe !== false;
+  const createIfMissing = body.createIfMissing !== false;
+  const resolvedCwd = body.cwd ?? process.env.AGENT_CWD ?? process.cwd();
+  // Map permissionMode to internal permissionPolicy (undefined = use profile default)
+  const permissionPolicy = body.permissionMode === "bypass" ? "bypass" as const : undefined;
+
+  // Validate profile if provided
+  if (body.profile && !getProfile(body.profile, resolvedCwd)) {
+    return c.json(
+      { error: `unknown profile: ${body.profile}`, available: listProfileNames(resolvedCwd) },
+      400,
+    );
+  }
+
+  let targetSessionId: string | undefined = sessionId;
+
+  if (sessionId) {
+    const active = getActiveSession(sessionId);
+    if (active) {
+      // Session active — queue the message
+      queueMessage(sessionId, prompt, attachments, moves);
+    } else {
+      // Session exists in DB but not active — resume it
+      const existing = getSession(sessionId);
+      if (!existing && !createIfMissing) {
+        return c.json({ error: `session not found: ${sessionId}` }, 404);
+      }
+
+      const storedConfig = existing ? getStoredSessionConfig(sessionId) : undefined;
+      const session = await startSessionWithMoves({
+        prompt,
+        attachments,
+        sessionId,
+        cwd: body.cwd ?? storedConfig?.cwd ?? existing?.cwd ?? resolvedCwd,
+        additionalDirectories: body.additionalDirectories ?? storedConfig?.additionalDirectories,
+        profile: body.profile ?? existing?.profile ?? undefined,
+        userProfile: body.userProfile,
+        provider: body.provider ?? storedConfig?.provider,
+        model: body.model ?? storedConfig?.model ?? existing?.model ?? undefined,
+        effort: body.effort ?? storedConfig?.effort,
+        maxTurns: body.maxTurns ?? storedConfig?.maxTurns,
+        tools: body.tools ?? storedConfig?.tools,
+        disallowedTools: body.disallowedTools ?? storedConfig?.disallowedTools,
+        toolStates: body.toolStates ?? storedConfig?.toolStates,
+        providerControls: body.providerControls ?? storedConfig?.providerControls,
+        loadProjectSettings: body.loadProjectSettings ?? storedConfig?.loadProjectSettings,
+        permissionPolicy,
+      });
+      targetSessionId = session.sessionId;
+    }
+  } else {
+    // No sessionId — create a new session
+    if (!createIfMissing) {
+      return c.json({ error: "sessionId required when createIfMissing is false" }, 400);
+    }
+
+    const session = await startSessionWithMoves({
+      prompt,
+      attachments,
+      profile: body.profile,
+      userProfile: body.userProfile,
+      provider: body.provider,
+      model: body.model,
+      toolStates: body.toolStates,
+      maxTurns: body.maxTurns,
+      effort: body.effort,
+      cwd: resolvedCwd,
+      additionalDirectories: body.additionalDirectories,
+      tools: body.tools,
+      disallowedTools: body.disallowedTools,
+      providerControls: body.providerControls,
+      loadProjectSettings: body.loadProjectSettings,
+      permissionPolicy,
+    });
+    targetSessionId = session.sessionId;
+    // Note: per-request moves on new sessions are not yet supported —
+    // profile moves are activated by startSessionWithMoves automatically.
+    // Per-request moves work on subsequent messages via queueMessage.
+  }
+
+  if (shouldSubscribe) {
+    return streamSessionSSE(c, targetSessionId!, 0);
+  }
+
+  return c.json({ sessionId: targetSessionId, status: getActiveSession(targetSessionId!)?.status ?? "starting" });
+});
+
 // Create empty session (DB row only, no SDK). Used by "new session" button.
 app.post("/api/sessions/empty", async (c) => {
   const body = await c.req.json();
@@ -585,56 +682,52 @@ app.get("/api/sessions/:id/status", async (c) => {
   return c.json({ error: "session not found" }, 404);
 });
 
-// Subscribe to session events (SSE)
-app.get("/api/sessions/:id/events", (c) => {
-  const id = c.req.param("id");
-  const afterSeq = Number(new URL(c.req.url).searchParams.get("after") ?? 0);
-
-  return streamSSE(c, async (stream) => {
+// ── Shared SSE streaming helper ──
+// Used by both GET /api/sessions/:id/events and POST /api/sessions/interact
+function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
+  return streamSSE(c, async (stream: any) => {
     // Send catch-up events from DB
-    const pastEvents = getEvents(id, afterSeq);
+    const pastEvents = getEvents(sessionId, afterSeq);
     for (const evt of pastEvents) {
-      // Inject original timestamp so frontend uses real times on catch-up replay
       let data = evt.data;
       try { data = JSON.stringify({ ...JSON.parse(evt.data), _ts: evt.created_at }); } catch {}
-      await stream.writeSSE({
-        event: evt.type,
-        data,
-        id: String(evt.seq),
-      });
+      await stream.writeSSE({ event: evt.type, data, id: String(evt.seq) });
     }
 
     // If session is still active, subscribe for live events
-    // The session manager broadcasts "done" when the drain loop ends —
-    // that flows through the writer and closes this connection naturally.
-    const active = getActiveSession(id);
+    const active = getActiveSession(sessionId);
     if (active && active.status !== "done" && active.status !== "error") {
       let resolve: () => void;
       const done = new Promise<void>((r) => { resolve = r; });
 
-      // Keep-alive: send SSE comment every 30s to prevent idle timeout
       const keepAlive = setInterval(async () => {
         try { await stream.writeSSE({ event: "ping", data: "{}", id: "" }); } catch { /* connection dead */ }
       }, 30_000);
 
       const writer: SSEWriter = {
-        async write(event, data, seqId) {
+        async write(event: string, data: string, seqId: string) {
           await stream.writeSSE({ event, data, id: seqId });
           if (event === "done") resolve();
         },
         close() { resolve(); },
       };
 
-      const unsubscribe = subscribe(id, writer);
+      const unsubscribe = subscribe(sessionId, writer);
       stream.onAbort(() => { clearInterval(keepAlive); unsubscribe(); resolve(); });
 
       await done;
       clearInterval(keepAlive);
     } else {
-      // Session already finished — send done immediately after catch-up
       await stream.writeSSE({ event: "done", data: "{}", id: "done" });
     }
   });
+}
+
+// Subscribe to session events (SSE)
+app.get("/api/sessions/:id/events", (c) => {
+  const id = c.req.param("id");
+  const afterSeq = Number(new URL(c.req.url).searchParams.get("after") ?? 0);
+  return streamSessionSSE(c, id, afterSeq);
 });
 
 // Global session lifecycle events (SSE) — used by SessionWeb for real-time updates

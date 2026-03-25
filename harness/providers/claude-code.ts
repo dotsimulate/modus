@@ -318,7 +318,8 @@ export function createClaudeCodeProvider(): SessionProvider {
       }
 
       // ── Permission Policy ──
-      const policy: PermissionPolicy = profileDef?.permissionPolicy ?? "bypass";
+      // Session-level override (from interact endpoint) takes precedence over profile
+      const policy: PermissionPolicy = ctx.opts.permissionPolicy ?? profileDef?.permissionPolicy ?? "bypass";
       const isBypass = policy === "bypass";
 
       const preToolUseHook = async (hookInput: any, toolUseID: string | undefined) => {
