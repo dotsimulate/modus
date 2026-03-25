@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi, patchUserProfileApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
+import { healthCheck, saveUserProfileApi, patchUserProfileUiConfigApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
 import type { MoveListItem } from "./api";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
@@ -379,7 +379,7 @@ function AppShell() {
 
   const handleLeftPanelWidgetsChange = useCallback((types: string[]) => {
     if (!activeUserProfile) return;
-    patchUserProfileApi(activeUserProfile, { leftPanel: { widgets: types } })
+    patchUserProfileUiConfigApi(activeUserProfile, { leftPanel: { widgets: types } })
       .then(() => refreshUserProfiles()).catch(() => {});
   }, [activeUserProfile, refreshUserProfiles]);
 

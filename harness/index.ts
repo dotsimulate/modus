@@ -11,10 +11,10 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import {
   getAllProfiles, getProfile, listProfileNames,
-  saveProfile, deleteProfile, getGlobalConfig, saveGlobalConfig,
+  getProfileConfig, getProfileUiConfig, saveProfile, saveProfileUiConfig, patchProfileUiConfig, deleteProfile, getGlobalConfig, saveGlobalConfig,
   setUserName, getUserName,
-  getUserProfile, listUserProfileNames, getAllUserProfiles,
-  saveUserProfile, deleteUserProfile, patchUserProfile,
+  getUserProfile, getUserProfileConfig, getUserProfileUiConfig, listUserProfileNames, getAllUserProfiles,
+  saveUserProfile, saveUserProfileUiConfig, patchUserProfileUiConfig, deleteUserProfile,
   getUserProfileState, patchUserProfileState,
   listProjects, getProjectById, updateProjectPath,
 } from "./profiles";
@@ -30,7 +30,9 @@ import {
 } from "./client-extensions";
 import { getResolvedClientExtensionsConfig } from "./profiles";
 import {
-  ProfileSchema, UserProfileSchema, GlobalConfigSchema, validate,
+  ProfileCoreSchema, ProfileUiSchema,
+  UserProfileCoreSchema, UserProfileUiConfigSchema,
+  GlobalConfigSchema, validate,
 } from "./profile-schemas";
 import {
   CreateSessionRequestSchema, SendMessageRequestSchema, UpdateSessionConfigRequestSchema,
@@ -76,6 +78,38 @@ const HARNESS_TLS_CERT = process.env.HARNESS_TLS_CERT;
 const HARNESS_TLS_KEY = process.env.HARNESS_TLS_KEY;
 
 const app = new Hono();
+
+function splitProfilePayload(body: Record<string, unknown> | null | undefined): {
+  core: Record<string, unknown>;
+  ui?: Record<string, unknown>;
+} {
+  if (!body || typeof body !== "object") return { core: {} };
+  const { ui, ...core } = body;
+  return ui === undefined ? { core } : { core, ui: ui as Record<string, unknown> };
+}
+
+function splitUserProfilePayload(body: Record<string, unknown> | null | undefined): {
+  core: Record<string, unknown>;
+  ui?: Record<string, unknown>;
+} {
+  if (!body || typeof body !== "object") return { core: {} };
+  const {
+    dashboard,
+    leftPanel,
+    computer,
+    editor,
+    clientExtensions,
+    ...core
+  } = body;
+  const ui = {
+    ...(dashboard !== undefined ? { dashboard } : {}),
+    ...(leftPanel !== undefined ? { leftPanel } : {}),
+    ...(computer !== undefined ? { computer } : {}),
+    ...(editor !== undefined ? { editor } : {}),
+    ...(clientExtensions !== undefined ? { clientExtensions } : {}),
+  };
+  return Object.keys(ui).length > 0 ? { core, ui } : { core };
+}
 
 // CORS for all API routes
 app.use("/api/*", cors({ origin: "*" }));
@@ -262,11 +296,39 @@ app.put("/api/profiles/:name", async (c) => {
   const name = c.req.param("name");
   const cwd = c.req.query("cwd");
   if (name.startsWith("_")) return c.json({ error: "reserved name" }, 400);
-  const body = await c.req.json();
-  const v = validate(ProfileSchema, body);
-  if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
-  saveProfile(name, body, cwd);
+  const body = await c.req.json<Record<string, unknown>>();
+  const { core, ui } = splitProfilePayload(body);
+  const coreValidation = validate(ProfileCoreSchema, core);
+  if (!coreValidation.ok) return c.json({ error: "validation failed", details: coreValidation.errors }, 400);
+  if (ui !== undefined) {
+    const uiValidation = validate(ProfileUiSchema, ui);
+    if (!uiValidation.ok) return c.json({ error: "validation failed", details: uiValidation.errors }, 400);
+  }
+  saveProfile(name, core as any, cwd);
+  if (ui !== undefined) {
+    saveProfileUiConfig(name, { ...(getProfileUiConfig(name, cwd) ?? {}), ...ui } as any, cwd);
+  }
   return c.json({ ok: true, name });
+});
+
+app.get("/api/profiles/:name/ui-config", (c) => {
+  const name = c.req.param("name");
+  const cwd = c.req.query("cwd");
+  const profile = getProfileConfig(name, cwd);
+  if (!profile) return c.json({ error: "profile not found" }, 404);
+  return c.json(getProfileUiConfig(name, cwd) ?? {});
+});
+
+app.patch("/api/profiles/:name/ui-config", async (c) => {
+  const name = c.req.param("name");
+  const cwd = c.req.query("cwd");
+  const profile = getProfileConfig(name, cwd);
+  if (!profile) return c.json({ error: "profile not found" }, 404);
+  const body = await c.req.json<Record<string, unknown>>();
+  const next = { ...(getProfileUiConfig(name, cwd) ?? {}), ...body };
+  const v = validate(ProfileUiSchema, next);
+  if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
+  return c.json(patchProfileUiConfig(name, body as any, cwd));
 });
 
 app.delete("/api/profiles/:name", (c) => {
@@ -294,22 +356,56 @@ app.get("/api/user-profiles/:name", (c) => {
 
 app.put("/api/user-profiles/:name", async (c) => {
   const name = c.req.param("name");
-  const body = await c.req.json();
-  const v = validate(UserProfileSchema, body);
-  if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
-  saveUserProfile(name, body);
+  const body = await c.req.json<Record<string, unknown>>();
+  const { core, ui } = splitUserProfilePayload(body);
+  const coreValidation = validate(UserProfileCoreSchema, core);
+  if (!coreValidation.ok) return c.json({ error: "validation failed", details: coreValidation.errors }, 400);
+  if (ui !== undefined) {
+    const uiValidation = validate(UserProfileUiConfigSchema, ui);
+    if (!uiValidation.ok) return c.json({ error: "validation failed", details: uiValidation.errors }, 400);
+  }
+  saveUserProfile(name, core as any);
+  if (ui !== undefined) {
+    saveUserProfileUiConfig(name, { ...(getUserProfileUiConfig(name) ?? {}), ...ui } as any);
+  }
   return c.json({ ok: true, name });
 });
 
 app.patch("/api/user-profiles/:name", async (c) => {
   const name = c.req.param("name");
-  const body = await c.req.json();
-  const updated = patchUserProfile(name, body);
-  if (!updated) return c.json({ error: "user profile not found" }, 404);
-  // Validate merged result
-  const v = validate(UserProfileSchema, updated);
-  if (!v.ok) return c.json({ error: "validation failed after merge", details: v.errors }, 400);
-  return c.json({ ok: true, name, ...updated });
+  const existing = getUserProfileConfig(name);
+  if (!existing) return c.json({ error: "user profile not found" }, 404);
+  const body = await c.req.json<Record<string, unknown>>();
+  const { core, ui } = splitUserProfilePayload(body);
+  const nextCore = { ...existing, ...core };
+  const coreValidation = validate(UserProfileCoreSchema, nextCore);
+  if (!coreValidation.ok) return c.json({ error: "validation failed after merge", details: coreValidation.errors }, 400);
+  if (ui !== undefined) {
+    const nextUi = { ...(getUserProfileUiConfig(name) ?? {}), ...ui };
+    const uiValidation = validate(UserProfileUiConfigSchema, nextUi);
+    if (!uiValidation.ok) return c.json({ error: "validation failed after merge", details: uiValidation.errors }, 400);
+    patchUserProfileUiConfig(name, ui as any);
+  }
+  saveUserProfile(name, nextCore as any);
+  return c.json({ ok: true, name, ...(getUserProfile(name) ?? nextCore) });
+});
+
+app.get("/api/user-profiles/:name/ui-config", (c) => {
+  const name = c.req.param("name");
+  const profile = getUserProfileConfig(name);
+  if (!profile) return c.json({ error: "user profile not found" }, 404);
+  return c.json(getUserProfileUiConfig(name) ?? {});
+});
+
+app.patch("/api/user-profiles/:name/ui-config", async (c) => {
+  const name = c.req.param("name");
+  const profile = getUserProfileConfig(name);
+  if (!profile) return c.json({ error: "user profile not found" }, 404);
+  const body = await c.req.json<Record<string, unknown>>();
+  const next = { ...(getUserProfileUiConfig(name) ?? {}), ...body };
+  const v = validate(UserProfileUiConfigSchema, next);
+  if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
+  return c.json(patchUserProfileUiConfig(name, body as any));
 });
 
 app.delete("/api/user-profiles/:name", (c) => {
@@ -1068,6 +1164,17 @@ app.put("/api/sessions/:id/draft", async (c) => {
   return c.json({ ok: true });
 });
 
+app.get("/api/ui/sessions/:id/draft", (c) => {
+  const text = getDraft(c.req.param("id"));
+  return c.json({ draft: text });
+});
+
+app.put("/api/ui/sessions/:id/draft", async (c) => {
+  const body = await c.req.json();
+  setDraft(c.req.param("id"), body.draft ?? "");
+  return c.json({ ok: true });
+});
+
 // ── Session UI State ──
 // Persists per-session UI layout (panel widths, open/closed state, etc.)
 
@@ -1076,6 +1183,16 @@ app.get("/api/sessions/:id/ui-state", (c) => {
 });
 
 app.patch("/api/sessions/:id/ui-state", async (c) => {
+  const body = await c.req.json();
+  const updated = patchSessionUiState(c.req.param("id"), body);
+  return c.json(updated);
+});
+
+app.get("/api/ui/sessions/:id/state", (c) => {
+  return c.json(getSessionUiState(c.req.param("id")));
+});
+
+app.patch("/api/ui/sessions/:id/state", async (c) => {
   const body = await c.req.json();
   const updated = patchSessionUiState(c.req.param("id"), body);
   return c.json(updated);
@@ -1604,12 +1721,12 @@ app.get("/api/client-extensions/:id/module", async (c) => {
 app.patch("/api/client-extensions/:id", async (c) => {
   const userProfileName = c.req.query("userProfile");
   if (!userProfileName) return c.json({ error: "userProfile query param required" }, 400);
-  const profile = getUserProfile(userProfileName);
+  const profile = getUserProfileConfig(userProfileName);
   if (!profile) return c.json({ error: "user profile not found" }, 404);
 
   const id = c.req.param("id");
   const body = await c.req.json() as { enabled?: boolean; settings?: Record<string, unknown> };
-  const ext = profile.clientExtensions ?? {};
+  const ext = getUserProfileUiConfig(userProfileName)?.clientExtensions ?? profile.clientExtensions ?? {};
 
   if (typeof body.enabled === "boolean") {
     const enabledSet = new Set(ext.enabled ?? []);
@@ -1629,7 +1746,7 @@ app.patch("/api/client-extensions/:id", async (c) => {
     ext.settings = { ...(ext.settings ?? {}), [id]: { ...(ext.settings?.[id] ?? {}), ...body.settings } };
   }
 
-  patchUserProfile(userProfileName, { clientExtensions: ext });
+  patchUserProfileUiConfig(userProfileName, { clientExtensions: ext });
   return c.json({ ok: true });
 });
 

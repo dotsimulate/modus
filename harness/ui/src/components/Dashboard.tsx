@@ -7,7 +7,7 @@ import { Missions } from "./Missions";
 import { WidgetPicker } from "./WidgetPicker";
 import { DEFAULT_DASHBOARD, type WidgetBase } from "../widgets";
 import { PageRenderer } from "./PageRenderer";
-import { patchUserProfileApi } from "../api";
+import { patchUserProfileUiConfigApi } from "../api";
 
 type Props = {
   onNavigate: (view: View) => void;
@@ -41,7 +41,7 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
 
   const handleDashboardWidgetsChange = useCallback((next: WidgetBase[]) => {
     if (!activeUserProfile) return;
-    patchUserProfileApi(activeUserProfile, {
+    patchUserProfileUiConfigApi(activeUserProfile, {
       dashboard: { ...activeUP?.dashboard, widgets: next },
     }).then(() => refreshUserProfiles()).catch(() => {});
   }, [activeUserProfile, activeUP?.dashboard, refreshUserProfiles]);
