@@ -32,10 +32,16 @@ export const CreateSessionRequestSchema = SessionSharedSchema.extend({
   sessionId: z.string().optional(),
 });
 
+const MoveBindingSchema = z.object({
+  name: z.string().min(1),
+  inputs: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const SendMessageRequestSchema = SessionSharedSchema.extend({
   prompt: z.string().min(1),
   attachments: z.array(AttachmentSchema).optional(),
   maxTurns: z.number().int().positive().optional(),
+  moves: z.array(MoveBindingSchema).optional(),
 });
 
 export const UpdateSessionConfigRequestSchema = SessionSharedSchema.extend({

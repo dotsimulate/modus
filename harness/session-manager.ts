@@ -41,6 +41,22 @@ function getGatherAmbientContext() {
   }
   return _gatherAmbientContext!;
 }
+
+let _activateMoveBindings: typeof import("./move-runner").activateMoveBindings | null = null;
+function getActivateMoveBindings() {
+  if (!_activateMoveBindings) {
+    _activateMoveBindings = require("./move-runner").activateMoveBindings;
+  }
+  return _activateMoveBindings!;
+}
+
+let _rekeyMoveByToken: typeof import("./move-runner").rekeyMoveByToken | null = null;
+function getRekeyMoveByToken() {
+  if (!_rekeyMoveByToken) {
+    _rekeyMoveByToken = require("./move-runner").rekeyMoveByToken;
+  }
+  return _rekeyMoveByToken!;
+}
 import { getProfile, getUserData, getUserProfile } from "./profiles";
 import { getProvider } from "./providers/registry";
 import type { SessionProvider, TurnContext } from "./providers/types";
@@ -712,15 +728,90 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   return session;
 }
 
+/**
+ * Start a session with auto-activated profile moves.
+ * Handles the two-phase move binding lifecycle:
+ *   Phase 1 (pre-spawn): gather inline moves, prepend to prompt
+ *   Phase 2 (post-spawn): activate persistent moves on the real session ID
+ *
+ * Returns the ActiveSession (same as startSession) after all moves are wired up.
+ */
+export async function startSessionWithMoves(opts: StartSessionOpts): Promise<ActiveSession> {
+  const baseCwd = resolveSessionCwd(opts.cwd);
+  const profileDef = opts.profile ? getProfile(opts.profile, baseCwd) : undefined;
+  const profileMoves = profileDef?.moves;
+
+  // No moves declared → fast path, just start normally
+  if (!profileMoves?.length) {
+    return startSession(opts);
+  }
+
+  const resolvedCwd = profileDef?.cwd
+    ? resolvePath(baseCwd, profileDef.cwd)
+    : baseCwd;
+
+  // Phase 1: gather inline (non-persistent) moves before session starts
+  const activateMoveBindings = getActivateMoveBindings();
+  const phase1 = await activateMoveBindings(
+    profileMoves,
+    "", // no session ID yet
+    resolvedCwd,
+    opts.userProfile,
+    { persistentOnly: false, logPrefix: `profile:${opts.profile}` },
+  );
+
+  // Prepend inline move context to the prompt
+  let prompt = opts.prompt;
+  if (phase1.inlineContext) {
+    if (typeof prompt === "string") {
+      prompt = `${phase1.inlineContext}\n\n${prompt}`;
+    } else {
+      // MessageContent array — prepend as text block
+      prompt = [{ type: "text" as const, text: phase1.inlineContext }, ...(prompt as any[])];
+    }
+  }
+
+  // Start the session with the augmented prompt
+  const session = startSession({ ...opts, prompt });
+
+  // Wait for real session ID (provider rekeys from temp ID)
+  const idStart = Date.now();
+  while (
+    (session.sessionId.startsWith("ses-") || session.sessionId.startsWith("pending-"))
+    && Date.now() - idStart < 15_000
+  ) {
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  // Rekey inline API move registrations to the real session ID
+  const rekeyMoveByToken = getRekeyMoveByToken();
+  for (const token of phase1.apiTokens) {
+    rekeyMoveByToken(token, session.sessionId);
+  }
+
+  // Phase 2: activate persistent moves on the real session
+  await activateMoveBindings(
+    profileMoves,
+    session.sessionId,
+    resolvedCwd,
+    opts.userProfile,
+    { persistentOnly: true, logPrefix: `profile:${opts.profile}` },
+  );
+
+  return session;
+}
+
 // ── Session Control ──
 
-export function queueMessage(sessionId: string, prompt: string, attachments?: ImageAttachment[]): boolean {
+export type QueueMessageMoveBinding = { name: string; inputs?: Record<string, unknown> };
+
+export function queueMessage(sessionId: string, prompt: string, attachments?: ImageAttachment[], moves?: QueueMessageMoveBinding[]): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
   // Gather ambient move context (async, fire-and-forget wrapper)
   // We need to do this before sending so context is included in the user message.
-  void _queueMessageAsync(session, sessionId, prompt, attachments);
+  void _queueMessageAsync(session, sessionId, prompt, attachments, moves);
   return true;
 }
 
@@ -729,6 +820,7 @@ async function _queueMessageAsync(
   sessionId: string,
   prompt: string,
   attachments?: ImageAttachment[],
+  moves?: QueueMessageMoveBinding[],
 ): Promise<void> {
   // Run ambient gathers before building content
   let augmentedPrompt = prompt;
@@ -739,6 +831,28 @@ async function _queueMessageAsync(
     }
   } catch (err) {
     console.error(`[session-manager] ambient gather failed for ${sessionId}:`, err);
+  }
+
+  // Activate inline moves requested with this message
+  if (moves && moves.length > 0) {
+    try {
+      const cwd = session.projectRoot ?? session.cwd ?? process.cwd();
+      // Phase 1: gather inline (non-persistent) moves
+      const bindingResult = await getActivateMoveBindings()(
+        moves, sessionId, cwd, session.userProfile,
+        { persistentOnly: false, logPrefix: "message-moves" },
+      );
+      // Phase 2: activate persistent moves (ambient gathers)
+      await getActivateMoveBindings()(
+        moves, sessionId, cwd, session.userProfile,
+        { persistentOnly: true, logPrefix: "message-moves" },
+      );
+      if (bindingResult.inlineContext) {
+        augmentedPrompt = `${bindingResult.inlineContext}\n\n${augmentedPrompt}`;
+      }
+    } catch (err) {
+      console.error(`[session-manager] message move activation failed for ${sessionId}:`, err);
+    }
   }
 
   const content = buildContent(augmentedPrompt, attachments);

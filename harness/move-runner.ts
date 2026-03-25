@@ -140,6 +140,7 @@ export async function gatherAmbientContext(sessionId: string): Promise<string | 
   if (!moves || moves.length === 0) return null;
 
   const parts: string[] = [];
+  const oneShotToRemove: string[] = [];
 
   for (const reg of moves) {
     try {
@@ -171,9 +172,20 @@ export async function gatherAmbientContext(sessionId: string): Promise<string | 
       if (text.trim()) {
         parts.push(`<!-- ambient:${reg.moveName} -->\n${text}\n<!-- /ambient:${reg.moveName} -->`);
       }
+
+      // Mark one-shot moves for removal after gather completes
+      if (reg.oneShot) {
+        oneShotToRemove.push(reg.moveName);
+      }
     } catch (err) {
       console.error(`[move-runner] ambient gather failed for "${reg.moveName}":`, err);
     }
+  }
+
+  // Clean up one-shot ambient moves
+  for (const name of oneShotToRemove) {
+    deactivateAmbientMove(sessionId, name);
+    console.log(`[move-runner] one-shot ambient deregistered: ${name} on session ${sessionId}`);
   }
 
   return parts.length > 0 ? parts.join("\n\n") : null;
@@ -682,6 +694,86 @@ export async function gatherMoveOnce(
   // Append modus_submit protocol for API moves
   const opsProtocol = (apiToken && config?.api?.ops) ? buildApiOpsProtocol(apiToken, config) : "";
   return { text: trimmed + opsProtocol, apiToken };
+}
+
+// ── Profile/Action Move Binding ──
+
+export type MoveBindingSpec = { name: string; inputs?: Record<string, unknown> };
+
+export type MoveBindingResult = {
+  /** Text to prepend to the initial prompt (from inline/non-persistent gathers) */
+  inlineContext: string | null;
+  /** API tokens that need rekeying once the real session ID is known */
+  apiTokens: string[];
+  /** Persistent moves that were activated (for logging) */
+  activatedPersistent: string[];
+};
+
+/**
+ * Activate move bindings for a session. Shared by session-manager (profile moves)
+ * and action-runner (action moves).
+ *
+ * Phase 1 (pre-spawn): call with sessionId="" to gather inline (non-persistent) moves.
+ *   Returns inlineContext to prepend to prompt + apiTokens to rekey after spawn.
+ *
+ * Phase 2 (post-spawn): call with real sessionId to activate persistent/ambient moves.
+ *   Pass `persistentOnly: true` to skip inline moves (already gathered in phase 1).
+ */
+export async function activateMoveBindings(
+  moves: MoveBindingSpec[],
+  sessionId: string,
+  cwd: string,
+  userProfile: string | undefined,
+  opts?: { persistentOnly?: boolean; logPrefix?: string },
+): Promise<MoveBindingResult> {
+  const prefix = opts?.logPrefix ?? "move-bindings";
+  const result: MoveBindingResult = { inlineContext: null, apiTokens: [], activatedPersistent: [] };
+  const inlineParts: string[] = [];
+
+  for (const spec of moves) {
+    const moveCfg = getMove(spec.name, cwd);
+    if (!moveCfg) {
+      console.warn(`[${prefix}] move "${spec.name}" not found, skipping`);
+      continue;
+    }
+
+    if (moveCfg.persistent) {
+      // Persistent moves need a real session ID
+      if (opts?.persistentOnly !== undefined && !opts.persistentOnly) continue;
+      if (!sessionId) continue; // can't activate persistent without a session
+      try {
+        await activateMove({
+          moveName: spec.name,
+          sessionId,
+          inputs: spec.inputs ?? {},
+          cwd,
+          userProfile,
+        });
+        result.activatedPersistent.push(spec.name);
+        console.log(`[${prefix}] persistent move "${spec.name}" activated on ${sessionId}`);
+      } catch (err) {
+        console.error(`[${prefix}] persistent move activation failed for "${spec.name}":`, err);
+      }
+    } else {
+      // Non-persistent: one-shot gather
+      if (opts?.persistentOnly) continue;
+      try {
+        const gathered = await gatherMoveOnce(spec.name, sessionId, cwd, userProfile, spec.inputs ?? {});
+        if (gathered) {
+          inlineParts.push(`<!-- move:${spec.name} -->\n${gathered.text}\n<!-- /move:${spec.name} -->`);
+          if (gathered.apiToken) result.apiTokens.push(gathered.apiToken);
+        }
+      } catch (err) {
+        console.error(`[${prefix}] move gather failed for "${spec.name}":`, err);
+      }
+    }
+  }
+
+  if (inlineParts.length > 0) {
+    result.inlineContext = inlineParts.join("\n\n");
+  }
+
+  return result;
 }
 
 /** List all available moves for a CWD */

@@ -255,6 +255,8 @@ export interface AmbientMoveRegistration {
   moveRunId: number;
   apiToken?: string;
   instanceId?: string;
+  /** If true, auto-deregister after the next gather (one-shot ambient) */
+  oneShot?: boolean;
 }
 
 // ── Attach Request (widget-first activation, phase 1) ──

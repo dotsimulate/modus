@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useCallback, useEffectEvent, useRef, useState } from "react";
-import type { Attachment } from "../api";
+import type { Attachment, MoveBinding } from "../api";
 import { getDraft, saveDraft, sendMessage, stopSessionApi, respondToPermission, nextMsgId } from "../api";
 import { useSessionState, subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileProvider";
@@ -110,7 +110,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     }
   }
 
-  async function sendPrompt(prompt: string, attachments: Attachment[]) {
+  async function sendPrompt(prompt: string, attachments: Attachment[], moves?: MoveBinding[]) {
     if (!sessionId) return;
     if (!prompt && attachments.length === 0) return;
 
@@ -152,6 +152,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
           profile: session?.profile ?? undefined,
           cwd: current.cwd,
           loadProjectSettings: current.loadProjectSettings,
+          moves,
         },
       );
       if (!isSubscribed(sessionId)) {
@@ -173,7 +174,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     }
   }
 
-  async function handleSend(attachments: Attachment[], textOverride?: string) {
+  async function handleSend(attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) {
     if (!sessionId) return;
     const prompt = (textOverride ?? input).trim();
     if (!prompt && attachments.length === 0) return;
@@ -185,7 +186,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
 
     setInput("");
     saveDraft(sessionId, "").catch(() => {});
-    await sendPrompt(prompt, attachments);
+    await sendPrompt(prompt, attachments, moves);
   }
 
   const flushQueuedMessage = useEffectEvent((text: string, attachments: Attachment[]) => {

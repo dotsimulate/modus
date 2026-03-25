@@ -171,6 +171,11 @@ export type Profile = {
    * NOTE: "prompt" decisions are auto-rejected in exec mode — use "allow"/"forbidden" only.
    */
   codexRules?: string[];
+  /** Moves to auto-activate when a session starts with this profile.
+   *  Persistent moves register as ambient gathers (re-run per turn).
+   *  Non-persistent moves do a one-shot gather prepended to the first message.
+   *  API moves get tokens created and injected into session context. */
+  moves?: ProfileMoveBinding[];
   /** UI presentation hints — read by frontend, optional with sensible defaults */
   ui?: {
     label?: string;
@@ -184,6 +189,14 @@ export type Profile = {
     /** Widget types to show in the LeftPanel when this profile is active */
     panelWidgets?: string[];
   };
+};
+
+/** Move binding for agent profiles — declares moves that auto-activate on session start. */
+export type ProfileMoveBinding = {
+  /** Move name (must exist in harness/moves/ or .modus/moves/) */
+  name: string;
+  /** Inputs to pass to the move's gather() */
+  inputs?: Record<string, unknown>;
 };
 
 export type ResolvedProfilePrompt = {

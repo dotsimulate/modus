@@ -16,6 +16,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { ConfigBar } from "./ConfigBar";
 import { ChatInput } from "./ChatInput";
 import { useSessionComposer } from "../hooks/useSessionComposer";
+import type { MoveBinding } from "../api";
 import { getDraft, saveDraft, sendMessage, stopSessionApi } from "../api";
 import { subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
 import { nextMsgId } from "../api";
@@ -118,7 +119,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
   const session = getSessionState(sessionId);
   const isActive = session?.status === "running" || session?.status === "starting";
 
-  const handleSend = useCallback(async (attachments: Attachment[], textOverride?: string) => {
+  const handleSend = useCallback(async (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => {
     const prompt = (textOverride ?? input).trim();
     if (!prompt && attachments.length === 0) return;
 
@@ -162,6 +163,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
         {
           profile: composer.activeProfileName || undefined,
           cwd: composer.projectCwd,
+          moves,
         },
       );
       if (!isSubscribed(sessionId)) {
