@@ -230,9 +230,11 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       // Merge MCP servers: project CWD .claude/mcp.json + global + profile
       // Priority: profile > global > project CWD (project CWD is lowest, gets overridden)
-      const globalConfig = getGlobalConfig(session.cwd);
-      const sessionCwdMcp = readProjectMcpServers(opts.cwd ?? session.cwd);
-      console.log(`[claude-code] MCP merge: cwd=${session.cwd} projectMcp=${JSON.stringify(Object.keys(sessionCwdMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))}`);
+      // Use project root (where .modus/ lives), not session.cwd (may be a profile subfolder)
+      const projectRoot = session.projectRoot ?? opts.cwd ?? session.cwd;
+      const globalConfig = getGlobalConfig(projectRoot);
+      const sessionCwdMcp = readProjectMcpServers(projectRoot);
+      console.log(`[claude-code] MCP merge: projectRoot=${projectRoot} sessionCwd=${session.cwd} projectMcp=${JSON.stringify(Object.keys(sessionCwdMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))}`);
       const mergedMcp = {
         ...sessionCwdMcp,
         ...(globalConfig.mcpServers ?? {}),
