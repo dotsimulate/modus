@@ -84,9 +84,43 @@ export interface MoveConfig {
   // ── Page (move-owned full page in the nav) ──
   page?: MovePageDeclaration;
 
+  // ── Capability declaration (runtime enforcement) ──
+  capabilities?: MoveCapabilities;
+
+  // ── Trust tier (set automatically or overridden in move.json) ──
+  /**
+   * Trust tier — controls default capability enforcement and audit level.
+   *   - "builtin":  harness moves, fully trusted, capabilities default to all-allowed
+   *   - "reviewed": project moves explicitly marked as reviewed, capabilities enforced as declared
+   *   - "experimental": no capability enforcement, but all operations are logged (audit-only)
+   *   When omitted, inferred from origin: "harness" → "builtin", "project" → "experimental".
+   */
+  trust?: "builtin" | "reviewed" | "experimental";
+
   // ── Metadata ──
   enabled?: boolean;
   tags?: string[];
+}
+
+// ── Move Capabilities (declared in move.json, enforced at runtime) ──
+
+export interface MoveCapabilities {
+  /** Allow ctx.run() shell execution. Default: true (unrestricted). */
+  shell?: boolean;
+  /** Allow harness.createSession(). Default: true. */
+  sessionSpawn?: boolean;
+  /** Allow harness.sendMessage(). Default: true. */
+  sessionMessage?: boolean;
+  /** Allow harness.triggerAction(). Default: true. */
+  actionTrigger?: boolean;
+  /** Allow harness.notify(). Default: true. */
+  notify?: boolean;
+  /** Allowed network domains for shell commands (informational — not enforced at network layer). */
+  network?: string[];
+  /** Allow filesystem reads via ctx.db or gather. Default: true. */
+  fileRead?: boolean;
+  /** Allow filesystem writes (only relevant for onSubmit side effects). Default: true. */
+  fileWrite?: boolean;
 }
 
 // ── Move Input (user form field) ──
