@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useId } from "react";
-import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMoveResult } from "../api";
+import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMoveResult, MoveBinding } from "../api";
 import { activateMoveApi, activateProjectMoveApi, fetchAmbientMoves, deactivateAmbientMoveApi, attachMoveApi, detachMoveApi } from "../api";
 import type { ActivateMoveResult } from "../api";
 import { PromptPicker } from "./PromptPicker";
@@ -16,7 +16,7 @@ const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/web
 type Props = {
   value: string;
   onChange: (value: string) => void;
-  onSend: (attachments: Attachment[], textOverride?: string) => void;
+  onSend: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => void;
   onStop: () => void;
   sessionStatus: SessionStatus | null;
   disabled: boolean;
@@ -370,7 +370,25 @@ export function ChatInput({
       setAttachedMove(null);
       if (projectCwd) {
         const mode = item.mode ?? "inline";
-        // If mountOnAttach, pass the existing instanceId so activation reuses the registration
+
+        // Server-side injection path: for inline moves on an active session
+        // without widget attach, send moves in the message payload and let the
+        // backend handle activation + gather + prepend.
+        if (mode === "inline" && sessionId && !attachInstanceId) {
+          const moveBinding: MoveBinding = { name: item.name, inputs: inputs || undefined };
+          const sendText = text || "";
+          if (sendText) {
+            sentHistory.push(sendText);
+            if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
+            historyIndex.current = -1;
+            draft.current = "";
+          }
+          onSend(attachments, sendText || " ", [moveBinding]);
+          setAttachments([]);
+          return;
+        }
+
+        // Legacy path: widget-attached moves, branch/background modes, no-session activation
         const moveInputs = attachInstanceId ? { ...inputs, instanceId: attachInstanceId } : inputs;
         const body = { moveName: item.name, inputs: moveInputs, cwd: projectCwd, userProfile };
         try {

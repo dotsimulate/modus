@@ -30,7 +30,7 @@ export {
   createFile, createDirectory,
 } from "./sessions";
 
-export type { SessionStats, AccountInfo, GeminiUsageInfo, TurnContent } from "./sessions";
+export type { SessionStats, AccountInfo, GeminiUsageInfo, TurnContent, MoveBinding } from "./sessions";
 
 // Actions
 export { fetchActions, fetchActionRuns, triggerActionApi, updateActionApi, fetchActionInfo, clearActionRunsApi, resetActionApi, fetchActionPreferences, reloadActionsApi, addTagApi, removeTagApi } from "./actions";

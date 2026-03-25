@@ -138,6 +138,10 @@ export const ProfileSchema = z.object({
   codexSandboxMode: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
   codexRules: z.array(z.string()).optional(),
   cwdSuggestions: z.array(z.string()).optional(),
+  moves: z.array(z.object({
+    name: z.string(),
+    inputs: z.record(z.string(), z.unknown()).optional(),
+  })).optional(),
 });
 
 // ── User Profile ──

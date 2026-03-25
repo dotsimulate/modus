@@ -8,7 +8,7 @@ import {
   rekeyMoveSession,
   rekeyMoveByTokenApi,
 } from "../api";
-import type { Session, SessionInfo, Attachment, ApiAttachment } from "../api";
+import type { Session, SessionInfo, Attachment, ApiAttachment, MoveBinding } from "../api";
 import { createInitialState } from "../eventReducer";
 import {
   agentConfigToOverrides,
@@ -39,7 +39,7 @@ type SessionContextValue = {
   serverSessions: SessionInfo[];
   input: string;
   handleInputChange: (text: string) => void;
-  send: (attachments: Attachment[], textOverride?: string) => Promise<void>;
+  send: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => Promise<void>;
   stop: () => Promise<void>;
   stopTask: (taskId: string) => Promise<void>;
   newSession: () => Promise<string | null>;
@@ -338,7 +338,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   // ── Send message ──
 
-  const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string) => {
+  const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => {
     const prompt = (textOverride ?? input).trim();
     if (!prompt && sendAttachments.length === 0) return;
 
@@ -422,7 +422,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       if (isActive) {
         // Commit to backend queue immediately — survives page navigation
-        apiSendMessage(activeSessionId!, prompt, apiAtts).catch(() => {});
+        apiSendMessage(activeSessionId!, prompt, apiAtts, moves ? { moves } : undefined).catch(() => {});
         setQueuedMessage({ text: prompt, attachments: sendAttachments, serverQueued: true });
         return;
       }
@@ -477,6 +477,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           cwd: rs.cwd,
           additionalDirectories: rs.additionalDirectories.length > 0 ? rs.additionalDirectories : undefined,
           loadProjectSettings: rs.loadProjectSettings,
+          moves,
         });
         if (!isSubscribed(activeSessionId!)) {
           const latest = getSessionState(activeSessionId!);

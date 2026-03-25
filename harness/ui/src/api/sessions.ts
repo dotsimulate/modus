@@ -138,6 +138,8 @@ export async function createSession(opts: CreateSessionOpts): Promise<{ sessionI
   return res.json();
 }
 
+export type MoveBinding = { name: string; inputs?: Record<string, unknown> };
+
 export async function sendMessage(
   sessionId: string,
   prompt: string,
@@ -155,6 +157,7 @@ export async function sendMessage(
     cwd?: string;
     additionalDirectories?: string[];
     loadProjectSettings?: boolean;
+    moves?: MoveBinding[];
   },
 ): Promise<{ queued: boolean; status: string }> {
   const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/messages`, {

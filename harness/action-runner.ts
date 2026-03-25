@@ -48,7 +48,7 @@ import { MAX_CHAIN_DEPTH } from "./action-types";
 import { sendNotifications, sendActionNotification } from "./notify";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { svgToPngBase64 } from "./svg-render";
-import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken } from "./move-runner";
+import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBindings } from "./move-runner";
 
 // ── Constants ──
 
@@ -636,37 +636,24 @@ async function fireAction(
         throw gatherErr;
       }
 
-      // ── Inline move context (non-persistent moves: gather once, prepend to prompt) ──
-      const moveApiTokens: string[] = []; // tokens to rekey after session spawn
+      // ── Move bindings (inline + persistent) ──
+      const effectiveCwd = cfg.cwd ?? process.cwd();
+      const logPrefix = `actions:${name}`;
+      let moveApiTokens: string[] = [];
       if (cfg.moves?.length) {
-        const effectiveCwd = cfg.cwd ?? process.cwd();
-        const inlineParts: string[] = [];
-        for (const moveSpec of cfg.moves) {
-          const moveCfg = getMove(moveSpec.name, effectiveCwd);
-          if (!moveCfg) {
-            console.warn(`[actions:${name}] move "${moveSpec.name}" not found, skipping`);
-            continue;
-          }
-          if (moveCfg.persistent) continue; // handled after session spawn
-          try {
-            const result = await gatherMoveOnce(moveSpec.name, "", effectiveCwd, effectiveUserProfile, moveSpec.inputs ?? {});
-            if (result) {
-              inlineParts.push(`<!-- move:${moveSpec.name} -->\n${result.text}\n<!-- /move:${moveSpec.name} -->`);
-              if (result.apiToken) moveApiTokens.push(result.apiToken);
-            }
-          } catch (err) {
-            console.error(`[actions:${name}] move gather failed for "${moveSpec.name}":`, err);
-          }
-        }
-        if (inlineParts.length > 0) {
-          const moveContext = inlineParts.join("\n\n");
+        // Phase 1: gather inline (non-persistent) moves before session starts
+        const phase1 = await activateMoveBindings(
+          cfg.moves, "", effectiveCwd, effectiveUserProfile,
+          { persistentOnly: false, logPrefix },
+        );
+        if (phase1.inlineContext) {
           if (typeof prompt === "string") {
-            prompt = `${moveContext}\n\n${prompt}`;
+            prompt = `${phase1.inlineContext}\n\n${prompt}`;
           } else {
-            // Multipart content — prepend as text block
-            prompt = [{ type: "text", text: moveContext }, ...prompt];
+            prompt = [{ type: "text", text: phase1.inlineContext }, ...prompt];
           }
         }
+        moveApiTokens = phase1.apiTokens;
       }
 
       const session = startSession({
@@ -700,30 +687,16 @@ async function fireAction(
         console.log(`[actions] Tagged session ${session.sessionId} with "${triggerInfo.webhookSessionTag}"`);
       }
 
-      // ── Rekey inline API move registrations to the real session ID ──
-      for (const token of moveApiTokens) {
-        rekeyMoveByToken(token, session.sessionId);
-      }
-
-      // ── Persistent moves (ambient gather — register on spawned session) ──
+      // ── Rekey inline API move registrations + activate persistent moves ──
       if (cfg.moves?.length) {
-        const effectiveCwd = cfg.cwd ?? process.cwd();
-        for (const moveSpec of cfg.moves) {
-          const moveCfg = getMove(moveSpec.name, effectiveCwd);
-          if (!moveCfg?.persistent) continue;
-          try {
-            await activateMove({
-              moveName: moveSpec.name,
-              sessionId: session.sessionId,
-              inputs: moveSpec.inputs ?? {},
-              cwd: effectiveCwd,
-              userProfile: effectiveUserProfile,
-            });
-            console.log(`[actions:${name}] persistent move "${moveSpec.name}" activated on ${session.sessionId}`);
-          } catch (err) {
-            console.error(`[actions:${name}] persistent move activation failed for "${moveSpec.name}":`, err);
-          }
+        for (const token of moveApiTokens) {
+          rekeyMoveByToken(token, session.sessionId);
         }
+        // Phase 2: activate persistent moves on the real session
+        await activateMoveBindings(
+          cfg.moves, session.sessionId, effectiveCwd, effectiveUserProfile,
+          { persistentOnly: true, logPrefix },
+        );
       }
       console.log(`[actions] Run #${runNumber} for "${name}" → session ${session.sessionId} (attempt ${attempt})`);
 
