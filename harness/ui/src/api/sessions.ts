@@ -81,13 +81,13 @@ export async function removeSessionTagApi(id: string, tag: string): Promise<stri
 // ── Draft Text ──
 
 export async function getDraft(sessionId: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/draft`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/api/ui/sessions/${sessionId}/draft`, { headers: authHeaders() });
   const data = await res.json();
   return data.draft ?? "";
 }
 
 export async function saveDraft(sessionId: string, draft: string): Promise<void> {
-  await fetch(`${API_BASE}/api/sessions/${sessionId}/draft`, {
+  await fetch(`${API_BASE}/api/ui/sessions/${sessionId}/draft`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify({ draft }),
@@ -97,12 +97,12 @@ export async function saveDraft(sessionId: string, draft: string): Promise<void>
 // ── Session UI State ──
 
 export async function fetchSessionUiState(sessionId: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/ui-state`, { headers: authHeaders() });
+  const res = await fetch(`${API_BASE}/api/ui/sessions/${sessionId}/state`, { headers: authHeaders() });
   return res.json();
 }
 
 export async function saveSessionUiState(sessionId: string, patch: Record<string, unknown>): Promise<void> {
-  await fetch(`${API_BASE}/api/sessions/${sessionId}/ui-state`, {
+  await fetch(`${API_BASE}/api/ui/sessions/${sessionId}/state`, {
     method: "PATCH",
     headers: authHeaders(),
     body: JSON.stringify(patch),
