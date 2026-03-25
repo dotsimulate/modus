@@ -388,7 +388,7 @@ async function createGeminiRuntime(
     interactive: true,
     noBrowser: true,
     model,
-    approvalMode: approvalModeForPolicy(profileDef?.permissionPolicy),
+    approvalMode: approvalModeForPolicy(opts.permissionPolicy ?? profileDef?.permissionPolicy),
     maxSessionTurns: opts.maxTurns ?? profileDef?.maxTurns,
     mcpServers: buildGeminiMcpServers(ctx, profileDef),
     ...toolConfig,
@@ -408,7 +408,7 @@ async function createGeminiRuntime(
   try {
     await config.initialize();
 
-    const policy: PermissionPolicy = profileDef?.permissionPolicy ?? "bypass";
+    const policy: PermissionPolicy = opts.permissionPolicy ?? profileDef?.permissionPolicy ?? "bypass";
     const isBypass = policy === "bypass";
     const messageBus = config.getMessageBus();
 

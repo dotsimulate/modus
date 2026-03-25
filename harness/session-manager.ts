@@ -410,6 +410,8 @@ export type StartSessionOpts = {
   branchParentId?: string;
   /** For branched sessions: SDK message UUID to resume at */
   branchMessageUUID?: string;
+  /** Per-session permission policy override — takes precedence over profile permissionPolicy */
+  permissionPolicy?: "bypass" | "ask" | { default: "approve" | "ask"; autoApprove?: string[]; requireApproval?: string[] };
 };
 
 function resolveSessionCwd(cwd?: string): string {

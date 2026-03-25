@@ -44,6 +44,19 @@ export const SendMessageRequestSchema = SessionSharedSchema.extend({
   moves: z.array(MoveBindingSchema).optional(),
 });
 
+const PermissionModeSchema = z.enum(["bypass", "interactive"]).optional();
+
+export const InteractRequestSchema = SessionSharedSchema.extend({
+  sessionId: z.string().optional(),
+  prompt: z.string().min(1),
+  attachments: z.array(AttachmentSchema).optional(),
+  moves: z.array(MoveBindingSchema).optional(),
+  maxTurns: z.number().int().positive().optional(),
+  subscribe: z.boolean().optional().default(true),
+  createIfMissing: z.boolean().optional().default(true),
+  permissionMode: PermissionModeSchema,
+});
+
 export const UpdateSessionConfigRequestSchema = SessionSharedSchema.extend({
   maxTurns: z.number().int().positive().nullable().optional(),
 });
