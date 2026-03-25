@@ -467,10 +467,7 @@ export function getProfileUiConfig(name: string, cwd?: string): ProfileUiConfig 
 
 /** Resolve an agent profile — checks project-local .modus/ first when cwd is provided */
 export function getProfile(name: string, cwd?: string): Profile | undefined {
-  const profile = getProfileConfig(name, cwd);
-  if (!profile) return undefined;
-  const ui = getProfileUiConfig(name, cwd);
-  return ui ? { ...profile, ui } : profile;
+  return getProfileConfig(name, cwd);
 }
 
 /** List all agent profile names — merges project-local when cwd is provided */
@@ -496,7 +493,7 @@ export function listProfileNames(cwd?: string): string[] {
 export function getAllProfiles(cwd?: string): Record<string, Profile> {
   const result: Record<string, Profile> = {};
   for (const name of listProfileNames(cwd)) {
-    const p = getProfile(name, cwd);
+    const p = getProfileConfig(name, cwd);
     if (p) result[name] = p;
   }
   return result;
@@ -631,10 +628,7 @@ export function getUserProfileUiConfig(name: string): UserProfileUiConfig | unde
 }
 
 export function getUserProfile(name: string): UserProfile | undefined {
-  const profile = getUserProfileConfig(name);
-  if (!profile) return undefined;
-  const ui = getUserProfileUiConfig(name);
-  return ui ? { ...profile, ...ui } : profile;
+  return getUserProfileConfig(name);
 }
 
 export function listUserProfileNames(): string[] {
@@ -648,7 +642,7 @@ export function listUserProfileNames(): string[] {
 export function getAllUserProfiles(): Record<string, UserProfile> {
   const result: Record<string, UserProfile> = {};
   for (const name of listUserProfileNames()) {
-    const p = getUserProfile(name);
+    const p = getUserProfileConfig(name);
     if (p) result[name] = p;
   }
   return result;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi } from "./api";
-import { healthCheck, saveUserProfileApi, patchUserProfileUiConfigApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
+import { healthCheck, patchUserProfileApi, patchUserProfileUiConfigApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
 import type { MoveListItem } from "./api";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
@@ -817,15 +817,17 @@ function AppShell() {
           onClose={() => setShowUserSettings(false)}
           onSave={async (patch) => {
             if (!activeUserProfile) return;
-            const { name: _name, ...rest } = activeUP;
-            const nextProfile = {
-              ...rest,
-              ...patch,
-            } as Omit<typeof activeUP, "name"> & Record<string, unknown>;
-            Object.keys(nextProfile).forEach((key) => {
-              if (nextProfile[key] === undefined) delete nextProfile[key];
-            });
-            await saveUserProfileApi(activeUserProfile, nextProfile);
+            const { computer, editor, ...corePatch } = patch;
+            const uiPatch = {
+              ...(computer !== undefined ? { computer } : {}),
+              ...(editor !== undefined ? { editor } : {}),
+            };
+            if (Object.keys(corePatch).length > 0) {
+              await patchUserProfileApi(activeUserProfile, corePatch);
+            }
+            if (Object.keys(uiPatch).length > 0) {
+              await patchUserProfileUiConfigApi(activeUserProfile, uiPatch);
+            }
             await refreshUserProfiles();
             if ("defaultAgentProfile" in patch) {
               selectProfile(patch.defaultAgentProfile?.trim() || "");
