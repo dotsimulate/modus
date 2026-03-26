@@ -10,7 +10,8 @@
  */
 
 import { useState, useEffect } from "react";
-import { browsePath, type BrowseResult } from "../api";
+import { modus } from "../modusClient";
+import type { BrowseResult } from "../../../sdk/index";
 
 type Props = {
   onSelect: (path: string) => void;
@@ -27,7 +28,7 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
   const navigate = (path?: string) => {
     setLoading(true);
     setError(null);
-    browsePath(path)
+    modus.browse(path)
       .then((r) => {
         setResult(r);
         setPathInput(r.path);

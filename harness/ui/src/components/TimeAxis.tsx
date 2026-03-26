@@ -1,4 +1,4 @@
-import type { DeepAnalyticsBucket } from "../api";
+import type { DeepAnalyticsBucket } from "../../../sdk/index";
 
 function labelFor(ts: number, bucketCount: number): string {
   const date = new Date(ts);

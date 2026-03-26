@@ -8,8 +8,8 @@
 import type {
   AgentConfigState, Message, ToolCall, SubTask, SessionStatus,
   Attachment, PendingPermission, SessionArtifact,
-} from "./api";
-import { nextMsgId } from "./api";
+} from "../../sdk/index";
+import { nextMsgId } from "../../sdk/index";
 
 export type ReducerState = {
   sessionId: string;

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { fetchClientExtensions } from "../api";
+import { modus } from "../modusClient";
 import { loadClientExtensions, unloadClientExtensions } from "../client-extensions";
 import { useProfiles } from "../providers/ProfileProvider";
 
@@ -10,7 +10,7 @@ export function ClientExtensionsBoot() {
   useEffect(() => {
     let cancelled = false;
 
-    fetchClientExtensions(extCwd, activeUserProfile)
+    modus.listClientExtensions(extCwd, activeUserProfile)
       .then((items) => {
         if (cancelled) return;
         return loadClientExtensions(items);

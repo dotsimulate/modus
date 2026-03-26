@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import type { SessionInfo } from "../../api";
-import { updateSessionTitle, archiveSessionApi } from "../../api";
+import type { SessionInfo } from "../../../../sdk/index";
+import { modus } from "../../modusClient";
 import { useSessionState } from "../../sessionStore";
 import { formatSidebarProviderStat, getLatestAssistantUsage } from "../providerStats";
 
@@ -85,7 +85,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
     const newTitle = trimmed || null;
     if (newTitle === (s.title ?? null)) return;
     s.title = newTitle; // optimistic
-    await updateSessionTitle(s.id, newTitle);
+    await modus.updateTitle(s.id, newTitle);
   };
 
   const cancelEdit = () => {
@@ -155,7 +155,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
               onClick={(e) => {
                 e.stopPropagation();
                 if (isEmptySession(s)) {
-                  archiveSessionApi(s.id).catch(() => {});
+                  modus.archiveSession(s.id).catch(() => {});
                 } else {
                   onArchive(s.id);
                 }

@@ -11,7 +11,9 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { browsePath, readFileContent, openInEditor, createFile, createDirectory, onFsChange, type BrowseResult } from "../api";
+import { modus } from "../modusClient";
+import type { BrowseResult } from "../../../sdk/index";
+import { onFsChange } from "../modusClient";
 import { FileContentViewer } from "./FileContentViewer";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { usePinboard } from "../providers/PinboardProvider";
@@ -152,7 +154,7 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
   const fetchDir = useCallback(async (dirPath: string) => {
     setLoadingDirs((s) => new Set(s).add(dirPath));
     try {
-      const result = await browsePath(dirPath, { includeHidden: true, includeFiles: true });
+      const result = await modus.browse(dirPath, { includeHidden: true, includeFiles: true });
       setDirCache((m) => new Map(m).set(dirPath, result));
     } catch {
       // silently fail — folder just won't expand
@@ -180,7 +182,7 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
       setDirCache((cache) => {
         if (cache.has(event.dir)) {
           // Re-fetch this directory in the background
-          browsePath(event.dir, { includeHidden: true, includeFiles: true })
+          modus.browse(event.dir, { includeHidden: true, includeFiles: true })
             .then((result) => setDirCache((m) => new Map(m).set(event.dir, result)))
             .catch(() => {});
         }
@@ -211,7 +213,7 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
     onFileSelect?.(path);
     if (compact) return;
     try {
-      const content = await readFileContent(path);
+      const content = await modus.readFile(path);
       if (content !== null) setFileView({ path, content });
     } catch {
       setFileView({ path, content: "Could not read file." });
@@ -220,7 +222,7 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
 
   const handleOpenExternal = useCallback((path: string) => {
     if (onOpenExternal) onOpenExternal(path);
-    else openInEditor(path);
+    else modus.openInEditor(path);
   }, [onOpenExternal]);
 
   const refreshDir = useCallback((dirPath: string) => {
@@ -231,8 +233,8 @@ export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOp
     if (!creating || !createName.trim()) { setCreating(null); return; }
     const target = `${creating.dir}/${createName.trim()}`;
     const ok = creating.kind === "file"
-      ? await createFile(target)
-      : await createDirectory(target);
+      ? await modus.createFile(target)
+      : await modus.createDirectory(target);
     setCreating(null);
     if (ok) {
       refreshDir(creating.dir);

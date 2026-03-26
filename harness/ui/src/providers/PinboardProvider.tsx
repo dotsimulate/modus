@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { useSession } from "./SessionProvider";
-import { saveSessionUiState } from "../api";
+import { modus } from "../modusClient";
 
 const STORAGE_KEY = "mo:pinboards";
 
@@ -93,7 +93,7 @@ export function PinboardProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const sessionId = activeSession?.id;
     if (!sessionId || sessionId.startsWith("pending-")) return;
-    saveSessionUiState(sessionId, { pinnedFiles: activeGroup?.paths ?? [] }).catch(() => {});
+    modus.saveSessionUiState(sessionId, { pinnedFiles: activeGroup?.paths ?? [] }).catch(() => {});
   }, [activeGroup?.paths, activeSession?.id]);
 
   const setActiveGroup = useCallback((id: string) => {

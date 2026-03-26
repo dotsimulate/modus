@@ -8,8 +8,9 @@
  */
 
 import { useEffect, useCallback, useEffectEvent, useRef, useState } from "react";
-import type { Attachment, MoveBinding } from "../api";
-import { getDraft, saveDraft, sendMessage, stopSessionApi, respondToPermission, nextMsgId } from "../api";
+import type { Attachment, MoveBinding } from "../../../sdk/index";
+import { modus } from "../modusClient";
+import { nextMsgId } from "../../../sdk/index";
 import { useSessionState, subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileProvider";
 import { FloatingWindow } from "./FloatingWindow";
@@ -59,7 +60,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     }
     draftReadyRef.current = false;
     resetComposer();
-    getDraft(sessionId)
+    modus.getDraft(sessionId)
       .then((draft) => {
         if (cancelled) return;
         setInput(draft);
@@ -77,7 +78,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     if (!sessionId || !draftReadyRef.current) return;
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(() => {
-      saveDraft(sessionId, input).catch(() => {});
+      modus.saveDraft(sessionId, input).catch(() => {});
     }, 1000);
     return () => {
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
@@ -92,7 +93,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
       scope?: "once" | "session",
     ) => {
       if (!sessionId) return;
-      await respondToPermission(sessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
+      await modus.respondToPermission(sessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
     },
     [sessionId],
   );
@@ -103,7 +104,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
 
   async function handleStop() {
     if (!sessionId) return;
-    await stopSessionApi(sessionId).catch(() => {});
+    await modus.stopSession(sessionId).catch(() => {});
     const current = getSessionState(sessionId);
     if (current) {
       setSessionState(sessionId, { ...current, status: "idle" }, session?.profile);
@@ -139,7 +140,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     setSessionState(sessionId, updated, session?.profile);
 
     try {
-      await sendMessage(
+      await modus.sendMessage(
         sessionId,
         prompt,
         attachments.length > 0 ? attachments.map((att) => ({
@@ -185,7 +186,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     }
 
     setInput("");
-    saveDraft(sessionId, "").catch(() => {});
+    modus.saveDraft(sessionId, "").catch(() => {});
     await sendPrompt(prompt, attachments, moves);
   }
 

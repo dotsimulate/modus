@@ -12,8 +12,8 @@
  */
 
 import { useState, useCallback } from "react";
-import { fetchMoves } from "../api";
-import type { MoveListItem, MoveInput } from "../api";
+import { modus } from "../modusClient";
+import type { MoveListItem, MoveInput } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import type { WidgetDef, WidgetProps } from "./index";
 import { WidgetEmptyState } from "./widget-components";
@@ -507,7 +507,7 @@ function MovesWidget({ widgetId }: WidgetProps) {
   })();
 
   const loadMoves = useCallback(
-    () => (movesCwd ? fetchMoves(movesCwd) : Promise.resolve([])),
+    () => (movesCwd ? modus.listMoves(movesCwd) : Promise.resolve([])),
     [movesCwd],
   );
 

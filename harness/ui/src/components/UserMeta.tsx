@@ -1,5 +1,5 @@
 import { memo } from "react";
-import type { Message } from "../api";
+import type { Message } from "../../../sdk/index";
 
 type Props = {
   msg: Message;

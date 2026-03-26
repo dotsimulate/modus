@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { fetchTouches, type TouchRecord } from "../api/trace";
+import { modus } from "../modusClient";
+import type { TouchRecord } from "../../../sdk/index";
 import { buildGraph, type TraceGraph, type SessionNode, type FileNode } from "../utils/touch-graph";
 
 // ── 3D Math ──
@@ -434,7 +435,7 @@ export function TraceView() {
   const fetchKey = [...activeOps].sort().join(",");
   useEffect(() => {
     setLoading(true);
-    fetchTouches({ ops: [...activeOps] })
+    modus.fetchTouches({ ops: [...activeOps] })
       .then(r => { setTouches(r.touches); setError(null); })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));

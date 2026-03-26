@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { fetchProfiles, fetchActiveSessions } from "../api";
-import type { Profile, ActiveSessionInfo } from "../api";
+import { modus } from "../modusClient";
+import type { Profile, ActiveSessionInfo } from "../../../sdk/index";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileProvider";
 import { useSession } from "../providers/SessionProvider";
@@ -75,8 +75,8 @@ export function Profiles({ onSelectSession, onNavigate }: Props) {
     const load = async () => {
       try {
         const [p, s] = await Promise.all([
-          fetchProfiles(profilesCwd),
-          fetchActiveSessions(activeUserProfile ?? undefined),
+          modus.listProfiles(profilesCwd),
+          modus.getActiveSessions(activeUserProfile ?? undefined),
         ]);
         setProfiles(p);
         setActiveSessions(s);
@@ -107,7 +107,7 @@ export function Profiles({ onSelectSession, onNavigate }: Props) {
   };
 
   const reloadProfiles = async () => {
-    try { setProfiles(await fetchProfiles(profilesCwd)); } catch { return; }
+    try { setProfiles(await modus.listProfiles(profilesCwd)); } catch { return; }
   };
 
   // Editor takes over the full view

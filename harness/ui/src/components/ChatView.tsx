@@ -4,8 +4,8 @@ import { GitActivityItem } from "./GitActivityItem";
 import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
-import { fetchGitLog, fetchSessionStatus } from "../api";
-import type { Message, ToolCall, CommitAttribution, GitCommit } from "../api";
+import { modus } from "../modusClient";
+import type { Message, ToolCall, CommitAttribution, GitCommit } from "../../../sdk/index";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionProvider";
 import { navigateToGitRoute } from "../git-route";
 
@@ -209,7 +209,7 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
     let active = true;
     const load = async () => {
       try {
-        const next = await fetchGitLog(cwd, 200);
+        const next = await modus.gitLog(cwd, 200);
         if (active) setCommits(next);
       } catch {
         if (active) setCommits([]);
@@ -236,7 +236,7 @@ export function ChatView({ messages, sessionId, sessionTags, provider, profileNa
     let active = true;
     const load = async () => {
       try {
-        const status = await fetchSessionStatus(sessionId);
+        const status = await modus.getSessionStatus(sessionId);
         if (active) setCommitAttribution(status.commitAttribution ?? null);
       } catch {
         if (active) setCommitAttribution(null);

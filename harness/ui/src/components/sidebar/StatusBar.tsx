@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { fetchGeminiUsage } from "../../api";
-import type { GeminiUsageInfo, UserProfile } from "../../api";
+import { modus } from "../../modusClient";
+import type { GeminiUsageInfo, UserProfile } from "../../../../sdk/index";
 
 type Props = {
   harnessUp: boolean | null;
@@ -38,7 +38,7 @@ export function StatusBar({
 
     const load = async () => {
       try {
-        const data = await fetchGeminiUsage(projectPath);
+        const data = await modus.getGeminiUsage(projectPath);
         if (alive) setGeminiUsage(data);
       } catch {
         if (alive) setGeminiUsage(null);

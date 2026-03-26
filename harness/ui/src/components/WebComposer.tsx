@@ -2,7 +2,7 @@
  * WebComposer — inline ConfigBar + ChatInput popup.
  *
  * Works with an existing session: loads/saves drafts via the same API
- * as the session page, sends messages via sendMessage. Text persists
+ * as the session page, sends messages via modus.sendMessage. Text persists
  * until the user archives the session or clears the draft.
  *
  * Positioned at canvas coordinates when used on the SessionWeb canvas,
@@ -16,11 +16,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { ConfigBar } from "./ConfigBar";
 import { ChatInput } from "./ChatInput";
 import { useSessionComposer } from "../hooks/useSessionComposer";
-import type { MoveBinding } from "../api";
-import { getDraft, saveDraft, sendMessage, stopSessionApi } from "../api";
+import type { MoveBinding, Attachment } from "../../../sdk/index";
+import { modus } from "../modusClient";
+import { nextMsgId } from "../../../sdk/index";
 import { subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
-import { nextMsgId } from "../api";
-import type { Attachment } from "../api";
 
 type Props = {
   /** Session to attach to — drafts persist here */
@@ -51,7 +50,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
   useEffect(() => {
     let cancelled = false;
     setDraftReady(false);
-    getDraft(sessionId)
+    modus.getDraft(sessionId)
       .then((draft) => {
         if (!cancelled) { setInput(draft); setDraftReady(true); }
       })
@@ -66,7 +65,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
     if (!draftReady) return;
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(() => {
-      saveDraft(sessionId, input).catch(() => {});
+      modus.saveDraft(sessionId, input).catch(() => {});
     }, 1000);
     return () => {
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
@@ -79,7 +78,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
       clearTimeout(draftTimerRef.current);
       draftTimerRef.current = null;
     }
-    saveDraft(sessionId, input).catch(() => {});
+    modus.saveDraft(sessionId, input).catch(() => {});
     onClose();
   }, [sessionId, input, onClose]);
 
@@ -129,7 +128,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
       draftTimerRef.current = null;
     }
     setInput("");
-    saveDraft(sessionId, "").catch(() => {});
+    modus.saveDraft(sessionId, "").catch(() => {});
 
     // Optimistic UI update
     const current = getSessionState(sessionId);
@@ -151,7 +150,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
     }
 
     try {
-      await sendMessage(
+      await modus.sendMessage(
         sessionId,
         prompt,
         attachments.length > 0 ? attachments.map(a => ({
@@ -188,7 +187,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
   }, [input, sessionId, session?.profile, composer.activeProfileName, composer.projectCwd, onSent]);
 
   const handleStop = useCallback(async () => {
-    await stopSessionApi(sessionId).catch(() => {});
+    await modus.stopSession(sessionId).catch(() => {});
     const current = getSessionState(sessionId);
     if (current) {
       setSessionState(sessionId, { ...current, status: "idle" }, session?.profile);

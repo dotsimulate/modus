@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useEffect, useRef, useState, type ReactNode } from "react";
-import type { Message, ToolCall } from "../api";
+import type { Message, ToolCall } from "../../../sdk/index";
 
 // ── Config ──
 

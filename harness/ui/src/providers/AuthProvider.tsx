@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { authStatus, clearAuthToken, lockAll, checkToken } from "../api";
+import { modus } from "../modusClient";
+import { clearAuthToken } from "../modusClient";
 import { LoginScreen } from "../components/LoginScreen";
 
 type AuthContextValue = {
@@ -16,7 +17,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (authState !== "checking") return;
-    authStatus()
+    modus.authStatus()
       .then(async ({ required, setup, name }) => {
         if (name) setUserName(name);
         if (setup) { setAuthState("setup"); return; }
@@ -24,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const existing = localStorage.getItem("harness_token");
         if (existing) {
           try {
-            await checkToken();
+            await modus.checkToken();
             setAuthState("ok");
             return;
           } catch {
@@ -42,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!localStorage.getItem("harness_token")) return;
     const interval = setInterval(async () => {
       try {
-        await checkToken();
+        await modus.checkToken();
       } catch {
         clearAuthToken();
         setAuthState("checking");
@@ -57,7 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleLock = useCallback(() => {
-    lockAll().catch(() => {});
+    modus.lockAll().catch(() => {});
     clearAuthToken();
     setUserName(null);
     setAuthState("checking");

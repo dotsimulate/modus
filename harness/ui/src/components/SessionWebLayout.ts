@@ -3,9 +3,7 @@
  * No layout logic. No React. Pure foundation.
  */
 
-import type { SessionInfo, GitCommit } from "../api/types";
-import type { MissionTransferSummary } from "../api/missions";
-import type { TouchRecord } from "../api/trace";
+import type { SessionInfo, GitCommit, MissionTransferSummary, TouchRecord } from "../../../sdk/index";
 
 // ── Types ──
 

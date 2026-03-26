@@ -9,7 +9,8 @@ import { useState, useEffect } from "react";
 import { AgentConfig, type AgentConfigState } from "./AgentConfig";
 import { FolderPicker } from "./FolderPicker";
 import { getRecentPaths, addRecentPath } from "../recentPaths";
-import { fetchInitStatus, initProject, type InitStatus } from "../api/projects";
+import { modus } from "../modusClient";
+import type { InitStatus } from "../../../sdk/index";
 
 export type SessionSetupState = {
   /** Mutable agent config for seeding the next session */
@@ -69,15 +70,15 @@ export function SessionSetup({
   // Check .modus/ init status when CWD changes
   useEffect(() => {
     if (!config.cwd) { setInitStatus(null); return; }
-    fetchInitStatus(config.cwd).then(setInitStatus).catch(() => setInitStatus(null));
+    modus.getInitStatus(config.cwd).then(setInitStatus).catch(() => setInitStatus(null));
   }, [config.cwd]);
 
   const handleInit = async () => {
     if (!config.cwd) return;
     setInitLoading(true);
     try {
-      await initProject(config.cwd);
-      const status = await fetchInitStatus(config.cwd);
+      await modus.initProject(config.cwd);
+      const status = await modus.getInitStatus(config.cwd);
       setInitStatus(status);
       onProjectInit?.();
     } catch (e) {

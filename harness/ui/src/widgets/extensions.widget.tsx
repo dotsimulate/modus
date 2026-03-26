@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useState } from "react";
-import { fetchClientExtensions, patchClientExtension } from "../api";
-import type { ClientExtensionManifestItem, ExtensionSettingSchema } from "../api";
+import { modus } from "../modusClient";
+import type { ClientExtensionManifestItem, ExtensionSettingSchema } from "../../../sdk/index";
 import type { WidgetDef } from "./index";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
@@ -100,7 +100,7 @@ function ExtensionRow({
 
   const handleToggle = async () => {
     setSaving(true);
-    await patchClientExtension(ext.id, userProfile, { enabled: !ext.enabled });
+    await modus.patchClientExtension(ext.id, userProfile, { enabled: !ext.enabled });
     await onRefresh();
     setSaving(false);
   };
@@ -111,7 +111,7 @@ function ExtensionRow({
 
   const handleSave = async () => {
     setSaving(true);
-    await patchClientExtension(ext.id, userProfile, { settings: localSettings });
+    await modus.patchClientExtension(ext.id, userProfile, { settings: localSettings });
     await onRefresh();
     setSaving(false);
   };
@@ -174,7 +174,7 @@ function ExtensionsWidget() {
   const extCwd = projectRoot ?? activeCwd;
 
   const load = useCallback(
-    () => fetchClientExtensions(extCwd, activeUserProfile),
+    () => modus.listClientExtensions(extCwd, activeUserProfile),
     [extCwd, activeUserProfile],
   );
 

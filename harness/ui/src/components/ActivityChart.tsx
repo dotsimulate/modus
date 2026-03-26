@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { SessionStats } from "../api";
+import type { SessionStats } from "../../../sdk/index";
 
 /**
  * 30-day bar chart. Pass `prefix` to control CSS class names

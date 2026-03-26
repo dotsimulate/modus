@@ -1,5 +1,5 @@
-import type { ProjectUiState } from "./api";
-import { fetchProjectUiState } from "./api";
+import type { ProjectUiState } from "../../sdk/index";
+import { modus } from "./modusClient";
 
 const THEME_STYLE_ID = "modus-project-theme";
 const FONT_STYLE_ID = "modus-project-font";
@@ -31,7 +31,7 @@ export async function loadAndApplyProjectUiState(cwd?: string): Promise<ProjectU
   }
 
   try {
-    const state = await fetchProjectUiState(cwd);
+    const state = await modus.getProjectUiState(cwd);
     if (currentVersion === loadVersion) applyProjectUiState(state);
     return state;
   } catch {

@@ -8,9 +8,8 @@
 
 import { useState, useCallback } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
-import { saveUserProfileApi, browsePath } from "../api";
-import { initProject } from "../api/projects";
-import type { BrowseResult } from "../api";
+import { modus } from "../modusClient";
+import type { BrowseResult } from "../../../sdk/index";
 
 type Props = {
   onComplete: () => void;
@@ -37,7 +36,7 @@ export function ProjectSetup({ onComplete }: Props) {
   const browseNav = useCallback(async (path?: string) => {
     setBrowseLoading(true);
     try {
-      const result = await browsePath(path);
+      const result = await modus.browse(path);
       setBrowseResult(result);
       setBrowsePathInput(result.path);
     } catch { /* silent */ }
@@ -58,13 +57,13 @@ export function ProjectSetup({ onComplete }: Props) {
     if (!slug || !projectPath.trim()) return;
     setCreating(true);
     try {
-      await saveUserProfileApi(slug, {
+      await modus.saveUserProfile(slug, {
         displayName: projectName,
         projects: [projectPath.trim()],
         agentProfiles: [],
         ...(useMemory ? {} : { memory: { scope: "global" as const, inheritGlobal: false } }),
       });
-      await initProject(projectPath.trim(), projectName);
+      await modus.initProject(projectPath.trim(), projectName);
       switchUserProfile(slug);
       await Promise.all([refreshUserProfiles(), refreshProfiles()]);
       onComplete();

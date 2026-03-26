@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type WheelEvent } from "react";
 import { usePinboard } from "../providers/PinboardProvider";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
-import { openInEditor } from "../api";
+import { modus } from "../modusClient";
 
 type Props = {
   onOpenFile: (path: string) => void;
@@ -63,7 +63,7 @@ export function PinboardView({ onOpenFile }: Props) {
       { kind: "action", label: "Open", onClick: () => onOpenFile(path) },
       { kind: "separator" },
       { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(path) },
-      { kind: "action", label: "Open in external editor", onClick: () => openInEditor(path) },
+      { kind: "action", label: "Open in external editor", onClick: () => modus.openInEditor(path) },
       { kind: "separator" },
       { kind: "action", label: "Unpin", onClick: () => unpinFromActive(path) },
     ];

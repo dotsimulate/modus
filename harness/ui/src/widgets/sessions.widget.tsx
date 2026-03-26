@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useMemo } from "react";
-import { fetchActiveSessions, fetchSessionsScoped, fetchArchivedSessions, unarchiveSessionApi } from "../api";
-import type { ActiveSessionInfo, SessionInfo } from "../api";
+import { modus } from "../modusClient";
+import type { ActiveSessionInfo, SessionInfo } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import { timeAgo } from "../utils/format";
 import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
@@ -143,17 +143,17 @@ function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<Sessi
   // Recent sessions loader
   const loadRecent = useCallback(async () => {
     const [active, recent] = await Promise.all([
-      fetchActiveSessions(userProfile),
+      modus.getActiveSessions(userProfile),
       filter === "active"
         ? Promise.resolve([])
-        : fetchSessionsScoped(limit, userProfile),
+        : modus.listSessions({ limit, userProfile }),
     ]);
     return merge(active, recent);
   }, [filter, limit, userProfile]);
 
   // Archived sessions loader
   const loadArchived = useCallback(async () => {
-    const sessions = await fetchArchivedSessions(limit);
+    const sessions = await modus.listArchivedSessions(limit);
     return archivedRows(sessions);
   }, [limit]);
 
@@ -178,7 +178,7 @@ function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<Sessi
 
   const handleUnarchive = useCallback(async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    await unarchiveSessionApi(id);
+    await modus.unarchiveSession(id);
     refreshArchived();
   }, [refreshArchived]);
 

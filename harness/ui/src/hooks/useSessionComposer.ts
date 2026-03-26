@@ -13,8 +13,8 @@
 import { useState, useCallback } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
 import { createEmptyAgentConfig, type AgentConfigState } from "../components/AgentConfig";
-import { createSession, createEmptySession } from "../api/sessions";
-import type { Profile } from "../api/types";
+import { modus } from "../modusClient";
+import type { Profile } from "../../../sdk/index";
 
 // ── Types ──
 
@@ -160,7 +160,7 @@ export function useSessionComposer(
     },
   ) => {
     const profile = opts?.profile ?? activeProfileName;
-    const result = await createSession({
+    const result = await modus.createSession({
       prompt,
       profile: profile || undefined,
       userProfile: activeUserProfile ?? undefined,
@@ -177,7 +177,7 @@ export function useSessionComposer(
   }, [activeProfileName, activeUserProfile, projectCwd, localAgentConfig]);
 
   const createEmpty = useCallback(async (profile?: string) => {
-    const sessionId = await createEmptySession({
+    const sessionId = await modus.createEmptySession({
       profile: profile ?? activeProfileName ?? undefined,
       userProfile: activeUserProfile ?? undefined,
       cwd: projectCwd ?? undefined,

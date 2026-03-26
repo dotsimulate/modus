@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import type { Message, ToolCall } from "../api";
+import type { Message, ToolCall } from "../../../sdk/index";
 
 type CopyMode = "last" | "text" | "thinking" | "full";
 

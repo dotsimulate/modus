@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import type { Profile, SessionInfo, SearchHit, UserProfile } from "../api";
-import { searchSessionsScoped } from "../api";
+import type { Profile, SessionInfo, SearchHit, UserProfile } from "../../../sdk/index";
+import { modus } from "../modusClient";
 import type { SessionSetupState } from "./SessionSetup";
 import { SessionList } from "./sidebar/SessionList";
 import { SearchResults } from "./sidebar/SearchResults";
@@ -71,7 +71,7 @@ export function Sidebar({
     setSearching(true);
     searchTimer.current = setTimeout(async () => {
       try {
-        const hits = await searchSessionsScoped(q, 20, activeUserProfileObj?.name ?? undefined);
+        const hits = await modus.searchSessions(q, { limit: 20, userProfile: activeUserProfileObj?.name ?? undefined });
         setSearchResults(hits);
       } catch { /* silent */ }
       setSearching(false);

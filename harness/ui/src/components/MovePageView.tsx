@@ -11,9 +11,9 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { attachMoveApi, callMoveOp } from "../api";
+import { modus } from "../modusClient";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
-import type { MoveWidgetInfo } from "../api";
+import type { MoveWidgetInfo } from "../../../sdk/index";
 
 type Props = {
   moveName: string;
@@ -55,7 +55,7 @@ export function MovePageView({ moveName, cwd, userProfile }: Props) {
     if (attachingRef.current) return;
     attachingRef.current = true;
 
-    attachMoveApi({
+    modus.attachMove({
       moveName,
       inputs: {},
       cwd,
@@ -80,7 +80,7 @@ export function MovePageView({ moveName, cwd, userProfile }: Props) {
     setReloadKey(k => k + 1);
 
     // Re-attach
-    attachMoveApi({ moveName, inputs: {}, cwd, userProfile })
+    modus.attachMove({ moveName, inputs: {}, cwd, userProfile })
       .then((result) => {
         attachCache.set(key, result);
         setAttachment(result);

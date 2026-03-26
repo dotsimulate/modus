@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback, type ReactNode, type WheelEve
 import { useFileViewer } from "../providers/FileViewerProvider";
 import { usePinboard } from "../providers/PinboardProvider";
 import { useProfiles } from "../providers/ProfileProvider";
-import { browsePath, readFileContent, openInEditor, setFsWatchRoot, type BrowseResult, type MoveWidgetInfo } from "../api";
-import type { Message } from "../api";
+import { modus } from "../modusClient";
+import type { BrowseResult, MoveWidgetInfo, Message } from "../../../sdk/index";
+import { setFsWatchRoot } from "../modusClient";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser } from "./FileBrowser";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
@@ -146,12 +147,12 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
 
     (async () => {
       try {
-        const dirResult = await browsePath(viewingFile, { includeHidden: true });
+        const dirResult = await modus.browse(viewingFile, { includeHidden: true });
         if (active) setView({ kind: "directory", result: dirResult });
         return;
       } catch {
         try {
-          const text = await readFileContent(viewingFile);
+          const text = await modus.readFile(viewingFile);
           if (!active) return;
           if (text !== null) { setView({ kind: "file", content: text }); return; }
         } catch { /* fall through */ }
@@ -216,7 +217,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
       <CopyButton
         getValue={async () => {
           if (view.kind === "file") return view.content;
-          return readFileContent(targetPath);
+          return modus.readFile(targetPath);
         }}
         title="Copy file contents"
       />
@@ -275,7 +276,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     items.push({
       kind: "action",
       label: "Open in external editor",
-      onClick: () => openInEditor(info.path, info.line),
+      onClick: () => modus.openInEditor(info.path, info.line),
     });
     if (groups.length > 0) {
       items.push({ kind: "separator" });
@@ -312,7 +313,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
       },
       { kind: "separator" },
       { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(tabPath) },
-      { kind: "action", label: "Open in external editor", onClick: () => openInEditor(tabPath) },
+      { kind: "action", label: "Open in external editor", onClick: () => modus.openInEditor(tabPath) },
     ];
     if (groups.length > 0) {
       items.push({ kind: "separator" });
@@ -347,7 +348,7 @@ export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets
     items.push({
       kind: "action",
       label: "Open in external editor",
-      onClick: () => openInEditor(viewingFile),
+      onClick: () => modus.openInEditor(viewingFile),
     });
     if (groups.length > 0) {
       items.push({ kind: "separator" });

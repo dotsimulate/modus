@@ -6,8 +6,8 @@
  */
 
 import { useCallback } from "react";
-import { fetchProviderHealth } from "../api";
-import type { ProviderHealthInfo } from "../api";
+import { modus } from "../modusClient";
+import type { ProviderHealthInfo } from "../../../sdk/index";
 import type { WidgetDef } from "./index";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
@@ -45,7 +45,7 @@ function detail(p: ProviderHealthInfo): string {
 // ── Component ──
 
 function ProviderStatusWidget() {
-  const load = useCallback(() => fetchProviderHealth(), []);
+  const load = useCallback(() => modus.getProviderHealth(), []);
   const { value: providers, loading } = useWidgetPollingValue<ProviderHealthInfo[]>({
     load,
     scopeKey: "provider-health",

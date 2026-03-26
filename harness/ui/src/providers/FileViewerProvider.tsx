@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { onUiEvent } from "../sessionStore";
-import { readFileContent, writeFileContent, onFsChange } from "../api";
+import { modus } from "../modusClient";
+import { onFsChange } from "../modusClient";
 
 type Tab = {
   path: string;
@@ -105,7 +106,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
 
     // Pre-load content for edit mode
     if (edit) {
-      readFileContent(path).then((text) => {
+      modus.readFile(path).then((text) => {
         if (text !== null) {
           setTabs((prev) => prev.map((t) =>
             t.path === path && t.content === null ? { ...t, content: text } : t
@@ -153,7 +154,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
     });
     // Load content when entering edit mode if not already loaded
     if (editing) {
-      readFileContent(path).then((text) => {
+      modus.readFile(path).then((text) => {
         if (text !== null) {
           setTabs((prev) => prev.map((t) =>
             t.path === path && t.editing ? { ...t, content: text } : t
@@ -170,7 +171,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   const saveFile = useCallback(async (path: string, content: string): Promise<boolean> => {
     setSaving(true);
     setSaveError(null);
-    const ok = await writeFileContent(path, content);
+    const ok = await modus.writeFile(path, content);
     setSaving(false);
     if (ok) {
       setTabs((prev) => prev.map((t) =>

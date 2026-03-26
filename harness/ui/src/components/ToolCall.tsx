@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useCallback } from "react";
-import type { ToolCall as ToolCallType, Message } from "../api";
+import type { ToolCall as ToolCallType, Message } from "../../../sdk/index";
 import { EditHunk } from "./FileChanges";
 
 type Props = {

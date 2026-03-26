@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { fetchActiveSessions, fetchSessionsScoped } from "../api";
-import type { ActiveSessionInfo, SessionInfo } from "../api";
+import { modus } from "../modusClient";
+import type { ActiveSessionInfo, SessionInfo } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 
 type Props = {
@@ -143,7 +143,7 @@ export function SessionsPanel({ onSelectSession }: Props) {
     const poll = async () => {
       try {
         const up = activeUserProfile ?? undefined;
-        const [a, r] = await Promise.all([fetchActiveSessions(up), fetchSessionsScoped(50, up)]);
+        const [a, r] = await Promise.all([modus.getActiveSessions(up), modus.listSessions({ limit: 50, userProfile: up })]);
         if (active) setRows(mergeRows(a, r));
       } catch { /* silent */ }
     };

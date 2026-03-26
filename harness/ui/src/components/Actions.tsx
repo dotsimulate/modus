@@ -1,11 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  fetchActions, fetchActionRuns, fetchActionInfo,
-  triggerActionApi, updateActionApi, clearActionRunsApi,
-  resetActionApi, fetchActionPreferences, reloadActionsApi,
-  addTagApi, removeTagApi,
-} from "../api";
-import type { ActionInfo, ActionRun } from "../api";
+import { modus } from "../modusClient";
+import type { ActionInfo, ActionRun } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import { Markdown } from "./Markdown";
 
@@ -286,7 +281,7 @@ function AboutTab({ action }: { action: ActionInfo }) {
   const [desc, setDesc] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    fetchActionInfo(action.name).then(info => {
+    modus.getActionInfo(action.name).then(info => {
       try {
         const config = JSON.parse(info.configSource);
         setDesc(config.longDescription || null);
@@ -366,7 +361,7 @@ function FilesTab({ actionName }: { actionName: string }) {
   const [info, setInfo] = useState<{ contextSource: string; configSource: string } | null>(null);
 
   useEffect(() => {
-    fetchActionInfo(actionName).then(setInfo).catch(() => {});
+    modus.getActionInfo(actionName).then(setInfo).catch(() => {});
   }, [actionName]);
 
   if (!info) return <div className="sched-tab-content sched-runs-empty">loading...</div>;
@@ -491,12 +486,12 @@ function ActionCard({
     let active = true;
     const load = async () => {
       try {
-        const r = await fetchActionRuns(action.name);
+        const r = await modus.getActionRuns(action.name);
         if (active) setRuns(r);
       } catch { /* silent */ }
     };
     load();
-    fetchActionPreferences(action.name).then(prefs => {
+    modus.getActionPreferences(action.name).then(prefs => {
       if (active && prefs.skipResetConfirm) setSkipResetConfirm(true);
     }).catch(() => {});
     const interval = setInterval(load, 2000);
@@ -504,13 +499,13 @@ function ActionCard({
   }, [expanded, action.name]);
 
   const handleClear = async () => {
-    await clearActionRunsApi(action.name).catch(() => {});
+    await modus.clearRuns(action.name).catch(() => {});
     setRuns([]);
     onClearRuns();
   };
 
   const handleReset = async (dontAskAgain: boolean) => {
-    await resetActionApi(action.name, dontAskAgain).catch(() => {});
+    await modus.resetAction(action.name, dontAskAgain).catch(() => {});
     setRuns([]);
     if (dontAskAgain) setSkipResetConfirm(true);
   };
@@ -642,36 +637,36 @@ export function Actions({ onSelectSession, onPeekSession }: Props) {
     let active = true;
     const poll = async () => {
       try {
-        const a = await fetchActions(activeUserProfile);
+        const a = await modus.listActions(activeUserProfile);
         if (active) setActions(a);
       } catch { /* silent */ }
     };
-    reloadActionsApi().then(poll, poll);
+    modus.reloadActions().then(poll, poll);
     const interval = setInterval(poll, 2000);
     return () => { active = false; clearInterval(interval); };
   }, [activeUserProfile]);
 
   const handleToggle = useCallback(async (name: string, enabled: boolean) => {
-    await updateActionApi(name, { enabled }).catch(() => {});
+    await modus.patchAction(name, { enabled }).catch(() => {});
     setActions(prev => prev.map(a =>
       a.name === name ? { ...a, enabled } : a
     ));
   }, []);
 
   const handleTrigger = useCallback(async (name: string) => {
-    await triggerActionApi(name).catch(() => {});
+    await modus.triggerAction(name).catch(() => {});
   }, []);
 
   const handleArchive = useCallback(async (name: string) => {
     const action = actions.find(a => a.name === name);
     const isArchived = action?.tags?.includes("archived");
     if (isArchived) {
-      await removeTagApi(name, "archived").catch(() => {});
+      await modus.removeActionTag(name, "archived").catch(() => {});
       setActions(prev => prev.map(a =>
         a.name === name ? { ...a, tags: (a.tags ?? []).filter(t => t !== "archived") } : a
       ));
     } else {
-      await addTagApi(name, "archived").catch(() => {});
+      await modus.addActionTag(name, "archived").catch(() => {});
       setActions(prev => prev.map(a =>
         a.name === name ? { ...a, tags: [...(a.tags ?? []), "archived"] } : a
       ));

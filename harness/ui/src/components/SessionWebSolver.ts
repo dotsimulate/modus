@@ -13,8 +13,7 @@
  * Day bands are computed post-hoc from actual node positions.
  */
 
-import type { SessionInfo, GitCommit } from "../api/types";
-import type { TouchRecord } from "../api/trace";
+import type { SessionInfo, GitCommit, TouchRecord } from "../../../sdk/index";
 import type {
   GraphNode, GraphEdge, HandoffDoc, WebLayoutConfig, PositionMap, TimeCluster,
 } from "./SessionWebLayout";

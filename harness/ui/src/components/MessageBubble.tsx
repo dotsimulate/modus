@@ -1,7 +1,7 @@
 import { memo, useState, useEffect, useRef, type ReactNode } from "react";
 import { ThinkingBlock } from "./ThinkingBlock";
-import type { Message, ToolCall } from "../api";
-import { tokenParam } from "../api/_fetch";
+import type { Message, ToolCall } from "../../../sdk/index";
+import { tokenParam } from "../modusClient";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";

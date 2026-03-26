@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { saveUserProfileApi } from "../../api";
-import type { UserProfile, Profile } from "../../api";
+import { modus } from "../../modusClient";
+import type { UserProfile, Profile } from "../../../../sdk/index";
 import { FolderPicker } from "../FolderPicker";
 
 type Props = {
@@ -57,7 +57,7 @@ export function CreateProfileModal({ onClose, onCreated, agentProfiles }: Props)
         projects,
         ...(selectedAgents.length > 0 ? { agentProfiles: selectedAgents } : {}),
       };
-      await saveUserProfileApi(slug, profile);
+      await modus.saveUserProfile(slug, profile);
       onCreated(slug);
     } catch (e) {
       setError(String(e));

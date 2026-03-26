@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { subscribeStore, getStoreSnapshot, getSessionState } from "../sessionStore";
-import type { SessionInfo } from "../api/types";
+import type { SessionInfo } from "../../../sdk/index";
 
 /* ── Types ── */
 
