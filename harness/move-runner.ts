@@ -706,7 +706,24 @@ export async function gatherMoveOnce(
     await syncMoveAssistantTurnListener(apiToken, mod);
   }
 
-  const ctx = buildMoveContext(moveName, sessionId, cwd, userProfile, { inputs, apiToken, instanceId });
+  // Generate submit token + schema if the move uses submit
+  const needsSubmit = config?.submit?.required !== false && config?.submit;
+  const token = needsSubmit ? generateToken() : undefined;
+  const schema = config?.schemaHint ?? (config?.schema ? JSON.stringify(config.schema, null, 2) : undefined);
+
+  // Shared metadata bag — gather() populates via ctx.meta()
+  const gatheredContext: Record<string, unknown> = {};
+
+  const ctx = buildMoveContext(moveName, sessionId, cwd, userProfile, {
+    inputs, apiToken, instanceId, token, schema, metadata: gatheredContext,
+  });
+
+  // Wire up store/setStore for API moves
+  if (instanceId) {
+    ctx.store = <T = unknown>() => instanceStore.get(instanceId!) as T | undefined;
+    ctx.setStore = (value: unknown) => { instanceStore.set(instanceId!, value); };
+  }
+
   const result = await Promise.race([
     mod.gather(ctx),
     new Promise<null>((resolve) => setTimeout(() => resolve(null), GATHER_TIMEOUT_MS)),
@@ -715,6 +732,49 @@ export async function gatherMoveOnce(
   const text = typeof result === "string" ? result : String(result);
   const trimmed = text.trim();
   if (!trimmed) return null;
+
+  // Register submit token in store so modus_submit can find it
+  if (token && config) {
+    const moveRunId = insertMoveRun({
+      moveName,
+      sessionId,
+      mode: "inline",
+      status: "pending",
+      inputs: JSON.stringify(inputs),
+      gatheredContext: JSON.stringify(gatheredContext),
+      token,
+    });
+
+    const moveToken: MoveToken = {
+      token,
+      sessionId,
+      moveName,
+      mode: "inline",
+      schema: config.schema,
+      inputs,
+      gatheredContext,
+      cwd,
+      userProfile,
+      createdAt: Date.now(),
+      ttl: DEFAULT_TTL_MS,
+      status: "pending",
+      attempts: 0,
+      maxAttempts: config.submit?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+      moveRunId,
+      spawnedSessionId: null,
+      apiToken,
+      instanceId,
+    };
+    tokenStore.set(token, moveToken);
+
+    logActivity({
+      userProfile,
+      eventType: "move_activated",
+      sessionId: sessionId || undefined,
+      summary: `Move gathered (inline): ${config.label ?? moveName}`,
+      metadata: { moveName, mode: "inline", token, ...(apiToken ? { apiToken, instanceId } : {}) },
+    });
+  }
 
   // Append modus_submit protocol for API moves
   const opsProtocol = (apiToken && config?.api?.ops) ? buildApiOpsProtocol(apiToken, config) : "";
