@@ -8,8 +8,8 @@ import {
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
 import { getAllTools, getToolGroups, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
-import type { Profile, SessionStatus, Message } from "../api";
-import { fetchTouches } from "../api/trace";
+import type { Profile, SessionStatus, Message } from "../../../sdk/index";
+import { modus } from "../modusClient";
 
 type Props = {
   profileName?: string;
@@ -133,7 +133,7 @@ export function ConfigBar({
     // Fetch touch data for this session
     let touchFiles: string[] = [];
     try {
-      const res = await fetchTouches({ sessionId, limit: 200 });
+      const res = await modus.fetchTouches({ sessionId, limit: 200 });
       touchFiles = [...new Set(res.touches.map(t => t.filePath))];
     } catch { /* ignore */ }
 

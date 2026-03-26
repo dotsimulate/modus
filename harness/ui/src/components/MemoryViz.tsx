@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
-import { fetchMemories, type MemoryItem } from "../api";
+import { modus } from "../modusClient";
+import type { MemoryItem } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 
 // ── Custom dropdown (replaces native <select> for styled dropdowns) ──
@@ -568,7 +569,7 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
 
   useEffect(() => {
     setLoading(true);
-    fetchMemories(activeUserProfile ?? undefined, activeCwd)
+    modus.queryMemories(activeUserProfile ?? undefined, activeCwd)
       .then((m) => { setMemories(m); setLoading(false); })
       .catch(() => setLoading(false));
   }, [activeUserProfile, activeCwd]);

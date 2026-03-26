@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useState } from "react";
-import { fetchSessionStats } from "../api";
-import type { SessionStats } from "../api";
+import { modus } from "../modusClient";
+import type { SessionStats } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import { fmtCost, fmtNum, basename } from "../utils/format";
 import type { WidgetDef } from "./index";
@@ -42,7 +42,7 @@ function StatsWidget() {
   const { activeUserProfile } = useProfiles();
   const [view, setView] = useState<"all" | "project">("all");
   const loadStats = useCallback(
-    () => fetchSessionStats(activeUserProfile ?? undefined),
+    () => modus.getSessionStats(activeUserProfile ?? undefined),
     [activeUserProfile],
   );
   const { value: stats, loading } = useWidgetPollingValue<SessionStats | null>({

@@ -19,13 +19,8 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
-import {
-  createTerminal as apiCreateTerminal,
-  listTerminals as apiListTerminals,
-  connectTerminalWS,
-  deleteTerminal as apiDeleteTerminal,
-  type TerminalInfo,
-} from "../api/terminals";
+import { modus } from "../modusClient";
+import type { TerminalInfo } from "../../../sdk/index";
 
 // ── Types ──
 
@@ -117,7 +112,7 @@ function connectWS(
 ) {
   if (instance.disposed) return;
 
-  const ws = connectTerminalWS(instance.info.id);
+  const ws = modus.connectTerminalWS(instance.info.id);
   instance.ws = ws;
 
   ws.onmessage = (e) => {
@@ -280,7 +275,7 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const existing = await apiListTerminals(sessionId);
+        const existing = await modus.listTerminals(sessionId);
         if (cancelled) return;
         if (existing.length > 0) {
           const reconnected: TerminalInstance[] = [];
@@ -321,7 +316,7 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
       probeEl.remove();
     }
 
-    const info = await apiCreateTerminal({ cwd: cwd ?? undefined, cols, rows, sessionId: sessionId ?? undefined });
+    const info = await modus.createTerminal({ cwd: cwd ?? undefined, cols, rows, sessionId: sessionId ?? undefined });
     const instance = wireInstance(info, setInstances);
     setInstances((prev) => [...prev, instance]);
     setActiveId(info.id);
@@ -333,7 +328,7 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
     const inst = instancesRef.current.find((t) => t.info.id === id);
     if (inst) {
       disposeInstance(inst);
-      apiDeleteTerminal(id).catch(() => {});
+      modus.deleteTerminal(id).catch(() => {});
     }
     setInstances((prev) => {
       const next = prev.filter((t) => t.info.id !== id);

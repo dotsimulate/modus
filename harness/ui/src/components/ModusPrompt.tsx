@@ -8,12 +8,12 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
-import { createSession, fetchSessionsByProfile, renderPromptApi } from "../api";
+import { modus } from "../modusClient";
 import { useSessionState } from "../sessionStore";
 import { PromptPicker } from "./PromptPicker";
 import { MiniSession } from "./MiniSession";
 import { PromptComposer } from "./PromptComposer";
-import type { SessionInfo } from "../api";
+import type { SessionInfo } from "../../../sdk/index";
 import type { PromptSettings } from "./PromptPicker";
 
 type Props = {
@@ -50,7 +50,7 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
     if (phase !== "running" || !activeSession) return;
     if (activeSession.status === "idle") {
       Promise.all([refreshProfiles(), refreshUserProfiles()]).catch(() => {});
-      fetchSessionsByProfile("modus-dev", 5, activeUserProfile ?? undefined)
+      modus.listSessions({ profile: "modus-dev", limit: 5, userProfile: activeUserProfile ?? undefined })
         .then(setRecentSessions).catch(() => {});
       setPhase("done");
       setPrompt("");
@@ -63,10 +63,10 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
   // Fetch recent modus-dev sessions
   useEffect(() => {
     let active = true;
-    fetchSessionsByProfile("modus-dev", 5, activeUserProfile ?? undefined)
+    modus.listSessions({ profile: "modus-dev", limit: 5, userProfile: activeUserProfile ?? undefined })
       .then(s => { if (active) setRecentSessions(s); }).catch(() => {});
     const interval = setInterval(() => {
-      fetchSessionsByProfile("modus-dev", 5, activeUserProfile ?? undefined)
+      modus.listSessions({ profile: "modus-dev", limit: 5, userProfile: activeUserProfile ?? undefined })
         .then(s => { if (active) setRecentSessions(s); }).catch(() => {});
     }, 10000);
     return () => { active = false; clearInterval(interval); };
@@ -108,13 +108,13 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
         const vars = tab === "create"
           ? { inputs: { text, description: text, archetype: "custom" }, project, projectCwd: cwd }
           : { inputs: { text, mode: "edit", agents: "yes" }, project, projectCwd: cwd };
-        const result = await renderPromptApi(promptName, vars);
+        const result = await modus.renderPrompt(promptName, vars);
         renderedPrompt = result.rendered;
       } catch {
         // fall back to raw text if render fails
       }
 
-      const { sessionId: sid } = await createSession({
+      const { sessionId: sid } = await modus.createSession({
         prompt: renderedPrompt,
         profile: "modus-dev",
         userProfile: activeUserProfile ?? undefined,

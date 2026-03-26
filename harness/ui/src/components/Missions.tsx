@@ -1,9 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import {
-  fetchMissions, fetchMissionRuns,
-  startMissionApi, pauseMissionApi, resumeMissionApi,
-} from "../api";
-import type { MissionListItem, MissionRunSummary } from "../api";
+import { modus } from "../modusClient";
+import type { MissionListItem, MissionRunSummary } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 
 function missionDotStatus(run: MissionRunSummary | undefined): string {
@@ -101,7 +98,7 @@ export function Missions() {
 
   useEffect(() => {
     if (!cwd) return;
-    fetchMissions(cwd).then(setMissions).catch(() => {});
+    modus.listMissions(cwd).then(setMissions).catch(() => {});
   }, [cwd]);
 
   useEffect(() => {
@@ -109,7 +106,7 @@ export function Missions() {
     let active = true;
     const poll = async () => {
       try {
-        const r = await fetchMissionRuns({ cwd });
+        const r = await modus.listMissionRuns({ cwd });
         if (active) setRuns(r);
       } catch { /* silent */ }
     };
@@ -120,7 +117,7 @@ export function Missions() {
 
   const refreshRuns = useCallback(async () => {
     if (!cwd) return;
-    try { setRuns(await fetchMissionRuns({ cwd })); } catch { /* silent */ }
+    try { setRuns(await modus.listMissionRuns({ cwd })); } catch { /* silent */ }
   }, [cwd]);
 
   const withBusy = useCallback(async (name: string, fn: () => Promise<unknown>) => {
@@ -130,15 +127,15 @@ export function Missions() {
   }, [refreshRuns]);
 
   const handleStart = useCallback((name: string) => {
-    withBusy(name, () => startMissionApi({ missionName: name, cwd, userProfile: activeUserProfile ?? undefined }));
+    withBusy(name, () => modus.startMission({ missionName: name, cwd, userProfile: activeUserProfile ?? undefined }));
   }, [cwd, activeUserProfile, withBusy]);
 
   const handlePause = useCallback((name: string, runId: number) => {
-    withBusy(name, () => pauseMissionApi(runId, "user paused"));
+    withBusy(name, () => modus.pauseMission(runId, "user paused"));
   }, [withBusy]);
 
   const handleResume = useCallback((name: string, runId: number) => {
-    withBusy(name, () => resumeMissionApi(runId));
+    withBusy(name, () => modus.resumeMission(runId));
   }, [withBusy]);
 
   if (!cwd || missions.length === 0) return null;

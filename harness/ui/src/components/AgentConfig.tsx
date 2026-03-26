@@ -7,8 +7,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { fetchProviderModels } from "../api";
-import type { ProviderModel, AgentConfigState } from "../api";
+import { modus } from "../modusClient";
+import type { ProviderModel, AgentConfigState } from "../../../sdk/index";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
 import { isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
@@ -96,7 +96,7 @@ export function AgentConfig({
   }, [config]);
 
   useEffect(() => {
-    fetchProviderModels(effectiveProvider).then(setProviderModels).catch(() => setProviderModels([]));
+    modus.getProviderModels(effectiveProvider).then(setProviderModels).catch(() => setProviderModels([]));
   }, [effectiveProvider]);
 
   const update = (patch: Partial<AgentConfigState>) => {
@@ -120,7 +120,7 @@ export function AgentConfig({
     if (!provider) return;
 
     const fallbackModel = providerSeedModel(provider);
-    void fetchProviderModels(provider).then((models) => {
+    void modus.getProviderModels(provider).then((models) => {
       const latest = configRef.current;
       if ((latest.provider || profileProvider || "claude-code") !== provider) return;
       if (latest.model.trim()) return;

@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore, type MouseEvent } from "react";
-import type { SessionArtifact } from "../api";
+import type { SessionArtifact } from "../../../sdk/index";
 import * as audioPlayer from "../audio-player";
 
 declare global {

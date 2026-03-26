@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Message } from "../api";
+import type { Message } from "../../../sdk/index";
 import { extractFileEdits, FileCard, groupByFile, countChanges } from "./FileChanges";
 
 type Props = {

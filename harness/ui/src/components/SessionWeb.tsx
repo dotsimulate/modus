@@ -1,14 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from "react";
-import { fetchSessionsScoped } from "../api/sessions";
-import { fetchGitLog } from "../api/git";
-import { API_BASE, authHeaders } from "../api/_fetch";
-import { fetchMissionRuns, fetchMissionTransfers, fetchMissionSessions } from "../api/missions";
-import { fetchTouches } from "../api/trace";
-import { archiveSessionApi, createSession, createEmptySession, addSessionTagApi, removeSessionTagApi } from "../api/sessions";
-import { fetchWebPositions, patchWebPositions } from "../api/web-positions";
-import type { SessionInfo, GitCommit } from "../api/types";
-import type { MissionRunSummary, MissionTransferSummary } from "../api/missions";
-import type { TouchRecord } from "../api/trace";
+import { modus, API_BASE, authHeaders } from "../modusClient";
+import type { SessionInfo, GitCommit, MissionRunSummary, MissionTransferSummary, TouchRecord } from "../../../sdk/index";
 import { ChatFileViewer } from "./ChatFileViewer";
 import { SessionWindow } from "./SessionWindow";
 import { WebComposer } from "./WebComposer";
@@ -686,16 +678,16 @@ export function SessionWeb() {
       try {
         const projectCwd = activeUP?.projects?.[0];
         const [sessData, moveData, gitData, runsData, touchData, posData] = await Promise.all([
-          fetchSessionsScoped(500, activeUserProfile ?? undefined),
+          modus.listSessions({ limit: 500, userProfile: activeUserProfile ?? undefined }),
           fetch(`${API_BASE}/api/move-runs/recent?limit=200`, { headers: authHeaders() }).then(r => r.json()),
-          fetchGitLog(projectCwd ?? ".", 100).catch(() => [] as GitCommit[]),
-          fetchMissionRuns(projectCwd ? { cwd: projectCwd } : undefined).catch(() => [] as MissionRunSummary[]),
-          fetchTouches({
+          modus.gitLog(projectCwd ?? ".", 100).catch(() => [] as GitCommit[]),
+          modus.listMissionRuns(projectCwd ? { cwd: projectCwd } : undefined).catch(() => [] as MissionRunSummary[]),
+          modus.fetchTouches({
             userProfile: activeUserProfile ?? undefined,
             cwd: projectCwd ?? undefined,
             ops: ["write", "edit", "read"],
           }).catch(() => ({ touches: [] as TouchRecord[], summary: {} })),
-          fetchWebPositions(profileName),
+          modus.getWebPositions(profileName),
         ]);
         if (cancelled) return;
         setSessions(sessData);
@@ -709,7 +701,7 @@ export function SessionWeb() {
         setStoredPositions(posMap);
         setPositionsLoaded(true);
         const transferArrays = await Promise.all(
-          runsData.map((r: MissionRunSummary) => fetchMissionTransfers(r.id).catch(() => [])),
+          runsData.map((r: MissionRunSummary) => modus.getMissionTransfers(r.id).catch(() => [])),
         );
         if (!cancelled) {
           setMissionTransfers(transferArrays.flat());
@@ -727,7 +719,7 @@ export function SessionWeb() {
   useEffect(() => {
     if (missionFilter === null) { setMissionFilterSessionIds(null); return; }
     let cancelled = false;
-    fetchMissionSessions(missionFilter).then(ids => {
+    modus.getMissionSessions(missionFilter).then(ids => {
       if (!cancelled) setMissionFilterSessionIds(new Set(ids));
     }).catch(() => { if (!cancelled) setMissionFilterSessionIds(null); });
     return () => { cancelled = true; };
@@ -804,7 +796,7 @@ export function SessionWeb() {
     const batch = keys.map(nodeId => ({
       nodeId, x: solvedPositions[nodeId].x, y: solvedPositions[nodeId].y, pinned: false,
     }));
-    patchWebPositions(profileName, batch);
+    modus.patchWebPositions(profileName, batch);
     setStoredPositions(prev => ({ ...prev, ...solvedPositions }));
   }, [solvedPositions, profileName]);
 
@@ -1190,7 +1182,7 @@ export function SessionWeb() {
         for (const id of Object.keys(capturedPreview)) {
           if (next[id]) changed.push({ nodeId: id, x: next[id].x, y: next[id].y, pinned: id === dragNode.nodeId });
         }
-        patchWebPositions(profileName, changed);
+        modus.patchWebPositions(profileName, changed);
         return next;
       });
       setDragPreview({});
@@ -1314,14 +1306,14 @@ export function SessionWeb() {
     }));
     setContextMenu(null);
     if (isPinned) {
-      await removeSessionTagApi(id, "pinned").catch(() => {});
+      await modus.removeTag(id, "pinned").catch(() => {});
     } else {
-      await addSessionTagApi(id, "pinned").catch(() => {});
+      await modus.addTag(id, "pinned").catch(() => {});
     }
   }, [sessions]);
 
   const handleArchive = useCallback(async (id: string) => {
-    await archiveSessionApi(id).catch(() => {});
+    await modus.archiveSession(id).catch(() => {});
     setSessions(prev => prev.filter(s => s.id !== id));
     setSelectedIds(new Set());
     setContextMenu(null);
@@ -1345,9 +1337,9 @@ export function SessionWeb() {
   const reloadData = useCallback(async () => {
     const projectCwd = activeUP?.projects?.[0];
     const [sessData, moveData, touchData] = await Promise.all([
-      fetchSessionsScoped(500, activeUserProfile ?? undefined),
+      modus.listSessions({ limit: 500, userProfile: activeUserProfile ?? undefined }),
       fetch(`${API_BASE}/api/move-runs/recent?limit=200`, { headers: authHeaders() }).then(r => r.json()),
-      fetchTouches({
+      modus.fetchTouches({
         userProfile: activeUserProfile ?? undefined,
         cwd: projectCwd ?? undefined,
         ops: ["write", "edit", "read"],
@@ -1404,7 +1396,7 @@ export function SessionWeb() {
 
     try {
       const projectCwd = activeUP?.projects?.[0];
-      const sessionId = await createEmptySession({
+      const sessionId = await modus.createEmptySession({
         profile: activeUserProfile ?? undefined,
         userProfile: activeUserProfile ?? undefined,
         cwd: projectCwd ?? undefined,
@@ -1412,7 +1404,7 @@ export function SessionWeb() {
       // Pin the new node at the click position
       const pos = { x: canvasX, y: canvasY };
       setStoredPositions(prev => ({ ...prev, [sessionId]: pos }));
-      patchWebPositions(profileName, [{ nodeId: sessionId, ...pos, pinned: true }]);
+      modus.patchWebPositions(profileName, [{ nodeId: sessionId, ...pos, pinned: true }]);
       await reloadData();
       setComposerState({ x: canvasX, y: canvasY, sessionId });
     } catch (err) {
@@ -1424,7 +1416,7 @@ export function SessionWeb() {
     setContextMenu(null);
     const projectCwd = activeUP?.projects?.[0];
     try {
-      await createSession({
+      await modus.createSession({
         prompt: "",
         profile,
         userProfile: activeUserProfile ?? undefined,
@@ -1701,7 +1693,7 @@ export function SessionWeb() {
                 setComposerState(prev => prev ? { ...prev, x: nx, y: ny } : null);
                 // Also update the session node position to match
                 setStoredPositions(prev => ({ ...prev, [composerState.sessionId]: { x: nx, y: ny } }));
-                patchWebPositions(profileName, [{ nodeId: composerState.sessionId, x: nx, y: ny, pinned: true }]);
+                modus.patchWebPositions(profileName, [{ nodeId: composerState.sessionId, x: nx, y: ny, pinned: true }]);
               }}
             />
           )}

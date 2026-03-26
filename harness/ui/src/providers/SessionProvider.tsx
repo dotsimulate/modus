@@ -1,14 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
-import {
-  createSession, sendMessage as apiSendMessage, stopSessionApi, stopTaskApi,
-  archiveSessionApi, fetchSessions, fetchSessionsScoped,
-  createEmptySession, getDraft, saveDraft,
-  updateSessionConfig, respondToPermission, nextMsgId,
-  branchSessionApi, switchSessionProfile,
-  rekeyMoveSession,
-  rekeyMoveByTokenApi,
-} from "../api";
-import type { Session, SessionInfo, Attachment, ApiAttachment, MoveBinding } from "../api";
+import { modus } from "../modusClient";
+import { nextMsgId } from "../../../sdk/index";
+import type { Session, SessionInfo, Attachment, ApiAttachment, MoveBinding } from "../../../sdk/index";
 import { createInitialState } from "../eventReducer";
 import {
   agentConfigToOverrides,
@@ -144,8 +137,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const refreshSessions = useCallback(async () => {
     try {
       const s = activeUserProfile
-        ? await fetchSessionsScoped(50, activeUserProfile)
-        : await fetchSessions();
+        ? await modus.listSessions({ limit: 50, userProfile: activeUserProfile })
+        : await modus.listSessions({ limit: 50 });
       setServerSessions(s);
     } catch { /* silent */ }
   }, [activeUserProfile]);
@@ -189,7 +182,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const saveDraftForCurrent = useCallback(async (text?: string) => {
     if (activeSessionId && !activeSessionId.startsWith("pending-")) {
-      await saveDraft(activeSessionId, text ?? input).catch(() => {});
+      await modus.saveDraft(activeSessionId, text ?? input).catch(() => {});
     }
   }, [activeSessionId, input]);
 
@@ -198,7 +191,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     if (activeSessionId && !activeSessionId.startsWith("pending-")) {
       draftTimerRef.current = setTimeout(() => {
-        saveDraft(activeSessionId, text).catch(() => {});
+        modus.saveDraft(activeSessionId, text).catch(() => {});
       }, 1000);
     }
   }, [activeSessionId]);
@@ -252,7 +245,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const resolvedProvider = seed.agent.provider.trim() || resolveProfileProvider(profile);
     const resolvedModel = resolveAppliedModel(seed.agent, null, profile);
     try {
-      const id = await createEmptySession({
+      const id = await modus.createEmptySession({
         profile,
         model: resolvedModel || undefined,
         provider: resolvedProvider || undefined,
@@ -320,14 +313,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // seed for the next new session (Domain B) and must not be contaminated by
     // which session the user navigates to (Domain A).
 
-    const draft = await getDraft(id).catch(() => "");
+    const draft = await modus.getDraft(id).catch(() => "");
     setInput(draft);
 
     setQueuedMessage(null);
   }, [serverSessions, saveDraftForCurrent, refreshSessions]);
 
   const archiveSession = useCallback(async (id: string) => {
-    await archiveSessionApi(id).catch(() => {});
+    await modus.archiveSession(id).catch(() => {});
     if (activeSessionId === id) {
       unsubscribeSession(id);
       removeSession(id);
@@ -349,7 +342,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     setInput("");
 
-    if (activeSessionId) saveDraft(activeSessionId, "").catch(() => {});
+    if (activeSessionId) modus.saveDraft(activeSessionId, "").catch(() => {});
 
     const apiAtts: ApiAttachment[] | undefined = sendAttachments.length > 0
       ? sendAttachments.map((a) => ({ type: a.type, mediaType: a.mediaType, data: a.data, name: a.name }))
@@ -367,7 +360,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const needsNewSession = !activeSessionId || !currentState || currentState.status === "done" || currentState.status === "error" || activeSessionId.startsWith("pending-") || isEmptySession;
     if (needsNewSession) {
       const prevSessionId = activeSessionId; // capture before archiving — move registry may reference this
-      if (isEmptySession && activeSessionId) archiveSessionApi(activeSessionId).catch(() => {});
+      if (isEmptySession && activeSessionId) modus.archiveSession(activeSessionId).catch(() => {});
 
       const seedState = getSendSeed(currentState);
       const queuedProfile = seedState.profile;
@@ -390,15 +383,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       try {
         const opts = buildSessionOpts(prompt, queuedProfile, seedState as any);
         if (apiAtts) opts.attachments = apiAtts;
-        const { sessionId: realId } = await createSession(opts);
+        const { sessionId: realId } = await modus.createSession(opts);
 
         rekeySession(tempId, realId);
         // Rekey move registry — mountOnAttach moves registered with empty sessionId
         // need an explicit rekey from "" since prevSessionId/tempId won't match them
-        rekeyMoveSession("", realId).catch(() => {});
+        modus.rekeyMoveSession("", realId).catch(() => {});
         const moveOldId = prevSessionId || tempId;
         if (moveOldId && moveOldId !== "") {
-          rekeyMoveSession(moveOldId, realId).catch((e) => {
+          modus.rekeyMoveSession(moveOldId, realId).catch((e) => {
             console.error(`[session] rekeyMoveSession FAILED:`, e);
           });
         }
@@ -422,7 +415,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       if (isActive) {
         // Commit to backend queue immediately — survives page navigation
-        apiSendMessage(activeSessionId!, prompt, apiAtts, moves ? { moves } : undefined).catch(() => {});
+        modus.sendMessage(activeSessionId!, prompt, apiAtts, moves ? { moves } : undefined).catch(() => {});
         setQueuedMessage({ text: prompt, attachments: sendAttachments, serverQueued: true });
         return;
       }
@@ -432,11 +425,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const hasPendingProfile = hasPendingProfileChange(activeSession);
         const nextTurnConfig = getQueuedAgentConfig(activeSession, currentState.agentConfig);
         if (hasPendingProfile && activeSession?.nextProfile) {
-          await switchSessionProfile(activeSessionId!, activeSession.nextProfile);
+          await modus.switchProfile(activeSessionId!, activeSession.nextProfile);
           effectiveProfile = activeSession.nextProfile;
         }
         if (activeSession?.nextAgentConfig) {
-          await updateSessionConfig(activeSessionId!, {
+          await modus.updateConfig(activeSessionId!, {
             ...agentConfigToUpdatePayload(
               nextTurnConfig,
               getProfileToolsForStartedSession(activeSession, effectiveProfile),
@@ -464,7 +457,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           nextTurnConfig,
           getProfileToolsForStartedSession(activeSession, effectiveProfile),
         );
-        await apiSendMessage(activeSessionId!, prompt, apiAtts, {
+        await modus.sendMessage(activeSessionId!, prompt, apiAtts, {
           profile: effectiveProfile,
           provider: overrides.provider,
           model: overrides.model,
@@ -544,7 +537,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const stop = useCallback(async () => {
     if (activeSessionId) {
-      await stopSessionApi(activeSessionId).catch(() => {});
+      await modus.stopSession(activeSessionId).catch(() => {});
       const rs = getSessionState(activeSessionId);
       if (rs) {
         setSessionState(activeSessionId, { ...rs, status: "idle" }, activeSession?.profile);
@@ -554,7 +547,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const stopTask = useCallback(async (taskId: string) => {
     if (activeSessionId) {
-      await stopTaskApi(activeSessionId, taskId).catch(() => {});
+      await modus.stopTask(activeSessionId, taskId).catch(() => {});
     }
   }, [activeSessionId]);
 
@@ -565,7 +558,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     scope?: "once" | "session",
   ) => {
     if (!activeSessionId) return;
-    await respondToPermission(activeSessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
+    await modus.respondToPermission(activeSessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
   }, [activeSessionId]);
 
   const updateActiveSessionConfig = useCallback(async (config: AgentConfigState) => {
@@ -584,7 +577,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     try {
       // Branch at seq-1: copy everything before this user message
       const branchAt = prefill ? Math.max(1, seq - 1) : seq;
-      const newId = await branchSessionApi(activeSessionId, branchAt);
+      const newId = await modus.branchSession(activeSessionId, branchAt);
       await refreshSessions();
       await selectSession(newId);
       if (prefill) setInput(prefill);

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { browsePath, openInEditor, readFileContent, type BrowseResult } from "../api";
+import { modus } from "../modusClient";
+import type { BrowseResult } from "../../../sdk/index";
 import { FileContentViewer } from "./FileContentViewer";
 import { FloatingWindow } from "./FloatingWindow";
 
@@ -38,14 +39,14 @@ export function ChatFileViewer({ path, onClose }: Props) {
 
     (async () => {
       try {
-        const dirResult = await browsePath(activePath, { includeHidden: true });
+        const dirResult = await modus.browse(activePath, { includeHidden: true });
         if (active) {
           setView({ kind: "directory", result: dirResult });
         }
         return;
       } catch {
         try {
-          const text = await readFileContent(activePath);
+          const text = await modus.readFile(activePath);
           if (!active) return;
           if (text !== null) {
             setView({ kind: "file", content: text });
@@ -130,7 +131,7 @@ export function ChatFileViewer({ path, onClose }: Props) {
                 <div className="fcv-actions">
                   <button
                     className="chat-file-viewer-btn"
-                    onClick={() => openInEditor(view.result.path)}
+                    onClick={() => modus.openInEditor(view.result.path)}
                     title="Open in editor"
                     aria-label="Open in editor"
                   >
@@ -208,7 +209,7 @@ export function ChatFileViewer({ path, onClose }: Props) {
               <>
                 <button
                   className="chat-file-viewer-btn"
-                  onClick={() => openInEditor(activePath!)}
+                  onClick={() => modus.openInEditor(activePath!)}
                   title="Open in editor"
                   aria-label="Open in editor"
                 >

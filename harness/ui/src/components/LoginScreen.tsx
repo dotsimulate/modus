@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { verifyPin, setupNewPin, setAuthToken } from "../api";
+import { modus, setAuthToken } from "../modusClient";
 import { MoLogo } from "./MoLogo";
 
 const GLYPHS = "0123456789abcdefnrstiouxlm{}[]()=></:;.&|!?#@$%~^+*";
@@ -145,7 +145,7 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
     setLoading(true);
     setError("");
     try {
-      const token = await verifyPin(pin.trim(), name.trim());
+      const token = await modus.verifyPin(pin.trim(), name.trim());
       setAuthToken(token);
       setPinSuccess(true);
       setTimeout(() => onAuth(name.trim()), 1000);
@@ -165,7 +165,7 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
     setLoading(true);
     setError("");
     try {
-      const token = await setupNewPin(pin.trim(), name.trim());
+      const token = await modus.setupNewPin(pin.trim(), name.trim());
       setAuthToken(token);
       setPinSuccess(true);
       setTimeout(() => onAuth(name.trim()), 1000);

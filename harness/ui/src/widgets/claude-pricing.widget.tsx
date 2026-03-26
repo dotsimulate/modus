@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useState } from "react";
-import { fetchAccountInfo, fetchSessionStats } from "../api";
-import type { AccountInfo, SessionStats } from "../api";
+import { modus } from "../modusClient";
+import type { AccountInfo, SessionStats } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import { fmtCost, fmtNum, basename, planLabel } from "../utils/format";
 import type { WidgetDef } from "./index";
@@ -42,8 +42,8 @@ function ClaudePricingWidget() {
   const loadPricing = useCallback(
     async (): Promise<{ account: AccountInfo; stats: SessionStats }> => {
       const [account, stats] = await Promise.all([
-        fetchAccountInfo(activeUserProfile ?? undefined),
-        fetchSessionStats(activeUserProfile ?? undefined),
+        modus.getAccountInfo(activeUserProfile ?? undefined),
+        modus.getSessionStats(activeUserProfile ?? undefined),
       ]);
       return { account, stats };
     },

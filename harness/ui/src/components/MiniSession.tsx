@@ -8,7 +8,7 @@
 
 import { useEffect, useCallback } from "react";
 import { useSessionState, subscribeSession, isSubscribed } from "../sessionStore";
-import { respondToPermission } from "../api";
+import { modus } from "../modusClient";
 import { PermissionOverlay } from "./PermissionOverlay";
 
 type Props = {
@@ -58,7 +58,7 @@ export function MiniSession({ sessionId, onNavigate }: Props) {
       updatedInput?: Record<string, unknown>,
       scope?: "once" | "session",
     ) => {
-      await respondToPermission(sessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
+      await modus.respondToPermission(sessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
     },
     [sessionId],
   );

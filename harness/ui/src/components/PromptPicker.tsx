@@ -7,13 +7,10 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import {
-  fetchPrompts, renderPromptApi, browsePath, readFileContent,
-  fetchMoves, activateMoveApi, activateProjectMoveApi,
-} from "../api";
+import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileProvider";
 import { Markdown } from "./Markdown";
-import type { PromptListItem, RenderResult, MoveInput, MoveListItem, ActivateMoveResult } from "../api";
+import type { PromptListItem, RenderResult, MoveInput, MoveListItem, ActivateMoveResult } from "../../../sdk/index";
 
 export type PromptSettings = RenderResult["config"]["settings"];
 
@@ -163,9 +160,9 @@ export function PromptPicker({
   // Load prompts + skills on open
   useEffect(() => {
     if (!open) return;
-    fetchPrompts(tags ? { tags } : undefined).then(setPrompts).catch(() => {});
+    modus.listPrompts(tags ? { tags } : undefined).then(setPrompts).catch(() => {});
     if (projectCwd) {
-      fetchMoves(projectCwd).then(setMoves).catch(() => setMoves([]));
+      modus.listMoves(projectCwd).then(setMoves).catch(() => setMoves([]));
     } else {
       setMoves([]);
     }
@@ -174,7 +171,7 @@ export function PromptPicker({
     const paths = activeUP?.projects ?? [];
     if (paths.length > 0) {
       const skillsPath = `${paths[0]}/.claude/skills`;
-      browsePath(skillsPath).then(result => {
+      modus.browse(skillsPath).then(result => {
         if (result?.dirs?.length) {
           const items: SkillItem[] = result.dirs
             .filter(name => !name.startsWith("."))
@@ -205,7 +202,7 @@ export function PromptPicker({
       const slug = activeUserProfile ?? "";
       const paths = activeUP?.projects ?? [];
       try {
-        const { rendered } = await renderPromptApi(selected.item.name, {
+        const { rendered } = await modus.renderPrompt(selected.item.name, {
           inputs: { ...inputValues, text: freeText.trim() || undefined },
           project: {
             name: activeUP?.displayName || slug || "project",
@@ -268,7 +265,7 @@ export function PromptPicker({
     setPreviewContent(null);
     setPreviewLoading(true);
     setSearch("");
-    const content = await readFileContent(skill.path);
+    const content = await modus.readFile(skill.path);
     setPreviewContent(content ?? "could not load skill file");
     setPreviewLoading(false);
   }, []);
@@ -282,7 +279,7 @@ export function PromptPicker({
     const paths = activeUP?.projects ?? [];
 
     try {
-      const { rendered, config } = await renderPromptApi(selected.item.name, {
+      const { rendered, config } = await modus.renderPrompt(selected.item.name, {
         inputs: { ...inputValues, text: freeText.trim() || undefined },
         project: {
           name: activeUP?.displayName || slug || "project",
@@ -318,8 +315,8 @@ export function PromptPicker({
         userProfile: userProfile ?? activeUserProfile ?? undefined,
       };
       const result = sessionId
-        ? await activateMoveApi(sessionId, body)
-        : await activateProjectMoveApi({ ...body, forceNewSession: true });
+        ? await modus.activateMove(sessionId, body)
+        : await modus.activateProjectMove({ ...body, forceNewSession: true });
       onMoveActivated?.(result);
       setOpenAndNotify(false);
       setSelected(null);

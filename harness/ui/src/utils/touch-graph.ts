@@ -1,4 +1,4 @@
-import type { TouchRecord } from "../api/trace";
+import type { TouchRecord } from "../../../sdk/index";
 
 // No layout constants — positions are computed in TraceView (3D canvas)
 

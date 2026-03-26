@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useId } from "react";
-import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMoveResult, MoveBinding } from "../api";
-import { activateMoveApi, activateProjectMoveApi, fetchAmbientMoves, deactivateAmbientMoveApi, attachMoveApi, detachMoveApi } from "../api";
-import type { ActivateMoveResult } from "../api";
+import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMoveResult, MoveBinding, ActivateMoveResult } from "../../../sdk/index";
+import { modus } from "../modusClient";
 import { PromptPicker } from "./PromptPicker";
 import { AttachedMove, AttachedWidgetContent } from "./QueuedMessage";
 import type { ComposerAttachResult } from "./MoveWidget";
@@ -137,7 +136,7 @@ export function ChatInput({
 
   useEffect(() => {
     if (!sessionId) return;
-    fetchAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
+    modus.listAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
   }, [sessionId]);
 
   // Listen for attach-move events from sidebar moves widget
@@ -149,7 +148,7 @@ export function ChatInput({
       };
       if (move.widget?.mountOnAttach && projectCwd) {
         try {
-          const result = await attachMoveApi({
+          const result = await modus.attachMove({
             moveName: move.name,
             inputs,
             cwd: projectCwd,
@@ -201,7 +200,7 @@ export function ChatInput({
   const handleMoveActivated = useCallback((result: ActivateMoveResult) => {
     origOnMoveActivated?.(result);
     if (result.persistent && sessionId) {
-      fetchAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
+      modus.listAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
     }
   }, [origOnMoveActivated, sessionId]);
 
@@ -393,8 +392,8 @@ export function ChatInput({
         const body = { moveName: item.name, inputs: moveInputs, cwd: projectCwd, userProfile };
         try {
           const result = sessionId
-            ? await activateMoveApi(sessionId, body)
-            : await activateProjectMoveApi(body);
+            ? await modus.activateMove(sessionId, body)
+            : await modus.activateProjectMove(body);
           if (result.persistent) {
             // Persistent move — just refresh chips, don't send a message
             handleMoveActivated(result);
@@ -547,7 +546,7 @@ export function ChatInput({
           inputs={attachedMove.inputs}
           onDetach={() => {
             if (attachedMove.apiToken) {
-              detachMoveApi(attachedMove.item.name, attachedMove.apiToken).catch(() => {});
+              modus.detachMove(attachedMove.item.name, attachedMove.apiToken).catch(() => {});
               onMoveDetached?.(attachedMove.apiToken);
             }
             setAttachedMove(null);
@@ -576,7 +575,7 @@ export function ChatInput({
                 className="ambient-chip-remove"
                 onClick={() => {
                   if (!sessionId) return;
-                  deactivateAmbientMoveApi(sessionId, m.moveName).then(() => {
+                  modus.deactivateAmbient(sessionId, m.moveName).then(() => {
                     setAmbientMoves((prev) => prev.filter((x) => x.moveName !== m.moveName));
                   });
                 }}
@@ -646,7 +645,7 @@ export function ChatInput({
                   // Widget-first: don't store in attachedMove — widget IS the interface.
                   // Call attach API to create registration + mount widget immediately.
                   try {
-                    const result = await attachMoveApi({
+                    const result = await modus.attachMove({
                       moveName: move.name,
                       inputs,
                       cwd: projectCwd,

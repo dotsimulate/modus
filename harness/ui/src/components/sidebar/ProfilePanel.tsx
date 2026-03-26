@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchProviderModels, type Profile, type UserProfile } from "../../api";
+import { modus } from "../../modusClient";
+import type { Profile, UserProfile } from "../../../../sdk/index";
 import { useProfiles } from "../../providers/ProfileProvider";
 import { SearchDropdown } from "../SearchDropdown";
 import { SessionSetup, type SessionSetupState } from "../SessionSetup";
@@ -85,7 +86,7 @@ export function ProfilePanel({
     if (!shouldSeedModel) return;
 
     try {
-      const models = await fetchProviderModels(provider);
+      const models = await modus.getProviderModels(provider);
       const seededModel = models[0]?.id ?? initialModel;
       if (!seededModel) return;
       const latest = setupStateRef.current;

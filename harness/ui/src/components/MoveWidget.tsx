@@ -15,8 +15,8 @@ import { useState, useEffect, useRef, useCallback, type ComponentType } from "re
 import * as ReactModule from "react";
 import * as ReactJSXRuntime from "react/jsx-runtime";
 import * as ReactJSXDevRuntime from "react/jsx-dev-runtime";
-import { callMoveOp, activateAttachedMoveApi, type MoveWidgetInfo } from "../api";
-import { authHeaders } from "../api/_fetch";
+import { modus, authHeaders } from "../modusClient";
+import type { MoveWidgetInfo } from "../../../sdk/index";
 import { onUiEvent } from "../sessionStore";
 
 export type MoveWidgetEvent = {
@@ -193,7 +193,7 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
   }, [widget.moduleUrl, widget.moveName, widget.cache]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const callOp = useCallback(async (op: string, data?: Record<string, unknown>) => {
-    return callMoveOp(widget.moveName, apiToken, op, data);
+    return modus.callMoveOp(widget.moveName, apiToken, op, data);
   }, [widget.moveName, apiToken]);
 
   const submitMessage = useCallback(async (prompt: string) => {
@@ -206,7 +206,7 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
 
   const activate = mountedOnAttach
     ? async (text?: string) => {
-        const result = await activateAttachedMoveApi(widget.moveName, apiToken, text);
+        const result = await modus.activateAttached(widget.moveName, apiToken, text);
         return { ok: result.ok, error: result.error };
       }
     : undefined;

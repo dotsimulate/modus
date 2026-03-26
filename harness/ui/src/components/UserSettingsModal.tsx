@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { changePinApi, fetchProviderModels, type ProviderModel, type UserProfile } from "../api";
+import { modus } from "../modusClient";
+import type { ProviderModel, UserProfile } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import { SearchDropdown } from "./SearchDropdown";
 
@@ -68,7 +69,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
       setProviderModels([]);
       return;
     }
-    fetchProviderModels(defaultProvider).then(setProviderModels).catch(() => setProviderModels([]));
+    modus.getProviderModels(defaultProvider).then(setProviderModels).catch(() => setProviderModels([]));
   }, [defaultProvider]);
 
   const handleDefaultProviderChange = async (provider: string) => {
@@ -82,7 +83,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     setDefaultModel(seededModel);
 
     try {
-      const models = await fetchProviderModels(provider);
+      const models = await modus.getProviderModels(provider);
       const nextModel = models[0]?.id ?? seededModel;
       if (!nextModel || providerRef.current !== provider) return;
       setDefaultModel(nextModel);
@@ -131,7 +132,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     if (newPin !== confirmPin) { setPinError("PINs do not match"); return; }
     setPinSaving(true);
     try {
-      await changePinApi(oldPin, newPin);
+      await modus.changePin(oldPin, newPin);
       setOldPin(""); setNewPin(""); setConfirmPin("");
       setPinSuccess(true);
     } catch (e) {

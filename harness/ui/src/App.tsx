@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import type { ProfileUi } from "./api";
-import { healthCheck, patchUserProfileApi, patchUserProfileUiConfigApi, fetchSessionUiState, saveSessionUiState, fetchActiveWidget, addSessionTagApi, removeSessionTagApi, detachMoveApi, fetchMoves, rekeyMoveByTokenApi } from "./api";
-import type { MoveListItem } from "./api";
+import type { ProfileUi, MoveListItem } from "../../sdk/index";
+import { modus } from "./modusClient";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
@@ -97,7 +96,7 @@ function AppShell() {
   const [rightPanelBrowserPath, setRightPanelBrowserPath] = useState<string | null>(null);
   const [requestRightPanelView, setRequestRightPanelView] = useState<string | null>(null);
   const [activeMoveWidgets, setActiveMoveWidgets] = useState<Array<{
-    widget: import("./api").MoveWidgetInfo;
+    widget: import("../../sdk/index").MoveWidgetInfo;
     apiToken: string;
     instanceId: string;
     sessionId: string;
@@ -135,7 +134,7 @@ function AppShell() {
     }
     if (panelSaveTimer.current) clearTimeout(panelSaveTimer.current);
     panelSaveTimer.current = setTimeout(() => {
-      saveSessionUiState(sessionId, snapshot).catch(() => {});
+      modus.saveSessionUiState(sessionId, snapshot).catch(() => {});
     }, 300);
   }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth]);
 
@@ -207,7 +206,7 @@ function AppShell() {
       setLeftPanelWidth(280);
       setRightPanelOpen(false);
       setRightPanelWidth(360);
-      fetchSessionUiState(id).then((state) => {
+      modus.getSessionUiState(id).then((state) => {
         uiCache.current.set(id, state);
         // Only apply if we're still on this session
         if (prevSessionIdRef.current === id) applyState(state);
@@ -227,7 +226,7 @@ function AppShell() {
         // Rekey backend registrations for each widget whose sessionId differs
         for (const w of prev) {
           if (w.apiToken && w.sessionId !== id) {
-            rekeyMoveByTokenApi(w.apiToken, id).catch((e) =>
+            modus.rekeyMoveByToken(w.apiToken, id).catch((e) =>
               console.error(`[App] rekeyMoveByToken FAILED for ${w.apiToken}:`, e)
             );
           }
@@ -236,7 +235,7 @@ function AppShell() {
       });
       return;
     }
-    fetchActiveWidget(id).then((widgets) => {
+    modus.getActiveWidgets(id).then((widgets) => {
       if (!widgets.length) {
         // Keep existing widgets already tagged to this session (onMoveActivated set them
         // before the rekey completed); clear any that belong to a different session.
@@ -252,7 +251,7 @@ function AppShell() {
     const id = activeSession?.id;
     if (!id || id.startsWith("pending-")) return;
     const handler = () => {
-      fetchActiveWidget(id).then((widgets) => {
+      modus.getActiveWidgets(id).then((widgets) => {
         if (widgets.length) {
           setActiveMoveWidgets(prev => {
             // Merge: keep existing, add new ones
@@ -286,7 +285,7 @@ function AppShell() {
 
   // Health check
   useEffect(() => {
-    const check = () => healthCheck().then(() => setHarnessUp(true)).catch(() => setHarnessUp(false));
+    const check = () => modus.healthCheck().then(() => setHarnessUp(true)).catch(() => setHarnessUp(false));
     check();
     const interval = setInterval(check, 15000);
     return () => clearInterval(interval);
@@ -370,16 +369,16 @@ function AppShell() {
     const session = serverSessions.find(s => s.id === id);
     const tags = parseTagList(session?.tags);
     if (tags.includes("pinned")) {
-      await removeSessionTagApi(id, "pinned").catch(() => {});
+      await modus.removeTag(id, "pinned").catch(() => {});
     } else {
-      await addSessionTagApi(id, "pinned").catch(() => {});
+      await modus.addTag(id, "pinned").catch(() => {});
     }
     refreshSessions();
   }, [serverSessions, refreshSessions]);
 
   const handleLeftPanelWidgetsChange = useCallback((types: string[]) => {
     if (!activeUserProfile) return;
-    patchUserProfileUiConfigApi(activeUserProfile, { leftPanel: { widgets: types } })
+    modus.patchUserProfileUiConfig(activeUserProfile, { leftPanel: { widgets: types } })
       .then(() => refreshUserProfiles()).catch(() => {});
   }, [activeUserProfile, refreshUserProfiles]);
 
@@ -442,7 +441,7 @@ function AppShell() {
   const projectCwd = projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
   useEffect(() => {
     if (!projectCwd) return;
-    fetchMoves(projectCwd).then((moves) => {
+    modus.listMoves(projectCwd).then((moves) => {
       setMovePages(moves.filter((m) => m.page && m.page.nav !== false));
     }).catch(() => setMovePages([]));
   }, [projectCwd]);
@@ -748,7 +747,7 @@ function AppShell() {
               onRequestViewHandled={() => setRequestRightPanelView(null)}
               onWidgetClose={(apiToken, moveName) => {
                 setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
-                detachMoveApi(moveName, apiToken).catch(() => {});
+                modus.detachMove(moveName, apiToken).catch(() => {});
               }}
               sessionId={activeSession?.id}
               onSendToAgent={(text) => handleInputChange(input ? `${input}\n${text}` : text)}
@@ -823,10 +822,10 @@ function AppShell() {
               ...(editor !== undefined ? { editor } : {}),
             };
             if (Object.keys(corePatch).length > 0) {
-              await patchUserProfileApi(activeUserProfile, corePatch);
+              await modus.patchUserProfile(activeUserProfile, corePatch);
             }
             if (Object.keys(uiPatch).length > 0) {
-              await patchUserProfileUiConfigApi(activeUserProfile, uiPatch);
+              await modus.patchUserProfileUiConfig(activeUserProfile, uiPatch);
             }
             await refreshUserProfiles();
             if ("defaultAgentProfile" in patch) {

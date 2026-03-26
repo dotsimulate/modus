@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchDeepAnalytics } from "../api";
+import { modus } from "../modusClient";
 import type {
   DeepAnalytics,
   DeepAnalyticsBucket,
   DeepAnalyticsMetricRow,
   DeepAnalyticsSessionRow,
-} from "../api";
+} from "../../../sdk/index";
 import { InlineTabs } from "../components/InlineTabs";
 import { TimeAxis } from "../components/TimeAxis";
 import { DateTimeField } from "../components/DateTimeField";
@@ -418,7 +418,7 @@ function DeepAnalyticsWidget({ config, widgetId, onSelectSession }: WidgetProps<
   const scopedCwd = cwdScope === "current" ? activeCwd ?? undefined : undefined;
   const scopedProvider = providerFilter === "all" ? undefined : providerFilter;
 
-  const loadAnalytics = useCallback(() => fetchDeepAnalytics({
+  const loadAnalytics = useCallback(() => modus.getDeepAnalytics({
     start: Math.min(start, end),
     end: Math.max(start, end),
     bucketMs,

@@ -6,7 +6,7 @@
  */
 
 import { useCallback } from "react";
-import { fetchAccountInfo } from "../api";
+import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileProvider";
 import { fmtCost, planLabel } from "../utils/format";
 import type { WidgetDef } from "./index";
@@ -30,7 +30,7 @@ function planClass(sub: string): string {
 function AccountWidget() {
   const { activeUserProfile } = useProfiles();
   const loadAccount = useCallback(
-    () => fetchAccountInfo(activeUserProfile ?? undefined),
+    () => modus.getAccountInfo(activeUserProfile ?? undefined),
     [activeUserProfile],
   );
   const { value: info, loading } = useWidgetPollingValue({

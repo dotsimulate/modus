@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { fetchGitStatus, fetchGitLog, fetchGitShow, fetchGitFileDiff, fetchGitReadme, fetchGitFileContent } from "../api";
-import type { GitStatus, GitCommit, GitCommitDetail, FileDiff } from "../api";
-import { getAuthToken } from "../api/_fetch";
+import { modus, getAuthToken } from "../modusClient";
+import type { GitStatus, GitCommit, GitCommitDetail, FileDiff } from "../../../sdk/index";
 import { replaceGitRouteState, useGitRouteState } from "../git-route";
 import { DiffView } from "./DiffView";
 import { Markdown } from "./Markdown";
@@ -450,7 +449,7 @@ function ReadmeDetail({ cwd }: { cwd: string }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchGitReadme(cwd)
+    modus.gitReadme(cwd)
       .then(r => { if (active) setReadme(r); })
       .catch(() => {})
       .finally(() => { if (active) setLoading(false); });
@@ -481,7 +480,7 @@ function WtFileDiff({ cwd, file }: { cwd: string; file: string }) {
   useEffect(() => {
     let active = true;
     setDiffs(null);
-    fetchGitFileDiff(cwd, file).then(d => { if (active) setDiffs(d); }).catch(() => {});
+    modus.gitFileDiff(file, cwd).then(d => { if (active) setDiffs(d); }).catch(() => {});
     return () => { active = false; };
   }, [cwd, file]);
 
@@ -568,7 +567,7 @@ function CommitFileDiff({ cwd, hash, file, onBack }: {
     if (mode !== "diff" || detail) return;
     let active = true;
     setLoadingDiff(true);
-    fetchGitShow(cwd, hash)
+    modus.gitShow(hash, cwd)
       .then(d => { if (active) setDetail(d); })
       .catch(() => {})
       .finally(() => { if (active) setLoadingDiff(false); });
@@ -579,7 +578,7 @@ function CommitFileDiff({ cwd, hash, file, onBack }: {
     if (mode !== "view" || fileContent !== null) return;
     let active = true;
     setLoadingContent(true);
-    fetchGitFileContent(cwd, hash, file)
+    modus.gitFileContent(file, cwd, hash)
       .then(c => { if (active) setFileContent(c); })
       .catch(() => {})
       .finally(() => { if (active) setLoadingContent(false); });
@@ -707,7 +706,7 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
   const load = useCallback(async () => {
     if (!effectiveCwd) return;
     try {
-      const [s, l] = await Promise.all([fetchGitStatus(effectiveCwd), fetchGitLog(effectiveCwd, 500)]);
+      const [s, l] = await Promise.all([modus.gitStatus(effectiveCwd), modus.gitLog(effectiveCwd, 500)]);
       setStatus(s);
       setLog(l);
     } catch { /* silent */ }
@@ -747,7 +746,7 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
     if (!openCommit || !effectiveCwd || commitDetails.has(openCommit)) return;
     let active = true;
     setLoadingCommit(openCommit);
-    fetchGitShow(effectiveCwd, openCommit)
+    modus.gitShow(openCommit, effectiveCwd)
       .then(d => {
         if (active && d) setCommitDetails(prev => new Map(prev).set(openCommit, d));
       })

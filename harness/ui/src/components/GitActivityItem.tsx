@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { addSessionTagApi, removeSessionTagApi } from "../api";
-import type { GitCommit } from "../api";
+import { modus } from "../modusClient";
+import type { GitCommit } from "../../../sdk/index";
 import { navigateToGitRoute } from "../git-route";
 
 type Props = {
@@ -45,9 +45,9 @@ export function GitActivityItem({ commit, sessionId, claimedBySession, onClaimCh
     setOptimisticClaimed(nextClaimed);
     try {
       if (nextClaimed) {
-        await addSessionTagApi(sessionId, tag);
+        await modus.addTag(sessionId, tag);
       } else {
-        await removeSessionTagApi(sessionId, tag);
+        await modus.removeTag(sessionId, tag);
       }
       onClaimChange?.();
     } catch {

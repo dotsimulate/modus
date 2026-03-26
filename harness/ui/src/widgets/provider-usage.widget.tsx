@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
-import { fetchProviderUsageAnalytics } from "../api";
-import type { ModelUsageTotal, ProviderUsageAnalytics, ProviderUsageDaily } from "../api";
+import { modus } from "../modusClient";
+import type { ModelUsageTotal, ProviderUsageAnalytics, ProviderUsageDaily } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import { fmtCost, fmtNum } from "../utils/format";
 import type { WidgetBase, WidgetDef, WidgetProps } from "./index";
@@ -67,7 +67,7 @@ function ProviderUsageWidget({ config, widgetId }: WidgetProps<ProviderUsageConf
   );
   const days = config.days ?? 30;
   const loadUsage = useCallback(
-    () => fetchProviderUsageAnalytics(activeUserProfile ?? undefined, days),
+    () => modus.getProviderUsageAnalytics(activeUserProfile ?? undefined, days),
     [activeUserProfile, days],
   );
   const { value: usage, loading } = useWidgetPollingValue<ProviderUsageAnalytics | null>({

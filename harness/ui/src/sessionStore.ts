@@ -8,8 +8,8 @@
 
 import { useSyncExternalStore } from "react";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
-import { subscribeEvents } from "./api";
-import type { Session } from "./api/types";
+import { subscribeEvents } from "./modusClient";
+import type { Session } from "../../sdk/index";
 
 // ── Store State ──
 

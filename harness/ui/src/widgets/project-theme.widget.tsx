@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
-import {
-  activateProjectFontApi,
-  activateProjectMoveApi,
-  activateProjectThemeApi,
-  fetchProjectUiState,
-} from "../api";
-import type { ProjectUiState } from "../api";
+import { modus } from "../modusClient";
+import type { ProjectUiState } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import { applyProjectUiState } from "../project-ui-theme";
 import { CustomSelect } from "../components/CustomSelect";
@@ -37,7 +32,7 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
       }
 
       try {
-        const next = await fetchProjectUiState(themeCwd);
+        const next = await modus.getProjectUiState(themeCwd);
         if (!alive) return;
         setState(next);
         setError("");
@@ -59,7 +54,7 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     setBusy("theme");
     setError("");
     try {
-      const activeTheme = await activateProjectThemeApi(themeCwd, themeId);
+      const activeTheme = await modus.activateProjectTheme(themeCwd, themeId);
       const next = { ...state, activeTheme };
       setState(next);
       applyProjectUiState(next);
@@ -75,7 +70,7 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     setBusy("font");
     setError("");
     try {
-      const activeFont = await activateProjectFontApi(themeCwd, fontId);
+      const activeFont = await modus.activateProjectFont(themeCwd, fontId);
       const next = { ...state, activeFont };
       setState(next);
       applyProjectUiState(next);
@@ -92,7 +87,7 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     setBusy("create");
     setError("");
     try {
-      const result = await activateProjectMoveApi({
+      const result = await modus.activateProjectMove({
         moveName: "create-theme",
         inputs: { prompt },
         cwd: themeCwd,

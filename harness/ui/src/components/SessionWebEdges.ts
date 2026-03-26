@@ -3,9 +3,7 @@
  * No layout, no React. Pure edge construction.
  */
 
-import type { SessionInfo, GitCommit } from "../api/types";
-import type { MissionTransferSummary } from "../api/missions";
-import type { TouchRecord } from "../api/trace";
+import type { SessionInfo, GitCommit, MissionTransferSummary, TouchRecord } from "../../../sdk/index";
 import type { GraphEdge, MoveRun, HandoffDoc } from "./SessionWebLayout";
 import { shortHash, parseTags } from "./SessionWebLayout";
 

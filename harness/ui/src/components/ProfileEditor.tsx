@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { saveProfileApi, deleteProfileApi, checkSecrets, patchUserProfileApi, fetchProviderModels } from "../api";
-import type { Profile, McpServerConfig, ProviderModel } from "../api";
+import { modus } from "../modusClient";
+import type { Profile, McpServerConfig, ProviderModel } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileProvider";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
@@ -39,7 +39,7 @@ function McpServersEditor({
       }
     }
     if (vars.length === 0) { setSecretStatus({}); return; }
-    checkSecrets(vars).then((r) => {
+    modus.checkSecrets(vars).then((r) => {
       setSecretStatus(r.status);
       setSecretsPath(r.secretsFile.replace(/^\/home\/[^/]+/, "~"));
     }).catch(() => {});
@@ -259,7 +259,7 @@ function ProfileForm({
       setProviderModels([]);
     }
     setModelsLoading(true);
-    fetchProviderModels(p).then((models) => {
+    modus.getProviderModels(p).then((models) => {
       setProviderModels(models);
       if (model && models.length > 0 && !models.some((m) => m.id === model)) {
         setModel("");
@@ -442,10 +442,10 @@ export function ProfileEditor({
   const handleSave = async (data: Omit<Profile, "name"> & { name?: string }) => {
     const saveName = isNew ? (data.name ?? "untitled") : initialProfile!;
     const { name: _n, ...rest } = data as any;
-    await saveProfileApi(saveName, rest, profileCwd);
+    await modus.saveProfile(saveName, rest, profileCwd);
     if (isNew && activeUserProfile && activeUP?.agentProfiles) {
       const updated = [...activeUP.agentProfiles, saveName];
-      await patchUserProfileApi(activeUserProfile, { agentProfiles: updated });
+      await modus.patchUserProfile(activeUserProfile, { agentProfiles: updated });
     }
     await Promise.all([refreshProfiles(), refreshUserProfiles()]);
     onProfilesChange();
@@ -453,7 +453,7 @@ export function ProfileEditor({
 
   const handleDelete = async () => {
     if (!initialProfile) return;
-    await deleteProfileApi(initialProfile, profileCwd);
+    await modus.deleteProfile(initialProfile, profileCwd);
     onProfilesChange();
   };
 

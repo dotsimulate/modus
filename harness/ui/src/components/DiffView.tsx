@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { FileDiff, DiffHunk, DiffLine } from "../api";
+import type { FileDiff, DiffHunk, DiffLine } from "../../../sdk/index";
 
 function DiffLineRow({ line }: { line: DiffLine }) {
   return (

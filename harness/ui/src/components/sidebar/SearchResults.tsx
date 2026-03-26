@@ -1,4 +1,4 @@
-import type { SearchHit } from "../../api";
+import type { SearchHit } from "../../../../sdk/index";
 import { timeAgo } from "./SessionItem";
 
 type Props = {

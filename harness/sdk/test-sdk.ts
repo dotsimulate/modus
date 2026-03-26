@@ -281,6 +281,118 @@ await test("listNotes", async () => {
   assert(Array.isArray(notes), "expected array");
 });
 
+// ── Terminals ──
+console.log("\nTerminals:");
+
+let testTerminalId = "";
+
+await test("createTerminal", async () => {
+  const term = await client.createTerminal({ cwd: CWD });
+  assertKeys(term, ["id"], "TerminalInfo");
+  testTerminalId = term.id;
+});
+
+await test("listTerminals", async () => {
+  const terms = await client.listTerminals();
+  assert(Array.isArray(terms), "expected array");
+});
+
+if (testTerminalId) {
+  await test("getTerminal", async () => {
+    const term = await client.getTerminal(testTerminalId);
+    assert(term.id === testTerminalId, "id mismatch");
+  });
+
+  await test("resizeTerminal", async () => {
+    await client.resizeTerminal(testTerminalId, 120, 40);
+  });
+
+  await test("deleteTerminal", async () => {
+    await client.deleteTerminal(testTerminalId);
+  });
+}
+
+// ── Trace / Touches ──
+console.log("\nTrace:");
+
+await test("fetchTouches", async () => {
+  const result = await client.fetchTouches({ limit: 5 });
+  assertKeys(result, ["touches"], "TouchesResponse");
+  assert(Array.isArray(result.touches), "expected touches array");
+});
+
+// ── Projects / Init ──
+console.log("\nProjects:");
+
+await test("getInitStatus", async () => {
+  const status = await client.getInitStatus(CWD);
+  assert(typeof status === "object", "expected object");
+});
+
+await test("listProjects", async () => {
+  const projects = await client.listProjects();
+  assert(Array.isArray(projects), "expected array");
+});
+
+// ── Web Positions ──
+console.log("\nWeb Positions:");
+
+await test("getWebPositions", async () => {
+  const positions = await client.getWebPositions("test-scope");
+  assert(Array.isArray(positions), "expected array");
+});
+
+await test("patchWebPositions", async () => {
+  await client.patchWebPositions("test-scope", [{ nodeId: "test-node", x: 100, y: 200, pinned: true }]);
+});
+
+// ── Draft / UI State ──
+console.log("\nUI State:");
+
+if (testSessionId) {
+  await test("saveDraft + getDraft", async () => {
+    await client.saveDraft(testSessionId, "test draft content");
+    const draft = await client.getDraft(testSessionId);
+    assert(draft === "test draft content", `expected draft content, got "${draft}"`);
+    await client.saveDraft(testSessionId, ""); // cleanup
+  });
+
+  await test("saveSessionUiState + getSessionUiState", async () => {
+    await client.saveSessionUiState(testSessionId, { testKey: "testValue" });
+    const state = await client.getSessionUiState(testSessionId);
+    assert(typeof state === "object", "expected object");
+  });
+}
+
+// ── Auth (read-only) ──
+console.log("\nAuth:");
+
+await test("authStatus", async () => {
+  const status = await client.authStatus();
+  assertKeys(status, ["required"], "AuthStatus");
+});
+
+await test("healthCheck", async () => {
+  const health = await client.healthCheck();
+  assertKeys(health, ["status", "uptime"], "HealthCheck");
+});
+
+// ── Files ──
+console.log("\nFiles:");
+
+await test("browse (with files)", async () => {
+  const result = await client.browse(CWD, { includeFiles: true });
+  assertKeys(result, ["path", "dirs"], "BrowseResult");
+});
+
+// ── Analytics ──
+console.log("\nAnalytics:");
+
+await test("getAccountInfo", async () => {
+  const info = await client.getAccountInfo();
+  assert(typeof info === "object", "expected object");
+});
+
 // ── ModusError ──
 console.log("\nError handling:");
 

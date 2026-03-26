@@ -5,52 +5,143 @@ export type {
   InteractResult,
   MoveBinding,
   Attachment,
+  // Tool calls & messages
+  ToolCall,
+  SubTask,
+  ApiAttachment,
+  SessionArtifact,
+  Message,
+  PendingPermission,
+  PermissionResponse,
+  SessionStatus,
+  AgentConfigState,
+  Session,
+  // Sessions
   SessionInfo,
   ActiveSessionInfo,
+  SearchHit,
   SessionStatusInfo,
+  CommitAttribution,
+  CommitAttributionReason,
   CreateSessionOpts,
   SendMessageOpts,
   TurnContent,
+  // Events
   SSEEvent,
   EventStreamHandle,
+  EventStreamCallbacks,
+  // Session stats
+  SessionStats,
+  AccountInfo,
+  GeminiUsageInfo,
+  // Profiles
+  McpServerConfig,
+  ProfileUi,
   Profile,
-  MoveListItem,
-  ActivateMoveResult,
-  // Phase A
+  GlobalConfig,
+  // Providers
+  ProviderModel,
+  ProviderToolGroup,
+  ProviderCapabilities,
+  ProviderHealthCheck,
+  ProviderHealthInfo,
+  ProviderInfo,
+  ProviderCapability,
+  ProviderHealth,
+  // User profiles
+  UserProfileUiConfig,
+  UserProfileState,
+  UserProfile,
+  // Permission
   PermissionResponseOpts,
   SessionTagsResult,
   BranchResult,
-  // Phase B
+  // Actions
+  ActionTrigger,
   ActionSummary,
   ActionDetail,
+  ActionInfo,
   ActionRun,
   ActionExecution,
-  ActionInfo,
-  // Phase C
+  // Moves
+  MoveInput,
+  MovePageInfo,
+  MoveListItem,
+  MoveWidgetInfo,
+  ActivateMoveResult,
   MoveDetail,
   AttachMoveResult,
   AmbientMoveInfo,
   MoveRun,
-  // Phase D
+  // Missions
+  MissionRunStatus,
+  MissionTransferKind,
   MissionSummary,
+  MissionListItem,
   MissionDetail,
   MissionRunSummary,
   MissionStepSummary,
+  MissionStepRunSummary,
   MissionTransferSummary,
   MissionGateResultSummary,
-  // Phase E
-  UserProfile,
-  ProviderInfo,
-  ProviderCapability,
-  ProviderHealth,
-  // Phase F
+  // Git
+  GitStatus,
   GitStatusResult,
+  GitCommit,
   GitLogEntry,
+  DiffLine,
+  DiffHunk,
+  FileDiff,
+  GitCommitDetail,
   GitShowResult,
+  // Files
   BrowseResult,
+  // Notes
   NoteListItem,
   NoteDetail,
+  // Prompts
+  PromptInput,
   PromptListItem,
+  RenderResult,
+  // Activity / Analytics
   ActivityEntry,
   ActivitySummaryResult,
+  UsageBucket,
+  ProviderUsageTotal,
+  ModelUsageTotal,
+  ProviderUsageDaily,
+  ProviderUsageAnalytics,
+  DeepAnalyticsMetricRow,
+  DeepAnalyticsBucket,
+  DeepAnalyticsHourRow,
+  DeepAnalyticsSessionRow,
+  DeepAnalytics,
+  // Client extensions
+  ExtensionSettingSchema,
+  ExtensionMeta,
+  ClientExtensionManifestItem,
+  // Memory
+  MemoryItem,
+  // Project UI
+  ProjectUiAssetInfo,
+  ActiveProjectUiAsset,
+  ProjectUiState,
+  // Projects / Init
+  InitStatus,
+  InitResult,
+  ProjectInfo,
+  // Trace
+  TouchRecord,
+  TouchSummary,
+  TouchesResponse,
+  TouchQuery,
+  // Terminals
+  TerminalInfo,
+  CreateTerminalOpts,
+  // Web positions
+  WebPosition,
+  // Filesystem events
+  FsChangeEvent,
 } from "./types";
+
+export { nextMsgId } from "./types";

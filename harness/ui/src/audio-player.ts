@@ -6,7 +6,7 @@
  * subscribe to state changes and render a thin UI on top.
  */
 
-import { tokenParam } from "./api/_fetch";
+import { tokenParam } from "./modusClient";
 
 // ---------------------------------------------------------------------------
 // Types

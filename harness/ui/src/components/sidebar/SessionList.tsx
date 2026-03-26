@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { SessionInfo } from "../../api";
-import { archiveSessionApi } from "../../api";
+import type { SessionInfo } from "../../../../sdk/index";
+import { modus } from "../../modusClient";
 import { SessionItem } from "./SessionItem";
 
 type GroupMode = "time" | "agent";
@@ -96,7 +96,7 @@ export function SessionList({
         !(activeInput?.trim()) &&
         (current.status === "idle" || current.status === "done")
       ) {
-        archiveSessionApi(activeSessionId).catch(() => {});
+        modus.archiveSession(activeSessionId).catch(() => {});
         onSelectSession(id);
         return;
       }

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { API_BASE, authHeaders } from "./api/_fetch";
-import type { ClientExtensionManifestItem } from "./api";
+import { API_BASE, authHeaders } from "./modusClient";
+import type { ClientExtensionManifestItem } from "../../sdk/index";
 
 type ComposerSnapshot = {
   sessionId?: string;

@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
-import type { ToolCall } from "../api";
-import { API_BASE, tokenParam } from "../api/_fetch";
+import type { ToolCall } from "../../../sdk/index";
+import { API_BASE, tokenParam } from "../modusClient";
 import { useFileViewer } from "../providers/FileViewerProvider";
 
 type FileEdit = {
