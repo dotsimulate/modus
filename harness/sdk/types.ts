@@ -168,6 +168,77 @@ export type Profile = {
   cwd?: string;
 };
 
+// ── Permission Response ──
+
+export type PermissionResponseOpts = {
+  requestId: string;
+  behavior: "allow" | "deny" | "allowAlways";
+  updatedInput?: Record<string, unknown>;
+  message?: string;
+  scope?: string;
+};
+
+// ── Session Tags ──
+
+export type SessionTagsResult = {
+  ok?: boolean;
+  tags: string[];
+};
+
+// ── Branch ──
+
+export type BranchResult = {
+  sessionId: string;
+};
+
+// ── Actions ──
+
+export type ActionSummary = {
+  name: string;
+  label?: string;
+  description?: string;
+  enabled?: boolean;
+  schedule?: string;
+  tags?: string[];
+  [key: string]: unknown;
+};
+
+export type ActionDetail = {
+  name: string;
+  label?: string;
+  description?: string;
+  enabled?: boolean;
+  schedule?: string;
+  nextRunAt?: number | null;
+  lastRunAt?: number | null;
+  lastStatus?: string | null;
+  running?: boolean;
+  [key: string]: unknown;
+};
+
+export type ActionRun = {
+  id?: number;
+  action_name?: string;
+  session_id?: string;
+  status?: string;
+  started_at?: number;
+  finished_at?: number | null;
+  [key: string]: unknown;
+};
+
+export type ActionExecution = {
+  id?: number;
+  action_name?: string;
+  status?: string;
+  started_at?: number;
+  [key: string]: unknown;
+};
+
+export type ActionInfo = {
+  contextSource: string;
+  configSource: string;
+};
+
 // ── Moves ──
 
 export type MoveListItem = {
@@ -190,4 +261,191 @@ export type ActivateMoveResult = {
   moveRunId: number;
   apiToken?: string;
   instanceId?: string;
+};
+
+export type MoveDetail = MoveListItem & {
+  widget?: { component?: string; [key: string]: unknown };
+  [key: string]: unknown;
+};
+
+export type AttachMoveResult = {
+  apiToken: string;
+  moveRunId: number;
+  instanceId?: string;
+  sessionId?: string;
+  [key: string]: unknown;
+};
+
+export type AmbientMoveInfo = {
+  moveName: string;
+  activatedAt: number;
+  inputs?: Record<string, unknown>;
+};
+
+export type MoveRun = {
+  id: number;
+  move_name?: string;
+  session_id?: string;
+  status?: string;
+  started_at?: number;
+  finished_at?: number | null;
+  [key: string]: unknown;
+};
+
+// ── Missions ──
+
+export type MissionSummary = {
+  name: string;
+  label?: string;
+  description?: string;
+  [key: string]: unknown;
+};
+
+export type MissionDetail = MissionSummary & {
+  steps?: unknown[];
+  [key: string]: unknown;
+};
+
+export type MissionRunSummary = {
+  id: number;
+  mission_name?: string;
+  status?: string;
+  started_at?: number;
+  finished_at?: number | null;
+  [key: string]: unknown;
+};
+
+export type MissionStepSummary = {
+  id?: number;
+  step_name?: string;
+  status?: string;
+  [key: string]: unknown;
+};
+
+export type MissionTransferSummary = {
+  id?: number;
+  from_step?: string;
+  to_step?: string;
+  [key: string]: unknown;
+};
+
+export type MissionGateResultSummary = {
+  id?: number;
+  gate_name?: string;
+  passed?: boolean;
+  [key: string]: unknown;
+};
+
+// ── User Profiles ──
+
+export type UserProfile = {
+  name: string;
+  label?: string;
+  projects?: string[];
+  agentProfiles?: string[];
+  actions?: string[];
+  [key: string]: unknown;
+};
+
+// ── Providers ──
+
+export type ProviderInfo = {
+  name: string;
+  label?: string;
+  [key: string]: unknown;
+};
+
+export type ProviderCapability = {
+  name: string;
+  [key: string]: unknown;
+};
+
+export type ProviderHealth = {
+  name: string;
+  healthy?: boolean;
+  [key: string]: unknown;
+};
+
+// ── Git ──
+
+export type GitStatusResult = {
+  branch?: string;
+  clean?: boolean;
+  files?: { path: string; status: string }[];
+  [key: string]: unknown;
+};
+
+export type GitLogEntry = {
+  hash: string;
+  message: string;
+  author?: string;
+  date?: string;
+  [key: string]: unknown;
+};
+
+export type GitShowResult = {
+  hash: string;
+  message: string;
+  author?: string;
+  date?: string;
+  diff?: string;
+  files?: string[];
+  [key: string]: unknown;
+};
+
+// ── Files ──
+
+export type BrowseResult = {
+  path: string;
+  parent: string | null;
+  dirs: string[];
+  files?: string[];
+};
+
+// ── Notes ──
+
+export type NoteListItem = {
+  id: string;
+  title: string;
+  created: string | null;
+  updated: string | null;
+  tags: string[];
+  preview: string;
+};
+
+export type NoteDetail = {
+  id: string;
+  title: string;
+  created?: string;
+  updated?: string;
+  tags?: string[];
+  content?: string;
+};
+
+// ── Prompts ──
+
+export type PromptListItem = {
+  name: string;
+  label?: string;
+  description?: string;
+  tags?: string[];
+  [key: string]: unknown;
+};
+
+// ── Activity ──
+
+export type ActivityEntry = {
+  id?: number;
+  eventType: string;
+  summary?: string;
+  sessionId?: string;
+  agentProfile?: string;
+  userProfile?: string;
+  timestamp?: number;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+export type ActivitySummaryResult = {
+  [key: string]: unknown;
 };

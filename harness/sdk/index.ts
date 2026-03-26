@@ -1,4 +1,4 @@
-export { ModusClient } from "./client";
+export { ModusClient, ModusError } from "./client";
 export type {
   ModusClientOptions,
   InteractOptions,
@@ -16,4 +16,41 @@ export type {
   Profile,
   MoveListItem,
   ActivateMoveResult,
+  // Phase A
+  PermissionResponseOpts,
+  SessionTagsResult,
+  BranchResult,
+  // Phase B
+  ActionSummary,
+  ActionDetail,
+  ActionRun,
+  ActionExecution,
+  ActionInfo,
+  // Phase C
+  MoveDetail,
+  AttachMoveResult,
+  AmbientMoveInfo,
+  MoveRun,
+  // Phase D
+  MissionSummary,
+  MissionDetail,
+  MissionRunSummary,
+  MissionStepSummary,
+  MissionTransferSummary,
+  MissionGateResultSummary,
+  // Phase E
+  UserProfile,
+  ProviderInfo,
+  ProviderCapability,
+  ProviderHealth,
+  // Phase F
+  GitStatusResult,
+  GitLogEntry,
+  GitShowResult,
+  BrowseResult,
+  NoteListItem,
+  NoteDetail,
+  PromptListItem,
+  ActivityEntry,
+  ActivitySummaryResult,
 } from "./types";
