@@ -193,6 +193,10 @@ export interface MoveContext {
   store?: <T = unknown>() => T | undefined;
   /** Write to the process-scoped instance store. Survives module reloads. */
   setStore?: (value: unknown) => void;
+
+  // ── State API (set when move has api declaration) ──
+  /** Instance state — get/set/delete. Available for API moves in onSubmit. */
+  state?: MoveStateAPI;
 }
 
 // ── Harness Bridge (server-side operations available to onSubmit) ──
@@ -441,6 +445,17 @@ export interface MoveApiContext {
   store: <T = unknown>() => T | undefined;
   /** Write to the process-scoped instance store. Survives module reloads. */
   setStore: (value: unknown) => void;
+
+  /** Register a file as a session artifact (for video, audio, images, etc.) */
+  insertArtifact: (opts: {
+    sessionId: string;
+    name: string;
+    mime: string;
+    path: string;
+    seq?: number;
+    previewText?: string;
+    metadata?: Record<string, unknown>;
+  }) => number;
 }
 
 /** Context passed to assistant turn hooks on active move instances */
