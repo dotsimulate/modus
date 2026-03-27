@@ -45,6 +45,7 @@ const _get = tdb.prepare(`SELECT * FROM terminals WHERE id = ?`);
 const _list = tdb.prepare(`SELECT * FROM terminals ORDER BY created_at DESC`);
 const _listActive = tdb.prepare(`SELECT * FROM terminals WHERE status = 'running' ORDER BY created_at DESC`);
 const _delete = tdb.prepare(`DELETE FROM terminals WHERE id = ?`);
+const _updateSessionId = tdb.prepare(`UPDATE terminals SET session_id = ? WHERE id = ?`);
 
 // ── Types ──
 
@@ -92,4 +93,8 @@ export function listActiveTerminals(): TerminalRow[] {
 
 export function deleteTerminalRow(id: string): void {
   _delete.run(id);
+}
+
+export function updateTerminalSessionId(id: string, sessionId: string): void {
+  _updateSessionId.run(sessionId, id);
 }

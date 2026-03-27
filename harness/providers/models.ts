@@ -94,7 +94,7 @@ function getBaseURL(provider: string): { url: string; apiKey: string } {
 
 export async function fetchProviderModels(provider: string): Promise<ModelInfo[]> {
   // Static list for claude-code
-  if (provider === "claude-code") {
+  if (provider === "claude-code" || provider === "claude-code-pty") {
     return CLAUDE_MODELS;
   }
 

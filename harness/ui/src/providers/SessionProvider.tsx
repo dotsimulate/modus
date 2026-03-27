@@ -16,7 +16,7 @@ import {
   setSessionNextAgentConfig,
   setSessionNextProfile,
   subscribeSession, unsubscribeSession, isSubscribed,
-  rekeySession, removeSession, evictInactiveSessions,
+  rekeySession, removeSession, evictInactiveSessions, onSessionRekey,
 } from "../sessionStore";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
 
@@ -177,6 +177,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       window.location.hash = hash;
     }
   }, [activeUserProfile]);
+
+  // ── Auto-rekey: when a provider's init event changes the session ID (ses-* → UUID),
+  // update the active session ID and URL hash so the UI stays in sync.
+  useEffect(() => {
+    return onSessionRekey((oldId, newId) => {
+      setActiveSessionId((current) => {
+        if (current === oldId) {
+          updateHash(newId);
+          return newId;
+        }
+        return current;
+      });
+    });
+  }, [updateHash]);
 
   // ── Draft management ──
 

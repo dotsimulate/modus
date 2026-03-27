@@ -6,6 +6,7 @@
 
 import type { ProviderCapabilities, SessionProvider } from "./types";
 import { createClaudeCodeProvider } from "./claude-code";
+import { createClaudeCodePtyProvider } from "./claude-code-pty";
 import { createCodexProvider } from "./codex";
 import { createCursorProvider } from "./cursor";
 import { createGeminiCliProvider } from "./gemini-cli";
@@ -16,7 +17,7 @@ import { homedir } from "os";
 import { isSecretSet } from "../secrets";
 
 const PI_PROVIDERS: PiProviderName[] = ["litellm", "ollama", "openrouter"];
-const STANDALONE_PROVIDERS = ["claude-code", "codex", "cursor", "gemini-cli"] as const;
+const STANDALONE_PROVIDERS = ["claude-code", "claude-code-pty", "codex", "cursor", "gemini-cli"] as const;
 
 // Lazy-init cache
 const cache = new Map<string, SessionProvider>();
@@ -27,6 +28,8 @@ export function getProvider(name: string): SessionProvider {
 
   if (name === "claude-code") {
     provider = createClaudeCodeProvider();
+  } else if (name === "claude-code-pty") {
+    provider = createClaudeCodePtyProvider();
   } else if (name === "codex") {
     provider = createCodexProvider();
   } else if (name === "cursor") {
@@ -79,6 +82,7 @@ export type ProviderHealthInfo = {
 /** Per-provider prerequisites: which CLI binary and/or env vars are required. */
 const PROVIDER_PREREQS: Record<string, { cli?: string; envAny?: string[] }> = {
   "claude-code": { cli: "claude" },
+  "claude-code-pty": { cli: "claude" },
   // codex: SDK-based, auth checked separately (secrets + ~/.codex/auth.json)
   "cursor": { cli: "cursor-agent" },
   // gemini-cli: SDK-based, auth checked separately (Google OAuth)

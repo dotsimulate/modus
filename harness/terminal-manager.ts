@@ -14,7 +14,7 @@
 
 import {
   insertTerminal, markTerminalExited, getTerminal as dbGetTerminal,
-  listActiveTerminals as dbListActive, deleteTerminalRow,
+  listActiveTerminals as dbListActive, deleteTerminalRow, updateTerminalSessionId as dbUpdateTerminalSessionId,
   type TerminalRow,
 } from "./terminal-db";
 
@@ -257,6 +257,13 @@ export function listAllTerminals(): TerminalRow[] {
   return dbListActive();
 }
 
+/** Update the session ID for a terminal (e.g. after rekey). */
+export function updateTerminalSession(terminalId: string, newSessionId: string): void {
+  const t = terminals.get(terminalId);
+  if (t) t.sessionId = newSessionId;
+  dbUpdateTerminalSessionId(terminalId, newSessionId);
+}
+
 /** Attach a WebSocket client to a terminal. Returns scrollback chunks to replay. */
 export function attachClient(id: string, client: TerminalClient): Uint8Array[] | null {
   const t = terminals.get(id);
@@ -269,6 +276,92 @@ export function detachClient(id: string, client: TerminalClient): void {
   const t = terminals.get(id);
   if (!t) return;
   t.clients.delete(client);
+}
+
+/**
+ * Register an externally-spawned process as a terminal so the UI can attach to it.
+ * The caller is responsible for piping data via the returned `pushData` callback.
+ * The terminal system handles scrollback, WebSocket broadcast, and client management.
+ * The caller retains full control of the process lifecycle.
+ */
+export function registerExternalTerminal(opts: {
+  id?: string;
+  sessionId?: string;
+  cwd?: string;
+  shell?: string;
+  cols?: number;
+  rows?: number;
+  /** Called when a WebSocket client sends input (keystrokes). Optional. */
+  onInput?: (data: string | Uint8Array) => void;
+  /** Called when process exits (from terminal-manager's perspective). */
+  exited: Promise<number | null>;
+}): { id: string; pushData: (data: Uint8Array) => void; unregister: () => void } {
+  const id = opts.id ?? generateId();
+  const shell = opts.shell ?? "claude";
+  const cwd = opts.cwd ?? process.cwd();
+  const cols = opts.cols ?? 120;
+  const rows = opts.rows ?? 40;
+  const sessionId = opts.sessionId ?? null;
+
+  const clients = new Set<TerminalClient>();
+  const scrollback: Uint8Array[] = [];
+  let scrollbackBytes = 0;
+
+  function pushData(data: Uint8Array) {
+    scrollback.push(data);
+    scrollbackBytes += data.byteLength;
+    while (scrollbackBytes > MAX_SCROLLBACK_BYTES && scrollback.length > 1) {
+      const removed = scrollback.shift()!;
+      scrollbackBytes -= removed.byteLength;
+    }
+    if (active) active.scrollbackBytes = scrollbackBytes;
+    for (const client of clients) {
+      try { client.send(data); } catch { clients.delete(client); }
+    }
+  }
+
+  // Stub process/terminal — the real process is managed externally
+  const proc: TerminalProcess = {
+    kill() { /* no-op: caller manages process */ },
+    exited: opts.exited,
+  };
+  const terminal: ActiveTerminal["terminal"] = {
+    write(data: string | Uint8Array) {
+      if (opts.onInput) opts.onInput(data);
+    },
+    resize() { /* no-op for now */ },
+    close() { /* no-op: caller manages process */ },
+  };
+
+  const active: ActiveTerminal = {
+    id, shell, cwd, cols, rows, sessionId,
+    createdAt: Date.now(),
+    proc, terminal, clients, scrollback, scrollbackBytes,
+  };
+
+  terminals.set(id, active);
+  insertTerminal(id, shell, cwd, cols, rows, sessionId);
+
+  opts.exited.then((code) => {
+    markTerminalExited(id, code ?? null);
+    const exitMsg = JSON.stringify({ type: "exit", code });
+    for (const client of clients) {
+      try { client.send(exitMsg); client.close(); } catch { /* ignore */ }
+    }
+    clients.clear();
+    terminals.delete(id);
+  });
+
+  function unregister() {
+    markTerminalExited(id, null);
+    for (const client of clients) {
+      try { client.close(); } catch { /* ignore */ }
+    }
+    clients.clear();
+    terminals.delete(id);
+  }
+
+  return { id, pushData, unregister };
 }
 
 /** Kill all terminals — called during graceful shutdown. */
