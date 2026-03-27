@@ -14,7 +14,7 @@ import { useState, useCallback } from "react";
 import { useProfiles } from "../providers/ProfileProvider";
 import { createEmptyAgentConfig, type AgentConfigState } from "../components/AgentConfig";
 import { modus } from "../modusClient";
-import type { Profile } from "../../../sdk/index";
+import type { Profile, ApiAttachment } from "../../../sdk/index";
 
 // ── Types ──
 
@@ -160,16 +160,17 @@ export function useSessionComposer(
     },
   ) => {
     const profile = opts?.profile ?? activeProfileName;
+    const parsedMaxTurns = localAgentConfig.maxTurns ? Number(localAgentConfig.maxTurns) : undefined;
     const result = await modus.createSession({
       prompt,
       profile: profile || undefined,
       userProfile: activeUserProfile ?? undefined,
       cwd: projectCwd ?? undefined,
-      attachments: opts?.attachments,
+      attachments: opts?.attachments as ApiAttachment[] | undefined,
       provider: localAgentConfig.provider || undefined,
       model: localAgentConfig.model || undefined,
       effort: localAgentConfig.effort || undefined,
-      maxTurns: localAgentConfig.maxTurns || undefined,
+      maxTurns: parsedMaxTurns || undefined,
       toolStates: Object.keys(localAgentConfig.toolStates).length > 0
         ? localAgentConfig.toolStates : undefined,
     });

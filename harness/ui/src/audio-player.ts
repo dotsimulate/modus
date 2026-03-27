@@ -169,7 +169,7 @@ function handlePlayError(err: unknown) {
 }
 
 /** Pre-flight: fetch the URL with a HEAD request to check for auth/network errors. */
-async function preflight(src: string): Promise<{ error: string } | { contentType: string }> {
+export async function preflight(src: string): Promise<{ error: string } | { contentType: string }> {
   try {
     const res = await fetch(src, { method: "HEAD" });
     if (!res.ok) return { error: `HTTP ${res.status} ${res.statusText}` };

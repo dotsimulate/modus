@@ -3,7 +3,7 @@
  * No layout logic. No React. Pure foundation.
  */
 
-import type { SessionInfo, GitCommit, MissionTransferSummary, TouchRecord } from "../../../sdk/index";
+import type { SessionInfo, GitCommit, MissionTransferSummary } from "../../../sdk/index";
 
 // ── Types ──
 

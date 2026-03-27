@@ -70,7 +70,7 @@ type ViewState =
 /** Which tab is showing: the project browser, pinboard, a file, or a move widget */
 type ActiveView = "browser" | "pins" | "move-widget" | string;
 
-export function RightPanel({ open, width, onOpen, onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled, onWidgetClose, onSendToAgent, sessionId }: Props) {
+export function RightPanel({ open, width, onOpen, onClose: _onClose, children, moveWidgets, initialBrowserPath, onBrowserPathChange, messages, requestView, onRequestViewHandled, onWidgetClose, onSendToAgent, sessionId }: Props) {
   const {
     tabs, activePath, closeFile, setActive, openFile,
     setEditing, markDirty, saveFile, saving, saveError,

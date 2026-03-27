@@ -132,7 +132,7 @@ export function solveLayout(
   edges: GraphEdge[],
   handoffDocs: HandoffDoc[],
   commitSessionMap: Map<string, string[]>,
-  childrenOf: Map<string, string[]>,
+  _childrenOf: Map<string, string[]>,
   spawnedSet: Set<string>,
   commits: GitCommit[],
   config: WebLayoutConfig,

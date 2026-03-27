@@ -19,7 +19,7 @@ import { useSessionComposer } from "../hooks/useSessionComposer";
 import type { MoveBinding, Attachment } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
-import { subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
+import { subscribeSession, isSubscribed, getSessionState, setSessionState, getSessionProfile } from "../sessionStore";
 
 type Props = {
   /** Session to attach to — drafts persist here */
@@ -116,6 +116,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
   }, [offset, x, y, onMove]);
 
   const session = getSessionState(sessionId);
+  const sessionProfile = getSessionProfile(sessionId);
   const isActive = session?.status === "running" || session?.status === "starting";
 
   const handleSend = useCallback(async (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => {
@@ -146,7 +147,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
             attachments: attachments.length > 0 ? attachments : undefined,
           },
         ],
-      }, session?.profile);
+      }, sessionProfile);
     }
 
     try {
@@ -167,7 +168,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
       );
       if (!isSubscribed(sessionId)) {
         const latest = getSessionState(sessionId);
-        subscribeSession(sessionId, latest?.lastSeq ?? 0, session?.profile ?? undefined);
+        subscribeSession(sessionId, latest?.lastSeq ?? 0, sessionProfile ?? undefined);
       }
       onSent?.();
     } catch (err) {
@@ -181,18 +182,18 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
             ...latest.messages,
             { id: nextMsgId(), role: "assistant", content: `Error: ${err}` },
           ],
-        }, session?.profile);
+        }, sessionProfile);
       }
     }
-  }, [input, sessionId, session?.profile, composer.activeProfileName, composer.projectCwd, onSent]);
+  }, [input, sessionId, sessionProfile, composer.activeProfileName, composer.projectCwd, onSent]);
 
   const handleStop = useCallback(async () => {
     await modus.stopSession(sessionId).catch(() => {});
     const current = getSessionState(sessionId);
     if (current) {
-      setSessionState(sessionId, { ...current, status: "idle" }, session?.profile);
+      setSessionState(sessionId, { ...current, status: "idle" }, sessionProfile);
     }
-  }, [sessionId, session?.profile]);
+  }, [sessionId, sessionProfile]);
 
   // Positioning
   const style: React.CSSProperties = x !== undefined && y !== undefined

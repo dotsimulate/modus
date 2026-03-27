@@ -613,6 +613,9 @@ export type ActionInfo = {
   onGatherError?: "fail" | "retry";
   maxTransientRetries?: number;
   onTransientFailure?: "retry" | "skip";
+  concurrency?: number;
+  notify?: Array<{ channel: string; on: string | string[] }>;
+  artifacts?: Array<{ name: string; mime: string; required?: boolean }>;
   tags?: string[];
   nextRunAt: number | null;
   lastRunAt: number | null;
