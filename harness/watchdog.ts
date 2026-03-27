@@ -51,6 +51,21 @@ const RESTART_SENTINEL = join(HARNESS_DIR, ".watchdog-restart");
 let currentProc: ReturnType<typeof Bun.spawn> | null = null;
 let stopping = false;
 
+/**
+ * Ask the harness to shut itself down gracefully via HTTP.
+ * This lets it call server.stop(true), closing all connections and freeing the port.
+ * Returns true if the harness acknowledged the shutdown request.
+ */
+async function requestGracefulShutdown(): Promise<boolean> {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/api/internal/shutdown`, {
+      method: "POST",
+      signal: AbortSignal.timeout(3_000),
+    });
+    return resp.ok;
+  } catch { return false; }
+}
+
 /** Kill a process and its entire tree (Windows grandchildren included). */
 function killTree(proc: ReturnType<typeof Bun.spawn>) {
   try {
@@ -60,6 +75,25 @@ function killTree(proc: ReturnType<typeof Bun.spawn>) {
       proc.kill();
     }
   } catch { /* best effort */ }
+}
+
+/**
+ * Gracefully stop the harness: request shutdown via HTTP first (frees the port cleanly),
+ * then wait for the process to exit. Falls back to force-kill if it doesn't respond.
+ */
+async function gracefulKill(proc: ReturnType<typeof Bun.spawn>): Promise<void> {
+  const acked = await requestGracefulShutdown();
+  if (acked) {
+    // Wait up to 5s for the process to exit on its own
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      // proc.exitCode is null while running
+      if (proc.exitCode !== null) return;
+      await Bun.sleep(200);
+    }
+    log("warn", "graceful shutdown timed out — force killing");
+  }
+  killTree(proc);
 }
 
 /** Names of agent CLI binaries that providers may spawn as subprocesses. */
@@ -278,15 +312,15 @@ async function getActiveSessionCount(): Promise<number> {
   return 0;
 }
 
-/** Execute the pending reload — kill the harness process. */
-function executePendingReload() {
+/** Execute the pending reload — gracefully shut down the harness process. */
+async function executePendingReload() {
   if (pendingReloadTimer) { clearInterval(pendingReloadTimer); pendingReloadTimer = null; }
   if (!currentProc || stopping) { pendingReloadFile = null; return; }
   log("info", `file changed: ${pendingReloadFile} — reloading...`);
   pendingReloadFile = null;
   fileChangeRestart = true;
   restarting = true;
-  killTree(currentProc);
+  await gracefulKill(currentProc);
 }
 
 /** Start polling for sessions to clear so we can apply a pending reload. */

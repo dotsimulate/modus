@@ -221,6 +221,18 @@ app.get("/health", (c) => {
 
 // ── Admin ──
 
+// Internal shutdown — called by watchdog to trigger graceful exit (closes connections, frees port)
+app.post("/api/internal/shutdown", (c) => {
+  setTimeout(() => {
+    stopActions();
+    shutdownAll();
+    shutdownAllTerminals();
+    server.stop(true);
+    setTimeout(() => process.exit(0), 500);
+  }, 50);
+  return c.json({ ok: true });
+});
+
 app.post("/api/admin/restart", async (c) => {
   // Requires HARNESS_TOKEN — agents only, not browser PIN sessions
   const header = c.req.header("Authorization");
@@ -250,6 +262,7 @@ app.post("/api/admin/restart", async (c) => {
   // Shut down after response flushes (~100ms)
   setTimeout(async () => {
     shutdownAll();
+    server.stop(true);
     await Bun.sleep(200);
     process.exit(0);
   }, 100);
@@ -3008,7 +3021,9 @@ process.on("SIGTERM", () => {
   stopActions();
   shutdownAll();
   shutdownAllTerminals();
-  server.stop();
+  // Force-close active connections (WebSocket, SSE) so the port is released immediately.
+  // Without this, Windows holds ghost sockets and the port stays bound after exit.
+  server.stop(true);
   setTimeout(() => process.exit(0), 3000);
 });
 process.on("SIGINT", () => process.emit("SIGTERM"));
