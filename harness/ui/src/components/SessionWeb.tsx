@@ -200,7 +200,7 @@ function EdgeLayerPanel({ layers, onChange }: {
 
 // ── Layout Panel ──
 
-function LayoutPanel({ config, onChange, onRegenerate }: {
+export function LayoutPanel({ config, onChange, onRegenerate }: {
   config: WebLayoutConfig;
   onChange: (cfg: WebLayoutConfig) => void;
   onRegenerate: () => void;
@@ -560,7 +560,7 @@ export function SessionWeb() {
   });
   const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
   const [miniSessionId, setMiniSessionId] = useState<string | null>(null);
-  const [config, setConfig] = useState<WebLayoutConfig>(() => loadConfig());
+  const [config, _setConfig] = useState<WebLayoutConfig>(() => loadConfig());
   const [dateFilter, setDateFilter] = useState<DateFilter>(() => loadDateFilter(profileName));
   const [edgeLayers, setEdgeLayers] = useState<EdgeLayers>(() => loadLayers(profileName));
   // Positions from backend — the single source of truth
@@ -578,13 +578,10 @@ export function SessionWeb() {
   // viewportRef is the source of truth, updated every frame.
   // cullingState is a debounced snapshot that triggers React re-renders
   // ONLY for frustum culling + LOD updates.
-  const viewportRef = useRef<Viewport>(() => {
+  const viewportRef = useRef<Viewport>(null!);
+  if (viewportRef.current === null) {
     const cfg = loadConfig();
-    return { x: cfg.padX, y: cfg.padY, scale: 1 };
-  });
-  // Initialize eagerly so the ref holds an object, not a function
-  if (typeof viewportRef.current === "function") {
-    viewportRef.current = (viewportRef.current as unknown as () => Viewport)();
+    viewportRef.current = { x: cfg.padX, y: cfg.padY, scale: 1 };
   }
 
   const [cullingState, setCullingState] = useState<CullingState>(() => {

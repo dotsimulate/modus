@@ -27,7 +27,7 @@ type FileViewerContextValue = {
   /** Save a tab's content to disk */
   saveFile: (path: string, content: string) => Promise<boolean>;
   /** Restore saved state on session switch */
-  hydrate: (tabs: Tab[], activePath: string | null) => void;
+  hydrate: (tabs: Array<{ path: string; pinned: boolean; editing?: boolean; dirty?: boolean; content?: string | null }>, activePath: string | null) => void;
   /** Compat: single current path */
   path: string | null;
   /** Currently saving */

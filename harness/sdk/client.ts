@@ -70,9 +70,15 @@ import type {
 } from "./types";
 
 export class ModusError extends Error {
-  constructor(public status: number, public detail: string, public path: string) {
+  status: number;
+  detail: string;
+  path: string;
+  constructor(status: number, detail: string, path: string) {
     super(`${status} ${detail} (${path})`);
     this.name = "ModusError";
+    this.status = status;
+    this.detail = detail;
+    this.path = path;
   }
 }
 

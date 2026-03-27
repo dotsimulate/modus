@@ -569,7 +569,7 @@ export function MemoryViz({ initialTagFilter }: { initialTagFilter?: string } = 
 
   useEffect(() => {
     setLoading(true);
-    modus.queryMemories(activeUserProfile ?? undefined, activeCwd)
+    modus.queryMemories({ userProfile: activeUserProfile ?? undefined, cwd: activeCwd })
       .then((m) => { setMemories(m); setLoading(false); })
       .catch(() => setLoading(false));
   }, [activeUserProfile, activeCwd]);

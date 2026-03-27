@@ -365,7 +365,7 @@ export function ChatInput({
     }
 
     if (attachedMove) {
-      const { item, inputs, apiToken: attachApiToken, instanceId: attachInstanceId } = attachedMove;
+      const { item, inputs, apiToken: _attachApiToken, instanceId: attachInstanceId } = attachedMove;
       setAttachedMove(null);
       if (projectCwd) {
         const mode = item.mode ?? "inline";

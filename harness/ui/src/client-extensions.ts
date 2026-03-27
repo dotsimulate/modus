@@ -27,7 +27,7 @@ type ShortcutHandler = (ctx: {
 
 type ComposerActionIcon = "mic" | "mic-handsfree";
 
-type ComposerActionStatusTone = "default" | "active" | "busy" | "error";
+type ComposerActionStatusTone = "default" | "active" | "busy" | "error" | "gated";
 
 type ComposerActionState = {
   label?: string;

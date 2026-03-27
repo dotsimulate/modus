@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { WIDGETS, type WidgetBase, type WidgetProps } from "../widgets";
+import { WIDGETS, type WidgetBase } from "../widgets";
 import { useWidgetUiState } from "../widgets/ui-state";
 import { useProfiles } from "../providers/ProfileProvider";
 import { WidgetPicker } from "./WidgetPicker";
@@ -62,7 +62,7 @@ function CollapsibleWidget({ widget, widgetId, onNavigate, onSelectSession }: {
   );
 }
 
-export function LeftPanel({ open, width, onOpen, onClose, widgets, onWidgetsChange, onNavigate, onSelectSession, children }: Props) {
+export function LeftPanel({ open, width, onOpen: _onOpen, onClose: _onClose, widgets, onWidgetsChange, onNavigate, onSelectSession, children }: Props) {
   const validWidgets = (widgets ?? []).filter((w) => WIDGETS[w.type]);
 
   const handlePickerChange = (next: WidgetBase[]) => {

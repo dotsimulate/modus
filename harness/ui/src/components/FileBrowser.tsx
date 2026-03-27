@@ -114,7 +114,7 @@ const closeIcon = (
   </svg>
 );
 
-export function FileBrowser({ rootPath, initialPath, compact, onFileSelect, onOpenExternal, onPathChange }: FileBrowserProps) {
+export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFileSelect, onOpenExternal, onPathChange: _onPathChange }: FileBrowserProps) {
   const { groups, pinToGroup, unpinFromActive } = usePinboard();
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const init = new Set<string>();
