@@ -34,7 +34,8 @@ import {
 import {
   listSessions as dbListSessions, listSessionsForProjects as dbListSessionsForProjects,
   getSession as dbGetSession,
-  searchSessions as dbSearchSessions, getSessionMessages, type TurnContent,
+  searchSessions as dbSearchSessions, getSessionMessages, insertSessionArtifact,
+  type TurnContent,
 } from "./db";
 import {
   insertMoveRun, updateMoveRun, getMoveRuns,
@@ -474,6 +475,17 @@ export async function handleMoveApiSubmit(
     state: stateApi,
     store: <T = unknown>() => instanceStore.get(reg.instanceId) as T | undefined,
     setStore: (value: unknown) => { instanceStore.set(reg.instanceId, value); },
+    insertArtifact: (opts) => {
+      return insertSessionArtifact({
+        sessionId: opts.sessionId,
+        seq: opts.seq ?? 0,
+        name: opts.name,
+        mime: opts.mime,
+        path: opts.path,
+        previewText: opts.previewText,
+        metadata: opts.metadata,
+      });
+    },
     notify: (message: string, emit?: { type: string; [key: string]: unknown }) => {
       const injected = emit
         ? `[modus:${emit.type}] ${JSON.stringify(emit)}\n${message}`.trim()
@@ -1825,7 +1837,13 @@ export async function handleSubmit(
       );
       // Carry API contract fields so onSubmit can pass them to spawned sessions
       if (moveToken.apiToken) ctx.apiToken = moveToken.apiToken;
-      if (moveToken.instanceId) ctx.instanceId = moveToken.instanceId;
+      if (moveToken.instanceId) {
+        ctx.instanceId = moveToken.instanceId;
+        // Wire up state API for API moves so onSubmit doesn't need direct harness imports
+        const moveCfg = getMove(moveToken.moveName, cwd);
+        const persist = moveCfg?.api?.state?.persist ?? false;
+        ctx.state = buildStateApi(moveToken.instanceId, moveToken.moveName, cwd, persist);
+      }
       submitResult = await mod.onSubmit(ctx, data, moveToken.inputs);
     }
   } catch (err) {
