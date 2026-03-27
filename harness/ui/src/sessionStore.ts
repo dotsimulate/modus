@@ -97,22 +97,41 @@ export function onUiEvent(action: string, listener: UiEventListener): () => void
   return () => { set!.delete(listener); };
 }
 
+// Track old→new ID mappings so SSE callbacks with stale IDs can resolve
+const rekeyMap = new Map<string, string>();
+
+/** Resolve a session ID through any rekey chain */
+function resolveId(id: string): string {
+  let resolved = id;
+  while (rekeyMap.has(resolved)) resolved = rekeyMap.get(resolved)!;
+  return resolved;
+}
+
 /** Update state for a session via a reducer event */
 export function applyEvent(id: string, event: any, seq: number) {
+  // Resolve stale IDs from SSE callbacks that still reference pre-rekey IDs
+  const resolvedId = resolveId(id);
+
   // UI command events — dispatch and skip reducer
   if (event.type === "ui" && typeof event.action === "string") {
     const set = uiEventListeners.get(event.action);
-    if (set) for (const fn of set) fn(id, event);
+    if (set) for (const fn of set) fn(resolvedId, event);
     return;
   }
 
-  const entry = sessions.get(id);
+  const entry = sessions.get(resolvedId);
   if (!entry) return;
   const prevStatus = entry.state.status;
   entry.state = reduceEvent(entry.state, event, seq);
   // During SSE catch-up replay of a completed session, suppress spurious "running" status
   if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting")) {
     entry.state = { ...entry.state, status: prevStatus };
+  }
+  // Auto-rekey when provider's init event carries a different session ID
+  // (e.g. temp ses-* → real UUID from claude-code-pty or other providers)
+  if (event.type === "system" && event.subtype === "init" && event.session_id && event.session_id !== resolvedId) {
+    rekeySession(resolvedId, event.session_id);
+    return; // rekeySession already calls notify()
   }
   // Profile switch: update the entry-level profile name
   if (event.type === "system" && event.subtype === "switch" && event.toProfile) {
@@ -129,10 +148,21 @@ export function removeSession(id: string) {
   notify();
 }
 
+/** Listeners for session rekey events (e.g. ses-* → UUID) */
+const rekeyListeners = new Set<(oldId: string, newId: string) => void>();
+
+/** Subscribe to rekey events. Returns unsubscribe function. */
+export function onSessionRekey(fn: (oldId: string, newId: string) => void): () => void {
+  rekeyListeners.add(fn);
+  return () => { rekeyListeners.delete(fn); };
+}
+
 /** Re-key a session (e.g. pending-xxx → real ID) */
 export function rekeySession(oldId: string, newId: string) {
   const entry = sessions.get(oldId);
   if (!entry) return;
+  // Record mapping so SSE callbacks with stale IDs can resolve
+  rekeyMap.set(oldId, newId);
   sessions.delete(oldId);
   entry.state = { ...entry.state, sessionId: newId };
   sessions.set(newId, entry);
@@ -144,6 +174,9 @@ export function rekeySession(oldId: string, newId: string) {
     sub.sessionId = newId;
     subscriptions.set(newId, sub);
   }
+
+  // Notify rekey listeners (SessionProvider uses this to update URL hash)
+  for (const fn of rekeyListeners) fn(oldId, newId);
 
   notify();
 }

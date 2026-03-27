@@ -566,37 +566,57 @@ export function createClaudeCodeProvider(): SessionProvider {
         return;
       }
 
-      // Idle — resume with fresh SDK query
-      session.abortController = new AbortController();
-      const { generator, channel } = createInputChannel();
-      state.input = channel;
+      // Close previous SDK subprocess so its session journal is fully flushed
+      // before the new subprocess reads it via --resume.
+      const oldQuery = state.queryObj;
+      if (oldQuery) {
+        try { state.input.close(); } catch { /* ignore */ }
+        try { oldQuery.close(); } catch { /* ignore */ }
+        state.queryObj = null;
+      }
+
+      // Allow the old subprocess to exit and flush its JSONL session file.
+      // Without this delay, the new subprocess may read stale history.
+      const resumeDelay = oldQuery ? 200 : 0;
+
       session.initialContent = content;
       session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
-      channel.push(content);
-
-      const sdkOpts = {
-        ...state.sdkOptions,
-        resume: session.sessionId,
-        abortController: session.abortController,
-      };
-      const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
-      state.queryObj = newQ;
       session.status = "running";
       session.turnStartedAt = Date.now();
       state.skipNextPromptPersist = true;
-
       updateSessionStatus(session.sessionId, "running");
 
-      drainEvents(ctx, state, newQ).catch((err) => {
-        console.error(`[claude-code] resume drain error for ${session.sessionId}:`, err);
-        session.status = "error";
-        session.error = String(err);
-        ctx.updateSessionDb({
-          status: "error",
-          costUsd: session.costUsd,
-          lastResponse: session.lastAssistantText?.slice(0, 2000),
+      const startResume = () => {
+        session.abortController = new AbortController();
+        const { generator, channel } = createInputChannel();
+        state.input = channel;
+        channel.push(content);
+
+        const sdkOpts = {
+          ...state.sdkOptions,
+          resume: session.sessionId,
+          abortController: session.abortController,
+        };
+        const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
+        state.queryObj = newQ;
+
+        drainEvents(ctx, state, newQ).catch((err) => {
+          console.error(`[claude-code] resume drain error for ${session.sessionId}:`, err);
+          session.status = "error";
+          session.error = String(err);
+          ctx.updateSessionDb({
+            status: "error",
+            costUsd: session.costUsd,
+            lastResponse: session.lastAssistantText?.slice(0, 2000),
+          });
         });
-      });
+      };
+
+      if (resumeDelay > 0) {
+        setTimeout(startResume, resumeDelay);
+      } else {
+        startResume();
+      }
     },
 
     steerMessage(ctx: TurnContext, content: MessageContent): boolean {
@@ -1022,29 +1042,39 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
   if (session.status === "idle") {
     if (session.pendingMessages.length > 0) {
       console.log(`[claude-code] ${session.pendingMessages.length} pending after abort, restarting ${session.sessionId}`);
-      session.abortController = new AbortController();
-      const { generator, channel } = createInputChannel();
-      state.input = channel;
+
+      // Close the old query so its subprocess flushes the session journal
+      try { state.input.close(); } catch { /* ignore */ }
+      try { state.queryObj?.close(); } catch { /* ignore */ }
+      state.queryObj = null;
+
       const next = session.pendingMessages.shift()!;
       session.initialContent = next;
       session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
-      channel.push(next);
-      const sdkOpts = { ...state.sdkOptions, resume: session.sessionId, abortController: session.abortController };
-      const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
-      state.queryObj = newQ;
       session.status = "running";
       session.turnStartedAt = Date.now();
       state.skipNextPromptPersist = true;
-      drainEvents(ctx, state, newQ).catch((err) => {
-        console.error(`[claude-code] restart drain error for ${session.sessionId}:`, err);
-        session.status = "error";
-        session.error = String(err);
-        ctx.updateSessionDb({
-          status: "error",
-          costUsd: session.costUsd,
-          lastResponse: session.lastAssistantText?.slice(0, 2000),
+
+      // Delay to let old subprocess flush JSONL before new one reads it
+      setTimeout(() => {
+        session.abortController = new AbortController();
+        const { generator, channel } = createInputChannel();
+        state.input = channel;
+        channel.push(next);
+        const sdkOpts = { ...state.sdkOptions, resume: session.sessionId, abortController: session.abortController };
+        const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
+        state.queryObj = newQ;
+        drainEvents(ctx, state, newQ).catch((err) => {
+          console.error(`[claude-code] restart drain error for ${session.sessionId}:`, err);
+          session.status = "error";
+          session.error = String(err);
+          ctx.updateSessionDb({
+            status: "error",
+            costUsd: session.costUsd,
+            lastResponse: session.lastAssistantText?.slice(0, 2000),
+          });
         });
-      });
+      }, 200);
       return;
     }
     return;
