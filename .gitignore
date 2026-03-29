@@ -62,6 +62,9 @@ test_website/
 # Generated docs (reproduced by `bun run docs:sdk` from JSDoc source)
 harness/docs/sdk/api/
 
+# Lock files (Bun uses bun.lockb; npm lock is only for devDeps like typedoc)
+harness/package-lock.json
+
 # Harness runtime (auto-generated, personal per-user)
 harness/profiles/_users.json
 harness/profiles/_projects.json
