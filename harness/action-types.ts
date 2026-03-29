@@ -146,7 +146,7 @@ export interface ArtifactSpec {
 
 // ── Notifications ──
 
-export type NotifyStatus = "done" | "error" | "error-transient" | "failed-verification" | "exhausted";
+export type NotifyStatus = "done" | "error" | "error-transient" | "failed-verification" | "exhausted" | "skipped";
 
 export interface NotifySpec {
   on: NotifyStatus | NotifyStatus[];   // trigger on these statuses
@@ -267,7 +267,7 @@ export type VerifyResult =
 
 /** Result passed to afterRun — everything the action needs to act on */
 export interface RunResult {
-  status: "done" | "error" | "failed-verification" | "error-transient";
+  status: "done" | "error" | "failed-verification" | "error-transient" | "skipped";
   response: string | null;             // agent's final response text
   summary: string | null;              // truncated summary stored in DB
   costUsd: number;
@@ -284,7 +284,7 @@ export type ActionContent = string | Array<
 
 /** What an action's context.ts module must export */
 export interface ActionModule {
-  gather(ctx: ActionContext): Promise<string | ActionContent>;
+  gather(ctx: ActionContext): Promise<string | ActionContent | null>;
   /** Optional — runs after session completes but before run is finalized.
    *  Inspects output and decides whether to accept, reject, or retry. */
   verify?(ctx: ActionContext, result: RunResult): Promise<VerifyResult>;

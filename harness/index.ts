@@ -803,9 +803,13 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
       await stream.writeSSE({ event: evt.type, data, id: String(evt.seq) });
     }
 
-    // If session is still active, subscribe for live events
+    // If session is active, subscribe for live events.
+    // "done" sessions stay in the active map and may receive follow-up messages
+    // (via queueMessage → _queueMessageAsync). We give them a grace period so the
+    // SSE stream stays open long enough for the async message pipeline to set
+    // status back to "running" and start emitting events.
     const active = getActiveSession(sessionId);
-    if (active && active.status !== "done" && active.status !== "error") {
+    if (active && active.status !== "error") {
       let resolve: () => void;
       const done = new Promise<void>((r) => { resolve = r; });
 
@@ -813,8 +817,18 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
         try { await stream.writeSSE({ event: "ping", data: "{}", id: "" }); } catch { /* connection dead */ }
       }, 30_000);
 
+      // Grace timeout for "done" sessions: if no real events arrive within 5s,
+      // close the stream. Prevents idle connections for genuinely finished sessions
+      // while giving the async message pipeline time to reactivate the session.
+      let graceTimer: ReturnType<typeof setTimeout> | null = null;
+      if (active.status === "done") {
+        graceTimer = setTimeout(() => { resolve(); }, 5_000);
+      }
+
       const writer: SSEWriter = {
         async write(event: string, data: string, seqId: string) {
+          // Real event arrived — cancel grace timeout if active
+          if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
           await stream.writeSSE({ event, data, id: seqId });
           if (event === "done") resolve();
         },
@@ -822,9 +836,15 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
       };
 
       const unsubscribe = subscribe(sessionId, writer);
-      stream.onAbort(() => { clearInterval(keepAlive); unsubscribe(); resolve(); });
+      stream.onAbort(() => {
+        if (graceTimer) clearTimeout(graceTimer);
+        clearInterval(keepAlive);
+        unsubscribe();
+        resolve();
+      });
 
       await done;
+      if (graceTimer) clearTimeout(graceTimer);
       clearInterval(keepAlive);
     } else {
       await stream.writeSSE({ event: "done", data: "{}", id: "done" });

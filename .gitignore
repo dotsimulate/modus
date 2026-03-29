@@ -59,6 +59,9 @@ research_scraps/
 test_website/
 /package.json
 
+# Generated docs (reproduced by `bun run docs:sdk` from JSDoc source)
+harness/docs/sdk/api/
+
 # Harness runtime (auto-generated, personal per-user)
 harness/profiles/_users.json
 harness/profiles/_projects.json

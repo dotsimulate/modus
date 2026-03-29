@@ -24,7 +24,7 @@ const AGENT_MEMORY_DIR = resolve(import.meta.dir, "..", "agent_memory");
 const DEFAULT_PROFILES = ["modus-dev"];
 const TEMPLATES_DIR = join(import.meta.dir, "templates");
 /** Skills to copy into new projects (SDK resolves from <cwd>/.claude/skills/) */
-const DEFAULT_SKILLS = ["create-profile", "create-action"];
+const DEFAULT_SKILLS = ["create-profile", "create-action", "create-mission"];
 const SKILLS_SRC_DIR = join(TEMPLATES_DIR, "skills");
 
 type ProjectMeta = { id: string; name?: string; created?: string };
