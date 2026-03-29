@@ -28,6 +28,16 @@ export type {
   TurnContent,
   // Events
   SSEEvent,
+  TypedSSEEvent,
+  SSEStreamEvent,
+  SSEResultEvent,
+  SSESystemEvent,
+  SSEUserEvent,
+  SSEAssistantEvent,
+  SSEToolProgressEvent,
+  SSEToolUseSummaryEvent,
+  SSEErrorEvent,
+  SSERateLimitEvent,
   EventStreamHandle,
   EventStreamCallbacks,
   // Session stats

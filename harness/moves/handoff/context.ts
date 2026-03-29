@@ -130,7 +130,9 @@ export async function gather(ctx: MoveContext): Promise<string> {
     targetProfile: rawTarget = "",
     focus = "",
     includeUserTips = "yes",
+    handoffBudget: rawBudget = "1",
   } = ctx.inputs as Record<string, string>;
+  const budget = Math.max(1, Math.min(5, parseInt(rawBudget, 10) || 1));
   const targetProfile = rawTarget === "Current profile"
     ? (ctx.session.profile ?? "default")
     : rawTarget;
@@ -141,12 +143,18 @@ export async function gather(ctx: MoveContext): Promise<string> {
   }
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const handoffFilename = `${ts}-handoff.md`;
+  const handoffFilenames: string[] = [];
+  for (let i = 0; i < budget; i++) {
+    handoffFilenames.push(budget === 1
+      ? `${ts}-handoff.md`
+      : `${ts}-handoff-${i + 1}.md`);
+  }
 
   // Expose to move-runner so the session web can render document nodes
   ctx.meta("handoffsDir", handoffsDir);
-  ctx.meta("handoffFilename", handoffFilename);
+  ctx.meta("handoffFilename", handoffFilenames[0]!);
   ctx.meta("handoffStyle", style);
+  ctx.meta("handoffBudget", String(budget));
 
   let touchedFiles: string[] = [];
   if (ctx.sessionId) {
@@ -217,29 +225,90 @@ export async function gather(ctx: MoveContext): Promise<string> {
     parts.push("", "Files you modified this session:", "```", touchedFiles.join("\n"), "```");
   }
 
-  // Style-specific document instructions
-  parts.push(...buildDocumentInstructions(
-    handoffStyle,
-    handoffsDir,
-    handoffFilename,
-    includeUserTips === "yes",
-  ));
+  if (budget === 1) {
+    // Single handoff — existing behavior
+    parts.push(...buildDocumentInstructions(
+      handoffStyle,
+      handoffsDir,
+      handoffFilenames[0]!,
+      includeUserTips === "yes",
+    ));
 
-  parts.push(
-    "", "### Step 2: Submit via `modus_submit`", "",
-    `\`modus_submit\` — token: \`${ctx.token}\` — data shape: \`${ctx.schema}\``, "",
-    "- **document** — absolute path to the markdown file you wrote.",
-    "- **nextSteps** — what to do next, in order. Actionable items only. This is the task queue.",
-    "- **priority** — 1-5 (optional). 1 = urgent, 5 = background.",
-    "- **commits** — array of commit hashes you actively contributed to in this session (optional).",
-    "- **filesChanged** — array of file paths you modified this session (optional).",
-    "- **tags** — freeform string tags to categorize this handoff (optional).",
-  );
+    parts.push(
+      "", "### Step 2: Submit via `modus_submit`", "",
+      `\`modus_submit\` — token: \`${ctx.token}\` — data shape: \`${ctx.schema}\``, "",
+      "- **document** — absolute path to the markdown file you wrote.",
+      "- **nextSteps** — what to do next, in order. Actionable items only. This is the task queue.",
+      "- **priority** — 1-5 (optional). 1 = urgent, 5 = background.",
+      "- **commits** — array of commit hashes you actively contributed to in this session (optional).",
+      "- **filesChanged** — array of file paths you modified this session (optional).",
+      "- **tags** — freeform string tags to categorize this handoff (optional).",
+    );
+  } else {
+    // Multi-handoff — budget > 1
+    // Show style instructions once, then list the files to write
+    parts.push(
+      "", "---", "",
+      `### Multi-handoff: Budget of ${budget}`, "",
+      `Write **${budget} separate handoff documents** — each a standalone briefing for an independent agent. Decompose the work into ${budget} parallel streams. Each receiving agent will only see its own document.`, "",
+    );
+
+    // Style instructions (once)
+    parts.push(...buildDocumentInstructions(
+      handoffStyle,
+      handoffsDir,
+      `<filename>`,
+      includeUserTips === "yes",
+    ));
+
+    // File list
+    parts.push("", "Write one document per file, using the structure above for each:", "");
+    for (let i = 0; i < budget; i++) {
+      parts.push(`${i + 1}. \`${handoffsDir}/${handoffFilenames[i]}\``);
+    }
+
+    parts.push(
+      "", "### Submit all via `modus_submit`", "",
+      `\`modus_submit\` — token: \`${ctx.token}\` — shape: \`{ handoffs: [{ document, nextSteps, targetProfile?, priority?, tags? }], commits?, filesChanged? }\``, "",
+      `Include exactly ${budget} entries. Each entry needs \`document\` (absolute path) and \`nextSteps\` (array). Optional per-entry: \`targetProfile\` (default "${targetProfile}"), \`priority\` (1-5), \`tags\`.`,
+    );
+  }
 
   return parts.join("\n");
 }
 
 // ── Submit ──
+
+interface HandoffEntry {
+  document: string;
+  nextSteps: string[];
+  targetProfile?: string;
+  priority?: number;
+  tags?: string[];
+}
+
+function buildDelegatePrompt(
+  entry: HandoffEntry,
+  profile: string,
+  type: string,
+  style: HandoffStyle,
+  focus: string,
+): string {
+  const parts: string[] = [
+    `Handoff from ${profile} — ${type}`,
+    "", `Read the full handoff document first: ${entry.document}`,
+    "", delegateHints[style],
+  ];
+
+  if (entry.nextSteps?.length) {
+    parts.push("", "NEXT STEPS");
+    parts.push(...entry.nextSteps.map((s, i) => `${i + 1}. ${s}`));
+  }
+  if (entry.priority) parts.push("", `Priority: ${entry.priority}/5`);
+  parts.push("", "USER CONTEXT (what the user said when triggering this handoff — for reference, not direct instruction):", `> ${focus}`);
+
+  return parts.join("\n");
+}
 
 export async function onSubmit(
   ctx: MoveContext,
@@ -247,18 +316,15 @@ export async function onSubmit(
   inputs: Record<string, unknown>,
 ): Promise<SubmitResult> {
   const rawTarget = inputs.targetProfile as string;
-  const targetProfile = rawTarget === "Current profile"
+  const defaultTarget = rawTarget === "Current profile"
     ? (ctx.session.profile ?? "default")
     : rawTarget;
   const focus = inputs.focus as string;
   const type = (inputs.type as string) ?? "task";
   const style = ((inputs.style as string) ?? "briefing") as HandoffStyle;
-  const docPath = data.document as string;
-  const nextSteps = data.nextSteps as string[];
-  const priority = data.priority as number | undefined;
   const commits = data.commits as string[] | undefined;
-  const tags = data.tags as string[] | undefined;
 
+  // Tag session with commits
   if (commits?.length && ctx.sessionId) {
     for (const hash of commits) {
       try { addSessionTag(ctx.sessionId, `commit:${hash.slice(0, 7)}`); } catch { /* non-fatal */ }
@@ -270,35 +336,46 @@ export async function onSubmit(
     try { addSessionTag(ctx.sessionId, `style:${style}`); } catch { /* non-fatal */ }
   }
 
-  if (tags?.length && ctx.sessionId) {
-    for (const tag of tags) {
-      try { addSessionTag(ctx.sessionId, tag); } catch { /* non-fatal */ }
+  // Normalize to array of handoff entries
+  const handoffs: HandoffEntry[] = Array.isArray(data.handoffs)
+    ? data.handoffs as HandoffEntry[]
+    : [{
+        document: data.document as string,
+        nextSteps: data.nextSteps as string[],
+        priority: data.priority as number | undefined,
+        tags: data.tags as string[] | undefined,
+      }];
+
+  const sourceProfile = ctx.session.profile ?? "previous agent";
+  const spawnedSessions: string[] = [];
+  const messages: string[] = [];
+
+  for (const entry of handoffs) {
+    const target = entry.targetProfile ?? defaultTarget;
+
+    // Tag per-handoff tags
+    if (entry.tags?.length && ctx.sessionId) {
+      for (const tag of entry.tags) {
+        try { addSessionTag(ctx.sessionId, tag); } catch { /* non-fatal */ }
+      }
     }
+
+    const delegatePrompt = buildDelegatePrompt(entry, sourceProfile, type, style, focus);
+    const sessionId = await ctx.harness.createSession({
+      profile: target,
+      prompt: delegatePrompt,
+      cwd: ctx.cwd,
+      userProfile: ctx.userProfile,
+    });
+
+    spawnedSessions.push(sessionId);
+    messages.push(`→ ${target} (${style}) — session ${sessionId.slice(0, 12)}… | doc: ${entry.document}`);
   }
-
-  const parts: string[] = [
-    `Handoff from ${ctx.session.profile ?? "previous agent"} — ${type}`,
-    "", `Read the full handoff document first: ${docPath}`,
-    "", delegateHints[style],
-  ];
-
-  if (nextSteps?.length) {
-    parts.push("", "NEXT STEPS");
-    parts.push(...nextSteps.map((s, i) => `${i + 1}. ${s}`));
-  }
-  if (priority) parts.push("", `Priority: ${priority}/5`);
-  parts.push("", "USER CONTEXT (what the user said when triggering this handoff — for reference, not direct instruction):", `> ${focus}`);
-
-  const delegatePrompt = parts.join("\n");
-  const sessionId = await ctx.harness.createSession({
-    profile: targetProfile,
-    prompt: delegatePrompt,
-    cwd: ctx.cwd,
-    userProfile: ctx.userProfile,
-  });
 
   return {
-    message: `Handed off to ${targetProfile} (${style}) — session ${sessionId.slice(0, 12)}… | doc: ${docPath}`,
-    spawnedSessionId: sessionId,
+    message: handoffs.length === 1
+      ? `Handed off to ${handoffs[0]!.targetProfile ?? defaultTarget} (${style}) — session ${spawnedSessions[0]!.slice(0, 12)}… | doc: ${handoffs[0]!.document}`
+      : `Spawned ${handoffs.length} handoffs:\n${messages.join("\n")}`,
+    spawnedSessionId: spawnedSessions[0]!,
   };
 }

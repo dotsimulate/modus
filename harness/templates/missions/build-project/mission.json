@@ -1,0 +1,74 @@
+{
+  "name": "build",
+  "label": "Build Project",
+  "description": "Build a project from requirements to working code with git-tracked progress.",
+  "brief": "brief.md",
+
+  "roles": {
+    "orchestrator": {
+      "profile": "executor",
+      "description": "Coordinates the build — delegates steps, reviews reports, advances gates"
+    },
+    "developer": {
+      "profile": "mission-dev",
+      "description": "Writes code, runs tests, commits changes"
+    },
+    "reviewer": {
+      "profile": "mission-reviewer",
+      "description": "Reviews code quality and requirement coverage"
+    }
+  },
+
+  "steps": [
+    {
+      "id": "scaffold",
+      "label": "Project Setup",
+      "role": "developer",
+      "description": "Initialize the project: create directory structure, install dependencies, set up build tooling, create initial files. Commit the scaffolding as the first commit.",
+      "gates": [
+        { "type": "commit" },
+        { "type": "handoff" }
+      ]
+    },
+    {
+      "id": "core",
+      "label": "Core Implementation",
+      "role": "developer",
+      "reviewer": "reviewer",
+      "description": "Build the primary functionality described in the brief. Write tests for key behaviors. Commit working code.",
+      "gates": [
+        { "type": "commit" },
+        { "type": "tests" },
+        { "type": "review" }
+      ]
+    },
+    {
+      "id": "finish",
+      "label": "Polish & Ship",
+      "role": "developer",
+      "description": "Final touches: styling, error handling, README, any deployment configuration. Ensure everything builds and tests pass. Final commit.",
+      "gates": [
+        { "type": "commit" },
+        { "type": "handoff" }
+      ]
+    }
+  ],
+
+  "policy": {
+    "requireTestsBeforeAdvance": true,
+    "requireCommitBeforeAdvance": true,
+    "requireHandoffOnTransfer": true,
+    "allowParallelSteps": false
+  },
+
+  "budgets": {
+    "turnsPerSession": 30
+  },
+
+  "onFailure": {
+    "strategy": "pause",
+    "maxRetriesPerStep": 2
+  },
+
+  "tags": ["build"]
+}

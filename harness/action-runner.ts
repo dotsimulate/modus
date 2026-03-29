@@ -619,6 +619,19 @@ async function fireAction(
       let prompt: string | ActionContent;
       try {
         const gathered = await mod.gather(ctx);
+
+        // gather() returning null signals "nothing to do — skip this run"
+        if (gathered === null) {
+          console.log(`[actions] gather() returned null for "${name}" run #${runNumber} — skipping (no session created)`);
+          runResult = {
+            status: "skipped",
+            response: null, summary: "skipped — gather returned null",
+            costUsd: 0, durationMs: Date.now() - startedAt,
+            sessionId: null, error: null,
+          };
+          break;
+        }
+
         if (!gathered || (typeof gathered !== "string" && !Array.isArray(gathered))) {
           throw new Error(`gather() returned invalid prompt for "${name}": ${typeof gathered}`);
         }
@@ -749,7 +762,12 @@ async function fireAction(
             stepPrompt = step.prompt;
           } else {
             const stepCtx = { ...ctx, stepIndex, previousStepResult: finalOutcome };
-            stepPrompt = await mod.gather(stepCtx);
+            const stepGathered = await mod.gather(stepCtx);
+            if (stepGathered === null) {
+              console.log(`[actions:${name}] gather() returned null for step ${stepIndex} — skipping remaining steps`);
+              break;
+            }
+            stepPrompt = stepGathered;
           }
 
           // 3. Queue message (status set to "starting" by queueMessage)

@@ -228,9 +228,25 @@ export function subscribeSession(
       if (entry) {
         entry.catchingUp = false;
         const st = entry.state;
-        // Mark idle if status got stuck as running (shouldn't happen with catchingUp guard, but safety net)
         if (st.status === "running" || st.status === "starting") {
+          // SSE closed while we think the session is still active — likely a race
+          // between sendMessage and SSE subscribe. Retry once after a brief delay
+          // to give the backend time to reactivate the session.
+          const retryKey = `__sseRetry_${sessionId}`;
+          const retryCount = (entry as any)[retryKey] ?? 0;
+          if (retryCount < 2) {
+            (entry as any)[retryKey] = retryCount + 1;
+            setTimeout(() => {
+              const e2 = sessions.get(sessionId);
+              if (e2 && (e2.state.status === "running" || e2.state.status === "starting")) {
+                subscribeSession(sessionId, e2.state.lastSeq, e2.profile, onDone);
+              }
+            }, 2000);
+            return; // don't fire onDone yet — retry in progress
+          }
+          // Exhausted retries — mark idle
           entry.state = { ...st, status: "idle" };
+          (entry as any)[retryKey] = 0;
           notify();
         }
       }

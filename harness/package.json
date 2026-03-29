@@ -7,10 +7,13 @@
     "dev": "bun run dev.ts",
     "start": "bun run index.ts",
     "watch": "bun run watchdog.ts",
-    "watch:dev": "MODUS_WATCH_FILES=1 bun run watchdog.ts"
+    "watch:dev": "MODUS_WATCH_FILES=1 bun run watchdog.ts",
+    "docs:sdk": "typedoc --options sdk/typedoc.json"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "typedoc": "^0.28.18",
+    "typedoc-plugin-markdown": "^4.11.0"
   },
   "peerDependencies": {
     "typescript": "^5"

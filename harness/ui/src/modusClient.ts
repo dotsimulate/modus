@@ -69,7 +69,13 @@ export type EventStreamCallbacks = {
  * Subscribe to session events using a callback-based interface.
  * Returns an unsubscribe function. This wraps the raw fetch SSE stream
  * to match the interface sessionStore expects.
+ *
+ * Read timeout: if no data (including server pings every 30s) arrives
+ * within STALE_TIMEOUT_MS, the connection is considered dead and we
+ * fire onDisconnect so the caller can reconnect.
  */
+const STALE_TIMEOUT_MS = 45_000; // server pings every 30s — 45s means we missed at least one
+
 export function subscribeEvents(
   sessionId: string,
   afterSeq: number,
@@ -92,6 +98,20 @@ export function subscribeEvents(
     }
   };
 
+  // Stale-connection watchdog — resets on every chunk from the server
+  let staleTimer: ReturnType<typeof setTimeout> | null = null;
+  const resetStaleTimer = () => {
+    if (staleTimer) clearTimeout(staleTimer);
+    staleTimer = setTimeout(() => {
+      // No data for STALE_TIMEOUT_MS — connection is dead
+      abort.abort();
+      fireDone(); // triggers onDisconnect → reconnect
+    }, STALE_TIMEOUT_MS);
+  };
+  const clearStaleTimer = () => {
+    if (staleTimer) { clearTimeout(staleTimer); staleTimer = null; }
+  };
+
   fetch(url, { signal: abort.signal })
     .then(async (res) => {
       if (!res.ok) {
@@ -104,9 +124,13 @@ export function subscribeEvents(
       const decoder = new TextDecoder();
       let buffer = "";
 
+      resetStaleTimer(); // start the watchdog
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+
+        resetStaleTimer(); // got data — connection is alive
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
@@ -122,25 +146,31 @@ export function subscribeEvents(
           } else if (line.startsWith("data: ")) {
             if (currentEvent === "done") {
               gotServerDone = true;
+              clearStaleTimer();
               fireDone();
+            } else if (currentEvent === "ping") {
+              // Server keepalive — already reset the stale timer above, skip reducer
             } else {
               try {
                 const parsed = JSON.parse(line.slice(6));
                 callbacks.onEvent(parsed, Number(currentId) || 0);
-              } catch { /* skip */ }
+              } catch { /* skip malformed */ }
             }
           }
         }
       }
+      clearStaleTimer();
       fireDone();
     })
     .catch((err) => {
-      if (err.name !== "AbortError") {
-        callbacks.onError(String(err));
-      }
+      clearStaleTimer();
+      if (err.name === "AbortError") return;
+      // Network errors (TCP reset, Tailscale drop, etc.) should reconnect,
+      // not permanently fail. Only use onError for non-recoverable API errors.
+      fireDone(); // triggers onDisconnect → reconnect
     });
 
-  return () => abort.abort();
+  return () => { clearStaleTimer(); abort.abort(); };
 }
 
 // ── Filesystem change events (browser-only EventSource) ──
