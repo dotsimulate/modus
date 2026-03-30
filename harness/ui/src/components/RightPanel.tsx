@@ -380,7 +380,7 @@ export function RightPanel({ open, width, onOpen, onClose: _onClose, children, m
   function renderContent() {
     // Session edits
     if (activeView === "session-edits") {
-      return <SessionEditsView messages={messages ?? []} />;
+      return <SessionEditsView messages={messages ?? []} sessionId={sessionId} cwd={activeCwd} />;
     }
 
     // Agent activity

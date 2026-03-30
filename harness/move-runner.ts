@@ -697,7 +697,10 @@ export async function gatherMoveOnce(
   inputs: Record<string, unknown>,
 ): Promise<{ text: string; apiToken?: string } | null> {
   const mod = await loadMoveModule(moveName, cwd);
-  if (!mod?.gather) return null;
+  if (!mod?.gather) {
+    console.warn(`[gatherMoveOnce] move "${moveName}" has no gather() export — skipping`);
+    return null;
+  }
 
   const config = getMove(moveName, cwd);
   let apiToken: string | undefined;
@@ -736,11 +739,15 @@ export async function gatherMoveOnce(
     ctx.setStore = (value: unknown) => { instanceStore.set(instanceId!, value); };
   }
 
+  const gatherStart = Date.now();
   const result = await Promise.race([
     mod.gather(ctx),
     new Promise<null>((resolve) => setTimeout(() => resolve(null), GATHER_TIMEOUT_MS)),
   ]);
-  if (result === null) return null;
+  if (result === null) {
+    console.warn(`[gatherMoveOnce] move "${moveName}" gather returned null (took ${Date.now() - gatherStart}ms, timeout=${GATHER_TIMEOUT_MS}ms)`);
+    return null;
+  }
   const text = typeof result === "string" ? result : String(result);
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -855,10 +862,14 @@ export async function activateMoveBindings(
       // Non-persistent: one-shot gather
       if (opts?.persistentOnly) continue;
       try {
+        console.log(`[${prefix}] gathering inline move "${spec.name}" (cwd=${cwd}, origin=${moveCfg.origin})`);
         const gathered = await gatherMoveOnce(spec.name, sessionId, cwd, userProfile, spec.inputs ?? {});
         if (gathered) {
+          console.log(`[${prefix}] move "${spec.name}" gathered ${gathered.text.length} chars`);
           inlineParts.push(`<!-- move:${spec.name} -->\n${gathered.text}\n<!-- /move:${spec.name} -->`);
           if (gathered.apiToken) result.apiTokens.push(gathered.apiToken);
+        } else {
+          console.warn(`[${prefix}] move "${spec.name}" gather returned null — module missing gather() or gather timed out`);
         }
       } catch (err) {
         console.error(`[${prefix}] move gather failed for "${spec.name}":`, err);
