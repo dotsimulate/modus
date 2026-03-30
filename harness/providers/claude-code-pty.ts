@@ -97,6 +97,8 @@ type PtyState = {
   spawnCwd: string;
   /** Terminal registration for UI visibility */
   terminal: { id: string; pushData: (data: Uint8Array) => void; unregister: () => void; clearInputBuffer: () => void } | null;
+  /** Exit code from the process (set by exit handler, consumed by drain loop) */
+  processExitCode?: number | null;
 };
 
 function getState(session: ActiveSession): PtyState | null {
@@ -682,7 +684,23 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
       ctx.emitEvent(m);
     }
 
-    console.log(`[claude-code-pty] drain loop exited for ${session.sessionId}, status=${session.status}`);
+    console.log(`[claude-code-pty] drain loop exited for ${session.sessionId}, status=${session.status}, initSeen=${initSeen}`);
+
+    // Process exited and drain consumed all stdout. If we never saw init,
+    // the session is stuck in "starting" — set a proper error now.
+    if (session.status === "starting" && !initSeen) {
+      const reason = state.stderrBuf
+        ? `Claude Code process exited without initializing.\n\nstderr:\n${state.stderrBuf}`
+        : `Claude Code process exited (code ${state.processExitCode ?? "?"}) without sending init`;
+      console.error(`[claude-code-pty] ${reason}`);
+      session.status = "error";
+      session.error = reason;
+      ctx.updateSessionDb({
+        status: "error",
+        costUsd: session.costUsd,
+        lastResponse: session.lastAssistantText?.slice(0, 2000),
+      });
+    }
   } catch (err: any) {
     if (session.status === "idle") return;
 
@@ -790,11 +808,16 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         });
       });
 
-      // Handle process exit — mark for restart
+      // Handle process exit — mark for restart.
+      // On Windows, .cmd wrappers can fire 'exit' before buffered stdout is delivered,
+      // so DON'T immediately error during startup — let the drain loop consume remaining
+      // stdout first. The drain loop handles the "exited without init" case.
       proc.on("exit", (code) => {
         console.log(`[claude-code-pty] process exited (code=${code}) for ${session.sessionId}`);
         state.needsRestart = true;
-        if (session.status === "running" || session.status === "starting") {
+        state.processExitCode = code;
+        if (session.status === "running") {
+          // Mid-run exit is always an error — stdout was already flowing
           session.status = "error";
           session.error = `Claude Code process exited unexpectedly (code ${code})`;
           ctx.updateSessionDb({
@@ -803,22 +826,30 @@ export function createClaudeCodePtyProvider(): SessionProvider {
             lastResponse: session.lastAssistantText?.slice(0, 2000),
           });
         }
+        // If status === "starting", don't error yet — drain loop may still receive init
       });
 
-      // Startup timeout
+      // Startup timeout — longer on Windows where pipe buffering delays stdout delivery.
+      // If the process already exited, the drain loop handles the error — don't double-fire.
       const abortController = session.abortController;
+      const startupTimeoutMs = process.platform === "win32" ? 60_000 : 30_000;
       setTimeout(() => {
         if (session.status === "starting" && session.abortController === abortController) {
+          // If process already exited, let drain loop handle it — don't kill
+          if (state.processExitCode !== undefined) {
+            console.log(`[claude-code-pty] startup timeout for ${session.sessionId} but process already exited — drain loop will handle`);
+            return;
+          }
           const reason = state.stderrBuf
             ? `Session failed to start.\n\nstderr:\n${state.stderrBuf}`
-            : "Session failed to start — no response from Claude Code within 30s.";
+            : `Session failed to start — no response from Claude Code within ${startupTimeoutMs / 1000}s.`;
           console.error(`[claude-code-pty] startup timeout for ${session.sessionId}`);
           session.status = "error";
           session.error = reason;
           abortController.abort();
           state.proc?.kill("SIGTERM");
         }
-      }, 30_000);
+      }, startupTimeoutMs);
     },
 
     sendMessage(ctx: TurnContext, content: MessageContent) {
