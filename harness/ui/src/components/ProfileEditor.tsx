@@ -232,7 +232,7 @@ function ProfileForm({
   const [effort, setEffort] = useState(profile.effort ?? "");
   const [maxTurns, setMaxTurns] = useState(profile.maxTurns?.toString() ?? "");
   const [toolStates, setToolStates] = useState<ToolStates>(() => {
-    if (!profile.tools || profile.tools === "all") return {};
+    if (!Array.isArray(profile.tools)) return {};
     const s: ToolStates = {};
     for (const t of profile.tools) s[t] = "on";
     return s;

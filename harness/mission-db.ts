@@ -105,17 +105,18 @@ db.run(`
 db.run(`CREATE INDEX IF NOT EXISTS idx_mission_gates_run ON mission_gate_results(run_id, step_id)`);
 
 // ── Stale-Run Repair ──
-// Any runs left running/pending from a previous crash become error/RUNNER_ERROR
+// Runs left running/pending from a previous harness process become paused/RUNNER_RESTARTED.
+// Active assignments are failed (sessions are gone), but the run itself is resumable.
 
 const now = Date.now();
 db.run(`
   UPDATE mission_runs
-  SET status = 'error', halt_kind = 'RUNNER_ERROR', halt_message = 'Harness restarted — run was in-flight', updated_at = ?
+  SET status = 'paused', halt_kind = 'RUNNER_RESTARTED', halt_message = 'Harness restarted — resume to continue from current step', updated_at = ?
   WHERE status IN ('running', 'pending')
 `, [now]);
 db.run(`
   UPDATE mission_assignments
-  SET status = 'failed', failure_kind = 'RUNNER_ERROR', completed_at = ?
+  SET status = 'failed', failure_kind = 'RUNNER_RESTARTED', completed_at = ?
   WHERE status = 'active'
 `, [now]);
 
@@ -212,6 +213,12 @@ const stmts = {
     SELECT DISTINCT session_id FROM mission_assignments WHERE run_id = $run_id AND session_id IS NOT NULL
     UNION
     SELECT orchestrator_session_id FROM mission_runs WHERE id = $run_id AND orchestrator_session_id IS NOT NULL
+  `),
+
+  // Dead worker detection: find active assignments for a given session
+  getActiveAssignmentsBySession: db.prepare(`
+    SELECT * FROM mission_assignments
+    WHERE session_id = $session_id AND status = 'active'
   `),
 };
 
@@ -428,6 +435,12 @@ export function getMissionGateResults(runId: number): MissionGateResultRow[] {
 
 export function getStepGateResults(runId: number, stepId: string): MissionGateResultRow[] {
   return stmts.getStepGates.all({ $run_id: runId, $step_id: stepId }) as MissionGateResultRow[];
+}
+
+// ── Dead Worker Detection ──
+
+export function getActiveAssignmentsBySessionId(sessionId: string): MissionAssignmentRow[] {
+  return stmts.getActiveAssignmentsBySession.all({ $session_id: sessionId }) as MissionAssignmentRow[];
 }
 
 // ── Session Lookup ──

@@ -26,7 +26,7 @@ import {
   insertMissionAssignment, getMissionAssignments, updateMissionAssignment,
   insertMissionTransfer, getMissionTransfers,
   insertMissionGateResult, getMissionGateResults, getStepGateResults,
-  getMissionRunSessionIds,
+  getMissionRunSessionIds, getActiveAssignmentsBySessionId,
 } from "./mission-db";
 import type {
   MissionConfig, MissionCommand, MissionToolGrant, MissionOp, MissionResponse,
@@ -269,7 +269,7 @@ ${config.resolvedBrief ? `## Mission Brief
 ${config.resolvedBrief}
 
 ` : ""}## Your Role
-You are the **orchestrator** for this mission. Your job is delegation, gate-checking, and state management. You do NOT write code, run tests, or implement features yourself. You delegate to worker agents and track their progress.
+You are the **orchestrator** for this mission. Your job is delegation, gate-checking, and state management. For steps assigned to other roles, delegate to worker agents. For steps assigned to your own role (orchestrator), do the work directly in this session — do NOT delegate to yourself. When you complete an orchestrator-owned step, use the "report" operation to record results.
 
 You make ALL progression decisions. The runner will NOT advance steps automatically.
 When a worker finishes and gates pass, YOU must call the advance operation.
@@ -476,6 +476,14 @@ async function handleDelegate(
   cmd: Extract<MissionCommand, { op: "delegate" }>,
 ): Promise<{ ok: boolean; message?: string; error?: string }> {
   const { stepId, role, brief, transferSummary } = cmd;
+
+  // Guard: orchestrator cannot delegate to itself — do the work inline instead
+  if (grant.role === "orchestrator" && role === "orchestrator") {
+    return {
+      ok: false,
+      error: `Step "${stepId}" is assigned to your own role (orchestrator). Do the work directly in this session and use the "report" operation when done. Do not delegate to yourself.`,
+    };
+  }
 
   // Validate step exists and is not already completed
   const step = getMissionStep(run.id, stepId);
@@ -852,6 +860,45 @@ function checkStepGates(run: MissionRunRow, stepId: string): boolean {
   return true;
 }
 
+// ── Dead Worker Recovery ──
+
+/**
+ * Called when a session reaches terminal status (idle/done/error).
+ * Checks if that session had active mission assignments and fails them,
+ * notifying the orchestrator so it can retry or reassign.
+ */
+export function handleWorkerDeath(sessionId: string): void {
+  const activeAssignments = getActiveAssignmentsBySessionId(sessionId);
+  if (activeAssignments.length === 0) return;
+
+  for (const assignment of activeAssignments) {
+    const run = getMissionRun(assignment.run_id);
+    if (!run || run.status !== "running") continue;
+
+    // Fail the assignment
+    updateMissionAssignment(assignment.id, {
+      status: "failed",
+      failureKind: "WORKER_DIED",
+      completedAt: Date.now(),
+    });
+
+    logActivity({
+      userProfile: run.user_profile ?? undefined,
+      eventType: "mission_error",
+      sessionId,
+      summary: `Worker died: step "${assignment.step_id}" (${assignment.role}) — session ended without reporting`,
+      metadata: { runId: run.id, stepId: assignment.step_id, assignmentId: assignment.id },
+    });
+
+    // Notify orchestrator so it can retry or reassign
+    const response = buildMissionResponse("worker_report", run, assignment.step_id, {
+      workerStatus: "failed",
+      summary: `Worker session ended without reporting. The session for step "${assignment.step_id}" (${assignment.role}) terminated before completing its work. You may retry by delegating the step again.`,
+    });
+    notifyOrchestrator(run, response);
+  }
+}
+
 // ── Pause / Resume (external API) ──
 
 export function pauseMissionRun(runId: number, reason: string): { ok: boolean; error?: string } {
@@ -874,21 +921,93 @@ export function pauseMissionRun(runId: number, reason: string): { ok: boolean; e
   return { ok: true };
 }
 
-export function resumeMissionRun(runId: number): { ok: boolean; error?: string } {
+export async function resumeMissionRun(runId: number): Promise<{ ok: boolean; error?: string }> {
   const run = getMissionRun(runId);
   if (!run) return { ok: false, error: "Run not found" };
-  if (run.status !== "paused") return { ok: false, error: `Run is ${run.status}, cannot resume` };
+  if (run.status !== "paused" && run.status !== "error") {
+    return { ok: false, error: `Run is ${run.status}, cannot resume` };
+  }
 
+  const config: MissionConfig = JSON.parse(run.definition_snapshot);
+  const steps = getMissionSteps(runId);
+  const assignments = getMissionAssignments(runId);
+
+  // Find the first incomplete step
+  const nextStep = steps.find(s => s.status !== "completed" && s.status !== "skipped");
+  if (!nextStep) {
+    // All steps done — just mark complete
+    updateMissionRun(runId, { status: "completed", haltKind: null, haltMessage: null, completedAt: Date.now() });
+    return { ok: true };
+  }
+
+  // Resolve orchestrator profile
+  const orchestratorRole = "orchestrator";
+  const firstRoleKey = Object.keys(config.roles)[0];
+  const orchestratorProfile = config.roles[orchestratorRole]?.profile
+    ?? (firstRoleKey ? config.roles[firstRoleKey]?.profile : undefined);
+  if (!orchestratorProfile) {
+    return { ok: false, error: "No orchestrator role or fallback profile defined" };
+  }
+
+  // Mint new orchestrator grant
+  const orchestratorToken = generateToken();
+  const orchestratorGrant: MissionToolGrant = {
+    token: orchestratorToken,
+    runId,
+    role: orchestratorRole,
+    sessionId: "",
+    allowedOps: ["read", "delegate", "report", "gate", "advance", "pause"],
+    createdAt: Date.now(),
+  };
+  grantStore.set(orchestratorToken, orchestratorGrant);
+
+  // Build resume-aware prompt with completed step context
+  const completedSteps = steps.filter(s => s.status === "completed");
+  const completedSummaries = completedSteps.map(s => {
+    const stepAssignments = assignments.filter(a => a.step_id === s.step_id && a.status === "completed");
+    const lastResult = stepAssignments[0]?.result_summary ?? "no summary available";
+    return `  - [${s.step_id}] ${s.title}: COMPLETED — ${lastResult}`;
+  }).join("\n");
+
+  const basePrompt = buildOrchestratorPrompt(config, runId, orchestratorToken);
+  const resumeContext = `
+
+## RESUME CONTEXT
+This mission was interrupted and is being resumed. Steps already completed:
+${completedSummaries || "  (none)"}
+
+Current step to continue from: [${nextStep.step_id}] ${nextStep.title} (${nextStep.status})
+${nextStep.status === "running" ? "This step was in progress when interrupted — you may need to check its state before re-delegating." : ""}
+
+Start by reading the mission state, then continue from the current step.`;
+
+  const prompt = basePrompt + resumeContext;
+
+  // Spawn new orchestrator session
+  const session = startSession({
+    prompt,
+    profile: orchestratorProfile,
+    cwd: run.cwd,
+    userProfile: run.user_profile ?? undefined,
+  });
+
+  const start = Date.now();
+  while (session.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
+    await Bun.sleep(100);
+  }
+
+  orchestratorGrant.sessionId = session.sessionId;
   updateMissionRun(runId, {
     status: "running",
+    orchestratorSessionId: session.sessionId,
     haltKind: null,
     haltMessage: null,
   });
 
   logActivity({
     eventType: "mission_resume",
-    summary: `Mission resumed: ${run.mission_name}`,
-    metadata: { runId },
+    summary: `Mission resumed: ${run.mission_name} (from step ${nextStep.step_id})`,
+    metadata: { runId, resumeFromStep: nextStep.step_id },
   });
 
   return { ok: true };

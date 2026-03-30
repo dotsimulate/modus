@@ -107,6 +107,42 @@ function resolveId(id: string): string {
   return resolved;
 }
 
+/** Apply a batch of events in one pass, notifying React only once at the end */
+export function applyEventBatch(id: string, events: { event: string; data: any; seq: number }[]) {
+  const resolvedId = resolveId(id);
+  const entry = sessions.get(resolvedId);
+  if (!entry) return;
+
+  for (const evt of events) {
+    const event = evt.data;
+    const seq = evt.seq;
+
+    // UI command events — dispatch immediately
+    if (event.type === "ui" && typeof event.action === "string") {
+      const set = uiEventListeners.get(event.action);
+      if (set) for (const fn of set) fn(resolvedId, event);
+      continue;
+    }
+
+    const prevStatus = entry.state.status;
+    entry.state = reduceEvent(entry.state, event, seq);
+    if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting")) {
+      entry.state = { ...entry.state, status: prevStatus };
+    }
+    // Handle rekey within batch
+    if (event.type === "system" && event.subtype === "init" && event.session_id && event.session_id !== resolvedId) {
+      rekeySession(resolvedId, event.session_id);
+      return; // rekey triggers notify
+    }
+    if (event.type === "system" && event.subtype === "switch" && event.toProfile) {
+      entry.profile = event.toProfile;
+      entry.nextProfile = undefined;
+      entry.nextAgentConfig = undefined;
+    }
+  }
+  notify(); // single React re-render for the entire batch
+}
+
 /** Update state for a session via a reducer event */
 export function applyEvent(id: string, event: any, seq: number) {
   // Resolve stale IDs from SSE callbacks that still reference pre-rekey IDs
@@ -221,6 +257,9 @@ export function subscribeSession(
   const unsub = subscribeEvents(sessionId, afterSeq, {
     onEvent: (event, seq) => {
       applyEvent(sessionId, event, seq);
+    },
+    onEventBatch: (events) => {
+      applyEventBatch(sessionId, events);
     },
     onDone: () => {
       subscriptions.delete(sessionId);

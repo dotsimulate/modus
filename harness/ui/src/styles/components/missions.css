@@ -148,3 +148,112 @@
   color: var(--text-muted);
   padding: 2px 8px;
 }
+
+/* ── Header Stats ── */
+
+.missions-header-stat {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.missions-header-stat--done { color: var(--dot-done); opacity: 1; }
+.missions-header-stat--error { color: var(--dot-error); opacity: 1; }
+
+/* ── Expandable Row ── */
+
+.missions-row-wrap {
+  border-bottom: 1px solid var(--border);
+}
+
+.missions-row-wrap:last-child {
+  border-bottom: none;
+}
+
+.missions-row-wrap--expanded {
+  background: var(--bg-hover);
+  margin: 0 -8px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border-bottom-color: transparent;
+}
+
+.missions-row-wrap .missions-row {
+  border-bottom: none;
+}
+
+/* ── Detail Panel ── */
+
+.missions-detail {
+  padding: 0 0 8px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Run Stats ── */
+
+.missions-run-stats {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.missions-stat {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.missions-stat--error { color: var(--dot-error); }
+.missions-stat--warn { color: var(--warning); }
+
+/* ── Step Tracker ── */
+
+.missions-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.missions-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.dash-dot--sm {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+}
+
+.missions-step-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.missions-step-role {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.missions-step-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: right;
+}

@@ -34,6 +34,14 @@ function getOnSessionEvent() {
   return _onSessionEvent!;
 }
 
+let _handleWorkerDeath: typeof import("./mission-runner").handleWorkerDeath | null = null;
+function getHandleWorkerDeath() {
+  if (!_handleWorkerDeath) {
+    _handleWorkerDeath = require("./mission-runner").handleWorkerDeath;
+  }
+  return _handleWorkerDeath!;
+}
+
 let _gatherAmbientContext: typeof import("./move-runner").gatherAmbientContext | null = null;
 function getGatherAmbientContext() {
   if (!_gatherAmbientContext) {
@@ -368,6 +376,9 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
           costUsd: updates.costUsd ?? session.costUsd,
           seq: session.seq,
         });
+
+        // Dead worker recovery: fail any active mission assignments for this session
+        try { getHandleWorkerDeath()(session.sessionId); } catch { /* best effort */ }
       }
 
       // Notify global subscribers (SessionWeb real-time updates)
