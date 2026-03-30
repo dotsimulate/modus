@@ -484,18 +484,23 @@ export function createClaudeCodeProvider(): SessionProvider {
         tools: sdkTools,
         systemPrompt,
         settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
-        permissionMode: readClaudePermissionMode(opts.providerControls),
+        // When harness policy is bypass, use bypassPermissions and skip hooks entirely.
+        // On Windows, the hook IPC stream between SDK and CLI is unreliable —
+        // every tool call triggers a round-trip that can fail with "Stream closed".
+        permissionMode: isBypass ? "bypassPermissions" : readClaudePermissionMode(opts.providerControls),
         maxBudgetUsd: profileDef?.maxBudgetUsd,
         env: profileDef?.env ? { ...process.env, ...profileDef.env } : undefined,
         plugins: profileDef?.plugins,
         sandbox: profileDef?.sandbox,
-        canUseTool,
-        hooks: {
-          PreToolUse: [{
-            hooks: [preToolUseHook],
-            timeout: 300,
-          }],
-        },
+        canUseTool: isBypass ? undefined : canUseTool,
+        ...(isBypass ? {} : {
+          hooks: {
+            PreToolUse: [{
+              hooks: [preToolUseHook],
+              timeout: 300,
+            }],
+          },
+        }),
         mcpServers: hasMcp ? resolveEnvVars(mergedMcp) : undefined,
         stderr: (data: string) => {
           const line = data.trim().slice(0, 2000);
@@ -546,11 +551,13 @@ export function createClaudeCodeProvider(): SessionProvider {
       // Startup timeout — only fires if this specific turn is still starting.
       // Guard against false positives: if the abortController has changed (sendMessage
       // created a new turn), this timeout belongs to an already-completed turn.
+      // Longer on Windows where MCP server startup and pipe buffering add latency.
+      const startupTimeoutMs = process.platform === "win32" ? 60_000 : 30_000;
       setTimeout(() => {
         if (session.status === "starting" && session.abortController === abortController) {
           const reason = stderrBuf
             ? `Session failed to start.\n\nstderr:\n${stderrBuf}`
-            : "Session failed to start — no response from Claude Code within 30s.";
+            : `Session failed to start — no response from Claude Code within ${startupTimeoutMs / 1000}s.`;
           console.error(`[claude-code] startup timeout for ${session.sessionId}: ${reason}`);
           session.status = "error";
           session.error = reason;
@@ -560,7 +567,7 @@ export function createClaudeCodeProvider(): SessionProvider {
             try { sub.write("error", errData, String(session.seq)); } catch { /* ignore */ }
           }
         }
-      }, 30_000);
+      }, startupTimeoutMs);
     },
 
     sendMessage(ctx: TurnContext, content: MessageContent) {
@@ -1020,6 +1027,29 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       ctx.emitEvent(m);
     }
     console.log(`[claude-code] drain loop exited normally for ${session.sessionId}, status=${session.status}`);
+
+    // SDK iterator ended. If status is still starting/running, the SDK exited without
+    // sending a result event — mark as error so the UI knows.
+    if (session.status === "starting" || session.status === "running") {
+      const reason = "Claude Code process ended without completing (no result event received)";
+      console.error(`[claude-code] ${reason} for ${session.sessionId}`);
+      session.status = "error";
+      session.error = reason;
+      ctx.updateSessionDb({
+        status: "error",
+        costUsd: session.costUsd,
+        lastResponse: session.lastAssistantText?.slice(0, 2000),
+      });
+      ctx.broadcastEvent({ type: "error", error: reason });
+    }
+
+    // Kill the SDK subprocess on any non-idle terminal status.
+    // Without this, the CLI process becomes a zombie endlessly retrying hooks on a closed stream.
+    if (session.status !== "idle") {
+      try { state.input.close(); } catch { /* ignore */ }
+      try { state.queryObj?.close(); } catch { /* ignore */ }
+      state.queryObj = null;
+    }
   } catch (err: any) {
     // stopSession / switchProfile may have already set status — skip if handled
     if (session.status === "idle") return;
@@ -1044,6 +1074,10 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         lastResponse: session.lastAssistantText?.slice(0, 2000),
       });
       ctx.broadcastEvent({ type: "error", error: String(err) });
+      // Kill subprocess — without this it becomes a zombie spamming hook errors
+      try { state.input.close(); } catch { /* ignore */ }
+      try { state.queryObj?.close(); } catch { /* ignore */ }
+      state.queryObj = null;
     }
   }
 
