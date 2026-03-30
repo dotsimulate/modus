@@ -850,6 +850,7 @@ async function _queueMessageAsync(
   if (moves && moves.length > 0) {
     try {
       const cwd = session.projectRoot ?? session.cwd ?? process.cwd();
+      console.log(`[session-manager] activating ${moves.length} message moves for ${sessionId} (cwd=${cwd}):`, moves.map(m => m.name).join(", "));
       // Phase 1: gather inline (non-persistent) moves
       const bindingResult = await getActivateMoveBindings()(
         moves, sessionId, cwd, session.userProfile,
@@ -861,7 +862,10 @@ async function _queueMessageAsync(
         { persistentOnly: true, logPrefix: "message-moves" },
       );
       if (bindingResult.inlineContext) {
+        console.log(`[session-manager] inline context generated (${bindingResult.inlineContext.length} chars) for moves: ${moves.map(m => m.name).join(", ")}`);
         augmentedPrompt = `${bindingResult.inlineContext}\n\n${augmentedPrompt}`;
+      } else {
+        console.warn(`[session-manager] NO inline context from moves: ${moves.map(m => m.name).join(", ")} — gather may have returned null`);
       }
     } catch (err) {
       console.error(`[session-manager] message move activation failed for ${sessionId}:`, err);

@@ -18,6 +18,14 @@
   margin: 0;
 }
 
+.sev-commits {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
+}
+.sev-commits .git-activity {
+  padding: 4px 12px;
+}
+
 .fc-container-inner {
   border: 1px solid var(--border);
   border-radius: 4px;
