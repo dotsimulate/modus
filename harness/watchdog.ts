@@ -242,9 +242,9 @@ async function waitForPortFree(port: number, timeoutMs = 30_000, intervalMs = 50
 
 /**
  * On Windows, find the PID listening on a port and force-kill it.
- * This is the only reliable way to free a port held by a zombie bun process.
+ * Uses escalating strategies: taskkill /T /F → Stop-Process → image name kill.
  */
-function killPortHolder(port: number) {
+function killPortHolder(port: number, escalate = false) {
   if (process.platform !== "win32") return;
   try {
     const result = Bun.spawnSync(["powershell", "-NoProfile", "-Command",
@@ -252,8 +252,24 @@ function killPortHolder(port: number) {
     ], { stdout: "pipe", stderr: "ignore" });
     const pid = new TextDecoder().decode(result.stdout).trim();
     if (pid && /^\d+$/.test(pid)) {
-      log("warn", `killing PID ${pid} holding port ${port}`);
-      Bun.spawnSync(["taskkill", "/T", "/F", "/PID", pid], { stdout: "ignore", stderr: "ignore" });
+      log("warn", `killing PID ${pid} holding port ${port}${escalate ? " (escalated)" : ""}`);
+      // Primary: taskkill with tree kill
+      const tk = Bun.spawnSync(["taskkill", "/T", "/F", "/PID", pid], { stdout: "pipe", stderr: "pipe" });
+      const tkOut = new TextDecoder().decode(tk.stdout).trim();
+      if (tk.exitCode !== 0) {
+        log("warn", `taskkill /PID ${pid} exit=${tk.exitCode}: ${tkOut || new TextDecoder().decode(tk.stderr).trim()}`);
+      }
+      if (escalate) {
+        // Fallback: PowerShell Stop-Process (handles cases taskkill misses)
+        Bun.spawnSync(["powershell", "-NoProfile", "-Command",
+          `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`
+        ], { stdout: "ignore", stderr: "ignore" });
+      }
+    }
+    if (escalate) {
+      // Nuclear: kill all bun.exe — last resort when PID-based kill fails
+      log("warn", `killing all bun.exe processes to free port ${port}`);
+      Bun.spawnSync(["taskkill", "/F", "/IM", "bun.exe"], { stdout: "ignore", stderr: "ignore" });
     }
   } catch { /* best effort */ }
 }
@@ -283,11 +299,21 @@ async function waitForCleanRestart(): Promise<boolean> {
 
   if (!h || !v) {
     const stuck = [!h && PORT, !v && VITE_PORT].filter(Boolean);
-    log("error", `port(s) ${stuck.join(", ")} still held after kill — NOT launching (would EADDRINUSE)`);
-    // Try one more aggressive kill round
-    if (!h) killPortHolder(PORT);
-    if (!v) killPortHolder(VITE_PORT);
-    return false;
+    log("error", `port(s) ${stuck.join(", ")} still held after kill — escalating`);
+    // Escalated kill: Stop-Process + image name fallback
+    if (!h) killPortHolder(PORT, true);
+    if (!v) killPortHolder(VITE_PORT, true);
+    // Give Windows TCP stack time to release after escalated kill
+    await Bun.sleep(3_000);
+    const [h2, v2] = await Promise.all([
+      !h ? waitForPortFree(PORT, 10_000, 500) : Promise.resolve(true),
+      !v ? waitForPortFree(VITE_PORT, 10_000, 500) : Promise.resolve(true),
+    ]);
+    if (!h2 || !v2) {
+      const stillStuck = [!h2 && PORT, !v2 && VITE_PORT].filter(Boolean);
+      log("error", `port(s) ${stillStuck.join(", ")} still held after escalated kill — NOT launching`);
+      return false;
+    }
   }
   return true;
 }

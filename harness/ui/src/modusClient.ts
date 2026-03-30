@@ -60,6 +60,7 @@ export function clearAuthToken(): void {
 
 export type EventStreamCallbacks = {
   onEvent: (event: any, seq: number) => void;
+  onEventBatch?: (events: { event: string; data: any; seq: number }[]) => void;
   onDone: () => void;
   onDisconnect?: () => void;
   onError: (error: string) => void;
@@ -123,6 +124,7 @@ export function subscribeEvents(
 
       const decoder = new TextDecoder();
       let buffer = "";
+      let catchupBuffer: { event: string; data: any; seq: number }[] | null = null;
 
       resetStaleTimer(); // start the watchdog
 
@@ -150,10 +152,25 @@ export function subscribeEvents(
               fireDone();
             } else if (currentEvent === "ping") {
               // Server keepalive — already reset the stale timer above, skip reducer
+            } else if (currentEvent === "catchup-start") {
+              catchupBuffer = [];
+            } else if (currentEvent === "catchup-end" && catchupBuffer) {
+              if (callbacks.onEventBatch) {
+                callbacks.onEventBatch(catchupBuffer);
+              } else {
+                // Fallback: apply individually if no batch handler
+                for (const evt of catchupBuffer) callbacks.onEvent(evt.data, evt.seq);
+              }
+              catchupBuffer = null;
             } else {
               try {
                 const parsed = JSON.parse(line.slice(6));
-                callbacks.onEvent(parsed, Number(currentId) || 0);
+                if (catchupBuffer) {
+                  // Buffering during catch-up — collect, don't dispatch yet
+                  catchupBuffer.push({ event: currentEvent, data: parsed, seq: Number(currentId) || 0 });
+                } else {
+                  callbacks.onEvent(parsed, Number(currentId) || 0);
+                }
               } catch { /* skip malformed */ }
             }
           }

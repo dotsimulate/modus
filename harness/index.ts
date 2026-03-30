@@ -795,12 +795,17 @@ app.get("/api/sessions/:id/status", async (c) => {
 // Used by both GET /api/sessions/:id/events and POST /api/sessions/interact
 function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
   return streamSSE(c, async (stream: any) => {
-    // Send catch-up events from DB
+    // Send catch-up events from DB, bookended by catchup-start/catchup-end
+    // so the client can batch them into a single React render.
     const pastEvents = getEvents(sessionId, afterSeq);
-    for (const evt of pastEvents) {
-      let data = evt.data;
-      try { data = JSON.stringify({ ...JSON.parse(evt.data), _ts: evt.created_at }); } catch {}
-      await stream.writeSSE({ event: evt.type, data, id: String(evt.seq) });
+    if (pastEvents.length > 0) {
+      await stream.writeSSE({ event: "catchup-start", data: "{}", id: "" });
+      for (const evt of pastEvents) {
+        let data = evt.data;
+        try { data = JSON.stringify({ ...JSON.parse(evt.data), _ts: evt.created_at }); } catch {}
+        await stream.writeSSE({ event: evt.type, data, id: String(evt.seq) });
+      }
+      await stream.writeSSE({ event: "catchup-end", data: "{}", id: "" });
     }
 
     // If session is active, subscribe for live events.
@@ -2816,7 +2821,7 @@ app.post("/api/missions/runs/:id/pause", async (c) => {
 app.post("/api/missions/runs/:id/resume", async (c) => {
   const id = Number(c.req.param("id"));
   if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
-  const result = resumeMissionRun(id);
+  const result = await resumeMissionRun(id);
   if (!result.ok) return c.json(result, 400);
   return c.json(result);
 });

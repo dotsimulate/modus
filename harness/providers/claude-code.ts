@@ -504,6 +504,15 @@ export function createClaudeCodeProvider(): SessionProvider {
         },
       };
 
+      // Log resolved MCP configs for debugging startup failures (especially on Windows)
+      if (hasMcp) {
+        const mcpSummary = Object.entries(resolveEnvVars(mergedMcp)).map(([name, cfg]: [string, any]) => {
+          if (cfg.type === "http" || cfg.url) return `${name}(http→${cfg.url})`;
+          return `${name}(${cfg.command} ${(cfg.args ?? []).join(" ")})`;
+        });
+        console.log(`[claude-code] MCP servers for ${session.tempId}: ${mcpSummary.join(", ")}`);
+      }
+
       const abortController = session.abortController;
 
       // Store provider state

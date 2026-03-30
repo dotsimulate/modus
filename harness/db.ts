@@ -34,7 +34,7 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN draft_text TEXT DEFAULT ''`); } ca
 // Migration: add last_message_at — tracks actual conversation activity (not drafts/status changes)
 try { db.run(`ALTER TABLE sessions ADD COLUMN last_message_at INTEGER`); } catch { /* already exists */ }
 // Backfill: seed last_message_at from updated_at for existing rows
-db.run(`UPDATE sessions SET last_message_at = updated_at WHERE last_message_at IS NULL`);
+try { db.run(`UPDATE sessions SET last_message_at = updated_at WHERE last_message_at IS NULL`); } catch { /* db locked or readonly — will backfill on next clean start */ }
 // Migration: add cwd — working directory / project root for grouping
 try { db.run(`ALTER TABLE sessions ADD COLUMN cwd TEXT`); } catch { /* already exists */ }
 // Migration: rename schedule_name → action_name
@@ -54,7 +54,7 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN title TEXT`); } catch { /* already
 // Migration: add tags — JSON array of string tags (replaces archived column)
 try { db.run(`ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`); } catch { /* already exists */ }
 // Backfill: seed tags from archived column for existing rows
-db.run(`UPDATE sessions SET tags = '["archived"]' WHERE archived = 1 AND tags = '[]'`);
+try { db.run(`UPDATE sessions SET tags = '["archived"]' WHERE archived = 1 AND tags = '[]'`); } catch { /* db locked or readonly */ }
 // Migration: add provider — resolved execution backend for sidebar/display
 try { db.run(`ALTER TABLE sessions ADD COLUMN provider TEXT`); } catch { /* already exists */ }
 // Migration: add ui_state — per-session UI layout persistence (panel widths, open state, etc.)
@@ -62,7 +62,7 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN ui_state TEXT DEFAULT '{}'`); } ca
 // Migration: add archived_at — timestamp when session was archived (for recent-archive browsing)
 try { db.run(`ALTER TABLE sessions ADD COLUMN archived_at INTEGER`); } catch { /* already exists */ }
 // Backfill: seed archived_at from updated_at for already-archived sessions
-db.run(`UPDATE sessions SET archived_at = updated_at WHERE archived = 1 AND archived_at IS NULL`);
+try { db.run(`UPDATE sessions SET archived_at = updated_at WHERE archived = 1 AND archived_at IS NULL`); } catch { /* db locked or readonly */ }
 
 // ── Web Positions (spatial layout for session web view) ──
 db.run(`
@@ -2507,16 +2507,21 @@ export function getDeepAnalytics(
 
 // ── Startup Cleanup ──
 // Mark orphaned running/starting/idle/error sessions as done (harness restarted while they were active)
-db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'idle', 'error')`);
-// Mark orphaned action runs as error (harness crashed mid-run)
-const staleRuns = db.run(`UPDATE action_runs SET status = 'error', error = 'harness crashed during run', completed_at = ${Date.now()} WHERE status = 'running'`);
-if (staleRuns.changes > 0) {
-  console.log(`[db] Cleaned up ${staleRuns.changes} orphaned action run(s) from previous crash`);
-}
-// Mark orphaned executions as done (harness crashed mid-execution)
-const staleExecs = db.run(`UPDATE action_executions SET status = 'done', completed_at = ${Date.now()} WHERE status = 'running'`);
-if (staleExecs.changes > 0) {
-  console.log(`[db] Cleaned up ${staleExecs.changes} orphaned execution(s) from previous crash`);
+// Wrapped in try/catch: on Windows, a ghost process may still hold the DB write lock.
+try {
+  db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'idle', 'error')`);
+  // Mark orphaned action runs as error (harness crashed mid-run)
+  const staleRuns = db.run(`UPDATE action_runs SET status = 'error', error = 'harness crashed during run', completed_at = ${Date.now()} WHERE status = 'running'`);
+  if (staleRuns.changes > 0) {
+    console.log(`[db] Cleaned up ${staleRuns.changes} orphaned action run(s) from previous crash`);
+  }
+  // Mark orphaned executions as done (harness crashed mid-execution)
+  const staleExecs = db.run(`UPDATE action_executions SET status = 'done', completed_at = ${Date.now()} WHERE status = 'running'`);
+  if (staleExecs.changes > 0) {
+    console.log(`[db] Cleaned up ${staleExecs.changes} orphaned execution(s) from previous crash`);
+  }
+} catch (e) {
+  console.warn(`[db] Startup cleanup skipped (db may be locked by another process): ${e}`);
 }
 
 // Prune stream events from all unpruned completed sessions
