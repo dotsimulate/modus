@@ -1180,8 +1180,13 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
     const existing = getSessionByTag(tag);
     if (existing) {
       // Route to existing session — send payload content as a follow-up message
-      const content = (payload as any).content ?? (payload as any).message ?? (payload as any).prompt ?? JSON.stringify(payload);
-      const queued = queueMessage(existing.id, String(content));
+      let content = String((payload as any).content ?? (payload as any).message ?? (payload as any).prompt ?? JSON.stringify(payload));
+      // Carry attachment paths through to the continued session
+      const attachmentPaths = (payload as any).attachmentPaths;
+      if (Array.isArray(attachmentPaths) && attachmentPaths.length > 0) {
+        content += "\n\nAttachments (use Read to view these files):\n" + attachmentPaths.map((p: string) => `- ${p}`).join("\n");
+      }
+      const queued = queueMessage(existing.id, content);
       console.log(`[actions] Webhook "${name}" routed to existing session ${existing.id} (tag: ${tag}, queued: ${queued})`);
       return { ok: true, sessionId: existing.id, continued: true };
     }

@@ -10,7 +10,9 @@ import { resolveSecret } from "../secrets";
 type ModelInfo = { id: string; owned_by?: string };
 
 const CLAUDE_MODELS: ModelInfo[] = [
+  { id: "claude-opus-4-6[1m]", owned_by: "anthropic" },
   { id: "claude-opus-4-6", owned_by: "anthropic" },
+  { id: "claude-sonnet-4-6[1m]", owned_by: "anthropic" },
   { id: "claude-sonnet-4-6", owned_by: "anthropic" },
   { id: "claude-haiku-4-5", owned_by: "anthropic" },
 ];
