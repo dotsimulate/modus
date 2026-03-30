@@ -303,7 +303,12 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
       const data = JSON.stringify(event);
       const seqStr = String(session.seq);
       for (const sub of session.subscribers) {
-        try { sub.write(event.type, data, seqStr); } catch { session.subscribers.delete(sub); }
+        try {
+          const result = sub.write(event.type, data, seqStr);
+          if (result && typeof result.catch === "function") {
+            result.catch(() => { session.subscribers.delete(sub); });
+          }
+        } catch { session.subscribers.delete(sub); }
       }
     },
 
@@ -482,7 +487,13 @@ function broadcastEventToSession(session: ActiveSession, event: any, seq = sessi
   const data = JSON.stringify(event);
   const seqStr = String(seq);
   for (const sub of session.subscribers) {
-    try { sub.write(event.type, data, seqStr); } catch { session.subscribers.delete(sub); }
+    try {
+      const result = sub.write(event.type, data, seqStr);
+      // sub.write is async — catch rejections to remove dead subscribers
+      if (result && typeof result.catch === "function") {
+        result.catch(() => { session.subscribers.delete(sub); });
+      }
+    } catch { session.subscribers.delete(sub); }
   }
 }
 
@@ -822,9 +833,27 @@ export function queueMessage(sessionId: string, prompt: string, attachments?: Im
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
+  // Set status to "running" synchronously so that SSE subscribers connecting
+  // between now and when the provider actually starts don't hit the grace
+  // timer for "done" sessions and close prematurely. The provider will also
+  // set status = "running" when it begins — this is an early signal.
+  if (session.status === "done" || session.status === "idle") {
+    session.status = "starting";
+    updateSessionStatus(sessionId, "starting");
+  }
+
   // Gather ambient move context (async, fire-and-forget wrapper)
   // We need to do this before sending so context is included in the user message.
-  void _queueMessageAsync(session, sessionId, prompt, attachments, moves);
+  // If this fails, we must restore the session status so it doesn't stay "starting" forever.
+  void _queueMessageAsync(session, sessionId, prompt, attachments, moves).catch((err) => {
+    console.error(`[session-manager] _queueMessageAsync failed for ${sessionId}:`, err);
+    if (session.status === "starting") {
+      session.status = "done";
+      updateSessionStatus(sessionId, "done");
+      persistAndBroadcastEvent(session, { type: "error", message: `Message delivery failed: ${err?.message ?? err}` });
+      persistAndBroadcastEvent(session, { type: "done" });
+    }
+  });
   return true;
 }
 
@@ -974,7 +1003,7 @@ export function stopSession(sessionId: string): boolean {
   session.seq++;
   addEvent(session.sessionId, session.seq, "system", "interrupted", interruptData);
   for (const sub of session.subscribers) {
-    try { sub.write("system", interruptData, String(session.seq)); } catch { session.subscribers.delete(sub); }
+    try { const r = sub.write("system", interruptData, String(session.seq)); r?.catch?.(() => { session.subscribers.delete(sub); }); } catch { session.subscribers.delete(sub); }
   }
 
   // Fire watchers for any action monitoring this session
@@ -1021,7 +1050,7 @@ export function pauseSession(sessionId: string): { ok: boolean; status?: Session
     session.seq++;
     addEvent(session.sessionId, session.seq, "system", "pause_requested", eventData);
     for (const sub of session.subscribers) {
-      try { sub.write("system", eventData, String(session.seq)); } catch { session.subscribers.delete(sub); }
+      try { const r = sub.write("system", eventData, String(session.seq)); r?.catch?.(() => { session.subscribers.delete(sub); }); } catch { session.subscribers.delete(sub); }
     }
     return { ok: true, status: session.status };
   }
@@ -1034,7 +1063,7 @@ export function pauseSession(sessionId: string): { ok: boolean; status?: Session
     session.seq++;
     addEvent(session.sessionId, session.seq, "system", "paused", eventData);
     for (const sub of session.subscribers) {
-      try { sub.write("system", eventData, String(session.seq)); } catch { session.subscribers.delete(sub); }
+      try { const r = sub.write("system", eventData, String(session.seq)); r?.catch?.(() => { session.subscribers.delete(sub); }); } catch { session.subscribers.delete(sub); }
     }
     return { ok: true, status: "paused" };
   }
@@ -1058,7 +1087,7 @@ export function resumeSession(sessionId: string): { ok: boolean; status?: Sessio
   session.seq++;
   addEvent(session.sessionId, session.seq, "system", "resumed", eventData);
   for (const sub of session.subscribers) {
-    try { sub.write("system", eventData, String(session.seq)); } catch { session.subscribers.delete(sub); }
+    try { const r = sub.write("system", eventData, String(session.seq)); r?.catch?.(() => { session.subscribers.delete(sub); }); } catch { session.subscribers.delete(sub); }
   }
 
   if (session.pauseResolver) {
@@ -1294,7 +1323,7 @@ export async function switchProfile(
   };
   addEvent(session.sessionId, session.seq, "system", "switch", JSON.stringify(switchEvent));
   for (const sub of session.subscribers) {
-    try { sub.write("system", JSON.stringify(switchEvent), String(session.seq)); } catch { session.subscribers.delete(sub); }
+    try { const r = sub.write("system", JSON.stringify(switchEvent), String(session.seq)); r?.catch?.(() => { session.subscribers.delete(sub); }); } catch { session.subscribers.delete(sub); }
   }
 
   // Update DB row with new profile

@@ -9,7 +9,7 @@ import { createClaudeCodeProvider } from "./claude-code";
 import { createClaudeCodePtyProvider } from "./claude-code-pty";
 import { createCodexProvider } from "./codex";
 import { createCursorProvider } from "./cursor";
-import { createGeminiCliProvider } from "./gemini-cli";
+// Lazy-imported: Gemini CLI core spams "Experiments loaded" on import
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
 import { existsSync } from "fs";
 import { join } from "path";
@@ -35,7 +35,12 @@ export function getProvider(name: string): SessionProvider {
   } else if (name === "cursor") {
     provider = createCursorProvider();
   } else if (name === "gemini-cli") {
-    provider = createGeminiCliProvider();
+    // Gemini CLI core must NOT be imported at module load time —
+    // it spams "Experiments loaded" + experiment IDs to console on every import.
+    // Use a variable path to prevent Bun from statically resolving the import.
+    const modPath = [".", "gemini-cli"].join("/");
+    const mod = require(modPath);
+    provider = mod.createGeminiCliProvider();
   } else if (PI_PROVIDERS.includes(name as PiProviderName)) {
     provider = createPiAgentProvider(name as PiProviderName);
   } else {

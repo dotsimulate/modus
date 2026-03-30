@@ -8,7 +8,6 @@ import { join, resolve, extname } from "path";
 import { existsSync } from "fs";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { streamSSE } from "hono/streaming";
 import {
   getAllProfiles, getProfile, listProfileNames,
   getProfileConfig, getProfileUiConfig, saveProfile, saveProfileUiConfig, patchProfileUiConfig, deleteProfile, getGlobalConfig, saveGlobalConfig,
@@ -19,7 +18,7 @@ import {
   listProjects, getProjectById, updateProjectPath,
 } from "./profiles";
 import { initProject, getInitStatus } from "./init";
-import { fetchGeminiUsageSnapshot } from "./gemini-usage";
+// Lazy: gemini-usage imports @google/gemini-cli-core which spams "Experiments loaded" on every init
 import { getSessionCommitAttribution } from "./commit-attribution";
 import {
   getUiState, listThemes, listFonts, getTheme, getFont, getActiveTheme, getActiveFont,
@@ -71,7 +70,7 @@ import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watch
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = "0.0.0.0";
 const AUTH_TOKEN = process.env.HARNESS_TOKEN || "";
-const WHISPER_TRANSCRIBE_URL = "http://127.0.0.1:8080/v1/audio/transcriptions";
+const WHISPER_TRANSCRIBE_URL = process.env.WHISPER_URL ?? "http://127.0.0.1:8080/v1/audio/transcriptions";
 const UI_DIST_DIR = resolve(import.meta.dir, "ui/dist");
 const UI_INDEX_PATH = join(UI_DIST_DIR, "index.html");
 const HARNESS_TLS_CERT = process.env.HARNESS_TLS_CERT;
@@ -791,22 +790,83 @@ app.get("/api/sessions/:id/status", async (c) => {
   return c.json({ error: "session not found" }, 404);
 });
 
+// ── SSE direct-stream helpers ──
+// Bypasses Hono's streamSSE (which uses TransformStream — buffered by Bun on Windows).
+// Uses Bun's `type: "direct"` ReadableStream with explicit flush() after each write,
+// ensuring events reach the client immediately on all platforms.
+
+function formatSSE(event: string, data: string, id: string): string {
+  let msg = "";
+  if (event) msg += `event: ${event}\n`;
+  if (id) msg += `id: ${id}\n`;
+  msg += `data: ${data}\n\n`;
+  return msg;
+}
+
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  "Connection": "keep-alive",
+  "Transfer-Encoding": "chunked",
+} as const;
+
+/**
+ * Create an SSE Response using Bun's direct ReadableStream.
+ * The handler receives a writer with auto-flushing write() and a cleanup signal.
+ * When the handler's returned promise resolves, the stream closes.
+ */
+function sseResponse(
+  req: Request,
+  handler: (
+    writer: { write(event: string, data: string, id: string): Promise<void> },
+    signal: AbortSignal,
+  ) => Promise<void>,
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    type: "direct" as any,
+    async pull(controller: any) {
+      const writer = {
+        async write(event: string, data: string, id: string) {
+          controller.write(encoder.encode(formatSSE(event, data, id)));
+          await controller.flush();
+        },
+      };
+      try {
+        await handler(writer, req.signal);
+      } catch (err) {
+        if ((err as any)?.name !== "AbortError") {
+          console.error("[sse] stream handler error:", err);
+        }
+      } finally {
+        try { controller.close(); } catch {}
+      }
+    },
+  });
+  return new Response(stream, { headers: SSE_HEADERS });
+}
+
 // ── Shared SSE streaming helper ──
 // Used by both GET /api/sessions/:id/events and POST /api/sessions/interact
 function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
-  return streamSSE(c, async (stream: any) => {
+  return sseResponse(c.req.raw, async (writer, signal) => {
     // Send catch-up events from DB, bookended by catchup-start/catchup-end
     // so the client can batch them into a single React render.
     const pastEvents = getEvents(sessionId, afterSeq);
     if (pastEvents.length > 0) {
-      await stream.writeSSE({ event: "catchup-start", data: "{}", id: "" });
+      await writer.write("catchup-start", "{}", "");
       for (const evt of pastEvents) {
         let data = evt.data;
         try { data = JSON.stringify({ ...JSON.parse(evt.data), _ts: evt.created_at }); } catch {}
-        await stream.writeSSE({ event: evt.type, data, id: String(evt.seq) });
+        await writer.write(evt.type, data, String(evt.seq));
       }
-      await stream.writeSSE({ event: "catchup-end", data: "{}", id: "" });
+      await writer.write("catchup-end", "{}", "");
     }
+
+    // Check if catch-up already included a "done" event (persisted by emitEvent).
+    // If the session is finished but the replay didn't include "done" (legacy sessions),
+    // we'll synthesize one below to prevent the client entering a reconnect loop.
+    const catchupHadDone = pastEvents.some((e) => e.type === "done");
 
     // If session is active, subscribe for live events.
     // "done" sessions stay in the active map and may receive follow-up messages
@@ -819,7 +879,7 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
       const done = new Promise<void>((r) => { resolve = r; });
 
       const keepAlive = setInterval(async () => {
-        try { await stream.writeSSE({ event: "ping", data: "{}", id: "" }); } catch { /* connection dead */ }
+        try { await writer.write("ping", "{}", ""); } catch { /* connection dead */ }
       }, 30_000);
 
       // Grace timeout for "done" sessions: if no real events arrive within 5s,
@@ -827,35 +887,72 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
       // while giving the async message pipeline time to reactivate the session.
       let graceTimer: ReturnType<typeof setTimeout> | null = null;
       if (active.status === "done") {
-        graceTimer = setTimeout(() => { resolve(); }, 5_000);
+        if (catchupHadDone) {
+          // Client already received the persisted "done" event during catch-up.
+          // No need to keep the stream open — close immediately.
+          resolve!();
+        } else {
+          graceTimer = setTimeout(async () => {
+            // Grace period expired — session is genuinely done but client never
+            // received the "done" event (e.g. it wasn't persisted in older sessions).
+            // Send a synthetic done so the client fires onDone, not onDisconnect.
+            try { await writer.write("done", "{}", "done"); } catch { /* connection dead */ }
+            resolve();
+          }, 5_000);
+        }
       }
 
-      const writer: SSEWriter = {
+      const sseWriter: SSEWriter = {
         async write(event: string, data: string, seqId: string) {
           // Real event arrived — cancel grace timeout if active
           if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
-          await stream.writeSSE({ event, data, id: seqId });
+          const t0 = Date.now();
+          await writer.write(event, data, seqId);
+          const dt = Date.now() - t0;
+          if (dt > 50) console.log(`[sse] slow write: ${event} took ${dt}ms (session=${sessionId})`);
           if (event === "done") resolve();
         },
         close() { resolve(); },
       };
 
-      const unsubscribe = subscribe(sessionId, writer);
-      stream.onAbort(() => {
+      const unsubscribe = subscribe(sessionId, sseWriter);
+
+      // Handle client disconnect via request abort signal
+      const onAbort = () => {
         if (graceTimer) clearTimeout(graceTimer);
         clearInterval(keepAlive);
         unsubscribe();
         resolve();
-      });
+      };
+      signal.addEventListener("abort", onAbort);
 
       await done;
+      signal.removeEventListener("abort", onAbort);
       if (graceTimer) clearTimeout(graceTimer);
       clearInterval(keepAlive);
-    } else {
-      await stream.writeSSE({ event: "done", data: "{}", id: "done" });
+      unsubscribe();
+    } else if (!catchupHadDone) {
+      // Session is not active — send synthetic done so client doesn't hang
+      await writer.write("done", "{}", "done");
     }
   });
 }
+
+// ── SSE buffering diagnostic endpoint ──
+// Sends 10 events at 1-second intervals. If the browser receives them all at once
+// after 10s instead of one-by-one, Bun is buffering HTTP responses on this platform.
+app.get("/api/test-sse", (c) => {
+  return sseResponse(c.req.raw, async (writer) => {
+    for (let i = 0; i < 10; i++) {
+      const ts = Date.now();
+      console.log(`[test-sse] sending event ${i} at ${ts}`);
+      await writer.write("test", JSON.stringify({ i, ts }), String(i));
+      console.log(`[test-sse] sent event ${i}`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    await writer.write("done", "{}", "done");
+  });
+});
 
 // Subscribe to session events (SSE)
 app.get("/api/sessions/:id/events", (c) => {
@@ -866,26 +963,29 @@ app.get("/api/sessions/:id/events", (c) => {
 
 // Global session lifecycle events (SSE) — used by SessionWeb for real-time updates
 app.get("/api/events/sessions", (c) => {
-  return streamSSE(c, async (stream) => {
+  return sseResponse(c.req.raw, async (writer, signal) => {
     let resolve: () => void;
     const done = new Promise<void>((r) => { resolve = r; });
 
     const keepAlive = setInterval(async () => {
-      try { await stream.writeSSE({ event: "ping", data: "{}", id: "" }); } catch { /* dead */ }
+      try { await writer.write("ping", "{}", ""); } catch { /* dead */ }
     }, 30_000);
 
-    const writer = {
+    const globalWriter = {
       async write(data: string) {
-        await stream.writeSSE({ event: "session", data, id: String(Date.now()) });
+        await writer.write("session", data, String(Date.now()));
       },
       close() { resolve(); },
     };
 
-    const unsubscribe = subscribeGlobal(writer);
-    stream.onAbort(() => { clearInterval(keepAlive); unsubscribe(); resolve(); });
+    const unsubscribe = subscribeGlobal(globalWriter);
+    const onAbort = () => { clearInterval(keepAlive); unsubscribe(); resolve(); };
+    signal.addEventListener("abort", onAbort);
 
     await done;
+    signal.removeEventListener("abort", onAbort);
     clearInterval(keepAlive);
+    unsubscribe();
   });
 });
 
@@ -895,29 +995,28 @@ app.get("/api/events/fs", (c) => {
   const watchPath = new URL(c.req.url).searchParams.get("root");
   if (watchPath) startWatching(watchPath);
 
-  return streamSSE(c, async (stream) => {
+  return sseResponse(c.req.raw, async (sseWriter, signal) => {
     let resolve: () => void;
     const done = new Promise<void>((r) => { resolve = r; });
 
     const keepAlive = setInterval(async () => {
-      try { await stream.writeSSE({ event: "ping", data: "{}", id: "" }); } catch { /* dead */ }
+      try { await sseWriter.write("ping", "{}", ""); } catch { /* dead */ }
     }, 30_000);
 
     const unsub = subscribeFsEvents({
       write(event: FsChangeEvent) {
-        stream.writeSSE({
-          event: "fs",
-          data: JSON.stringify(event),
-          id: String(Date.now()),
-        }).catch(() => {});
+        sseWriter.write("fs", JSON.stringify(event), String(Date.now())).catch(() => {});
       },
       close() { resolve(); },
     });
 
-    stream.onAbort(() => { clearInterval(keepAlive); unsub(); resolve(); });
+    const onAbort = () => { clearInterval(keepAlive); unsub(); resolve(); };
+    signal.addEventListener("abort", onAbort);
 
     await done;
+    signal.removeEventListener("abort", onAbort);
     clearInterval(keepAlive);
+    unsub();
   });
 });
 
@@ -2393,6 +2492,7 @@ app.get("/api/account", async (c) => {
 app.get("/api/gemini/usage", async (c) => {
   const params = new URL(c.req.url).searchParams;
   const cwd = params.get("cwd") ?? process.cwd();
+  const { fetchGeminiUsageSnapshot } = await import("./gemini-usage");
   return c.json(await fetchGeminiUsageSnapshot({ cwd }));
 });
 
@@ -3019,7 +3119,7 @@ const server = Bun.serve({
   websocket: terminalWebSocket,
   port: PORT,
   hostname: HOST,
-  idleTimeout: 255,
+  idleTimeout: 0, // disable — SSE streams are long-lived; keepalives handle liveness
   tls: HARNESS_TLS_CERT && HARNESS_TLS_KEY
     ? {
         cert: Bun.file(HARNESS_TLS_CERT),
