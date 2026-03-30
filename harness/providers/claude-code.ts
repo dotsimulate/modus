@@ -12,7 +12,16 @@ import { getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, typ
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { dirname, isAbsolute, join } from "path";
-import { existsSync } from "fs";
+import { existsSync, appendFileSync, mkdirSync } from "fs";
+
+// Dedicated message-flow log — gitignored, append-only, easy to tail
+const MSG_LOG = join(import.meta.dir, "..", ".modus", "msg-flow.log");
+try { mkdirSync(dirname(MSG_LOG), { recursive: true }); } catch {}
+function msgLog(sid: string, event: string, detail: string) {
+  const ts = new Date().toLocaleTimeString("en-US", { hour12: false, fractionalSecondDigits: 3 });
+  const line = `${ts} [${sid}] ${event}: ${detail}\n`;
+  try { appendFileSync(MSG_LOG, line); } catch {}
+}
 import { resolveSecret } from "../secrets";
 import type { ProviderCapabilities } from "./types";
 
@@ -62,6 +71,9 @@ type ClaudeCodeState = {
   thinkingStartedAt?: number;
   thinkingDurationMs?: number;
   stderrBuf: string;
+  /** True while a drainEvents loop is active — prevents overlapping SDK queries */
+  drainActive?: boolean;
+  spawnedAt?: number;
 };
 
 type InputChannel = {
@@ -504,6 +516,11 @@ export function createClaudeCodeProvider(): SessionProvider {
         mcpServers: hasMcp ? resolveEnvVars(mergedMcp) : undefined,
         stderr: (data: string) => {
           const line = data.trim().slice(0, 2000);
+          // Filter Gemini CLI core spam (experiment IDs, flags, .geminiignore warnings)
+          if (line.includes("experimentIds") || line.includes("flagId") || line.includes(".geminiignore") ||
+              line.includes("Experiments loaded") || line.includes("Hook registry initialized") ||
+              line.includes("Hook system initialized") || line.includes("Loaded cached credentials") ||
+              line.startsWith("{") || line.startsWith("]") || line.startsWith("[")) return;
           console.error(`[claude-code] stderr (${session.tempId}):`, line);
           stderrBuf += (stderrBuf ? "\n" : "") + line;
         },
@@ -533,8 +550,11 @@ export function createClaudeCodeProvider(): SessionProvider {
       channel.push(session.initialContent);
 
       // Start the SDK query
+      const spawnedAt = Date.now();
+      console.log(`[claude-code] SPAWN ${session.tempId} at ${new Date(spawnedAt).toLocaleTimeString()}`);
       const q = sdkQuery({ prompt: generator, options: { ...sdkOptions, ...forkOpts, abortController } });
       state.queryObj = q;
+      (state as any).spawnedAt = spawnedAt;
 
       // Background drain loop
       drainEvents(ctx, state, q).catch((err) => {
@@ -573,66 +593,70 @@ export function createClaudeCodeProvider(): SessionProvider {
     sendMessage(ctx: TurnContext, content: MessageContent) {
       const { session } = ctx;
       const state = getState(session);
+      const sid = session.sessionId?.slice(0, 12) ?? session.tempId?.slice(0, 12) ?? "?";
+      msgLog(sid, "sendMessage", `status=${session.status} drainActive=${!!state?.drainActive} pending=${session.pendingMessages?.length ?? 0}`);
       if (!state) {
         throw new Error("claude-code provider state missing during sendMessage");
       }
 
-      if (session.status === "running" || session.status === "starting") {
-        session.pendingMessages.push(content);
+      // Subprocess still alive from previous turn — push directly through input channel.
+      // Check this BEFORE status, because session-manager sets status="starting" before
+      // calling sendMessage, which would cause us to queue instead of reusing.
+      if (state.drainActive && session.status !== "running") {
+        session.initialContent = content;
+        session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+        session.status = "running";
+        session.turnStartedAt = Date.now();
+        state.skipNextPromptPersist = true;
+        updateSessionStatus(session.sessionId, "running");
+        state.input.push(content);
+        msgLog(sid, "REUSE", "pushed to live subprocess via input channel");
+        console.log(`[claude-code] REUSE subprocess for ${session.sessionId} (drainActive, no cold start)`);
         return;
       }
 
-      // Close previous SDK subprocess so its session journal is fully flushed
-      // before the new subprocess reads it via --resume.
-      const oldQuery = state.queryObj;
-      if (oldQuery) {
-        try { state.input.close(); } catch { /* ignore */ }
-        try { oldQuery.close(); } catch { /* ignore */ }
-        state.queryObj = null;
+      if (session.status === "running" || session.status === "starting") {
+        session.pendingMessages.push(content);
+        msgLog(sid, "QUEUED", `status=${session.status} — message stuck until result event or drain exit`);
+        console.log(`[claude-code] queued message for ${session.sessionId} (status=${session.status})`);
+        return;
       }
 
-      // Allow the old subprocess to exit and flush its JSONL session file.
-      // Without this delay, the new subprocess may read stale history.
-      const resumeDelay = oldQuery ? 200 : 0;
-
+      // Idle — resume with fresh SDK query
+      session.abortController = new AbortController();
+      const { generator, channel } = createInputChannel();
+      state.input = channel;
       session.initialContent = content;
       session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+      channel.push(content);
+
+      const sdkOpts = {
+        ...state.sdkOptions,
+        resume: session.sessionId,
+        abortController: session.abortController,
+      };
+      const spawnedAt = Date.now();
+      msgLog(sid, "COLD-START", "spawning new subprocess with --resume");
+      console.log(`[claude-code] SPAWN (resume) ${session.sessionId} at ${new Date(spawnedAt).toLocaleTimeString()}`);
+      const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
+      state.queryObj = newQ;
+      state.spawnedAt = spawnedAt;
       session.status = "running";
       session.turnStartedAt = Date.now();
       state.skipNextPromptPersist = true;
+
       updateSessionStatus(session.sessionId, "running");
 
-      const startResume = () => {
-        session.abortController = new AbortController();
-        const { generator, channel } = createInputChannel();
-        state.input = channel;
-        channel.push(content);
-
-        const sdkOpts = {
-          ...state.sdkOptions,
-          resume: session.sessionId,
-          abortController: session.abortController,
-        };
-        const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
-        state.queryObj = newQ;
-
-        drainEvents(ctx, state, newQ).catch((err) => {
-          console.error(`[claude-code] resume drain error for ${session.sessionId}:`, err);
-          session.status = "error";
-          session.error = String(err);
-          ctx.updateSessionDb({
-            status: "error",
-            costUsd: session.costUsd,
-            lastResponse: session.lastAssistantText?.slice(0, 2000),
-          });
+      drainEvents(ctx, state, newQ).catch((err) => {
+        console.error(`[claude-code] resume drain error for ${session.sessionId}:`, err);
+        session.status = "error";
+        session.error = String(err);
+        ctx.updateSessionDb({
+          status: "error",
+          costUsd: session.costUsd,
+          lastResponse: session.lastAssistantText?.slice(0, 2000),
         });
-      };
-
-      if (resumeDelay > 0) {
-        setTimeout(startResume, resumeDelay);
-      } else {
-        startResume();
-      }
+      });
     },
 
     steerMessage(ctx: TurnContext, content: MessageContent): boolean {
@@ -864,6 +888,9 @@ export function createClaudeCodeProvider(): SessionProvider {
 async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIterable<any>) {
   const { session } = ctx;
   let initSeen = false;
+  let eventCount = 0;
+  const spawnedAt = state.spawnedAt ?? Date.now();
+  state.drainActive = true;
 
   try {
     for await (const msg of q) {
@@ -871,6 +898,10 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
 
       const m = msg as any;
       session.lastEventAt = Date.now();
+      eventCount++;
+      if (eventCount === 1) {
+        console.log(`[claude-code] FIRST EVENT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (type=${m.type} sub=${m.subtype ?? ""})`);
+      }
 
       // Track thinking duration
       if (m.type === "stream_event" && m.event?.type === "content_block_delta") {
@@ -895,6 +926,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       // rekeySession renames the row if SDK provides a different ID.
       if (m.type === "system" && m.subtype === "init" && m.session_id && !initSeen) {
         initSeen = true;
+        console.log(`[claude-code] INIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events so far)`);
         const realId = m.session_id;
         const isResume = session.sessionId === realId && !!getSession(realId);
 
@@ -931,6 +963,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
 
       // Handle result: inject harness timing + token count
       if (m.type === "result") {
+        console.log(`[claude-code] RESULT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events total)`);
         m.harness_duration_ms = Date.now() - session.turnStartedAt;
         if (state.thinkingDurationMs) {
           m.thinking_duration_ms = state.thinkingDurationMs;
@@ -974,11 +1007,13 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         });
 
         session.status = "idle";
+        const sid2 = session.sessionId?.slice(0, 12) ?? "?";
 
         // Flush queued messages
         if (session.pendingMessages.length > 0) {
           const next = session.pendingMessages.shift()!;
           session.initialContent = next;
+          msgLog(sid2, "FLUSH-PENDING", `pushing queued message through live subprocess (${session.pendingMessages.length} remaining)`);
           state.input.push(next);
           session.status = "running";
           session.turnStartedAt = Date.now();
@@ -1026,7 +1061,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       }
       ctx.emitEvent(m);
     }
-    console.log(`[claude-code] drain loop exited normally for ${session.sessionId}, status=${session.status}`);
+    console.log(`[claude-code] DRAIN EXIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms, status=${session.status}, events=${eventCount}`);
 
     // SDK iterator ended. If status is still starting/running, the SDK exited without
     // sending a result event — mark as error so the UI knows.
@@ -1081,14 +1116,18 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     }
   }
 
+  // Drain is no longer actively consuming events.
+  // If post-drain starts a new drain, it re-sets drainActive synchronously (before first await).
+  state.drainActive = false;
+  const sidDrain = session.sessionId?.slice(0, 12) ?? "?";
+  msgLog(sidDrain, "DRAIN-EXIT", `status=${session.status} pending=${session.pendingMessages.length} events=${eventCount}`);
+
   // Post-drain: handle pending messages after abort
   if (session.status === "idle") {
     if (session.pendingMessages.length > 0) {
-      console.log(`[claude-code] ${session.pendingMessages.length} pending after abort, restarting ${session.sessionId}`);
+      console.log(`[claude-code] ${session.pendingMessages.length} pending after drain exit, restarting ${session.sessionId}`);
 
-      // Close the old query so its subprocess flushes the session journal
-      try { state.input.close(); } catch { /* ignore */ }
-      try { state.queryObj?.close(); } catch { /* ignore */ }
+      // Drain exited — subprocess is dead, cold start unavoidable
       state.queryObj = null;
 
       const next = session.pendingMessages.shift()!;
@@ -1098,26 +1137,23 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       session.turnStartedAt = Date.now();
       state.skipNextPromptPersist = true;
 
-      // Delay to let old subprocess flush JSONL before new one reads it
-      setTimeout(() => {
-        session.abortController = new AbortController();
-        const { generator, channel } = createInputChannel();
-        state.input = channel;
-        channel.push(next);
-        const sdkOpts = { ...state.sdkOptions, resume: session.sessionId, abortController: session.abortController };
-        const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
-        state.queryObj = newQ;
-        drainEvents(ctx, state, newQ).catch((err) => {
-          console.error(`[claude-code] restart drain error for ${session.sessionId}:`, err);
-          session.status = "error";
-          session.error = String(err);
-          ctx.updateSessionDb({
-            status: "error",
-            costUsd: session.costUsd,
-            lastResponse: session.lastAssistantText?.slice(0, 2000),
-          });
+      session.abortController = new AbortController();
+      const { generator, channel } = createInputChannel();
+      state.input = channel;
+      channel.push(next);
+      const sdkOpts = { ...state.sdkOptions, resume: session.sessionId, abortController: session.abortController };
+      const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
+      state.queryObj = newQ;
+      drainEvents(ctx, state, newQ).catch((err) => {
+        console.error(`[claude-code] restart drain error for ${session.sessionId}:`, err);
+        session.status = "error";
+        session.error = String(err);
+        ctx.updateSessionDb({
+          status: "error",
+          costUsd: session.costUsd,
+          lastResponse: session.lastAssistantText?.slice(0, 2000),
         });
-      }, 200);
+      });
       return;
     }
     return;
@@ -1133,5 +1169,5 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     });
   }
 
-  ctx.broadcastEvent({ type: "done" });
+  ctx.emitEvent({ type: "done" });
 }
