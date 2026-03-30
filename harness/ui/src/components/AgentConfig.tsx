@@ -308,7 +308,7 @@ export function AgentConfig({
 function providerSeedModel(provider: string): string {
   if (provider === "codex") return "gpt-5.1-codex";
   if (provider === "gemini-cli") return "auto-gemini-3";
-  if (provider === "claude-code" || provider === "anthropic") return "claude-opus-4-6";
+  if (provider === "claude-code" || provider === "anthropic") return "claude-opus-4-6[1m]";
   return "";
 }
 
