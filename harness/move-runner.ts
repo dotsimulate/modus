@@ -51,6 +51,7 @@ const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
 const TOKEN_CLEANUP_INTERVAL_MS = 60_000;  // sweep every 60s
 const GATHER_TIMEOUT_MS = 10_000;          // 10s timeout for gather()
+const ACTIVATE_GATHER_TIMEOUT_MS = 120_000; // 2min timeout for widget-first activate (user-triggered, may do heavy work)
 
 // ── Token Store (in-memory) ──
 
@@ -1399,7 +1400,7 @@ export async function activateAttachedMove(opts: {
       const result = await Promise.race([
         mod.gather(moveCtx),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("gather() timed out")), GATHER_TIMEOUT_MS)
+          setTimeout(() => reject(new Error("gather() timed out")), ACTIVATE_GATHER_TIMEOUT_MS)
         ),
       ]);
       if (result === null) return { ok: false, error: "gather() returned null — activation skipped" };

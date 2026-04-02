@@ -28,7 +28,9 @@ import { createHash } from "crypto";
 const HARNESS_DIR = import.meta.dir;
 const REPO_DIR = resolve(HARNESS_DIR, "..");
 const LOG_FILE = join(HARNESS_DIR, "watchdog.log");
-const PORT = Number(process.env.HARNESS_PORT ?? 3777);
+const BASE_PORT = Number(process.env.HARNESS_PORT ?? 3777);
+const PORT_SCAN_RANGE = 5; // try BASE_PORT through BASE_PORT+4 when ghost socket detected
+let activePort = BASE_PORT; // may change if ghost socket forces port rotation
 const VITE_PORT = 5180;
 const BASE_DELAY_MS = Number(process.env.MODUS_RESTART_DELAY ?? 3000);
 const MAX_DELAY_MS = 60_000;
@@ -58,7 +60,7 @@ let stopping = false;
  */
 async function requestGracefulShutdown(): Promise<boolean> {
   try {
-    const resp = await fetch(`http://127.0.0.1:${PORT}/api/internal/shutdown`, {
+    const resp = await fetch(`http://127.0.0.1:${activePort}/api/internal/shutdown`, {
       method: "POST",
       signal: AbortSignal.timeout(3_000),
     });
@@ -180,7 +182,7 @@ function startHealthPolling(proc: ReturnType<typeof Bun.spawn>) {
     if (inFlight || currentProc !== proc || stopping) return;
     inFlight = true;
     try {
-      const resp = await fetch(`http://127.0.0.1:${PORT}/health`, {
+      const resp = await fetch(`http://127.0.0.1:${activePort}/health`, {
         signal: AbortSignal.timeout(HEALTH_POLL_TIMEOUT_MS),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -241,44 +243,85 @@ async function waitForPortFree(port: number, timeoutMs = 30_000, intervalMs = 50
 }
 
 /**
- * On Windows, find the PID listening on a port and force-kill it.
- * Uses escalating strategies: taskkill /T /F → Stop-Process → image name kill.
+ * On Windows, get the PID that netstat reports as owning a LISTENING port.
+ * Returns the PID string, or null if nothing is listening.
  */
-function killPortHolder(port: number, escalate = false) {
-  if (process.platform !== "win32") return;
+function getListeningPid(port: number): string | null {
+  if (process.platform !== "win32") return null;
   try {
     const result = Bun.spawnSync(["powershell", "-NoProfile", "-Command",
       `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue).OwningProcess`
     ], { stdout: "pipe", stderr: "ignore" });
     const pid = new TextDecoder().decode(result.stdout).trim();
-    if (pid && /^\d+$/.test(pid)) {
-      log("warn", `killing PID ${pid} holding port ${port}${escalate ? " (escalated)" : ""}`);
-      // Primary: taskkill with tree kill
-      const tk = Bun.spawnSync(["taskkill", "/T", "/F", "/PID", pid], { stdout: "pipe", stderr: "pipe" });
-      const tkOut = new TextDecoder().decode(tk.stdout).trim();
-      if (tk.exitCode !== 0) {
-        log("warn", `taskkill /PID ${pid} exit=${tk.exitCode}: ${tkOut || new TextDecoder().decode(tk.stderr).trim()}`);
-      }
-      if (escalate) {
-        // Fallback: PowerShell Stop-Process (handles cases taskkill misses)
-        Bun.spawnSync(["powershell", "-NoProfile", "-Command",
-          `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`
-        ], { stdout: "ignore", stderr: "ignore" });
-      }
+    return (pid && /^\d+$/.test(pid)) ? pid : null;
+  } catch { return null; }
+}
+
+/** Check if a PID corresponds to a running process (Windows). */
+function isProcessAlive(pid: string): boolean {
+  try {
+    const result = Bun.spawnSync(["tasklist", "/FI", `PID eq ${pid}`, "/NH"], {
+      stdout: "pipe", stderr: "ignore",
+    });
+    const out = new TextDecoder().decode(result.stdout);
+    // tasklist prints "INFO: No tasks are running which match..." when PID doesn't exist
+    return !out.includes("No tasks") && out.includes(pid);
+  } catch { return false; }
+}
+
+/**
+ * On Windows, find the PID listening on a port and force-kill it.
+ * Returns "freed" if the port should be free, "ghost" if the PID is dead
+ * but the kernel still holds the socket (handle leak), or "failed".
+ */
+function killPortHolder(port: number, escalate = false): "freed" | "ghost" | "failed" {
+  if (process.platform !== "win32") return "freed";
+  try {
+    const pid = getListeningPid(port);
+    if (!pid) return "freed"; // nothing listening
+
+    // Check if the owning process actually exists
+    if (!isProcessAlive(pid)) {
+      log("warn", `port ${port} held by ghost PID ${pid} (process dead, kernel socket leak)`);
+      return "ghost";
+    }
+
+    log("warn", `killing PID ${pid} holding port ${port}${escalate ? " (escalated)" : ""}`);
+    // Primary: taskkill with tree kill
+    const tk = Bun.spawnSync(["taskkill", "/T", "/F", "/PID", pid], { stdout: "pipe", stderr: "pipe" });
+    const tkOut = new TextDecoder().decode(tk.stdout).trim();
+    if (tk.exitCode !== 0) {
+      log("warn", `taskkill /PID ${pid} exit=${tk.exitCode}: ${tkOut || new TextDecoder().decode(tk.stderr).trim()}`);
     }
     if (escalate) {
-      // Nuclear: kill all bun.exe — last resort when PID-based kill fails
+      Bun.spawnSync(["powershell", "-NoProfile", "-Command",
+        `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`
+      ], { stdout: "ignore", stderr: "ignore" });
+      // Also kill known child process image names that may hold inherited handles
       log("warn", `killing all bun.exe processes to free port ${port}`);
       Bun.spawnSync(["taskkill", "/F", "/IM", "bun.exe"], { stdout: "ignore", stderr: "ignore" });
     }
-  } catch { /* best effort */ }
+    return "freed";
+  } catch { return "failed"; }
+}
+
+/**
+ * Find a free port starting from basePort, scanning up to PORT_SCAN_RANGE ports.
+ * Returns the first available port, or null if all are in use.
+ */
+async function findFreePort(basePort: number): Promise<number | null> {
+  for (let offset = 0; offset < PORT_SCAN_RANGE; offset++) {
+    const candidate = basePort + offset;
+    if (!(await isPortInUse(candidate))) return candidate;
+  }
+  return null;
 }
 
 /** Wait for both harness and Vite ports to free up. Kills whatever holds them. Returns true if ports are free. */
 async function waitForCleanRestart(): Promise<boolean> {
   // Quick check — ports may already be free
   const [harnessFree, viteFree] = await Promise.all([
-    waitForPortFree(PORT, 3_000),
+    waitForPortFree(activePort, 3_000),
     waitForPortFree(VITE_PORT, 3_000),
   ]);
 
@@ -288,29 +331,58 @@ async function waitForCleanRestart(): Promise<boolean> {
   killOrphanedAgents();
 
   // On Windows: directly kill whatever process holds the port
-  if (!harnessFree) killPortHolder(PORT);
+  let harnessResult: "freed" | "ghost" | "failed" = "freed";
+  if (!harnessFree) harnessResult = killPortHolder(activePort);
   if (!viteFree) killPortHolder(VITE_PORT);
+
+  // Ghost socket detected — the owning PID is dead, killing won't help.
+  // Rotate to a nearby free port instead of looping forever.
+  if (harnessResult === "ghost") {
+    log("warn", `ghost socket on port ${activePort} — scanning for free port...`);
+    const freePort = await findFreePort(BASE_PORT);
+    if (freePort) {
+      log("info", `rotating harness to port ${freePort} (ghost socket on ${activePort})`);
+      activePort = freePort;
+      // Vite port may still need freeing
+      if (!viteFree) {
+        await waitForPortFree(VITE_PORT, 10_000, 500);
+      }
+      return true;
+    }
+    log("error", `no free port in range ${BASE_PORT}–${BASE_PORT + PORT_SCAN_RANGE - 1}`);
+    return false;
+  }
 
   // Wait for ports to actually free after kills
   const [h, v] = await Promise.all([
-    !harnessFree ? waitForPortFree(PORT, 15_000, 500) : Promise.resolve(true),
+    !harnessFree ? waitForPortFree(activePort, 15_000, 500) : Promise.resolve(true),
     !viteFree ? waitForPortFree(VITE_PORT, 15_000, 500) : Promise.resolve(true),
   ]);
 
   if (!h || !v) {
-    const stuck = [!h && PORT, !v && VITE_PORT].filter(Boolean);
+    const stuck = [!h && activePort, !v && VITE_PORT].filter(Boolean);
     log("error", `port(s) ${stuck.join(", ")} still held after kill — escalating`);
-    // Escalated kill: Stop-Process + image name fallback
-    if (!h) killPortHolder(PORT, true);
+    if (!h) {
+      const escalateResult = killPortHolder(activePort, true);
+      if (escalateResult === "ghost") {
+        // Became ghost during escalation — rotate
+        const freePort = await findFreePort(BASE_PORT);
+        if (freePort) {
+          log("info", `rotating harness to port ${freePort} (ghost socket on ${activePort})`);
+          activePort = freePort;
+          if (!v) await waitForPortFree(VITE_PORT, 5_000, 500);
+          return true;
+        }
+      }
+    }
     if (!v) killPortHolder(VITE_PORT, true);
-    // Give Windows TCP stack time to release after escalated kill
     await Bun.sleep(3_000);
     const [h2, v2] = await Promise.all([
-      !h ? waitForPortFree(PORT, 10_000, 500) : Promise.resolve(true),
+      !h ? waitForPortFree(activePort, 10_000, 500) : Promise.resolve(true),
       !v ? waitForPortFree(VITE_PORT, 10_000, 500) : Promise.resolve(true),
     ]);
     if (!h2 || !v2) {
-      const stillStuck = [!h2 && PORT, !v2 && VITE_PORT].filter(Boolean);
+      const stillStuck = [!h2 && activePort, !v2 && VITE_PORT].filter(Boolean);
       log("error", `port(s) ${stillStuck.join(", ")} still held after escalated kill — NOT launching`);
       return false;
     }
@@ -325,7 +397,7 @@ const WATCH_EXTS = new Set([".ts", ".tsx", ".hbs", ".css"]);
 /** Check if harness has active sessions via unauthenticated /health endpoint. */
 async function getActiveSessionCount(): Promise<number> {
   try {
-    const resp = await fetch(`http://127.0.0.1:${PORT}/health`, {
+    const resp = await fetch(`http://127.0.0.1:${activePort}/health`, {
       signal: AbortSignal.timeout(3000),
     });
     if (resp.ok) {
@@ -442,11 +514,11 @@ async function run() {
   let restarts = 0;
   let delay = BASE_DELAY_MS;
 
-  log("info", `watchdog started (port :${PORT}, notify: ${NTFY_TOPIC || "off"}, file-watch: ${WATCH_FILES ? "on" : "off"})`);
+  log("info", `watchdog started (port :${activePort}, notify: ${NTFY_TOPIC || "off"}, file-watch: ${WATCH_FILES ? "on" : "off"})`);
   if (WATCH_FILES) startFileWatcher();
 
   // Ensure ports are free before first launch (zombie from previous run)
-  if (await isPortInUse(PORT) || await isPortInUse(VITE_PORT)) {
+  if (await isPortInUse(activePort) || await isPortInUse(VITE_PORT)) {
     log("warn", "port(s) still held from previous run — cleaning up...");
     if (!await waitForCleanRestart()) {
       log("error", "could not free ports for first launch — waiting 10s and retrying...");
@@ -459,20 +531,29 @@ async function run() {
   }
 
   while (!stopping) {
+    // If we rotated away from BASE_PORT, check if it's free now and go back
+    if (activePort !== BASE_PORT && !(await isPortInUse(BASE_PORT))) {
+      log("info", `base port ${BASE_PORT} is free again — switching back from ${activePort}`);
+      activePort = BASE_PORT;
+    }
+
     const startedAt = Date.now();
     const logBuffer: string[] = [];
 
     log("info", restarts === 0
-      ? "starting modus..."
-      : `restarting modus (attempt #${restarts}, next delay was ${delay / 1000}s)...`
+      ? `starting modus on port ${activePort}...`
+      : `restarting modus on port ${activePort} (attempt #${restarts}, next delay was ${delay / 1000}s)...`
     );
+    if (activePort !== BASE_PORT) {
+      log("warn", `port rotated: using ${activePort} instead of ${BASE_PORT} (ghost socket)`);
+    }
 
     const proc = Bun.spawn(["bun", "run", "dev.ts"], {
       cwd: HARNESS_DIR,
       stdin: "inherit",
       stdout: "inherit",
       stderr: "pipe",
-      env: { ...process.env },
+      env: { ...process.env, HARNESS_PORT: String(activePort) },
     });
     currentProc = proc;
     restarting = false; // new process spawned — re-enable file watcher

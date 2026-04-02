@@ -21,7 +21,8 @@
 import { spawn, type ChildProcess } from "child_process";
 import { createInterface, type Interface as ReadlineInterface } from "readline";
 import { join, dirname, isAbsolute } from "path";
-import { existsSync } from "fs";
+import { existsSync, writeFileSync, mkdirSync } from "fs";
+import { tmpdir } from "os";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import type { ActiveSession, MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
@@ -220,11 +221,20 @@ function buildMcpArgs(ctx: TurnContext): string[] {
   const mcpEntries: Record<string, any> = {};
   for (const [name, config] of Object.entries(mergedMcp)) {
     if ("command" in config) {
-      mcpEntries[name] = {
-        command: config.command,
-        ...(config.args?.length ? { args: config.args } : {}),
-        ...(config.env && Object.keys(config.env).length > 0 ? { env: config.env } : {}),
-      };
+      // Detect `npx mcp-remote <url>` pattern and convert to native HTTP type.
+      // The CLI handles HTTP MCP servers directly — the npx bridge is slow on
+      // Windows and causes startup timeouts that prevent tools from loading.
+      const args = (config as any).args as string[] | undefined;
+      if ((config as any).command === "npx" && args?.[0] === "mcp-remote" && args[1]?.startsWith("http")) {
+        mcpEntries[name] = { type: "http", url: args[1] };
+        console.log(`[claude-code-pty] converted ${name} from npx mcp-remote to native HTTP: ${args[1]}`);
+      } else {
+        mcpEntries[name] = {
+          command: (config as any).command,
+          ...(args?.length ? { args } : {}),
+          ...((config as any).env && Object.keys((config as any).env).length > 0 ? { env: (config as any).env } : {}),
+        };
+      }
     } else if ("url" in config) {
       mcpEntries[name] = {
         ...(config.type ? { type: config.type } : {}),
@@ -237,7 +247,13 @@ function buildMcpArgs(ctx: TurnContext): string[] {
   if (Object.keys(mcpEntries).length === 0) return [];
   const mcpJson = JSON.stringify({ mcpServers: mcpEntries });
   console.log(`[claude-code-pty] mcp-config:`, mcpJson.slice(0, 500));
-  return ["--mcp-config", mcpJson];
+  // Write to temp file instead of passing inline JSON as CLI arg.
+  // On Windows, inline JSON gets mangled by cmd.exe shell escaping.
+  const mcpDir = join(tmpdir(), "modus-mcp");
+  try { mkdirSync(mcpDir, { recursive: true }); } catch {}
+  const mcpFile = join(mcpDir, `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`);
+  writeFileSync(mcpFile, mcpJson, "utf-8");
+  return ["--mcp-config", mcpFile];
 }
 
 // ── Build CLI spawn args ──
@@ -251,6 +267,7 @@ function buildSpawnArgs(ctx: TurnContext, state: PtyState, resumeSessionId?: str
     "--input-format", "stream-json",     // streaming JSON input (stdin stays open)
     "--verbose",                         // include all event types
     "--include-partial-messages",         // streaming deltas
+    "--debug",                           // MCP debug + general debug logging
   ];
 
   // Model
@@ -275,13 +292,19 @@ function buildSpawnArgs(ctx: TurnContext, state: PtyState, resumeSessionId?: str
     args.push("--dangerously-skip-permissions");
   }
 
-  // System prompt
+  // System prompt — write to temp file to avoid Windows command line length limits.
+  // Long system prompts as CLI args get truncated by cmd.exe at 8191 chars,
+  // which can silently drop flags that come after (like --mcp-config).
   const systemPrompt = resolveSystemPrompt(profileDef);
   if (systemPrompt) {
+    const promptDir = join(tmpdir(), "modus-mcp");
+    try { mkdirSync(promptDir, { recursive: true }); } catch {}
+    const promptFile = join(promptDir, `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.txt`);
+    writeFileSync(promptFile, systemPrompt, "utf-8");
     if (profileDef?.promptMode === "custom") {
-      args.push("--system-prompt", systemPrompt);
+      args.push("--system-prompt-file", promptFile);
     } else {
-      args.push("--append-system-prompt", systemPrompt);
+      args.push("--append-system-prompt-file", promptFile);
     }
   }
 
@@ -297,6 +320,8 @@ function buildSpawnArgs(ctx: TurnContext, state: PtyState, resumeSessionId?: str
   // MCP servers
   const mcpArgs = buildMcpArgs(ctx);
   args.push(...mcpArgs);
+  // Only use harness-provided MCP config — ignore CLI's own discovery
+  if (mcpArgs.length > 0) args.push("--strict-mcp-config");
 
   // Project settings
   const loadSettings = opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true;
@@ -855,19 +880,22 @@ export function createClaudeCodePtyProvider(): SessionProvider {
     sendMessage(ctx: TurnContext, content: MessageContent) {
       const { session } = ctx;
       const state = getState(session);
+      const procAlive = state?.proc && !state.proc.killed && state.proc.exitCode === null;
+      console.log(`[claude-code-pty] sendMessage for ${session.sessionId}: status=${session.status} procAlive=${procAlive} needsRestart=${state?.needsRestart} draining=${state?.draining} pending=${session.pendingMessages?.length}`);
       if (!state) {
         throw new Error("claude-code-pty provider state missing during sendMessage");
       }
 
       // If currently running, queue the message
       if (session.status === "running" || session.status === "starting") {
+        console.log(`[claude-code-pty] QUEUED message for ${session.sessionId} (status=${session.status})`);
         session.pendingMessages.push(content);
         return;
       }
 
       // If process died, restart it with --resume
-      if (state.needsRestart || !state.proc || state.proc.killed) {
-        console.log(`[claude-code-pty] process needs restart for ${session.sessionId}, using --resume`);
+      if (state.needsRestart || !state.proc || state.proc.killed || state.proc.exitCode !== null) {
+        console.log(`[claude-code-pty] process needs restart for ${session.sessionId}, using --resume (needsRestart=${state.needsRestart} killed=${state.proc?.killed} exitCode=${state.proc?.exitCode})`);
         state.needsRestart = false;
 
         // Rebuild spawn args with --resume
@@ -921,6 +949,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         message: { role: "user", content },
       });
 
+      console.log(`[claude-code-pty] writing to live process stdin for ${session.sessionId} (pid=${state.proc?.pid})`);
       if (!writeMessageToStdin(state, content)) {
         console.error(`[claude-code-pty] failed to write to stdin — process may have died`);
         state.needsRestart = true;
@@ -946,15 +975,27 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const state = getState(session);
       if (!state) return;
 
-      // Send SIGINT to interrupt current turn without killing the process.
-      // Don't abort the drain loop — let the result event flow through naturally.
+      // Interrupt the current turn without killing the process.
+      // On Linux: SIGINT works directly.
+      // On Windows: SIGINT is a no-op for .cmd wrappers, so we close stdin
+      // which forces the CLI to finish the current turn and emit a result.
       if (state.proc && !state.proc.killed) {
-        state.proc.kill("SIGINT");
+        if (process.platform === "win32") {
+          // Close stdin — CLI will finish current operation and exit cleanly
+          try { state.proc.stdin?.end(); } catch {}
+          state.needsRestart = true; // will need new process for next message
+        } else {
+          state.proc.kill("SIGINT");
+        }
         // If still alive after 5s, force kill
         setTimeout(() => {
           if (state.proc && !state.proc.killed && state.proc.exitCode === null) {
             console.log(`[claude-code-pty] force-killing after SIGINT timeout`);
-            state.proc.kill("SIGTERM");
+            if (process.platform === "win32") {
+              try { Bun.spawnSync(["taskkill", "/T", "/F", "/PID", String(state.proc!.pid)], { stdout: "ignore", stderr: "ignore" }); } catch {}
+            } else {
+              state.proc.kill("SIGTERM");
+            }
             state.needsRestart = true;
             session.abortController.abort();
           }

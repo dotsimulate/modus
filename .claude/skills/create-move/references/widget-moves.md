@@ -217,6 +217,16 @@ Follow the compact panel CSS guide (`TODO/2026-03-19-compact-panel-css-guide.md`
 - Use `--font-mono` for data-heavy content
 - Set `accent-color` on native form controls
 
+## Timeouts and heavy work
+
+- **Auto-gather** (persistent, ambient): 10s. Must return fast.
+- **User-initiated activation** (widget `activate()`, user invoke): **2 minutes**.
+
+**Widget-first moves that need to launch processes or create sessions MUST do it
+in gather().** Ops (handlers) have NO `ctx.run()` and NO `ctx.harness` — only
+`ctx.state`, `ctx.notify`, `ctx.store`. The 2-minute activation timeout exists for
+exactly this use case. Put heavy async work in gather(), triggered by `activate()`.
+
 ## Shipped examples
 
 | Move | Pattern | Notable |
