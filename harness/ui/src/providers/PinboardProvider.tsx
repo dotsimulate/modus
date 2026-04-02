@@ -1,8 +1,7 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
-import { useSession } from "./SessionProvider";
-import { modus } from "../modusClient";
-
-const STORAGE_KEY = "mo:pinboards";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useProfiles } from "./ProfileProvider";
+import { API_BASE, authHeaders } from "../modusClient";
+import { onUiEvent } from "../sessionStore";
 
 export type PinGroup = {
   id: string;
@@ -47,54 +46,78 @@ export function usePinboard() {
   return useContext(PinboardContext);
 }
 
-function load(): PinboardState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultState();
-    const parsed = JSON.parse(raw) as Partial<PinboardState>;
-    const groups = Array.isArray(parsed.groups) ? parsed.groups.filter(
-      (g) => g && typeof g.id === "string" && typeof g.name === "string" && Array.isArray(g.paths)
-    ) : [];
-    if (groups.length === 0) return defaultState();
-    const activeGroupId = typeof parsed.activeGroupId === "string"
-      ? (groups.find(g => g.id === parsed.activeGroupId) ? parsed.activeGroupId : groups[0].id)
-      : groups[0].id;
-    return { groups, activeGroupId };
-  } catch {
-    return defaultState();
-  }
-}
-
 function defaultState(): PinboardState {
   const id = crypto.randomUUID();
   return { groups: [{ id, name: "main", paths: [] }], activeGroupId: id };
 }
 
-function save(state: PinboardState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {}
-}
-
 export function PinboardProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<PinboardState>(() => load());
-  const { activeSession } = useSession();
+  const [state, setState] = useState<PinboardState>(() => defaultState());
+  const { activeCwd } = useProfiles();
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cwdRef = useRef(activeCwd);
+  cwdRef.current = activeCwd;
+
+  // Load from backend when cwd changes
+  useEffect(() => {
+    if (!activeCwd) return;
+    fetch(`${API_BASE}/api/pinboards?cwd=${encodeURIComponent(activeCwd)}`, { headers: authHeaders() })
+      .then((r) => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+      .then((data: PinboardState) => {
+        if (!data.groups || data.groups.length === 0) {
+          setState(defaultState());
+        } else {
+          const activeGroupId = typeof data.activeGroupId === "string"
+            && data.groups.find((g: PinGroup) => g.id === data.activeGroupId)
+            ? data.activeGroupId : data.groups[0].id;
+          setState({ groups: data.groups, activeGroupId });
+        }
+      })
+      .catch(() => setState(defaultState()));
+  }, [activeCwd]);
+
+  // Debounced save to backend
+  const persist = useCallback((next: PinboardState) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const cwd = cwdRef.current;
+      if (!cwd) return;
+      fetch(`${API_BASE}/api/pinboards?cwd=${encodeURIComponent(cwd)}`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify(next),
+      }).catch(() => {});
+    }, 300);
+  }, []);
 
   const update = useCallback((updater: (s: PinboardState) => PinboardState) => {
     setState((prev) => {
       const next = updater(prev);
-      save(next);
+      persist(next);
       return next;
+    });
+  }, [persist]);
+
+  // Listen for backend "set-pins" UI events (agent-driven pin changes)
+  useEffect(() => {
+    return onUiEvent("set-pins", (_sessionId, event) => {
+      if (Array.isArray(event.paths)) {
+        // Reload from backend to get the authoritative state
+        const cwd = cwdRef.current;
+        if (!cwd) return;
+        fetch(`${API_BASE}/api/pinboards?cwd=${encodeURIComponent(cwd)}`, { headers: authHeaders() })
+          .then((r) => r.json())
+          .then((data: PinboardState) => {
+            if (data.groups && data.groups.length > 0) {
+              setState(data);
+            }
+          })
+          .catch(() => {});
+      }
     });
   }, []);
 
-  // Sync active group paths to session UI state so server-side moves can read live pinboard state
   const activeGroup = state.groups.find((g) => g.id === state.activeGroupId) ?? null;
-  useEffect(() => {
-    const sessionId = activeSession?.id;
-    if (!sessionId || sessionId.startsWith("pending-")) return;
-    modus.saveSessionUiState(sessionId, { pinnedFiles: activeGroup?.paths ?? [] }).catch(() => {});
-  }, [activeGroup?.paths, activeSession?.id]);
 
   const setActiveGroup = useCallback((id: string) => {
     update((s) => ({ ...s, activeGroupId: id }));

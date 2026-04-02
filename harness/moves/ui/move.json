@@ -1,0 +1,11 @@
+{
+  "name": "ui",
+  "label": "UI Panel Access",
+  "description": "Grant the agent access to the viewing panel — show files and manage pinned file groups.",
+  "icon": "layout",
+  "mode": "inline",
+  "inputs": [],
+  "submit": { "required": false },
+  "session": { "afterSubmit": "continue" },
+  "tags": ["ui", "tooling"]
+}

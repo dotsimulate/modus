@@ -50,8 +50,9 @@ export type MoveWidgetProps = {
    * Only available for mountOnAttach moves. Runs gather() (which reads from
    * state the widget populated via callOp), then sends the resulting prompt
    * as a message to the session. Optional text is appended after gather output.
+   * Throws on failure — wrap in try/catch to handle errors.
    */
-  activate?: (text?: string) => Promise<{ ok: boolean; error?: string }>;
+  activate?: (text?: string) => Promise<void>;
   subscribe?: (listener: (event: MoveWidgetEvent) => void) => () => void;
   /**
    * Attach content to the active chat composer instead of sending immediately.
@@ -207,7 +208,10 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
   const activate = mountedOnAttach
     ? async (text?: string) => {
         const result = await modus.activateAttached(widget.moveName, apiToken, text);
-        return { ok: result.ok, error: result.error };
+        if (!result.ok) {
+          throw new Error(result.error ?? "activate() failed");
+        }
+        return { ok: true as const };
       }
     : undefined;
 

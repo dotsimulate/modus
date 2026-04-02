@@ -684,6 +684,7 @@ app.post("/api/sessions/interact", async (c) => {
         providerControls: body.providerControls ?? storedConfig?.providerControls,
         loadProjectSettings: body.loadProjectSettings ?? storedConfig?.loadProjectSettings,
         permissionPolicy,
+        moves,
       });
       targetSessionId = session.sessionId;
     }
@@ -710,11 +711,9 @@ app.post("/api/sessions/interact", async (c) => {
       providerControls: body.providerControls,
       loadProjectSettings: body.loadProjectSettings,
       permissionPolicy,
+      moves,
     });
     targetSessionId = session.sessionId;
-    // Note: per-request moves on new sessions are not yet supported —
-    // profile moves are activated by startSessionWithMoves automatically.
-    // Per-request moves work on subsequent messages via queueMessage.
   }
 
   if (shouldSubscribe) {
@@ -1333,6 +1332,34 @@ app.patch("/api/ui/sessions/:id/state", async (c) => {
   const body = await c.req.json();
   const updated = patchSessionUiState(c.req.param("id"), body);
   return c.json(updated);
+});
+
+// ── Pinboards ──
+// Project-scoped pin groups stored in .modus/state/pinboards.json
+
+app.get("/api/pinboards", async (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ groups: [], activeGroupId: null });
+  const { join } = await import("path");
+  const { readFile } = await import("fs/promises");
+  try {
+    const raw = await readFile(join(cwd, ".modus", "state", "pinboards.json"), "utf-8");
+    return c.json(JSON.parse(raw));
+  } catch {
+    return c.json({ groups: [], activeGroupId: null });
+  }
+});
+
+app.put("/api/pinboards", async (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const { join } = await import("path");
+  const { writeFile, mkdir } = await import("fs/promises");
+  const body = await c.req.json();
+  const dir = join(cwd, ".modus", "state");
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "pinboards.json"), JSON.stringify(body, null, 2), "utf-8");
+  return c.json(body);
 });
 
 // ── Directory Browser ──

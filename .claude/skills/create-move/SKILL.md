@@ -577,3 +577,26 @@ interface MoveModule {
 - **Widget CSS**: Put styles in `widget.css` next to `widget.tsx`. Auto-loaded by
   harness. Use `var(--*)` color tokens, `calc(Npx * var(--font-scale, 1))` for fonts.
 - **No core edits needed** — moves are self-contained in `.modus/moves/<name>/`.
+
+
+### Timeouts
+
+- **Auto-gather** (persistent, ambient): 10s. Must return fast.
+- **User-initiated activation** (widget `activate()`, user invoke): **2 minutes**.
+  This is where heavy work goes — launching processes, polling services, creating sessions.
+
+### Capability split: gather/onSubmit vs handlers
+
+| Capability | `gather()` / `onSubmit()` | handlers (ops) |
+|------------|---------------------------|----------------|
+| `ctx.run()` (shell) | Yes | **No** |
+| `ctx.harness.createSession()` | Yes | **No** |
+| `ctx.harness.sendMessage()` | Yes | **No** |
+| `ctx.state.get/set/delete` | **No** (read from disk directly) | Yes |
+| `ctx.notify()` | No | Yes |
+| `ctx.store/setStore` | Yes (API moves) | Yes |
+
+**Widget-first moves that need to launch processes or create sessions MUST do it
+in gather().** Ops are for lightweight state management only. The 2-minute activation
+timeout exists for exactly this use case — gather() is the right place for heavy
+async orchestration triggered by widget `activate()`.

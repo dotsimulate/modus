@@ -50,6 +50,7 @@ agent_memory/memory/
 .modus/moves/nano-banana/state/
 .modus/moves/nano-banana/outputs/
 .modus/moves/council/state/
+.modus/state/
 
 # Scraps, research, and local experiments
 TODO/

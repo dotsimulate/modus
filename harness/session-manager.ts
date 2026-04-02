@@ -428,6 +428,8 @@ export type StartSessionOpts = {
   branchMessageUUID?: string;
   /** Per-session permission policy override — takes precedence over profile permissionPolicy */
   permissionPolicy?: "bypass" | "ask" | { default: "approve" | "ask"; autoApprove?: string[]; requireApproval?: string[] };
+  /** Per-request moves to activate on the first message (merged with profile moves) */
+  moves?: { name: string; inputs?: Record<string, unknown> }[];
 };
 
 function resolveSessionCwd(cwd?: string): string {
@@ -763,10 +765,12 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
 export async function startSessionWithMoves(opts: StartSessionOpts): Promise<ActiveSession> {
   const baseCwd = resolveSessionCwd(opts.cwd);
   const profileDef = opts.profile ? getProfile(opts.profile, baseCwd) : undefined;
-  const profileMoves = profileDef?.moves;
+  const profileMoves = profileDef?.moves ?? [];
+  const requestMoves = opts.moves ?? [];
+  const allMoves = [...profileMoves, ...requestMoves];
 
   // No moves declared → fast path, just start normally
-  if (!profileMoves?.length) {
+  if (!allMoves.length) {
     return startSession(opts);
   }
 
@@ -776,12 +780,15 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
 
   // Phase 1: gather inline (non-persistent) moves before session starts
   const activateMoveBindings = getActivateMoveBindings();
+  const logPrefix = requestMoves.length
+    ? `profile:${opts.profile ?? "none"}+request`
+    : `profile:${opts.profile}`;
   const phase1 = await activateMoveBindings(
-    profileMoves,
+    allMoves,
     "", // no session ID yet
     resolvedCwd,
     opts.userProfile,
-    { persistentOnly: false, logPrefix: `profile:${opts.profile}` },
+    { persistentOnly: false, logPrefix },
   );
 
   // Prepend inline move context to the prompt
@@ -815,11 +822,11 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
 
   // Phase 2: activate persistent moves on the real session
   await activateMoveBindings(
-    profileMoves,
+    allMoves,
     session.sessionId,
     resolvedCwd,
     opts.userProfile,
-    { persistentOnly: true, logPrefix: `profile:${opts.profile}` },
+    { persistentOnly: true, logPrefix },
   );
 
   return session;
