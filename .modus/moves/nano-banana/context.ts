@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
-import { resolveSecret } from "../../../harness/secrets";
 import type { MoveContext, MoveApiContext, MoveApiHandler } from "../../../harness/move-types";
 
 const OUTPUTS_DIR = join(import.meta.dirname, "outputs");
@@ -37,7 +36,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
     );
   }
 
-  const apiKey = resolveSecret("GEMINI_API_KEY");
+  const apiKey = ctx.secrets.resolve("GEMINI_API_KEY");
   const keyStatus = apiKey ? "configured" : "NOT SET — add GEMINI_API_KEY to ~/.config/agent-dev-zone/secrets.env";
 
   return [
@@ -67,11 +66,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
   ].join("\n");
 }
 
-async function callNanoBanana(prompt: string, model: string): Promise<{ imageData: string; mimeType: string } | { error: string }> {
-  const apiKey = resolveSecret("GEMINI_API_KEY");
-  if (!apiKey) {
-    return { error: "GEMINI_API_KEY not configured. Add it to ~/.config/agent-dev-zone/secrets.env" };
-  }
+async function callNanoBanana(prompt: string, model: string, apiKey: string): Promise<{ imageData: string; mimeType: string } | { error: string }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const body = {
@@ -139,6 +134,11 @@ export const handlers: Record<string, MoveApiHandler> = {
 
     ensureOutputsDir();
 
+    const apiKey = ctx.secrets.resolve("GEMINI_API_KEY");
+    if (!apiKey) {
+      return { ok: false, error: "GEMINI_API_KEY not configured. Add it to ~/.config/agent-dev-zone/secrets.env" };
+    }
+
     const state = (await ctx.state.get<{ count: number | null; freeform: boolean; unique: boolean; model: string }>()) ?? {
       count: 1, freeform: false, unique: false, model: MODEL_MAP["nano-banana-2"],
     };
@@ -150,7 +150,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     const errors: string[] = [];
 
     for (let i = 0; i < count; i++) {
-      const result = await callNanoBanana(prompt, model);
+      const result = await callNanoBanana(prompt, model, apiKey);
       if ("error" in result) {
         errors.push(result.error);
         continue;

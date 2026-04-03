@@ -92,6 +92,8 @@ type PtyState = {
   lifetimeTokens: { input: number; output: number; cached: number };
   /** Whether the process died and needs restart on next sendMessage */
   needsRestart: boolean;
+  /** Force-kill timer from abort() — must be cleared on new sendMessage */
+  forceKillTimer: ReturnType<typeof setTimeout> | null;
   /** CLI args used to spawn — stored for restart */
   spawnArgs: string[];
   spawnEnv: Record<string, string>;
@@ -805,6 +807,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         thinkingDurationMs: undefined,
         lifetimeTokens: { input: 0, output: 0, cached: 0 },
         needsRestart: false,
+        forceKillTimer: null,
         spawnArgs: args,
         spawnEnv: env,
         spawnCwd: resolvedCwd,
@@ -886,8 +889,15 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         throw new Error("claude-code-pty provider state missing during sendMessage");
       }
 
+      // Cancel any pending force-kill timer from a previous abort — the process
+      // handled SIGINT gracefully and we're reusing it for a new turn.
+      if (state.forceKillTimer) {
+        clearTimeout(state.forceKillTimer);
+        state.forceKillTimer = null;
+      }
+
       // If currently running, queue the message
-      if (session.status === "running" || session.status === "starting") {
+      if (session.status === "running" || (session.status === "starting" && state.draining)) {
         console.log(`[claude-code-pty] QUEUED message for ${session.sessionId} (status=${session.status})`);
         session.pendingMessages.push(content);
         return;
@@ -987,8 +997,12 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         } else {
           state.proc.kill("SIGINT");
         }
-        // If still alive after 5s, force kill
-        setTimeout(() => {
+        // If still alive after 5s, force kill.
+        // Store the timer so sendMessage can clear it (prevents killing a
+        // process that has already moved on to a new turn).
+        if (state.forceKillTimer) clearTimeout(state.forceKillTimer);
+        state.forceKillTimer = setTimeout(() => {
+          state.forceKillTimer = null;
           if (state.proc && !state.proc.killed && state.proc.exitCode === null) {
             console.log(`[claude-code-pty] force-killing after SIGINT timeout`);
             if (process.platform === "win32") {

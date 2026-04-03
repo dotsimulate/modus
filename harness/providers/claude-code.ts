@@ -615,7 +615,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         return;
       }
 
-      if (session.status === "running" || session.status === "starting") {
+      if (session.status === "running" || (session.status === "starting" && state.drainActive)) {
         session.pendingMessages.push(content);
         msgLog(sid, "QUEUED", `status=${session.status} — message stuck until result event or drain exit`);
         console.log(`[claude-code] queued message for ${session.sessionId} (status=${session.status})`);
@@ -1086,8 +1086,13 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       state.queryObj = null;
     }
   } catch (err: any) {
-    // stopSession / switchProfile may have already set status — skip if handled
-    if (session.status === "idle") return;
+    // stopSession / switchProfile may have already set status — skip if handled.
+    // MUST clear drainActive before returning so sendMessage doesn't take the
+    // REUSE path with a dead subprocess and closed input channel.
+    if (session.status === "idle") {
+      state.drainActive = false;
+      return;
+    }
 
     console.error(`[claude-code] drain caught for ${session.sessionId}:`, err);
     const isAbort = err?.name === "AbortError" || err?.type === "abort"

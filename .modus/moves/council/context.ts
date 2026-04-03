@@ -4,13 +4,6 @@ import type {
   MoveApiHandler,
   MoveStateAPI,
 } from "../../../harness/move-types";
-import {
-  buildStateApi,
-  watchMoveSessionTurns,
-} from "../../../harness/move-runner";
-import {
-  queueMessage,
-} from "../../../harness/session-manager";
 import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 
@@ -67,6 +60,7 @@ interface CouncilTracker {
   lastSeenByMember: Map<string, number>;
   harness: {
     sendMessage: (sessionId: string, content: string) => Promise<void>;
+    watchSessionTurns: (sessionId: string, onTurn: (turn: { text: string }) => void) => () => void;
   };
 }
 
@@ -329,20 +323,16 @@ async function advanceTurn(instanceId: string, council: CouncilTracker) {
 }
 
 function sendToMember(council: CouncilTracker, member: CouncilMember, prompt: string) {
-  const queued = queueMessage(member.sessionId, prompt);
-  if (!queued) {
-    council.harness.sendMessage(member.sessionId, prompt).catch((err: Error) => {
-      console.error(`[council] Failed to send to ${member.name}:`, err.message);
-    });
-  }
+  council.harness.sendMessage(member.sessionId, prompt).catch((err: Error) => {
+    console.error(`[council] Failed to send to ${member.name}:`, err.message);
+  });
 }
 
 // ── gather() ──
 
 export async function gather(ctx: MoveContext): Promise<string> {
   const instanceId = ctx.instanceId!;
-  const stateApi = buildStateApi(instanceId, "council", ctx.cwd, true);
-  const stored = await stateApi.get<CouncilSetup>();
+  const stored = await ctx.state.get<CouncilSetup>();
 
   if (!stored?.topic || !stored?.members?.length) {
     return "Council not configured. Use the widget to set up the council first.";
@@ -379,22 +369,25 @@ export async function gather(ctx: MoveContext): Promise<string> {
     turnIndex: 0,
     status: "initializing",
   };
-  await stateApi.set(state);
+  await ctx.state.set(state);
 
   // Set up exchange watchers
   const watchers: Array<() => void> = [];
   const tracker: CouncilTracker = {
-    stateApi,
+    stateApi: ctx.state,
     state,
     watchers,
     initialized: new Set(),
     lastSeenByMember: new Map(),
-    harness: { sendMessage: ctx.harness.sendMessage },
+    harness: {
+      sendMessage: ctx.harness.sendMessage,
+      watchSessionTurns: ctx.harness.watchSessionTurns,
+    },
   };
   councils.set(instanceId, tracker);
 
   for (const member of members) {
-    const unsub = watchMoveSessionTurns(member.sessionId, (turn) => {
+    const unsub = ctx.harness.watchSessionTurns(member.sessionId, (turn) => {
       onMemberExchange(instanceId, member, turn.text);
     });
     watchers.push(unsub);
@@ -457,8 +450,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     if (council) {
       return { ok: true, message: JSON.stringify(council.state) };
     }
-    const stateApi = buildStateApi(ctx.instanceId, "council", ctx.cwd, true);
-    const state = await stateApi.get<CouncilState>();
+    const state = await ctx.state.get<CouncilState>();
     if (!state) return { ok: false, error: "No active council" };
     return { ok: true, message: JSON.stringify(state) };
   },
@@ -472,8 +464,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     if (council) {
       state = council.state;
     } else {
-      const stateApi = buildStateApi(ctx.instanceId, "council", ctx.cwd, true);
-      state = await stateApi.get<CouncilState>();
+      state = await ctx.state.get<CouncilState>();
     }
     if (!state) return { ok: false, error: "No active council" };
     if (state.status !== "active" && state.status !== "judging")
@@ -488,8 +479,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     });
 
     if (council) council.state = state;
-    const stateApi = buildStateApi(ctx.instanceId, "council", ctx.cwd, true);
-    await stateApi.set(state);
+    await ctx.state.set(state);
 
     return {
       ok: true,
@@ -500,10 +490,14 @@ export const handlers: Record<string, MoveApiHandler> = {
   "read-instance": async (ctx: MoveApiContext, data: Record<string, unknown>) => {
     const targetId = data.instanceId as string;
     if (!targetId) return { ok: false, error: "instanceId required" };
-    const stateApi = buildStateApi(targetId, "council", ctx.cwd, true);
-    const state = await stateApi.get<CouncilState>();
-    if (!state) return { ok: false, error: `No council found: ${targetId}` };
-    return { ok: true, message: JSON.stringify(state) };
+    const stateFile = join(ctx.cwd, `.modus/moves/council/state/${targetId}.json`);
+    try {
+      const raw = readFileSync(stateFile, "utf-8");
+      const state = JSON.parse(raw) as CouncilState;
+      return { ok: true, message: JSON.stringify(state) };
+    } catch {
+      return { ok: false, error: `No council found: ${targetId}` };
+    }
   },
 
   "list-councils": async (ctx: MoveApiContext) => {
