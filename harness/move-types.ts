@@ -171,6 +171,9 @@ export interface MoveContext {
   run: (cmd: string) => Promise<string>;
   harness: HarnessBridge;
 
+  /** Resolve a secret by name. Checks secrets file first, then process.env. */
+  secrets: MoveSecrets;
+
   /** Attach metadata for tracing/graph rendering (stored as gatheredContext). */
   meta: (key: string, value: unknown) => void;
 
@@ -195,8 +198,17 @@ export interface MoveContext {
   setStore?: (value: unknown) => void;
 
   // ── State API (set when move has api declaration) ──
-  /** Instance state — get/set/delete. Available for API moves in onSubmit. */
+  /** Instance state — get/set/delete. Available for API moves (always wired when api declaration exists). */
   state?: MoveStateAPI;
+}
+
+// ── Move Secrets (safe access to secrets/env vars) ──
+
+export interface MoveSecrets {
+  /** Resolve a secret by name. Checks secrets file first, then process.env. */
+  resolve: (name: string) => string | undefined;
+  /** Check if a secret is configured without exposing the value. */
+  isSet: (name: string) => boolean;
 }
 
 // ── Harness Bridge (server-side operations available to onSubmit) ──
@@ -212,6 +224,19 @@ export interface HarnessBridge {
   sendMessage: (sessionId: string, content: string) => Promise<void>;
   triggerAction: (actionName: string) => Promise<void>;
   notify: (spec: { channel: string; body: string }) => Promise<void>;
+  /** Add a tag to a session. */
+  addSessionTag: (sessionId: string, tag: string) => Promise<void>;
+  /** List all available moves for the current project. */
+  listMoves: () => MoveConfig[];
+  /** Activate a move (inline/branch/background). Returns activation result. */
+  activateMove: (opts: {
+    moveName: string;
+    inputs?: Record<string, unknown>;
+    sessionId?: string;
+    modeOverride?: "inline" | "branch" | "background";
+  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
+  /** Watch a session's assistant turns. Returns an unsubscribe function. */
+  watchSessionTurns: (sessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>) => () => void;
 }
 
 // ── Move DB (read-only queries available to context.ts) ──
@@ -221,6 +246,8 @@ export interface MoveDB {
   getSession(id: string): SessionRef | null;
   searchSessions(query: string, limit?: number): SearchRef[];
   getMoveHistory(moveName: string, limit?: number): MoveRun[];
+  /** Get structured message content (user/assistant turns) for a session. */
+  getSessionMessages(sessionId: string): TurnContent[];
 }
 
 export interface SessionRef {
@@ -434,6 +461,10 @@ export interface MoveApiContext {
   caller: "agent" | "user";
   /** Instance state — get/set/delete */
   state: MoveStateAPI;
+  /** Read-only database queries (sessions, messages, search) */
+  db: MoveDB;
+  /** Resolve secrets by name */
+  secrets: MoveSecrets;
   /**
    * Push a message into the agent's session.
    * Pass an optional typed payload to emit a structured signal the agent can branch on.

@@ -42,6 +42,8 @@ import {
 } from "./move-db";
 import { logActivity } from "./activity";
 import { triggerAction } from "./action-runner";
+import { resolveSecret, isSecretSet } from "./secrets";
+import { addSessionTag as dbAddSessionTag } from "./db";
 
 // ── Constants ──
 
@@ -474,6 +476,11 @@ export async function handleMoveApiSubmit(
     cwd: reg.cwd,
     caller,
     state: stateApi,
+    db: buildMoveDB(reg.moveName, reg.cwd),
+    secrets: {
+      resolve: (name: string) => resolveSecret(name),
+      isSet: (name: string) => isSecretSet(name),
+    },
     store: <T = unknown>() => instanceStore.get(reg.instanceId) as T | undefined,
     setStore: (value: unknown) => { instanceStore.set(reg.instanceId, value); },
     insertArtifact: (opts) => {
@@ -1009,6 +1016,11 @@ function buildMoveContext(
   const caps = moveCfg?.capabilities ?? {};
   const trust = resolveTrust(moveCfg);
 
+  // Wire state API for API moves (always available, not just in onSubmit)
+  const instanceId = opts?.instanceId;
+  const persist = moveCfg?.api?.state?.persist ?? false;
+  const state = instanceId ? buildStateApi(instanceId, moveName, cwd, persist) : undefined;
+
   return {
     moveName,
     sessionId,
@@ -1036,12 +1048,17 @@ function buildMoveContext(
       return out.trim();
     },
     harness: buildHarnessBridge(moveName, sessionId, cwd, userProfile, caps, trust),
+    secrets: {
+      resolve: (name: string) => resolveSecret(name),
+      isSet: (name: string) => isSecretSet(name),
+    },
     meta: (key: string, value: unknown) => { metadata[key] = value; },
     token: opts?.token,
     schema: opts?.schema,
     date: new Date().toISOString().split("T")[0],
     apiToken: opts?.apiToken,
-    instanceId: opts?.instanceId,
+    instanceId,
+    state,
   };
 }
 
@@ -1079,6 +1096,9 @@ function buildMoveDB(moveName: string, cwd: string): MoveDB {
     },
     getMoveHistory(mn: string, limit = 10) {
       return getMoveRuns(mn, limit);
+    },
+    getSessionMessages(sessionId: string) {
+      return getSessionMessages(sessionId);
     },
   };
 }
@@ -1142,6 +1162,45 @@ function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: stri
         summary: `${moveName} notify → ${spec.channel}: ${spec.body.slice(0, 80)}`,
         metadata: { moveName, channel: spec.channel },
       });
+    },
+    async addSessionTag(targetSessionId: string, tag: string) {
+      dbAddSessionTag(targetSessionId, tag);
+      logActivity({
+        eventType: "move_add_tag",
+        sessionId: sourceSessionId || undefined,
+        summary: `${moveName} tagged session ${targetSessionId} with "${tag}"`,
+        metadata: { moveName, targetSessionId, tag },
+      });
+    },
+    listMoves() {
+      return listMoves(cwd);
+    },
+    async activateMove(opts) {
+      const result = await activateMove({
+        moveName: opts.moveName,
+        sessionId: opts.sessionId ?? sourceSessionId,
+        inputs: opts.inputs ?? {},
+        cwd,
+        userProfile,
+        modeOverride: opts.modeOverride,
+      });
+      if ("error" in result) throw new Error(result.error);
+      logActivity({
+        eventType: "move_activate_move",
+        sessionId: sourceSessionId || undefined,
+        summary: `${moveName} activated move "${opts.moveName}" (mode: ${result.mode})`,
+        metadata: { moveName, targetMove: opts.moveName, mode: result.mode },
+      });
+      return { token: result.token, mode: result.mode, spawnedSessionId: result.spawnedSessionId, moveRunId: result.moveRunId };
+    },
+    watchSessionTurns(targetSessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>): () => void {
+      logActivity({
+        eventType: "move_watch_session",
+        sessionId: sourceSessionId || undefined,
+        summary: `${moveName} watching turns on session ${targetSessionId}`,
+        metadata: { moveName, targetSessionId },
+      });
+      return watchMoveSessionTurns(targetSessionId, onTurn);
     },
   };
 }
@@ -1845,17 +1904,8 @@ export async function handleSubmit(
         moveToken.sessionId,
         cwd,
         moveToken.userProfile ?? active?.userProfile,
-        { inputs: moveToken.inputs },
+        { inputs: moveToken.inputs, apiToken: moveToken.apiToken, instanceId: moveToken.instanceId },
       );
-      // Carry API contract fields so onSubmit can pass them to spawned sessions
-      if (moveToken.apiToken) ctx.apiToken = moveToken.apiToken;
-      if (moveToken.instanceId) {
-        ctx.instanceId = moveToken.instanceId;
-        // Wire up state API for API moves so onSubmit doesn't need direct harness imports
-        const moveCfg = getMove(moveToken.moveName, cwd);
-        const persist = moveCfg?.api?.state?.persist ?? false;
-        ctx.state = buildStateApi(moveToken.instanceId, moveToken.moveName, cwd, persist);
-      }
       submitResult = await mod.onSubmit(ctx, data, moveToken.inputs);
     }
   } catch (err) {
