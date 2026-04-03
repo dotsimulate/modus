@@ -18,7 +18,7 @@
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import { startSession, getActiveSession, queueMessage, type StartSessionOpts } from "./session-manager";
+import { startSession, queueMessage, type StartSessionOpts } from "./session-manager";
 import { logActivity } from "./activity";
 import {
   insertMissionRun, getMissionRun, listMissionRuns, updateMissionRun,
@@ -788,10 +788,6 @@ function notifyOrchestrator(run: MissionRunRow, response: MissionResponse): void
   const orchId = run.orchestrator_session_id;
   if (!orchId) {
     console.warn(`[mission-runner] No orchestrator session for run ${run.id}`);
-    return;
-  }
-  if (!getActiveSession(orchId)) {
-    console.warn(`[mission-runner] Orchestrator ${orchId} not active for run ${run.id}`);
     return;
   }
   const message = `[MISSION RESPONSE]\n${JSON.stringify(response, null, 2)}`;
