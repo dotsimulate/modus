@@ -16,7 +16,7 @@ import { createInterface } from "readline";
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from "fs";
 import { join, isAbsolute } from "path";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
-import type { ActiveSession, MessageContent } from "../session-manager";
+import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
@@ -24,6 +24,7 @@ import {
   getGlobalConfig, getProfile, getUserProfile, resolveProfilePrompt,
   type McpServerConfig, type Profile,
 } from "../profiles";
+import { cursorAgentSpawnArgv0, resolveCursorAgentExecutable } from "./cursor-resolve-bin";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -86,13 +87,6 @@ function buildCursorInput(content: MessageContent, ctx: TurnContext): string {
     : "Additional profile instructions:";
 
   return `${header}\n${prompt.text}\n\nUser request:\n${userInput}`;
-}
-
-// ── Resolve cursor-agent binary path ──
-
-function resolveCursorAgentBin(): string {
-  // Prefer CURSOR_AGENT_BIN env var, then fall back to PATH lookup
-  return process.env.CURSOR_AGENT_BIN ?? "cursor-agent";
 }
 
 // ── Resolve API key ──
@@ -298,8 +292,8 @@ export function createCursorProvider(): SessionProvider {
       const { session, opts, profile: profileDef } = ctx;
 
       // Pre-check: ensure cursor-agent binary is available
-      const bin = resolveCursorAgentBin();
-      if (!Bun.which(bin)) {
+      if (!resolveCursorAgentExecutable()) {
+        const bin = cursorAgentSpawnArgv0();
         const reason = `Provider binary "${bin}" not found in PATH. Install cursor-agent or set CURSOR_AGENT_BIN to the correct path.`;
         console.error(`[cursor] ${reason}`);
         session.status = "error";
@@ -339,7 +333,7 @@ export function createCursorProvider(): SessionProvider {
       // Startup timeout
       const abortController = session.abortController;
       setTimeout(() => {
-        if (session.status === "starting" && session.abortController === abortController) {
+        if (session.status === "starting" && session.abortController === abortController && !state.sessionId) {
           const reason = "Session failed to start — no response from Cursor within 60s.";
           console.error(`[cursor] startup timeout for ${session.sessionId}`);
           session.status = "error";
@@ -357,8 +351,11 @@ export function createCursorProvider(): SessionProvider {
       const { session } = ctx;
       const state = getState(session);
 
-      if (session.status === "running" || session.status === "starting") {
-        session.pendingMessages.push(content);
+      // session-manager briefly flips idle sessions to "starting" before follow-up
+      // delivery so SSE subscribers stay attached. Once Cursor has a real session
+      // ID, that synthetic "starting" state should not be treated as an active turn.
+      if (session.status === "running" || (session.status === "starting" && !state.sessionId)) {
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
 
@@ -483,7 +480,7 @@ async function runTurn(
   // The prompt is the final positional argument
   args.push(input);
 
-  const bin = resolveCursorAgentBin();
+  const bin = cursorAgentSpawnArgv0();
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined) env[key] = value;
@@ -769,8 +766,8 @@ async function runTurn(
     session.status = "idle";
 
     // Flush queued messages
-    if (session.pendingMessages.length > 0) {
-      const next = session.pendingMessages.shift()!;
+    if (session.pendingDispatch.length > 0) {
+      const next = session.pendingDispatch.shift()!.content;
       session.initialContent = next;
       session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
       session.abortController = new AbortController();
@@ -799,8 +796,8 @@ async function runTurn(
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
 
-      if (session.pendingMessages.length > 0) {
-        const next = session.pendingMessages.shift()!;
+      if (session.pendingDispatch.length > 0) {
+        const next = session.pendingDispatch.shift()!.content;
         session.initialContent = next;
         session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
         session.abortController = new AbortController();

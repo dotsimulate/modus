@@ -20,7 +20,7 @@ import { join } from "path";
 import { getSession, updateSessionStatus } from "../db";
 import { getGlobalConfig, resolveProfilePrompt, type McpServerConfig, type PermissionPolicy, type Profile } from "../profiles";
 import { resolveSecret } from "../secrets";
-import { contentPreview, type ActiveSession, type MessageContent } from "../session-manager";
+import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 
 type GeminiState = {
@@ -617,8 +617,8 @@ async function runTurn(
       lastResponse: session.lastAssistantText.slice(0, 200),
     });
 
-    if (session.pendingMessages.length > 0) {
-      queuedNext = session.pendingMessages.shift()!;
+    if (session.pendingDispatch.length > 0) {
+      queuedNext = session.pendingDispatch.shift()!.content;
     }
   };
 
@@ -996,8 +996,12 @@ export function createGeminiCliProvider(): SessionProvider {
       const { session } = ctx;
       const state = getState(session);
 
-      if (session.status === "running" || session.status === "starting") {
-        session.pendingMessages.push(content);
+      // session-manager uses a temporary "starting" status while handing an
+      // idle follow-up to the provider so SSE clients do not disconnect. Once
+      // Gemini has a persisted session ID, that synthetic state should start
+      // a new turn rather than being treated as an already-running turn.
+      if (session.status === "running" || (session.status === "starting" && state.sessionId === session.tempId)) {
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
 

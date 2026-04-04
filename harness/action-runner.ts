@@ -1187,7 +1187,7 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
         content += "\n\nAttachments (use Read to view these files):\n" + attachmentPaths.map((p: string) => `- ${p}`).join("\n");
       }
       const queued = queueMessage(existing.id, content);
-      console.log(`[actions] Webhook "${name}" routed to existing session ${existing.id} (tag: ${tag}, queued: ${queued})`);
+      console.log(`[actions] Webhook "${name}" routed to existing session ${existing.id} (tag: ${tag}, queued: ${queued.queued})`);
       return { ok: true, sessionId: existing.id, continued: true };
     }
     // No existing session — fall through to fire a new action run.

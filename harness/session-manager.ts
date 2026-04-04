@@ -126,6 +126,18 @@ export type MessageContent = string | Array<
   | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
 >;
 
+export type DispatchMode = "next_turn" | "steer" | "interrupt_then_send";
+export type DispatchState = "idle" | "dispatching_followup";
+
+export type PendingDispatchItem = {
+  id: string;
+  content: MessageContent;
+  mode: DispatchMode;
+  createdAt: number;
+  status: "pending" | "dispatching";
+  source: "user" | "sdk" | "action";
+};
+
 export type ActiveSession = {
   sessionId: string;
   tempId: string;
@@ -147,7 +159,8 @@ export type ActiveSession = {
   initialContent: MessageContent;
   subscribers: Set<SSEWriter>;
   abortController: AbortController;
-  pendingMessages: MessageContent[];
+  dispatchState: DispatchState;
+  pendingDispatch: PendingDispatchItem[];
   turnStartedAt: number;
   cwd?: string;
   /** The project root where .modus/ lives — before profile CWD override is applied.
@@ -183,6 +196,22 @@ export type ActiveSession = {
     additionalDirectories?: string[];
   };
 };
+
+export function createPendingDispatchItem(
+  content: MessageContent,
+  mode: DispatchMode = "next_turn",
+  source: PendingDispatchItem["source"] = "user",
+  status: PendingDispatchItem["status"] = "pending",
+): PendingDispatchItem {
+  return {
+    id: `dispatch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    content,
+    mode,
+    createdAt: Date.now(),
+    status,
+    source,
+  };
+}
 
 // ── Helpers ──
 
@@ -642,7 +671,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     initialContent,
     subscribers: new Set(),
     abortController: new AbortController(),
-    pendingMessages: [],
+    dispatchState: "idle",
+    pendingDispatch: [],
     turnStartedAt: Date.now(),
     cwd: resolvedCwd,
     projectRoot: baseCwd,
@@ -836,37 +866,58 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
 
 export type QueueMessageMoveBinding = { name: string; inputs?: Record<string, unknown> };
 
-export function queueMessage(sessionId: string, prompt: string, attachments?: ImageAttachment[], moves?: QueueMessageMoveBinding[]): boolean {
+function beginFollowupDispatch(session: ActiveSession): void {
+  session.dispatchState = "dispatching_followup";
+}
+
+function endFollowupDispatch(session: ActiveSession): void {
+  session.dispatchState = "idle";
+}
+
+function removePendingDispatch(session: ActiveSession, dispatchId: string): PendingDispatchItem | null {
+  const idx = session.pendingDispatch.findIndex((item) => item.id === dispatchId);
+  if (idx < 0) return null;
+  const [removed] = session.pendingDispatch.splice(idx, 1);
+  return removed ?? null;
+}
+
+export function cancelQueuedDispatch(sessionId: string, dispatchId: string): boolean {
   const session = activeSessions.get(sessionId);
   if (!session) return false;
+  const item = session.pendingDispatch.find((entry) => entry.id === dispatchId);
+  if (!item || item.status !== "pending") return false;
+  removePendingDispatch(session, dispatchId);
+  return true;
+}
 
-  // Set status to "running" synchronously so that SSE subscribers connecting
-  // between now and when the provider actually starts don't hit the grace
-  // timer for "done" sessions and close prematurely. The provider will also
-  // set status = "running" when it begins — this is an early signal.
-  if (session.status === "done" || session.status === "idle") {
-    session.status = "starting";
-    updateSessionStatus(sessionId, "starting");
-  }
+export function queueMessage(
+  sessionId: string,
+  prompt: string,
+  attachments?: ImageAttachment[],
+  moves?: QueueMessageMoveBinding[],
+): { queued: boolean; dispatchId?: string } {
+  const session = activeSessions.get(sessionId);
+  if (!session) return { queued: false };
+
+  beginFollowupDispatch(session);
 
   // Gather ambient move context (async, fire-and-forget wrapper)
   // We need to do this before sending so context is included in the user message.
-  // If this fails, we must restore the session status so it doesn't stay "starting" forever.
-  void _queueMessageAsync(session, sessionId, prompt, attachments, moves).catch((err) => {
+  const pendingId = `dispatch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  void _queueMessageAsync(session, sessionId, pendingId, prompt, attachments, moves).catch((err) => {
     console.error(`[session-manager] _queueMessageAsync failed for ${sessionId}:`, err);
-    if (session.status === "starting") {
-      session.status = "done";
-      updateSessionStatus(sessionId, "done");
-      persistAndBroadcastEvent(session, { type: "error", message: `Message delivery failed: ${err?.message ?? err}` });
-      persistAndBroadcastEvent(session, { type: "done" });
-    }
+    endFollowupDispatch(session);
+    removePendingDispatch(session, pendingId);
+    persistAndBroadcastEvent(session, { type: "error", message: `Message delivery failed: ${err?.message ?? err}` });
+    persistAndBroadcastEvent(session, { type: "done" });
   });
-  return true;
+  return { queued: true, dispatchId: pendingId };
 }
 
 async function _queueMessageAsync(
   session: ActiveSession,
   sessionId: string,
+  dispatchId: string,
   prompt: string,
   attachments?: ImageAttachment[],
   moves?: QueueMessageMoveBinding[],
@@ -918,9 +969,24 @@ async function _queueMessageAsync(
     message: { role: "user", content },
   }));
 
+  const isActiveTurn = session.status === "running" || session.status === "starting";
+  const pendingItem = createPendingDispatchItem(
+    content,
+    "next_turn",
+    "user",
+    isActiveTurn || session.status === "paused" ? "pending" : "dispatching",
+  );
+  pendingItem.id = dispatchId;
+  session.pendingDispatch.push(pendingItem);
+
   // If paused, queue the message — it will be flushed on resume
   if (session.status === "paused") {
-    session.pendingMessages.push(content);
+    endFollowupDispatch(session);
+    return;
+  }
+
+  if (isActiveTurn) {
+    endFollowupDispatch(session);
     return;
   }
 
@@ -945,7 +1011,14 @@ async function _queueMessageAsync(
     cwd: session.cwd,
     additionalDirectories: session.additionalDirectories,
   });
-  session._provider.sendMessage(ctx, content);
+  try {
+    session._provider.sendMessage(ctx, content);
+    removePendingDispatch(session, dispatchId);
+    endFollowupDispatch(session);
+  } catch (err) {
+    endFollowupDispatch(session);
+    throw err;
+  }
 }
 
 /**
@@ -982,7 +1055,7 @@ export function steerMessage(sessionId: string, prompt: string, attachments?: Im
   }
 
   // Provider doesn't support steering — fall back to queue
-  return queueMessage(sessionId, prompt, attachments);
+  return queueMessage(sessionId, prompt, attachments).queued;
 }
 
 export function stopSession(sessionId: string): boolean {
@@ -1001,6 +1074,10 @@ export function stopSession(sessionId: string): boolean {
     pending.resolve({ behavior: "deny", message: "Session interrupted" });
     session.pendingPermissions.delete(id);
   }
+
+  // Interrupting a session should also discard queued next-turn messages.
+  session.pendingDispatch = [];
+  endFollowupDispatch(session);
 
   // Force idle IMMEDIATELY — don't wait for the provider to propagate
   session.status = "idle";
@@ -1103,11 +1180,11 @@ export function resumeSession(sessionId: string): { ok: boolean; status?: Sessio
     updateSessionStatus(session.sessionId, "running");
     session.pauseResolver();
     session.pauseResolver = null;
-  } else if (session.pendingMessages.length > 0) {
+  } else if (session.pendingDispatch.length > 0) {
     // Was paused while idle with queued messages — flush them
-    const next = session.pendingMessages.shift()!;
+    const next = session.pendingDispatch.shift()!;
     const ctx = createTurnContext(session, {
-      prompt: typeof next === "string" ? next : "",
+      prompt: typeof next.content === "string" ? next.content : "",
       profile: session.profile,
       sessionId,
       model: session.model,
@@ -1117,7 +1194,7 @@ export function resumeSession(sessionId: string): { ok: boolean; status?: Sessio
     });
     session.status = "starting";
     updateSessionStatus(session.sessionId, "starting");
-    session._provider.sendMessage(ctx, next);
+    session._provider.sendMessage(ctx, next.content);
   } else {
     // Was paused while idle, no pending messages
     session.status = "idle";
@@ -1315,7 +1392,7 @@ export async function switchProfile(
   session._configOverrides.providerControls = undefined;
   session.additionalDirectories = nextAdditionalDirectories;
   session.abortController = new AbortController();
-  session.pendingMessages = [];
+  session.pendingDispatch = [];
 
   // Step 7: Emit system/switch event + update DB
   session.seq++;

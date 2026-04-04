@@ -25,6 +25,7 @@ export type QueuedMessage = {
   attachments: Attachment[];
   /** True when the message has already been committed to the backend queue (survives navigation) */
   serverQueued?: boolean;
+  dispatchId?: string;
 };
 
 type SessionContextValue = {
@@ -429,8 +430,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       if (isActive) {
         // Commit to backend queue immediately — survives page navigation
-        modus.sendMessage(activeSessionId!, prompt, apiAtts, moves ? { moves } : undefined).catch(() => {});
-        setQueuedMessage({ text: prompt, attachments: sendAttachments, serverQueued: true });
+        modus.sendMessage(activeSessionId!, prompt, apiAtts, moves ? { moves } : undefined)
+          .then((result) => {
+            setQueuedMessage({
+              text: prompt,
+              attachments: sendAttachments,
+              serverQueued: true,
+              dispatchId: result.dispatchId,
+            });
+          })
+          .catch(() => {});
         return;
       }
 
@@ -544,10 +553,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const cancelQueued = useCallback(() => {
     if (!queuedMessage) return;
+    if (queuedMessage.serverQueued && queuedMessage.dispatchId && activeSessionId) {
+      modus.cancelQueuedDispatch(activeSessionId, queuedMessage.dispatchId).catch(() => {});
+    }
     // Restore text back to input
     setInput(queuedMessage.text);
     setQueuedMessage(null);
-  }, [queuedMessage]);
+  }, [activeSessionId, queuedMessage]);
 
   const stop = useCallback(async () => {
     if (activeSessionId) {

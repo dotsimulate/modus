@@ -6,6 +6,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { resolveSecret } from "../secrets";
+import { cursorAgentSpawnArgv0 } from "./cursor-resolve-bin";
 
 type ModelInfo = { id: string; owned_by?: string };
 
@@ -45,8 +46,13 @@ function readCodexModelsCache(): ModelInfo[] {
 /** Fetch models from cursor-agent CLI by parsing its `models` command output. */
 async function fetchCursorModels(): Promise<ModelInfo[]> {
   try {
-    const { execSync } = await import("child_process");
-    const raw = execSync("cursor-agent models 2>/dev/null", { timeout: 15000, encoding: "utf-8" });
+    const { execFileSync } = await import("child_process");
+    const bin = cursorAgentSpawnArgv0();
+    const raw = execFileSync(bin, ["models"], {
+      timeout: 15000,
+      encoding: "utf-8",
+      windowsHide: true,
+    });
     // Parse lines like: "composer-2-fast - Composer 2 Fast"
     const models: ModelInfo[] = [];
     for (const line of raw.split("\n")) {

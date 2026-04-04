@@ -24,7 +24,7 @@ import { join, dirname, isAbsolute } from "path";
 import { existsSync, writeFileSync, mkdirSync } from "fs";
 import { tmpdir } from "os";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
-import type { ActiveSession, MessageContent } from "../session-manager";
+import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { registerExternalTerminal, updateTerminalSession } from "../terminal-manager";
@@ -92,6 +92,8 @@ type PtyState = {
   lifetimeTokens: { input: number; output: number; cached: number };
   /** Whether the process died and needs restart on next sendMessage */
   needsRestart: boolean;
+  /** True after interrupt until the old PTY has fully exited */
+  interrupting: boolean;
   /** Force-kill timer from abort() — must be cleared on new sendMessage */
   forceKillTimer: ReturnType<typeof setTimeout> | null;
   /** CLI args used to spawn — stored for restart */
@@ -469,6 +471,54 @@ function writeMessageToStdin(state: PtyState, content: MessageContent): boolean 
   return true;
 }
 
+function attachPtyExitHandler(ctx: TurnContext, state: PtyState, prefix: string): void {
+  const { session } = ctx;
+  state.proc?.on("exit", (code) => {
+    console.log(`[claude-code-pty] ${prefix} process exited (code=${code}) for ${session.sessionId}`);
+    state.needsRestart = true;
+    state.processExitCode = code;
+    if (session.status === "running" && !state.interrupting) {
+      session.status = "error";
+      session.error = `Claude Code process exited unexpectedly (code ${code})`;
+      ctx.updateSessionDb({
+        status: "error",
+        costUsd: session.costUsd,
+        lastResponse: session.lastAssistantText?.slice(0, 2000),
+      });
+    }
+  });
+}
+
+function restartPtyTurn(ctx: TurnContext, state: PtyState, content: MessageContent): void {
+  const { session } = ctx;
+  console.log(`[claude-code-pty] restarting PTY turn for ${session.sessionId} using --resume`);
+  state.needsRestart = false;
+  state.interrupting = false;
+
+  const { args, env, cwd: newCwd } = buildSpawnArgs(ctx, state, state.sessionId ?? undefined);
+  state.spawnArgs = args;
+  state.spawnEnv = env;
+  state.spawnCwd = newCwd;
+
+  const proc = spawnClaude(state, session.sessionId);
+  proc.stdin?.write(formatStdinMessage(content) + "\n");
+
+  session.initialContent = content;
+  session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+  session.status = "running";
+  session.turnStartedAt = Date.now();
+  session.abortController = new AbortController();
+
+  updateSessionStatus(session.sessionId, "running");
+  attachPtyExitHandler(ctx, state, "restarted");
+
+  state.drainPromise = drainEvents(ctx, state).catch((err) => {
+    console.error(`[claude-code-pty] restart drain error:`, err);
+    session.status = "error";
+    session.error = String(err);
+  });
+}
+
 // ── NDJSON Event Drain Loop ──
 
 async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
@@ -677,8 +727,8 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
         session.status = "idle";
 
         // Flush queued messages — pipe to the SAME process (no new subprocess!)
-        if (session.pendingMessages.length > 0) {
-          const next = session.pendingMessages.shift()!;
+        if (session.pendingDispatch.length > 0) {
+          const next = session.pendingDispatch.shift()!.content;
           session.initialContent = next;
           session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
           session.status = "running";
@@ -753,10 +803,22 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
     }
   } finally {
     state.draining = false;
-    // If the readline stream ended, the process likely died
-    if (state.proc && state.proc.exitCode !== null) {
-      console.log(`[claude-code-pty] process exited with code ${state.proc.exitCode}`);
+    const procExited = !!(state.proc && state.proc.exitCode !== null);
+    if (procExited) {
+      console.log(`[claude-code-pty] process exited with code ${state.proc!.exitCode}`);
       state.needsRestart = true;
+    }
+
+    // Interrupt + immediate follow-up: hold the queued message until the old PTY
+    // has actually exited, then restart cleanly with --resume.
+    if (procExited && state.interrupting) {
+      state.interrupting = false;
+      if (session.status === "idle" && session.pendingDispatch.length > 0) {
+        const next = session.pendingDispatch.shift()!.content;
+        restartPtyTurn(ctx, state, next);
+      }
+    } else if (procExited) {
+      state.interrupting = false;
     }
   }
 }
@@ -807,6 +869,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         thinkingDurationMs: undefined,
         lifetimeTokens: { input: 0, output: 0, cached: 0 },
         needsRestart: false,
+        interrupting: false,
         forceKillTimer: null,
         spawnArgs: args,
         spawnEnv: env,
@@ -840,22 +903,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       // On Windows, .cmd wrappers can fire 'exit' before buffered stdout is delivered,
       // so DON'T immediately error during startup — let the drain loop consume remaining
       // stdout first. The drain loop handles the "exited without init" case.
-      proc.on("exit", (code) => {
-        console.log(`[claude-code-pty] process exited (code=${code}) for ${session.sessionId}`);
-        state.needsRestart = true;
-        state.processExitCode = code;
-        if (session.status === "running") {
-          // Mid-run exit is always an error — stdout was already flowing
-          session.status = "error";
-          session.error = `Claude Code process exited unexpectedly (code ${code})`;
-          ctx.updateSessionDb({
-            status: "error",
-            costUsd: session.costUsd,
-            lastResponse: session.lastAssistantText?.slice(0, 2000),
-          });
-        }
-        // If status === "starting", don't error yet — drain loop may still receive init
-      });
+      attachPtyExitHandler(ctx, state, "initial");
 
       // Startup timeout — longer on Windows where pipe buffering delays stdout delivery.
       // If the process already exited, the drain loop handles the error — don't double-fire.
@@ -884,7 +932,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const { session } = ctx;
       const state = getState(session);
       const procAlive = state?.proc && !state.proc.killed && state.proc.exitCode === null;
-      console.log(`[claude-code-pty] sendMessage for ${session.sessionId}: status=${session.status} procAlive=${procAlive} needsRestart=${state?.needsRestart} draining=${state?.draining} pending=${session.pendingMessages?.length}`);
+      console.log(`[claude-code-pty] sendMessage for ${session.sessionId}: status=${session.status} procAlive=${procAlive} needsRestart=${state?.needsRestart} interrupting=${state?.interrupting} draining=${state?.draining} pending=${session.pendingDispatch?.length}`);
       if (!state) {
         throw new Error("claude-code-pty provider state missing during sendMessage");
       }
@@ -899,47 +947,23 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       // If currently running, queue the message
       if (session.status === "running" || (session.status === "starting" && state.draining)) {
         console.log(`[claude-code-pty] QUEUED message for ${session.sessionId} (status=${session.status})`);
-        session.pendingMessages.push(content);
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
+        return;
+      }
+
+      // After an interrupt, the old PTY may still be unwinding even though the
+      // session-manager already marked the session idle. Queue the follow-up
+      // until the old process actually exits, then restart cleanly.
+      if (state.interrupting && procAlive) {
+        console.log(`[claude-code-pty] deferring follow-up until interrupted PTY exits for ${session.sessionId}`);
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
 
       // If process died, restart it with --resume
       if (state.needsRestart || !state.proc || state.proc.killed || state.proc.exitCode !== null) {
         console.log(`[claude-code-pty] process needs restart for ${session.sessionId}, using --resume (needsRestart=${state.needsRestart} killed=${state.proc?.killed} exitCode=${state.proc?.exitCode})`);
-        state.needsRestart = false;
-
-        // Rebuild spawn args with --resume
-        const { args, env, cwd: newCwd } = buildSpawnArgs(ctx, state, state.sessionId ?? undefined);
-        state.spawnArgs = args;
-        state.spawnEnv = env;
-        state.spawnCwd = newCwd;
-
-        const proc = spawnClaude(state, session.sessionId);
-        proc.stdin?.write(formatStdinMessage(content) + "\n");
-
-        session.initialContent = content;
-        session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
-        session.status = "running";
-        session.turnStartedAt = Date.now();
-        session.abortController = new AbortController();
-
-        updateSessionStatus(session.sessionId, "running");
-
-        // Handle exit
-        proc.on("exit", (code) => {
-          console.log(`[claude-code-pty] restarted process exited (code=${code})`);
-          state.needsRestart = true;
-          if (session.status === "running") {
-            session.status = "error";
-            session.error = `Process exited unexpectedly (code ${code})`;
-          }
-        });
-
-        state.drainPromise = drainEvents(ctx, state).catch((err) => {
-          console.error(`[claude-code-pty] restart drain error:`, err);
-          session.status = "error";
-          session.error = String(err);
-        });
+        restartPtyTurn(ctx, state, content);
         return;
       }
 
@@ -990,10 +1014,11 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       // On Windows: SIGINT is a no-op for .cmd wrappers, so we close stdin
       // which forces the CLI to finish the current turn and emit a result.
       if (state.proc && !state.proc.killed) {
+        state.interrupting = true;
+        state.needsRestart = true;
         if (process.platform === "win32") {
           // Close stdin — CLI will finish current operation and exit cleanly
           try { state.proc.stdin?.end(); } catch {}
-          state.needsRestart = true; // will need new process for next message
         } else {
           state.proc.kill("SIGINT");
         }

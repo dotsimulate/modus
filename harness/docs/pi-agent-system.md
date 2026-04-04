@@ -72,7 +72,7 @@ highest priority — bypasses PI's own env var lookup (which doesn't know litell
    resume case). Creates `AgentSession` with model, tools, resource loader, MCP tools.
    Subscribes to events. Sends the initial prompt via `agentSession.prompt()`.
 2. **sendMessage**: If session is idle, sends directly via `sendUserMessage()`.
-   If running, queues in `session.pendingMessages` for delivery after `agent_end`.
+   If running, queues a structured item in `session.pendingDispatch` for delivery after `agent_end`.
 3. **abort**: Calls `agentSession.abort()` + fires the abort controller.
 4. **dispose**: Unsubscribes, disposes agent session, shuts down MCP connections.
 

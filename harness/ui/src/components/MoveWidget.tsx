@@ -211,7 +211,6 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
         if (!result.ok) {
           throw new Error(result.error ?? "activate() failed");
         }
-        return { ok: true as const };
       }
     : undefined;
 
