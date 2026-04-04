@@ -7,7 +7,7 @@
 
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import type { SessionProvider, TurnContext } from "./types";
-import type { ActiveSession, MessageContent } from "../session-manager";
+import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getUserData, getUserProfile, type McpServerConfig, type PermissionPolicy } from "../profiles";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
@@ -594,7 +594,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       const { session } = ctx;
       const state = getState(session);
       const sid = session.sessionId?.slice(0, 12) ?? session.tempId?.slice(0, 12) ?? "?";
-      msgLog(sid, "sendMessage", `status=${session.status} drainActive=${!!state?.drainActive} pending=${session.pendingMessages?.length ?? 0}`);
+      msgLog(sid, "sendMessage", `status=${session.status} drainActive=${!!state?.drainActive} pending=${session.pendingDispatch?.length ?? 0}`);
       if (!state) {
         throw new Error("claude-code provider state missing during sendMessage");
       }
@@ -616,7 +616,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       }
 
       if (session.status === "running" || (session.status === "starting" && state.drainActive)) {
-        session.pendingMessages.push(content);
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         msgLog(sid, "QUEUED", `status=${session.status} — message stuck until result event or drain exit`);
         console.log(`[claude-code] queued message for ${session.sessionId} (status=${session.status})`);
         return;
@@ -1010,10 +1010,10 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         const sid2 = session.sessionId?.slice(0, 12) ?? "?";
 
         // Flush queued messages
-        if (session.pendingMessages.length > 0) {
-          const next = session.pendingMessages.shift()!;
+        if (session.pendingDispatch.length > 0) {
+          const next = session.pendingDispatch.shift()!.content;
           session.initialContent = next;
-          msgLog(sid2, "FLUSH-PENDING", `pushing queued message through live subprocess (${session.pendingMessages.length} remaining)`);
+          msgLog(sid2, "FLUSH-PENDING", `pushing queued message through live subprocess (${session.pendingDispatch.length} remaining)`);
           state.input.push(next);
           session.status = "running";
           session.turnStartedAt = Date.now();
@@ -1125,17 +1125,17 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
   // If post-drain starts a new drain, it re-sets drainActive synchronously (before first await).
   state.drainActive = false;
   const sidDrain = session.sessionId?.slice(0, 12) ?? "?";
-  msgLog(sidDrain, "DRAIN-EXIT", `status=${session.status} pending=${session.pendingMessages.length} events=${eventCount}`);
+  msgLog(sidDrain, "DRAIN-EXIT", `status=${session.status} pending=${session.pendingDispatch.length} events=${eventCount}`);
 
   // Post-drain: handle pending messages after abort
   if (session.status === "idle") {
-    if (session.pendingMessages.length > 0) {
-      console.log(`[claude-code] ${session.pendingMessages.length} pending after drain exit, restarting ${session.sessionId}`);
+    if (session.pendingDispatch.length > 0) {
+      console.log(`[claude-code] ${session.pendingDispatch.length} pending after drain exit, restarting ${session.sessionId}`);
 
       // Drain exited — subprocess is dead, cold start unavoidable
       state.queryObj = null;
 
-      const next = session.pendingMessages.shift()!;
+      const next = session.pendingDispatch.shift()!.content;
       session.initialContent = next;
       session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
       session.status = "running";

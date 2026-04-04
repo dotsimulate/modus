@@ -15,6 +15,7 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { isSecretSet } from "../secrets";
+import { resolveCursorAgentExecutable } from "./cursor-resolve-bin";
 
 const PI_PROVIDERS: PiProviderName[] = ["litellm", "ollama", "openrouter"];
 const STANDALONE_PROVIDERS = ["claude-code", "claude-code-pty", "codex", "cursor", "gemini-cli"] as const;
@@ -138,7 +139,10 @@ export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
 
     // CLI binary check
     if (spec?.cli) {
-      const found = Bun.which(spec.cli);
+      const found =
+        name === "cursor"
+          ? resolveCursorAgentExecutable()
+          : Bun.which(spec.cli);
       checks.push({
         type: "cli",
         label: spec.cli,

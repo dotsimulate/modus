@@ -20,6 +20,8 @@ import { homedir } from "os";
 
 const URL = process.env.MODUS_URL ?? "http://localhost:3777";
 const CWD = process.env.TEST_CWD ?? process.cwd();
+const TEST_PROVIDER = process.env.TEST_PROVIDER?.trim() || undefined;
+const TEST_MODEL = process.env.TEST_MODEL?.trim() || undefined;
 
 // ── Cost tracking ──
 
@@ -121,15 +123,22 @@ function assert(condition: boolean, msg: string) {
 
 /** Fire-and-forget interact — returns sessionId immediately, never streams. */
 async function fireSession(prompt: string): Promise<string> {
-  const result = await client.interact({
+  const opts: InteractOptions = {
     prompt,
     permissionMode: "bypass",
     maxTurns: 1,
     cwd: CWD,
     subscribe: false,
-  });
+    ...(TEST_PROVIDER ? { provider: TEST_PROVIDER } : {}),
+    ...(TEST_MODEL ? { model: TEST_MODEL } : {}),
+  };
+  const result = await client.interact(opts);
   assert(!!result.sessionId, "interact returned no sessionId");
-  console.log(`    → session ${result.sessionId.slice(0, 8)}… (${result.status})`);
+  console.log(
+    `    → session ${result.sessionId.slice(0, 8)}… (${result.status})` +
+    `${TEST_PROVIDER ? ` provider=${TEST_PROVIDER}` : ""}` +
+    `${TEST_MODEL ? ` model=${TEST_MODEL}` : ""}`,
+  );
   return result.sessionId;
 }
 
@@ -178,6 +187,7 @@ function subscribeAndCollect(
 
 // ════════════════════════════════════════════════════════════════════
 console.log("\n═══ Layer 2: SSE Integration Tests ═══\n");
+console.log(`Config: url=${URL} cwd=${CWD}${TEST_PROVIDER ? ` provider=${TEST_PROVIDER}` : ""}${TEST_MODEL ? ` model=${TEST_MODEL}` : ""}\n`);
 // ════════════════════════════════════════════════════════════════════
 
 // ── Test 1: Fire session, subscribe, verify events arrive ──

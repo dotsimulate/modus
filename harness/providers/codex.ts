@@ -10,7 +10,7 @@
 
 import { Codex, type Thread, type ThreadEvent, type ThreadItem } from "@openai/codex-sdk";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
-import type { ActiveSession, MessageContent } from "../session-manager";
+import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
@@ -677,7 +677,7 @@ export function createCodexProvider(): SessionProvider {
       // Startup timeout
       const abortController = session.abortController;
       setTimeout(() => {
-        if (session.status === "starting" && session.abortController === abortController) {
+        if (session.status === "starting" && session.abortController === abortController && !state.threadId) {
           const reason = "Session failed to start — no response from Codex within 30s.";
           console.error(`[codex] startup timeout for ${session.sessionId}`);
           session.status = "error";
@@ -695,8 +695,12 @@ export function createCodexProvider(): SessionProvider {
       const { session } = ctx;
       const state = getState(session);
 
-      if (session.status === "running" || session.status === "starting") {
-        session.pendingMessages.push(content);
+      // session-manager briefly flips idle sessions to "starting" before calling
+      // sendMessage so SSE clients don't disconnect during the follow-up handoff.
+      // Once Codex has a thread ID, that synthetic "starting" state should not
+      // be treated as an active turn or the follow-up will get queued forever.
+      if (session.status === "running" || (session.status === "starting" && !state.threadId)) {
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
 
@@ -1066,8 +1070,8 @@ async function runTurn(
     session.status = "idle";
 
     // Flush queued messages
-    if (session.pendingMessages.length > 0) {
-      const next = session.pendingMessages.shift()!;
+    if (session.pendingDispatch.length > 0) {
+      const next = session.pendingDispatch.shift()!.content;
       session.initialContent = next;
       session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
       session.abortController = new AbortController();
@@ -1097,8 +1101,8 @@ async function runTurn(
       updateSessionStatus(session.sessionId, "idle");
 
       // Handle pending messages after abort
-      if (session.pendingMessages.length > 0) {
-        const next = session.pendingMessages.shift()!;
+      if (session.pendingDispatch.length > 0) {
+        const next = session.pendingDispatch.shift()!.content;
         session.initialContent = next;
         session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
         session.abortController = new AbortController();

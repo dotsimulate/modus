@@ -499,7 +499,7 @@ export async function handleMoveApiSubmit(
         ? `[modus:${emit.type}] ${JSON.stringify(emit)}\n${message}`.trim()
         : message;
       const queued = queueMessage(reg.sessionId, injected);
-      if (!queued) {
+      if (!queued.queued) {
         // Session not active (e.g. after restart) — resume it with the message
         startSession({
           sessionId: reg.sessionId,
@@ -512,7 +512,7 @@ export async function handleMoveApiSubmit(
         eventType: "move_handler_notify",
         sessionId: reg.sessionId || undefined,
         summary: `${reg.moveName}:${op} notify → ${message.slice(0, 80)}`,
-        metadata: { moveName: reg.moveName, op, emitType: emit?.type, resumed: !queued },
+        metadata: { moveName: reg.moveName, op, emitType: emit?.type, resumed: !queued.queued },
       });
     },
   };
@@ -1516,7 +1516,7 @@ export async function activateAttachedMove(opts: {
 
   // Send message to session
   const queued = queueMessage(reg.sessionId, finalPrompt);
-  if (!queued) {
+  if (!queued.queued) {
     startSession({
       sessionId: reg.sessionId,
       prompt: finalPrompt,

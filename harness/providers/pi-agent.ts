@@ -20,7 +20,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
-import type { ActiveSession, MessageContent } from "../session-manager";
+import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getProfile, type ProviderDefaults } from "../profiles";
 import { updateSessionStatus } from "../db";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
@@ -345,7 +345,7 @@ function translateEvents(
       // stopSession() sets status to "idle" before calling abort, so agent_end
       // arrives after the session is already cleaned up.
       if (session.abortController.signal.aborted) {
-        session.pendingMessages = [];
+        session.pendingDispatch = [];
         break;
       }
 
@@ -404,8 +404,8 @@ function translateEvents(
       }
 
       // Flush queued messages (only if not aborted/errored)
-      if (!wasAborted && !wasError && session.pendingMessages.length > 0) {
-        const next = session.pendingMessages.shift()!;
+      if (!wasAborted && !wasError && session.pendingDispatch.length > 0) {
+        const next = session.pendingDispatch.shift()!.content;
         session.status = "running";
         session.turnStartedAt = Date.now();
         ctx.emitEvent({
@@ -674,13 +674,13 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
 
       if (!state) {
         // Session not yet initialized — queue
-        session.pendingMessages.push(content);
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
 
       if (session.status === "running" || session.status === "starting") {
         // Streaming — queue as follow-up
-        session.pendingMessages.push(content);
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
 

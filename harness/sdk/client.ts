@@ -9,7 +9,6 @@ import type {
   CreateSessionOpts,
   SendMessageOpts,
   TurnContent,
-  SSEEvent,
   TypedSSEEvent,
   EventStreamHandle,
   EventStreamCallbacks,
@@ -222,9 +221,12 @@ export class ModusClient {
     return data.sessionId;
   }
   /** Queues a message to a session. Accepts a string prompt or a SendMessageOpts object; string form uses the remaining args for attachments and config. */
-  async sendMessage(sessionId: string, opts: SendMessageOpts | string, attachments?: ApiAttachment[], config?: Record<string, unknown>): Promise<{ queued: boolean; status: string }> {
+  async sendMessage(sessionId: string, opts: SendMessageOpts | string, attachments?: ApiAttachment[], config?: Record<string, unknown>): Promise<{ queued: boolean; status: string; dispatchId?: string }> {
     const body = typeof opts === "string" ? { prompt: opts, attachments, ...config } : opts;
     return (await this.fetch(`/api/sessions/${sessionId}/messages`, { method: "POST", body: JSON.stringify(body) })).json();
+  }
+  async cancelQueuedDispatch(sessionId: string, dispatchId: string): Promise<{ ok: boolean }> {
+    return (await this.fetch(`/api/sessions/${sessionId}/dispatch/${dispatchId}`, { method: "DELETE" })).json();
   }
   /** Stops a running session. */
   async stopSession(id: string): Promise<void> { await this.fetch(`/api/sessions/${id}/stop`, { method: "POST" }); }
@@ -736,7 +738,17 @@ export class ModusClient {
   async prompt(opts: InteractOptions): Promise<{ sessionId: string; text: string }> {
     const { sessionId, events } = await this.run(opts); let text = "";
     for (const evt of events) {
-      if (evt.event === "stream_event") { const inner = evt.data.event as Record<string, any>; if (inner?.type === "content_block_delta") { const delta = inner.delta; if (delta?.type === "text_delta" && delta.text) text += delta.text; } }
+      if (evt.event === "stream_event") {
+        const inner = evt.data.event as Record<string, any>;
+        if (inner?.type === "content_block_delta") {
+          const delta = inner.delta;
+          if (typeof (evt.data as Record<string, any>).fullText === "string") {
+            text = (evt.data as Record<string, any>).fullText;
+          } else if (delta?.type === "text_delta" && delta.text) {
+            text += delta.text;
+          }
+        }
+      }
       else if (evt.event === "result" && evt.data.result) { text = evt.data.result as string; }
     }
     return { sessionId, text };

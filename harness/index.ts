@@ -55,7 +55,7 @@ import {
   startSession, startSessionWithMoves, queueMessage, steerMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
   updateSessionConfig, resolvePermission, switchProfile,
-  pauseSession, resumeSession, branchSession,
+  pauseSession, resumeSession, branchSession, cancelQueuedDispatch,
   subscribeGlobal, emitGlobalSessionEvent,
   type SSEWriter,
 } from "./session-manager";
@@ -885,7 +885,7 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
       // close the stream. Prevents idle connections for genuinely finished sessions
       // while giving the async message pipeline time to reactivate the session.
       let graceTimer: ReturnType<typeof setTimeout> | null = null;
-      if (active.status === "done") {
+      if (active.status === "done" && active.dispatchState !== "dispatching_followup") {
         if (catchupHadDone) {
           // Client already received the persisted "done" event during catch-up.
           // No need to keep the stream open — close immediately.
@@ -1114,7 +1114,12 @@ app.post("/api/sessions/:id/messages", async (c) => {
   }
 
   const queued = queueMessage(id, prompt, body.attachments, body.moves);
-  return c.json({ queued, status: active.status });
+  return c.json({ ...queued, status: active.status });
+});
+
+app.delete("/api/sessions/:id/dispatch/:dispatchId", (c) => {
+  const ok = cancelQueuedDispatch(c.req.param("id"), c.req.param("dispatchId"));
+  return c.json({ ok });
 });
 
 // Steer: inject a message at the next tool boundary (falls back to queue if unsupported)

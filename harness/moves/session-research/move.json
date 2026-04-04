@@ -1,0 +1,67 @@
+{
+  "name": "session-research",
+  "label": "Session Research",
+  "description": "Search and read past session conversations. Find which session worked on a topic, read its messages, get summaries.",
+  "icon": "search",
+  "mode": "inline",
+  "inputs": [],
+  "api": {
+    "tokenPrefix": "research",
+    "ops": {
+      "search": {
+        "description": "Full-text search across all sessions. Returns ranked results with snippets.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "Search terms" },
+            "limit": { "type": "number", "description": "Max results (default 10, max 50)" },
+            "profile": { "type": "string", "description": "Filter to a specific agent profile" }
+          },
+          "required": ["query"]
+        }
+      },
+      "list": {
+        "description": "List recent sessions, optionally filtered by profile.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "limit": { "type": "number", "description": "Max results (default 15, max 50)" },
+            "profile": { "type": "string", "description": "Filter to a specific agent profile" }
+          }
+        }
+      },
+      "read": {
+        "description": "Read the conversation messages from a specific session. Returns user/assistant turns.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sessionId": { "type": "string", "description": "Session ID to read" },
+            "limit": { "type": "number", "description": "Max turns to return (default 30, max 100)" },
+            "offset": { "type": "number", "description": "Skip this many turns from the start (default 0)" }
+          },
+          "required": ["sessionId"]
+        }
+      },
+      "info": {
+        "description": "Get metadata for a specific session (profile, model, cost, status, timestamps, tags).",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sessionId": { "type": "string", "description": "Session ID" }
+          },
+          "required": ["sessionId"]
+        }
+      }
+    },
+    "state": {
+      "persist": false
+    }
+  },
+  "submit": {
+    "required": false
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "tags": ["research", "sessions", "capability"]
+}

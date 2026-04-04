@@ -733,10 +733,19 @@ function reduceStreamEvent(s: ReducerState, m: any, ts: number): ReducerState {
   if (!evt) return s;
 
   if (evt.type === "content_block_delta" && evt.delta) {
+    const fullText = typeof m.fullText === "string" ? m.fullText : undefined;
+    const nextText = (incoming: string) => fullText ?? (s._streamingText + incoming);
+    const nextFeedText = (incoming: string) => {
+      if (!fullText) return incoming;
+      if (fullText.startsWith(s._streamingText)) return fullText.slice(s._streamingText.length);
+      return incoming;
+    };
+
     // ── Sub-agent mode: stream into Agent tool call's subMessages ──
     if (s._activeAgentToolId) {
       if (evt.delta.type === "text_delta" && evt.delta.text) {
-        const newText = s._streamingText + evt.delta.text;
+        const newText = nextText(evt.delta.text);
+        const feedText = nextFeedText(evt.delta.text);
         const lastSub = getLastSubMessage(s.messages, s._activeAgentToolId);
         const canMerge = lastSub?.role === "assistant" && !lastSub.meta
           && !lastSub.toolCalls?.some((tc) => tc.status !== "running");
@@ -754,7 +763,7 @@ function reduceStreamEvent(s: ReducerState, m: any, ts: number): ReducerState {
             timestamp: ts,
           });
         }
-        return { ...s, messages: msgs, _streamingText: newText, streamFeed: appendFeed(s.streamFeed, evt.delta.text) };
+        return { ...s, messages: msgs, _streamingText: newText, streamFeed: appendFeed(s.streamFeed, feedText) };
       }
       if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
         const newThinking = s._streamingThinking + evt.delta.thinking;
@@ -783,7 +792,8 @@ function reduceStreamEvent(s: ReducerState, m: any, ts: number): ReducerState {
 
     // ── Normal mode ──
     if (evt.delta.type === "text_delta" && evt.delta.text) {
-      const newText = s._streamingText + evt.delta.text;
+      const newText = nextText(evt.delta.text);
+      const feedText = nextFeedText(evt.delta.text);
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
       const canMerge = last?.role === "assistant" && !last.meta
@@ -796,7 +806,7 @@ function reduceStreamEvent(s: ReducerState, m: any, ts: number): ReducerState {
       } else {
         msgs.push({ id: nextMsgId(), role: "assistant", content: newText, timestamp: ts });
       }
-      return { ...s, messages: msgs, _streamingText: newText, _thinkingStartedAt: undefined, streamFeed: appendFeed(s.streamFeed, evt.delta.text) };
+      return { ...s, messages: msgs, _streamingText: newText, _thinkingStartedAt: undefined, streamFeed: appendFeed(s.streamFeed, feedText) };
     }
     if (evt.delta.type === "thinking_delta" && evt.delta.thinking) {
       const newThinking = s._streamingThinking + evt.delta.thinking;
