@@ -7,7 +7,7 @@
  *   That's it. Vite's import.meta.glob picks it up automatically.
  */
 
-import type { ComponentType } from "react";
+import { createContext, useContext, type ComponentType } from "react";
 import type { View } from "../views";
 
 // ── Shared types ──
@@ -38,6 +38,18 @@ export type WidgetDef = {
   type: string;
   component: ComponentType<WidgetProps<any>>;
 };
+
+type WidgetChrome = {
+  setHeaderSuffix: (suffix: string | null) => void;
+};
+
+export const WidgetChromeContext = createContext<WidgetChrome>({
+  setHeaderSuffix: () => {},
+});
+
+export function useWidgetChrome(): WidgetChrome {
+  return useContext(WidgetChromeContext);
+}
 
 export type DashboardWidgetBlock = {
   kind: "widget";

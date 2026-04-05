@@ -702,6 +702,13 @@ export class ModusClient {
   async deleteTerminal(id: string): Promise<void> { const r = await this.fetch(`/api/terminals/${id}`, { method: "DELETE" }); if (!r.ok) throw new Error(`Failed to delete terminal: ${r.status}`); }
   /** Resizes a terminal. */
   async resizeTerminal(id: string, cols: number, rows: number): Promise<void> { const r = await this.fetch(`/api/terminals/${id}/resize`, { method: "POST", body: JSON.stringify({ cols, rows }) }); if (!r.ok) throw new Error(`Failed to resize terminal: ${r.status}`); }
+  /** Reassigns all terminals from one session ID to another. */
+  async rekeyTerminalSession(oldSessionId: string, newSessionId: string): Promise<number> {
+    const r = await this.fetch("/api/terminals/rekey-session", { method: "POST", body: JSON.stringify({ oldSessionId, newSessionId }) });
+    if (!r.ok) throw new Error(`Failed to rekey terminal session: ${r.status}`);
+    const body = await r.json();
+    return typeof body.count === "number" ? body.count : 0;
+  }
   /** Opens a WebSocket to a terminal in binary arraybuffer mode. */
   connectTerminalWS(terminalId: string): WebSocket {
     const protocol = typeof location !== "undefined" && location.protocol === "https:" ? "wss:" : "ws:";

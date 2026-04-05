@@ -179,10 +179,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeUserProfile]);
 
+  const rekeyLinkedSessionState = useCallback((oldId: string, newId: string) => {
+    if (!oldId || !newId || oldId === newId) return;
+    modus.rekeyMoveSession(oldId, newId).catch((e) => {
+      console.error(`[session] rekeyMoveSession FAILED:`, e);
+    });
+    modus.rekeyTerminalSession(oldId, newId).catch((e) => {
+      console.error(`[session] rekeyTerminalSession FAILED:`, e);
+    });
+  }, []);
+
   // ── Auto-rekey: when a provider's init event changes the session ID (ses-* → UUID),
   // update the active session ID and URL hash so the UI stays in sync.
   useEffect(() => {
     return onSessionRekey((oldId, newId) => {
+      rekeyLinkedSessionState(oldId, newId);
       setActiveSessionId((current) => {
         if (current === oldId) {
           updateHash(newId);
@@ -191,7 +202,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         return current;
       });
     });
-  }, [updateHash]);
+  }, [rekeyLinkedSessionState, updateHash]);
 
   // ── Draft management ──
 
@@ -404,11 +415,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         // Rekey move registry — mountOnAttach moves registered with empty sessionId
         // need an explicit rekey from "" since prevSessionId/tempId won't match them
         modus.rekeyMoveSession("", realId).catch(() => {});
-        const moveOldId = prevSessionId || tempId;
-        if (moveOldId && moveOldId !== "") {
-          modus.rekeyMoveSession(moveOldId, realId).catch((e) => {
-            console.error(`[session] rekeyMoveSession FAILED:`, e);
-          });
+        const linkedOldIds = new Set<string>();
+        if (prevSessionId) linkedOldIds.add(prevSessionId);
+        linkedOldIds.add(tempId);
+        for (const oldId of linkedOldIds) {
+          rekeyLinkedSessionState(oldId, realId);
         }
         setSessionNextProfile(realId, undefined);
         setSessionNextAgentConfig(realId, undefined);
@@ -520,6 +531,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     getLockedSessionProvider,
     hasPendingProfileChange,
     profileProviderMatchesSession,
+    rekeyLinkedSessionState,
     updateHash,
     refreshSessions,
     resolveAppliedModel,

@@ -1561,7 +1561,18 @@ export type TerminalInfo = {
   rows: number;
   /** If this terminal is bound to a session, the session ID. */
   sessionId: string | null;
+  sessionOriginId?: string | null;
+  kind?: string;
+  ownerType?: string | null;
+  ownerName?: string | null;
+  provider?: string | null;
+  interactive?: boolean;
+  pid?: number | null;
+  stopMode?: "terminate" | "delegate" | "observe";
+  canStop?: boolean;
+  canRestart?: boolean;
   createdAt: number;
+  lastOutputAt?: number | null;
   /** Number of WebSocket clients connected to this terminal. */
   clients?: number;
   status?: string;
@@ -1575,6 +1586,11 @@ export type CreateTerminalOpts = {
   rows?: number;
   /** Bind this terminal to a session for context association. */
   sessionId?: string;
+  kind?: string;
+  ownerType?: string;
+  ownerName?: string;
+  provider?: string;
+  interactive?: boolean;
 };
 
 // ── Web Positions ──

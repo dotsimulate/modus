@@ -1,5 +1,5 @@
-import { type ReactNode } from "react";
-import { WIDGETS, type WidgetBase } from "../widgets";
+import { type ReactNode, useState } from "react";
+import { WIDGETS, WidgetChromeContext, type WidgetBase } from "../widgets";
 import { useWidgetUiState } from "../widgets/ui-state";
 import { useProfiles } from "../providers/ProfileProvider";
 import { WidgetPicker } from "./WidgetPicker";
@@ -39,6 +39,7 @@ function CollapsibleWidget({ widget, widgetId, onNavigate, onSelectSession }: {
     "collapsed",
     widget.collapsed ?? false,
   );
+  const [headerSuffix, setHeaderSuffix] = useState<string | null>(null);
 
   return (
     <div className="widget">
@@ -46,16 +47,18 @@ function CollapsibleWidget({ widget, widgetId, onNavigate, onSelectSession }: {
         <span className={`widget-chevron ${collapsed ? "" : "widget-chevron--open"}`}>
           {chevron}
         </span>
-        <span className="widget-title">{widget.title ?? widget.type}</span>
+        <span className="widget-title">{widget.title ?? widget.type}{collapsed && headerSuffix ? ` ${headerSuffix}` : ""}</span>
       </button>
       <div className={`panel-collapse ${collapsed ? "" : "panel-collapse--open"}`}>
         <div className="panel-collapse-clip">
-          <Component
-            config={widget}
-            widgetId={widgetId}
-            onNavigate={onNavigate}
-            onSelectSession={onSelectSession}
-          />
+          <WidgetChromeContext.Provider value={{ setHeaderSuffix }}>
+            <Component
+              config={widget}
+              widgetId={widgetId}
+              onNavigate={onNavigate}
+              onSelectSession={onSelectSession}
+            />
+          </WidgetChromeContext.Provider>
         </div>
       </div>
     </div>

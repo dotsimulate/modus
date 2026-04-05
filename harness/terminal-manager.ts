@@ -15,6 +15,7 @@
 import {
   insertTerminal, markTerminalExited, getTerminal as dbGetTerminal,
   listActiveTerminals as dbListActive, deleteTerminalRow, updateTerminalSessionId as dbUpdateTerminalSessionId,
+  rekeyTerminalSessionIds as dbRekeySessionIds, touchTerminalOutput,
   type TerminalRow,
 } from "./terminal-db";
 
@@ -49,9 +50,21 @@ export type ActiveTerminal = {
   cols: number;
   rows: number;
   sessionId: string | null;
+  sessionOriginId: string | null;
+  kind: string;
+  ownerType: string | null;
+  ownerName: string | null;
+  provider: string | null;
+  interactive: boolean;
+  pid: number | null;
+  stopMode: "terminate" | "delegate" | "observe";
+  canStop: boolean;
+  canRestart: boolean;
   createdAt: number;
+  lastOutputAt: number | null;
   proc: TerminalProcess;
   terminal: { write(data: string | Uint8Array): void; resize(cols: number, rows: number): void; close(): void };
+  stop: (() => void) | null;
   clients: Set<TerminalClient>;
   scrollback: Uint8Array[];
   scrollbackBytes: number;
@@ -80,6 +93,11 @@ export type CreateTerminalOpts = {
   rows?: number;
   sessionId?: string;
   env?: Record<string, string>;
+  kind?: string;
+  ownerType?: string;
+  ownerName?: string;
+  provider?: string;
+  interactive?: boolean;
 };
 
 export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
@@ -89,6 +107,11 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
   const cols = opts.cols ?? 80;
   const rows = opts.rows ?? 24;
   const sessionId = opts.sessionId ?? null;
+  const kind = opts.kind ?? "shell";
+  const ownerType = opts.ownerType ?? "user";
+  const ownerName = opts.ownerName ?? "shell";
+  const provider = opts.provider ?? null;
+  const interactive = opts.interactive ?? true;
 
   const clients = new Set<TerminalClient>();
   const scrollback: Uint8Array[] = [];
@@ -97,6 +120,7 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
   // `active` is referenced via closure — assigned after construction below
   let active: ActiveTerminal;
   function onData(data: Uint8Array) {
+    const now = Date.now();
     scrollback.push(data);
     scrollbackBytes += data.byteLength;
 
@@ -104,7 +128,11 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
       const removed = scrollback.shift()!;
       scrollbackBytes -= removed.byteLength;
     }
-    if (active) active.scrollbackBytes = scrollbackBytes;
+    if (active) {
+      active.scrollbackBytes = scrollbackBytes;
+      active.lastOutputAt = now;
+    }
+    touchTerminalOutput(id, now);
 
     for (const client of clients) {
       try {
@@ -117,6 +145,7 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
 
   let proc: TerminalProcess;
   let terminal: ActiveTerminal["terminal"];
+  let pid: number | null = null;
 
   if (IS_WINDOWS) {
     // Windows: real PTY via bun-pty (ConPTY)
@@ -145,6 +174,7 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
       kill(signal?: string) { pty.kill(signal); },
       exited: exitedPromise,
     };
+    pid = null;
 
     terminal = {
       write(data: string | Uint8Array) {
@@ -172,6 +202,7 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
       exited: bunProc.exited.then((code) => code ?? null),
     };
     terminal = bunProc.terminal!;
+    pid = bunProc.pid ?? null;
   }
 
   active = {
@@ -181,16 +212,36 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
     cols,
     rows,
     sessionId,
+    sessionOriginId: sessionId,
+    kind,
+    ownerType,
+    ownerName,
+    provider,
+    interactive,
+    pid,
+    stopMode: "terminate",
+    canStop: true,
+    canRestart: false,
     createdAt: Date.now(),
+    lastOutputAt: Date.now(),
     proc,
     terminal,
+    stop: null,
     clients,
     scrollback,
     scrollbackBytes,
   };
 
   terminals.set(id, active);
-  insertTerminal(id, shell, cwd, cols, rows, sessionId);
+  insertTerminal(id, shell, cwd, cols, rows, sessionId, {
+    sessionOriginId: sessionId,
+    kind,
+    ownerType,
+    ownerName,
+    provider,
+    interactive,
+    pid: active.pid,
+  });
 
   // Handle process exit
   proc.exited.then((code) => {
@@ -229,6 +280,11 @@ export function killTerminal(id: string): boolean {
   const t = terminals.get(id);
   if (!t) return false;
   try {
+    if (!t.canStop) return false;
+    if (t.stop) {
+      t.stop();
+      return true;
+    }
     if (IS_WINDOWS) {
       t.proc.kill();
     } else {
@@ -264,6 +320,20 @@ export function updateTerminalSession(terminalId: string, newSessionId: string):
   dbUpdateTerminalSessionId(terminalId, newSessionId);
 }
 
+/** Reassign all terminals from one session to another. Returns count updated. */
+export function rekeyTerminalSession(oldSessionId: string, newSessionId: string): number {
+  if (!oldSessionId || oldSessionId === newSessionId) return 0;
+  let changed = 0;
+  for (const t of terminals.values()) {
+    if (t.sessionId === oldSessionId) {
+      t.sessionId = newSessionId;
+      changed++;
+    }
+  }
+  const dbChanged = dbRekeySessionIds(oldSessionId, newSessionId);
+  return Math.max(changed, dbChanged);
+}
+
 /** Attach a WebSocket client to a terminal. Returns scrollback chunks to replay. */
 export function attachClient(id: string, client: TerminalClient): Uint8Array[] | null {
   const t = terminals.get(id);
@@ -291,6 +361,13 @@ export function registerExternalTerminal(opts: {
   shell?: string;
   cols?: number;
   rows?: number;
+  kind?: string;
+  ownerType?: string;
+  ownerName?: string;
+  provider?: string;
+  interactive?: boolean;
+  pid?: number | null;
+  onStop?: () => void;
   /** Called when a WebSocket client sends input (keystrokes). Optional. */
   onInput?: (data: string | Uint8Array) => void;
   /** Called when process exits (from terminal-manager's perspective). */
@@ -302,19 +379,32 @@ export function registerExternalTerminal(opts: {
   const cols = opts.cols ?? 120;
   const rows = opts.rows ?? 40;
   const sessionId = opts.sessionId ?? null;
+  const kind = opts.kind ?? "external";
+  const ownerType = opts.ownerType ?? null;
+  const ownerName = opts.ownerName ?? null;
+  const provider = opts.provider ?? null;
+  const interactive = opts.interactive ?? true;
+  const pid = opts.pid ?? null;
+  const stopMode = opts.onStop ? "delegate" : "observe";
+  const canStop = !!opts.onStop;
 
   const clients = new Set<TerminalClient>();
   const scrollback: Uint8Array[] = [];
   let scrollbackBytes = 0;
 
   function pushData(data: Uint8Array) {
+    const now = Date.now();
     scrollback.push(data);
     scrollbackBytes += data.byteLength;
     while (scrollbackBytes > MAX_SCROLLBACK_BYTES && scrollback.length > 1) {
       const removed = scrollback.shift()!;
       scrollbackBytes -= removed.byteLength;
     }
-    if (active) active.scrollbackBytes = scrollbackBytes;
+    if (active) {
+      active.scrollbackBytes = scrollbackBytes;
+      active.lastOutputAt = now;
+    }
+    touchTerminalOutput(id, now);
     for (const client of clients) {
       try { client.send(data); } catch { clients.delete(client); }
     }
@@ -335,12 +425,33 @@ export function registerExternalTerminal(opts: {
 
   const active: ActiveTerminal = {
     id, shell, cwd, cols, rows, sessionId,
+    sessionOriginId: sessionId,
+    kind,
+    ownerType,
+    ownerName,
+    provider,
+    interactive,
+    pid,
+    stopMode,
+    canStop,
+    canRestart: false,
     createdAt: Date.now(),
-    proc, terminal, clients, scrollback, scrollbackBytes,
+    lastOutputAt: Date.now(),
+    proc, terminal,
+    stop: opts.onStop ?? null,
+    clients, scrollback, scrollbackBytes,
   };
 
   terminals.set(id, active);
-  insertTerminal(id, shell, cwd, cols, rows, sessionId);
+  insertTerminal(id, shell, cwd, cols, rows, sessionId, {
+    sessionOriginId: sessionId,
+    kind,
+    ownerType,
+    ownerName,
+    provider,
+    interactive,
+    pid,
+  });
 
   opts.exited.then((code) => {
     markTerminalExited(id, code ?? null);

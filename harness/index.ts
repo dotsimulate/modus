@@ -52,7 +52,7 @@ import {
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
 import {
-  startSession, startSessionWithMoves, queueMessage, steerMessage, stopSession, stopTask,
+  startSession, startSessionWithMoves, interactWithSession, queueMessage, steerMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
   updateSessionConfig, resolvePermission, switchProfile,
   pauseSession, resumeSession, branchSession, cancelQueuedDispatch,
@@ -652,51 +652,15 @@ app.post("/api/sessions/interact", async (c) => {
   }
 
   let targetSessionId: string | undefined = sessionId;
-
-  if (sessionId) {
-    const active = getActiveSession(sessionId);
-    if (active) {
-      // Session active — queue the message
-      queueMessage(sessionId, prompt, attachments, moves);
-    } else {
-      // Session exists in DB but not active — resume it
-      const existing = getSession(sessionId);
-      if (!existing && !createIfMissing) {
-        return c.json({ error: `session not found: ${sessionId}` }, 404);
-      }
-
-      const storedConfig = existing ? getStoredSessionConfig(sessionId) : undefined;
-      const session = await startSessionWithMoves({
-        prompt,
-        attachments,
-        sessionId,
-        cwd: body.cwd ?? storedConfig?.cwd ?? existing?.cwd ?? resolvedCwd,
-        additionalDirectories: body.additionalDirectories ?? storedConfig?.additionalDirectories,
-        profile: body.profile ?? existing?.profile ?? undefined,
-        userProfile: body.userProfile,
-        provider: body.provider ?? storedConfig?.provider,
-        model: body.model ?? storedConfig?.model ?? existing?.model ?? undefined,
-        effort: body.effort ?? storedConfig?.effort,
-        maxTurns: body.maxTurns ?? storedConfig?.maxTurns,
-        tools: body.tools ?? storedConfig?.tools,
-        disallowedTools: body.disallowedTools ?? storedConfig?.disallowedTools,
-        toolStates: body.toolStates ?? storedConfig?.toolStates,
-        providerControls: body.providerControls ?? storedConfig?.providerControls,
-        loadProjectSettings: body.loadProjectSettings ?? storedConfig?.loadProjectSettings,
-        permissionPolicy,
-        moves,
-      });
-      targetSessionId = session.sessionId;
-    }
-  } else {
-    // No sessionId — create a new session
-    if (!createIfMissing) {
-      return c.json({ error: "sessionId required when createIfMissing is false" }, 400);
-    }
-
-    const session = await startSessionWithMoves({
+  try {
+    const result = await interactWithSession({
       prompt,
+      sessionId,
       attachments,
+      moves,
+      createIfMissing,
+      cwd: body.cwd ?? resolvedCwd,
+      additionalDirectories: body.additionalDirectories,
       profile: body.profile,
       userProfile: body.userProfile,
       provider: body.provider,
@@ -704,16 +668,22 @@ app.post("/api/sessions/interact", async (c) => {
       toolStates: body.toolStates,
       maxTurns: body.maxTurns,
       effort: body.effort,
-      cwd: resolvedCwd,
-      additionalDirectories: body.additionalDirectories,
       tools: body.tools,
       disallowedTools: body.disallowedTools,
       providerControls: body.providerControls,
       loadProjectSettings: body.loadProjectSettings,
       permissionPolicy,
-      moves,
     });
-    targetSessionId = session.sessionId;
+    targetSessionId = result.sessionId;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (sessionId && message === `session not found: ${sessionId}`) {
+      return c.json({ error: message }, 404);
+    }
+    if (!sessionId && !createIfMissing && message === "sessionId required when createIfMissing is false") {
+      return c.json({ error: message }, 400);
+    }
+    throw err;
   }
 
   if (shouldSubscribe) {
@@ -3044,6 +3014,11 @@ app.post("/api/terminals", async (c) => {
       rows: body.rows,
       sessionId: body.sessionId,
       env: body.env,
+      kind: body.kind,
+      ownerType: body.ownerType,
+      ownerName: body.ownerName,
+      provider: body.provider,
+      interactive: body.interactive,
     });
     return c.json({
       id: term.id,
@@ -3052,7 +3027,19 @@ app.post("/api/terminals", async (c) => {
       cols: term.cols,
       rows: term.rows,
       sessionId: term.sessionId,
+      sessionOriginId: term.sessionOriginId,
+      kind: term.kind,
+      ownerType: term.ownerType,
+      ownerName: term.ownerName,
+      provider: term.provider,
+      interactive: term.interactive,
+      pid: term.pid,
+      stopMode: term.stopMode,
+      canStop: term.canStop,
+      canRestart: term.canRestart,
+      status: "running",
       createdAt: term.createdAt,
+      lastOutputAt: term.lastOutputAt,
     });
   } catch (err) {
     console.error("Failed to create terminal:", err);
@@ -3071,8 +3058,20 @@ app.get("/api/terminals", (c) => {
       cols: t.cols,
       rows: t.rows,
       sessionId: t.sessionId,
+      sessionOriginId: t.sessionOriginId,
+      kind: t.kind,
+      ownerType: t.ownerType,
+      ownerName: t.ownerName,
+      provider: t.provider,
+      interactive: t.interactive,
+      pid: t.pid,
+      stopMode: t.stopMode,
+      canStop: t.canStop,
+      canRestart: t.canRestart,
       createdAt: t.createdAt,
+      lastOutputAt: t.lastOutputAt,
       clients: t.clients.size,
+      status: "running",
     }));
   return c.json(active);
 });
@@ -3088,13 +3087,47 @@ app.get("/api/terminals/:id", (c) => {
       cols: active.cols,
       rows: active.rows,
       sessionId: active.sessionId,
+      sessionOriginId: active.sessionOriginId,
+      kind: active.kind,
+      ownerType: active.ownerType,
+      ownerName: active.ownerName,
+      provider: active.provider,
+      interactive: active.interactive,
+      pid: active.pid,
+      stopMode: active.stopMode,
+      canStop: active.canStop,
+      canRestart: active.canRestart,
       createdAt: active.createdAt,
+      lastOutputAt: active.lastOutputAt,
       clients: active.clients.size,
       status: "running",
     });
   }
   const row = getTerminalInfo(id);
-  if (row) return c.json(row);
+  if (row) {
+    return c.json({
+      id: row.id,
+      shell: row.shell,
+      cwd: row.cwd,
+      cols: row.cols,
+      rows: row.rows,
+      sessionId: row.session_id,
+      sessionOriginId: row.session_origin_id,
+      kind: row.kind,
+      ownerType: row.owner_type,
+      ownerName: row.owner_name,
+      provider: row.provider,
+      interactive: row.interactive === 1,
+      pid: row.pid,
+      stopMode: "observe",
+      canStop: false,
+      canRestart: false,
+      createdAt: row.created_at,
+      lastOutputAt: row.last_output_at,
+      clients: 0,
+      status: row.status,
+    });
+  }
   return c.json({ error: "terminal not found" }, 404);
 });
 
@@ -3115,6 +3148,18 @@ app.post("/api/terminals/:id/resize", async (c) => {
   const ok = resizeTerminalPty(id, cols, rows);
   if (!ok) return c.json({ error: "terminal not found" }, 404);
   return c.json({ ok: true, cols, rows });
+});
+
+app.post("/api/terminals/rekey-session", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const oldSessionId = typeof body.oldSessionId === "string" ? body.oldSessionId : "";
+  const newSessionId = typeof body.newSessionId === "string" ? body.newSessionId : "";
+  if (!oldSessionId || !newSessionId) {
+    return c.json({ error: "oldSessionId and newSessionId are required" }, 400);
+  }
+  const { rekeyTerminalSession } = await import("./terminal-manager");
+  const count = rekeyTerminalSession(oldSessionId, newSessionId);
+  return c.json({ ok: true, count });
 });
 
 app.get("*", async (c) => {
