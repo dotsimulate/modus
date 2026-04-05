@@ -12,13 +12,13 @@
  *
  * Communication: the model interacts via modus_submit with { token, data: { op, ... } }.
  * Token type discrimination happens in modus-mcp.ts.
- * Worker/gate results are delivered to the orchestrator via queueMessage() as
- * typed MissionResponse JSON, not ad hoc markdown.
+ * Worker/gate results are delivered to the orchestrator via the canonical
+ * session interaction path as typed MissionResponse JSON, not ad hoc markdown.
  */
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import { startSession, queueMessage, type StartSessionOpts } from "./session-manager";
+import { interactWithSession, startSession, type StartSessionOpts } from "./session-manager";
 import { logActivity } from "./activity";
 import {
   insertMissionRun, getMissionRun, listMissionRuns, updateMissionRun,
@@ -643,7 +643,7 @@ async function handleReport(
     testResults: cmd.testResults,
     handoffSummary: cmd.handoffSummary,
   });
-  notifyOrchestrator(run, response);
+  await notifyOrchestrator(run, response);
 
   // Minimal ack to the worker — real info goes to orchestrator
   return { ok: true, message: `Report recorded for step "${stepId}".` };
@@ -689,7 +689,7 @@ function handleGate(
       gate,
       gateStatus: status,
     });
-    notifyOrchestrator(run, response);
+    void notifyOrchestrator(run, response).catch(() => {});
   }
 
   return { ok: true, message: `Gate ${gate} recorded as ${status} for step "${stepId}".` };
@@ -782,16 +782,28 @@ function handlePause(
 
 /**
  * Send a typed MissionResponse into the orchestrator session.
- * The orchestrator wakes up, parses the JSON, and decides next action.
+ * This goes through the resumable session interaction path so persisted idle
+ * orchestrators are resumed instead of requiring in-memory residency.
  */
-function notifyOrchestrator(run: MissionRunRow, response: MissionResponse): void {
+async function notifyOrchestrator(run: MissionRunRow, response: MissionResponse): Promise<void> {
   const orchId = run.orchestrator_session_id;
   if (!orchId) {
     console.warn(`[mission-runner] No orchestrator session for run ${run.id}`);
     return;
   }
   const message = `[MISSION RESPONSE]\n${JSON.stringify(response, null, 2)}`;
-  queueMessage(orchId, message);
+  try {
+    await interactWithSession({
+      sessionId: orchId,
+      prompt: message,
+      cwd: run.cwd,
+      userProfile: run.user_profile ?? undefined,
+      createIfMissing: false,
+    });
+  } catch (err) {
+    console.error(`[mission-runner] Failed to notify orchestrator ${orchId} for run ${run.id}:`, err);
+    throw err;
+  }
 }
 
 // ── Response Builder ──
@@ -891,7 +903,7 @@ export function handleWorkerDeath(sessionId: string): void {
       workerStatus: "failed",
       summary: `Worker session ended without reporting. The session for step "${assignment.step_id}" (${assignment.role}) terminated before completing its work. You may retry by delegating the step again.`,
     });
-    notifyOrchestrator(run, response);
+    void notifyOrchestrator(run, response).catch(() => {});
   }
 }
 

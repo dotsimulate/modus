@@ -1052,39 +1052,27 @@ app.post("/api/sessions/:id/messages", async (c) => {
   const v = validate(SendMessageRequestSchema, body);
   if (!v.ok) return c.json({ error: "invalid message request", details: v.errors }, 400);
   const { prompt } = body;
-
-  const active = getActiveSession(id);
-  if (!active) {
-    // Session not active in memory — resume it via SDK
-    const existing = getSession(id);
-    const storedConfig = getStoredSessionConfig(id);
-    const session = startSession({
-      prompt,
-      attachments: body.attachments,
-      sessionId: id,
-      cwd: body.cwd ?? storedConfig?.cwd ?? existing?.cwd ?? undefined,
-      additionalDirectories: body.additionalDirectories ?? storedConfig?.additionalDirectories,
-      profile: body.profile ?? existing?.profile ?? undefined,
-      userProfile: body.userProfile,
-      provider: body.provider ?? storedConfig?.provider,
-      model: body.model ?? storedConfig?.model ?? existing?.model ?? undefined,
-      effort: body.effort ?? storedConfig?.effort,
-      maxTurns: body.maxTurns ?? storedConfig?.maxTurns,
-      tools: body.tools ?? storedConfig?.tools,
-      disallowedTools: body.disallowedTools ?? storedConfig?.disallowedTools,
-      toolStates: body.toolStates ?? storedConfig?.toolStates,
-      providerControls: body.providerControls ?? storedConfig?.providerControls,
-      loadProjectSettings: body.loadProjectSettings ?? storedConfig?.loadProjectSettings,
-    });
-    const start = Date.now();
-    while (session.sessionId.startsWith("pending-") && Date.now() - start < 5000) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return c.json({ queued: true, status: session.status, sessionId: session.sessionId });
-  }
-
-  const queued = queueMessage(id, prompt, body.attachments, body.moves);
-  return c.json({ ...queued, status: active.status });
+  const delivered = await interactWithSession({
+    sessionId: id,
+    prompt,
+    attachments: body.attachments,
+    moves: body.moves,
+    createIfMissing: false,
+    cwd: body.cwd,
+    additionalDirectories: body.additionalDirectories,
+    profile: body.profile,
+    userProfile: body.userProfile,
+    provider: body.provider,
+    model: body.model,
+    effort: body.effort,
+    maxTurns: body.maxTurns,
+    tools: body.tools,
+    disallowedTools: body.disallowedTools,
+    toolStates: body.toolStates,
+    providerControls: body.providerControls,
+    loadProjectSettings: body.loadProjectSettings,
+  });
+  return c.json(delivered);
 });
 
 app.delete("/api/sessions/:id/dispatch/:dispatchId", (c) => {

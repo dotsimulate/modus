@@ -29,7 +29,7 @@ import type {
 } from "./move-types";
 import {
   type StartSessionOpts,
-  broadcastUiEvent, getActiveSession, queueMessage, startSession, watchSessionExchanges,
+  broadcastUiEvent, getActiveSession, interactWithSession, startSession, watchSessionExchanges,
 } from "./session-manager";
 import {
   listSessions as dbListSessions, listSessionsForProjects as dbListSessionsForProjects,
@@ -498,21 +498,20 @@ export async function handleMoveApiSubmit(
       const injected = emit
         ? `[modus:${emit.type}] ${JSON.stringify(emit)}\n${message}`.trim()
         : message;
-      const queued = queueMessage(reg.sessionId, injected);
-      if (!queued.queued) {
-        // Session not active (e.g. after restart) — resume it with the message
-        startSession({
-          sessionId: reg.sessionId,
-          prompt: injected,
-          cwd: reg.cwd,
-        });
-      }
+      void interactWithSession({
+        sessionId: reg.sessionId,
+        prompt: injected,
+        cwd: reg.cwd,
+        createIfMissing: false,
+      }).catch((err) => {
+        console.error(`[move-runner] notify failed for ${reg.moveName} on session ${reg.sessionId}:`, err);
+      });
       // ── Audit: log handler notify (message injection) ──
       logActivity({
         eventType: "move_handler_notify",
         sessionId: reg.sessionId || undefined,
         summary: `${reg.moveName}:${op} notify → ${message.slice(0, 80)}`,
-        metadata: { moveName: reg.moveName, op, emitType: emit?.type, resumed: !queued.queued },
+        metadata: { moveName: reg.moveName, op, emitType: emit?.type },
       });
     },
   };
@@ -1131,7 +1130,11 @@ function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: stri
     },
     async sendMessage(targetSessionId, content) {
       assertCapability(caps, "sessionMessage", moveName, `target: ${targetSessionId}`, trust);
-      queueMessage(targetSessionId, content);
+      await interactWithSession({
+        sessionId: targetSessionId,
+        prompt: content,
+        createIfMissing: false,
+      });
       // ── Audit: log message send ──
       logActivity({
         eventType: "move_send_message",
@@ -1515,14 +1518,12 @@ export async function activateAttachedMove(opts: {
   const finalPrompt = opts.text ? `${prompt}\n\n${opts.text}` : prompt;
 
   // Send message to session
-  const queued = queueMessage(reg.sessionId, finalPrompt);
-  if (!queued.queued) {
-    startSession({
-      sessionId: reg.sessionId,
-      prompt: finalPrompt,
-      cwd: reg.cwd,
-    });
-  }
+  await interactWithSession({
+    sessionId: reg.sessionId,
+    prompt: finalPrompt,
+    cwd: reg.cwd,
+    createIfMissing: false,
+  });
 
   logActivity({
     userProfile: opts.userProfile,

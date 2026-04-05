@@ -18,6 +18,7 @@
 
 import {
   upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
+  getStoredSessionConfig,
   copyEventsToSession, findAssistantUuid, clearBranchFields,
   addSessionTag, parseTags, getMaxSeq, insertSessionArtifact,
 } from "./db";
@@ -461,6 +462,35 @@ export type StartSessionOpts = {
   moves?: { name: string; inputs?: Record<string, unknown> }[];
 };
 
+export type InteractSessionOpts = {
+  prompt: string;
+  sessionId?: string;
+  attachments?: ImageAttachment[];
+  moves?: QueueMessageMoveBinding[];
+  createIfMissing?: boolean;
+  cwd?: string;
+  additionalDirectories?: string[];
+  profile?: string;
+  userProfile?: string;
+  provider?: string;
+  model?: string;
+  toolStates?: Record<string, string>;
+  maxTurns?: number;
+  effort?: string;
+  tools?: string[];
+  disallowedTools?: string[];
+  providerControls?: Record<string, unknown>;
+  loadProjectSettings?: boolean;
+  permissionPolicy?: StartSessionOpts["permissionPolicy"];
+};
+
+export type InteractSessionResult = {
+  sessionId: string;
+  status: SessionStatus;
+  queued: boolean;
+  dispatchId?: string;
+};
+
 function resolveSessionCwd(cwd?: string): string {
   return cwd ?? process.env.AGENT_CWD ?? process.cwd();
 }
@@ -860,6 +890,108 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   );
 
   return session;
+}
+
+export async function interactWithSession(opts: InteractSessionOpts): Promise<InteractSessionResult> {
+  const {
+    prompt,
+    sessionId,
+    attachments,
+    moves,
+    createIfMissing = true,
+    cwd,
+    additionalDirectories,
+    profile,
+    userProfile,
+    provider,
+    model,
+    toolStates,
+    maxTurns,
+    effort,
+    tools,
+    disallowedTools,
+    providerControls,
+    loadProjectSettings,
+    permissionPolicy,
+  } = opts;
+
+  const resolvedCwd = cwd ?? resolveSessionCwd(undefined);
+
+  if (sessionId) {
+    const active = getActiveSession(sessionId);
+    if (active) {
+      const queued = queueMessage(sessionId, prompt, attachments, moves);
+      return {
+        sessionId,
+        status: active.status,
+        queued: queued.queued,
+        dispatchId: queued.dispatchId,
+      };
+    }
+
+    const existing = getSession(sessionId);
+    if (!existing && !createIfMissing) {
+      throw new Error(`session not found: ${sessionId}`);
+    }
+
+    const storedConfig = existing ? getStoredSessionConfig(sessionId) : undefined;
+    const session = await startSessionWithMoves({
+      prompt,
+      attachments,
+      moves,
+      sessionId,
+      cwd: cwd ?? storedConfig?.cwd ?? existing?.cwd ?? resolvedCwd,
+      additionalDirectories: additionalDirectories ?? storedConfig?.additionalDirectories,
+      profile: profile ?? existing?.profile ?? undefined,
+      userProfile,
+      provider: provider ?? storedConfig?.provider,
+      model: model ?? storedConfig?.model ?? existing?.model ?? undefined,
+      toolStates: toolStates ?? storedConfig?.toolStates,
+      maxTurns: maxTurns ?? storedConfig?.maxTurns,
+      effort: effort ?? storedConfig?.effort,
+      tools: tools ?? storedConfig?.tools,
+      disallowedTools: disallowedTools ?? storedConfig?.disallowedTools,
+      providerControls: providerControls ?? storedConfig?.providerControls,
+      loadProjectSettings: loadProjectSettings ?? storedConfig?.loadProjectSettings,
+      permissionPolicy,
+    });
+
+    return {
+      sessionId: session.sessionId,
+      status: session.status,
+      queued: true,
+    };
+  }
+
+  if (!createIfMissing) {
+    throw new Error("sessionId required when createIfMissing is false");
+  }
+
+  const session = await startSessionWithMoves({
+    prompt,
+    attachments,
+    moves,
+    profile,
+    userProfile,
+    provider,
+    model,
+    toolStates,
+    maxTurns,
+    effort,
+    cwd: resolvedCwd,
+    additionalDirectories,
+    tools,
+    disallowedTools,
+    providerControls,
+    loadProjectSettings,
+    permissionPolicy,
+  });
+
+  return {
+    sessionId: session.sessionId,
+    status: session.status,
+    queued: true,
+  };
 }
 
 // ── Session Control ──
