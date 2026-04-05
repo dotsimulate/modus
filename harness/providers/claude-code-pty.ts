@@ -400,6 +400,17 @@ function spawnClaude(state: PtyState, sessionId?: string): ChildProcess {
     sessionId: sessionId ?? state.sessionId ?? undefined,
     cwd: state.spawnCwd,
     shell: bin,
+    kind: "provider",
+    ownerType: "provider",
+    ownerName: "claude-code-pty",
+    provider: "claude-code-pty",
+    interactive: true,
+    pid: proc.pid ?? null,
+    onStop: () => {
+      try {
+        proc.kill();
+      } catch {}
+    },
     onInput: (data) => {
       const str = typeof data === "string" ? data : new TextDecoder().decode(data);
       for (const ch of str) {

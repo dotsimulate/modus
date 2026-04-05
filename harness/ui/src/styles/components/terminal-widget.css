@@ -1,0 +1,116 @@
+.tmw-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tmw-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+}
+
+.tmw-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tmw-row-top,
+.tmw-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.tmw-kind {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.tmw-status {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--success) 72%, var(--text-secondary));
+}
+
+.tmw-kind--provider {
+  color: var(--accent);
+}
+
+.tmw-owner {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tmw-session,
+.tmw-row-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.tmw-session {
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.tmw-session--detached {
+  color: var(--warning);
+}
+
+.tmw-cwd {
+  max-width: 260px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tmw-jump {
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tmw-jump:hover,
+.tmw-stop:hover {
+  color: var(--text);
+  border-color: var(--text-secondary);
+}
+
+.tmw-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.tmw-stop {
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tmw-stop:disabled {
+  opacity: 0.65;
+  cursor: default;
+}

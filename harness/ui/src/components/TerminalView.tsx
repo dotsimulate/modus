@@ -328,7 +328,9 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
     const inst = instancesRef.current.find((t) => t.info.id === id);
     if (inst) {
       disposeInstance(inst);
-      modus.deleteTerminal(id).catch(() => {});
+      if (inst.info.canStop) {
+        modus.deleteTerminal(id).catch(() => {});
+      }
     }
     setInstances((prev) => {
       const next = prev.filter((t) => t.info.id !== id);
@@ -448,7 +450,7 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
             <button
               className="term-tab-close"
               onClick={(e) => { e.stopPropagation(); handleClose(inst.info.id); }}
-              title="Close terminal"
+              title={inst.info.canStop ? "Close terminal" : "Detach terminal view"}
             >
               <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
                 <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />

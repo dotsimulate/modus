@@ -1,10 +1,10 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileProvider";
 import { Markdown } from "./Markdown";
 import { Actions } from "./Actions";
 import { GitPanel } from "./GitPanel";
-import { WIDGETS } from "../widgets";
+import { WIDGETS, WidgetChromeContext } from "../widgets";
 import type { DashboardBlock, DashboardModule, WidgetBase, WidgetSize } from "../widgets";
 import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
 
@@ -37,18 +37,21 @@ function BlockShell({
     "collapsed",
     defaultCollapsed ?? false,
   );
+  const [headerSuffix, setHeaderSuffix] = useState<string | null>(null);
 
   return (
     <div className={`widget widget--${size ?? "full"}`}>
       <button className="widget-header" onClick={() => setCollapsed(!collapsed)}>
-        <span className="widget-title">{title}</span>
+        <span className="widget-title">{title}{collapsed && headerSuffix ? ` ${headerSuffix}` : ""}</span>
         <span className={`widget-chevron ${collapsed ? "" : "widget-chevron--open"}`}>
           {chevron}
         </span>
       </button>
       <div className={`panel-collapse ${collapsed ? "" : "panel-collapse--open"}`}>
         <div className="panel-collapse-clip">
-          {children}
+          <WidgetChromeContext.Provider value={{ setHeaderSuffix }}>
+            {children}
+          </WidgetChromeContext.Provider>
         </div>
       </div>
     </div>
