@@ -105,8 +105,10 @@ export type MissionStepStatus =
 
 export type MissionHaltKind =
   | "RUNNER_ERROR"
+  | "RUNNER_RESTARTED"
   | "GATE_FAILURE"
   | "AGENT_FAILURE"
+  | "WORKER_DIED"
   | "MISSION_PAUSED";
 
 export type MissionAssignmentStatus =

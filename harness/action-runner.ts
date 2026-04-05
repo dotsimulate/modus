@@ -26,7 +26,7 @@ import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSy
 import { join } from "path";
 import { getAllUserProfiles } from "./profiles";
 import {
-  startSession, getActiveSession, switchProfile, queueMessage,
+  interactWithSession, startSession, getActiveSession, switchProfile,
   attachArtifactToSession, watchSession, type ActiveSession,
 } from "./session-manager";
 import {
@@ -772,7 +772,11 @@ async function fireAction(
 
           // 3. Queue message (status set to "starting" by queueMessage)
           const promptStr = typeof stepPrompt === "string" ? stepPrompt : JSON.stringify(stepPrompt);
-          queueMessage(session.sessionId, promptStr);
+          await interactWithSession({
+            sessionId: session.sessionId,
+            prompt: promptStr,
+            createIfMissing: false,
+          });
 
           // 4. Wait for step completion
           finalOutcome = await monitorSession(session, name);
@@ -1186,8 +1190,12 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
       if (Array.isArray(attachmentPaths) && attachmentPaths.length > 0) {
         content += "\n\nAttachments (use Read to view these files):\n" + attachmentPaths.map((p: string) => `- ${p}`).join("\n");
       }
-      const queued = queueMessage(existing.id, content);
-      console.log(`[actions] Webhook "${name}" routed to existing session ${existing.id} (tag: ${tag}, queued: ${queued.queued})`);
+      const delivered = await interactWithSession({
+        sessionId: existing.id,
+        prompt: content,
+        createIfMissing: false,
+      });
+      console.log(`[actions] Webhook "${name}" routed to existing session ${existing.id} (tag: ${tag}, queued: ${delivered.queued})`);
       return { ok: true, sessionId: existing.id, continued: true };
     }
     // No existing session — fall through to fire a new action run.
