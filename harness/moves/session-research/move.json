@@ -9,13 +9,16 @@
     "tokenPrefix": "research",
     "ops": {
       "search": {
-        "description": "Full-text search across all sessions. Returns ranked results with snippets.",
+        "description": "Full-text search across all sessions. Returns ranked results with rich snippets (400 chars of matching content).",
         "schema": {
           "type": "object",
           "properties": {
             "query": { "type": "string", "description": "Search terms" },
             "limit": { "type": "number", "description": "Max results (default 10, max 50)" },
-            "profile": { "type": "string", "description": "Filter to a specific agent profile" }
+            "profile": { "type": "string", "description": "Filter to a specific agent profile" },
+            "role": { "type": "string", "enum": ["user", "assistant"], "description": "Filter by message sender — 'user' for user messages only, 'assistant' for assistant messages only. Omit to search all." },
+            "dateAfter": { "type": "string", "description": "Only sessions active after this date (ISO string, e.g. '2026-04-01')" },
+            "dateBefore": { "type": "string", "description": "Only sessions active before this date (ISO string, e.g. '2026-04-05')" }
           },
           "required": ["query"]
         }
@@ -31,15 +34,33 @@
         }
       },
       "read": {
-        "description": "Read the conversation messages from a specific session. Returns user/assistant turns.",
+        "description": "Read the conversation messages from a specific session. Returns user/assistant turns with up to 3000 chars per turn (adjustable via maxLength).",
         "schema": {
           "type": "object",
           "properties": {
             "sessionId": { "type": "string", "description": "Session ID to read" },
             "limit": { "type": "number", "description": "Max turns to return (default 30, max 100)" },
-            "offset": { "type": "number", "description": "Skip this many turns from the start (default 0)" }
+            "offset": { "type": "number", "description": "Skip this many turns from the start (default 0)" },
+            "role": { "type": "string", "enum": ["user", "assistant"], "description": "Filter to only user or only assistant turns. Omit to return all turns." },
+            "maxLength": { "type": "number", "description": "Max chars per turn (default 3000, max 8000). Use higher values when searching for long-form content." }
           },
           "required": ["sessionId"]
+        }
+      },
+      "scan": {
+        "description": "Bulk-preview multiple sessions at once. Shows first 3 turns from each session. Use this after search to quickly check multiple candidates instead of reading each one individually.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sessionIds": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "List of session IDs to scan (max 20)"
+            },
+            "role": { "type": "string", "enum": ["user", "assistant"], "description": "Filter to only user or only assistant turns." },
+            "maxLength": { "type": "number", "description": "Max chars per turn (default 2000, max 5000)" }
+          },
+          "required": ["sessionIds"]
         }
       },
       "info": {

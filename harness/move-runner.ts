@@ -1113,9 +1113,9 @@ function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: stri
         userProfile: opts.userProfile ?? userProfile,
         tags: opts.tags,
       });
-      // Wait for real session ID
-      const start = Date.now();
-      while (session.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
+      // Wait for provider init so session.sessionId reflects the post-rekey backend ID
+      const _spawnWait = Date.now();
+      while (session.status === "starting" && Date.now() - _spawnWait < 8000) {
         await Bun.sleep(100);
       }
       // ── Audit: log session spawn ──
@@ -1782,9 +1782,9 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
       buildSpawnSessionOpts(config, prompt, cwd, userProfile, sourceSessionId, inputs),
     );
 
-    // Wait for real session ID
-    const start = Date.now();
-    while (spawned.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
+    // Wait for provider init so spawned.sessionId reflects the post-rekey backend ID
+    const _spawnWait = Date.now();
+    while (spawned.status === "starting" && Date.now() - _spawnWait < 8000) {
       await Bun.sleep(100);
     }
 

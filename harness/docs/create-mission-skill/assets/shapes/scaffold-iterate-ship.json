@@ -1,0 +1,48 @@
+{
+  "name": "",
+  "label": "",
+  "description": "",
+  "brief": "brief.md",
+
+  "roles": {
+    "orchestrator": { "profile": "executor", "description": "Manages build phases, reviews between iterations, passes quality gates" },
+    "developer": { "profile": "mission-dev", "description": "Builds and iterates on the project" }
+  },
+
+  "steps": [
+    {
+      "id": "scaffold",
+      "label": "Scaffold",
+      "role": "developer",
+      "description": "Set up project structure, dependencies, and base files. Read context/status.md for mission state. First commit. Update context/status.md when done.",
+      "gates": [{ "type": "commit" }, { "type": "handoff" }]
+    },
+    {
+      "id": "build",
+      "label": "Build",
+      "role": "developer",
+      "reviewer": "orchestrator",
+      "description": "Implement core functionality from the brief. Read context/status.md for current state. Tests for key behavior. Commit frequently. Update context/status.md when done.",
+      "gates": [{ "type": "commit" }, { "type": "tests" }, { "type": "review" }]
+    },
+    {
+      "id": "ship",
+      "label": "Ship",
+      "role": "developer",
+      "reviewer": "orchestrator",
+      "description": "Polish, final fixes, deployment config. Read context/status.md for outstanding items. Final commit. Update context/status.md with final state.",
+      "gates": [{ "type": "commit" }, { "type": "review" }]
+    }
+  ],
+
+  "policy": {
+    "requireTestsBeforeAdvance": true,
+    "requireCommitBeforeAdvance": true,
+    "requireHandoffOnTransfer": true,
+    "allowParallelSteps": false
+  },
+
+  "budgets": { "turnsPerSession": 30 },
+  "onFailure": { "strategy": "pause", "maxRetriesPerStep": 2 },
+  "tags": []
+}

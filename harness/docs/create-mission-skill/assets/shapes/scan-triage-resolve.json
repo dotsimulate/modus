@@ -1,0 +1,53 @@
+{
+  "name": "",
+  "label": "",
+  "description": "",
+  "brief": "brief.md",
+
+  "roles": {
+    "orchestrator": { "profile": "executor", "description": "Prioritizes findings, reviews resolutions, decides next scan target" },
+    "worker": { "profile": "mission-dev", "description": "Scans for issues, implements fixes" }
+  },
+
+  "steps": [
+    {
+      "id": "scan",
+      "label": "Scan",
+      "role": "worker",
+      "description": "Scan the target area for issues. Write findings to context/. Update context/status.md.",
+      "gates": [{ "type": "handoff" }]
+    },
+    {
+      "id": "triage",
+      "label": "Triage",
+      "role": "orchestrator",
+      "description": "Review scan results. Prioritize issues. Decide what to resolve this cycle. Update context/status.md.",
+      "gates": [{ "type": "handoff" }]
+    },
+    {
+      "id": "resolve",
+      "label": "Resolve",
+      "role": "worker",
+      "reviewer": "orchestrator",
+      "description": "Fix prioritized issues. Commit changes. Update context/status.md.",
+      "gates": [{ "type": "commit" }, { "type": "review" }, { "type": "handoff" }]
+    }
+  ],
+
+  "cycle": {
+    "enabled": true,
+    "maxCycles": null,
+    "budget": { "usd": null }
+  },
+
+  "policy": {
+    "requireCommitBeforeAdvance": true,
+    "requireHandoffOnTransfer": true,
+    "allowParallelSteps": false,
+    "maxConcurrentAgents": 1
+  },
+
+  "budgets": { "turnsPerSession": 30 },
+  "onFailure": { "strategy": "pause", "maxRetriesPerStep": 2 },
+  "tags": ["cycling", "maintenance", "monitoring"]
+}

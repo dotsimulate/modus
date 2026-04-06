@@ -1,0 +1,48 @@
+{
+  "name": "",
+  "label": "",
+  "description": "",
+  "brief": "brief.md",
+
+  "roles": {
+    "orchestrator": { "profile": "executor", "description": "Decomposes the work, reviews components, verifies integration" },
+    "worker": { "profile": "mission-dev", "description": "Implements components and integrates them" }
+  },
+
+  "steps": [
+    {
+      "id": "decompose",
+      "label": "Decompose",
+      "role": "orchestrator",
+      "description": "Break the work into independent components. Define interfaces between them in context/decomposition.md. Update context/status.md.",
+      "gates": [{ "type": "handoff" }]
+    },
+    {
+      "id": "implement",
+      "label": "Implement",
+      "role": "worker",
+      "reviewer": "orchestrator",
+      "description": "Read context/decomposition.md. Build each component to the defined interfaces. Commit per component. Update context/status.md.",
+      "gates": [{ "type": "commit" }, { "type": "review" }]
+    },
+    {
+      "id": "integrate",
+      "label": "Integrate",
+      "role": "worker",
+      "reviewer": "orchestrator",
+      "description": "Wire components together. Read context/status.md for what was built. End-to-end tests. Fix integration issues. Commit. Update context/status.md.",
+      "gates": [{ "type": "commit" }, { "type": "tests" }, { "type": "review" }]
+    }
+  ],
+
+  "policy": {
+    "requireTestsBeforeAdvance": true,
+    "requireCommitBeforeAdvance": true,
+    "requireHandoffOnTransfer": true,
+    "allowParallelSteps": false
+  },
+
+  "budgets": { "turnsPerSession": 30 },
+  "onFailure": { "strategy": "pause", "maxRetriesPerStep": 2 },
+  "tags": []
+}

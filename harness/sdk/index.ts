@@ -148,6 +148,9 @@ export type {
   // Terminals
   TerminalInfo,
   CreateTerminalOpts,
+  // Process Registry
+  ProcessInfo,
+  ProcessSnapshot,
   // Web positions
   WebPosition,
   // Filesystem events

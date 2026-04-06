@@ -1,0 +1,220 @@
+/* Process monitor widget */
+
+.proc-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* ── Summary bar ── */
+
+.proc-summary {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 0 2px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* ── Process rows ── */
+
+.proc-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+}
+
+.proc-row:hover {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--panel) 100%, transparent);
+}
+
+.proc-row--me {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.proc-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.proc-row-main > * {
+  min-width: 0;
+}
+
+.proc-row-top,
+.proc-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+/* ── Kind label ── */
+
+.proc-kind {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.proc-kind--orchestrator { color: var(--accent); }
+.proc-kind--terminal { color: color-mix(in srgb, var(--success) 72%, var(--text-secondary)); }
+
+/* ── Status ── */
+
+.proc-status {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.proc-status--running { color: color-mix(in srgb, var(--success) 72%, var(--text-secondary)); }
+.proc-status--starting { color: var(--warning); }
+.proc-status--error { color: var(--error); }
+
+/* ── Profile (bold name, like tmw-owner) ── */
+
+.proc-profile {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Model (long string — treated like tmw-cwd) ── */
+
+.proc-model {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Meta row ── */
+
+.proc-row-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ── Mission sub-row ── */
+
+.proc-mission {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.proc-mission-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.proc-mission-role,
+.proc-mission-cycle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+/* ── Active moves ── */
+
+.proc-moves {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Preview (like tmw-cwd) ── */
+
+.proc-preview {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Actions ── */
+
+.proc-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.proc-jump {
+  text-decoration: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.proc-jump:hover {
+  color: var(--text);
+  border-color: var(--text-secondary);
+}
+
+.proc-kill {
+  border: 1px solid color-mix(in srgb, var(--error) 45%, var(--border));
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.proc-kill:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.proc-kill:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.proc-me {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-secondary));
+  padding: 4px 0;
+}

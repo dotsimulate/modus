@@ -58,7 +58,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "",
     "**Login** — `--login-*` tokens are derived from other tokens using `color-mix()`. Copy the derivation pattern from the active theme — do not invent new formulas.",
     "",
-    "**Syntax highlighting** — `--syn-keyword`, `--syn-builtin`, `--syn-type`, `--syn-literal`, `--syn-number`, `--syn-string`, `--syn-regexp`, `--syn-symbol`, `--syn-comment`, `--syn-function`, `--syn-variable`, `--syn-tag`, `--syn-attr`, `--syn-addition`, `--syn-deletion` — standard code coloring. Keep contrast legible on `--bg-raised`.",
+    "**Syntax highlighting** — `--syn-keyword`, `--syn-builtin`, `--syn-type`, `--syn-literal`, `--syn-number`, `--syn-string`, `--syn-regexp`, `--syn-symbol`, `--syn-comment`, `--syn-function`, `--syn-variable`, `--syn-tag`, `--syn-attr`, `--syn-addition`, `--syn-deletion` — standard code coloring. Keep contrast legible on `--bg-raised`. Use a well-balanced palette — keywords purple, strings green, functions blue, numbers/literals warm amber, comments muted gray. `--syn-variable` should be neutral (close to `--text`) and `--syn-tag` should be a cool tone like cyan or teal. Do NOT use red or coral (#e06c75 etc.) for variables, tags, or any high-frequency syntax token — red is reserved for `--syn-deletion` only, and even there use a muted dark red, not a bright one.",
     "",
     "## Workflow",
     "",

@@ -18,14 +18,14 @@
 
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import { interactWithSession, startSession, type StartSessionOpts } from "./session-manager";
+import { interactWithSession, startSession, type StartSessionOpts, type ActiveSession } from "./session-manager";
 import { logActivity } from "./activity";
 import {
-  insertMissionRun, getMissionRun, listMissionRuns, updateMissionRun,
+  insertMissionRun, getMissionRun, getMissionRunNumber, listMissionRuns, updateMissionRun,
   insertMissionStep, getMissionSteps, getMissionStep, updateMissionStep,
   insertMissionAssignment, getMissionAssignments, updateMissionAssignment,
   insertMissionTransfer, getMissionTransfers,
-  insertMissionGateResult, getMissionGateResults, getStepGateResults,
+  insertMissionGateResult, getMissionGateResults, getStepGateResults, clearMissionGates, resetMissionSteps,
   getMissionRunSessionIds, getActiveAssignmentsBySessionId,
 } from "./mission-db";
 import type {
@@ -44,6 +44,9 @@ const GRANT_CLEANUP_INTERVAL_MS = 60_000;
 // ── Grant Store (in-memory, keyed by token) ──
 
 const grantStore = new Map<string, MissionToolGrant>();
+
+/** Live session references — lets us read the current (possibly rekeyed) session ID. */
+const orchestratorSessions = new Map<number, ActiveSession>();
 
 setInterval(() => {
   const now = Date.now();
@@ -206,25 +209,25 @@ export async function startMission(opts: {
   grantStore.set(orchestratorToken, orchestratorGrant);
 
   // Build orchestrator prompt
-  const prompt = buildOrchestratorPrompt(configSnapshot, runId, orchestratorToken);
+  const runNumber = getMissionRunNumber(opts.missionName, runId);
+  const prompt = buildOrchestratorPrompt(configSnapshot, runId, orchestratorToken, runNumber);
 
-  // Spawn orchestrator session
-  const sessionOpts: StartSessionOpts = {
+  // Spawn orchestrator session — startSession generates a UUID default, provider
+  // will rekey to the backend-assigned ID during init.
+  const session = startSession({
     prompt,
     profile: orchestratorProfile,
     cwd: opts.cwd,
     userProfile: opts.userProfile,
-  };
+  });
 
-  const session = startSession(sessionOpts);
-
-  // Wait for real session ID (provider rekeys from temp ID)
-  const start = Date.now();
-  while (session.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
+  // Wait for provider init so session.sessionId is the post-rekey backend ID
+  const _orchWait = Date.now();
+  while (session.status === "starting" && Date.now() - _orchWait < 8000) {
     await Bun.sleep(100);
   }
 
-  // Update grant and run with session ID
+  orchestratorSessions.set(runId, session);
   orchestratorGrant.sessionId = session.sessionId;
   updateMissionRun(runId, {
     status: "running",
@@ -250,7 +253,7 @@ export async function startMission(opts: {
 
 // ── Prompt Construction ──
 
-function buildOrchestratorPrompt(config: MissionConfig, runId: number, token: string): string {
+function buildOrchestratorPrompt(config: MissionConfig, runId: number, token: string, runNumber?: number): string {
   const steps = config.steps.map((s, i) => {
     const gates = s.gates.map(g => g.type).join(", ");
     return `  ${i + 1}. [${s.id}] ${s.label} (role: ${s.role}${s.reviewer ? `, reviewer: ${s.reviewer}` : ""}) — gates: ${gates || "none"}`;
@@ -346,8 +349,24 @@ If all gates pass and the report is satisfactory, call advance. Otherwise, retry
 3. When you receive a worker report, review it and check gates.
 4. If satisfied and gates pass, advance the step.
 5. Continue through all steps until the mission is complete.
+${config.cycle?.enabled ? (config.cycle.freshOrchestrator ? `
+## Cycling (Fresh Sessions)
+This is a **cycling mission with fresh orchestrator sessions**. ${config.cycle.maxCycles ? `Max cycles: ${config.cycle.maxCycles}.` : "No cycle limit — keep going until paused."}
+When all steps complete, the runner resets them and **ends this session**. A new orchestrator
+session starts for the next cycle with a clean context. Your bootstrap file and operational
+memory carry continuity between cycles — update them before advancing the final step if you
+learned anything durable this cycle.
 
-Mission Run ID: ${runId}
+After advancing the final step, this session ends. You do NOT need to start the next cycle.
+` : `
+## Cycling
+This is a **cycling mission** — when all steps complete, the runner resets them automatically
+and you continue from step 1. ${config.cycle.maxCycles ? `Max cycles: ${config.cycle.maxCycles}.` : "No cycle limit — keep going until paused."}
+After advancing the final step, you will receive a message confirming the cycle reset.
+Immediately begin the next cycle by delegating step 1 again. Do NOT pause or ask for
+permission between cycles — the mission runs continuously until you are paused externally.
+`) : ""}
+Mission Run: ${runNumber ?? runId} (internal ID: ${runId})
 `;
 }
 
@@ -357,6 +376,7 @@ function buildWorkerPrompt(
   brief: string,
   token: string,
   runId: number,
+  runNumber?: number,
 ): string {
   return `# Mission Worker Assignment
 
@@ -381,7 +401,7 @@ If you encounter a blocking problem you cannot resolve:
 { "token": "${token}", "data": { "op": "report", "stepId": "${step.id}", "status": "failed", "summary": "what went wrong" } }
 \`\`\`
 
-Mission Run ID: ${runId}
+Mission Run: ${runNumber ?? runId} (internal ID: ${runId})
 `;
 }
 
@@ -441,9 +461,11 @@ function handleRead(run: MissionRunRow): { ok: boolean; result: unknown } {
     ok: true,
     result: {
       runId: run.id,
+      runNumber: getMissionRunNumber(run.mission_name, run.id),
       missionName: run.mission_name,
       status: run.status,
       currentStepIndex: run.current_step_index,
+      currentCycle: run.current_cycle ?? 1,
       haltKind: run.halt_kind,
       haltMessage: run.halt_message,
       steps: steps.map(s => ({
@@ -545,9 +567,10 @@ async function handleDelegate(
     brief,
     workerToken,
     run.id,
+    getMissionRunNumber(run.mission_name, run.id),
   );
 
-  // Spawn worker session
+  // Spawn worker session — startSession generates UUID, provider rekeys during init
   const session = startSession({
     prompt: workerPrompt,
     profile: roleConfig.profile,
@@ -555,21 +578,22 @@ async function handleDelegate(
     userProfile: run.user_profile ?? undefined,
   });
 
-  // Wait for real session ID
-  const start = Date.now();
-  while (session.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
+  // Wait for provider init so session.sessionId is the post-rekey backend ID
+  const _workerWait = Date.now();
+  while (session.status === "starting" && Date.now() - _workerWait < 8000) {
     await Bun.sleep(100);
   }
 
-  workerGrant.sessionId = session.sessionId;
-  updateMissionAssignment(assignmentId, { sessionId: session.sessionId });
+  const workerSessionId = session.sessionId;
+  workerGrant.sessionId = workerSessionId;
+  updateMissionAssignment(assignmentId, { sessionId: workerSessionId });
 
   // Always record transfer (unconditional — graph traceability)
   insertMissionTransfer({
     runId: run.id,
     stepId,
     fromSessionId: grant.sessionId,
-    toSessionId: session.sessionId,
+    toSessionId: workerSessionId,
     kind: "delegation",
     summary: transferSummary ?? `Delegated to ${role}`,
   });
@@ -582,7 +606,7 @@ async function handleDelegate(
     metadata: { runId: run.id, stepId, role, assignmentId },
   });
 
-  return { ok: true, message: `Delegated "${stepId}" to ${role}. Worker session: ${session.sessionId}` };
+  return { ok: true, message: `Delegated "${stepId}" to ${role}. Worker session: ${workerSessionId}` };
 }
 
 async function handleReport(
@@ -727,6 +751,13 @@ function handleAdvance(
     completedAt: Date.now(),
   });
 
+  // Advance currentStepIndex to the next incomplete step
+  const allStepsAfterAdvance = getMissionSteps(run.id);
+  const nextIncomplete = allStepsAfterAdvance.find(s => s.status !== "completed" && s.status !== "skipped");
+  if (nextIncomplete) {
+    updateMissionRun(run.id, { currentStepIndex: nextIncomplete.step_order });
+  }
+
   logActivity({
     userProfile: run.user_profile ?? undefined,
     eventType: "mission_step_complete",
@@ -735,11 +766,54 @@ function handleAdvance(
     metadata: { runId: run.id, stepId },
   });
 
-  // Check if mission is complete
-  const allSteps = getMissionSteps(run.id);
+  // Check if all steps are done
+  const allSteps = allStepsAfterAdvance;
   const allComplete = allSteps.every(s => s.status === "completed" || s.status === "skipped");
 
   if (allComplete) {
+    const config: MissionConfig = JSON.parse(run.definition_snapshot);
+    const cycleEnabled = config.cycle?.enabled === true;
+    const maxCycles = config.cycle?.maxCycles ?? null;
+    const currentCycle = run.current_cycle ?? 1;
+
+    // If cycling is enabled and we haven't hit the cap, reset for next cycle
+    if (cycleEnabled && (maxCycles === null || currentCycle < maxCycles)) {
+      const nextCycle = currentCycle + 1;
+
+      // Reset all steps to pending and clear gate results from previous cycle
+      resetMissionSteps(run.id);
+      clearMissionGates(run.id);
+
+      // Reset index to first step and bump cycle counter
+      updateMissionRun(run.id, {
+        currentStepIndex: 0,
+        currentCycle: nextCycle,
+      });
+
+      logActivity({
+        userProfile: run.user_profile ?? undefined,
+        eventType: "mission_cycle",
+        summary: `Mission cycle ${currentCycle} complete, starting cycle ${nextCycle}: ${run.mission_name}`,
+        metadata: { runId: run.id, cycle: nextCycle },
+      });
+
+      // Fresh orchestrator: end this session and spawn a new one for the next cycle
+      if (config.cycle?.freshOrchestrator) {
+        void rotateOrchestrator(run, config, nextCycle);
+        return {
+          ok: true,
+          message: `Step "${stepId}" complete. Cycle ${currentCycle} finished. A fresh orchestrator session is starting for cycle ${nextCycle}. This session is ending.`,
+        };
+      }
+
+      return {
+        ok: true,
+        message: `Step "${stepId}" complete. Cycle ${currentCycle} finished — all steps reset for cycle ${nextCycle}. Continue delegating from step 1.`,
+      };
+    }
+
+    // Not cycling or hit max — mission done
+    orchestratorSessions.delete(run.id);
     updateMissionRun(run.id, {
       status: "completed",
       completedAt: Date.now(),
@@ -747,8 +821,8 @@ function handleAdvance(
     logActivity({
       userProfile: run.user_profile ?? undefined,
       eventType: "mission_complete",
-      summary: `Mission completed: ${run.mission_name}`,
-      metadata: { runId: run.id },
+      summary: `Mission completed: ${run.mission_name}${cycleEnabled ? ` (after ${currentCycle} cycles)` : ""}`,
+      metadata: { runId: run.id, cycles: currentCycle },
     });
     return { ok: true, message: `Step "${stepId}" complete. All steps done — mission complete.` };
   }
@@ -761,6 +835,7 @@ function handlePause(
   grant: MissionToolGrant,
   cmd: Extract<MissionCommand, { op: "pause" }>,
 ): { ok: boolean; message?: string } {
+  orchestratorSessions.delete(run.id);
   updateMissionRun(run.id, {
     status: "paused",
     haltKind: "MISSION_PAUSED",
@@ -786,11 +861,19 @@ function handlePause(
  * orchestrators are resumed instead of requiring in-memory residency.
  */
 async function notifyOrchestrator(run: MissionRunRow, response: MissionResponse): Promise<void> {
-  const orchId = run.orchestrator_session_id;
+  // Resolve the live session ID — the provider may have rekeyed it after startup
+  const liveSession = orchestratorSessions.get(run.id);
+  const orchId = liveSession?.sessionId ?? run.orchestrator_session_id;
   if (!orchId) {
     console.warn(`[mission-runner] No orchestrator session for run ${run.id}`);
     return;
   }
+
+  // Sync DB if the live ID diverged from what we stored
+  if (liveSession && orchId !== run.orchestrator_session_id) {
+    updateMissionRun(run.id, { orchestratorSessionId: orchId });
+  }
+
   const message = `[MISSION RESPONSE]\n${JSON.stringify(response, null, 2)}`;
   try {
     await interactWithSession({
@@ -804,6 +887,102 @@ async function notifyOrchestrator(run: MissionRunRow, response: MissionResponse)
     console.error(`[mission-runner] Failed to notify orchestrator ${orchId} for run ${run.id}:`, err);
     throw err;
   }
+}
+
+// ── Fresh Orchestrator Rotation ──
+
+/**
+ * End the current orchestrator session and spawn a fresh one for the next cycle.
+ * This enables the bootstrap pattern: agents re-read curated memory files from
+ * a clean context each cycle instead of accumulating stale conversation history.
+ */
+async function rotateOrchestrator(run: MissionRunRow, config: MissionConfig, newCycle: number): Promise<void> {
+  // 1. Clean up old orchestrator — revoke grants so the dying session can't make more calls
+  orchestratorSessions.delete(run.id);
+  for (const [key, grant] of grantStore) {
+    if (grant.runId === run.id && grant.role === "orchestrator") {
+      grantStore.delete(key);
+    }
+  }
+
+  // 2. Resolve orchestrator profile
+  const orchestratorRole = "orchestrator";
+  const firstRoleKey = Object.keys(config.roles)[0];
+  const orchestratorProfile = config.roles[orchestratorRole]?.profile
+    ?? (firstRoleKey ? config.roles[firstRoleKey]?.profile : undefined);
+  if (!orchestratorProfile) {
+    console.error("[mission-runner] Cannot rotate orchestrator: no profile defined");
+    return;
+  }
+
+  // 3. Mint fresh grant
+  const newToken = generateToken();
+  const newGrant: MissionToolGrant = {
+    token: newToken,
+    runId: run.id,
+    role: orchestratorRole,
+    sessionId: "",
+    allowedOps: ["read", "delegate", "report", "gate", "advance", "pause"],
+    createdAt: Date.now(),
+  };
+  grantStore.set(newToken, newGrant);
+
+  // 4. Build fresh prompt with cycle context
+  const runNumber = getMissionRunNumber(run.mission_name, run.id);
+  const basePrompt = buildOrchestratorPrompt(config, run.id, newToken, runNumber);
+  const cyclePreamble = buildCyclePreamble(run.id, newCycle, config);
+  const prompt = basePrompt + cyclePreamble;
+
+  // 5. Spawn fresh session
+  const session = startSession({
+    prompt,
+    profile: orchestratorProfile,
+    cwd: run.cwd,
+    userProfile: run.user_profile ?? undefined,
+  });
+
+  const _wait = Date.now();
+  while (session.status === "starting" && Date.now() - _wait < 8000) {
+    await Bun.sleep(100);
+  }
+
+  orchestratorSessions.set(run.id, session);
+  newGrant.sessionId = session.sessionId;
+  updateMissionRun(run.id, { orchestratorSessionId: session.sessionId });
+
+  logActivity({
+    userProfile: run.user_profile ?? undefined,
+    eventType: "mission_cycle",
+    summary: `Fresh orchestrator spawned for cycle ${newCycle}: ${run.mission_name}`,
+    metadata: { runId: run.id, cycle: newCycle, sessionId: session.sessionId },
+  });
+}
+
+/**
+ * Build a preamble injected into the fresh orchestrator prompt with previous cycle context.
+ * Gives the new session immediate orientation without requiring it to discover cycle state from files.
+ */
+function buildCyclePreamble(runId: number, newCycle: number, config: MissionConfig): string {
+  const assignments = getMissionAssignments(runId);
+  const completedAssignments = assignments.filter(a => a.status === "completed");
+
+  const recentSummaries = completedAssignments
+    .slice(0, 10)
+    .map(a => `  - [${a.step_id}] (${a.role}): ${a.result_summary ?? "no summary"}`)
+    .join("\n");
+
+  const maxLabel = config.cycle?.maxCycles ? `${config.cycle.maxCycles}` : "unlimited";
+
+  return `
+
+## Cycle Context
+This is cycle ${newCycle} of ${maxLabel}. You are starting a **fresh session** — your previous session has ended.
+Your bootstrap file and operational memory are your primary source of continuity across cycles.
+
+Previous work summaries (most recent first):
+${recentSummaries || "  (none — this is the first cycle)"}
+
+Begin by reading your bootstrap file, then read the mission state, then continue the mission from step 1.`;
 }
 
 // ── Response Builder ──
@@ -914,6 +1093,7 @@ export function pauseMissionRun(runId: number, reason: string): { ok: boolean; e
   if (!run) return { ok: false, error: "Run not found" };
   if (run.status !== "running") return { ok: false, error: `Run is ${run.status}, cannot pause` };
 
+  orchestratorSessions.delete(runId);
   updateMissionRun(runId, {
     status: "paused",
     haltKind: "MISSION_PAUSED",
@@ -941,11 +1121,27 @@ export async function resumeMissionRun(runId: number): Promise<{ ok: boolean; er
   const assignments = getMissionAssignments(runId);
 
   // Find the first incomplete step
-  const nextStep = steps.find(s => s.status !== "completed" && s.status !== "skipped");
+  let nextStep = steps.find(s => s.status !== "completed" && s.status !== "skipped");
   if (!nextStep) {
-    // All steps done — just mark complete
-    updateMissionRun(runId, { status: "completed", haltKind: null, haltMessage: null, completedAt: Date.now() });
-    return { ok: true };
+    // All steps done — if cycling, reset for next cycle; otherwise mark complete
+    if (config.cycle?.enabled) {
+      const maxCycles = config.cycle.maxCycles ?? null;
+      const currentCycle = run.current_cycle ?? 1;
+      if (maxCycles === null || currentCycle < maxCycles) {
+        resetMissionSteps(runId);
+        clearMissionGates(runId);
+        updateMissionRun(runId, { currentStepIndex: 0, currentCycle: currentCycle + 1, haltKind: null, haltMessage: null });
+        // Re-read steps after reset
+        const freshSteps = getMissionSteps(runId);
+        nextStep = freshSteps[0]!;
+      } else {
+        updateMissionRun(runId, { status: "completed", haltKind: null, haltMessage: null, completedAt: Date.now() });
+        return { ok: true };
+      }
+    } else {
+      updateMissionRun(runId, { status: "completed", haltKind: null, haltMessage: null, completedAt: Date.now() });
+      return { ok: true };
+    }
   }
 
   // Resolve orchestrator profile
@@ -977,7 +1173,8 @@ export async function resumeMissionRun(runId: number): Promise<{ ok: boolean; er
     return `  - [${s.step_id}] ${s.title}: COMPLETED — ${lastResult}`;
   }).join("\n");
 
-  const basePrompt = buildOrchestratorPrompt(config, runId, orchestratorToken);
+  const runNumber = getMissionRunNumber(run.mission_name, runId);
+  const basePrompt = buildOrchestratorPrompt(config, runId, orchestratorToken, runNumber);
   const resumeContext = `
 
 ## RESUME CONTEXT
@@ -991,7 +1188,7 @@ Start by reading the mission state, then continue from the current step.`;
 
   const prompt = basePrompt + resumeContext;
 
-  // Spawn new orchestrator session
+  // Spawn new orchestrator session — startSession generates UUID, provider rekeys during init
   const session = startSession({
     prompt,
     profile: orchestratorProfile,
@@ -999,10 +1196,13 @@ Start by reading the mission state, then continue from the current step.`;
     userProfile: run.user_profile ?? undefined,
   });
 
-  const start = Date.now();
-  while (session.sessionId.startsWith("ses-") && Date.now() - start < 8000) {
+  // Wait for provider init so session.sessionId is the post-rekey backend ID
+  const _resumeWait = Date.now();
+  while (session.status === "starting" && Date.now() - _resumeWait < 8000) {
     await Bun.sleep(100);
   }
+
+  orchestratorSessions.set(runId, session);
 
   orchestratorGrant.sessionId = session.sessionId;
   updateMissionRun(runId, {
@@ -1097,15 +1297,31 @@ export function listMissionSessionIds(runId: number): string[] {
 function mapRunToSummary(run: MissionRunRow): MissionRunSummary {
   return {
     id: run.id,
+    runNumber: getMissionRunNumber(run.mission_name, run.id),
     missionName: run.mission_name,
     status: run.status,
     currentStepIndex: run.current_step_index,
+    currentCycle: run.current_cycle ?? 1,
     haltKind: run.halt_kind,
     haltMessage: run.halt_message,
     startedAt: run.started_at,
     updatedAt: run.updated_at,
     completedAt: run.completed_at,
   };
+}
+
+// ── Process Registry Exports ──
+
+/** Returns all active mission grants (for process registry cross-referencing). */
+export function getActiveMissionGrants(): MissionToolGrant[] {
+  return Array.from(grantStore.values());
+}
+
+/** Returns [runId, sessionId] pairs for all live orchestrator sessions. */
+export function getActiveOrchestratorRunIds(): Array<[number, string]> {
+  return Array.from(orchestratorSessions.entries()).map(
+    ([runId, session]) => [runId, session.sessionId],
+  );
 }
 
 // Re-export for modus-mcp routing

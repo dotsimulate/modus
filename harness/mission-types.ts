@@ -30,6 +30,17 @@ export interface MissionConfig {
   /** Ordered step definitions. Structure is frozen at run start. */
   steps: MissionStepDefinition[];
 
+  /** Cycling configuration — when enabled, all steps reset after completion and the mission continues. */
+  cycle?: {
+    enabled?: boolean;
+    maxCycles?: number | null;
+    /** When true, the orchestrator gets a fresh session each cycle instead of continuing
+     *  in the same (potentially degraded) context. Enables the bootstrap pattern where
+     *  agents re-read curated memory files from a clean state each cycle. Default: false. */
+    freshOrchestrator?: boolean;
+    budget?: { usd?: number | null };
+  };
+
   /** Execution policy */
   policy: MissionPolicy;
 
@@ -186,6 +197,7 @@ export interface MissionRunRow {
   user_profile: string | null;
   status: MissionRunStatus;
   current_step_index: number;
+  current_cycle: number;
   orchestrator_session_id: string | null;
   definition_snapshot: string; // JSON-serialized MissionConfig
   halt_kind: MissionHaltKind | null;
@@ -260,9 +272,11 @@ export interface MissionListItem {
 
 export interface MissionRunSummary {
   id: number;
+  runNumber: number;
   missionName: string;
   status: MissionRunStatus;
   currentStepIndex: number;
+  currentCycle: number;
   haltKind: MissionHaltKind | null;
   haltMessage: string | null;
   startedAt: number;

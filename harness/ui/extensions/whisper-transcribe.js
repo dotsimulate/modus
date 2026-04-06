@@ -268,6 +268,7 @@ function isDesktop() {
 }
 
 export default function whisperTranscribeExtension(api) {
+  const settings = api.getSettings();
   let recording = null;
   let pendingUploads = 0;
   let disposed = false;
@@ -462,8 +463,12 @@ export default function whisperTranscribeExtension(api) {
     const body = new FormData();
     body.set("file", file);
 
+    const headers = {};
+    if (settings.whisperUrl) headers["X-Whisper-Url"] = settings.whisperUrl;
+
     const response = await api.request("/api/whisper/transcribe", {
       method: "POST",
+      headers,
       body,
     });
     const payload = await response.json().catch(() => null);
