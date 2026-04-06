@@ -1362,9 +1362,13 @@ export type SearchHit = {
 export function searchSessions(
   query: string,
   limit = 20,
-  scope?: { cwdPrefixes?: string[]; agentProfiles?: string[]; userProfileName?: string },
+  scope?: { cwdPrefixes?: string[]; agentProfiles?: string[]; userProfileName?: string; role?: string },
 ): SearchHit[] {
-  const ftsQuery = query.trim().split(/\s+/).map(t => `"${t}"*`).join(" ");
+  // Build FTS query — optionally prefix with role column filter
+  const baseTerms = query.trim().split(/\s+/).map(t => `"${t}"*`).join(" ");
+  const ftsQuery = scope?.role && ["user", "assistant"].includes(scope.role)
+    ? `role:"${scope.role}" AND ${baseTerms}`
+    : baseTerms;
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
 
   const matchConditions = [

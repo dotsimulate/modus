@@ -73,6 +73,8 @@ type ClaudeCodeState = {
   stderrBuf: string;
   /** True while a drainEvents loop is active — prevents overlapping SDK queries */
   drainActive?: boolean;
+  /** True after interrupt until the old SDK drain has fully exited */
+  interrupting?: boolean;
   spawnedAt?: number;
 };
 
@@ -602,7 +604,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       // Subprocess still alive from previous turn — push directly through input channel.
       // Check this BEFORE status, because session-manager sets status="starting" before
       // calling sendMessage, which would cause us to queue instead of reusing.
-      if (state.drainActive && session.status !== "running") {
+      if (state.drainActive && !state.interrupting && session.status !== "running") {
         session.initialContent = content;
         session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
         session.status = "running";
@@ -612,6 +614,13 @@ export function createClaudeCodeProvider(): SessionProvider {
         state.input.push(content);
         msgLog(sid, "REUSE", "pushed to live subprocess via input channel");
         console.log(`[claude-code] REUSE subprocess for ${session.sessionId} (drainActive, no cold start)`);
+        return;
+      }
+
+      if (state.interrupting && state.drainActive) {
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
+        msgLog(sid, "DEFER-UNTIL-EXIT", "queued follow-up until interrupted subprocess drain exits");
+        console.log(`[claude-code] deferring follow-up until interrupted subprocess exits for ${session.sessionId}`);
         return;
       }
 
@@ -676,6 +685,7 @@ export function createClaudeCodeProvider(): SessionProvider {
 
     abort(session: ActiveSession) {
       const state = getState(session);
+      if (state) state.interrupting = true;
       try { state?.input.close(); } catch { /* ignore cleanup errors */ }
       try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
       // close() kills the SDK subprocess and MCP transports — without this, child processes leak
@@ -1086,25 +1096,20 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       state.queryObj = null;
     }
   } catch (err: any) {
-    // stopSession / switchProfile may have already set status — skip if handled.
-    // MUST clear drainActive before returning so sendMessage doesn't take the
-    // REUSE path with a dead subprocess and closed input channel.
-    if (session.status === "idle") {
-      state.drainActive = false;
-      return;
-    }
-
     console.error(`[claude-code] drain caught for ${session.sessionId}:`, err);
     const isAbort = err?.name === "AbortError" || err?.type === "abort"
       || String(err).includes("aborted by user");
-    if (isAbort) {
+    const wasAlreadyIdle = session.status === "idle";
+    if (isAbort || wasAlreadyIdle) {
       console.log(`[claude-code] aborted ${session.sessionId}`);
-      session.status = "idle";
-      ctx.updateSessionDb({
-        status: "idle",
-        costUsd: session.costUsd,
-        lastResponse: session.lastAssistantText?.slice(0, 2000),
-      });
+      if (!wasAlreadyIdle) {
+        session.status = "idle";
+        ctx.updateSessionDb({
+          status: "idle",
+          costUsd: session.costUsd,
+          lastResponse: session.lastAssistantText?.slice(0, 2000),
+        });
+      }
     } else {
       session.error = String(err);
       session.status = "error";
@@ -1129,6 +1134,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
 
   // Post-drain: handle pending messages after abort
   if (session.status === "idle") {
+    state.interrupting = false;
     if (session.pendingDispatch.length > 0) {
       console.log(`[claude-code] ${session.pendingDispatch.length} pending after drain exit, restarting ${session.sessionId}`);
 

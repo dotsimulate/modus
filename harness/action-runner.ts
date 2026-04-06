@@ -684,9 +684,10 @@ async function fireAction(
         userProfile: effectiveUserProfile,
       });
 
+      // Wait for provider init so session.sessionId reflects the post-rekey backend ID
       const idStart = Date.now();
       while (
-        (session.sessionId.startsWith("ses-") || session.sessionId.startsWith("pending-"))
+        session.status === "starting"
         && Date.now() - idStart < 15_000
       ) {
         await new Promise(r => setTimeout(r, 200));

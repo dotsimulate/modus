@@ -37,6 +37,9 @@ db.run(`
     completed_at INTEGER
   )
 `);
+// Add current_cycle column if missing (migration for existing DBs)
+try { db.run(`ALTER TABLE mission_runs ADD COLUMN current_cycle INTEGER NOT NULL DEFAULT 1`); } catch { /* column already exists */ }
+
 db.run(`CREATE INDEX IF NOT EXISTS idx_mission_runs_name ON mission_runs(mission_name, started_at DESC)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_mission_runs_status ON mission_runs(status)`);
 
@@ -138,6 +141,7 @@ const stmts = {
     UPDATE mission_runs SET
       status = COALESCE($status, status),
       current_step_index = COALESCE($current_step_index, current_step_index),
+      current_cycle = COALESCE($current_cycle, current_cycle),
       orchestrator_session_id = COALESCE($orchestrator_session_id, orchestrator_session_id),
       halt_kind = $halt_kind,
       halt_message = $halt_message,
@@ -207,6 +211,18 @@ const stmts = {
   getStepGates: db.prepare(`
     SELECT * FROM mission_gate_results WHERE run_id = $run_id AND step_id = $step_id ORDER BY checked_at DESC
   `),
+  deleteRunGates: db.prepare(`
+    DELETE FROM mission_gate_results WHERE run_id = $run_id
+  `),
+  resetSteps: db.prepare(`
+    UPDATE mission_step_runs SET status = 'pending', active_assignment_id = NULL, started_at = NULL, completed_at = NULL
+    WHERE run_id = $run_id
+  `),
+
+  // Mission-specific run number (1-based ordinal for a given mission name)
+  getRunNumber: db.prepare(`
+    SELECT COUNT(*) as n FROM mission_runs WHERE mission_name = $mission_name AND id <= $id
+  `),
 
   // Session lookup (for GET /api/missions/runs/:id/sessions)
   getRunSessions: db.prepare(`
@@ -256,6 +272,12 @@ export function getMissionRun(id: number): MissionRunRow | null {
   return (stmts.getRun.get({ $id: id }) as MissionRunRow) ?? null;
 }
 
+/** 1-based run number scoped to a specific mission name (not the global row ID). */
+export function getMissionRunNumber(missionName: string, runId: number): number {
+  const row = stmts.getRunNumber.get({ $mission_name: missionName, $id: runId }) as { n: number } | null;
+  return row?.n ?? 1;
+}
+
 export function listMissionRuns(opts?: {
   cwd?: string;
   status?: string;
@@ -271,6 +293,7 @@ export function listMissionRuns(opts?: {
 export function updateMissionRun(id: number, updates: {
   status?: MissionRunStatus;
   currentStepIndex?: number;
+  currentCycle?: number;
   orchestratorSessionId?: string;
   haltKind?: MissionHaltKind | null;
   haltMessage?: string | null;
@@ -280,6 +303,7 @@ export function updateMissionRun(id: number, updates: {
     $id: id,
     $status: updates.status ?? null,
     $current_step_index: updates.currentStepIndex ?? null,
+    $current_cycle: updates.currentCycle ?? null,
     $orchestrator_session_id: updates.orchestratorSessionId ?? null,
     $halt_kind: updates.haltKind ?? null,
     $halt_message: updates.haltMessage ?? null,
@@ -435,6 +459,16 @@ export function getMissionGateResults(runId: number): MissionGateResultRow[] {
 
 export function getStepGateResults(runId: number, stepId: string): MissionGateResultRow[] {
   return stmts.getStepGates.all({ $run_id: runId, $step_id: stepId }) as MissionGateResultRow[];
+}
+
+/** Clear all gate results for a run (used on cycle reset). */
+export function clearMissionGates(runId: number): void {
+  stmts.deleteRunGates.run({ $run_id: runId });
+}
+
+/** Reset all steps to pending with cleared timestamps (used on cycle reset). */
+export function resetMissionSteps(runId: number): void {
+  stmts.resetSteps.run({ $run_id: runId });
 }
 
 // ── Dead Worker Detection ──

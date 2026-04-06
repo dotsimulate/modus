@@ -656,9 +656,10 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     ? buildContent(opts.prompt, opts.attachments)
     : opts.prompt; // already MessageContent (content blocks from actions)
 
-  // Session ID: use provided ID (for resume), otherwise generate one.
-  // Provider can rekey later if its backend provides a different ID.
-  const tempId = opts.sessionId ?? `ses-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Session ID: use provided ID (for resume), otherwise generate a stable UUID.
+  // Providers may still call rekeySession() but a UUID default eliminates the
+  // ses-* temp-ID class of bugs (stale lookups, sidebar invisibility, race conditions).
+  const tempId = opts.sessionId ?? crypto.randomUUID();
   const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
 
   // Branch detection: if resuming a session that has parent_session_id,
@@ -865,12 +866,11 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   // Start the session with the augmented prompt
   const session = startSession({ ...opts, prompt });
 
-  // Wait for real session ID (provider rekeys from temp ID)
+  // Wait for provider init (rekey happens during init — session.sessionId becomes the
+  // backend-assigned ID).  Condition: status leaves "starting" once the provider fires
+  // its first init event.  Timeout prevents blocking forever on provider failure.
   const idStart = Date.now();
-  while (
-    (session.sessionId.startsWith("ses-") || session.sessionId.startsWith("pending-"))
-    && Date.now() - idStart < 15_000
-  ) {
+  while (session.status === "starting" && Date.now() - idStart < 15_000) {
     await new Promise(r => setTimeout(r, 200));
   }
 

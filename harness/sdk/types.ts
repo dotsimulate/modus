@@ -1593,6 +1593,48 @@ export type CreateTerminalOpts = {
   interactive?: boolean;
 };
 
+// ── Process Registry ──
+
+export type ProcessKind = "orchestrator" | "worker" | "session" | "terminal";
+
+/** A managed process (agent session, mission worker, terminal) tracked by the harness. */
+export type ProcessInfo = {
+  id: string;
+  kind: ProcessKind;
+  status: string;
+  profile: string | null;
+  provider: string;
+  model: string | null;
+  costUsd: number;
+  numTurns: number;
+  startedAt: number;
+  lastEventAt: number;
+  preview: string;
+  cwd: string | null;
+  mission: {
+    runId: number;
+    missionName: string;
+    role: string;
+    currentCycle: number;
+    runStatus: string;
+  } | null;
+  activeMoves: string[];
+  subscribers: number;
+  canKill: boolean;
+};
+
+/** Snapshot of all managed processes at a point in time. */
+export type ProcessSnapshot = {
+  timestamp: number;
+  processes: ProcessInfo[];
+  summary: {
+    total: number;
+    byKind: Record<string, number>;
+    totalCostUsd: number;
+    missionRuns: number;
+  };
+};
+
 // ── Web Positions ──
 
 /** Saved position of a UI node in the web/canvas view (e.g. draggable panels). */

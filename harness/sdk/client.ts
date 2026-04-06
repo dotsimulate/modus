@@ -60,6 +60,7 @@ import type {
   TouchQuery,
   TerminalInfo,
   CreateTerminalOpts,
+  ProcessSnapshot,
   WebPosition,
   MissionRunStatus,
   ApiAttachment,
@@ -690,6 +691,12 @@ export class ModusClient {
     if (query.confidence?.length) p.set("confidence", query.confidence.join(",")); if (query.sessionId) p.set("sessionId", query.sessionId);
     const r = await this.fetch(`/api/trace/touches?${p}`); if (!r.ok) throw new Error(`trace fetch failed: ${r.status}`); return r.json();
   }
+
+  // ── Process Registry ──
+  /** Returns a snapshot of every managed process in the harness (sessions, mission workers, terminals). */
+  async listProcesses(): Promise<ProcessSnapshot> { const r = await this.fetch("/api/processes"); if (!r.ok) throw new Error(`Failed to list processes: ${r.status}`); return r.json(); }
+  /** Kill a managed process by session ID. Aborts the provider and tears down SDK subprocess + MCP transports. */
+  async killProcess(id: string): Promise<void> { const r = await this.fetch(`/api/processes/${id}`, { method: "DELETE" }); if (!r.ok) { const body = await r.json().catch(() => ({})); throw new Error((body as any).error ?? `Failed to kill process: ${r.status}`); } }
 
   // ── Terminals ──
   /** Creates a new terminal session. */

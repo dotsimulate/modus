@@ -1,30 +1,22 @@
-# Project Brief
+# Mission Brief
 
-## What to Build
+## Goal
 
-<!-- Clear description of the end product. What is it? Who is it for? -->
+<!-- 1-3 sentences. What does success look like? -->
 
-## Requirements
+## Constraints
 
-<!-- Specific, testable requirements. Each one a bullet point. Must-haves first. -->
+<!-- What to avoid, what's off-limits, what matters most. Bullet points. -->
 
 -
 -
--
 
-## Technical Constraints
+## Done Condition
 
-- **Stack:** <!-- frameworks, languages, tools -->
-- **Runtime:** <!-- Node, Bun, Python, etc. -->
-- **Avoid:** <!-- things to not use -->
+<!-- How the orchestrator knows the mission is finished.
+     For cycling missions: "Run until stopped" or "Run until [condition]"
+     For directed missions: specific deliverable or test criteria -->
 
-## Design Direction
+## Quality Bar
 
-<!-- Visual style, UX patterns, reference sites. -->
-
-## Definition of Done
-
-1. All requirements from above are implemented
-2. Tests pass for key functionality
-3. Project builds/runs without errors
-4. README explains how to set up and run
+<!-- What "good enough" means for outputs. Optional but recommended. -->

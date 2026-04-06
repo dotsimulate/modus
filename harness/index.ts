@@ -65,6 +65,7 @@ import {
   shutdownAllTerminals,
 } from "./terminal-manager";
 import { tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker } from "./terminal-ws";
+import { getProcessSnapshot, killProcess } from "./process-registry";
 import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
 
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
@@ -216,6 +217,20 @@ app.get("/health", (c) => {
   const all = getAllActiveSessions();
   const running = all.filter(s => s.status === "running" || s.status === "starting");
   return c.json({ status: "ok", uptime: process.uptime(), activeSessions: running.length });
+});
+
+// ── Process Registry ──
+
+// Unified view of every managed process (sessions, mission workers, terminals)
+app.get("/api/processes", (c) => {
+  return c.json(getProcessSnapshot());
+});
+
+// Kill a managed process by session ID
+app.delete("/api/processes/:id", (c) => {
+  const id = c.req.param("id");
+  const result = killProcess(id);
+  return result.ok ? c.json({ ok: true }) : c.json(result, 404);
 });
 
 // ── Admin ──

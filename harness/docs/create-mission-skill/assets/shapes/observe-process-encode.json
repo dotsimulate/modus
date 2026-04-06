@@ -1,0 +1,53 @@
+{
+  "name": "",
+  "label": "",
+  "description": "",
+  "brief": "brief.md",
+
+  "roles": {
+    "orchestrator": { "profile": "executor", "description": "Evaluates findings, encodes verified output, decides next target" },
+    "worker": { "profile": "mission-dev", "description": "Investigates targets, processes findings, produces raw output" }
+  },
+
+  "steps": [
+    {
+      "id": "observe",
+      "label": "Observe",
+      "role": "worker",
+      "description": "Investigate the current target. Write findings to context/. Update context/status.md.",
+      "gates": [{ "type": "handoff" }]
+    },
+    {
+      "id": "process",
+      "label": "Process",
+      "role": "worker",
+      "reviewer": "orchestrator",
+      "description": "Verify and refine observations. Produce output candidates. Update context/status.md.",
+      "gates": [{ "type": "review" }, { "type": "handoff" }]
+    },
+    {
+      "id": "encode",
+      "label": "Encode",
+      "role": "orchestrator",
+      "description": "Review processed output. Encode what's valuable into permanent form. Decide next target. Update context/status.md.",
+      "gates": [{ "type": "handoff" }]
+    }
+  ],
+
+  "cycle": {
+    "enabled": true,
+    "maxCycles": null,
+    "budget": { "usd": null }
+  },
+
+  "policy": {
+    "requireCommitBeforeAdvance": false,
+    "requireHandoffOnTransfer": true,
+    "allowParallelSteps": false,
+    "maxConcurrentAgents": 1
+  },
+
+  "budgets": { "turnsPerSession": 40 },
+  "onFailure": { "strategy": "pause", "maxRetriesPerStep": 2 },
+  "tags": ["cycling", "discovery", "exploration"]
+}
