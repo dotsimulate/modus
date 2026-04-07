@@ -769,6 +769,12 @@ export function createClaudeCodeProvider(): SessionProvider {
       }
 
       // Idle — resume with fresh SDK query
+      // A fresh subprocess is about to be spawned. Wipe any leftover
+      // per-subprocess flags from prior turns (specifically `interrupting`,
+      // which would otherwise cause sendMessage to defer every follow-up
+      // against the new live subprocess). This is the second line of defense;
+      // the drain-exit error path also clears it.
+      state.interrupting = false;
       session.abortController = new AbortController();
       const { generator, channel } = createInputChannel();
       state.input = channel;
@@ -1236,6 +1242,11 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
       killAllSpawned(session, state);
+      // The interrupted-flag belongs to the subprocess we just killed.
+      // Clear it so the next spawn isn't poisoned by stale interrupt state —
+      // otherwise sendMessage will defer every follow-up forever, treating
+      // the live subprocess as if it were still mid-interrupt.
+      state.interrupting = false;
     }
   } catch (err: any) {
     console.error(`[claude-code] drain caught for ${session.sessionId}:`, err);
@@ -1248,6 +1259,8 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
       killAllSpawned(session, state);
+      // Subprocess is dead — clear interrupt flag so next subprocess starts clean.
+      state.interrupting = false;
       if (!wasAlreadyIdle) {
         session.status = "idle";
         ctx.updateSessionDb({
@@ -1270,6 +1283,8 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
       killAllSpawned(session, state);
+      // Subprocess is dead — clear interrupt flag so next subprocess starts clean.
+      state.interrupting = false;
     }
   }
 
