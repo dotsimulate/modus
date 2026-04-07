@@ -37,14 +37,14 @@ const MAX_DELAY_MS = 60_000;
 const CRASH_LOG_LINES = 50;
 const STARTUP_GRACE_MS = 30_000;       // crash within this window = bad deploy
 const HEALTH_POLL_INTERVAL_MS = 30_000;
-const HEALTH_POLL_TIMEOUT_MS = 5_000;
+const HEALTH_POLL_TIMEOUT_MS = 15_000;
 const HEALTH_POLL_STARTUP_WAIT_MS = 8_000; // wait for harness to bind before polling
 const NTFY_TOPIC = process.env.MODUS_NOTIFY_TOPIC ?? "";
 
 const WATCH_FILES = process.env.MODUS_WATCH_FILES === "1";
 const GIT_ROLLBACK = process.env.MODUS_GIT_ROLLBACK === "1";
 const MAX_LOG_BYTES = 1 * 1024 * 1024; // rotate watchdog.log at 1MB
-const HEALTH_FAIL_THRESHOLD = 2;       // consecutive failures before killing
+const HEALTH_FAIL_THRESHOLD = 3;       // consecutive failures before killing
 
 // Exit codes that mean intentional stop — don't restart
 const CLEAN_EXITS = new Set([0, 130, 143]); // 0=ok, 130=SIGINT, 143=SIGTERM

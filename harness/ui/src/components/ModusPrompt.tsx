@@ -1,7 +1,7 @@
 /**
  * ModusPrompt — simple two-tab prompt box on dashboard.
  *
- * Tabs: "create agent" / "configure modus"
+ * Tabs: "create agent" / "configure modus" / "start mission"
  * Each tab: prompt picker (downward) + textarea + run button.
  * Recent modus-dev sessions listed below.
  */
@@ -22,7 +22,7 @@ type Props = {
 };
 
 type Phase = "idle" | "running" | "done" | "error";
-type Tab = "create" | "configure";
+type Tab = "create" | "configure" | "mission";
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts;
@@ -34,7 +34,7 @@ function timeAgo(ts: number): string {
 
 export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
   const { activeUP, activeUserProfile, refreshProfiles, refreshUserProfiles } = useProfiles();
-  const [tab, setTab] = useState<Tab>(isNewProject ? "create" : "configure");
+  const [tab, setTab] = useState<Tab>(isNewProject ? "create" : "mission");
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -101,26 +101,44 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
     setSessionId(null);
 
     try {
-      // Render the appropriate prompt template to inject context
-      let renderedPrompt = text;
-      try {
-        const promptName = tab === "create" ? "setup-agents" : "configure";
-        const vars = tab === "create"
-          ? { inputs: { text, description: text, archetype: "custom" }, project, projectCwd: cwd }
-          : { inputs: { text, mode: "edit", agents: "yes" }, project, projectCwd: cwd };
-        const result = await modus.renderPrompt(promptName, vars);
-        renderedPrompt = result.rendered;
-      } catch {
-        // fall back to raw text if render fails
+      if (tab === "mission") {
+        if (!cwd) throw new Error("project cwd missing");
+        const sid = await modus.createEmptySession({
+          profile: "modus-dev",
+          userProfile: activeUserProfile ?? undefined,
+          cwd,
+        });
+        const result = await modus.activateMove(sid, {
+          moveName: "create-mission",
+          inputs: {},
+          cwd,
+          userProfile: activeUserProfile ?? undefined,
+        });
+        const movePrompt = result.prompt?.trim();
+        if (!movePrompt) throw new Error("create-mission move did not return a prompt");
+        await modus.sendMessage(sid, `${movePrompt}\n\n${text}`);
+        setSessionId(sid);
+      } else {
+        // Render the appropriate prompt template to inject context
+        let renderedPrompt = text;
+        try {
+          const promptName = tab === "create" ? "setup-agents" : "configure";
+          const vars = tab === "create"
+            ? { inputs: { text, description: text, archetype: "custom" }, project, projectCwd: cwd }
+            : { inputs: { text, mode: "edit", agents: "yes" }, project, projectCwd: cwd };
+          const result = await modus.renderPrompt(promptName, vars);
+          renderedPrompt = result.rendered;
+        } catch {
+          // fall back to raw text if render fails
+        }
+        const { sessionId: sid } = await modus.createSession({
+          prompt: renderedPrompt,
+          profile: "modus-dev",
+          userProfile: activeUserProfile ?? undefined,
+          cwd,
+        });
+        setSessionId(sid);
       }
-
-      const { sessionId: sid } = await modus.createSession({
-        prompt: renderedPrompt,
-        profile: "modus-dev",
-        userProfile: activeUserProfile ?? undefined,
-        cwd,
-      });
-      setSessionId(sid);
     } catch (err) {
       setError(`failed to start: ${err}`);
       setPhase("error");
@@ -165,6 +183,12 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
           onClick={() => setTab("configure")}
         >
           configure modus
+        </button>
+        <button
+          className={`modus-prompt-tab ${tab === "mission" ? "modus-prompt-tab--active" : ""}`}
+          onClick={() => setTab("mission")}
+        >
+          start mission
         </button>
       </div>
 
@@ -231,6 +255,8 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
               submitDisabled={!prompt.trim()}
               placeholder={tab === "create"
                 ? "describe the agent you want to create..."
+                : tab === "mission"
+                  ? "describe the mission you want to create, revise, or prepare to start..."
                 : "describe what you want to configure..."
               }
               rows={4}
@@ -238,7 +264,11 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
                 <PromptPicker
                   onInject={handleInject}
                   direction="down"
-                  tags={tab === "create" ? ["dashboard", "create"] : ["dashboard", "configure"]}
+                  tags={tab === "create"
+                    ? ["dashboard", "create"]
+                    : tab === "mission"
+                      ? ["dashboard", "mission"]
+                      : ["dashboard", "configure"]}
                   projectCwd={projectCwd}
                   userProfile={activeUserProfile ?? undefined}
                   onMoveActivated={handleMoveActivated}

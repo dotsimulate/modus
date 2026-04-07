@@ -214,6 +214,7 @@ app.use("/api/*", async (c, next) => {
 // ── Health ──
 
 app.get("/health", (c) => {
+  console.log(`[health-ping] ${Date.now()}`);
   const all = getAllActiveSessions();
   const running = all.filter(s => s.status === "running" || s.status === "starting");
   return c.json({ status: "ok", uptime: process.uptime(), activeSessions: running.length });
@@ -888,13 +889,29 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
 
       const sseWriter: SSEWriter = {
         async write(event: string, data: string, seqId: string) {
-          // Real event arrived — cancel grace timeout if active
+          // A real event arrived — cancel any pending grace close. If this
+          // event is "done" we'll re-arm grace below; otherwise the session
+          // is producing again and the stream stays open.
           if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
           const t0 = Date.now();
           await writer.write(event, data, seqId);
           const dt = Date.now() - t0;
           if (dt > 50) console.log(`[sse] slow write: ${event} took ${dt}ms (session=${sessionId})`);
-          if (event === "done") resolve();
+          if (event === "done") {
+            // Provider emitted "done" — but the session may still receive a
+            // follow-up turn (queued message, action retry, mission cycle)
+            // that re-activates the same session. Do NOT close the stream
+            // immediately. Start a 5s grace window. If any real event arrives
+            // before it expires, the clearTimeout at the top of this method
+            // cancels it and we keep streaming. If nothing arrives, the
+            // stream closes naturally.
+            //
+            // Previously this branch called resolve() unconditionally, which
+            // tore down the SSE stream after the first turn and dropped every
+            // subsequent broadcast (subs=0) until the user reloaded the page.
+            // That was the "session looks green/blinking but no events" bug.
+            graceTimer = setTimeout(() => { resolve(); }, 5_000);
+          }
         },
         close() { resolve(); },
       };

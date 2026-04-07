@@ -35,7 +35,21 @@ export async function fetchGeminiUsageSnapshot(opts: {
       approvalMode: ApprovalMode.YOLO,
     });
 
+    // Suppress gemini-cli-core experiment spam during init
+    const _origLog = console.log;
+    const _origWarn = console.warn;
+    const _spamFilter = (orig: (...a: any[]) => void) => (...args: any[]) => {
+      const msg = String(args[0] ?? "");
+      if (msg.includes("experimentIds") || msg.includes("Experiments loaded") ||
+          msg.includes("Hook registry") || msg.includes(".geminiignore") ||
+          msg.includes("Ignore file not found") || msg.includes("Loaded cached credentials")) return;
+      orig(...args);
+    };
+    console.log = _spamFilter(_origLog);
+    console.warn = _spamFilter(_origWarn);
     await config.initialize();
+    console.log = _origLog;
+    console.warn = _origWarn;
     await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
     await config.refreshUserQuotaIfStale(0);
 

@@ -8,13 +8,38 @@
 import { spawn, type Subprocess } from "bun";
 import { randomBytes } from "crypto";
 import { networkInterfaces, hostname } from "os";
-import { resolve, dirname } from "path";
+import { resolve, dirname, join } from "path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 
 const BUN = process.execPath;
 const SCRIPT_DIR = dirname(Bun.fileURLToPath(import.meta.url));
 const PORT = process.env.HARNESS_PORT || "3777";
 const VITE_PORT = "5180";
-const TOKEN = process.env.HARNESS_TOKEN ?? randomBytes(16).toString("hex");
+
+// Persistent token: env > disk > generate new
+const TOKEN_DIR = join(process.env.USERPROFILE ?? process.env.HOME ?? "", ".config", "agent-dev-zone");
+const TOKEN_FILE = join(TOKEN_DIR, "harness-token");
+let TOKEN = process.env.HARNESS_TOKEN ?? "";
+let tokenSource = "env";
+if (!TOKEN) {
+  try {
+    if (existsSync(TOKEN_FILE)) {
+      TOKEN = readFileSync(TOKEN_FILE, "utf-8").trim();
+      tokenSource = "persisted";
+    }
+  } catch { /* fall through to generate */ }
+  if (!TOKEN) {
+    TOKEN = randomBytes(16).toString("hex");
+    tokenSource = "new";
+    try {
+      mkdirSync(TOKEN_DIR, { recursive: true });
+      writeFileSync(TOKEN_FILE, TOKEN, "utf-8");
+      tokenSource = "persisted";
+    } catch (e) {
+      console.warn(`[dev] Could not persist token: ${e}`);
+    }
+  }
+}
 const APP_PROTOCOL = process.env.HARNESS_TLS_CERT && process.env.HARNESS_TLS_KEY ? "https" : "http";
 
 // Clear nested-session guard
@@ -151,7 +176,8 @@ setTimeout(() => {
   }
   if (TOKEN) {
     console.log("");
-    console.log(`  token    ${TOKEN}`);
+    console.log(`  token    ${TOKEN}${tokenSource === "persisted" ? " (persisted)" : ""}`);
+
   }
   console.log("");
   console.log("  ctrl+c to stop all");
