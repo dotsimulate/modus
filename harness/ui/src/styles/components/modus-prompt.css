@@ -11,6 +11,7 @@
 
 .modus-prompt-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 0;
   margin-bottom: 14px;
 }

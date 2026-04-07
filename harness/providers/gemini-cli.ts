@@ -406,7 +406,25 @@ async function createGeminiRuntime(
   };
 
   try {
+    // Suppress gemini-cli-core experiment/hook spam during init
+    const _origLog = console.log;
+    const _origWarn = console.warn;
+    console.log = (...args: any[]) => {
+      const msg = String(args[0] ?? "");
+      if (msg.includes("experimentIds") || msg.includes("Experiments loaded") ||
+          msg.includes("Hook registry") || msg.includes("Hook system") ||
+          msg.includes(".geminiignore") || msg.includes("flagId") ||
+          msg.includes("Loaded cached credentials")) return;
+      _origLog(...args);
+    };
+    console.warn = (...args: any[]) => {
+      const msg = String(args[0] ?? "");
+      if (msg.includes(".geminiignore") || msg.includes("Ignore file not found")) return;
+      _origWarn(...args);
+    };
     await config.initialize();
+    console.log = _origLog;
+    console.warn = _origWarn;
 
     const policy: PermissionPolicy = opts.permissionPolicy ?? profileDef?.permissionPolicy ?? "bypass";
     const isBypass = policy === "bypass";

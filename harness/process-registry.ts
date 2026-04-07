@@ -17,6 +17,7 @@ import {
   listMissionRunSummaries,
 } from "./mission-runner";
 import { getActiveTokensForSession } from "./move-runner";
+import { spawnSync } from "node:child_process";
 
 // ── Types ──
 
@@ -58,6 +59,12 @@ export type ProcessInfo = {
 
   /** Whether this process can be killed from the UI */
   canKill: boolean;
+  /** OS PID when known (single — used by orphan rows) */
+  osPid?: number;
+  /** EVERY OS PID this session has spawned that is not yet confirmed dead.
+   *  For sessions, this is the authoritative list of underlying child trees
+   *  the harness has launched. The UI shows this and `killProcess` walks it. */
+  osPids: number[];
 };
 
 export type ProcessSnapshot = {
@@ -157,7 +164,12 @@ export function getProcessSnapshot(): ProcessSnapshot {
       activeMoves,
       subscribers: session.subscribers.size,
       canKill: true,
+      osPids: Array.from(session.osPids),
     });
+  }
+
+  for (const orphan of listOrphanClaudeProcesses()) {
+    processes.push(orphan);
   }
 
   // Sort: orchestrators first, then workers, then sessions. Within each, newest first.
@@ -195,17 +207,124 @@ export function getProcessSnapshot(): ProcessSnapshot {
  * Aborts the session's provider, which tears down the SDK subprocess and MCP transports.
  */
 export function killProcess(sessionId: string): { ok: boolean; error?: string } {
+  if (sessionId.startsWith("os:")) {
+    const pid = Number(sessionId.slice(3));
+    if (!Number.isFinite(pid)) {
+      return { ok: false, error: `Invalid OS process ID: ${sessionId}` };
+    }
+    try {
+      if (process.platform === "win32") {
+        spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+      } else {
+        process.kill(pid, "SIGKILL");
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: `Failed to kill ${sessionId}: ${err}` };
+    }
+  }
+
   const session = getActiveSession(sessionId);
   if (!session) {
     return { ok: false, error: `No active session: ${sessionId}` };
   }
 
   try {
-    // AbortController.abort() triggers the provider's cleanup path,
-    // which calls queryObj.close() — killing the CLI subprocess and MCP transports.
-    session.abortController.abort();
-    return { ok: true };
+    // 1. Provider abort: closes input channel, calls SDK query.close, and (for
+    //    providers that implement it) walks its own osPids set with taskkill /T /F.
+    session._provider.abort(session);
   } catch (err) {
-    return { ok: false, error: `Failed to kill ${sessionId}: ${err}` };
+    return { ok: false, error: `Failed to abort ${sessionId}: ${err}` };
   }
+  // 2. Belt-and-braces: even if the provider's abort missed something, taskkill
+  //    every PID this session has on record. SDK close() is unreliable on Windows
+  //    (cmd.exe → claude → node tree survives on MCP HTTP keepalives), so the
+  //    registry is the authoritative kill path.
+  const survivors = Array.from(session.osPids);
+  for (const pid of survivors) {
+    try {
+      if (process.platform === "win32") {
+        spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+      } else {
+        process.kill(pid, "SIGKILL");
+      }
+    } catch { /* ignore */ }
+    session.osPids.delete(pid);
+  }
+  return { ok: true };
+}
+
+type OsProcessRow = {
+  pid?: number;
+  ppid?: number;
+  name?: string;
+  commandLine?: string;
+};
+
+function listOrphanClaudeProcesses(): ProcessInfo[] {
+  if (process.platform !== "win32") return [];
+
+  const currentPort = Number(process.env.HARNESS_PORT ?? 3777);
+  const result = spawnSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      [
+        // Only flag processes that are actually Modus-launched or that
+        // talk to the Modus MCP endpoint. Anything else is somebody else's
+        // process and not our business — matching by binary name alone has
+        // burned us before (lops-monitor, claude_code_bridge.py).
+        "$port = $env:HARNESS_PORT; if (-not $port) { $port = '3777' }",
+        "$rows = Get-CimInstance Win32_Process | Where-Object {",
+        "  ($_.Name -eq 'node.exe' -and $_.CommandLine -match '@anthropic-ai[\\\\/]claude-code[\\\\/]cli\\.js') -or",
+        "  ($_.CommandLine -match \"127\\.0\\.0\\.1:$port/api/mcp/modus\")",
+        "} | Select-Object @{Name='pid';Expression={$_.ProcessId}}, @{Name='ppid';Expression={$_.ParentProcessId}}, @{Name='name';Expression={$_.Name}}, @{Name='commandLine';Expression={$_.CommandLine}};",
+        "$rows | ConvertTo-Json -Compress",
+      ].join(" "),
+    ],
+    { encoding: "utf8", windowsHide: true },
+  );
+
+  if (result.status !== 0 || !result.stdout?.trim()) return [];
+
+  const parsed = JSON.parse(result.stdout) as OsProcessRow | OsProcessRow[];
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  const knownSessionIds = new Set(getAllActiveSessions().map((session) => session.sessionId));
+
+  return rows
+    .filter((row) => row.pid && row.commandLine)
+    .filter((row) => {
+      const commandLine = row.commandLine ?? "";
+      // Either it's a Claude Code SDK CLI process, OR its command line shows
+      // it's connected to the Modus MCP endpoint on this harness's port.
+      // No binary-name-only matches — those caused false positives before.
+      if (commandLine.includes("@anthropic-ai/claude-code/cli.js")
+        || commandLine.includes("@anthropic-ai\\claude-code\\cli.js")) return true;
+      if (commandLine.includes(`127.0.0.1:${currentPort}/api/mcp/modus`)) return true;
+      return false;
+    })
+    .filter((row) => !Array.from(knownSessionIds).some((sessionId) => (row.commandLine ?? "").includes(sessionId)))
+    .map((row) => ({
+      id: `os:${row.pid}`,
+      kind: "session" as const,
+      status: "orphaned",
+      profile: null,
+      provider: "claude-code",
+      model: null,
+      costUsd: 0,
+      numTurns: 0,
+      startedAt: 0,
+      lastEventAt: 0,
+      preview: (row.commandLine ?? "").slice(0, 160),
+      cwd: null,
+      mission: null,
+      activeMoves: [],
+      subscribers: 0,
+      canKill: true,
+      osPid: row.pid,
+      osPids: row.pid ? [row.pid] : [],
+    }))
+    // Drop the harness's own bun process and the harness itself if they slipped in.
+    .filter((p) => p.osPid !== process.pid && p.osPid !== process.ppid);
 }

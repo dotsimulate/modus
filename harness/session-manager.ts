@@ -24,7 +24,21 @@ import {
 } from "./db";
 import type { SessionOutcome } from "./action-types";
 import { logActivity } from "./activity";
-import { resolve as resolvePath } from "path";
+import { resolve as resolvePath, dirname as pathDirname, join as pathJoin } from "path";
+import { appendFileSync, mkdirSync } from "fs";
+
+// ── SSE flow log ──
+// Append-only diagnostic log of every subscriber lifecycle event and broadcast.
+// Gitignored, no secrets (only ID prefixes, event types, sizes, counts).
+// Tail with: Get-Content harness/.modus/sse-flow.log -Wait
+const SSE_LOG = pathJoin(import.meta.dir, ".modus", "sse-flow.log");
+try { mkdirSync(pathDirname(SSE_LOG), { recursive: true }); } catch {}
+function sseLog(event: string, sid: string | undefined, detail: string): void {
+  const ts = new Date().toLocaleTimeString("en-US", { hour12: false, fractionalSecondDigits: 3 });
+  const sidShort = sid ? sid.slice(0, 12) : "------------";
+  const line = `${ts} [${sidShort}] ${event}: ${detail}\n`;
+  try { appendFileSync(SSE_LOG, line); } catch { /* ignore */ }
+}
 
 // Lazy imports to avoid circular deps
 let _onSessionEvent: typeof import("./action-runner").onSessionEvent | null = null;
@@ -180,6 +194,13 @@ export type ActiveSession = {
   }>;
   sessionApprovals: Set<string>;
   watchers: Set<SessionWatcher>;
+  /** Every OS PID this session has ever spawned via its provider that we
+   *  have not yet confirmed dead. Providers MUST add to this set on every
+   *  spawn (cold start, resume, restart-after-error) and MUST NOT remove
+   *  entries except via a real kill. The process registry reads this so the
+   *  UI can show — and force-kill — every underlying child, including
+   *  ghosts left behind by past turns of the same session. */
+  osPids: Set<number>;
   /** Provider implementation for this session */
   _provider: SessionProvider;
   /** Provider-specific state (opaque to session-manager) */
@@ -354,6 +375,8 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
       if (oldId !== newId) {
         renameSession(oldId, newId);
       }
+      sseLog("REKEY", newId,
+        `from=${oldId.slice(0, 12)} to=${newId.slice(0, 12)} subsRetained=${session.subscribers.size} status=${session.status}`);
     },
 
     updateSessionDb(updates) {
@@ -541,21 +564,42 @@ function persistAndBroadcastEvent(session: ActiveSession, event: any) {
     event.subtype ?? null,
     JSON.stringify(event),
   );
+  sseLog("PERSIST", session.sessionId,
+    `seq=${session.seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} subs=${session.subscribers.size}`);
   broadcastEventToSession(session, event, session.seq);
 }
 
 function broadcastEventToSession(session: ActiveSession, event: any, seq = session.seq) {
   const data = JSON.stringify(event);
   const seqStr = String(seq);
+  const subsBefore = session.subscribers.size;
+  if (subsBefore === 0) {
+    sseLog("BROADCAST-NOSUBS", session.sessionId,
+      `seq=${seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} bytes=${data.length} — DROPPED, no subscribers`);
+    return;
+  }
+  let okCount = 0;
+  let failCount = 0;
   for (const sub of session.subscribers) {
     try {
       const result = sub.write(event.type, data, seqStr);
-      // sub.write is async — catch rejections to remove dead subscribers
+      okCount++;
       if (result && typeof result.catch === "function") {
-        result.catch(() => { session.subscribers.delete(sub); });
+        result.catch((err) => {
+          session.subscribers.delete(sub);
+          sseLog("SUB-DROP-ASYNC", session.sessionId,
+            `subs ${session.subscribers.size + 1}→${session.subscribers.size} reason=${String(err).slice(0, 120)}`);
+        });
       }
-    } catch { session.subscribers.delete(sub); }
+    } catch (err) {
+      failCount++;
+      session.subscribers.delete(sub);
+      sseLog("SUB-DROP-SYNC", session.sessionId,
+        `subs ${session.subscribers.size + 1}→${session.subscribers.size} reason=${String(err).slice(0, 120)}`);
+    }
   }
+  sseLog("BROADCAST", session.sessionId,
+    `seq=${seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} bytes=${data.length} subs=${subsBefore} ok=${okCount} fail=${failCount}`);
 }
 
 /**
@@ -714,6 +758,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     pauseResolver: null,
     pendingPermissions: new Map(),
     sessionApprovals: new Set(),
+    osPids: new Set(),
     watchers: new Set(),
     _provider: provider,
     _providerState: null,
@@ -733,6 +778,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   };
 
   activeSessions.set(tempId, session);
+  sseLog("SESSION-REGISTERED", tempId,
+    `provider=${session.provider} profile=${session.profile ?? "-"} resume=${isResume} totalActive=${activeSessions.size}`);
 
   // DB row: always exists before provider starts.
   // Resume: update status on existing row (preserves cost, message count, etc.)
@@ -824,6 +871,9 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
  * Returns the ActiveSession (same as startSession) after all moves are wired up.
  */
 export async function startSessionWithMoves(opts: StartSessionOpts): Promise<ActiveSession> {
+  const _t0 = performance.now();
+  const _timing = (step: string) => console.log(`[session-timing] step=${step} dt=${(performance.now() - _t0).toFixed(0)}ms`);
+  _timing("enter");
   const baseCwd = resolveSessionCwd(opts.cwd);
   const profileDef = opts.profile ? getProfile(opts.profile, baseCwd) : undefined;
   const profileMoves = profileDef?.moves ?? [];
@@ -863,9 +913,11 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
     }
   }
 
+  _timing("pre-startSession");
   // Start the session with the augmented prompt
   const session = startSession({ ...opts, prompt });
 
+  _timing("post-startSession");
   // Wait for provider init (rekey happens during init — session.sessionId becomes the
   // backend-assigned ID).  Condition: status leaves "starting" once the provider fires
   // its first init event.  Timeout prevents blocking forever on provider failure.
@@ -1211,26 +1263,15 @@ export function stopSession(sessionId: string): boolean {
   session.pendingDispatch = [];
   endFollowupDispatch(session);
 
-  // Force idle IMMEDIATELY — don't wait for the provider to propagate
-  session.status = "idle";
-  updateSessionStatus(session.sessionId, "idle");
-  emitGlobalSessionEvent({ type: "session:status", sessionId: session.sessionId, status: "idle" });
+  // Do NOT force idle here. The provider must own the actual teardown and terminal
+  // status transition so we don't mark the session stopped while the backend CLI
+  // process is still draining or retrying underneath.
   const interruptData = JSON.stringify({ type: "system", subtype: "interrupted" });
   session.seq++;
   addEvent(session.sessionId, session.seq, "system", "interrupted", interruptData);
   for (const sub of session.subscribers) {
     try { const r = sub.write("system", interruptData, String(session.seq)); r?.catch?.(() => { session.subscribers.delete(sub); }); } catch { session.subscribers.delete(sub); }
   }
-
-  // Fire watchers for any action monitoring this session
-  fireWatchers(session, {
-    sessionId: session.sessionId,
-    exchangeCount: session.exchangeCount,
-    status: "idle",
-    lastResponse: undefined,
-    costUsd: session.costUsd,
-    seq: session.seq,
-  });
 
   // Delegate to provider for cleanup
   session._provider.abort(session);
@@ -1584,8 +1625,20 @@ export function subscribe(sessionId: string, writer: SSEWriter): () => void {
   const session = activeSessions.get(sessionId);
   if (session) {
     session.subscribers.add(writer);
-    return () => { session.subscribers.delete(writer); };
+    sseLog("SUBSCRIBE-OK", sessionId,
+      `subs ${session.subscribers.size - 1}→${session.subscribers.size} status=${session.status}`);
+    return () => {
+      session.subscribers.delete(writer);
+      sseLog("UNSUBSCRIBE", sessionId,
+        `subs ${session.subscribers.size + 1}→${session.subscribers.size}`);
+    };
   }
+  // Lookup miss — UI subscribed by an ID the harness has no record of.
+  // Most common cause: rekey happened between session create and subscribe,
+  // and the UI is still holding the temp/old ID.
+  const knownIds = Array.from(activeSessions.keys()).map((k) => k.slice(0, 12)).join(",");
+  sseLog("SUBSCRIBE-MISS", sessionId,
+    `no active session for this id — silent no-op subscribe. activeIds=[${knownIds}]`);
   return () => {};
 }
 
@@ -1640,6 +1693,7 @@ export function shutdownAll() {
       session._provider.abort(session);
       session._provider.dispose?.(session).catch(() => {});
     } catch { /* best effort */ }
+    sseLog("SESSION-UNREGISTERED", id, `subsAtRemoval=${session.subscribers.size} totalActive=${activeSessions.size - 1}`);
     activeSessions.delete(id);
   }
 }

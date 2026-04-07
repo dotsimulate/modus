@@ -13,6 +13,7 @@ import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { dirname, isAbsolute, join } from "path";
 import { existsSync, appendFileSync, mkdirSync } from "fs";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 
 // Dedicated message-flow log — gitignored, append-only, easy to tail
 const MSG_LOG = join(import.meta.dir, "..", ".modus", "msg-flow.log");
@@ -25,7 +26,9 @@ function msgLog(sid: string, event: string, detail: string) {
 import { resolveSecret } from "../secrets";
 import type { ProviderCapabilities } from "./types";
 
-// On Windows, Bun's subprocess needs the .cmd wrapper to resolve correctly via PATH.
+// On Windows we deliberately use the .cmd shim because that's the only thing the
+// Claude Code installer puts on PATH. The cmd.exe -> node.exe tree it creates is
+// killed reliably below via taskkill /T /F on the wrapper PID.
 const CLAUDE_PATH = process.env.CLAUDE_PATH
   || (process.platform === "win32" ? "claude.cmd" : "claude");
 
@@ -76,6 +79,7 @@ type ClaudeCodeState = {
   /** True after interrupt until the old SDK drain has fully exited */
   interrupting?: boolean;
   spawnedAt?: number;
+  spawnedPid?: number;
 };
 
 type InputChannel = {
@@ -85,6 +89,48 @@ type InputChannel = {
 
 function getState(session: ActiveSession): ClaudeCodeState | null {
   return (session._providerState as ClaudeCodeState | null) ?? null;
+}
+
+/**
+ * Force-kill the spawned Claude CLI wrapper tree by PID.
+ *
+ * The SDK's query.close() does NOT reliably propagate kill to our
+ * spawnClaudeCodeProcess wrapper on Windows: closing the input iterator
+ * lets the SDK exit gracefully but the cmd.exe → claude → node → MCP child
+ * tree survives on its open MCP HTTP keepalive connections to /api/mcp/modus
+ * and keeps executing tool calls as a ghost. Always call this on any
+ * non-graceful termination (abort, error, drain-exit-while-running).
+ */
+function killPidTree(pid: number): void {
+  if (process.platform === "win32") {
+    try { spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }); }
+    catch { /* ignore */ }
+  } else {
+    try { process.kill(pid, "SIGKILL"); } catch { /* ignore */ }
+  }
+}
+
+/**
+ * Force-kill EVERY spawned subprocess this session has ever produced and
+ * not yet confirmed dead. We track all PIDs in `session.osPids` because a
+ * single session may spawn multiple cmd.exe → claude → node trees over its
+ * lifetime (cold start, resume after interrupt, restart after error). Any
+ * one of them can be ghosted by the SDK closing only its iterator without
+ * actually killing the child — those ghosts then keep hammering MCP tools
+ * via open keepalives to /api/mcp/modus.
+ *
+ * Call this on every non-graceful termination path (abort, drain-exit while
+ * status != idle, post-drain restart, error). Never trust query.close().
+ */
+function killAllSpawned(session: ActiveSession, state: ClaudeCodeState | null): void {
+  const pids = Array.from(session.osPids);
+  if (state?.spawnedPid && !session.osPids.has(state.spawnedPid)) pids.push(state.spawnedPid);
+  for (const pid of pids) {
+    killPidTree(pid);
+    session.osPids.delete(pid);
+    console.log(`[claude-code] killAllSpawned pid=${pid} for ${session.sessionId}`);
+  }
+  if (state) state.spawnedPid = undefined;
 }
 
 function normalizeClaudeEffort(effort?: string): string | undefined {
@@ -104,6 +150,75 @@ function readClaudePermissionMode(providerControls: unknown): ClaudePermissionMo
     return mode as ClaudePermissionMode;
   }
   return "default";
+}
+
+function spawnClaudeProcess(options: {
+  command: string;
+  args: string[];
+  cwd?: string;
+  env: Record<string, string | undefined>;
+  signal: AbortSignal;
+  onStderr?: (data: string) => void;
+  onSpawn?: (pid: number | undefined) => void;
+}) {
+  // CRITICAL: Windows .cmd/.bat shims cannot be executed by Node's spawn with
+  // shell:false (stdio never connects → startup hang). shell:true would fix
+  // launching but mangles args (empty strings are dropped by cmd.exe
+  // concatenation). The reliable path is to invoke `cmd.exe /c <cmd> <args...>`
+  // ourselves with shell:false so Node quotes each arg properly. We still own
+  // the cmd.exe PID for taskkill /T /F tree-kill on interrupt.
+  const cmdLower = options.command.toLowerCase();
+  const isWinShim = process.platform === "win32"
+    && (cmdLower.endsWith(".cmd") || cmdLower.endsWith(".bat"));
+  const spawnCommand = isWinShim ? "cmd.exe" : options.command;
+  const spawnArgs = isWinShim
+    ? ["/d", "/s", "/c", options.command, ...options.args]
+    : options.args;
+  const child = spawn(spawnCommand, spawnArgs, {
+    cwd: options.cwd,
+    env: options.env,
+    signal: options.signal,
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+    shell: false,
+    windowsVerbatimArguments: isWinShim ? false : undefined,
+  });
+
+  child.stderr?.on("data", (chunk) => {
+    options.onStderr?.(chunk.toString());
+  });
+  options.onSpawn?.(child.pid);
+
+  let forceKilled = false;
+  const wrapped = {
+    stdin: child.stdin!,
+    stdout: child.stdout!,
+    get killed() {
+      return forceKilled || child.killed;
+    },
+    get exitCode() {
+      return child.exitCode;
+    },
+    kill(signal: NodeJS.Signals) {
+      if (process.platform === "win32" && child.pid) {
+        forceKilled = true;
+        spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true });
+        return true;
+      }
+      return child.kill(signal);
+    },
+    on(event: "exit" | "error", listener: (...args: any[]) => void) {
+      (child as ChildProcess).on(event, listener as any);
+    },
+    once(event: "exit" | "error", listener: (...args: any[]) => void) {
+      (child as ChildProcess).once(event, listener as any);
+    },
+    off(event: "exit" | "error", listener: (...args: any[]) => void) {
+      (child as ChildProcess).off(event, listener as any);
+    },
+  };
+
+  return wrapped;
 }
 
 // ── Input Channel (async generator for streaming input mode) ──
@@ -213,8 +328,12 @@ export function createClaudeCodeProvider(): SessionProvider {
     capabilities: CLAUDE_CAPABILITIES,
     startTurn(ctx: TurnContext) {
       const { session, opts, profile: profileDef } = ctx;
+      const _t0 = performance.now();
+      const _sid = session.tempId?.slice(0, 12) ?? "?";
+      const _timing = (step: string) => console.log(`[claude-code-timing] step=${step} dt=${(performance.now() - _t0).toFixed(0)}ms sid=${_sid}`);
 
       // Pre-check: ensure claude binary is available
+      _timing("which-check");
       if (!Bun.which(CLAUDE_PATH)) {
         const reason = `Provider binary "${CLAUDE_PATH}" not found in PATH. Install Claude Code CLI or set CLAUDE_PATH.`;
         console.error(`[claude-code] ${reason}`);
@@ -240,12 +359,13 @@ export function createClaudeCodeProvider(): SessionProvider {
         }
       }
 
+      _timing("pre-mcp-merge");
       // Merge MCP servers: project CWD .claude/mcp.json + global + profile
       // Priority: profile > global > project CWD (project CWD is lowest, gets overridden)
       // Use project root (where .modus/ lives), not session.cwd (may be a profile subfolder)
       const projectRoot = session.projectRoot ?? opts.cwd ?? session.cwd;
       const globalConfig = getGlobalConfig(projectRoot);
-      const sessionCwdMcp = readProjectMcpServers(projectRoot);
+      const sessionCwdMcp = readProjectMcpServers(projectRoot ?? process.cwd());
       console.log(`[claude-code] MCP merge: projectRoot=${projectRoot} sessionCwd=${session.cwd} projectMcp=${JSON.stringify(Object.keys(sessionCwdMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))}`);
       const mergedMcp = {
         ...sessionCwdMcp,
@@ -264,7 +384,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         const dirIdx = args.indexOf("--directory");
         const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
         if (dirVal && !isAbsolute(dirVal)) {
-          const anchor = projectCwdNames.has(name) ? (opts.cwd ?? session.cwd) : harnessRoot;
+          const anchor = projectCwdNames.has(name) ? (opts.cwd ?? session.cwd ?? process.cwd()) : harnessRoot;
           args[dirIdx + 1] = join(anchor, dirVal);
         }
       }
@@ -485,6 +605,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         resumeSessionAt: opts.branchMessageUUID ?? undefined,
       } : {};
 
+      _timing("pre-sdk-options");
       const sdkOptions: any = {
         pathToClaudeCodeExecutable: CLAUDE_PATH,
         cwd: session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
@@ -526,6 +647,20 @@ export function createClaudeCodeProvider(): SessionProvider {
           console.error(`[claude-code] stderr (${session.tempId}):`, line);
           stderrBuf += (stderrBuf ? "\n" : "") + line;
         },
+        spawnClaudeCodeProcess: (spawnOptions: {
+          command: string;
+          args: string[];
+          cwd?: string;
+          env: Record<string, string | undefined>;
+          signal: AbortSignal;
+        }) => spawnClaudeProcess({
+          ...spawnOptions,
+          onStderr: (data) => sdkOptions.stderr(data),
+          onSpawn: (pid) => {
+            state.spawnedPid = pid;
+            if (pid) session.osPids.add(pid);
+          },
+        }),
       };
 
       // Log resolved MCP configs for debugging startup failures (especially on Windows)
@@ -552,9 +687,11 @@ export function createClaudeCodeProvider(): SessionProvider {
       channel.push(session.initialContent);
 
       // Start the SDK query
+      _timing("pre-sdk-query");
       const spawnedAt = Date.now();
       console.log(`[claude-code] SPAWN ${session.tempId} at ${new Date(spawnedAt).toLocaleTimeString()}`);
       const q = sdkQuery({ prompt: generator, options: { ...sdkOptions, ...forkOpts, abortController } });
+      _timing("post-sdk-query");
       state.queryObj = q;
       (state as any).spawnedAt = spawnedAt;
 
@@ -688,8 +825,12 @@ export function createClaudeCodeProvider(): SessionProvider {
       if (state) state.interrupting = true;
       try { state?.input.close(); } catch { /* ignore cleanup errors */ }
       try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
-      // close() kills the SDK subprocess and MCP transports — without this, child processes leak
+      // SDK close() does not reliably kill the spawned wrapper tree on Windows;
+      // call it for cleanup but DO NOT trust it.
       try { state?.queryObj?.close(); } catch { /* ignore cleanup errors */ }
+      if (state) state.queryObj = null;
+      // Authoritative kill: walk every PID this session has spawned and taskkill /T /F.
+      killAllSpawned(session, state);
     },
 
     stopTask(session: ActiveSession, taskId: string): boolean {
@@ -770,7 +911,7 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       // Re-merge MCP servers for the new profile
       const globalConfig = getGlobalConfig(session.cwd);
-      const sessionCwdMcp = readProjectMcpServers(ctx.opts.cwd ?? session.cwd);
+      const sessionCwdMcp = readProjectMcpServers(ctx.opts.cwd ?? session.cwd ?? process.cwd());
       const mergedMcp = {
         ...sessionCwdMcp,
         ...(globalConfig.mcpServers ?? {}),
@@ -786,7 +927,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         const dirIdx = args.indexOf("--directory");
         const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
         if (dirVal && !isAbsolute(dirVal)) {
-          const anchor = projectCwdNames.has(name) ? (ctx.opts.cwd ?? session.cwd) : harnessRoot;
+          const anchor = projectCwdNames.has(name) ? (ctx.opts.cwd ?? session.cwd ?? process.cwd()) : harnessRoot;
           args[dirIdx + 1] = join(anchor, dirVal);
         }
       }
@@ -1094,6 +1235,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       try { state.input.close(); } catch { /* ignore */ }
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
+      killAllSpawned(session, state);
     }
   } catch (err: any) {
     console.error(`[claude-code] drain caught for ${session.sessionId}:`, err);
@@ -1102,6 +1244,10 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     const wasAlreadyIdle = session.status === "idle";
     if (isAbort || wasAlreadyIdle) {
       console.log(`[claude-code] aborted ${session.sessionId}`);
+      try { state.input.close(); } catch { /* ignore */ }
+      try { state.queryObj?.close(); } catch { /* ignore */ }
+      state.queryObj = null;
+      killAllSpawned(session, state);
       if (!wasAlreadyIdle) {
         session.status = "idle";
         ctx.updateSessionDb({
@@ -1123,6 +1269,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       try { state.input.close(); } catch { /* ignore */ }
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
+      killAllSpawned(session, state);
     }
   }
 
@@ -1134,13 +1281,14 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
 
   // Post-drain: handle pending messages after abort
   if (session.status === "idle") {
+    try { state.input.close(); } catch { /* ignore */ }
+    try { state.queryObj?.close(); } catch { /* ignore */ }
+    state.queryObj = null;
     state.interrupting = false;
     if (session.pendingDispatch.length > 0) {
       console.log(`[claude-code] ${session.pendingDispatch.length} pending after drain exit, restarting ${session.sessionId}`);
 
       // Drain exited — subprocess is dead, cold start unavoidable
-      state.queryObj = null;
-
       const next = session.pendingDispatch.shift()!.content;
       session.initialContent = next;
       session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
