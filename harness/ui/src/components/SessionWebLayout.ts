@@ -35,6 +35,7 @@ export type GraphNode = {
   y: number;
   col: number;
   row: number;
+  color?: string | null;
   session?: SessionInfo;
   commit?: GitCommit;
   doc?: HandoffDoc;

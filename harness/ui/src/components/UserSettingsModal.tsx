@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { modus } from "../modusClient";
 import type { ProviderModel, UserProfile } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 
 type Props = {

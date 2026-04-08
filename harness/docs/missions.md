@@ -1,7 +1,7 @@
 ---
 title: Missions
 audience: agents
-lastUpdated: 2026-03-28
+lastUpdated: 2026-04-08
 covers: harness/mission-runner.ts harness/mission-types.ts harness/mission-db.ts harness/modus-mcp.ts
 ---
 
@@ -105,6 +105,13 @@ File: `<project>/.modus/missions/<name>/mission.json`
     }
   ],
 
+  "cycle": {
+    "enabled": true,
+    "maxCycles": 5,
+    "freshOrchestrator": true,
+    "budget": { "usd": 25 }
+  },
+
   "policy": {
     "requireTestsBeforeAdvance": true,
     "requireCommitBeforeAdvance": true,
@@ -143,6 +150,10 @@ File: `<project>/.modus/missions/<name>/mission.json`
 |-------|------|---------|-------------|
 | `enabled` | boolean | true | Whether the mission can be started |
 | `brief` | string | — | Path to a markdown brief file (resolved relative to mission dir) |
+| `cycle.enabled` | boolean | false | Reset all steps after completion and continue |
+| `cycle.maxCycles` | number \| null | null | Cap on total cycles |
+| `cycle.freshOrchestrator` | boolean | false | Spawn a fresh orchestrator session each cycle |
+| `cycle.budget.usd` | number \| null | — | Cycle budget hint captured in config |
 | `budgets.usd` | number | — | Cost limit |
 | `budgets.hours` | number | — | Time limit |
 | `budgets.turnsPerSession` | number | — | Max turns per spawned session |
@@ -310,7 +321,8 @@ the step context + brief, and mints a worker token.
 }
 ```
 The runner records the report, creates a transfer record, and delivers
-a structured `MissionResponse` to the orchestrator via `queueMessage`.
+a structured `MissionResponse` to the orchestrator via the normal session
+interaction path (`interactWithSession`), not an ad hoc side channel.
 
 **gate** — Record a gate result (orchestrator + reviewers)
 ```json
@@ -369,6 +381,26 @@ a structured message:
 The orchestrator uses `allGatesPassed` and `gateSnapshot` to decide
 the next action (advance, record gates, retry, reassign, or pause).
 
+## Cycling and Resume
+
+Missions can optionally cycle:
+
+- When `cycle.enabled` is false, completing the final step marks the mission run `completed`.
+- When `cycle.enabled` is true and `maxCycles` is not reached, the runner resets all step rows,
+  clears gate results, increments `currentCycle`, and starts step 1 again.
+- With `cycle.freshOrchestrator: true`, the current orchestrator session is retired at cycle
+  boundary and a fresh orchestrator session is spawned with a cycle-context preamble.
+- Without `freshOrchestrator`, the same orchestrator session continues and is told to begin the
+  next cycle immediately.
+
+Resume behavior:
+
+- `/api/missions/runs/:id/resume` can resume runs in `paused` or `error`.
+- The runner spawns a new orchestrator session, injects resume context summarizing completed steps,
+  and clears `haltKind` / `haltMessage`.
+- If all steps were already done and cycling is enabled, resume rolls into the next cycle; otherwise
+  it marks the run completed.
+
 ## Runtime State
 
 Mission execution state is persisted in `harness.db`:
@@ -413,7 +445,8 @@ POST /api/missions/start
 
 The `cwd` must point to the project root where `.modus/missions/<name>/`
 lives. The `userProfile` is optional and provides template variables for
-brief interpolation.
+brief interpolation. If `cwd` is omitted and `userProfile` is provided, the
+API resolves `cwd` from the first project path on that user profile.
 
 ## SDK Client Methods
 
@@ -440,6 +473,9 @@ const transfers = await client.getMissionTransfers(runId);
 await client.pauseMission(runId, "need user input");
 await client.resumeMission(runId);
 ```
+
+Run summaries now include both `runNumber` and `currentCycle`, so UIs can distinguish
+the nth run of a mission definition from the current cycle inside that run.
 
 ## Setting Up a Mission-Ready Project
 
@@ -551,5 +587,5 @@ produce activity log entries that are queryable.
 | `harness/mission-types.ts` | Type definitions and contracts |
 | `harness/mission-db.ts` | Database schema, CRUD, stale-run repair |
 | `harness/modus-mcp.ts` | Token routing (`mis-` prefix discrimination) |
-| `harness/sdk/client.ts` | SDK client methods (lines 483-508) |
-| `harness/index.ts` | REST API endpoints (lines 2716-2816) |
+| `harness/sdk/client.ts` | SDK client methods |
+| `harness/index.ts` | REST API endpoints |

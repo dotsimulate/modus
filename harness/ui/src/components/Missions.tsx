@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { modus } from "../modusClient";
 import type { MissionListItem, MissionRunSummary, MissionStepRunSummary } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 
 function missionDotStatus(run: MissionRunSummary | undefined): string {
   if (!run) return "idle";

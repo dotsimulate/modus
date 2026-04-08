@@ -1,12 +1,13 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type {
-  Profile, ProfileUi, ProviderCapabilities, UserProfile, UserProfileState, UserProfileUiConfig, CreateSessionOpts,
+  ProfileUi, UserProfile, UserProfileState, UserProfileUiConfig,
 } from "../../../sdk/index";
 import { modus } from "../modusClient";
-import { createDefaultSetupState, type SessionSetupState } from "../components/SessionSetup";
+import { createDefaultSetupState } from "../components/SessionSetup";
 import { agentConfigToOverrides } from "../components/AgentConfig";
 import { addRecentPath } from "../recentPaths";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
+import { ProfileContext } from "./ProfileContext";
 
 const USER_PROFILE_KEY = "harness:active-user-profile";
 
@@ -20,33 +21,6 @@ function resolvePreferredProfile(
   if (defaultAgentProfile && names.includes(defaultAgentProfile)) return defaultAgentProfile;
   return names[0] ?? "";
 }
-
-type ProfileContextValue = {
-  profiles: Profile[];
-  visibleProfiles: Profile[];
-  availableProviders: string[];
-  providerCapabilities: Record<string, ProviderCapabilities>;
-  userProfiles: UserProfile[];
-  activeUserProfile: string | null;
-  activeUP: UserProfile | null;
-  activeCwd: string | undefined;
-  /** Project root — always the user profile's first project, not a profile subfolder */
-  projectRoot: string | undefined;
-  selectedProfile: string;
-  selectProfile: (name: string) => void;
-  setSelectedProfile: (name: string) => void;
-  setupState: SessionSetupState;
-  setSetupState: React.Dispatch<React.SetStateAction<SessionSetupState>>;
-  uiState: UserProfileState;
-  saveUiState: (patch: Partial<UserProfileState>) => void;
-  switchUserProfile: (name: string | null) => void;
-  refreshProfiles: () => Promise<void>;
-  refreshUserProfiles: () => Promise<void>;
-  buildSessionOpts: (prompt: string, profile?: string, seed?: SessionSetupState) => CreateSessionOpts;
-};
-
-const ProfileContext = createContext<ProfileContextValue>(null!);
-export const useProfiles = () => useContext(ProfileContext);
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -104,6 +78,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         const fallback: UserProfileUiConfig = {
           dashboard: profile.dashboard,
           leftPanel: profile.leftPanel,
+          layouts: profile.layouts,
           computer: profile.computer,
           editor: profile.editor,
           clientExtensions: profile.clientExtensions,

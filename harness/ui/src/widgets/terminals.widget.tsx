@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TerminalInfo } from "../../../sdk/index";
 import { modus } from "../modusClient";
-import { useProfiles } from "../providers/ProfileProvider";
-import { useSession } from "../providers/SessionProvider";
+import { useProfiles } from "../providers/ProfileContext";
+import { useSession } from "../providers/SessionContext";
 import { timeAgo, basename } from "../utils/format";
-import { useWidgetChrome, type WidgetBase, type WidgetDef, type WidgetProps } from "./index";
+import type { WidgetBase, WidgetProps } from "./types";
+import { useWidgetChrome } from "./chrome";
 import { useWidgetPollingValue } from "./widget-data";
 import { WidgetEmptyState } from "./widget-components";
 
@@ -67,7 +68,7 @@ function buildSessionHref(sessionId: string, userProfile: string | null): string
   return `${window.location.origin}${window.location.pathname}#${hash}`;
 }
 
-function TerminalsWidget({ config, onSelectSession }: WidgetProps<TerminalsConfig>) {
+export default function TerminalsWidget({ config, onSelectSession }: WidgetProps<TerminalsConfig>) {
   const { activeSession } = useSession();
   const { activeUserProfile } = useProfiles();
   const { setHeaderSuffix } = useWidgetChrome();
@@ -188,6 +189,3 @@ function TerminalsWidget({ config, onSelectSession }: WidgetProps<TerminalsConfi
     </div>
   );
 }
-
-const def: WidgetDef = { type: "terminals", component: TerminalsWidget };
-export default def;

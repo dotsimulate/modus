@@ -1,8 +1,7 @@
 ---
 title: Actions
 audience: agents
-lastUpdated: 2026-03-16
-lastCommit: a9adf68
+lastUpdated: 2026-04-08
 covers: harness/action-runner.ts harness/action-types.ts
 ---
 
@@ -27,7 +26,7 @@ context.ts    — ActionModule: gather(), verify?(), afterRun?() (required)
 | Type | Fires when | Key fields |
 |------|-----------|------------|
 | `interval` | Timer elapsed | `every` ("30s", "5m", "1h"), `from` ("completion"/"start"), `activeHours` |
-| `webhook` | HTTP POST to `/api/actions/:name/hook` | `token` (auto-generated) |
+| `webhook` | HTTP POST to `/api/actions/:name/hook` | `token` (auto-generated), `sessionKey?` |
 | `manual` | API call to `/api/actions/:name/trigger` | — |
 | `action` | Another action completes | `source` (action name), `condition` ("any"/"done"/"error") |
 | `session` | Session event fires | `on` (role + round + at, or "archived"/"deleted"), `excludeTags` — payload includes `assistantSeq` + `assistantMessageUuid` on assistant rounds |
@@ -67,6 +66,16 @@ via `/api/sessions/:id/artifacts/:artifactId`.
 data into every run. Available as `ctx.inputs` in gather, verify, and afterRun.
 `ctx.cwd` carries the action's configured working directory (from `cfg.cwd`).
 
+**Move activation**: `ActionConfig.moves?: ActionMoveSpec[]` declares moves to
+activate on the spawned session. The runner uses move activation after session
+creation, so actions can combine automation with move-defined submit/API flows.
+
+**Webhook session routing**: webhook actions can declare `sessionKey`. When the
+incoming payload contains that field, the runner looks for an existing session
+tagged as `${actionName}:${sessionKey}:${value}`. If found, it sends the payload
+as a follow-up message to that session instead of creating a new run. Otherwise
+it creates a new run and tags the new session for future routing.
+
 **Origin**: `origin` (`"harness"` or `"project"`) is set automatically on load.
 Returned by `GET /api/actions` so callers know where the action came from.
 
@@ -76,9 +85,17 @@ Returned by `GET /api/actions` so callers know where the action came from.
 
 - `GET /api/actions` — list all actions with state
 - `GET /api/actions/:name` — single action config + state
+- `PATCH /api/actions/:name` — update persisted config fields such as `enabled` or interval
 - `POST /api/actions/:name/trigger` — manual trigger (only works for `manual` and `interval` types; other types require a trigger-constructed payload and are rejected)
 - `POST /api/actions/:name/hook` — webhook trigger
 - `GET /api/actions/:name/runs` — run history
 - `GET /api/actions/:name/executions` — execution history
+- `GET /api/actions/:name/executions/:id/runs` — runs inside one execution
 - `POST /api/actions/:name/executions` — start new execution
 - `DELETE /api/actions/:name/executions/:id` — cancel execution
+- `GET /api/actions/:name/info` — return raw `action.json` and `context.ts` source
+- `DELETE /api/actions/:name/runs` — clear persisted run history
+- `POST /api/actions/:name/reset` — reset in-memory execution state
+- `GET /api/actions/:name/preferences` — read UI preferences
+- `POST /api/actions/:name/tags` / `DELETE /api/actions/:name/tags/:tag` — mutate freeform tags
+- `POST /api/actions/reload` — reload actions from disk

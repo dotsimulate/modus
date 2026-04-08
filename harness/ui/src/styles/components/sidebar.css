@@ -193,3 +193,60 @@
 }
 .section-collapse--open { grid-template-rows: 1fr; }
 .section-collapse-clip { overflow: hidden; }
+
+/* ── Session list widget (panel version) ── */
+
+.session-list-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.session-list-widget-modes {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.session-list-widget-new {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.session-list-widget-new:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.session-list-widget-mode {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.session-list-widget-mode.active {
+  color: var(--text);
+  background: var(--bg-hover);
+}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { QueuedMessage as QueuedMessageType } from "../providers/SessionProvider";
+import type { QueuedMessage as QueuedMessageType } from "../providers/SessionContext";
 import type { MoveListItem } from "../../../sdk/index";
 
 type Props = {

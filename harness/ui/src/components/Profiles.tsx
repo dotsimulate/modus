@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { modus } from "../modusClient";
 import type { Profile, ActiveSessionInfo } from "../../../sdk/index";
 import type { View } from "../views";
-import { useProfiles } from "../providers/ProfileProvider";
-import { useSession } from "../providers/SessionProvider";
+import { useProfiles } from "../providers/ProfileContext";
+import { useSession } from "../providers/SessionContext";
 import { SessionsPanel } from "./SessionsPanel";
 import { ProfileEditor } from "./ProfileEditor";
 

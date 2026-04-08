@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { modus } from "../modusClient";
 import { loadClientExtensions, unloadClientExtensions } from "../client-extensions";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 
 export function ClientExtensionsBoot() {
   const { activeCwd, projectRoot, activeUserProfile } = useProfiles();

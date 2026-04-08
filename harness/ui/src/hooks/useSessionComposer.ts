@@ -11,7 +11,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { createEmptyAgentConfig, type AgentConfigState } from "../components/AgentConfig";
 import { modus } from "../modusClient";
 import type { Profile, ApiAttachment } from "../../../sdk/index";

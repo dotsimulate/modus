@@ -1,11 +1,11 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo, type CSSProperties } from "react";
 import { modus, API_BASE, authHeaders } from "../modusClient";
 import type { SessionInfo, GitCommit, MissionRunSummary, MissionTransferSummary, TouchRecord } from "../../../sdk/index";
 import { ChatFileViewer } from "./ChatFileViewer";
 import { SessionWindow } from "./SessionWindow";
 import { WebComposer } from "./WebComposer";
 import { CustomSelect, type SelectOption } from "./CustomSelect";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 
 import {
   type MoveRun,
@@ -15,24 +15,93 @@ import {
   type WebLayoutConfig,
   type PositionMap,
   type DateFilter,
-  type TimeCluster,
   NODE_W, NODE_H, DOC_W, DOC_H, COMMIT_W, COMMIT_H,
   loadConfig, saveConfig,
   loadDateFilter, saveDateFilter,
   loadLayers, saveLayers,
   shortId, shortHash, formatCost, timeAgo,
   parseTags,
-  dayKey,
 } from "./SessionWebLayout";
 
 import { buildAllEdges } from "./SessionWebEdges";
-import { solveLayout } from "./SessionWebSolver";
+import { buildGraphLayoutFromPositions, solveLayout } from "./SessionWebSolver";
 
 // ── Viewport type ──
 
 type Viewport = { x: number; y: number; scale: number };
 type CullingState = { left: number; top: number; right: number; bottom: number; scale: number };
 type MinimapTag = { id: string; label: string; x: number; y: number };
+type NodeColorMap = Record<string, string>;
+
+const NODE_COLOR_KEY_PREFIX = "mo:web-node-colors:";
+const NODE_COLOR_SWATCHES = [
+  "#e89b50",
+  "#33cc33",
+  "#ff4d4d",
+  "#6aa6ff",
+  "#ffd24d",
+  "#00c2a8",
+  "#ff7ab6",
+  "#a78bfa",
+  "#ffffff",
+  "#7b7b7b",
+];
+
+function normalizeHexColor(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const withHash = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+  if (/^#[0-9a-fA-F]{6}$/.test(withHash)) return withHash.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(withHash)) {
+    const [, r, g, b] = withHash;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return null;
+}
+
+function hexToRgb(color: string): { r: number; g: number; b: number } | null {
+  const normalized = normalizeHexColor(color);
+  if (!normalized) return null;
+  return {
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16),
+  };
+}
+
+function getNodeForeground(color: string): string {
+  const rgb = hexToRgb(color);
+  if (!rgb) return "#ffffff";
+  const yiq = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+  return yiq >= 160 ? "#000000" : "#ffffff";
+}
+
+function getNodeMetaColor(color: string): string {
+  return getNodeForeground(color) === "#000000" ? "rgba(0, 0, 0, 0.72)" : "rgba(255, 255, 255, 0.78)";
+}
+
+function getNodeBorderColor(color: string): string {
+  return getNodeForeground(color) === "#000000" ? "rgba(0, 0, 0, 0.34)" : "rgba(255, 255, 255, 0.26)";
+}
+
+function loadNodeColors(profileName: string): NodeColorMap {
+  try {
+    const raw = localStorage.getItem(NODE_COLOR_KEY_PREFIX + profileName);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const next: NodeColorMap = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "string" && value.trim()) next[key] = value;
+    }
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function saveNodeColors(profileName: string, colors: NodeColorMap) {
+  localStorage.setItem(NODE_COLOR_KEY_PREFIX + profileName, JSON.stringify(colors));
+}
 
 // ── Node dimension helper ──
 
@@ -257,9 +326,111 @@ export function LayoutPanel({ config, onChange, onRegenerate }: {
   );
 }
 
+function NodeColorPicker({
+  value,
+  onChange,
+}: {
+  value: string | null | undefined;
+  onChange: (color: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const applyDraft = useCallback(() => {
+    const normalized = normalizeHexColor(draft);
+    if (normalized) {
+      onChange(normalized);
+      setDraft(normalized);
+      setOpen(false);
+    }
+  }, [draft, onChange]);
+
+  return (
+    <div className="web-detail-color-wrap" ref={ref}>
+      <button
+        className="web-detail-color-trigger"
+        style={value ? ({ "--web-node-color": value } as CSSProperties) : undefined}
+        onClick={() => setOpen((current) => !current)}
+        title="Node color"
+      />
+      <div className={`web-detail-color-popover${open ? " web-detail-color-popover--open" : ""}`}>
+        <div className="web-detail-color-popover-inner">
+          <div className="web-detail-color-swatches">
+            {NODE_COLOR_SWATCHES.map((color) => (
+              <button
+                key={color}
+                className={`web-detail-color-swatch${value === color ? " web-detail-color-swatch--selected" : ""}`}
+                style={{ "--web-node-color": color } as CSSProperties}
+                onClick={() => {
+                  onChange(color);
+                  setDraft(color);
+                  setOpen(false);
+                }}
+                title={color}
+              />
+            ))}
+          </div>
+          <div className="web-detail-color-row">
+            <input
+              className="web-detail-color-text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applyDraft();
+              }}
+              placeholder="#e89b50"
+              spellCheck={false}
+            />
+            <button className="web-detail-color-apply" onClick={applyDraft}>
+              set
+            </button>
+          </div>
+          <button
+            className="web-detail-color-reset"
+            onClick={() => {
+              onChange(null);
+              setDraft("");
+              setOpen(false);
+            }}
+          >
+            clear
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Detail Panel ──
 
-function DetailPanel({ node, onClose, onArchive, onPinToggle }: { node: GraphNode; onClose: () => void; onArchive?: (id: string) => void; onPinToggle?: (id: string) => void }) {
+function DetailPanel({ node, onClose, onArchive, onPinToggle, onColorChange }: {
+  node: GraphNode;
+  onClose: () => void;
+  onArchive?: (id: string) => void;
+  onPinToggle?: (id: string) => void;
+  onColorChange?: (id: string, color: string | null) => void;
+}) {
   if (node.type === "document" && node.doc) {
     const d = node.doc;
     return (
@@ -312,7 +483,10 @@ function DetailPanel({ node, onClose, onArchive, onPinToggle }: { node: GraphNod
   return (
     <div className="web-detail">
       <div className="web-detail-header">
-        <span className="web-detail-type">session</span>
+        <div className="web-detail-header-main">
+          <span className="web-detail-type">session</span>
+          {onColorChange && <NodeColorPicker value={node.color} onChange={(color) => onColorChange(s.id, color)} />}
+        </div>
         <button className="web-detail-close" onClick={onClose}>&times;</button>
       </div>
       <div className="web-detail-id">{shortId(s.id)}</div>
@@ -440,10 +614,18 @@ const SessionNodeEl = memo(function SessionNodeEl({ node, isSelected, isNeighbor
   const s = node.session!;
   const statusClass = s.status === "running" ? "running" : s.status === "error" ? "error" : "done";
   const isPinned = (node.tags || []).includes("pinned");
+  const style: CSSProperties = { left: node.x, top: node.y };
+  if (node.color) {
+    const tokens = style as Record<string, string | number>;
+    tokens["--web-node-color"] = node.color;
+    tokens["--web-node-fg"] = getNodeForeground(node.color);
+    tokens["--web-node-meta"] = getNodeMetaColor(node.color);
+    tokens["--web-node-border"] = getNodeBorderColor(node.color);
+  }
   return (
     <div
-      className={`web-session-node web-session-node--${statusClass}${isSelected ? " web-node--selected" : ""}${!isSelected && isNeighbor ? " web-node--neighbor" : ""}${isDragging ? " web-session-node--dragging" : ""}`}
-      style={{ left: node.x, top: node.y }}
+      className={`web-session-node web-session-node--${statusClass}${node.color ? " web-session-node--colored" : ""}${isSelected ? " web-node--selected" : ""}${!isSelected && isNeighbor ? " web-node--neighbor" : ""}${isDragging ? " web-session-node--dragging" : ""}`}
+      style={style}
       onClick={(e) => onSelect(node, e)}
       onDoubleClick={() => onOpen(s.id)}
       onTouchEnd={() => onNodeTouchEnd(node.id, () => onOpen(s.id))}
@@ -558,6 +740,7 @@ export function SessionWeb() {
     try { return JSON.parse(localStorage.getItem(`web-mm-tags-${profileName}`) ?? "[]"); }
     catch { return []; }
   });
+  const [nodeColors, setNodeColors] = useState<NodeColorMap>(() => loadNodeColors(profileName));
   const [fileViewerPath, setFileViewerPath] = useState<string | null>(null);
   const [miniSessionId, setMiniSessionId] = useState<string | null>(null);
   const [config, _setConfig] = useState<WebLayoutConfig>(() => loadConfig());
@@ -665,6 +848,8 @@ export function SessionWeb() {
   useEffect(() => { saveConfig(config); }, [config]);
   useEffect(() => { saveDateFilter(profileName, dateFilter); }, [dateFilter, profileName]);
   useEffect(() => { saveLayers(profileName, edgeLayers); }, [edgeLayers, profileName]);
+  useEffect(() => { setNodeColors(loadNodeColors(profileName)); }, [profileName]);
+  useEffect(() => { saveNodeColors(profileName, nodeColors); }, [profileName, nodeColors]);
 
   // ── Fetch all data ──
   useEffect(() => {
@@ -758,8 +943,25 @@ export function SessionWeb() {
     return counts;
   }, [touches]);
 
-  // ── Build edges then solve layout ──
-  const { edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet } = useMemo(
+  // ── Build full graph for durable placement ──
+  const {
+    edges: placementEdges,
+    handoffDocs: placementHandoffDocs,
+    commitSessionMap: placementCommitSessionMap,
+    childrenOf: placementChildrenOf,
+    spawnedSet: placementSpawnedSet,
+  } = useMemo(
+    () => buildAllEdges(sessions, moveRuns, commits, missionTransfers, touches),
+    [sessions, moveRuns, commits, missionTransfers, touches],
+  );
+
+  // ── Build filtered graph for rendering ──
+  const {
+    edges: viewEdges,
+    handoffDocs: viewHandoffDocs,
+    commitSessionMap: viewCommitSessionMap,
+    spawnedSet: viewSpawnedSet,
+  } = useMemo(
     () => buildAllEdges(filteredSessions, moveRuns, commits, filteredTransfers, touches),
     [filteredSessions, moveRuns, commits, filteredTransfers, touches],
   );
@@ -770,11 +972,11 @@ export function SessionWeb() {
   // overwriting the persisted DB positions. This was the core bug.
   const solvedPositions = useMemo((): PositionMap => {
     if (!positionsLoaded) return EMPTY_POS;
-    const unsolvedSessions = filteredSessions.filter(s => !storedPositions[s.id]);
+    const unsolvedSessions = sessions.filter(s => !storedPositions[s.id]);
     if (unsolvedSessions.length === 0) return EMPTY_POS;
     const result = solveLayout(
-      filteredSessions, edges, handoffDocs, commitSessionMap,
-      childrenOf, spawnedSet, commits, config, storedPositions, touches,
+      sessions, placementEdges, placementHandoffDocs, placementCommitSessionMap,
+      placementChildrenOf, placementSpawnedSet, commits, config, storedPositions, touches,
     );
     const newPositions: PositionMap = {};
     for (const n of result.nodes) {
@@ -783,7 +985,7 @@ export function SessionWeb() {
       }
     }
     return Object.keys(newPositions).length > 0 ? newPositions : EMPTY_POS;
-  }, [positionsLoaded, filteredSessions, edges, handoffDocs, commitSessionMap, childrenOf, spawnedSet, commits, config, storedPositions, touches]);
+  }, [positionsLoaded, sessions, placementEdges, placementHandoffDocs, placementCommitSessionMap, placementChildrenOf, placementSpawnedSet, commits, config, storedPositions, touches]);
 
   // ── Persist newly solved positions and lock them into storedPositions ──
   // Runs only when solvedPositions actually changes (new sessions appeared).
@@ -801,154 +1003,32 @@ export function SessionWeb() {
   // Pure node-building — no solver, no side effects.
   // Re-runs only when: sessions change, positions change (load/drag-end), or dragPreview changes (during drag).
   const { nodes, clusters } = useMemo(() => {
-    // Merge: solvedPositions fill gaps, storedPositions win for placed nodes, dragPreview wins during drag
     const allPositions: PositionMap = { ...solvedPositions, ...storedPositions, ...dragPreview };
-
-    // Build session nodes from positions
-    const nodeList: GraphNode[] = [];
-    const sorted = [...filteredSessions].sort((a, b) => a.created_at - b.created_at);
-    for (const s of sorted) {
-      const pos = allPositions[s.id];
-      if (!pos) continue; // shouldn't happen after solve, but guard
-      const tags = parseTags(s.tags);
-      const handoffType = tags.find(t => t.startsWith("handoff:"))?.slice(8);
-      nodeList.push({
-        id: s.id,
-        type: "session",
-        x: pos.x, y: pos.y,
-        col: spawnedSet.has(s.id) ? 1 : 0,
-        row: 0,
-        session: s,
-        tags,
-        handoffType,
-        dayKey: dayKey(s.created_at),
-      });
-    }
-
-    // Build commit nodes — placed relative to parent session
-    const COMMIT_COLS = 3;
-    const commitsByParent = new Map<string, GitCommit[]>();
-    const orphanCommits: GitCommit[] = [];
-    for (const c of commits) {
-      const h7 = shortHash(c.hash);
-      const parentSids = commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [];
-      if (parentSids.length > 0) {
-        const pid = parentSids[0];
-        const arr = commitsByParent.get(pid) || [];
-        arr.push(c);
-        commitsByParent.set(pid, arr);
-      } else {
-        orphanCommits.push(c);
-      }
-    }
-
-    for (const [pid, pCommits] of commitsByParent) {
-      const parentPos = allPositions[pid];
-      if (!parentPos) continue;
-      const sortedC = [...pCommits].sort((a, b) =>
-        new Date(a.date).getTime() - new Date(b.date).getTime()
-      );
-      for (let i = 0; i < sortedC.length; i++) {
-        const col = i % COMMIT_COLS;
-        const row = Math.floor(i / COMMIT_COLS);
-        nodeList.push({
-          id: `commit:${shortHash(sortedC[i].hash)}`,
-          type: "commit",
-          x: parentPos.x + config.commitOffsetX + col * (COMMIT_W + 8),
-          y: parentPos.y + NODE_H + 14 + row * (COMMIT_H + 6),
-          col, row,
-          commit: sortedC[i],
-          dayKey: dayKey(new Date(sortedC[i].date).getTime()),
-        });
-      }
-    }
-
-    // Orphan commits: nearest session in time
-    for (const c of orphanCommits) {
-      const ct = new Date(c.date).getTime();
-      let bestSid: string | null = null;
-      let bestDist = Infinity;
-      for (const s of sorted) {
-        const dist = Math.abs(s.created_at - ct);
-        if (dist < bestDist && allPositions[s.id]) { bestDist = dist; bestSid = s.id; }
-      }
-      if (bestSid && allPositions[bestSid]) {
-        const sp = allPositions[bestSid];
-        const existing = nodeList.filter(
-          n => n.type === "commit" && Math.abs(n.x - sp.x) < NODE_W * 2 && Math.abs(n.y - (sp.y + NODE_H)) < 100,
-        );
-        const idx = existing.length;
-        const col = idx % COMMIT_COLS;
-        const row = Math.floor(idx / COMMIT_COLS);
-        nodeList.push({
-          id: `commit:${shortHash(c.hash)}`,
-          type: "commit",
-          x: sp.x + config.commitOffsetX + col * (COMMIT_W + 8),
-          y: sp.y + NODE_H + 14 + row * (COMMIT_H + 6),
-          col, row, commit: c,
-          dayKey: dayKey(ct),
-        });
-      }
-    }
-
-    // Document nodes — midpoint between linked sessions
-    const nodeMapLocal = new Map(nodeList.map(n => [n.id, n]));
-    for (const doc of handoffDocs) {
-      const fromNode = nodeMapLocal.get(doc.fromSessionId);
-      const toNode = nodeMapLocal.get(doc.toSessionId);
-      if (!fromNode || !toNode) continue;
-      nodeList.push({
-        id: `doc:${doc.moveRunId}`,
-        type: "document",
-        x: (fromNode.x + NODE_W / 2 + toNode.x + NODE_W / 2) / 2 - DOC_W / 2,
-        y: (fromNode.y + NODE_H / 2 + toNode.y + NODE_H / 2) / 2 - DOC_H / 2,
-        col: fromNode.col, row: fromNode.row,
-        doc,
-      });
-    }
-
-    // Build day clusters from actual positions
-    const dayGroups = new Map<string, GraphNode[]>();
-    for (const n of nodeList) {
-      const dk = n.dayKey ?? (n.commit ? dayKey(new Date(n.commit.date).getTime()) : null);
-      if (!dk) continue;
-      const arr = dayGroups.get(dk) || [];
-      arr.push(n);
-      dayGroups.set(dk, arr);
-    }
-
-    const clusterList: TimeCluster[] = [];
-    const sortedDays = [...dayGroups.keys()].sort();
-    for (let di = 0; di < sortedDays.length; di++) {
-      const dk = sortedDays[di];
-      const dayNodes = dayGroups.get(dk)!;
-      let minX = Infinity, maxX = -Infinity;
-      let sessionCount = 0, commitCount = 0;
-      for (const n of dayNodes) {
-        const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
-        if (n.x < minX) minX = n.x;
-        if (n.x + w > maxX) maxX = n.x + w;
-        if (n.type === "session") sessionCount++;
-        if (n.type === "commit") commitCount++;
-      }
-      clusterList.push({
-        id: `cluster:${di}`,
-        label: dayKey(Date.now()) === dk ? "today" : dk,
-        x: minX - 24,
-        width: (maxX - minX) + 48,
-        sessionCount, commitCount,
-      });
-    }
-
-    return { nodes: nodeList, clusters: clusterList };
-  }, [filteredSessions, solvedPositions, storedPositions, dragPreview, handoffDocs,
-      commitSessionMap, spawnedSet, commits, config]);
+    const layout = buildGraphLayoutFromPositions({
+      sessions: filteredSessions,
+      handoffDocs: viewHandoffDocs,
+      commitSessionMap: viewCommitSessionMap,
+      spawnedSet: viewSpawnedSet,
+      commits,
+      config,
+      positions: allPositions,
+    });
+    return {
+      nodes: layout.nodes.map((node) =>
+        node.type === "session"
+          ? { ...node, color: nodeColors[node.id] ?? null }
+          : node,
+      ),
+      clusters: layout.clusters,
+    };
+  }, [filteredSessions, solvedPositions, storedPositions, dragPreview, viewHandoffDocs,
+      viewCommitSessionMap, viewSpawnedSet, commits, config, nodeColors]);
 
   const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes]);
 
   const visibleEdges = useMemo(() => {
     const MAX_TOUCH_EDGE_DIST = 900;
-    return edges.filter(e => {
+    return viewEdges.filter(e => {
       if (e.type === "document") return edgeLayers.handoff;
       if (e.type in edgeLayers && !edgeLayers[e.type as keyof EdgeLayers]) return false;
       if (e.type === "co-edit" || e.type === "co-read") {
@@ -961,7 +1041,7 @@ export function SessionWeb() {
       }
       return true;
     });
-  }, [edges, edgeLayers, nodeMap]);
+  }, [viewEdges, edgeLayers, nodeMap]);
 
   const newestSessionNode = useMemo(() => {
     return nodes
@@ -1430,6 +1510,15 @@ export function SessionWeb() {
     setContextMenu(null);
   }, []);
 
+  const handleColorChange = useCallback((id: string, color: string | null) => {
+    setNodeColors(prev => {
+      const next = { ...prev };
+      if (color) next[id] = color;
+      else delete next[id];
+      return next;
+    });
+  }, []);
+
   const handleResetView = useCallback(() => {
     const wrap = wrapRef.current;
     if (!wrap || !newestSessionNode) {
@@ -1617,7 +1706,7 @@ export function SessionWeb() {
               const { w, h } = nodeDims(node.type);
               const isRunning = node.type === "session" && node.session?.status === "running";
               const bg = node.type === "session"
-                ? (isRunning ? "var(--success)" : node.session?.status === "error" ? "var(--error)" : "var(--text-muted)")
+                ? (node.color || (isRunning ? "var(--success)" : node.session?.status === "error" ? "var(--error)" : "var(--text-muted)"))
                 : node.type === "commit" ? "var(--info)" : "var(--text-muted)";
               return (
                 <div
@@ -1881,7 +1970,7 @@ export function SessionWeb() {
                   const { w, h } = nodeDims(n.type);
                   const isSelected = selectedIds.has(n.id);
                   const cls = isSelected ? "web-mm-selected" : (n.type === "session"
-                    ? (n.session?.status === "running" ? "web-mm-running" : "web-mm-session")
+                    ? (n.session?.status === "running" && !n.color ? "web-mm-running" : "web-mm-session")
                     : n.type === "commit" ? "web-mm-commit" : "web-mm-doc");
                   return (
                     <rect
@@ -1889,6 +1978,7 @@ export function SessionWeb() {
                       x={n.x * scaleX} y={n.y * scaleY}
                       width={Math.max(w * scaleX, isSelected ? 3 : 2)} height={Math.max(h * scaleY, isSelected ? 2 : 1.5)}
                       className={cls}
+                      fill={!isSelected && n.type === "session" && n.color ? n.color : undefined}
                     />
                   );
                 })}
@@ -1939,7 +2029,7 @@ export function SessionWeb() {
         />
       )}
 
-      {selectedNode && <DetailPanel node={selectedNode} onClose={() => setSelectedIds(new Set())} onArchive={handleArchive} onPinToggle={handlePinToggle} />}
+      {selectedNode && <DetailPanel node={selectedNode} onClose={() => setSelectedIds(new Set())} onArchive={handleArchive} onPinToggle={handlePinToggle} onColorChange={handleColorChange} />}
 
       <SessionWindow
         sessionId={miniSessionId}

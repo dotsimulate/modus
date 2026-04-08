@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import type { Session, SessionInfo, Attachment, ApiAttachment, MoveBinding } from "../../../sdk/index";
@@ -10,7 +10,7 @@ import {
   isAgentConfigEqual,
   type AgentConfigState,
 } from "../components/AgentConfig";
-import { useProfiles } from "./ProfileProvider";
+import { useProfiles } from "./ProfileContext";
 import {
   useSessionState, setSessionState, getSessionState,
   setSessionNextAgentConfig,
@@ -20,42 +20,7 @@ import {
   rekeySession, removeSession, evictInactiveSessions, onSessionRekey,
 } from "../sessionStore";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
-
-export type QueuedMessage = {
-  text: string;
-  attachments: Attachment[];
-  /** True when the message has already been committed to the backend queue (survives navigation) */
-  serverQueued?: boolean;
-  dispatchId?: string;
-};
-
-type SessionContextValue = {
-  activeSession: Session | null;
-  serverSessions: SessionInfo[];
-  input: string;
-  handleInputChange: (text: string) => void;
-  send: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => Promise<void>;
-  stop: () => Promise<void>;
-  stopTask: (taskId: string) => Promise<void>;
-  newSession: () => Promise<string | null>;
-  selectSession: (id: string) => Promise<void>;
-  archiveSession: (id: string) => Promise<void>;
-  refreshSessions: () => Promise<void>;
-  handlePermissionResponse: (
-    requestId: string,
-    behavior: "allow" | "deny",
-    updatedInput?: Record<string, unknown>,
-    scope?: "once" | "session",
-  ) => Promise<void>;
-  queuedMessage: QueuedMessage | null;
-  cancelQueued: () => void;
-  updateActiveSessionConfig: (config: AgentConfigState) => Promise<void>;
-  updateActiveSessionProfile: (profile: string) => void;
-  branchFromMessage: (seq: number, prefill?: string) => Promise<void>;
-};
-
-const SessionContext = createContext<SessionContextValue>(null!);
-export const useSession = () => useContext(SessionContext);
+import { SessionContext } from "./SessionContext";
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
@@ -392,14 +357,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           afterSeq = 0;
         } else {
           const latest = getSessionState(id);
-          const shouldApplySnapshot = !latest
-            || snapshot.lastSeq > latest.lastSeq
-            || snapshot.messages.length >= latest.messages.length;
+          // Skip empty snapshots — the backend maps idle sessions to "done"
+          // which would overwrite fresh "idle" state and break needsNewSession.
+          const isSnapshotMeaningful = snapshot.messages.length > 0 || snapshot.lastSeq > 0;
+          const shouldApplySnapshot = isSnapshotMeaningful
+            && (!latest
+              || snapshot.lastSeq > latest.lastSeq
+              || snapshot.messages.length >= latest.messages.length);
           if (shouldApplySnapshot) {
             hydrateSessionHistorySnapshot(snapshot, sessionProfile);
             afterSeq = snapshot.lastSeq;
           } else {
-            afterSeq = latest.lastSeq;
+            afterSeq = latest?.lastSeq ?? 0;
           }
         }
       } catch {

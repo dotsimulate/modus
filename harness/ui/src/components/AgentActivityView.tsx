@@ -580,21 +580,6 @@ export function AgentActivityView({ messages }: Props) {
 
   return (
     <div className="aa-panel">
-      <div className="aa-header">
-        <div className="aa-header-meta">
-          <span className="aa-header-title">activity</span>
-        </div>
-        <div className="aa-header-actions">
-          <button
-            className="aa-header-toggle"
-            onClick={() => setExpandedItems(allExpanded ? new Set() : new Set(feed.map((item) => item.anchorId)))}
-            title={allExpanded ? "Collapse all activity items" : "Expand all activity items"}
-          >
-            {allExpanded ? "collapse all" : "expand all"}
-          </button>
-        </div>
-      </div>
-
       {feed.length === 0 ? (
         <div className="aa-empty">
           <svg className="aa-empty-icon" width="20" height="20" viewBox="0 0 12 12" fill="none">
@@ -603,55 +588,68 @@ export function AgentActivityView({ messages }: Props) {
           <span>no activity yet</span>
         </div>
       ) : (
-        <div className="aa-feed" ref={scrollRef}>
-          {feed.map((item) => {
-            const expanded = expandedItems.has(item.anchorId);
-            const intoTurnMs = intoTurnMsForTool(messages, item.msgIndex, item.tool);
-            const preview = getCard(item.tool.name)({ tool: item.tool, expanded, intoTurnMs });
-            const hasDetail = !!preview.detail;
-            const toggleControl = (icon: ReactNode) => (
+        <>
+          <div className="aa-header aa-header--compact">
+            <div className="aa-header-actions">
               <button
-                className={`aa-icon-toggle${expanded ? " aa-icon-toggle--open" : ""}${hasDetail ? "" : " aa-icon-toggle--static"}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!hasDetail) return;
-                  setExpandedItems((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(item.anchorId)) next.delete(item.anchorId);
-                    else next.add(item.anchorId);
-                    return next;
-                  });
-                }}
-                title={hasDetail ? (expanded ? "Collapse item" : "Expand item") : undefined}
-                disabled={!hasDetail}
+                className="aa-header-toggle"
+                onClick={() => setExpandedItems(allExpanded ? new Set() : new Set(feed.map((item) => item.anchorId)))}
+                title={allExpanded ? "Collapse all activity items" : "Expand all activity items"}
               >
-                {icon}
+                {allExpanded ? "collapse all" : "expand all"}
               </button>
-            );
-            const rendered = getCard(item.tool.name)({ tool: item.tool, expanded, toggleControl, intoTurnMs });
-
-            return (
-              <div
-                key={item.anchorId}
-                className={`aa-feed-item${item.tool.status === "running" ? " aa-feed-item--active" : ""}`}
-              >
-                <div
-                  className="aa-item-main"
-                  onClick={() => scrollChatToTool(item.anchorId, item.tool.id)}
+            </div>
+          </div>
+          <div className="aa-feed" ref={scrollRef}>
+            {feed.map((item) => {
+              const expanded = expandedItems.has(item.anchorId);
+              const intoTurnMs = intoTurnMsForTool(messages, item.msgIndex, item.tool);
+              const preview = getCard(item.tool.name)({ tool: item.tool, expanded, intoTurnMs });
+              const hasDetail = !!preview.detail;
+              const toggleControl = (icon: ReactNode) => (
+                <button
+                  className={`aa-icon-toggle${expanded ? " aa-icon-toggle--open" : ""}${hasDetail ? "" : " aa-icon-toggle--static"}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!hasDetail) return;
+                    setExpandedItems((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(item.anchorId)) next.delete(item.anchorId);
+                      else next.add(item.anchorId);
+                      return next;
+                    });
+                  }}
+                  title={hasDetail ? (expanded ? "Collapse item" : "Expand item") : undefined}
+                  disabled={!hasDetail}
                 >
-                  {rendered.summary}
-                </div>
-                {hasDetail && (
-                  <div className={`panel-collapse ${expanded ? "panel-collapse--open" : ""}`}>
-                    <div className="panel-collapse-clip">
-                      {rendered.detail}
-                    </div>
+                  {icon}
+                </button>
+              );
+              const rendered = getCard(item.tool.name)({ tool: item.tool, expanded, toggleControl, intoTurnMs });
+
+              return (
+                <div
+                  key={item.anchorId}
+                  className={`aa-feed-item${item.tool.status === "running" ? " aa-feed-item--active" : ""}`}
+                >
+                  <div
+                    className="aa-item-main"
+                    onClick={() => scrollChatToTool(item.anchorId, item.tool.id)}
+                  >
+                    {rendered.summary}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  {hasDetail && (
+                    <div className={`panel-collapse ${expanded ? "panel-collapse--open" : ""}`}>
+                      <div className="panel-collapse-clip">
+                        {rendered.detail}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

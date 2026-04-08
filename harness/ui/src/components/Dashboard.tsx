@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import type { View } from "../views";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { ProjectSetup } from "./ProjectSetup";
 import { ModusPrompt } from "./ModusPrompt";
 import { Missions } from "./Missions";

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { modus } from "../modusClient";
 import type { MemoryItem } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 
 // ── Custom dropdown (replaces native <select> for styled dropdowns) ──
 function Dropdown({ value, options, placeholder, onChange }: {

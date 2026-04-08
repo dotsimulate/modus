@@ -29,7 +29,7 @@
 }
 
 /* Remove padding when editing — CodeMirror manages its own gutters */
-.right-panel-content--editing {
+.code-workspace-content--editing {
   padding: 0 !important;
 }
 

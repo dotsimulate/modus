@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { WIDGETS, type WidgetBase, type WidgetSize } from "../widgets";
+import { WIDGET_DEFS, WIDGETS, type WidgetBase, type WidgetSize, type WidgetZone } from "../widgets";
 
-type Zone = "dashboard" | "left-panel";
+type Zone = WidgetZone;
 
 type Props = {
   zone: Zone;
@@ -9,6 +9,8 @@ type Props = {
   current: WidgetBase[];
   /** Called with the updated widget list when user adds/removes/reorders */
   onChange: (widgets: WidgetBase[]) => void;
+  mode?: "list" | "tabs";
+  onModeChange?: (mode: "list" | "tabs") => void;
 };
 
 const sizeOptions: { value: WidgetSize; label: string }[] = [
@@ -16,9 +18,15 @@ const sizeOptions: { value: WidgetSize; label: string }[] = [
   { value: "half", label: "half" },
 ];
 
-const allTypes = () => Object.keys(WIDGETS).sort();
+const zoneEnabled = (type: string, zone: Zone) => {
+  const def = WIDGET_DEFS[type];
+  const zones = def?.zones ?? ["dashboard", "left-panel", "right-panel"];
+  return zones.includes(zone);
+};
 
-export function WidgetPicker({ zone, current, onChange }: Props) {
+const allTypes = (zone: Zone) => Object.keys(WIDGETS).filter((type) => zoneEnabled(type, zone)).sort();
+
+export function WidgetPicker({ zone, current, onChange, mode, onModeChange }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -43,7 +51,10 @@ export function WidgetPicker({ zone, current, onChange }: Props) {
   }, [open]);
 
   const currentTypes = new Set(current.map((w) => w.type));
-  const types = allTypes();
+  const types = [
+    ...current.map((w) => w.type).filter((type, index, arr) => zoneEnabled(type, zone) && arr.indexOf(type) === index),
+    ...allTypes(zone).filter((type) => !currentTypes.has(type)),
+  ];
 
   const toggle = (type: string) => {
     if (currentTypes.has(type)) {
@@ -93,6 +104,22 @@ export function WidgetPicker({ zone, current, onChange }: Props) {
       {open && (
         <div className="widget-picker-dropdown">
           <div className="widget-picker-header">widgets</div>
+          {onModeChange && (
+            <div className="widget-picker-modes">
+              <button
+                className={`widget-picker-mode${mode === "tabs" ? " widget-picker-mode--active" : ""}`}
+                onClick={() => onModeChange("tabs")}
+              >
+                tabs
+              </button>
+              <button
+                className={`widget-picker-mode${mode === "list" ? " widget-picker-mode--active" : ""}`}
+                onClick={() => onModeChange("list")}
+              >
+                list
+              </button>
+            </div>
+          )}
           <div className="widget-picker-list">
             {types.map((type) => {
               const active = currentTypes.has(type);

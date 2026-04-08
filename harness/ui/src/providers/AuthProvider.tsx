@@ -1,16 +1,9 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { modus } from "../modusClient";
 import { clearAuthToken } from "../modusClient";
 import { LoginScreen } from "../components/LoginScreen";
 import { ModusError } from "../../../sdk/index";
-
-type AuthContextValue = {
-  userName: string | null;
-  handleLock: () => void;
-};
-
-const AuthContext = createContext<AuthContextValue>(null!);
-export const useAuth = () => useContext(AuthContext);
+import { AuthContext } from "./AuthContext";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<"checking" | "login" | "setup" | "ok">("checking");

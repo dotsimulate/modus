@@ -14,7 +14,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { SearchAddon } from "@xterm/addon-search";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
@@ -46,6 +45,8 @@ type Props = {
   cwd?: string | null;
   visible?: boolean;
   sessionId?: string | null;
+  ownerType?: string | null;
+  ownerName?: string | null;
 };
 
 // ── Constants ──
@@ -249,7 +250,7 @@ function disposeInstance(inst: TerminalInstance) {
 
 // ── Component ──
 
-export function TerminalView({ cwd, visible, sessionId }: Props) {
+export function TerminalView({ cwd, visible, sessionId, ownerType, ownerName }: Props) {
   const [instances, setInstances] = useState<TerminalInstance[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -270,12 +271,17 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
     setActiveId(null);
     setLoaded(false);
 
-    if (!sessionId) { setLoaded(true); return; }
+    if (!sessionId && !ownerName) { setLoaded(true); return; }
 
     let cancelled = false;
     (async () => {
       try {
-        const existing = await modus.listTerminals(sessionId);
+        const existing = sessionId
+          ? await modus.listTerminals(sessionId)
+          : (await modus.listTerminals()).filter((terminal) =>
+              terminal.ownerType === (ownerType ?? null)
+              && terminal.ownerName === ownerName
+            );
         if (cancelled) return;
         if (existing.length > 0) {
           const reconnected: TerminalInstance[] = [];
@@ -290,7 +296,7 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
       setLoaded(true);
     })();
     return () => { cancelled = true; };
-  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ownerName, ownerType, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Create a new terminal ──
 
@@ -316,11 +322,18 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
       probeEl.remove();
     }
 
-    const info = await modus.createTerminal({ cwd: cwd ?? undefined, cols, rows, sessionId: sessionId ?? undefined });
+    const info = await modus.createTerminal({
+      cwd: cwd ?? undefined,
+      cols,
+      rows,
+      sessionId: sessionId ?? undefined,
+      ownerType: ownerType ?? undefined,
+      ownerName: ownerName ?? undefined,
+    });
     const instance = wireInstance(info, setInstances);
     setInstances((prev) => [...prev, instance]);
     setActiveId(info.id);
-  }, [cwd, sessionId]);
+  }, [cwd, ownerName, ownerType, sessionId]);
 
   // ── Close a terminal ──
 
@@ -360,12 +373,6 @@ export function TerminalView({ cwd, visible, sessionId }: Props) {
       // Refresh theme now that element is in DOM and CSS vars are resolved
       active.xterm.options.theme = resolveThemeColors();
 
-      // Load WebGL renderer after open() — with fallback
-      try {
-        active.xterm.loadAddon(new WebglAddon());
-      } catch {
-        // WebGL2 not available — falls back to canvas renderer
-      }
     }
 
     // Fit and sync size with backend

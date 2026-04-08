@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
 import { modus } from "../modusClient";
 import type { ProjectUiState } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { applyProjectUiState } from "../project-ui-theme";
 import { CustomSelect } from "../components/CustomSelect";
 import { PromptComposer } from "../components/PromptComposer";
-import type { WidgetBase, WidgetDef, WidgetProps } from "./index";
+import type { WidgetBase, WidgetProps } from "./types";
 
 type ProjectThemeConfig = WidgetBase & {
   type: "project-theme";
 };
 
-function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
+export default function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
   const { activeCwd, projectRoot, activeUserProfile } = useProfiles();
   const themeCwd = projectRoot ?? activeCwd;
   const [state, setState] = useState<ProjectUiState | null>(null);
@@ -173,6 +173,3 @@ function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
     </div>
   );
 }
-
-const def: WidgetDef = { type: "project-theme", component: ProjectThemeWidget };
-export default def;

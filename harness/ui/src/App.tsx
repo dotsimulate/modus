@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { ProfileUi, MoveListItem } from "../../sdk/index";
-import { modus } from "./modusClient";
+import { API_BASE, authHeaders, modus } from "./modusClient";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
-import { AuthProvider, useAuth } from "./providers/AuthProvider";
-import { ProfileProvider, useProfiles } from "./providers/ProfileProvider";
-import { SessionProvider, useSession } from "./providers/SessionProvider";
+import { AuthProvider } from "./providers/AuthProvider";
+import { useAuth } from "./providers/AuthContext";
+import { ProfileProvider } from "./providers/ProfileProvider";
+import { useProfiles } from "./providers/ProfileContext";
+import { SessionProvider } from "./providers/SessionProvider";
+import { useSession } from "./providers/SessionContext";
 import { getSessionState } from "./sessionStore";
 import { useHashRouter } from "./hooks/useHashRouter";
 import { Sidebar } from "./components/Sidebar";
@@ -21,7 +24,8 @@ import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
 import { UserSettingsModal } from "./components/UserSettingsModal";
 import { createEmptyAgentConfig } from "./components/AgentConfig";
-import { FileViewerProvider, useFileViewer } from "./providers/FileViewerProvider";
+import { FileViewerProvider } from "./providers/FileViewerProvider";
+import { useFileViewer } from "./providers/FileViewerContext";
 import { PinboardProvider } from "./providers/PinboardProvider";
 import { SessionWindow } from "./components/SessionWindow";
 import { SessionWeb } from "./components/SessionWeb";
@@ -30,8 +34,11 @@ import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { PanelCollapseTab } from "./components/PanelCollapseTab";
+import { LayoutProvider } from "./providers/LayoutProvider";
+import { useLayout } from "./providers/LayoutContext";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { AgentPortal } from "./components/AgentPortal";
+import type { DashboardPage } from "./widgets";
 
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 
@@ -63,6 +70,18 @@ function App() {
 }
 
 function AppShell() {
+  const router = useHashRouter();
+  return (
+    <LayoutProvider view={router.view}>
+      <AppContent router={router} />
+    </LayoutProvider>
+  );
+}
+
+type HashRouter = ReturnType<typeof useHashRouter>;
+
+function AppContent({ router }: { router: HashRouter }) {
+  const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, consumeHashProfile } = router;
   const { handleLock } = useAuth();
   const {
     profiles, visibleProfiles, availableProviders, userProfiles,
@@ -79,8 +98,63 @@ function AppShell() {
     handlePermissionResponse, updateActiveSessionConfig, updateActiveSessionProfile,
     queuedMessage, cancelQueued, branchFromMessage,
   } = useSession();
-  const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, consumeHashProfile } = useHashRouter();
-  const { tabs: fileViewerTabs, activePath: fileViewerActivePath, hydrate: hydrateFileViewer } = useFileViewer();
+
+  // Panel state — owned by LayoutProvider
+  const {
+    leftPanelOpen, leftPanelWidth, leftPanelMode, leftPanelWidgets,
+    setLeftPanelOpen, toggleLeftPanel, onLeftPanelWidgetsChange, onLeftPanelModeChange,
+    handleLeftResize, handleRightResize,
+    rightPanelOpen, rightPanelWidth, rightPanelMode, rightPanelWidgets, rightPanelBrowserPath,
+    requestRightPanelView,
+    setRightPanelOpen, setRightPanelWidth: _setRightPanelWidth,
+    toggleRightPanel, setRightPanelBrowserPath, onRightPanelWidgetsChange, onRightPanelModeChange,
+    setRequestRightPanelView,
+    leftPanelTree, rightPanelTree,
+    panelsEnabled,
+  } = useLayout();
+
+  // ── File-open → panel routing ──
+  const { subscribeFileOpens } = useFileViewer();
+  const panelFileRouteRef = useRef({
+    leftPanelWidgets,
+    rightPanelWidgets,
+    panelsEnabled,
+    setLeftPanelOpen,
+    setRightPanelOpen,
+    onRightPanelWidgetsChange,
+  });
+  panelFileRouteRef.current = {
+    leftPanelWidgets,
+    rightPanelWidgets,
+    panelsEnabled,
+    setLeftPanelOpen,
+    setRightPanelOpen,
+    onRightPanelWidgetsChange,
+  };
+  useEffect(() => {
+    return subscribeFileOpens(() => {
+      const {
+        leftPanelWidgets: lw,
+        rightPanelWidgets: rw,
+        panelsEnabled: enabled,
+        setLeftPanelOpen: openLeft,
+        setRightPanelOpen: openRight,
+        onRightPanelWidgetsChange: setRightWidgets,
+      } = panelFileRouteRef.current;
+      if (!enabled) return;
+      const hasEditorRight = (rw ?? []).some((w) => w.type === "code-editor");
+      const hasEditorLeft = (lw ?? []).some((w) => w.type === "code-editor");
+      if (hasEditorRight) {
+        openRight(true);
+      } else if (hasEditorLeft) {
+        openLeft(true);
+      } else {
+        // No code-editor in any panel — add one to the right panel and open it
+        setRightWidgets([...(rw ?? []), { type: "code-editor" }]);
+        openRight(true);
+      }
+    });
+  }, [subscribeFileOpens]);
 
   // ── Local UI state ──
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
@@ -89,12 +163,6 @@ function AppShell() {
   const [forceSetup, setForceSetup] = useState(false);
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [floatingSessionId, setFloatingSessionId] = useState<string | null>(null);
-  const [leftPanelOpen, setLeftPanelOpen] = useState(false);
-  const [leftPanelWidth, setLeftPanelWidth] = useState(280);
-  const [rightPanelOpen, setRightPanelOpen] = useState(false);
-  const [rightPanelWidth, setRightPanelWidth] = useState(360);
-  const [rightPanelBrowserPath, setRightPanelBrowserPath] = useState<string | null>(null);
-  const [requestRightPanelView, setRequestRightPanelView] = useState<string | null>(null);
   const [activeMoveWidgets, setActiveMoveWidgets] = useState<Array<{
     widget: import("../../sdk/index").MoveWidgetInfo;
     apiToken: string;
@@ -103,116 +171,6 @@ function AppShell() {
     mountedOnAttach?: boolean;
   }>>([]);
   const widgetJustSetRef = useRef(false);
-  const prevSessionIdRef = useRef<string | null>(null);
-  const panelSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const uiCache = useRef<Map<string, Record<string, unknown>>>(new Map());
-  const fileViewerTabsRef = useRef(fileViewerTabs);
-  const fileViewerActivePathRef = useRef(fileViewerActivePath);
-  const rightPanelBrowserPathRef = useRef(rightPanelBrowserPath);
-  fileViewerTabsRef.current = fileViewerTabs;
-  fileViewerActivePathRef.current = fileViewerActivePath;
-  rightPanelBrowserPathRef.current = rightPanelBrowserPath;
-
-  // ── Panel state persistence (per-session, backend-stored) ──
-
-  // Capture current panel + scroll state into cache and persist to backend (debounced)
-  const savePanelState = useCallback((sessionId: string) => {
-    if (!sessionId || sessionId.startsWith("pending-")) return;
-    const scrollEl = document.querySelector(".chat-messages");
-    const snapshot: Record<string, unknown> = {
-      leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth,
-      scrollTop: scrollEl ? scrollEl.scrollTop : 0,
-      fileViewerTabs: fileViewerTabsRef.current,
-      fileViewerActivePath: fileViewerActivePathRef.current,
-      browserPath: rightPanelBrowserPathRef.current,
-    };
-    uiCache.current.set(sessionId, snapshot);
-    // Cap cache at 20 entries — evict oldest
-    if (uiCache.current.size > 20) {
-      const oldest = uiCache.current.keys().next().value;
-      if (oldest && oldest !== sessionId) uiCache.current.delete(oldest);
-    }
-    if (panelSaveTimer.current) clearTimeout(panelSaveTimer.current);
-    panelSaveTimer.current = setTimeout(() => {
-      modus.saveSessionUiState(sessionId, snapshot).catch(() => {});
-    }, 300);
-  }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth]);
-
-  // Save panel state on change (debounced)
-  useEffect(() => {
-    const id = activeSession?.id;
-    if (!id || id.startsWith("pending-")) return;
-    savePanelState(id);
-  }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth, rightPanelBrowserPath, fileViewerTabs, fileViewerActivePath]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Restore panel + scroll state on session switch
-  useEffect(() => {
-    const id = activeSession?.id ?? null;
-    const prevId = prevSessionIdRef.current;
-    if (id === prevId) return;
-
-    // Save outgoing session's scroll position before switching
-    if (prevId && !prevId.startsWith("pending-")) {
-      const scrollEl = document.querySelector(".chat-messages");
-      if (scrollEl) {
-        const cached = uiCache.current.get(prevId) ?? {};
-        cached.scrollTop = scrollEl.scrollTop;
-        uiCache.current.set(prevId, cached);
-      }
-    }
-
-    prevSessionIdRef.current = id;
-
-    if (!id || id.startsWith("pending-")) {
-      setLeftPanelOpen(false);
-      setLeftPanelWidth(280);
-      setRightPanelOpen(false);
-      setRightPanelWidth(360);
-      setRightPanelBrowserPath(null);
-      hydrateFileViewer([], null);
-      return;
-    }
-
-    // Restore from cache (synchronous — no bounce), backfill from backend
-    const applyState = (state: Record<string, unknown>) => {
-      setLeftPanelOpen(!!state.leftPanelOpen);
-      setLeftPanelWidth(typeof state.leftPanelWidth === "number" ? state.leftPanelWidth : 280);
-      setRightPanelOpen(!!state.rightPanelOpen);
-      setRightPanelWidth(typeof state.rightPanelWidth === "number" ? state.rightPanelWidth : 360);
-      setRightPanelBrowserPath(typeof state.browserPath === "string" ? state.browserPath : null);
-      // Restore file viewer tabs and active path
-      const savedTabs = Array.isArray(state.fileViewerTabs)
-        ? (state.fileViewerTabs as { path: string; pinned: boolean }[]).filter(
-            (t) => typeof t?.path === "string"
-          )
-        : [];
-      const savedActivePath = typeof state.fileViewerActivePath === "string" ? state.fileViewerActivePath : null;
-      hydrateFileViewer(savedTabs, savedActivePath);
-      // Restore scroll position after React renders the new layout
-      if (typeof state.scrollTop === "number" && state.scrollTop > 0) {
-        requestAnimationFrame(() => {
-          const scrollEl = document.querySelector(".chat-messages");
-          if (scrollEl) scrollEl.scrollTop = state.scrollTop as number;
-        });
-      }
-    };
-
-    const cached = uiCache.current.get(id);
-    if (cached) {
-      applyState(cached);
-    } else {
-      // First visit this session — fetch from backend, cache it
-      setLeftPanelOpen(false);
-      setLeftPanelWidth(280);
-      setRightPanelOpen(false);
-      setRightPanelWidth(360);
-      modus.getSessionUiState(id).then((state) => {
-        uiCache.current.set(id, state);
-        // Only apply if we're still on this session
-        if (prevSessionIdRef.current === id) applyState(state);
-      }).catch(() => {});
-    }
-  }, [activeSession?.id]);
 
   // Restore active move widgets on session switch / page load
   useEffect(() => {
@@ -322,10 +280,13 @@ function AppShell() {
   }, [activeUserProfile, navigate, newSession, setUrlSession]);
 
   const handleSelectSession = useCallback((id: string) => {
-    selectSession(id);
+    // Skip the full selectSession hydration if this session is already active
+    // (e.g. just created by newSession). selectSession triggers snapshot
+    // hydration which can corrupt the status of brand-new empty sessions.
+    if (activeSession?.id !== id) selectSession(id);
     setUrlSession(id, activeUserProfile);
     setSidebarOpen(false);
-  }, [activeUserProfile, selectSession, setUrlSession]);
+  }, [activeSession?.id, activeUserProfile, selectSession, setUrlSession]);
 
   // Wrap switchUserProfile to also update URL
   const handleSwitchUserProfile = useCallback((name: string | null) => {
@@ -376,18 +337,6 @@ function AppShell() {
     refreshSessions();
   }, [serverSessions, refreshSessions]);
 
-  const handleLeftPanelWidgetsChange = useCallback((types: string[]) => {
-    if (!activeUserProfile) return;
-    modus.patchUserProfileUiConfig(activeUserProfile, { leftPanel: { widgets: types } })
-      .then(() => refreshUserProfiles()).catch(() => {});
-  }, [activeUserProfile, refreshUserProfiles]);
-
-  const handleLeftResize = useCallback((delta: number) => {
-    setLeftPanelWidth((w) => Math.max(180, Math.min(600, w + delta)));
-  }, []);
-  const handleRightResize = useCallback((delta: number) => {
-    setRightPanelWidth((w) => Math.max(200, Math.min(800, w + delta)));
-  }, []);
 
   // ── Profile UI resolution ──
   // Config bar shows the active session's profile. Sidebar's selectedProfile
@@ -438,6 +387,8 @@ function AppShell() {
   }).length;
   // ── Move pages (moves that declare a page field) ──
   const [movePages, setMovePages] = useState<MoveListItem[]>([]);
+  const [configPages, setConfigPages] = useState<DashboardPage[]>([]);
+  const [mountedCustomPageIds, setMountedCustomPageIds] = useState<string[]>([]);
   const projectCwd = projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
   useEffect(() => {
     if (!projectCwd) return;
@@ -445,9 +396,25 @@ function AppShell() {
       setMovePages(moves.filter((m) => m.page && m.page.nav !== false));
     }).catch(() => setMovePages([]));
   }, [projectCwd]);
+  useEffect(() => {
+    if (!projectCwd) {
+      setConfigPages([]);
+      return;
+    }
+    fetch(`${API_BASE}/api/pages?cwd=${encodeURIComponent(projectCwd)}`, {
+      headers: authHeaders(),
+    })
+      .then((res) => res.ok ? res.json() : [])
+      .then((pages) => setConfigPages(Array.isArray(pages) ? pages : []))
+      .catch(() => setConfigPages([]));
+  }, [projectCwd]);
   const activeMovePageName = getMovePageName(view);
 
-  const customPages = activeUP?.dashboard?.pages ?? [];
+  const profilePages = activeUP?.dashboard?.pages ?? [];
+  const customPages = [
+    ...configPages,
+    ...profilePages.filter((page) => !configPages.some((configPage) => configPage.id === page.id)),
+  ];
   const gitPageBlocks = [
     {
       kind: "module" as const,
@@ -468,6 +435,12 @@ function AppShell() {
     })),
   ];
   const activeCustomPage = customPages.find((page) => page.id === getCustomPageId(view));
+
+  useEffect(() => {
+    const customPageId = getCustomPageId(view);
+    if (!customPageId) return;
+    setMountedCustomPageIds((prev) => (prev.includes(customPageId) ? prev : [...prev, customPageId]));
+  }, [view]);
 
   useEffect(() => {
     if (getCustomPageId(view) && !activeCustomPage) {
@@ -566,17 +539,19 @@ function AppShell() {
           onTogglePin={handleTogglePin}
         />
 
-        {view === "chat" && (
+        {/* ── Left Panel (view-independent) ── */}
+        {panelsEnabled && (
           <>
             <LeftPanel
               open={leftPanelOpen}
               width={leftPanelWidth}
               onOpen={() => setLeftPanelOpen(true)}
               onClose={() => setLeftPanelOpen(false)}
-              widgets={(activeUP?.leftPanel?.widgets ?? profileData?.ui?.panelWidgets ?? ["config-inspector", "session-info", "moves"]).map(
-                (type, i) => ({ id: `left-${type}-${i}`, type })
-              )}
-              onWidgetsChange={handleLeftPanelWidgetsChange}
+              mode={leftPanelMode}
+              widgets={leftPanelWidgets}
+              tree={leftPanelTree}
+              onWidgetsChange={onLeftPanelWidgetsChange}
+              onModeChange={onLeftPanelModeChange}
               onNavigate={handleNavigate}
               onSelectSession={handleSelectSession}
             />
@@ -584,175 +559,150 @@ function AppShell() {
             <PanelCollapseTab
               side="left"
               open={leftPanelOpen}
-              onToggle={() => setLeftPanelOpen((o) => !o)}
+              onToggle={toggleLeftPanel}
               openTitle="Open widgets panel"
               closeTitle="Collapse panel"
             />
-            <div className="chat">
-              <ChatView
-                key={activeSession?.id ?? "empty"}
-                messages={activeSession?.messages ?? []}
-                sessionId={activeSession?.id ?? null}
-                sessionTags={activeSessionTags}
-                provider={liveProvider}
-                profileName={activeProfileName}
-                model={liveModel}
-                streaming={isStreaming}
-                streamFeed={activeSession?.streamFeed}
-                showThinking={ui.showThinking}
-                showMeta={ui.showMeta}
-                showToolCalls={ui.showToolCalls}
-                showGitEvents={ui.showGitEvents}
-                cwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd ?? null}
-                emptyTitle={ui.emptyTitle ?? activeProfileName}
-                emptySubtitle={ui.emptySubtitle}
-                queuedMessage={queuedMessage}
-                onCancelQueued={cancelQueued}
-                onSessionTagsChange={refreshSessions}
-                onBranch={branchFromMessage}
-                onStopTask={stopTask}
-                onOpenSessionEdits={() => { setRightPanelOpen(true); setRequestRightPanelView("session-edits"); }}
-              />
+          </>
+        )}
 
-              {activeSession?.pendingPermissions && activeSession.pendingPermissions.length > 0 && (
-                <PermissionOverlay
-                  permissions={activeSession.pendingPermissions}
-                  sessionId={activeSession.id}
-                  onRespond={handlePermissionResponse}
-                />
-              )}
+        {/* ── Center Content (view-dependent) ── */}
+        {view === "chat" && (
+          <div className="chat">
+            <ChatView
+              key={activeSession?.id ?? "empty"}
+              messages={activeSession?.messages ?? []}
+              sessionId={activeSession?.id ?? null}
+              sessionTags={activeSessionTags}
+              provider={liveProvider}
+              profileName={activeProfileName}
+              model={liveModel}
+              streaming={isStreaming}
+              streamFeed={activeSession?.streamFeed}
+              showThinking={ui.showThinking}
+              showMeta={ui.showMeta}
+              showToolCalls={ui.showToolCalls}
+              showGitEvents={ui.showGitEvents}
+              cwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd ?? null}
+              emptyTitle={ui.emptyTitle ?? activeProfileName}
+              emptySubtitle={ui.emptySubtitle}
+              queuedMessage={queuedMessage}
+              onCancelQueued={cancelQueued}
+              onSessionTagsChange={refreshSessions}
+              onBranch={branchFromMessage}
+              onStopTask={stopTask}
+              onOpenSessionEdits={() => { setRightPanelOpen(true); setRequestRightPanelView("session-edits"); }}
+            />
 
-              <ConfigBar
-                profileName={activeProfileName}
-                pendingProfileName={activeSession?.nextProfile}
-                model={liveModel}
-                agentConfig={activeSession ? activeSession.agentConfig : setupState.agent}
-                editorConfig={editorAgentConfig}
-                onAgentConfigChange={updateActiveSessionConfig}
-                profileTools={profileData?.tools ?? "all"}
-                editorProfileTools={
-                  sessionProviderLocked && !pendingProfileProviderMatches
-                    ? (profileData?.tools ?? "all")
-                    : (editorProfileData?.tools ?? "all")
-                }
-                availableProviders={availableProviders}
-                profileProvider={liveProvider}
-                editorProfileProvider={
-                  sessionProviderLocked
-                    ? liveProvider
-                    : editorProfileProvider
-                }
-                editorProfileModel={
-                  pendingProfileProviderMatches
-                    ? editorProfileModel
-                    : undefined
-                }
-                profileEffort={activeSession ? (profileData?.effort ?? activeUP?.effort) : (activeUP?.effort ?? profileData?.effort)}
-                editorProfileEffort={activeSession ? (editorProfileData?.effort ?? activeUP?.effort) : (activeUP?.effort ?? editorProfileData?.effort)}
-                editorProfileMaxTurns={editorProfileData?.maxTurns}
-                showProvider={!!activeSession && !sessionProviderLocked}
-                availableTools={activeSession?.availableTools}
-                profiles={visibleProfiles}
-                onSwitchProfile={handleSwitchProfile}
-                sessionTags={activeSessionTags}
-                onTogglePin={activeSession?.id && !activeSession.id.startsWith("pending-") ? () => handleTogglePin(activeSession.id) : undefined}
-                status={activeSession?.status}
-                sessionId={activeSession?.id}
-                messages={activeSession?.messages}
-                createdAt={activeSession?.createdAt}
-                updatedAt={activeSession?.updatedAt}
-                totalCost={activeSession?.totalCost}
-                cwd={activeSession?.cwd}
+            {activeSession?.pendingPermissions && activeSession.pendingPermissions.length > 0 && (
+              <PermissionOverlay
+                permissions={activeSession.pendingPermissions}
+                sessionId={activeSession.id}
+                onRespond={handlePermissionResponse}
               />
-              <ChatInput
-                value={input}
-                onChange={handleInputChange}
-                onSend={send}
-                onStop={stop}
-                sessionStatus={activeSession?.status ?? null}
-                disabled={harnessUp === false}
-                placeholder={ui.placeholder}
-                sessionId={activeSession?.id}
-                projectCwd={projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
-                userProfile={activeUserProfile ?? undefined}
-                autoFocus={view === "chat" && !!activeSession?.id}
-                onMoveAttached={(result) => {
-                  // Widget-first: mount widget immediately on attach (before any message)
-                  const widgetSessionId = activeSession?.id ?? "";
-                  console.log(`[onMoveAttached] widget pre-mount: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
+            )}
+
+            <ConfigBar
+              profileName={activeProfileName}
+              pendingProfileName={activeSession?.nextProfile}
+              model={liveModel}
+              agentConfig={activeSession ? activeSession.agentConfig : setupState.agent}
+              editorConfig={editorAgentConfig}
+              onAgentConfigChange={updateActiveSessionConfig}
+              profileTools={profileData?.tools ?? "all"}
+              editorProfileTools={
+                sessionProviderLocked && !pendingProfileProviderMatches
+                  ? (profileData?.tools ?? "all")
+                  : (editorProfileData?.tools ?? "all")
+              }
+              availableProviders={availableProviders}
+              profileProvider={liveProvider}
+              editorProfileProvider={
+                sessionProviderLocked
+                  ? liveProvider
+                  : editorProfileProvider
+              }
+              editorProfileModel={
+                pendingProfileProviderMatches
+                  ? editorProfileModel
+                  : undefined
+              }
+              profileEffort={activeSession ? (profileData?.effort ?? activeUP?.effort) : (activeUP?.effort ?? profileData?.effort)}
+              editorProfileEffort={activeSession ? (editorProfileData?.effort ?? activeUP?.effort) : (activeUP?.effort ?? editorProfileData?.effort)}
+              editorProfileMaxTurns={editorProfileData?.maxTurns}
+              showProvider={!!activeSession && !sessionProviderLocked}
+              availableTools={activeSession?.availableTools}
+              profiles={visibleProfiles}
+              onSwitchProfile={handleSwitchProfile}
+              sessionTags={activeSessionTags}
+              onTogglePin={activeSession?.id && !activeSession.id.startsWith("pending-") ? () => handleTogglePin(activeSession.id) : undefined}
+              status={activeSession?.status}
+              sessionId={activeSession?.id}
+              messages={activeSession?.messages}
+              createdAt={activeSession?.createdAt}
+              updatedAt={activeSession?.updatedAt}
+              totalCost={activeSession?.totalCost}
+              cwd={activeSession?.cwd}
+            />
+            <ChatInput
+              value={input}
+              onChange={handleInputChange}
+              onSend={send}
+              onStop={stop}
+              sessionStatus={activeSession?.status ?? null}
+              disabled={harnessUp === false}
+              placeholder={ui.placeholder}
+              sessionId={activeSession?.id}
+              projectCwd={projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
+              userProfile={activeUserProfile ?? undefined}
+              autoFocus={view === "chat" && !!activeSession?.id}
+              onMoveAttached={(result) => {
+                const widgetSessionId = activeSession?.id ?? "";
+                console.log(`[onMoveAttached] widget pre-mount: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
+                widgetJustSetRef.current = true;
+                const newWidget = {
+                  widget: result.widget,
+                  apiToken: result.apiToken,
+                  instanceId: result.instanceId,
+                  sessionId: widgetSessionId,
+                  mountedOnAttach: true,
+                };
+                setActiveMoveWidgets(prev => {
+                  const filtered = prev.filter(w => w.instanceId !== result.instanceId);
+                  return [...filtered, newWidget];
+                });
+                setRightPanelOpen(true);
+              }}
+              onMoveDetached={(apiToken) => {
+                setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
+              }}
+              onMoveActivated={(result) => {
+                refreshSessions();
+                const cwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
+                loadAndApplyProjectUiState(cwd || undefined);
+                if (result.spawnedSessionId) {
+                  selectSession(result.spawnedSessionId);
+                  setUrlSession(result.spawnedSessionId, activeUserProfile);
+                }
+                if (result.widget && result.apiToken && result.instanceId && activeSession?.id) {
+                  const widgetSessionId = result.spawnedSessionId ?? activeSession.id;
+                  console.log(`[onMoveActivated] widget set: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
                   widgetJustSetRef.current = true;
                   const newWidget = {
                     widget: result.widget,
                     apiToken: result.apiToken,
                     instanceId: result.instanceId,
                     sessionId: widgetSessionId,
-                    mountedOnAttach: true,
                   };
                   setActiveMoveWidgets(prev => {
                     const filtered = prev.filter(w => w.instanceId !== result.instanceId);
                     return [...filtered, newWidget];
                   });
-                  setRightPanelOpen(true);
-                }}
-                onMoveDetached={(apiToken) => {
-                  // Remove widget when move is detached
-                  setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
-                }}
-                onMoveActivated={(result) => {
-                  refreshSessions();
-                  const cwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
-                  loadAndApplyProjectUiState(cwd || undefined);
-                  if (result.spawnedSessionId) {
-                    selectSession(result.spawnedSessionId);
-                    setUrlSession(result.spawnedSessionId, activeUserProfile);
-                  }
-                  if (result.widget && result.apiToken && result.instanceId && activeSession?.id) {
-                    const widgetSessionId = result.spawnedSessionId ?? activeSession.id;
-                    console.log(`[onMoveActivated] widget set: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
-                    widgetJustSetRef.current = true;
-                    const newWidget = {
-                      widget: result.widget,
-                      apiToken: result.apiToken,
-                      instanceId: result.instanceId,
-                      sessionId: widgetSessionId,
-                    };
-                    // Replace existing entry for same instanceId, or append
-                    setActiveMoveWidgets(prev => {
-                      const filtered = prev.filter(w => w.instanceId !== result.instanceId);
-                      return [...filtered, newWidget];
-                    });
-                    if (result.widget.autoOpen) setRightPanelOpen(true);
-                  }
-                }}
-              />
-            </div>
-            <PanelCollapseTab
-              side="right"
-              open={rightPanelOpen}
-              onToggle={() => setRightPanelOpen((o) => !o)}
-              openTitle="Open viewer panel"
-              closeTitle="Collapse panel"
-            />
-            {rightPanelOpen && <ResizeHandle side="right" onResize={handleRightResize} />}
-            <RightPanel
-              open={rightPanelOpen}
-              width={rightPanelWidth}
-              onOpen={() => setRightPanelOpen(true)}
-              onClose={() => setRightPanelOpen(false)}
-              moveWidgets={activeMoveWidgets}
-              initialBrowserPath={rightPanelBrowserPath}
-              onBrowserPathChange={setRightPanelBrowserPath}
-              messages={activeSession?.messages}
-              requestView={requestRightPanelView}
-              onRequestViewHandled={() => setRequestRightPanelView(null)}
-              onWidgetClose={(apiToken, moveName) => {
-                setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
-                modus.detachMove(moveName, apiToken).catch(() => {});
+                  if (result.widget.autoOpen) setRightPanelOpen(true);
+                }
               }}
-              sessionId={activeSession?.id}
-              onSendToAgent={(text) => handleInputChange(input ? `${input}\n${text}` : text)}
             />
-          </>
+          </div>
         )}
 
         {view === "home" && (
@@ -786,13 +736,56 @@ function AppShell() {
             onSelectSession={handleViewSession}
           />
         )}
-        {activeCustomPage && (
-          <PageView
-            blocks={activeCustomPage.blocks}
-            onNavigate={navigate}
-            onSelectSession={handleViewSession}
-          />
+
+        {/* ── Right Panel (view-independent) ── */}
+        {panelsEnabled && (
+          <>
+            <PanelCollapseTab
+              side="right"
+              open={rightPanelOpen}
+              onToggle={toggleRightPanel}
+              openTitle="Open viewer panel"
+              closeTitle="Collapse panel"
+            />
+            {rightPanelOpen && <ResizeHandle side="right" onResize={handleRightResize} />}
+            <RightPanel
+              open={rightPanelOpen}
+              width={rightPanelWidth}
+              onOpen={() => setRightPanelOpen(true)}
+              onClose={() => setRightPanelOpen(false)}
+              mode={rightPanelMode}
+              widgets={rightPanelWidgets}
+              tree={rightPanelTree}
+              onWidgetsChange={onRightPanelWidgetsChange}
+              onModeChange={onRightPanelModeChange}
+              moveWidgets={activeMoveWidgets}
+              initialBrowserPath={rightPanelBrowserPath}
+              onBrowserPathChange={setRightPanelBrowserPath}
+              messages={activeSession?.messages}
+              requestView={requestRightPanelView}
+              onRequestViewHandled={() => setRequestRightPanelView(null)}
+              onWidgetClose={(apiToken, moveName) => {
+                setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
+                modus.detachMove(moveName, apiToken).catch(() => {});
+              }}
+              sessionId={activeSession?.id}
+              onSendToAgent={(text) => handleInputChange(input ? `${input}\n${text}` : text)}
+            />
+          </>
         )}
+          {customPages
+            .filter((page) => mountedCustomPageIds.includes(page.id))
+            .map((page) => (
+              <div key={page.id} style={{ display: activeCustomPage?.id === page.id ? "contents" : "none" }}>
+                <PageView
+                  blocks={page.blocks}
+                  layout={page.layout as any}
+                  padding={(page as any).padding}
+                  onNavigate={navigate}
+                  onSelectSession={handleViewSession}
+                />
+              </div>
+            ))}
       </div>
 
       <SessionWindow

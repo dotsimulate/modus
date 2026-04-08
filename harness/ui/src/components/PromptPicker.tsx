@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { modus } from "../modusClient";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 import type { PromptListItem, RenderResult, MoveInput, MoveListItem, ActivateMoveResult } from "../../../sdk/index";
 
