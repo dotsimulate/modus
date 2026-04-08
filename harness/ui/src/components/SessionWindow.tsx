@@ -12,7 +12,7 @@ import type { Attachment, MoveBinding } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import { useSessionState, subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { FloatingWindow } from "./FloatingWindow";
 import { ChatView } from "./ChatView";
 import { ChatInput } from "./ChatInput";

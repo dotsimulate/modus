@@ -11,9 +11,9 @@
  *   { "id": "config-inspector-left", "type": "config-inspector" }
  */
 
-import { useSession } from "../providers/SessionProvider";
-import { useProfiles } from "../providers/ProfileProvider";
-import type { WidgetDef } from "./index";
+import { useSession } from "../providers/SessionContext";
+import { useProfiles } from "../providers/ProfileContext";
+import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 // ── Types ──
@@ -49,7 +49,7 @@ function toolsSummary(tools?: string[] | "all", availableTools?: string[]): stri
 
 // ── Component ──
 
-function ConfigInspectorWidget() {
+export default function ConfigInspectorWidget() {
   const { activeSession, serverSessions } = useSession();
   const { profiles, activeUP, selectedProfile } = useProfiles();
 
@@ -127,7 +127,3 @@ function ConfigInspectorWidget() {
   );
 }
 
-// ── Widget definition ──
-
-const def: WidgetDef = { type: "config-inspector", component: ConfigInspectorWidget };
-export default def;

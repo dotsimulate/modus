@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import type { BrowseResult } from "../../../sdk/index";
 

@@ -5,8 +5,8 @@
  *   { "id": "default-agent-main", "type": "default-agent", "title": "session defaults" }
  */
 
-import { useProfiles } from "../providers/ProfileProvider";
-import type { WidgetDef } from "./index";
+import { useProfiles } from "../providers/ProfileContext";
+import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 function shortModel(model?: string): string {
@@ -18,7 +18,7 @@ function basename(path: string): string {
   return path.replace(/\\/g, "/").split("/").pop() || path;
 }
 
-function DefaultAgentWidget() {
+export default function DefaultAgentWidget() {
   const { activeUP, selectedProfile, profiles, setupState } = useProfiles();
 
   if (!activeUP) {
@@ -53,6 +53,3 @@ function DefaultAgentWidget() {
     </div>
   );
 }
-
-const def: WidgetDef = { type: "default-agent", component: DefaultAgentWidget };
-export default def;

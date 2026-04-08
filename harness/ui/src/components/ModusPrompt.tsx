@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import { useSessionState } from "../sessionStore";
 import { PromptPicker } from "./PromptPicker";

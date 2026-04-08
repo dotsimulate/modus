@@ -6,8 +6,8 @@
  *   { "id": "profile-card-custom", "type": "profile-card", "profileName": "dev-agent" }
  */
 
-import { useProfiles } from "../providers/ProfileProvider";
-import type { WidgetBase, WidgetDef, WidgetProps } from "./index";
+import { useProfiles } from "../providers/ProfileContext";
+import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 type ProfileCardConfig = WidgetBase & {
@@ -20,7 +20,7 @@ function shortModel(model?: string): string {
   return model.replace(/^claude-/, "").replace(/-\d{8}.*/, "");
 }
 
-function ProfileCardWidget({ config }: WidgetProps<ProfileCardConfig>) {
+export default function ProfileCardWidget({ config }: WidgetProps<ProfileCardConfig>) {
   const { profiles, selectedProfile } = useProfiles();
   const profileName = config.profileName ?? selectedProfile;
   const profile = profiles.find(p => p.name === profileName);
@@ -55,6 +55,3 @@ function ProfileCardWidget({ config }: WidgetProps<ProfileCardConfig>) {
     </div>
   );
 }
-
-const def: WidgetDef = { type: "profile-card", component: ProfileCardWidget };
-export default def;

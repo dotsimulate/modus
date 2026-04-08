@@ -55,6 +55,30 @@
   padding: 2px 0;
 }
 
+.widget-picker-modes {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.widget-picker-mode {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 3px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  text-transform: uppercase;
+}
+
+.widget-picker-mode--active {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 .widget-picker-item {
   display: flex;
   align-items: center;

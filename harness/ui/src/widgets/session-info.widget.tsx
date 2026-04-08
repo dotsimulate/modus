@@ -6,10 +6,10 @@
  */
 
 import { useState, useEffect } from "react";
-import { useSession } from "../providers/SessionProvider";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useSession } from "../providers/SessionContext";
+import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, fmtNum } from "../utils/format";
-import type { WidgetDef } from "./index";
+import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 // ── Helpers ──
@@ -40,7 +40,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 // ── Component ──
 
-function SessionInfoWidget() {
+export default function SessionInfoWidget() {
   const { activeSession, serverSessions } = useSession();
   const { profiles, activeUP, selectedProfile } = useProfiles();
   const [now, setNow] = useState(Date.now());
@@ -123,7 +123,3 @@ function SessionInfoWidget() {
   );
 }
 
-// ── Widget definition ──
-
-const def: WidgetDef = { type: "session-info", component: SessionInfoWidget };
-export default def;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { modus } from "../modusClient";
 import type { ActiveSessionInfo, SessionInfo } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 
 type Props = {
   onSelectSession: (id: string) => void;

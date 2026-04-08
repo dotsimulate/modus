@@ -705,21 +705,28 @@ export type ProviderHealth = ProviderHealthInfo;
  * preferred editor/terminal, and client extension configuration.
  */
 export type UserProfileUiConfig = {
+  panelWidgets?: Array<{ id?: string; type: string; [key: string]: unknown }>;
   dashboard?: {
     widgets?: Array<{ type: string; [key: string]: unknown }>;
     pages?: Array<{
       id: string;
       title: string;
-      blocks: Array<
+      blocks?: Array<
         | { kind: "widget"; widget: { type: string; [key: string]: unknown } }
         | { kind: "module"; module: "actions" | "git"; [key: string]: unknown }
         | { kind: "text"; markdown: string; [key: string]: unknown }
       >;
+      layout?: unknown;
     }>;
   };
   leftPanel?: {
     widgets?: string[];
   };
+  /** Per-view panel layout overrides. Keys are view names (e.g. "chat", "actions"). */
+  layouts?: Record<string, {
+    left?: { mode?: "list" | "tabs"; widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>; tree?: unknown };
+    right?: { mode?: "list" | "tabs"; widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>; tree?: unknown };
+  }>;
   computer?: string;
   editor?: string;
   clientExtensions?: {
@@ -766,16 +773,22 @@ export type UserProfile = {
     pages?: Array<{
       id: string;
       title: string;
-      blocks: Array<
+      blocks?: Array<
         | { kind: "widget"; widget: { type: string; [key: string]: unknown } }
         | { kind: "module"; module: "actions" | "git"; [key: string]: unknown }
         | { kind: "text"; markdown: string; [key: string]: unknown }
       >;
+      layout?: unknown;
     }>;
   };
   leftPanel?: {
     widgets?: string[];
   };
+  /** Per-view panel layout overrides. Keys are view names (e.g. "chat", "actions"). */
+  layouts?: Record<string, {
+    left?: { mode?: "list" | "tabs"; widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>; tree?: unknown };
+    right?: { mode?: "list" | "tabs"; widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>; tree?: unknown };
+  }>;
   computer?: string;
   editor?: string;
   clientExtensions?: {

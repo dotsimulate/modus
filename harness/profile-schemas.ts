@@ -103,6 +103,27 @@ const LeftPanelConfigSchema = z.object({
   widgets: z.array(z.string()).optional(),
 });
 
+const PanelWidgetSchema = z.union([
+  z.string(),
+  z.object({
+    id: z.string().optional(),
+    type: z.string(),
+    title: z.string().optional(),
+    size: z.enum(["full", "half", "third"]).optional(),
+    collapsed: z.boolean().optional(),
+  }).catchall(z.unknown()),
+]);
+
+const PanelLayoutSchema = z.object({
+  mode: z.enum(["list", "tabs"]).optional(),
+  widgets: z.array(PanelWidgetSchema).optional(),
+});
+
+const LayoutsConfigSchema = z.record(z.string(), z.object({
+  left: PanelLayoutSchema.optional(),
+  right: PanelLayoutSchema.optional(),
+}));
+
 const ProviderSchema = z.string().refine(isKnownProvider, {
   message: "unknown provider",
 });
@@ -186,6 +207,7 @@ export const UserProfileSchema = z.object({
 export const UserProfileUiConfigSchema = z.object({
   dashboard: DashboardConfigSchema.optional(),
   leftPanel: LeftPanelConfigSchema.optional(),
+  layouts: LayoutsConfigSchema.optional(),
   computer: z.string().optional(),
   editor: z.string().optional(),
   clientExtensions: ClientExtensionsSchema.optional(),

@@ -10,9 +10,9 @@ import { InlineTabs } from "../components/InlineTabs";
 import { TimeAxis } from "../components/TimeAxis";
 import { DateTimeField } from "../components/DateTimeField";
 import { CustomSelect, WidgetEmptyState } from "./widget-components";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { basename, fmtCost, fmtNum, timeAgo } from "../utils/format";
-import type { WidgetBase, WidgetDef, WidgetProps } from "./index";
+import type { WidgetBase, WidgetProps } from "./types";
 import { useWidgetPollingValue } from "./widget-data";
 import { useWidgetUiState } from "./ui-state";
 
@@ -369,7 +369,7 @@ function TraceView({ analytics }: { analytics: DeepAnalytics }) {
   );
 }
 
-function DeepAnalyticsWidget({ config, widgetId, onSelectSession }: WidgetProps<DeepAnalyticsConfig>) {
+export default function DeepAnalyticsWidget({ config, widgetId, onSelectSession }: WidgetProps<DeepAnalyticsConfig>) {
   const { activeCwd, activeUserProfile } = useProfiles();
   const now = Date.now();
   const [startInput, setStartInput] = useState(toLocalInputValue(now - 48 * 60 * 60_000));
@@ -551,6 +551,3 @@ function DeepAnalyticsWidget({ config, widgetId, onSelectSession }: WidgetProps<
     </div>
   );
 }
-
-const def: WidgetDef = { type: "deep-analytics", component: DeepAnalyticsWidget };
-export default def;

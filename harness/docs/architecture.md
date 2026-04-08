@@ -212,6 +212,8 @@ button re-centers the view on the newest session.
 - [Providers](./providers.md) — execution backends and the SessionProvider interface
 - [Actions](./actions.md) — automation: triggers, cycles, verify, artifacts
 - [Moves](./moves.md) — user-invoked structured operations via modus_submit
+- [Pages](./pages.md) — project-scoped custom pages, layouts, and page widget references
+- [Panels](./panels.md) — side-panel architecture, widget registry, and persisted panel trees
 - [Project UI](./project-ui.md) — theme/font system in .modus/ui/
 - [Client Extensions](./client-extensions.md) — browser-side extension discovery and runtime API
 - [PI Agent](./pi-agent-system.md) — the multi-provider lightweight agent

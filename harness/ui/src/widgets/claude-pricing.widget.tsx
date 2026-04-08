@@ -8,9 +8,9 @@
 import { useCallback, useState } from "react";
 import { modus } from "../modusClient";
 import type { AccountInfo, SessionStats } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, fmtNum, basename, planLabel } from "../utils/format";
-import type { WidgetDef } from "./index";
+import type { WidgetDef } from "./types";
 import { ActivityChart, HBar, WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 
@@ -34,7 +34,7 @@ type BreakdownRow =
 
 // ── Main Component ──
 
-function ClaudePricingWidget() {
+export default function ClaudePricingWidget() {
   const { activeUserProfile } = useProfiles();
   const [tab, setTab] = useState<Tab>("overview");
   const [breakdownView, setBreakdownView] = useState<"agents" | "projects">("agents");
@@ -199,6 +199,3 @@ function ClaudePricingWidget() {
     </div>
   );
 }
-
-const def: WidgetDef = { type: "claude-pricing", component: ClaudePricingWidget };
-export default def;

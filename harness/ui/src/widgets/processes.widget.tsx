@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ProcessInfo, ProcessSnapshot } from "../../../sdk/index";
 import { modus } from "../modusClient";
-import { useSession } from "../providers/SessionProvider";
-import { useWidgetChrome, type WidgetBase, type WidgetDef, type WidgetProps } from "./index";
+import { useSession } from "../providers/SessionContext";
+import type { WidgetBase, WidgetProps } from "./types";
+import { useWidgetChrome } from "./chrome";
 import { useWidgetPollingValue } from "./widget-data";
 import { WidgetEmptyState } from "./widget-components";
 
@@ -42,7 +43,7 @@ function timeAgo(ts: number): string {
   return `${hr}h ${min % 60}m ago`;
 }
 
-function ProcessesWidget({ config, onSelectSession }: WidgetProps<ProcessesConfig>) {
+export default function ProcessesWidget({ config, onSelectSession }: WidgetProps<ProcessesConfig>) {
   const { activeSession } = useSession();
   const { setHeaderSuffix } = useWidgetChrome();
   const [killingId, setKillingId] = useState<string | null>(null);
@@ -163,6 +164,3 @@ function ProcessesWidget({ config, onSelectSession }: WidgetProps<ProcessesConfi
     </div>
   );
 }
-
-const def: WidgetDef = { type: "processes", component: ProcessesWidget };
-export default def;

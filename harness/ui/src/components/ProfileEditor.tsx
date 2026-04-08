@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { modus } from "../modusClient";
 import type { Profile, McpServerConfig, ProviderModel } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
 import { providerToolFamily, type ToolStates } from "../tools";

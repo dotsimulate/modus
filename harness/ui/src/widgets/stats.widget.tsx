@@ -8,9 +8,9 @@
 import { useCallback, useState } from "react";
 import { modus } from "../modusClient";
 import type { SessionStats } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, fmtNum, basename } from "../utils/format";
-import type { WidgetDef } from "./index";
+import type { WidgetDef } from "./types";
 import { ActivityChart, HBar, WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 
@@ -38,7 +38,7 @@ function streak(daily: SessionStats["daily"]): number {
 
 // ── Component ──
 
-function StatsWidget() {
+export default function StatsWidget() {
   const { activeUserProfile } = useProfiles();
   const [view, setView] = useState<"all" | "project">("all");
   const loadStats = useCallback(
@@ -185,7 +185,3 @@ function StatsWidget() {
   );
 }
 
-// ── Widget definition ──
-
-const def: WidgetDef = { type: "stats", component: StatsWidget };
-export default def;

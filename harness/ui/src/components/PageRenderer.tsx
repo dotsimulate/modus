@@ -1,12 +1,37 @@
 import { useState, type ReactNode } from "react";
 import type { View } from "../views";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 import { Actions } from "./Actions";
 import { GitPanel } from "./GitPanel";
 import { WIDGETS, WidgetChromeContext } from "../widgets";
-import type { DashboardBlock, DashboardModule, WidgetBase, WidgetSize } from "../widgets";
+import type { DashboardBlock, DashboardModule, LayoutNode, WidgetBase, WidgetSize } from "../widgets";
 import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
+import { RightPanelContextProvider } from "./RightPanelContext";
+import { PanelTreeRenderer } from "./PanelTreeRenderer";
+
+type LegacyPagePanelNode = {
+  kind: "panel";
+  id?: string;
+  title?: string;
+  mode?: "list" | "tabs";
+  activeTab?: string;
+  columnSpan?: number;
+  rowSpan?: number;
+  items?: Array<{ widget?: WidgetBase }>;
+};
+
+type LegacyPageGridNode = {
+  kind: "grid";
+  id?: string;
+  columns: number;
+  gap?: number;
+  templateColumns?: string[];
+  templateRows?: string[];
+  children?: Array<PageLayoutInput>;
+};
+
+type PageLayoutInput = LayoutNode | LegacyPagePanelNode | LegacyPageGridNode;
 
 const chevron = (
   <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
@@ -213,21 +238,59 @@ export function PageRenderer({
 
 export function PageView({
   blocks,
+  layout,
+  padding,
   onNavigate,
   onSelectSession,
 }: {
-  blocks: DashboardBlock[];
+  blocks?: DashboardBlock[];
+  layout?: PageLayoutInput;
+  padding?: number;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
 }) {
   const { activeCwd } = useProfiles();
+  const normalizedLayout = layout ? normalizePageLayoutNode(layout) : undefined;
 
-  if (blocks.length === 1 && blocks[0]?.kind === "module") {
+  if (normalizedLayout) {
+    return (
+      <div className="dashboard" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            padding: `${padding ?? 0}px`,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <RightPanelContextProvider value={{
+            messages: [],
+            sessionId: null,
+            browserPath: null,
+            activeWidgetId: null,
+            setBrowserPath: () => {},
+            requestOpen: () => {},
+          }}>
+            <PanelTreeRenderer
+              node={normalizedLayout}
+              onNavigate={onNavigate}
+              onSelectSession={onSelectSession}
+            />
+          </RightPanelContextProvider>
+        </div>
+      </div>
+    );
+  }
+
+  const resolvedBlocks = blocks ?? [];
+
+  if (resolvedBlocks.length === 1 && resolvedBlocks[0]?.kind === "module") {
     return (
       <div className="dashboard">
         <div className="dashboard-inner">
           <ModuleBlock
-            module={blocks[0].module}
+            module={resolvedBlocks[0].module}
             onSelectSession={onSelectSession}
             cwd={activeCwd}
           />
@@ -240,11 +303,54 @@ export function PageView({
     <div className="dashboard">
       <div className="dashboard-inner">
         <PageRenderer
-          blocks={blocks}
+          blocks={resolvedBlocks}
           onNavigate={onNavigate}
           onSelectSession={onSelectSession}
         />
       </div>
     </div>
   );
+}
+
+function normalizePageLayoutNode(node: PageLayoutInput): LayoutNode {
+  if (node.kind === "panel") {
+    return {
+      kind: node.mode === "list" ? "list" : "tabs",
+      id: node.id,
+      title: node.title,
+      activeTab: node.activeTab,
+      columnSpan: node.columnSpan,
+      rowSpan: node.rowSpan,
+      children: (node.items ?? [])
+        .filter((item): item is { widget: WidgetBase } => !!item?.widget)
+        .map((item) => ({
+          kind: "widget",
+          id: item.widget.id,
+          widget: item.widget,
+        })),
+    };
+  }
+
+  if (node.kind === "grid") {
+    return {
+      ...node,
+      children: (node.children ?? []).map(normalizePageLayoutNode),
+    };
+  }
+
+  if (node.kind === "split") {
+    return {
+      ...node,
+      children: node.children.map(normalizePageLayoutNode),
+    };
+  }
+
+  if (node.kind === "tabs" || node.kind === "list") {
+    return {
+      ...node,
+      children: node.children ?? [],
+    };
+  }
+
+  return node;
 }

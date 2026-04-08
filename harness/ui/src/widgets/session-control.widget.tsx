@@ -8,10 +8,10 @@
  *   { "id": "session-control-left", "type": "session-control" }
  */
 
-import { useSession } from "../providers/SessionProvider";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useSession } from "../providers/SessionContext";
+import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "../components/SearchDropdown";
-import type { WidgetDef } from "./index";
+import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 const EFFORT_OPTIONS = [
@@ -22,7 +22,7 @@ const EFFORT_OPTIONS = [
   { value: "max" },
 ];
 
-function SessionControlWidget() {
+export default function SessionControlWidget() {
   const { activeSession, updateActiveSessionConfig } = useSession();
   const { profiles, activeUP, selectedProfile } = useProfiles();
 
@@ -69,6 +69,3 @@ function SessionControlWidget() {
     </div>
   );
 }
-
-const def: WidgetDef = { type: "session-control", component: SessionControlWidget };
-export default def;

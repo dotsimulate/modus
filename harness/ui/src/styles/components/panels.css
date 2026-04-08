@@ -129,6 +129,7 @@
 .left-panel-content {
   position: relative;
   flex: 1;
+  min-height: 0;
   min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -156,6 +157,63 @@
   margin-left: 0;
 }
 
+.lp-tabs {
+  display: flex;
+  gap: 0;
+  padding: 2px 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.lp-tabs::-webkit-scrollbar { display: none; }
+
+.lp-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 72px;
+  max-width: 140px;
+  flex-shrink: 0;
+  border-bottom: 2px solid transparent;
+}
+.lp-tab--active {
+  border-bottom-color: var(--accent);
+}
+.lp-tab-label {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lp-tab--active .lp-tab-label {
+  color: var(--text);
+}
+.lp-tab-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+}
+.lp-tab:hover .lp-tab-close {
+  opacity: 0.6;
+}
+.lp-tab-close:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
 /* ── Right panel ── */
 .right-panel {
   width: 0;
@@ -164,6 +222,7 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  position: relative;
   background: var(--bg);
   transition: width 0.18s ease, min-width 0.18s ease;
 }
@@ -176,6 +235,7 @@
 .right-panel-content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   padding: 8px 16px;
   display: flex;
@@ -299,6 +359,20 @@
   flex-direction: column;
 }
 
+.right-panel-tabs-bar {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  position: relative;
+}
+
+.right-panel-picker {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  z-index: 20;
+}
+
 .right-panel-body--split {
   flex-direction: row;
 }
@@ -331,8 +405,9 @@
 .rp-tabs {
   display: flex;
   gap: 0;
-  padding: 2px 8px 0;
-  flex-shrink: 0;
+  padding: 2px 36px 0 8px;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
   border-bottom: 1px solid var(--border);
@@ -348,6 +423,13 @@
   flex-shrink: 0;
   border-bottom: 2px solid transparent;
   transition: border-color 0.1s ease;
+}
+.rp-tab--icon-only {
+  min-width: auto;
+  max-width: none;
+}
+.rp-tab--icon-only .rp-tab-label {
+  padding: 4px;
 }
 .rp-tab--active {
   border-bottom-color: var(--accent);
@@ -419,6 +501,118 @@
   opacity: 0.5;
 }
 
+/* —— Code workspace tabs (inner mini-IDE) —— */
+.cw-tabs {
+  display: flex;
+  gap: 0;
+  padding: 2px 8px 0;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+}
+.cw-tabs::-webkit-scrollbar { display: none; }
+
+.cw-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 80px;
+  max-width: 160px;
+  flex-shrink: 0;
+  border-bottom: 2px solid transparent;
+  transition: border-color 0.1s ease;
+}
+.cw-tab--icon-only {
+  min-width: auto;
+  max-width: none;
+}
+.cw-tab--icon-only .cw-tab-label {
+  padding: 4px;
+}
+.cw-tab--active {
+  border-bottom-color: var(--accent);
+}
+.cw-tab--pinned .cw-tab-label {
+  font-style: italic;
+}
+
+.cw-tab-label {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  transition: color 0.1s ease;
+}
+.cw-tab--active .cw-tab-label {
+  color: var(--text);
+}
+.cw-tab-label:hover {
+  color: var(--text-dim);
+}
+
+.cw-tab-pin {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.cw-tab-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+.cw-tab:hover .cw-tab-close {
+  opacity: 0.6;
+}
+.cw-tab-close:hover {
+  opacity: 1 !important;
+  color: var(--text);
+}
+
+.cw-tabs-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.cw-tab-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.cw-pin-group {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.rp-pin-btn.active .cw-pin-group {
+  color: var(--accent);
+  opacity: 0.5;
+}
+
 /* ── Empty state for both panels ── */
 .panel-empty {
   color: var(--text-muted);
@@ -427,4 +621,142 @@
   letter-spacing: 0.03em;
   padding: 24px 8px;
   text-align: center;
+}
+
+.panel-split {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel-split--horizontal {
+  flex-direction: row;
+}
+
+.panel-split--vertical {
+  flex-direction: column;
+}
+
+.panel-split-child {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel-surface-item-body {
+  min-width: 0;
+}
+
+.panel-surface-item-body--list {
+  overflow: auto;
+}
+
+.panel-surface-item-body--tabs {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  flex-direction: column;
+}
+
+.panel-surface-item-body > * {
+  min-width: 0;
+}
+
+.panel-surface-item-body--tabs > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.code-workspace-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.code-workspace-panel > .cw-tabs {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.code-workspace-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.code-workspace-body--split {
+  flex-direction: row;
+}
+
+.code-workspace-fs-browser {
+  width: 220px;
+  min-width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.code-workspace-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.code-workspace-content:has(.right-panel-file),
+.code-workspace-content:has(.file-browser),
+.code-workspace-content:has(.pinboard),
+.code-workspace-content:has(.right-panel-image-viewer) {
+  padding: 0;
+}
+
+.left-panel-content .widget,
+.right-panel-content .widget {
+  min-width: 0;
+}
+
+.left-panel-content .dash-empty,
+.right-panel-content .dash-empty,
+.panel-surface-item-body .dash-empty,
+.panel-surface-item-body .panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.right-panel-content .aa-panel,
+.right-panel-content .session-edits-view,
+.right-panel-content .fc-container,
+.right-panel-content .term-panel,
+.right-panel-content .dax-widget,
+.right-panel-content .cpw-widget,
+.right-panel-content .stats-widget,
+.right-panel-content .sessions-table,
+.right-panel-content .session-list-widget,
+.right-panel-content .project-theme-widget,
+.right-panel-content .exw-widget,
+.right-panel-content .moves-widget,
+.right-panel-content .proc-widget,
+.right-panel-content .tmw-widget,
+.right-panel-content .puw-widget,
+.right-panel-content .account-widget {
+  min-height: 0;
+  min-width: 0;
+}
+
+.widget-header--static {
+  cursor: default;
 }

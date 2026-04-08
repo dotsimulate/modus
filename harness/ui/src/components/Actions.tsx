@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { modus } from "../modusClient";
 import type { ActionInfo, ActionRun } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 
 type Props = {

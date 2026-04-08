@@ -8,10 +8,10 @@
 import { useCallback, useState } from "react";
 import { modus } from "../modusClient";
 import type { ClientExtensionManifestItem, ExtensionSettingSchema } from "../../../sdk/index";
-import type { WidgetDef } from "./index";
+import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 
 function SettingField({
   name,
@@ -169,7 +169,7 @@ function ExtensionRow({
   );
 }
 
-function ExtensionsWidget() {
+export default function ExtensionsWidget() {
   const { activeUserProfile, activeCwd, projectRoot } = useProfiles();
   const extCwd = projectRoot ?? activeCwd;
 
@@ -210,6 +210,3 @@ function ExtensionsWidget() {
     </div>
   );
 }
-
-const def: WidgetDef = { type: "extensions", component: ExtensionsWidget };
-export default def;

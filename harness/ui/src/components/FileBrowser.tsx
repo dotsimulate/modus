@@ -16,7 +16,7 @@ import type { BrowseResult } from "../../../sdk/index";
 import { onFsChange } from "../modusClient";
 import { FileContentViewer } from "./FileContentViewer";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
-import { usePinboard } from "../providers/PinboardProvider";
+import { usePinboard } from "../providers/PinboardContext";
 import {
   FileText, FileCode2, FileJson, FileImage, FileVideo, FileAudio,
   FileType, FileArchive, FileLock, FileTerminal, FileCog,

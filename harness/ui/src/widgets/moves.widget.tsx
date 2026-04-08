@@ -14,8 +14,8 @@
 import { useState, useCallback } from "react";
 import { modus } from "../modusClient";
 import type { MoveListItem, MoveInput } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
-import type { WidgetDef, WidgetProps } from "./index";
+import { useProfiles } from "../providers/ProfileContext";
+import type { WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 import { useWidgetUiState } from "./ui-state";
@@ -479,7 +479,7 @@ function GroupHeader({
 
 // ── Main widget ──
 
-function MovesWidget({ widgetId }: WidgetProps) {
+export default function MovesWidget({ widgetId }: WidgetProps) {
   const { activeCwd, projectRoot, activeUserProfile, profiles, activeUP } = useProfiles();
   const movesCwd = projectRoot ?? activeCwd;
   const [error, setError] = useState<string | null>(null);
@@ -625,6 +625,3 @@ function MovesWidget({ widgetId }: WidgetProps) {
     </div>
   );
 }
-
-const def: WidgetDef = { type: "moves", component: MovesWidget };
-export default def;

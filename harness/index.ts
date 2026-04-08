@@ -24,6 +24,7 @@ import {
   getUiState, listThemes, listFonts, getTheme, getFont, getActiveTheme, getActiveFont,
   registerTheme, registerFont, activateTheme, activateFont, patchTheme, patchFont,
 } from "./project-ui";
+import { listConfigPages } from "./pages";
 import {
   listClientExtensions, getClientExtensionById, resolveExtensionSettings,
 } from "./client-extensions";
@@ -482,6 +483,13 @@ app.patch("/api/user-profiles/:name/state", async (c) => {
   const body = await c.req.json();
   const updated = patchUserProfileState(name, body);
   return c.json(updated);
+});
+
+// —— Config Pages (.modus/pages/*.json) ——
+
+app.get("/api/pages", (c) => {
+  const cwd = c.req.query("cwd");
+  return c.json(listConfigPages(cwd));
 });
 
 // ── Secrets Status (booleans only, no values) ──

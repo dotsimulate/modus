@@ -7,9 +7,9 @@
 
 import { useCallback } from "react";
 import { modus } from "../modusClient";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, planLabel } from "../utils/format";
-import type { WidgetDef } from "./index";
+import type { WidgetDef } from "./types";
 import { useWidgetPollingValue } from "./widget-data";
 import { WidgetEmptyState } from "./widget-components";
 
@@ -27,7 +27,7 @@ function planClass(sub: string): string {
 
 // ── Component ──
 
-function AccountWidget() {
+export default function AccountWidget() {
   const { activeUserProfile } = useProfiles();
   const loadAccount = useCallback(
     () => modus.getAccountInfo(activeUserProfile ?? undefined),
@@ -88,7 +88,3 @@ function PeriodBlock({ label, data }: {
   );
 }
 
-// ── Widget definition ──
-
-const def: WidgetDef = { type: "account", component: AccountWidget };
-export default def;

@@ -125,6 +125,168 @@ function resolveCollision(
   }
 }
 
+export function buildGraphLayoutFromPositions({
+  sessions,
+  handoffDocs,
+  commitSessionMap,
+  spawnedSet,
+  commits,
+  config,
+  positions,
+}: {
+  sessions: SessionInfo[];
+  handoffDocs: HandoffDoc[];
+  commitSessionMap: Map<string, string[]>;
+  spawnedSet: Set<string>;
+  commits: GitCommit[];
+  config: WebLayoutConfig;
+  positions: PositionMap;
+}): SolverResult {
+  const sorted = [...sessions].sort((a, b) => a.created_at - b.created_at);
+  const nodes: GraphNode[] = [];
+
+  for (const s of sorted) {
+    const pos = positions[s.id];
+    if (!pos) continue;
+    const tags = parseTags(s.tags);
+    const handoffType = tags.find(t => t.startsWith("handoff:"))?.slice(8);
+    nodes.push({
+      id: s.id,
+      type: "session",
+      x: pos.x,
+      y: pos.y,
+      col: spawnedSet.has(s.id) ? 1 : 0,
+      row: 0,
+      session: s,
+      tags,
+      handoffType,
+      dayKey: dayKey(s.created_at),
+    });
+  }
+
+  const commitsByParent = new Map<string, GitCommit[]>();
+  const orphanCommits: GitCommit[] = [];
+  const COMMIT_COLS = 3;
+
+  for (const c of commits) {
+    const h7 = shortHash(c.hash);
+    const parentSids = commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [];
+    if (parentSids.length > 0) {
+      const pid = parentSids[0];
+      const arr = commitsByParent.get(pid) || [];
+      arr.push(c);
+      commitsByParent.set(pid, arr);
+    } else {
+      orphanCommits.push(c);
+    }
+  }
+
+  for (const [pid, pCommits] of commitsByParent) {
+    const parentPos = positions[pid];
+    if (!parentPos) continue;
+    const sortedC = [...pCommits].sort((a, b) => commitTimestamp(a) - commitTimestamp(b));
+    for (let i = 0; i < sortedC.length; i++) {
+      const col = i % COMMIT_COLS;
+      const row = Math.floor(i / COMMIT_COLS);
+      nodes.push({
+        id: `commit:${shortHash(sortedC[i].hash)}`,
+        type: "commit",
+        x: parentPos.x + config.commitOffsetX + col * (COMMIT_W + 8),
+        y: parentPos.y + NODE_H + 14 + row * (COMMIT_H + 6),
+        col,
+        row,
+        commit: sortedC[i],
+        dayKey: dayKey(commitTimestamp(sortedC[i])),
+      });
+    }
+  }
+
+  for (const c of orphanCommits) {
+    const ct = commitTimestamp(c);
+    let bestSid: string | null = null;
+    let bestDist = Infinity;
+    for (const s of sorted) {
+      const dist = Math.abs(s.created_at - ct);
+      if (dist < bestDist && positions[s.id]) {
+        bestDist = dist;
+        bestSid = s.id;
+      }
+    }
+
+    if (!bestSid || !positions[bestSid]) continue;
+    const sp = positions[bestSid];
+    const existing = nodes.filter(
+      n => n.type === "commit" && Math.abs(n.x - sp.x) < NODE_W * 2 && Math.abs(n.y - (sp.y + NODE_H)) < 100,
+    );
+    const idx = existing.length;
+    const col = idx % COMMIT_COLS;
+    const row = Math.floor(idx / COMMIT_COLS);
+    nodes.push({
+      id: `commit:${shortHash(c.hash)}`,
+      type: "commit",
+      x: sp.x + config.commitOffsetX + col * (COMMIT_W + 8),
+      y: sp.y + NODE_H + 14 + row * (COMMIT_H + 6),
+      col,
+      row,
+      commit: c,
+      dayKey: dayKey(ct),
+    });
+  }
+
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  for (const doc of handoffDocs) {
+    const fromNode = nodeMap.get(doc.fromSessionId);
+    const toNode = nodeMap.get(doc.toSessionId);
+    if (!fromNode || !toNode) continue;
+    nodes.push({
+      id: `doc:${doc.moveRunId}`,
+      type: "document",
+      x: (fromNode.x + NODE_W / 2 + toNode.x + NODE_W / 2) / 2 - DOC_W / 2,
+      y: (fromNode.y + NODE_H / 2 + toNode.y + NODE_H / 2) / 2 - DOC_H / 2,
+      col: fromNode.col,
+      row: fromNode.row,
+      doc,
+    });
+  }
+
+  const dayGroups = new Map<string, GraphNode[]>();
+  for (const n of nodes) {
+    const dk = n.dayKey ?? (n.commit ? dayKey(commitTimestamp(n.commit)) : null);
+    if (!dk) continue;
+    const arr = dayGroups.get(dk) || [];
+    arr.push(n);
+    dayGroups.set(dk, arr);
+  }
+
+  const clusters: TimeCluster[] = [];
+  const sortedDays = [...dayGroups.keys()].sort();
+  for (let di = 0; di < sortedDays.length; di++) {
+    const dk = sortedDays[di];
+    const dayNodes = dayGroups.get(dk)!;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let sessionCount = 0;
+    let commitCount = 0;
+    for (const n of dayNodes) {
+      const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
+      if (n.x < minX) minX = n.x;
+      if (n.x + w > maxX) maxX = n.x + w;
+      if (n.type === "session") sessionCount++;
+      if (n.type === "commit") commitCount++;
+    }
+    clusters.push({
+      id: `cluster:${di}`,
+      label: formatDayLabel(dk),
+      x: minX - WINDOW_PAD,
+      width: (maxX - minX) + WINDOW_PAD * 2,
+      sessionCount,
+      commitCount,
+    });
+  }
+
+  return { nodes, clusters };
+}
+
 // ── Main solver ──
 
 export function solveLayout(
@@ -137,7 +299,7 @@ export function solveLayout(
   commits: GitCommit[],
   config: WebLayoutConfig,
   fixedPositions?: PositionMap,
-  touches?: TouchRecord[],
+  _touches?: TouchRecord[],
 ): SolverResult {
   // fixedPositions: positions already stored in the DB. Sessions with a fixed position
   // are placed at that position (as immovable anchors). Sessions WITHOUT a fixed position
@@ -271,187 +433,19 @@ export function solveLayout(
     placedOrder.push(s.id);
   }
 
-  // ── Build session nodes ──
-  const nodes: GraphNode[] = [];
-  for (const s of sorted) {
-    const p = placed.get(s.id)!;
-    const tags = parseTags(s.tags);
-    const handoffType = tags.find(t => t.startsWith("handoff:"))?.slice(8);
-    const depth = spawnedSet.has(s.id) ? 1 : 0;
-    nodes.push({
-      id: s.id,
-      type: "session",
-      x: p.x,
-      y: p.y,
-      col: depth,
-      row: 0,
-      session: s,
-      tags,
-      handoffType,
-      dayKey: dayKey(s.created_at),
-    });
+  const solvedPositions: PositionMap = {};
+  for (const [id, pos] of placed) {
+    solvedPositions[id] = { x: pos.x, y: pos.y };
   }
 
-  // ── Place commits near parent sessions ──
-  const commitsByParent = new Map<string, GitCommit[]>();
-  const orphanCommits: GitCommit[] = [];
-
-  // Build a file->session map from touches for orphan commit matching
-  const fileToSessions = new Map<string, Set<string>>();
-  if (touches) {
-    for (const t of touches) {
-      if (t.op !== "read" && t.op !== "write" && t.op !== "edit") continue;
-      const set = fileToSessions.get(t.filePath) || new Set();
-      set.add(t.sessionId);
-      fileToSessions.set(t.filePath, set);
-    }
-  }
-
-  for (const c of commits) {
-    const h7 = shortHash(c.hash);
-    const parentSids = commitSessionMap.get(h7) || commitSessionMap.get(c.hash) || [];
-    if (parentSids.length > 0) {
-      const pid = parentSids[0];
-      const arr = commitsByParent.get(pid) || [];
-      arr.push(c);
-      commitsByParent.set(pid, arr);
-    } else {
-      orphanCommits.push(c);
-    }
-  }
-
-  // Place each parent's commits in a small 2D grid below-right of the session
-  for (const [pid, pCommits] of commitsByParent) {
-    const parentPos = placed.get(pid);
-    if (!parentPos) continue;
-    const sortedC = [...pCommits].sort((a, b) => commitTimestamp(a) - commitTimestamp(b));
-    for (let i = 0; i < sortedC.length; i++) {
-      const col = i % COMMIT_COLS;
-      const row = Math.floor(i / COMMIT_COLS);
-      const cx = parentPos.x + config.commitOffsetX + col * (COMMIT_W + 8);
-      const cy = parentPos.y + NODE_H + 14 + row * (COMMIT_H + 6);
-      nodes.push({
-        id: `commit:${shortHash(sortedC[i].hash)}`,
-        type: "commit",
-        x: cx, y: cy,
-        col, row,
-        commit: sortedC[i],
-        dayKey: dayKey(commitTimestamp(sortedC[i])),
-      });
-    }
-  }
-
-  // Orphan commits: try to attach to a session that read/wrote matching files
-  // Otherwise place near the closest session in time
-  for (const c of orphanCommits) {
-    const ct = commitTimestamp(c);
-    let bestSid: string | null = null;
-    let bestDist = Infinity;
-
-    // Find nearest session in time
-    for (const s of sorted) {
-      const dist = Math.abs(s.created_at - ct);
-      if (dist < bestDist && placed.has(s.id)) {
-        bestDist = dist;
-        bestSid = s.id;
-      }
-    }
-
-    if (bestSid && placed.has(bestSid)) {
-      const sp = placed.get(bestSid)!;
-      // Place near that session, offset to the right
-      const existingCommits = nodes.filter(
-        n => n.type === "commit" && Math.abs(n.x - sp.x) < NODE_W * 2 && Math.abs(n.y - (sp.y + NODE_H)) < 100,
-      );
-      const idx = existingCommits.length;
-      const col = idx % COMMIT_COLS;
-      const row = Math.floor(idx / COMMIT_COLS);
-      nodes.push({
-        id: `commit:${shortHash(c.hash)}`,
-        type: "commit",
-        x: sp.x + config.commitOffsetX + col * (COMMIT_W + 8),
-        y: sp.y + NODE_H + 14 + row * (COMMIT_H + 6),
-        col, row,
-        commit: c,
-        dayKey: dayKey(ct),
-      });
-    } else {
-      // Absolute fallback
-      nodes.push({
-        id: `commit:${shortHash(c.hash)}`,
-        type: "commit",
-        x: config.padX, y: config.padY,
-        col: 0, row: 0,
-        commit: c,
-        dayKey: dayKey(ct),
-      });
-    }
-  }
-
-  // ── Place document nodes (midpoint between linked sessions) ──
-  const nodeMap = new Map(nodes.map(n => [n.id, n]));
-  for (const doc of handoffDocs) {
-    const fromNode = nodeMap.get(doc.fromSessionId);
-    const toNode = nodeMap.get(doc.toSessionId);
-    if (!fromNode || !toNode) continue;
-    const docX = (fromNode.x + NODE_W / 2 + toNode.x + NODE_W / 2) / 2 - DOC_W / 2;
-    const docY = (fromNode.y + NODE_H / 2 + toNode.y + NODE_H / 2) / 2 - DOC_H / 2;
-    nodes.push({
-      id: `doc:${doc.moveRunId}`,
-      type: "document",
-      x: docX, y: docY,
-      col: fromNode.col, row: fromNode.row,
-      doc,
-    });
-  }
-
-  // ── RTL flip ──
-  if (config.timeDirection === "rtl") {
-    const movable = nodes;
-    const xs = movable.map(n => n.x);
-    if (xs.length > 0) {
-      const maxXr = Math.max(...xs);
-      const minXr = Math.min(...xs);
-      for (const n of movable) n.x = maxXr + minXr - n.x;
-    }
-  }
-
-  // ── Build day clusters from actual positions ──
-  const dayGroups = new Map<string, GraphNode[]>();
-  for (const n of nodes) {
-    const dk = n.dayKey ?? (n.commit ? dayKey(commitTimestamp(n.commit)) : null);
-    if (!dk) continue;
-    const arr = dayGroups.get(dk) || [];
-    arr.push(n);
-    dayGroups.set(dk, arr);
-  }
-
-  const clusters: TimeCluster[] = [];
-  const sortedDays = [...dayGroups.keys()].sort();
-  for (let di = 0; di < sortedDays.length; di++) {
-    const dk = sortedDays[di];
-    const dayNodes = dayGroups.get(dk)!;
-
-    let minX = Infinity, maxX = -Infinity;
-    let sessionCount = 0, commitCount = 0;
-    for (const n of dayNodes) {
-      const w = n.type === "session" ? NODE_W : n.type === "document" ? DOC_W : COMMIT_W;
-      if (n.x < minX) minX = n.x;
-      if (n.x + w > maxX) maxX = n.x + w;
-      if (n.type === "session") sessionCount++;
-      if (n.type === "commit") commitCount++;
-    }
-
-    clusters.push({
-      id: `cluster:${di}`,
-      label: formatDayLabel(dk),
-      x: minX - WINDOW_PAD,
-      width: (maxX - minX) + WINDOW_PAD * 2,
-      sessionCount,
-      commitCount,
-    });
-  }
-
-  return { nodes, clusters };
+  return buildGraphLayoutFromPositions({
+    sessions,
+    handoffDocs,
+    commitSessionMap,
+    spawnedSet,
+    commits,
+    config,
+    positions: solvedPositions,
+  });
 }
 

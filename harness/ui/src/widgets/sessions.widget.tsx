@@ -8,9 +8,9 @@
 import { useCallback, useMemo } from "react";
 import { modus } from "../modusClient";
 import type { ActiveSessionInfo, SessionInfo } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { timeAgo } from "../utils/format";
-import type { WidgetBase, WidgetProps, WidgetDef } from "./index";
+import type { WidgetBase, WidgetProps } from "./types";
 import { useWidgetUiState } from "./ui-state";
 import { useWidgetPollingValue } from "./widget-data";
 import { WidgetEmptyState } from "./widget-components";
@@ -115,7 +115,7 @@ const SORT_COLS: { key: SortKey; label: string }[] = [
 
 // ── Component ──
 
-function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<SessionsConfig>) {
+export default function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<SessionsConfig>) {
   const { activeCwd, activeUserProfile } = useProfiles();
   const [viewMode, setViewMode] = useWidgetUiState<ViewMode>(
     { userProfile: activeUserProfile, cwd: activeCwd },
@@ -243,7 +243,3 @@ function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<Sessi
   );
 }
 
-// ── Widget definition ──
-
-const def: WidgetDef = { type: "sessions", component: SessionsWidget };
-export default def;

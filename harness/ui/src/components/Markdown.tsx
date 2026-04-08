@@ -3,7 +3,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import hljs from "highlight.js/lib/core";
 import { memo, useEffect, useId, useRef, useState, type ReactElement } from "react";
-import { useFileViewer } from "../providers/FileViewerProvider";
+import { useFileViewer } from "../providers/FileViewerContext";
 
 // Register languages — core set for dev/AI chat
 import javascript from "highlight.js/lib/languages/javascript";

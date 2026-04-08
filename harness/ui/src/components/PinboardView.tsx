@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type WheelEvent } from "react";
-import { usePinboard } from "../providers/PinboardProvider";
+import { usePinboard } from "../providers/PinboardContext";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { modus } from "../modusClient";
 

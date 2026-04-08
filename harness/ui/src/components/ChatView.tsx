@@ -6,7 +6,7 @@ import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
 import { modus } from "../modusClient";
 import type { Message, ToolCall, CommitAttribution, GitCommit } from "../../../sdk/index";
-import type { QueuedMessage as QueuedMessageType } from "../providers/SessionProvider";
+import type { QueuedMessage as QueuedMessageType } from "../providers/SessionContext";
 import { navigateToGitRoute } from "../git-route";
 
 type DisplayItem =

@@ -1,50 +1,13 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from "react";
-import { useProfiles } from "./ProfileProvider";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useProfiles } from "./ProfileContext";
 import { API_BASE, authHeaders } from "../modusClient";
 import { onUiEvent } from "../sessionStore";
-
-export type PinGroup = {
-  id: string;
-  name: string;
-  paths: string[];
-};
+import { PinboardContext, type PinGroup } from "./PinboardContext";
 
 type PinboardState = {
   groups: PinGroup[];
   activeGroupId: string | null;
 };
-
-type PinboardContextValue = {
-  groups: PinGroup[];
-  activeGroupId: string | null;
-  activeGroup: PinGroup | null;
-  setActiveGroup: (id: string) => void;
-  addGroup: (name: string) => string;
-  removeGroup: (id: string) => void;
-  renameGroup: (id: string, name: string) => void;
-  pinToActive: (path: string) => void;
-  pinToGroup: (groupId: string, path: string) => void;
-  unpinFromActive: (path: string) => void;
-  isFilePinned: (path: string) => boolean;
-};
-
-const PinboardContext = createContext<PinboardContextValue>({
-  groups: [],
-  activeGroupId: null,
-  activeGroup: null,
-  setActiveGroup: () => {},
-  addGroup: () => "",
-  removeGroup: () => {},
-  renameGroup: () => {},
-  pinToActive: () => {},
-  pinToGroup: () => {},
-  unpinFromActive: () => {},
-  isFilePinned: () => false,
-});
-
-export function usePinboard() {
-  return useContext(PinboardContext);
-}
 
 function defaultState(): PinboardState {
   const id = crypto.randomUUID();

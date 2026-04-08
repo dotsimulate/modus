@@ -1,9 +1,9 @@
 import { useCallback, useMemo } from "react";
 import { modus } from "../modusClient";
 import type { ModelUsageTotal, ProviderUsageAnalytics, ProviderUsageDaily } from "../../../sdk/index";
-import { useProfiles } from "../providers/ProfileProvider";
+import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, fmtNum } from "../utils/format";
-import type { WidgetBase, WidgetDef, WidgetProps } from "./index";
+import type { WidgetBase, WidgetProps } from "./types";
 import { HBar, WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 import { useWidgetUiState } from "./ui-state";
@@ -57,7 +57,7 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
-function ProviderUsageWidget({ config, widgetId }: WidgetProps<ProviderUsageConfig>) {
+export default function ProviderUsageWidget({ config, widgetId }: WidgetProps<ProviderUsageConfig>) {
   const { activeCwd, activeUserProfile } = useProfiles();
   const [tab, setTab] = useWidgetUiState<UsageTab>(
     { userProfile: activeUserProfile, cwd: activeCwd },
@@ -191,6 +191,3 @@ function ProviderUsageWidget({ config, widgetId }: WidgetProps<ProviderUsageConf
     </div>
   );
 }
-
-const def: WidgetDef = { type: "provider-usage", component: ProviderUsageWidget };
-export default def;

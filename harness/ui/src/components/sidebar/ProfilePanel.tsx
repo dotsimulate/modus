@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { modus } from "../../modusClient";
 import type { Profile, UserProfile } from "../../../../sdk/index";
-import { useProfiles } from "../../providers/ProfileProvider";
+import { useProfiles } from "../../providers/ProfileContext";
 import { SearchDropdown } from "../SearchDropdown";
 import { SessionSetup, type SessionSetupState } from "../SessionSetup";
 
