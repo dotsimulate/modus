@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Component, type ReactNode } from "react";
 import type { ProfileUi, MoveListItem } from "../../sdk/index";
 import { API_BASE, authHeaders, modus } from "./modusClient";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
@@ -52,9 +52,36 @@ function parseTagList(raw?: string | null): string[] {
   }
 }
 
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: 16, fontFamily: "monospace", color: "#aaa" }}>
+          <div style={{ fontSize: 13 }}>something went wrong</div>
+          <button
+            style={{ padding: "6px 14px", background: "transparent", border: "1px solid #444", borderRadius: 4, color: "#aaa", cursor: "pointer", fontSize: 12 }}
+            onClick={() => { localStorage.clear(); location.reload(); }}
+          >
+            clear app data + reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function App() {
   return (
-    <AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
       <ProfileProvider>
         <SessionProvider>
           <FileViewerProvider>
@@ -66,6 +93,7 @@ function App() {
         </SessionProvider>
       </ProfileProvider>
     </AuthProvider>
+    </AppErrorBoundary>
   );
 }
 
