@@ -9,7 +9,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5180,
     strictPort: true,
-    allowedHosts: ['dotdot-mininuc.local', 'REDACTED'],
+    allowedHosts: true,
     proxy: {
       '/api': `http://localhost:${harnessPort}`,
       '/health': `http://localhost:${harnessPort}`,
