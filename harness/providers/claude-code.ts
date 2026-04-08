@@ -138,6 +138,13 @@ function normalizeClaudeEffort(effort?: string): string | undefined {
   return effort;
 }
 
+function hasClaudeResumeState(sessionId?: string): boolean {
+  if (!sessionId) return false;
+  const row = getSession(sessionId);
+  if (!row) return false;
+  return row.message_count > 0 || !!row.parent_session_id || !!row.branch_message_uuid;
+}
+
 type ClaudePermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk";
 const VALID_PERMISSION_MODES = new Set<ClaudePermissionMode>(["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"]);
 
@@ -595,7 +602,8 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       // Branch fork: resume from parent session, fork to new ID
       const isBranch = !!opts.branchParentId;
-      const resumeTarget = isBranch ? opts.branchParentId : (opts.sessionId ?? undefined);
+      const canResume = hasClaudeResumeState(opts.sessionId);
+      const resumeTarget = isBranch ? opts.branchParentId : (canResume ? opts.sessionId : undefined);
       console.log(`[claude-code] startTurn isBranch=${isBranch} resume=${resumeTarget} sessionId=${opts.sessionId} branchParent=${opts.branchParentId} branchMsgUUID=${opts.branchMessageUUID}`);
 
       // Fork options are one-shot — only used for the initial query(), never stored
@@ -1085,7 +1093,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         initSeen = true;
         console.log(`[claude-code] INIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events so far)`);
         const realId = m.session_id;
-        const isResume = session.sessionId === realId && !!getSession(realId);
+        const isResume = session.sessionId === realId && hasClaudeResumeState(realId);
 
         ctx.rekeySession(realId);
         session.model = m.model ?? session.model;
