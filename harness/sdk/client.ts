@@ -9,6 +9,7 @@ import type {
   CreateSessionOpts,
   SendMessageOpts,
   TurnContent,
+  SessionHistorySnapshot,
   TypedSSEEvent,
   EventStreamHandle,
   EventStreamCallbacks,
@@ -184,8 +185,13 @@ export class ModusClient {
   async fetchMe(): Promise<{ name: string | null }> { return (await this.fetch("/api/auth/me")).json(); }
   /** Revokes all active tokens (locks all sessions). */
   async lockAll(): Promise<void> { await this.fetch("/api/auth/lock", { method: "POST" }); }
-  /** Lightweight token validity check (fetches 1 session). Throws on invalid token. */
-  async checkToken(): Promise<void> { const r = await this.fetch("/api/sessions?limit=1"); if (!r.ok) throw new Error("unauthorized"); }
+  /** Lightweight token validity check. Throws ModusError on explicit unauthorized. */
+  async checkToken(): Promise<void> {
+    const r = await this.fetch("/api/auth/check");
+    if (!r.ok) {
+      throw new ModusError(r.status, r.statusText || "auth check failed", "/api/auth/check");
+    }
+  }
   /** Changes the auth PIN. Throws if the old PIN is wrong. */
   async changePin(oldPin: string, newPin: string): Promise<void> {
     const res = await this.fetch("/api/auth/change-pin", { method: "POST", body: JSON.stringify({ oldPin, newPin }) });
@@ -243,6 +249,10 @@ export class ModusClient {
   async getMessages(id: string, seq?: number): Promise<TurnContent | TurnContent[]> {
     const q = seq != null ? `?seq=${seq}` : "";
     return (await this.fetch(`/api/sessions/${id}/messages-content${q}`)).json();
+  }
+  /** Gets a semantic history snapshot for ordinary session hydration. */
+  async getSessionHistorySnapshot(id: string): Promise<SessionHistorySnapshot> {
+    return (await this.fetch(`/api/sessions/${id}/history-snapshot`)).json();
   }
   /** Soft-deletes (archives) a session. */
   async archiveSession(id: string): Promise<void> { await this.fetch(`/api/sessions/${id}`, { method: "DELETE" }); }

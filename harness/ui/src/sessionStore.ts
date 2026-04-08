@@ -9,7 +9,7 @@
 import { useSyncExternalStore } from "react";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
 import { subscribeEvents } from "./modusClient";
-import type { Session } from "../../sdk/index";
+import { nextMsgId, type Session, type SessionHistorySnapshot } from "../../sdk/index";
 
 // ── Store State ──
 
@@ -64,6 +64,43 @@ export function setSessionState(id: string, state: ReducerState, profile?: strin
     nextAgentConfig: existing?.nextAgentConfig,
   });
   notify();
+}
+
+function buildStateFromHistorySnapshot(snapshotData: SessionHistorySnapshot): ReducerState {
+  const state = createInitialState(snapshotData.sessionId);
+  state.status = snapshotData.status;
+  state.model = snapshotData.model;
+  state.agentConfig = snapshotData.agentConfig;
+  state.cwd = snapshotData.cwd;
+  state.additionalDirectories = snapshotData.additionalDirectories;
+  state.loadProjectSettings = snapshotData.loadProjectSettings;
+  state.lastSeq = snapshotData.lastSeq;
+  state.createdAt = snapshotData.createdAt;
+  state.messages = snapshotData.messages.map((turn) => ({
+    id: nextMsgId(),
+    role: turn.role,
+    content: turn.text,
+    ...(turn.uuid ? { uuid: turn.uuid } : {}),
+    ...(turn.thinking ? { thinking: turn.thinking } : {}),
+    ...(turn.seq ? { seq: turn.seq } : {}),
+    ...(turn.timestamp ? { timestamp: turn.timestamp } : {}),
+    ...(turn.artifacts ? { artifacts: turn.artifacts } : {}),
+    ...(turn.toolCalls ? {
+      toolCalls: turn.toolCalls.map((toolCall, index) => ({
+        id: `${snapshotData.sessionId}:${turn.seq}:tool:${index}`,
+        name: toolCall.name,
+        input: toolCall.input,
+        status: "completed" as const,
+        ...(toolCall.result ? { result: toolCall.result } : {}),
+        startedAt: turn.timestamp,
+      })),
+    } : {}),
+  }));
+  return state;
+}
+
+export function hydrateSessionHistorySnapshot(snapshotData: SessionHistorySnapshot, profile?: string) {
+  setSessionState(snapshotData.sessionId, buildStateFromHistorySnapshot(snapshotData), profile);
 }
 
 /** Set the profile queued for the next user turn */

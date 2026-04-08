@@ -20,7 +20,7 @@ import {
   upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
   getStoredSessionConfig,
   copyEventsToSession, findAssistantUuid, clearBranchFields,
-  addSessionTag, parseTags, getMaxSeq, insertSessionArtifact,
+  addSessionTag, parseTags, getMaxSeq, insertSessionArtifact, insertMessage,
 } from "./db";
 import type { SessionOutcome } from "./action-types";
 import { logActivity } from "./activity";
@@ -153,6 +153,29 @@ export type PendingDispatchItem = {
   source: "user" | "sdk" | "action";
 };
 
+type LiveStreamSnapshot = {
+  text: string;
+  thinking: string;
+  feed: string;
+  seq: number;
+};
+
+type SemanticToolCall = {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+  result?: string;
+};
+
+type PendingAssistantTurn = {
+  seq: number;
+  text: string;
+  thinking: string;
+  toolCalls: Map<string, SemanticToolCall>;
+  uuid?: string;
+  timestamp: number;
+};
+
 export type ActiveSession = {
   sessionId: string;
   tempId: string;
@@ -170,6 +193,8 @@ export type ActiveSession = {
   error: string | null;
   preview: string;
   lastAssistantText: string;
+  liveStream: LiveStreamSnapshot;
+  pendingAssistantTurn: PendingAssistantTurn | null;
   initialPrompt: string;
   initialContent: MessageContent;
   subscribers: Set<SSEWriter>;
@@ -555,8 +580,152 @@ function configEventPayload(config: {
   };
 }
 
+function appendLiveFeed(current: string, text: string): string {
+  return (current + " " + text).slice(-500);
+}
+
+function extractPlainText(content: MessageContent | undefined): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  let text = "";
+  for (const block of content) {
+    if (block && typeof block === "object" && (block as any).type === "text" && typeof (block as any).text === "string") {
+      text += (block as any).text;
+    }
+  }
+  return text;
+}
+
+function getOrCreatePendingAssistantTurn(session: ActiveSession): PendingAssistantTurn {
+  if (!session.pendingAssistantTurn) {
+    session.pendingAssistantTurn = {
+      seq: session.seq,
+      text: "",
+      thinking: "",
+      toolCalls: new Map(),
+      timestamp: Date.now(),
+    };
+  }
+  return session.pendingAssistantTurn;
+}
+
+function persistSemanticMessage(session: ActiveSession, event: any) {
+  if (event.type === "user" && (event.subtype === "prompt" || event.message?.role === "user")) {
+    const text = extractPlainText(event.message?.content);
+    if (!text) return;
+    session.pendingAssistantTurn = null;
+    insertMessage({
+      sessionId: session.sessionId,
+      seq: session.seq,
+      role: "user",
+      content: text,
+      createdAt: Date.now(),
+    });
+    return;
+  }
+
+  if (event.type === "assistant") {
+    const turn = getOrCreatePendingAssistantTurn(session);
+    turn.seq = session.seq;
+    if (!turn.uuid && typeof event.uuid === "string") turn.uuid = event.uuid;
+    const content = event.message?.content;
+    if (!Array.isArray(content)) return;
+    for (const block of content) {
+      if (!block || typeof block !== "object") continue;
+      if ((block as any).type === "text" && typeof (block as any).text === "string") {
+        turn.text += (block as any).text;
+      } else if ((block as any).type === "thinking" && typeof (block as any).thinking === "string") {
+        turn.thinking += (block as any).thinking;
+      } else if ((block as any).type === "tool_use" && typeof (block as any).id === "string" && typeof (block as any).name === "string") {
+        turn.toolCalls.set((block as any).id, {
+          id: (block as any).id,
+          name: (block as any).name,
+          input: (block as any).input && typeof (block as any).input === "object" ? (block as any).input : {},
+        });
+      }
+    }
+    return;
+  }
+
+  if (event.type === "user" && event.subtype === "tool_result" && session.pendingAssistantTurn) {
+    const content = event.message?.content;
+    if (!Array.isArray(content)) return;
+    for (const block of content) {
+      if (!block || typeof block !== "object" || (block as any).type !== "tool_result" || typeof (block as any).tool_use_id !== "string") continue;
+      const toolCall = session.pendingAssistantTurn.toolCalls.get((block as any).tool_use_id);
+      if (!toolCall) continue;
+      toolCall.result = typeof (block as any).content === "string"
+        ? (block as any).content
+        : JSON.stringify((block as any).content ?? "");
+    }
+    return;
+  }
+
+  if (event.type === "result") {
+    const turn = session.pendingAssistantTurn;
+    if (!turn) return;
+    const content = turn.text || (typeof event.result === "string" ? event.result : "");
+    if (!content && !turn.thinking && turn.toolCalls.size === 0) {
+      session.pendingAssistantTurn = null;
+      return;
+    }
+    insertMessage({
+      sessionId: session.sessionId,
+      seq: session.seq,
+      role: "assistant",
+      content,
+      uuid: turn.uuid,
+      thinking: turn.thinking || undefined,
+      toolCalls: turn.toolCalls.size > 0 ? [...turn.toolCalls.values()] : undefined,
+      costUsd: typeof event.total_cost_usd === "number" ? event.total_cost_usd : undefined,
+      durationMs: typeof event.harness_duration_ms === "number" ? event.harness_duration_ms : undefined,
+      model: session.model,
+      turns: typeof event.num_turns === "number" ? event.num_turns : undefined,
+      createdAt: Date.now(),
+    });
+    session.pendingAssistantTurn = null;
+  }
+}
+
+function updateLiveStreamSnapshot(session: ActiveSession, event: any) {
+  if (event.type === "stream_event" && event.event?.type === "content_block_delta" && event.event.delta) {
+    const delta = event.event.delta;
+    if (delta.type === "text_delta" && typeof delta.text === "string" && delta.text.length > 0) {
+      const nextText = typeof event.fullText === "string"
+        ? event.fullText
+        : session.liveStream.text + delta.text;
+      const nextFeed = typeof event.fullText === "string" && nextText.startsWith(session.liveStream.text)
+        ? nextText.slice(session.liveStream.text.length)
+        : delta.text;
+      session.liveStream.text = nextText;
+      session.liveStream.feed = appendLiveFeed(session.liveStream.feed, nextFeed);
+      session.liveStream.seq = session.seq;
+    } else if (delta.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking.length > 0) {
+      session.liveStream.thinking += delta.thinking;
+      session.liveStream.feed = appendLiveFeed(session.liveStream.feed, delta.thinking);
+      session.liveStream.seq = session.seq;
+    }
+    return;
+  }
+
+  if (event.type !== "stream_event") {
+    session.liveStream.text = "";
+    session.liveStream.thinking = "";
+    session.liveStream.feed = "";
+    session.liveStream.seq = session.seq;
+  }
+}
+
 function persistAndBroadcastEvent(session: ActiveSession, event: any) {
   session.seq++;
+  updateLiveStreamSnapshot(session, event);
+  persistSemanticMessage(session, event);
+  if (event.type === "stream_event") {
+    sseLog("LIVE-ONLY", session.sessionId,
+      `seq=${session.seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} subs=${session.subscribers.size}`);
+    broadcastEventToSession(session, event, session.seq);
+    return;
+  }
   addEvent(
     session.sessionId,
     session.seq,
@@ -742,6 +911,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     error: null,
     preview: contentPreview(initialContent),
     lastAssistantText: "",
+    liveStream: { text: "", thinking: "", feed: "", seq: 0 },
+    pendingAssistantTurn: null,
     initialPrompt: typeof opts.prompt === "string" ? opts.prompt : contentPreview(opts.prompt),
     initialContent,
     subscribers: new Set(),

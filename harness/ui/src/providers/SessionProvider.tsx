@@ -15,6 +15,7 @@ import {
   useSessionState, setSessionState, getSessionState,
   setSessionNextAgentConfig,
   setSessionNextProfile,
+  hydrateSessionHistorySnapshot,
   subscribeSession, unsubscribeSession, isSubscribed,
   rekeySession, removeSession, evictInactiveSessions, onSessionRekey,
 } from "../sessionStore";
@@ -68,6 +69,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevActiveStatusRef = useRef<Session["status"] | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Derive activeSession from the store
   const activeSession = useSessionState(activeSessionId);
@@ -140,16 +142,56 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const s = activeUserProfile
         ? await modus.listSessions({ limit: 50, userProfile: activeUserProfile })
         : await modus.listSessions({ limit: 50 });
+      if (!Array.isArray(s)) {
+        console.error("[refreshSessions] non-array response", s);
+        return;
+      }
       setServerSessions(s);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.error("[refreshSessions] failed", err);
+    }
   }, [activeUserProfile]);
 
-  // Load sessions on mount + poll every 10s for status updates
+  const scheduleRefreshSessions = useCallback(() => {
+    if (refreshTimerRef.current) return;
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      refreshSessions();
+    }, 150);
+  }, [refreshSessions]);
+
+  // Load sessions on mount + slow fallback poll.
   useEffect(() => {
     refreshSessions();
-    const interval = setInterval(refreshSessions, 10_000);
-    return () => clearInterval(interval);
+    const interval = setInterval(refreshSessions, 60_000);
+    return () => {
+      clearInterval(interval);
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+    };
   }, [refreshSessions]);
+
+  // Prefer backend session lifecycle SSE over periodic polling.
+  useEffect(() => {
+    let cancelled = false;
+    const handle = modus.subscribeGlobalEvents();
+    (async () => {
+      try {
+        for await (const _evt of handle.events) {
+          if (cancelled) break;
+          scheduleRefreshSessions();
+        }
+      } catch {
+        // Fallback poll remains active.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      handle.abort();
+    };
+  }, [scheduleRefreshSessions]);
 
   useEffect(() => {
     const prev = prevActiveStatusRef.current;
@@ -329,8 +371,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // Evict old inactive sessions from the store to free memory
     evictInactiveSessions(id);
 
+    let afterSeq = existing?.lastSeq ?? 0;
+    const shouldHydrateHistory = afterSeq === 0
+      && info?.status
+      && info.status !== "running"
+      && info.status !== "starting"
+      && info.status !== "paused";
+
+    if (shouldHydrateHistory) {
+      try {
+        const snapshot = await modus.getSessionHistorySnapshot(id);
+        hydrateSessionHistorySnapshot(snapshot, sessionProfile);
+        afterSeq = snapshot.lastSeq;
+      } catch {
+        // Fall back to event replay if snapshot hydration fails.
+      }
+    }
+
     // Subscribe from last known seq (avoids full replay if store has state)
-    const afterSeq = existing?.lastSeq ?? 0;
     if (!isSubscribed(id)) {
       subscribeSession(id, afterSeq, sessionProfile, refreshSessions);
     }

@@ -188,6 +188,41 @@ function getLastSubMessage(msgs: Message[], agentToolId: string): Message | unde
 // ── System Events ──
 
 function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
+  if (m.subtype === "live_snapshot") {
+    const text = typeof m.text === "string" ? m.text : "";
+    const thinking = typeof m.thinking === "string" ? m.thinking : "";
+    const feed = typeof m.feed === "string" ? m.feed : s.streamFeed;
+    if (!text && !thinking) {
+      return { ...s, streamFeed: feed };
+    }
+    const msgs = [...s.messages];
+    const last = msgs[msgs.length - 1];
+    const canMerge = last?.role === "assistant" && !last.meta
+      && !last.toolCalls?.some((tc) => tc.status !== "running");
+    if (canMerge) {
+      msgs[msgs.length - 1] = {
+        ...last,
+        content: text || last.content,
+        thinking: thinking || last.thinking,
+      };
+    } else {
+      msgs.push({
+        id: nextMsgId(),
+        role: "assistant",
+        content: text,
+        thinking: thinking || undefined,
+        timestamp: ts,
+      });
+    }
+    return {
+      ...s,
+      status: s.status === "starting" ? "running" : s.status,
+      messages: msgs,
+      _streamingText: text,
+      _streamingThinking: thinking,
+      streamFeed: feed,
+    };
+  }
   if (m.subtype === "provider_message") {
     const content = typeof m.content === "string"
       ? m.content.trim()
