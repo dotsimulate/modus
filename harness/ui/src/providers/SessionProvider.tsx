@@ -28,6 +28,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   } = useProfiles();
 
   const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [queuedMessage, setQueuedMessage] = useState<QueuedMessage | null>(null);
@@ -112,6 +113,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       setServerSessions(s);
+      setSessionsLoaded(true);
     } catch (err) {
       console.error("[refreshSessions] failed", err);
     }
@@ -425,7 +427,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       ? serverSessions.find((session) => session.id === activeSessionId)
       : null;
     const hasPersistedHistory = !!activeServerSession?.preview || (currentState?.lastSeq ?? 0) > 0;
-    const isEmptySession = activeSessionId
+    const isEmptySession = sessionsLoaded && activeSessionId
       && currentState?.status === "idle"
       && currentState.messages.length === 0
       && !hasPersistedHistory;
