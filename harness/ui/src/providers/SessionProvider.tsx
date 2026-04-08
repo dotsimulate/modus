@@ -372,8 +372,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     evictInactiveSessions(id);
 
     let afterSeq = existing?.lastSeq ?? 0;
-    const shouldHydrateHistory = afterSeq === 0
-      && info?.status
+    const shouldHydrateHistory = !!info?.status
       && info.status !== "running"
       && info.status !== "starting"
       && info.status !== "paused";
@@ -381,8 +380,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (shouldHydrateHistory) {
       try {
         const snapshot = await modus.getSessionHistorySnapshot(id);
-        hydrateSessionHistorySnapshot(snapshot, sessionProfile);
-        afterSeq = snapshot.lastSeq;
+        const hasAssistantToolCalls = snapshot.messages.some((msg) => (
+          msg.role === "assistant" && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0
+        ));
+        if (hasAssistantToolCalls) {
+          const rs = createInitialState(id);
+          rs.status = (info?.status as Session["status"]) ?? "idle";
+          rs.model = info?.model ?? "";
+          rs.cwd = info?.cwd ?? "";
+          setSessionState(id, rs, sessionProfile);
+          afterSeq = 0;
+        } else {
+          const latest = getSessionState(id);
+          const shouldApplySnapshot = !latest
+            || snapshot.lastSeq > latest.lastSeq
+            || snapshot.messages.length >= latest.messages.length;
+          if (shouldApplySnapshot) {
+            hydrateSessionHistorySnapshot(snapshot, sessionProfile);
+            afterSeq = snapshot.lastSeq;
+          } else {
+            afterSeq = latest.lastSeq;
+          }
+        }
       } catch {
         // Fall back to event replay if snapshot hydration fails.
       }
@@ -441,7 +460,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       && currentState?.status === "idle"
       && currentState.messages.length === 0
       && !hasPersistedHistory;
-    const needsNewSession = !activeSessionId || !currentState || currentState.status === "done" || currentState.status === "error" || activeSessionId.startsWith("pending-") || isEmptySession;
+    const needsNewSession = !activeSessionId || !currentState || activeSessionId.startsWith("pending-") || isEmptySession;
     if (needsNewSession) {
       const prevSessionId = activeSessionId; // capture before archiving — move registry may reference this
       if (isEmptySession && activeSessionId) modus.archiveSession(activeSessionId).catch(() => {});

@@ -166,7 +166,27 @@ app.get("/api/auth/me", (c) => {
 // Lightweight browser auth validity check.
 // This stays cheap even when session routes are under load.
 app.get("/api/auth/check", (c) => {
-  return c.json({ ok: true });
+  // Auth endpoints bypass the global auth middleware, so this route must
+  // validate the presented token itself.
+  if (!AUTH_TOKEN && !getPin()) return c.json({ ok: true });
+
+  const header = c.req.header("Authorization");
+  const tokenParam = new URL(c.req.url).searchParams.get("token");
+  const bearerToken = header?.startsWith("Bearer ") ? header.slice(7) : null;
+
+  if (AUTH_TOKEN && (bearerToken === AUTH_TOKEN || tokenParam === AUTH_TOKEN)) {
+    return c.json({ ok: true, kind: "agent" });
+  }
+  if (bearerToken && pinSessions.has(bearerToken)) {
+    return c.json({ ok: true, kind: "browser" });
+  }
+  if (tokenParam && pinSessions.has(tokenParam)) {
+    return c.json({ ok: true, kind: "browser" });
+  }
+  if (!AUTH_TOKEN && !getPin()) {
+    return c.json({ ok: true });
+  }
+  return c.json({ error: "unauthorized" }, 401);
 });
 
 // In-memory set of valid browser session tokens from PIN auth
