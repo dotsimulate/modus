@@ -39,8 +39,9 @@ import {
 } from "./session-schemas";
 import {
   listSessions, listSessionsForProjects, listSessionsByAction, listSessionsScoped,
-  getSession, getStoredSessionConfig, getLatestSessionUsage, archiveSession, unarchiveSession, listArchivedSessions, searchSessions,
+  getSession, getStoredSessionConfig, archiveSession, unarchiveSession, listArchivedSessions, searchSessions,
   getEvents, upsertSession as dbUpsertSession,
+  getMaxSeq,
   getDraft, setDraft, getSessionUiState, patchSessionUiState,
   getWebPositions, upsertWebPositions, deleteWebPositions,
   updateSessionTitle,
@@ -160,6 +161,12 @@ app.post("/api/auth/verify", async (c) => {
 // Get current user display name
 app.get("/api/auth/me", (c) => {
   return c.json({ name: getUserName() });
+});
+
+// Lightweight browser auth validity check.
+// This stays cheap even when session routes are under load.
+app.get("/api/auth/check", (c) => {
+  return c.json({ ok: true });
 });
 
 // In-memory set of valid browser session tokens from PIN auth
@@ -544,21 +551,20 @@ app.get("/api/sessions", (c) => {
   const corrected = rows.map((s) => {
     const storedConfig = s.provider ? null : getStoredSessionConfig(s.id);
     const provider = s.provider ?? storedConfig?.provider ?? null;
-    const usage = getLatestSessionUsage(s.id, provider);
     if ((s.status === "running" || s.status === "starting" || s.status === "idle" || s.status === "paused") && !getActiveSession(s.id)) {
       return {
         ...s,
         provider,
         status: "done",
-        last_input_tokens: usage?.inputTokens ?? null,
-        last_output_tokens: usage?.outputTokens ?? null,
+        last_input_tokens: null,
+        last_output_tokens: null,
       };
     }
     return {
       ...s,
       provider,
-      last_input_tokens: usage?.inputTokens ?? null,
-      last_output_tokens: usage?.outputTokens ?? null,
+      last_input_tokens: null,
+      last_output_tokens: null,
     };
   });
   return c.json(corrected);
@@ -860,6 +866,19 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
     // status back to "running" and start emitting events.
     const active = getActiveSession(sessionId);
     if (active && active.status !== "error") {
+      if (
+        active.liveStream.seq > afterSeq
+        && (active.liveStream.text || active.liveStream.thinking || active.liveStream.feed)
+      ) {
+        await writer.write("system", JSON.stringify({
+          type: "system",
+          subtype: "live_snapshot",
+          text: active.liveStream.text,
+          thinking: active.liveStream.thinking,
+          feed: active.liveStream.feed,
+        }), String(active.liveStream.seq));
+      }
+
       let resolve: () => void;
       const done = new Promise<void>((r) => { resolve = r; });
 
@@ -1033,6 +1052,43 @@ app.get("/api/sessions/:id/messages-content", (c) => {
     return c.json(msg);
   }
   return c.json(messages);
+});
+
+app.get("/api/sessions/:id/history-snapshot", (c) => {
+  const id = c.req.param("id");
+  const row = getSession(id);
+  const active = getActiveSession(id);
+  if (!row && !active) return c.json({ error: "session not found" }, 404);
+
+  const storedConfig = getStoredSessionConfig(id);
+  const agentConfig = {
+    toolStates: storedConfig?.toolStates ?? {},
+    model: storedConfig?.model ?? row?.model ?? active?.model ?? "",
+    provider: storedConfig?.provider ?? row?.provider ?? active?.provider ?? "",
+    effort: storedConfig?.effort ?? "",
+    maxTurns: typeof storedConfig?.maxTurns === "number" ? String(storedConfig.maxTurns) : "",
+    providerControls: storedConfig?.providerControls ?? {},
+  };
+
+  const status = active?.status
+    ?? (row && !getActiveSession(id) && (row.status === "running" || row.status === "starting" || row.status === "idle" || row.status === "paused")
+      ? "done"
+      : row?.status
+    )
+    ?? "done";
+
+  return c.json({
+    sessionId: id,
+    status,
+    model: row?.model ?? active?.model ?? storedConfig?.model ?? "",
+    cwd: row?.cwd ?? active?.cwd ?? storedConfig?.cwd ?? "",
+    additionalDirectories: active?.additionalDirectories ?? storedConfig?.additionalDirectories ?? [],
+    loadProjectSettings: active?.loadProjectSettings ?? storedConfig?.loadProjectSettings ?? true,
+    agentConfig,
+    messages: getSessionMessages(id),
+    lastSeq: active?.seq ?? getMaxSeq(id),
+    createdAt: row?.created_at ?? active?.startedAt ?? Date.now(),
+  });
 });
 
 app.get("/api/sessions/:id/artifacts/:artifactId", async (c) => {

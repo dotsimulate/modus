@@ -82,9 +82,12 @@ db.run(`
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    seq INTEGER,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
+    uuid TEXT,
     thinking TEXT,
+    tool_calls_json TEXT,
     cost_usd REAL,
     duration_ms INTEGER,
     model TEXT,
@@ -93,6 +96,10 @@ db.run(`
   )
 `);
 db.run(`CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id)`);
+try { db.run(`ALTER TABLE messages ADD COLUMN seq INTEGER`); } catch { /* already exists */ }
+try { db.run(`ALTER TABLE messages ADD COLUMN uuid TEXT`); } catch { /* already exists */ }
+try { db.run(`ALTER TABLE messages ADD COLUMN tool_calls_json TEXT`); } catch { /* already exists */ }
+db.run(`CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq, created_at)`);
 
 // ── Events (full SDK event log) ──
 db.run(`
@@ -312,6 +319,22 @@ export type TurnContent = {
   timestamp: number;
 };
 
+type MessageRow = {
+  id: number;
+  session_id: string;
+  seq: number | null;
+  role: string;
+  content: string;
+  uuid: string | null;
+  thinking: string | null;
+  tool_calls_json: string | null;
+  cost_usd: number | null;
+  duration_ms: number | null;
+  model: string | null;
+  turns: number | null;
+  created_at: number;
+};
+
 export type SessionArtifactRow = {
   id: number;
   session_id: string;
@@ -392,6 +415,22 @@ const stmts = {
     ORDER BY seq ASC
   `),
   getMaxSeq: db.prepare(`SELECT COALESCE(MAX(seq), 0) as max_seq FROM events WHERE session_id = $session_id`),
+  // Messages
+  insertMessage: db.prepare(`
+    INSERT INTO messages (
+      session_id, seq, role, content, uuid, thinking, tool_calls_json,
+      cost_usd, duration_ms, model, turns, created_at
+    ) VALUES (
+      $session_id, $seq, $role, $content, $uuid, $thinking, $tool_calls_json,
+      $cost_usd, $duration_ms, $model, $turns, $created_at
+    )
+  `),
+  getMessages: db.prepare(`
+    SELECT *
+    FROM messages
+    WHERE session_id = $session_id
+    ORDER BY COALESCE(seq, 0) ASC, created_at ASC, id ASC
+  `),
   // Drafts
   getDraft: db.prepare(`SELECT draft_text FROM sessions WHERE id = $id`),
   setDraft: db.prepare(`UPDATE sessions SET draft_text = $draft_text WHERE id = $id`),
@@ -791,6 +830,173 @@ export function getMaxSeq(sessionId: string): number {
   return row?.max_seq ?? 0;
 }
 
+export function insertMessage(opts: {
+  sessionId: string;
+  seq?: number;
+  role: "user" | "assistant";
+  content: string;
+  uuid?: string;
+  thinking?: string;
+  toolCalls?: { id?: string; name: string; input: Record<string, unknown>; result?: string }[];
+  costUsd?: number;
+  durationMs?: number;
+  model?: string;
+  turns?: number;
+  createdAt?: number;
+}) {
+  stmts.insertMessage.run({
+    $session_id: opts.sessionId,
+    $seq: opts.seq ?? null,
+    $role: opts.role,
+    $content: opts.content,
+    $uuid: opts.uuid ?? null,
+    $thinking: opts.thinking ?? null,
+    $tool_calls_json: opts.toolCalls ? JSON.stringify(opts.toolCalls) : null,
+    $cost_usd: opts.costUsd ?? null,
+    $duration_ms: opts.durationMs ?? null,
+    $model: opts.model ?? null,
+    $turns: opts.turns ?? null,
+    $created_at: opts.createdAt ?? Date.now(),
+  });
+}
+
+function parseToolCalls(raw: string | null): TurnContent["toolCalls"] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return undefined;
+    const toolCalls = parsed
+      .filter((item) => item && typeof item === "object" && typeof item.name === "string")
+      .map((item) => ({
+        name: item.name,
+        input: item.input && typeof item.input === "object" ? item.input as Record<string, unknown> : {},
+        ...(typeof item.result === "string" ? { result: item.result } : {}),
+      }));
+    return toolCalls.length > 0 ? toolCalls : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getSessionMessagesFromMessageTable(sessionId: string): TurnContent[] {
+  const rows = stmts.getMessages.all({ $session_id: sessionId }) as MessageRow[];
+  if (rows.length === 0) return [];
+  return rows.map((row) => ({
+    role: row.role === "assistant" ? "assistant" : "user",
+    seq: row.seq ?? 0,
+    text: row.content,
+    ...(row.thinking ? { thinking: row.thinking } : {}),
+    ...(row.uuid ? { uuid: row.uuid } : {}),
+    ...(parseToolCalls(row.tool_calls_json) ? { toolCalls: parseToolCalls(row.tool_calls_json) } : {}),
+    timestamp: row.created_at,
+  }));
+}
+
+function getSessionMessagesFromEvents(sessionId: string): TurnContent[] {
+  const events = db.prepare(
+    `SELECT seq, type, subtype, data, created_at FROM events
+     WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
+     ORDER BY seq ASC`
+  ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
+
+  const turns: TurnContent[] = [];
+  let current: {
+    text: string;
+    thinking: string;
+    toolCalls: Map<string, { name: string; input: Record<string, unknown>; result?: string }>;
+    seq: number;
+    timestamp: number;
+    uuid?: string;
+  } | null = null;
+
+  for (const evt of events) {
+    let d: any;
+    try { d = JSON.parse(evt.data); } catch { continue; }
+
+    if (evt.type === "user") {
+      if (evt.subtype === "prompt" || d.subtype === "prompt") {
+        const content = d.message?.content;
+        let text = "";
+        if (typeof content === "string") text = content;
+        else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "text" && block.text) text += block.text;
+          }
+        }
+        if (text) turns.push({ role: "user", seq: evt.seq, text, timestamp: evt.created_at });
+      } else if (current) {
+        const content = d.message?.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block.type === "tool_result" && block.tool_use_id) {
+              const tc = current.toolCalls.get(block.tool_use_id);
+              if (tc) {
+                tc.result = typeof block.content === "string"
+                  ? block.content
+                  : JSON.stringify(block.content ?? "");
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (evt.type === "assistant") {
+      if (!current) {
+        current = {
+          text: "",
+          thinking: "",
+          toolCalls: new Map(),
+          seq: evt.seq,
+          timestamp: evt.created_at,
+          ...(typeof d.uuid === "string" ? { uuid: d.uuid } : {}),
+        };
+      } else if (!current.uuid && typeof d.uuid === "string") {
+        current.uuid = d.uuid;
+      }
+      const content = d.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === "text" && block.text) current.text += block.text;
+          if (block.type === "thinking" && block.thinking) current.thinking += block.thinking;
+          if (block.type === "tool_use") {
+            current.toolCalls.set(block.id, { name: block.name, input: block.input ?? {} });
+          }
+        }
+      }
+    }
+
+    if (evt.type === "result" && current) {
+      const turn: TurnContent = {
+        role: "assistant",
+        seq: evt.seq,
+        text: current.text,
+        timestamp: current.timestamp,
+        ...(current.uuid ? { uuid: current.uuid } : {}),
+      };
+      if (current.thinking) turn.thinking = current.thinking;
+      if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
+      turns.push(turn);
+      current = null;
+    }
+  }
+
+  if (current) {
+    const turn: TurnContent = {
+      role: "assistant",
+      seq: current.seq,
+      text: current.text,
+      timestamp: current.timestamp,
+      ...(current.uuid ? { uuid: current.uuid } : {}),
+    };
+    if (current.thinking) turn.thinking = current.thinking;
+    if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
+    turns.push(turn);
+  }
+
+  return turns;
+}
+
 // ── Draft Functions ──
 
 export function getDraft(sessionId: string): string {
@@ -1109,12 +1315,7 @@ function toSessionArtifactValue(row: SessionArtifactRow): SessionArtifactValue {
 /** Reconstruct structured message content from events for a session.
  *  Returns user and assistant turns with text, thinking, and tool calls. */
 export function getSessionMessages(sessionId: string): TurnContent[] {
-  const events = db.prepare(
-    `SELECT seq, type, subtype, data, created_at FROM events
-     WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
-     ORDER BY seq ASC`
-  ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
-
+  const semanticTurns = getSessionMessagesFromMessageTable(sessionId);
   const artifactRows = stmts.listSessionArtifacts.all({ $session_id: sessionId }) as SessionArtifactRow[];
   const artifactsBySeq = new Map<number, SessionArtifactValue[]>();
   const artifactsByUuid = new Map<string, SessionArtifactValue[]>();
@@ -1130,102 +1331,7 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
     }
   }
 
-  const turns: TurnContent[] = [];
-  let current: {
-    text: string;
-    thinking: string;
-    toolCalls: Map<string, { name: string; input: Record<string, unknown>; result?: string }>;
-    seq: number;
-    timestamp: number;
-    uuid?: string;
-  } | null = null;
-
-  for (const evt of events) {
-    let d: any;
-    try { d = JSON.parse(evt.data); } catch { continue; }
-
-    if (evt.type === "user") {
-      if (evt.subtype === "prompt" || d.subtype === "prompt") {
-        const content = d.message?.content;
-        let text = "";
-        if (typeof content === "string") text = content;
-        else if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === "text" && block.text) text += block.text;
-          }
-        }
-        if (text) turns.push({ role: "user", seq: evt.seq, text, timestamp: evt.created_at });
-      } else if (current) {
-        // Tool results — attach to current assistant turn
-        const content = d.message?.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === "tool_result" && block.tool_use_id) {
-              const tc = current.toolCalls.get(block.tool_use_id);
-              if (tc) {
-                tc.result = typeof block.content === "string"
-                  ? block.content
-                  : JSON.stringify(block.content ?? "");
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (evt.type === "assistant") {
-      if (!current) {
-        current = {
-          text: "",
-          thinking: "",
-          toolCalls: new Map(),
-          seq: evt.seq,
-          timestamp: evt.created_at,
-          ...(typeof d.uuid === "string" ? { uuid: d.uuid } : {}),
-        };
-      } else if (!current.uuid && typeof d.uuid === "string") {
-        current.uuid = d.uuid;
-      }
-      const content = d.message?.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === "text" && block.text) current.text += block.text;
-          if (block.type === "thinking" && block.thinking) current.thinking += block.thinking;
-          if (block.type === "tool_use") {
-            current.toolCalls.set(block.id, { name: block.name, input: block.input ?? {} });
-          }
-        }
-      }
-    }
-
-    if (evt.type === "result" && current) {
-      const turn: TurnContent = {
-        role: "assistant",
-        seq: evt.seq,
-        text: current.text,
-        timestamp: current.timestamp,
-        ...(current.uuid ? { uuid: current.uuid } : {}),
-      };
-      if (current.thinking) turn.thinking = current.thinking;
-      if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
-      turns.push(turn);
-      current = null;
-    }
-  }
-
-  // Include incomplete turn (still streaming)
-  if (current) {
-    const turn: TurnContent = {
-      role: "assistant",
-      seq: current.seq,
-      text: current.text,
-      timestamp: current.timestamp,
-      ...(current.uuid ? { uuid: current.uuid } : {}),
-    };
-    if (current.thinking) turn.thinking = current.thinking;
-    if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
-    turns.push(turn);
-  }
+  const turns = semanticTurns.length > 0 ? semanticTurns : getSessionMessagesFromEvents(sessionId);
 
   return turns.map((turn) => {
     if (turn.role !== "assistant") return turn;

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from "rea
 import { modus } from "../modusClient";
 import { clearAuthToken } from "../modusClient";
 import { LoginScreen } from "../components/LoginScreen";
+import { ModusError } from "../../../sdk/index";
 
 type AuthContextValue = {
   userName: string | null;
@@ -14,6 +15,10 @@ export const useAuth = () => useContext(AuthContext);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<"checking" | "login" | "setup" | "ok">("checking");
   const [userName, setUserName] = useState<string | null>(null);
+
+  const isAuthFailure = useCallback((err: unknown) => (
+    err instanceof ModusError && (err.status === 401 || err.status === 403)
+  ), []);
 
   useEffect(() => {
     if (authState !== "checking") return;
@@ -28,14 +33,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await modus.checkToken();
             setAuthState("ok");
             return;
-          } catch {
-            clearAuthToken();
+          } catch (err) {
+            if (isAuthFailure(err)) {
+              clearAuthToken();
+            } else {
+              setAuthState("ok");
+              return;
+            }
           }
         }
         setAuthState("login");
       })
       .catch(() => setAuthState("ok"));
-  }, [authState]);
+  }, [authState, isAuthFailure]);
 
   // Poll to detect server-side lock
   useEffect(() => {
@@ -44,13 +54,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(async () => {
       try {
         await modus.checkToken();
-      } catch {
+      } catch (err) {
+        if (!isAuthFailure(err)) return;
         clearAuthToken();
         setAuthState("checking");
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [authState]);
+  }, [authState, isAuthFailure]);
 
   const handleAuth = useCallback((name: string) => {
     setUserName(name || null);

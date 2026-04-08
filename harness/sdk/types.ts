@@ -400,6 +400,19 @@ export type TurnContent = {
   timestamp: number;
 };
 
+export type SessionHistorySnapshot = {
+  sessionId: string;
+  status: SessionStatus;
+  model: string;
+  cwd: string;
+  additionalDirectories: string[];
+  loadProjectSettings: boolean;
+  agentConfig: AgentConfigState;
+  messages: TurnContent[];
+  lastSeq: number;
+  createdAt: number;
+};
+
 // ── Events ──
 
 /** A single server-sent event from a session's event stream (untyped, kept for backward compat). */

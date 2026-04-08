@@ -26,6 +26,7 @@ export type {
   CreateSessionOpts,
   SendMessageOpts,
   TurnContent,
+  SessionHistorySnapshot,
   // Events
   SSEEvent,
   TypedSSEEvent,
