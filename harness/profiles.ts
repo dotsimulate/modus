@@ -232,6 +232,11 @@ export type ProfileUiConfig = NonNullable<Profile["ui"]>;
 export type UserProfileUiConfig = {
   dashboard?: UserProfile["dashboard"];
   leftPanel?: { widgets?: string[] };
+  /** Per-view panel layout overrides. Keys are view names (e.g. "chat", "actions"). */
+  layouts?: Record<string, {
+    left?: { mode?: "list" | "tabs"; widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>; tree?: unknown };
+    right?: { mode?: "list" | "tabs"; widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>; tree?: unknown };
+  }>;
   computer?: string;
   editor?: string;
   clientExtensions?: ClientExtensionsConfig;
@@ -381,6 +386,28 @@ function mergeProfileUi(
   return hasOwnKeys(merged as Record<string, unknown>) ? merged : undefined;
 }
 
+function mergeLayouts(
+  base?: UserProfileUiConfig["layouts"],
+  override?: UserProfileUiConfig["layouts"],
+): UserProfileUiConfig["layouts"] | undefined {
+  if (!base && !override) return undefined;
+  if (!base) return override;
+  if (!override) return base;
+  const allViews = new Set([...Object.keys(base), ...Object.keys(override)]);
+  const merged: NonNullable<UserProfileUiConfig["layouts"]> = {};
+  for (const view of allViews) {
+    const b = base[view];
+    const o = override[view];
+    if (!b) { merged[view] = o!; continue; }
+    if (!o) { merged[view] = b; continue; }
+    merged[view] = {
+      left: (b.left || o.left) ? { ...(b.left ?? {}), ...(o.left ?? {}) } : undefined,
+      right: (b.right || o.right) ? { ...(b.right ?? {}), ...(o.right ?? {}) } : undefined,
+    };
+  }
+  return hasOwnKeys(merged as Record<string, unknown>) ? merged : undefined;
+}
+
 function mergeUserProfileUi(
   base?: UserProfileUiConfig,
   override?: UserProfileUiConfig,
@@ -393,6 +420,7 @@ function mergeUserProfileUi(
     leftPanel: (base?.leftPanel || override?.leftPanel)
       ? { ...(base?.leftPanel ?? {}), ...(override?.leftPanel ?? {}) }
       : undefined,
+    layouts: mergeLayouts(base?.layouts, override?.layouts),
     computer: override?.computer ?? base?.computer,
     editor: override?.editor ?? base?.editor,
     clientExtensions: mergeClientExtensions(base?.clientExtensions, override?.clientExtensions),
