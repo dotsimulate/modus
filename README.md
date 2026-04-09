@@ -4,11 +4,26 @@
 
 # Modus
 
-Your MO for working with AI agents. Personal infrastructure designed to be forked and customized.
+Modus is a modular, project-based environment for building and controlling structured agent systems.
+
+It is self-hosted, multi-provider, and designed to be shaped through built-in agent surfaces. Instead of treating agents as a single chat surface, Modus gives you a live workspace where each project can define how agents behave, what interfaces they use, what workflows they run, and how those workflows persist.
+
+## What It Is
+
+Modus combines a few core ideas:
+
+- **Profiles** define who an agent is and how it behaves
+- **Moves** define structured user-invoked interactions, often with widgets or typed protocols
+- **Actions** define automated workflows triggered by time, webhooks, or other events
+- **Missions** define longer-running multi-step, multi-agent project workflows
+
+Underneath those primitives is a shared harness for sessions, memory, provider abstraction, persistence, authentication, and a streaming UI.
+
+The goal is not just to "chat with an AI." The goal is to control a system of agents that can be shaped per project and per use case.
 
 ## Architecture
 
-A multi-provider agent harness — concurrent sessions, configurable profiles, persistent memory, structured automation, and a live streaming UI from one `bun run dev`.
+A multi-provider agent harness with concurrent sessions, configurable profiles, persistent memory, structured workflows, and a live streaming UI from one `bun run dev`.
 
 ```
 ┌──────────────────────────────────┐
@@ -50,9 +65,9 @@ cd modus
 .\modus.bat           # Windows
 ```
 
-One command starts the API server (`:3777`) and frontend (`:5180`). First run prompts for a PIN.
+One command starts the API server (`:3777`) and frontend (`:5180`). On first run, Modus prompts for a PIN.
 
-**To add modus to an existing project:**
+**To add Modus to an existing project:**
 
 ```bash
 cd /your/project
@@ -61,7 +76,7 @@ modus init            # scaffolds .modus/ with memory MCP and starter profile
 
 ## Providers
 
-Each provider is an execution backend that implements the `SessionProvider` interface. Use whichever you have access to — install only what you need.
+Each provider is an execution backend that implements the `SessionProvider` interface. Modus is intentionally cross-provider: use whichever backends you have access to, mix local and hosted models, and keep the surrounding environment and workflow model consistent.
 
 | Provider | Backend | What you need |
 |----------|---------|---------------|
@@ -79,9 +94,9 @@ See [harness/docs/providers.md](harness/docs/providers.md) for the full provider
 
 ## Profiles
 
-**Agent profiles** define how an agent behaves — model, tools, system prompt, permissions, and MCP servers. Stored in `harness/profiles/agents/` as JSON.
+**Agent profiles** define how an agent behaves: model, tools, system prompt, permissions, and MCP servers. Stored in `harness/profiles/agents/` as JSON.
 
-**User profiles** define who is using the system — project scope, visible agents, memory isolation, and UI state. Stored in `harness/profiles/users/`.
+**User profiles** define who is using the system: project scope, visible agents, memory isolation, and UI state. Stored in `harness/profiles/users/`.
 
 Profiles compose through a cascade: session override > agent profile > user profile > default. MCP servers merge additively across all layers.
 
@@ -89,7 +104,7 @@ See [harness/docs/profile-system.md](harness/docs/profile-system.md) and [harnes
 
 ## Moves
 
-Moves are structured, user-invoked operations — the universal interaction primitive. A move can combine API operations, widgets, multi-agent orchestration, and persistence. Examples: memory queries, session handoffs, council debates, interactive games.
+Moves are structured, user-invoked interactions. They are how Modus turns agent behavior into explicit interfaces instead of relying only on open-ended chat. A move can combine prompt gathering, token-gated submission, widgets, persistence, and typed operations. Examples: handoffs, interactive tools, games, and other domain-specific workflows.
 
 Each move is a directory in `.modus/moves/<name>/` with a `move.json` config and `context.ts` module.
 
@@ -97,11 +112,17 @@ See [harness/docs/moves.md](harness/docs/moves.md).
 
 ## Actions
 
-Actions are automated agent workflows — scheduled, triggered by webhook, or chained from other actions. Each action gathers context dynamically, runs an agent session, and can execute side effects based on the response.
+Actions are automated agent workflows: scheduled, webhook-triggered, or chained from other actions. Each one gathers context dynamically, runs an agent session, and can execute side effects based on the response.
 
 Each action is a directory in `.modus/actions/<name>/` with an `action.json` config and `context.ts` module.
 
 See [harness/docs/actions.md](harness/docs/actions.md).
+
+## Missions
+
+Missions are longer-running, multi-step, multi-agent project workflows. They coordinate roles, handoffs, and gates over time when a task is larger than one move or one action.
+
+See [harness/docs/missions.md](harness/docs/missions.md).
 
 ## Watchdog
 
