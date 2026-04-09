@@ -585,11 +585,16 @@ export function upsertSession(opts: {
 
 export function renameSession(oldId: string, newId: string) {
   if (oldId === newId) return;
-  db.prepare(`UPDATE sessions SET id = $new WHERE id = $old`).run({ $old: oldId, $new: newId });
-  db.prepare(`UPDATE events SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
-  // FTS5 virtual tables don't support UPDATE on session_id, so delete + re-insert
-  db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $old`).run({ $old: oldId });
-  db.prepare(`UPDATE action_runs SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+  db.transaction(() => {
+    db.run("PRAGMA defer_foreign_keys = ON");
+    db.prepare(`UPDATE sessions SET id = $new WHERE id = $old`).run({ $old: oldId, $new: newId });
+    db.prepare(`UPDATE messages SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+    db.prepare(`UPDATE events SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+    db.prepare(`UPDATE session_artifacts SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+    db.prepare(`UPDATE action_runs SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+    // FTS5 virtual tables don't support UPDATE on session_id, so delete + re-insert
+    db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $old`).run({ $old: oldId });
+  })();
 }
 
 export function updateSessionStatus(id: string, status: string) {

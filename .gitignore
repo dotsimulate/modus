@@ -45,7 +45,6 @@ agent_memory/memory/
 !.modus/moves/wordle/
 !.modus/moves/nano-banana/
 !.modus/moves/council/
-!.modus/moves/death/
 .modus/moves/chess/state/
 .modus/moves/wordle/state/
 .modus/moves/nano-banana/state/
