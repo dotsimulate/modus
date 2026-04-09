@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import type { View } from "../views";
 import { WIDGET_DEFS, type LayoutLeaf, type LayoutNode } from "../widgets";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
+import { usePageContext } from "./PageRenderer";
 
 type Props = {
   node: LayoutNode;
@@ -12,6 +13,38 @@ type Props = {
 
 function getLeafId(leaf: LayoutLeaf, index: number): string {
   return leaf.id?.trim() || leaf.widget.id?.trim() || `${leaf.widget.type}-${index + 1}`;
+}
+
+function LeafWidget({
+  leaf,
+  index,
+  active,
+  onNavigate,
+  onSelectSession,
+}: {
+  leaf: LayoutLeaf;
+  index: number;
+  active: boolean;
+  onNavigate: (view: View) => void;
+  onSelectSession: (id: string) => void;
+}) {
+  const widgetId = getLeafId(leaf, index);
+  const def = WIDGET_DEFS[leaf.widget.type];
+  const pageContext = usePageContext(leaf.publish, leaf.subscribe);
+  const Comp = def?.miniComponent ?? def?.component;
+
+  if (!Comp) return <div className="panel-empty">unknown widget: {leaf.widget.type}</div>;
+
+  return (
+    <Comp
+      config={leaf.widget}
+      widgetId={widgetId}
+      active={active}
+      onNavigate={onNavigate}
+      onSelectSession={onSelectSession}
+      pageContext={pageContext}
+    />
+  );
 }
 
 function renderLeaf(
@@ -31,19 +64,111 @@ function renderLeaf(
     maxHeight: def?.maxHeight,
     preferredHeight: def?.preferredHeight,
     defaultCollapsed: leaf.widget.collapsed ?? false,
-    render: (active) =>
-      def ? (
-        <def.component
-          config={leaf.widget}
-          widgetId={widgetId}
-          active={active}
+    render: (active) => (
+      <LeafWidget
+        leaf={leaf}
+        index={index}
+        active={active}
+        onNavigate={onNavigate}
+        onSelectSession={onSelectSession}
+      />
+    ),
+  };
+}
+
+// ── Resizable split panels ──
+
+type SplitNode = Extract<LayoutNode, { kind: "split" }>;
+
+function ResizableSplit({
+  node,
+  onNavigate,
+  onSelectSession,
+  empty,
+}: {
+  node: SplitNode;
+  onNavigate: (view: View) => void;
+  onSelectSession: (id: string) => void;
+  empty: ReactNode;
+}) {
+  const count = node.children.length;
+  const defaultSizes = node.children.map((_, i) => node.sizes?.[i] ?? 1);
+  const [sizes, setSizes] = useState(defaultSizes);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef<{ index: number; startPos: number; startSizes: number[] } | null>(null);
+
+  const onPointerDown = useCallback((e: React.PointerEvent, index: number) => {
+    e.preventDefault();
+    const pos = node.axis === "horizontal" ? e.clientX : e.clientY;
+    dragging.current = { index, startPos: pos, startSizes: [...sizes] };
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+  }, [sizes, node.axis]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current || !containerRef.current) return;
+    const { index, startPos, startSizes } = dragging.current;
+    const rect = containerRef.current.getBoundingClientRect();
+    const totalPx = node.axis === "horizontal" ? rect.width : rect.height;
+    const pos = node.axis === "horizontal" ? e.clientX : e.clientY;
+    const deltaPx = pos - startPos;
+    const totalFlex = startSizes.reduce((a, b) => a + b, 0);
+    const deltaFlex = (deltaPx / totalPx) * totalFlex;
+
+    const newSizes = [...startSizes];
+    const minFlex = 0.05 * totalFlex;
+    newSizes[index] = Math.max(minFlex, startSizes[index] + deltaFlex);
+    newSizes[index + 1] = Math.max(minFlex, startSizes[index + 1] - deltaFlex);
+    setSizes(newSizes);
+  }, [node.axis]);
+
+  const onPointerUp = useCallback(() => {
+    dragging.current = null;
+  }, []);
+
+  if (count === 0) {
+    return (
+      <div className={`panel-split panel-split--${node.axis}`}>
+        <div className="panel-split-child" style={{ flex: "1 1 0%" }}>{empty}</div>
+      </div>
+    );
+  }
+
+  const elements: ReactNode[] = [];
+  node.children.forEach((child, index) => {
+    if (index > 0) {
+      elements.push(
+        <div
+          key={`handle-${index}`}
+          className={`panel-split-handle panel-split-handle--${node.axis}`}
+          onPointerDown={(e) => onPointerDown(e, index - 1)}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        />,
+      );
+    }
+    const size = sizes[index] ?? 1;
+    elements.push(
+      <div
+        key={child.id ?? `${child.kind}-${index}`}
+        className="panel-split-child"
+        style={{ flex: `${size} ${size} 0%` }}
+      >
+        <PanelTreeRenderer
+          node={child}
           onNavigate={onNavigate}
           onSelectSession={onSelectSession}
+          empty={empty}
         />
-      ) : (
-        <div className="panel-empty">unknown widget: {leaf.widget.type}</div>
-      ),
-  };
+      </div>,
+    );
+  });
+
+  return (
+    <div ref={containerRef} className={`panel-split panel-split--${node.axis}`}>
+      {elements}
+    </div>
+  );
 }
 
 export function PanelTreeRenderer({
@@ -58,32 +183,8 @@ export function PanelTreeRenderer({
   }
 
   if (node.kind === "split") {
-    const childCount = Math.max(node.children.length, 1);
     return (
-      <div className={`panel-split panel-split--${node.axis}`}>
-        {node.children.map((child, index) => {
-          const size = node.sizes?.[index];
-          return (
-            <div
-              key={child.id ?? `${child.kind}-${index}`}
-              className="panel-split-child"
-              style={{ flex: size && size > 0 ? `${size} ${size} 0%` : `1 1 0%` }}
-            >
-              <PanelTreeRenderer
-                node={child}
-                onNavigate={onNavigate}
-                onSelectSession={onSelectSession}
-                empty={empty}
-              />
-            </div>
-          );
-        })}
-        {node.children.length === 0 ? (
-          <div className="panel-split-child" style={{ flex: `1 1 ${100 / childCount}%` }}>
-            {empty}
-          </div>
-        ) : null}
-      </div>
+      <ResizableSplit node={node} onNavigate={onNavigate} onSelectSession={onSelectSession} empty={empty} />
     );
   }
 
@@ -148,11 +249,9 @@ export function PanelTreeRenderer({
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)",
       }}
     >
-      {node.title ? (
-        <div className="widget-header widget-header--static">
-          <span className="widget-title">{node.title}</span>
-        </div>
-      ) : null}
+      {/* Panel title intentionally omitted on pages — tab labels and list
+         headers already identify content. Add showTitle to the node schema
+         if an explicit section label is ever needed. */}
       <div style={{ minHeight: 0, flex: 1, display: "flex", flexDirection: "column" }}>
         <PanelSurface
           mode={node.kind}

@@ -645,6 +645,28 @@
   overflow: hidden;
 }
 
+.panel-split-handle {
+  flex: 0 0 4px;
+  background: transparent;
+  transition: background 0.15s;
+  touch-action: none;
+}
+
+.panel-split-handle--horizontal {
+  cursor: col-resize;
+  width: 4px;
+}
+
+.panel-split-handle--vertical {
+  cursor: row-resize;
+  height: 4px;
+}
+
+.panel-split-handle:hover,
+.panel-split-handle:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .panel-surface-item-body {
   min-width: 0;
 }

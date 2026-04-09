@@ -41,6 +41,7 @@ import { AgentPortal } from "./components/AgentPortal";
 import type { DashboardPage } from "./widgets";
 
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
+import { useInputValue, getInputValue } from "./inputStore";
 
 function parseTagList(raw?: string | null): string[] {
   if (!raw) return [];
@@ -106,6 +107,12 @@ function AppShell() {
   );
 }
 
+/** Thin wrapper that subscribes to the input store so AppContent doesn't re-render on keystrokes. */
+function ConnectedChatInput(props: Omit<Parameters<typeof ChatInput>[0], "value">) {
+  const input = useInputValue();
+  return <ChatInput {...props} value={input} />;
+}
+
 type HashRouter = ReturnType<typeof useHashRouter>;
 
 function AppContent({ router }: { router: HashRouter }) {
@@ -120,7 +127,7 @@ function AppContent({ router }: { router: HashRouter }) {
   } = useProfiles();
   const {
     activeSession, serverSessions,
-    input, handleInputChange,
+    handleInputChange,
     send, stop, stopTask, newSession, selectSession, archiveSession,
     refreshSessions,
     handlePermissionResponse, updateActiveSessionConfig, updateActiveSessionProfile,
@@ -548,7 +555,6 @@ function AppContent({ router }: { router: HashRouter }) {
           onNewSession={handleNewSession}
           onSelectSession={handleSelectSession}
           onArchiveSession={archiveSession}
-          activeInput={input}
           onSelectProfile={selectProfile}
           onSetupChange={setSetupState}
           setupState={setupState}
@@ -672,8 +678,7 @@ function AppContent({ router }: { router: HashRouter }) {
               totalCost={activeSession?.totalCost}
               cwd={activeSession?.cwd}
             />
-            <ChatInput
-              value={input}
+            <ConnectedChatInput
               onChange={handleInputChange}
               onSend={send}
               onStop={stop}
@@ -797,7 +802,7 @@ function AppContent({ router }: { router: HashRouter }) {
                 modus.detachMove(moveName, apiToken).catch(() => {});
               }}
               sessionId={activeSession?.id}
-              onSendToAgent={(text) => handleInputChange(input ? `${input}\n${text}` : text)}
+              onSendToAgent={(text) => { const current = getInputValue(); handleInputChange(current ? `${current}\n${text}` : text); }}
             />
           </>
         )}
@@ -808,6 +813,7 @@ function AppContent({ router }: { router: HashRouter }) {
                 <PageView
                   blocks={page.blocks}
                   layout={page.layout as any}
+                  context={(page as any).context}
                   padding={(page as any).padding}
                   onNavigate={navigate}
                   onSelectSession={handleViewSession}

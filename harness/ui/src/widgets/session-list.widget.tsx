@@ -9,6 +9,7 @@
 
 import { useCallback } from "react";
 import { modus } from "../modusClient";
+import { useInputValue } from "../inputStore";
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { getSessionState } from "../sessionStore";
@@ -21,9 +22,10 @@ type SessionListConfig = WidgetBase & {
   groupMode?: "time" | "agent";
 };
 
-export default function SessionListWidget({ config, widgetId, onSelectSession }: WidgetProps<SessionListConfig>) {
+export default function SessionListWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<SessionListConfig>) {
   const { activeUserProfile, uiState, saveUiState } = useProfiles();
-  const { activeSession, serverSessions, input, archiveSession, refreshSessions, newSession } = useSession();
+  const { activeSession, serverSessions, archiveSession, refreshSessions, newSession } = useSession();
+  const input = useInputValue();
 
   const [groupMode, setGroupMode] = useWidgetUiState<"time" | "agent">(
     { userProfile: activeUserProfile },
@@ -83,9 +85,15 @@ export default function SessionListWidget({ config, widgetId, onSelectSession }:
       </div>
       <SessionList
         sessions={sessions}
-        activeSessionId={activeSession?.id ?? null}
+        activeSessionId={(pageContext?.get("selectedSession") as string | undefined) ?? activeSession?.id ?? null}
         groupMode={groupMode}
-        onSelectSession={onSelectSession}
+        onSelectSession={(id) => {
+          if (pageContext) {
+            pageContext.set("selectedSession", id);
+          } else {
+            onSelectSession(id);
+          }
+        }}
         onArchiveSession={archiveSession}
         activeInput={input}
         initialCollapsedGroups={uiState.sidebarCollapsedGroups}

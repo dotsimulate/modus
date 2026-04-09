@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { Profile, SessionInfo, SearchHit, UserProfile } from "../../../sdk/index";
 import { modus } from "../modusClient";
+import { useInputValue } from "../inputStore";
 import type { SessionSetupState } from "./SessionSetup";
 import { SessionList } from "./sidebar/SessionList";
 import { SearchResults } from "./sidebar/SearchResults";
@@ -21,7 +22,6 @@ type Props = {
   onNewSession: () => void;
   onSelectSession: (id: string) => void;
   onArchiveSession: (id: string) => void;
-  activeInput?: string;
   onSelectProfile: (name: string) => void;
   onSetupChange: (setup: SessionSetupState) => void;
   setupState: SessionSetupState;
@@ -52,8 +52,9 @@ export function Sidebar({
   onGroupModeChange, onCollapsedGroupsChange,
   activeUserProfileObj, availableProviders,
   navLinks, currentView, onNavigate, navOnly,
-  activeInput, onTogglePin,
+  onTogglePin,
 }: Props) {
+  const activeInput = useInputValue();
   const [groupMode, setGroupMode] = useState<GroupMode>(initialGroupMode ?? "time");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchHit[]>([]);

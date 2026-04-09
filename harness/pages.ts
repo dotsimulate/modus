@@ -6,6 +6,8 @@ export type ConfigPage = {
   title: string;
   blocks?: unknown[];
   layout?: unknown;
+  /** Initial page-scoped shared state for widget linking (pub/sub) */
+  context?: Record<string, unknown>;
   padding?: number;
   source?: string;
 };

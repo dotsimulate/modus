@@ -1,14 +1,81 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 import { Actions } from "./Actions";
 import { GitPanel } from "./GitPanel";
 import { WIDGETS, WidgetChromeContext } from "../widgets";
-import type { DashboardBlock, DashboardModule, LayoutNode, WidgetBase, WidgetSize } from "../widgets";
+import type { DashboardBlock, DashboardModule, LayoutNode, PageContextHandle, WidgetBase, WidgetSize } from "../widgets";
 import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
 import { RightPanelContextProvider } from "./RightPanelContext";
 import { PanelTreeRenderer } from "./PanelTreeRenderer";
+
+// ── Page-scoped shared state bus ──
+
+type PageStateBus = {
+  state: Record<string, unknown>;
+  listeners: Set<() => void>;
+  get: (key: string) => unknown;
+  set: (key: string, value: unknown) => void;
+  subscribe: (cb: () => void) => () => void;
+  getSnapshot: () => Record<string, unknown>;
+};
+
+function createPageStateBus(initial: Record<string, unknown>): PageStateBus {
+  const bus: PageStateBus = {
+    state: { ...initial },
+    listeners: new Set(),
+    get(key) { return bus.state[key]; },
+    set(key, value) {
+      if (bus.state[key] === value) return;
+      bus.state = { ...bus.state, [key]: value };
+      bus.listeners.forEach((cb) => cb());
+    },
+    subscribe(cb) {
+      bus.listeners.add(cb);
+      return () => { bus.listeners.delete(cb); };
+    },
+    getSnapshot() { return bus.state; },
+  };
+  return bus;
+}
+
+const PageStateBusContext = createContext<PageStateBus | null>(null);
+
+/** Hook for widgets to access their scoped page context slice */
+export function usePageContext(
+  publishKeys?: Record<string, string>,
+  subscribeKeys?: Record<string, string>,
+): PageContextHandle | undefined {
+  const bus = useContext(PageStateBusContext);
+  // Subscribe to state changes so widget re-renders on relevant updates
+  useSyncExternalStore(
+    bus ? bus.subscribe : () => () => {},
+    bus ? bus.getSnapshot : () => ({}),
+  );
+
+  const publishRef = useRef(publishKeys);
+  publishRef.current = publishKeys;
+  const subscribeRef = useRef(subscribeKeys);
+  subscribeRef.current = subscribeKeys;
+
+  const get = useCallback((key: string): unknown => {
+    if (!bus) return undefined;
+    // Translate widget-local key to page context key via subscribe mapping
+    const contextKey = subscribeRef.current?.[key] ?? key;
+    return bus.get(contextKey);
+  }, [bus]);
+
+  const set = useCallback((key: string, value: unknown): void => {
+    if (!bus) return;
+    // Translate widget-local key to page context key via publish mapping
+    const contextKey = publishRef.current?.[key] ?? key;
+    bus.set(contextKey, value);
+  }, [bus]);
+
+  if (!bus) return undefined;
+  return { get, set };
+}
 
 type LegacyPagePanelNode = {
   kind: "panel";
@@ -239,47 +306,53 @@ export function PageRenderer({
 export function PageView({
   blocks,
   layout,
+  context,
   padding,
   onNavigate,
   onSelectSession,
 }: {
   blocks?: DashboardBlock[];
   layout?: PageLayoutInput;
+  context?: Record<string, unknown>;
   padding?: number;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
 }) {
   const { activeCwd } = useProfiles();
   const normalizedLayout = layout ? normalizePageLayoutNode(layout) : undefined;
+  // Stable ref — only create bus once per mount
+  const [bus] = useState(() => createPageStateBus(context ?? {}));
 
   if (normalizedLayout) {
     return (
-      <div className="dashboard" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            padding: `${padding ?? 0}px`,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <RightPanelContextProvider value={{
-            messages: [],
-            sessionId: null,
-            browserPath: null,
-            activeWidgetId: null,
-            setBrowserPath: () => {},
-            requestOpen: () => {},
-          }}>
-            <PanelTreeRenderer
-              node={normalizedLayout}
-              onNavigate={onNavigate}
-              onSelectSession={onSelectSession}
-            />
-          </RightPanelContextProvider>
+      <PageStateBusContext.Provider value={bus}>
+        <div className="dashboard" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              padding: `${padding ?? 0}px`,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <RightPanelContextProvider value={{
+              messages: [],
+              sessionId: null,
+              browserPath: null,
+              activeWidgetId: null,
+              setBrowserPath: () => {},
+              requestOpen: () => {},
+            }}>
+              <PanelTreeRenderer
+                node={normalizedLayout}
+                onNavigate={onNavigate}
+                onSelectSession={onSelectSession}
+              />
+            </RightPanelContextProvider>
+          </div>
         </div>
-      </div>
+      </PageStateBusContext.Provider>
     );
   }
 

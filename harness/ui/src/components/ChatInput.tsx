@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useId } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useId } from "react";
 import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMoveResult, MoveBinding, ActivateMoveResult } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { PromptPicker } from "./PromptPicker";
@@ -212,7 +212,9 @@ export function ChatInput({
     userProfileRef.current = userProfile;
   }, [onChange, projectCwd, sessionId, userProfile, value]);
 
-  useEffect(() => {
+  // Resize for programmatic value changes (history nav, draft load, insertText).
+  // Typing path is handled synchronously in onInput to avoid post-paint reflow.
+  useLayoutEffect(() => {
     const ta = ref.current;
     if (ta) {
       ta.style.height = "auto";
@@ -626,6 +628,11 @@ export function ChatInput({
             placeholder={attachedMove || widgetContent ? "add context... (optional)" : (placeholder ?? "message... (drop or paste images)")}
             value={value}
             onChange={(e) => onChange(e.target.value)}
+            onInput={(e) => {
+              const ta = e.currentTarget;
+              ta.style.height = "auto";
+              ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+            }}
             onKeyDown={handleKeyDown}
             onBeforeInput={handleBeforeInput}
             onPaste={handlePaste}

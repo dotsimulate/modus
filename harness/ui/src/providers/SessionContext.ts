@@ -13,7 +13,6 @@ export type QueuedMessage = {
 type SessionContextValue = {
   activeSession: Session | null;
   serverSessions: SessionInfo[];
-  input: string;
   handleInputChange: (text: string) => void;
   send: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => Promise<void>;
   stop: () => Promise<void>;

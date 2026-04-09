@@ -14,6 +14,7 @@ import type { WidgetDef, WidgetProps, WidgetBase, DashboardConfig } from "./type
 
 // ── Widget component imports ──
 
+import ActionCardWidget from "./action-card.widget";
 import AccountWidget from "./account.widget";
 import AgentActivityWidget from "./agent-activity.widget";
 import ClaudePricingWidget from "./claude-pricing.widget";
@@ -29,10 +30,12 @@ import ProfileCardWidget from "./profile-card.widget";
 import ProjectThemeWidget from "./project-theme.widget";
 import ProviderStatusWidget from "./provider-status.widget";
 import ProviderUsageWidget from "./provider-usage.widget";
+import SessionChatWidget from "./session-chat.widget";
 import SessionControlWidget from "./session-control.widget";
 import SessionEditsWidget from "./session-edits.widget";
 import SessionInfoWidget from "./session-info.widget";
 import SessionListWidget from "./session-list.widget";
+import SessionSidebarWidget from "./session-sidebar.widget";
 import SessionTerminalWidget from "./session-terminal.widget";
 import SessionsWidget from "./sessions.widget";
 import StatsWidget from "./stats.widget";
@@ -41,6 +44,13 @@ import TerminalsWidget from "./terminals.widget";
 // ── Registry ──
 
 export const WIDGET_DEFS: Record<string, WidgetDef> = {
+  "action-card": {
+    type: "action-card",
+    component: ActionCardWidget,
+    minHeight: 80,
+    preferredHeight: 150,
+    maxHeight: 200,
+  },
   "account": {
     type: "account",
     component: AccountWidget,
@@ -139,6 +149,12 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     minHeight: 100,
     preferredHeight: 220,
   },
+  "session-chat": {
+    type: "session-chat",
+    component: SessionChatWidget,
+    minHeight: 200,
+    preferredHeight: 500,
+  },
   "session-control": {
     type: "session-control",
     component: SessionControlWidget,
@@ -165,6 +181,12 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     component: SessionListWidget,
     minHeight: 160,
     preferredHeight: 320,
+  },
+  "session-sidebar": {
+    type: "session-sidebar",
+    component: SessionSidebarWidget,
+    minHeight: 150,
+    preferredHeight: 300,
   },
   "session-terminal": {
     type: "session-terminal",
