@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
+import { setInputValue, getInputValue } from "../inputStore";
 import type { Session, SessionInfo, Attachment, ApiAttachment, MoveBinding } from "../../../sdk/index";
 import { createInitialState } from "../eventReducer";
 import {
@@ -20,7 +21,7 @@ import {
   rekeySession, removeSession, evictInactiveSessions, onSessionRekey,
 } from "../sessionStore";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
-import { SessionContext } from "./SessionContext";
+import { SessionContext, type QueuedMessage } from "./SessionContext";
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
@@ -30,7 +31,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [input, setInput] = useState("");
   const [queuedMessage, setQueuedMessage] = useState<QueuedMessage | null>(null);
 
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -217,12 +217,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const saveDraftForCurrent = useCallback(async (text?: string) => {
     if (activeSessionId && !activeSessionId.startsWith("pending-")) {
-      await modus.saveDraft(activeSessionId, text ?? input).catch(() => {});
+      await modus.saveDraft(activeSessionId, text ?? getInputValue()).catch(() => {});
     }
-  }, [activeSessionId, input]);
+  }, [activeSessionId]);
 
   const handleInputChange = useCallback((text: string) => {
-    setInput(text);
+    setInputValue(text);
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     if (activeSessionId && !activeSessionId.startsWith("pending-")) {
       draftTimerRef.current = setTimeout(() => {
@@ -298,12 +298,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setActiveSessionId(id);
       evictInactiveSessions(id);
       await refreshSessions();
-      setInput("");
+      setInputValue("");
       setQueuedMessage(null);
       return id;
     } catch {
       setActiveSessionId(null);
-      setInput("");
+      setInputValue("");
       setQueuedMessage(null);
       return null;
     }
@@ -388,7 +388,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // which session the user navigates to (Domain A).
 
     const draft = await modus.getDraft(id).catch(() => "");
-    setInput(draft);
+    setInputValue(draft);
 
     setQueuedMessage(null);
   }, [serverSessions, saveDraftForCurrent, refreshSessions]);
@@ -406,7 +406,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // ── Send message ──
 
   const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => {
-    const prompt = (textOverride ?? input).trim();
+    const prompt = (textOverride ?? getInputValue()).trim();
     if (!prompt && sendAttachments.length === 0) return;
 
     if (draftTimerRef.current) {
@@ -414,7 +414,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       draftTimerRef.current = null;
     }
 
-    setInput("");
+    setInputValue("");
 
     if (activeSessionId) modus.saveDraft(activeSessionId, "").catch(() => {});
 
@@ -568,7 +568,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [
-    input,
     activeSession,
     activeSessionId,
     selectedProfile,
@@ -607,7 +606,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // Legacy path: was queued frontend-only (shouldn't happen with new flow)
     const { text, attachments } = queuedMessage;
     setQueuedMessage(null);
-    setInput(text);
+    setInputValue(text);
     setTimeout(() => sendRef.current(attachments), 0);
   }, [activeSession?.status, queuedMessage]);
 
@@ -617,7 +616,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       modus.cancelQueuedDispatch(activeSessionId, queuedMessage.dispatchId).catch(() => {});
     }
     // Restore text back to input
-    setInput(queuedMessage.text);
+    setInputValue(queuedMessage.text);
     setQueuedMessage(null);
   }, [activeSessionId, queuedMessage]);
 
@@ -666,7 +665,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const newId = await modus.branchSession(activeSessionId, branchAt);
       await refreshSessions();
       await selectSession(newId);
-      if (prefill) setInput(prefill);
+      if (prefill) setInputValue(prefill);
     } catch (err) {
       console.error("Branch failed:", err);
     }
@@ -675,7 +674,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   return (
     <SessionContext.Provider value={{
       activeSession, serverSessions,
-      input, handleInputChange,
+      handleInputChange,
       send, stop, stopTask, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,
       queuedMessage, cancelQueued, updateActiveSessionConfig, updateActiveSessionProfile,

@@ -1,0 +1,147 @@
+/**
+ * Action Card widget — single action status and trigger.
+ *
+ * Config: { "type": "action-card", "id": "heartbeat-card", "actionName": "heartbeat" }
+ *
+ * Shows one action's status, last run info, and a trigger button.
+ */
+
+import { useState, useEffect, useCallback } from "react";
+import { modus } from "../modusClient";
+import { useProfiles } from "../providers/ProfileContext";
+import type { ActionInfo, ActionRun } from "../../../sdk/index";
+import type { WidgetBase, WidgetProps } from "./types";
+import { WidgetEmptyState } from "./widget-components";
+
+type ActionCardConfig = WidgetBase & {
+  type: "action-card";
+  actionName?: string;
+};
+
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return `${Math.floor(diff / 86400000)}d ago`;
+}
+
+function dotClass(a: ActionInfo): string {
+  if (a.running) return "streaming";
+  if (a.exhausted) return "done";
+  if (!a.enabled) return "idle";
+  if (a.lastStatus === "error" || a.lastStatus === "failed-verification") return "error";
+  return "running";
+}
+
+export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfig>) {
+  const { activeUserProfile } = useProfiles();
+  const [action, setAction] = useState<ActionInfo | null>(null);
+  const [lastRun, setLastRun] = useState<ActionRun | null>(null);
+  const [, setTick] = useState(0);
+
+  const actionName = config.actionName;
+
+  // Poll for action state
+  useEffect(() => {
+    if (!actionName) return;
+    let active = true;
+
+    const poll = async () => {
+      try {
+        const actions = await modus.listActions(activeUserProfile);
+        const found = actions.find((a) => a.name === actionName);
+        if (active && found) setAction(found);
+      } catch { /* silent */ }
+
+      try {
+        const runs = await modus.getActionRuns(actionName);
+        if (active && runs.length > 0) setLastRun(runs[0]);
+      } catch { /* silent */ }
+    };
+
+    poll();
+    const interval = setInterval(poll, 3000);
+    const tickInterval = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => { active = false; clearInterval(interval); clearInterval(tickInterval); };
+  }, [actionName, activeUserProfile]);
+
+  const handleTrigger = useCallback(async () => {
+    if (!actionName) return;
+    await modus.triggerAction(actionName).catch(() => {});
+  }, [actionName]);
+
+  const handleToggle = useCallback(async (enabled: boolean) => {
+    if (!actionName) return;
+    await modus.patchAction(actionName, { enabled }).catch(() => {});
+    setAction((prev) => prev ? { ...prev, enabled } : prev);
+  }, [actionName]);
+
+  if (!actionName) {
+    return <WidgetEmptyState>no action configured</WidgetEmptyState>;
+  }
+
+  if (!action) {
+    return <WidgetEmptyState>loading {actionName}...</WidgetEmptyState>;
+  }
+
+  const dot = dotClass(action);
+  const runCount = action.cycleRunCount;
+
+  return (
+    <div className="action-card-widget">
+      <div className="action-card-header">
+        <span className={`dash-dot dash-dot--${dot}`} />
+        <span className="action-card-name">{action.name}</span>
+        {action.running && <span className="action-card-live">running</span>}
+        {action.exhausted && !action.running && <span className="action-card-done">complete</span>}
+      </div>
+
+      {action.description && (
+        <div className="action-card-desc">{action.description}</div>
+      )}
+
+      <div className="action-card-meta">
+        <span className="action-card-tag">{action.agentProfile}</span>
+        <span className="action-card-stat">{runCount} runs</span>
+        {action.maxRuns && (
+          <span className="action-card-stat">/ {action.maxRuns} max</span>
+        )}
+        {action.cycleInterval && (
+          <span className="action-card-stat">cycle {action.cycleNumber}</span>
+        )}
+      </div>
+
+      {lastRun && (
+        <div className="action-card-lastrun">
+          <span className={`dash-dot dash-dot--${lastRun.status === "done" ? "done" : lastRun.status === "error" ? "error" : "idle"}`} />
+          <span className="action-card-lastrun-summary">
+            {lastRun.summary || lastRun.status}
+          </span>
+          {lastRun.startedAt && (
+            <span className="action-card-lastrun-ago">{timeAgo(lastRun.startedAt)}</span>
+          )}
+          {lastRun.costUsd > 0 && (
+            <span className="action-card-lastrun-cost">${lastRun.costUsd.toFixed(3)}</span>
+          )}
+        </div>
+      )}
+
+      <div className="action-card-controls">
+        <button
+          className={`action-card-toggle ${action.enabled ? "action-card-toggle--on" : ""}`}
+          onClick={() => handleToggle(!action.enabled)}
+        >
+          {action.enabled ? "enabled" : "disabled"}
+        </button>
+        <button
+          className="action-card-trigger"
+          onClick={handleTrigger}
+          disabled={action.activeSessions >= (action.concurrency ?? 1)}
+        >
+          run
+        </button>
+      </div>
+    </div>
+  );
+}

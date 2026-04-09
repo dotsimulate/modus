@@ -6,7 +6,7 @@
  * connection gets its own reducer instance.
  */
 
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useCallback } from "react";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
 import { subscribeEvents } from "./modusClient";
 import { nextMsgId, type Session, type SessionHistorySnapshot } from "../../sdk/index";
@@ -21,6 +21,8 @@ type SessionEntry = {
   nextAgentConfig?: Session["nextAgentConfig"];
   /** True while we're replaying historical SSE events — suppresses spurious "running" status */
   catchingUp?: boolean;
+  /** Per-session revision — useSessionState only re-renders when this changes */
+  revision: number;
 };
 
 type Subscription = {
@@ -62,6 +64,7 @@ export function setSessionState(id: string, state: ReducerState, profile?: strin
     provider: existing?.provider,
     nextProfile: existing?.nextProfile,
     nextAgentConfig: existing?.nextAgentConfig,
+    revision: (existing?.revision ?? 0) + 1,
   });
   notify();
 }
@@ -108,6 +111,7 @@ export function setSessionNextProfile(id: string, nextProfile?: string) {
   const entry = sessions.get(id);
   if (!entry) return;
   entry.nextProfile = nextProfile || undefined;
+  entry.revision++;
   notify();
 }
 
@@ -116,6 +120,7 @@ export function setSessionNextAgentConfig(id: string, nextAgentConfig?: Session[
   const entry = sessions.get(id);
   if (!entry) return;
   entry.nextAgentConfig = nextAgentConfig;
+  entry.revision++;
   notify();
 }
 
@@ -177,6 +182,7 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
       entry.nextAgentConfig = undefined;
     }
   }
+  entry.revision++;
   notify(); // single React re-render for the entire batch
 }
 
@@ -212,6 +218,7 @@ export function applyEvent(id: string, event: any, seq: number) {
     entry.nextProfile = undefined;
     entry.nextAgentConfig = undefined;
   }
+  entry.revision++;
   notify();
 }
 
@@ -238,6 +245,7 @@ export function rekeySession(oldId: string, newId: string) {
   rekeyMap.set(oldId, newId);
   sessions.delete(oldId);
   entry.state = { ...entry.state, sessionId: newId };
+  entry.revision++;
   sessions.set(newId, entry);
 
   // Also migrate subscription if one exists
@@ -274,7 +282,7 @@ export function subscribeSession(
   // Ensure store entry exists
   if (!sessions.has(sessionId)) {
     const state = createInitialState(sessionId);
-    sessions.set(sessionId, { state, profile });
+    sessions.set(sessionId, { state, profile, revision: 1 });
     notify();
   } else if (profile) {
     const entry = sessions.get(sessionId)!;
@@ -323,6 +331,7 @@ export function subscribeSession(
           // Exhausted retries — mark idle
           entry.state = { ...st, status: "idle" };
           (entry as any)[retryKey] = 0;
+          entry.revision++;
           notify();
         }
       }
@@ -347,6 +356,7 @@ export function subscribeSession(
       if (entry) {
         entry.catchingUp = false;
         entry.state = { ...entry.state, status: "error" };
+        entry.revision++;
         notify();
       }
       console.error("Event stream error:", error);
@@ -454,10 +464,15 @@ export function getStoreSnapshot(): number {
 
 /**
  * React hook — returns the derived Session for a given session ID.
- * Re-renders when any store state changes.
+ * Only re-renders when the watched session's revision changes,
+ * not on every global store mutation.
  */
 export function useSessionState(id: string | null): Session | null {
-  useSyncExternalStore(subscribe, getSnapshot);
+  const getSessionSnap = useCallback(
+    () => id ? (sessions.get(id)?.revision ?? 0) : 0,
+    [id],
+  );
+  useSyncExternalStore(subscribe, getSessionSnap);
   if (!id) return null;
   const entry = sessions.get(id);
   if (!entry) return null;
@@ -466,10 +481,14 @@ export function useSessionState(id: string | null): Session | null {
 
 /**
  * React hook — returns the raw ReducerState for a session.
- * Use when you need internal accumulators.
+ * Only re-renders when the watched session changes.
  */
 export function useSessionReducerState(id: string | null): ReducerState | null {
-  useSyncExternalStore(subscribe, getSnapshot);
+  const getSessionSnap = useCallback(
+    () => id ? (sessions.get(id)?.revision ?? 0) : 0,
+    [id],
+  );
+  useSyncExternalStore(subscribe, getSessionSnap);
   if (!id) return null;
   return sessions.get(id)?.state ?? null;
 }

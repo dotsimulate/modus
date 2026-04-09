@@ -25,6 +25,7 @@ export type {
   PageLayoutNode,
   DashboardPage,
   DashboardConfig,
+  PageContextHandle,
 } from "./types";
 
 // Chrome context

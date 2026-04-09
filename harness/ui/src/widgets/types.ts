@@ -17,6 +17,12 @@ export type WidgetBase = {
   collapsed?: boolean;
 };
 
+/** Scoped read/write handle into page-level shared state */
+export type PageContextHandle = {
+  get: (key: string) => unknown;
+  set: (key: string, value: unknown) => void;
+};
+
 /** Props passed to every widget component */
 export type WidgetProps<C extends WidgetBase = WidgetBase> = {
   config: C;
@@ -24,12 +30,15 @@ export type WidgetProps<C extends WidgetBase = WidgetBase> = {
   active?: boolean;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
+  pageContext?: PageContextHandle;
 };
 
 /** What a widget registration entry looks like */
 export type WidgetDef = {
   type: string;
   component: ComponentType<WidgetProps<any>>;
+  /** Compact variant for dense dashboards / small panels */
+  miniComponent?: ComponentType<WidgetProps<any>>;
   zones?: WidgetZone[];
   /** Minimum height in px when rendered in list mode */
   minHeight?: number;
@@ -74,6 +83,10 @@ export type LayoutLeaf = {
   kind: "widget";
   id?: string;
   widget: WidgetBase;
+  /** Map widget output keys → page context keys */
+  publish?: Record<string, string>;
+  /** Map widget input keys ← page context keys */
+  subscribe?: Record<string, string>;
 };
 
 export type LayoutNode =

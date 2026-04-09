@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useMemo } from "react";
 import { API_BASE, authHeaders } from "./modusClient";
 import type { ClientExtensionManifestItem } from "../../sdk/index";
 
@@ -226,15 +226,15 @@ export function activateComposer(id: string): void {
 }
 
 export function useComposerActions(composerId: string): ComposerActionView[] {
-  useSyncExternalStore(subscribeComposerActions, getComposerActionsSnapshot);
-  return Array.from(composerActions.values())
+  const snapshot = useSyncExternalStore(subscribeComposerActions, getComposerActionsSnapshot);
+  return useMemo(() => Array.from(composerActions.values())
     .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key))
     .map((action) => ({
       key: action.key,
       extensionId: action.extensionId,
       ...action.state,
       perform: () => performComposerAction(action, composerId),
-    }));
+    })), [snapshot, composerId]);
 }
 
 function createApi(extensionId: string, settings: Record<string, unknown> = {}): ClientExtensionApi {
