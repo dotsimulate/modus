@@ -892,10 +892,14 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
     // (via queueMessage → _queueMessageAsync). We give them a grace period so the
     // SSE stream stays open long enough for the async message pipeline to set
     // status back to "running" and start emitting events.
+    const catchupLastSeq = pastEvents.length > 0
+      ? pastEvents[pastEvents.length - 1].seq
+      : afterSeq;
+
     const active = getActiveSession(sessionId);
     if (active && active.status !== "error") {
       if (
-        active.liveStream.seq > afterSeq
+        active.liveStream.seq > catchupLastSeq
         && (active.liveStream.text || active.liveStream.thinking || active.liveStream.feed)
       ) {
         await writer.write("system", JSON.stringify({
