@@ -96,24 +96,19 @@ export function LayoutProvider({ view, children }: { view: View; children: React
   const [rightPanelBrowserPath, setRightPanelBrowserPath] = useState<string | null>(null);
   const [requestRightPanelView, setRequestRightPanelView] = useState<string | null>(null);
 
-  // ── Reset panel state on view change ──
-  // When navigating between views, apply user-persisted layout for the new
-  // view, falling back to built-in defaults. Chat is special — per-session
-  // restore handles that separately.
+  // ── Sync view-specific config on view change ──
+  // Panel open/closed and width carry over across views — only mode,
+  // widgets, and browser path are view-specific.
   const prevViewRef = useRef<View>(view);
   useEffect(() => {
     if (view === prevViewRef.current) return;
     prevViewRef.current = view;
     // Don't reset when entering chat — per-session restore handles that
     if (view === "chat") return;
-    const defaults = getDefaults(view);
     const userLayout = activeUP?.layouts?.[view];
-    setLeftPanelOpen(defaults.left.open);
-    setLeftPanelWidth(defaults.left.width);
-    setLeftPanelMode(userLayout?.left?.mode ?? defaults.left.mode);
-    setRightPanelOpen(defaults.right.open);
-    setRightPanelWidth(defaults.right.width);
-    setRightPanelMode(userLayout?.right?.mode ?? defaults.right.mode);
+    const defs = getDefaults(view);
+    setLeftPanelMode(userLayout?.left?.mode ?? defs.left.mode);
+    setRightPanelMode(userLayout?.right?.mode ?? defs.right.mode);
     setRightPanelBrowserPath(null);
     setRequestRightPanelView(null);
   }, [view, activeUP]);
@@ -222,7 +217,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
   }, [activeSession?.id, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Resolve left panel widgets ──
-  // Priority: user profile per-view override → legacy leftPanel.widgets (chat only) → view defaults
+  // Priority: local state (optimistic) → user profile per-view override → legacy → view defaults
   const defaults = getDefaults(view);
   const userViewLayout = activeUP?.layouts?.[view];
   const leftLayoutWidgets = userViewLayout?.left?.widgets;
@@ -230,7 +225,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
   const legacyLeftWidgets = activeUP?.leftPanel?.widgets;
   const legacyLeftWidgetConfigs = normalizePanelWidgets("left", legacyLeftWidgets);
   const defaultLeftWidgetConfigs = normalizePanelWidgets("left", defaults.left.widgets);
-  const leftPanelWidgets = leftLayoutWidgets
+  const profileLeftWidgets = leftLayoutWidgets
     ? leftWidgetConfigs
     : (view === "chat"
         ? (legacyLeftWidgets ? legacyLeftWidgetConfigs : defaultLeftWidgetConfigs)
@@ -239,8 +234,21 @@ export function LayoutProvider({ view, children }: { view: View; children: React
   const rightLayoutWidgets = userViewLayout?.right?.widgets;
   const rightWidgetConfigs = normalizePanelWidgets("right", rightLayoutWidgets);
   const defaultRightWidgetConfigs = normalizePanelWidgets("right", defaults.right.widgets);
-  const rightPanelWidgets = rightLayoutWidgets ? rightWidgetConfigs : defaultRightWidgetConfigs;
+  const profileRightWidgets = rightLayoutWidgets ? rightWidgetConfigs : defaultRightWidgetConfigs;
   const rightPanelModeResolved = userViewLayout?.right?.mode ?? defaults.right.mode;
+
+  // Local widget state — enables instant UI updates on add/remove.
+  // Syncs from profile when the profile or view changes.
+  const [leftPanelWidgets, setLeftPanelWidgets] = useState<WidgetBase[]>(profileLeftWidgets);
+  const [rightPanelWidgets, setRightPanelWidgets] = useState<WidgetBase[]>(profileRightWidgets);
+
+  useEffect(() => {
+    setLeftPanelWidgets(profileLeftWidgets);
+  }, [JSON.stringify(profileLeftWidgets)]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setRightPanelWidgets(profileRightWidgets);
+  }, [JSON.stringify(profileRightWidgets)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setLeftPanelMode(leftPanelModeResolved);
@@ -262,6 +270,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
 
   // Persist widget changes per-view in the user profile
   const onLeftPanelWidgetsChange = useCallback((widgets: WidgetBase[]) => {
+    setLeftPanelWidgets(widgets);
     if (!activeUserProfile) return;
     // Chat view: also update legacy leftPanel.widgets for backwards compat
     const patch: Record<string, unknown> = {
@@ -283,6 +292,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
   }, [activeUserProfile, refreshUserProfiles, view]);
 
   const onRightPanelWidgetsChange = useCallback((widgets: WidgetBase[]) => {
+    setRightPanelWidgets(widgets);
     if (!activeUserProfile) return;
     const patch: Record<string, unknown> = {
       layouts: { [view]: { right: { widgets } } },
