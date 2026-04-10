@@ -55,6 +55,99 @@
   transform: rotate(0deg);
 }
 
+/* ── Action Card ── */
+.action-card-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.action-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.action-card-name {
+  font-weight: 600;
+  color: var(--text);
+}
+.action-card-live {
+  font-size: 10px;
+  color: var(--success);
+  margin-left: auto;
+}
+.action-card-done {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+.action-card-desc {
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.action-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.action-card-tag {
+  color: var(--accent);
+}
+.action-card-lastrun {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.action-card-lastrun-summary {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-card-lastrun-ago {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.action-card-lastrun-cost {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.action-card-controls {
+  display: flex;
+  gap: 6px;
+}
+.action-card-toggle,
+.action-card-trigger {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.1s, border-color 0.1s;
+}
+.action-card-toggle:hover,
+.action-card-trigger:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+.action-card-toggle--on {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+}
+.action-card-trigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 /* ── Mobile: stack half-width widgets ── */
 @media (max-width: 640px) {
   .dashboard-widgets {

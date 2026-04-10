@@ -43,12 +43,14 @@ import type {
   ActionState, ExecutionState, ActionDB, TriggerInfo, SessionOutcome,
   SessionInfo, SearchResult, EventInfo,
   SessionTriggerEvent, SessionTriggerPayload,
+  ActionTerminalHandle,
 } from "./action-types";
 import { MAX_CHAIN_DEPTH } from "./action-types";
 import { sendNotifications, sendActionNotification } from "./notify";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { svgToPngBase64 } from "./svg-render";
 import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBindings } from "./move-runner";
+import { createTerminal as createTerminalPty, killTerminal as killTerminalPty, writeTerminal as writeTerminalPty } from "./terminal-manager";
 
 // ── Constants ──
 
@@ -607,6 +609,26 @@ async function fireAction(
             actionName: name,
             actionRunId: runId ?? undefined,
           });
+        },
+        createTerminal(termOpts = {}) {
+          const term = createTerminalPty({
+            cwd: termOpts.cwd ?? cfg.cwd ?? undefined,
+            shell: termOpts.shell,
+            cols: termOpts.cols,
+            rows: termOpts.rows,
+            env: termOpts.env,
+            ownerType: "action",
+            ownerName: name,
+            kind: "action",
+            interactive: true,
+          });
+          const handle: ActionTerminalHandle = {
+            id: term.id,
+            write(data: string) { writeTerminalPty(term.id, data); },
+            kill() { killTerminalPty(term.id); },
+            waitForExit() { return term.proc.exited; },
+          };
+          return handle;
         },
         svgToPngBase64,
       };

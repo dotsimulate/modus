@@ -3157,8 +3157,12 @@ app.post("/api/terminals", async (c) => {
 
 app.get("/api/terminals", (c) => {
   const filterSessionId = c.req.query("sessionId") ?? null;
+  const filterOwnerType = c.req.query("ownerType") ?? null;
+  const filterOwnerName = c.req.query("ownerName") ?? null;
   const active = getAllActiveTerminals()
     .filter(t => !filterSessionId || t.sessionId === filterSessionId)
+    .filter(t => !filterOwnerType || t.ownerType === filterOwnerType)
+    .filter(t => !filterOwnerName || t.ownerName === filterOwnerName)
     .map(t => ({
       id: t.id,
       shell: t.shell,

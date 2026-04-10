@@ -711,8 +711,21 @@ export class ModusClient {
   // ── Terminals ──
   /** Creates a new terminal session. */
   async createTerminal(opts: CreateTerminalOpts = {}): Promise<TerminalInfo> { const r = await this.fetch("/api/terminals", { method: "POST", body: JSON.stringify(opts) }); if (!r.ok) throw new Error(`Failed to create terminal: ${r.status}`); return r.json(); }
-  /** Lists terminals, optionally filtered by session. */
-  async listTerminals(sessionId?: string): Promise<TerminalInfo[]> { const q = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""; const r = await this.fetch(`/api/terminals${q}`); if (!r.ok) throw new Error(`Failed to list terminals: ${r.status}`); return r.json(); }
+  /** Lists terminals, optionally filtered by session, ownerType, or ownerName. */
+  async listTerminals(sessionIdOrFilter?: string | { sessionId?: string; ownerType?: string; ownerName?: string }): Promise<TerminalInfo[]> {
+    const params = new URLSearchParams();
+    if (typeof sessionIdOrFilter === "string") {
+      params.set("sessionId", sessionIdOrFilter);
+    } else if (sessionIdOrFilter) {
+      if (sessionIdOrFilter.sessionId) params.set("sessionId", sessionIdOrFilter.sessionId);
+      if (sessionIdOrFilter.ownerType) params.set("ownerType", sessionIdOrFilter.ownerType);
+      if (sessionIdOrFilter.ownerName) params.set("ownerName", sessionIdOrFilter.ownerName);
+    }
+    const q = params.toString() ? `?${params}` : "";
+    const r = await this.fetch(`/api/terminals${q}`);
+    if (!r.ok) throw new Error(`Failed to list terminals: ${r.status}`);
+    return r.json();
+  }
   /** Returns terminal info. */
   async getTerminal(id: string): Promise<TerminalInfo> { const r = await this.fetch(`/api/terminals/${id}`); if (!r.ok) throw new Error(`Failed to get terminal: ${r.status}`); return r.json(); }
   /** Destroys a terminal. */
