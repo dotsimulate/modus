@@ -6,6 +6,7 @@ import { SessionWindow } from "./SessionWindow";
 import { WebComposer } from "./WebComposer";
 import { CustomSelect, type SelectOption } from "./CustomSelect";
 import { useProfiles } from "../providers/ProfileContext";
+import { uuid } from "../utils/format";
 
 import {
   type MoveRun,
@@ -1825,7 +1826,7 @@ export function SessionWeb() {
                 const canvasX = (e.clientX - rect.left) / curScaleX;
                 const canvasY = (e.clientY - rect.top) / curScaleY;
                 const label = `pin ${minimapTags.length + 1}`;
-                const newTag: MinimapTag = { id: crypto.randomUUID(), label, x: canvasX, y: canvasY };
+                const newTag: MinimapTag = { id: uuid(), label, x: canvasX, y: canvasY };
                 setMinimapTags(prev => {
                   const next = [...prev, newTag];
                   localStorage.setItem(`web-mm-tags-${profileName}`, JSON.stringify(next));
