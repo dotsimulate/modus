@@ -3,6 +3,7 @@ import { useProfiles } from "./ProfileContext";
 import { API_BASE, authHeaders } from "../modusClient";
 import { onUiEvent } from "../sessionStore";
 import { PinboardContext, type PinGroup } from "./PinboardContext";
+import { uuid } from "../utils/format";
 
 type PinboardState = {
   groups: PinGroup[];
@@ -10,7 +11,7 @@ type PinboardState = {
 };
 
 function defaultState(): PinboardState {
-  const id = crypto.randomUUID();
+  const id = uuid();
   return { groups: [{ id, name: "main", paths: [] }], activeGroupId: id };
 }
 
@@ -87,7 +88,7 @@ export function PinboardProvider({ children }: { children: ReactNode }) {
   }, [update]);
 
   const addGroup = useCallback((name: string): string => {
-    const id = crypto.randomUUID();
+    const id = uuid();
     update((s) => ({
       groups: [...s.groups, { id, name: name.trim() || "group", paths: [] }],
       activeGroupId: id,
@@ -99,7 +100,7 @@ export function PinboardProvider({ children }: { children: ReactNode }) {
     update((s) => {
       const groups = s.groups.filter((g) => g.id !== id);
       if (groups.length === 0) {
-        const newId = crypto.randomUUID();
+        const newId = uuid();
         return { groups: [{ id: newId, name: "main", paths: [] }], activeGroupId: newId };
       }
       const activeGroupId = s.activeGroupId === id ? groups[0].id : s.activeGroupId;
