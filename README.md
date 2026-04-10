@@ -52,27 +52,53 @@ A multi-provider agent harness with concurrent sessions, configurable profiles, 
 
 ## Quick Start
 
+### 1. Install
+
 ```bash
 git clone https://github.com/dotsimulate/modus.git
 cd modus
-
-# Install all deps (harness, UI, agent memory)
-./modus.sh setup      # Linux / macOS
-.\modus.bat setup     # Windows
-
-# Launch (with watchdog — recommended)
-./modus.sh            # Linux / macOS
-.\modus.bat           # Windows
 ```
 
-One command starts the API server (`:3777`) and frontend (`:5180`). On first run, Modus prompts for a PIN.
+**Linux / macOS:**
+```bash
+./modus.sh setup
+```
 
-**To add Modus to an existing project:**
+**Windows (PowerShell):**
+```powershell
+.\modus.bat setup
+```
+
+This installs dependencies, builds the UI, and registers `modus` as a global command.
+After setup, `modus` works from any directory.
+
+### 2. Open a project
 
 ```bash
-cd /your/project
-modus init            # scaffolds .modus/ with memory MCP and starter profile
+cd /path/to/your/project
+modus
 ```
+
+That's it. If the folder isn't a Modus project yet, it scaffolds `.modus/`, starts the server, and opens your browser to the new project setup screen. The project path and name are pre-filled — just hit create.
+
+If the server is already running, `modus` opens the browser pointed at that folder.
+
+### 3. Other commands
+
+```bash
+modus start          # start the server (foreground, ctrl+c to stop)
+modus start -d       # start as background daemon
+modus stop           # stop a running daemon
+modus status         # show server status, uptime, active sessions
+modus init [path]    # scaffold .modus/ without starting the server
+modus setup          # re-run dependency install + UI build
+modus logs [-f]      # show server logs (-f to follow)
+modus update         # git pull + setup + restart
+modus dev            # dev mode (harness + vite + file watchers)
+modus --version      # print version
+```
+
+On first run, Modus prompts for a PIN.
 
 ## Providers
 
@@ -124,20 +150,23 @@ Missions are longer-running, multi-step, multi-agent project workflows. They coo
 
 See [harness/docs/missions.md](harness/docs/missions.md).
 
-## Watchdog
+## Dev Mode
+
+For developing the harness itself (not for end users):
 
 ```bash
-./modus.sh              # auto-restart, health polling, crash log
-./modus.sh watch:dev    # + auto-reload on .ts changes (development)
+modus dev              # harness + vite dev server + file watchers
+modus dev --watch      # watchdog with auto-reload on .ts changes
+```
 
-# Optional crash notifications via ntfy.sh
-MODUS_NOTIFY_TOPIC=your-topic ./modus.sh
+Optional crash notifications via [ntfy.sh](https://ntfy.sh):
+```bash
+MODUS_NOTIFY_TOPIC=your-topic modus dev
 ```
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) — runtime and package manager
-- [uv](https://docs.astral.sh/uv/) — Python package manager (for the memory server)
 - At least one provider backend (see [Providers](#providers) above)
 
 ## License
