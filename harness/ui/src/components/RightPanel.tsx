@@ -1,10 +1,12 @@
-import { useEffect, type ReactNode } from "react";
-import type { MoveWidgetInfo, Message } from "../../../sdk/index";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import type { MoveWidgetInfo, Message, TerminalInfo } from "../../../sdk/index";
 import { WIDGET_DEFS, WIDGETS, type LayoutNode, type WidgetBase } from "../widgets";
 import { WidgetPicker } from "./WidgetPicker";
-import { MoveWidget } from "./MoveWidget";
+import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { RightPanelContextProvider } from "./RightPanelContext";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
+import { TerminalView } from "./TerminalView";
+import { modus } from "../modusClient";
 
 type Props = {
   open: boolean;
@@ -106,6 +108,54 @@ export function RightPanel({
 }: Props) {
   void tree;
   const validWidgets = (widgets ?? []).filter((w) => WIDGETS[w.type]);
+  const [requestActiveId, setRequestActiveId] = useState<string | null>(null);
+  const clearRequestActive = useCallback(() => setRequestActiveId(null), []);
+  const [widgetReloadKeys, setWidgetReloadKeys] = useState<Record<string, number>>({});
+  const prevMoveWidgetIdsRef = useRef<Set<string>>(new Set());
+
+  // ── Action terminal detection ──
+  // Poll for terminals owned by actions and inject them as panel tabs
+  const [actionTerminals, setActionTerminals] = useState<Map<string, TerminalInfo[]>>(new Map());
+  const prevActionTerminalKeysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      try {
+        const terms = await modus.listTerminals({ ownerType: "action" });
+        if (!active) return;
+        // Group by ownerName (action name)
+        const grouped = new Map<string, TerminalInfo[]>();
+        for (const t of terms) {
+          if (!t.ownerName) continue;
+          const list = grouped.get(t.ownerName) ?? [];
+          list.push(t);
+          grouped.set(t.ownerName, list);
+        }
+        setActionTerminals(grouped);
+      } catch { /* silent */ }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
+
+  // Auto-open panel and select tab when new action terminals appear
+  useEffect(() => {
+    const currentKeys = new Set(actionTerminals.keys());
+    const prev = prevActionTerminalKeysRef.current;
+    let newKey: string | null = null;
+    for (const key of currentKeys) {
+      if (!prev.has(key)) { newKey = key; break; }
+    }
+    prevActionTerminalKeysRef.current = currentKeys;
+    if (newKey) {
+      onOpen();
+      setRequestActiveId(`action-term:${newKey}`);
+    }
+  }, [actionTerminals, onOpen]);
+
+  // Handle requestView — open panel and select the matching tab
   useEffect(() => {
     if (!requestView) return;
     const widgetType = REQUEST_VIEW_TO_WIDGET[requestView];
@@ -114,9 +164,25 @@ export function RightPanel({
       return;
     }
     const target = validWidgets.find((w) => w.type === widgetType);
-    if (target) onOpen();
+    if (target) {
+      onOpen();
+      setRequestActiveId(getRightWidgetId(target));
+    }
     onRequestViewHandled?.();
   }, [onOpen, onRequestViewHandled, requestView, validWidgets]);
+
+  // Auto-select newly added move widgets (with autoOpen)
+  useEffect(() => {
+    const currentIds = new Set((moveWidgets ?? []).map(w => w.instanceId));
+    const prev = prevMoveWidgetIdsRef.current;
+    const newAutoOpen = (moveWidgets ?? []).findLast(
+      w => !prev.has(w.instanceId) && w.widget.autoOpen !== false
+    );
+    prevMoveWidgetIdsRef.current = currentIds;
+    if (newAutoOpen) {
+      setRequestActiveId(`widget:${newAutoOpen.instanceId}`);
+    }
+  }, [moveWidgets]);
 
   const rightPanelContext = {
     messages: messages ?? [],
@@ -156,14 +222,45 @@ export function RightPanel({
       id: `widget:${moveWidget.instanceId}`,
       label: moveWidget.widget.label,
       title: moveWidget.widget.label,
+      onReload: () => {
+        evictWidgetModule(moveWidget.widget.moduleUrl);
+        setWidgetReloadKeys(prev => ({ ...prev, [moveWidget.instanceId]: (prev[moveWidget.instanceId] ?? 0) + 1 }));
+      },
       onClose: () => onWidgetClose?.(moveWidget.apiToken, moveWidget.widget.moveName),
       render: () => (
         <MoveWidget
+          key={`${moveWidget.instanceId}-${widgetReloadKeys[moveWidget.instanceId] ?? 0}`}
           widget={moveWidget.widget}
           apiToken={moveWidget.apiToken}
           instanceId={moveWidget.instanceId}
           sessionId={moveWidget.sessionId}
           mountedOnAttach={moveWidget.mountedOnAttach}
+        />
+      ),
+    })),
+    // ── Action terminal tabs ──
+    ...[...actionTerminals.entries()].map(([actionName]) => ({
+      id: `action-term:${actionName}`,
+      label: actionName,
+      title: `${actionName} terminal`,
+      icon: (
+        <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+          <path d="M2 3l3 3-3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M7 9h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        </svg>
+      ),
+      onClose: () => {
+        setActionTerminals((prev) => {
+          const next = new Map(prev);
+          next.delete(actionName);
+          return next;
+        });
+      },
+      render: (active: boolean) => (
+        <TerminalView
+          visible={active}
+          ownerType="action"
+          ownerName={actionName}
         />
       ),
     })),
@@ -192,6 +289,8 @@ export function RightPanel({
           items={items}
           picker={picker}
           empty={children || <div className="panel-empty">no widgets pinned</div>}
+          requestActiveId={requestActiveId}
+          onRequestActiveHandled={clearRequestActive}
           surfaceClassName="right-panel-content"
           headerClassName="right-panel-tabs-bar"
           bodyClassName="right-panel-body"

@@ -13,6 +13,7 @@ export type PanelSurfaceItem = {
   preferredHeight?: number;
   defaultCollapsed?: boolean;
   onClose?: () => void;
+  onReload?: () => void;
   render: (active: boolean) => ReactNode;
 };
 
@@ -21,6 +22,9 @@ type Props = {
   items: PanelSurfaceItem[];
   picker?: ReactNode;
   empty: ReactNode;
+  /** Request that a specific tab be activated (by item id). Cleared after handling. */
+  requestActiveId?: string | null;
+  onRequestActiveHandled?: () => void;
   surfaceClassName: string;
   headerClassName?: string;
   bodyClassName?: string;
@@ -78,6 +82,8 @@ export function PanelSurface({
   items,
   picker,
   empty,
+  requestActiveId,
+  onRequestActiveHandled,
   surfaceClassName,
   headerClassName,
   bodyClassName,
@@ -100,6 +106,15 @@ export function PanelSurface({
     if (activeItemId && items.some((item) => item.id === activeItemId)) return;
     setActiveItemId(items[0].id);
   }, [activeItemId, items]);
+
+  // Handle external request to activate a specific tab
+  useEffect(() => {
+    if (!requestActiveId) return;
+    if (items.some((item) => item.id === requestActiveId)) {
+      setActiveItemId(requestActiveId);
+    }
+    onRequestActiveHandled?.();
+  }, [requestActiveId, items, onRequestActiveHandled]);
 
   const tabs = mode === "tabs" && items.length > 1 ? (
     <div
@@ -125,6 +140,14 @@ export function PanelSurface({
             >
               {item.icon ?? item.label}
             </button>
+            {item.onReload && (
+              <button className={tabCloseClassName} onClick={(e) => { e.stopPropagation(); item.onReload?.(); }} title="Reload widget">
+                <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
+                  <path d="M8 2.5A3.5 3.5 0 1 0 8.5 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none"/>
+                  <path d="M6.5 2.5H8.5V0.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                </svg>
+              </button>
+            )}
             {item.onClose && (
               <button className={tabCloseClassName} onClick={(e) => { e.stopPropagation(); item.onClose?.(); }} title="Remove widget">
                 <svg width="7" height="7" viewBox="0 0 10 10" fill="none">

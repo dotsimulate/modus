@@ -243,9 +243,32 @@ export interface ActionContext {
     metadata?: Record<string, unknown>;
   };
 
+  // ── Terminal ──
+  /** Create a managed terminal owned by this action. The terminal is visible
+   *  in the UI via the action-card widget and persists until explicitly killed
+   *  or the action run completes. */
+  createTerminal(opts?: {
+    cwd?: string;
+    shell?: string;
+    cols?: number;
+    rows?: number;
+    env?: Record<string, string>;
+  }): ActionTerminalHandle;
+
   // ── Utilities ──
   /** Render an SVG file to a base64-encoded PNG string. Returns null on failure. */
   svgToPngBase64(svgPath: string, width?: number): string | null;
+}
+
+/** Handle returned by ActionContext.createTerminal() */
+export interface ActionTerminalHandle {
+  id: string;
+  /** Write data to the terminal's stdin. */
+  write(data: string): void;
+  /** Kill the terminal process. */
+  kill(): void;
+  /** Wait for the terminal process to exit. Returns the exit code or null. */
+  waitForExit(): Promise<number | null>;
 }
 
 // ── Session Outcome (returned by monitorSession, not yet finalized) ──

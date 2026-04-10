@@ -370,8 +370,8 @@ function mergeClientExtensions(
 ): ClientExtensionsConfig | undefined {
   const merged: ClientExtensionsConfig = {
     paths: uniqueStrings([...(base?.paths ?? []), ...(override?.paths ?? [])]),
-    enabled: uniqueStrings([...(base?.enabled ?? []), ...(override?.enabled ?? [])]),
-    disabled: uniqueStrings([...(base?.disabled ?? []), ...(override?.disabled ?? [])]),
+    enabled: "enabled" in (override ?? {}) ? override!.enabled : base?.enabled,
+    disabled: "disabled" in (override ?? {}) ? override!.disabled : base?.disabled,
     settings: mergeExtensionSettings(base?.settings, override?.settings),
   };
   return merged.paths || merged.enabled || merged.disabled || merged.settings ? merged : undefined;
