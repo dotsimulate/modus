@@ -10,7 +10,6 @@ import { modus } from "../modusClient";
 import type { SessionStats } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, fmtNum, basename } from "../utils/format";
-import type { WidgetDef } from "./types";
 import { ActivityChart, HBar, WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 

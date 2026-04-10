@@ -13,7 +13,6 @@
 
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
-import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 // ── Types ──

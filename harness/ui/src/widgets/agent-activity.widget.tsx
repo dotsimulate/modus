@@ -1,4 +1,3 @@
-import type { WidgetDef } from "./types";
 import { AgentActivityView } from "../components/AgentActivityView";
 import { useRightPanelContext } from "../components/RightPanelContext";
 

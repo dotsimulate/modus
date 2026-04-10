@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type {
-  ProfileUi, UserProfile, UserProfileState, UserProfileUiConfig,
+  ProfileUi, Profile, UserProfile, UserProfileState, UserProfileUiConfig,
+  ProviderCapabilities, CreateSessionOpts,
 } from "../../../sdk/index";
 import { modus } from "../modusClient";
-import { createDefaultSetupState } from "../components/SessionSetup";
+import { createDefaultSetupState, type SessionSetupState } from "../components/SessionSetup";
 import { agentConfigToOverrides } from "../components/AgentConfig";
 import { addRecentPath } from "../recentPaths";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";

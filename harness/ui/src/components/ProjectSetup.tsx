@@ -9,6 +9,7 @@
 import { useState, useCallback } from "react";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
+import { LAUNCH_CWD } from "../App";
 import type { BrowseResult } from "../../../sdk/index";
 
 type Props = {
@@ -19,9 +20,10 @@ type Props = {
 export function ProjectSetup({ onComplete }: Props) {
   const { switchUserProfile, refreshProfiles, refreshUserProfiles } = useProfiles();
 
-  const [projectName, setProjectName] = useState("");
-  const [projectPath, setProjectPath] = useState("");
-  const [useMemory, setUseMemory] = useState(true);
+  const [projectName, setProjectName] = useState(
+    () => LAUNCH_CWD ? LAUNCH_CWD.split("/").filter(Boolean).pop() ?? "" : "",
+  );
+  const [projectPath, setProjectPath] = useState(LAUNCH_CWD);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -61,9 +63,9 @@ export function ProjectSetup({ onComplete }: Props) {
         displayName: projectName,
         projects: [projectPath.trim()],
         agentProfiles: [],
-        ...(useMemory ? {} : { memory: { scope: "global" as const, inheritGlobal: false } }),
       });
       await modus.initProject(projectPath.trim(), projectName);
+      sessionStorage.removeItem("modus:launch-cwd");
       switchUserProfile(slug);
       await Promise.all([refreshUserProfiles(), refreshProfiles()]);
       onComplete();
@@ -71,7 +73,7 @@ export function ProjectSetup({ onComplete }: Props) {
       setError(`Failed to create project: ${err}`);
     }
     setCreating(false);
-  }, [slug, projectName, projectPath, useMemory, switchUserProfile, refreshUserProfiles, onComplete]);
+  }, [slug, projectName, projectPath, switchUserProfile, refreshUserProfiles, onComplete]);
 
   if (error) {
     return (
@@ -164,19 +166,6 @@ export function ProjectSetup({ onComplete }: Props) {
           )}
         </div>
       )}
-
-      <label className="setup-field setup-field--toggle">
-        <span className="setup-label">memory system</span>
-        <button
-          className={`setup-toggle ${useMemory ? "setup-toggle--on" : ""}`}
-          onClick={() => setUseMemory(!useMemory)}
-        >
-          {useMemory ? "on" : "off"}
-        </button>
-        <span className="setup-hint">
-          {useMemory ? "agent remembers across sessions" : "no persistent memory"}
-        </span>
-      </label>
 
       <div className="setup-actions">
         <button

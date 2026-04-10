@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
+import { LAUNCH_CWD } from "../App";
 import { ProjectSetup } from "./ProjectSetup";
 import { ModusPrompt } from "./ModusPrompt";
 import { Missions } from "./Missions";
@@ -49,8 +50,12 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
   const hasLoadedAgentProfile = configuredAgentProfiles.some((name) => profiles.some((profile) => profile.name === name));
 
   const needsProject = userProfiles.length === 0;
+  // If launched with a cwd that isn't an exact match for any existing user profile's
+  // project path, treat it as a new project request — show ProjectSetup with path pre-filled.
+  const launchCwdIsNew = LAUNCH_CWD
+    && !userProfiles.some((up) => up.projects?.includes(LAUNCH_CWD));
   const needsAgents = !!activeUP && (configuredAgentProfiles.length === 0 || !hasLoadedAgentProfile);
-  const showProjectSetup = forceSetup || (!setupDismissed && needsProject);
+  const showProjectSetup = forceSetup || (!setupDismissed && (needsProject || launchCwdIsNew));
   const missingProfilesHint = configuredAgentProfiles.length > 0
     ? `Listed agent profiles are missing: ${configuredAgentProfiles.join(", ")}. Use create agent to set them up.`
     : "No agent profiles are configured for this project yet. Use create agent to set them up.";

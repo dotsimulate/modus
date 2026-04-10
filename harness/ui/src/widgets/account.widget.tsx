@@ -9,7 +9,6 @@ import { useCallback } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, planLabel } from "../utils/format";
-import type { WidgetDef } from "./types";
 import { useWidgetPollingValue } from "./widget-data";
 import { WidgetEmptyState } from "./widget-components";
 
