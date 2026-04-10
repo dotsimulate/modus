@@ -43,6 +43,18 @@ import type { DashboardPage } from "./widgets";
 import { loadAndApplyProjectUiState } from "./project-ui-theme";
 import { useInputValue, getInputValue } from "./inputStore";
 
+// Consume ?cwd= from URL, stash in sessionStorage so it survives the
+// auth/PIN reload, then strip from URL to keep hash routing clean.
+const _launchParams = new URLSearchParams(window.location.search);
+const _urlCwd = _launchParams.get("cwd");
+if (_urlCwd) {
+  sessionStorage.setItem("modus:launch-cwd", _urlCwd);
+  const url = new URL(window.location.href);
+  url.searchParams.delete("cwd");
+  window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+}
+export const LAUNCH_CWD = _urlCwd ?? sessionStorage.getItem("modus:launch-cwd") ?? "";
+
 function parseTagList(raw?: string | null): string[] {
   if (!raw) return [];
   try {
@@ -61,17 +73,38 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("[modus] uncaught UI error:", error);
+    if (info.componentStack) console.error("[modus] component stack:", info.componentStack);
+  }
   render() {
     if (this.state.error) {
       return (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: 16, fontFamily: "monospace", color: "#aaa" }}>
           <div style={{ fontSize: 13 }}>something went wrong</div>
-          <button
-            style={{ padding: "6px 14px", background: "transparent", border: "1px solid #444", borderRadius: 4, color: "#aaa", cursor: "pointer", fontSize: 12 }}
-            onClick={() => { localStorage.clear(); location.reload(); }}
-          >
-            clear app data + reload
-          </button>
+          <div style={{ fontSize: 11, color: "#666", maxWidth: 400, textAlign: "center", wordBreak: "break-word" }}>
+            {this.state.error.message}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              style={{ padding: "6px 14px", background: "transparent", border: "1px solid #444", borderRadius: 4, color: "#aaa", cursor: "pointer", fontSize: 12 }}
+              onClick={() => { this.setState({ error: null }); }}
+            >
+              retry
+            </button>
+            <button
+              style={{ padding: "6px 14px", background: "transparent", border: "1px solid #444", borderRadius: 4, color: "#aaa", cursor: "pointer", fontSize: 12 }}
+              onClick={() => { location.reload(); }}
+            >
+              reload
+            </button>
+            <button
+              style={{ padding: "6px 14px", background: "transparent", border: "1px solid #555", borderRadius: 4, color: "#aaa", cursor: "pointer", fontSize: 12 }}
+              onClick={() => { localStorage.clear(); location.reload(); }}
+            >
+              clear data + reload
+            </button>
+          </div>
         </div>
       );
     }

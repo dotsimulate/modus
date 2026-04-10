@@ -9,7 +9,6 @@ import { useState, useEffect } from "react";
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, fmtNum } from "../utils/format";
-import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 // ── Helpers ──

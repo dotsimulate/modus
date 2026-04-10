@@ -1,4 +1,3 @@
-import type { WidgetDef } from "./types";
 import { SessionEditsView } from "../components/SessionEditsView";
 import { useProfiles } from "../providers/ProfileContext";
 import { useRightPanelContext } from "../components/RightPanelContext";

@@ -11,7 +11,6 @@
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "../components/SearchDropdown";
-import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 const EFFORT_OPTIONS = [

@@ -8,7 +8,6 @@
 import { useCallback, useState } from "react";
 import { modus } from "../modusClient";
 import type { ClientExtensionManifestItem, ExtensionSettingSchema } from "../../../sdk/index";
-import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 import { useProfiles } from "../providers/ProfileContext";

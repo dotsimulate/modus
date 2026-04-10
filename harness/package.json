@@ -1,9 +1,12 @@
 {
-  "name": "harness",
+  "name": "modus-harness",
   "module": "index.ts",
   "type": "module",
-  "private": true,
+  "bin": {
+    "modus": "./cli.ts"
+  },
   "scripts": {
+    "cli": "bun run cli.ts",
     "dev": "bun run dev.ts",
     "start": "bun run index.ts",
     "watch": "bun run watchdog.ts",

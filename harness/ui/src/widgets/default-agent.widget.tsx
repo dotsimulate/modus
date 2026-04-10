@@ -6,7 +6,6 @@
  */
 
 import { useProfiles } from "../providers/ProfileContext";
-import type { WidgetDef } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
 function shortModel(model?: string): string {
