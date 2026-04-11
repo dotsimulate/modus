@@ -41,23 +41,7 @@ UI and session management to a specific person or project context.
   // Agent profile provider overrides this; session override overrides both
   "provider": "claude-code",
 
-  // ── Memory Scoping ──
-
-  // Controls where agent-memory MCP saves and reads memories
-  "memory": {
-    // "global" = shared memory store (default)
-    // "profile" = isolated to this user profile's directory
-    "scope": "global",
-
-    // When scope="profile", also read from global store (default: true)
-    // Set false for full isolation
-    "inheritGlobal": true
-  },
-
   // ── UI Filtering ──
-
-  // Tag filter pre-applied to memory visualization (optional)
-  "memoryFilter": "webapp",
 
   // Show project paths from ALL user profiles in CWD picker (default: false)
   "showAllProjectPaths": false,

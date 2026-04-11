@@ -10,11 +10,6 @@ every session regardless of which agent or user profile is active.
   // MCP servers available to ALL sessions
   // Agent profile MCP servers override these by key name
   "mcpServers": {
-    "agent-memory": {
-      "command": "uv",
-      "args": ["--directory", "/path/to/agent_memory", "run", "python", "server.py"],
-      "env": {}
-    },
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"],
@@ -78,9 +73,9 @@ Claude Code provider manages context through the SDK directly.
 3. Result is passed to the session
 
 ```
-Global:  { "agent-memory": {...}, "filesystem": {...} }
+Global:  { "filesystem": {...} }
 Profile: { "filesystem": {...custom...}, "tavily": {...} }
-Result:  { "agent-memory": {...}, "filesystem": {...custom...}, "tavily": {...} }
+Result:  { "filesystem": {...custom...}, "tavily": {...} }
 ```
 
 ## MCP Server Config Format
@@ -97,17 +92,6 @@ Result:  { "agent-memory": {...}, "filesystem": {...custom...}, "tavily": {...} 
 ```
 
 ## Common MCP Server Examples
-
-### Agent memory (persistent knowledge)
-```json
-{
-  "agent-memory": {
-    "command": "uv",
-    "args": ["--directory", "/path/to/agent_memory", "run", "python", "server.py"],
-    "env": {}
-  }
-}
-```
 
 ### Web search (Tavily)
 ```json

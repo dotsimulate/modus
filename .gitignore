@@ -33,9 +33,6 @@ build/
 # MCP config (has machine-specific absolute paths)
 .mcp.json
 
-# Agent memory store (personal per-user)
-agent_memory/memory/
-
 # Project-local .modus/ — runtime/personal data, mostly ignored
 # Selectively track example moves (chess, wordle, nano-banana) for reference
 .modus/*

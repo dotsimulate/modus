@@ -1,16 +1,3 @@
 {
-  "mcpServers": {
-    "agent-memory": {
-      "type": "stdio",
-      "command": "uv",
-      "args": [
-        "--directory",
-        "./agent_memory",
-        "run",
-        "python",
-        "server.py"
-      ],
-      "env": {}
-    }
-  }
+  "mcpServers": {}
 }

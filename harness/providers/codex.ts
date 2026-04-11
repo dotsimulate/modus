@@ -15,11 +15,11 @@ import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
 import {
-  getGlobalConfig, getProfile, getUserProfile, resolveProfilePrompt,
+  getGlobalConfig, getProfile, resolveProfilePrompt,
   type McpServerConfig, type PermissionPolicy, type Profile,
 } from "../profiles";
 import { isAbsolute, join } from "path";
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
+import { mkdirSync, writeFileSync, unlinkSync } from "fs";
 import { homedir } from "os";
 
 // ── Provider-specific state stored on session._providerState ──
@@ -359,51 +359,6 @@ function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?:
     if (dirVal && !isAbsolute(dirVal)) {
       args[dirIdx + 1] = join(harnessRoot, dirVal);
     }
-  }
-
-  // Inject agent-memory scoping env vars (mirrors claude-code provider)
-  if (mergedMcp["agent-memory"]) {
-    const am = mergedMcp["agent-memory"] as any;
-    const env: Record<string, string> = { ...(am.env ?? {}) };
-    if (opts.profile) env.AGENT_PROFILE = opts.profile;
-    if (opts.userProfile) env.USER_PROFILE = opts.userProfile;
-
-    const sessionCwd = opts.cwd ?? process.env.AGENT_CWD;
-    if (sessionCwd) {
-      const projectMemoryDir = join(sessionCwd, ".modus", "memory");
-      if (existsSync(projectMemoryDir)) {
-        env.AGENT_MEMORY_DIR = projectMemoryDir;
-        const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
-        const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
-        if (agentMemoryRoot) {
-          env.AGENT_MEMORY_READ_DIRS = `${agentMemoryRoot}/memory`;
-        }
-      }
-    }
-
-    if (opts.userProfile) {
-      const userProf = getUserProfile(opts.userProfile);
-      if (userProf?.projects?.length) {
-        env.AGENT_MEMORY_SKILLS_DIRS = userProf.projects
-          .map(p => join(p, ".claude", "skills"))
-          .join(",");
-      } else {
-        env.AGENT_MEMORY_SKILLS_DIRS = "";
-      }
-      if (userProf?.memory?.scope === "profile") {
-        const dirIdx = (am.args as string[] | undefined)?.indexOf("--directory");
-        const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? (am.args as string[])[dirIdx + 1] : undefined;
-        if (agentMemoryRoot) {
-          const globalDir = `${agentMemoryRoot}/memory`;
-          const profileDir = `${agentMemoryRoot}/memory/profiles/${opts.userProfile}`;
-          env.AGENT_MEMORY_DIR = profileDir;
-          if (userProf.memory.inheritGlobal !== false) {
-            env.AGENT_MEMORY_READ_DIRS = globalDir;
-          }
-        }
-      }
-    }
-    am.env = env;
   }
 
   const mcpServers: CodexConfigObject = {};
