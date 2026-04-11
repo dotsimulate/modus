@@ -4,7 +4,7 @@
  * Creates:
  *   .modus/
  *     _project.json        — project ID (portable, travels with the folder)
- *     _global.json          — project-level MCP servers (agent-memory pre-configured)
+ *     _global.json          — project-level MCP servers
  *     profiles/agents/      — project-specific agent profiles
  *     actions/              — project-specific automation
  *     memory/               — project-scoped memory files
@@ -18,8 +18,6 @@ import { join, resolve, basename } from "path";
 import { registerProject, getProjectByPath, getProjectById, updateProjectPath } from "./profiles";
 
 const MODUS_DIR = ".modus";
-/** Absolute path to the agent_memory server (sibling of harness) */
-const AGENT_MEMORY_DIR = resolve(import.meta.dir, "..", "agent_memory");
 /** Default agent profiles to copy into new projects */
 const DEFAULT_PROFILES = ["modus-dev"];
 const TEMPLATES_DIR = join(import.meta.dir, "templates");
@@ -156,13 +154,7 @@ export function initProject(cwd: string, opts?: { name?: string }): InitResult {
     skipped.push(globalPath);
   } else {
     writeJson(globalPath, {
-      mcpServers: {
-        "agent-memory": {
-          command: "uv",
-          args: ["--directory", AGENT_MEMORY_DIR, "run", "python", "server.py"],
-          env: {},
-        },
-      },
+      mcpServers: {},
     });
     created.push(globalPath);
   }

@@ -21,7 +21,7 @@ import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
 import {
-  getGlobalConfig, getProfile, getUserProfile, resolveProfilePrompt,
+  getGlobalConfig, getProfile, resolveProfilePrompt,
   type McpServerConfig, type Profile,
 } from "../profiles";
 import { cursorAgentSpawnArgv0, resolveCursorAgentExecutable } from "./cursor-resolve-bin";
@@ -193,51 +193,6 @@ function writeCursorMcpConfig(ctx: TurnContext, workspaceDir: string): string | 
         args[dirIdx + 1] = join(harnessRoot, dirVal);
       }
     }
-  }
-
-  // Inject agent-memory scoping env vars (mirrors codex provider pattern)
-  if (mergedMcp["agent-memory"] && "command" in mergedMcp["agent-memory"]) {
-    const am = mergedMcp["agent-memory"] as McpServerConfig & { command: string; env?: Record<string, string> };
-    const env: Record<string, string> = { ...(am.env ?? {}) };
-    if (opts.profile) env.AGENT_PROFILE = opts.profile;
-    if (opts.userProfile) env.USER_PROFILE = opts.userProfile;
-
-    const sessionCwd = opts.cwd ?? process.env.AGENT_CWD;
-    if (sessionCwd) {
-      const projectMemoryDir = join(sessionCwd, ".modus", "memory");
-      if (existsSync(projectMemoryDir)) {
-        env.AGENT_MEMORY_DIR = projectMemoryDir;
-        const dirIdx = am.args?.indexOf("--directory");
-        const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? am.args![dirIdx + 1] : undefined;
-        if (agentMemoryRoot) {
-          env.AGENT_MEMORY_READ_DIRS = `${agentMemoryRoot}/memory`;
-        }
-      }
-    }
-
-    if (opts.userProfile) {
-      const userProf = getUserProfile(opts.userProfile);
-      if (userProf?.projects?.length) {
-        env.AGENT_MEMORY_SKILLS_DIRS = userProf.projects
-          .map(p => join(p, ".claude", "skills"))
-          .join(",");
-      } else {
-        env.AGENT_MEMORY_SKILLS_DIRS = "";
-      }
-      if (userProf?.memory?.scope === "profile") {
-        const dirIdx = am.args?.indexOf("--directory");
-        const agentMemoryRoot = dirIdx !== undefined && dirIdx >= 0 ? am.args![dirIdx + 1] : undefined;
-        if (agentMemoryRoot) {
-          const globalDir = `${agentMemoryRoot}/memory`;
-          const profileDir = `${agentMemoryRoot}/memory/profiles/${opts.userProfile}`;
-          env.AGENT_MEMORY_DIR = profileDir;
-          if (userProf.memory.inheritGlobal !== false) {
-            env.AGENT_MEMORY_READ_DIRS = globalDir;
-          }
-        }
-      }
-    }
-    am.env = env;
   }
 
   // Convert to Cursor mcp.json format
