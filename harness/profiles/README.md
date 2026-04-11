@@ -160,20 +160,6 @@ Stored in `users/<name>.json`. Defined in `profiles.ts`.
   // Default execution provider (optional — agent profile overrides this)
   "provider": "claude-code",  // "claude-code" | "anthropic" | "openai" | "litellm" | "ollama"
 
-  // Tag filter pre-applied to MemoryViz (optional)
-  "memoryFilter": "harness",
-
-  // Memory scoping (optional — omit for global/default behavior)
-  "memory": {
-    // "global" = memories saved to shared store (default)
-    // "profile" = memories saved to profile-specific directory
-    "scope": "global",
-
-    // When scope=profile, also read from global store (default: true)
-    // Set false for full isolation
-    "inheritGlobal": true
-  },
-
   // Show project paths from ALL user profiles in the CWD picker (default: false)
   "showAllProjectPaths": false
 }
@@ -182,16 +168,6 @@ Stored in `users/<name>.json`. Defined in `profiles.ts`.
 **Note:** User profiles contain only stable config. Runtime UI state (last selected
 agent profile, sidebar collapse state, last CWD) lives in `state/<name>.json` and is
 managed automatically by the frontend.
-
-### Memory scoping details
-
-When `memory.scope` is `"profile"`, the harness configures the agent-memory MCP server
-to save memories to `agent_memory/memory/profiles/<user-profile-name>/` instead of the
-global `agent_memory/memory/` directory. The agent is unaware of this — `save()` and
-`query()` signatures don't change.
-
-When `memory.inheritGlobal` is `true` (default), the agent also sees global memories
-when querying. When `false`, only profile-scoped memories are visible.
 
 ## User Profile State (`UserProfileState`)
 
@@ -215,14 +191,16 @@ by key).
 ```jsonc
 {
   "mcpServers": {
-    "agent-memory": {
-      "command": "uv",
-      "args": ["--directory", "/path/to/agent_memory", "run", "python", "server.py"],
-      "env": {}
-    }
+    // Add shared MCP servers here — they merge into every session.
+    // Agent profile mcpServers override by key.
   }
 }
 ```
+
+> **Memory systems:** MO does not ship a built-in memory server. To add persistent
+> agent memory, configure an MCP memory server in the relevant agent profile's
+> `mcpServers` field (or in `_global.json` for all agents). For memory visualization,
+> build a move with a widget or custom page.
 
 ## Shared User Data (`_users.json`)
 

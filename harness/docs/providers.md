@@ -84,8 +84,6 @@ MCP servers are merged from multiple sources when a session starts:
 Environment variables injected into MCP servers:
 - `AGENT_PROFILE` — active agent profile name
 - `USER_PROFILE` — active user profile name
-- `AGENT_MEMORY_DIR` — project-local memory path (if exists)
-- `AGENT_MEMORY_SKILLS_DIRS` — skills search paths from user profile projects
 
 Relative `--directory` args are resolved from harness root.
 
