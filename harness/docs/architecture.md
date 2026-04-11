@@ -76,10 +76,8 @@ agent_dev_zone/
     profiles/agents/       # Project-local agent profiles (override base)
     actions/               # Automated workflows
     moves/                 # User-invoked structured operations
-    memory/                # Project-scoped agent memory
     ui/                    # Theme and font assets
       extensions/          # Project-local browser extension modules
-  agent_memory/            # Agent memory MCP server (Python/uv)
   .claude/                 # Claude Code config + skills
 ```
 
@@ -143,7 +141,6 @@ Key route groups:
 - `/api/ui/*` — Theme/font registry, activation
 - `/api/providers/*` — Provider listing, model discovery
 - `/api/projects/*` — Project registry
-- `/api/memories` — Memory search proxy
 - `/api/browse` — Server-side folder browser
 - `/health` — Watchdog endpoint
 
