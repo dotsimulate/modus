@@ -483,6 +483,11 @@ function AppContent({ router }: { router: HashRouter }) {
     ...configPages,
     ...profilePages.filter((page) => !configPages.some((configPage) => configPage.id === page.id)),
   ];
+  // Move pages that have layouts are already in configPages (via unified page
+  // discovery). Only include bare-widget move pages (no layout) as move-page: entries.
+  const bareMovePagesNav = movePages
+    .filter((m) => !m.page?.layout)
+    .filter((m) => !customPages.some((cp) => cp.id === m.page?.id));
   const gitPageBlocks = [
     {
       kind: "module" as const,
@@ -493,7 +498,7 @@ function AppContent({ router }: { router: HashRouter }) {
   ];
   const navViews = [
     ...NAV_VIEWS,
-    ...movePages.map((m) => ({
+    ...bareMovePagesNav.map((m) => ({
       view: movePageView(m.name),
       label: m.page!.title,
     })),

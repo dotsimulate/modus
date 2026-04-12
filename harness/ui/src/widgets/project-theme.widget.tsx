@@ -11,7 +11,7 @@ type ProjectThemeConfig = WidgetBase & {
   type: "project-theme";
 };
 
-export default function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfig>) {
+export default function ProjectThemeWidget({ onSelectSession, pageContext }: WidgetProps<ProjectThemeConfig>) {
   const { activeCwd, projectRoot, activeUserProfile } = useProfiles();
   const themeCwd = projectRoot ?? activeCwd;
   const [state, setState] = useState<ProjectUiState | null>(null);
@@ -96,7 +96,7 @@ export default function ProjectThemeWidget(_props: WidgetProps<ProjectThemeConfi
       });
       setThemePrompt("");
       if (result.spawnedSessionId) {
-        _props.onSelectSession(result.spawnedSessionId);
+        if (pageContext) { pageContext.set("selectedSession", result.spawnedSessionId); } else { onSelectSession(result.spawnedSessionId); }
         return;
       }
       setError("create-theme did not return a spawned session");

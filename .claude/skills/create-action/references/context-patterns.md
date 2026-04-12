@@ -62,6 +62,14 @@ export async function afterRun(ctx: ActionContext, result: RunResult): Promise<v
   artifactPath(filename: string): string;  // path within artifactDir
   artifact(name: string): string;  // path for a declared artifact (extension from mime)
 
+  // ── Terminal ──
+  createTerminal(opts?: {
+    cwd?: string; shell?: string; cols?: number; rows?: number;
+    env?: Record<string, string>;
+  }): ActionTerminalHandle;
+  // Returns: { id, write(data), kill(), waitForExit() }
+  // Terminal appears live in the right side panel (ownerType=action)
+
   // ── Utilities ──
   svgToPngBase64(svgPath: string, width?: number): string | null;  // render SVG to base64 PNG
 }
@@ -433,3 +441,48 @@ registered on the spawned session — the agent can call ops immediately.
 - **Opus** actions: cap retries. `maxRetries: 0-1` — each retry is expensive.
 - Use `maxTurns` conservatively on expensive models.
 - Check `result.costUsd` in afterRun if you need cost-based decisions.
+
+## Pattern: Terminal (Live CLI in Side Panel)
+
+Use `ctx.createTerminal()` to spawn a PTY that appears live in the right side panel.
+Good for dev servers, builds, test runners — anything with streaming output.
+
+```typescript
+import type { ActionContext } from "../../action-types";
+
+export async function gather(ctx: ActionContext): Promise<string> {
+  const term = ctx.createTerminal({ cwd: "/path/to/project" });
+  term.write("bun run dev\n");
+
+  return "Dev server started. Terminal is live in the side panel.";
+}
+```
+
+The terminal is owned by the action (`ownerType=action`) and auto-detected by the
+right panel. It appears as a new tab immediately.
+
+### Terminal + waitForExit (run a command and report result)
+
+```typescript
+import type { ActionContext } from "../../action-types";
+
+export async function gather(ctx: ActionContext): Promise<string> {
+  const term = ctx.createTerminal();
+  term.write("npm test\n");
+
+  const exitCode = await term.waitForExit();
+  if (exitCode !== 0) {
+    return `Tests failed (exit ${exitCode}). Check the terminal for output.`;
+  }
+  return "All tests passed.";
+}
+```
+
+### Terminal handle API
+
+```typescript
+term.id: string;                           // terminal ID
+term.write(data: string): void;            // write to stdin
+term.kill(): void;                         // kill the process
+term.waitForExit(): Promise<number | null> // await exit code
+```

@@ -246,7 +246,8 @@
 .right-panel-content:has(.file-browser),
 .right-panel-content:has(.aa-panel),
 .right-panel-content:has(.pinboard),
-.right-panel-content:has(.session-edits-view) {
+.right-panel-content:has(.session-edits-view),
+.right-panel-content:has(.notes-widget) {
   padding: 0;
 }
 
@@ -429,7 +430,7 @@
   max-width: none;
 }
 .rp-tab--icon-only .rp-tab-label {
-  padding: 4px;
+  padding: 5px 6px;
 }
 .rp-tab--active {
   border-bottom-color: var(--accent);
@@ -667,6 +668,95 @@
   background: rgba(255, 255, 255, 0.12);
 }
 
+.panel-split-handle--static {
+  cursor: default;
+  pointer-events: none;
+}
+
+.panel-split-child--auto {
+  flex: 0 0 auto !important;
+  overflow: visible;
+  min-height: auto;
+  min-width: auto;
+}
+
+/* ── Collapsed child ── */
+
+.panel-split-child--collapsed {
+  overflow: hidden;
+}
+
+/* ── Split collapse tabs ── */
+
+.split-collapse-tab {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease;
+  padding: 0;
+  z-index: 1;
+  touch-action: none;
+}
+
+/* When not collapsed, show resize cursor to hint at drag-to-resize */
+.split-collapse-tab--draggable.split-collapse-tab--horizontal {
+  cursor: col-resize;
+}
+.split-collapse-tab--draggable.split-collapse-tab--vertical {
+  cursor: row-resize;
+}
+
+.split-collapse-tab--horizontal {
+  width: 16px;
+  height: 100%;
+}
+
+.split-collapse-tab--vertical {
+  height: 16px;
+  width: 100%;
+}
+
+.split-collapse-tab:hover {
+  opacity: 1;
+  color: var(--text-dim);
+  background: var(--bg-hover);
+}
+
+/* Subtle reveal on parent hover */
+.panel-split:hover > .split-collapse-tab {
+  opacity: 0.25;
+}
+.panel-split:hover > .split-collapse-tab:hover {
+  opacity: 0.7;
+}
+
+/* When collapsed, always show the tab so the user can re-expand */
+.split-collapse-tab--collapsed {
+  opacity: 0.4;
+  border: none;
+}
+.split-collapse-tab--collapsed.split-collapse-tab--horizontal.split-collapse-tab--after {
+  border-left: 1px solid var(--border);
+}
+.split-collapse-tab--collapsed.split-collapse-tab--horizontal.split-collapse-tab--before {
+  border-right: 1px solid var(--border);
+}
+.split-collapse-tab--collapsed.split-collapse-tab--vertical.split-collapse-tab--after {
+  border-top: 1px solid var(--border);
+}
+.split-collapse-tab--collapsed.split-collapse-tab--vertical.split-collapse-tab--before {
+  border-bottom: 1px solid var(--border);
+}
+.split-collapse-tab--collapsed:hover {
+  opacity: 1;
+}
+
 .panel-surface-item-body {
   min-width: 0;
 }
@@ -781,4 +871,157 @@
 
 .widget-header--static {
   cursor: default;
+}
+
+/* ── New Session widget ── */
+
+.new-session-widget {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.nsw-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  max-width: 480px;
+  width: 100%;
+  padding: 32px 24px;
+  max-height: min(50vh, 100%);
+  min-height: 200px;
+  overflow: hidden;
+}
+
+.nsw-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.nsw-heading {
+  font-family: var(--font-mono);
+  font-size: calc(14px * var(--font-scale, 1));
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+.nsw-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: calc(13px * var(--font-scale, 1));
+  transition: background 0.12s ease, border-color 0.12s ease;
+  text-align: left;
+}
+
+.nsw-profile:hover {
+  background: var(--bg-surface);
+  border-color: var(--text-muted);
+}
+
+.nsw-profile:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.nsw-profile-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.nsw-profile-model,
+.nsw-profile-provider {
+  color: var(--text-muted);
+  font-size: calc(11px * var(--font-scale, 1));
+}
+
+/* ── Inbox widget ── */
+.inbox-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.inbox-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  font: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.inbox-card:hover {
+  border-color: var(--border-default);
+  background: var(--bg-hover);
+}
+
+.inbox-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.inbox-card-profile {
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-accent);
+  font-weight: 500;
+}
+.inbox-card-time {
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.inbox-card-title {
+  font-size: calc(12px * var(--font-scale, 1));
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.inbox-card-response {
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.inbox-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+}
+.inbox-card-cost {
+  color: var(--text-muted);
 }

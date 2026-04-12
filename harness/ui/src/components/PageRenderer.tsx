@@ -5,12 +5,13 @@ import { Markdown } from "./Markdown";
 import { Actions } from "./Actions";
 import { GitPanel } from "./GitPanel";
 import { WIDGETS, WidgetChromeContext } from "../widgets";
-import type { DashboardBlock, DashboardModule, LayoutNode, PageContextHandle, WidgetBase, WidgetSize } from "../widgets";
+import type { DashboardBlock, DashboardModule, LayoutNode, PageContextHandle, ScopeEvent, WidgetBase, WidgetSize } from "../widgets";
 import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
-import { RightPanelContextProvider } from "./RightPanelContext";
 import { PanelTreeRenderer } from "./PanelTreeRenderer";
 
 // ── Page-scoped shared state bus ──
+
+type EventHandler = (event: ScopeEvent) => void;
 
 type PageStateBus = {
   state: Record<string, unknown>;
@@ -19,9 +20,18 @@ type PageStateBus = {
   set: (key: string, value: unknown) => void;
   subscribe: (cb: () => void) => () => void;
   getSnapshot: () => Record<string, unknown>;
+  /** Emit an event on this bus. All matching handlers fire synchronously. */
+  emit: (event: ScopeEvent) => void;
+  /** Subscribe to events of a given type. Returns unsubscribe function. */
+  on: (type: string, handler: EventHandler) => () => void;
+  /** Navigation callbacks from the parent view — available to widgets with canNavigate */
+  onNavigate?: (view: string) => void;
+  onSelectSession?: (id: string) => void;
 };
 
 function createPageStateBus(initial: Record<string, unknown>): PageStateBus {
+  const eventHandlers = new Map<string, Set<EventHandler>>();
+
   const bus: PageStateBus = {
     state: { ...initial },
     listeners: new Set(),
@@ -36,16 +46,67 @@ function createPageStateBus(initial: Record<string, unknown>): PageStateBus {
       return () => { bus.listeners.delete(cb); };
     },
     getSnapshot() { return bus.state; },
+    emit(event) {
+      const handlers = eventHandlers.get(event.type);
+      if (handlers) handlers.forEach((h) => h(event));
+    },
+    on(type, handler) {
+      let set = eventHandlers.get(type);
+      if (!set) { set = new Set(); eventHandlers.set(type, set); }
+      set.add(handler);
+      return () => { set!.delete(handler); };
+    },
   };
   return bus;
 }
 
 const PageStateBusContext = createContext<PageStateBus | null>(null);
 
+/**
+ * Check if a layout leaf should be visible based on showWhen/hideWhen
+ * conditions evaluated against the page context bus state.
+ * Returns true (visible) when no bus or no conditions are set.
+ */
+export function useLeafVisible(
+  showWhen?: Record<string, unknown>,
+  hideWhen?: Record<string, unknown>,
+): boolean {
+  const bus = useContext(PageStateBusContext);
+  useSyncExternalStore(
+    bus ? bus.subscribe : () => () => {},
+    bus ? bus.getSnapshot : () => ({}),
+  );
+  if (!bus) return true;
+  // showWhen: ALL conditions must match (AND)
+  if (showWhen) {
+    for (const [key, expected] of Object.entries(showWhen)) {
+      const actual = bus.get(key);
+      if (expected === null) {
+        if (actual != null) return false;
+      } else if (actual !== expected) {
+        return false;
+      }
+    }
+  }
+  // hideWhen: ANY condition matching hides the widget (OR)
+  if (hideWhen) {
+    for (const [key, expected] of Object.entries(hideWhen)) {
+      const actual = bus.get(key);
+      if (expected === null) {
+        if (actual == null) return false;
+      } else if (actual === expected) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 /** Hook for widgets to access their scoped page context slice */
 export function usePageContext(
   publishKeys?: Record<string, string>,
   subscribeKeys?: Record<string, string>,
+  canNavigate?: boolean,
 ): PageContextHandle | undefined {
   const bus = useContext(PageStateBusContext);
   // Subscribe to state changes so widget re-renders on relevant updates
@@ -73,8 +134,51 @@ export function usePageContext(
     bus.set(contextKey, value);
   }, [bus]);
 
+  const emit = useCallback((event: ScopeEvent): void => {
+    bus?.emit(event);
+  }, [bus]);
+
+  const on = useCallback((type: string, handler: (event: ScopeEvent) => void): () => void => {
+    if (!bus) return () => {};
+    return bus.on(type, handler);
+  }, [bus]);
+
   if (!bus) return undefined;
-  return { get, set };
+  return {
+    get,
+    set,
+    emit,
+    on,
+    navigate: canNavigate ? bus.onNavigate : undefined,
+    selectSession: canNavigate ? bus.onSelectSession : undefined,
+  };
+}
+
+/** Direct access to the bus for scope-level components (not widget-scoped) */
+export function useScopeBus(): PageStateBus | null {
+  return useContext(PageStateBusContext);
+}
+
+/** Render a scope node — creates a nested context bus for its subtree */
+export function ScopeProvider({
+  context,
+  onNavigate,
+  onSelectSession,
+  children,
+}: {
+  context?: Record<string, unknown>;
+  onNavigate?: (view: string) => void;
+  onSelectSession?: (id: string) => void;
+  children: ReactNode;
+}) {
+  const [bus] = useState(() => createPageStateBus(context ?? {}));
+  bus.onNavigate = onNavigate;
+  bus.onSelectSession = onSelectSession;
+  return (
+    <PageStateBusContext.Provider value={bus}>
+      {children}
+    </PageStateBusContext.Provider>
+  );
 }
 
 type LegacyPagePanelNode = {
@@ -322,6 +426,9 @@ export function PageView({
   const normalizedLayout = layout ? normalizePageLayoutNode(layout) : undefined;
   // Stable ref — only create bus once per mount
   const [bus] = useState(() => createPageStateBus(context ?? {}));
+  // Attach navigation callbacks so canNavigate widgets can escape the page
+  bus.onNavigate = onNavigate as (view: string) => void;
+  bus.onSelectSession = onSelectSession;
 
   if (normalizedLayout) {
     return (
@@ -336,20 +443,11 @@ export function PageView({
               flexDirection: "column",
             }}
           >
-            <RightPanelContextProvider value={{
-              messages: [],
-              sessionId: null,
-              browserPath: null,
-              activeWidgetId: null,
-              setBrowserPath: () => {},
-              requestOpen: () => {},
-            }}>
-              <PanelTreeRenderer
-                node={normalizedLayout}
-                onNavigate={onNavigate}
-                onSelectSession={onSelectSession}
-              />
-            </RightPanelContextProvider>
+            <PanelTreeRenderer
+              node={normalizedLayout}
+              onNavigate={onNavigate}
+              onSelectSession={onSelectSession}
+            />
           </div>
         </div>
       </PageStateBusContext.Provider>
@@ -412,6 +510,13 @@ function normalizePageLayoutNode(node: PageLayoutInput): LayoutNode {
   }
 
   if (node.kind === "split") {
+    return {
+      ...node,
+      children: node.children.map(normalizePageLayoutNode),
+    };
+  }
+
+  if (node.kind === "scope") {
     return {
       ...node,
       children: node.children.map(normalizePageLayoutNode),

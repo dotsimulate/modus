@@ -10,6 +10,8 @@ import { ProfileEditor } from "./ProfileEditor";
 type Props = {
   onSelectSession: (id: string) => void;
   onNavigate: (view: View) => void;
+  /** If provided, called instead of onNavigate("chat") after creating a new session */
+  onNewSession?: (id: string) => void;
 };
 
 function shortModel(model?: string): string {
@@ -61,7 +63,7 @@ const editIcon = (
   </svg>
 );
 
-export function Profiles({ onSelectSession, onNavigate }: Props) {
+export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
   const { visibleProfiles, selectProfile, activeUserProfile, activeCwd, projectRoot } = useProfiles();
   const profilesCwd = projectRoot ?? activeCwd;
   const { newSession } = useSession();
@@ -171,8 +173,12 @@ export function Profiles({ onSelectSession, onNavigate }: Props) {
                       className="apc-action apc-action--primary"
                       onClick={async () => {
                         selectProfile(p.name);
-                        await newSession();
-                        onNavigate("chat");
+                        const id = await newSession();
+                        if (id && onNewSession) {
+                          onNewSession(id);
+                        } else {
+                          onNavigate("chat");
+                        }
                       }}
                     >
                       new session

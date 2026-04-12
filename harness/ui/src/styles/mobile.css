@@ -151,5 +151,77 @@
     min-width: 100% !important;
     overflow: visible;
   }
+
+  /* ── Split collapse tabs — enlarge touch targets ── */
+  .split-collapse-tab--horizontal {
+    width: 28px;
+    min-width: 28px;
+  }
+  .split-collapse-tab--vertical {
+    height: 28px;
+    min-height: 28px;
+  }
+  /* Always visible on mobile — no hover discovery */
+  .split-collapse-tab {
+    opacity: 0.35;
+  }
+  .split-collapse-tab--collapsed {
+    opacity: 0.55;
+  }
+  .split-collapse-tab svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  /* ── Split resize handles — larger touch target ── */
+  .panel-split-handle {
+    flex: 0 0 8px;
+  }
+  .panel-split-handle--horizontal {
+    width: 8px;
+  }
+  .panel-split-handle--vertical {
+    height: 8px;
+  }
+
+  /* ── Tab bars — compact for mobile, scrollable ── */
+  .rp-tabs {
+    padding: 2px 8px 0 4px;
+  }
+  .rp-tab {
+    min-width: 60px;
+    max-width: 120px;
+  }
+  .rp-tab-label {
+    padding: 6px 4px;
+  }
+  .lp-tabs {
+    padding: 2px 4px 0;
+  }
+  .lp-tab {
+    min-width: 56px;
+    max-width: 120px;
+  }
+  .lp-tab-label {
+    padding: 6px 4px;
+  }
+
+  /* ── Config bar — tighter padding on mobile ── */
+  .config-bar-header {
+    padding: 6px 12px;
+  }
+  .config-bar-panel {
+    padding: 8px 12px 12px;
+    overflow-x: auto;
+  }
+
+  /* ── New session widget — larger touch targets ── */
+  .nsw-profile {
+    padding: 14px 16px;
+    min-height: 44px;
+  }
+  .nsw-inner {
+    padding: 24px 16px;
+  }
 }
 

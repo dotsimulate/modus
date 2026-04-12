@@ -85,6 +85,15 @@ Actions live at `<cwd>/.modus/actions/<name>/action.json`. The directory name is
   // channel: references notificationChannels in _global.json
   // message: template with {action}, {run}, {status}, {error}, {cost}, {duration}, {profile}
 
+  // ── Moves (activate on the spawned session) ──
+  "moves": [
+    { "name": "check-in" },                    // move name (harness/moves/ or .modus/moves/)
+    { "name": "catalog", "inputs": { "scope": "recent" } }  // with static inputs
+  ],
+  // Each move's gather() runs and output is prepended to the action prompt.
+  // API contract moves get their token registered on the spawned session.
+  // Persistent moves are skipped (activate via ambient registry after spawn).
+
   // ── User Profile Scoping ──
   "userProfile": "ops-user",
 

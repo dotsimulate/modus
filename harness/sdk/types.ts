@@ -926,13 +926,24 @@ export type MoveInput = {
   placeholder?: string;
 };
 
-/** Page registration for moves that render as full navigable pages in the UI. */
+/**
+ * Page declaration — shared shape for moves, actions, and missions that register
+ * a navigable page in the UI. When `layout` is present, the page renders as a
+ * composable widget layout (same schema as .modus/pages/*.json). Without `layout`,
+ * move pages fall back to rendering the move's widget full-screen.
+ */
 export type MovePageInfo = {
   id: string;
   title: string;
   icon?: string;
   /** Whether to show this page in the main navigation. Defaults to true. */
   nav?: boolean;
+  /** Full layout tree — when present, renders as a composable page layout. */
+  layout?: unknown;
+  /** Initial page-scoped shared state for widget linking (pub/sub). */
+  context?: Record<string, unknown>;
+  /** Outer padding in pixels around the layout container. */
+  padding?: number;
 };
 
 /**

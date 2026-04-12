@@ -369,7 +369,7 @@ function TraceView({ analytics }: { analytics: DeepAnalytics }) {
   );
 }
 
-export default function DeepAnalyticsWidget({ config, widgetId, onSelectSession }: WidgetProps<DeepAnalyticsConfig>) {
+export default function DeepAnalyticsWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<DeepAnalyticsConfig>) {
   const { activeCwd, activeUserProfile } = useProfiles();
   const now = Date.now();
   const [startInput, setStartInput] = useState(toLocalInputValue(now - 48 * 60 * 60_000));
@@ -546,7 +546,9 @@ export default function DeepAnalyticsWidget({ config, widgetId, onSelectSession 
         </div>
       )}
 
-      {tab === "sessions" && <SessionsView rows={analytics.sessions} onSelectSession={onSelectSession} />}
+      {tab === "sessions" && <SessionsView rows={analytics.sessions} onSelectSession={(id) => {
+        if (pageContext) { pageContext.set("selectedSession", id); } else { onSelectSession(id); }
+      }} />}
       {tab === "trace" && <TraceView analytics={analytics} />}
     </div>
   );

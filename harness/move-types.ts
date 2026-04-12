@@ -394,6 +394,13 @@ export interface MovePageDeclaration {
   icon?: string;
   /** Show in the main nav bar. Default true. */
   nav?: boolean;
+  /** Full layout tree — when present, the page renders as a composable layout
+   *  (same schema as .modus/pages/*.json) instead of a bare widget page. */
+  layout?: unknown;
+  /** Initial page-scoped shared state for widget linking (pub/sub). */
+  context?: Record<string, unknown>;
+  /** Outer padding in pixels around the layout container. */
+  padding?: number;
 }
 
 /** Declared in move.json — UI component shipped with the move */

@@ -57,7 +57,28 @@ export interface MissionConfig {
     maxRetriesPerStep?: number;
   };
 
+  /** Page declaration — registers a page in the nav for this mission */
+  page?: MissionPageDeclaration;
+
   tags?: string[];
+}
+
+/** Declared in mission.json — registers a page in the nav for this mission */
+export interface MissionPageDeclaration {
+  /** Page ID used in URL hash (e.g. #page:mission-dash) */
+  id: string;
+  /** Display title in the nav bar */
+  title: string;
+  /** Optional icon for the nav link */
+  icon?: string;
+  /** Show in the main nav bar. Default true. */
+  nav?: boolean;
+  /** Full layout tree (same schema as .modus/pages/*.json). */
+  layout?: unknown;
+  /** Initial page-scoped shared state for widget linking (pub/sub). */
+  context?: Record<string, unknown>;
+  /** Outer padding in pixels around the layout container. */
+  padding?: number;
 }
 
 export interface MissionRoleConfig {

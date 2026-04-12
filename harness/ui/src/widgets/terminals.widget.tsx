@@ -68,7 +68,7 @@ function buildSessionHref(sessionId: string, userProfile: string | null): string
   return `${window.location.origin}${window.location.pathname}#${hash}`;
 }
 
-export default function TerminalsWidget({ config, onSelectSession }: WidgetProps<TerminalsConfig>) {
+export default function TerminalsWidget({ config, onSelectSession, pageContext }: WidgetProps<TerminalsConfig>) {
   const { activeSession } = useSession();
   const { activeUserProfile } = useProfiles();
   const { setHeaderSuffix } = useWidgetChrome();
@@ -165,7 +165,7 @@ export default function TerminalsWidget({ config, onSelectSession }: WidgetProps
                   href={sessionHref ?? "#"}
                   onClick={(e) => {
                     e.preventDefault();
-                    onSelectSession(terminal.sessionId!);
+                    if (pageContext) { pageContext.set("selectedSession", terminal.sessionId!); } else { onSelectSession(terminal.sessionId!); }
                   }}
                   title={sessionHref ?? "Open session"}
                 >
