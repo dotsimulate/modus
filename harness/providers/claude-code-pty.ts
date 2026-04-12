@@ -28,6 +28,7 @@ import { createPendingDispatchItem, type ActiveSession, type MessageContent } fr
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { registerExternalTerminal, updateTerminalSession } from "../terminal-manager";
+import { getMemoryLimitedEnv } from "../memory-guard";
 import {
   getGlobalConfig, getUserData,
   type McpServerConfig,
@@ -308,7 +309,7 @@ function spawnClaude(state: PtyState, sessionId?: string): ChildProcess {
 
   const proc = spawn(bin, state.spawnArgs, {
     cwd: state.spawnCwd,
-    env: state.spawnEnv,
+    env: getMemoryLimitedEnv(state.spawnEnv),
     stdio: ["pipe", "pipe", "pipe"],
   });
 
