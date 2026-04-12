@@ -129,19 +129,46 @@ function killTree(proc: Subprocess) {
   } catch { /* best effort */ }
 }
 
+/**
+ * Ask the harness to shut itself down gracefully via HTTP.
+ * This lets it call server.stop(true), closing all connections and freeing the port.
+ */
+async function requestGracefulShutdown(): Promise<boolean> {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/api/internal/shutdown`, {
+      method: "POST",
+      signal: AbortSignal.timeout(3_000),
+    });
+    return resp.ok;
+  } catch { return false; }
+}
+
 let stopping = false;
-function cleanup() {
+async function cleanup() {
   if (stopping) return;
   stopping = true;
   console.log("\nshutting down...");
+
+  // Ask harness to shut down gracefully first — this frees the port cleanly
+  const acked = await requestGracefulShutdown();
+  if (acked) {
+    // Wait up to 5s for the harness to exit on its own
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if (harness.exitCode !== null) break;
+      await Bun.sleep(200);
+    }
+  }
+
+  // Force-kill anything still running
   killTree(harness);
   killTree(viteBuild);
   killTree(vite);
 }
 
-process.on("SIGINT", cleanup);
-process.on("SIGTERM", cleanup);
-process.on("exit", cleanup);
+process.on("SIGINT", () => { cleanup(); });
+process.on("SIGTERM", () => { cleanup(); });
+process.on("exit", () => { cleanup(); });
 
 // ── Print info after a brief settle ──────────────────────────────
 
@@ -187,5 +214,5 @@ setTimeout(() => {
 // ── Wait for either to exit ──────────────────────────────────────
 
 await Promise.race([harness.exited, viteBuild.exited, vite.exited]);
-cleanup();
+await cleanup();
 process.exit(0);

@@ -22,7 +22,7 @@
 import simpleGit from "simple-git";
 import { appendFileSync, readFileSync, watch as fsWatch, existsSync, readdirSync, statSync, renameSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
-import { createConnection } from "net";
+import { createConnection, createServer } from "net";
 import { createHash } from "crypto";
 
 const HARNESS_DIR = import.meta.dir;
@@ -232,6 +232,20 @@ function isPortInUse(port: number): Promise<boolean> {
   });
 }
 
+/**
+ * Try to actually bind the port. This catches TIME_WAIT ghost sockets that
+ * isPortInUse() misses — they refuse TCP connections (looks "free") but the
+ * kernel won't let you bind. Returns true only if the port is truly available.
+ */
+function canBindPort(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const srv = createServer();
+    srv.once("error", () => resolve(false));
+    srv.once("listening", () => { srv.close(() => resolve(true)); });
+    srv.listen(port, "127.0.0.1");
+  });
+}
+
 /** Wait until a port is free, polling every interval. Returns false on timeout. */
 async function waitForPortFree(port: number, timeoutMs = 30_000, intervalMs = 500): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
@@ -307,12 +321,13 @@ function killPortHolder(port: number, escalate = false): "freed" | "ghost" | "fa
 
 /**
  * Find a free port starting from basePort, scanning up to PORT_SCAN_RANGE ports.
+ * Uses canBindPort() to detect TIME_WAIT ghost sockets that isPortInUse() misses.
  * Returns the first available port, or null if all are in use.
  */
 async function findFreePort(basePort: number): Promise<number | null> {
   for (let offset = 0; offset < PORT_SCAN_RANGE; offset++) {
     const candidate = basePort + offset;
-    if (!(await isPortInUse(candidate))) return candidate;
+    if (await canBindPort(candidate)) return candidate;
   }
   return null;
 }
@@ -531,8 +546,9 @@ async function run() {
   }
 
   while (!stopping) {
-    // If we rotated away from BASE_PORT, check if it's free now and go back
-    if (activePort !== BASE_PORT && !(await isPortInUse(BASE_PORT))) {
+    // If we rotated away from BASE_PORT, check if it's truly bindable before going back.
+    // canBindPort() catches TIME_WAIT ghost sockets that isPortInUse() misses.
+    if (activePort !== BASE_PORT && (await canBindPort(BASE_PORT))) {
       log("info", `base port ${BASE_PORT} is free again — switching back from ${activePort}`);
       activePort = BASE_PORT;
     }

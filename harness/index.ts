@@ -59,8 +59,10 @@ import {
   updateSessionConfig, resolvePermission, switchProfile,
   pauseSession, resumeSession, branchSession, cancelQueuedDispatch,
   subscribeGlobal, emitGlobalSessionEvent,
+  startSessionReaper, stopSessionReaper,
   type SSEWriter,
 } from "./session-manager";
+import { startMemoryWatchdog, stopMemoryWatchdog, getMemoryStatus } from "./memory-guard";
 import {
   createTerminal, killTerminal, resizeTerminal as resizeTerminalPty,
   getActiveTerminal, getAllActiveTerminals, getTerminalInfo, listAllTerminals,
@@ -268,6 +270,8 @@ app.delete("/api/processes/:id", (c) => {
 app.post("/api/internal/shutdown", (c) => {
   setTimeout(() => {
     stopActions();
+    stopSessionReaper();
+    stopMemoryWatchdog();
     shutdownAll();
     shutdownAllTerminals();
     server.stop(true);
@@ -275,6 +279,8 @@ app.post("/api/internal/shutdown", (c) => {
   }, 50);
   return c.json({ ok: true });
 });
+
+app.get("/api/system/memory", (c) => c.json(getMemoryStatus()));
 
 app.post("/api/admin/restart", async (c) => {
   // Requires HARNESS_TOKEN — agents only, not browser PIN sessions
@@ -3236,6 +3242,8 @@ console.log(`Agent harness listening on ${protocol}://${HOST}:${PORT}${authModes
 
 initActions();
 loadPrompts();
+startSessionReaper();
+startMemoryWatchdog();
 
 // Suppress AbortError rejections from provider internals (e.g. Gemini CLI retry loops)
 process.on("unhandledRejection", (reason) => {
@@ -3247,6 +3255,8 @@ process.on("unhandledRejection", (reason) => {
 process.on("SIGTERM", () => {
   console.log("Shutting down...");
   stopActions();
+  stopSessionReaper();
+  stopMemoryWatchdog();
   shutdownAll();
   shutdownAllTerminals();
   // Force-close active connections (WebSocket, SSE) so the port is released immediately.

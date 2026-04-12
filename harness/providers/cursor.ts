@@ -18,6 +18,7 @@ import { join, isAbsolute } from "path";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
+import { getMemoryLimitedEnv } from "../memory-guard";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
 import {
@@ -449,7 +450,7 @@ async function runTurn(
   let proc: ChildProcess;
   try {
     proc = spawn(bin, args, {
-      env,
+      env: getMemoryLimitedEnv(env),
       stdio: ["pipe", "pipe", "pipe"],
     });
   } catch (err: any) {

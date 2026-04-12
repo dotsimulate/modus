@@ -24,6 +24,7 @@ import {
 } from "./db";
 import type { SessionOutcome } from "./action-types";
 import { logActivity } from "./activity";
+import { canSpawnSession } from "./memory-guard";
 import { resolve as resolvePath, dirname as pathDirname, join as pathJoin } from "path";
 import { appendFileSync, mkdirSync } from "fs";
 
@@ -844,6 +845,12 @@ export function attachArtifactToSession(opts: {
 }
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
+  // Memory guard: block spawn if too many sessions or system memory pressure is high
+  const guard = canSpawnSession(activeSessions.size);
+  if (!guard.ok) {
+    throw new Error(`[memory-guard] ${guard.reason}`);
+  }
+
   const baseCwd = resolveSessionCwd(opts.cwd);
   const profileDef = opts.profile ? getProfile(opts.profile, baseCwd) : undefined;
   // Profile CWD override: absolute paths used as-is, relative resolved against baseCwd.
@@ -1841,9 +1848,61 @@ export function emitGlobalSessionEvent(event: GlobalSessionEvent) {
   }
 }
 
+// ── Session Reaper ──
+// Removes finished sessions from the in-memory activeSessions map so they
+// don't accumulate forever between harness restarts. DB rows are unaffected.
+
+const REAP_INTERVAL_MS = 60_000;          // check every 60s
+const REAP_TERMINAL_AFTER_MS = 60_000;    // done/error: reap after 1 min
+const REAP_IDLE_AFTER_MS = 10 * 60_000;   // idle + no subscribers: reap after 10 min
+
+function reapStaleSessions(): void {
+  const now = Date.now();
+  const toReap: string[] = [];
+
+  for (const [id, session] of activeSessions) {
+    const age = now - session.lastEventAt;
+
+    if (session.status === "done" || session.status === "error") {
+      if (age >= REAP_TERMINAL_AFTER_MS && session.subscribers.size === 0) {
+        toReap.push(id);
+      }
+    } else if (session.status === "idle") {
+      if (age >= REAP_IDLE_AFTER_MS && session.subscribers.size === 0) {
+        toReap.push(id);
+      }
+    }
+  }
+
+  for (const id of toReap) {
+    const session = activeSessions.get(id);
+    if (!session) continue;
+    try { session._provider.dispose?.(session)?.catch(() => {}); } catch { /* best effort */ }
+    sseLog("SESSION-REAPED", id,
+      `status=${session.status} age=${Math.round((now - session.lastEventAt) / 1000)}s totalActive=${activeSessions.size - 1}`);
+    activeSessions.delete(id);
+  }
+
+  if (toReap.length > 0) {
+    console.log(`[session-reaper] reaped ${toReap.length} stale session(s), ${activeSessions.size} remain`);
+  }
+}
+
+let reapTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startSessionReaper(): void {
+  if (reapTimer) return;
+  reapTimer = setInterval(reapStaleSessions, REAP_INTERVAL_MS);
+}
+
+export function stopSessionReaper(): void {
+  if (reapTimer) { clearInterval(reapTimer); reapTimer = null; }
+}
+
 // ── Cleanup ──
 
 export function shutdownAll() {
+  stopSessionReaper();
   for (const [id, session] of activeSessions) {
     try {
       if (session.pauseResolver) {

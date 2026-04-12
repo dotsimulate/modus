@@ -14,6 +14,7 @@ import { logActivity } from "../activity";
 import { dirname, isAbsolute, join } from "path";
 import { existsSync, appendFileSync, mkdirSync } from "fs";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { getMemoryLimitedEnv } from "../memory-guard";
 
 // Dedicated message-flow log — gitignored, append-only, easy to tail
 const MSG_LOG = join(import.meta.dir, "..", ".modus", "msg-flow.log");
@@ -183,7 +184,7 @@ function spawnClaudeProcess(options: {
     : options.args;
   const child = spawn(spawnCommand, spawnArgs, {
     cwd: options.cwd,
-    env: options.env,
+    env: getMemoryLimitedEnv(options.env),
     signal: options.signal,
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
