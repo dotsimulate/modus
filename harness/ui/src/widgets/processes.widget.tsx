@@ -43,7 +43,7 @@ function timeAgo(ts: number): string {
   return `${hr}h ${min % 60}m ago`;
 }
 
-export default function ProcessesWidget({ config, onSelectSession }: WidgetProps<ProcessesConfig>) {
+export default function ProcessesWidget({ config, onSelectSession, pageContext }: WidgetProps<ProcessesConfig>) {
   const { activeSession } = useSession();
   const { setHeaderSuffix } = useWidgetChrome();
   const [killingId, setKillingId] = useState<string | null>(null);
@@ -140,7 +140,7 @@ export default function ProcessesWidget({ config, onSelectSession }: WidgetProps
               {!isMe && (
                 <button
                   className="proc-jump"
-                  onClick={() => onSelectSession(proc.id)}
+                  onClick={() => { if (pageContext) { pageContext.set("selectedSession", proc.id); } else { onSelectSession(proc.id); } }}
                   title="Open session"
                 >
                   open

@@ -59,12 +59,14 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
   const handleNewSession = useCallback(async () => {
     const id = await newSession();
     if (id) {
-      // onSelectSession calls selectSession + setUrlSession which sets view to "chat".
-      // Do NOT call onNavigate("chat") — it would go through handleNavigate which
-      // restores restorableLastSessionId, switching back to the old session.
-      onSelectSession(id);
+      if (pageContext) {
+        // Stay on this page — publish the new session to the page context bus
+        pageContext.set("selectedSession", id);
+      } else {
+        onSelectSession(id);
+      }
     }
-  }, [newSession, onSelectSession]);
+  }, [newSession, onSelectSession, pageContext]);
 
   return (
     <div className="session-list-widget">

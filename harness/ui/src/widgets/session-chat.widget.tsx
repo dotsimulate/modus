@@ -5,11 +5,14 @@
  *
  * Shows the message thread for a given session. If no sessionId in config,
  * shows an empty state. Uses sessionStore for live SSE streaming.
+ * Includes the PermissionOverlay for tool permission prompts.
  */
 
 import { useEffect } from "react";
 import { useSessionState, subscribeSession, isSubscribed } from "../sessionStore";
+import { useSession } from "../providers/SessionContext";
 import { ChatView } from "../components/ChatView";
+import { PermissionOverlay } from "../components/PermissionOverlay";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
@@ -30,6 +33,7 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
+  const { handlePermissionResponse } = useSession();
 
   if (!sessionId) {
     return <WidgetEmptyState>no session selected</WidgetEmptyState>;
@@ -40,9 +44,10 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
   }
 
   const isActive = session.status === "running" || session.status === "starting";
+  const permissions = session.pendingPermissions ?? [];
 
   return (
-    <div className="session-chat-widget" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden" }}>
+    <div className="session-chat-widget" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden", position: "relative" }}>
       <ChatView
         messages={session.messages ?? []}
         sessionId={sessionId}
@@ -55,6 +60,13 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
         emptyTitle="no messages"
         emptySubtitle="session has no messages yet"
       />
+      {permissions.length > 0 && (
+        <PermissionOverlay
+          permissions={permissions}
+          sessionId={sessionId}
+          onRespond={handlePermissionResponse}
+        />
+      )}
     </div>
   );
 }

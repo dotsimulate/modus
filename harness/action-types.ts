@@ -129,6 +129,9 @@ export interface ActionConfig {
   // ── Moves (activate moves on the spawned session) ──
   moves?: ActionMoveSpec[];
 
+  // ── Page (action-owned page in the nav) ──
+  page?: ActionPageDeclaration;
+
   // ── Tags (freeform labels — used for filtering, grouping, archiving) ──
   tags?: string[];
 
@@ -507,3 +510,23 @@ export interface ActionMoveSpec {
 
 /** Max depth for action→action chain triggers to prevent infinite loops */
 export const MAX_CHAIN_DEPTH = 8;
+
+// ── Page Declaration ──
+
+/** Declared in action.json — registers a page in the nav for this action */
+export interface ActionPageDeclaration {
+  /** Page ID used in URL hash (e.g. #page:monitor-dash) */
+  id: string;
+  /** Display title in the nav bar */
+  title: string;
+  /** Optional icon for the nav link */
+  icon?: string;
+  /** Show in the main nav bar. Default true. */
+  nav?: boolean;
+  /** Full layout tree (same schema as .modus/pages/*.json). */
+  layout?: unknown;
+  /** Initial page-scoped shared state for widget linking (pub/sub). */
+  context?: Record<string, unknown>;
+  /** Outer padding in pixels around the layout container. */
+  padding?: number;
+}

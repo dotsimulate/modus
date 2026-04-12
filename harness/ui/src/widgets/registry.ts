@@ -16,17 +16,24 @@ import type { WidgetDef, WidgetProps, WidgetBase, DashboardConfig } from "./type
 
 import ActionCardWidget from "./action-card.widget";
 import AccountWidget from "./account.widget";
+import ActionsManagerWidget from "./actions-manager.widget";
 import AgentActivityWidget from "./agent-activity.widget";
 import ClaudePricingWidget from "./claude-pricing.widget";
 import CodeEditorWidget from "./code-editor.widget";
+import ComposerWidget from "./composer.widget";
+import ConfigBarWidget from "./config-bar.widget";
 import ConfigInspectorWidget from "./config-inspector.widget";
 import DeepAnalyticsWidget from "./deep-analytics.widget";
 import DefaultAgentWidget from "./default-agent.widget";
 import ExtensionsWidget from "./extensions.widget";
+import InboxWidget from "./inbox.widget";
 import MovesWidget from "./moves.widget";
+import NewSessionWidget from "./new-session.widget";
+import NotesWidget from "./notes.widget";
 import PersistentTerminalWidget from "./persistent-terminal.widget";
 import ProcessesWidget from "./processes.widget";
 import ProfileCardWidget from "./profile-card.widget";
+import ProfilesManagerWidget from "./profiles-manager.widget";
 import ProjectThemeWidget from "./project-theme.widget";
 import ProviderStatusWidget from "./provider-status.widget";
 import ProviderUsageWidget from "./provider-usage.widget";
@@ -36,10 +43,12 @@ import SessionEditsWidget from "./session-edits.widget";
 import SessionInfoWidget from "./session-info.widget";
 import SessionListWidget from "./session-list.widget";
 import SessionSidebarWidget from "./session-sidebar.widget";
+import SessionWebWidget from "./session-web.widget";
 import SessionTerminalWidget from "./session-terminal.widget";
 import SessionsWidget from "./sessions.widget";
 import StatsWidget from "./stats.widget";
 import TerminalsWidget from "./terminals.widget";
+import TraceViewerWidget from "./trace-viewer.widget";
 
 // ── Registry ──
 
@@ -57,6 +66,12 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     minHeight: 100,
     preferredHeight: 220,
     maxHeight: 280,
+  },
+  "actions-manager": {
+    type: "actions-manager",
+    component: ActionsManagerWidget,
+    minHeight: 200,
+    preferredHeight: 500,
   },
   "agent-activity": {
     type: "agent-activity",
@@ -77,6 +92,20 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     zones: ["left-panel", "right-panel"],
     minHeight: 200,
     preferredHeight: 400,
+  },
+  "composer": {
+    type: "composer",
+    component: ComposerWidget,
+    minHeight: 60,
+    preferredHeight: 120,
+    maxHeight: 200,
+  },
+  "config-bar": {
+    type: "config-bar",
+    component: ConfigBarWidget,
+    minHeight: 30,
+    preferredHeight: 40,
+    maxHeight: 300,
   },
   "config-inspector": {
     type: "config-inspector",
@@ -104,11 +133,30 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     minHeight: 100,
     preferredHeight: 220,
   },
+  "inbox": {
+    type: "inbox",
+    component: InboxWidget,
+    minHeight: 150,
+    preferredHeight: 400,
+  },
   "moves": {
     type: "moves",
     component: MovesWidget,
     minHeight: 100,
     preferredHeight: 220,
+  },
+  "new-session": {
+    type: "new-session",
+    component: NewSessionWidget,
+    minHeight: 200,
+    preferredHeight: 400,
+  },
+  "notes": {
+    type: "notes",
+    component: NotesWidget,
+    zones: ["left-panel", "right-panel", "dashboard"],
+    minHeight: 220,
+    preferredHeight: 560,
   },
   "persistent-terminal": {
     type: "persistent-terminal",
@@ -129,6 +177,12 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     minHeight: 80,
     preferredHeight: 180,
     maxHeight: 240,
+  },
+  "profiles-manager": {
+    type: "profiles-manager",
+    component: ProfilesManagerWidget,
+    minHeight: 200,
+    preferredHeight: 500,
   },
   "project-theme": {
     type: "project-theme",
@@ -188,6 +242,12 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     minHeight: 150,
     preferredHeight: 300,
   },
+  "session-web": {
+    type: "session-web",
+    component: SessionWebWidget,
+    minHeight: 300,
+    preferredHeight: 600,
+  },
   "session-terminal": {
     type: "session-terminal",
     component: SessionTerminalWidget,
@@ -212,6 +272,12 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     component: TerminalsWidget,
     minHeight: 120,
     preferredHeight: 240,
+  },
+  "trace-viewer": {
+    type: "trace-viewer",
+    component: TraceViewerWidget,
+    minHeight: 300,
+    preferredHeight: 600,
   },
 };
 

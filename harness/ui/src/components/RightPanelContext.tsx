@@ -33,3 +33,8 @@ export function useRightPanelContext(): RightPanelContextValue {
   }
   return value;
 }
+
+/** Non-throwing variant — returns null when outside a RightPanelContextProvider. */
+export function useOptionalRightPanelContext(): RightPanelContextValue | null {
+  return useContext(RightPanelContext);
+}

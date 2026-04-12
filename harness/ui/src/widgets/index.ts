@@ -26,6 +26,7 @@ export type {
   DashboardPage,
   DashboardConfig,
   PageContextHandle,
+  ScopeEvent,
 } from "./types";
 
 // Chrome context

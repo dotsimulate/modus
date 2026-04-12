@@ -115,7 +115,7 @@ const SORT_COLS: { key: SortKey; label: string }[] = [
 
 // ── Component ──
 
-export default function SessionsWidget({ config, widgetId, onSelectSession }: WidgetProps<SessionsConfig>) {
+export default function SessionsWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<SessionsConfig>) {
   const { activeCwd, activeUserProfile } = useProfiles();
   const [viewMode, setViewMode] = useWidgetUiState<ViewMode>(
     { userProfile: activeUserProfile, cwd: activeCwd },
@@ -220,7 +220,9 @@ export default function SessionsWidget({ config, widgetId, onSelectSession }: Wi
       {sorted.length === 0 ? (
         <WidgetEmptyState>{isArchived ? "no archived sessions" : "no sessions"}</WidgetEmptyState>
       ) : sorted.map((r) => (
-        <div key={r.id} className="sessions-table-row" onClick={() => onSelectSession(r.id)}>
+        <div key={r.id} className="sessions-table-row" onClick={() => {
+          if (pageContext) { pageContext.set("selectedSession", r.id); } else { onSelectSession(r.id); }
+        }}>
           <span className={`dash-dot ${isArchived ? "dash-dot--archived" : dotClass(r)}`} />
           <span className="sessions-cell sessions-cell--preview">{r.preview || "new session"}</span>
           <span className="sessions-cell sessions-cell--date">{timeAgo(r.lastMessageAt)}</span>
