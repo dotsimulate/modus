@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef, Component, type ReactNode } from "react";
-import type { ProfileUi, MoveListItem } from "../../sdk/index";
+import { useState, useEffect, useCallback, useRef, Component, type ReactNode } from "react";
+import type { MoveListItem } from "../../sdk/index";
 import { API_BASE, authHeaders, modus } from "./modusClient";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
 import { AuthProvider } from "./providers/AuthProvider";
@@ -11,19 +11,14 @@ import { useSession } from "./providers/SessionContext";
 import { getSessionState } from "./sessionStore";
 import { useHashRouter } from "./hooks/useHashRouter";
 import { Sidebar } from "./components/Sidebar";
-import { ChatView } from "./components/ChatView";
-import { ChatInput } from "./components/ChatInput";
-import { ConfigBar } from "./components/ConfigBar";
 import { Dashboard } from "./components/Dashboard";
 import { PageView } from "./components/PageRenderer";
 import { Profiles } from "./components/Profiles";
 import { Actions } from "./components/Actions";
 import { MovePageView } from "./components/MovePageView";
-import { PermissionOverlay } from "./components/PermissionOverlay";
 import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
 import { UserSettingsModal } from "./components/UserSettingsModal";
-import { createEmptyAgentConfig } from "./components/AgentConfig";
 import { FileViewerProvider } from "./providers/FileViewerProvider";
 import { useFileViewer } from "./providers/FileViewerContext";
 import { PinboardProvider } from "./providers/PinboardProvider";
@@ -40,20 +35,7 @@ import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { AgentPortal } from "./components/AgentPortal";
 import type { DashboardPage } from "./widgets";
 
-import { loadAndApplyProjectUiState } from "./project-ui-theme";
-import { useInputValue, getInputValue } from "./inputStore";
-
-// Consume ?cwd= from URL, stash in sessionStorage so it survives the
-// auth/PIN reload, then strip from URL to keep hash routing clean.
-const _launchParams = new URLSearchParams(window.location.search);
-const _urlCwd = _launchParams.get("cwd");
-if (_urlCwd) {
-  sessionStorage.setItem("modus:launch-cwd", _urlCwd);
-  const url = new URL(window.location.href);
-  url.searchParams.delete("cwd");
-  window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-}
-export const LAUNCH_CWD = _urlCwd ?? sessionStorage.getItem("modus:launch-cwd") ?? "";
+import { getInputValue } from "./inputStore";
 
 function parseTagList(raw?: string | null): string[] {
   if (!raw) return [];
@@ -140,19 +122,13 @@ function AppShell() {
   );
 }
 
-/** Thin wrapper that subscribes to the input store so AppContent doesn't re-render on keystrokes. */
-function ConnectedChatInput(props: Omit<Parameters<typeof ChatInput>[0], "value">) {
-  const input = useInputValue();
-  return <ChatInput {...props} value={input} />;
-}
-
 type HashRouter = ReturnType<typeof useHashRouter>;
 
 function AppContent({ router }: { router: HashRouter }) {
   const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, consumeHashProfile } = router;
   const { handleLock } = useAuth();
   const {
-    profiles, visibleProfiles, availableProviders, userProfiles,
+    visibleProfiles, availableProviders, userProfiles,
     activeUserProfile, activeUP, projectRoot,
     selectedProfile, selectProfile,
     setupState, setSetupState,
@@ -161,10 +137,8 @@ function AppContent({ router }: { router: HashRouter }) {
   const {
     activeSession, serverSessions,
     handleInputChange,
-    send, stop, stopTask, newSession, selectSession, archiveSession,
+    newSession, selectSession, archiveSession,
     refreshSessions,
-    handlePermissionResponse, updateActiveSessionConfig, updateActiveSessionProfile,
-    queuedMessage, cancelQueued, branchFromMessage,
   } = useSession();
 
   // Panel state — owned by LayoutProvider
@@ -190,6 +164,7 @@ function AppContent({ router }: { router: HashRouter }) {
     setLeftPanelOpen,
     setRightPanelOpen,
     onRightPanelWidgetsChange,
+    view,
   });
   panelFileRouteRef.current = {
     leftPanelWidgets,
@@ -198,6 +173,7 @@ function AppContent({ router }: { router: HashRouter }) {
     setLeftPanelOpen,
     setRightPanelOpen,
     onRightPanelWidgetsChange,
+    view,
   };
   useEffect(() => {
     return subscribeFileOpens(() => {
@@ -208,8 +184,12 @@ function AppContent({ router }: { router: HashRouter }) {
         setLeftPanelOpen: openLeft,
         setRightPanelOpen: openRight,
         onRightPanelWidgetsChange: setRightWidgets,
+        view: currentView,
       } = panelFileRouteRef.current;
       if (!enabled) return;
+      // Pages with their own code-editor handle file opens internally —
+      // don't also pop open the app-level right panel.
+      if (currentView === "chat" || getCustomPageId(currentView)) return;
       const hasEditorRight = (rw ?? []).some((w) => w.type === "code-editor");
       const hasEditorLeft = (lw ?? []).some((w) => w.type === "code-editor");
       if (hasEditorRight) {
@@ -217,7 +197,6 @@ function AppContent({ router }: { router: HashRouter }) {
       } else if (hasEditorLeft) {
         openLeft(true);
       } else {
-        // No code-editor in any panel — add one to the right panel and open it
         setRightWidgets([...(rw ?? []), { type: "code-editor" }]);
         openRight(true);
       }
@@ -332,11 +311,6 @@ function AppContent({ router }: { router: HashRouter }) {
     && (serverSessions.some((s) => s.id === uiState.lastSessionId) || activeSession?.id === uiState.lastSessionId)
     ? uiState.lastSessionId
     : null;
-  const activeSessionTags = useMemo(
-    () => parseTagList(serverSessions.find((s) => s.id === activeSession?.id)?.tags),
-    [activeSession?.id, serverSessions],
-  );
-
   const handleNewSession = useCallback(async () => {
     const id = await newSession();
     if (id) {
@@ -361,13 +335,6 @@ function AppContent({ router }: { router: HashRouter }) {
     switchUserProfile(name);
     setUrlProfile(name);
   }, [switchUserProfile, setUrlProfile]);
-
-  // Switch profile on live session (ConfigBar controls this)
-  const handleSwitchProfile = useCallback((name: string) => {
-    if (activeSession?.id && !activeSession.id.startsWith("pending-")) {
-      updateActiveSessionProfile(name);
-    }
-  }, [activeSession?.id, updateActiveSessionProfile]);
 
   // View-based session navigation (from dashboard/schedules)
   const handleViewSession = useCallback((id: string) => {
@@ -406,49 +373,6 @@ function AppContent({ router }: { router: HashRouter }) {
   }, [serverSessions, refreshSessions]);
 
 
-  // ── Profile UI resolution ──
-  // Config bar shows the active session's profile. Sidebar's selectedProfile
-  // is the seed for NEW sessions only — it must never leak into the active
-  // session's display. When an active session has no profile (null from server),
-  // fall back to the user profile default, not the sidebar selection.
-  const activeProfileName = activeSession
-    ? (activeSession.profile || activeUP?.defaultAgentProfile || visibleProfiles[0]?.name || selectedProfile)
-    : selectedProfile;
-  const profileUi = profiles.find((p) => p.name === activeProfileName)?.ui ?? {};
-  const ui: Required<ProfileUi> = {
-    label: profileUi.label ?? "agent",
-    showThinking: profileUi.showThinking ?? true,
-    showMeta: profileUi.showMeta ?? true,
-    showToolCalls: profileUi.showToolCalls ?? true,
-    showGitEvents: profileUi.showGitEvents ?? true,
-    placeholder: profileUi.placeholder ?? "message...",
-    emptyTitle: profileUi.emptyTitle ?? activeProfileName,
-    emptySubtitle: profileUi.emptySubtitle ?? "start typing to begin",
-    panelWidgets: profileUi.panelWidgets ?? [],
-  };
-  const isStreaming = activeSession?.status === "running" || activeSession?.status === "starting";
-  const profileData = profiles.find((p) => p.name === activeProfileName);
-  const activeSessionInfo = activeSession?.id ? serverSessions.find((s) => s.id === activeSession.id) : undefined;
-  const editorProfileName = activeSession?.nextProfile ?? activeProfileName;
-  const editorProfileData = profiles.find((p) => p.name === editorProfileName);
-  const sessionProviderLocked = !!activeSession && activeSession.messages.length > 0;
-  const liveProvider = activeSessionInfo?.provider || activeSession?.provider || profileData?.provider || activeUP?.provider;
-  // Use session model when available; fall back to profile default while events
-  // are still in-flight (activeSession.model may be "" before system:init arrives).
-  const liveModel = activeSession?.model || profileData?.model || activeUP?.model || "";
-  const editorProfileProvider = editorProfileData?.provider ?? activeUP?.provider;
-  const editorProfileModel = editorProfileData?.model ?? activeUP?.model;
-  const pendingProfileProviderMatches = !sessionProviderLocked
-    || !liveProvider
-    || !editorProfileProvider
-    || editorProfileProvider === liveProvider;
-  const editorAgentConfig = activeSession?.nextAgentConfig
-    ?? (
-      activeSession?.nextProfile && activeSession.nextProfile !== activeSession.profile
-        ? createEmptyAgentConfig()
-        : activeSession?.agentConfig
-    )
-    ?? setupState.agent;
   const activeAgentCount = serverSessions.filter(s => {
     const status = getSessionState(s.id)?.status ?? s.status;
     return status === "running" || status === "starting";
@@ -502,12 +426,19 @@ function AppContent({ router }: { router: HashRouter }) {
       view: movePageView(m.name),
       label: m.page!.title,
     })),
-    ...customPages.map((page) => ({
-      view: customPageView(page.id),
-      label: page.title,
-    })),
+    ...customPages
+      .filter((page) => page.nav !== false)
+      .map((page) => ({
+        view: customPageView(page.id),
+        label: page.title,
+      })),
   ];
   const activeCustomPage = customPages.find((page) => page.id === getCustomPageId(view));
+  const chatStudioPage = configPages.find(p => p.id === "chat-studio");
+  const isFullscreenPage = view === "chat"
+    ? !!chatStudioPage?.fullscreen
+    : !!activeCustomPage?.fullscreen;
+  const shouldShowAppPanels = panelsEnabled && !isFullscreenPage;
 
   useEffect(() => {
     const customPageId = getCustomPageId(view);
@@ -611,8 +542,8 @@ function AppContent({ router }: { router: HashRouter }) {
           onTogglePin={handleTogglePin}
         />
 
-        {/* ── Left Panel (view-independent) ── */}
-        {panelsEnabled && (
+        {/* ── Left Panel (view-independent, hidden on fullscreen pages) ── */}
+        {shouldShowAppPanels && (
           <>
             <LeftPanel
               open={leftPanelOpen}
@@ -639,141 +570,16 @@ function AppContent({ router }: { router: HashRouter }) {
         )}
 
         {/* ── Center Content (view-dependent) ── */}
-        {view === "chat" && (
-          <div className="chat">
-            <ChatView
-              key={activeSession?.id ?? "empty"}
-              messages={activeSession?.messages ?? []}
-              sessionId={activeSession?.id ?? null}
-              sessionTags={activeSessionTags}
-              provider={liveProvider}
-              profileName={activeProfileName}
-              model={liveModel}
-              streaming={isStreaming}
-              streamFeed={activeSession?.streamFeed}
-              showThinking={ui.showThinking}
-              showMeta={ui.showMeta}
-              showToolCalls={ui.showToolCalls}
-              showGitEvents={ui.showGitEvents}
-              cwd={activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd ?? null}
-              emptyTitle={ui.emptyTitle ?? activeProfileName}
-              emptySubtitle={ui.emptySubtitle}
-              queuedMessage={queuedMessage}
-              onCancelQueued={cancelQueued}
-              onSessionTagsChange={refreshSessions}
-              onBranch={branchFromMessage}
-              onStopTask={stopTask}
-              onOpenSessionEdits={() => { setRightPanelOpen(true); setRequestRightPanelView("session-edits"); }}
+        {view === "chat" && chatStudioPage && (
+            <PageView
+              blocks={chatStudioPage.blocks}
+              layout={chatStudioPage.layout as any}
+              context={(chatStudioPage as any).context}
+              padding={chatStudioPage.padding}
+              onNavigate={navigate}
+              onSelectSession={handleViewSession}
+              hashSessionId={hashSessionId}
             />
-
-            {activeSession?.pendingPermissions && activeSession.pendingPermissions.length > 0 && (
-              <PermissionOverlay
-                permissions={activeSession.pendingPermissions}
-                sessionId={activeSession.id}
-                onRespond={handlePermissionResponse}
-              />
-            )}
-
-            <ConfigBar
-              profileName={activeProfileName}
-              pendingProfileName={activeSession?.nextProfile}
-              model={liveModel}
-              agentConfig={activeSession ? activeSession.agentConfig : setupState.agent}
-              editorConfig={editorAgentConfig}
-              onAgentConfigChange={updateActiveSessionConfig}
-              profileTools={profileData?.tools ?? "all"}
-              editorProfileTools={
-                sessionProviderLocked && !pendingProfileProviderMatches
-                  ? (profileData?.tools ?? "all")
-                  : (editorProfileData?.tools ?? "all")
-              }
-              availableProviders={availableProviders}
-              profileProvider={liveProvider}
-              editorProfileProvider={
-                sessionProviderLocked
-                  ? liveProvider
-                  : editorProfileProvider
-              }
-              editorProfileModel={
-                pendingProfileProviderMatches
-                  ? editorProfileModel
-                  : undefined
-              }
-              profileEffort={activeSession ? (profileData?.effort ?? activeUP?.effort) : (activeUP?.effort ?? profileData?.effort)}
-              editorProfileEffort={activeSession ? (editorProfileData?.effort ?? activeUP?.effort) : (activeUP?.effort ?? editorProfileData?.effort)}
-              editorProfileMaxTurns={editorProfileData?.maxTurns}
-              showProvider={!!activeSession && !sessionProviderLocked}
-              availableTools={activeSession?.availableTools}
-              profiles={visibleProfiles}
-              onSwitchProfile={handleSwitchProfile}
-              sessionTags={activeSessionTags}
-              onTogglePin={activeSession?.id && !activeSession.id.startsWith("pending-") ? () => handleTogglePin(activeSession.id) : undefined}
-              status={activeSession?.status}
-              sessionId={activeSession?.id}
-              messages={activeSession?.messages}
-              createdAt={activeSession?.createdAt}
-              updatedAt={activeSession?.updatedAt}
-              totalCost={activeSession?.totalCost}
-              cwd={activeSession?.cwd}
-            />
-            <ConnectedChatInput
-              onChange={handleInputChange}
-              onSend={send}
-              onStop={stop}
-              sessionStatus={activeSession?.status ?? null}
-              disabled={harnessUp === false}
-              placeholder={ui.placeholder}
-              sessionId={activeSession?.id}
-              projectCwd={projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd}
-              userProfile={activeUserProfile ?? undefined}
-              autoFocus={view === "chat" && !!activeSession?.id}
-              onMoveAttached={(result) => {
-                const widgetSessionId = activeSession?.id ?? "";
-                console.log(`[onMoveAttached] widget pre-mount: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
-                widgetJustSetRef.current = true;
-                const newWidget = {
-                  widget: result.widget,
-                  apiToken: result.apiToken,
-                  instanceId: result.instanceId,
-                  sessionId: widgetSessionId,
-                  mountedOnAttach: true,
-                };
-                setActiveMoveWidgets(prev => {
-                  const filtered = prev.filter(w => w.instanceId !== result.instanceId);
-                  return [...filtered, newWidget];
-                });
-                setRightPanelOpen(true);
-              }}
-              onMoveDetached={(apiToken) => {
-                setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
-              }}
-              onMoveActivated={(result) => {
-                refreshSessions();
-                const cwd = activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
-                loadAndApplyProjectUiState(cwd || undefined);
-                if (result.spawnedSessionId) {
-                  selectSession(result.spawnedSessionId);
-                  setUrlSession(result.spawnedSessionId, activeUserProfile);
-                }
-                if (result.widget && result.apiToken && result.instanceId && activeSession?.id) {
-                  const widgetSessionId = result.spawnedSessionId ?? activeSession.id;
-                  console.log(`[onMoveActivated] widget set: sessionId=${widgetSessionId} apiToken=${result.apiToken} instanceId=${result.instanceId}`);
-                  widgetJustSetRef.current = true;
-                  const newWidget = {
-                    widget: result.widget,
-                    apiToken: result.apiToken,
-                    instanceId: result.instanceId,
-                    sessionId: widgetSessionId,
-                  };
-                  setActiveMoveWidgets(prev => {
-                    const filtered = prev.filter(w => w.instanceId !== result.instanceId);
-                    return [...filtered, newWidget];
-                  });
-                  if (result.widget.autoOpen) setRightPanelOpen(true);
-                }
-              }}
-            />
-          </div>
         )}
 
         {view === "home" && (
@@ -808,8 +614,8 @@ function AppContent({ router }: { router: HashRouter }) {
           />
         )}
 
-        {/* ── Right Panel (view-independent) ── */}
-        {panelsEnabled && (
+        {/* ── Right Panel (view-independent, hidden on fullscreen pages) ── */}
+        {shouldShowAppPanels && (
           <>
             <PanelCollapseTab
               side="right"
@@ -846,18 +652,22 @@ function AppContent({ router }: { router: HashRouter }) {
         )}
           {customPages
             .filter((page) => mountedCustomPageIds.includes(page.id))
-            .map((page) => (
-              <div key={page.id} style={{ display: activeCustomPage?.id === page.id ? "contents" : "none" }}>
-                <PageView
-                  blocks={page.blocks}
-                  layout={page.layout as any}
-                  context={(page as any).context}
-                  padding={(page as any).padding}
-                  onNavigate={navigate}
-                  onSelectSession={handleViewSession}
-                />
-              </div>
-            ))}
+            .map((page) => {
+              const isActive = activeCustomPage?.id === page.id;
+              return (
+                <div key={page.id} style={{ display: isActive ? "contents" : "none" }}>
+                  <PageView
+                    blocks={page.blocks}
+                    layout={page.layout as any}
+                    context={(page as any).context}
+                    padding={(page as any).padding}
+                    onNavigate={navigate}
+                    onSelectSession={handleViewSession}
+                    hashSessionId={isActive ? hashSessionId : null}
+                  />
+                </div>
+              );
+            })}
       </div>
 
       <SessionWindow

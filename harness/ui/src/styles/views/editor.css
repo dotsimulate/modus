@@ -33,6 +33,55 @@
   padding: 0 !important;
 }
 
+/* The edit-mode header matches the FileContentViewer header so users get a consistent
+   filename + actions row whether they're viewing or editing. */
+.right-panel-editor > .fcv-head {
+  flex-shrink: 0;
+}
+
+/* Double-click hint — the body gets a text cursor to hint it's editable. */
+.fcv-body--editable {
+  cursor: text;
+}
+
+/* Empty-state shown in the main content area when the sidebar tree is open and the
+   user has "browser" selected — avoids rendering two trees side-by-side. */
+.cw-browser-placeholder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.cw-browser-placeholder-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.cw-browser-placeholder-link {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  transition: color 0.1s ease;
+}
+
+.cw-browser-placeholder-link:hover {
+  color: var(--accent);
+}
+
 /* ── Dirty tab indicator ── */
 
 .rp-tab-dot {
@@ -64,3 +113,244 @@
 
 .rp-status--saving { color: var(--text-dim); }
 .rp-status--error  { color: var(--error-soft); }
+
+.code-workspace-browser-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* ── Inline search (lives in cw-tabs bar) ── */
+
+.cw-search-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 6px;
+  height: 26px;
+}
+
+.cw-search-inline-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.cw-search-inline-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 22px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.cw-search-inline-input::placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.cw-search-inline-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.1s ease, color 0.1s ease;
+}
+
+.cw-search-inline-close:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+/* ── Floating search results (position: absolute, doesn't push layout) ── */
+
+.code-workspace-browser-view {
+  position: relative;
+}
+
+.cw-search-results {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  max-height: 60%;
+  overflow: auto;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 var(--border);
+}
+
+.cw-search-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  color: inherit;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.cw-search-result:last-child {
+  border-bottom: none;
+}
+
+.cw-search-result:hover {
+  background: var(--bg-hover);
+}
+
+.cw-search-result-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.cw-search-result-path {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.cw-search-state {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 6px 10px;
+}
+
+/* ── Tabs overflow menu ── */
+
+.cw-tabs-overflow-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.cw-tabs-overflow-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 30;
+  min-width: 240px;
+  max-width: 420px;
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+.cw-tabs-overflow-menu--portal {
+  position: fixed;
+  z-index: 9999;
+}
+
+.cw-tabs-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease, color 0.1s ease;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+
+.cw-tabs-overflow-item:last-child {
+  border-bottom: none;
+}
+
+.cw-tabs-overflow-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.cw-tabs-overflow-item--active {
+  color: var(--text);
+  position: relative;
+}
+
+.cw-tabs-overflow-item--active::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(232, 155, 80, 0.12), transparent 70%);
+  pointer-events: none;
+}
+
+.cw-tabs-overflow-item--dirty .cw-tabs-overflow-name {
+  font-style: italic;
+}
+
+.cw-tabs-overflow-pin {
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.cw-tabs-overflow-name {
+  flex-shrink: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cw-tabs-overflow-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 10px;
+  direction: rtl;
+  text-align: right;
+}
+
+/* ── Root-folder tab (shows project name) ── */
+
+.cw-tab--root {
+  min-width: auto;
+  max-width: 220px;
+}
+
+.cw-tab--root .cw-tab-label {
+  gap: 5px;
+}
+
+.cw-tab-root-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

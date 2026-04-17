@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
@@ -10,6 +10,8 @@ import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
 import { PanelTreeRenderer } from "./PanelTreeRenderer";
 
 // ── Page-scoped shared state bus ──
+
+const emptyBusSnapshot: Record<string, unknown> = {};
 
 type EventHandler = (event: ScopeEvent) => void;
 
@@ -61,6 +63,74 @@ function createPageStateBus(initial: Record<string, unknown>): PageStateBus {
 }
 
 const PageStateBusContext = createContext<PageStateBus | null>(null);
+
+// ── Page URL context — exposes hash session id to scope binders ──
+
+type PageUrlState = {
+  hashSessionId: string | null;
+};
+
+const PageUrlContext = createContext<PageUrlState>({ hashSessionId: null });
+
+/**
+ * Provides the current hash session id to the page subtree so scope nodes with
+ * `bindUrlSession: true` can mirror it into their context bus. Outbound sync
+ * (bus → URL) flows through `bus.onSelectSession`, which App wires to setUrlSession.
+ */
+export function PageUrlProvider({
+  hashSessionId,
+  children,
+}: {
+  hashSessionId: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <PageUrlContext.Provider value={{ hashSessionId }}>
+      {children}
+    </PageUrlContext.Provider>
+  );
+}
+
+export function usePageUrl(): PageUrlState {
+  return useContext(PageUrlContext);
+}
+
+/**
+ * ScopeUrlSessionBinder — invisible bridge between hash session id and scope bus.
+ * Inbound: pushes hashSessionId into bus as `sessionId` on mount and changes.
+ * Outbound: when bus `sessionId` changes, calls bus.onSelectSession to update URL.
+ * Only mounted when scope node has `bindUrlSession: true`.
+ */
+export function ScopeUrlSessionBinder() {
+  const bus = useContext(PageStateBusContext);
+  const { hashSessionId } = usePageUrl();
+  const lastPushed = useRef<string | null | undefined>(undefined);
+
+  // Inbound: hash → bus
+  useEffect(() => {
+    if (!bus) return;
+    const current = bus.get("sessionId") as string | null | undefined;
+    const next = hashSessionId ?? null;
+    if (current !== next) bus.set("sessionId", next);
+    lastPushed.current = next;
+  }, [bus, hashSessionId]);
+
+  // Outbound: bus → URL (via onSelectSession wired up by PageView)
+  const busState = useSyncExternalStore<Record<string, unknown>>(
+    bus ? bus.subscribe : () => () => {},
+    bus ? bus.getSnapshot : () => emptyBusSnapshot,
+  );
+  useEffect(() => {
+    if (!bus) return;
+    const sid = busState.sessionId as string | null | undefined;
+    // Don't echo back a change we just applied from the URL
+    if (sid === lastPushed.current) return;
+    lastPushed.current = sid ?? null;
+    if (sid && bus.onSelectSession) bus.onSelectSession(sid);
+  }, [bus, busState.sessionId]);
+
+  return null;
+}
 
 /**
  * Check if a layout leaf should be visible based on showWhen/hideWhen
@@ -414,6 +484,7 @@ export function PageView({
   padding,
   onNavigate,
   onSelectSession,
+  hashSessionId,
 }: {
   blocks?: DashboardBlock[];
   layout?: PageLayoutInput;
@@ -421,6 +492,8 @@ export function PageView({
   padding?: number;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
+  /** Current hash session id — enables scope nodes with bindUrlSession to deep-link */
+  hashSessionId?: string | null;
 }) {
   const { activeCwd } = useProfiles();
   const normalizedLayout = layout ? normalizePageLayoutNode(layout) : undefined;
@@ -433,23 +506,25 @@ export function PageView({
   if (normalizedLayout) {
     return (
       <PageStateBusContext.Provider value={bus}>
-        <div className="dashboard" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              padding: `${padding ?? 0}px`,
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <PanelTreeRenderer
-              node={normalizedLayout}
-              onNavigate={onNavigate}
-              onSelectSession={onSelectSession}
-            />
+        <PageUrlProvider hashSessionId={hashSessionId ?? null}>
+          <div className="dashboard" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                padding: `${padding ?? 0}px`,
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <PanelTreeRenderer
+                node={normalizedLayout}
+                onNavigate={onNavigate}
+                onSelectSession={onSelectSession}
+              />
+            </div>
           </div>
-        </div>
+        </PageUrlProvider>
       </PageStateBusContext.Provider>
     );
   }

@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { useSessionState, subscribeSession, isSubscribed } from "../sessionStore";
+import { useSessionState, ensureSubscribed } from "../sessionStore";
 import { fmtCost, fmtNum } from "../utils/format";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
@@ -41,9 +41,7 @@ export default function SessionSidebarWidget({ config, pageContext }: WidgetProp
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (sessionId && !isSubscribed(sessionId)) {
-      subscribeSession(sessionId, 0);
-    }
+    if (sessionId) void ensureSubscribed(sessionId);
   }, [sessionId]);
 
   const session = useSessionState(sessionId);

@@ -1,0 +1,39 @@
+{
+  "name": "create-action",
+  "label": "Create Action",
+  "description": "Scaffold an automated action in .modus/actions/<name>/ — trigger, agent profile, and context gather.",
+  "icon": "zap",
+  "mode": "inline",
+  "inputs": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "name": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$" },
+      "description": { "type": "string", "minLength": 1 },
+      "enabled": { "type": "boolean" },
+      "agentProfile": { "type": "string", "minLength": 1 },
+      "trigger": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "type": { "enum": ["interval", "webhook", "manual", "action", "session"] }
+        },
+        "required": ["type"]
+      },
+      "maxRuns": { "type": "integer", "minimum": 1 },
+      "maxTurns": { "type": "integer", "minimum": 1 },
+      "cycleInterval": { "type": "string" },
+      "maxCycles": { "type": "integer", "minimum": 1 },
+      "concurrency": { "type": "integer", "minimum": 1 },
+      "onExhausted": { "enum": ["archive", "idle", "restart"] },
+      "inputs": { "type": "object", "additionalProperties": true },
+      "tags": { "type": "array", "items": { "type": "string" } },
+      "contextTs": { "type": "string" }
+    },
+    "required": ["name", "description", "agentProfile", "trigger"]
+  },
+  "submit": { "required": true },
+  "session": { "afterSubmit": "continue" },
+  "tags": ["action", "automation", "create", "builtin"]
+}

@@ -7,8 +7,9 @@
  * ConfigBar above ChatInput so a single widget covers the full compose area.
  */
 
-import { useCallback, useState, useEffect, useMemo } from "react";
-import { useSessionState, subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
+import { useCallback, useEffect, useMemo } from "react";
+import { useSessionState, ensureSubscribed, getSessionState, setSessionState } from "../sessionStore";
+import { useInputValue, setInputValue } from "../inputStore";
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
@@ -33,16 +34,14 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
   const sessionId = contextSessionId ?? config.sessionId ?? null;
 
   useEffect(() => {
-    if (sessionId && !isSubscribed(sessionId)) {
-      subscribeSession(sessionId, 0);
-    }
+    if (sessionId) void ensureSubscribed(sessionId);
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
   const { updateActiveSessionConfig, updateActiveSessionProfile, serverSessions, refreshSessions } = useSession();
   const { projectRoot, activeUserProfile, profiles, visibleProfiles, availableProviders, activeUP } = useProfiles();
 
-  const [input, setInput] = useState("");
+  const input = useInputValue();
   const projectCwd = session?.cwd ?? projectRoot;
 
   // ── Config bar state ──
@@ -105,7 +104,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
       const prompt = (textOverride ?? input).trim();
       if (!prompt && attachments.length === 0) return;
 
-      setInput("");
+      setInputValue("");
 
       const sendAttachments = attachments.length > 0 ? attachments : undefined;
       const apiAtts = attachments.length > 0
@@ -139,10 +138,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
         // Must happen AFTER sendMessage resolves — otherwise the SSE endpoint
         // sees an idle session, immediately closes, and the subscription is
         // gone before the agent starts emitting events.
-        if (!isSubscribed(sessionId)) {
-          const latest = getSessionState(sessionId);
-          subscribeSession(sessionId, latest?.lastSeq ?? 0);
-        }
+        void ensureSubscribed(sessionId, { activeStatus: "running" });
       }).catch((err) => {
         console.error("[composer-widget] sendMessage failed:", err);
       });
@@ -204,7 +200,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
       />
       <ChatInput
         value={input}
-        onChange={setInput}
+        onChange={setInputValue}
         onSend={handleSend}
         onStop={handleStop}
         sessionStatus={session?.status ?? null}

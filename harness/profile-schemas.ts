@@ -27,7 +27,7 @@ const McpHttpSchema = z.object({
   headers: z.record(z.string(), z.string()).optional(),
 });
 
-const McpServerConfigSchema = z.union([McpStdioSchema, McpSseSchema, McpHttpSchema]);
+export const McpServerConfigSchema = z.union([McpStdioSchema, McpSseSchema, McpHttpSchema]);
 
 // ── Permission Policy ──
 

@@ -42,6 +42,7 @@ import type {
   GitCommitDetail,
   FileDiff,
   BrowseResult,
+  FileSearchResponse,
   PromptListItem,
   RenderResult,
   SessionStats,
@@ -579,6 +580,8 @@ export class ModusClient {
   async gitReadme(cwd: string): Promise<{ name: string; content: string } | null> { return (await this.fetch(`/api/git/readme?cwd=${encodeURIComponent(cwd)}`)).json(); }
   /** Opens a file in the user's editor (server-side). */
   async openInEditor(filePath: string, line?: number, editor?: string): Promise<void> { await this.fetch("/api/open-in-editor", { method: "POST", body: JSON.stringify({ filePath, line, editor }) }); }
+  /** Opens a path in the OS native file explorer. If path is a file, reveals it in its parent folder. */
+  async openInFolder(path: string): Promise<void> { await this.fetch("/api/open-in-folder", { method: "POST", body: JSON.stringify({ path }) }); }
 
   // ── Files ──
   /** Reads file content. Returns null on error. */
@@ -593,6 +596,14 @@ export class ModusClient {
   async browse(path?: string, opts?: { includeHidden?: boolean; includeFiles?: boolean }): Promise<BrowseResult> {
     const p = new URLSearchParams(); if (path) p.set("path", path); if (opts?.includeHidden) p.set("includeHidden", "1"); if (opts?.includeFiles) p.set("includeFiles", "1");
     const q = p.toString(); const r = await this.fetch(`/api/browse${q ? `?${q}` : ""}`); if (!r.ok) throw new Error("browse failed"); return r.json();
+  }
+  /** Searches for files within a workspace. Returns provider availability and matching hits. */
+  async searchFiles(root: string, query: string, limit = 50): Promise<FileSearchResponse> {
+    if (!query.trim()) return { available: true, provider: "none", results: [] };
+    const p = new URLSearchParams({ root, q: query.trim(), limit: String(limit) });
+    const r = await this.fetch(`/api/files/search?${p}`);
+    if (!r.ok) throw new Error("file search failed");
+    return r.json();
   }
 
   // ── Memory ──

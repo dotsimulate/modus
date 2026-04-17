@@ -1,0 +1,129 @@
+{
+  "name": "create-page",
+  "label": "Create Page",
+  "description": "Create or edit a custom page layout with widgets, terminals, and grid regions.",
+  "icon": "layout",
+  "mode": "inline",
+  "inputs": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "type": "string", "minLength": 1 },
+      "title": { "type": "string", "minLength": 1 },
+      "padding": { "type": "number" },
+      "blocks": {
+        "type": "array",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "kind": { "const": "widget" },
+                "widget": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "type": { "type": "string", "minLength": 1 }
+                  },
+                  "required": ["type"]
+                }
+              },
+              "required": ["kind", "widget"]
+            },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "kind": { "const": "module" },
+                "module": { "enum": ["actions", "git"] }
+              },
+              "required": ["kind", "module"]
+            },
+            {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "kind": { "const": "text" },
+                "markdown": { "type": "string" }
+              },
+              "required": ["kind", "markdown"]
+            }
+          ]
+        }
+      },
+      "layout": { "$ref": "#/$defs/layoutNode" }
+    },
+    "required": ["id", "title"],
+    "anyOf": [
+      { "required": ["blocks"] },
+      { "required": ["layout"] }
+    ],
+    "$defs": {
+      "panelItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "const": "widget" },
+          "widget": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "type": { "type": "string", "minLength": 1 }
+            },
+            "required": ["type"]
+          }
+        },
+        "required": ["kind", "widget"]
+      },
+      "layoutNode": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "const": "grid" },
+              "id": { "type": "string" },
+              "columns": { "type": "integer", "minimum": 1 },
+              "gap": { "type": "number" },
+              "templateColumns": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "templateRows": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "children": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/layoutNode" }
+              }
+            },
+            "required": ["kind", "columns", "children"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "const": "panel" },
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "mode": { "enum": ["list", "tabs"] },
+              "columnSpan": { "type": "integer", "minimum": 1 },
+              "rowSpan": { "type": "integer", "minimum": 1 },
+              "items": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/panelItem" }
+              }
+            },
+            "required": ["kind", "items"]
+          }
+        ]
+      }
+    }
+  },
+  "submit": { "required": true },
+  "session": { "afterSubmit": "continue" },
+  "tags": ["page", "layout", "create", "builtin"]
+}

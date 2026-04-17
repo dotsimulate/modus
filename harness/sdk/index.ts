@@ -107,6 +107,8 @@ export type {
   GitShowResult,
   // Files
   BrowseResult,
+  FileSearchHit,
+  FileSearchResponse,
   // Notes
   NoteListItem,
   NoteDetail,

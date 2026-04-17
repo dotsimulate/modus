@@ -4,7 +4,7 @@ import type { MoveWidgetInfo } from "../../../sdk/index";
 import { WIDGET_DEFS, WIDGETS, type LayoutLeaf, type LayoutNode, type ScopeEvent, type WidgetBase } from "../widgets";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
 import { WidgetPicker } from "./WidgetPicker";
-import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus } from "./PageRenderer";
+import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSessionBinder } from "./PageRenderer";
 import { MoveWidgetEmbed } from "./MoveWidgetEmbed";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { modus } from "../modusClient";
@@ -694,6 +694,7 @@ export function PanelTreeRenderer({
         onSelectSession={onSelectSession}
       >
         <ScopeSessionWatcher />
+        {node.bindUrlSession && <ScopeUrlSessionBinder />}
         {child}
       </ScopeProvider>
     );

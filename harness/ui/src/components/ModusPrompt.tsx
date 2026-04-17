@@ -1,8 +1,9 @@
 /**
- * ModusPrompt — simple two-tab prompt box on dashboard.
+ * ModusPrompt — simple tabbed prompt box on dashboard.
  *
- * Tabs: "create agent" / "configure modus" / "start mission"
- * Each tab: prompt picker (downward) + textarea + run button.
+ * Tabs: "create profile" / "customize modus" / "start mission" / "pages"
+ * Each prompt tab: prompt picker (downward) + textarea + run button.
+ * The "pages" tab renders the pages-browser widget inline instead.
  * Recent modus-dev sessions listed below.
  */
 
@@ -15,9 +16,11 @@ import { MiniSession } from "./MiniSession";
 import { PromptComposer } from "./PromptComposer";
 import type { SessionInfo } from "../../../sdk/index";
 import type { PromptSettings } from "./PromptPicker";
+import type { View } from "../views";
 
 type Props = {
   onSelectSession: (id: string) => void;
+  onNavigate?: (view: View) => void;
   isNewProject?: boolean;
 };
 
@@ -176,13 +179,13 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
           className={`modus-prompt-tab ${tab === "create" ? "modus-prompt-tab--active" : ""}`}
           onClick={() => setTab("create")}
         >
-          create agent
+          create profile
         </button>
         <button
           className={`modus-prompt-tab ${tab === "configure" ? "modus-prompt-tab--active" : ""}`}
           onClick={() => setTab("configure")}
         >
-          configure modus
+          customize modus
         </button>
         <button
           className={`modus-prompt-tab ${tab === "mission" ? "modus-prompt-tab--active" : ""}`}
@@ -254,10 +257,10 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
               onSubmit={run}
               submitDisabled={!prompt.trim()}
               placeholder={tab === "create"
-                ? "describe the agent you want to create..."
+                ? "describe the profile you want to create..."
                 : tab === "mission"
                   ? "describe the mission you want to create, revise, or prepare to start..."
-                : "describe what you want to configure..."
+                : "describe what you want to customize..."
               }
               rows={4}
               leftSlot={

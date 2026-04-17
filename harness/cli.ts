@@ -26,6 +26,43 @@ import {
   statSync, readdirSync, unlinkSync,
 } from "fs";
 import { createServer } from "net";
+import { spawnSync } from "child_process";
+
+// ── Tailscale Serve ──
+
+type TailscaleServeSetup = {
+  remoteUrl: string | null;
+  error: string | null;
+};
+
+function setupTailscaleServe(port: number): TailscaleServeSetup {
+  const status = spawnSync("tailscale", ["status", "--json"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 5000,
+  });
+  if (status.status !== 0) {
+    return { remoteUrl: null, error: null }; // Tailscale not installed or not running
+  }
+
+  try {
+    const payload = JSON.parse(status.stdout.toString());
+    const dnsName = payload?.Self?.DNSName?.replace(/\.$/, "") ?? null;
+    const remoteUrl = dnsName ? `https://${dnsName}` : null;
+
+    const serve = spawnSync("tailscale", ["serve", "--bg", String(port)], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 10000,
+    });
+    if (serve.status !== 0) {
+      const details = serve.stderr?.toString().trim() || serve.stdout?.toString().trim() || "tailscale serve failed";
+      return { remoteUrl, error: details };
+    }
+
+    return { remoteUrl, error: null };
+  } catch {
+    return { remoteUrl: null, error: "failed to parse tailscale status" };
+  }
+}
 
 // ── Paths ──
 
@@ -263,10 +300,32 @@ async function cmdStart(args: string[]): Promise<void> {
     }
   }
 
-  // Check port
+  // Check port — if something is listening, try a health check to distinguish
+  // a live modus instance from orphaned TCP state left by a dead process.
+  let usePort = BASE_PORT;
   if (!(await canBindPort(BASE_PORT))) {
-    console.error(`Port ${BASE_PORT} is in use. Stop the other process or set HARNESS_PORT.`);
-    process.exit(1);
+    const alive = await waitForHealth(BASE_PORT, 2_000).catch(() => false);
+    if (alive) {
+      console.error(`Port ${BASE_PORT} is in use by a running modus instance. Stop it first or set HARNESS_PORT.`);
+      process.exit(1);
+    }
+    // Ghost socket — scan for a free port nearby (same strategy as watchdog.ts)
+    console.log(`Port ${BASE_PORT} has orphaned TCP state from a dead process.`);
+    const PORT_SCAN_RANGE = 5;
+    let found = false;
+    for (let offset = 1; offset < PORT_SCAN_RANGE; offset++) {
+      const candidate = BASE_PORT + offset;
+      if (await canBindPort(candidate)) {
+        usePort = candidate;
+        found = true;
+        console.log(`Rotating to port ${usePort} (will return to ${BASE_PORT} when ghost clears).`);
+        break;
+      }
+    }
+    if (!found) {
+      console.error(`Ports ${BASE_PORT}–${BASE_PORT + PORT_SCAN_RANGE - 1} all unavailable.`);
+      process.exit(1);
+    }
   }
 
   // Token
@@ -277,7 +336,7 @@ async function cmdStart(args: string[]): Promise<void> {
 
   const env = {
     ...process.env,
-    HARNESS_PORT: String(BASE_PORT),
+    HARNESS_PORT: String(usePort),
     HARNESS_TOKEN: token,
   };
 
@@ -293,26 +352,29 @@ async function cmdStart(args: string[]): Promise<void> {
 
     // Detach: unref so CLI can exit while child runs
     proc.unref();
-    writeStateFiles(proc.pid, BASE_PORT);
+    writeStateFiles(proc.pid, usePort);
 
     console.log("Starting modus daemon...");
-    const healthy = await waitForHealth(BASE_PORT);
+    const healthy = await waitForHealth(usePort);
     if (!healthy) {
       console.error("Server did not become healthy within 15s. Check logs: modus logs");
       process.exit(1);
     }
 
     const lanIp = getLanIp();
+    const ts = setupTailscaleServe(usePort);
     console.log(`Modus running (pid ${proc.pid})`);
-    console.log(`  http://localhost:${BASE_PORT}`);
-    if (lanIp) console.log(`  http://${lanIp}:${BASE_PORT}`);
+    console.log(`  http://localhost:${usePort}`);
+    if (lanIp) console.log(`  http://${lanIp}:${usePort}`);
+    if (ts.remoteUrl) console.log(`  remote  ${ts.remoteUrl}`);
+    if (ts.error) console.log(`  tailscale: ${ts.error}`);
     console.log(`  token: ${token} (${tokenSource})`);
     console.log(`  logs:  modus logs`);
 
     const cwdParam = process.env.AGENT_CWD
       ? `?cwd=${encodeURIComponent(process.env.AGENT_CWD)}`
       : "";
-    openBrowser(`http://localhost:${BASE_PORT}${cwdParam}`);
+    openBrowser(`http://localhost:${usePort}${cwdParam}`);
     return;
   }
 
@@ -324,7 +386,7 @@ async function cmdStart(args: string[]): Promise<void> {
     env,
   });
 
-  writeStateFiles(proc.pid, BASE_PORT);
+  writeStateFiles(proc.pid, usePort);
 
   let stopping = false;
   async function shutdown() {
@@ -332,7 +394,7 @@ async function cmdStart(args: string[]): Promise<void> {
     stopping = true;
     console.log("\nShutting down...");
 
-    const acked = await requestGracefulShutdown(BASE_PORT);
+    const acked = await requestGracefulShutdown(usePort);
     if (acked) {
       const deadline = Date.now() + 5_000;
       while (Date.now() < deadline) {
@@ -352,15 +414,22 @@ async function cmdStart(args: string[]): Promise<void> {
   process.on("SIGTERM", () => { shutdown(); });
 
   // Wait for health, then print info and open browser
-  const healthy = await waitForHealth(BASE_PORT);
+  const healthy = await waitForHealth(usePort);
   if (healthy) {
     const lanIp = getLanIp();
     const host = hostname();
+    const ts = setupTailscaleServe(usePort);
     console.log("");
-    console.log(`  modus   http://localhost:${BASE_PORT}`);
+    console.log(`  modus   http://localhost:${usePort}`);
     if (lanIp) {
-      console.log(`  lan     http://${lanIp}:${BASE_PORT}`);
-      console.log(`          http://${host}.local:${BASE_PORT}`);
+      console.log(`  lan     http://${lanIp}:${usePort}`);
+      console.log(`          http://${host}.local:${usePort}`);
+    }
+    if (ts.remoteUrl) console.log(`  remote  ${ts.remoteUrl}`);
+    if (ts.error) {
+      console.log("");
+      console.log("  tailscale serve setup failed:");
+      console.log(`           ${ts.error}`);
     }
     console.log(`  token   ${token} (${tokenSource})`);
     console.log("");
@@ -369,7 +438,7 @@ async function cmdStart(args: string[]): Promise<void> {
     const cwdParam = process.env.AGENT_CWD
       ? `?cwd=${encodeURIComponent(process.env.AGENT_CWD)}`
       : "";
-    openBrowser(`http://localhost:${BASE_PORT}${cwdParam}`);
+    openBrowser(`http://localhost:${usePort}${cwdParam}`);
   }
 
   // Wait for process to exit

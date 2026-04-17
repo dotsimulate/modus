@@ -4,8 +4,8 @@ delete process.env.CLAUDECODE;
 import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin } from "./secrets";
 loadSecrets();
 
-import { join, resolve, extname } from "path";
-import { existsSync } from "fs";
+import { join, resolve, extname, dirname } from "path";
+import { existsSync, statSync } from "fs";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
@@ -24,7 +24,7 @@ import {
   getUiState, listThemes, listFonts, getTheme, getFont, getActiveTheme, getActiveFont,
   registerTheme, registerFont, activateTheme, activateFont, patchTheme, patchFont,
 } from "./project-ui";
-import { listConfigPages } from "./pages";
+import { forkConfigPage, listConfigPages } from "./pages";
 import {
   listClientExtensions, getClientExtensionById, resolveExtensionSettings,
 } from "./client-extensions";
@@ -78,6 +78,94 @@ const AUTH_TOKEN = process.env.HARNESS_TOKEN || "";
 const WHISPER_TRANSCRIBE_URL = process.env.WHISPER_URL ?? "http://127.0.0.1:8080/v1/audio/transcriptions";
 const UI_DIST_DIR = resolve(import.meta.dir, "ui/dist");
 const UI_INDEX_PATH = join(UI_DIST_DIR, "index.html");
+
+type FileSearchHit = {
+  path: string;
+  name: string;
+  parent: string;
+};
+
+function splitSearchPath(filePath: string): FileSearchHit {
+  const normalized = filePath.replace(/\\/g, "/");
+  const slash = normalized.lastIndexOf("/");
+  return {
+    path: filePath,
+    name: slash === -1 ? normalized : normalized.slice(slash + 1),
+    parent: slash === -1 ? "" : normalized.slice(0, slash),
+  };
+}
+
+function isWithinRoot(filePath: string, root: string): boolean {
+  const target = resolve(filePath);
+  const base = resolve(root);
+  if (process.platform === "win32") {
+    return target.toLowerCase() === base.toLowerCase() || target.toLowerCase().startsWith(`${base.toLowerCase()}\\`) || target.toLowerCase().startsWith(`${base.toLowerCase()}/`);
+  }
+  return target === base || target.startsWith(`${base}/`);
+}
+
+async function searchFilesWithEverything(root: string, query: string, limit: number) {
+  if (process.platform !== "win32") {
+    return {
+      available: false,
+      provider: "none" as const,
+      installHint: "Everything search is currently supported on Windows with es.exe available on PATH.",
+      results: [],
+    };
+  }
+
+  const candidatePaths = [
+    Bun.which("es.exe"),
+    Bun.which("es"),
+    process.env.PROGRAMFILES ? join(process.env.PROGRAMFILES, "Everything", "es.exe") : null,
+    process.env["PROGRAMFILES(X86)"] ? join(process.env["PROGRAMFILES(X86)"], "Everything", "es.exe") : null,
+    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Programs", "Everything", "es.exe") : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const esPath = candidatePaths.find((candidate) => existsSync(candidate));
+  if (!esPath) {
+    return {
+      available: false,
+      provider: "none" as const,
+      installHint: "Everything file search needs es.exe available on PATH or installed alongside Everything.",
+      results: [],
+    };
+  }
+
+  const proc = Bun.spawn({
+    cmd: [esPath, "-path", root, "-n", String(limit), "-sort", "path-ascending", query],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const [stdoutText, stderrText, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  if (exitCode !== 0) {
+    return {
+      available: false,
+      provider: "none" as const,
+      installHint: stderrText.trim() || "Everything is installed but did not accept the search request. Make sure Everything is running.",
+      results: [],
+    };
+  }
+
+  const results = stdoutText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((filePath) => isWithinRoot(filePath, root))
+    .map(splitSearchPath);
+
+  return {
+    available: true,
+    provider: "everything" as const,
+    results,
+  };
+}
 const HARNESS_TLS_CERT = process.env.HARNESS_TLS_CERT;
 const HARNESS_TLS_KEY = process.env.HARNESS_TLS_KEY;
 
@@ -246,8 +334,14 @@ app.use("/api/*", async (c, next) => {
 app.get("/health", (c) => {
   console.log(`[health-ping] ${Date.now()}`);
   const all = getAllActiveSessions();
-  const running = all.filter(s => s.status === "running" || s.status === "starting");
-  return c.json({ status: "ok", uptime: process.uptime(), activeSessions: running.length });
+  const live = all.filter(s => s.status === "running" || s.status === "starting");
+  return c.json({
+    status: "ok",
+    uptime: process.uptime(),
+    activeSessions: live.length,
+    totalInMap: all.length,
+    byStatus: all.reduce((acc, s) => { acc[s.status] = (acc[s.status] ?? 0) + 1; return acc; }, {} as Record<string, number>),
+  });
 });
 
 // ── Process Registry ──
@@ -498,6 +592,16 @@ app.get("/api/pages", (c) => {
   return c.json(listConfigPages(cwd));
 });
 
+app.post("/api/pages/fork", async (c) => {
+  const body = await c.req.json<{ cwd?: string; pageId?: string }>().catch(() => null);
+  if (!body || !body.cwd || !body.pageId) {
+    return c.json({ error: "cwd and pageId are required" }, 400);
+  }
+  const result = forkConfigPage(body.cwd, body.pageId);
+  if (!result.ok) return c.json({ error: result.error }, 404);
+  return c.json({ ok: true, path: result.path });
+});
+
 // ── Secrets Status (booleans only, no values) ──
 
 app.post("/api/secrets/check", async (c) => {
@@ -729,6 +833,7 @@ app.post("/api/sessions/interact", async (c) => {
       providerControls: body.providerControls,
       loadProjectSettings: body.loadProjectSettings,
       permissionPolicy,
+      mcpServers: body.mcpServers,
     });
     targetSessionId = result.sessionId;
   } catch (err) {
@@ -739,7 +844,8 @@ app.post("/api/sessions/interact", async (c) => {
     if (!sessionId && !createIfMissing && message === "sessionId required when createIfMissing is false") {
       return c.json({ error: message }, 400);
     }
-    throw err;
+    const status = message.includes("[memory-guard]") ? 503 : 500;
+    return c.json({ error: message }, status);
   }
 
   if (shouldSubscribe) {
@@ -1178,27 +1284,33 @@ app.post("/api/sessions/:id/messages", async (c) => {
   const v = validate(SendMessageRequestSchema, body);
   if (!v.ok) return c.json({ error: "invalid message request", details: v.errors }, 400);
   const { prompt } = body;
-  const delivered = await interactWithSession({
-    sessionId: id,
-    prompt,
-    attachments: body.attachments,
-    moves: body.moves,
-    createIfMissing: false,
-    cwd: body.cwd,
-    additionalDirectories: body.additionalDirectories,
-    profile: body.profile,
-    userProfile: body.userProfile,
-    provider: body.provider,
-    model: body.model,
-    effort: body.effort,
-    maxTurns: body.maxTurns,
-    tools: body.tools,
-    disallowedTools: body.disallowedTools,
-    toolStates: body.toolStates,
-    providerControls: body.providerControls,
-    loadProjectSettings: body.loadProjectSettings,
-  });
-  return c.json(delivered);
+  try {
+    const delivered = await interactWithSession({
+      sessionId: id,
+      prompt,
+      attachments: body.attachments,
+      moves: body.moves,
+      createIfMissing: false,
+      cwd: body.cwd,
+      additionalDirectories: body.additionalDirectories,
+      profile: body.profile,
+      userProfile: body.userProfile,
+      provider: body.provider,
+      model: body.model,
+      effort: body.effort,
+      maxTurns: body.maxTurns,
+      tools: body.tools,
+      disallowedTools: body.disallowedTools,
+      toolStates: body.toolStates,
+      providerControls: body.providerControls,
+      loadProjectSettings: body.loadProjectSettings,
+    });
+    return c.json(delivered);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = message.includes("[memory-guard]") ? 503 : 500;
+    return c.json({ error: message }, status);
+  }
 });
 
 app.delete("/api/sessions/:id/dispatch/:dispatchId", (c) => {
@@ -1483,6 +1595,28 @@ app.get("/api/browse", async (c) => {
   } catch (err: any) {
     return c.json({ error: err.code === "ENOENT" ? "not found" : err.message }, 400);
   }
+});
+
+app.get("/api/files/search", async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  const root = params.get("root");
+  const query = params.get("q")?.trim() ?? "";
+  const limit = Math.max(1, Math.min(200, Number(params.get("limit") ?? 50) || 50));
+
+  if (!root) return c.json({ error: "root required" }, 400);
+  if (!query) return c.json({ available: true, provider: "none", results: [] });
+
+  const targetRoot = resolve(root);
+
+  try {
+    const { stat } = await import("fs/promises");
+    const info = await stat(targetRoot);
+    if (!info.isDirectory()) return c.json({ error: "root must be a directory" }, 400);
+  } catch (err: any) {
+    return c.json({ error: err.code === "ENOENT" ? "root not found" : err.message }, 400);
+  }
+
+  return c.json(await searchFilesWithEverything(targetRoot, query, limit));
 });
 
 // ── File Reader ──
@@ -2008,17 +2142,31 @@ app.post("/api/whisper/transcribe", async (c) => {
     const form = await c.req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return c.json({ error: "file is required" }, 400);
+    const requestedWhisperUrl = c.req.header("X-Whisper-Url");
+    let whisperUrl = WHISPER_TRANSCRIBE_URL;
+    if (requestedWhisperUrl) {
+      try {
+        const parsedUrl = new URL(requestedWhisperUrl);
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+          return c.json({ error: "invalid whisper url protocol" }, 400);
+        }
+        whisperUrl = parsedUrl.toString();
+      } catch {
+        return c.json({ error: "invalid whisper url" }, 400);
+      }
+    }
     console.log("[whisper/transcribe] received", {
       name: file.name,
       size: file.size,
       type: file.type,
+      whisperUrl,
     });
 
     const whisperBody = new FormData();
     whisperBody.set("file", file, file.name);
     whisperBody.set("response_format", "verbose_json");
 
-    const upstream = await fetch(WHISPER_TRANSCRIBE_URL, {
+    const upstream = await fetch(whisperUrl, {
       method: "POST",
       body: whisperBody,
     });
@@ -2320,6 +2468,36 @@ app.post("/api/open-in-editor", async (c) => {
   try {
     const editor = body.editor ?? (Bun.which("cursor") ? "cursor" : "code");
     Bun.spawn([editor, "--goto", target], { stdout: "ignore", stderr: "ignore" });
+    return c.json({ ok: true });
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// ── Open in native file explorer (Windows Explorer / macOS Finder / Linux file manager) ──
+
+app.post("/api/open-in-folder", async (c) => {
+  const body = await c.req.json<{ path: string }>();
+  if (!body.path) return c.json({ error: "path required" }, 400);
+  try {
+    const abs = resolve(body.path);
+    let isDir = false;
+    try { isDir = statSync(abs).isDirectory(); } catch {}
+    const plat = process.platform;
+
+    if (plat === "win32") {
+      if (isDir) {
+        Bun.spawn(["explorer.exe", abs], { stdout: "ignore", stderr: "ignore" });
+      } else {
+        Bun.spawn(["explorer.exe", `/select,${abs}`], { stdout: "ignore", stderr: "ignore" });
+      }
+    } else if (plat === "darwin") {
+      const args = isDir ? ["open", abs] : ["open", "-R", abs];
+      Bun.spawn(args, { stdout: "ignore", stderr: "ignore" });
+    } else {
+      const target = isDir ? abs : dirname(abs);
+      Bun.spawn(["xdg-open", target], { stdout: "ignore", stderr: "ignore" });
+    }
     return c.json({ ok: true });
   } catch (e: any) {
     return c.json({ error: e.message }, 500);

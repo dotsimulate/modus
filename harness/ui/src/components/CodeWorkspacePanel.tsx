@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useDeferredValue, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useFileViewer } from "../providers/FileViewerContext";
 import { usePinboard } from "../providers/PinboardContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
-import type { BrowseResult } from "../../../sdk/index";
+import type { BrowseResult, FileSearchResponse } from "../../../sdk/index";
 import { setFsWatchRoot } from "../modusClient";
 import { FileContentViewer } from "./FileContentViewer";
-import { FileBrowser } from "./FileBrowser";
+import { FileBrowser, type FileBrowserHandle } from "./FileBrowser";
 import { CodeMirrorEditor, type CodeMirrorContextInfo } from "./CodeMirrorEditor";
 import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
@@ -46,6 +47,12 @@ type ViewState =
 
 type ActiveView = "browser" | "pins" | string;
 
+const EMPTY_FILE_SEARCH: FileSearchResponse = {
+  available: true,
+  provider: "none",
+  results: [],
+};
+
 export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowserPathChange, onSendToAgent }: Props) {
   const {
     tabs, closeFile, openFile,
@@ -63,10 +70,22 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
   const [htmlPreview, setHtmlPreview] = useState(true);
-  const [fullscreen, setFullscreen] = useState(false);
-  const [fullscreenBrowser, setFullscreenBrowser] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const deferredFileSearchQuery = useDeferredValue(fileSearchQuery);
+  const [fileSearchState, setFileSearchState] = useState<FileSearchResponse>(EMPTY_FILE_SEARCH);
+  const [fileSearchLoading, setFileSearchLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [tabsOverflow, setTabsOverflow] = useState(false);
+  const [tabsMenuOpen, setTabsMenuOpen] = useState(false);
+  const [tabsMenuPos, setTabsMenuPos] = useState<{ top: number; right: number } | null>(null);
   const prevTabsRef = useRef(tabs);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const fsBrowserRef = useRef<FileBrowserHandle>(null);
+  const fullBrowserRef = useRef<FileBrowserHandle>(null);
+  const tabsMenuWrapRef = useRef<HTMLDivElement>(null);
+  const tabsMenuBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const prevTabs = prevTabsRef.current;
@@ -117,8 +136,44 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     if (viewingFile) setHtmlPreview(true);
   }, [viewingFile]);
 
+  useEffect(() => {
+    const query = deferredFileSearchQuery.trim();
+    if (!activeCwd || !query) {
+      setFileSearchLoading(false);
+      setFileSearchState(EMPTY_FILE_SEARCH);
+      return;
+    }
+
+    let cancelled = false;
+    setFileSearchLoading(true);
+
+    const timer = window.setTimeout(() => {
+      modus.searchFiles(activeCwd, query, 75)
+        .then((result) => {
+          if (!cancelled) setFileSearchState(result);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setFileSearchState({
+              available: false,
+              provider: "none",
+              installHint: error instanceof Error ? error.message : "file search failed",
+              results: [],
+            });
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setFileSearchLoading(false);
+        });
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeCwd, deferredFileSearchQuery]);
+
   const handleCloseFile = () => {
-    setFullscreen(false);
     if (viewingFile) closeFile(viewingFile);
     setActiveView("browser");
   };
@@ -157,8 +212,25 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     </button>
   );
 
+  const editBtn = (
+    <button
+      className={`chat-file-viewer-btn${isEditMode ? " active" : ""}`}
+      onClick={handleToggleEdit}
+      title={isEditMode ? "Switch to view" : "Edit file"}
+    >
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+        <path d="M8.5 1.5l2 2L4 10H2v-2l6.5-6.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+      </svg>
+    </button>
+  );
+
+  const canEdit = (targetPath: string) => view.kind !== "directory" && !isImageFile(targetPath);
+
   const fileActions = (targetPath: string) => (
     <>
+      {canEdit(targetPath) && editBtn}
+      {saving && <span className="rp-status rp-status--saving">saving...</span>}
+      {saveError && <span className="rp-status rp-status--error">{saveError}</span>}
       <CopyButton
         getValue={async () => {
           if (view.kind === "file") return view.content;
@@ -201,6 +273,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     }
     items.push({ kind: "action", label: "Copy reference", onClick: () => navigator.clipboard.writeText(`${info.path}:${info.line}`) });
     items.push({ kind: "action", label: "Copy file path", onClick: () => navigator.clipboard.writeText(info.path) });
+    items.push({ kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(info.path) });
     items.push({ kind: "action", label: "Open in external editor", onClick: () => modus.openInEditor(info.path, info.line) });
     if (groups.length > 0) {
       items.push({ kind: "separator" });
@@ -214,13 +287,25 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     editorCtxMenu.open(e, items);
   }, [buildPinItems, editorCtxMenu, groups.length, onSendToAgent]);
 
+  const handleRevealInTree = useCallback((path: string) => {
+    if (!sidebarOpen) setSidebarOpen(true);
+    // Defer so the sidebar mounts its FileBrowser before we call revealPath.
+    window.setTimeout(() => {
+      const ref = fsBrowserRef.current ?? fullBrowserRef.current;
+      ref?.revealPath(path);
+    }, 60);
+  }, [sidebarOpen]);
+
   const handleTabContextMenu = useCallback((e: React.MouseEvent, tabPath: string) => {
     const items: ContextMenuItem[] = [
+      { kind: "action", label: "Reveal in tree", onClick: () => handleRevealInTree(tabPath) },
+      { kind: "separator" },
       { kind: "action", label: "Close", onClick: () => handleCloseTab(tabPath) },
       { kind: "action", label: "Close others", disabled: tabs.length <= 1, onClick: () => tabs.filter(t => t.path !== tabPath).forEach(t => closeFile(t.path)) },
       { kind: "action", label: "Close all", disabled: tabs.length === 0, onClick: () => { tabs.forEach(t => closeFile(t.path)); setActiveView("browser"); } },
       { kind: "separator" },
       { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(tabPath) },
+      { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(tabPath) },
       { kind: "action", label: "Open in external editor", onClick: () => modus.openInEditor(tabPath) },
     ];
     if (groups.length > 0) {
@@ -228,7 +313,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
       items.push(...buildPinItems(tabPath));
     }
     tabCtxMenu.open(e, items);
-  }, [buildPinItems, closeFile, groups.length, tabCtxMenu, tabs]);
+  }, [buildPinItems, closeFile, groups.length, handleRevealInTree, tabCtxMenu, tabs]);
 
   const handleMarkdownContextMenu = useCallback((e: React.MouseEvent) => {
     if (!viewingFile) return;
@@ -239,6 +324,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
       items.push({ kind: "action", label: "Copy as code block", onClick: () => navigator.clipboard.writeText(`\`\`\`\n${sel}\n\`\`\``) });
     }
     items.push({ kind: "action", label: "Copy file path", onClick: () => navigator.clipboard.writeText(viewingFile) });
+    items.push({ kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(viewingFile) });
     items.push({ kind: "action", label: "Open in external editor", onClick: () => modus.openInEditor(viewingFile) });
     if (groups.length > 0) {
       items.push({ kind: "separator" });
@@ -256,6 +342,100 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
   const showFileContent = viewingFile && view.kind !== "idle";
   const showBrowser = activeView === "browser";
   const showPins = activeView === "pins";
+  const showFileSearchResults = showBrowser && searchOpen && fileSearchQuery.trim().length > 0;
+  const rootName = activeCwd ? basename(activeCwd) : null;
+
+  useEffect(() => {
+    if (searchOpen) {
+      requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!showBrowser && searchOpen) setSearchOpen(false);
+  }, [showBrowser, searchOpen]);
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setFileSearchQuery("");
+    setFileSearchState(EMPTY_FILE_SEARCH);
+  };
+
+  const handleCollapseAll = () => {
+    fsBrowserRef.current?.collapseAll();
+    fullBrowserRef.current?.collapseAll();
+  };
+
+  // ── Tabs overflow detection ──
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const check = () => setTabsOverflow(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    el.addEventListener("scroll", check, { passive: true });
+    return () => {
+      ro.disconnect();
+      el.removeEventListener("scroll", check);
+    };
+  }, [tabs.length, searchOpen, activeView]);
+
+  useEffect(() => {
+    if (!tabsOverflow && tabsMenuOpen) setTabsMenuOpen(false);
+  }, [tabsOverflow, tabsMenuOpen]);
+
+  useEffect(() => {
+    if (!tabsMenuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (tabsMenuWrapRef.current?.contains(target)) return;
+      const portalMenu = document.querySelector(".cw-tabs-overflow-menu--portal");
+      if (portalMenu?.contains(target)) return;
+      setTabsMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTabsMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [tabsMenuOpen]);
+
+  function renderSearchResults() {
+    if (!showFileSearchResults) return null;
+    return (
+      <div className="cw-search-results">
+        {fileSearchLoading ? (
+          <div className="cw-search-state">searching...</div>
+        ) : !fileSearchState.available ? (
+          <div className="cw-search-state">
+            {fileSearchState.installHint ?? "Workspace search is unavailable."}
+          </div>
+        ) : fileSearchState.results.length === 0 ? (
+          <div className="cw-search-state">no matching files</div>
+        ) : (
+          fileSearchState.results.map((result) => (
+            <button
+              key={result.path}
+              className="cw-search-result"
+              onClick={() => {
+                handleFileSelect(result.path);
+                closeSearch();
+              }}
+              title={result.path}
+            >
+              <span className="cw-search-result-name">{result.name}</span>
+              <span className="cw-search-result-path">{result.parent}</span>
+            </button>
+          ))
+        )}
+      </div>
+    );
+  }
 
   function renderContent() {
     if (showPins) {
@@ -273,6 +453,17 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
       if (activeTab?.content !== null) {
         return (
           <div className="right-panel-editor">
+            <div className="fcv-head">
+              <div className="fcv-meta">
+                <div className="fcv-name-row">
+                  <span className="fcv-name">{basename(viewingFile)}</span>
+                  <div className="fcv-name-actions">{copyPathBtn(viewingFile)}</div>
+                </div>
+              </div>
+              <div className="fcv-head-side">
+                <div className="fcv-actions">{fileActions(viewingFile)}</div>
+              </div>
+            </div>
             <CodeMirrorEditor
               key={viewingFile}
               content={activeTab!.content!}
@@ -343,6 +534,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
             actions={fileActions(viewingFile!)}
             onEditorContextMenu={handleEditorContextMenu}
             onMarkdownContextMenu={handleMarkdownContextMenu}
+            onRequestEdit={canEdit(viewingFile!) ? handleToggleEdit : undefined}
           />
         </div>
       );
@@ -353,60 +545,145 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
 
   return (
     <div className="code-workspace-panel">
-      <div
-        className="cw-tabs"
-        ref={tabsRef}
-        onWheel={(e) => {
-          if (!tabsRef.current) return;
-          e.preventDefault();
-          tabsRef.current.scrollLeft += e.deltaY + e.deltaX;
-        }}
-      >
-        <div className={`cw-tab cw-tab--icon-only${showBrowser ? " cw-tab--active" : ""}`}>
-          <button className="cw-tab-label" onClick={() => setActiveView("browser")} title="Project files">
-            <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
-              <path d="M1 3h4l1-1.5h5v8.5H1z" stroke="currentColor" strokeWidth="1.2" fill="none"/>
-            </svg>
-          </button>
-        </div>
-        <div className={`cw-tab cw-tab--icon-only${showPins ? " cw-tab--active" : ""}`}>
-          <button className="cw-tab-label" onClick={() => setActiveView("pins")} title="Pinned files">
-            <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
-              <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={showPins ? "currentColor" : "none"}/>
-              <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
-        {tabs.map((tab) => (
-          <div
-            key={tab.path}
-            className={`cw-tab${tab.path === activeView ? " cw-tab--active" : ""}${isFilePinned(tab.path) ? " cw-tab--pinned" : ""}${tab.dirty ? " cw-tab--dirty" : ""}`}
-            onContextMenu={(e) => handleTabContextMenu(e, tab.path)}
-          >
-            <button className="cw-tab-label" onClick={() => setActiveView(tab.path)} title={tab.path}>
-              {tab.dirty && <span className="cw-tab-dot" />}
-              {isFilePinned(tab.path) && (
-                <svg className="cw-tab-pin" width="7" height="7" viewBox="0 0 12 12" fill="none">
-                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="currentColor"/>
-                  <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <div className="cw-tabs-header">
+        <div
+          className="cw-tabs"
+          ref={tabsRef}
+          onWheel={(e) => {
+            if (!tabsRef.current) return;
+            e.preventDefault();
+            tabsRef.current.scrollLeft += e.deltaY + e.deltaX;
+          }}
+        >
+          {showBrowser && searchOpen ? (
+            <div className="cw-search-inline">
+              <span className="cw-search-inline-icon" aria-hidden>
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M7.7 7.7L10.5 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                 </svg>
-              )}
-              {basename(tab.path)}
-            </button>
-            <button className="cw-tab-close" onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.path); }} title="Close tab">
-              <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
-                <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-              </svg>
-            </button>
-          </div>
-        ))}
+              </span>
+              <input
+                ref={searchInputRef}
+                className="cw-search-inline-input"
+                value={fileSearchQuery}
+                placeholder={rootName ? `search in ${rootName}...` : "search files..."}
+                onChange={(e) => setFileSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") closeSearch(); }}
+              />
+              <button className="cw-search-inline-close" onClick={closeSearch} title="Close search">
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          ) : showBrowser && rootName ? (
+            <div className={`cw-tab cw-tab--root${showBrowser ? " cw-tab--active" : ""}`}>
+              <button className="cw-tab-label" onClick={() => setActiveView("browser")} title={activeCwd ?? "Project files"}>
+                <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                  <path d="M1 3h4l1-1.5h5v8.5H1z" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+                </svg>
+                <span className="cw-tab-root-name">{rootName}</span>
+              </button>
+            </div>
+          ) : (
+            <div className={`cw-tab cw-tab--icon-only${showBrowser ? " cw-tab--active" : ""}`}>
+              <button className="cw-tab-label" onClick={() => setActiveView("browser")} title="Project files">
+                <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                  <path d="M1 3h4l1-1.5h5v8.5H1z" stroke="currentColor" strokeWidth="1.2" fill="none"/>
+                </svg>
+              </button>
+            </div>
+          )}
+          {!(showBrowser && searchOpen) && (
+            <div className={`cw-tab cw-tab--icon-only${showPins ? " cw-tab--active" : ""}`}>
+              <button className="cw-tab-label" onClick={() => setActiveView("pins")} title="Pinned files">
+                <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
+                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={showPins ? "currentColor" : "none"}/>
+                  <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          )}
+          {!(showBrowser && searchOpen) && tabs.map((tab) => (
+            <div
+              key={tab.path}
+              data-tab-path={tab.path}
+              className={`cw-tab${tab.path === activeView ? " cw-tab--active" : ""}${isFilePinned(tab.path) ? " cw-tab--pinned" : ""}${tab.dirty ? " cw-tab--dirty" : ""}`}
+              onContextMenu={(e) => handleTabContextMenu(e, tab.path)}
+            >
+              <button className="cw-tab-label" onClick={() => setActiveView(tab.path)} title={tab.path}>
+                {tab.dirty && <span className="cw-tab-dot" />}
+                {isFilePinned(tab.path) && (
+                  <svg className="cw-tab-pin" width="7" height="7" viewBox="0 0 12 12" fill="none">
+                    <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="currentColor"/>
+                    <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                )}
+                {basename(tab.path)}
+              </button>
+              <button className="cw-tab-close" onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.path); }} title="Close tab">
+                <svg width="7" height="7" viewBox="0 0 10 10" fill="none">
+                  <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
         <div className="cw-tabs-actions">
-          {viewingFile && view.kind !== "directory" && !isImageFile(viewingFile) && (
-            <button className={`right-panel-header-btn${isEditMode ? " active" : ""}`} onClick={handleToggleEdit} title={isEditMode ? "Switch to view" : "Edit file"}>
+          {tabsOverflow && !searchOpen && tabs.length > 0 && (
+            <div className="cw-tabs-overflow-wrap" ref={tabsMenuWrapRef}>
+              <button
+                ref={tabsMenuBtnRef}
+                className={`right-panel-header-btn${tabsMenuOpen ? " active" : ""}`}
+                onClick={() => {
+                  setTabsMenuOpen((v) => {
+                    if (!v && tabsMenuBtnRef.current) {
+                      const rect = tabsMenuBtnRef.current.getBoundingClientRect();
+                      setTabsMenuPos({ top: rect.bottom + 2, right: window.innerWidth - rect.right });
+                    }
+                    return !v;
+                  });
+                }}
+                title="All open tabs"
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          )}
+          {!searchOpen && activeCwd && (
+            <button
+              className={`right-panel-header-btn${sidebarOpen ? " active" : ""}`}
+              onClick={() => setSidebarOpen((v) => !v)}
+              title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            >
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                <path d="M8.5 1.5l2 2L4 10H2v-2l6.5-6.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+                <rect x="1" y="1.5" width="10" height="9" rx="1" stroke="currentColor" strokeWidth="1.1" fill="none"/>
+                <path d="M4.5 1.5v9" stroke="currentColor" strokeWidth="1.1"/>
               </svg>
             </button>
+          )}
+          {showBrowser && !searchOpen && activeCwd && (
+            <>
+              <button className="right-panel-header-btn" onClick={handleCollapseAll} title="Collapse all">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <path d="M1.5 6L6 1.5L10.5 6M3 5v5.5h2.25V8h1.5v2.5H9V5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              <button className="right-panel-header-btn" onClick={() => setSearchOpen(true)} title="Search files">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.1" />
+                  <path d="M7.7 7.7L10.5 10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+              <button className="right-panel-header-btn" onClick={() => modus.openInFolder(activeCwd)} title="Open in file explorer">
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                  <path d="M10 6.5V10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h3.5M7 1h4v4M5 7l6-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </>
           )}
           {viewingFile && (
             <button
@@ -433,31 +710,15 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
               )}
             </button>
           )}
-          {fullscreen && (
-            <button className={`right-panel-header-btn${fullscreenBrowser ? " active" : ""}`} onClick={() => setFullscreenBrowser((b) => !b)} title={fullscreenBrowser ? "Hide file browser" : "Show file browser"}>
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                <path d="M1 3h4l1-1.5h5v8.5H1z" stroke="currentColor" strokeWidth="1.1" fill="none"/>
-              </svg>
-            </button>
-          )}
-          {(showFileContent || isEditMode) && (
-            <button className="right-panel-header-btn" onClick={() => { setFullscreen(!fullscreen); if (fullscreen) setFullscreenBrowser(false); }} title={fullscreen ? "Exit fullscreen" : "Fullscreen"}>
-              {fullscreen ? (
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4 1v3H1M8 11V8h3M1 8h3v3M11 4H8V1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 4V1h3M11 4V1H8M1 8v3h3M11 8v3H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              )}
-            </button>
-          )}
-          {saving && <span className="rp-status rp-status--saving">saving...</span>}
-          {saveError && <span className="rp-status rp-status--error">{saveError}</span>}
         </div>
       </div>
 
-      <div className={`code-workspace-body${fullscreen && fullscreenBrowser ? " code-workspace-body--split" : ""}`}>
-        {fullscreen && fullscreenBrowser && (
+      <div className={`code-workspace-body${sidebarOpen ? " code-workspace-body--split" : ""}`}>
+        {sidebarOpen && (
           <div className="code-workspace-fs-browser">
             <FileBrowser
+              ref={fsBrowserRef}
+              hideHeader
               rootPath={activeCwd ?? null}
               initialPath={initialBrowserPath}
               onFileSelect={handleFileSelect}
@@ -468,18 +729,67 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
         <div className={`code-workspace-content${isEditMode ? " code-workspace-content--editing" : ""}`}>
           {renderContent()}
           <div style={{ display: showBrowser ? "contents" : "none" }}>
-            <FileBrowser
-              rootPath={activeCwd ?? null}
-              initialPath={initialBrowserPath}
-              onFileSelect={handleFileSelect}
-              onPathChange={onBrowserPathChange}
-            />
+            <div className="code-workspace-browser-view">
+              {showBrowser && searchOpen && renderSearchResults()}
+              {sidebarOpen ? (
+                <div className="cw-browser-placeholder">
+                  <div className="cw-browser-placeholder-hint">
+                    <span>Open a file from the tree on the left, or</span>
+                    <button className="cw-browser-placeholder-link" onClick={() => setActiveView("pins")}>view pinned files</button>
+                  </div>
+                </div>
+              ) : (
+                <FileBrowser
+                  ref={fullBrowserRef}
+                  hideHeader
+                  rootPath={activeCwd ?? null}
+                  initialPath={initialBrowserPath}
+                  onFileSelect={handleFileSelect}
+                  onPathChange={onBrowserPathChange}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>
       {editorCtxMenu.portal}
       {tabCtxMenu.portal}
       {markdownCtxMenu.portal}
+      {tabsMenuOpen && tabsMenuPos && createPortal(
+        <div
+          className="cw-tabs-overflow-menu cw-tabs-overflow-menu--portal"
+          role="menu"
+          style={{ top: tabsMenuPos.top, right: tabsMenuPos.right }}
+        >
+          {tabs.map((tab) => (
+            <button
+              key={tab.path}
+              className={`cw-tabs-overflow-item${tab.path === activeView ? " cw-tabs-overflow-item--active" : ""}${tab.dirty ? " cw-tabs-overflow-item--dirty" : ""}`}
+              onClick={() => {
+                setActiveView(tab.path);
+                setTabsMenuOpen(false);
+                requestAnimationFrame(() => {
+                  const safe = (typeof CSS !== "undefined" && typeof CSS.escape === "function") ? CSS.escape(tab.path) : tab.path;
+                  tabsRef.current?.querySelector<HTMLElement>(`[data-tab-path="${safe}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+                });
+              }}
+              onContextMenu={(e) => { handleTabContextMenu(e, tab.path); setTabsMenuOpen(false); }}
+              title={tab.path}
+            >
+              {tab.dirty && <span className="cw-tab-dot" />}
+              {isFilePinned(tab.path) && (
+                <svg className="cw-tabs-overflow-pin" width="8" height="8" viewBox="0 0 12 12" fill="none">
+                  <path d="M7.5 1.5L10.5 4.5L7 8L5 10L4 9L2 7L3 6L5 2.5L7.5 1.5Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" fill="currentColor"/>
+                  <path d="M2 10L4 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              )}
+              <span className="cw-tabs-overflow-name">{basename(tab.path)}</span>
+              <span className="cw-tabs-overflow-path">{tab.path}</span>
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

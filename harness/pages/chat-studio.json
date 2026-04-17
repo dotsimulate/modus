@@ -1,0 +1,108 @@
+{
+  "id": "chat-studio",
+  "title": "chat studio",
+  "nav": false,
+  "fullscreen": true,
+  "padding": 0,
+  "layout": {
+    "kind": "scope",
+    "bindUrlSession": true,
+    "context": { "sessionId": null },
+    "children": [{
+      "kind": "split",
+      "axis": "horizontal",
+      "sizes": [1, 3, 1],
+      "collapsible": [true, false, true],
+      "children": [
+        {
+          "kind": "tabs",
+          "editable": true,
+          "children": [
+            {
+              "kind": "widget",
+              "widget": { "type": "session-list", "id": "cs-sessions" },
+              "publish": { "selectedSession": "sessionId" }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "profiles-manager", "id": "cs-profiles" }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "moves", "id": "cs-moves" }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "actions-manager", "id": "cs-actions" }
+            }
+          ]
+        },
+        {
+          "kind": "split",
+          "axis": "vertical",
+          "sizes": [1, 1, "auto"],
+          "children": [
+            {
+              "kind": "tabs",
+              "id": "cs-center-tabs",
+              "showWhen": { "sessionId": null },
+              "children": [
+                {
+                  "kind": "widget",
+                  "widget": { "type": "new-session", "id": "cs-new" },
+                  "publish": { "selectedSession": "sessionId" }
+                },
+                {
+                  "kind": "widget",
+                  "widget": { "type": "inbox", "id": "cs-inbox" },
+                  "publish": { "selectedSession": "sessionId" }
+                }
+              ]
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "session-chat", "id": "cs-chat" },
+              "hideWhen": { "sessionId": null }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "composer", "id": "cs-composer", "persistOpen": true },
+              "hideWhen": { "sessionId": null }
+            }
+          ]
+        },
+        {
+          "kind": "tabs",
+          "editable": true,
+          "target": true,
+          "children": [
+            {
+              "kind": "widget",
+              "widget": { "type": "session-sidebar", "id": "cs-sidebar" }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "agent-activity", "id": "cs-activity" }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "session-edits", "id": "cs-edits" }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "code-editor", "id": "cs-editor" }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "session-terminal", "id": "cs-terminal" }
+            },
+            {
+              "kind": "widget",
+              "widget": { "type": "profile-card", "id": "cs-profile-card" }
+            }
+          ]
+        }
+      ]
+    }]
+  }
+}

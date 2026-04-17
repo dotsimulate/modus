@@ -263,11 +263,19 @@ async function waitForPortFree(port: number, timeoutMs = 30_000, intervalMs = 50
 function getListeningPid(port: number): string | null {
   if (process.platform !== "win32") return null;
   try {
-    const result = Bun.spawnSync(["powershell", "-NoProfile", "-Command",
-      `(Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue).OwningProcess`
-    ], { stdout: "pipe", stderr: "ignore" });
-    const pid = new TextDecoder().decode(result.stdout).trim();
-    return (pid && /^\d+$/.test(pid)) ? pid : null;
+    // Use netstat instead of PowerShell — PowerShell depends on .NET which can be
+    // broken by system crashes (OOM incident 2026-04-12). netstat is a native binary.
+    const result = Bun.spawnSync(["netstat", "-ano"], { stdout: "pipe", stderr: "ignore" });
+    const out = new TextDecoder().decode(result.stdout);
+    for (const line of out.split("\n")) {
+      // Match lines like: TCP  0.0.0.0:3777  0.0.0.0:0  LISTENING  73636
+      if (line.includes("LISTENING") && line.includes(`:${port}`)) {
+        const parts = line.trim().split(/\s+/);
+        const pid = parts[parts.length - 1];
+        if (/^\d+$/.test(pid)) return pid;
+      }
+    }
+    return null;
   } catch { return null; }
 }
 

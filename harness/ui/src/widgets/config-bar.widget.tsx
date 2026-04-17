@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useCallback, useMemo } from "react";
-import { useSessionState, subscribeSession, isSubscribed } from "../sessionStore";
+import { useSessionState, ensureSubscribed } from "../sessionStore";
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { ConfigBar } from "../components/ConfigBar";
@@ -30,9 +30,7 @@ export default function ConfigBarWidget({ config, pageContext }: WidgetProps<Con
   const sessionId = contextSessionId ?? config.sessionId ?? null;
 
   useEffect(() => {
-    if (sessionId && !isSubscribed(sessionId)) {
-      subscribeSession(sessionId, 0);
-    }
+    if (sessionId) void ensureSubscribed(sessionId);
   }, [sessionId]);
 
   const session = useSessionState(sessionId);

@@ -16,8 +16,7 @@ import {
   useSessionState, setSessionState, getSessionState,
   setSessionNextAgentConfig,
   setSessionNextProfile,
-  hydrateSessionHistorySnapshot,
-  subscribeSession, unsubscribeSession, isSubscribed,
+  ensureSubscribed, unsubscribeSession,
   rekeySession, removeSession, evictInactiveSessions, onSessionRekey,
 } from "../sessionStore";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
@@ -36,6 +35,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevActiveStatusRef = useRef<Session["status"] | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectionRequestRef = useRef(0);
 
   // Derive activeSession from the store
   const activeSession = useSessionState(activeSessionId);
@@ -310,6 +310,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [activeUserProfile, getEffectiveSeed, refreshSessions, resolveAppliedModel, resolveProfileProvider, saveDraftForCurrent]);
 
   const selectSession = useCallback(async (id: string) => {
+    const selectionRequest = ++selectionRequestRef.current;
+    const isStaleSelection = () => selectionRequestRef.current !== selectionRequest;
+
     // Set up the new session SYNCHRONOUSLY before any async work.
     // This prevents a render gap where activeSession is stale/null and
     // the ConfigBar falls back to the sidebar's selectedProfile.
@@ -338,56 +341,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // Evict old inactive sessions from the store to free memory
     evictInactiveSessions(id);
 
-    let afterSeq = existing?.lastSeq ?? 0;
-    const shouldHydrateHistory = !!info?.status
-      && info.status !== "running"
-      && info.status !== "starting"
-      && info.status !== "paused";
-
-    if (shouldHydrateHistory) {
-      try {
-        const snapshot = await modus.getSessionHistorySnapshot(id);
-        const hasAssistantToolCalls = snapshot.messages.some((msg) => (
-          msg.role === "assistant" && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0
-        ));
-        if (hasAssistantToolCalls) {
-          const rs = createInitialState(id);
-          rs.status = (info?.status as Session["status"]) ?? "idle";
-          rs.model = info?.model ?? "";
-          rs.cwd = info?.cwd ?? "";
-          setSessionState(id, rs, sessionProfile);
-          afterSeq = 0;
-        } else {
-          const latest = getSessionState(id);
-          // Skip empty snapshots — the backend maps idle sessions to "done"
-          // which would overwrite fresh "idle" state and break needsNewSession.
-          const isSnapshotMeaningful = snapshot.messages.length > 0 || snapshot.lastSeq > 0;
-          const shouldApplySnapshot = isSnapshotMeaningful
-            && (!latest
-              || snapshot.lastSeq > latest.lastSeq
-              || snapshot.messages.length >= latest.messages.length);
-          if (shouldApplySnapshot) {
-            hydrateSessionHistorySnapshot(snapshot, sessionProfile);
-            afterSeq = snapshot.lastSeq;
-          } else {
-            afterSeq = latest?.lastSeq ?? 0;
-          }
-        }
-      } catch {
-        // Fall back to event replay if snapshot hydration fails.
-      }
-    }
-
-    // Subscribe from last known seq (avoids full replay if store has state)
-    if (!isSubscribed(id)) {
-      subscribeSession(id, afterSeq, sessionProfile, refreshSessions);
-    }
+    // Snapshot-then-subscribe in a single race-free call.
+    await ensureSubscribed(id, {
+      profile: sessionProfile,
+      activeStatus: info?.status as Session["status"] | undefined,
+      onDone: refreshSessions,
+    });
 
     // NOTE: do NOT write selectedProfile here. selectedProfile is the sidebar's
     // seed for the next new session (Domain B) and must not be contaminated by
     // which session the user navigates to (Domain A).
 
     const draft = await modus.getDraft(id).catch(() => "");
+    if (isStaleSelection()) return;
     setInputValue(draft);
 
     setQueuedMessage(null);
@@ -473,7 +439,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         setSessionNextAgentConfig(realId, undefined);
         setActiveSessionId(realId);
         updateHash(realId);
-        subscribeSession(realId, 0, queuedProfile, refreshSessions);
+        void ensureSubscribed(realId, {
+          profile: queuedProfile,
+          activeStatus: "starting",
+          onDone: refreshSessions,
+        });
         refreshSessions();
       } catch (err) {
         const errState = getSessionState(tempId);
@@ -554,10 +524,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           loadProjectSettings: rs.loadProjectSettings,
           moves,
         });
-        if (!isSubscribed(activeSessionId!)) {
-          const latest = getSessionState(activeSessionId!);
-          subscribeSession(activeSessionId!, latest?.lastSeq ?? 0, effectiveProfile, refreshSessions);
-        }
+        void ensureSubscribed(activeSessionId!, {
+          profile: effectiveProfile,
+          activeStatus: "running",
+          onDone: refreshSessions,
+        });
       } catch (err) {
         const latest = getSessionState(activeSessionId!);
         if (latest) {

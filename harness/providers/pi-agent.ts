@@ -548,6 +548,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         const mergedMcp = {
           ...(globalConfig.mcpServers ?? {}),
           ...(profile?.mcpServers ?? {}),
+          ...(opts.mcpServers as Record<string, any> ?? {}),
         };
         console.log(`[pi-agent] MCP servers to connect: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
 

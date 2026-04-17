@@ -19,7 +19,7 @@ import { useSessionComposer } from "../hooks/useSessionComposer";
 import type { MoveBinding, Attachment } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
-import { subscribeSession, isSubscribed, getSessionState, setSessionState, getSessionProfile } from "../sessionStore";
+import { ensureSubscribed, getSessionState, setSessionState, getSessionProfile } from "../sessionStore";
 
 type Props = {
   /** Session to attach to — drafts persist here */
@@ -166,10 +166,10 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
           moves,
         },
       );
-      if (!isSubscribed(sessionId)) {
-        const latest = getSessionState(sessionId);
-        subscribeSession(sessionId, latest?.lastSeq ?? 0, sessionProfile ?? undefined);
-      }
+      void ensureSubscribed(sessionId, {
+        profile: sessionProfile ?? undefined,
+        activeStatus: "running",
+      });
       onSent?.();
     } catch (err) {
       console.error("WebComposer: send failed:", err);

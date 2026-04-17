@@ -159,6 +159,7 @@ function buildMcpArgs(ctx: TurnContext): string[] {
     ...sessionCwdMcp,
     ...(globalConfig.mcpServers ?? {}),
     ...(profileDef?.mcpServers ?? {}),
+    ...(opts.mcpServers as Record<string, any> ?? {}),
   };
 
   if (Object.keys(mergedMcp).length === 0) return [];

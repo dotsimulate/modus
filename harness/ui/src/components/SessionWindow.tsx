@@ -11,7 +11,7 @@ import { useEffect, useCallback, useEffectEvent, useRef, useState } from "react"
 import type { Attachment, MoveBinding } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
-import { useSessionState, subscribeSession, isSubscribed, getSessionState, setSessionState } from "../sessionStore";
+import { useSessionState, ensureSubscribed, getSessionState, setSessionState } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
 import { FloatingWindow } from "./FloatingWindow";
 import { ChatView } from "./ChatView";
@@ -38,9 +38,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   const draftReadyRef = useRef(false);
 
   useEffect(() => {
-    if (sessionId && !isSubscribed(sessionId)) {
-      subscribeSession(sessionId, 0);
-    }
+    if (sessionId) void ensureSubscribed(sessionId);
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
@@ -156,10 +154,10 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
           moves,
         },
       );
-      if (!isSubscribed(sessionId)) {
-        const latest = getSessionState(sessionId);
-        subscribeSession(sessionId, latest?.lastSeq ?? 0, session?.profile ?? undefined);
-      }
+      void ensureSubscribed(sessionId, {
+        profile: session?.profile ?? undefined,
+        activeStatus: "running",
+      });
     } catch (err) {
       const latest = getSessionState(sessionId);
       if (latest) {

@@ -195,7 +195,7 @@ export type PermissionResponse = {
 
 // ── Session Status ──
 
-export type SessionStatus = "starting" | "running" | "idle" | "done" | "error";
+export type SessionStatus = "starting" | "running" | "idle" | "paused" | "done" | "error";
 
 /** Mutable agent configuration for an active session (model, tools, provider controls). */
 export type AgentConfigState = {
@@ -717,6 +717,8 @@ export type UserProfileUiConfig = {
         | { kind: "text"; markdown: string; [key: string]: unknown }
       >;
       layout?: unknown;
+      nav?: boolean;
+      fullscreen?: boolean;
     }>;
   };
   leftPanel?: {
@@ -779,6 +781,8 @@ export type UserProfile = {
         | { kind: "text"; markdown: string; [key: string]: unknown }
       >;
       layout?: unknown;
+      nav?: boolean;
+      fullscreen?: boolean;
     }>;
   };
   leftPanel?: {
@@ -1175,6 +1179,21 @@ export type BrowseResult = {
   parent: string | null;
   dirs: string[];
   files?: string[];
+};
+
+/** A single file search hit within a workspace. */
+export type FileSearchHit = {
+  path: string;
+  name: string;
+  parent: string;
+};
+
+/** Result of a workspace file search. */
+export type FileSearchResponse = {
+  available: boolean;
+  provider: "everything" | "none";
+  installHint?: string;
+  results: FileSearchHit[];
 };
 
 // ── Notes ──

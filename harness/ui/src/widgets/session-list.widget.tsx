@@ -85,23 +85,25 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
           onClick={() => handleGroupModeChange("agent")}
         >agent</button>
       </div>
-      <SessionList
-        sessions={sessions}
-        activeSessionId={(pageContext?.get("selectedSession") as string | undefined) ?? activeSession?.id ?? null}
-        groupMode={groupMode}
-        onSelectSession={(id) => {
-          if (pageContext) {
-            pageContext.set("selectedSession", id);
-          } else {
-            onSelectSession(id);
-          }
-        }}
-        onArchiveSession={archiveSession}
-        activeInput={input}
-        initialCollapsedGroups={uiState.sidebarCollapsedGroups}
-        onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
-        onTogglePin={handleTogglePin}
-      />
+      <div className="session-list-widget-scroll">
+        <SessionList
+          sessions={sessions}
+          activeSessionId={(pageContext?.get("selectedSession") as string | undefined) ?? activeSession?.id ?? null}
+          groupMode={groupMode}
+          onSelectSession={(id) => {
+            if (pageContext) {
+              pageContext.set("selectedSession", id);
+            } else {
+              onSelectSession(id);
+            }
+          }}
+          onArchiveSession={archiveSession}
+          activeInput={input}
+          initialCollapsedGroups={uiState.sidebarCollapsedGroups}
+          onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
+          onTogglePin={handleTogglePin}
+        />
+      </div>
     </div>
   );
 }
