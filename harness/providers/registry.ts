@@ -24,9 +24,10 @@ const STANDALONE_PROVIDERS = ["claude-code", "claude-code-pty", "codex", "cursor
 const cache = new Map<string, SessionProvider>();
 
 export function getProvider(name: string): SessionProvider {
-  let provider = cache.get(name);
-  if (provider) return provider;
+  const cached = cache.get(name);
+  if (cached) return cached;
 
+  let provider: SessionProvider;
   if (name === "claude-code") {
     provider = createClaudeCodeProvider();
   } else if (name === "claude-code-pty") {

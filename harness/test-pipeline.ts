@@ -207,6 +207,7 @@ describe("type shapes", () => {
         ...(opts.previewText ? { previewText: opts.previewText } : {}),
       }),
       svgToPngBase64: () => null,
+      createTerminal: () => ({ id: "test", write: () => {}, close: () => {} }) as any,
     };
     expect(ctx.attempt).toBe(2);
     expect(ctx.executionId).toBe(42);

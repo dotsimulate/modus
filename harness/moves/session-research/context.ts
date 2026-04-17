@@ -275,8 +275,8 @@ export const handlers: Record<string, MoveApiHandler> = {
         lines.push(`--- **${sid}** — NOT FOUND ---\n`);
         continue;
       }
-      const date = new Date(session.last_message_at ?? session.updated_at).toISOString().split("T")[0];
-      lines.push(`--- **${sid}** [${session.profile ?? "?"}] ${date} $${session.total_cost_usd.toFixed(2)} ---`);
+      const date = new Date(session.last_message_at ?? session.updated_at ?? 0).toISOString().split("T")[0];
+      lines.push(`--- **${sid}** [${session.profile ?? "?"}] ${date} $${(session.total_cost_usd ?? 0).toFixed(2)} ---`);
       if (session.title) lines.push(`Title: ${session.title}`);
 
       const allTurns = ctx.db.getSessionMessages(sid);
@@ -304,9 +304,9 @@ export const handlers: Record<string, MoveApiHandler> = {
     const s = ctx.db.getSession(sessionId);
     if (!s) return { ok: false, error: `Session "${sessionId}" not found` };
 
-    const tags = parseTags(s.tags);
-    const created = new Date(s.created_at).toISOString();
-    const updated = new Date(s.updated_at).toISOString();
+    const tags = parseTags(s.tags ?? "");
+    const created = new Date(s.created_at ?? 0).toISOString();
+    const updated = new Date(s.updated_at ?? 0).toISOString();
     const lastMsg = s.last_message_at ? new Date(s.last_message_at).toISOString() : "n/a";
 
     const lines = [
@@ -316,7 +316,7 @@ export const handlers: Record<string, MoveApiHandler> = {
       `Model: ${s.model ?? "unknown"}`,
       `Status: ${s.status}`,
       `Messages: ${s.message_count}`,
-      `Cost: $${s.total_cost_usd.toFixed(4)}`,
+      `Cost: $${(s.total_cost_usd ?? 0).toFixed(4)}`,
       `Created: ${created}`,
       `Updated: ${updated}`,
       `Last message: ${lastMsg}`,

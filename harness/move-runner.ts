@@ -1013,7 +1013,7 @@ function buildMoveContext(
   const metadata = opts?.metadata ?? {};
   const moveCfg = getMove(moveName, cwd);
   const caps = moveCfg?.capabilities ?? {};
-  const trust = resolveTrust(moveCfg);
+  const trust = resolveTrust(moveCfg ?? undefined);
 
   // Wire state API for API moves (always available, not just in onSubmit)
   const instanceId = opts?.instanceId;
@@ -1084,6 +1084,18 @@ function buildMoveDB(moveName: string, cwd: string): MoveDB {
         profile: s.profile,
         status: s.status,
         lastMessageAt: s.last_message_at,
+        user_profile: s.user_profile,
+        provider: s.provider,
+        model: s.model,
+        cwd: s.cwd,
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+        last_message_at: s.last_message_at,
+        message_count: s.message_count,
+        total_cost_usd: s.total_cost_usd,
+        title: s.title,
+        tags: s.tags,
+        parent_session_id: s.parent_session_id,
       };
     },
     searchSessions(query: string, limit = 10) {

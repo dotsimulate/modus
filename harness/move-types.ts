@@ -256,6 +256,18 @@ export interface SessionRef {
   profile: string | null;
   status: string;
   lastMessageAt: number;
+  user_profile?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  cwd?: string | null;
+  created_at?: number;
+  updated_at?: number;
+  last_message_at?: number;
+  message_count?: number;
+  total_cost_usd?: number;
+  title?: string | null;
+  tags?: string;
+  parent_session_id?: string | null;
 }
 
 export interface SearchRef {

@@ -59,7 +59,7 @@ async function fetchCursorModels(): Promise<ModelInfo[]> {
     for (const line of raw.split("\n")) {
       const match = line.match(/^(\S+)\s+-\s+(.+)$/);
       if (match) {
-        models.push({ id: match[1], owned_by: "cursor" });
+        models.push({ id: match[1]!, owned_by: "cursor" });
       }
     }
     return models.length > 0 ? models : CURSOR_FALLBACK_MODELS;

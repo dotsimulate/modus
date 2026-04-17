@@ -1,255 +1,35 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 import { Actions } from "./Actions";
 import { GitPanel } from "./GitPanel";
 import { WIDGETS, WidgetChromeContext } from "../widgets";
-import type { DashboardBlock, DashboardModule, LayoutNode, PageContextHandle, ScopeEvent, WidgetBase, WidgetSize } from "../widgets";
+import type { DashboardBlock, DashboardModule, LayoutNode, WidgetBase, WidgetSize } from "../widgets";
 import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
 import { PanelTreeRenderer } from "./PanelTreeRenderer";
+import {
+  PageStateBusContext,
+  PageUrlProvider,
+  ScopeProvider,
+  ScopeUrlSessionBinder,
+  createPageStateBus,
+  useLeafVisible,
+  usePageContext,
+  usePageUrl,
+  useScopeBus,
+} from "./pageScope";
 
-// ── Page-scoped shared state bus ──
-
-const emptyBusSnapshot: Record<string, unknown> = {};
-
-type EventHandler = (event: ScopeEvent) => void;
-
-type PageStateBus = {
-  state: Record<string, unknown>;
-  listeners: Set<() => void>;
-  get: (key: string) => unknown;
-  set: (key: string, value: unknown) => void;
-  subscribe: (cb: () => void) => () => void;
-  getSnapshot: () => Record<string, unknown>;
-  /** Emit an event on this bus. All matching handlers fire synchronously. */
-  emit: (event: ScopeEvent) => void;
-  /** Subscribe to events of a given type. Returns unsubscribe function. */
-  on: (type: string, handler: EventHandler) => () => void;
-  /** Navigation callbacks from the parent view — available to widgets with canNavigate */
-  onNavigate?: (view: string) => void;
-  onSelectSession?: (id: string) => void;
+export {
+  PageUrlProvider,
+  ScopeProvider,
+  ScopeUrlSessionBinder,
+  useLeafVisible,
+  usePageContext,
+  usePageUrl,
+  useScopeBus,
 };
 
-function createPageStateBus(initial: Record<string, unknown>): PageStateBus {
-  const eventHandlers = new Map<string, Set<EventHandler>>();
-
-  const bus: PageStateBus = {
-    state: { ...initial },
-    listeners: new Set(),
-    get(key) { return bus.state[key]; },
-    set(key, value) {
-      if (bus.state[key] === value) return;
-      bus.state = { ...bus.state, [key]: value };
-      bus.listeners.forEach((cb) => cb());
-    },
-    subscribe(cb) {
-      bus.listeners.add(cb);
-      return () => { bus.listeners.delete(cb); };
-    },
-    getSnapshot() { return bus.state; },
-    emit(event) {
-      const handlers = eventHandlers.get(event.type);
-      if (handlers) handlers.forEach((h) => h(event));
-    },
-    on(type, handler) {
-      let set = eventHandlers.get(type);
-      if (!set) { set = new Set(); eventHandlers.set(type, set); }
-      set.add(handler);
-      return () => { set!.delete(handler); };
-    },
-  };
-  return bus;
-}
-
-const PageStateBusContext = createContext<PageStateBus | null>(null);
-
-// ── Page URL context — exposes hash session id to scope binders ──
-
-type PageUrlState = {
-  hashSessionId: string | null;
-};
-
-const PageUrlContext = createContext<PageUrlState>({ hashSessionId: null });
-
-/**
- * Provides the current hash session id to the page subtree so scope nodes with
- * `bindUrlSession: true` can mirror it into their context bus. Outbound sync
- * (bus → URL) flows through `bus.onSelectSession`, which App wires to setUrlSession.
- */
-export function PageUrlProvider({
-  hashSessionId,
-  children,
-}: {
-  hashSessionId: string | null;
-  children: ReactNode;
-}) {
-  return (
-    <PageUrlContext.Provider value={{ hashSessionId }}>
-      {children}
-    </PageUrlContext.Provider>
-  );
-}
-
-export function usePageUrl(): PageUrlState {
-  return useContext(PageUrlContext);
-}
-
-/**
- * ScopeUrlSessionBinder — invisible bridge between hash session id and scope bus.
- * Inbound: pushes hashSessionId into bus as `sessionId` on mount and changes.
- * Outbound: when bus `sessionId` changes, calls bus.onSelectSession to update URL.
- * Only mounted when scope node has `bindUrlSession: true`.
- */
-export function ScopeUrlSessionBinder() {
-  const bus = useContext(PageStateBusContext);
-  const { hashSessionId } = usePageUrl();
-  const lastPushed = useRef<string | null | undefined>(undefined);
-
-  // Inbound: hash → bus
-  useEffect(() => {
-    if (!bus) return;
-    const current = bus.get("sessionId") as string | null | undefined;
-    const next = hashSessionId ?? null;
-    if (current !== next) bus.set("sessionId", next);
-    lastPushed.current = next;
-  }, [bus, hashSessionId]);
-
-  // Outbound: bus → URL (via onSelectSession wired up by PageView)
-  const busState = useSyncExternalStore<Record<string, unknown>>(
-    bus ? bus.subscribe : () => () => {},
-    bus ? bus.getSnapshot : () => emptyBusSnapshot,
-  );
-  useEffect(() => {
-    if (!bus) return;
-    const sid = busState.sessionId as string | null | undefined;
-    // Don't echo back a change we just applied from the URL
-    if (sid === lastPushed.current) return;
-    lastPushed.current = sid ?? null;
-    if (sid && bus.onSelectSession) bus.onSelectSession(sid);
-  }, [bus, busState.sessionId]);
-
-  return null;
-}
-
-/**
- * Check if a layout leaf should be visible based on showWhen/hideWhen
- * conditions evaluated against the page context bus state.
- * Returns true (visible) when no bus or no conditions are set.
- */
-export function useLeafVisible(
-  showWhen?: Record<string, unknown>,
-  hideWhen?: Record<string, unknown>,
-): boolean {
-  const bus = useContext(PageStateBusContext);
-  useSyncExternalStore(
-    bus ? bus.subscribe : () => () => {},
-    bus ? bus.getSnapshot : () => ({}),
-  );
-  if (!bus) return true;
-  // showWhen: ALL conditions must match (AND)
-  if (showWhen) {
-    for (const [key, expected] of Object.entries(showWhen)) {
-      const actual = bus.get(key);
-      if (expected === null) {
-        if (actual != null) return false;
-      } else if (actual !== expected) {
-        return false;
-      }
-    }
-  }
-  // hideWhen: ANY condition matching hides the widget (OR)
-  if (hideWhen) {
-    for (const [key, expected] of Object.entries(hideWhen)) {
-      const actual = bus.get(key);
-      if (expected === null) {
-        if (actual == null) return false;
-      } else if (actual === expected) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-/** Hook for widgets to access their scoped page context slice */
-export function usePageContext(
-  publishKeys?: Record<string, string>,
-  subscribeKeys?: Record<string, string>,
-  canNavigate?: boolean,
-): PageContextHandle | undefined {
-  const bus = useContext(PageStateBusContext);
-  // Subscribe to state changes so widget re-renders on relevant updates
-  useSyncExternalStore(
-    bus ? bus.subscribe : () => () => {},
-    bus ? bus.getSnapshot : () => ({}),
-  );
-
-  const publishRef = useRef(publishKeys);
-  publishRef.current = publishKeys;
-  const subscribeRef = useRef(subscribeKeys);
-  subscribeRef.current = subscribeKeys;
-
-  const get = useCallback((key: string): unknown => {
-    if (!bus) return undefined;
-    // Translate widget-local key to page context key via subscribe mapping
-    const contextKey = subscribeRef.current?.[key] ?? key;
-    return bus.get(contextKey);
-  }, [bus]);
-
-  const set = useCallback((key: string, value: unknown): void => {
-    if (!bus) return;
-    // Translate widget-local key to page context key via publish mapping
-    const contextKey = publishRef.current?.[key] ?? key;
-    bus.set(contextKey, value);
-  }, [bus]);
-
-  const emit = useCallback((event: ScopeEvent): void => {
-    bus?.emit(event);
-  }, [bus]);
-
-  const on = useCallback((type: string, handler: (event: ScopeEvent) => void): () => void => {
-    if (!bus) return () => {};
-    return bus.on(type, handler);
-  }, [bus]);
-
-  if (!bus) return undefined;
-  return {
-    get,
-    set,
-    emit,
-    on,
-    navigate: canNavigate ? bus.onNavigate : undefined,
-    selectSession: canNavigate ? bus.onSelectSession : undefined,
-  };
-}
-
-/** Direct access to the bus for scope-level components (not widget-scoped) */
-export function useScopeBus(): PageStateBus | null {
-  return useContext(PageStateBusContext);
-}
-
-/** Render a scope node — creates a nested context bus for its subtree */
-export function ScopeProvider({
-  context,
-  onNavigate,
-  onSelectSession,
-  children,
-}: {
-  context?: Record<string, unknown>;
-  onNavigate?: (view: string) => void;
-  onSelectSession?: (id: string) => void;
-  children: ReactNode;
-}) {
-  const [bus] = useState(() => createPageStateBus(context ?? {}));
-  bus.onNavigate = onNavigate;
-  bus.onSelectSession = onSelectSession;
-  return (
-    <PageStateBusContext.Provider value={bus}>
-      {children}
-    </PageStateBusContext.Provider>
-  );
-}
 
 type LegacyPagePanelNode = {
   kind: "panel";

@@ -16,6 +16,7 @@ Modus combines a few core ideas:
 - **Moves** define structured user-invoked interactions, often with widgets or typed protocols
 - **Actions** define automated workflows triggered by time, webhooks, or other events
 - **Missions** define longer-running multi-step, multi-agent project workflows
+- **Pages** define custom dashboards and layouts that appear in the top nav per project
 
 Underneath those primitives is a shared harness for sessions, memory, provider abstraction, persistence, authentication, and a streaming UI.
 
@@ -143,6 +144,14 @@ Actions are automated agent workflows: scheduled, webhook-triggered, or chained 
 Each action is a directory in `.modus/actions/<name>/` with an `action.json` config and `context.ts` module.
 
 See [harness/docs/actions.md](harness/docs/actions.md).
+
+## Pages
+
+Pages are project-scoped dashboards that appear as entries in the top nav. Each page is a JSON file defining a layout tree of widgets — session views, terminals, file browsers, composers, and any other registered widget. Pages augment the built-in views (sessions, profiles, actions, git, web, trace) with project-specific workspaces.
+
+Each page lives in `.modus/pages/<name>.json` and is discovered automatically per `cwd`.
+
+See [harness/docs/pages.md](harness/docs/pages.md).
 
 ## Missions
 

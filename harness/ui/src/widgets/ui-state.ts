@@ -1,5 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
-import type { WidgetBase } from "./index";
+import type { WidgetBase } from "./types";
 
 type Scope = {
   userProfile?: string | null;

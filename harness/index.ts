@@ -1005,7 +1005,7 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
     // SSE stream stays open long enough for the async message pipeline to set
     // status back to "running" and start emitting events.
     const catchupLastSeq = pastEvents.length > 0
-      ? pastEvents[pastEvents.length - 1].seq
+      ? pastEvents[pastEvents.length - 1]!.seq
       : afterSeq;
 
     const active = getActiveSession(sessionId);
@@ -1227,7 +1227,7 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
     model: row?.model ?? active?.model ?? storedConfig?.model ?? "",
     cwd: row?.cwd ?? active?.cwd ?? storedConfig?.cwd ?? "",
     additionalDirectories: active?.additionalDirectories ?? storedConfig?.additionalDirectories ?? [],
-    loadProjectSettings: active?.loadProjectSettings ?? storedConfig?.loadProjectSettings ?? true,
+    loadProjectSettings: active?._configOverrides.loadProjectSettings ?? storedConfig?.loadProjectSettings ?? true,
     agentConfig,
     messages: getSessionMessages(id),
     lastSeq: active?.seq ?? getMaxSeq(id),
@@ -2631,7 +2631,7 @@ app.get("/api/analytics/deep", (c) => {
     sessionTouchCount.set(touch.sessionId, (sessionTouchCount.get(touch.sessionId) ?? 0) + 1);
 
     const idx = Math.floor((touch.timestamp - analytics.range.start) / analytics.range.bucketMs);
-    if (idx >= 0 && idx < analytics.buckets.length) analytics.buckets[idx].touches += 1;
+    if (idx >= 0 && idx < analytics.buckets.length) analytics.buckets[idx]!.touches += 1;
 
     const existing = fileAgg.get(touch.filePath);
     if (existing) {
@@ -2971,7 +2971,7 @@ app.get("/api/moves/:name/widget", async (c) => {
       return c.json({ error: "widget build failed" }, 500);
     }
 
-    const js = await result.outputs[0].text();
+    const js = await result.outputs[0]!.text();
     widgetCache.set(srcPath, { mtime, js });
     return new Response(js, { headers: { "Content-Type": "application/javascript" } });
   } catch (err) {
