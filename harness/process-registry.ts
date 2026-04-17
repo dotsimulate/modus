@@ -264,32 +264,35 @@ type OsProcessRow = {
 function listOrphanClaudeProcesses(): ProcessInfo[] {
   if (process.platform !== "win32") return [];
 
+  // Use wmic via cmd.exe instead of PowerShell — PowerShell depends on .NET
+  // which can be broken by system crashes. wmic is a native Win32 binary.
   const currentPort = Number(process.env.HARNESS_PORT ?? 3777);
   const result = spawnSync(
-    "powershell",
+    "cmd.exe",
     [
-      "-NoProfile",
-      "-Command",
-      [
-        // Only flag processes that are actually Modus-launched or that
-        // talk to the Modus MCP endpoint. Anything else is somebody else's
-        // process and not our business — matching by binary name alone has
-        // burned us before (lops-monitor, claude_code_bridge.py).
-        "$port = $env:HARNESS_PORT; if (-not $port) { $port = '3777' }",
-        "$rows = Get-CimInstance Win32_Process | Where-Object {",
-        "  ($_.Name -eq 'node.exe' -and $_.CommandLine -match '@anthropic-ai[\\\\/]claude-code[\\\\/]cli\\.js') -or",
-        "  ($_.CommandLine -match \"127\\.0\\.0\\.1:$port/api/mcp/modus\")",
-        "} | Select-Object @{Name='pid';Expression={$_.ProcessId}}, @{Name='ppid';Expression={$_.ParentProcessId}}, @{Name='name';Expression={$_.Name}}, @{Name='commandLine';Expression={$_.CommandLine}};",
-        "$rows | ConvertTo-Json -Compress",
-      ].join(" "),
+      "/c",
+      "wmic process where \"name='node.exe'\" get ProcessId,ParentProcessId,CommandLine /format:csv",
     ],
-    { encoding: "utf8", windowsHide: true },
+    { encoding: "utf8", windowsHide: true, timeout: 5000 },
   );
 
   if (result.status !== 0 || !result.stdout?.trim()) return [];
 
-  const parsed = JSON.parse(result.stdout) as OsProcessRow | OsProcessRow[];
-  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  // Parse wmic CSV output: "Node,CommandLine,ParentProcessId,ProcessId\nHOST,cmd...,1234,5678"
+  const lines = result.stdout.trim().split("\n").filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const rows: OsProcessRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split(",");
+    if (parts.length < 4) continue;
+    // CSV: Node, CommandLine (may contain commas), ..., ParentProcessId, ProcessId
+    // CommandLine can contain commas, so take last two fields as ppid/pid
+    const pid = Number(parts[parts.length - 1]);
+    const ppid = Number(parts[parts.length - 2]);
+    const commandLine = parts.slice(1, parts.length - 2).join(",");
+    if (!pid) continue;
+    rows.push({ pid, ppid, name: "node.exe", commandLine });
+  }
   const knownSessionIds = new Set(getAllActiveSessions().map((session) => session.sessionId));
 
   return rows

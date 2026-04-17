@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { McpServerConfigSchema } from "./profile-schemas";
 
 const EffortSchema = z.enum(["off", "low", "medium", "high", "max"]);
 const ToolStateSchema = z.enum(["inherit", "on", "off"]);
@@ -23,6 +24,7 @@ const SessionSharedSchema = z.object({
   disallowedTools: z.array(z.string()).optional(),
   providerControls: z.record(z.string(), z.unknown()).optional(),
   loadProjectSettings: z.boolean().optional(),
+  mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 });
 
 export const CreateSessionRequestSchema = SessionSharedSchema.extend({

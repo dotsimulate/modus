@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
 export type ConfigPage = {
@@ -11,7 +11,11 @@ export type ConfigPage = {
   padding?: number;
   source?: string;
   /** Origin primitive that declared this page */
-  origin?: "standalone" | "move" | "action" | "mission";
+  origin?: "standalone" | "harness" | "move" | "action" | "mission";
+  /** Show in nav bar (default true) */
+  nav?: boolean;
+  /** Hide app-level panels when this page is active */
+  fullscreen?: boolean;
 };
 
 type PageFile =
@@ -45,9 +49,8 @@ function readJsonSafe(path: string): unknown {
   }
 }
 
-/** Scan standalone .modus/pages/*.json files */
-function scanStandalonePages(cwd: string): ConfigPage[] {
-  const dir = join(cwd, ".modus", "pages");
+/** Scan a directory of standalone page json files */
+function scanPageDir(dir: string, origin: ConfigPage["origin"]): ConfigPage[] {
   if (!existsSync(dir)) return [];
 
   const pages: ConfigPage[] = [];
@@ -57,13 +60,23 @@ function scanStandalonePages(cwd: string): ConfigPage[] {
     try {
       const parsed = JSON.parse(readFileSync(fullPath, "utf-8")) as PageFile;
       for (const page of normalizePageFile(parsed, fullPath)) {
-        pages.push({ ...page, origin: "standalone" });
+        pages.push({ ...page, origin });
       }
     } catch (error) {
       console.warn(`[pages] Failed to parse ${fullPath}:`, error);
     }
   }
   return pages;
+}
+
+/** Scan project `.modus/pages/*.json` files */
+function scanStandalonePages(cwd: string): ConfigPage[] {
+  return scanPageDir(join(cwd, ".modus", "pages"), "standalone");
+}
+
+/** Scan harness-shipped `harness/pages/*.json` built-in templates */
+function scanHarnessPages(): ConfigPage[] {
+  return scanPageDir(join(import.meta.dir, "pages"), "harness");
 }
 
 /** Page declaration shape embedded in move/action/mission configs */
@@ -200,19 +213,22 @@ function scanMissionPages(cwd: string): ConfigPage[] {
 
 /**
  * List all config pages from all sources:
- * 1. Standalone: .modus/pages/*.json
- * 2. Moves: move.json with page.layout
- * 3. Actions: action.json with page
- * 4. Missions: mission.json with page
+ * 1. Standalone: .modus/pages/*.json (project)
+ * 2. Harness:    harness/pages/*.json (built-in templates)
+ * 3. Moves:      move.json with page.layout
+ * 4. Actions:    action.json with page
+ * 5. Missions:   mission.json with page
  *
  * Deduplicates by page id — first occurrence wins.
- * Standalone pages take precedence (scanned first).
+ * Project standalone pages override harness defaults; to "fork" a built-in,
+ * drop a same-id file into `.modus/pages/`.
  */
 export function listConfigPages(cwd?: string | null): ConfigPage[] {
   if (!cwd) return [];
 
   const all = [
     ...scanStandalonePages(cwd),
+    ...scanHarnessPages(),
     ...scanMovePages(cwd),
     ...scanActionPages(cwd),
     ...scanMissionPages(cwd),
@@ -224,4 +240,36 @@ export function listConfigPages(cwd?: string | null): ConfigPage[] {
     seen.add(page.id);
     return true;
   });
+}
+
+/**
+ * Fork a page into the project's `.modus/pages/` directory.
+ *
+ * Resolves the page from non-standalone sources (harness/moves/actions/missions)
+ * so we always copy the "original" even if a same-id standalone already exists.
+ * Strips `origin` and `source` metadata before writing.
+ */
+export function forkConfigPage(
+  cwd: string,
+  pageId: string,
+): { ok: true; path: string } | { ok: false; error: string } {
+  if (!cwd) return { ok: false, error: "cwd is required" };
+  if (!pageId || typeof pageId !== "string") return { ok: false, error: "pageId is required" };
+
+  const sources: ConfigPage[] = [
+    ...scanHarnessPages(),
+    ...scanMovePages(cwd),
+    ...scanActionPages(cwd),
+    ...scanMissionPages(cwd),
+  ];
+
+  const source = sources.find((p) => p.id === pageId);
+  if (!source) return { ok: false, error: `page "${pageId}" not found in forkable sources` };
+
+  const { origin: _origin, source: _source, ...page } = source;
+  const targetDir = join(cwd, ".modus", "pages");
+  mkdirSync(targetDir, { recursive: true });
+  const targetPath = join(targetDir, `${pageId}.json`);
+  writeFileSync(targetPath, `${JSON.stringify(page, null, 2)}\n`, "utf-8");
+  return { ok: true, path: targetPath };
 }

@@ -180,6 +180,7 @@ function buildGeminiMcpServers(ctx: TurnContext, profileDef: Profile | undefined
   const mergedMcp = {
     ...(globalConfig.mcpServers ?? {}),
     ...(profileDef?.mcpServers ?? {}),
+    ...(ctx.opts.mcpServers as Record<string, any> ?? {}),
   };
 
   if (Object.keys(mergedMcp).length === 0) return undefined;

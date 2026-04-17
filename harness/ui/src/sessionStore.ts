@@ -8,7 +8,7 @@
 
 import { useSyncExternalStore, useCallback } from "react";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
-import { subscribeEvents } from "./modusClient";
+import { subscribeEvents, modus } from "./modusClient";
 import { nextMsgId, type Session, type SessionHistorySnapshot } from "../../sdk/index";
 
 // ── Store State ──
@@ -373,6 +373,127 @@ export function unsubscribeSession(sessionId: string) {
     sub.unsub();
     subscriptions.delete(sessionId);
   }
+}
+
+// In-flight ensureSubscribed calls, keyed by sessionId — lets multiple widgets
+// racing to mount on the same session share a single snapshot fetch.
+const pendingEnsure = new Map<string, Promise<void>>();
+
+export type EnsureSubscribedOpts = {
+  /** Profile to attach to the store entry if not yet set */
+  profile?: string;
+  /**
+   * Known live status from the server-side session index. When set to
+   * running/starting/paused, we skip the snapshot fetch and subscribe from
+   * whatever cursor is already in the store — matching the old selectSession
+   * behavior. Without this hint we'll fetch a snapshot to avoid the
+   * "replay-over-snapshot" duplication race.
+   */
+  activeStatus?: Session["status"];
+  /** Forwarded to subscribeSession's onDone (e.g. refreshSessions) */
+  onDone?: () => void;
+};
+
+/**
+ * Ensure a session has an active SSE subscription, fetching a history
+ * snapshot first when necessary so the reducer never replays events that
+ * the snapshot has already materialized.
+ *
+ * Idempotent and race-safe: concurrent callers on the same sessionId share
+ * one in-flight snapshot fetch, and any caller that arrives after the
+ * subscription is live is a no-op.
+ *
+ * This is the canonical entry point — all UI code should go through here
+ * instead of calling subscribeSession directly. subscribeSession remains
+ * exported only for the internal onDisconnect/onDone retry paths, which
+ * already know the right cursor.
+ */
+export function ensureSubscribed(
+  sessionId: string,
+  opts: EnsureSubscribedOpts = {},
+): Promise<void> {
+  if (subscriptions.has(sessionId)) {
+    // Update profile if the caller has one and the entry didn't
+    if (opts.profile) {
+      const entry = sessions.get(sessionId);
+      if (entry && !entry.profile) entry.profile = opts.profile;
+    }
+    return Promise.resolve();
+  }
+  const pending = pendingEnsure.get(sessionId);
+  if (pending) return pending;
+
+  const run = (async () => {
+    try {
+      const existing = getSessionState(sessionId);
+
+      const hinted = opts.activeStatus;
+      const storedStatus = existing?.status;
+      const isActive = hinted === "running" || hinted === "starting" || hinted === "paused"
+        || storedStatus === "running" || storedStatus === "starting";
+
+      let afterSeq = existing?.lastSeq ?? 0;
+
+      // Always refetch snapshot when the session isn't mid-flight. Cached
+      // store state gets stale the moment we unsubscribe — if events
+      // arrived while we were detached, subscribing from our old lastSeq
+      // lets the UI render stale messages before SSE catch-up lands.
+      // The snapshot is authoritative; let it overwrite.
+      //
+      // Mid-flight sessions skip the snapshot because (a) in-progress tool
+      // calls are not represented cleanly in the snapshot format and (b)
+      // the live SSE replay is authoritative.
+      if (!isActive) {
+        try {
+          const snap = await modus.getSessionHistorySnapshot(sessionId);
+          if (subscriptions.has(sessionId)) return; // another caller won
+
+          const latest = getSessionState(sessionId);
+          const hasWarmState = !!latest && (latest.lastSeq > 0 || latest.messages.length > 0);
+          const hasAssistantToolCalls = snap.messages.some((m) => (
+            m.role === "assistant"
+            && Array.isArray((m as any).toolCalls)
+            && (m as any).toolCalls.length > 0
+          ));
+
+          if (hasAssistantToolCalls && !hasWarmState) {
+            // Cold entry with tool-call history — snapshot's tool-call
+            // serialization is historically ambiguous, so do a full event
+            // replay from seq=0 against a clean state.
+            const rs = createInitialState(sessionId);
+            rs.status = snap.status;
+            rs.model = snap.model;
+            rs.cwd = snap.cwd;
+            setSessionState(sessionId, rs, opts.profile);
+            afterSeq = 0;
+          } else {
+            const isSnapshotMeaningful = snap.messages.length > 0 || snap.lastSeq > 0;
+            const shouldApplySnapshot = isSnapshotMeaningful
+              && (!latest
+                || snap.lastSeq > latest.lastSeq
+                || snap.messages.length >= latest.messages.length);
+            if (shouldApplySnapshot) {
+              hydrateSessionHistorySnapshot(snap, opts.profile);
+              afterSeq = snap.lastSeq;
+            } else {
+              afterSeq = latest?.lastSeq ?? 0;
+            }
+          }
+        } catch {
+          // Snapshot fetch failed — fall back to streaming from whatever
+          // cursor we have (0 for a brand-new entry).
+        }
+      }
+
+      if (subscriptions.has(sessionId)) return; // raced with another caller
+      subscribeSession(sessionId, afterSeq, opts.profile, opts.onDone);
+    } finally {
+      pendingEnsure.delete(sessionId);
+    }
+  })();
+
+  pendingEnsure.set(sessionId, run);
+  return run;
 }
 
 /** Check if a session has an active SSE subscription */

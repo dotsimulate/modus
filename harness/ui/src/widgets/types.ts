@@ -200,6 +200,13 @@ export type LayoutNode =
       id?: string;
       /** Initial state for this scope's context bus (e.g. { "sessionId": null }) */
       context?: Record<string, unknown>;
+      /**
+       * When true, mirrors this scope's `sessionId` with the URL hash session id.
+       * Inbound: hash session id on mount + on hashchange is pushed into the bus.
+       * Outbound: bus `sessionId` changes call `onSelectSession`, which updates the URL.
+       * Only one scope per page should enable this.
+       */
+      bindUrlSession?: boolean;
       /** The layout subtree that shares this scope's context */
       children: LayoutNode[];
     } & LayoutVisibility)
@@ -220,6 +227,8 @@ export type DashboardPage = {
   blocks?: DashboardBlock[];
   layout?: PageLayoutNode;
   padding?: number;
+  nav?: boolean;
+  fullscreen?: boolean;
 };
 
 /** Dashboard config shape (on UserProfile.dashboard) */

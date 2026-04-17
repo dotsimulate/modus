@@ -14,6 +14,7 @@ type Props = {
   onHeaderPointerDown?: PointerEventHandler<HTMLDivElement>;
   onEditorContextMenu?: (e: React.MouseEvent, info: CodeMirrorContextInfo) => void;
   onMarkdownContextMenu?: (e: React.MouseEvent) => void;
+  onRequestEdit?: () => void;
 };
 
 function basename(p: string): string {
@@ -31,9 +32,19 @@ export const FileContentViewer = memo(function FileContentViewer({
   onHeaderPointerDown,
   onEditorContextMenu,
   onMarkdownContextMenu,
+  onRequestEdit,
 }: Props) {
   const name = basename(filePath);
   const isMarkdown = /\.mdx?$/i.test(filePath);
+
+  const handleBodyDoubleClick = onRequestEdit
+    ? (e: React.MouseEvent) => {
+        // Let links/buttons handle their own double-click; only trigger edit on content surface.
+        const target = e.target as HTMLElement;
+        if (target.closest("a, button")) return;
+        onRequestEdit();
+      }
+    : undefined;
 
   return (
     <div className="fcv-panel">
@@ -48,7 +59,11 @@ export const FileContentViewer = memo(function FileContentViewer({
           {actions && <div className="fcv-actions">{actions}</div>}
         </div>
       </div>
-      <div className="fcv-body">
+      <div
+        className={`fcv-body${onRequestEdit ? " fcv-body--editable" : ""}`}
+        onDoubleClick={handleBodyDoubleClick}
+        title={onRequestEdit ? "Double-click to edit" : undefined}
+      >
         {loading && <div className="fcv-state">Loading file...</div>}
         {!loading && error && <div className="fcv-state">{error}</div>}
         {!loading && !error && content === null && (

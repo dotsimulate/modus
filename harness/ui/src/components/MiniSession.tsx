@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useCallback } from "react";
-import { useSessionState, subscribeSession, isSubscribed } from "../sessionStore";
+import { useSessionState, ensureSubscribed } from "../sessionStore";
 import { modus } from "../modusClient";
 import { PermissionOverlay } from "./PermissionOverlay";
 
@@ -42,11 +42,9 @@ function tailLines(text: string, n: number): string {
 }
 
 export function MiniSession({ sessionId, onNavigate }: Props) {
-  // Subscribe to SSE if not already
+  // Snapshot-then-subscribe (handles dedup + race-safe hydration internally)
   useEffect(() => {
-    if (!isSubscribed(sessionId)) {
-      subscribeSession(sessionId, 0);
-    }
+    void ensureSubscribed(sessionId);
   }, [sessionId]);
 
   const session = useSessionState(sessionId);

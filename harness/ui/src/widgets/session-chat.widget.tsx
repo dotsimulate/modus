@@ -9,7 +9,7 @@
  */
 
 import { useEffect } from "react";
-import { useSessionState, subscribeSession, isSubscribed } from "../sessionStore";
+import { useSessionState, ensureSubscribed } from "../sessionStore";
 import { useSession } from "../providers/SessionContext";
 import { ChatView } from "../components/ChatView";
 import { PermissionOverlay } from "../components/PermissionOverlay";
@@ -23,13 +23,12 @@ type SessionChatConfig = WidgetBase & {
 
 export default function SessionChatWidget({ config, pageContext }: WidgetProps<SessionChatConfig>) {
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
-  const sessionId = contextSessionId ?? config.sessionId ?? null;
+  const selectedSession = pageContext?.get("selectedSession") as string | undefined;
+  const sessionId = contextSessionId ?? selectedSession ?? config.sessionId ?? null;
 
-  // Subscribe to SSE events for this session
+  // Snapshot-then-subscribe (handles dedup + race-safe hydration internally)
   useEffect(() => {
-    if (sessionId && !isSubscribed(sessionId)) {
-      subscribeSession(sessionId, 0);
-    }
+    if (sessionId) void ensureSubscribed(sessionId);
   }, [sessionId]);
 
   const session = useSessionState(sessionId);

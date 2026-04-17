@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { AgentActivityView } from "../components/AgentActivityView";
 import { useOptionalRightPanelContext } from "../components/RightPanelContext";
-import { useSessionState, subscribeSession, isSubscribed } from "../sessionStore";
+import { useSessionState, ensureSubscribed } from "../sessionStore";
 import type { WidgetProps } from "./types";
 
 export default function AgentActivityWidget({ pageContext }: WidgetProps) {
@@ -12,9 +12,7 @@ export default function AgentActivityWidget({ pageContext }: WidgetProps) {
   const sessionId = panel?.sessionId ?? contextSessionId ?? null;
 
   useEffect(() => {
-    if (sessionId && !panel && !isSubscribed(sessionId)) {
-      subscribeSession(sessionId, 0);
-    }
+    if (sessionId && !panel) void ensureSubscribed(sessionId);
   }, [sessionId, panel]);
 
   const session = useSessionState(sessionId);

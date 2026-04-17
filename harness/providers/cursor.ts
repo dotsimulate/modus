@@ -179,6 +179,7 @@ function writeCursorMcpConfig(ctx: TurnContext, workspaceDir: string): string | 
   const mergedMcp: Record<string, McpServerConfig> = {
     ...(globalConfig.mcpServers ?? {}),
     ...(profile?.mcpServers ?? {}),
+    ...(opts.mcpServers as Record<string, any> ?? {}),
   };
   if (Object.keys(mergedMcp).length === 0) return null;
 

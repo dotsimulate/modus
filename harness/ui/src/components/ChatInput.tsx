@@ -156,6 +156,7 @@ export function ChatInput({
             userProfile,
           });
           onMoveAttached?.(result);
+          window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
         } catch (err) {
           console.error("[ChatInput] attach from sidebar failed:", err);
         }
@@ -660,6 +661,7 @@ export function ChatInput({
                       userProfile,
                     });
                     onMoveAttached?.(result);
+                    window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
                   } catch (err) {
                     console.error("[ChatInput] attach failed:", err);
                   }

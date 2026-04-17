@@ -1,0 +1,44 @@
+{
+  "id": "chat-mobile",
+  "title": "chat (mobile)",
+  "nav": false,
+  "fullscreen": true,
+  "padding": 0,
+  "layout": {
+    "kind": "scope",
+    "bindUrlSession": true,
+    "context": { "sessionId": null },
+    "children": [{
+      "kind": "tabs",
+      "editable": true,
+      "children": [
+        {
+          "kind": "widget",
+          "widget": { "type": "session-list", "id": "cm-sessions" },
+          "publish": { "selectedSession": "sessionId" }
+        },
+        {
+          "kind": "widget",
+          "widget": { "type": "new-session", "id": "cm-new" },
+          "publish": { "selectedSession": "sessionId" },
+          "showWhen": { "sessionId": null }
+        },
+        {
+          "kind": "widget",
+          "widget": { "type": "session-chat", "id": "cm-chat" },
+          "hideWhen": { "sessionId": null }
+        },
+        {
+          "kind": "widget",
+          "widget": { "type": "composer", "id": "cm-composer", "persistOpen": true },
+          "hideWhen": { "sessionId": null }
+        },
+        {
+          "kind": "widget",
+          "widget": { "type": "session-sidebar", "id": "cm-sidebar" },
+          "hideWhen": { "sessionId": null }
+        }
+      ]
+    }]
+  }
+}

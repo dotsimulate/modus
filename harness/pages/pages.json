@@ -1,0 +1,10 @@
+{
+  "id": "pages",
+  "title": "pages",
+  "nav": false,
+  "padding": 12,
+  "layout": {
+    "kind": "widget",
+    "widget": { "type": "pages-browser", "id": "pages-browser-main" }
+  }
+}

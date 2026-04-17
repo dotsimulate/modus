@@ -111,6 +111,83 @@ function killPidTree(pid: number): void {
   }
 }
 
+function listDescendantPids(rootPid: number): number[] {
+  if (process.platform !== "win32" || !Number.isFinite(rootPid) || rootPid <= 0) return [];
+  try {
+    const script = [
+      `$root = ${rootPid}`,
+      "$procs = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId",
+      "$childrenByParent = @{}",
+      "foreach ($p in $procs) {",
+      "  $key = [string]$p.ParentProcessId",
+      "  if (-not $childrenByParent.ContainsKey($key)) { $childrenByParent[$key] = @() }",
+      "  $childrenByParent[$key] += [int]$p.ProcessId",
+      "}",
+      "$out = @()",
+      "$stack = @([int]$root)",
+      "while ($stack.Count -gt 0) {",
+      "  $cur = [int]$stack[$stack.Count - 1]",
+      "  if ($stack.Count -eq 1) { $stack = @() } else { $stack = $stack[0..($stack.Count - 2)] }",
+      "  $kids = $childrenByParent[[string]$cur]",
+      "  if (-not $kids) { continue }",
+      "  foreach ($kid in $kids) {",
+      "    if ($out -contains $kid) { continue }",
+      "    $out += $kid",
+      "    $stack += [int]$kid",
+      "  }",
+      "}",
+      "$out | ConvertTo-Json -Compress",
+    ].join("; ");
+    const result = spawnSync("powershell", ["-NoProfile", "-Command", script], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    if (result.status !== 0) return [];
+    const raw = result.stdout?.trim();
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as number | number[];
+    const values = Array.isArray(parsed) ? parsed : [parsed];
+    return values.filter((pid): pid is number => Number.isFinite(pid) && pid > 0);
+  } catch {
+    return [];
+  }
+}
+
+function refreshTrackedPidTree(session: ActiveSession, rootPid: number | undefined): void {
+  if (!rootPid) return;
+  session.osPids.add(rootPid);
+  for (const childPid of listDescendantPids(rootPid)) {
+    session.osPids.add(childPid);
+  }
+}
+
+function killClaudeProcessesForSessionId(sessionId: string): void {
+  if (process.platform !== "win32" || !sessionId) return;
+  try {
+    const currentPort = Number(process.env.HARNESS_PORT ?? 3777);
+    const escapedSessionId = sessionId.replace(/'/g, "''");
+    const script = [
+      `$sid = '${escapedSessionId}'`,
+      `$port = '${currentPort}'`,
+      "$escaped = [regex]::Escape($sid)",
+      "$rows = Get-CimInstance Win32_Process | Where-Object {",
+      "  $_.CommandLine -and",
+      "  $_.CommandLine -match $escaped -and",
+      "  (",
+      "    $_.CommandLine -match '@anthropic-ai[\\\\/]claude-code[\\\\/]cli\\.js' -or",
+      "    $_.CommandLine -match ('127\\.0\\.0\\.1:' + $port + '/api/mcp/modus')",
+      "  )",
+      "} | Select-Object -ExpandProperty ProcessId",
+      "foreach ($pid in $rows) {",
+      "  try { taskkill /PID $pid /T /F | Out-Null } catch {}",
+      "}",
+    ].join("; ");
+    spawnSync("powershell", ["-NoProfile", "-Command", script], { windowsHide: true });
+  } catch {
+    // ignore fallback kill failures
+  }
+}
+
 /**
  * Force-kill EVERY spawned subprocess this session has ever produced and
  * not yet confirmed dead. We track all PIDs in `session.osPids` because a
@@ -124,13 +201,16 @@ function killPidTree(pid: number): void {
  * status != idle, post-drain restart, error). Never trust query.close().
  */
 function killAllSpawned(session: ActiveSession, state: ClaudeCodeState | null): void {
+  refreshTrackedPidTree(session, state?.spawnedPid);
   const pids = Array.from(session.osPids);
   if (state?.spawnedPid && !session.osPids.has(state.spawnedPid)) pids.push(state.spawnedPid);
   for (const pid of pids) {
+    refreshTrackedPidTree(session, pid);
     killPidTree(pid);
     session.osPids.delete(pid);
     console.log(`[claude-code] killAllSpawned pid=${pid} for ${session.sessionId}`);
   }
+  killClaudeProcessesForSessionId(session.sessionId);
   if (state) state.spawnedPid = undefined;
 }
 
@@ -374,11 +454,12 @@ export function createClaudeCodeProvider(): SessionProvider {
       const projectRoot = session.projectRoot ?? opts.cwd ?? session.cwd;
       const globalConfig = getGlobalConfig(projectRoot);
       const sessionCwdMcp = readProjectMcpServers(projectRoot ?? process.cwd());
-      console.log(`[claude-code] MCP merge: projectRoot=${projectRoot} sessionCwd=${session.cwd} projectMcp=${JSON.stringify(Object.keys(sessionCwdMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))}`);
+      console.log(`[claude-code] MCP merge: projectRoot=${projectRoot} sessionCwd=${session.cwd} projectMcp=${JSON.stringify(Object.keys(sessionCwdMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))} sessionMcp=${JSON.stringify(Object.keys(opts.mcpServers ?? {}))}`);
       const mergedMcp = {
         ...sessionCwdMcp,
         ...(globalConfig.mcpServers ?? {}),
         ...(profileDef?.mcpServers ?? {}),
+        ...(opts.mcpServers as Record<string, any> ?? {}),
       };
 
       // Resolve relative --directory args to absolute
@@ -618,7 +699,17 @@ export function createClaudeCodeProvider(): SessionProvider {
           onStderr: (data) => sdkOptions.stderr(data),
           onSpawn: (pid) => {
             state.spawnedPid = pid;
-            if (pid) session.osPids.add(pid);
+            if (pid) {
+              refreshTrackedPidTree(session, pid);
+              setTimeout(() => {
+                const liveState = getState(session);
+                if (liveState?.spawnedPid === pid) refreshTrackedPidTree(session, pid);
+              }, 250);
+              setTimeout(() => {
+                const liveState = getState(session);
+                if (liveState?.spawnedPid === pid) refreshTrackedPidTree(session, pid);
+              }, 1000);
+            }
           },
         }),
       };
@@ -882,6 +973,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         ...sessionCwdMcp,
         ...(globalConfig.mcpServers ?? {}),
         ...(profileDef?.mcpServers ?? {}),
+        ...(ctx.opts.mcpServers as Record<string, any> ?? {}),
       };
 
       // Resolve relative --directory args to absolute

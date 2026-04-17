@@ -1,0 +1,51 @@
+{
+  "name": "create-profile",
+  "label": "Create Profile",
+  "description": "Create a project-local agent profile at .modus/profiles/agents/<name>.json.",
+  "icon": "user-plus",
+  "mode": "inline",
+  "inputs": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "name": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$" },
+      "prompt": { "type": "string", "minLength": 1 },
+      "description": { "type": "string", "minLength": 1 },
+      "provider": { "type": "string" },
+      "model": { "type": "string" },
+      "effort": { "enum": ["off", "low", "medium", "high", "max"] },
+      "maxTurns": { "type": "integer", "minimum": 1 },
+      "tools": { "type": "array", "items": { "type": "string" } },
+      "disallowedTools": { "type": "array", "items": { "type": "string" } },
+      "promptMode": { "enum": ["custom", "append"] },
+      "loadProjectSettings": { "type": "boolean" },
+      "permissionPolicy": {},
+      "mcpServers": { "type": "object", "additionalProperties": true },
+      "ui": { "type": "object", "additionalProperties": true },
+      "contextWindow": { "type": "integer", "minimum": 1 },
+      "maxOutputTokens": { "type": "integer", "minimum": 1 },
+      "maxBudgetUsd": { "type": "number", "exclusiveMinimum": 0 },
+      "env": { "type": "object", "additionalProperties": { "type": "string" } },
+      "cwd": { "type": "string" },
+      "additionalDirectories": { "type": "array", "items": { "type": "string" } },
+      "cwdSuggestions": { "type": "array", "items": { "type": "string" } },
+      "moves": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "name": { "type": "string" },
+            "inputs": { "type": "object", "additionalProperties": true }
+          },
+          "required": ["name"]
+        }
+      }
+    },
+    "required": ["name", "prompt", "description"]
+  },
+  "submit": { "required": true },
+  "session": { "afterSubmit": "continue" },
+  "tags": ["profile", "agent", "create", "builtin"]
+}

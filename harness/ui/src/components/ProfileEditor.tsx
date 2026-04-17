@@ -329,6 +329,7 @@ function ProfileForm({
               placeholder={modelsLoading ? "loading..." : "select model"}
               searchPlaceholder="search models..."
               emptyLabel={modelsLoading ? "loading..." : "no models"}
+              allowCustom
               onChange={setModel}
             />
             {!model && !modelsLoading && providerModels.length > 0 && (

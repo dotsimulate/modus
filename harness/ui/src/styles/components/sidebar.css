@@ -203,6 +203,15 @@
   min-height: 0;
   max-height: 100%;
   overflow: hidden;
+  container-type: inline-size;
+  container-name: session-list-widget;
+}
+
+.session-list-widget-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .session-list-widget-modes {
@@ -250,3 +259,59 @@
   color: var(--text);
   background: var(--bg-hover);
 }
+
+/* ── Narrow-panel compaction (≤ ~280px container width) ──
+   When the session-list widget lives in a narrow left column, tighten
+   horizontal padding, let the preview truncate, and shed low-priority
+   metadata (timestamps, project tag) rather than wrap awkwardly.
+   Information hierarchy is preserved: title + status dot + profile tag. */
+@container session-list-widget (max-width: 280px) {
+  .session-item {
+    padding: 10px 12px;
+  }
+  .session-item-preview {
+    font-size: 13px;
+  }
+  .session-item-text {
+    /* Force single-line ellipsis at narrow widths. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .session-item-meta {
+    font-size: calc(8px * var(--font-scale, 1));
+    gap: 1px;
+    margin-top: 3px;
+  }
+  .session-meta-row {
+    gap: 6px;
+  }
+  .session-meta-left {
+    gap: 4px;
+  }
+  .session-meta-right {
+    gap: 4px;
+  }
+  /* Cap profile tag so long agent names truncate instead of wrapping. */
+  .session-profile-tag {
+    max-width: 80px;
+  }
+  /* Drop the italic "ago" timestamp and project path — they're the
+     lowest-value meta at narrow widths and cause the right side to clip. */
+  .session-item .session-meta-right .session-project-tag,
+  .session-item .session-meta-right .session-ago,
+  .session-item .session-meta-right .session-timestamp {
+    display: none;
+  }
+  /* Keep pin/archive buttons always visible (no hover reveal) so users
+     can still act on rows without having to widen the panel. */
+  .session-item .session-archive-btn,
+  .session-item .session-pin-btn {
+    opacity: 0.5;
+  }
+  /* Tighten group labels to match tighter row padding. */
+  .sidebar-section-label {
+    padding: 10px 12px 4px;
+  }
+}
+

@@ -14,6 +14,7 @@ type Props = {
   disabled?: boolean;
   className?: string;
   clearable?: boolean;
+  allowCustom?: boolean;
   onChange: (value: string) => void;
 };
 
@@ -26,6 +27,7 @@ export function SearchDropdown({
   disabled,
   className = "",
   clearable = true,
+  allowCustom = false,
   onChange,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -34,7 +36,7 @@ export function SearchDropdown({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selected = options.find((option) => option.value === value);
-  const selectedLabel = selected?.label ?? selected?.value ?? "";
+  const selectedLabel = selected?.label ?? selected?.value ?? (allowCustom ? value : "");
 
   useEffect(() => {
     if (open) return;
@@ -114,9 +116,14 @@ export function SearchDropdown({
               if (!open) openMenu();
               return;
             }
-            if (e.key === "Enter" && open && filteredOptions.length > 0) {
+            if (e.key === "Enter" && open) {
               e.preventDefault();
-              selectOption(filteredOptions[0].value);
+              if (filteredOptions.length > 0) {
+                selectOption(filteredOptions[0].value);
+              } else if (allowCustom && query.trim()) {
+                onChange(query.trim());
+                setOpen(false);
+              }
               return;
             }
             if (e.key === "Escape") {
@@ -154,7 +161,7 @@ export function SearchDropdown({
       {open && (
         <div className="search-dropdown-menu">
           {filteredOptions.length === 0 ? (
-            <div className="search-dropdown-empty">{emptyLabel}</div>
+            <div className="search-dropdown-empty">{allowCustom && query.trim() ? `press enter to use "${query.trim()}"` : emptyLabel}</div>
           ) : (
             filteredOptions.map((option) => {
               const label = option.label ?? option.value;

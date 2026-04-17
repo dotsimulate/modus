@@ -346,6 +346,7 @@ function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?:
   const mergedMcp = {
     ...(globalConfig.mcpServers ?? {}),
     ...(profile?.mcpServers ?? {}),
+    ...(opts.mcpServers as Record<string, any> ?? {}),
   };
   if (Object.keys(mergedMcp).length === 0) return {};
 
@@ -682,10 +683,13 @@ export function createCodexProvider(): SessionProvider {
     },
 
     abort(session: ActiveSession) {
+      // Only abort when a turn may be in flight. The Codex SDK strips the
+      // child's 'error' listener in its finally block, so aborting the signal
+      // after a turn completes crashes the runtime via an uncaught EventEmitter
+      // 'error' from Node's internal abortChildProcess.
+      if (session.status !== "running" && session.status !== "starting") return;
       const state = getState(session);
-      if (state) {
-        state.abortController.abort();
-      }
+      if (state) state.abortController.abort();
       session.abortController.abort();
     },
 
@@ -721,7 +725,13 @@ export function createCodexProvider(): SessionProvider {
     async dispose(session: ActiveSession) {
       const state = getState(session);
       if (!state) return;
-      state.abortController.abort();
+      // Only abort when a turn may be in flight. Aborting after the Codex SDK's
+      // child_process has already exited crashes the runtime: the SDK calls
+      // child.removeAllListeners() in its finally, so the subsequent abort's
+      // internal 'error' emit has no listener and bubbles up uncaught.
+      if (session.status === "running" || session.status === "starting") {
+        state.abortController.abort();
+      }
       cleanupCodexRulesFile(state.rulesFilePath);
       session._providerState = null;
     },
@@ -1023,6 +1033,12 @@ async function runTurn(
     });
 
     session.status = "idle";
+    // Replace the AbortController now that the turn's child_process has exited.
+    // The Codex SDK strips the child's 'error' listener in its finally block,
+    // so aborting the old signal later would crash via an uncaught EventEmitter
+    // 'error' from Node's internal abortChildProcess.
+    session.abortController = new AbortController();
+    state.abortController = session.abortController;
 
     // Flush queued messages
     if (session.pendingDispatch.length > 0) {
@@ -1054,6 +1070,10 @@ async function runTurn(
       console.log(`[codex] aborted ${session.sessionId}`);
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
+      // Fresh AbortController — the old signal is now attached to a dead
+      // child whose 'error' listener was stripped by the SDK's finally.
+      session.abortController = new AbortController();
+      state.abortController = session.abortController;
 
       // Handle pending messages after abort
       if (session.pendingDispatch.length > 0) {

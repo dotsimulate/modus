@@ -10,11 +10,10 @@
  *   - Any container that needs file navigation
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import { modus } from "../modusClient";
 import type { BrowseResult } from "../../../sdk/index";
 import { onFsChange } from "../modusClient";
-import { FileContentViewer } from "./FileContentViewer";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { usePinboard } from "../providers/PinboardContext";
 import {
@@ -30,12 +29,19 @@ type FileBrowserProps = {
   initialPath?: string | null;
   /** Compact mode for sidebar — shorter list, no file preview */
   compact?: boolean;
+  /** Hide the built-in breadcrumb header (parent owns it) */
+  hideHeader?: boolean;
   /** Called when a file is selected (path) */
   onFileSelect?: (path: string) => void;
   /** Called when user wants to open file externally */
   onOpenExternal?: (path: string) => void;
   /** Called whenever the current browse path changes */
   onPathChange?: (path: string) => void;
+};
+
+export type FileBrowserHandle = {
+  collapseAll: () => void;
+  revealPath: (path: string) => void;
 };
 
 function basename(p: string): string {
@@ -108,13 +114,10 @@ const externalIcon = (
   </svg>
 );
 
-const closeIcon = (
-  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-    <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-  </svg>
-);
-
-export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFileSelect, onOpenExternal, onPathChange: _onPathChange }: FileBrowserProps) {
+export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrowser(
+  { rootPath, initialPath: _initialPath, compact, hideHeader, onFileSelect, onOpenExternal, onPathChange: _onPathChange },
+  ref,
+) {
   const { groups, pinToGroup, unpinFromActive } = usePinboard();
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     const init = new Set<string>();
@@ -123,7 +126,12 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
   });
   const [dirCache, setDirCache] = useState<Map<string, BrowseResult>>(new Map());
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
-  const [fileView, setFileView] = useState<{ path: string; content: string } | null>(null);
+  const [revealedPath, setRevealedPath] = useState<string | null>(null);
+  const dirCacheRef = useRef<Map<string, BrowseResult>>(new Map());
+  const listRef = useRef<HTMLDivElement>(null);
+  const revealTimerRef = useRef<number | null>(null);
+
+  useEffect(() => { dirCacheRef.current = dirCache; }, [dirCache]);
 
   // ── Context menu ──
   const ctxMenu = useContextMenu();
@@ -151,13 +159,15 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
   }, [creating]);
 
   // ── Directory fetching ──
-  const fetchDir = useCallback(async (dirPath: string) => {
+  const fetchDir = useCallback(async (dirPath: string): Promise<BrowseResult | null> => {
     setLoadingDirs((s) => new Set(s).add(dirPath));
     try {
       const result = await modus.browse(dirPath, { includeHidden: true, includeFiles: true });
       setDirCache((m) => new Map(m).set(dirPath, result));
+      dirCacheRef.current = new Map(dirCacheRef.current).set(dirPath, result);
+      return result;
     } catch {
-      // silently fail — folder just won't expand
+      return null;
     } finally {
       setLoadingDirs((s) => { const n = new Set(s); n.delete(dirPath); return n; });
     }
@@ -209,16 +219,68 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
     setExpanded(new Set([rootPath]));
   }, [rootPath]);
 
-  const openFile = useCallback(async (path: string) => {
-    onFileSelect?.(path);
-    if (compact) return;
-    try {
-      const content = await modus.readFile(path);
-      if (content !== null) setFileView({ path, content });
-    } catch {
-      setFileView({ path, content: "Could not read file." });
+  const revealPath = useCallback(async (target: string) => {
+    if (!rootPath || !target) return;
+    const normTarget = target.replace(/\\/g, "/");
+    const normRoot = rootPath.replace(/\\/g, "/").replace(/\/$/, "");
+    if (!normTarget.startsWith(normRoot + "/") && normTarget !== normRoot) return;
+
+    // Build parent chain (all dirs from root up to and including the target's parent)
+    const rel = normTarget === normRoot ? "" : normTarget.slice(normRoot.length + 1);
+    const parts = rel ? rel.split("/") : [];
+    // Reconstruct paths using the same separator the tree uses internally (`/` joins off rootPath as-is)
+    const dirs: string[] = [rootPath];
+    let cur = rootPath;
+    for (let i = 0; i < parts.length - 1; i++) {
+      cur = `${cur}/${parts[i]}`;
+      dirs.push(cur);
     }
-  }, [compact, onFileSelect]);
+
+    // Expand all parent dirs at once
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      dirs.forEach((d) => n.add(d));
+      return n;
+    });
+
+    // Fetch any uncached parents in order so children resolve before we scroll
+    for (const dir of dirs) {
+      if (!dirCacheRef.current.has(dir)) {
+        await fetchDir(dir);
+      }
+    }
+
+    // Give React a frame to render the newly-expanded nodes, then scroll + flash
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const container = listRef.current;
+        if (!container) return;
+        const safe = (typeof CSS !== "undefined" && typeof CSS.escape === "function")
+          ? CSS.escape(target)
+          : target.replace(/["\\]/g, "\\$&");
+        const el = container.querySelector<HTMLElement>(`[data-path="${safe}"]`);
+        if (el) {
+          el.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+        setRevealedPath(target);
+        if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = window.setTimeout(() => {
+          setRevealedPath((p) => (p === target ? null : p));
+          revealTimerRef.current = null;
+        }, 1400);
+      });
+    });
+  }, [rootPath, fetchDir]);
+
+  useEffect(() => () => {
+    if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
+  }, []);
+
+  useImperativeHandle(ref, () => ({ collapseAll, revealPath }), [collapseAll, revealPath]);
+
+  const openFile = useCallback((path: string) => {
+    onFileSelect?.(path);
+  }, [onFileSelect]);
 
   const handleOpenExternal = useCallback((path: string) => {
     if (onOpenExternal) onOpenExternal(path);
@@ -255,22 +317,39 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
     });
   }, [groups, pinToGroup, unpinFromActive]);
 
+  const relativeTo = useCallback((path: string): string => {
+    if (!rootPath) return path;
+    const norm = path.replace(/\\/g, "/");
+    const root = rootPath.replace(/\\/g, "/").replace(/\/$/, "");
+    if (norm === root) return "";
+    if (norm.startsWith(root + "/")) return norm.slice(root.length + 1);
+    return path;
+  }, [rootPath]);
+
   const buildFileItems = useCallback((path: string): ContextMenuItem[] => [
+    { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(path) },
     { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(path) },
-    { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(path) },
+    { kind: "separator" },
+    { kind: "action", label: "Copy name", onClick: () => navigator.clipboard.writeText(basename(path)) },
+    { kind: "action", label: "Copy relative path", onClick: () => navigator.clipboard.writeText(relativeTo(path)) },
+    { kind: "action", label: "Copy absolute path", onClick: () => navigator.clipboard.writeText(path) },
     { kind: "separator" },
     ...buildPinItems(path),
-  ], [handleOpenExternal, buildPinItems]);
+  ], [handleOpenExternal, buildPinItems, relativeTo]);
 
   const buildDirItems = useCallback((dirPath: string): ContextMenuItem[] => [
+    { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(dirPath) },
     { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(dirPath) },
-    { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(dirPath) },
     { kind: "separator" },
     { kind: "action", label: "New file...", onClick: () => setCreating({ kind: "file", dir: dirPath }) },
     { kind: "action", label: "New folder...", onClick: () => setCreating({ kind: "dir", dir: dirPath }) },
     { kind: "separator" },
+    { kind: "action", label: "Copy name", onClick: () => navigator.clipboard.writeText(basename(dirPath)) },
+    { kind: "action", label: "Copy relative path", onClick: () => navigator.clipboard.writeText(relativeTo(dirPath)) },
+    { kind: "action", label: "Copy absolute path", onClick: () => navigator.clipboard.writeText(dirPath) },
+    { kind: "separator" },
     { kind: "action", label: "Refresh", onClick: () => refreshDir(dirPath) },
-  ], [handleOpenExternal, refreshDir]);
+  ], [handleOpenExternal, refreshDir, relativeTo]);
 
   const buildBgItems = useCallback((): ContextMenuItem[] => {
     if (!rootPath) return [];
@@ -278,6 +357,7 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
       { kind: "action", label: "New file...", onClick: () => setCreating({ kind: "file", dir: rootPath }) },
       { kind: "action", label: "New folder...", onClick: () => setCreating({ kind: "dir", dir: rootPath }) },
       { kind: "separator" },
+      { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(rootPath) },
       { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(rootPath) },
       { kind: "action", label: "Copy path", onClick: () => navigator.clipboard.writeText(rootPath) },
       { kind: "action", label: "Refresh", onClick: () => refreshDir(rootPath) },
@@ -301,7 +381,8 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
       <div key={dirPath}>
         {!isRoot && (
           <button
-            className={`fb-entry fb-entry--dir${ctxTarget === dirPath ? " fb-entry--ctx" : ""}${isExpanded ? " fb-entry--open" : ""}`}
+            className={`fb-entry fb-entry--dir${ctxTarget === dirPath ? " fb-entry--ctx" : ""}${isExpanded ? " fb-entry--open" : ""}${revealedPath === dirPath ? " fb-entry--revealed" : ""}`}
+            data-path={dirPath}
             style={{ paddingLeft: 8 + depth * INDENT, top: 0, zIndex: 10 - depth }}
             onClick={() => toggleDir(dirPath)}
             onContextMenu={(e) => openCtx(e, buildDirItems(dirPath), dirPath)}
@@ -318,7 +399,8 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
               return (
                 <button
                   key={fpath}
-                  className={`fb-entry fb-entry--file${ctxTarget === fpath ? " fb-entry--ctx" : ""}`}
+                  className={`fb-entry fb-entry--file${ctxTarget === fpath ? " fb-entry--ctx" : ""}${revealedPath === fpath ? " fb-entry--revealed" : ""}`}
+                  data-path={fpath}
                   style={{ paddingLeft: childDepth * INDENT + 8 }}
                   onClick={() => openFile(fpath)}
                   onContextMenu={(e) => openCtx(e, buildFileItems(fpath), fpath)}
@@ -359,21 +441,23 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
 
   return (
     <div className={`file-browser${compact ? " file-browser--compact" : ""}`}>
-      {/* Header */}
-      <div className="fb-breadcrumb">
-        <span className="fb-breadcrumb-path">{basename(rootPath)}</span>
-        <div className="fb-breadcrumb-actions">
-          <button className="fb-btn" onClick={collapseAll} title="Collapse all">
-            {homeIcon}
-          </button>
-          <button className="fb-btn" onClick={() => handleOpenExternal(rootPath)} title="Open in editor">
-            {externalIcon}
-          </button>
+      {!hideHeader && (
+        <div className="fb-breadcrumb">
+          <span className="fb-breadcrumb-path">{basename(rootPath)}</span>
+          <div className="fb-breadcrumb-actions">
+            <button className="fb-btn" onClick={collapseAll} title="Collapse all">
+              {homeIcon}
+            </button>
+            <button className="fb-btn" onClick={() => modus.openInFolder(rootPath)} title="Open in file explorer">
+              {externalIcon}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tree */}
       <div
+        ref={listRef}
         className="fb-list"
         onContextMenu={(e) => {
           if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains("fb-state"))
@@ -383,27 +467,6 @@ export function FileBrowser({ rootPath, initialPath: _initialPath, compact, onFi
         {rootPath && renderDir(rootPath, 0)}
       </div>
       {ctxMenu.portal}
-
-      {/* File preview (non-compact only) */}
-      {!compact && fileView && (
-        <div className="fb-preview">
-          <FileContentViewer
-            filePath={fileView.path}
-            content={fileView.content}
-            loading={false}
-            actions={
-              <>
-                <button className="fb-btn" onClick={() => handleOpenExternal(fileView.path)} title="Open in editor">
-                  {externalIcon}
-                </button>
-                <button className="fb-btn" onClick={() => setFileView(null)} title="Close preview">
-                  {closeIcon}
-                </button>
-              </>
-            }
-          />
-        </div>
-      )}
     </div>
   );
-}
+});

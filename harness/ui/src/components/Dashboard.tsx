@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
-import { LAUNCH_CWD } from "../App";
+import { LAUNCH_CWD } from "../launchParams";
 import { ProjectSetup } from "./ProjectSetup";
 import { ModusPrompt } from "./ModusPrompt";
 import { Missions } from "./Missions";
@@ -84,6 +84,7 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
             )}
             <ModusPrompt
               onSelectSession={onSelectSession}
+              onNavigate={onNavigate}
               isNewProject={needsAgents}
             />
             <Missions />

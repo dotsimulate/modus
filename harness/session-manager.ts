@@ -509,6 +509,8 @@ export type StartSessionOpts = {
   permissionPolicy?: "bypass" | "ask" | { default: "approve" | "ask"; autoApprove?: string[]; requireApproval?: string[] };
   /** Per-request moves to activate on the first message (merged with profile moves) */
   moves?: { name: string; inputs?: Record<string, unknown> }[];
+  /** Session-level MCP servers — merged with (and override) profile MCP servers at session creation */
+  mcpServers?: Record<string, unknown>;
 };
 
 export type InteractSessionOpts = {
@@ -531,6 +533,7 @@ export type InteractSessionOpts = {
   providerControls?: Record<string, unknown>;
   loadProjectSettings?: boolean;
   permissionPolicy?: StartSessionOpts["permissionPolicy"];
+  mcpServers?: Record<string, unknown>;
 };
 
 export type InteractSessionResult = {
@@ -845,8 +848,12 @@ export function attachArtifactToSession(opts: {
 }
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
-  // Memory guard: block spawn if too many sessions or system memory pressure is high
-  const guard = canSpawnSession(activeSessions.size);
+  // Memory guard: block spawn if too many sessions or system memory pressure is high.
+  // Count only running/starting sessions — those have live CLI processes consuming memory.
+  // Idle/error/done sessions are just metadata waiting for reaper cleanup.
+  const liveCount = Array.from(activeSessions.values())
+    .filter(s => s.status === "running" || s.status === "starting").length;
+  const guard = canSpawnSession(liveCount);
   if (!guard.ok) {
     throw new Error(`[memory-guard] ${guard.reason}`);
   }
@@ -1143,6 +1150,7 @@ export async function interactWithSession(opts: InteractSessionOpts): Promise<In
     providerControls,
     loadProjectSettings,
     permissionPolicy,
+    mcpServers,
   } = opts;
 
   const resolvedCwd = cwd ?? resolveSessionCwd(undefined);
@@ -1184,6 +1192,7 @@ export async function interactWithSession(opts: InteractSessionOpts): Promise<In
       providerControls: providerControls ?? storedConfig?.providerControls,
       loadProjectSettings: loadProjectSettings ?? storedConfig?.loadProjectSettings,
       permissionPolicy,
+      mcpServers,
     });
 
     return {
@@ -1215,6 +1224,7 @@ export async function interactWithSession(opts: InteractSessionOpts): Promise<In
     providerControls,
     loadProjectSettings,
     permissionPolicy,
+    mcpServers,
   });
 
   return {
@@ -1854,7 +1864,8 @@ export function emitGlobalSessionEvent(event: GlobalSessionEvent) {
 
 const REAP_INTERVAL_MS = 60_000;          // check every 60s
 const REAP_TERMINAL_AFTER_MS = 60_000;    // done/error: reap after 1 min
-const REAP_IDLE_AFTER_MS = 10 * 60_000;   // idle + no subscribers: reap after 10 min
+const REAP_IDLE_AFTER_MS = 10 * 60_000;   // idle: reap after 10 min (regardless of subscribers)
+const REAP_STARTING_AFTER_MS = 3 * 60_000; // starting: reap after 3 min (stuck spawn)
 
 function reapStaleSessions(): void {
   const now = Date.now();
@@ -1868,7 +1879,18 @@ function reapStaleSessions(): void {
         toReap.push(id);
       }
     } else if (session.status === "idle") {
-      if (age >= REAP_IDLE_AFTER_MS && session.subscribers.size === 0) {
+      // Reap idle sessions regardless of subscribers. Claude Code CLI leaks memory
+      // at ~100 MB/min even when idle (upstream bug: anthropics/claude-code#33494).
+      // SSE subscribers will get a close event and the UI can handle reconnection.
+      // Keeping idle sessions alive just to preserve an SSE pipe is not worth the
+      // risk of another OOM system crash.
+      if (age >= REAP_IDLE_AFTER_MS) {
+        toReap.push(id);
+      }
+    } else if (session.status === "starting") {
+      // Stuck in starting state — provider failed to spawn or connect.
+      // These zombies hold a slot in activeSessions but do nothing.
+      if (age >= REAP_STARTING_AFTER_MS) {
         toReap.push(id);
       }
     }

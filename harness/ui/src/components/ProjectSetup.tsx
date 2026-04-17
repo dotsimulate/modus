@@ -9,7 +9,7 @@
 import { useState, useCallback } from "react";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
-import { LAUNCH_CWD } from "../App";
+import { LAUNCH_CWD } from "../launchParams";
 import type { BrowseResult } from "../../../sdk/index";
 
 type Props = {

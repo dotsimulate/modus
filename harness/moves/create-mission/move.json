@@ -1,0 +1,26 @@
+{
+  "name": "create-mission",
+  "label": "Create Mission",
+  "description": "Create, revise, duplicate, and optionally start a mission from the current conversation.",
+  "icon": "flag",
+  "mode": "inline",
+  "inputs": [],
+  "api": {
+    "tokenPrefix": "create-mission",
+    "ops": {
+      "start-mission": {
+        "description": "Start a mission that already exists on disk. Use this only after the mission files are ready and the user has asked to start it or confirmed starting it.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "missionName": { "type": "string" }
+          },
+          "required": ["missionName"]
+        }
+      }
+    }
+  },
+  "submit": { "required": false },
+  "session": { "afterSubmit": "continue" },
+  "tags": ["mission", "workflow", "create", "builtin"]
+}

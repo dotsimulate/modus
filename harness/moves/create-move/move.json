@@ -1,0 +1,64 @@
+{
+  "name": "create-move",
+  "label": "Create Move",
+  "description": "Scaffold a new user-space move at .modus/moves/<name>/ — move.json with inline gather prompt.",
+  "icon": "puzzle",
+  "mode": "inline",
+  "inputs": [],
+  "schema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "name": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]*$" },
+      "label": { "type": "string", "minLength": 1 },
+      "description": { "type": "string", "minLength": 1 },
+      "icon": { "type": "string" },
+      "mode": { "enum": ["inline", "branch", "background"] },
+      "persistent": { "type": "boolean" },
+      "inputs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "label": { "type": "string" },
+            "type": { "enum": ["text", "textarea", "select", "toggle", "number"] },
+            "options": {},
+            "required": { "type": "boolean" },
+            "default": {},
+            "placeholder": { "type": "string" }
+          },
+          "required": ["name", "type"]
+        }
+      },
+      "schema": { "type": "object", "additionalProperties": true },
+      "schemaHint": { "type": "string" },
+      "submit": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "required": { "type": "boolean" },
+          "retryOnInvalid": { "type": "boolean" },
+          "maxAttempts": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "session": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "profileOverride": { "type": ["string", "null"] },
+          "afterSubmit": { "type": "string" }
+        }
+      },
+      "agentProfile": { "type": "string" },
+      "gatherPrompt": { "type": "string" },
+      "prompt": { "type": "string" },
+      "tags": { "type": "array", "items": { "type": "string" } }
+    },
+    "required": ["name", "label", "description"]
+  },
+  "submit": { "required": true },
+  "session": { "afterSubmit": "continue" },
+  "tags": ["move", "create", "builtin"]
+}

@@ -30,6 +30,7 @@ import InboxWidget from "./inbox.widget";
 import MovesWidget from "./moves.widget";
 import NewSessionWidget from "./new-session.widget";
 import NotesWidget from "./notes.widget";
+import PagesBrowserWidget from "./pages-browser.widget";
 import PersistentTerminalWidget from "./persistent-terminal.widget";
 import ProcessesWidget from "./processes.widget";
 import ProfileCardWidget from "./profile-card.widget";
@@ -157,6 +158,13 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     zones: ["left-panel", "right-panel", "dashboard"],
     minHeight: 220,
     preferredHeight: 560,
+  },
+  "pages-browser": {
+    type: "pages-browser",
+    component: PagesBrowserWidget,
+    zones: ["dashboard", "left-panel", "right-panel"],
+    minHeight: 160,
+    preferredHeight: 400,
   },
   "persistent-terminal": {
     type: "persistent-terminal",
