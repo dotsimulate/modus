@@ -4,7 +4,7 @@ import type { MoveWidgetInfo } from "../../../sdk/index";
 import { WIDGET_DEFS, WIDGETS, type LayoutLeaf, type LayoutNode, type ScopeEvent, type WidgetBase } from "../widgets";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
 import { WidgetPicker } from "./WidgetPicker";
-import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSessionBinder } from "./PageRenderer";
+import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSessionBinder } from "./pageScope";
 import { MoveWidgetEmbed } from "./MoveWidgetEmbed";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { modus } from "../modusClient";
@@ -18,6 +18,24 @@ type Props = {
 
 function getLeafId(leaf: LayoutLeaf, index: number): string {
   return leaf.id?.trim() || leaf.widget.id?.trim() || `${leaf.widget.type}-${index + 1}`;
+}
+
+/**
+ * True if the subtree rooted at `node` contains an editable target panel
+ * (one that receives dynamic move tabs). Used by ResizableSplit to know which
+ * collapsed children should pop open when an `expand-target` event fires.
+ */
+function containsTarget(node: LayoutNode): boolean {
+  if ((node.kind === "tabs" || node.kind === "list") && node.editable && node.target) {
+    return true;
+  }
+  if (node.kind === "split" || node.kind === "scope") {
+    return node.children.some(containsTarget);
+  }
+  if (node.kind === "grid") {
+    return (node.children ?? []).some(containsTarget);
+  }
+  return false;
 }
 
 /** Check if a widget type is a move widget reference (e.g. "move:chess") */
@@ -190,8 +208,12 @@ function ScopeSessionWatcher() {
 
     if (!sessionId || !bus) return;
 
+    let cancelled = false;
+    const fetchSessionId = sessionId;
+
     const fetchWidgets = () => {
-      modus.getActiveWidgets(sessionId).then((widgets) => {
+      modus.getActiveWidgets(fetchSessionId).then((widgets) => {
+        if (cancelled) return;
         for (const w of widgets) {
           if (!knownWidgets.current.has(w.instanceId)) {
             knownWidgets.current.add(w.instanceId);
@@ -202,7 +224,7 @@ function ScopeSessionWatcher() {
               widget: w.widget,
               apiToken: w.apiToken,
               instanceId: w.instanceId,
-              sessionId,
+              sessionId: fetchSessionId,
               mountedOnAttach: w.widget.mountOnAttach ?? false,
             });
           }
@@ -213,7 +235,10 @@ function ScopeSessionWatcher() {
     fetchWidgets();
     const handler = () => fetchWidgets();
     window.addEventListener("modus:widgets-changed", handler);
-    return () => window.removeEventListener("modus:widgets-changed", handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("modus:widgets-changed", handler);
+    };
   }, [sessionId, bus]);
 
   return null;
@@ -425,6 +450,7 @@ function ResizableSplit({
   const autoFlags = rawSizes.map((s) => s === "auto");
   // Flex sizes only (auto children get 0 — they don't participate in flex)
   const defaultFlexSizes = rawSizes.map((s) => (s === "auto" ? 0 : s));
+  const collapsible = node.collapsible ?? [];
   const [sizes, setSizes] = useState(defaultFlexSizes);
   const [collapsed, setCollapsed] = useState<boolean[]>(() => {
     const isMobile = typeof window !== "undefined" && window.innerWidth <= 640;
@@ -440,6 +466,29 @@ function ResizableSplit({
       return next;
     });
   }, []);
+
+  // Auto-expand: when a target panel deeper in this split's subtree gains a new
+  // dynamic tab, it emits "expand-target" on the scope bus. Uncollapse any
+  // collapsible child whose subtree contains a target panel so the new tab is
+  // visible. Other splits at different levels listen too — cascade handles deep nesting.
+  const expandBus = useScopeBus();
+  useEffect(() => {
+    if (!expandBus) return;
+    return expandBus.on("expand-target", () => {
+      const collapsibleFlags = node.collapsible ?? [];
+      setCollapsed((prev) => {
+        let changed = false;
+        const next = prev.map((isCollapsed, i) => {
+          if (isCollapsed && collapsibleFlags[i] && containsTarget(node.children[i])) {
+            changed = true;
+            return false;
+          }
+          return isCollapsed;
+        });
+        return changed ? next : prev;
+      });
+    });
+  }, [expandBus, node]);
 
   // Only allow resize between two non-auto, non-collapsed flex children
   const canResize = useCallback((handleIndex: number) => {
@@ -492,8 +541,6 @@ function ResizableSplit({
       </div>
     );
   }
-
-  const collapsible = node.collapsible ?? [];
 
   const elements: ReactNode[] = [];
   node.children.forEach((child, index) => {
@@ -789,6 +836,15 @@ function EditablePanel({
   const clearRequestActive = useCallback(() => setRequestActiveId(null), []);
 
   const bus = useScopeBus();
+  const dynamicTabsRef = useRef(dynamicTabs);
+  dynamicTabsRef.current = dynamicTabs;
+
+  // Track scope session for direct widget fetching
+  const scopeState = useSyncExternalStore(
+    bus ? bus.subscribe : () => () => {},
+    bus ? bus.getSnapshot : () => emptySnapshot,
+  );
+  const scopeSessionId = scopeState.sessionId as string | undefined | null;
 
   // Listen for target events when this panel is a target
   useEffect(() => {
@@ -805,10 +861,11 @@ function EditablePanel({
       const sessionId = event.sessionId as string;
       const mountedOnAttach = event.mountedOnAttach as boolean | undefined;
 
-      setDynamicTabs(prev => {
-        if (prev.some(t => t.id === id)) return prev;
-        return [...prev, { id, label, widget, apiToken, instanceId, sessionId, mountedOnAttach, reloadKey: 0 }];
-      });
+      const exists = dynamicTabsRef.current.some(t => t.id === id);
+      if (!exists) {
+        setDynamicTabs(prev => prev.some(t => t.id === id) ? prev : [...prev, { id, label, widget, apiToken, instanceId, sessionId, mountedOnAttach, reloadKey: 0 }]);
+        bus.emit({ type: "expand-target" });
+      }
       setRequestActiveId(id);
     }));
 
@@ -824,12 +881,52 @@ function EditablePanel({
     return () => unsubs.forEach(fn => fn());
   }, [node.target, bus]);
 
+  // Self-fetch active widgets directly. Independent of ScopeSessionWatcher's
+  // bus emit so the panel self-heals when it mounts after the event already
+  // fired (e.g. it was previously collapsed and is just being expanded).
+  useEffect(() => {
+    if (!node.target || !scopeSessionId) return;
+    // Cancellation guard — a fast session switch can land a stale fetch's
+    // resolution onto the new session's tab list. Drop it.
+    let cancelled = false;
+    const fetchSessionId = scopeSessionId;
+
+    const fetchWidgets = async () => {
+      const widgets = await modus.getActiveWidgets(fetchSessionId).catch(() => []);
+      if (cancelled) return;
+      const currentIds = new Set(dynamicTabsRef.current.map(t => t.instanceId));
+      const additions: DynamicMoveTab[] = widgets
+        .filter(w => !currentIds.has(w.instanceId))
+        .map(w => ({
+          id: `widget:${w.instanceId}`,
+          label: w.widget.label,
+          widget: w.widget,
+          apiToken: w.apiToken,
+          instanceId: w.instanceId,
+          sessionId: fetchSessionId,
+          mountedOnAttach: w.widget.mountOnAttach ?? false,
+          reloadKey: 0,
+        }));
+      if (additions.length === 0) return;
+      setDynamicTabs(prev => {
+        const have = new Set(prev.map(t => t.instanceId));
+        const fresh = additions.filter(a => !have.has(a.instanceId));
+        return fresh.length === 0 ? prev : [...prev, ...fresh];
+      });
+      setRequestActiveId(additions[additions.length - 1].id);
+      bus?.emit({ type: "expand-target" });
+    };
+
+    fetchWidgets();
+    const handler = () => fetchWidgets();
+    window.addEventListener("modus:widgets-changed", handler);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("modus:widgets-changed", handler);
+    };
+  }, [node.target, scopeSessionId, bus]);
+
   // Clear dynamic tabs when the scope's session changes
-  const scopeState = useSyncExternalStore(
-    bus ? bus.subscribe : () => () => {},
-    bus ? bus.getSnapshot : () => emptySnapshot,
-  );
-  const scopeSessionId = scopeState.sessionId as string | undefined | null;
   const prevScopeSession = useRef(scopeSessionId);
   useEffect(() => {
     if (prevScopeSession.current !== scopeSessionId) {

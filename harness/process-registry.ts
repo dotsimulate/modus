@@ -283,7 +283,7 @@ function listOrphanClaudeProcesses(): ProcessInfo[] {
   if (lines.length < 2) return [];
   const rows: OsProcessRow[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(",");
+    const parts = lines[i]!.split(",");
     if (parts.length < 4) continue;
     // CSV: Node, CommandLine (may contain commas), ..., ParentProcessId, ProcessId
     // CommandLine can contain commas, so take last two fields as ppid/pid

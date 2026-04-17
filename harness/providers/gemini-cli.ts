@@ -16,7 +16,14 @@ import {
   type CompletedToolCall,
 } from "@google/gemini-cli-core";
 import { CoreEvent, coreEvents } from "@google/gemini-cli-core/dist/src/utils/events.js";
+import { existsSync } from "fs";
+import { homedir } from "os";
 import { join } from "path";
+
+function hasGeminiCredentials(): boolean {
+  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) return true;
+  return existsSync(join(homedir(), ".gemini", "oauth_creds.json"));
+}
 import { getSession, updateSessionStatus } from "../db";
 import { getGlobalConfig, resolveProfilePrompt, type McpServerConfig, type PermissionPolicy, type Profile } from "../profiles";
 import { resolveSecret } from "../secrets";
@@ -537,6 +544,9 @@ async function createGeminiRuntime(
     cleanupFns.push(() => coreEvents.off(CoreEvent.RetryAttempt, onRetryAttempt));
     cleanupFns.push(() => coreEvents.off(CoreEvent.OauthDisplayMessage, onOauthDisplayMessage));
 
+    if (!hasGeminiCredentials()) {
+      throw new Error("Gemini authentication required: no credentials found at ~/.gemini/oauth_creds.json and no GEMINI_API_KEY/GOOGLE_API_KEY env var set. Run `gemini` once to authenticate, or set an API key.");
+    }
     await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
 
     const client = config.getGeminiClient();

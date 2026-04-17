@@ -305,6 +305,7 @@ function resolveCodexRuntimeSettings(
   opts: {
     toolStates?: Record<string, string>;
     providerControls?: Record<string, unknown>;
+    permissionPolicy?: PermissionPolicy;
   },
 ): {
   approvalPolicy: import("@openai/codex-sdk").ApprovalMode;

@@ -2346,7 +2346,7 @@ export function getDeepAnalytics(
     addMetricSession(session);
     totals.sessionsStarted += 1;
     const idx = bucketIndex(row.created_at, safeStart, bucketMs, bucketCount);
-    if (idx != null) buckets[idx].sessionsStarted += 1;
+    if (idx != null) buckets[idx]!.sessionsStarted += 1;
   }
 
   const userPromptRows = db.prepare(`
@@ -2412,8 +2412,8 @@ export function getDeepAnalytics(
     totals.userMessages += 1;
     session.userMessages += 1;
     for (const metric of metrics) metric.userMessages += 1;
-    if (idx != null) buckets[idx].userMessages += 1;
-    hours[hour].userMessages += 1;
+    if (idx != null) buckets[idx]!.userMessages += 1;
+    hours[hour]!.userMessages += 1;
   }
 
   const resultRows = db.prepare(`
@@ -2505,20 +2505,20 @@ export function getDeepAnalytics(
     }
 
     if (idx != null) {
-      buckets[idx].assistantMessages += 1;
-      buckets[idx].assistantTurns += 1;
-      buckets[idx].totalDurationMs += usage.durationMs;
-      buckets[idx].inputTokens += usage.inputTokens;
-      buckets[idx].outputTokens += usage.outputTokens;
-      buckets[idx].totalTokens += usage.totalTokens;
-      buckets[idx].cost += usage.cost;
+      buckets[idx]!.assistantMessages += 1;
+      buckets[idx]!.assistantTurns += 1;
+      buckets[idx]!.totalDurationMs += usage.durationMs;
+      buckets[idx]!.inputTokens += usage.inputTokens;
+      buckets[idx]!.outputTokens += usage.outputTokens;
+      buckets[idx]!.totalTokens += usage.totalTokens;
+      buckets[idx]!.cost += usage.cost;
     }
 
-    hours[hour].assistantTurns += 1;
-    hours[hour].inputTokens += usage.inputTokens;
-    hours[hour].outputTokens += usage.outputTokens;
-    hours[hour].totalTokens += usage.totalTokens;
-    hours[hour].cost += usage.cost;
+    hours[hour]!.assistantTurns += 1;
+    hours[hour]!.inputTokens += usage.inputTokens;
+    hours[hour]!.outputTokens += usage.outputTokens;
+    hours[hour]!.totalTokens += usage.totalTokens;
+    hours[hour]!.cost += usage.cost;
   }
 
   const assistantRows = db.prepare(`
@@ -2589,8 +2589,8 @@ export function getDeepAnalytics(
     totals.toolCalls += toolCalls;
     session.toolCalls += toolCalls;
     for (const metric of metrics) metric.toolCalls += toolCalls;
-    if (idx != null) buckets[idx].toolCalls += toolCalls;
-    hours[hour].toolCalls += toolCalls;
+    if (idx != null) buckets[idx]!.toolCalls += toolCalls;
+    hours[hour]!.toolCalls += toolCalls;
   }
 
   totals.avgDurationMs = totals.assistantTurns > 0

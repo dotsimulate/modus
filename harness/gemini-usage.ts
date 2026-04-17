@@ -1,4 +1,12 @@
 import { ApprovalMode, AuthType, Config } from "@google/gemini-cli-core";
+import { existsSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
+
+function hasGeminiCredentials(): boolean {
+  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) return true;
+  return existsSync(join(homedir(), ".gemini", "oauth_creds.json"));
+}
 
 export type GeminiUsageSnapshot = {
   available: boolean;
@@ -21,6 +29,16 @@ export async function fetchGeminiUsageSnapshot(opts: {
 } = {}): Promise<GeminiUsageSnapshot> {
   const cwd = opts.cwd ?? process.cwd();
   const model = opts.model ?? "auto-gemini-3";
+
+  if (!hasGeminiCredentials()) {
+    return {
+      available: false,
+      authType: AuthType.LOGIN_WITH_GOOGLE,
+      model,
+      checkedAt: Date.now(),
+      quota: {},
+    };
+  }
 
   let config: Config | null = null;
   try {

@@ -23,7 +23,7 @@ import { networkInterfaces, hostname } from "os";
 import { resolve, join, dirname, basename } from "path";
 import {
   existsSync, readFileSync, writeFileSync, mkdirSync,
-  statSync, readdirSync, unlinkSync,
+  statSync, readdirSync, unlinkSync, openSync,
 } from "fs";
 import { createServer } from "net";
 import { spawnSync } from "child_process";
@@ -342,7 +342,7 @@ async function cmdStart(args: string[]): Promise<void> {
 
   if (daemon) {
     // ── Daemon mode ──
-    const logFd = Bun.file(LOG_FILE).writer();
+    const logFd = openSync(LOG_FILE, "a");
     const proc = spawn([BUN, "run", "index.ts"], {
       cwd: HARNESS_DIR,
       stdout: logFd,

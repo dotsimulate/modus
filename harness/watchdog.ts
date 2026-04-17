@@ -272,7 +272,7 @@ function getListeningPid(port: number): string | null {
       if (line.includes("LISTENING") && line.includes(`:${port}`)) {
         const parts = line.trim().split(/\s+/);
         const pid = parts[parts.length - 1];
-        if (/^\d+$/.test(pid)) return pid;
+        if (pid && /^\d+$/.test(pid)) return pid;
       }
     }
     return null;

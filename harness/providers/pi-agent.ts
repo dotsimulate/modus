@@ -164,8 +164,6 @@ function buildAuthStorage(provider: PiProviderName): AuthStorage {
 
   // Resolve API key from harness secrets for the provider
   const envMap: Record<PiProviderName, string> = {
-    anthropic: "ANTHROPIC_API_KEY",
-    openai: "OPENAI_API_KEY",
     litellm: "LITELLM_API_KEY",
     ollama: "OLLAMA_API_KEY",
     openrouter: "OPENROUTER_API_KEY",
