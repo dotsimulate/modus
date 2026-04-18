@@ -2,7 +2,21 @@
 delete process.env.CLAUDECODE;
 
 import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin } from "./secrets";
+import { rehydrateHome } from "./modus-home-rehydrate";
 loadSecrets();
+
+// Ensure ~/.modus/ exists and seed it from legacy harness/profiles/ + templates
+// on first boot. Idempotent; never overwrites user data. Must run before any
+// profile read, so it lives at the very top of boot.
+{
+  const report = rehydrateHome();
+  const total = report.copiedFromLegacy.length + report.copiedFromTemplates.length;
+  if (total > 0) {
+    console.log(
+      `[modus-home] rehydrated ~/.modus/ — ${report.copiedFromLegacy.length} from legacy, ${report.copiedFromTemplates.length} from templates`,
+    );
+  }
+}
 
 import { join, resolve, extname, dirname } from "path";
 import { existsSync, statSync } from "fs";
@@ -70,6 +84,7 @@ import {
 } from "./terminal-manager";
 import { tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker } from "./terminal-ws";
 import { getProcessSnapshot, killProcess } from "./process-registry";
+import { getPromptCache, savePromptCache, type PromptCache } from "./prompt-cache";
 import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
 
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
@@ -349,6 +364,21 @@ app.get("/health", (c) => {
 // Unified view of every managed process (sessions, mission workers, terminals)
 app.get("/api/processes", (c) => {
   return c.json(getProcessSnapshot());
+});
+
+// ── Prompt Cache ──
+
+app.get("/api/prompt-cache", (c) => {
+  return c.json(getPromptCache());
+});
+
+app.put("/api/prompt-cache", async (c) => {
+  const body = await c.req.json<PromptCache>();
+  if (!body || !Array.isArray(body.prompts)) {
+    return c.json({ error: "invalid prompt cache payload" }, 400);
+  }
+  savePromptCache(body);
+  return c.json({ ok: true });
 });
 
 // Kill a managed process by session ID

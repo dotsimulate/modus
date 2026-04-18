@@ -1,38 +1,41 @@
 /**
- * Profile loader — reads JSON files from harness/profiles/ subfolders.
+ * Profile loader — reads JSON files from ~/.modus/profiles/ subfolders.
  *
- * Directory structure (base — ships with the harness):
- *   profiles/agents/   — agent profile definitions (config, edit deliberately)
- *   profiles/users/    — user profile definitions (config, edit deliberately)
- *   profiles/state/    — runtime UI state (app-managed, gitignored)
- *   profiles/ui/       — interface-specific UI config sidecars
- *   profiles/_global.json — shared MCP servers merged into every session
- *   profiles/_users.json  — template var defaults
+ * User-home layout (see harness/modus-home.ts for the single source of truth):
+ *   ~/.modus/profiles/agents/         — agent profile definitions
+ *   ~/.modus/profiles/users/          — user profile definitions
+ *   ~/.modus/profiles/state/          — runtime UI state (app-managed)
+ *   ~/.modus/profiles/ui/{agents,users}/ — interface-specific UI sidecars
+ *   ~/.modus/profiles/_global.json    — shared MCP servers + provider defaults
+ *   ~/.modus/profiles/_users.json     — template var defaults
+ *   ~/.modus/projects.json            — registry of known projects
  *
  * Project-local overrides — any project directory can contain:
  *   .modus/profiles/agents/  — extra agent profiles (override base by name)
- *   .modus/actions/           — extra actions (loaded by action-runner)
- *   .modus/_global.json       — project-level MCP servers (merged additively)
+ *   .modus/actions/          — extra actions (loaded by action-runner)
+ *   .modus/_global.json      — project-level MCP servers (merged additively)
  *
  * When a session CWD is provided, project-local profiles take precedence
  * over base profiles of the same name. Listing functions merge both sources.
+ *
+ * Shipped agent templates live in harness/templates/profiles/ and seed the
+ * user home on first boot via rehydrateHome(). The repo itself is read-only
+ * at runtime; no harness code writes inside harness/profiles/.
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
+import {
+  homeAgentsDir, homeGlobalPath, homeProjectsJsonPath, homeStateDir,
+  homeUiAgentsDir, homeUiUsersDir, homeUsersDir, homeUsersJsonPath,
+} from "./modus-home";
 
-const PROFILES_DIR = join(import.meta.dir, "profiles");
-const AGENTS_DIR = join(PROFILES_DIR, "agents");
-const USERS_DIR = join(PROFILES_DIR, "users");
-const STATE_DIR = join(PROFILES_DIR, "state");
-const UI_DIR = join(PROFILES_DIR, "ui");
-const UI_AGENTS_DIR = join(UI_DIR, "agents");
-const UI_USERS_DIR = join(UI_DIR, "users");
-
-for (const dir of [PROFILES_DIR, USERS_DIR, STATE_DIR, UI_DIR, UI_AGENTS_DIR, UI_USERS_DIR]) {
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-}
+const AGENTS_DIR = homeAgentsDir();
+const USERS_DIR = homeUsersDir();
+const STATE_DIR = homeStateDir();
+const UI_AGENTS_DIR = homeUiAgentsDir();
+const UI_USERS_DIR = homeUiUsersDir();
 
 // ── Project-local .modus/ discovery ──
 
@@ -264,7 +267,7 @@ function getBuiltInMcpServers(): Record<string, McpServerConfig> {
 
 // ── User Profiles ──
 // Scoped views of the harness — each profile filters projects, agent profiles, memory.
-// Config lives in profiles/users/. Runtime state lives in profiles/state/.
+// Config lives in ~/.modus/profiles/users/. Runtime state lives in ~/.modus/profiles/state/.
 
 export type UserProfileState = {
   sidebarGroupMode?: "time" | "agent";
@@ -577,7 +580,7 @@ export function deleteProfile(name: string, cwd?: string): boolean {
 
 /** Read the global config — merges project-local MCP servers when cwd is provided */
 export function getGlobalConfig(cwd?: string): GlobalConfig {
-  const base = readJson<GlobalConfig>(join(PROFILES_DIR, "_global.json")) ?? {};
+  const base = readJson<GlobalConfig>(homeGlobalPath()) ?? {};
   const builtInMcpServers = getBuiltInMcpServers();
   if (!cwd) {
     return {
@@ -602,7 +605,7 @@ export function getGlobalConfig(cwd?: string): GlobalConfig {
 }
 
 export function getResolvedClientExtensionsConfig(cwd?: string, userProfileName?: string): ClientExtensionsConfig {
-  const baseFile = join(PROFILES_DIR, "_global.json");
+  const baseFile = homeGlobalPath();
   const baseConfig = readJson<GlobalConfig>(baseFile);
   const baseClient = baseConfig?.clientExtensions;
 
@@ -629,7 +632,7 @@ export function getResolvedClientExtensionsConfig(cwd?: string, userProfileName?
 /** Save the global config.
  *  When cwd is provided, writes to <cwd>/.modus/_global.json instead of harness-local. */
 export function saveGlobalConfig(config: GlobalConfig, cwd?: string): void {
-  const filePath = cwd ? projectGlobalPath(cwd) : join(PROFILES_DIR, "_global.json");
+  const filePath = cwd ? projectGlobalPath(cwd) : homeGlobalPath();
   if (cwd) {
     const dir = join(cwd, MODUS_DIR);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -713,7 +716,7 @@ export function patchUserProfileUiConfig(name: string, patch: Partial<UserProfil
 }
 
 // ── User Profile State CRUD ──
-// Runtime UI state — lives in profiles/state/, gitignored, app-managed.
+// Runtime UI state — lives in ~/.modus/profiles/state/, app-managed.
 
 export function getUserProfileState(name: string): UserProfileState {
   return readJson<UserProfileState>(join(STATE_DIR, `${name}.json`)) ?? {};
@@ -740,10 +743,10 @@ export function getTemplateVars(userProfileName?: string): Record<string, string
 }
 
 // ── User Data ──
-// Stored in _users.json. Flat key-value object for user info + template vars.
-// Keys are available as {{key}} in profile prompts.
+// Stored at ~/.modus/profiles/_users.json. Flat key-value object for user info
+// + template vars. Keys are available as {{key}} in profile prompts.
 
-const USERS_FILE = join(PROFILES_DIR, "_users.json");
+const USERS_FILE = homeUsersJsonPath();
 
 type UserData = Record<string, string | null>;
 
@@ -771,10 +774,10 @@ export function getUserName(): string | null {
 }
 
 // ── Project Registry ──
-// Stored in _projects.json. Maps project IDs to names + paths.
+// Stored at ~/.modus/projects.json. Maps project IDs to names + paths.
 // Each project's .modus/_project.json carries just the ID — portable across moves.
 
-const PROJECTS_FILE = join(PROFILES_DIR, "_projects.json");
+const PROJECTS_FILE = homeProjectsJsonPath();
 
 export type ProjectEntry = {
   name: string;
