@@ -163,6 +163,7 @@ export type Message = {
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
     contextWindow?: number;
+    contextTokensUsed?: number;
   };
   /** Pre-rendered copy of this turn's content for display, avoiding re-parsing tool calls. */
   turnCopy?: { text: string; thinking?: string; toolCalls?: ToolCall[] };
@@ -620,6 +621,15 @@ export type Profile = {
   ui?: ProfileUi;
   /** Suggested working directories shown in the UI profile picker. */
   cwdSuggestions?: string[];
+  /**
+   * Where this profile was loaded from.
+   *   - "project": `<cwd>/.modus/profiles/agents/<name>.json` (scoped to this project)
+   *   - "user":    `~/.modus/profiles/agents/<name>.json` (user-home, shared across projects)
+   * Project-origin profiles always appear in the UI regardless of the active
+   * user profile's `agentProfiles` whitelist — they're scoped to this project
+   * by definition, so hiding them would be confusing.
+   */
+  origin?: "user" | "project";
 };
 
 /** Global configuration shared across all profiles (MCP servers, client extensions). */
@@ -1708,4 +1718,18 @@ export type FsChangeEvent = {
   dir: string;
   kind: "add" | "remove" | "modify" | "unknown";
   entry: string | null;
+};
+
+// ── Prompt Cache ──
+
+/** A saved prompt that the composer can ghost-autocomplete against. */
+export type PromptCacheEntry = {
+  id: string;
+  text: string;
+  savedAt: number;
+};
+
+/** The full prompt cache payload — a shareable JSON file of saved prompts. */
+export type PromptCache = {
+  prompts: PromptCacheEntry[];
 };

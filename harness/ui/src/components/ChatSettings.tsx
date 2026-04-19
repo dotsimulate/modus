@@ -5,9 +5,10 @@ const STORAGE_KEY = "mo-chat-settings";
 type ChatSettings = {
   fontScale: number;
   chatWidth: number;
+  spineEnabled: boolean;
 };
 
-const DEFAULTS: ChatSettings = { fontScale: 100, chatWidth: 840 };
+const DEFAULTS: ChatSettings = { fontScale: 100, chatWidth: 840, spineEnabled: true };
 
 function load(): ChatSettings {
   try {
@@ -19,6 +20,9 @@ function load(): ChatSettings {
 
 function save(s: ChatSettings) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  // Broadcast so live consumers (ChatView, etc.) can react without
+  // a full reload.
+  window.dispatchEvent(new CustomEvent("mo-chat-settings-change", { detail: s }));
 }
 
 function apply(s: ChatSettings) {
@@ -35,7 +39,7 @@ export function ChatSettings() {
   const [settings, setSettings] = useState<ChatSettings>(load);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [pos, setPos] = useState<{ bottom: number; right: number } | null>(null);
 
   const update = useCallback((patch: Partial<ChatSettings>) => {
     setSettings((prev) => {
@@ -54,7 +58,7 @@ export function ChatSettings() {
       // Snapshot button position so the popover stays fixed in place
       if (btnRef.current) {
         const rect = btnRef.current.getBoundingClientRect();
-        setPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+        setPos({ bottom: window.innerHeight - rect.top + 8, right: window.innerWidth - rect.right });
       }
       setOpen(true);
     }
@@ -78,7 +82,10 @@ export function ChatSettings() {
     return () => window.removeEventListener("keydown", handler);
   }, [open]);
 
-  const isDefault = settings.fontScale === DEFAULTS.fontScale && settings.chatWidth === DEFAULTS.chatWidth;
+  const isDefault =
+    settings.fontScale === DEFAULTS.fontScale &&
+    settings.chatWidth === DEFAULTS.chatWidth &&
+    settings.spineEnabled === DEFAULTS.spineEnabled;
 
   return (
     <div className="chat-settings" ref={ref}>
@@ -98,7 +105,7 @@ export function ChatSettings() {
       {open && pos && (
         <div
           className="chat-settings-popover"
-          style={{ top: pos.top, right: pos.right }}
+          style={{ bottom: pos.bottom, right: pos.right }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="chat-settings-row">
@@ -118,6 +125,18 @@ export function ChatSettings() {
               onChange={(e) => update({ chatWidth: +e.target.value })}
             />
             <span className="chat-settings-value">{settings.chatWidth}</span>
+          </div>
+          <div className="chat-settings-row">
+            <span className="chat-settings-label">spine</span>
+            <button
+              type="button"
+              className={`chat-settings-toggle${settings.spineEnabled ? " on" : ""}`}
+              onClick={() => update({ spineEnabled: !settings.spineEnabled })}
+              aria-pressed={settings.spineEnabled}
+            >
+              <span className="chat-settings-toggle-dot" />
+            </button>
+            <span className="chat-settings-value">{settings.spineEnabled ? "on" : "off"}</span>
           </div>
           {!isDefault && (
             <button className="chat-settings-reset" onClick={() => update(DEFAULTS)}>reset</button>

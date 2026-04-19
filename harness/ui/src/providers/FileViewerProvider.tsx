@@ -36,7 +36,6 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
 
   const openFile = useCallback((path: string, opts?: { edit?: boolean }) => {
     const edit = opts?.edit ?? false;
-    const isNew = !tabsRef.current.some((t) => t.path === path);
     setTabs((prev) => {
       const existing = prev.find((t) => t.path === path);
       if (existing) {
@@ -50,10 +49,9 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
     });
     setActivePath(path);
 
-    // Notify panel-open listeners when a genuinely new file is opened
-    if (isNew) {
-      fileOpenListenersRef.current.forEach((fn) => fn(path));
-    }
+    // Notify panel-open listeners on every open so re-clicks can re-focus the
+    // code-editor tab even when the file is already in the tab strip.
+    fileOpenListenersRef.current.forEach((fn) => fn(path));
 
     // Pre-load content for edit mode
     if (edit) {

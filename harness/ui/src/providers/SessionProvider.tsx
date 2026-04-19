@@ -25,6 +25,7 @@ import { SessionContext, type QueuedMessage } from "./SessionContext";
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
     selectedProfile, profiles, buildSessionOpts, setupState, activeUserProfile, activeUP,
+    projectRoot,
   } = useProfiles();
 
   const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
@@ -170,10 +171,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       && (next === "idle" || next === "error")
     ) {
       refreshSessions();
-      loadAndApplyProjectUiState(activeSession?.cwd || undefined);
+      loadAndApplyProjectUiState(projectRoot || undefined);
     }
     prevActiveStatusRef.current = next;
-  }, [activeSession?.cwd, activeSession?.status, refreshSessions]);
+  }, [activeSession?.status, projectRoot, refreshSessions]);
 
   // ── URL hash sync ──
 

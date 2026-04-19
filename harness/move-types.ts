@@ -100,6 +100,14 @@ export interface MoveConfig {
   // ── Metadata ──
   enabled?: boolean;
   tags?: string[];
+
+  /**
+   * Hide spawned branch/background sessions from the main sidebar by tagging
+   * them "internal" at creation. Useful for background routing/gating moves
+   * whose spawned sessions are infrastructure, not conversations the user
+   * wants to browse. Has no effect on inline moves (they don't spawn).
+   */
+  hidden?: boolean;
 }
 
 // ── Move Capabilities (declared in move.json, enforced at runtime) ──

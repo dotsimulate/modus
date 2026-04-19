@@ -1,0 +1,654 @@
+/* Session History widget */
+
+.sh {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  font-family: var(--font-mono);
+
+  /* Density tokens — "spacey" defaults. Compact overrides below. */
+  --sh-row-py: 10px;
+  --sh-row-gap: 4px;
+  --sh-tag-size: 9px;
+  --sh-meta-mt: 6px;
+  --sh-meta-gap: 10px;
+  --sh-section-head-pt: 14px;
+  --sh-section-head-pb: 6px;
+  --sh-section-items-pb: 9px;
+}
+
+.sh[data-density="compact"] {
+  --sh-row-py: 5px;
+  --sh-row-gap: 0px;
+  --sh-tag-size: 8px;
+  --sh-meta-mt: 2px;
+  --sh-meta-gap: 7px;
+  --sh-section-head-pt: 8px;
+  --sh-section-head-pb: 3px;
+  --sh-section-items-pb: 5px;
+}
+
+/* ── Rounded row pills (experimental — remove this block to bail) ── */
+.sh[data-rounded="true"] .sh-row {
+  border-radius: 6px;
+  margin: 0 6px;
+}
+
+/* ── Header ── */
+
+.sh-header {
+  flex-shrink: 0;
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sh-new-btn {
+  width: 100%;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: none;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  letter-spacing: 0.04em;
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+
+.sh-new-btn:hover {
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+
+/* ── Search ── */
+
+.sh-search-wrap {
+  position: relative;
+}
+
+.sh-search {
+  width: 100%;
+  padding: 5px 22px 5px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  letter-spacing: 0.02em;
+  outline: none;
+  opacity: 0.4;
+  transition: border-color 0.12s, background 0.12s, opacity 0.12s;
+}
+
+.sh-search::placeholder {
+  color: var(--text-muted);
+}
+
+.sh-search:hover {
+  opacity: 0.7;
+}
+
+.sh-search:focus,
+.sh-search:not(:placeholder-shown) {
+  opacity: 1;
+  border-color: var(--border-active);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sh-search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: calc(13px * var(--font-scale, 1));
+  cursor: pointer;
+  padding: 0 3px;
+  line-height: 1;
+}
+
+.sh-search-clear:hover {
+  color: var(--text);
+}
+
+/* ── Controls row ── */
+
+.sh-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sh-view-modes {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.sh-mode-btn {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+
+.sh-mode-btn:hover {
+  color: var(--text-dim);
+  background: var(--bg-hover);
+}
+
+.sh-mode-btn.active {
+  color: var(--text);
+  background: var(--bg-surface);
+}
+
+.sh-sort {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sh-sort-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+
+.sh-sort-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.sh-sort.open .sh-sort-btn {
+  color: var(--text);
+  background: var(--bg-surface);
+}
+
+.sh-sort-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  border: 1px solid var(--border-active);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  overflow: hidden;
+  padding: 2px;
+}
+
+.sh-sort-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  letter-spacing: 0.03em;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.08s, color 0.08s;
+}
+
+.sh-sort-option:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.sh-sort-option.active {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.sh-sort-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 2px;
+  opacity: 0.5;
+}
+
+.sh-sort-density {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 10px;
+  gap: 8px;
+}
+
+.sh-sort-density-label {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  text-transform: lowercase;
+}
+
+.sh-sort-density-toggle {
+  display: inline-flex;
+  gap: 1px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  padding: 1px;
+}
+
+.sh-density-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(8px * var(--font-scale, 1));
+  letter-spacing: 0.05em;
+  padding: 3px 7px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.sh-density-btn:hover {
+  color: var(--text-dim);
+}
+
+.sh-density-btn.active {
+  color: var(--text);
+  background: var(--bg-surface);
+}
+
+/* ── Scrollable body ── */
+
+.sh-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Sections ── */
+
+.sh-section {
+  /* no divider — spacing separates sections */
+}
+
+.sh-section--pinned {
+  margin-bottom: 2px;
+}
+
+.sh-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--sh-section-head-pt) 12px var(--sh-section-head-pb);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.1s;
+}
+
+.sh-section-head:hover {
+  color: var(--text-dim);
+}
+
+.sh-section-label {
+  font-size: calc(9px * var(--font-scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sh-section-head:hover .sh-section-label {
+  color: var(--text-dim);
+}
+
+.sh-section-count {
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  margin-left: auto;
+  opacity: 0.6;
+}
+
+.sh-section-icon {
+  font-size: calc(6px * var(--font-scale, 1));
+  color: var(--text-dim);
+  line-height: 1;
+}
+
+.sh-section-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.12s ease;
+  transform: rotate(-90deg);
+}
+
+.sh-section-chevron.open {
+  transform: rotate(0deg);
+}
+
+.sh-section-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sh-row-gap);
+  padding: 2px 0 var(--sh-section-items-pb);
+}
+
+/* ── Session Row ── */
+
+.sh-row {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sh-row-py) 12px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.1s;
+}
+
+.sh-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sh-row:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Selected state ── */
+
+.sh-row.selected {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sh-row.selected:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sh-row.selected .sh-row-title {
+  color: var(--text);
+}
+
+.sh-row.selected .sh-tag {
+  color: var(--text-tertiary);
+}
+
+.sh-row.selected .sh-tag--agent {
+  color: var(--text-secondary);
+}
+
+/* ── Running state — active session highlight ── */
+
+.sh-row.running {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.sh-row.running:hover {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.sh-row.running .sh-row-title {
+  color: var(--text);
+}
+
+.sh-row.running.selected {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+/* ── Error state ── */
+
+.sh-row.error .sh-row-title {
+  color: var(--error-soft);
+}
+
+/* ── Status dot ── */
+
+.sh-row-indicator {
+  flex-shrink: 0;
+  padding-top: 5px;
+}
+
+.sh-dot {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dot-idle);
+}
+
+.sh-dot--active {
+  width: 6px;
+  height: 6px;
+  background: var(--dot-running);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--dot-running) 50%, transparent);
+  animation: sh-pulse 1.8s ease-in-out infinite;
+}
+
+.sh-dot--idle {
+  background: var(--text-muted);
+}
+
+.sh-dot--error {
+  background: var(--dot-error);
+}
+
+.sh-dot--done {
+  background: var(--dot-done);
+}
+
+@keyframes sh-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px color-mix(in srgb, var(--dot-running) 50%, transparent); }
+  50% { opacity: 0.5; box-shadow: 0 0 4px color-mix(in srgb, var(--dot-running) 20%, transparent); }
+}
+
+/* ── Row content ── */
+
+.sh-row-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sh-row-title {
+  font-family: var(--font-sans);
+  font-size: calc(12.5px * var(--font-scale, 1));
+  line-height: 1.35;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sh-row-title.empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.sh-row-title-input {
+  font-family: var(--font-sans);
+  font-size: calc(12.5px * var(--font-scale, 1));
+  line-height: 1.35;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-active);
+  outline: none;
+  padding: 0;
+  width: 100%;
+}
+
+.sh-row-title-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Live preview text for active sessions ── */
+
+.sh-row-live-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  margin-top: 0;
+  transition: grid-template-rows 0.3s ease 0.1s, opacity 0.2s ease, margin-top 0.3s ease 0.1s;
+}
+
+.sh-row-live-wrap.active {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-top: 3px;
+  transition: grid-template-rows 0.3s ease, opacity 0.25s ease 0.08s, margin-top 0.3s ease;
+}
+
+.sh-row-live {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  line-height: 1.4;
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  min-height: 0;
+  mask-image: linear-gradient(to right, transparent 0%, black 8%, black 88%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 88%, transparent 100%);
+}
+
+.sh-row-live > span {
+  display: inline-block;
+  animation: sh-scroll 10s linear infinite;
+}
+
+@keyframes sh-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ── Meta tags ── */
+
+.sh-row-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sh-meta-gap);
+  flex-wrap: nowrap;
+  overflow: hidden;
+  margin-top: var(--sh-meta-mt);
+  min-width: 0;
+  /* Full-width: lives outside .sh-row-main so it spans under the
+     indicator dot on the left and the action buttons on the right. */
+}
+
+.sh-row-meta-left,
+.sh-row-meta-right {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sh-meta-gap);
+  min-width: 0;
+}
+
+.sh-row-meta-left {
+  overflow: hidden;
+}
+
+.sh-row-meta-right {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.sh-tag {
+  font-family: var(--font-sans);
+  font-style: italic;
+  font-size: calc(var(--sh-tag-size) * var(--font-scale, 1));
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.sh-tag--agent {
+  color: var(--text-label);
+}
+
+.sh-tag--model {
+  color: var(--text-muted);
+}
+
+.sh-tag--time {
+  color: var(--text-muted);
+}
+
+/* ── Row actions ── */
+
+.sh-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+  padding-top: 2px;
+}
+
+.sh-row-actions.visible {
+  opacity: 1;
+}
+
+.sh-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+  transition: color 0.1s, background 0.1s;
+}
+
+.sh-action-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sh-action-btn.pinned {
+  color: var(--text-secondary);
+}
+
+.sh-action-btn--archive:hover {
+  color: var(--error-soft);
+}
+
+/* ── Empty state ── */
+
+.sh-empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+

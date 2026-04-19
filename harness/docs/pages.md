@@ -1,206 +1,631 @@
 ---
 title: Pages
 audience: agents
-lastUpdated: 2026-04-08
-covers: harness/pages.ts harness/index.ts harness/ui/src/App.tsx harness/ui/src/components/PageRenderer.tsx harness/ui/src/widgets/index.ts .modus/pages/cockpit.json .modus/pages/terminals-2x2.json
+lastUpdated: 2026-04-19
+covers: harness/pages.ts harness/index.ts harness/ui/src/App.tsx harness/ui/src/components/PageRenderer.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/registry.ts harness/ui/src/widgets/ui-state.ts harness/ui/src/views.ts harness/sdk/types.ts .modus/pages/*.json harness/pages/*.json
 ---
 
 # Pages
 
-Custom pages are project-scoped dashboard definitions loaded from `.modus/pages/*.json`
-under the active `cwd`. They augment the built-in view registry with page entries that
-render either legacy block stacks or the current layout tree format.
+Pages are project- or harness-scoped dashboards composed from **widgets** arranged by
+a **layout tree** (splits, grids, tabs, lists, scopes). They are plain JSON files —
+loaded from several sources, rendered by `PageRenderer` / `PanelTreeRenderer`, and
+wired together at runtime by a per-page event bus (`PageStateBus`).
 
-## Load Path
+This doc is the authoritative reference for the page renderer. See `panels.md` for
+how the same primitives render inside the app-level side panels.
+
+---
+
+## 1. Load Path — Where Pages Come From
 
 | Layer | Source |
 |-------|--------|
-| Project files | `.modus/pages/*.json` |
-| Backend loader | `harness/pages.ts` via `listConfigPages(cwd)` |
-| HTTP route | `GET /api/pages?cwd=...` in `harness/index.ts` |
-| Frontend fetch | `harness/ui/src/App.tsx` on `projectCwd` change |
-| Navigation | `customPageView(page.id)` entries appended to `navViews` |
+| Project standalone | `.modus/pages/*.json` under the active `cwd` |
+| Harness built-ins | `harness/pages/*.json` (ships in-tree, e.g. `chat-studio.json`, `chat-mobile.json`, `pages.json`) |
+| Moves | any `.modus/moves/<name>/move.json` or `harness/moves/<name>/move.json` with a `page` field |
+| Actions | any `.modus/actions/<name>/action.json` with a `page` field |
+| Missions | any `.modus/missions/<name>/mission.json` with a `page` field |
+| User-profile pages | `activeUP.dashboard.pages` (legacy, seeded per profile) |
+| Backend loader | `harness/pages.ts` → `listConfigPages(cwd)` |
+| HTTP route | `GET /api/pages?cwd=...` (and `POST /api/pages/fork`) — `harness/index.ts` |
+| Frontend fetch | `App.tsx` on `projectCwd` change |
+| Navigation | every visible page becomes a nav entry keyed `page:<id>` via `customPageView(id)` |
 
-`listConfigPages(cwd)` scans `.json` files only, parses each file, normalizes both
-single-page and multi-page wrappers, adds a `source` path, and drops duplicate page ids
-after the first occurrence.
+### Scan order and origin tagging
 
-## Config Shape
+`listConfigPages(cwd)` scans in this fixed order and tags each page with an `origin`:
 
-Single page:
+1. `scanStandalonePages(cwd)` → `origin: "standalone"`
+2. `scanHarnessPages()`       → `origin: "harness"`
+3. `scanMovePages(cwd)`       → `origin: "move"`    (projects override harness moves)
+4. `scanActionPages(cwd)`     → `origin: "action"`
+5. `scanMissionPages(cwd)`    → `origin: "mission"`
+
+Disabled primitives (`enabled: false` in the owning `move.json` / `action.json` /
+`mission.json`) are skipped. Directory scans fail silently. JSON parse errors log a
+warning but do not fail the whole scan.
+
+### Duplicate-id rules — what wins when names collide
+
+The final list **deduplicates by page `id`, first occurrence wins**. Because project
+standalone files are scanned first, a project-level `.modus/pages/<id>.json` always
+overrides a same-id page from:
+
+- a harness built-in (`harness/pages/<id>.json`)
+- a move/action/mission embedded page
+- a profile-level `dashboard.pages[]` entry (merged client-side; see `App.tsx` —
+  `customPages = [...configPages, ...profilePages.filter(id not in configPages)]`)
+
+This "fork to override" pattern means you can drop a file at
+`.modus/pages/chat-studio.json` to fully replace the harness `chat-studio` built-in
+without touching the harness tree. Within `scanMovePages` / `scanActionPages`,
+projects also win over harness-shipped counterparts (the inner `seen` set blocks
+harness duplicates once a project version has been seen).
+
+### Forking a page into your project
+
+`POST /api/pages/fork { cwd, pageId }` resolves `pageId` from
+harness/moves/actions/missions (skipping any existing standalone by the same id),
+strips `origin` and `source`, and writes
+`<cwd>/.modus/pages/<pageId>.json`. Use the `pages-browser` widget or hit the
+endpoint directly.
+
+---
+
+## 2. Config Shape
+
+### Single-page file
 
 ```json
 {
   "id": "page-id",
   "title": "page title",
-  "blocks": [],
-  "layout": {},
-  "padding": 0
+  "padding": 4,
+  "nav": true,
+  "fullscreen": false,
+  "context": { "sessionId": null },
+  "layout": { /* LayoutNode */ },
+  "blocks": [ /* DashboardBlock[] — legacy */ ]
 }
 ```
 
-Multi-page wrapper:
+### Multi-page wrapper
 
 ```json
 {
   "pages": [
-    { "id": "one", "title": "one", "layout": {} },
-    { "id": "two", "title": "two", "blocks": [] }
+    { "id": "one", "title": "one", "layout": { "kind": "widget", "widget": { "type": "stats" } } },
+    { "id": "two", "title": "two", "blocks": [ { "kind": "text", "markdown": "# hi" } ] }
   ]
 }
 ```
 
-Backend type shape from `harness/pages.ts`:
+### Validation
+
+`isConfigPage()` accepts a file only if it has `id: string`, `title: string`, and
+**at least one of**: `blocks: unknown[]` or a non-null object `layout`. Everything
+else is optional. Files that fail validation are dropped silently.
+
+### `ConfigPage` (backend)
 
 ```ts
-export type ConfigPage = {
+type ConfigPage = {
   id: string;
   title: string;
   blocks?: PageBlock[];
-  layout?: PageLayoutNode;
-  padding?: number;
-  source?: string;
+  layout?: PageLayoutNode;      // preferred — see LayoutNode
+  context?: Record<string, unknown>;   // initial page-scope bus state
+  padding?: number;              // CSS padding (px) around top-level layout
+  source?: string;               // absolute path to the defining JSON
+  origin?: "standalone" | "harness" | "move" | "action" | "mission";
+  nav?: boolean;                 // default true — show in top nav
+  fullscreen?: boolean;          // hide app-level side panels when active
 };
 ```
 
-`blocks` or `layout` is required for a page to be treated as valid by `isConfigPage()`.
+### Field semantics
 
-## Block Pages
+| Field | Meaning |
+|-------|---------|
+| `id` | URL/nav key. Page renders at `page:<id>` (e.g. `#page:ops`). |
+| `title` | Nav label and tab title. |
+| `padding` | CSS `padding` in px applied once around the root layout. Default 0. |
+| `nav` | `false` hides the page from the top-nav bar (still reachable by hash). Pages embedded in moves default to visible unless `nav: false`. |
+| `fullscreen` | `true` hides `LeftPanel`, `RightPanel`, and their collapse tabs while the page is active. Used by `chat-studio` — the page carries its own chrome. |
+| `context` | Initial key/value seed for the page's `PageStateBus`. Widgets read/write it via `pageContext`. |
+| `layout` | Root `LayoutNode`. Preferred format. |
+| `blocks` | Legacy dashboard-block list (cards). Only used if `layout` is absent. |
 
-Legacy/simple pages use `blocks: DashboardBlock[]` and render through `PageRenderer`
-as the same collapsible card shells used by the dashboard.
+---
 
-Supported block kinds:
+## 3. Embedded Page Declaration (moves/actions/missions)
 
-```ts
-type DashboardBlock =
-  | { kind: "widget"; widget: WidgetBase }
-  | {
-      kind: "module";
-      id?: string;
-      title?: string;
-      size?: WidgetSize;
-      module: "actions" | "git";
-      collapsed?: boolean;
-    }
-  | {
-      kind: "text";
-      id?: string;
-      title?: string;
-      size?: WidgetSize;
-      markdown: string;
-      collapsed?: boolean;
-    };
-```
-
-Behavior:
-- `widget` blocks resolve `widget.type` through `WIDGETS`.
-- `module` blocks render built-in `Actions` or `GitPanel`.
-- `text` blocks render markdown through `Markdown`.
-- Each block gets persisted collapse state via `useWidgetUiState`.
-
-If a page contains exactly one `module` block, `PageView` bypasses the card shell and
-renders the module directly.
-
-## Layout Pages
-
-Current pages use `layout: PageLayoutNode`, rendered by `LayoutNodeView` and
-`PagePanelNode` in `harness/ui/src/components/PageRenderer.tsx`.
+Move/action/mission configs can embed a page declaration that becomes a
+first-class nav entry through the unified page discovery path.
 
 ```ts
-export type PageLayoutNode =
-  | {
-      kind: "grid";
-      id?: string;
-      columns: number;
-      gap?: number;
-      templateColumns?: string[];
-      templateRows?: string[];
-      children: PageLayoutNode[];
-    }
-  | {
-      kind: "panel";
-      id?: string;
-      title?: string;
-      mode?: "list" | "tabs";
-      columnSpan?: number;
-      rowSpan?: number;
-      items: PagePanelItem[];
-    };
-
-export type PagePanelItem =
-  | { kind: "widget"; widget: WidgetBase };
-```
-
-Grid nodes:
-- Render as CSS grid containers.
-- Use `templateColumns` or fall back to `repeat(columns, minmax(0, 1fr))`.
-- Use `templateRows` when provided; otherwise rows auto-fill with `minmax(0, 1fr)`.
-- Recurse into `children`.
-
-Panel nodes:
-- Render through shared `PanelSurface`.
-- Support `mode: "list" | "tabs"`; default is `"tabs"`.
-- Respect `columnSpan` and `rowSpan` when nested under a grid.
-- Convert `items` into `PanelSurfaceItem[]` with widget height hints from `WIDGET_DEFS`.
-
-`padding` is applied by `PageView` around the top-level layout container.
-
-## Widget References
-
-Pages do not inline widget components directly. They reference widget configs by type:
-
-```ts
-type WidgetBase = {
-  id?: string;
-  type: string;
-  title?: string;
-  size?: "full" | "half" | "third";
-  collapsed?: boolean;
+type EmbeddedPageDecl = {
+  id: string;
+  title: string;
+  icon?: string;          // not currently surfaced by nav
+  nav?: boolean;
+  layout?: unknown;       // required — page must have a layout
+  context?: Record<string, unknown>;
+  padding?: number;
 };
 ```
 
 Rules:
-- `type` must match a registered widget in `harness/ui/src/widgets/*.widget.tsx`.
-- `id` should be unique per widget instance. The renderer synthesizes a fallback id, but
-  explicit ids are safer because collapse state and other per-instance UI state key off id.
-- Unknown widget types render an `unknown widget: <type>` placeholder.
+- The primitive's `enabled: false` hides its page.
+- Missing `layout` means the declaration is ignored for page discovery.
+- Move pages **without** `layout` still ride the `move-page:<moveName>` nav path
+  via `MovePageView` (this is a separate legacy surface — `App.tsx` filters
+  them into `bareMovePagesNav`).
 
-For page-scoped persistent terminals, use:
+---
+
+## 4. Layout Tree — `LayoutNode`
+
+The page `layout` field is a recursive tree. All non-leaf nodes can contain other
+nodes; only `widget` leaves are terminal.
+
+```ts
+type LayoutLeaf = {
+  kind: "widget";
+  id?: string;
+  widget: WidgetBase;
+  publish?: Record<string, string>;     // widget-key → pageContext-key (writes)
+  subscribe?: Record<string, string>;   // widget-key ← pageContext-key (reads)
+  canNavigate?: boolean;                // enables pageContext.navigate/selectSession
+  showWhen?: Record<string, unknown>;   // AND of page-context equalities; null matches null/undef
+  hideWhen?: Record<string, unknown>;   // OR of equalities hiding the leaf
+};
+
+type LayoutNode =
+  | { kind: "grid";  columns; gap?; templateColumns?; templateRows?; children; showWhen?; hideWhen? }
+  | { kind: "split"; axis: "horizontal"|"vertical"; sizes?: (number|"auto")[]; collapsible?: boolean[]; children; showWhen?; hideWhen? }
+  | { kind: "tabs";  activeTab?; columnSpan?; rowSpan?; editable?; target?; children: LayoutLeaf[]; title?; showWhen?; hideWhen? }
+  | { kind: "list";  columnSpan?; rowSpan?; editable?; target?; children: LayoutLeaf[]; title?; showWhen?; hideWhen? }
+  | { kind: "scope"; context?; bindUrlSession?; children: LayoutNode[]; showWhen?; hideWhen? }
+  | LayoutLeaf;
+```
+
+The aliases `PanelNode`, `PageLayoutNode`, and `PanelLeaf` are kept as `@deprecated`
+exports that resolve to `LayoutNode` / `LayoutLeaf`.
+
+### Node kinds
+
+| Kind | Renders as | Notes |
+|------|------------|-------|
+| `grid` | CSS grid (`templateColumns` or `repeat(columns, minmax(0, 1fr))`; `templateRows` optional). | Children recurse; direct child `tabs` / `list` honor `columnSpan` / `rowSpan`. |
+| `split` | Flex container with draggable `panel-split-handle` between children. | `sizes[i]` is flex weight (number) or `"auto"` (content-sized, `flex: 0 0 auto`). `collapsible[i]: true` replaces the resize handle with a `SplitCollapseTab` on the inner edge (chevron toggles, drag resizes the neighbor). Auto/collapsed neighbors skip resize. Mobile default (≤640px) starts collapsible children collapsed. |
+| `tabs` | `PanelSurface` in tab mode. | Single active tab; horizontal wheel scrolling on the tab strip. |
+| `list` | `PanelSurface` in list mode. | Each child is a collapsible card (`CollapsibleSurfaceItem`). |
+| `scope` | Invisible wrapper that creates a nested `PageStateBus` for its subtree. | See §5.  |
+| `widget` | Single leaf widget, no chrome. | Bypasses `PanelSurface`. |
+
+### `editable` panels
+
+A `tabs` or `list` node with `editable: true` renders through `EditablePanel`
+instead of the static path. That adds:
+
+- `WidgetPicker` UI to add/remove/reorder widgets at runtime.
+- A mode toggle (`tabs` ↔ `list`) independent of the config.
+- `localStorage` persistence of the widget list under key
+  `harness:editable-panel:<node.id or joined widget ids>`.
+- Dynamic handling of move widgets and file-open events (see §5.4).
+
+### `target` panels
+
+A `tabs`/`list` node with `target: true` (usually combined with `editable: true`)
+listens on the scope bus for:
+
+- `open-move` — a move widget attached to the scope's session → new dynamic tab.
+- `close-move` — remove the tab and detach the move via `modus.detachMove`.
+- `focus-tab` — switch active tab by id.
+
+Dynamic tabs carry a `MoveWidget` component mounted with its module URL and API
+token. `EditablePanel` also self-fetches `modus.getActiveWidgets(sessionId)` on
+mount and on `modus:widgets-changed` so it heals if events fired before mount.
+
+When a new dynamic tab appears, the panel also emits `expand-target` on the bus so
+any ancestor `split` with a collapsible branch containing this target unfolds
+(`containsTarget()` in `PanelTreeRenderer`).
+
+### File-open → code-editor focus
+
+`EditablePanel` subscribes to `useFileViewer().subscribeFileOpens`. When a file is
+opened anywhere and this panel contains a `code-editor` widget, the panel
+switches to the editor tab and emits `expand-target`. This is the
+page-level equivalent of how the app-level `RightPanel` auto-opens on file clicks
+(see `App.tsx` panel file-route effect).
+
+### Visibility — `showWhen` / `hideWhen`
+
+Every node kind (grid, split, tabs, list, scope, widget) supports both fields.
+Implemented by `useLeafVisible()`:
+
+- `showWhen` is an **AND** of equalities. A node shows only when every listed
+  pagecontext key matches the expected value. `null` matches null/undefined.
+- `hideWhen` is an **OR**: any single match hides the node.
+- For leaves the node is removed; for split children, the wrapper collapses to
+  `flex: 0 0 0px` so the layout reclaims the space (`SplitChild`).
+
+Example — chat-studio's center area:
+
+```json
+{ "kind": "tabs", "showWhen": { "sessionId": null }, "children": [ /* new-session, inbox */ ] }
+{ "kind": "widget", "widget": { "type": "session-chat" }, "hideWhen": { "sessionId": null } }
+{ "kind": "widget", "widget": { "type": "composer" },     "hideWhen": { "sessionId": null } }
+```
+
+---
+
+## 5. Page-Scope Event Bus — `PageStateBus`
+
+Every page mounts a single `PageStateBus` via `createPageStateBus(initial)` in
+`PageView`. The bus carries:
+
+1. **Shared state** — a flat key/value map, seeded by the page's `context` field.
+2. **Events** — typed, type-keyed pub/sub (`ScopeEvent { type: string; ... }`).
+3. **Navigation hooks** — `onNavigate`/`onSelectSession` injected from the app.
+
+Widgets receive a `pageContext: PageContextHandle` prop when rendered inside a
+page (or an `editable` panel). The handle is the **only** surface the widget uses
+to talk to the bus:
+
+```ts
+type PageContextHandle = {
+  get: (key: string) => unknown;
+  set: (key: string, value: unknown) => void;
+  emit: (event: ScopeEvent) => void;
+  on: (type: string, handler: (event: ScopeEvent) => void) => () => void;
+  navigate?: (view: string) => void;        // only if leaf has canNavigate: true
+  selectSession?: (id: string) => void;      // only if leaf has canNavigate: true
+};
+```
+
+### Key remapping — `publish` / `subscribe`
+
+The layout leaf rewrites the widget's view of bus keys:
+
+- `publish: { selectedSession: "sessionId" }` — when the widget calls
+  `pageContext.set("selectedSession", v)`, the bus key written is `sessionId`.
+- `subscribe: { sessionId: "activeSessionId" }` — when the widget calls
+  `pageContext.get("sessionId")`, it reads `activeSessionId` from the bus.
+
+This lets the same widget participate in different pages with different key
+conventions without editing the widget. Typical convention: `sessionId` for the
+chat pipeline (session-list/session-chat/composer); `activeSessionId` or
+`selectedSession` when two or more distinct "sessions" exist per page.
+
+### Navigation escape hatch — `canNavigate`
+
+`navigate` and `selectSession` are `undefined` on the handle unless the leaf sets
+`canNavigate: true`. This makes it explicit when a widget is allowed to leave the
+page. `session-list`, for instance, publishes `selectedSession` into the bus by
+default (stay-on-page) and only navigates when the leaf opts in.
+
+### Scopes — nested buses
+
+A `{ kind: "scope", context, bindUrlSession, children }` node wraps its subtree in
+its own `PageStateBus` via `ScopeProvider`. Widgets inside see only the nearest
+bus (`useContext(PageStateBusContext)`). Uses:
+
+- **Dual-session pages** (`.modus/pages/dual-session.json`) — two scopes, each
+  with its own `sessionId` key, side-by-side.
+- **Fullscreen chat** (`harness/pages/chat-studio.json`) — a single top-level
+  scope with `bindUrlSession: true` so the URL session (`#...`) flows into and out
+  of the bus.
+
+`bindUrlSession` (one per page max) wires URL hash ↔ bus `sessionId`:
+
+- Inbound: `PageUrlProvider` drops the URL session into the bus on mount and on
+  `hashchange`.
+- Outbound: bus `sessionId` changes call `bus.onSelectSession(sid)` which routes
+  through the app router and updates the URL.
+
+`ScopeSessionWatcher` (mounted under every scope) polls
+`modus.getActiveWidgets(sessionId)` on session change and on
+`modus:widgets-changed`, and emits `open-move` on the scope bus for each new
+move widget. This is how an agent that activates a move ("chess", etc.) causes a
+widget tab to appear on the page automatically.
+
+### Built-in events
+
+| Event | Emitter | Listener |
+|-------|---------|----------|
+| `open-move` | `ScopeSessionWatcher`, `EditablePanel` self-fetch | `EditablePanel` with `target: true` → adds dynamic tab |
+| `close-move` | `EditablePanel` close button | removes tab, calls `modus.detachMove` |
+| `focus-tab` | anyone | `EditablePanel` sets active tab id |
+| `expand-target` | new move tab, file-open → editor | `ResizableSplit` uncollapses collapsible branches that `containsTarget()` |
+
+Widgets are free to define their own event types for cross-widget coordination —
+the bus forwards any `{ type, ... }` payload.
+
+---
+
+## 6. Block-Based Pages (Legacy)
+
+When a page uses `blocks` instead of `layout`, `PageRenderer` renders each block
+as a collapsible `BlockShell` card. Supported blocks:
+
+```ts
+type DashboardBlock =
+  | { kind: "widget"; widget: WidgetBase }
+  | { kind: "module"; id?; title?; size?; module: "actions" | "git"; collapsed? }
+  | { kind: "text";   id?; title?; size?; markdown: string; collapsed? };
+```
+
+- `widget` blocks resolve `widget.type` through `WIDGETS`.
+- `module: "actions"` renders the full `<Actions>` panel. `module: "git"` renders
+  `<GitPanel>`.
+- `text` blocks render markdown.
+- Every block gets per-user collapse state keyed by id via `useWidgetUiState`.
+
+Special case: a page with exactly one `module` block and no others renders that
+module directly (no card shell). Used to fold `git` into the `PageView`
+infrastructure.
+
+Block-based pages do **not** get a `PageStateBus`. No `pageContext` is provided to
+their widgets. New pages should prefer `layout`.
+
+---
+
+## 7. Widget References
+
+Pages never import widget components directly — they reference types through the
+registry.
+
+### `WidgetBase`
+
+```ts
+type WidgetBase = {
+  id?: string;       // stable instance id; used for UI state key-in
+  type: string;      // must match a registered WidgetDef
+  title?: string;
+  size?: "full" | "half" | "third";   // dashboard-only
+  collapsed?: boolean;
+  // any widget-specific config fields live here too
+};
+```
+
+### Registry (`harness/ui/src/widgets/registry.ts`)
+
+`WIDGET_DEFS` is a flat object keyed by widget type. Each entry has:
+
+```ts
+type WidgetDef = {
+  type: string;
+  component: ComponentType<WidgetProps<any>>;
+  miniComponent?: ComponentType<WidgetProps<any>>;   // compact variant used by PanelTreeRenderer leaves
+  zones?: ("dashboard" | "left-panel" | "right-panel")[];
+  minHeight?: number;
+  maxHeight?: number;
+  preferredHeight?: number;
+};
+```
+
+`WIDGETS` is the same data flattened to `type → component`, used by `PageRenderer`
+(block path), `LeftPanel`, `RightPanel`, `WidgetPicker`, and `EditablePanel`.
+
+### Unknown widget types
+
+`PanelTreeRenderer` renders `unknown widget: <type>` for unregistered types.
+`LeftPanel` / `RightPanel` filter them out of `WIDGETS` silently. `WidgetPicker`
+only lists registered types.
+
+### Move widgets — `"move:<name>"`
+
+A leaf widget with `type: "move:chess"` is not a registered widget. Instead,
+`PanelTreeRenderer.LeafWidget` detects the `move:` prefix and renders
+`MoveWidgetEmbed` with the move name. `MoveWidgetEmbed` pulls the move's widget
+info via SDK and mounts the remote module. This lets pages embed move widgets
+directly without running the move session — useful for ambient UIs.
+
+### Persistent terminals
+
+The `persistent-terminal` widget is identity-bound, not instance-bound. Its owner
+keys are:
 
 ```json
 {
   "type": "persistent-terminal",
-  "ownerType": "page",
-  "ownerName": "pageid:label"
+  "ownerType": "page",          // default
+  "ownerName": "cockpit:term-a" // distinct value per shell
 }
 ```
 
-`ownerName` is the identity boundary. Distinct values create distinct persistent terminals
-even when the widget type is the same.
+`ownerName` is the identity boundary. Two persistent-terminal widgets with the
+same `ownerName` share the same pty; different `ownerName`s get distinct
+terminals. Harness also issues `ownerType: "action"` terminals, which the
+`RightPanel` auto-polls and exposes as tabs (see `RightPanel.tsx`).
 
-## Lifecycle
+### Code editor widget & file viewer linking
 
-`harness/ui/src/App.tsx` drives page lifecycle:
+`code-editor` (`code-editor.widget.tsx`) calls `useOptionalRightPanelContext()`.
+When the editor is inside the app-level `RightPanel`, it uses the shared panel
+browser path (synced per session and persisted via `saveSessionUiState`). When
+rendered on a page layout, it falls back to local state.
 
-- On app mount and whenever `projectCwd` changes, the client fetches `GET /api/pages?cwd=...`.
-- Pages from `.modus/pages` are merged ahead of `activeUP.dashboard.pages`; matching ids in
-  config files override profile-defined pages.
-- Each page becomes a nav entry using `view: "page:<id>"`.
-- When a custom page is first visited, its id is added to `mountedCustomPageIds`.
-- Mounted pages stay in the React tree and are hidden with `display: "contents"`/`"none"`
-  switching, so navigating away does not rebuild them.
-- If the current `page:<id>` no longer exists after reload, the app redirects to `home`.
+File-open events are routed by three layers:
 
-## Working Examples
+1. `FileViewerProvider.openFile(path)` — authoritative state (tabs, active path,
+   dirty tracking, save). Backend `open-file` UI events are piped here by
+   `onUiEvent("open-file", ...)`.
+2. App-level hook in `App.tsx`: if the current view is not chat or a custom page,
+   opens the app-level right panel to a `code-editor` widget (adding one if
+   needed).
+3. Page-level hook in `EditablePanel`: switches to the editor tab within the
+   page and emits `expand-target` so ancestor splits unfold.
 
-`.modus/pages/cockpit.json`:
-- Six-column grid with explicit `templateColumns` and `templateRows`.
-- Mixes list and tab panels.
-- Uses page-owned persistent terminals (`cockpit:term-a` through `cockpit:term-d`).
-- Includes non-terminal widgets such as `session-list`, `code-editor`, `terminals`, and `processes`.
+Pages that declare their own `code-editor` widget (like `chat-studio`, `workspace`)
+handle file-open internally and the app-level router explicitly skips them
+(`if (currentView === "chat" || getCustomPageId(currentView)) return;`).
 
-`.modus/pages/terminals-2x2.json`:
-- Minimal 2x2 grid.
-- Four tab panels, each containing one `persistent-terminal`.
-- Good reference for the smallest useful layout-page config.
+### UI state persistence
+
+Widget UI state (collapse, group-mode, etc.) is persisted to `localStorage` via
+`useWidgetUiState(scope, widgetId, field, fallback)`:
+
+```
+harness:widget-ui:<userProfile or "anon">:<cwd or "global">:<widgetId>:<field>
+```
+
+Keys are cwd- and user-scoped, so per-project / per-user UI state is isolated.
+
+---
+
+## 8. Rendering Pipeline
+
+### Entry — `PageView`
+
+`PageView({ blocks, layout, context, padding, onNavigate, onSelectSession, hashSessionId })`:
+
+1. Normalizes the layout via `normalizePageLayoutNode`. This migrates a legacy
+   `{ kind: "panel", mode, items }` shape into a current `{ kind: "tabs" | "list",
+   children: LayoutLeaf[] }` node.
+2. Creates a single `PageStateBus` (stable across re-renders), attaches
+   `onNavigate` and `onSelectSession` as bus callbacks.
+3. Wraps the tree in `<PageStateBusContext.Provider>` and `<PageUrlProvider
+   hashSessionId={...}>`.
+4. Applies `padding` once around the root.
+5. Delegates rendering to `<PanelTreeRenderer node={normalizedLayout} />`.
+
+If there is no layout, falls back to `<PageRenderer blocks={...} />` (legacy block
+path), or — as a special case — renders a single `module` block directly.
+
+### Recursion — `PanelTreeRenderer`
+
+Dispatch by `node.kind`:
+
+- `widget` → `renderLeaf` → `LeafWidget` (widget component or `MoveWidgetEmbed`,
+  with `pageContext` + `canNavigate` gating).
+- `split` → `ResizableSplit` (drag handles, collapse tabs, `expand-target`
+  listener, `containsTarget` probe).
+- `grid` → CSS grid container; children recurse; `columnSpan` / `rowSpan` on
+  direct tabs/list children.
+- `scope` → `<ScopeProvider>` + `ScopeSessionWatcher` + optional
+  `ScopeUrlSessionBinder`. Single child renders as-is; multiple children stack in
+  a flex column.
+- `tabs` / `list`:
+  - `editable: true` → `EditablePanel` (mutable widget list, dynamic tabs).
+  - `editable: false|undefined` → static `PanelSurface` with items mapped via
+    `renderLeaf`.
+
+### Leaf render — `LeafWidget`
+
+1. Resolves `widgetId` via `getLeafId(leaf, index)` — `leaf.id` → `widget.id` →
+   `"<type>-<index+1>"`.
+2. Calls `usePageContext(publish, subscribe, canNavigate)` to build the scoped
+   handle.
+3. Calls `useLeafVisible(showWhen, hideWhen)` — returns `null` if hidden.
+4. If `widget.type` starts with `move:` → `MoveWidgetEmbed`.
+5. Else looks up `WIDGET_DEFS[type]`; prefers `miniComponent` over `component`.
+6. Renders `<Comp config={widget} widgetId active onNavigate onSelectSession
+   pageContext />`.
+
+---
+
+## 9. Lifecycle & Navigation
+
+In `App.tsx`:
+
+- On mount and whenever `projectCwd` changes, the client fetches
+  `GET /api/pages?cwd=...` into `configPages`.
+- `customPages = [...configPages, ...profilePages.filter(id not in configPages)]`.
+  Profile-defined pages are merged after config pages with the same dedupe rule.
+- Every `page.nav !== false` page becomes a nav entry:
+  `{ view: customPageView(page.id), label: page.title }`.
+- Visiting a custom page adds its id to `mountedCustomPageIds`. Mounted pages
+  stay in the React tree and are hidden via
+  `style={{ display: isActive ? "contents" : "none" }}`, so navigating away does
+  not rebuild them (keeps session subscriptions, terminal pty handles, and page
+  bus state alive).
+- The `hashSessionId` is forwarded to the **active** page only — inactive mounted
+  pages get `null` so they don't fight over the URL.
+- If the current `page:<id>` disappears after a reload (page deleted on disk),
+  the app redirects to `home`.
+
+### `fullscreen` pages
+
+When the active page's `fullscreen` is `true`:
+
+- `shouldShowAppPanels = panelsEnabled && !isFullscreenPage` evaluates to `false`.
+- `LeftPanel`, `RightPanel`, and their collapse tabs are omitted.
+
+`chat` view special-case: if a project fork of `chat-studio` exists, it replaces
+the built-in `ChatView` — the `chat` slot renders `<PageView>` with the fork's
+layout. Its `fullscreen` flag controls whether the app-level panels show.
+
+---
+
+## 10. Examples
+
+### `harness/pages/chat-studio.json`
+
+Default chat surface when no project fork exists.
+
+- Single top-level `scope` with `bindUrlSession: true`, `context: { sessionId: null }`.
+- 3-column split (1, 3, 1), outer columns collapsible.
+- Left: editable tabs (session-list, profiles-manager, moves, actions-manager).
+- Center: vertical split with auto-sized top tabs (shown only when no session —
+  `showWhen: { sessionId: null }`), main session-chat (`hideWhen: { sessionId:
+  null }`), and composer at bottom.
+- Right: editable target tabs — sidebar, activity, edits, editor, terminal,
+  profile-card. `target: true` means move widgets attach here automatically.
+
+### `harness/pages/chat-mobile.json`
+
+Same scope/context, single editable tabs panel. No split. Widgets toggled via
+`showWhen` / `hideWhen`. Good reference for compact layouts.
+
+### `.modus/pages/dual-session.json`
+
+Two side-by-side `scope` subtrees — two independent sessions on one page.
+Neither scope binds the URL; session selection is local to each scope.
+
+### `.modus/pages/home.json`
+
+Non-chat dashboard. 3-column collapsible split; center is a vertical split of two
+tab panels; outer columns are lists. No scope/context — page has no shared state.
+
+### `.modus/pages/workspace.json`
+
+Shared-state example: page-level `context: { activeSessionId: null }`. The left
+session-list publishes selection through `publish: { selectedSession:
+"activeSessionId" }`; the center session-chat and right session-sidebar read it
+through `subscribe: { sessionId: "activeSessionId" }`. One persistent terminal
+tied to the page via `ownerName: "workspace:main"`.
+
+### `.modus/pages/ops.json`
+
+Four `persistent-terminal` widgets in a 2×2 arrangement, plus a right-side list
+of process/provider/activity widgets. Demonstrates multi-terminal layout with
+distinct `ownerName` values.
+
+### `.modus/pages/notes.json` / `harness/pages/pages.json`
+
+Minimal single-widget pages — root layout is `{ kind: "widget", widget: { ... } }`,
+no surrounding chrome.
+
+---
+
+## 11. Relationship to App-Level Panels
+
+The same `LayoutNode` / widget primitives also back the **app-level side panels**
+(left and right) via `LayoutProvider` and `PanelTreeRenderer`. Pages use them to
+compose a whole screen; panels use them to compose a sidebar. See `panels.md` for
+details on side-panel persistence (`UserProfileUiConfig.layouts[view]`) and
+per-session state caching in chat view.
+
+Key differences:
+
+| Concern | Pages | App-level panels |
+|---------|-------|------------------|
+| Source | project/harness JSON, moves/actions/missions, profile | `UserProfileUiConfig.layouts[view]` + defaults |
+| Persistence | JSON on disk (fork model) | profile patch via `modus.patchUserProfileUiConfig` |
+| Page bus | yes, per page | no (widgets rely on global stores directly) |
+| Fullscreen | can disable app panels | always present |
+| URL binding | via `scope.bindUrlSession` | chat view reads the URL session directly |

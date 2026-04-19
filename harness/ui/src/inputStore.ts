@@ -1,39 +1,57 @@
 /**
- * Input Store — external store for the main chat input value.
+ * Input Store — per-session draft storage for the chat input.
  *
- * Isolates input state from SessionProvider so keystrokes don't
- * trigger full-app re-renders. Only components that explicitly
- * subscribe via useInputValue() re-render on typing.
- *
- * Provider-level operations (selectSession, newSession, send, etc.)
- * use setInputValue() / getInputValue() imperatively.
+ * Keeps a Map<sessionId, string> so switching sessions preserves
+ * unsent drafts. Components subscribe via useInputValue() which
+ * only re-renders when the active session's value changes.
  */
 
 import { useSyncExternalStore } from "react";
 
-let value = "";
+const drafts = new Map<string, string>();
+let activeSessionId: string | null = null;
+let revision = 0;
 const listeners = new Set<() => void>();
 
 function notify() {
+  revision++;
   for (const fn of listeners) fn();
 }
 
 export function getInputValue(): string {
-  return value;
+  return (activeSessionId ? drafts.get(activeSessionId) : undefined) ?? "";
 }
 
 export function setInputValue(v: string) {
-  if (v === value) return;
-  value = v;
+  const current = getInputValue();
+  if (v === current) return;
+  if (activeSessionId) {
+    if (v) {
+      drafts.set(activeSessionId, v);
+    } else {
+      drafts.delete(activeSessionId);
+    }
+  }
+  notify();
+}
+
+export function setActiveInputSession(id: string | null) {
+  if (id === activeSessionId) return;
+  activeSessionId = id;
   notify();
 }
 
 function subscribe(cb: () => void): () => void {
   listeners.add(cb);
-  return () => listeners.delete(cb);
+  return () => { listeners.delete(cb); };
 }
 
-/** React hook — re-renders only when the input value changes. */
+function getSnapshot(): number {
+  return revision;
+}
+
+/** React hook — re-renders only when the active session's input value changes. */
 export function useInputValue(): string {
-  return useSyncExternalStore(subscribe, getInputValue);
+  useSyncExternalStore(subscribe, getSnapshot);
+  return getInputValue();
 }

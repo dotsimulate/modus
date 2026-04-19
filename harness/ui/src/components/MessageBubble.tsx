@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef, type ReactNode } from "react";
+import { memo, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { ThinkingBlock } from "./ThinkingBlock";
 import type { Message, ToolCall } from "../../../sdk/index";
 import { tokenParam } from "../modusClient";
@@ -9,6 +9,8 @@ import { StreamingCursor } from "./StreamingCursor";
 import { formatProviderTokenUsage } from "./providerStats";
 import { CopyMessageButton } from "./CopyMessageButton";
 import { AudioArtifact } from "./AudioArtifact";
+import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { addPrompt } from "../promptCache";
 
 function artifactSrc(url: string): string {
   const tp = tokenParam();
@@ -69,6 +71,11 @@ type Props = {
   children?: ReactNode;
 };
 
+function formatContextPct(meta: Message["meta"]): string | null {
+  if (!meta?.contextTokensUsed || !meta.contextWindow) return null;
+  return `${Math.round((meta.contextTokensUsed / meta.contextWindow) * 100)}%`;
+}
+
 function formatMeta(meta: Message["meta"], provider?: string): string {
   if (!meta) return "";
   const parts: string[] = [];
@@ -77,6 +84,8 @@ function formatMeta(meta: Message["meta"], provider?: string): string {
   if (meta.turns != null) parts.push(`${meta.turns} turns`);
   const usage = formatProviderTokenUsage(provider, meta.inputTokens, meta.outputTokens);
   if (usage) parts.push(usage);
+  const ctx = formatContextPct(meta);
+  if (ctx) parts.push(`${ctx} ctx`);
   if (meta.duration != null) parts.push(`${(meta.duration / 1000).toFixed(1)}s`);
   return parts.join("  ");
 }
@@ -141,7 +150,35 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
   void onBranch;
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [savedToast, setSavedToast] = useState(false);
   const wasStreamingRef = useRef(false);
+  const { open: openContextMenu, portal: contextMenuPortal } = useContextMenu();
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString() ?? "";
+    if (!selectedText.trim()) return; // let the browser default menu handle it
+    const items: ContextMenuItem[] = [
+      {
+        kind: "action",
+        label: "Copy",
+        onClick: () => {
+          void navigator.clipboard.writeText(selectedText).catch(() => {});
+        },
+      },
+      { kind: "separator" },
+      {
+        kind: "action",
+        label: "Save to prompt cache",
+        onClick: () => {
+          addPrompt(selectedText);
+          setSavedToast(true);
+          setTimeout(() => setSavedToast(false), 1400);
+        },
+      },
+    ];
+    openContextMenu(e, items);
+  }, [openContextMenu]);
   const toolCount = countAllTools(msg.toolCalls);
   const liveElapsed = useElapsed(isStreaming && !msg.meta, msg.timestamp);
   const duration = msg.meta?.duration ?? liveElapsed;
@@ -181,10 +218,17 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
       )}
 
       {msg.content && (
-        <div className={`message-content${isNew ? " message-content--new" : ""}`}>
+        <div
+          className={`message-content${isNew ? " message-content--new" : ""}`}
+          onContextMenu={handleContextMenu}
+        >
           <Markdown content={msg.content} />
+          {savedToast && (
+            <div className="prompt-cache-toast">saved to prompt cache</div>
+          )}
         </div>
       )}
+      {contextMenuPortal}
 
       {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
         <div className="message-tools">
@@ -262,6 +306,9 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             <span className="meta-tokens">
               {usageText}
             </span>
+          )}
+          {formatContextPct(msg.meta) && (
+            <span className="meta-context">{formatContextPct(msg.meta)} ctx</span>
           )}
           {msg.meta.duration != null && (
             <span className="meta-duration">

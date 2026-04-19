@@ -1,6 +1,6 @@
 import { useSyncExternalStore, useMemo } from "react";
 import { API_BASE, authHeaders } from "./modusClient";
-import type { ClientExtensionManifestItem } from "../../sdk/index";
+import type { ClientExtensionManifestItem, MoveListItem } from "../../sdk/index";
 
 type ComposerSnapshot = {
   sessionId?: string;
@@ -16,7 +16,11 @@ type ComposerHandle = {
   setDraft: (text: string) => void;
   insertText: (text: string) => void;
   submit: (text?: string) => void;
+  /** Attach a move as a chip above the textarea. Optional — older composers may not support it. */
+  attachMove?: (move: MoveListItem, inputs: Record<string, unknown>) => void;
 };
+
+type PendingAttach = { move: MoveListItem; inputs: Record<string, unknown> };
 
 type ComposerTarget = Omit<ComposerHandle, "id">;
 
@@ -107,6 +111,8 @@ type ShortcutBinding = {
 };
 
 const composers = new Map<string, ComposerHandle>();
+/** Attaches queued for composers that haven't registered yet (race-free session creation). */
+const pendingAttaches = new Map<string, PendingAttach>();
 let activeComposerId: string | null = null;
 const shortcuts: ShortcutRegistration[] = [];
 const composerActions = new Map<string, ComposerActionRegistration>();
@@ -211,6 +217,13 @@ function ensureShortcutListener() {
 
 export function registerComposer(handle: ComposerHandle): () => void {
   composers.set(handle.id, handle);
+  // Drain any pending attach queued before this composer mounted.
+  const pending = pendingAttaches.get(handle.id);
+  if (pending && handle.attachMove) {
+    pendingAttaches.delete(handle.id);
+    try { handle.attachMove(pending.move, pending.inputs); }
+    catch (err) { console.error("[composer] attachMove on register failed:", err); }
+  }
   notifyComposerActions();
   return () => {
     composers.delete(handle.id);
@@ -223,6 +236,25 @@ export function registerComposer(handle: ComposerHandle): () => void {
 
 export function activateComposer(id: string): void {
   if (composers.has(id)) activeComposerId = id;
+}
+
+/**
+ * Attach a move to a composer by ID. If the composer is already mounted, delivers
+ * immediately. Otherwise buffers the attach until `registerComposer(id)` is called
+ * — this closes the race between `newSession()` and ChatInput mounting.
+ */
+export function queueComposerAttach(
+  composerId: string,
+  move: MoveListItem,
+  inputs: Record<string, unknown>,
+): void {
+  const handle = composers.get(composerId);
+  if (handle?.attachMove) {
+    try { handle.attachMove(move, inputs); }
+    catch (err) { console.error("[composer] attachMove failed:", err); }
+    return;
+  }
+  pendingAttaches.set(composerId, { move, inputs });
 }
 
 export function useComposerActions(composerId: string): ComposerActionView[] {

@@ -51,6 +51,7 @@ import type {
   ProviderUsageAnalytics,
   DeepAnalytics,
   MemoryItem,
+  PromptCache,
   ClientExtensionManifestItem,
   ProjectUiState,
   ProjectUiAssetInfo,
@@ -396,6 +397,12 @@ export class ModusClient {
   async saveGlobalConfig(config: GlobalConfig, cwd?: string): Promise<void> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; const r = await this.fetch(`/api/profiles/_global${q}`, { method: "PUT", body: JSON.stringify(config) }); if (!r.ok) { const b = await r.text().catch(() => ""); throw new Error(b || "Failed to save global config"); } }
   /** Checks which environment variable names have values set in the secrets store. */
   async checkSecrets(vars: string[]): Promise<{ status: Record<string, boolean>; secretsFile: string }> { return (await this.fetch("/api/secrets/check", { method: "POST", body: JSON.stringify({ vars }) })).json(); }
+
+  // ── Prompt Cache ──
+  /** Returns the user's saved prompt cache. */
+  async getPromptCache(): Promise<PromptCache> { return (await this.fetch("/api/prompt-cache")).json(); }
+  /** Overwrites the user's saved prompt cache. */
+  async savePromptCache(cache: PromptCache): Promise<void> { const r = await this.fetch("/api/prompt-cache", { method: "PUT", body: JSON.stringify(cache) }); if (!r.ok) { const b = await r.text().catch(() => ""); throw new Error(b || "Failed to save prompt cache"); } }
 
   // ── Providers ──
   /** Lists registered provider names. */

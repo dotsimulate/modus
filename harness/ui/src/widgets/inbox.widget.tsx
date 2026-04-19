@@ -51,11 +51,8 @@ export default function InboxWidget({ pageContext, onSelectSession }: WidgetProp
   }, [serverSessions]);
 
   const handleSelect = (id: string) => {
-    if (pageContext) {
-      pageContext.set("selectedSession", id);
-    } else {
-      onSelectSession(id);
-    }
+    pageContext?.set("selectedSession", id);
+    onSelectSession(id);
   };
 
   if (inbox.length === 0) {

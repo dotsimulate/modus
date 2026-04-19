@@ -934,6 +934,7 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
         cacheReadTokens: cacheRead,
         cacheWriteTokens: cacheWrite,
         contextWindow,
+        contextTokensUsed: m.context_tokens_used,
       },
     };
   }

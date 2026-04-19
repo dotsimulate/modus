@@ -1,0 +1,248 @@
+/* Hints Launcher widget
+ *
+ * Intent-routing gate. Follows the moves-widget / notes-widget aesthetic —
+ * compact, flat, uses the panel/accent color tokens from colors.css.
+ */
+
+.hl-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+  min-height: 0;
+  font-size: 12px;
+  color: var(--fg, #d4d4d4);
+}
+
+/* ── Input area ── */
+
+.hl-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hl-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 54px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg, #d4d4d4);
+  background: var(--panel-bg, rgba(0, 0, 0, 0.25));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.hl-input:focus {
+  border-color: var(--accent, #6ea8fe);
+}
+
+.hl-input::placeholder {
+  color: var(--fg-muted, rgba(255, 255, 255, 0.35));
+}
+
+.hl-input-actions {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.hl-profile-hint {
+  flex: 1;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg, #d4d4d4);
+  background: var(--panel-bg, rgba(0, 0, 0, 0.2));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  border-radius: 4px;
+  outline: none;
+}
+
+.hl-profile-hint:focus {
+  border-color: var(--accent, #6ea8fe);
+}
+
+.hl-btn {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg, #d4d4d4);
+  background: var(--panel-bg, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.hl-btn:hover:not(:disabled) {
+  background: var(--panel-bg-hover, rgba(255, 255, 255, 0.08));
+  border-color: var(--accent, #6ea8fe);
+}
+
+.hl-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hl-btn--route {
+  min-width: 54px;
+}
+
+/* ── Status line ── */
+
+.hl-status {
+  font-size: 11px;
+  color: var(--fg-muted, rgba(255, 255, 255, 0.5));
+  padding: 2px 4px;
+}
+
+.hl-status--running {
+  color: var(--accent, #6ea8fe);
+}
+
+.hl-status--error {
+  color: var(--error, #e06c75);
+}
+
+.hl-status--done {
+  color: var(--fg-muted, rgba(255, 255, 255, 0.6));
+}
+
+/* ── Recommendation cards ── */
+
+.hl-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  text-align: left;
+  font: inherit;
+  color: var(--fg, #d4d4d4);
+  background: var(--panel-bg, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.hl-card:hover,
+.hl-card--active {
+  border-color: var(--accent, #6ea8fe);
+  background: var(--panel-bg-hover, rgba(110, 168, 254, 0.06));
+}
+
+.hl-card--active {
+  outline: 1px solid var(--accent, #6ea8fe);
+  outline-offset: -1px;
+}
+
+.hl-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hl-card-label {
+  font-weight: 500;
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hl-card-reason {
+  font-size: 11px;
+  color: var(--fg-muted, rgba(255, 255, 255, 0.55));
+  line-height: 1.35;
+}
+
+.hl-card-target {
+  font-size: 10px;
+  color: var(--fg-muted, rgba(255, 255, 255, 0.3));
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  word-break: break-all;
+}
+
+/* ── Kind badges ── */
+
+.hl-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 2px 5px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.hl-badge--session {
+  color: #d4a76a;
+  background: rgba(212, 167, 106, 0.12);
+}
+
+.hl-badge--move {
+  color: #6ea8fe;
+  background: rgba(110, 168, 254, 0.12);
+}
+
+.hl-badge--profile {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.12);
+}
+
+/* ── Confidence bar ── */
+
+.hl-confidence {
+  display: inline-block;
+  width: 32px;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.hl-confidence-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent, #6ea8fe);
+  border-radius: 2px;
+}
+
+/* ── Passthrough button ── */
+
+.hl-passthrough {
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg-muted, rgba(255, 255, 255, 0.55));
+  background: transparent;
+  border: 1px dashed var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.hl-passthrough:hover,
+.hl-passthrough--active {
+  color: var(--fg, #d4d4d4);
+  border-color: var(--accent, #6ea8fe);
+  border-style: solid;
+}

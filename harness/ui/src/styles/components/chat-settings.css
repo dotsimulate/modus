@@ -95,6 +95,33 @@
   cursor: pointer;
 }
 
+.chat-settings-toggle {
+  width: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 14px;
+  padding: 0 2px;
+  background: var(--border);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.chat-settings-toggle.on {
+  background: var(--text-dim);
+  justify-content: flex-end;
+}
+.chat-settings-toggle:not(.on) {
+  justify-content: flex-start;
+}
+.chat-settings-toggle-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bg);
+}
+
 .chat-settings-reset {
   background: none;
   border: none;

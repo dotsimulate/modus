@@ -652,6 +652,7 @@
   background: transparent;
   transition: background 0.15s;
   touch-action: none;
+  position: relative;
 }
 
 .panel-split-handle--horizontal {
@@ -664,6 +665,33 @@
   height: 4px;
 }
 
+.panel-split-handle--horizontal::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--border);
+  transition: background 0.15s ease;
+}
+
+.panel-split-handle--vertical::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--border);
+  transition: background 0.15s ease;
+}
+
+.panel-split-handle:hover::after,
+.panel-split-handle:active::after {
+  background: var(--border-active);
+}
+
 .panel-split-handle:hover,
 .panel-split-handle:active {
   background: rgba(255, 255, 255, 0.12);
@@ -672,6 +700,7 @@
 .panel-split-handle--static {
   cursor: default;
   pointer-events: none;
+  display: none;
 }
 
 .panel-split-child--auto {
@@ -718,9 +747,25 @@
   height: 100%;
 }
 
+.split-collapse-tab--horizontal.split-collapse-tab--after {
+  border-left: 1px solid var(--border);
+}
+
+.split-collapse-tab--horizontal.split-collapse-tab--before {
+  border-right: 1px solid var(--border);
+}
+
 .split-collapse-tab--vertical {
   height: 16px;
   width: 100%;
+}
+
+.split-collapse-tab--vertical.split-collapse-tab--after {
+  border-top: 1px solid var(--border);
+}
+
+.split-collapse-tab--vertical.split-collapse-tab--before {
+  border-bottom: 1px solid var(--border);
 }
 
 .split-collapse-tab:hover {
@@ -782,7 +827,8 @@
 .panel-surface-item-body--tabs:has(.session-edits-view),
 .panel-surface-item-body--tabs:has(.notes-widget),
 .panel-surface-item-body--tabs:has(.right-panel-image-viewer),
-.panel-surface-item-body--tabs:has(.code-workspace-panel) {
+.panel-surface-item-body--tabs:has(.code-workspace-panel),
+.panel-surface-item-body--tabs:has(.sh) {
   padding: 0;
 }
 

@@ -1,9 +1,12 @@
-import { useEffect, useRef, useMemo, useState, useCallback, memo } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, memo } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { GitActivityItem } from "./GitActivityItem";
 import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
+import { VirtualMessageList, type VirtualItem, type VirtualListControls, type VirtualLayoutSnapshot } from "./VirtualMessageList";
+import { estimateMessageHeight } from "./textMeasure";
+import { ChatScrollSpine, type ChatSpineItem } from "./ChatScrollSpine";
 import { modus } from "../modusClient";
 import type { Message, ToolCall, CommitAttribution, GitCommit } from "../../../sdk/index";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionContext";
@@ -12,6 +15,17 @@ import { navigateToGitRoute } from "../git-route";
 type DisplayItem =
   | { kind: "message"; key: string; message: Message; index: number }
   | { kind: "commit"; key: string; commit: GitCommit };
+
+function readSpineEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem("mo-chat-settings");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.spineEnabled === "boolean") return parsed.spineEnabled;
+    }
+  } catch { /* ignore */ }
+  return true;
+}
 
 function formatCommitWhen(date: string): string {
   const parsed = Date.parse(date);
@@ -31,6 +45,15 @@ function commitMatchLabel(matchedFiles: string[] | undefined): string {
     return `${parts[parts.length - 1] || matchedFiles[0]} matched this commit`;
   }
   return `${matchedFiles.length} files matched this commit`;
+}
+
+function countToolCalls(tcs?: ToolCall[]): number {
+  if (!tcs) return 0;
+  return tcs.length;
+}
+
+function countImages(msg: Message): number {
+  return (msg.attachments?.length ?? 0) + (msg.artifacts?.filter(a => a.mime.startsWith("image/")).length ?? 0);
 }
 
 type Props = {
@@ -58,109 +81,66 @@ type Props = {
 };
 
 export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits }: Props) {
-  const endRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const hasScrolledRef = useRef(false);
-  const autoScrollRef = useRef(true);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  // Imperative handle into the virtualizer for tick-driven scrolling.
+  // Going through this (instead of computing scroll targets externally)
+  // lets the virtualizer reset its sticky-bottom flag before scrolling,
+  // so a click can't get yanked back to the bottom mid-animation by an
+  // arriving measurement update.
+  const listControlsRef = useRef<VirtualListControls | null>(null);
+  // Live measured layout — virtualizer rewrites this on every height
+  // change. Spine reads from it on each render to convert real
+  // scrollTop into its stable estimate-space, so hairlines and ticks
+  // share one coordinate system.
+  const measuredLayoutRef = useRef<VirtualLayoutSnapshot | null>(null);
+  // Tracked separately from the layout ref because the spine's estimate
+  // function needs it as a (stable, infrequently-changing) dependency.
+  const [scrollWidth, setScrollWidth] = useState(0);
+  useEffect(() => {
+    if (!scrollEl) return;
+    const update = () => setScrollWidth(scrollEl.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(scrollEl);
+    return () => ro.disconnect();
+  }, [scrollEl]);
+  const [spineEnabled, setSpineEnabled] = useState<boolean>(() => readSpineEnabled());
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail.spineEnabled === "boolean") setSpineEnabled(detail.spineEnabled);
+    };
+    window.addEventListener("mo-chat-settings-change", handler);
+    return () => window.removeEventListener("mo-chat-settings-change", handler);
+  }, []);
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [commitAttribution, setCommitAttribution] = useState<CommitAttribution | null>(null);
   const [commitAttributionExpanded, setCommitAttributionExpanded] = useState(false);
   const hasMessages = messages.length > 0;
   const lastMessage = hasMessages ? messages[messages.length - 1] : null;
 
-  const isNearBottom = useCallback((el: HTMLDivElement) => {
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
+  const handleScrollState = useCallback((atBottom: boolean) => {
+    setShowScrollBtn(hasMessages && !atBottom);
+  }, [hasMessages]);
+
+  const [scrollTrigger, setScrollTrigger] = useState(0);
+  const handleScrollToBottom = useCallback(() => {
+    setScrollTrigger(n => n + 1);
   }, []);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    const el = scrollRef.current;
-    if (!el) return;
-    autoScrollRef.current = true;
-    // Don't hide button eagerly — let syncScrollState hide it
-    // once the scroll actually lands. Prevents the button vanishing
-    // while the scroll silently fails on mobile.
-    el.scrollTop = el.scrollHeight;
-    // For smooth, also try scrollTo — but scrollTop is the reliable fallback
-    if (behavior === "smooth") {
-      el.scrollTo({ top: el.scrollHeight, behavior });
-    }
-  }, []);
-
-  const syncScrollState = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const pinnedToBottom = isNearBottom(el);
-    autoScrollRef.current = pinnedToBottom;
-    setShowScrollBtn(hasMessages && !pinnedToBottom);
-  }, [hasMessages, isNearBottom]);
-
-  // Scroll to bottom on initial load and when user sends a message.
-  // Ongoing stickiness is handled below by explicit bottom-pin tracking.
-  useEffect(() => {
-    if (!hasMessages) return;
+  const lastUserMsgId = useMemo(() => {
     const last = messages[messages.length - 1];
-    if (!hasScrolledRef.current || last?.role === "user") {
-      hasScrolledRef.current = true;
-      scrollToBottom("auto");
-    }
-  }, [hasMessages, messages, scrollToBottom]);
+    return last?.role === "user" ? last.id : null;
+  }, [messages]);
 
-  // Track whether the user is still pinned to the bottom.
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    syncScrollState();
-    el.addEventListener("scroll", syncScrollState, { passive: true });
-    return () => el.removeEventListener("scroll", syncScrollState);
-  }, [syncScrollState]);
+    if (lastUserMsgId) setScrollTrigger(n => n + 1);
+  }, [lastUserMsgId]);
 
-  // Keep the viewport pinned while content grows, but only if the user
-  // has not intentionally scrolled away from the bottom.
-  useEffect(() => {
-    const contentEl = contentRef.current;
-    if (!contentEl || !("ResizeObserver" in window)) return;
-    const observer = new ResizeObserver(() => {
-      if (!autoScrollRef.current) return;
-      requestAnimationFrame(() => {
-        if (autoScrollRef.current) scrollToBottom("auto");
-      });
-    });
-    observer.observe(contentEl);
-    return () => observer.disconnect();
-  }, [scrollToBottom]);
-
-  // Mobile keyboards and address bars resize the visual viewport —
-  // re-pin to bottom when this happens so we don't lose position.
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const onResize = () => {
-      if (autoScrollRef.current) {
-        const el = scrollRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
-      }
-    };
-    vv.addEventListener("resize", onResize);
-    return () => vv.removeEventListener("resize", onResize);
-  }, []);
-
-  // Streaming updates can change content without changing element size
-  // immediately, so also pin on render while we are in sticky mode.
-  useEffect(() => {
-    if (!autoScrollRef.current || !hasMessages) return;
-    const rafId = requestAnimationFrame(() => {
-      if (autoScrollRef.current) scrollToBottom("auto");
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [hasMessages, messages, streamFeed, streaming, queuedMessage, scrollToBottom]);
-
-  // Find last message index per role for animation
   const lastUser = useMemo(() => messages.findLastIndex((m: Message) => m.role === "user"), [messages]);
   const lastAssistant = useMemo(() => messages.findLastIndex((m: Message) => m.role === "assistant"), [messages]);
 
-  // Find last TodoWrite tool call ID so only it defaults expanded
   const lastTodoId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const tcs = messages[i].toolCalls;
@@ -173,9 +153,6 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     return undefined;
   }, [messages]);
 
-  // Aggregate file edits per turn — map from message index to aggregated tool calls.
-  // A turn = all assistant messages between two user messages (or start/end of array).
-  // FileChanges renders after the last assistant message of each turn.
   const turnFileEdits = useMemo(() => {
     const result = new Map<number, ToolCall[]>();
     let turnTools: ToolCall[] = [];
@@ -297,8 +274,217 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     return items;
   }, [commits, cwd, messages, showGitEvents]);
 
+  const virtualItems = useMemo<VirtualItem<DisplayItem>[]>(
+    () => displayItems.map(item => ({ key: item.key, data: item })),
+    [displayItems],
+  );
+
+  const spineItems = useMemo<ChatSpineItem[]>(
+    () =>
+      displayItems
+        .filter((item) => {
+          if (item.kind === "commit") return true;
+          // Skip system messages from the spine — they're tiny dividers and
+          // would just add noise to the density picture.
+          return item.message.role !== "system";
+        })
+        .map<ChatSpineItem>((item) =>
+          item.kind === "commit"
+            ? { kind: "commit", key: item.key, commit: item.commit }
+            : { kind: "message", key: item.key, message: item.message },
+        ),
+    [displayItems],
+  );
+
+  // Stable per-item height estimate for the spine. Identity changes only
+  // when the chat width or the toggle settings change — never on scroll
+  // or measurement updates, so the spine's tick layout holds still.
+  const estimateSpineItem = useCallback(
+    (item: ChatSpineItem): number => {
+      const width = scrollWidth || 700;
+      if (item.kind === "commit") return 48;
+      const msg = item.message;
+      const estimate = estimateMessageHeight(msg.content, width, {
+        hasRole: false,
+        hasMeta: showMeta && !!msg.meta,
+        toolCallCount: showToolCalls ? countToolCalls(msg.toolCalls) : 0,
+        imageCount: countImages(msg),
+        hasThinking: showThinking && !!msg.thinking,
+      });
+      return estimate.totalHeight;
+    },
+    [scrollWidth, showMeta, showToolCalls, showThinking],
+  );
+
+  const scrollToSpineItem = useCallback((key: string) => {
+    listControlsRef.current?.scrollToKey(key);
+  }, []);
+
+  const estimateHeight = useCallback(
+    (item: DisplayItem, containerWidth: number): number => {
+      if (item.kind === "commit") return 48;
+      const msg = item.message;
+      if (msg.role === "system") return 40;
+      const estimate = estimateMessageHeight(msg.content, containerWidth, {
+        hasRole: false,
+        hasMeta: showMeta && !!msg.meta,
+        toolCallCount: showToolCalls ? countToolCalls(msg.toolCalls) : 0,
+        imageCount: countImages(msg),
+        hasThinking: showThinking && !!msg.thinking,
+      });
+      return estimate.totalHeight;
+    },
+    [showMeta, showToolCalls, showThinking],
+  );
+
+  const renderItem = useCallback(
+    (item: DisplayItem, _virtualIndex: number) => {
+      if (item.kind === "commit") {
+        return (
+          <div className="message message--git" data-role="git">
+            <GitActivityItem
+              commit={item.commit}
+              sessionId={sessionId}
+              claimedBySession={claimedCommitTags.has(`commit:${item.commit.hash.slice(0, 7)}`)}
+              onClaimChange={onSessionTagsChange}
+            />
+          </div>
+        );
+      }
+
+      const msg = item.message;
+      const i = item.index;
+      const turnTools = turnFileEdits.get(i);
+      const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
+
+      if (msg.role === "system") {
+        return (
+          <div className="system-divider">
+            <span>{msg.content}</span>
+          </div>
+        );
+      }
+
+      return (
+        <div className={msg.role === "assistant" && msg.toolCalls?.length && !msg.content ? "message-wrap--tools-only" : undefined}>
+          <MessageBubble
+            msg={msg}
+            provider={provider}
+            isNew={streaming && (
+              (i === lastUser && msg.role === "user") ||
+              (i === lastAssistant && msg.role === "assistant" && !msg.meta)
+            )}
+            isStreaming={
+              streaming && i === messages.length - 1 && msg.role === "assistant"
+            }
+            hideRole
+            showThinking={showThinking}
+            showMeta={showMeta}
+            showToolCalls={showToolCalls}
+            showGitEvents={showGitEvents}
+            cwd={cwd}
+            lastTodoId={lastTodoId}
+            streamFeed={streaming && i === messages.length - 1 && msg.role === "assistant"
+              ? streamFeed
+              : undefined}
+            onBranch={msg.role === "user" && msg.seq != null ? onBranch : undefined}
+            onStopTask={onStopTask}
+          >
+            {showFileChanges && (
+              <>
+                <FileChanges toolCalls={turnTools} />
+                {onOpenSessionEdits && (
+                  <div className="turn-session-edits-row">
+                    <button
+                      className="turn-session-edits-btn"
+                      onClick={onOpenSessionEdits}
+                      title="View all files edited this session"
+                    >
+                      <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                        <rect x="1" y="1" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+                        <rect x="1" y="5.5" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
+                      </svg>
+                      session edits
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </MessageBubble>
+          {msg.role === "user" && (
+            <UserMeta msg={msg} onBranch={onBranch} />
+          )}
+        </div>
+      );
+    },
+    [sessionId, claimedCommitTags, onSessionTagsChange, turnFileEdits, provider,
+     streaming, lastUser, lastAssistant, messages.length, showThinking, showMeta,
+     showToolCalls, showGitEvents, cwd, lastTodoId, streamFeed, onBranch, onStopTask,
+     onOpenSessionEdits],
+  );
+
   const showAssistantPrelude = streaming && lastMessage?.role === "user";
   const assistantPreludeLabel = [profileName, model].filter(Boolean).join(" ");
+
+  const footer = useMemo(() => {
+    const elements: React.ReactElement[] = [];
+
+    if (showAssistantPrelude) {
+      elements.push(
+        <div key="prelude" className="message message--assistant-prelude" data-role="assistant">
+          <div className="message-meta message-meta--assistant-prelude">
+            <span className="sc-noise">
+              <span className="sc-resolved">
+                {assistantPreludeLabel || provider || "assistant"}
+              </span>
+              <span className="sc-glyphs"> responding ....</span>
+            </span>
+          </div>
+        </div>,
+      );
+    }
+
+    if (showGitEvents && commitAttribution?.matched && commitAttribution.commit) {
+      const attrHash = commitAttribution.commit.hash.slice(0, 7);
+      const attrClaimed = claimedCommitTags.has(`commit:${attrHash}`);
+      elements.push(
+        <div key="attr-note" className="message message--git-note" data-role="git-note">
+          <button
+            className="message-commit-detected"
+            onClick={attrClaimed
+              ? () => setCommitAttributionExpanded(x => !x)
+              : () => navigateToGitRoute({ commit: commitAttribution.commit!.hash })}
+            type="button"
+          >
+            <span className="message-commit-detected-copy">
+              {commitMatchLabel(commitAttribution.matchedFiles)}
+            </span>
+            <span className="message-commit-detected-meta">
+              {formatCommitWhen(commitAttribution.commit.date)}
+            </span>
+          </button>
+        </div>,
+      );
+      if (!attrClaimed || commitAttributionExpanded) {
+        elements.push(
+          <div key="attr-detail" className="message message--git" data-role="git">
+            <GitActivityItem
+              commit={commitAttribution.commit}
+              sessionId={sessionId}
+              claimedBySession={attrClaimed}
+              onClaimChange={onSessionTagsChange}
+            />
+          </div>,
+        );
+      }
+    }
+
+    elements.push(<div key="anchor" className="chat-anchor" />);
+
+    return elements.length > 1 ? <>{elements}</> : <div className="chat-anchor" />;
+  }, [showAssistantPrelude, assistantPreludeLabel, provider, showGitEvents,
+      commitAttribution, claimedCommitTags, commitAttributionExpanded, sessionId,
+      onSessionTagsChange]);
 
   if (messages.length === 0) {
     return (
@@ -311,138 +497,37 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
 
   return (
     <div className="chat-scroll-wrapper">
-      <div className="chat-messages" ref={scrollRef}>
-        <div className="chat-messages-content" ref={contentRef}>
-          {displayItems.map((item) => {
-            if (item.kind === "commit") {
-              return (
-                <div key={item.key} className="message message--git" data-role="git">
-                  <GitActivityItem
-                    commit={item.commit}
-                    sessionId={sessionId}
-                    claimedBySession={claimedCommitTags.has(`commit:${item.commit.hash.slice(0, 7)}`)}
-                    onClaimChange={onSessionTagsChange}
-                  />
-                </div>
-              );
-            }
-
-            const msg = item.message;
-            const i = item.index;
-            const turnTools = turnFileEdits.get(i);
-            const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
-
-            return msg.role === "system" ? (
-              <div key={msg.id} className="system-divider">
-                <span>{msg.content}</span>
-              </div>
-            ) : (
-              <div key={msg.id} className={msg.role === "assistant" && msg.toolCalls?.length && !msg.content ? "message-wrap--tools-only" : undefined}>
-                <MessageBubble
-                  msg={msg}
-                  provider={provider}
-                  isNew={streaming && (
-                    (i === lastUser && msg.role === "user") ||
-                    (i === lastAssistant && msg.role === "assistant" && !msg.meta)
-                  )}
-                  isStreaming={
-                    streaming && i === messages.length - 1 && msg.role === "assistant"
-                  }
-                  hideRole
-                  showThinking={showThinking}
-                  showMeta={showMeta}
-                  showToolCalls={showToolCalls}
-                  showGitEvents={showGitEvents}
-                  cwd={cwd}
-                  lastTodoId={lastTodoId}
-                  streamFeed={streaming && i === messages.length - 1 && msg.role === "assistant"
-                    ? streamFeed
-                    : undefined}
-                  onBranch={msg.role === "user" && msg.seq != null ? onBranch : undefined}
-                  onStopTask={onStopTask}
-                >
-                  {showFileChanges && (
-                    <>
-                      <FileChanges toolCalls={turnTools} />
-                      {onOpenSessionEdits && (
-                        <div className="turn-session-edits-row">
-                          <button
-                            className="turn-session-edits-btn"
-                            onClick={onOpenSessionEdits}
-                            title="View all files edited this session"
-                          >
-                            <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
-                              <rect x="1" y="1" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
-                              <rect x="1" y="5.5" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.1"/>
-                            </svg>
-                            session edits
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </MessageBubble>
-                {msg.role === "user" && (
-                  <UserMeta msg={msg} onBranch={onBranch} />
-                )}
-              </div>
-            );
-          })}
-          {showAssistantPrelude && (
-            <div className="message message--assistant-prelude" data-role="assistant">
-              <div className="message-meta message-meta--assistant-prelude">
-                <span className="sc-noise">
-                  <span className="sc-resolved">
-                    {assistantPreludeLabel || provider || "assistant"}
-                  </span>
-                  <span className="sc-glyphs"> responding ....</span>
-                </span>
-              </div>
-            </div>
-          )}
-          {showGitEvents && commitAttribution?.matched && commitAttribution.commit && (() => {
-            const attrHash = commitAttribution.commit.hash.slice(0, 7);
-            const attrClaimed = claimedCommitTags.has(`commit:${attrHash}`);
-            return (
-              <>
-                <div className="message message--git-note" data-role="git-note">
-                  <button
-                    className="message-commit-detected"
-                    onClick={attrClaimed
-                      ? () => setCommitAttributionExpanded(x => !x)
-                      : () => navigateToGitRoute({ commit: commitAttribution.commit!.hash })}
-                    type="button"
-                  >
-                    <span className="message-commit-detected-copy">
-                      {commitMatchLabel(commitAttribution.matchedFiles)}
-                    </span>
-                    <span className="message-commit-detected-meta">
-                      {formatCommitWhen(commitAttribution.commit.date)}
-                    </span>
-                  </button>
-                </div>
-                {(!attrClaimed || commitAttributionExpanded) && (
-                  <div className="message message--git" data-role="git">
-                    <GitActivityItem
-                      commit={commitAttribution.commit}
-                      sessionId={sessionId}
-                      claimedBySession={attrClaimed}
-                      onClaimChange={onSessionTagsChange}
-                    />
-                  </div>
-                )}
-              </>
-            );
-          })()}
-          <div ref={endRef} className="chat-anchor" />
-        </div>
+      <div className="chat-scroll-row" data-spine={spineEnabled ? "on" : "off"}>
+        <VirtualMessageList
+          items={virtualItems}
+          estimateHeight={estimateHeight}
+          renderItem={renderItem}
+          className="chat-messages"
+          innerClassName="chat-messages-content"
+          stickyBottom
+          onScrollStateChange={handleScrollState}
+          scrollToBottomTrigger={scrollTrigger}
+          footer={footer}
+          onScrollElement={setScrollEl}
+          controlsRef={listControlsRef}
+          layoutRef={measuredLayoutRef}
+        />
+        {spineEnabled && (
+          <ChatScrollSpine
+            items={spineItems}
+            scrollEl={scrollEl}
+            estimateItemHeight={estimateSpineItem}
+            measuredLayoutRef={measuredLayoutRef}
+            onItemClick={scrollToSpineItem}
+          />
+        )}
       </div>
       {queuedMessage && onCancelQueued && (
         <QueuedMessage message={queuedMessage} onCancel={onCancelQueued} />
       )}
       <div
         className={`scroll-to-bottom${showScrollBtn ? " visible" : ""}`}
-        onClick={() => scrollToBottom()}
+        onClick={handleScrollToBottom}
       >
         <div className="scroll-to-bottom-inner">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">

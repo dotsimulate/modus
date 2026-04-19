@@ -29,7 +29,7 @@ import type {
 } from "./move-types";
 import {
   type StartSessionOpts,
-  broadcastUiEvent, getActiveSession, interactWithSession, startSession, watchSessionExchanges,
+  broadcastUiEvent, getActiveSession, interactWithSession, startSession, stopSession, watchSessionExchanges,
 } from "./session-manager";
 import {
   listSessions as dbListSessions, listSessionsForProjects as dbListSessionsForProjects,
@@ -1802,6 +1802,12 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
 
     moveToken.spawnedSessionId = spawned.sessionId;
 
+    // Hide background/branch sessions from the main sidebar when declared.
+    // The "internal" tag is filtered out by every session-list query in db.ts.
+    if (config.hidden === true) {
+      try { dbAddSessionTag(spawned.sessionId, "internal"); } catch { /* best effort */ }
+    }
+
     // Update registry so getActiveWidgetForSession(spawnedSessionId) works
     if (apiToken) {
       const reg = moveApiRegistry.get(apiToken);
@@ -1972,7 +1978,15 @@ export async function handleSubmit(
   const config = getMove(moveToken.moveName, cwd);
   const after = config?.session?.afterSubmit ?? "continue";
   if (after === "end") {
-    // The session should end — handled by caller
+    // End the spawned session so the agent doesn't keep looping after a successful submit.
+    // Without this, models that don't treat a tool-call-success as a turn terminator
+    // (e.g. Mistral Small) will re-submit the same token forever, racking up tokens and $.
+    const spawnedId = moveToken.spawnedSessionId;
+    if (spawnedId) {
+      try { stopSession(spawnedId); } catch (err) {
+        console.error(`[move-runner] afterSubmit=end: failed to stop spawned session ${spawnedId}:`, err);
+      }
+    }
   } else if (after.startsWith("switch:")) {
     const targetProfile = after.slice("switch:".length);
     // Profile switch is handled externally via session-manager

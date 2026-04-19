@@ -39,8 +39,15 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   // Derived
   const activeUP = userProfiles.find((p) => p.name === activeUserProfile) ?? null;
+  // Visibility rule:
+  //   - When the active user profile has an `agentProfiles` whitelist, it constrains
+  //     USER-HOME profiles (shared across projects — the user curates which show).
+  //   - PROJECT-LOCAL profiles (in `<cwd>/.modus/profiles/agents/`) ALWAYS appear —
+  //     they're scoped to this project by definition. Hiding them was a bug: our
+  //     scaffolding moves (create-profile, etc.) write to `.modus/` and users expected
+  //     those to show up without manually editing the user profile's whitelist.
   const visibleProfiles = activeUP?.agentProfiles?.length
-    ? profiles.filter((p) => activeUP.agentProfiles!.includes(p.name))
+    ? profiles.filter((p) => p.origin === "project" || activeUP.agentProfiles!.includes(p.name))
     : profiles;
 
   // The project root for profile discovery and theme — always the user profile's

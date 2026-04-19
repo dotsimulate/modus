@@ -1,0 +1,43 @@
+{
+  "name": "hints",
+  "label": "Hints",
+  "description": "Intent-gate. Reads a draft prompt and recommends the best next step — continue an existing conversation, run a built-in or project move (including scaffolding moves like create-profile / create-page), or start a new session with a specific agent profile.",
+  "icon": "sparkles",
+  "mode": "background",
+  "agentProfile": "hints",
+  "inputs": [
+    {
+      "name": "query",
+      "label": "Your intent",
+      "type": "textarea",
+      "required": true,
+      "placeholder": "what do you want to do?"
+    },
+    {
+      "name": "profileHint",
+      "label": "Preferred profile (optional)",
+      "type": "text",
+      "required": false,
+      "placeholder": ""
+    }
+  ],
+  "schemaHint": "{ recommendations: Array<{ kind: 'session'|'move'|'profile', target: string, label: string, reason: string, confidence?: number }>, passthrough: boolean, note?: string }",
+  "submit": {
+    "required": true,
+    "retryOnInvalid": true,
+    "maxAttempts": 2
+  },
+  "session": {
+    "afterSubmit": "end"
+  },
+  "capabilities": {
+    "shell": false,
+    "sessionSpawn": false,
+    "sessionMessage": false,
+    "actionTrigger": false,
+    "notify": false,
+    "fileRead": true,
+    "fileWrite": false
+  },
+  "tags": ["hints", "routing", "gate", "capability"]
+}

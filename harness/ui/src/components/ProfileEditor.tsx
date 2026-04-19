@@ -411,7 +411,7 @@ function ProfileForm({
         <button
           className="apc-action apc-action--primary"
           onClick={handleSave}
-          disabled={saving || !description.trim() || !prompt.trim() || !model}
+          disabled={saving || !description.trim()}
         >
           {saving ? "saving..." : isNew ? "create" : "save"}
         </button>
@@ -455,6 +455,7 @@ export function ProfileEditor({
   const handleDelete = async () => {
     if (!initialProfile) return;
     await modus.deleteProfile(initialProfile, profileCwd);
+    await Promise.all([refreshProfiles(), refreshUserProfiles()]);
     onProfilesChange();
   };
 
