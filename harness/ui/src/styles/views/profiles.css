@@ -1,5 +1,12 @@
 /**
  * Profiles View — agent grid, natural scroll with dashboard.
+ *
+ * Two render contexts:
+ *   1. Standalone view (.profiles-view inside a full-width container)
+ *   2. Embedded widget (.profiles-manager-widget) — a dashboard / panel widget
+ *      that can be docked into a narrow vertical panel. Container queries on the
+ *      widget collapse the layout into a single-column compact mode without
+ *      affecting the standalone view.
  */
 
 .profiles-view {
@@ -14,14 +21,139 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
 }
 
 .profiles-inner .dash-section {
   padding: 0;
+  min-width: 0;
 }
 
 @media (max-width: 900px) {
   .profiles-inner {
     padding: 20px;
+  }
+}
+
+/* ── Embedded widget container ────────────────────────────────────────── */
+
+.profiles-manager-widget {
+  height: 100%;
+  overflow: auto;
+  container-type: inline-size;
+  container-name: pmw;
+  min-width: 0;
+}
+
+/* Subtle left-edge accent on card hover — adds elevation without breaking
+   the flat mono aesthetic. Border color shifts in place; no layout shift. */
+.profiles-manager-widget .agent-profile-card {
+  border-left-color: var(--border);
+  transition: border-left-color 0.14s ease, background 0.14s ease;
+}
+.profiles-manager-widget .agent-profile-card:hover {
+  border-left-color: var(--accent, var(--border-active));
+}
+
+/* Compact mode — triggered when the widget itself is narrow.
+   Uses container queries so it adapts to its docked width, not the viewport. */
+@container pmw (max-width: 640px) {
+  .profiles-manager-widget .profiles-inner {
+    padding: 12px;
+    gap: 16px;
+  }
+
+  .profiles-manager-widget .dash-section-header {
+    padding-bottom: 8px;
+    gap: 6px;
+  }
+
+  .profiles-manager-widget .agent-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profiles-manager-widget .agent-profile-card {
+    padding: 12px 14px;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .profiles-manager-widget .apc-row,
+  .profiles-manager-widget .apc-name,
+  .profiles-manager-widget .apc-desc {
+    min-width: 0;
+  }
+
+  .profiles-manager-widget .apc-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Edit button: hover-reveal is a desktop affordance — always visible
+     in a narrow panel where the cursor isn't constantly resting on cards. */
+  .profiles-manager-widget .apc-edit-btn {
+    opacity: 0.45;
+  }
+  .profiles-manager-widget .apc-edit-btn:hover {
+    opacity: 1;
+  }
+
+  .profiles-manager-widget .apc-row--stats {
+    gap: 5px;
+    row-gap: 4px;
+  }
+
+  .profiles-manager-widget .apc-row--actions {
+    gap: 6px;
+  }
+
+  /* Popover: the badge sits in the bottom-left of the card. Opening downward
+     would push past the card / get clipped; opening leftward would push past
+     the panel edge. So in compact mode we flip it UPWARD, anchored to the
+     badge's left edge, capped to the container width. */
+  .profiles-manager-widget .apc-popover {
+    min-width: 0;
+    width: max-content;
+    max-width: calc(100cqw - 32px);
+    left: 0;
+    right: auto;
+    top: auto;
+    bottom: calc(100% + 6px);
+  }
+
+  /* Move the invisible hover-bridge to the top of the badge (it's there to
+     keep hover alive while the cursor crosses the gap to the popover). */
+  .profiles-manager-widget .apc-active-badge::after {
+    top: auto;
+    bottom: 100%;
+  }
+
+  .profiles-manager-widget .apc-popover-preview {
+    font-size: 10px;
+  }
+}
+
+/* Extra-tight mode for very narrow docks. Inherits the upward popover from
+   the 640px tier — left anchor stays correct because the dot is already at
+   the panel's left edge. */
+@container pmw (max-width: 380px) {
+  .profiles-manager-widget .profiles-inner {
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .profiles-manager-widget .agent-profile-card {
+    padding: 10px 12px;
+  }
+
+  .profiles-manager-widget .apc-desc {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+
+  .profiles-manager-widget .apc-action {
+    padding: 2px 6px;
+    font-size: 9px;
   }
 }

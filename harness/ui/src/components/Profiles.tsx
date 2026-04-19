@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { modus } from "../modusClient";
-import type { Profile, ActiveSessionInfo } from "../../../sdk/index";
+import type { ActiveSessionInfo } from "../../../sdk/index";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
 import { useSession } from "../providers/SessionContext";
@@ -64,10 +64,8 @@ const editIcon = (
 );
 
 export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
-  const { visibleProfiles, selectProfile, activeUserProfile, activeCwd, projectRoot } = useProfiles();
-  const profilesCwd = projectRoot ?? activeCwd;
+  const { visibleProfiles, profiles: contextProfiles, selectProfile, activeUserProfile } = useProfiles();
   const { newSession } = useSession();
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeSessions, setActiveSessions] = useState<ActiveSessionInfo[]>([]);
   const [editorMode, setEditorMode] = useState<"closed" | "new" | "edit">("closed");
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
@@ -76,12 +74,7 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
   useEffect(() => {
     const load = async () => {
       try {
-        const [p, s] = await Promise.all([
-          modus.listProfiles(profilesCwd),
-          modus.getActiveSessions(activeUserProfile ?? undefined),
-        ]);
-        setProfiles(p);
-        setActiveSessions(s);
+        setActiveSessions(await modus.getActiveSessions(activeUserProfile ?? undefined));
       } catch { /* silent */ }
     };
     load();
@@ -89,7 +82,7 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
     return () => clearInterval(interval);
   }, [activeUserProfile]);
 
-  const displayProfiles = visibleProfiles.length > 0 ? visibleProfiles : profiles;
+  const displayProfiles = visibleProfiles.length > 0 ? visibleProfiles : contextProfiles;
   const isEditing = editorMode !== "closed";
 
   const getActiveSessionsForProfile = (name: string) =>
@@ -108,17 +101,13 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
     setEditingProfile(null);
   };
 
-  const reloadProfiles = async () => {
-    try { setProfiles(await modus.listProfiles(profilesCwd)); } catch { return; }
-  };
-
   // Editor takes over the full view
   if (isEditing) {
     return (
       <div className="dashboard profiles-view">
         <ProfileEditor
-          profiles={profiles}
-          onProfilesChange={() => { reloadProfiles(); closeEditor(); }}
+          profiles={contextProfiles}
+          onProfilesChange={() => { closeEditor(); }}
           mode={editorMode}
           initialProfile={editingProfile}
           onCancel={closeEditor}

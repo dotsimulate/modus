@@ -245,6 +245,11 @@
 .apc-action--primary:hover {
   color: var(--text);
 }
+.apc-action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 
 /* ── Active sessions popover ── */
 .apc-popover {

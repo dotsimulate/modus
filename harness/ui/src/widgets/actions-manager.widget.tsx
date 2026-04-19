@@ -16,11 +16,12 @@ type ActionsManagerConfig = WidgetBase & {
 
 export default function ActionsManagerWidget({ onSelectSession, pageContext }: WidgetProps<ActionsManagerConfig>) {
   const handleSelectSession = (id: string) => {
-    if (pageContext) { pageContext.set("selectedSession", id); } else { onSelectSession(id); }
+    pageContext?.set("selectedSession", id);
+    onSelectSession(id);
   };
 
   return (
-    <div className="actions-manager-widget" style={{ height: "100%", overflow: "auto" }}>
+    <div className="actions-manager-widget">
       <Actions onSelectSession={handleSelectSession} />
     </div>
   );

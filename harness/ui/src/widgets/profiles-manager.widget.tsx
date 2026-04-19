@@ -16,24 +16,21 @@ type ProfilesManagerConfig = WidgetBase & {
 };
 
 export default function ProfilesManagerWidget({ onNavigate, onSelectSession, pageContext }: WidgetProps<ProfilesManagerConfig>) {
+  // Always fire onSelectSession so App.tsx can update the URL hash + activeSession
+  // (via handleViewSession). When inside a page scope, also publish into the bus
+  // so scope-local widgets with hideWhen/showWhen react immediately.
   const handleNewSession = useCallback((id: string) => {
-    if (pageContext) {
-      pageContext.set("selectedSession", id);
-    } else {
-      onSelectSession(id);
-    }
+    pageContext?.set("selectedSession", id);
+    onSelectSession(id);
   }, [pageContext, onSelectSession]);
 
   const handleSelectSession = useCallback((id: string) => {
-    if (pageContext) {
-      pageContext.set("selectedSession", id);
-    } else {
-      onSelectSession(id);
-    }
+    pageContext?.set("selectedSession", id);
+    onSelectSession(id);
   }, [pageContext, onSelectSession]);
 
   return (
-    <div className="profiles-manager-widget" style={{ height: "100%", overflow: "auto" }}>
+    <div className="profiles-manager-widget">
       <Profiles
         onSelectSession={handleSelectSession}
         onNavigate={onNavigate}

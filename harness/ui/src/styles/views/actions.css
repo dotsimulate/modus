@@ -6,8 +6,11 @@
 .actions-manager-widget {
   /* Enable container queries so cards and rows can adapt to the
      widget's width when dropped into a narrow left column. */
+  height: 100%;
+  overflow: auto;
   container-type: inline-size;
   container-name: actions-manager-widget;
+  min-width: 0;
 }
 
 /* ── View container ── */
@@ -82,17 +85,25 @@
   opacity: 0.6;
 }
 
-/* ── Card grid ── */
+/* ── Card grid ──
+   `min(100%, 340px)` lets the auto-fill track shrink with the container,
+   so the grid never produces a horizontal overflow in narrower panels. */
 .sched-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
   gap: 0;
 }
 
-/* ── Action card ── */
+/* ── Action card ──
+   `--stamp-pad` reserves right-side space for the absolute-positioned stamp
+   (toggle + run + arc) at every width — without it, name/tags/meters
+   slide under the stamp at medium widths. Tokenized so the expanded
+   detail panel below can reclaim it (the stamp only blocks the top-right
+   corner; the detail sits well below it). */
 .sched-card {
+  --stamp-pad: 64px;
   background: var(--bg);
-  padding: 14px 16px;
+  padding: 14px var(--stamp-pad) 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -101,14 +112,16 @@
   margin-left: -1px;
   cursor: pointer;
   position: relative;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, border-left-color 0.14s ease;
   min-width: 0;
 }
 .sched-card:hover {
   background: var(--bg-raised);
+  border-left-color: var(--accent, var(--border-active));
 }
 .sched-card--expanded {
   background: var(--bg-raised);
+  border-left-color: var(--accent, var(--border-active));
 }
 
 /* Header row */
@@ -296,7 +309,14 @@
   cursor: not-allowed;
 }
 
-/* ── Detail panel (inside collapse) ── */
+/* ── Detail panel (inside collapse) ──
+   Reclaim the stamp's right padding for the detail content. The stamp
+   sits at top-right and only the card header needs that 64px inset.
+   Below the stamp, runs lists / about / files all gain ~52px back —
+   the difference between "fucked up at narrow widths" and readable. */
+.sched-card--expanded .panel-collapse {
+  margin-right: calc(12px - var(--stamp-pad));
+}
 .sched-detail {
   margin-top: 0;
   min-width: 0;
@@ -335,8 +355,10 @@
 .sched-tab-content {
   max-height: 420px;
   overflow-y: auto;
+  overflow-x: hidden;
   margin-right: -8px;
   padding-right: 8px;
+  min-width: 0;
 }
 
 /* ── Runs tab ── */
@@ -500,6 +522,11 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+  /* Wrap gracefully at any width — overflow-prone footers (#N · dot · status
+     · attempts · $cost · time · peek) are common in narrower panels and
+     even in standalone view when the run summary is short. */
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 .sched-run-footer > * {
   flex-shrink: 0;
@@ -729,12 +756,62 @@
   color: var(--text-dim);
 }
 
+/* ── Medium-panel compaction (≤ ~560px container width) ──
+   The "in-between" tier — wider than ultra-compact but narrower than
+   desktop. Single column, tighter chrome, stacked about-pipeline so
+   chip text never forces horizontal overflow. Meter labels stay
+   visible but with reduced min-width so bars get more room. */
+@container actions-manager-widget (max-width: 560px) {
+  .actions-manager-widget .schedules-view {
+    padding: 10px 10px;
+    gap: 10px;
+  }
+  .sched-grid {
+    grid-template-columns: 1fr;
+  }
+  .sched-card {
+    --stamp-pad: 60px;
+    padding: 12px var(--stamp-pad) 12px 14px;
+    gap: 7px;
+  }
+  .sched-card-stamp {
+    top: 9px;
+    right: 8px;
+  }
+  /* Tab strip: tighter so all three tabs fit in a single row. */
+  .sched-tab {
+    padding: 7px 10px;
+  }
+  /* About-tab pipeline: chip lists overflow at this width when the
+     heading sits inline. Stack heading above the chips instead. */
+  .sched-about-section {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sched-about-heading {
+    min-width: 0;
+  }
+  /* Meter labels: keep visible but give the bar more room. */
+  .sched-meter-label {
+    min-width: 56px;
+    font-size: 9px;
+  }
+  /* Runs section: trim padding so the section header and rows align
+     with the now-tighter card padding. */
+  .sched-runs-section-header,
+  .sched-runs-actions {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}
+
 /* ── Narrow-panel compaction (≤ ~280px container width) ──
-   When the actions-manager widget lives in a narrow column, collapse
-   the grid to a single column, let card content truncate instead of
-   clipping under the top-right stamp, and stack multi-column meta rows. */
+   The ultra-compact tier — sub-300px docked panels. Hides the meter
+   labels entirely (the bars carry the meaning), drops low-value run
+   footer chips, and shrinks tab text. Layered on top of the medium
+   tier above; only overrides what needs to change at this size. */
 @container actions-manager-widget (max-width: 280px) {
-  .schedules-view {
+  .actions-manager-widget .schedules-view {
     padding: 10px 8px;
     gap: 8px;
   }
@@ -743,20 +820,12 @@
     gap: 6px;
     padding-bottom: 4px;
   }
-  /* Single column grid — 340px minmax guarantees overflow at this width. */
-  .sched-grid {
-    grid-template-columns: 1fr;
-  }
   .sched-card {
-    padding: 10px 12px;
-    /* Reserve room on the right for the absolute-positioned stamp so
-       the name/tags don't slide under it. */
-    padding-right: 60px;
+    --stamp-pad: 56px;
+    padding: 10px var(--stamp-pad) 10px 12px;
     gap: 6px;
   }
   .sched-card-stamp {
-    top: 8px;
-    right: 8px;
     width: 44px;
   }
   .sched-card-name {
@@ -764,19 +833,18 @@
   }
   .sched-card-desc {
     font-size: 10px;
-    -webkit-line-clamp: 2;
   }
   .sched-card-tags {
     gap: 3px;
   }
-  /* Meter rows: hide the label column, let the bar take full width. */
+  /* Meter rows: drop labels entirely, the bars stand alone. */
   .sched-meter-label {
     display: none;
   }
   .sched-meter-row {
     gap: 4px;
   }
-  /* Run rows stack tighter and ditch low-value footer chips. */
+  /* Run rows: tighter and drop low-value footer chips. */
   .sched-run-row {
     padding: 8px 6px;
     gap: 4px;
@@ -785,14 +853,12 @@
     font-size: 11px;
   }
   .sched-run-footer {
-    flex-wrap: wrap;
     gap: 4px;
   }
   .sched-run-footer .sched-run-attempts,
   .sched-run-footer .sched-run-meta {
     display: none;
   }
-  /* Tabs: reduce horizontal padding so 3-4 tabs fit without overflow. */
   .sched-tab {
     padding: 6px 8px;
     font-size: 9px;
@@ -800,14 +866,6 @@
   .sched-tab-content {
     margin-right: 0;
     padding-right: 0;
-  }
-  /* About-tab pipeline: stack heading above items instead of inline. */
-  .sched-about-section {
-    flex-direction: column;
-    gap: 4px;
-  }
-  .sched-about-heading {
-    min-width: 0;
   }
 }
 

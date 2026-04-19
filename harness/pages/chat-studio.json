@@ -25,7 +25,8 @@
             },
             {
               "kind": "widget",
-              "widget": { "type": "profiles-manager", "id": "cs-profiles" }
+              "widget": { "type": "profiles-manager", "id": "cs-profiles" },
+              "publish": { "selectedSession": "sessionId" }
             },
             {
               "kind": "widget",

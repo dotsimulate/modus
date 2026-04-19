@@ -53,7 +53,7 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
         streaming={isActive}
         streamFeed={session.streamFeed}
         showThinking={true}
-        showMeta={false}
+        showMeta={true}
         showToolCalls={true}
         showGitEvents={false}
         emptyTitle="no messages"

@@ -29,7 +29,7 @@ import {
   getUserProfile, getUserProfileConfig, getUserProfileUiConfig, listUserProfileNames, getAllUserProfiles,
   saveUserProfile, saveUserProfileUiConfig, patchUserProfileUiConfig, deleteUserProfile,
   getUserProfileState, patchUserProfileState,
-  listProjects, getProjectById, updateProjectPath,
+  listProjects, getProjectById, getProjectByPath, updateProjectPath,
 } from "./profiles";
 import { initProject, getInitStatus } from "./init";
 // Lazy: gemini-usage imports @google/gemini-cli-core which spams "Experiments loaded" on every init
@@ -86,6 +86,27 @@ import { tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker } from "./termi
 import { getProcessSnapshot, killProcess } from "./process-registry";
 import { getPromptCache, savePromptCache, type PromptCache } from "./prompt-cache";
 import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
+import {
+  initShadowRepo, scheduleCommit, listCommits, onShadowCommit,
+  shadowRepoPath, gitShowFile, gitDiffTree, gitHead, gitLsTree, getWorkTree,
+  recordAttributionHint, setCommitsPausedCheck,
+  type ShadowScope,
+  type ActorInfo,
+} from "./workspace-history";
+import { isTracked } from "./workspace-history-filter";
+import { projectEntities, userEntities } from "./workspace-entities";
+import {
+  openIndex, getIndex, indexCommit, getStoredHead, rebuildIndex, queryChanges,
+  getChange, getEntityRevisions, listEntityStates, getEntityState,
+  type DiffTreeEntry,
+} from "./workspace-history-index";
+import { entityDiff } from "./workspace-history-diff";
+import { pin, unpin, listPins } from "./workspace-history-retention";
+import {
+  planRestore, applyRestore, discardPlan, isCommitsPaused,
+  type RestoreTarget, type EntitySelection,
+} from "./workspace-history-restore";
+import { homeProfilesDir } from "./modus-home";
 
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = "0.0.0.0";
@@ -629,6 +650,10 @@ app.post("/api/pages/fork", async (c) => {
   }
   const result = forkConfigPage(body.cwd, body.pageId);
   if (!result.ok) return c.json({ error: result.error }, 404);
+  const project = getProjectByPath(body.cwd);
+  if (project && result.path) {
+    recordAttributionHint({ kind: "project", projectId: project.id }, result.path, { type: "human" });
+  }
   return c.json({ ok: true, path: result.path });
 });
 
@@ -675,15 +700,33 @@ app.get("/api/providers/:name/models", async (c) => {
 
 // ── Sessions ──
 
-/** Resolve user profile scoping from query param */
+/** Resolve user profile scoping from query param.
+ *  Mirrors the UI ProfileProvider rule: project-origin agent profiles (loaded from
+ *  <cwd>/.modus/profiles/agents/) always pass the scope filter, even when the user
+ *  profile's agentProfiles whitelist is set. Without this, sessions run under
+ *  project-local profiles like `hints` would be invisible in the sidebar. */
 function resolveUserProfileScope(c: any): { cwdPrefixes?: string[]; agentProfiles?: string[] } | undefined {
   const profileName = new URL(c.req.url).searchParams.get("userProfile");
   if (!profileName) return undefined;
   const profile = getUserProfile(profileName);
   if (!profile) return undefined;
+
+  let agentProfiles: string[] | undefined;
+  if (profile.agentProfiles?.length) {
+    // Union the whitelist with project-origin profiles discovered in each project cwd.
+    const allowed = new Set(profile.agentProfiles);
+    for (const proj of profile.projects ?? []) {
+      const merged = getAllProfiles(proj);
+      for (const [name, p] of Object.entries(merged)) {
+        if (p.origin === "project") allowed.add(name);
+      }
+    }
+    agentProfiles = Array.from(allowed);
+  }
+
   return {
     cwdPrefixes: profile.projects?.length ? profile.projects : undefined,
-    agentProfiles: profile.agentProfiles?.length ? profile.agentProfiles : undefined,
+    agentProfiles,
   };
 }
 
@@ -1906,6 +1949,248 @@ app.patch("/api/projects/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// ── Workspace History ──
+
+function historyScope(c: any): ShadowScope {
+  const pid = c.req.param("pid");
+  return pid ? { kind: "project", projectId: pid } : { kind: "user" };
+}
+
+
+// Changes (filtered list)
+const historyChangesHandler = async (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) {
+    const records = await listCommits(scope, {
+      limit: Number(c.req.query("limit") ?? 50),
+      since: c.req.query("since") ?? undefined,
+      until: c.req.query("until") ?? undefined,
+    });
+    return c.json(records);
+  }
+  return c.json(queryChanges(db, {
+    limit: Number(c.req.query("limit") ?? 50),
+    since: c.req.query("since") ?? undefined,
+    until: c.req.query("until") ?? undefined,
+    kind: c.req.query("kind") ?? undefined,
+    entity: c.req.query("entity") ?? undefined,
+    actor: c.req.query("actor") ?? undefined,
+  }));
+};
+app.get("/api/projects/:pid/history/changes", historyChangesHandler);
+app.get("/api/user/history/changes", historyChangesHandler);
+
+// Change detail (single commit with diffs)
+const historyChangeDetailHandler = async (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) return c.json({ error: "history index not ready" }, 503);
+  const cid = c.req.param("cid");
+  const record = getChange(db, cid);
+  if (!record) return c.json({ error: "change not found" }, 404);
+
+  const diffs = [];
+  const files = await gitDiffTree(scope, cid);
+  const workTree = getWorkTree(scope);
+  const resolver = scope.kind === "project" ? projectEntities : userEntities;
+
+  for (const entity of record.entities) {
+    const relevantFiles = files.filter((f) => {
+      const refs = resolver(join(workTree, f.path), workTree);
+      return refs.some((r) => r.kind === entity.kind && r.id === entity.id);
+    });
+
+    let fromContent: string | null = null;
+    let toContent: string | null = null;
+    for (const file of relevantFiles) {
+      const cur = file.op !== "D" ? await gitShowFile(scope, cid, file.path) : null;
+      const prev = file.op !== "A" ? await gitShowFile(scope, `${cid}~1`, file.path) : null;
+      fromContent = fromContent ? fromContent + "\n" + (prev ?? "") : prev;
+      toContent = toContent ? toContent + "\n" + (cur ?? "") : cur;
+    }
+
+    diffs.push(entityDiff(entity, fromContent, toContent));
+  }
+
+  return c.json({ ...record, diffs });
+};
+app.get("/api/projects/:pid/history/changes/:cid", historyChangeDetailHandler);
+app.get("/api/user/history/changes/:cid", historyChangeDetailHandler);
+
+// Entity listing (all entities at a point in time)
+const historyEntitiesHandler = (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) return c.json({ error: "history index not ready" }, 503);
+  const at = c.req.query("at") ?? undefined;
+  return c.json(listEntityStates(db, at));
+};
+app.get("/api/projects/:pid/history/entities", historyEntitiesHandler);
+app.get("/api/user/history/entities", historyEntitiesHandler);
+
+// Single entity state
+const historyEntityStateHandler = (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) return c.json({ error: "history index not ready" }, 503);
+  const kind = c.req.param("kind");
+  const id = c.req.param("id");
+  const at = c.req.query("at") ?? undefined;
+  const state = getEntityState(db, kind, id, at);
+  if (!state) return c.json({ error: "entity not found" }, 404);
+  return c.json(state);
+};
+app.get("/api/projects/:pid/history/entities/:kind/:id", historyEntityStateHandler);
+app.get("/api/user/history/entities/:kind/:id", historyEntityStateHandler);
+
+// Entity revisions
+const historyEntityRevisionsHandler = (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) return c.json({ error: "history index not ready" }, 503);
+  const kind = c.req.param("kind");
+  const id = c.req.param("id");
+  const limit = Number(c.req.query("limit") ?? 50);
+  return c.json(getEntityRevisions(db, kind, id, limit));
+};
+app.get("/api/projects/:pid/history/entities/:kind/:id/revisions", historyEntityRevisionsHandler);
+app.get("/api/user/history/entities/:kind/:id/revisions", historyEntityRevisionsHandler);
+
+// Diff between two commits for an entity
+const historyDiffHandler = async (c: any) => {
+  const scope = historyScope(c);
+  const entityParam = c.req.query("entity");
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+  if (!entityParam || !from || !to) return c.json({ error: "entity, from, to required" }, 400);
+
+  const parts = entityParam.split(":");
+  const kind = parts[0]!;
+  const id = parts.slice(1).join(":");
+  if (!kind || !id) return c.json({ error: "entity format: kind:id" }, 400);
+
+  const ref = { kind: kind as any, id };
+  const workTree = getWorkTree(scope);
+  const resolver = scope.kind === "project" ? projectEntities : userEntities;
+
+  const fromFiles = await gitLsTree(scope, from);
+  const toFiles = await gitLsTree(scope, to);
+  const allFiles = new Set([...fromFiles, ...toFiles]);
+  const entityFiles = [...allFiles].filter((f) => {
+    const refs = resolver(join(workTree, f), workTree);
+    return refs.some((r) => r.kind === kind && r.id === id);
+  });
+
+  let fromContent: string | null = null;
+  let toContent: string | null = null;
+  for (const file of entityFiles) {
+    const fc = fromFiles.includes(file) ? await gitShowFile(scope, from, file) : null;
+    const tc = toFiles.includes(file) ? await gitShowFile(scope, to, file) : null;
+    fromContent = fromContent ? fromContent + "\n" + (fc ?? "") : fc;
+    toContent = toContent ? toContent + "\n" + (tc ?? "") : tc;
+  }
+
+  return c.json(entityDiff(ref, fromContent, toContent));
+};
+app.get("/api/projects/:pid/history/diff", historyDiffHandler);
+app.get("/api/user/history/diff", historyDiffHandler);
+
+// Pins
+const historyPinHandler = async (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) return c.json({ error: "history index not ready" }, 503);
+  const body = await c.req.json();
+  if (!body.commitId) return c.json({ error: "commitId required" }, 400);
+  try {
+    pin(db, body.commitId, body.note);
+    return c.json({ ok: true });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+};
+app.post("/api/projects/:pid/history/pin", historyPinHandler);
+app.post("/api/user/history/pin", historyPinHandler);
+
+const historyUnpinHandler = async (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) return c.json({ error: "history index not ready" }, 503);
+  const commitId = c.req.param("commitId");
+  const removed = unpin(db, commitId);
+  return removed ? c.json({ ok: true }) : c.json({ error: "pin not found" }, 404);
+};
+app.delete("/api/projects/:pid/history/pin/:commitId", historyUnpinHandler);
+app.delete("/api/user/history/pin/:commitId", historyUnpinHandler);
+
+const historyPinsListHandler = (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) return c.json({ error: "history index not ready" }, 503);
+  return c.json(listPins(db));
+};
+app.get("/api/projects/:pid/history/pins", historyPinsListHandler);
+app.get("/api/user/history/pins", historyPinsListHandler);
+
+// Restore — plan / apply / discard
+const historyRestorePlanHandler = async (c: any) => {
+  const scope = historyScope(c);
+  const db = getIndex(scope);
+  if (!db) return c.json({ error: "history index not ready" }, 503);
+  const body = await c.req.json();
+
+  const target: RestoreTarget = body.at
+    ? { type: "timestamp", at: body.at }
+    : { type: "change", changeId: body.changeId };
+
+  if (!body.at && !body.changeId) return c.json({ error: "changeId or at required" }, 400);
+
+  const selection: EntitySelection = body.entities ?? "all";
+
+  try {
+    const plan = await planRestore(scope, db, target, selection);
+    return c.json(plan);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+};
+app.post("/api/projects/:pid/history/restore/plan", historyRestorePlanHandler);
+app.post("/api/user/history/restore/plan", historyRestorePlanHandler);
+
+const historyRestoreApplyHandler = async (c: any) => {
+  const scope = historyScope(c);
+  const body = await c.req.json();
+  if (!body.planId) return c.json({ error: "planId required" }, 400);
+
+  const actor: ActorInfo = { type: "human" };
+  try {
+    const result = await applyRestore(scope, body.planId, actor);
+    if (!result.ok && result.failed?.some((f) => f.error.startsWith("DRIFT"))) {
+      return c.json({ error: "DRIFT", details: result.failed }, 409);
+    }
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+};
+app.post("/api/projects/:pid/history/restore/apply", historyRestoreApplyHandler);
+app.post("/api/user/history/restore/apply", historyRestoreApplyHandler);
+
+const historyRestoreDiscardHandler = async (c: any) => {
+  const scope = historyScope(c);
+  const body = await c.req.json();
+  if (!body.planId) return c.json({ error: "planId required" }, 400);
+  try {
+    discardPlan(scope, body.planId);
+    return c.json({ ok: true });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+};
+app.post("/api/projects/:pid/history/restore/discard", historyRestoreDiscardHandler);
+app.post("/api/user/history/restore/discard", historyRestoreDiscardHandler);
+
 app.get("/api/init/status", (c) => {
   const cwd = c.req.query("cwd");
   if (!cwd) return c.json({ error: "cwd required" }, 400);
@@ -1982,6 +2267,8 @@ app.post("/api/ui/themes/register", async (c) => {
       notes: typeof body.notes === "string" ? body.notes : undefined,
       source: typeof body.source === "string" ? body.source : "api",
     });
+    const project = getProjectByPath(body.cwd);
+    if (project) recordAttributionHint({ kind: "project", projectId: project.id }, join(body.cwd, ".modus", "themes", body.themeId), { type: "human" });
     return c.json(theme);
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
@@ -1993,7 +2280,10 @@ app.post("/api/ui/themes/activate", async (c) => {
   if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
   if (typeof body.themeId !== "string") return c.json({ error: "themeId required" }, 400);
   try {
-    return c.json(activateTheme(body.cwd, body.themeId));
+    const result = activateTheme(body.cwd, body.themeId);
+    const project = getProjectByPath(body.cwd);
+    if (project) recordAttributionHint({ kind: "project", projectId: project.id }, join(body.cwd, ".modus", "themes", body.themeId), { type: "human" });
+    return c.json(result);
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
   }
@@ -2003,11 +2293,15 @@ app.patch("/api/ui/themes/:id", async (c) => {
   const body = await c.req.json();
   if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
   try {
-    return c.json(patchTheme(body.cwd, c.req.param("id"), {
+    const themeId = c.req.param("id");
+    const result = patchTheme(body.cwd, themeId, {
       ...(typeof body.label === "string" ? { label: body.label } : {}),
       ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
       ...(typeof body.archived === "boolean" ? { archived: body.archived } : {}),
-    }));
+    });
+    const project = getProjectByPath(body.cwd);
+    if (project) recordAttributionHint({ kind: "project", projectId: project.id }, join(body.cwd, ".modus", "themes", themeId), { type: "human" });
+    return c.json(result);
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
   }
@@ -2062,6 +2356,8 @@ app.post("/api/ui/fonts/register", async (c) => {
       notes: typeof body.notes === "string" ? body.notes : undefined,
       source: typeof body.source === "string" ? body.source : "api",
     });
+    const project = getProjectByPath(body.cwd);
+    if (project) recordAttributionHint({ kind: "project", projectId: project.id }, join(body.cwd, ".modus", "fonts", body.fontId), { type: "human" });
     return c.json(font);
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
@@ -2073,7 +2369,10 @@ app.post("/api/ui/fonts/activate", async (c) => {
   if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
   if (typeof body.fontId !== "string") return c.json({ error: "fontId required" }, 400);
   try {
-    return c.json(activateFont(body.cwd, body.fontId));
+    const result = activateFont(body.cwd, body.fontId);
+    const project = getProjectByPath(body.cwd);
+    if (project) recordAttributionHint({ kind: "project", projectId: project.id }, join(body.cwd, ".modus", "fonts", body.fontId), { type: "human" });
+    return c.json(result);
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
   }
@@ -2083,11 +2382,15 @@ app.patch("/api/ui/fonts/:id", async (c) => {
   const body = await c.req.json();
   if (typeof body.cwd !== "string") return c.json({ error: "cwd required" }, 400);
   try {
-    return c.json(patchFont(body.cwd, c.req.param("id"), {
+    const fontId = c.req.param("id");
+    const result = patchFont(body.cwd, fontId, {
       ...(typeof body.label === "string" ? { label: body.label } : {}),
       ...(typeof body.notes === "string" ? { notes: body.notes } : {}),
       ...(typeof body.archived === "boolean" ? { archived: body.archived } : {}),
-    }));
+    });
+    const project = getProjectByPath(body.cwd);
+    if (project) recordAttributionHint({ kind: "project", projectId: project.id }, join(body.cwd, ".modus", "fonts", fontId), { type: "human" });
+    return c.json(result);
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
   }
@@ -3452,6 +3755,78 @@ initActions();
 loadPrompts();
 startSessionReaper();
 startMemoryWatchdog();
+
+// ── Workspace history — shadow repos, index, fs-watcher subscriber ──
+
+setCommitsPausedCheck(() => isCommitsPaused());
+
+onShadowCommit((scope, record, entityOps) => {
+  const db = getIndex(scope);
+  if (db) {
+    indexCommit(db, record, entityOps);
+  }
+});
+
+async function initHistoryIndex(scope: ShadowScope, workTree: string): Promise<void> {
+  const root = shadowRepoPath(scope);
+  const db = openIndex(scope, root);
+  const storedHead = getStoredHead(db);
+  const currentHead = await gitHead(scope);
+
+  if (currentHead && storedHead !== currentHead) {
+    const records = await listCommits(scope, { limit: 99999 });
+    const diffTrees = new Map<string, DiffTreeEntry[]>();
+    for (const r of records) {
+      diffTrees.set(r.id, await gitDiffTree(scope, r.id));
+    }
+    const resolver = scope.kind === "project" ? projectEntities : userEntities;
+    rebuildIndex(db, records, diffTrees, workTree, resolver);
+    const key = scope.kind === "project" ? `project:${scope.projectId}` : "user";
+    console.log(`[workspace-history] rebuilt index for ${key} (${records.length} commits)`);
+  }
+}
+
+(async () => {
+  try {
+    const userWorkTree = homeProfilesDir();
+    await initShadowRepo({ kind: "user" }, userWorkTree);
+    await initHistoryIndex({ kind: "user" }, userWorkTree);
+
+    const registry = listProjects();
+    for (const project of registry) {
+      const projectJson = join(project.path, ".modus", "_project.json");
+      if (existsSync(projectJson)) {
+        const workTree = join(project.path, ".modus");
+        await initShadowRepo({ kind: "project", projectId: project.id }, workTree);
+        await initHistoryIndex({ kind: "project", projectId: project.id }, workTree);
+      }
+    }
+
+    console.log("[workspace-history] shadow repos + indexes initialized");
+  } catch (err: any) {
+    console.warn("[workspace-history] init failed:", err.message);
+  }
+})();
+
+subscribeFsEvents({
+  write(event: FsChangeEvent) {
+    if (!event.entry) return;
+    const absPath = join(event.dir, event.entry);
+
+    const registry = listProjects();
+    for (const project of registry) {
+      const modusRoot = join(project.path, ".modus");
+      if (absPath.startsWith(modusRoot + "/") || absPath === modusRoot) {
+        const scope: ShadowScope = { kind: "project", projectId: project.id };
+        if (isTracked(absPath, scope, modusRoot)) {
+          scheduleCommit(scope);
+        }
+        return;
+      }
+    }
+  },
+  close() {},
+});
 
 // Suppress AbortError rejections from provider internals (e.g. Gemini CLI retry loops)
 process.on("unhandledRejection", (reason) => {

@@ -1,55 +1,69 @@
 ---
 title: Panels
 audience: agents
-lastUpdated: 2026-04-08
-covers: harness/ui/src/providers/LayoutProvider.tsx harness/ui/src/components/PanelSurface.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/LeftPanel.tsx harness/ui/src/components/RightPanel.tsx harness/ui/src/components/WidgetPicker.tsx harness/ui/src/widgets/index.ts harness/sdk/types.ts
+lastUpdated: 2026-04-19
+covers: harness/ui/src/providers/LayoutProvider.tsx harness/ui/src/providers/LayoutContext.ts harness/ui/src/providers/FileViewerProvider.tsx harness/ui/src/components/PanelSurface.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/LeftPanel.tsx harness/ui/src/components/RightPanel.tsx harness/ui/src/components/RightPanelContext.tsx harness/ui/src/components/WidgetPicker.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/registry.ts harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/ui-state.ts harness/sdk/types.ts
 ---
 
 # Panels
 
-The left and right side panels are shared widget containers. Their runtime state lives in
-`LayoutProvider`, their flat rendering path goes through `PanelSurface`, and their recursive
-tree rendering path goes through `PanelTreeRenderer`.
+Panels are the composable container primitive shared by two surfaces:
 
-## Architecture
+1. **App-level side panels** (`LeftPanel`, `RightPanel`) — persistent chrome
+   around the center view, managed by `LayoutProvider`.
+2. **Page panels** — `tabs`, `list`, `split`, `grid`, `scope` nodes inside a
+   page's `layout` tree, managed by `PanelTreeRenderer` and the per-page
+   `PageStateBus`.
+
+Both surfaces reuse the same low-level pieces: `PanelSurface` for flat
+rendering, `PanelTreeRenderer` for recursive trees, `WidgetPicker` for mutating
+widget lists, and the same widget registry. This document is the reference for
+how they fit together.
+
+For page-level rules (load order, override resolution, forking, scope bus, event
+flow) see `pages.md`. This file focuses on panel mechanics.
+
+---
+
+## 1. Architecture
 
 | Part | Responsibility |
 |------|----------------|
-| `LayoutProvider` | Resolves defaults, reads persisted per-view layout, exposes panel state and mutators |
-| `LeftPanel` | Renders left container, picker, and either `PanelSurface` or `PanelTreeRenderer` |
-| `RightPanel` | Same for right side, plus move widgets and right-panel context |
-| `PanelSurface` | Shared renderer for flat `list` and `tabs` modes |
-| `PanelTreeRenderer` | Recursive renderer for `split` / `tabs` / `list` / `widget` trees |
-| `WidgetPicker` | Add/remove/reorder widgets and switch between `tabs` and `list` |
+| `LayoutProvider` | State authority for the app-level panels — open/closed, width, mode, widgets, trees, per-session cache, persistence. |
+| `LayoutContext` | Hook surface (`useLayout`) consumed by `App.tsx`, `LeftPanel`, `RightPanel`. |
+| `LeftPanel` | Thin shell around `PanelSurface` + `WidgetPicker`. |
+| `RightPanel` | Same, plus move widgets, action terminals, browser-path context, `requestView` handling. |
+| `PanelSurface` | Flat renderer for `list` (collapsible cards) and `tabs` (single active). |
+| `PanelTreeRenderer` | Recursive renderer for the full `LayoutNode` tree. |
+| `EditablePanel` | Mutable variant of `tabs` / `list` — runtime picker, dynamic move tabs, file-open focus. |
+| `WidgetPicker` | Add/remove/reorder widgets; toggle mode. |
+| `ResizableSplit` | Drag handles + collapse tabs for `split` nodes. |
+| `PageStateBus` / `ScopeProvider` | Per-page / per-scope event + key-value bus for widget coordination. |
 
-Both panels support two display modes for flat layouts:
-- `list`: stacked collapsible widgets
-- `tabs`: a tab strip with one visible widget at a time
+Both panels honor two display modes in their flat path:
 
-## Widget System
+- `list` — vertically stacked `CollapsibleSurfaceItem`s.
+- `tabs` — a tab strip with one visible widget at a time.
 
-Widgets are auto-discovered from `harness/ui/src/widgets/*.widget.tsx`:
+---
+
+## 2. Widget Registry
+
+Widgets are **explicitly registered**, not auto-discovered. The entry point is
+`harness/ui/src/widgets/registry.ts`.
 
 ```ts
-const modules = import.meta.glob<{ default: WidgetDef }>(
-  "./*.widget.tsx",
-  { eager: true },
-);
-```
-
-Core types:
-
-```ts
-export type WidgetDef = {
+type WidgetDef = {
   type: string;
   component: ComponentType<WidgetProps<any>>;
+  miniComponent?: ComponentType<WidgetProps<any>>;   // compact variant preferred by tree leaves
   zones?: ("dashboard" | "left-panel" | "right-panel")[];
   minHeight?: number;
   maxHeight?: number;
   preferredHeight?: number;
 };
 
-export type WidgetBase = {
+type WidgetBase = {
   id?: string;
   type: string;
   title?: string;
@@ -58,20 +72,62 @@ export type WidgetBase = {
 };
 ```
 
-Notes:
-- `WIDGET_DEFS` stores metadata keyed by widget type.
-- `WIDGETS` stores the actual React components keyed by widget type.
-- If `zones` is omitted, the widget is allowed in all three zones.
-- `minHeight`, `maxHeight`, and `preferredHeight` are applied by `PanelSurface` in list mode.
+- `WIDGET_DEFS` — source of truth, metadata + component.
+- `WIDGETS` — derived map `type → component`.
+- `DEFAULT_DASHBOARD` — the built-in widget list for a fresh `home` view.
+- `zones` filters `WidgetPicker` candidates. **Omitted = allowed everywhere**.
+- `minHeight` / `maxHeight` / `preferredHeight` apply only in `list` mode (flat
+  cards sized by `CollapsibleSurfaceItem`) — panels in `tabs` mode fill their
+  container.
 
-`WidgetPicker` uses `zones` to filter candidates, can add or remove widget instances, reorders
-the flat widget array, and can switch panel mode when `onModeChange` is available.
+To add a widget: create `widgets/my-thing.widget.tsx` exporting a default
+component, then import and register it in `registry.ts`. Widget files are
+plain components — no self-registration glob.
 
-## PanelSurface
+### `WidgetProps`
 
-`PanelSurface` is the shared flat renderer used by both page panels and side panels.
+```ts
+type WidgetProps<C extends WidgetBase = WidgetBase> = {
+  config: C;                           // the layout leaf's config object
+  widgetId: string;                    // stable id — used for UI state keys
+  active?: boolean;                    // true when currently visible (active tab / un-collapsed list item)
+  onNavigate: (view: View) => void;    // app-level navigation callback
+  onSelectSession: (id: string) => void;
+  pageContext?: PageContextHandle;     // only provided inside a page or editable panel
+};
+```
 
-It accepts:
+When a widget runs inside a page, `pageContext` is non-null and the widget
+should prefer it (read/write shared state, emit events) over wiring directly to
+global stores. When `pageContext` is absent, widgets fall back to the app-level
+flow (`onSelectSession`, `useSession`, etc.).
+
+### `WidgetChromeContext`
+
+Allows a widget to append a short suffix to its header when collapsed (e.g. "5
+items"). Provided by `BlockShell` (block pages) and `CollapsibleSurfaceItem`
+(list-mode panels). Ignored in `tabs` mode.
+
+```tsx
+const { setHeaderSuffix } = useWidgetChrome();
+useEffect(() => setHeaderSuffix(`${count}`), [count]);
+```
+
+### Widget UI state — per-user, per-cwd
+
+`useWidgetUiState({ userProfile, cwd }, widgetId, field, fallback)` wraps
+`localStorage` with the key:
+
+```
+harness:widget-ui:<userProfile or "anon">:<cwd or "global">:<widgetId>:<field>
+```
+
+Used for collapse state, group-mode preferences, etc. Keys survive navigation
+and refreshes but are scoped so per-project / per-user state doesn't leak.
+
+---
+
+## 3. `PanelSurface` — the Flat Renderer
 
 ```ts
 type PanelSurfaceItem = {
@@ -83,144 +139,381 @@ type PanelSurfaceItem = {
   maxHeight?: number;
   preferredHeight?: number;
   defaultCollapsed?: boolean;
-  onClose?: () => void;
+  onClose?: () => void;      // tab strip close button
+  onReload?: () => void;     // tab strip reload button (move widgets)
   render: (active: boolean) => ReactNode;
 };
 ```
 
 Behavior:
-- In `tabs` mode, it tracks `activeItemId` locally and renders one item at a time.
-- In `list` mode, each item renders through `CollapsibleSurfaceItem`.
-- Collapse state persists with `useWidgetUiState`.
+
+- In `tabs` mode the active tab is tracked in local state. When `items` change
+  and the current active id is gone, it falls back to `items[0]`. An optional
+  `requestActiveId` prop (used by `EditablePanel` and `RightPanel`) forces a
+  specific tab active; `onRequestActiveHandled` acknowledges the request.
+- In `list` mode each item is wrapped in `CollapsibleSurfaceItem`, which
+  persists collapse via `useWidgetUiState` and respects the item's height
+  constraints. Tab-mode items render full-bleed with `display: none` on inactive
+  siblings so mounted components stay alive.
 - Tab strips support horizontal wheel scrolling.
-- Optional `picker`, header, and body class props let left and right panels reuse the same core.
+- Optional `picker`, `headerClassName`, `bodyClassName`, and `contentClassName`
+  props let each caller slot its own CSS class names while reusing the core.
 
-## PanelNode Tree
+---
 
-The new panel schema is a recursive tree defined in `harness/ui/src/widgets/index.ts`:
+## 4. `LayoutNode` Tree
+
+The same `LayoutNode` tree used by pages (see `pages.md`) drives panel
+rendering. Summary:
 
 ```ts
-export type PanelLeaf = {
+type LayoutLeaf = {
   kind: "widget";
   id?: string;
   widget: WidgetBase;
+  publish?: Record<string, string>;
+  subscribe?: Record<string, string>;
+  canNavigate?: boolean;
+  showWhen?: Record<string, unknown>;
+  hideWhen?: Record<string, unknown>;
 };
 
-export type PanelNode =
-  | {
-      kind: "split";
-      id?: string;
-      axis: "horizontal" | "vertical";
-      sizes?: number[];
-      children: PanelNode[];
-    }
-  | {
-      kind: "tabs";
-      id?: string;
-      activeTab?: string;
-      children: PanelLeaf[];
-    }
-  | {
-      kind: "list";
-      id?: string;
-      children: PanelLeaf[];
-    }
-  | PanelLeaf;
+type LayoutNode =
+  | { kind: "grid";  ... }
+  | { kind: "split"; axis; sizes?: (number|"auto")[]; collapsible?: boolean[]; children }
+  | { kind: "tabs";  editable?; target?; activeTab?; children: LayoutLeaf[] }
+  | { kind: "list";  editable?; target?; children: LayoutLeaf[] }
+  | { kind: "scope"; context?; bindUrlSession?; children: LayoutNode[] }
+  | LayoutLeaf;
 ```
 
-`normalizePanelLayout(mode, widgets)` converts a flat widget array into a root
-`{ kind: mode, id: "root", children: PanelLeaf[] }` node.
+Aliases `PanelNode` / `PageLayoutNode` / `PanelLeaf` remain as `@deprecated`
+re-exports.
 
-`PanelTreeRenderer` behavior:
-- `widget` nodes render a single widget directly.
-- `tabs` and `list` nodes are converted into `PanelSurfaceItem[]` and passed to `PanelSurface`.
-- `split` nodes render recursively as flex containers using `axis` and `sizes`.
-- Each split child gets `flex: "<size> <size> 0%"` when `sizes[index] > 0`, otherwise `1 1 0%`.
+### `normalizePanelLayout(mode, widgets)`
 
-Current side-panel components only switch to `PanelTreeRenderer` when the root tree is a
-`split` node. Non-split trees still render through the flat `widgets + mode` path even if a
-persisted tree exists.
+Converts a flat `WidgetBase[]` into a root `{ kind: mode, id: "root", children }`
+tree with one leaf per widget. Used by `LayoutProvider` when a view has no
+persisted `tree` — it synthesizes one from the widget list + mode so
+`PanelTreeRenderer` can render uniformly.
 
-## LayoutProvider
+### `PanelTreeRenderer`
 
-`LayoutProvider` is the state authority for side panels.
+Dispatches by `node.kind`:
 
-It manages:
-- `leftPanelOpen`, `leftPanelWidth`, `leftPanelMode`, `leftPanelWidgets`, `leftPanelTree`
-- `rightPanelOpen`, `rightPanelWidth`, `rightPanelMode`, `rightPanelWidgets`, `rightPanelTree`
-- right-panel browser path and requested widget view
-- resize handlers, toggles, and persistence callbacks
+- `widget` — single leaf, no chrome. `renderLeaf(...).render(true)`.
+- `split` — `ResizableSplit` (see §5).
+- `grid` — CSS grid; direct children recurse. `tabs`/`list` children honor
+  `columnSpan` / `rowSpan`.
+- `scope` — wraps children in `ScopeProvider` + `ScopeSessionWatcher` (polls
+  `modus.getActiveWidgets(sessionId)` on scope-session change and emits
+  `open-move`). Optional `ScopeUrlSessionBinder` bridges URL hash ↔ bus
+  `sessionId`.
+- `tabs` / `list`:
+  - `editable: true` → `EditablePanel` (see §6).
+  - Otherwise → flat `PanelSurface` with items mapped by `renderLeaf`.
 
-View defaults live in `VIEW_PANEL_DEFAULTS`. Current entries include `chat`, `actions`,
-`profiles`, `web`, `trace`, `git`, and `home`. Width defaults are `280` left and `360` right;
-fallback right mode is `tabs`, fallback left mode is `list`.
+### Leaf hooks — `LeafWidget`
 
-Resolution order:
+For every `widget` leaf:
 
-1. Per-view user layout from `activeUP.layouts[view]`
-2. Legacy `activeUP.leftPanel.widgets` for chat-left compatibility only
-3. Built-in defaults from `VIEW_PANEL_DEFAULTS`
+1. `getLeafId(leaf, index)` → `leaf.id` or `leaf.widget.id` or `"<type>-<i+1>"`.
+2. `usePageContext(publish, subscribe, canNavigate)` — builds the remapped bus
+   handle or returns `undefined` if no bus.
+3. `useLeafVisible(showWhen, hideWhen)` — returns `false` to render nothing.
+4. If `widget.type` starts with `move:` → renders `MoveWidgetEmbed` (pages-only).
+5. Otherwise resolves `WIDGET_DEFS[type].miniComponent ?? .component` and
+   renders it with `pageContext`.
 
-Tree resolution:
+`renderLeaf` wraps the leaf into a `PanelSurfaceItem` with icon lookup
+(`widgetIcon()` maps a handful of well-known types to compact SVGs) and heights
+pulled from `WIDGET_DEFS`. Move widgets fall back to `minHeight: 200,
+preferredHeight: 400` when there is no def.
 
-1. Persisted `layouts[view].left.tree` or `layouts[view].right.tree`
-2. `normalizePanelLayout(resolvedMode, resolvedWidgets)`
+---
 
-Chat has extra per-session behavior:
-- open state, widths, scroll position, file viewer tabs, active file, and right browser path
-  are cached per session and persisted through `modus.saveSessionUiState()`
-- state is restored on session switch in chat view only
-- non-chat view changes reset to view defaults plus persisted per-view mode overrides
+## 5. `ResizableSplit`
 
-## Left and Right Panels
+Drag handles sit between children. Per-child `sizes[i]` is either a number
+(flex weight) or `"auto"` (content-sized, `flex: 0 0 auto`). Per-child
+`collapsible[i]: true` replaces the resize handle with a `SplitCollapseTab`:
 
-`LeftPanel` and `RightPanel` are thin containers around the shared rendering primitives.
+- Click the tab → toggle collapsed.
+- Drag the tab past a ~10px threshold → resize the adjacent boundary.
+- Collapsed children render `flex: 0 0 0px` and skip their subtree.
 
-`LeftPanel`:
-- filters invalid widget types
-- converts widgets into `PanelSurfaceItem[]`
-- exposes `WidgetPicker`
-- removes widgets through `onClose`
-- uses `PanelTreeRenderer` only when `tree.kind === "split"`
+Resize is disallowed when either neighbor is `"auto"` or collapsed — the static
+handle class is applied so cursors/visuals reflect the non-draggable state.
 
-`RightPanel` adds:
-- `RightPanelContextProvider` for browser-path aware widgets
-- move widgets appended after regular widgets
-- icon-only tabs for some built-in widget types
-- `requestView` handling, which can auto-open the panel if a matching widget exists
+Minimum flex weight for a resized side is 5% of total — prevents collapsing via
+drag.
 
-## Persistence
+Mobile default (window width ≤ 640px) starts every collapsible child collapsed,
+which gives phones a full-bleed center pane out of the box.
 
-User-profile persistence lives in `UserProfileUiConfig` in `harness/sdk/types.ts`:
+### `expand-target` event
+
+When a new dynamic tab lands in a `target` panel deeper in the tree, the panel
+emits `expand-target` on the scope bus. `ResizableSplit` listens and uncollapses
+any collapsible child whose subtree `containsTarget()`, so the new tab becomes
+visible without the user having to dig.
+
+---
+
+## 6. `EditablePanel`
+
+Applied to any `tabs` or `list` node with `editable: true`.
+
+### Mutable widget list
+
+Seeded from `node.children[].widget`. Persisted per panel in `localStorage` at:
+
+```
+harness:editable-panel:<node.id or joined child widget ids>
+```
+
+The `WidgetPicker` in the panel header adds/removes/reorders widgets and can
+toggle between `tabs` and `list` mode (the toggle does not hit the profile —
+it's a per-panel state). Picker candidates are filtered by `WIDGET_DEFS.zones`
+(treated as `right-panel` scope for editable page panels).
+
+### Static + dynamic items
+
+The final `items` array is `[...staticItems, ...dynamicItems]`:
+
+- **Static items** come from the persisted widget list, mapped through
+  `EditablePanelWidget` which plumbs `publish` / `subscribe` / `canNavigate`
+  from the matching `node.children` leaf.
+- **Dynamic items** are move widget tabs driven by the scope bus and by direct
+  fetches from `modus.getActiveWidgets(scopeSessionId)`.
+
+### `target` panels
+
+A panel with `target: true` subscribes to the scope bus:
+
+| Event | Effect |
+|-------|--------|
+| `open-move` | if not already present, append a dynamic tab with the move widget; emit `expand-target`; request active. |
+| `close-move` | remove the tab; the panel also calls `modus.detachMove(moveName, apiToken)`. |
+| `focus-tab` | switch active tab id. |
+
+Also:
+
+- On `scopeSessionId` change, the panel **self-fetches** active widgets. This
+  heals the race where a move attaches before the panel mounts (e.g. a panel
+  that was collapsed in a split).
+- On `scopeSessionId` change it clears all dynamic tabs — dynamic tabs belong
+  to the previous session.
+- Listens to `useFileViewer().subscribeFileOpens(...)`: if a `code-editor` leaf
+  is in this panel, switch to it and emit `expand-target`.
+
+Dynamic tabs expose both `onReload` (evicts the move widget module URL via
+`evictWidgetModule` and bumps a reload key) and `onClose` (removes tab + detach
+the move).
+
+---
+
+## 7. `LayoutProvider` — App-Level State
+
+`LayoutProvider({ view, children })` owns the state for the app-level side
+panels. It observes `view` (via `useHashRouter`) and the active user profile /
+session to pick the right defaults and persist changes.
+
+### State
+
+| Field | Meaning |
+|-------|---------|
+| `leftPanelOpen`, `rightPanelOpen` | Panel open flag. Persists per session in chat view; transient otherwise. |
+| `leftPanelWidth`, `rightPanelWidth` | Pixel width. Clamped to 180–600 / 200–800 on drag. |
+| `leftPanelMode`, `rightPanelMode` | `"list"` or `"tabs"`. |
+| `leftPanelWidgets`, `rightPanelWidgets` | Resolved `WidgetBase[]`. |
+| `leftPanelTree`, `rightPanelTree` | Resolved `LayoutNode` tree (persisted or synthesized). |
+| `rightPanelBrowserPath` | Shared file-viewer path for code-editor-in-panel. |
+| `requestRightPanelView` | External signal requesting a tab — see below. |
+| `panelsEnabled` | Whether panels should render for this view at all. |
+| `currentView` | Echo of the router's current view. |
+
+### View-specific defaults — `VIEW_PANEL_DEFAULTS`
+
+Hard-coded for `chat`, `actions`, `profiles`, `web`, `trace`, `git`, `home`.
+Shape:
 
 ```ts
-export type UserProfileUiConfig = {
-  leftPanel?: {
-    widgets?: string[];
-  };
-  layouts?: Record<string, {
-    left?: {
-      mode?: "list" | "tabs";
-      widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>;
-      tree?: unknown;
-    };
-    right?: {
-      mode?: "list" | "tabs";
-      widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>;
-      tree?: unknown;
-    };
-  }>;
-  // ...
+type PanelDefaults = {
+  left:  { open; width; mode; widgets: string[] };
+  right: { open; width; mode; widgets: string[] };
 };
 ```
 
-Persistence flow:
-- `onLeftPanelWidgetsChange()` patches `layouts[view].left.widgets`.
-- In chat view, that same patch also writes legacy `leftPanel.widgets` as widget type strings.
-- `onRightPanelWidgetsChange()` patches `layouts[view].right.widgets`.
-- `onLeftPanelModeChange()` and `onRightPanelModeChange()` patch `mode`.
-- `onLeftPanelTreeChange()` and `onRightPanelTreeChange()` patch `tree`.
-- All of these use `modus.patchUserProfileUiConfig(...)`, then refresh profiles.
+Width defaults: 280 (left) / 360 (right). Default modes: left is `list`, right
+is `tabs`. Views missing from the map inherit `FALLBACK_DEFAULTS` (`widgets:
+[]` on left, `["code-editor"]` on right).
 
-Persisted widget arrays may contain either plain type strings or full `WidgetBase`-like objects.
-`normalizePanelWidgets()` converts them into widget configs with stable generated ids when needed.
+`panelsEnabled = !!VIEW_PANEL_DEFAULTS[view]` — views not in the map have no
+app-level panels. Currently every listed view gets panels; the check is the
+toggle point for future view-specific opt-in.
+
+### Resolution order — widgets
+
+For a given `view`:
+
+1. `activeUP.layouts[view].<side>.widgets` — per-view user layout from the
+   profile.
+2. `activeUP.leftPanel.widgets` — **chat view only** legacy fallback.
+3. `VIEW_PANEL_DEFAULTS[view].<side>.widgets` — built-in.
+
+`normalizePanelWidgets(side, widgets)` upgrades each entry:
+
+- Plain `string` → `{ id: "<side>-<type>-<i>", type }`.
+- Object → keep as-is with a synthesized id if missing.
+
+Widgets from the resolved source flow into local state
+(`leftPanelWidgets`/`rightPanelWidgets`) so adds/removes feel instant; changes
+are then patched back to the profile.
+
+### Resolution order — trees
+
+1. `activeUP.layouts[view].<side>.tree` — persisted tree (from a future
+   split-aware editor, or manual JSON).
+2. Else `normalizePanelLayout(mode, widgets)` — synthesize a flat tree.
+
+The panel components themselves only use `tree` when it's non-flat
+(`LeftPanel`/`RightPanel` still bias to the flat widget+mode path for the
+simple cases). A persisted `{ kind: "split", ... }` tree would let a user have
+nested panel splits even inside the app-level panel — the provider is ready
+for it, but the current side-panel shells route around it.
+
+### Chat-view per-session cache
+
+Chat carries extra per-session UI: scroll position, file viewer tabs, active
+file, panel open state, widths, and right-panel browser path. These are:
+
+- Cached in-memory via `uiCache` (a `Map<sessionId, snapshot>`; evicted at 20).
+- Debounced (300ms) into `modus.saveSessionUiState(sessionId, snapshot)`.
+- Restored on session switch via `modus.getSessionUiState(id)` + an in-memory
+  cache lookup. The `applyState` closure also hydrates `useFileViewer` and
+  replays `chat-messages` scroll after a `requestAnimationFrame`.
+
+Cache is keyed only by real session ids; pending (`pending-*`) and null ids are
+ignored — otherwise transient null states during session creation would reset
+the panels.
+
+Non-chat view switches pull defaults + the per-view persisted mode. Panel
+open state and width **carry over across view switches**; only mode, widget
+list, and browser path reset.
+
+### Persistence callbacks
+
+All exposed via `useLayout()`:
+
+| Callback | Patches |
+|----------|---------|
+| `onLeftPanelWidgetsChange(widgets)` | `layouts[view].left.widgets` — and, chat-only, `leftPanel.widgets` (type strings) for backward compat. |
+| `onRightPanelWidgetsChange(widgets)` | `layouts[view].right.widgets` |
+| `onLeftPanelModeChange(mode)` / `onRightPanelModeChange(mode)` | `layouts[view].<side>.mode` |
+| `onLeftPanelTreeChange(tree)` / `onRightPanelTreeChange(tree)` | `layouts[view].<side>.tree` |
+
+All call `modus.patchUserProfileUiConfig(activeUserProfile, patch)` then
+`refreshUserProfiles()`. Failures are swallowed silently — the optimistic local
+state already reflects the intent.
+
+### Resize handlers
+
+`handleLeftResize(delta)` and `handleRightResize(delta)` clamp to the width
+ranges above. The `ResizeHandle` component in `App.tsx` drives them.
+
+---
+
+## 8. `LeftPanel` vs. `RightPanel`
+
+### `LeftPanel`
+
+Minimal: filters invalid widget types, maps into `PanelSurfaceItem[]`, renders
+`PanelSurface` with the `WidgetPicker`. No browser context, no move widgets.
+
+### `RightPanel`
+
+Everything `LeftPanel` does, plus:
+
+- **`RightPanelContextProvider`** — exposes `browserPath`, `setBrowserPath`,
+  `messages`, `sessionId`, `requestOpen` to any child widget via
+  `useOptionalRightPanelContext()`. `code-editor` uses it to share the panel's
+  active file path across session switches.
+- **Move widgets** — `moveWidgets` prop is appended after regular widgets as
+  dynamic tabs. Each carries `onReload` (module eviction + reload key) and
+  `onClose` (detach). Newly-added moves with `autoOpen !== false` auto-select.
+- **Action terminal tabs** — polls `modus.listTerminals({ ownerType: "action" })`
+  every 3s, groups by `ownerName`, and surfaces each as a dedicated
+  `persistent-terminal`-style tab. New action terminals auto-open the panel.
+- **`requestView`** — external signal (e.g. clicking a session-edit marker) that
+  maps through `REQUEST_VIEW_TO_WIDGET` (`session-edits`, `activity`, `terminal`)
+  to a matching widget type, opens the panel, and selects the tab.
+- **Icon-only tabs** — widgets with an `iconFor(type)` mapping render as
+  icon-only tabs in the strip. Labels still appear on hover.
+
+### Sharing code-editor with the file viewer
+
+The full chain:
+
+1. User clicks a file path in chat or issues `open-file` via SSE — `FileViewerProvider.openFile(path)` mutates its tab list and notifies `subscribeFileOpens` listeners.
+2. `App.tsx` registers a `subscribeFileOpens` listener: if the current view is
+   not `chat` and not a custom page, it pops the app-level right panel and,
+   if needed, adds a `code-editor` widget to the right panel's widgets.
+3. Chat view and pages opt out — they have their own `code-editor` already.
+   Pages handle focus inside `EditablePanel`; chat's layout (via the
+   `chat-studio` page fork) does the same through its scope.
+
+---
+
+## 9. Persistence Shape (`UserProfileUiConfig`)
+
+From `harness/sdk/types.ts`:
+
+```ts
+type UserProfileUiConfig = {
+  panelWidgets?: Array<{ id?; type; [k]: unknown }>;
+  dashboard?: {
+    widgets?: Array<{ type; [k]: unknown }>;
+    pages?: Array<{ id; title; blocks?; layout?; nav?; fullscreen? }>;
+  };
+  leftPanel?: { widgets?: string[] };        // legacy chat-only path
+  layouts?: Record<string, {                 // keyed by View name
+    left?:  { mode?: "list"|"tabs"; widgets?: (string | { id?; type; ... })[]; tree?: unknown };
+    right?: { mode?: "list"|"tabs"; widgets?: (string | { id?; type; ... })[]; tree?: unknown };
+  }>;
+  computer?: string;
+  editor?: string;
+  clientExtensions?: { paths?; enabled?; disabled?; settings? };
+};
+```
+
+Access via SDK:
+
+- `modus.getUserProfileUiConfig(name)` → full config.
+- `modus.patchUserProfileUiConfig(name, partial)` → deep-merged.
+
+Widget arrays may contain either plain type strings or full `WidgetBase`-like
+objects. `normalizePanelWidgets` upgrades strings into objects with stable
+generated ids. When round-tripped the legacy `leftPanel.widgets` is rewritten
+as `widget.type` strings (chat view only) for backward compatibility.
+
+---
+
+## 10. Page Panels vs. App Panels — Summary
+
+| Concern | App-level panel | Page panel |
+|---------|-----------------|------------|
+| State source | `UserProfileUiConfig.layouts[view]` + view defaults | JSON on disk (project / harness / move / action / mission) |
+| Persistence | `modus.patchUserProfileUiConfig` | fork to `.modus/pages/<id>.json` |
+| Per-session UI cache | yes (chat only — open, widths, file viewer, scroll, browser path) | no (pages stay mounted; scope bus carries state) |
+| Event bus | none (widgets talk to global stores) | `PageStateBus` (+ nested scopes) |
+| Fullscreen | n/a | can hide the app panels when active |
+| Editing | `WidgetPicker` in panel header | JSON edit, or `editable: true` panels (localStorage-only) |
+| Move widgets | auto-appended to `RightPanel` for the active session | routed via `open-move` on the scope bus into any `target` panel |
+| File open routing | `FileViewerProvider` → `App.tsx` opens right panel and ensures a `code-editor` | `EditablePanel` focuses its own `code-editor` leaf |
+
+When both surfaces render at once (app panels around a page), they are
+independent — the page has its own bus and its own editable panels. The app
+panels always talk to global stores. The two coordinate only through the
+`FileViewerProvider` (shared tab list) and the backend (move widget
+registration).

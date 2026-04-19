@@ -67,6 +67,62 @@
   padding-left: 44px;
 }
 
+/* ── Ghost-text autocomplete (prompt cache) ──
+ * Mirror div positioned over the textarea. Typed portion is transparent
+ * so the real textarea text shows through; suffix is drawn in muted gray.
+ * Border must match textarea so content-box widths align under box-sizing.
+ */
+.chat-textarea-ghost {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  padding: 12px 80px 46px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: calc(13px * var(--font-scale, 1));
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  background: transparent;
+}
+.has-icon-actions .chat-textarea-ghost {
+  padding-left: 44px;
+}
+.chat-textarea-ghost-typed {
+  color: transparent;
+}
+.chat-textarea-ghost-suffix {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+/* ── Prompt-cache save toast ── */
+.prompt-cache-toast {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 3px;
+  pointer-events: none;
+  animation: prompt-cache-toast-fade 1.4s ease-out forwards;
+}
+@keyframes prompt-cache-toast-fade {
+  0%   { opacity: 0; transform: translateY(-2px); }
+  15%  { opacity: 1; transform: translateY(0); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-2px); }
+}
+
 /* ── Recording / finishing state on the box ── */
 .is-recording .chat-textarea,
 .is-recording .chat-textarea:focus {

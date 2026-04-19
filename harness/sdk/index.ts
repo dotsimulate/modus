@@ -158,6 +158,9 @@ export type {
   WebPosition,
   // Filesystem events
   FsChangeEvent,
+  // Prompt cache
+  PromptCacheEntry,
+  PromptCache,
 } from "./types";
 
 export { nextMsgId } from "./types";

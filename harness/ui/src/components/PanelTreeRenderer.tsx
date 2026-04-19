@@ -8,6 +8,7 @@ import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSes
 import { MoveWidgetEmbed } from "./MoveWidgetEmbed";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { modus } from "../modusClient";
+import { useFileViewer } from "../providers/FileViewerContext";
 
 type Props = {
   node: LayoutNode;
@@ -132,6 +133,15 @@ function widgetIcon(widgetType: string): ReactNode | undefined {
     return (
       <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
         <path d="M2 3h8M2 6h8M2 9h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>
+    );
+  }
+  if (widgetType === "session-history") {
+    // Mirrors the sort icon used inside the widget itself — three stepped
+    // lines (descending) read as "ordered history".
+    return (
+      <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+        <path d="M2 3h8M3 6h6M4 9h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
       </svg>
     );
   }
@@ -815,6 +825,30 @@ type DynamicMoveTab = {
   reloadKey: number;
 };
 
+function panelStorageKey(node: EditablePanelNode): string {
+  const id = node.id ?? node.children.map(l => l.widget.id ?? l.widget.type).join(",");
+  return `harness:editable-panel:${id}`;
+}
+
+function loadPanelWidgets(node: EditablePanelNode): WidgetBase[] {
+  const defaults = node.children.map(l => l.widget);
+  try {
+    const raw = localStorage.getItem(panelStorageKey(node));
+    if (!raw) return defaults;
+    const saved = JSON.parse(raw) as WidgetBase[];
+    if (!Array.isArray(saved) || saved.length === 0) return defaults;
+    return saved;
+  } catch {
+    return defaults;
+  }
+}
+
+function savePanelWidgets(node: EditablePanelNode, widgets: WidgetBase[]) {
+  try {
+    localStorage.setItem(panelStorageKey(node), JSON.stringify(widgets));
+  } catch {}
+}
+
 function EditablePanel({
   node,
   onNavigate,
@@ -826,10 +860,14 @@ function EditablePanel({
   onSelectSession: (id: string) => void;
   empty: ReactNode;
 }) {
-  // Seed from config children, then allow runtime edits
-  const [widgets, setWidgets] = useState<WidgetBase[]>(() =>
-    node.children.map((leaf) => leaf.widget),
-  );
+  const [widgets, setWidgetsRaw] = useState<WidgetBase[]>(() => loadPanelWidgets(node));
+  const setWidgets = useCallback((next: WidgetBase[] | ((prev: WidgetBase[]) => WidgetBase[])) => {
+    setWidgetsRaw(prev => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      savePanelWidgets(node, resolved);
+      return resolved;
+    });
+  }, [node]);
   const [mode, setMode] = useState<"list" | "tabs">(node.kind);
   const [dynamicTabs, setDynamicTabs] = useState<DynamicMoveTab[]>([]);
   const [requestActiveId, setRequestActiveId] = useState<string | null>(null);
@@ -838,6 +876,26 @@ function EditablePanel({
   const bus = useScopeBus();
   const dynamicTabsRef = useRef(dynamicTabs);
   dynamicTabsRef.current = dynamicTabs;
+  const widgetsRef = useRef(widgets);
+  widgetsRef.current = widgets;
+
+  // ── File-open → focus code-editor tab ──
+  // When a file is opened (e.g. via a file reference click in chat markdown),
+  // if this panel contains a code-editor widget that isn't the active tab,
+  // bring it to the front. Also emit expand-target in case a parent split
+  // has this panel's branch collapsed.
+  const { subscribeFileOpens } = useFileViewer();
+  useEffect(() => {
+    return subscribeFileOpens(() => {
+      const valid = widgetsRef.current.filter((w) => WIDGETS[w.type]);
+      const editorIndex = valid.findIndex((w) => w.type === "code-editor");
+      if (editorIndex === -1) return;
+      const editor = valid[editorIndex];
+      const editorId = editor.id ?? `${editor.type}-${editorIndex}`;
+      setRequestActiveId(editorId);
+      bus?.emit({ type: "expand-target" });
+    });
+  }, [subscribeFileOpens, bus]);
 
   // Track scope session for direct widget fetching
   const scopeState = useSyncExternalStore(

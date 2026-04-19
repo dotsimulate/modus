@@ -38,9 +38,11 @@ import ProfilesManagerWidget from "./profiles-manager.widget";
 import ProjectThemeWidget from "./project-theme.widget";
 import ProviderStatusWidget from "./provider-status.widget";
 import ProviderUsageWidget from "./provider-usage.widget";
+import HintsLauncherWidget from "./hints-launcher.widget";
 import SessionChatWidget from "./session-chat.widget";
 import SessionControlWidget from "./session-control.widget";
 import SessionEditsWidget from "./session-edits.widget";
+import SessionHistoryWidget from "./session-history.widget";
 import SessionInfoWidget from "./session-info.widget";
 import SessionListWidget from "./session-list.widget";
 import SessionSidebarWidget from "./session-sidebar.widget";
@@ -211,6 +213,13 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     minHeight: 100,
     preferredHeight: 220,
   },
+  "hints-launcher": {
+    type: "hints-launcher",
+    component: HintsLauncherWidget,
+    zones: ["dashboard", "left-panel", "right-panel"],
+    minHeight: 180,
+    preferredHeight: 360,
+  },
   "session-chat": {
     type: "session-chat",
     component: SessionChatWidget,
@@ -230,6 +239,12 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     zones: ["left-panel", "right-panel"],
     minHeight: 100,
     preferredHeight: 250,
+  },
+  "session-history": {
+    type: "session-history",
+    component: SessionHistoryWidget,
+    minHeight: 200,
+    preferredHeight: 400,
   },
   "session-info": {
     type: "session-info",

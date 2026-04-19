@@ -5,6 +5,7 @@ import { PromptPicker } from "./PromptPicker";
 import { AttachedMove, AttachedWidgetContent } from "./QueuedMessage";
 import type { ComposerAttachResult } from "./MoveWidget";
 import { activateComposer, registerComposer, useComposerActions } from "../client-extensions";
+import { findCompletion, loadPromptCache, usePromptCache } from "../promptCache";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
 const sentHistory: string[] = [];
@@ -110,6 +111,29 @@ export function ChatInput({
   // Prompt picker slash shortcut
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerForceOpen, setPickerForceOpen] = useState(0);
+
+  // Ghost-text autocomplete against saved prompt cache
+  usePromptCache();
+  useEffect(() => { void loadPromptCache(); }, []);
+  const [ghost, setGhost] = useState<string | null>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
+
+  const recomputeGhost = useCallback((val: string) => {
+    const ta = ref.current;
+    const atEnd = !ta || (ta.selectionStart === val.length && ta.selectionEnd === val.length);
+    if (!atEnd || !val) { setGhost(null); return; }
+    setGhost(findCompletion(val));
+  }, []);
+
+  useEffect(() => {
+    recomputeGhost(value);
+  }, [value, recomputeGhost]);
+
+  const syncGhostScroll = useCallback(() => {
+    const ta = ref.current;
+    const g = ghostRef.current;
+    if (ta && g) g.scrollTop = ta.scrollTop;
+  }, []);
 
   // Attachment state
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -262,8 +286,27 @@ export function ChatInput({
       submit: (text?: string) => {
         handleSendRef.current(text);
       },
+      attachMove: (move: MoveListItem, inputs: Record<string, unknown>) => {
+        // Mirrors the modus:attach-move window-event path, but delivered directly
+        // to this composer by ID. Used by callers that just created a session and
+        // need to avoid the event-dispatch race.
+        if (move.widget?.mountOnAttach && projectCwdRef.current) {
+          modus.attachMove({
+            moveName: move.name,
+            inputs,
+            cwd: projectCwdRef.current,
+            sessionId: sessionIdRef.current,
+            userProfile: userProfileRef.current,
+          }).then((result) => {
+            onMoveAttached?.(result);
+            window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
+          }).catch((err) => console.error("[ChatInput] attachMove via registry failed:", err));
+          return;
+        }
+        setAttachedMove({ item: move, inputs });
+      },
     });
-  }, [composerId]);
+  }, [composerId, onMoveAttached]);
 
   // Global Escape to stop — works regardless of focus, but not when picker is open
   useEffect(() => {
@@ -446,6 +489,31 @@ export function ChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Ghost-text acceptance: Tab always, ArrowRight only when caret is at end of value
+    if (ghost && (e.key === "Tab" || e.key === "ArrowRight")) {
+      const ta = ref.current;
+      const atEnd = !ta || (ta.selectionStart === value.length && ta.selectionEnd === value.length);
+      if (atEnd) {
+        e.preventDefault();
+        const next = value + ghost;
+        setGhost(null);
+        onChange(next);
+        requestAnimationFrame(() => {
+          const t = ref.current;
+          if (t) { t.focus(); t.setSelectionRange(next.length, next.length); }
+        });
+        return;
+      }
+    }
+
+    // Escape dismisses ghost (without stopping an active session)
+    if (ghost && e.key === "Escape") {
+      setGhost(null);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -633,14 +701,27 @@ export function ChatInput({
               const ta = e.currentTarget;
               ta.style.height = "auto";
               ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+              syncGhostScroll();
             }}
             onKeyDown={handleKeyDown}
             onBeforeInput={handleBeforeInput}
             onPaste={handlePaste}
             onFocus={() => activateComposer(composerId)}
+            onSelect={() => recomputeGhost(valueRef.current)}
+            onScroll={syncGhostScroll}
             rows={1}
             disabled={disabled}
           />
+          {ghost && (
+            <div
+              ref={ghostRef}
+              className="chat-textarea-ghost"
+              aria-hidden="true"
+            >
+              <span className="chat-textarea-ghost-typed">{value}</span>
+              <span className="chat-textarea-ghost-suffix">{ghost}</span>
+            </div>
+          )}
           <div className="chat-picker">
             <PromptPicker
               forceOpen={pickerForceOpen}

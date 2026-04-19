@@ -32,11 +32,8 @@ export default function NewSessionWidget({ pageContext, onSelectSession }: Widge
       if (profileName) selectProfile(profileName);
       const id = await newSession();
       if (id) {
-        if (pageContext) {
-          pageContext.set("selectedSession", id);
-        } else {
-          onSelectSession(id);
-        }
+        pageContext?.set("selectedSession", id);
+        onSelectSession(id);
       }
     } finally {
       setBusy(false);

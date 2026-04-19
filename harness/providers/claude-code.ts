@@ -1150,6 +1150,18 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           m.total_tokens = totalIn + totalOut + totalCacheRead + totalCacheWrite;
         }
 
+        // Extract current context window usage from the last API iteration
+        if (m.usage?.iterations && Array.isArray(m.usage.iterations) && m.usage.iterations.length > 0) {
+          for (let i = m.usage.iterations.length - 1; i >= 0; i--) {
+            const iter = m.usage.iterations[i];
+            if (!iter || (iter as any).type === "compaction") continue;
+            m.context_tokens_used = (iter.input_tokens ?? 0) + (iter.cache_read_input_tokens ?? 0) + (iter.cache_creation_input_tokens ?? 0);
+            break;
+          }
+        }
+        const ctxWindow = m.modelUsage ? Object.values(m.modelUsage as any)[0]?.contextWindow : null;
+        console.log(`[claude-code] CONTEXT: tokens_used=${m.context_tokens_used ?? "none"} window=${ctxWindow ?? "none"}`);
+
         session.costUsd += m.total_cost_usd ?? 0;
         session.numTurns += m.num_turns ?? 0;
 

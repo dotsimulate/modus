@@ -88,6 +88,7 @@
 }
 
 .message-content {
+  position: relative;
   font-size: calc(14px * var(--font-scale, 1));
   line-height: 1.7;
   color: var(--text);
@@ -292,6 +293,10 @@
 .meta-tokens {
   font-size: 9px;
   color: var(--text-secondary);
+}
+.meta-context {
+  font-size: 9px;
+  color: var(--text-muted);
 }
 .meta-arrow {
   font-size: 8px;

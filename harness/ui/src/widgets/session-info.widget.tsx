@@ -79,20 +79,19 @@ export default function SessionInfoWidget() {
 
   // Token stats — sum across all turns (SDK reports per-turn aggregates across all internal API calls)
   let totalInput = 0, totalOutput = 0, totalCacheRead = 0, totalCacheWrite = 0;
-  let lastCacheWrite = 0, contextWindow = 0;
+  let contextTokensUsed = 0, contextWindow = 0;
   for (const m of activeSession.messages) {
     totalInput += m.meta?.inputTokens ?? 0;
     totalOutput += m.meta?.outputTokens ?? 0;
     totalCacheRead += m.meta?.cacheReadTokens ?? 0;
     totalCacheWrite += m.meta?.cacheWriteTokens ?? 0;
-    // Track last turn's cache write = current conversation size in cache
-    if (m.meta?.cacheWriteTokens) lastCacheWrite = m.meta.cacheWriteTokens;
+    if (m.meta?.contextTokensUsed) contextTokensUsed = m.meta.contextTokensUsed;
     if (m.meta?.contextWindow) contextWindow = m.meta.contextWindow;
   }
   const totalIn = totalInput + totalCacheRead + totalCacheWrite;
   const hasTokens = totalIn > 0 || totalOutput > 0;
-  const ctxPct = contextWindow > 0 && lastCacheWrite > 0
-    ? Math.round((lastCacheWrite / contextWindow) * 100)
+  const ctxPct = contextWindow > 0 && contextTokensUsed > 0
+    ? Math.round((contextTokensUsed / contextWindow) * 100)
     : null;
 
   return (
@@ -113,7 +112,7 @@ export default function SessionInfoWidget() {
         {hasTokens && <Row label="tokens out" value={fmtNum(totalOutput)} />}
         {totalCacheRead > 0 && <Row label="cache read" value={fmtNum(totalCacheRead)} />}
         {ctxPct !== null && (
-          <Row label="context" value={`${fmtNum(lastCacheWrite)} / ${fmtNum(contextWindow)} (${ctxPct}%)`} />
+          <Row label="context" value={`${fmtNum(contextTokensUsed)} / ${fmtNum(contextWindow)} (${ctxPct}%)`} />
         )}
         {cost > 0 && <Row label="cost" value={fmtCost(cost)} />}
         {duration && <Row label="duration" value={duration} />}

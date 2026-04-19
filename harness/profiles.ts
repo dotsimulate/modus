@@ -23,13 +23,14 @@
  * at runtime; no harness code writes inside harness/profiles/.
  */
 
-import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync, copyFileSync } from "fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync } from "fs";
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
 import {
   homeAgentsDir, homeGlobalPath, homeProjectsJsonPath, homeStateDir,
   homeUiAgentsDir, homeUiUsersDir, homeUsersDir, homeUsersJsonPath,
 } from "./modus-home";
+import { recordAttributionHint, scheduleCommit } from "./workspace-history";
 
 const AGENTS_DIR = homeAgentsDir();
 const USERS_DIR = homeUsersDir();
@@ -200,6 +201,15 @@ export type Profile = {
     /** Widget types to show in the LeftPanel when this profile is active */
     panelWidgets?: string[];
   };
+  /**
+   * Where this profile was loaded from — set by getAllProfiles() at read time,
+   * never written to disk.
+   *   - "project": `<cwd>/.modus/profiles/agents/<name>.json`
+   *   - "user":    `~/.modus/profiles/agents/<name>.json`
+   * Project-origin profiles always appear in the UI regardless of the active
+   * user profile's `agentProfiles` whitelist.
+   */
+  origin?: "user" | "project";
 };
 
 /** Move binding for agent profiles — declares moves that auto-activate on session start. */
@@ -463,16 +473,9 @@ function resolveConfiguredPath(rawPath: string, baseDir: string): string {
   return rawPath.startsWith("/") ? rawPath : join(baseDir, rawPath);
 }
 
-/** Save a timestamped copy of a file before overwriting it.
- *  Creates .history/<name>/<timestamp>.json alongside the source directory. */
-function snapshot(filePath: string): void {
-  if (!existsSync(filePath)) return;
-  const dir = dirname(filePath);
-  const name = basename(filePath, ".json");
-  const histDir = join(dir, ".history", name);
-  if (!existsSync(histDir)) mkdirSync(histDir, { recursive: true });
-  const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  copyFileSync(filePath, join(histDir, `${ts}.json`));
+function notifyUserScopeWrite(filePath: string): void {
+  recordAttributionHint({ kind: "user" }, filePath, { type: "human" });
+  scheduleCommit({ kind: "user" });
 }
 
 // ── Agent Profile CRUD ──
@@ -520,12 +523,32 @@ export function listProfileNames(cwd?: string): string[] {
   return baseNames.sort();
 }
 
-/** Get all agent profiles as a Record — merges project-local when cwd is provided */
+/** Get all agent profiles as a Record — merges project-local when cwd is provided.
+ *  Each profile is tagged with `origin` so the UI can distinguish project-local
+ *  profiles (always visible) from user-home profiles (subject to whitelist). */
 export function getAllProfiles(cwd?: string): Record<string, Profile> {
   const result: Record<string, Profile> = {};
+
+  // Project-local names win over user-home names of the same name (getProfileConfig
+  // already handles that override internally). Track which names are project-local.
+  const projectNames = new Set<string>();
+  if (cwd) {
+    const projDir = projectAgentsDir(cwd);
+    if (existsSync(projDir)) {
+      for (const f of readdirSync(projDir)) {
+        if (f.endsWith(".json")) projectNames.add(basename(f, ".json"));
+      }
+    }
+  }
+
   for (const name of listProfileNames(cwd)) {
     const p = getProfileConfig(name, cwd);
-    if (p) result[name] = p;
+    if (p) {
+      result[name] = {
+        ...p,
+        origin: projectNames.has(name) ? "project" : "user",
+      };
+    }
   }
   return result;
 }
@@ -547,14 +570,14 @@ export function saveProfile(name: string, profile: Profile, cwd?: string): void 
   const dir = cwd ? projectAgentsDir(cwd) : AGENTS_DIR;
   if (cwd && !existsSync(dir)) mkdirSync(dir, { recursive: true });
   const filePath = join(dir, `${name}.json`);
-  snapshot(filePath);
+  notifyUserScopeWrite(filePath);
   writeJson(filePath, profile);
 }
 
 export function saveProfileUiConfig(name: string, ui: ProfileUiConfig, cwd?: string): void {
   const filePath = profileUiPath(name, cwd);
   if (cwd) mkdirSync(projectProfileUiDir(cwd), { recursive: true });
-  snapshot(filePath);
+  notifyUserScopeWrite(filePath);
   writeJson(filePath, ui);
 }
 
@@ -637,7 +660,7 @@ export function saveGlobalConfig(config: GlobalConfig, cwd?: string): void {
     const dir = join(cwd, MODUS_DIR);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   }
-  snapshot(filePath);
+  notifyUserScopeWrite(filePath);
   writeJson(filePath, config);
 }
 
@@ -681,7 +704,7 @@ export function getAllUserProfiles(): Record<string, UserProfile> {
 
 export function saveUserProfile(name: string, profile: UserProfile): void {
   const filePath = join(USERS_DIR, `${name}.json`);
-  snapshot(filePath);
+  notifyUserScopeWrite(filePath);
   writeJson(filePath, profile);
 }
 
@@ -705,7 +728,7 @@ export function patchUserProfile(name: string, patch: Partial<UserProfile>): Use
 
 export function saveUserProfileUiConfig(name: string, ui: UserProfileUiConfig): void {
   const filePath = userProfileUiPath(name);
-  snapshot(filePath);
+  notifyUserScopeWrite(filePath);
   writeJson(filePath, ui);
 }
 
@@ -792,7 +815,7 @@ export function getProjectRegistry(): ProjectRegistry {
 }
 
 function saveProjectRegistry(registry: ProjectRegistry): void {
-  snapshot(PROJECTS_FILE);
+  notifyUserScopeWrite(PROJECTS_FILE);
   writeJson(PROJECTS_FILE, registry);
 }
 

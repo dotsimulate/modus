@@ -82,6 +82,16 @@ function iconFor(widgetType: string) {
       </svg>
     );
   }
+  if (widgetType === "session-history") {
+    // Mirrors the sort icon used inside the widget itself — three stepped
+    // lines (descending) read as "ordered history". Kept in sync with
+    // PanelTreeRenderer.widgetIcon().
+    return (
+      <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+        <path d="M2 3h8M3 6h6M4 9h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>
+    );
+  }
   return null;
 }
 

@@ -656,7 +656,19 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
           m.cache_write_tokens = totalCacheWrite;
           m.total_tokens = totalIn + totalOut + totalCacheRead + totalCacheWrite;
           turnTokens = { input: totalIn, output: totalOut, cached: totalCacheRead, cacheWrite: totalCacheWrite };
-        } else if (m.usage) {
+        }
+
+        // Extract current context window usage from the last API iteration
+        if (m.usage?.iterations && Array.isArray(m.usage.iterations) && m.usage.iterations.length > 0) {
+          for (let i = m.usage.iterations.length - 1; i >= 0; i--) {
+            const iter = m.usage.iterations[i];
+            if (!iter || (iter as any).type === "compaction") continue;
+            m.context_tokens_used = (iter.input_tokens ?? 0) + (iter.cache_read_input_tokens ?? 0) + (iter.cache_creation_input_tokens ?? 0);
+            break;
+          }
+        }
+
+        if (!m.modelUsage && m.usage) {
           // Alternate format
           turnTokens.input = m.usage.inputTokens ?? 0;
           turnTokens.output = m.usage.outputTokens ?? 0;

@@ -603,6 +603,14 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
           accThinking = "";
         };
 
+        // maxTurns enforcement — pi-coding-agent has no built-in cap, so we count
+        // turn_end events and abort the agent once the profile/session limit is hit.
+        // Without this, misbehaving models (e.g. Mistral Small on a tool-call gate)
+        // can loop indefinitely, racking up messages and $.
+        const maxTurns = opts.maxTurns ?? profile?.maxTurns;
+        let turnCount = 0;
+        let maxTurnsAborted = false;
+
         const unsubscribe = agentSession.subscribe((event: AgentSessionEvent) => {
           try {
             // ── Pause gate ──
@@ -630,6 +638,22 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
             }
             if (event.type === "agent_end" && !session.abortController.signal.aborted) {
               flushAssembled();
+            }
+
+            // ── maxTurns gate ──
+            if (event.type === "turn_end" && typeof maxTurns === "number" && maxTurns > 0) {
+              turnCount += 1;
+              if (turnCount >= maxTurns && !maxTurnsAborted) {
+                maxTurnsAborted = true;
+                flushAssembled();
+                ctx.emitEvent({
+                  type: "system",
+                  subtype: "max_turns_reached",
+                  data: { maxTurns, turnCount },
+                });
+                console.log(`[pi-agent] ${session.sessionId}: maxTurns (${maxTurns}) reached — aborting`);
+                agentSession.abort().catch(() => {});
+              }
             }
 
             translateEvents(event, ctx, providerName);

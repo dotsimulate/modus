@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { dirname } from "path";
 import { homePromptCachePath } from "./modus-home";
+import { recordAttributionHint, scheduleCommit } from "./workspace-history";
 
 const CACHE_PATH = homePromptCachePath();
 
@@ -39,5 +40,7 @@ export function getPromptCache(): PromptCache {
 export function savePromptCache(cache: PromptCache): void {
   const dir = dirname(CACHE_PATH);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  recordAttributionHint({ kind: "user" }, CACHE_PATH, { type: "human" });
   writeFileSync(CACHE_PATH, JSON.stringify(cache, null, 2));
+  scheduleCommit({ kind: "user" });
 }

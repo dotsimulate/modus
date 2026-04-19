@@ -8,14 +8,14 @@
  */
 
 import { useCallback, useEffect, useMemo } from "react";
-import { useSessionState, ensureSubscribed, getSessionState, setSessionState } from "../sessionStore";
-import { useInputValue, setInputValue } from "../inputStore";
+import { useSessionState, ensureSubscribed, getSessionState, setSessionState, setSessionNextProfile, setSessionNextAgentConfig } from "../sessionStore";
+import { useInputValue, setInputValue, setActiveInputSession } from "../inputStore";
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import { ChatInput } from "../components/ChatInput";
 import { ConfigBar } from "../components/ConfigBar";
-import { createEmptyAgentConfig } from "../components/AgentConfig";
+import { createEmptyAgentConfig, isAgentConfigEqual, type AgentConfigState } from "../components/AgentConfig";
 import { nextMsgId } from "../../../sdk/index";
 import type { Attachment, MoveBinding } from "../../../sdk/index";
 import type { WidgetBase, WidgetProps } from "./types";
@@ -31,14 +31,22 @@ type ComposerConfig = WidgetBase & {
 
 export default function ComposerWidget({ config, pageContext }: WidgetProps<ComposerConfig>) {
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
-  const sessionId = contextSessionId ?? config.sessionId ?? null;
+  const { activeSession, serverSessions, refreshSessions, send: sessionSend } = useSession();
+  // Fallback chain: page scope → widget config → global active session.
+  // Without the active-session fallback, pages that render a composer without a
+  // URL-hash session binder leave sessionId=null, which routes moves through
+  // activateProjectMove() and drops source-session context (profile, user).
+  const sessionId = contextSessionId ?? config.sessionId ?? activeSession?.id ?? null;
 
   useEffect(() => {
     if (sessionId) void ensureSubscribed(sessionId);
   }, [sessionId]);
 
+  useEffect(() => {
+    setActiveInputSession(sessionId);
+  }, [sessionId]);
+
   const session = useSessionState(sessionId);
-  const { updateActiveSessionConfig, updateActiveSessionProfile, serverSessions, refreshSessions } = useSession();
   const { projectRoot, activeUserProfile, profiles, visibleProfiles, availableProviders, activeUP } = useProfiles();
 
   const input = useInputValue();
@@ -81,10 +89,18 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
   }, [sessionInfo?.tags]);
 
   const handleSwitchProfile = useCallback((name: string) => {
-    if (sessionId && !sessionId.startsWith("pending-")) {
-      updateActiveSessionProfile(name);
-    }
-  }, [sessionId, updateActiveSessionProfile]);
+    if (!sessionId || sessionId.startsWith("pending-")) return;
+    const nextProfile = name.trim();
+    const currentProfile = session?.profile ?? "";
+    setSessionNextProfile(sessionId, nextProfile && nextProfile !== currentProfile ? nextProfile : undefined);
+  }, [sessionId, session?.profile]);
+
+  const handleAgentConfigChange = useCallback((config: AgentConfigState) => {
+    if (!sessionId) return;
+    const hasPending = !!session?.nextProfile && session.nextProfile !== session.profile;
+    const baseline = hasPending ? createEmptyAgentConfig() : agentConfig;
+    setSessionNextAgentConfig(sessionId, isAgentConfigEqual(config, baseline) ? undefined : config);
+  }, [sessionId, session?.nextProfile, session?.profile, agentConfig]);
 
   const handleTogglePin = useCallback(async () => {
     if (!sessionId) return;
@@ -104,6 +120,21 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
       const prompt = (textOverride ?? input).trim();
       if (!prompt && attachments.length === 0) return;
 
+      // When composer drives the active session, delegate to SessionProvider.send
+      // so pending nextProfile / nextAgentConfig are applied (switchProfile +
+      // updateConfig) before sendMessage. Direct modus.sendMessage bypasses
+      // that dance and drops profile/config overrides on empty sessions.
+      if (activeSession?.id === sessionId) {
+        setInputValue("");
+        void sessionSend(attachments, prompt, moves).catch((err) => {
+          console.error("[composer-widget] sessionSend failed:", err);
+        });
+        return;
+      }
+
+      // Fallback: composer rendered for a non-active session (e.g. page with
+      // multiple composers or no bindUrlSession). Preserve the direct-send
+      // path — pending config won't apply, but that matches legacy behavior.
       setInputValue("");
 
       const sendAttachments = attachments.length > 0 ? attachments : undefined;
@@ -143,7 +174,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
         console.error("[composer-widget] sendMessage failed:", err);
       });
     },
-    [sessionId, input],
+    [sessionId, input, activeSession?.id, sessionSend],
   );
 
   const handleStop = useCallback(() => {
@@ -165,7 +196,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
         model={liveModel}
         agentConfig={agentConfig}
         editorConfig={editorAgentConfig}
-        onAgentConfigChange={updateActiveSessionConfig}
+        onAgentConfigChange={handleAgentConfigChange}
         profileTools={profileData?.tools ?? "all"}
         editorProfileTools={
           sessionProviderLocked && !pendingProfileProviderMatches
