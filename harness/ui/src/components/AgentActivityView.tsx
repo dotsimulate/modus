@@ -10,6 +10,7 @@
 
 import { useMemo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Message, ToolCall } from "../../../sdk/index";
+import { useFileViewer, type FileOpenRequest } from "../providers/FileViewerContext";
 
 // ── Config ──
 
@@ -28,6 +29,7 @@ type ToolCardProps = {
   tool: ToolCall;
   expanded: boolean;
   toggleControl?: (icon: ReactNode) => ReactNode;
+  onOpenFile?: (path: string, opts?: Omit<FileOpenRequest, "path">) => void;
   /** Ms from last user message in this turn to tool result (completed/error); null if unknown */
   intoTurnMs: number | null;
 };
@@ -208,10 +210,25 @@ const Icons = {
 
 // ── Card Components ──
 
-function ReadCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
+function readRange(input: Record<string, unknown>): { line?: number; endLine?: number } {
+  const line =
+    typeof input.offset === "number" ? input.offset
+    : typeof input.line === "number" ? input.line
+    : typeof input.start_line === "number" ? input.start_line
+    : undefined;
+  const endLine =
+    typeof input.endLine === "number" ? input.endLine
+    : typeof input.end_line === "number" ? input.end_line
+    : line !== undefined && typeof input.limit === "number" ? line + Math.max(0, input.limit - 1)
+    : undefined;
+  return { line, endLine };
+}
+
+function ReadCard({ tool, toggleControl, onOpenFile, intoTurnMs }: ToolCardProps) {
   const fp = (tool.input.file_path as string) ?? (tool.input.path as string) ?? "";
   const offset = tool.input.offset as number | undefined;
   const limit = tool.input.limit as number | undefined;
+  const range = readRange(tool.input);
   const text = tool.result ? unwrapResult(tool.result) : null;
   const lineCount = text ? countLines(text) : null;
 
@@ -229,6 +246,26 @@ function ReadCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
         {dir && <span className="aa-dir" title={fp}>{dir}</span>}
         {rangeLabel && <span className="aa-tag">{rangeLabel}</span>}
         {lineCount != null && <span className="aa-tag">{lineCount}L</span>}
+        {fp && onOpenFile && (
+          <button
+            className="aa-icon-toggle aa-icon-toggle--static"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenFile(fp, {
+                line: range.line,
+                endLine: range.endLine,
+                highlight: range.line !== undefined,
+                source: "tool-read",
+              });
+            }}
+            title={range.line ? "Open file at read lines" : "Open file"}
+          >
+            <svg className="aa-svg" viewBox="0 0 12 12" fill="none">
+              <path d="M1 6s1.8-3 5-3 5 3 5 3-1.8 3-5 3-5-3-5-3Z" stroke="currentColor" strokeWidth="1.1"/>
+              <circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.1"/>
+            </svg>
+          </button>
+        )}
         <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
@@ -549,6 +586,7 @@ type Props = {
 };
 
 export function AgentActivityView({ messages }: Props) {
+  const { openFile } = useFileViewer();
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevCountRef = useRef(0);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
@@ -604,7 +642,7 @@ export function AgentActivityView({ messages }: Props) {
             {feed.map((item) => {
               const expanded = expandedItems.has(item.anchorId);
               const intoTurnMs = intoTurnMsForTool(messages, item.msgIndex, item.tool);
-              const preview = getCard(item.tool.name)({ tool: item.tool, expanded, intoTurnMs });
+              const preview = getCard(item.tool.name)({ tool: item.tool, expanded, intoTurnMs, onOpenFile: openFile });
               const hasDetail = !!preview.detail;
               const toggleControl = (icon: ReactNode) => (
                 <button
@@ -625,7 +663,7 @@ export function AgentActivityView({ messages }: Props) {
                   {icon}
                 </button>
               );
-              const rendered = getCard(item.tool.name)({ tool: item.tool, expanded, toggleControl, intoTurnMs });
+              const rendered = getCard(item.tool.name)({ tool: item.tool, expanded, toggleControl, intoTurnMs, onOpenFile: openFile });
 
               return (
                 <div

@@ -1,0 +1,11 @@
+{
+  "id": "web",
+  "title": "web",
+  "nav": true,
+  "fullscreen": true,
+  "padding": 0,
+  "layout": {
+    "kind": "widget",
+    "widget": { "type": "session-web", "id": "pg-web" }
+  }
+}

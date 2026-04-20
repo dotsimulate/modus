@@ -5,7 +5,7 @@
  */
 
 /* ── Tool Calls ── */
-.message-tools { margin: 8px 0; }
+.message-tools { margin: 4px 0 2px; }
 
 .tool-call {
   border: 1px solid var(--border);

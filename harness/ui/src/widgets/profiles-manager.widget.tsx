@@ -9,6 +9,7 @@
 
 import { useCallback } from "react";
 import { Profiles } from "../components/Profiles";
+import { useUiIntent } from "./intents";
 import type { WidgetBase, WidgetProps } from "./types";
 
 type ProfilesManagerConfig = WidgetBase & {
@@ -16,13 +17,20 @@ type ProfilesManagerConfig = WidgetBase & {
 };
 
 export default function ProfilesManagerWidget({ onNavigate, onSelectSession, pageContext }: WidgetProps<ProfilesManagerConfig>) {
-  // Always fire onSelectSession so App.tsx can update the URL hash + activeSession
-  // (via handleViewSession). When inside a page scope, also publish into the bus
-  // so scope-local widgets with hideWhen/showWhen react immediately.
+  const { dispatch } = useUiIntent(pageContext);
+
   const handleNewSession = useCallback((id: string) => {
-    pageContext?.set("selectedSession", id);
-    onSelectSession(id);
-  }, [pageContext, onSelectSession]);
+    if (pageContext) {
+      pageContext.set("selectedSession", id);
+      dispatch({ type: "focus-tab", tabId: "cs-history" });
+    }
+    const activate = pageContext?.activateSession;
+    if (activate) {
+      activate(id);
+    } else {
+      onSelectSession(id);
+    }
+  }, [pageContext, dispatch, onSelectSession]);
 
   const handleSelectSession = useCallback((id: string) => {
     pageContext?.set("selectedSession", id);
@@ -34,7 +42,7 @@ export default function ProfilesManagerWidget({ onNavigate, onSelectSession, pag
       <Profiles
         onSelectSession={handleSelectSession}
         onNavigate={onNavigate}
-        onNewSession={pageContext ? handleNewSession : undefined}
+        onNewSession={handleNewSession}
       />
     </div>
   );

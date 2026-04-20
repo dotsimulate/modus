@@ -240,6 +240,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
         sessionId={sessionId}
         projectCwd={projectCwd}
         userProfile={activeUserProfile ?? undefined}
+        pageContext={pageContext}
         autoFocus={!!sessionId}
       />
     </div>

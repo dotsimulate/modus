@@ -1,6 +1,7 @@
 import { memo, useState, useEffect, useCallback } from "react";
 import type { ToolCall as ToolCallType, Message } from "../../../sdk/index";
 import { EditHunk } from "./FileChanges";
+import { useFileViewer } from "../providers/FileViewerContext";
 
 type Props = {
   tool: ToolCallType;
@@ -102,6 +103,20 @@ function truncate(s: string | undefined, max: number): string {
 function basename(p: string): string {
   const parts = p.split("/");
   return parts[parts.length - 1] || p;
+}
+
+function readRange(input: Record<string, unknown>): { line?: number; endLine?: number } {
+  const line =
+    typeof input.offset === "number" ? input.offset
+    : typeof input.line === "number" ? input.line
+    : typeof input.start_line === "number" ? input.start_line
+    : undefined;
+  const endLine =
+    typeof input.endLine === "number" ? input.endLine
+    : typeof input.end_line === "number" ? input.end_line
+    : line !== undefined && typeof input.limit === "number" ? line + Math.max(0, input.limit - 1)
+    : undefined;
+  return { line, endLine };
 }
 
 /** Does a string look like code or multiline content? */
@@ -263,6 +278,7 @@ function EditDiffDetail({ tool }: { tool: ToolCallType }) {
 }
 
 export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, anchorId, onStopTask }: Props) {
+  const { openFile } = useFileViewer();
   const [expanded, setExpanded] = useState(defaultExpanded ?? (tool.name === "TodoWrite"));
   const isTodo = tool.name === "TodoWrite";
 
@@ -282,6 +298,8 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
   const isRead = tool.name === "Read" || tool.name === "read";
   const isEdit = /^(Edit|edit|MultiEdit|Write|write|FileChange)$/.test(tool.name);
   const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
+  const readPath = isRead ? ((tool.input.file_path as string | undefined) ?? (tool.input.path as string | undefined)) : undefined;
+  const readLines = readRange(tool.input);
 
   return (
     <div
@@ -307,6 +325,26 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
           <button className="tool-call-cancel" onClick={handleCancel} title="Cancel this task">
             <svg width="10" height="10" viewBox="0 0 10 10">
               <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
+        {readPath && (
+          <button
+            className="tool-call-cancel"
+            onClick={(e) => {
+              e.stopPropagation();
+              openFile(readPath, {
+                line: readLines.line,
+                endLine: readLines.endLine,
+                highlight: readLines.line !== undefined,
+                source: "tool-read",
+              });
+            }}
+            title={readLines.line ? "Open file at read lines" : "Open file"}
+          >
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+              <path d="M1 6s1.8-3 5-3 5 3 5 3-1.8 3-5 3-5-3-5-3Z" stroke="currentColor" strokeWidth="1.1"/>
+              <circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.1"/>
             </svg>
           </button>
         )}

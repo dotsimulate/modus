@@ -161,10 +161,7 @@ function connectWS(
 
 // ── Shared xterm+WS wiring ──
 
-function wireInstance(
-  info: TerminalInfo,
-  setInstances: React.Dispatch<React.SetStateAction<TerminalInstance[]>>,
-): TerminalInstance {
+function wireInstance(info: TerminalInfo): TerminalInstance {
   const xterm = new Terminal({
     ...XTERM_OPTIONS,
     theme: resolveThemeColors(),
@@ -231,9 +228,6 @@ function wireInstance(
     return true;
   });
 
-  // Connect WebSocket
-  connectWS(instance, setInstances);
-
   return instance;
 }
 
@@ -286,7 +280,7 @@ export function TerminalView({ cwd, visible, sessionId, ownerType, ownerName }: 
         if (existing.length > 0) {
           const reconnected: TerminalInstance[] = [];
           for (const info of existing) {
-            reconnected.push(wireInstance(info, setInstances));
+            reconnected.push(wireInstance(info));
           }
           setInstances(reconnected);
           instancesRef.current = reconnected;
@@ -297,6 +291,28 @@ export function TerminalView({ cwd, visible, sessionId, ownerType, ownerName }: 
     })();
     return () => { cancelled = true; };
   }, [ownerName, ownerType, sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Owner-bound terminals can be requested by UI before the backend PTY exists.
+  // Retry briefly so a just-opened dynamic terminal tab attaches as soon as the
+  // action creates its terminal.
+  useEffect(() => {
+    if (sessionId || !ownerName || instances.length > 0) return;
+    let cancelled = false;
+    const poll = async () => {
+      const existing = await modus.listTerminals({ ownerType: ownerType ?? undefined, ownerName }).catch(() => []);
+      if (cancelled || existing.length === 0 || instancesRef.current.length > 0) return;
+      const reconnected = existing.map((info) => wireInstance(info));
+      setInstances(reconnected);
+      instancesRef.current = reconnected;
+      setActiveId(existing[existing.length - 1].id);
+    };
+    const interval = window.setInterval(poll, 750);
+    poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [instances.length, ownerName, ownerType, sessionId]);
 
   // ── Create a new terminal ──
 
@@ -330,7 +346,7 @@ export function TerminalView({ cwd, visible, sessionId, ownerType, ownerName }: 
       ownerType: ownerType ?? undefined,
       ownerName: ownerName ?? undefined,
     });
-    const instance = wireInstance(info, setInstances);
+    const instance = wireInstance(info);
     setInstances((prev) => [...prev, instance]);
     setActiveId(info.id);
   }, [cwd, ownerName, ownerType, sessionId]);
@@ -372,8 +388,11 @@ export function TerminalView({ cwd, visible, sessionId, ownerType, ownerName }: 
 
       // Refresh theme now that element is in DOM and CSS vars are resolved
       active.xterm.options.theme = resolveThemeColors();
-
     }
+
+    // Connect only after xterm is open in the DOM so backend scrollback replay
+    // is written into a live terminal surface.
+    if (!active.ws) connectWS(active, setInstances);
 
     // Fit and sync size with backend
     sendResize(active);

@@ -1,11 +1,47 @@
 import type { ComponentType } from "react";
+import type { MoveWidgetInfo } from "../../../sdk/index";
 import type { View } from "../views";
 
 // ── Shared types ──
 
 export type WidgetSize = "full" | "half" | "third";
-export type DashboardModule = Extract<View, "actions" | "git">;
+export type DashboardModule = "actions" | "git";
 export type WidgetZone = "dashboard" | "left-panel" | "right-panel";
+
+export type UiIntent =
+  | { type: "open-file"; path: string; line?: number; endLine?: number; edit?: boolean; highlight?: boolean; source?: string; target?: string }
+  | { type: "open-terminal"; ownerType: string; ownerName: string; label?: string; target?: string }
+  | { type: "focus-widget"; widgetId?: string; widgetType?: string; target?: string }
+  | { type: "focus-tab"; tabId: string; target?: string }
+  | { type: "open-move"; id: string; label: string; widget: MoveWidgetInfo; apiToken: string; instanceId: string; sessionId: string; mountedOnAttach?: boolean; target?: string }
+  | { type: "close-move"; id: string; target?: string }
+  | { type: "select-session"; sessionId: string; target?: string }
+  | { type: "expand-target"; target?: string }
+  | { type: "custom"; name: string; payload?: unknown; target?: string };
+
+export type UiIntentType = UiIntent["type"];
+export type UiIntentOf<T extends UiIntentType> = Extract<UiIntent, { type: T }>;
+export type UiIntentObserver = (event: UiIntent) => void;
+
+export type UiIntentHook =
+  | "focus"
+  | "expand"
+  | "activate"
+  | "open"
+  | "append-dynamic-tab"
+  | "replace-content";
+
+export type UiIntentCapability = {
+  /** Intent type this surface can receive. */
+  type: UiIntentType;
+  /** Optional routing key for targeting a named panel/widget. */
+  target?: string;
+  /**
+   * Declarative behavior hints for future routers. Current code only records
+   * them; handlers still own concrete behavior until routing is centralized.
+   */
+  hooks?: UiIntentHook[];
+};
 
 /** Base fields every widget config has (widget files extend this) */
 export type WidgetBase = {
@@ -15,13 +51,12 @@ export type WidgetBase = {
   title?: string;
   size?: WidgetSize;
   collapsed?: boolean;
+  /** UI intents this widget instance declares it can receive. */
+  handles?: Array<UiIntentType | UiIntentCapability>;
 };
 
 /** Event payload for the page/scope event bus */
-export type ScopeEvent = {
-  type: string;
-  [key: string]: unknown;
-};
+export type ScopeEvent = UiIntent;
 
 /** Scoped read/write handle into page-level shared state */
 export type PageContextHandle = {
@@ -30,7 +65,9 @@ export type PageContextHandle = {
   /** Emit an event on the scope's event bus. Target panels receive matching events. */
   emit: (event: ScopeEvent) => void;
   /** Subscribe to events on the scope's event bus. Returns an unsubscribe function. */
-  on: (type: string, handler: (event: ScopeEvent) => void) => () => void;
+  on: <T extends UiIntentType>(type: T, handler: (event: UiIntentOf<T>) => void) => () => void;
+  /** Observe every UI intent in this page scope. Returns an unsubscribe function. */
+  observeIntents: (handler: UiIntentObserver) => () => void;
   /**
    * Navigate to a top-level view. Only available when the leaf config
    * sets `canNavigate: true` — otherwise undefined (stay on page).
@@ -41,6 +78,12 @@ export type PageContextHandle = {
    * config sets `canNavigate: true` — otherwise undefined (stay on page).
    */
   selectSession?: (id: string) => void;
+  /**
+   * Activate a session and navigate to the chat view. Available to all
+   * page-embedded widgets — use when creating a new session that should
+   * immediately open the composer.
+   */
+  activateSession?: (id: string) => void;
 };
 
 /** Props passed to every widget component */
@@ -66,6 +109,8 @@ export type WidgetDef = {
   maxHeight?: number;
   /** Preferred default height in px for list mode */
   preferredHeight?: number;
+  /** Default UI intents supported by this widget type. */
+  handles?: Array<UiIntentType | UiIntentCapability>;
 };
 
 export type DashboardWidgetBlock = {
@@ -176,6 +221,8 @@ export type LayoutNode =
        * cause new tabs to appear in this panel automatically.
        */
       target?: boolean;
+      /** UI intents this panel can route to its children or dynamic surface. */
+      handles?: Array<UiIntentType | UiIntentCapability>;
       children: LayoutLeaf[];
     } & LayoutVisibility)
   | ({
@@ -188,6 +235,8 @@ export type LayoutNode =
       editable?: boolean;
       /** When true, this panel receives dynamic tab events from its scope's event bus. */
       target?: boolean;
+      /** UI intents this panel can route to its children or dynamic surface. */
+      handles?: Array<UiIntentType | UiIntentCapability>;
       children: LayoutLeaf[];
     } & LayoutVisibility)
   | ({

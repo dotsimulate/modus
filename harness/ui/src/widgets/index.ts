@@ -10,6 +10,12 @@ export type {
   WidgetSize,
   DashboardModule,
   WidgetZone,
+  UiIntent,
+  UiIntentType,
+  UiIntentOf,
+  UiIntentObserver,
+  UiIntentHook,
+  UiIntentCapability,
   WidgetBase,
   WidgetProps,
   WidgetDef,
@@ -34,6 +40,21 @@ export { WidgetChromeContext, useWidgetChrome } from "./chrome";
 
 // Layout helpers
 export { normalizePanelLayout } from "./layout";
+
+// Intent helpers
+export {
+  dispatchUiIntent,
+  useUiIntent,
+  moveAttachResultToIntent,
+  moveActivationResultToIntent,
+  normalizeIntentCapability,
+  getWidgetIntentCapabilities,
+  widgetHandlesIntent,
+  widgetHandlesUiIntent,
+  getPanelIntentCapabilities,
+  panelHandlesIntent,
+  panelHandlesUiIntent,
+} from "./intents";
 
 // Registry
 export { WIDGETS, WIDGET_DEFS, DEFAULT_DASHBOARD } from "./registry";

@@ -1,0 +1,11 @@
+{
+  "id": "trace",
+  "title": "trace",
+  "nav": true,
+  "fullscreen": true,
+  "padding": 0,
+  "layout": {
+    "kind": "widget",
+    "widget": { "type": "trace-viewer", "id": "pg-trace" }
+  }
+}

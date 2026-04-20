@@ -9,8 +9,10 @@ import { useRef, useEffect } from "react";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { indentOnInput, bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
-import { langFromPath, moTheme } from "./codemirror-shared";
+import { indentOnInput, bracketMatching, syntaxHighlighting, foldGutter, foldKeymap } from "@codemirror/language";
+import { search, searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { langFromPath, moTheme, moHighlightStyle } from "./codemirror-shared";
 
 export type CodeMirrorContextInfo = {
   selection: string;
@@ -21,10 +23,13 @@ export type CodeMirrorContextInfo = {
 // ── Component ──
 
 export function CodeMirrorEditor({
-  content, path, onSave, onDirty, onEditorContextMenu,
+  content, path, revealLine, revealEndLine, revealToken, onSave, onDirty, onEditorContextMenu,
 }: {
   content: string;
   path: string;
+  revealLine?: number;
+  revealEndLine?: number;
+  revealToken?: number;
   onSave: (content: string) => void;
   onDirty: (dirty: boolean) => void;
   onEditorContextMenu?: (e: React.MouseEvent, info: CodeMirrorContextInfo) => void;
@@ -50,9 +55,18 @@ export function CodeMirrorEditor({
         history(),
         indentOnInput(),
         bracketMatching(),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        closeBrackets(),
+        syntaxHighlighting(moHighlightStyle, { fallback: true }),
+        search({ top: true }),
+        highlightSelectionMatches(),
+        foldGutter(),
+        autocompletion(),
         keymap.of([
           { key: "Mod-s", run(view) { onSaveRef.current(view.state.doc.toString()); return true; } },
+          ...closeBracketsKeymap,
+          ...searchKeymap,
+          ...foldKeymap,
+          ...completionKeymap,
           ...defaultKeymap,
           ...historyKeymap,
           indentWithTab,
@@ -69,6 +83,20 @@ export function CodeMirrorEditor({
     return () => { view.destroy(); viewRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !revealLine) return;
+    const startLine = Math.max(1, Math.min(revealLine, view.state.doc.lines));
+    const endLine = Math.max(startLine, Math.min(revealEndLine ?? startLine, view.state.doc.lines));
+    const from = view.state.doc.line(startLine).from;
+    const to = view.state.doc.line(endLine).to;
+    view.dispatch({
+      selection: { anchor: from, head: to },
+      effects: EditorView.scrollIntoView(from, { y: "center" }),
+    });
+    view.focus();
+  }, [revealEndLine, revealLine, revealToken]);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     const view = viewRef.current;

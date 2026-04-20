@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import { onUiEvent } from "../sessionStore";
 import { modus } from "../modusClient";
 import { onFsChange } from "../modusClient";
-import { FileViewerContext, type Tab } from "./FileViewerContext";
+import { FileViewerContext, type FileOpenRequest, type Tab } from "./FileViewerContext";
 
 export function FileViewerProvider({ children }: { children: ReactNode }) {
   const [tabs, setTabs] = useState<Tab[]>([]);
@@ -14,7 +14,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   // ── Live refresh: bump contentVersion when a viewed (non-editing) file changes on disk ──
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  const fileOpenListenersRef = useRef<Set<(path: string) => void>>(new Set());
+  const fileOpenListenersRef = useRef<Set<(request: FileOpenRequest) => void>>(new Set());
   useEffect(() => {
     return onFsChange((event) => {
       const openTabs = tabsRef.current;
@@ -34,7 +34,8 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [saveError]);
 
-  const openFile = useCallback((path: string, opts?: { edit?: boolean }) => {
+  const openFile = useCallback((path: string, opts?: Omit<FileOpenRequest, "path">) => {
+    const request: FileOpenRequest = { path, ...opts };
     const edit = opts?.edit ?? false;
     setTabs((prev) => {
       const existing = prev.find((t) => t.path === path);
@@ -51,7 +52,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
 
     // Notify panel-open listeners on every open so re-clicks can re-focus the
     // code-editor tab even when the file is already in the tab strip.
-    fileOpenListenersRef.current.forEach((fn) => fn(path));
+    fileOpenListenersRef.current.forEach((fn) => fn(request));
 
     // Pre-load content for edit mode
     if (edit) {
@@ -144,7 +145,7 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
     setActivePath(hydratedActivePath);
   }, []);
 
-  const subscribeFileOpens = useCallback((fn: (path: string) => void) => {
+  const subscribeFileOpens = useCallback((fn: (request: FileOpenRequest) => void) => {
     fileOpenListenersRef.current.add(fn);
     return () => { fileOpenListenersRef.current.delete(fn); };
   }, []);
@@ -153,7 +154,13 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return onUiEvent("open-file", (_sessionId, event) => {
       if (typeof event.path === "string") {
-        openFile(event.path, { edit: !!event.edit });
+        openFile(event.path, {
+          edit: !!event.edit,
+          line: typeof event.line === "number" ? event.line : undefined,
+          endLine: typeof event.endLine === "number" ? event.endLine : undefined,
+          highlight: typeof event.highlight === "boolean" ? event.highlight : undefined,
+          source: "ui-event",
+        });
       }
     });
   }, [openFile]);

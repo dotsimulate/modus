@@ -1,0 +1,13 @@
+{
+  "id": "git",
+  "title": "git",
+  "nav": true,
+  "blocks": [
+    {
+      "kind": "module",
+      "id": "git-main",
+      "title": "git",
+      "module": "git"
+    }
+  ]
+}

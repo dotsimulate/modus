@@ -27,6 +27,8 @@ import DeepAnalyticsWidget from "./deep-analytics.widget";
 import DefaultAgentWidget from "./default-agent.widget";
 import ExtensionsWidget from "./extensions.widget";
 import InboxWidget from "./inbox.widget";
+import MissionGraphWidget from "./mission-graph.widget";
+import MissionsWidget from "./missions.widget";
 import MovesWidget from "./moves.widget";
 import NewSessionWidget from "./new-session.widget";
 import NotesWidget from "./notes.widget";
@@ -75,6 +77,7 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     component: ActionsManagerWidget,
     minHeight: 200,
     preferredHeight: 500,
+    handles: ["open-terminal"],
   },
   "agent-activity": {
     type: "agent-activity",
@@ -95,6 +98,10 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     zones: ["left-panel", "right-panel"],
     minHeight: 200,
     preferredHeight: 400,
+    handles: [
+      { type: "open-file", hooks: ["open", "focus", "expand"] },
+      { type: "focus-widget", hooks: ["focus"] },
+    ],
   },
   "composer": {
     type: "composer",
@@ -142,11 +149,24 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     minHeight: 150,
     preferredHeight: 400,
   },
+  "mission-graph": {
+    type: "mission-graph",
+    component: MissionGraphWidget,
+    minHeight: 300,
+    preferredHeight: 600,
+  },
+  "missions": {
+    type: "missions",
+    component: MissionsWidget,
+    minHeight: 200,
+    preferredHeight: 500,
+  },
   "moves": {
     type: "moves",
     component: MovesWidget,
     minHeight: 100,
     preferredHeight: 220,
+    handles: ["open-move", "close-move"],
   },
   "new-session": {
     type: "new-session",
@@ -258,6 +278,9 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     component: SessionListWidget,
     minHeight: 160,
     preferredHeight: 320,
+    handles: [
+      { type: "select-session", hooks: ["activate"] },
+    ],
   },
   "session-sidebar": {
     type: "session-sidebar",
@@ -277,6 +300,10 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     zones: ["left-panel", "right-panel"],
     minHeight: 150,
     preferredHeight: 300,
+    handles: [
+      { type: "open-terminal", hooks: ["open", "focus", "expand"] },
+      { type: "focus-widget", hooks: ["focus"] },
+    ],
   },
   "sessions": {
     type: "sessions",

@@ -12,8 +12,16 @@ function parseHash(hash: string): { profile: string | null; view: View; sessionI
   const path = queryIndex === -1 ? raw : raw.slice(0, queryIndex);
   if (!path) return { profile: null, view: DEFAULT_VIEW, sessionId: null };
 
-  // Backwards compat: #dashboard → #profiles
-  const compat = path === "dashboard" ? "profiles" : path;
+  // Backwards compat: old static view slugs → page: views
+  const LEGACY_VIEW_MAP: Record<string, string> = {
+    dashboard: "page:profiles",
+    profiles: "page:profiles",
+    actions: "page:actions",
+    git: "page:git",
+    web: "page:web",
+    trace: "page:trace",
+  };
+  const compat = LEGACY_VIEW_MAP[path] ?? path;
 
   const slash = compat.indexOf("/");
   if (slash === -1) {
@@ -27,7 +35,7 @@ function parseHash(hash: string): { profile: string | null; view: View; sessionI
 
   const prefix = compat.slice(0, slash);
   let suffix = compat.slice(slash + 1);
-  if (suffix === "dashboard") suffix = "profiles";
+  if (LEGACY_VIEW_MAP[suffix]) suffix = LEGACY_VIEW_MAP[suffix];
 
   // #profile/sessionId (bare)
   if (isSessionId(suffix)) return { profile: prefix || null, view: "chat", sessionId: suffix };
@@ -137,6 +145,15 @@ export function useHashRouter() {
     }
   }, [hashProfile, view]);
 
+  /** Navigate to the chat view with a specific session — atomic URL + state update. */
+  const navigateToSession = useCallback((sessionId: string, profile?: string | null) => {
+    const p = profile ?? hashProfile;
+    setView("chat");
+    setHashSessionId(sessionId);
+    const hash = buildHash(p, "chat", sessionId);
+    window.location.hash = hash;
+  }, [hashProfile]);
+
   /** Consume the profile from the hash (marks it as handled) */
   const consumeHashProfile = useCallback(() => {
     if (consumedRef.current) return null;
@@ -144,5 +161,5 @@ export function useHashRouter() {
     return hashProfile;
   }, [hashProfile]);
 
-  return { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, consumeHashProfile };
+  return { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, navigateToSession, consumeHashProfile };
 }

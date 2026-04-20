@@ -8,6 +8,7 @@
  */
 
 import { Actions } from "../components/Actions";
+import { useUiIntent } from "./intents";
 import type { WidgetBase, WidgetProps } from "./types";
 
 type ActionsManagerConfig = WidgetBase & {
@@ -15,6 +16,8 @@ type ActionsManagerConfig = WidgetBase & {
 };
 
 export default function ActionsManagerWidget({ onSelectSession, pageContext }: WidgetProps<ActionsManagerConfig>) {
+  const { dispatch } = useUiIntent(pageContext);
+
   const handleSelectSession = (id: string) => {
     pageContext?.set("selectedSession", id);
     onSelectSession(id);
@@ -22,7 +25,12 @@ export default function ActionsManagerWidget({ onSelectSession, pageContext }: W
 
   return (
     <div className="actions-manager-widget">
-      <Actions onSelectSession={handleSelectSession} />
+      <Actions
+        onSelectSession={handleSelectSession}
+        onOpenTerminal={(ownerType, ownerName, label) => {
+          dispatch({ type: "open-terminal", ownerType, ownerName, label });
+        }}
+      />
     </div>
   );
 }

@@ -10,11 +10,9 @@ import { SessionProvider } from "./providers/SessionProvider";
 import { useSession } from "./providers/SessionContext";
 import { getSessionState } from "./sessionStore";
 import { useHashRouter } from "./hooks/useHashRouter";
-import { Sidebar } from "./components/Sidebar";
+import { MobileNav } from "./components/MobileNav";
 import { Dashboard } from "./components/Dashboard";
 import { PageView } from "./components/PageRenderer";
-import { Profiles } from "./components/Profiles";
-import { Actions } from "./components/Actions";
 import { MovePageView } from "./components/MovePageView";
 import { MoLogo } from "./components/MoLogo";
 import { StatusBar } from "./components/sidebar/StatusBar";
@@ -23,8 +21,6 @@ import { FileViewerProvider } from "./providers/FileViewerProvider";
 import { useFileViewer } from "./providers/FileViewerContext";
 import { PinboardProvider } from "./providers/PinboardProvider";
 import { SessionWindow } from "./components/SessionWindow";
-import { SessionWeb } from "./components/SessionWeb";
-import { TraceView } from "./components/TraceView";
 import { LeftPanel } from "./components/LeftPanel";
 import { RightPanel } from "./components/RightPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
@@ -33,19 +29,10 @@ import { LayoutProvider } from "./providers/LayoutProvider";
 import { useLayout } from "./providers/LayoutContext";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { AgentPortal } from "./components/AgentPortal";
-import type { DashboardPage } from "./widgets";
+import { WIDGET_DEFS, widgetHandlesIntent, type DashboardPage } from "./widgets";
 
 import { getInputValue } from "./inputStore";
 
-function parseTagList(raw?: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === "string") : [];
-  } catch {
-    return [];
-  }
-}
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -125,20 +112,19 @@ function AppShell() {
 type HashRouter = ReturnType<typeof useHashRouter>;
 
 function AppContent({ router }: { router: HashRouter }) {
-  const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, consumeHashProfile } = router;
+  const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, navigateToSession, consumeHashProfile } = router;
   const { handleLock } = useAuth();
   const {
-    visibleProfiles, availableProviders, userProfiles,
+    userProfiles,
     activeUserProfile, activeUP, projectRoot,
-    selectedProfile, selectProfile,
-    setupState, setSetupState,
+    selectProfile,
+    setupState,
     uiState, saveUiState, switchUserProfile, refreshUserProfiles,
   } = useProfiles();
   const {
     activeSession, serverSessions,
     handleInputChange,
-    newSession, selectSession, archiveSession,
-    refreshSessions,
+    newSession, selectSession,
   } = useSession();
 
   // Panel state — owned by LayoutProvider
@@ -190,8 +176,8 @@ function AppContent({ router }: { router: HashRouter }) {
       // Pages with their own code-editor handle file opens internally —
       // don't also pop open the app-level right panel.
       if (currentView === "chat" || getCustomPageId(currentView)) return;
-      const hasEditorRight = (rw ?? []).some((w) => w.type === "code-editor");
-      const hasEditorLeft = (lw ?? []).some((w) => w.type === "code-editor");
+      const hasEditorRight = (rw ?? []).some((w) => widgetHandlesIntent(w, WIDGET_DEFS[w.type], "open-file"));
+      const hasEditorLeft = (lw ?? []).some((w) => widgetHandlesIntent(w, WIDGET_DEFS[w.type], "open-file"));
       if (hasEditorRight) {
         openRight(true);
       } else if (hasEditorLeft) {
@@ -205,8 +191,7 @@ function AppContent({ router }: { router: HashRouter }) {
 
   // ── Local UI state ──
   const [harnessUp, setHarnessUp] = useState<boolean | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [forceSetup, setForceSetup] = useState(false);
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [floatingSessionId, setFloatingSessionId] = useState<string | null>(null);
@@ -314,21 +299,17 @@ function AppContent({ router }: { router: HashRouter }) {
   const handleNewSession = useCallback(async () => {
     const id = await newSession();
     if (id) {
-      setUrlSession(id, activeUserProfile);
+      await selectSession(id);
+      navigateToSession(id, activeUserProfile);
     } else {
       navigate("chat");
     }
-    setSidebarOpen(false);
-  }, [activeUserProfile, navigate, newSession, setUrlSession]);
+  }, [activeUserProfile, navigate, navigateToSession, newSession, selectSession]);
 
   const handleSelectSession = useCallback((id: string) => {
-    // Skip the full selectSession hydration if this session is already active
-    // (e.g. just created by newSession). selectSession triggers snapshot
-    // hydration which can corrupt the status of brand-new empty sessions.
     if (activeSession?.id !== id) selectSession(id);
-    setUrlSession(id, activeUserProfile);
-    setSidebarOpen(false);
-  }, [activeSession?.id, activeUserProfile, selectSession, setUrlSession]);
+    navigateToSession(id, activeUserProfile);
+  }, [activeSession?.id, activeUserProfile, navigateToSession, selectSession]);
 
   // Wrap switchUserProfile to also update URL
   const handleSwitchUserProfile = useCallback((name: string | null) => {
@@ -342,35 +323,31 @@ function AppContent({ router }: { router: HashRouter }) {
     setUrlSession(id, activeUserProfile);
   }, [activeUserProfile, selectSession, setUrlSession]);
 
+  const handleActivateSession = useCallback((id: string) => {
+    selectSession(id);
+    navigateToSession(id, activeUserProfile);
+  }, [selectSession, navigateToSession, activeUserProfile]);
+
   const handleNavigate = useCallback((target: View) => {
     if (target !== "chat") {
       navigate(target);
       return;
     }
-    // "sessions" nav → restore last session for this profile, or show empty chat
-    if (restorableLastSessionId) {
-      selectSession(restorableLastSessionId);
-      setUrlSession(restorableLastSessionId, activeUserProfile);
-      return;
+    // If we have a session to restore, go straight to it (works even if already on chat)
+    const sessionToRestore = restorableLastSessionId ?? activeSession?.id;
+    if (sessionToRestore) {
+      selectSession(sessionToRestore);
+      navigateToSession(sessionToRestore, activeUserProfile);
+    } else {
+      navigate("chat");
     }
-    navigate("chat");
-  }, [activeUserProfile, navigate, restorableLastSessionId, selectSession, setUrlSession]);
+  }, [activeSession?.id, activeUserProfile, navigate, navigateToSession, restorableLastSessionId, selectSession]);
 
   // Peek: pop a floating SessionWindow for any session ID
   const handlePeekSession = useCallback((id: string) => {
     setFloatingSessionId(id);
   }, []);
 
-  const handleTogglePin = useCallback(async (id: string) => {
-    const session = serverSessions.find(s => s.id === id);
-    const tags = parseTagList(session?.tags);
-    if (tags.includes("pinned")) {
-      await modus.removeTag(id, "pinned").catch(() => {});
-    } else {
-      await modus.addTag(id, "pinned").catch(() => {});
-    }
-    refreshSessions();
-  }, [serverSessions, refreshSessions]);
 
 
   const activeAgentCount = serverSessions.filter(s => {
@@ -412,14 +389,6 @@ function AppContent({ router }: { router: HashRouter }) {
   const bareMovePagesNav = movePages
     .filter((m) => !m.page?.layout)
     .filter((m) => !customPages.some((cp) => cp.id === m.page?.id));
-  const gitPageBlocks = [
-    {
-      kind: "module" as const,
-      id: "git-main",
-      title: "git",
-      module: "git" as const,
-    },
-  ];
   const navViews = [
     ...NAV_VIEWS,
     ...bareMovePagesNav.map((m) => ({
@@ -476,7 +445,7 @@ function AppContent({ router }: { router: HashRouter }) {
   return (
     <div className="app">
       <div className="top-nav">
-        <button className="menu-btn" onClick={() => setSidebarOpen(true)}>
+        <button className="menu-btn" onClick={() => setMobileNavOpen(true)}>
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
@@ -493,6 +462,7 @@ function AppContent({ router }: { router: HashRouter }) {
             </button>
           ))}
         </nav>
+        <button className="top-nav-new-session" onClick={handleNewSession} title="New session">+</button>
         <div className="top-nav-spacer" />
         {view === "chat" && activeSession?.id && !activeSession.id.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSession.id) && (
           <span className="chat-header-archived">archived</span>
@@ -511,35 +481,12 @@ function AppContent({ router }: { router: HashRouter }) {
       </div>
 
       <div className="app-body">
-        <Sidebar
-          open={sidebarOpen}
-          collapsed={sidebarCollapsed}
-          sessions={serverSessions.map((s) => {
-            const storeState = getSessionState(s.id);
-            return storeState ? { ...s, status: storeState.status ?? s.status } : s;
-          })}
-          activeSessionId={activeSession?.id ?? null}
-          profiles={visibleProfiles}
-          selectedProfile={selectedProfile}
-          onNewSession={handleNewSession}
-          onSelectSession={handleSelectSession}
-          onArchiveSession={archiveSession}
-          onSelectProfile={selectProfile}
-          onSetupChange={setSetupState}
-          setupState={setupState}
-          onClose={() => setSidebarOpen(false)}
-          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-          initialGroupMode={uiState.sidebarGroupMode}
-          initialCollapsedGroups={uiState.sidebarCollapsedGroups}
-          onGroupModeChange={(mode) => saveUiState({ sidebarGroupMode: mode })}
-          onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
-          activeUserProfileObj={activeUP}
-          availableProviders={availableProviders}
+        <MobileNav
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
           navLinks={[{ view: "home" as const, label: "home" }, ...navViews]}
           currentView={view}
           onNavigate={handleNavigate}
-          navOnly={view !== "chat"}
-          onTogglePin={handleTogglePin}
         />
 
         {/* ── Left Panel (view-independent, hidden on fullscreen pages) ── */}
@@ -578,6 +525,7 @@ function AppContent({ router }: { router: HashRouter }) {
               padding={chatStudioPage.padding}
               onNavigate={navigate}
               onSelectSession={handleViewSession}
+              onActivateSession={handleActivateSession}
               hashSessionId={hashSessionId}
             />
         )}
@@ -591,26 +539,11 @@ function AppContent({ router }: { router: HashRouter }) {
           />
         )}
 
-        {view === "profiles" && (
-          <Profiles onSelectSession={handleViewSession} onNavigate={navigate} />
-        )}
-
         {activeMovePageName && projectCwd && (
           <MovePageView
             moveName={activeMovePageName}
             cwd={projectCwd}
             userProfile={activeUserProfile ?? undefined}
-          />
-        )}
-        {view === "actions" && <Actions onSelectSession={handleViewSession} onPeekSession={handlePeekSession} />}
-        {view === "web" && <SessionWeb />}
-        {view === "trace" && <TraceView />}
-
-        {view === "git" && (
-          <PageView
-            blocks={gitPageBlocks}
-            onNavigate={navigate}
-            onSelectSession={handleViewSession}
           />
         )}
 
@@ -663,6 +596,7 @@ function AppContent({ router }: { router: HashRouter }) {
                     padding={(page as any).padding}
                     onNavigate={navigate}
                     onSelectSession={handleViewSession}
+                    onActivateSession={handleActivateSession}
                     hashSessionId={isActive ? hashSessionId : null}
                   />
                 </div>

@@ -76,6 +76,7 @@
           "kind": "tabs",
           "editable": true,
           "target": true,
+          "handles": ["open-file", "open-terminal", "open-move", "close-move", "focus-tab"],
           "children": [
             {
               "kind": "widget",

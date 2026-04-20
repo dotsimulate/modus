@@ -9,10 +9,19 @@ type Tab = {
   content: string | null;
 };
 
+export type FileOpenRequest = {
+  path: string;
+  edit?: boolean;
+  line?: number;
+  endLine?: number;
+  highlight?: boolean;
+  source?: "file-change" | "tool-read" | "markdown" | "browser" | "ui-event";
+};
+
 type FileViewerContextValue = {
   tabs: Tab[];
   activePath: string | null;
-  openFile: (path: string, opts?: { edit?: boolean }) => void;
+  openFile: (path: string, opts?: Omit<FileOpenRequest, "path">) => void;
   closeFile: (path?: string) => void;
   pinFile: (path: string) => void;
   unpinFile: (path: string) => void;
@@ -34,7 +43,7 @@ type FileViewerContextValue = {
   /** Increments when a viewed (non-editing) file changes on disk — triggers re-fetch */
   contentVersion: number;
   /** Subscribe to new file opens (excludes hydration restores). Returns unsubscribe fn. */
-  subscribeFileOpens: (fn: (path: string) => void) => () => void;
+  subscribeFileOpens: (fn: (request: FileOpenRequest) => void) => () => void;
 };
 
 export type { Tab, FileViewerContextValue };

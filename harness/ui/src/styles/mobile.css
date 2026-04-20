@@ -16,13 +16,9 @@
   align-items: center;
 }
 
-/* ── Sidebar nav — hidden on desktop ── */
-.sidebar-nav { display: none; }
-
-/* ── Sidebar Overlay ── */
-.sidebar-overlay {
-  display: none;
-}
+/* ── Mobile Nav — hidden on desktop ── */
+.mobile-nav { display: none; }
+.mobile-nav-overlay { display: none; }
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
@@ -30,7 +26,9 @@
   .top-nav-links { display: none; }
   .menu-btn { display: flex; }
 
-  .sidebar {
+  .mobile-nav {
+    display: flex;
+    flex-direction: column;
     position: fixed;
     left: 0;
     top: 0;
@@ -38,28 +36,15 @@
     z-index: 100;
     transform: translateX(-100%);
     transition: transform 0.1s ease;
-    width: 300px;
-    min-width: 300px;
+    width: 260px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
   }
-  .sidebar.collapsed {
-    width: 300px;
-    min-width: 300px;
-  }
-  .sidebar.collapsed .sidebar-sections,
-  .sidebar.collapsed .profile-panel {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .sidebar.collapsed .new-session-btn { padding: 10px 14px; font-size: 13px; text-align: left; }
-  .sidebar-collapse-btn { display: none; }
-  .sidebar.open {
+  .mobile-nav.open {
     transform: translateX(0);
   }
-  .sidebar.nav-only {
-    display: flex;
-  }
 
-  .sidebar-overlay {
+  .mobile-nav-overlay {
     display: block;
     position: fixed;
     inset: 0;
@@ -67,28 +52,27 @@
     background: rgba(0, 0, 0, 0.6);
   }
 
-  /* Sidebar nav links — mobile only */
-  .sidebar-nav {
+  .mobile-nav-links {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 2px;
-    padding: 12px 14px 8px;
-    border-bottom: 1px solid var(--border);
+    padding: 16px 14px;
   }
-  .sidebar-nav-link {
+  .mobile-nav-link {
     background: none;
     border: none;
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: calc(12px * var(--font-scale, 1));
+    font-size: calc(13px * var(--font-scale, 1));
     letter-spacing: 0.05em;
-    padding: 6px 10px;
+    padding: 10px 12px;
     border-radius: 6px;
     cursor: pointer;
+    text-align: left;
     transition: color 0.15s ease, background 0.15s ease;
   }
-  .sidebar-nav-link:hover { color: var(--text-dim); }
-  .sidebar-nav-link.active {
+  .mobile-nav-link:hover { color: var(--text-dim); }
+  .mobile-nav-link.active {
     color: var(--text);
     background: rgba(255, 255, 255, 0.06);
   }
