@@ -240,7 +240,7 @@ export function FileCard({
 
   const handleViewFile = (e: React.MouseEvent) => {
     e.stopPropagation();
-    openFile(filePath);
+    openFile(filePath, { source: "file-change" });
   };
 
   return (

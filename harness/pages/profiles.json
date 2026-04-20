@@ -1,0 +1,11 @@
+{
+  "id": "profiles",
+  "title": "profiles",
+  "nav": true,
+  "fullscreen": true,
+  "padding": 0,
+  "layout": {
+    "kind": "widget",
+    "widget": { "type": "profiles-manager", "id": "pg-profiles" }
+  }
+}

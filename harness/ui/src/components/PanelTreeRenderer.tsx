@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { View } from "../views";
-import type { MoveWidgetInfo } from "../../../sdk/index";
-import { WIDGET_DEFS, WIDGETS, type LayoutLeaf, type LayoutNode, type ScopeEvent, type WidgetBase } from "../widgets";
+import type { MoveWidgetInfo, TerminalInfo } from "../../../sdk/index";
+import { WIDGET_DEFS, WIDGETS, dispatchUiIntent, panelHandlesIntent, panelHandlesUiIntent, widgetHandlesUiIntent, type LayoutLeaf, type LayoutNode, type UiIntent, type WidgetBase } from "../widgets";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
 import { WidgetPicker } from "./WidgetPicker";
-import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSessionBinder } from "./pageScope";
+import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSessionBinder, ScopeSelectSessionIntentBridge } from "./pageScope";
 import { MoveWidgetEmbed } from "./MoveWidgetEmbed";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { modus } from "../modusClient";
 import { useFileViewer } from "../providers/FileViewerContext";
+import { TerminalView } from "./TerminalView";
 
 type Props = {
   node: LayoutNode;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
+  onActivateSession?: (id: string) => void;
   empty?: ReactNode;
 };
 
@@ -26,15 +28,15 @@ function getLeafId(leaf: LayoutLeaf, index: number): string {
  * (one that receives dynamic move tabs). Used by ResizableSplit to know which
  * collapsed children should pop open when an `expand-target` event fires.
  */
-function containsTarget(node: LayoutNode): boolean {
+function containsTarget(node: LayoutNode, target?: string): boolean {
   if ((node.kind === "tabs" || node.kind === "list") && node.editable && node.target) {
-    return true;
+    return panelMatchesIntentTarget(node.id, target);
   }
   if (node.kind === "split" || node.kind === "scope") {
-    return node.children.some(containsTarget);
+    return node.children.some((child) => containsTarget(child, target));
   }
   if (node.kind === "grid") {
-    return (node.children ?? []).some(containsTarget);
+    return (node.children ?? []).some((child) => containsTarget(child, target));
   }
   return false;
 }
@@ -227,7 +229,7 @@ function ScopeSessionWatcher() {
         for (const w of widgets) {
           if (!knownWidgets.current.has(w.instanceId)) {
             knownWidgets.current.add(w.instanceId);
-            bus.emit({
+            dispatchUiIntent(bus, {
               type: "open-move",
               id: `widget:${w.instanceId}`,
               label: w.widget.label,
@@ -250,6 +252,28 @@ function ScopeSessionWatcher() {
       window.removeEventListener("modus:widgets-changed", handler);
     };
   }, [sessionId, bus]);
+
+  return null;
+}
+
+function ScopeFileOpenIntentBridge() {
+  const bus = useScopeBus();
+  const { subscribeFileOpens } = useFileViewer();
+
+  useEffect(() => {
+    if (!bus) return;
+    return subscribeFileOpens((request) => {
+      bus.emit({
+        type: "open-file",
+        path: request.path,
+        edit: request.edit,
+        line: request.line,
+        endLine: request.endLine,
+        highlight: request.highlight,
+        source: request.source,
+      });
+    });
+  }, [bus, subscribeFileOpens]);
 
   return null;
 }
@@ -289,6 +313,7 @@ function renderLeaf(
 // ── Resizable split panels ──
 
 type SplitNode = Extract<LayoutNode, { kind: "split" }>;
+type SplitPointerEvent = Pick<React.PointerEvent, "clientX" | "clientY">;
 
 /**
  * Collapse tab on the inner edge of a collapsible split child.
@@ -309,13 +334,15 @@ function SplitCollapseTab({
   collapsed: boolean;
   onToggle: () => void;
   /** If provided, the tab doubles as a drag handle for resizing */
-  onResizeStart?: (e: React.PointerEvent) => void;
-  onResizeMove?: (e: React.PointerEvent) => void;
+  onResizeStart?: (e: SplitPointerEvent) => void;
+  onResizeMove?: (e: SplitPointerEvent) => void;
   onResizeEnd?: () => void;
 }) {
   const isPressed = useRef(false);
   const didDrag = useRef(false);
+  const suppressClick = useRef(false);
   const startPos = useRef(0);
+  const pointerId = useRef<number | null>(null);
 
   const isHorizontal = axis === "horizontal";
   let chevron: "left" | "right" | "up" | "down";
@@ -336,39 +363,55 @@ function SplitCollapseTab({
     down:  "M2 3.5L5.5 7 9 3.5",
   };
 
+  const DRAG_THRESHOLD = 10;
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     isPressed.current = true;
     didDrag.current = false;
     startPos.current = isHorizontal ? e.clientX : e.clientY;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    e.preventDefault();
-  }, [isHorizontal]);
+    pointerId.current = e.pointerId;
 
-  const DRAG_THRESHOLD = 10;
+    const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== pointerId.current) return;
+      if (!isPressed.current) return;
+      const pos = isHorizontal ? event.clientX : event.clientY;
+      const delta = Math.abs(pos - startPos.current);
+      if (!didDrag.current && delta >= DRAG_THRESHOLD) {
+        didDrag.current = true;
+        suppressClick.current = true;
+        onResizeStart?.(event);
+      }
+      if (didDrag.current) {
+        event.preventDefault();
+        onResizeMove?.(event);
+      }
+    };
 
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isPressed.current) return;
-    const pos = isHorizontal ? e.clientX : e.clientY;
-    const delta = Math.abs(pos - startPos.current);
-    if (!didDrag.current && delta >= DRAG_THRESHOLD) {
-      didDrag.current = true;
-      onResizeStart?.(e);
-    }
-    if (didDrag.current) {
-      onResizeMove?.(e);
-    }
-  }, [isHorizontal, onResizeStart, onResizeMove]);
+    const handlePointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== pointerId.current) return;
+      isPressed.current = false;
+      pointerId.current = null;
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerUp);
+      if (didDrag.current) {
+        onResizeEnd?.();
+      }
+      didDrag.current = false;
+    };
 
-  const handlePointerUp = useCallback(() => {
-    if (!isPressed.current) return;
-    isPressed.current = false;
-    if (didDrag.current) {
-      onResizeEnd?.();
-    } else {
-      onToggle();
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerUp);
+  }, [isHorizontal, onResizeStart, onResizeMove, onResizeEnd]);
+
+  const handleClick = useCallback(() => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
     }
-    didDrag.current = false;
-  }, [onToggle, onResizeEnd]);
+    onToggle();
+  }, [onToggle]);
 
   const canDrag = !collapsed && !!onResizeStart;
 
@@ -384,8 +427,7 @@ function SplitCollapseTab({
     <div
       className={className}
       onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      onClick={handleClick}
       title={collapsed ? "Expand panel" : "Drag to resize · Click to collapse"}
     >
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -407,6 +449,7 @@ function SplitChild({
   isAuto,
   onNavigate,
   onSelectSession,
+  onActivateSession,
   empty,
 }: {
   node: LayoutNode;
@@ -415,6 +458,7 @@ function SplitChild({
   isAuto: boolean;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
+  onActivateSession?: (id: string) => void;
   empty: ReactNode;
 }) {
   // All node types support showWhen/hideWhen
@@ -436,6 +480,7 @@ function SplitChild({
           node={node}
           onNavigate={onNavigate}
           onSelectSession={onSelectSession}
+          onActivateSession={onActivateSession}
           empty={empty}
         />
       )}
@@ -447,11 +492,13 @@ function ResizableSplit({
   node,
   onNavigate,
   onSelectSession,
+  onActivateSession,
   empty,
 }: {
   node: SplitNode;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
+  onActivateSession?: (id: string) => void;
   empty: ReactNode;
 }) {
   const count = node.children.length;
@@ -484,12 +531,12 @@ function ResizableSplit({
   const expandBus = useScopeBus();
   useEffect(() => {
     if (!expandBus) return;
-    return expandBus.on("expand-target", () => {
+    return expandBus.on("expand-target", (event) => {
       const collapsibleFlags = node.collapsible ?? [];
       setCollapsed((prev) => {
         let changed = false;
         const next = prev.map((isCollapsed, i) => {
-          if (isCollapsed && collapsibleFlags[i] && containsTarget(node.children[i])) {
+          if (isCollapsed && collapsibleFlags[i] && containsTarget(node.children[i], event.target)) {
             changed = true;
             return false;
           }
@@ -510,7 +557,7 @@ function ResizableSplit({
   }, [autoFlags, collapsed]);
 
   /** Begin a resize drag between children at handleIndex and handleIndex+1 */
-  const startResize = useCallback((e: React.PointerEvent, handleIndex: number) => {
+  const startResize = useCallback((e: SplitPointerEvent, handleIndex: number) => {
     if (!canResize(handleIndex)) return;
     const pos = node.axis === "horizontal" ? e.clientX : e.clientY;
     dragging.current = { index: handleIndex, startPos: pos, startSizes: [...sizes] };
@@ -523,7 +570,7 @@ function ResizableSplit({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, [canResize, startResize]);
 
-  const updateResize = useCallback((e: React.PointerEvent) => {
+  const updateResize = useCallback((e: SplitPointerEvent) => {
     if (!dragging.current || !containerRef.current) return;
     const { index, startPos: dragStart, startSizes } = dragging.current;
     const rect = containerRef.current.getBoundingClientRect();
@@ -628,6 +675,7 @@ function ResizableSplit({
         isAuto={isAuto}
         onNavigate={onNavigate}
         onSelectSession={onSelectSession}
+        onActivateSession={onActivateSession}
         empty={empty}
       />,
     );
@@ -662,6 +710,7 @@ export function PanelTreeRenderer({
   node,
   onNavigate,
   onSelectSession,
+  onActivateSession,
   empty = <div className="panel-empty">empty panel</div>,
 }: Props) {
   if (node.kind === "widget") {
@@ -671,7 +720,7 @@ export function PanelTreeRenderer({
 
   if (node.kind === "split") {
     return (
-      <ResizableSplit node={node} onNavigate={onNavigate} onSelectSession={onSelectSession} empty={empty} />
+      <ResizableSplit node={node} onNavigate={onNavigate} onSelectSession={onSelectSession} onActivateSession={onActivateSession} empty={empty} />
     );
   }
 
@@ -714,6 +763,7 @@ export function PanelTreeRenderer({
               node={child}
               onNavigate={onNavigate}
               onSelectSession={onSelectSession}
+              onActivateSession={onActivateSession}
               empty={empty}
             />
           </div>
@@ -728,6 +778,7 @@ export function PanelTreeRenderer({
         node={node.children[0]}
         onNavigate={onNavigate}
         onSelectSession={onSelectSession}
+        onActivateSession={onActivateSession}
         empty={empty}
       />
     ) : (
@@ -738,6 +789,7 @@ export function PanelTreeRenderer({
             node={child}
             onNavigate={onNavigate}
             onSelectSession={onSelectSession}
+            onActivateSession={onActivateSession}
             empty={empty}
           />
         ))}
@@ -749,8 +801,11 @@ export function PanelTreeRenderer({
         context={node.context}
         onNavigate={onNavigate as unknown as (view: string) => void}
         onSelectSession={onSelectSession}
+        onActivateSession={onActivateSession}
       >
         <ScopeSessionWatcher />
+        <ScopeFileOpenIntentBridge />
+        <ScopeSelectSessionIntentBridge />
         {node.bindUrlSession && <ScopeUrlSessionBinder />}
         {child}
       </ScopeProvider>
@@ -825,6 +880,49 @@ type DynamicMoveTab = {
   reloadKey: number;
 };
 
+type DynamicTerminalTab = {
+  id: string;
+  label: string;
+  ownerType: string;
+  ownerName: string;
+};
+
+function isTerminalDiscoveryDeclaration(widget: WidgetBase): boolean {
+  return (
+    widget.type === "persistent-terminal"
+    && ((widget as Record<string, unknown>).ownerType === "action" || (widget as Record<string, unknown>).discoverOwnerType === "action")
+    && !(widget as Record<string, unknown>).ownerName
+  );
+}
+
+function panelDeclaresTerminalDiscovery(widgets: WidgetBase[]): boolean {
+  return widgets.some((w) => w.type === "session-terminal" || isTerminalDiscoveryDeclaration(w));
+}
+
+function panelMatchesIntentTarget(panelId: string | undefined, target?: string): boolean {
+  return !target || target === panelId;
+}
+
+function editablePanelReceivesIntent(node: EditablePanelNode, intent: UiIntent): boolean {
+  if (!panelMatchesIntentTarget(node.id, intent.target)) return false;
+  if (panelHandlesUiIntent(node, intent)) return true;
+  if (intent.type === "open-file" || intent.type === "focus-tab") return true;
+  return node.target === true;
+}
+
+function editablePanelSubscribesToIntent(node: EditablePanelNode, intentType: UiIntent["type"]): boolean {
+  if (intentType === "open-file" || intentType === "focus-tab") return true;
+  return node.target === true || panelHandlesIntent(node, intentType);
+}
+
+function editablePanelSupportsDynamicMoves(node: EditablePanelNode): boolean {
+  return node.target === true || panelHandlesIntent(node, "open-move") || panelHandlesIntent(node, "close-move");
+}
+
+function editablePanelSupportsDynamicTerminals(node: EditablePanelNode): boolean {
+  return node.target === true || panelHandlesIntent(node, "open-terminal");
+}
+
 function panelStorageKey(node: EditablePanelNode): string {
   const id = node.id ?? node.children.map(l => l.widget.id ?? l.widget.type).join(",");
   return `harness:editable-panel:${id}`;
@@ -870,32 +968,89 @@ function EditablePanel({
   }, [node]);
   const [mode, setMode] = useState<"list" | "tabs">(node.kind);
   const [dynamicTabs, setDynamicTabs] = useState<DynamicMoveTab[]>([]);
+  const [dynamicTerminalTabs, setDynamicTerminalTabs] = useState<DynamicTerminalTab[]>([]);
   const [requestActiveId, setRequestActiveId] = useState<string | null>(null);
   const clearRequestActive = useCallback(() => setRequestActiveId(null), []);
 
   const bus = useScopeBus();
   const dynamicTabsRef = useRef(dynamicTabs);
   dynamicTabsRef.current = dynamicTabs;
+  const dynamicTerminalTabsRef = useRef(dynamicTerminalTabs);
+  dynamicTerminalTabsRef.current = dynamicTerminalTabs;
   const widgetsRef = useRef(widgets);
   widgetsRef.current = widgets;
 
-  // ── File-open → focus code-editor tab ──
-  // When a file is opened (e.g. via a file reference click in chat markdown),
-  // if this panel contains a code-editor widget that isn't the active tab,
-  // bring it to the front. Also emit expand-target in case a parent split
-  // has this panel's branch collapsed.
-  const { subscribeFileOpens } = useFileViewer();
+  const handleIntent = useCallback((intent: UiIntent) => {
+    if (!editablePanelReceivesIntent(node, intent)) return;
+
+    switch (intent.type) {
+      case "open-file": {
+        const valid = widgetsRef.current.filter((w) => WIDGETS[w.type]);
+        const editorIndex = valid.findIndex((w) => widgetHandlesUiIntent(w, WIDGET_DEFS[w.type], intent));
+        if (editorIndex === -1) return;
+        const editor = valid[editorIndex];
+        const editorId = editor.id ?? `${editor.type}-${editorIndex}`;
+        setRequestActiveId(editorId);
+        dispatchUiIntent(bus, { type: "expand-target", target: intent.target });
+        return;
+      }
+
+      case "focus-tab":
+        setRequestActiveId(intent.tabId);
+        return;
+
+      case "focus-widget": {
+        const valid = widgetsRef.current.filter((w) => WIDGETS[w.type] && !isTerminalDiscoveryDeclaration(w));
+        let index = -1;
+        if (intent.widgetId) {
+          index = valid.findIndex((w, i) => (w.id ?? `${w.type}-${i}`) === intent.widgetId);
+        }
+        if (index === -1 && intent.widgetType) {
+          index = valid.findIndex((w) => w.type === intent.widgetType && widgetHandlesUiIntent(w, WIDGET_DEFS[w.type], intent));
+        }
+        if (index === -1) return;
+        const widget = valid[index];
+        setRequestActiveId(widget.id ?? `${widget.type}-${index}`);
+        dispatchUiIntent(bus, { type: "expand-target", target: intent.target });
+        return;
+      }
+
+      case "open-move": {
+        const { id, label, widget, apiToken, instanceId, sessionId, mountedOnAttach } = intent;
+        const exists = dynamicTabsRef.current.some(t => t.id === id);
+        if (!exists) {
+          setDynamicTabs(prev => prev.some(t => t.id === id) ? prev : [...prev, { id, label, widget, apiToken, instanceId, sessionId, mountedOnAttach, reloadKey: 0 }]);
+          dispatchUiIntent(bus, { type: "expand-target" });
+        }
+        setRequestActiveId(id);
+        return;
+      }
+
+      case "close-move":
+        setDynamicTabs(prev => prev.filter(t => t.id !== intent.id));
+        return;
+
+      case "open-terminal": {
+        if (!panelDeclaresTerminalDiscovery(widgetsRef.current)) return;
+        const { ownerType, ownerName } = intent;
+        const id = `terminal:${ownerType}:${ownerName}`;
+        const label = intent.label ?? ownerName;
+        const exists = dynamicTerminalTabsRef.current.some(t => t.id === id);
+        if (!exists) {
+          setDynamicTerminalTabs(prev => prev.some(t => t.id === id) ? prev : [...prev, { id, label, ownerType, ownerName }]);
+          dispatchUiIntent(bus, { type: "expand-target" });
+        }
+        setRequestActiveId(id);
+        return;
+      }
+    }
+  }, [bus, node]);
+
+  // ── open-file intent → focus declared file surface ──
   useEffect(() => {
-    return subscribeFileOpens(() => {
-      const valid = widgetsRef.current.filter((w) => WIDGETS[w.type]);
-      const editorIndex = valid.findIndex((w) => w.type === "code-editor");
-      if (editorIndex === -1) return;
-      const editor = valid[editorIndex];
-      const editorId = editor.id ?? `${editor.type}-${editorIndex}`;
-      setRequestActiveId(editorId);
-      bus?.emit({ type: "expand-target" });
-    });
-  }, [subscribeFileOpens, bus]);
+    if (!bus) return;
+    return bus.on("open-file", handleIntent);
+  }, [bus, handleIntent]);
 
   // Track scope session for direct widget fetching
   const scopeState = useSyncExternalStore(
@@ -904,46 +1059,77 @@ function EditablePanel({
   );
   const scopeSessionId = scopeState.sessionId as string | undefined | null;
 
+  // Any editable panel listens for focus-tab so widgets can switch tabs
+  useEffect(() => {
+    if (!bus) return;
+    return bus.on("focus-tab", handleIntent);
+  }, [bus, handleIntent]);
+
   // Listen for target events when this panel is a target
   useEffect(() => {
-    if (!node.target || !bus) return;
+    if (!bus) return;
 
     const unsubs: (() => void)[] = [];
-
-    unsubs.push(bus.on("open-move", (event: ScopeEvent) => {
-      const id = event.id as string;
-      const label = event.label as string;
-      const widget = event.widget as MoveWidgetInfo;
-      const apiToken = event.apiToken as string;
-      const instanceId = event.instanceId as string;
-      const sessionId = event.sessionId as string;
-      const mountedOnAttach = event.mountedOnAttach as boolean | undefined;
-
-      const exists = dynamicTabsRef.current.some(t => t.id === id);
-      if (!exists) {
-        setDynamicTabs(prev => prev.some(t => t.id === id) ? prev : [...prev, { id, label, widget, apiToken, instanceId, sessionId, mountedOnAttach, reloadKey: 0 }]);
-        bus.emit({ type: "expand-target" });
-      }
-      setRequestActiveId(id);
-    }));
-
-    unsubs.push(bus.on("close-move", (event: ScopeEvent) => {
-      const id = event.id as string;
-      setDynamicTabs(prev => prev.filter(t => t.id !== id));
-    }));
-
-    unsubs.push(bus.on("focus-tab", (event: ScopeEvent) => {
-      setRequestActiveId(event.tabId as string);
-    }));
+    if (editablePanelSubscribesToIntent(node, "open-move")) {
+      unsubs.push(bus.on("open-move", handleIntent));
+    }
+    if (editablePanelSubscribesToIntent(node, "close-move")) {
+      unsubs.push(bus.on("close-move", handleIntent));
+    }
+    if (editablePanelSubscribesToIntent(node, "open-terminal")) {
+      unsubs.push(bus.on("open-terminal", handleIntent));
+    }
+    if (editablePanelSubscribesToIntent(node, "focus-widget")) {
+      unsubs.push(bus.on("focus-widget", handleIntent));
+    }
 
     return () => unsubs.forEach(fn => fn());
-  }, [node.target, bus]);
+  }, [node, bus, handleIntent]);
+
+  // Action terminals are owner-bound rather than session-bound. Surface them
+  // in editable target panels so action pages can focus their terminal output
+  // without relying on the app-level RightPanel special case.
+  useEffect(() => {
+    if (!editablePanelSupportsDynamicTerminals(node) || !bus) return;
+    let active = true;
+    const poll = async () => {
+      if (!panelDeclaresTerminalDiscovery(widgetsRef.current)) return;
+      const terms = await modus.listTerminals({ ownerType: "action" }).catch(() => [] as TerminalInfo[]);
+      if (!active) return;
+      const seen = new Set(dynamicTerminalTabsRef.current.map(t => t.ownerName));
+      const additions: DynamicTerminalTab[] = [];
+      for (const term of terms) {
+        if (!term.ownerName || seen.has(term.ownerName)) continue;
+        seen.add(term.ownerName);
+        additions.push({
+          id: `terminal:action:${term.ownerName}`,
+          label: term.ownerName,
+          ownerType: "action",
+          ownerName: term.ownerName,
+        });
+      }
+      if (additions.length === 0) return;
+      setDynamicTerminalTabs(prev => {
+        const have = new Set(prev.map(t => t.id));
+        const fresh = additions.filter(t => !have.has(t.id));
+        return fresh.length === 0 ? prev : [...prev, ...fresh];
+      });
+      setRequestActiveId(additions[additions.length - 1].id);
+      dispatchUiIntent(bus, { type: "expand-target" });
+    };
+    poll();
+    const interval = window.setInterval(poll, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [node, bus]);
 
   // Self-fetch active widgets directly. Independent of ScopeSessionWatcher's
   // bus emit so the panel self-heals when it mounts after the event already
   // fired (e.g. it was previously collapsed and is just being expanded).
   useEffect(() => {
-    if (!node.target || !scopeSessionId) return;
+    if (!editablePanelSupportsDynamicMoves(node) || !scopeSessionId) return;
     // Cancellation guard — a fast session switch can land a stale fetch's
     // resolution onto the new session's tab list. Drop it.
     let cancelled = false;
@@ -972,7 +1158,7 @@ function EditablePanel({
         return fresh.length === 0 ? prev : [...prev, ...fresh];
       });
       setRequestActiveId(additions[additions.length - 1].id);
-      bus?.emit({ type: "expand-target" });
+      dispatchUiIntent(bus, { type: "expand-target" });
     };
 
     fetchWidgets();
@@ -982,7 +1168,7 @@ function EditablePanel({
       cancelled = true;
       window.removeEventListener("modus:widgets-changed", handler);
     };
-  }, [node.target, scopeSessionId, bus]);
+  }, [node, scopeSessionId, bus]);
 
   // Clear dynamic tabs when the scope's session changes
   const prevScopeSession = useRef(scopeSessionId);
@@ -994,8 +1180,9 @@ function EditablePanel({
   }, [scopeSessionId]);
 
   const validWidgets = widgets.filter((w) => WIDGETS[w.type]);
+  const renderableWidgets = validWidgets.filter((w) => !isTerminalDiscoveryDeclaration(w));
 
-  const staticItems: PanelSurfaceItem[] = validWidgets.map((widget, index) => {
+  const staticItems: PanelSurfaceItem[] = renderableWidgets.map((widget, index) => {
     const widgetId = widget.id ?? `${widget.type}-${index}`;
     const widgetDef = WIDGET_DEFS[widget.type];
 
@@ -1052,7 +1239,24 @@ function EditablePanel({
     ),
   }));
 
-  const items = [...staticItems, ...dynamicItems];
+  const dynamicTerminalItems: PanelSurfaceItem[] = dynamicTerminalTabs.map((tab) => ({
+    id: tab.id,
+    label: tab.label,
+    title: `${tab.label} terminal`,
+    icon: widgetIcon("session-terminal") ?? undefined,
+    onClose: () => {
+      setDynamicTerminalTabs(prev => prev.filter(t => t.id !== tab.id));
+    },
+    render: (active) => (
+      <TerminalView
+        visible={active}
+        ownerType={tab.ownerType}
+        ownerName={tab.ownerName}
+      />
+    ),
+  }));
+
+  const items = [...staticItems, ...dynamicItems, ...dynamicTerminalItems];
 
   const picker = (
     <div className="left-panel-picker">

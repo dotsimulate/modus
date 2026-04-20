@@ -14,6 +14,7 @@
 import { useCallback, useState } from "react";
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
+import { useUiIntent } from "./intents";
 import type { WidgetBase, WidgetProps } from "./types";
 
 type NewSessionConfig = WidgetBase & {
@@ -24,21 +25,23 @@ export default function NewSessionWidget({ pageContext, onSelectSession }: Widge
   const { visibleProfiles, selectProfile } = useProfiles();
   const { newSession } = useSession();
   const [busy, setBusy] = useState(false);
+  const { dispatch } = useUiIntent(pageContext);
 
   const handleNewSession = useCallback(async (profileName?: string) => {
     if (busy) return;
     setBusy(true);
     try {
       if (profileName) selectProfile(profileName);
-      const id = await newSession();
+      const id = await newSession(profileName);
       if (id) {
         pageContext?.set("selectedSession", id);
+        dispatch({ type: "focus-tab", tabId: "cs-history" });
         onSelectSession(id);
       }
     } finally {
       setBusy(false);
     }
-  }, [busy, newSession, selectProfile, pageContext, onSelectSession]);
+  }, [busy, newSession, selectProfile, pageContext, dispatch, onSelectSession]);
 
   return (
     <div className="new-session-widget">

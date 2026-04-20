@@ -1,0 +1,27 @@
+{
+  "id": "missions",
+  "title": "missions",
+  "nav": true,
+  "fullscreen": true,
+  "padding": 0,
+  "layout": {
+    "kind": "scope",
+    "context": { "missionRunId": null, "sessionId": null },
+    "children": [{
+      "kind": "split",
+      "axis": "horizontal",
+      "sizes": [2, 3],
+      "collapsible": [true, false],
+      "children": [
+        {
+          "kind": "widget",
+          "widget": { "type": "missions", "id": "pg-missions" }
+        },
+        {
+          "kind": "widget",
+          "widget": { "type": "mission-graph", "id": "pg-mission-graph" }
+        }
+      ]
+    }]
+  }
+}

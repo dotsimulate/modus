@@ -15,8 +15,11 @@
 }
 
 /* Collapse gap between consecutive tool-only assistant messages */
+.message-wrap--tools-only > .message {
+  margin-bottom: 2px;
+}
 .message-wrap--tools-only + .message-wrap--tools-only > .message {
-  margin-top: -20px;
+  margin-top: 0;
 }
 .message[data-role="user"] {
   position: relative;

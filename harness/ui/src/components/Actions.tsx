@@ -7,6 +7,7 @@ import { Markdown } from "./Markdown";
 type Props = {
   onSelectSession: (id: string) => void;
   onPeekSession?: (id: string) => void;
+  onOpenTerminal?: (ownerType: string, ownerName: string, label?: string) => void;
 };
 
 function timeAgo(ts: number): string {
@@ -462,6 +463,7 @@ function ActionCard({
   onToggleExpand,
   onToggleEnabled,
   onTrigger,
+  onOpenTerminal,
   onSelectSession,
   onPeekSession,
   onClearRuns,
@@ -472,6 +474,7 @@ function ActionCard({
   onToggleExpand: () => void;
   onToggleEnabled: (enabled: boolean) => void;
   onTrigger: () => void;
+  onOpenTerminal?: (ownerType: string, ownerName: string, label?: string) => void;
   onSelectSession: (id: string) => void;
   onPeekSession?: (id: string) => void;
   onClearRuns: () => void;
@@ -523,7 +526,11 @@ function ActionCard({
         {(action.trigger.type === "manual" || action.trigger.type === "interval") && (
         <button
           className="sched-trigger-btn"
-          onClick={(e) => { e.stopPropagation(); onTrigger(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenTerminal?.("action", action.name, action.name);
+            onTrigger();
+          }}
           disabled={action.activeSessions >= (action.concurrency ?? 1)}
         >
           {action.activeSessions > 0 ? `run (${action.activeSessions}/${action.concurrency ?? 1})` : "run"}
@@ -618,7 +625,7 @@ function ActionCard({
 
 // ── Actions View ──
 
-export function Actions({ onSelectSession, onPeekSession }: Props) {
+export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Props) {
   const { activeUserProfile } = useProfiles();
   const [actions, setActions] = useState<ActionInfo[]>([]);
   const [expandedName, setExpandedName] = useState<string | null>(null);
@@ -752,6 +759,7 @@ export function Actions({ onSelectSession, onPeekSession }: Props) {
             onToggleExpand={() => setExpandedName(expandedName === a.name ? null : a.name)}
             onToggleEnabled={(enabled) => handleToggle(a.name, enabled)}
             onTrigger={() => handleTrigger(a.name)}
+            onOpenTerminal={onOpenTerminal}
             onSelectSession={onSelectSession}
             onPeekSession={onPeekSession}
             onClearRuns={() => {}}
@@ -782,6 +790,7 @@ export function Actions({ onSelectSession, onPeekSession }: Props) {
                   onToggleExpand={() => setExpandedName(expandedName === a.name ? null : a.name)}
                   onToggleEnabled={(enabled) => handleToggle(a.name, enabled)}
                   onTrigger={() => handleTrigger(a.name)}
+                  onOpenTerminal={onOpenTerminal}
                   onSelectSession={onSelectSession}
                   onClearRuns={() => {}}
                   onArchive={() => handleArchive(a.name)}

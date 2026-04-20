@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import type { PageContextHandle, ScopeEvent } from "../widgets";
+import type { PageContextHandle, ScopeEvent, UiIntentObserver, UiIntentOf, UiIntentType } from "../widgets";
 
 // ── Page-scoped shared state bus ──
 
 const emptyBusSnapshot: Record<string, unknown> = {};
 
-type EventHandler = (event: ScopeEvent) => void;
+type EventHandler<T extends UiIntentType = UiIntentType> = (event: UiIntentOf<T>) => void;
+type StoredEventHandler = (event: ScopeEvent) => void;
 
 export type PageStateBus = {
   state: Record<string, unknown>;
@@ -15,13 +16,16 @@ export type PageStateBus = {
   subscribe: (cb: () => void) => () => void;
   getSnapshot: () => Record<string, unknown>;
   emit: (event: ScopeEvent) => void;
-  on: (type: string, handler: EventHandler) => () => void;
+  on: <T extends UiIntentType>(type: T, handler: EventHandler<T>) => () => void;
+  observeIntents: (handler: UiIntentObserver) => () => void;
   onNavigate?: (view: string) => void;
   onSelectSession?: (id: string) => void;
+  onActivateSession?: (id: string) => void;
 };
 
 export function createPageStateBus(initial: Record<string, unknown>): PageStateBus {
-  const eventHandlers = new Map<string, Set<EventHandler>>();
+  const eventHandlers = new Map<UiIntentType, Set<StoredEventHandler>>();
+  const intentObservers = new Set<UiIntentObserver>();
 
   const bus: PageStateBus = {
     state: { ...initial },
@@ -38,14 +42,20 @@ export function createPageStateBus(initial: Record<string, unknown>): PageStateB
     },
     getSnapshot() { return bus.state; },
     emit(event) {
+      intentObservers.forEach((observer) => observer(event));
       const handlers = eventHandlers.get(event.type);
       if (handlers) handlers.forEach((h) => h(event));
     },
     on(type, handler) {
       let set = eventHandlers.get(type);
       if (!set) { set = new Set(); eventHandlers.set(type, set); }
-      set.add(handler);
-      return () => { set!.delete(handler); };
+      const stored = handler as unknown as StoredEventHandler;
+      set.add(stored);
+      return () => { set!.delete(stored); };
+    },
+    observeIntents(handler) {
+      intentObservers.add(handler);
+      return () => { intentObservers.delete(handler); };
     },
   };
   return bus;
@@ -103,6 +113,19 @@ export function ScopeUrlSessionBinder() {
     lastPushed.current = sid ?? null;
     if (sid && bus.onSelectSession) bus.onSelectSession(sid);
   }, [bus, busState.sessionId]);
+
+  return null;
+}
+
+export function ScopeSelectSessionIntentBridge() {
+  const bus = useContext(PageStateBusContext);
+
+  useEffect(() => {
+    if (!bus) return;
+    return bus.on("select-session", (event) => {
+      bus.set("sessionId", event.sessionId);
+    });
+  }, [bus]);
 
   return null;
 }
@@ -172,9 +195,14 @@ export function usePageContext(
     bus?.emit(event);
   }, [bus]);
 
-  const on = useCallback((type: string, handler: (event: ScopeEvent) => void): () => void => {
+  const on = useCallback(<T extends UiIntentType>(type: T, handler: (event: UiIntentOf<T>) => void): () => void => {
     if (!bus) return () => {};
     return bus.on(type, handler);
+  }, [bus]);
+
+  const observeIntents = useCallback((handler: UiIntentObserver): (() => void) => {
+    if (!bus) return () => {};
+    return bus.observeIntents(handler);
   }, [bus]);
 
   if (!bus) return undefined;
@@ -183,8 +211,10 @@ export function usePageContext(
     set,
     emit,
     on,
+    observeIntents,
     navigate: canNavigate ? bus.onNavigate : undefined,
     selectSession: canNavigate ? bus.onSelectSession : undefined,
+    activateSession: bus.onActivateSession,
   };
 }
 
@@ -196,16 +226,19 @@ export function ScopeProvider({
   context,
   onNavigate,
   onSelectSession,
+  onActivateSession,
   children,
 }: {
   context?: Record<string, unknown>;
   onNavigate?: (view: string) => void;
   onSelectSession?: (id: string) => void;
+  onActivateSession?: (id: string) => void;
   children: ReactNode;
 }) {
   const [bus] = useState(() => createPageStateBus(context ?? {}));
   bus.onNavigate = onNavigate;
   bus.onSelectSession = onSelectSession;
+  bus.onActivateSession = onActivateSession;
   return (
     <PageStateBusContext.Provider value={bus}>
       {children}

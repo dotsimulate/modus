@@ -4,6 +4,7 @@ import rehypeRaw from "rehype-raw";
 import hljs from "highlight.js/lib/core";
 import { memo, useEffect, useId, useRef, useState, type ReactElement } from "react";
 import { useFileViewer } from "../providers/FileViewerContext";
+import { PasteBlock } from "./PasteBlock";
 
 // Register languages — core set for dev/AI chat
 import javascript from "highlight.js/lib/languages/javascript";
@@ -194,7 +195,19 @@ function isLocalFilePath(href: string): boolean {
   return false;
 }
 
+function extractText(node: any): string {
+  if (node == null) return "";
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (typeof node === "object" && node.props) return extractText(node.props.children);
+  return "";
+}
+
 const markdownComponents: Record<string, any> = {
+  pasted({ children }: { children?: React.ReactNode }) {
+    const text = extractText(children).replace(/^\n+/, "").replace(/\n+$/, "");
+    return <PasteBlock text={text} />;
+  },
   pre({ children }: { children?: React.ReactNode }) {
     const child = children as ReactElement<any>;
     const props = child?.props;
@@ -228,14 +241,30 @@ const markdownComponents: Record<string, any> = {
 export const Markdown = memo(function Markdown({ content }: { content: string }) {
   const { openFile } = useFileViewer();
 
+  function parseLineFragment(href: string): { path: string; line?: number; endLine?: number } {
+    const [path, fragment] = href.split("#", 2);
+    const match = fragment?.match(/^L(\d+)(?:-L?(\d+))?$/i);
+    if (!match) return { path };
+    return {
+      path,
+      line: Number(match[1]),
+      endLine: match[2] ? Number(match[2]) : undefined,
+    };
+  }
+
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
-    const target = (e.target as HTMLElement).closest("a");
-    if (!target) return;
-    const href = target.getAttribute("href");
+    const link = (e.target as HTMLElement).closest("a");
+    if (!link) return;
+    const href = link.getAttribute("href");
     if (!href || !isLocalFilePath(href)) return;
     e.preventDefault();
-    // Strip anchor fragment (#L63 etc) before opening
-    openFile(href.replace(/#.*$/, ""));
+    const fileTarget = parseLineFragment(href);
+    openFile(fileTarget.path, {
+      line: fileTarget.line,
+      endLine: fileTarget.endLine,
+      highlight: fileTarget.line !== undefined,
+      source: "markdown",
+    });
   }
 
   return (

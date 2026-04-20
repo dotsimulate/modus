@@ -59,10 +59,11 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
   const handleNewSession = useCallback(async () => {
     const id = await newSession();
     if (id) {
-      // Publish to page scope so scope-local widgets react, AND call
-      // onSelectSession so App.tsx updates the URL hash / activeSession.
-      pageContext?.set("selectedSession", id);
-      onSelectSession(id);
+      if (pageContext) {
+        pageContext.emit({ type: "select-session", sessionId: id });
+      } else {
+        onSelectSession(id);
+      }
     }
   }, [newSession, onSelectSession, pageContext]);
 
@@ -86,11 +87,14 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
       <div className="session-list-widget-scroll">
         <SessionList
           sessions={sessions}
-          activeSessionId={(pageContext?.get("selectedSession") as string | undefined) ?? activeSession?.id ?? null}
+          activeSessionId={(pageContext?.get("sessionId") as string | undefined) ?? activeSession?.id ?? null}
           groupMode={groupMode}
           onSelectSession={(id) => {
-            pageContext?.set("selectedSession", id);
-            onSelectSession(id);
+            if (pageContext) {
+              pageContext.emit({ type: "select-session", sessionId: id });
+            } else {
+              onSelectSession(id);
+            }
           }}
           onArchiveSession={archiveSession}
           activeInput={input}

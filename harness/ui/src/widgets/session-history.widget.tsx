@@ -193,7 +193,11 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     { value: "messages", label: "messages" },
   ];
 
-  const selectedId = (pageContext?.get("selectedSession") as string | undefined) ?? null;
+  const selectedId = (
+    (pageContext?.get("sessionId") as string | undefined)
+    ?? (pageContext?.get("selectedSession") as string | undefined)
+    ?? null
+  );
 
   // Poll active sessions for live preview text
   const userProfile = activeUserProfile ?? undefined;
@@ -275,11 +279,11 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
   }, []);
 
   const handleSelect = useCallback((id: string) => {
-    // Always notify parent so App.tsx updates the URL hash and hydrates the
-    // session. When inside a page scope, also publish into the bus so
-    // scope-local widgets with show/hideWhen react immediately.
-    pageContext?.set("selectedSession", id);
-    onSelectSession(id);
+    if (pageContext) {
+      pageContext.emit({ type: "select-session", sessionId: id });
+    } else {
+      onSelectSession(id);
+    }
   }, [pageContext, onSelectSession]);
 
   const handleNew = useCallback(async () => {

@@ -264,6 +264,7 @@ export function PageView({
   padding,
   onNavigate,
   onSelectSession,
+  onActivateSession,
   hashSessionId,
 }: {
   blocks?: DashboardBlock[];
@@ -272,6 +273,7 @@ export function PageView({
   padding?: number;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
+  onActivateSession?: (id: string) => void;
   /** Current hash session id — enables scope nodes with bindUrlSession to deep-link */
   hashSessionId?: string | null;
 }) {
@@ -282,6 +284,7 @@ export function PageView({
   // Attach navigation callbacks so canNavigate widgets can escape the page
   bus.onNavigate = onNavigate as (view: string) => void;
   bus.onSelectSession = onSelectSession;
+  bus.onActivateSession = onActivateSession;
 
   if (normalizedLayout) {
     return (
@@ -301,6 +304,7 @@ export function PageView({
                 node={normalizedLayout}
                 onNavigate={onNavigate}
                 onSelectSession={onSelectSession}
+                onActivateSession={onActivateSession}
               />
             </div>
           </div>

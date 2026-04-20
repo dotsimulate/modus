@@ -1,0 +1,11 @@
+{
+  "id": "actions",
+  "title": "actions",
+  "nav": true,
+  "fullscreen": true,
+  "padding": 0,
+  "layout": {
+    "kind": "widget",
+    "widget": { "type": "actions-manager", "id": "pg-actions" }
+  }
+}

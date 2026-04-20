@@ -273,11 +273,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return getEffectiveSeed();
   }, [activeSession, activeUP?.defaultAgentProfile, getEffectiveSeed, getQueuedAgentConfig, selectedProfile, setupState.cwd, setupState.additionalDirectories, setupState.loadProjectSettings]);
 
-  const newSession = useCallback(async () => {
+  const newSession = useCallback(async (profileOverride?: string) => {
     await saveDraftForCurrent();
 
     const seed = getEffectiveSeed();
-    const profile = seed.profile;
+    const profile = profileOverride || seed.profile;
     const resolvedProvider = seed.agent.provider.trim() || resolveProfileProvider(profile);
     const resolvedModel = resolveAppliedModel(seed.agent, null, profile);
     try {

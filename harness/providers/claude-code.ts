@@ -654,6 +654,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         includePartialMessages: true,
         resume: resumeTarget,
         model: opts.model ?? profileDef?.model ?? undefined,
+        thinking: { type: "adaptive", display: "summarized" },
         effort: normalizeClaudeEffort(opts.effort ?? profileDef?.effort),
         maxTurns: opts.maxTurns ?? profileDef?.maxTurns ?? undefined,
         disallowedTools: sdkDisallowed,

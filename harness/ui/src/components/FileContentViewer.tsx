@@ -15,6 +15,9 @@ type Props = {
   onEditorContextMenu?: (e: React.MouseEvent, info: CodeMirrorContextInfo) => void;
   onMarkdownContextMenu?: (e: React.MouseEvent) => void;
   onRequestEdit?: () => void;
+  revealLine?: number;
+  revealEndLine?: number;
+  revealToken?: number;
 };
 
 function basename(p: string): string {
@@ -33,6 +36,9 @@ export const FileContentViewer = memo(function FileContentViewer({
   onEditorContextMenu,
   onMarkdownContextMenu,
   onRequestEdit,
+  revealLine,
+  revealEndLine,
+  revealToken,
 }: Props) {
   const name = basename(filePath);
   const isMarkdown = /\.mdx?$/i.test(filePath);
@@ -75,7 +81,14 @@ export const FileContentViewer = memo(function FileContentViewer({
           </div>
         )}
         {!loading && !error && content !== null && !isMarkdown && (
-          <CodeMirrorViewer content={content} path={filePath} onEditorContextMenu={onEditorContextMenu} />
+          <CodeMirrorViewer
+            content={content}
+            path={filePath}
+            revealLine={revealLine}
+            revealEndLine={revealEndLine}
+            revealToken={revealToken}
+            onEditorContextMenu={onEditorContextMenu}
+          />
         )}
       </div>
     </div>

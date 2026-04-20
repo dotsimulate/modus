@@ -1,0 +1,136 @@
+/**
+ * Chat scroll spine — sparse index of thin horizontal ticks.
+ *
+ * No track, no rectangles, no fill, no glow. Each message is one
+ * 1px-tall hairline whose length encodes its weight (2–6px).
+ * Assistant ticks extend left of a center axis; user ticks extend right.
+ * Currently-visible ticks brighten and small viewport hairlines mark
+ * the visible region. Hover brightens the tick; click scrolls to it.
+ */
+
+/* ── Wrapper — the chat scroll area + the absolutely positioned spine.
+   The spine overlays the right edge instead of taking flex space, so
+   the chat-messages keeps its full natural width. */
+.chat-scroll-row {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.chat-scroll-row > .chat-messages {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The native scrollbar is only hidden when the spine is on (it
+   replaces it); when the user disables the spine via chat settings,
+   the native scrollbar comes back. */
+.chat-scroll-row[data-spine="on"] > .chat-messages {
+  scrollbar-width: none; /* Firefox */
+}
+.chat-scroll-row[data-spine="on"] > .chat-messages::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* ── Spine ──
+   Absolutely positioned over the chat's right margin so it doesn't
+   shave any width off the chat-messages container. Chat content is
+   centered at max-width 840px and has natural empty space on each
+   side; the spine lives in that empty margin. pointer-events: none on
+   the container + pointer-events: auto on the ticks means dead space
+   within the spine still passes clicks through to whatever is below.
+
+   Bottom padding permanently reserves space for the floating
+   scroll-to-bottom button (~28px tall, 36px on coarse pointer). The
+   spine's clickable axis is the same size whether the button is
+   currently shown or not, so the bottom ticks never get covered when
+   the button fades in. */
+.chat-scroll-spine {
+  position: absolute;
+  top: 0;
+  /* Slight right offset so the user-side ticks don't graze the right
+     edge of user messages — sits in the natural margin between message
+     column and chat container edge. */
+  right: -4px;
+  bottom: 0;
+  width: 24px;            /* 10px each side of center + a touch of padding */
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 36px;
+  user-select: none;
+  pointer-events: none;
+  z-index: 4;
+}
+@media (pointer: coarse) {
+  .chat-scroll-spine { padding-bottom: 48px; }
+}
+
+/* The axis is the clickable surface — clicks find the nearest tick.
+   Center line is conceptual; ticks anchor to its 50% mark via
+   left/right: 50%. */
+.chat-scroll-spine-axis {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ── Ticks ──
+   1px-tall hairlines, length set inline via `width`. The axis handles
+   clicks — ticks are purely visual. */
+.chat-scroll-tick {
+  position: absolute;
+  height: 1px;
+  background: var(--accent, #ffffff);
+  border: none;
+  margin: 0;
+  padding: 0;
+  opacity: 0.22;
+  pointer-events: none;
+  transform: translateY(-0.5px);
+}
+
+/* Currently-visible ticks brighten — replaces explicit viewport box. */
+.chat-scroll-tick.is-visible {
+  opacity: 0.65;
+}
+
+/* Per-role baselines. Subtle — width is the primary signal, role is
+   secondary. Commits and system are quieter. */
+.chat-scroll-tick--user      { /* baseline 0.22, brightens when visible */ }
+.chat-scroll-tick--assistant { /* baseline 0.22, brightens when visible */ }
+.chat-scroll-tick--thinking  { opacity: 0.18; }
+.chat-scroll-tick--tools     { opacity: 0.18; }
+.chat-scroll-tick--commit    { opacity: 0.14; }
+.chat-scroll-tick--system    { opacity: 0.12; }
+
+.chat-scroll-tick--thinking.is-visible,
+.chat-scroll-tick--tools.is-visible { opacity: 0.55; }
+.chat-scroll-tick--commit.is-visible,
+.chat-scroll-tick--system.is-visible { opacity: 0.45; }
+
+/* ── Viewport edge marks ──
+   Two short horizontal hairlines centered on the spine axis, marking the
+   top and bottom of the visible chat region. Width is just slightly
+   wider than the longest possible tick (6px) so they read as bracket
+   ends rather than full-width bars. They slide smoothly as the user
+   scrolls; combined with the per-tick brightening, this gives both a
+   precise edge and a sense of which messages are inside the window. */
+.chat-scroll-viewport-edge {
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  margin-left: -7px;
+  height: 1px;
+  background: var(--accent, #ffffff);
+  opacity: 0.45;
+  pointer-events: none;
+  transform: translateY(-0.5px);
+}
+

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useDeferredValue, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useFileViewer } from "../providers/FileViewerContext";
+import { useFileViewer, type FileOpenRequest } from "../providers/FileViewerContext";
 import { usePinboard } from "../providers/PinboardContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
@@ -55,7 +55,7 @@ const EMPTY_FILE_SEARCH: FileSearchResponse = {
 
 export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowserPathChange, onSendToAgent }: Props) {
   const {
-    tabs, closeFile, openFile,
+    tabs, activePath, closeFile, openFile, subscribeFileOpens,
     setEditing, markDirty, saveFile, saving, saveError,
     contentVersion,
   } = useFileViewer();
@@ -79,6 +79,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
   const [tabsOverflow, setTabsOverflow] = useState(false);
   const [tabsMenuOpen, setTabsMenuOpen] = useState(false);
   const [tabsMenuPos, setTabsMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const [pendingReveal, setPendingReveal] = useState<{ request: FileOpenRequest; token: number } | null>(null);
   const prevTabsRef = useRef(tabs);
   const tabsRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -103,9 +104,24 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     }
   }, [active, activeView, tabs]);
 
+  useEffect(() => {
+    if (!active || !activePath) return;
+    if (tabs.some((tab) => tab.path === activePath)) {
+      setActiveView(activePath);
+    }
+  }, [active, activePath, tabs]);
+
+  useEffect(() => {
+    return subscribeFileOpens((request) => {
+      setPendingReveal((prev) => ({ request, token: (prev?.token ?? 0) + 1 }));
+      if (request.path) setActiveView(request.path);
+    });
+  }, [subscribeFileOpens]);
+
   const viewingFile = activeView !== "browser" && activeView !== "pins" ? activeView : null;
   const activeTab = viewingFile ? tabs.find((t) => t.path === viewingFile) : null;
   const isEditMode = activeTab?.editing ?? false;
+  const reveal = pendingReveal?.request.path === viewingFile ? pendingReveal : null;
 
   useEffect(() => {
     if (!viewingFile || isEditMode) { if (!viewingFile) setView({ kind: "idle" }); return; }
@@ -184,7 +200,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
   };
 
   const handleFileSelect = (path: string) => {
-    openFile(path);
+    openFile(path, { source: "browser" });
     setActiveView(path);
   };
 
@@ -442,7 +458,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
       return (
         <PinboardView
           onOpenFile={(path) => {
-            openFile(path);
+            openFile(path, { source: "browser" });
             setActiveView(path);
           }}
         />
@@ -468,6 +484,9 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
               key={viewingFile}
               content={activeTab!.content!}
               path={viewingFile}
+              revealLine={reveal?.request.line}
+              revealEndLine={reveal?.request.endLine}
+              revealToken={reveal?.token}
               onSave={handleSave}
               onDirty={handleDirty}
               onEditorContextMenu={handleEditorContextMenu}
@@ -535,6 +554,9 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
             onEditorContextMenu={handleEditorContextMenu}
             onMarkdownContextMenu={handleMarkdownContextMenu}
             onRequestEdit={canEdit(viewingFile!) ? handleToggleEdit : undefined}
+            revealLine={reveal?.request.line}
+            revealEndLine={reveal?.request.endLine}
+            revealToken={reveal?.token}
           />
         </div>
       );

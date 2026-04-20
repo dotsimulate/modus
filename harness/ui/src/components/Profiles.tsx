@@ -162,7 +162,7 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
                       className="apc-action apc-action--primary"
                       onClick={async () => {
                         selectProfile(p.name);
-                        const id = await newSession();
+                        const id = await newSession(p.name);
                         if (id && onNewSession) {
                           onNewSession(id);
                         } else {

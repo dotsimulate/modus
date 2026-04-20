@@ -44,26 +44,6 @@ const VIEW_PANEL_DEFAULTS: Partial<Record<View, PanelDefaults>> = {
     left: { open: false, width: 280, mode: "list", widgets: ["session-list", "config-inspector", "session-info", "moves"] },
     right: { open: false, width: 360, mode: "tabs", widgets: ["code-editor", "agent-activity", "session-edits", "session-terminal"] },
   },
-  actions: {
-    left: { open: false, width: 280, mode: "list", widgets: ["session-list"] },
-    right: { open: false, width: 360, mode: "tabs", widgets: ["code-editor"] },
-  },
-  profiles: {
-    left: { open: false, width: 280, mode: "list", widgets: ["session-list"] },
-    right: { open: false, width: 360, mode: "tabs", widgets: ["code-editor"] },
-  },
-  web: {
-    left: { open: false, width: 280, mode: "list", widgets: ["session-list"] },
-    right: { open: false, width: 360, mode: "tabs", widgets: ["code-editor"] },
-  },
-  trace: {
-    left: { open: false, width: 280, mode: "list", widgets: [] },
-    right: { open: false, width: 360, mode: "tabs", widgets: ["code-editor"] },
-  },
-  git: {
-    left: { open: false, width: 280, mode: "list", widgets: ["session-list"] },
-    right: { open: false, width: 360, mode: "tabs", widgets: ["code-editor"] },
-  },
   home: {
     left: { open: false, width: 280, mode: "list", widgets: [] },
     right: { open: false, width: 360, mode: "tabs", widgets: ["code-editor"] },

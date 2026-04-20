@@ -3,15 +3,36 @@ import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMo
 import { modus } from "../modusClient";
 import { PromptPicker } from "./PromptPicker";
 import { AttachedMove, AttachedWidgetContent } from "./QueuedMessage";
+import { PasteBlock } from "./PasteBlock";
 import type { ComposerAttachResult } from "./MoveWidget";
 import { activateComposer, registerComposer, useComposerActions } from "../client-extensions";
 import { findCompletion, loadPromptCache, usePromptCache } from "../promptCache";
+import { dispatchUiIntent, moveActivationResultToIntent, moveAttachResultToIntent } from "../widgets/intents";
+import type { PageContextHandle } from "../widgets/types";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
 const sentHistory: string[] = [];
 const MAX_HISTORY = 50;
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+const PASTE_CHAR_THRESHOLD = 400;
+const PASTE_LINE_THRESHOLD = 6;
+
+type StagedPaste = { id: string; text: string };
+
+function serializePastes(pastes: StagedPaste[]): string {
+  if (!pastes.length) return "";
+  return pastes
+    .map((p) => {
+      const escaped = p.text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      return `<pasted>\n${escaped}\n</pasted>`;
+    })
+    .join("\n\n");
+}
 
 type Props = {
   value: string;
@@ -29,6 +50,7 @@ type Props = {
   onMoveAttached?: (result: AttachMoveResult) => void;
   /** Called when a mountOnAttach move is detached — widget should be unmounted */
   onMoveDetached?: (apiToken: string) => void;
+  pageContext?: PageContextHandle;
   autoFocus?: boolean;
 };
 
@@ -92,7 +114,7 @@ function ComposerActionIcon({ icon }: { icon?: "mic" | "mic-handsfree" }) {
 
 export function ChatInput({
   value, onChange, onSend, onStop,
-  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated, onMoveAttached, onMoveDetached, autoFocus = false,
+  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated, onMoveAttached, onMoveDetached, pageContext, autoFocus = false,
 }: Props) {
   const autoId = useId();
   const composerId = sessionId ? `composer:${sessionId}` : autoId;
@@ -137,7 +159,20 @@ export function ChatInput({
 
   // Attachment state
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [pastes, setPastes] = useState<StagedPaste[]>([]);
+  const shiftHeldRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Shift") shiftHeldRef.current = true; };
+    const onKeyUp = (e: KeyboardEvent) => { if (e.key === "Shift") shiftHeldRef.current = false; };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
   const [attachedMove, setAttachedMove] = useState<{
     item: MoveListItem;
     inputs: Record<string, unknown>;
@@ -157,6 +192,16 @@ export function ChatInput({
 
   // Ambient (persistent) moves
   const [ambientMoves, setAmbientMoves] = useState<AmbientMoveInfo[]>([]);
+
+  const dispatchMoveAttach = useCallback((result: AttachMoveResult, targetSessionId?: string) => {
+    const intent = moveAttachResultToIntent(result, targetSessionId ?? sessionId ?? "");
+    if (intent) dispatchUiIntent(pageContext, intent);
+  }, [pageContext, sessionId]);
+
+  const dispatchMoveActivation = useCallback((result: ActivateMoveResult) => {
+    const intent = moveActivationResultToIntent(result, sessionId ?? "");
+    if (intent) dispatchUiIntent(pageContext, intent);
+  }, [pageContext, sessionId]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -180,6 +225,7 @@ export function ChatInput({
             userProfile,
           });
           onMoveAttached?.(result);
+          dispatchMoveAttach(result, sessionId);
           window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
         } catch (err) {
           console.error("[ChatInput] attach from sidebar failed:", err);
@@ -190,7 +236,7 @@ export function ChatInput({
     };
     window.addEventListener("modus:attach-move", handler);
     return () => window.removeEventListener("modus:attach-move", handler);
-  }, [projectCwd, sessionId, userProfile, onMoveAttached]);
+  }, [projectCwd, sessionId, userProfile, onMoveAttached, dispatchMoveAttach]);
 
   // Listen for widget-composer-attach events from move widgets
   useEffect(() => {
@@ -224,10 +270,14 @@ export function ChatInput({
   const origOnMoveActivated = onMoveActivated;
   const handleMoveActivated = useCallback((result: ActivateMoveResult) => {
     origOnMoveActivated?.(result);
+    dispatchMoveActivation(result);
+    if (result.widget) {
+      window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
+    }
     if (result.persistent && sessionId) {
       modus.listAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
     }
-  }, [origOnMoveActivated, sessionId]);
+  }, [origOnMoveActivated, dispatchMoveActivation, sessionId]);
 
   useEffect(() => {
     valueRef.current = value;
@@ -299,6 +349,7 @@ export function ChatInput({
             userProfile: userProfileRef.current,
           }).then((result) => {
             onMoveAttached?.(result);
+            dispatchMoveAttach(result, sessionIdRef.current);
             window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
           }).catch((err) => console.error("[ChatInput] attachMove via registry failed:", err));
           return;
@@ -306,7 +357,7 @@ export function ChatInput({
         setAttachedMove({ item: move, inputs });
       },
     });
-  }, [composerId, onMoveAttached]);
+  }, [composerId, onMoveAttached, dispatchMoveAttach]);
 
   // Global Escape to stop — works regardless of focus, but not when picker is open
   useEffect(() => {
@@ -389,15 +440,27 @@ export function ChatInput({
     if (imageItems.length > 0) {
       e.preventDefault(); // prevent default paste when we have images
       addImageFiles(imageItems);
+      return;
     }
-    // If no images, let the default text paste happen
+    // Large-text paste → stage as a collapsible chip (unless Shift bypass)
+    if (!shiftHeldRef.current) {
+      const text = e.clipboardData.getData("text/plain");
+      if (text && (text.length >= PASTE_CHAR_THRESHOLD || text.split("\n").length >= PASTE_LINE_THRESHOLD)) {
+        e.preventDefault();
+        setPastes((prev) => [...prev, { id: crypto.randomUUID(), text }]);
+        return;
+      }
+    }
+    // Otherwise let the default text paste happen
   }, [addImageFiles]);
 
   // ── Send ──
 
   async function handleSend(textOverride?: string) {
     const text = (textOverride ?? value).trim();
-    const hasText = !!text || attachments.length > 0;
+    const pasteBlock = serializePastes(pastes);
+    const finalText = pasteBlock ? (text ? `${pasteBlock}\n\n${text}` : pasteBlock) : text;
+    const hasText = !!finalText || attachments.length > 0;
     if (!attachedMove && !widgetContent && !hasText) return;
 
     // Widget content attachment — resolve the promise and prepend label
@@ -421,15 +484,16 @@ export function ChatInput({
         // backend handle activation + gather + prepend.
         if (mode === "inline" && sessionId && !attachInstanceId) {
           const moveBinding: MoveBinding = { name: item.name, inputs: inputs || undefined };
-          const sendText = text || "";
-          if (sendText) {
-            sentHistory.push(sendText);
+          const sendText = finalText || "";
+          if (text) {
+            sentHistory.push(text);
             if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
             historyIndex.current = -1;
             draft.current = "";
           }
           onSend(attachments, sendText || " ", [moveBinding]);
           setAttachments([]);
+          setPastes([]);
           return;
         }
 
@@ -447,15 +511,18 @@ export function ChatInput({
           }
           if (mode === "inline") {
             const combined = result.prompt
-              ? text ? `${result.prompt}\n\n${text}` : result.prompt
-              : text;
+              ? finalText ? `${result.prompt}\n\n${finalText}` : result.prompt
+              : finalText;
             if (combined) {
-              sentHistory.push(combined);
-              if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
+              if (text) {
+                sentHistory.push(text);
+                if (sentHistory.length > MAX_HISTORY) sentHistory.shift();
+              }
               historyIndex.current = -1;
               draft.current = "";
               onSend(attachments, combined);
               setAttachments([]);
+              setPastes([]);
             }
             handleMoveActivated(result);
             return;
@@ -472,8 +539,9 @@ export function ChatInput({
         historyIndex.current = -1;
         draft.current = "";
       }
-      onSend(attachments, text);
+      onSend(attachments, finalText);
       setAttachments([]);
+      setPastes([]);
     }
   }
 
@@ -611,6 +679,32 @@ export function ChatInput({
         </div>
       )}
 
+      {pastes.length > 0 && (
+        <div className="paste-strip">
+          {pastes.map((p) => (
+            <PasteBlock
+              key={p.id}
+              text={p.text}
+              onRemove={() => setPastes((prev) => prev.filter((x) => x.id !== p.id))}
+              onInline={() => {
+                const newVal = (value ? value + "\n\n" : "") + p.text;
+                onChange(newVal);
+                setPastes((prev) => prev.filter((x) => x.id !== p.id));
+                requestAnimationFrame(() => {
+                  const ta = ref.current;
+                  if (ta) {
+                    ta.style.height = "auto";
+                    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+                    ta.focus();
+                    ta.setSelectionRange(newVal.length, newVal.length);
+                  }
+                });
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {attachedMove && (
         <AttachedMove
           move={attachedMove.item}
@@ -742,6 +836,7 @@ export function ChatInput({
                       userProfile,
                     });
                     onMoveAttached?.(result);
+                    dispatchMoveAttach(result, sessionId);
                     window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
                   } catch (err) {
                     console.error("[ChatInput] attach failed:", err);

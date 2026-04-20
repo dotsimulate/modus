@@ -221,7 +221,11 @@ export default function SessionsWidget({ config, widgetId, onSelectSession, page
         <WidgetEmptyState>{isArchived ? "no archived sessions" : "no sessions"}</WidgetEmptyState>
       ) : sorted.map((r) => (
         <div key={r.id} className="sessions-table-row" onClick={() => {
-          if (pageContext) { pageContext.set("selectedSession", r.id); } else { onSelectSession(r.id); }
+          if (pageContext) {
+            pageContext.emit({ type: "select-session", sessionId: r.id });
+          } else {
+            onSelectSession(r.id);
+          }
         }}>
           <span className={`dash-dot ${isArchived ? "dash-dot--archived" : dotClass(r)}`} />
           <span className="sessions-cell sessions-cell--preview">{r.preview || "new session"}</span>
@@ -244,4 +248,3 @@ export default function SessionsWidget({ config, widgetId, onSelectSession, page
     </div>
   );
 }
-

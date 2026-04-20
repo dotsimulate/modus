@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
+import { estimateTokens } from "../utils/tokens";
 import type { PromptListItem, RenderResult, MoveInput, MoveListItem, ActivateMoveResult } from "../../../sdk/index";
 
 export type PromptSettings = RenderResult["config"]["settings"];
@@ -38,13 +39,6 @@ type Props = {
   /** Notify parent when open state changes */
   onOpenChange?: (open: boolean) => void;
 };
-
-/** Rough token estimate: ~4 chars per token for English text */
-function estimateTokens(text: string): string {
-  const count = Math.ceil(text.length / 4);
-  if (count < 1000) return `~${count} tok`;
-  return `~${(count / 1000).toFixed(1)}k tok`;
-}
 
 function stringifyDefault(value: unknown): string {
   if (value === undefined || value === null) return "";

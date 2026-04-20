@@ -1,0 +1,80 @@
+.paste-block {
+  display: flex;
+  flex-direction: column;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+  border-radius: 2px;
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+}
+
+.paste-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 8px;
+  cursor: pointer;
+  user-select: none;
+  min-height: 22px;
+}
+
+.paste-header:hover {
+  background: color-mix(in srgb, var(--accent) 3%, transparent);
+}
+
+.paste-caret {
+  color: var(--text-dim);
+  font-size: 9px;
+  width: 10px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.paste-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 1;
+  letter-spacing: 0.02em;
+}
+
+.paste-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 0 6px;
+  line-height: 1;
+}
+
+.paste-btn:hover {
+  color: var(--text);
+}
+
+.paste-btn-x {
+  font-size: 14px;
+  padding: 0 4px;
+}
+
+.paste-text {
+  font-size: calc(11px * var(--font-scale, 1));
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  padding: 2px 8px 8px 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  word-break: break-word;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 10%, transparent);
+  margin-top: 2px;
+}
+
+.paste-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
