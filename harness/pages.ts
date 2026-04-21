@@ -6,6 +6,10 @@ export type ConfigPage = {
   title: string;
   blocks?: unknown[];
   layout?: unknown;
+  /** Optional breakpoint-specific layout trees */
+  layouts?: {
+    mobile?: unknown;
+  };
   /** Initial page-scoped shared state for widget linking (pub/sub) */
   context?: Record<string, unknown>;
   padding?: number;
@@ -86,6 +90,9 @@ type EmbeddedPageDecl = {
   icon?: string;
   nav?: boolean;
   layout?: unknown;
+  layouts?: {
+    mobile?: unknown;
+  };
   context?: Record<string, unknown>;
   padding?: number;
 };
@@ -234,12 +241,24 @@ export function listConfigPages(cwd?: string | null): ConfigPage[] {
     ...scanMissionPages(cwd),
   ];
 
-  const seen = new Set<string>();
-  return all.filter((page) => {
-    if (seen.has(page.id)) return false;
-    seen.add(page.id);
-    return true;
-  });
+  const byId = new Map<string, ConfigPage>();
+  for (const page of all) {
+    const existing = byId.get(page.id);
+    if (!existing) {
+      byId.set(page.id, page);
+      continue;
+    }
+
+    if (!existing.layouts && page.layouts) {
+      existing.layouts = page.layouts;
+    } else if (existing.layouts && page.layouts) {
+      existing.layouts = {
+        ...page.layouts,
+        ...existing.layouts,
+      };
+    }
+  }
+  return Array.from(byId.values());
 }
 
 /**

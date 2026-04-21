@@ -417,6 +417,10 @@ export interface MovePageDeclaration {
   /** Full layout tree — when present, the page renders as a composable layout
    *  (same schema as .modus/pages/*.json) instead of a bare widget page. */
   layout?: unknown;
+  /** Optional breakpoint-specific layout trees. */
+  layouts?: {
+    mobile?: unknown;
+  };
   /** Initial page-scoped shared state for widget linking (pub/sub). */
   context?: Record<string, unknown>;
   /** Outer padding in pixels around the layout container. */

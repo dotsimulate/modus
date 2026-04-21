@@ -1,13 +1,15 @@
 {
   "id": "chat-studio",
-  "title": "chat studio",
-  "nav": false,
+  "title": "Chat Studio",
   "fullscreen": true,
+  "nav": false,
   "padding": 0,
   "layout": {
     "kind": "scope",
     "bindUrlSession": true,
-    "context": { "sessionId": null },
+    "context": {
+      "sessionId": null
+    },
     "children": [{
       "kind": "split",
       "axis": "horizontal",
@@ -18,6 +20,12 @@
           "kind": "tabs",
           "editable": true,
           "children": [
+            {
+              "kind": "widget",
+              "widget": { "type": "session-history", "id": "cs-history" },
+              "publish": { "selectedSession": "sessionId" },
+              "subscribe": { "selectedSession": "sessionId" }
+            },
             {
               "kind": "widget",
               "widget": { "type": "session-list", "id": "cs-sessions" },
@@ -41,7 +49,7 @@
         {
           "kind": "split",
           "axis": "vertical",
-          "sizes": [1, 1, "auto"],
+          "sizes": ["auto", 1, "auto"],
           "children": [
             {
               "kind": "tabs",
@@ -76,7 +84,6 @@
           "kind": "tabs",
           "editable": true,
           "target": true,
-          "handles": ["open-file", "open-terminal", "open-move", "close-move", "focus-tab"],
           "children": [
             {
               "kind": "widget",
@@ -106,5 +113,101 @@
         }
       ]
     }]
+  },
+  "layouts": {
+    "mobile": {
+      "kind": "scope",
+      "bindUrlSession": true,
+      "context": {
+        "sessionId": null
+      },
+      "children": [{
+        "kind": "split",
+        "axis": "vertical",
+        "sizes": [1, "auto"],
+        "children": [
+          {
+            "kind": "tabs",
+            "id": "cs-mobile-tabs",
+            "editable": true,
+            "target": true,
+            "activeTab": "cm-chat",
+            "handles": ["open-file", "open-terminal", "open-move", "close-move", "focus-tab"],
+            "children": [
+              {
+                "kind": "widget",
+                "widget": { "type": "session-chat", "id": "cm-chat" },
+                "hideWhen": { "sessionId": null }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "session-history", "id": "cm-history", "focusTabOnSelect": "cm-chat" },
+                "publish": { "selectedSession": "sessionId" },
+                "subscribe": { "selectedSession": "sessionId" }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "session-list", "id": "cm-sessions", "focusTabOnSelect": "cm-chat" },
+                "publish": { "selectedSession": "sessionId" }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "new-session", "id": "cm-new" },
+                "publish": { "selectedSession": "sessionId" },
+                "showWhen": { "sessionId": null }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "session-sidebar", "id": "cm-sidebar" },
+                "hideWhen": { "sessionId": null }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "agent-activity", "id": "cm-activity" },
+                "hideWhen": { "sessionId": null }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "session-edits", "id": "cm-edits" },
+                "hideWhen": { "sessionId": null }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "code-editor", "id": "cm-editor" },
+                "hideWhen": { "sessionId": null }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "session-terminal", "id": "cm-terminal" },
+                "hideWhen": { "sessionId": null }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "profile-card", "id": "cm-profile-card" },
+                "hideWhen": { "sessionId": null }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "profiles-manager", "id": "cm-profiles" },
+                "publish": { "selectedSession": "sessionId" }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "moves", "id": "cm-moves" }
+              },
+              {
+                "kind": "widget",
+                "widget": { "type": "actions-manager", "id": "cm-actions" }
+              }
+            ]
+          },
+          {
+            "kind": "widget",
+            "widget": { "type": "composer", "id": "cm-composer", "persistOpen": true },
+            "hideWhen": { "sessionId": null }
+          }
+        ]
+      }]
+    }
   }
 }

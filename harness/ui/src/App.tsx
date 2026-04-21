@@ -521,6 +521,7 @@ function AppContent({ router }: { router: HashRouter }) {
             <PageView
               blocks={chatStudioPage.blocks}
               layout={chatStudioPage.layout as any}
+              layouts={chatStudioPage.layouts as any}
               context={(chatStudioPage as any).context}
               padding={chatStudioPage.padding}
               onNavigate={navigate}
@@ -592,6 +593,7 @@ function AppContent({ router }: { router: HashRouter }) {
                   <PageView
                     blocks={page.blocks}
                     layout={page.layout as any}
+                    layouts={(page as any).layouts}
                     context={(page as any).context}
                     padding={(page as any).padding}
                     onNavigate={navigate}

@@ -20,6 +20,7 @@ import { useWidgetUiState } from "./ui-state";
 type SessionListConfig = WidgetBase & {
   type: "session-list";
   groupMode?: "time" | "agent";
+  focusTabOnSelect?: string;
 };
 
 export default function SessionListWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<SessionListConfig>) {
@@ -61,11 +62,14 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
     if (id) {
       if (pageContext) {
         pageContext.emit({ type: "select-session", sessionId: id });
+        if (config.focusTabOnSelect) {
+          pageContext.emit({ type: "focus-tab", tabId: config.focusTabOnSelect });
+        }
       } else {
         onSelectSession(id);
       }
     }
-  }, [newSession, onSelectSession, pageContext]);
+  }, [config.focusTabOnSelect, newSession, onSelectSession, pageContext]);
 
   return (
     <div className="session-list-widget">
@@ -92,6 +96,9 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
           onSelectSession={(id) => {
             if (pageContext) {
               pageContext.emit({ type: "select-session", sessionId: id });
+              if (config.focusTabOnSelect) {
+                pageContext.emit({ type: "focus-tab", tabId: config.focusTabOnSelect });
+              }
             } else {
               onSelectSession(id);
             }

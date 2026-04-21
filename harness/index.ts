@@ -109,7 +109,7 @@ import {
 import { homeProfilesDir } from "./modus-home";
 
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
-const HOST = "0.0.0.0";
+const HOST = process.env.HARNESS_HOST ?? "0.0.0.0";
 const AUTH_TOKEN = process.env.HARNESS_TOKEN || "";
 const WHISPER_TRANSCRIBE_URL = process.env.WHISPER_URL ?? "http://127.0.0.1:8080/v1/audio/transcriptions";
 const UI_DIST_DIR = resolve(import.meta.dir, "ui/dist");

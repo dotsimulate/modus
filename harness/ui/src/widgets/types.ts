@@ -275,6 +275,9 @@ export type DashboardPage = {
   title: string;
   blocks?: DashboardBlock[];
   layout?: PageLayoutNode;
+  layouts?: {
+    mobile?: PageLayoutNode;
+  };
   padding?: number;
   nav?: boolean;
   fullscreen?: boolean;

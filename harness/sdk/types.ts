@@ -727,6 +727,9 @@ export type UserProfileUiConfig = {
         | { kind: "text"; markdown: string; [key: string]: unknown }
       >;
       layout?: unknown;
+      layouts?: {
+        mobile?: unknown;
+      };
       nav?: boolean;
       fullscreen?: boolean;
     }>;
@@ -791,6 +794,9 @@ export type UserProfile = {
         | { kind: "text"; markdown: string; [key: string]: unknown }
       >;
       layout?: unknown;
+      layouts?: {
+        mobile?: unknown;
+      };
       nav?: boolean;
       fullscreen?: boolean;
     }>;
@@ -954,6 +960,10 @@ export type MovePageInfo = {
   nav?: boolean;
   /** Full layout tree — when present, renders as a composable page layout. */
   layout?: unknown;
+  /** Optional breakpoint-specific layout trees. */
+  layouts?: {
+    mobile?: unknown;
+  };
   /** Initial page-scoped shared state for widget linking (pub/sub). */
   context?: Record<string, unknown>;
   /** Outer padding in pixels around the layout container. */
