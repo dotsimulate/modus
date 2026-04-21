@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
@@ -53,6 +53,9 @@ type LegacyPageGridNode = {
 };
 
 type PageLayoutInput = LayoutNode | LegacyPagePanelNode | LegacyPageGridNode;
+type ResponsivePageLayouts = {
+  mobile?: PageLayoutInput;
+};
 
 const chevron = (
   <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
@@ -260,6 +263,7 @@ export function PageRenderer({
 export function PageView({
   blocks,
   layout,
+  layouts,
   context,
   padding,
   onNavigate,
@@ -269,6 +273,7 @@ export function PageView({
 }: {
   blocks?: DashboardBlock[];
   layout?: PageLayoutInput;
+  layouts?: ResponsivePageLayouts;
   context?: Record<string, unknown>;
   padding?: number;
   onNavigate: (view: View) => void;
@@ -278,7 +283,9 @@ export function PageView({
   hashSessionId?: string | null;
 }) {
   const { activeCwd } = useProfiles();
-  const normalizedLayout = layout ? normalizePageLayoutNode(layout) : undefined;
+  const isMobile = useMediaQuery("(max-width: 640px)");
+  const selectedLayout = isMobile && layouts?.mobile ? layouts.mobile : layout;
+  const normalizedLayout = selectedLayout ? normalizePageLayoutNode(selectedLayout) : undefined;
   // Stable ref — only create bus once per mount
   const [bus] = useState(() => createPageStateBus(context ?? {}));
   // Attach navigation callbacks so canNavigate widgets can escape the page
@@ -340,6 +347,24 @@ export function PageView({
       </div>
     </div>
   );
+}
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia(query);
+    const handleChange = () => setMatches(media.matches);
+    handleChange();
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, [query]);
+
+  return matches;
 }
 
 function normalizePageLayoutNode(node: PageLayoutInput): LayoutNode {

@@ -25,6 +25,8 @@ type Props = {
   /** Request that a specific tab be activated (by item id). Cleared after handling. */
   requestActiveId?: string | null;
   onRequestActiveHandled?: () => void;
+  /** Preferred initial/restore tab when present in the current item set. */
+  defaultActiveId?: string;
   surfaceClassName: string;
   headerClassName?: string;
   bodyClassName?: string;
@@ -84,6 +86,7 @@ export function PanelSurface({
   empty,
   requestActiveId,
   onRequestActiveHandled,
+  defaultActiveId,
   surfaceClassName,
   headerClassName,
   bodyClassName,
@@ -95,7 +98,10 @@ export function PanelSurface({
   tabLabelClassName,
   tabCloseClassName,
 }: Props) {
-  const [activeItemId, setActiveItemId] = useState<string | null>(items[0]?.id ?? null);
+  const initialActiveId = defaultActiveId && items.some((item) => item.id === defaultActiveId)
+    ? defaultActiveId
+    : items[0]?.id ?? null;
+  const [activeItemId, setActiveItemId] = useState<string | null>(initialActiveId);
   const tabsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -104,8 +110,12 @@ export function PanelSurface({
       return;
     }
     if (activeItemId && items.some((item) => item.id === activeItemId)) return;
+    if (defaultActiveId && items.some((item) => item.id === defaultActiveId)) {
+      setActiveItemId(defaultActiveId);
+      return;
+    }
     setActiveItemId(items[0].id);
-  }, [activeItemId, items]);
+  }, [activeItemId, defaultActiveId, items]);
 
   // Handle external request to activate a specific tab
   useEffect(() => {

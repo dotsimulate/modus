@@ -13,6 +13,7 @@ type SessionHistoryConfig = WidgetBase & {
   type: "session-history";
   /** Hide the profile/seed config panel at the top */
   hideProfilePanel?: boolean;
+  focusTabOnSelect?: string;
 };
 
 type ViewMode = "timeline" | "agents" | "status";
@@ -281,10 +282,13 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
   const handleSelect = useCallback((id: string) => {
     if (pageContext) {
       pageContext.emit({ type: "select-session", sessionId: id });
+      if (config.focusTabOnSelect) {
+        pageContext.emit({ type: "focus-tab", tabId: config.focusTabOnSelect });
+      }
     } else {
       onSelectSession(id);
     }
-  }, [pageContext, onSelectSession]);
+  }, [config.focusTabOnSelect, pageContext, onSelectSession]);
 
   const handleNew = useCallback(async () => {
     const id = await newSession();

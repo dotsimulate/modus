@@ -75,6 +75,10 @@ export interface MissionPageDeclaration {
   nav?: boolean;
   /** Full layout tree (same schema as .modus/pages/*.json). */
   layout?: unknown;
+  /** Optional breakpoint-specific layout trees. */
+  layouts?: {
+    mobile?: unknown;
+  };
   /** Initial page-scoped shared state for widget linking (pub/sub). */
   context?: Record<string, unknown>;
   /** Outer padding in pixels around the layout container. */

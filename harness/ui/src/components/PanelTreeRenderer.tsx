@@ -202,6 +202,35 @@ function widgetIcon(widgetType: string): ReactNode | undefined {
  * Rendered inside each scope node that has a sessionId in its context.
  */
 const emptySnapshot: Record<string, unknown> = {};
+
+function visibilityMatches(
+  state: Record<string, unknown>,
+  showWhen?: Record<string, unknown>,
+  hideWhen?: Record<string, unknown>,
+): boolean {
+  if (showWhen) {
+    for (const [key, expected] of Object.entries(showWhen)) {
+      const actual = state[key];
+      if (expected === null) {
+        if (actual != null) return false;
+      } else if (actual !== expected) {
+        return false;
+      }
+    }
+  }
+  if (hideWhen) {
+    for (const [key, expected] of Object.entries(hideWhen)) {
+      const actual = state[key];
+      if (expected === null) {
+        if (actual == null) return false;
+      } else if (actual === expected) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function ScopeSessionWatcher() {
   const bus = useScopeBus();
   const state = useSyncExternalStore(
@@ -713,6 +742,12 @@ export function PanelTreeRenderer({
   onActivateSession,
   empty = <div className="panel-empty">empty panel</div>,
 }: Props) {
+  const visibilityBus = useScopeBus();
+  const visibilityState = useSyncExternalStore(
+    visibilityBus ? visibilityBus.subscribe : () => () => {},
+    visibilityBus ? visibilityBus.getSnapshot : () => emptySnapshot,
+  );
+
   if (node.kind === "widget") {
     const item = renderLeaf(node, 0, onNavigate, onSelectSession);
     return <>{item.render(true)}</>;
@@ -823,9 +858,9 @@ export function PanelTreeRenderer({
     );
   }
 
-  const items = node.children.map((child, index) =>
-    renderLeaf(child, index, onNavigate, onSelectSession),
-  );
+  const items = node.children
+    .filter((child) => visibilityMatches(visibilityState, child.showWhen, child.hideWhen))
+    .map((child, index) => renderLeaf(child, index, onNavigate, onSelectSession));
 
   return (
     <div
@@ -841,6 +876,7 @@ export function PanelTreeRenderer({
         <PanelSurface
           mode={node.kind}
           items={items}
+          defaultActiveId={node.kind === "tabs" ? node.activeTab : undefined}
           empty={empty}
           surfaceClassName="right-panel-content"
           headerClassName="right-panel-tabs-bar"
@@ -1182,14 +1218,17 @@ function EditablePanel({
   const validWidgets = widgets.filter((w) => WIDGETS[w.type]);
   const renderableWidgets = validWidgets.filter((w) => !isTerminalDiscoveryDeclaration(w));
 
-  const staticItems: PanelSurfaceItem[] = renderableWidgets.map((widget, index) => {
+  const staticItems: PanelSurfaceItem[] = renderableWidgets.flatMap((widget, index) => {
     const widgetId = widget.id ?? `${widget.type}-${index}`;
     const widgetDef = WIDGET_DEFS[widget.type];
 
     // Find matching leaf from config to get publish/subscribe mappings
     const configLeaf = node.children.find((l) => l.widget.type === widget.type && (l.widget.id ?? "") === (widget.id ?? ""));
+    if (configLeaf && !visibilityMatches(scopeState, configLeaf.showWhen, configLeaf.hideWhen)) {
+      return [];
+    }
 
-    return {
+    return [{
       id: widgetId,
       label: widget.title ?? widget.type,
       title: widget.title ?? widget.type,
@@ -1210,7 +1249,7 @@ function EditablePanel({
           onSelectSession={onSelectSession}
         />
       ),
-    };
+    }];
   });
 
   const dynamicItems: PanelSurfaceItem[] = dynamicTabs.map((tab) => ({
@@ -1284,6 +1323,7 @@ function EditablePanel({
         <PanelSurface
           mode={mode}
           items={items}
+          defaultActiveId={node.kind === "tabs" ? node.activeTab : undefined}
           picker={picker}
           empty={empty}
           requestActiveId={requestActiveId}
