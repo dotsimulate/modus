@@ -252,6 +252,33 @@ function uiBuildStale(): boolean {
   return srcTime > distTime;
 }
 
+function uiDepsStale(): boolean {
+  const pkgJson = join(UI_DIR, "package.json");
+  const lockFile = join(UI_DIR, "bun.lock");
+  const nmDir = join(UI_DIR, "node_modules");
+  if (!existsSync(nmDir)) return true;
+  try {
+    const nmTime = statSync(nmDir).mtimeMs;
+    const pkgTime = existsSync(pkgJson) ? statSync(pkgJson).mtimeMs : 0;
+    const lockTime = existsSync(lockFile) ? statSync(lockFile).mtimeMs : 0;
+    return Math.max(pkgTime, lockTime) > nmTime;
+  } catch { return true; }
+}
+
+function installUiDeps(): boolean {
+  console.log("Installing UI dependencies...");
+  const result = Bun.spawnSync([BUN, "install"], {
+    cwd: UI_DIR,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if (result.exitCode !== 0) {
+    console.error("UI dependency install failed.");
+    return false;
+  }
+  return true;
+}
+
 function buildUi(): boolean {
   console.log("Building UI...");
   const result = Bun.spawnSync([BUN, "run", "build"], {
@@ -293,7 +320,12 @@ async function cmdStart(args: string[]): Promise<void> {
   // Stale PID file — clean it
   if (existingPid) cleanStateFiles();
 
-  // Build UI if needed
+  // Install UI deps if needed, then build
+  if (uiDepsStale()) {
+    if (!installUiDeps()) {
+      process.exit(1);
+    }
+  }
   if (uiBuildStale()) {
     if (!buildUi()) {
       process.exit(1);
