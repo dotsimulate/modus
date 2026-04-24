@@ -15,6 +15,7 @@ type ComposerHandle = {
   focus: () => void;
   setDraft: (text: string) => void;
   insertText: (text: string) => void;
+  setGhostText: (text: string | null) => void;
   submit: (text?: string) => void;
   /** Attach a move as a chip above the textarea. Optional — older composers may not support it. */
   attachMove?: (move: MoveListItem, inputs: Record<string, unknown>) => void;
@@ -32,6 +33,7 @@ type ShortcutHandler = (ctx: {
 type ComposerActionIcon = "mic" | "mic-handsfree";
 
 type ComposerActionStatusTone = "default" | "active" | "busy" | "error" | "gated";
+type ComposerToggleTone = "default" | "active" | "busy" | "error";
 
 type ComposerActionState = {
   label?: string;
@@ -59,12 +61,39 @@ type RegisteredComposerAction = {
   unregister: () => void;
 };
 
+type ComposerToggleState = {
+  label: string;
+  title?: string;
+  enabled?: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+  tone?: ComposerToggleTone;
+};
+
+type ComposerToggleHandler = (ctx: {
+  composer: ComposerTarget | null;
+  enabled: boolean;
+}) => void | Promise<void>;
+
+type ComposerToggleConfig = ComposerToggleState & {
+  id?: string;
+  order?: number;
+  onToggle: ComposerToggleHandler;
+};
+
+type RegisteredComposerToggle = {
+  update: (next: Partial<ComposerToggleState>) => void;
+  unregister: () => void;
+};
+
 type ClientExtensionApi = {
   registerShortcut: (binding: string, handler: ShortcutHandler) => () => void;
   registerComposerAction: (config: ComposerActionConfig) => RegisteredComposerAction;
+  registerComposerToggle: (config: ComposerToggleConfig) => RegisteredComposerToggle;
   getComposer: () => ComposerSnapshot | null;
   setDraft: (text: string) => void;
   insertText: (text: string) => void;
+  setGhostText: (text: string | null) => void;
   focusComposer: () => void;
   submitComposer: (text?: string) => void;
   request: (path: string, init?: RequestInit) => Promise<Response>;
@@ -102,6 +131,20 @@ export type ComposerActionView = ComposerActionState & {
   perform: () => Promise<void>;
 };
 
+type ComposerToggleRegistration = {
+  key: string;
+  extensionId: string;
+  order: number;
+  state: ComposerToggleState;
+  onToggle: ComposerToggleHandler;
+};
+
+export type ComposerToggleView = ComposerToggleState & {
+  key: string;
+  extensionId: string;
+  toggle: () => Promise<void>;
+};
+
 type ShortcutBinding = {
   key: string;
   ctrl: boolean;
@@ -116,23 +159,24 @@ const pendingAttaches = new Map<string, PendingAttach>();
 let activeComposerId: string | null = null;
 const shortcuts: ShortcutRegistration[] = [];
 const composerActions = new Map<string, ComposerActionRegistration>();
+const composerToggles = new Map<string, ComposerToggleRegistration>();
 const loadedExtensions: LoadedExtension[] = [];
 let listenerAttached = false;
-const composerActionListeners = new Set<() => void>();
-let composerActionSnapshot = 0;
+const composerControlListeners = new Set<() => void>();
+let composerControlSnapshot = 0;
 
-function notifyComposerActions() {
-  composerActionSnapshot++;
-  for (const listener of composerActionListeners) listener();
+function notifyComposerControls() {
+  composerControlSnapshot++;
+  for (const listener of composerControlListeners) listener();
 }
 
-function subscribeComposerActions(listener: () => void): () => void {
-  composerActionListeners.add(listener);
-  return () => composerActionListeners.delete(listener);
+function subscribeComposerControls(listener: () => void): () => void {
+  composerControlListeners.add(listener);
+  return () => composerControlListeners.delete(listener);
 }
 
-function getComposerActionsSnapshot(): number {
-  return composerActionSnapshot;
+function getComposerControlsSnapshot(): number {
+  return composerControlSnapshot;
 }
 
 function normalizeKeyPart(part: string): string {
@@ -189,6 +233,7 @@ function toLiveComposerTarget(composerId: string): ComposerTarget {
     focus: () => composers.get(composerId)?.focus(),
     setDraft: (text: string) => composers.get(composerId)?.setDraft(text),
     insertText: (text: string) => composers.get(composerId)?.insertText(text),
+    setGhostText: (text: string | null) => composers.get(composerId)?.setGhostText(text),
     submit: (text?: string) => composers.get(composerId)?.submit(text),
   };
 }
@@ -198,6 +243,14 @@ async function performComposerAction(action: ComposerActionRegistration, compose
     activeComposerId = composerId;
   }
   await action.onClick({ composer: toLiveComposerTarget(composerId) });
+}
+
+async function performComposerToggle(toggle: ComposerToggleRegistration, composerId: string): Promise<void> {
+  if (composers.has(composerId)) {
+    activeComposerId = composerId;
+  }
+  const enabled = !(toggle.state.enabled ?? false);
+  await toggle.onToggle({ composer: toLiveComposerTarget(composerId), enabled });
 }
 
 function ensureShortcutListener() {
@@ -224,13 +277,13 @@ export function registerComposer(handle: ComposerHandle): () => void {
     try { handle.attachMove(pending.move, pending.inputs); }
     catch (err) { console.error("[composer] attachMove on register failed:", err); }
   }
-  notifyComposerActions();
+  notifyComposerControls();
   return () => {
     composers.delete(handle.id);
     if (activeComposerId === handle.id) {
       activeComposerId = Array.from(composers.keys()).at(-1) ?? null;
     }
-    notifyComposerActions();
+    notifyComposerControls();
   };
 }
 
@@ -258,7 +311,7 @@ export function queueComposerAttach(
 }
 
 export function useComposerActions(composerId: string): ComposerActionView[] {
-  const snapshot = useSyncExternalStore(subscribeComposerActions, getComposerActionsSnapshot);
+  const snapshot = useSyncExternalStore(subscribeComposerControls, getComposerControlsSnapshot);
   return useMemo(() => Array.from(composerActions.values())
     .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key))
     .map((action) => ({
@@ -266,6 +319,18 @@ export function useComposerActions(composerId: string): ComposerActionView[] {
       extensionId: action.extensionId,
       ...action.state,
       perform: () => performComposerAction(action, composerId),
+    })), [snapshot, composerId]);
+}
+
+export function useComposerToggles(composerId: string): ComposerToggleView[] {
+  const snapshot = useSyncExternalStore(subscribeComposerControls, getComposerControlsSnapshot);
+  return useMemo(() => Array.from(composerToggles.values())
+    .sort((a, b) => a.order - b.order || a.key.localeCompare(b.key))
+    .map((toggle) => ({
+      key: toggle.key,
+      extensionId: toggle.extensionId,
+      ...toggle.state,
+      toggle: () => performComposerToggle(toggle, composerId),
     })), [snapshot, composerId]);
 }
 
@@ -300,7 +365,7 @@ function createApi(extensionId: string, settings: Record<string, unknown> = {}):
         },
       };
       composerActions.set(actionKey, registration);
-      notifyComposerActions();
+      notifyComposerControls();
 
       let removed = false;
 
@@ -308,13 +373,48 @@ function createApi(extensionId: string, settings: Record<string, unknown> = {}):
         update(next) {
           if (removed) return;
           registration.state = { ...registration.state, ...next };
-          notifyComposerActions();
+          notifyComposerControls();
         },
         unregister() {
           if (removed) return;
           removed = true;
           composerActions.delete(actionKey);
-          notifyComposerActions();
+          notifyComposerControls();
+        },
+      };
+    },
+    registerComposerToggle(config) {
+      const toggleKey = `${extensionId}:${config.id ?? "default"}`;
+      const registration: ComposerToggleRegistration = {
+        key: toggleKey,
+        extensionId,
+        order: config.order ?? 0,
+        onToggle: config.onToggle,
+        state: {
+          label: config.label,
+          title: config.title,
+          enabled: config.enabled,
+          busy: config.busy,
+          disabled: config.disabled,
+          tone: config.tone,
+        },
+      };
+      composerToggles.set(toggleKey, registration);
+      notifyComposerControls();
+
+      let removed = false;
+
+      return {
+        update(next) {
+          if (removed) return;
+          registration.state = { ...registration.state, ...next };
+          notifyComposerControls();
+        },
+        unregister() {
+          if (removed) return;
+          removed = true;
+          composerToggles.delete(toggleKey);
+          notifyComposerControls();
         },
       };
     },
@@ -326,6 +426,9 @@ function createApi(extensionId: string, settings: Record<string, unknown> = {}):
     },
     insertText(text) {
       getActiveComposerHandle()?.insertText(text);
+    },
+    setGhostText(text) {
+      getActiveComposerHandle()?.setGhostText(text);
     },
     focusComposer() {
       getActiveComposerHandle()?.focus();
@@ -370,7 +473,8 @@ export async function unloadClientExtensions(): Promise<void> {
   }
   shortcuts.splice(0, shortcuts.length);
   composerActions.clear();
-  notifyComposerActions();
+  composerToggles.clear();
+  notifyComposerControls();
 }
 
 export async function loadClientExtensions(items: ClientExtensionManifestItem[]): Promise<void> {

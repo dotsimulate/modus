@@ -163,7 +163,8 @@ export type Message = {
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
     contextWindow?: number;
-    contextTokensUsed?: number;
+    contextTokensUsed?: number | null;
+    contextPercent?: number | null;
   };
   /** Pre-rendered copy of this turn's content for display, avoiding re-parsing tool calls. */
   turnCopy?: { text: string; thinking?: string; toolCalls?: ToolCall[] };
@@ -645,7 +646,13 @@ export type GlobalConfig = {
 
 // ── Providers ──
 
-export type ProviderModel = { id: string; owned_by?: string };
+export type ProviderModel = {
+  id: string;
+  owned_by?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  contextSource?: "api" | "provider-default" | "fallback";
+};
 
 /** A named group of tools exposed by a provider (e.g. "File Operations", "Git"). */
 export type ProviderToolGroup = {
@@ -734,6 +741,14 @@ export type UserProfileUiConfig = {
       fullscreen?: boolean;
     }>;
   };
+  pageNav?: {
+    mode?: "auto" | "compact" | "tabs" | "launcher";
+    enabled?: string[];
+    disabled?: string[];
+    pinned?: string[];
+    order?: string[];
+    labels?: Record<string, string>;
+  };
   leftPanel?: {
     widgets?: string[];
   };
@@ -800,6 +815,14 @@ export type UserProfile = {
       nav?: boolean;
       fullscreen?: boolean;
     }>;
+  };
+  pageNav?: {
+    mode?: "auto" | "compact" | "tabs" | "launcher";
+    enabled?: string[];
+    disabled?: string[];
+    pinned?: string[];
+    order?: string[];
+    labels?: Record<string, string>;
   };
   leftPanel?: {
     widgets?: string[];
@@ -870,6 +893,10 @@ export type ActionInfo = {
   description: string;
   /** Whether this action is defined in the harness or the project's .modus/ directory. */
   origin?: "harness" | "project";
+  /** Stable internal identity used to disambiguate same-named project actions. */
+  scopeKey?: string;
+  /** Project root for project-local actions. */
+  projectCwd?: string;
   agentProfile: string;
   trigger: ActionTrigger;
   /** For interval triggers, how long between cycles (a cycle is a batch of runs). */
@@ -935,12 +962,39 @@ export type ActionExecution = {
 // ── Moves ──
 
 /** A user-facing input field definition for a move's activation form. */
+export type MoveInputOption = {
+  value: string;
+  label: string;
+};
+
+export type MoveInputOptionsSource = {
+  type: "agentProfiles" | "projects" | "sessions";
+  /** For project pickers, select the current project by default when possible. */
+  defaultToCurrent?: boolean;
+  /** For session pickers, resolve sessions against another input's selected project path. */
+  projectField?: string;
+  /** For session pickers, prepend an empty/default option with this label. */
+  emptyLabel?: string;
+  /** Session query limit for dynamic session menus. */
+  limit?: number;
+};
+
+export type MoveInputVisibilityRule = {
+  input: string;
+  equals?: string;
+  notEquals?: string;
+  isEmpty?: boolean;
+  notEmpty?: boolean;
+};
+
 export type MoveInput = {
   name: string;
   label?: string;
   type: "text" | "textarea" | "select" | "toggle" | "number";
-  /** For "select" type: array of option values, or a pipe-delimited string. */
-  options?: string[] | string;
+  /** For "select" type: array of options, or a template string like "{{agentProfiles}}". */
+  options?: Array<string | MoveInputOption> | string;
+  optionsSource?: MoveInputOptionsSource;
+  visibleWhen?: MoveInputVisibilityRule;
   required?: boolean;
   default?: unknown;
   placeholder?: string;
@@ -1473,12 +1527,28 @@ export type ExtensionMeta = {
   settings?: Record<string, ExtensionSettingSchema>;
 };
 
+/** A user-registered Modus plugin root. Plugins can mount .modus resources without becoming the active project. */
+export type ModusPlugin = {
+  id: string;
+  path: string;
+  enabled: boolean;
+  name?: string;
+  description?: string;
+  manifest: {
+    id?: string;
+    name?: string;
+    description?: string;
+  };
+};
+
 /** A discovered client extension with its resolution source, enabled state, and current settings. */
 export type ClientExtensionManifestItem = {
   id: string;
   fileName: string;
-  /** Whether this extension was found in the project's .modus/ or in the global harness config. */
-  source: "project" | "global";
+  /** Where this extension was discovered. */
+  source: "builtin" | "plugin" | "global" | "project";
+  pluginId?: string;
+  pluginPath?: string;
   enabled: boolean;
   /** URL to dynamically import the extension module in the browser. */
   moduleUrl: string;

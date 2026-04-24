@@ -11,6 +11,7 @@ import { CopyMessageButton } from "./CopyMessageButton";
 import { AudioArtifact } from "./AudioArtifact";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { addPrompt } from "../promptCache";
+import { isCodexProvider } from "../tools";
 
 function artifactSrc(url: string): string {
   const tp = tokenParam();
@@ -72,8 +73,18 @@ type Props = {
 };
 
 function formatContextPct(meta: Message["meta"]): string | null {
-  if (!meta?.contextTokensUsed || !meta.contextWindow) return null;
+  if (!meta?.contextWindow) return null;
+  if (meta.contextPercent != null) return `${Math.round(meta.contextPercent)}%`;
+  if (meta.contextTokensUsed == null || meta.contextTokensUsed <= 0) return null;
   return `${Math.round((meta.contextTokensUsed / meta.contextWindow) * 100)}%`;
+}
+
+function formatTokensPerSecond(meta: Message["meta"], provider?: string): string | null {
+  if (isCodexProvider(provider)) return null;
+  if (!meta?.outputTokens || !meta.duration || meta.duration <= 0) return null;
+  const rate = meta.outputTokens / (meta.duration / 1000);
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+  return `${rate >= 10 ? rate.toFixed(0) : rate.toFixed(1)} tok/s`;
 }
 
 function formatMeta(meta: Message["meta"], provider?: string): string {
@@ -84,6 +95,8 @@ function formatMeta(meta: Message["meta"], provider?: string): string {
   if (meta.turns != null) parts.push(`${meta.turns} turns`);
   const usage = formatProviderTokenUsage(provider, meta.inputTokens, meta.outputTokens);
   if (usage) parts.push(usage);
+  const tokensPerSecond = formatTokensPerSecond(meta, provider);
+  if (tokensPerSecond) parts.push(tokensPerSecond);
   const ctx = formatContextPct(meta);
   if (ctx) parts.push(`${ctx} ctx`);
   if (meta.duration != null) parts.push(`${(meta.duration / 1000).toFixed(1)}s`);
@@ -306,6 +319,9 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             <span className="meta-tokens">
               {usageText}
             </span>
+          )}
+          {formatTokensPerSecond(msg.meta, provider) && (
+            <span className="meta-tokens">{formatTokensPerSecond(msg.meta, provider)}</span>
           )}
           {formatContextPct(msg.meta) && (
             <span className="meta-context">{formatContextPct(msg.meta)} ctx</span>

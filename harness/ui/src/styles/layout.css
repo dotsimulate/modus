@@ -29,6 +29,9 @@
 .top-nav-links {
   display: flex;
   gap: 2px;
+  min-width: 0;
+  max-width: min(46vw, 760px);
+  overflow: hidden;
 }
 .top-nav-new-session {
   background: none;
@@ -59,6 +62,11 @@
   font-family: var(--font-mono);
   font-size: calc(12px * var(--font-scale, 1));
   letter-spacing: 0.05em;
+  min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 4px 10px;
   border-radius: 6px;
   cursor: pointer;

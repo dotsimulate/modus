@@ -880,6 +880,20 @@ function reduceToolUseSummary(s: ReducerState, _m: any): ReducerState {
 
 // ── Result ──
 
+function pickPrimaryModel(modelUsage: Record<string, any> | undefined, fallback: string): string {
+  if (!modelUsage) return fallback;
+  const entries = Object.entries(modelUsage);
+  if (entries.length === 0) return fallback;
+  if (entries.length === 1) return entries[0][0];
+  let best = entries[0];
+  for (let i = 1; i < entries.length; i++) {
+    if ((entries[i][1]?.outputTokens ?? 0) > (best[1]?.outputTokens ?? 0)) {
+      best = entries[i];
+    }
+  }
+  return best[0] || fallback;
+}
+
 function reduceResult(s: ReducerState, m: any): ReducerState {
   const msgs = [...s.messages];
   const last = msgs[msgs.length - 1];
@@ -903,13 +917,13 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     if (turnThinking) turnCopy.thinking = turnThinking;
     if (turnToolCalls.length > 0) turnCopy.toolCalls = turnToolCalls;
 
-    const modelName = m.modelUsage ? Object.keys(m.modelUsage)[0] : s.model;
+    const modelName = pickPrimaryModel(m.modelUsage, s.model);
 
     // Derive cache tokens from modelUsage (authoritative source, present in all Claude events)
     // Fall back to top-level fields for newer events that already have them computed.
     let cacheRead = m.cache_read_tokens ?? 0;
     let cacheWrite = m.cache_write_tokens ?? 0;
-    let contextWindow = 0;
+    let contextWindow = m.context_window ?? 0;
     if (m.modelUsage && typeof m.modelUsage === "object") {
       for (const model of Object.values(m.modelUsage) as any[]) {
         if (cacheRead === 0) cacheRead += model?.cacheReadInputTokens ?? 0;
@@ -935,6 +949,7 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
         cacheWriteTokens: cacheWrite,
         contextWindow,
         contextTokensUsed: m.context_tokens_used,
+        contextPercent: m.context_percent,
       },
     };
   }

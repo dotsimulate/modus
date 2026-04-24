@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type {
   ProfileUi, Profile, UserProfile, UserProfileState, UserProfileUiConfig,
   ProviderCapabilities, CreateSessionOpts,
@@ -46,9 +46,21 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   //     they're scoped to this project by definition. Hiding them was a bug: our
   //     scaffolding moves (create-profile, etc.) write to `.modus/` and users expected
   //     those to show up without manually editing the user profile's whitelist.
-  const visibleProfiles = activeUP?.agentProfiles?.length
-    ? profiles.filter((p) => p.origin === "project" || activeUP.agentProfiles!.includes(p.name))
-    : profiles;
+  //   - Sorted by most recently used profile first (uiState.lastAgentProfile), then the
+  //     rest in their original order.
+  const visibleProfiles = useMemo(() => {
+    const lastProfile = activeUP ? uiState.lastAgentProfile : undefined;
+    let result = activeUP?.agentProfiles?.length
+      ? profiles.filter((p) => p.origin === "project" || activeUP.agentProfiles!.includes(p.name))
+      : profiles;
+    if (lastProfile) {
+      const lastIdx = result.findIndex((p) => p.name === lastProfile);
+      if (lastIdx >= 0) {
+        result = [result[lastIdx], ...result.slice(0, lastIdx), ...result.slice(lastIdx + 1)];
+      }
+    }
+    return result;
+  }, [profiles, activeUP, uiState.lastAgentProfile]);
 
   // The project root for profile discovery and theme — always the user profile's
   // first project, NOT setupState.cwd (which may be a profile subfolder override).
@@ -284,7 +296,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       profiles, visibleProfiles, availableProviders, userProfiles,
       providerCapabilities,
       activeUserProfile, activeUP,
-      activeCwd: projectRoot || setupState.cwd.trim() || undefined,
+      activeCwd: setupState.cwd.trim() || projectRoot || undefined,
       projectRoot: projectRoot || setupState.cwd.trim() || undefined,
       selectedProfile, selectProfile, setSelectedProfile,
       setupState, setSetupState,

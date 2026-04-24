@@ -133,7 +133,7 @@
   color: var(--text);
 }
 
-/* Edit button */
+/* Edit & duplicate buttons */
 .apc-edit-btn {
   margin-left: auto;
   background: none;
@@ -149,6 +149,10 @@
 }
 .apc-edit-btn:hover {
   color: var(--text-dim);
+}
+/* Duplicate button — slightly dimmer than edit */
+.apc-edit-btn:first-child {
+  margin-left: 0;
 }
 
 /* Description */
@@ -249,6 +253,22 @@
   opacity: 0.35;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+/* New session button — larger, visible without hover */
+.apc-action--new-session {
+  padding: 4px 14px;
+  font-size: 11px;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text);
+  border-color: var(--border-active);
+}
+.apc-action--new-session:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+  border-color: var(--accent, var(--border-active));
 }
 
 /* ── Active sessions popover ── */

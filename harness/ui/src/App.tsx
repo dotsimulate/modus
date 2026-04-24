@@ -30,8 +30,50 @@ import { useLayout } from "./providers/LayoutContext";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
 import { AgentPortal } from "./components/AgentPortal";
 import { WIDGET_DEFS, widgetHandlesIntent, type DashboardPage } from "./widgets";
+import { PagePicker } from "./components/PagePicker";
+import { usePageNavPrefs } from "./hooks/usePageNavPrefs";
+import {
+  countPageWidgets,
+  pageNavDirectItems,
+  resolvePageNav,
+  type PageNavItem,
+  type PageNavOrigin,
+} from "./pageNav";
 
 import { getInputValue } from "./inputStore";
+
+type ConfigDashboardPage = DashboardPage & {
+  origin?: PageNavOrigin;
+  source?: string;
+};
+
+function pageNavItemFromConfigPage(page: ConfigDashboardPage): PageNavItem {
+  return {
+    key: customPageView(page.id),
+    view: customPageView(page.id),
+    id: page.id,
+    title: page.title,
+    label: page.title,
+    origin: page.origin ?? "profile",
+    navDefault: page.nav !== false,
+    widgetCount: countPageWidgets(page),
+    canFork: page.origin !== undefined && page.origin !== "standalone",
+  };
+}
+
+function pageNavItemFromBareMovePage(move: MoveListItem): PageNavItem | null {
+  if (!move.page) return null;
+  return {
+    key: movePageView(move.name),
+    view: movePageView(move.name),
+    id: move.page.id,
+    title: move.page.title,
+    label: move.page.title,
+    origin: "move",
+    navDefault: move.page.nav !== false,
+    canFork: false,
+  };
+}
 
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -126,6 +168,7 @@ function AppContent({ router }: { router: HashRouter }) {
     handleInputChange,
     newSession, selectSession,
   } = useSession();
+  const { prefs: pageNavPrefs, canSave: canSavePageNavPrefs, savePrefs: savePageNavPrefs } = usePageNavPrefs();
 
   // Panel state — owned by LayoutProvider
   const {
@@ -356,13 +399,16 @@ function AppContent({ router }: { router: HashRouter }) {
   }).length;
   // ── Move pages (moves that declare a page field) ──
   const [movePages, setMovePages] = useState<MoveListItem[]>([]);
-  const [configPages, setConfigPages] = useState<DashboardPage[]>([]);
+  const [configPages, setConfigPages] = useState<ConfigDashboardPage[]>([]);
   const [mountedCustomPageIds, setMountedCustomPageIds] = useState<string[]>([]);
   const projectCwd = projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
   useEffect(() => {
-    if (!projectCwd) return;
+    if (!projectCwd) {
+      setMovePages([]);
+      return;
+    }
     modus.listMoves(projectCwd).then((moves) => {
-      setMovePages(moves.filter((m) => m.page && m.page.nav !== false));
+      setMovePages(moves.filter((m) => m.page));
     }).catch(() => setMovePages([]));
   }, [projectCwd]);
   useEffect(() => {
@@ -379,7 +425,7 @@ function AppContent({ router }: { router: HashRouter }) {
   }, [projectCwd]);
   const activeMovePageName = getMovePageName(view);
 
-  const profilePages = activeUP?.dashboard?.pages ?? [];
+  const profilePages = (activeUP?.dashboard?.pages ?? []) as ConfigDashboardPage[];
   const customPages = [
     ...configPages,
     ...profilePages.filter((page) => !configPages.some((configPage) => configPage.id === page.id)),
@@ -389,18 +435,21 @@ function AppContent({ router }: { router: HashRouter }) {
   const bareMovePagesNav = movePages
     .filter((m) => !m.page?.layout)
     .filter((m) => !customPages.some((cp) => cp.id === m.page?.id));
+  const bareMovePageItems = bareMovePagesNav
+    .map(pageNavItemFromBareMovePage)
+    .filter((item): item is PageNavItem => Boolean(item));
+  const pageNavItems = [
+    ...bareMovePageItems,
+    ...customPages.map((page) => pageNavItemFromConfigPage(page as ConfigDashboardPage)),
+  ];
+  const resolvedPageNav = resolvePageNav(pageNavItems, pageNavPrefs);
+  const topPageNavItems = pageNavDirectItems(resolvedPageNav);
   const navViews = [
     ...NAV_VIEWS,
-    ...bareMovePagesNav.map((m) => ({
-      view: movePageView(m.name),
-      label: m.page!.title,
+    ...topPageNavItems.map((page) => ({
+      view: page.view,
+      label: page.label,
     })),
-    ...customPages
-      .filter((page) => page.nav !== false)
-      .map((page) => ({
-        view: customPageView(page.id),
-        label: page.title,
-      })),
   ];
   const activeCustomPage = customPages.find((page) => page.id === getCustomPageId(view));
   const chatStudioPage = configPages.find(p => p.id === "chat-studio");
@@ -462,6 +511,17 @@ function AppContent({ router }: { router: HashRouter }) {
             </button>
           ))}
         </nav>
+        {pageNavItems.length > 0 && (
+          <PagePicker
+            pages={pageNavItems}
+            activeView={view}
+            prefs={pageNavPrefs}
+            canEdit={canSavePageNavPrefs}
+            variant="compact"
+            onNavigate={handleNavigate}
+            onPrefsChange={savePageNavPrefs}
+          />
+        )}
         <button className="top-nav-new-session" onClick={handleNewSession} title="New session">+</button>
         <div className="top-nav-spacer" />
         {view === "chat" && activeSession?.id && !activeSession.id.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSession.id) && (
@@ -484,7 +544,11 @@ function AppContent({ router }: { router: HashRouter }) {
         <MobileNav
           open={mobileNavOpen}
           onClose={() => setMobileNavOpen(false)}
-          navLinks={[{ view: "home" as const, label: "home" }, ...navViews]}
+          navLinks={[
+            { view: "home" as const, label: "home" },
+            ...NAV_VIEWS,
+            ...resolvedPageNav.enabled.map((page) => ({ view: page.view, label: page.label })),
+          ]}
           currentView={view}
           onNavigate={handleNavigate}
         />

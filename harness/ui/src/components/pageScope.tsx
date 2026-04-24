@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import type { PageContextHandle, ScopeEvent, UiIntentObserver, UiIntentOf, UiIntentType } from "../widgets";
+import type { PageContextHandle, ScopeBinding, ScopeEvent, UiIntentObserver, UiIntentOf, UiIntentType } from "../widgets";
 
 // ── Page-scoped shared state bus ──
 
@@ -244,4 +244,70 @@ export function ScopeProvider({
       {children}
     </PageStateBusContext.Provider>
   );
+}
+
+/**
+ * ScopeBindingBridge — syncs declared keys between a child scope bus and a
+ * parent scope bus. Must be rendered inside the child ScopeProvider so it
+ * can access the child bus via context. The parent bus is passed as a prop
+ * (captured before the child ScopeProvider mounts).
+ *
+ * Uses the bus's built-in dedup (`if (state[key] === value) return`) to
+ * prevent infinite sync loops.
+ */
+export function ScopeBindingBridge({
+  parentBus,
+  bindings,
+}: {
+  parentBus: PageStateBus;
+  bindings: ScopeBinding[];
+}) {
+  const childBus = useContext(PageStateBusContext);
+
+  useEffect(() => {
+    if (!childBus || !parentBus || bindings.length === 0) return;
+
+    const unsubs: (() => void)[] = [];
+
+    for (const binding of bindings) {
+      const { local, parent, direction } = binding;
+      const syncsUp = direction === "up" || direction === "twoWay";
+      const syncsDown = direction === "down" || direction === "twoWay";
+
+      // Initial sync: parent → child for down/twoWay
+      if (syncsDown) {
+        const parentVal = parentBus.get(parent);
+        if (parentVal !== undefined && parentVal !== null) {
+          childBus.set(local, parentVal);
+        }
+      }
+      // Initial sync: child → parent for up/twoWay (if child already has a value)
+      if (syncsUp) {
+        const childVal = childBus.get(local);
+        if (childVal !== undefined && childVal !== null) {
+          parentBus.set(parent, childVal);
+        }
+      }
+
+      // Live sync: child changes → parent
+      if (syncsUp) {
+        unsubs.push(childBus.subscribe(() => {
+          const val = childBus.get(local);
+          parentBus.set(parent, val);
+        }));
+      }
+
+      // Live sync: parent changes → child
+      if (syncsDown) {
+        unsubs.push(parentBus.subscribe(() => {
+          const val = parentBus.get(parent);
+          childBus.set(local, val);
+        }));
+      }
+    }
+
+    return () => unsubs.forEach((fn) => fn());
+  }, [childBus, parentBus, bindings]);
+
+  return null;
 }

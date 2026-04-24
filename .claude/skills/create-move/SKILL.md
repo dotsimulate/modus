@@ -1,22 +1,16 @@
 ---
 name: create-move
 description: >
-  Create moves in MO (modus operandi) — the universal interaction primitive.
-  Moves are composable: any move can combine API ops, widgets, pages, persistence,
-  multi-agent orchestration, and different execution modes. Use when someone wants to:
-  (1) create any new capability, game, tool, or workflow,
-  (2) build a structured conversation that saves results (companion moves),
-  (3) build a widget-backed interactive experience (standalone or agent-assisted),
-  (4) give an agent structured API access to something via ops,
-  (5) inject ambient context into every turn (persistent/RAG moves),
-  (6) orchestrate multi-agent sessions (councils, debates, pipelines),
-  (7) create a full page in the app nav (memory browser, dashboards),
-  (8) spawn background/branch sessions for heavy work.
-  Each move is a directory with move.json + context.ts inside .modus/moves/<name>/.
-  TRIGGER on: "create a move", "new move", "build a move", "add a capability",
-  "make a game", "interactive move", "api contract", "agent tool", "ambient move",
-  "persistent move", "widget", "full page", "multi-agent", "council-like",
-  "companion move", "check-in", "conversational move", "structured conversation".
+  Create MO moves, the universal interaction primitive. Moves can combine prompt
+  context, submit schemas, API ops, widgets, pages, persistence, multi-agent
+  orchestration, and background or branch sessions. Use when someone wants to
+  create a capability, game, tool, workflow, companion conversation, widget,
+  agent-facing API contract, ambient/persistent context source, full app page,
+  council-like orchestration, or structured conversation that saves results.
+  Each move lives in .modus/moves/name/ with move.json and context.ts. Trigger on:
+  "create a move", "new move", "build a move", "interactive move", "api
+  contract", "agent tool", "persistent move", "widget", "full page",
+  "multi-agent", "companion move", "check-in".
 ---
 
 # Create Move
@@ -65,7 +59,9 @@ by name).
 
 **"I need a visual interface"**
   Add a `widget` block to any of the above.
-  See [references/widget-moves.md](references/widget-moves.md).
+  See [references/widget-moves.md](references/widget-moves.md) for wiring and lifecycle.
+  Read [references/widget-design.md](references/widget-design.md) for design expectations,
+  available components/hooks, the CSS token catalog, and the design checklist.
 
 **"I need a full page in the app nav"**
   Add a `page` block.

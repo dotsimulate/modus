@@ -68,7 +68,9 @@
   border: 1px solid var(--border-active);
   border-radius: 4px;
   background: var(--bg-surface);
-  overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .csel-option {

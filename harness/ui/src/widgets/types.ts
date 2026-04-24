@@ -183,6 +183,15 @@ type LayoutVisibility = {
   hideWhen?: Record<string, unknown>;
 };
 
+export type ScopeBinding = {
+  /** Key in this (child) scope's context bus */
+  local: string;
+  /** Key in the parent scope's context bus */
+  parent: string;
+  /** Sync direction: child→parent, parent→child, or both */
+  direction: "up" | "down" | "twoWay";
+};
+
 export type LayoutNode =
   | ({
       kind: "grid";
@@ -249,6 +258,13 @@ export type LayoutNode =
       id?: string;
       /** Initial state for this scope's context bus (e.g. { "sessionId": null }) */
       context?: Record<string, unknown>;
+      /**
+       * Explicit bindings between this child scope's local keys and the parent
+       * scope's keys. Enables multi-scope pages where isolated child scopes
+       * export selected state to a shared parent (e.g. two session panes
+       * exporting their sessionId as leftSessionId / rightSessionId).
+       */
+      bindings?: ScopeBinding[];
       /**
        * When true, mirrors this scope's `sessionId` with the URL hash session id.
        * Inbound: hash session id on mount + on hashchange is pushed into the bus.

@@ -90,7 +90,7 @@ export type ProviderHealthInfo = {
 const PROVIDER_PREREQS: Record<string, { cli?: string; envAny?: string[] }> = {
   "claude-code": { cli: "claude" },
   "claude-code-pty": { cli: "claude" },
-  // codex: SDK-based, auth checked separately (secrets + ~/.codex/auth.json)
+  "codex": { cli: "codex" },
   "cursor": { cli: "cursor-agent" },
   // gemini-cli: SDK-based, auth checked separately (Google OAuth)
   "openrouter": { envAny: ["OPENROUTER_API_KEY"] },
@@ -106,7 +106,7 @@ async function pingLocal(url: string, timeoutMs = 2000): Promise<boolean> {
   }
 }
 
-/** Check if Codex SDK auth is available (API key in secrets/env OR ~/.codex/auth.json). */
+/** Check if Codex CLI auth is available (API key in secrets/env OR ~/.codex/auth.json). */
 function checkCodexAuth(): ProviderHealthCheck {
   if (isSecretSet("CODEX_API_KEY") || isSecretSet("OPENAI_API_KEY")) {
     return { type: "auth", label: "api key", passed: true, detail: "key set" };
@@ -163,7 +163,7 @@ export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
       });
     }
 
-    // SDK-based provider auth checks
+    // Provider-specific auth checks
     if (name === "codex") {
       checks.push(checkCodexAuth());
     }

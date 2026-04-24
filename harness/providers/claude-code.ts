@@ -1160,7 +1160,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
             break;
           }
         }
-        const ctxWindow = m.modelUsage ? Object.values(m.modelUsage as any)[0]?.contextWindow : null;
+        const ctxWindow = m.modelUsage ? (Object.values(m.modelUsage as Record<string, any>)[0] as any)?.contextWindow : null;
         console.log(`[claude-code] CONTEXT: tokens_used=${m.context_tokens_used ?? "none"} window=${ctxWindow ?? "none"}`);
 
         session.costUsd += m.total_cost_usd ?? 0;

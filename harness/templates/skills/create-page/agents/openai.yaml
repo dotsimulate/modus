@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create Page"
+  short_description: "Create MO harness pages and dashboard layouts."
+  default_prompt: "Create a MO page layout for this project."

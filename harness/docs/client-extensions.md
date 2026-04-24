@@ -1,7 +1,7 @@
 ---
 title: Client Extensions
 audience: agents
-lastUpdated: 2026-03-13
+lastUpdated: 2026-04-23
 lastCommit: bae0487
 covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx .modus/ui/extensions/
 ---
@@ -9,9 +9,9 @@ covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harnes
 # Client Extensions
 
 Client extensions are trusted browser-side modules loaded from disk at runtime.
-They let a project or a configured extension root add keyboard shortcuts,
-composer actions, and authenticated UI-side behavior without modifying the core
-frontend bundle.
+They let the harness, a registered Modus plugin, a configured extension root,
+or a project add keyboard shortcuts, composer controls, and authenticated
+UI-side behavior without modifying the core frontend bundle.
 
 The current system is intentionally small:
 - discovery and serving are handled by the harness backend
@@ -21,6 +21,16 @@ The current system is intentionally small:
 ## Directory Structure
 
 ```
+~/.modus/
+  plugins.json                 User registry of trusted Modus plugin roots
+
+some-plugin/
+  .modus/
+    plugin.json                Optional plugin metadata
+    ui/
+      extensions/              Plugin-mounted client extensions
+        modus-autocomplete.js
+
 .modus/
   _global.json                 Project-local config (may set clientExtensions)
   ui/
@@ -35,11 +45,12 @@ harness/
 
 ## Resolution and Precedence
 
-Extension roots come from three layers:
+Extension roots come from four layers:
 
-1. `harness/profiles/_global.json`
-2. `<cwd>/.modus/_global.json`
-3. `profiles/users/<name>.json`
+1. built-in harness extensions from `harness/ui/extensions`
+2. configured global extension roots from `~/.modus/profiles/_global.json`, `<cwd>/.modus/_global.json`, and user profile UI config
+3. enabled plugins from `~/.modus/plugins.json`, mounted from `<plugin>/.modus/ui/extensions`
+4. project-local extensions from `<cwd>/.modus/ui/extensions`
 
 The config shape is:
 
@@ -57,14 +68,16 @@ Rules:
 - `paths` adds trusted global extension roots on disk
 - `enabled` turns on discovered global extensions by normalized ID
 - `disabled` explicitly turns an extension off
+- built-in extensions default to enabled
+- plugin extensions default to enabled when their plugin is enabled
 - project-local `.modus/ui/extensions/` modules are auto-discovered when `cwd` is active
 - project-local extensions default to enabled
-- project-local extensions override global ones with the same normalized ID
+- later layers override earlier layers with the same normalized ID
 
 Path resolution:
 - absolute paths stay absolute
 - `~/...` expands to the user home directory
-- relative paths in `harness/profiles/_global.json` resolve from `harness/profiles/`
+- relative paths in `~/.modus/profiles/_global.json` resolve from `~/.modus/profiles/`
 - relative paths in `.modus/_global.json` resolve from `.modus/`
 
 Normalized IDs come from the filename stem:
@@ -78,13 +91,18 @@ Example: `Whisper Transcribe.js` becomes `whisper-transcribe`.
 
 Routes live in `harness/index.ts`.
 
+- `GET /api/plugins` returns registered plugin roots
+- `POST /api/plugins` registers a plugin path
+- `PATCH /api/plugins/:id` enables/disables or updates a plugin registration
+- `DELETE /api/plugins/:id` unregisters a plugin path without deleting files
 - `GET /api/client-extensions` returns the manifest for the current `cwd` and `userProfile`
 - `GET /api/client-extensions/:id/module` serves the JS module source
 
 Manifest items include:
 - `id`
 - `fileName`
-- `source` (`"project"` or `"global"`)
+- `source` (`"builtin"`, `"plugin"`, `"global"`, or `"project"`)
+- `pluginId` / `pluginPath` for plugin-mounted extensions
 - `enabled`
 - `moduleUrl`
 
@@ -114,9 +132,11 @@ The frontend runtime exposes a narrow API to extensions:
 
 - `registerShortcut(binding, handler)`
 - `registerComposerAction(config)`
+- `registerComposerToggle(config)`
 - `getComposer()`
 - `setDraft(text)`
 - `insertText(text)`
+- `setGhostText(text | null)`
 - `focusComposer()`
 - `submitComposer(text?)`
 - `request(path, init)`
@@ -133,6 +153,7 @@ available. That target exposes:
 - `focus()`
 - `setDraft(text)`
 - `insertText(text)`
+- `setGhostText(text | null)`
 - `submit(text?)`
 
 The active composer is whichever `ChatInput` was focused most recently. This
@@ -148,7 +169,7 @@ Current action fields:
 - `order?`
 - `label?`
 - `title?`
-- `icon?` (currently only `"mic"`)
+- `icon?` (currently `"mic"` or `"mic-handsfree"`)
 - `disabled?`
 - `status?: { label, tone? }`
 - `onClick({ composer })`
@@ -159,6 +180,30 @@ The returned action handle supports:
 
 Composer actions are rendered near the send/stop controls. Status is shown as a
 small chip above the action row.
+
+## Composer Toggles
+
+Extensions can register compact left-side composer toggles for persistent local
+features such as autocomplete.
+
+Current toggle fields:
+- `id?`
+- `order?`
+- `label`
+- `title?`
+- `enabled?`
+- `busy?`
+- `disabled?`
+- `tone?` (`"default"`, `"active"`, `"busy"`, or `"error"`)
+- `onToggle({ composer, enabled })`
+
+The returned toggle handle supports:
+- `update(partialState)`
+- `unregister()`
+
+Toggles are rendered inside the composer, near the top-left edge. `busy: true`
+adds a small edge pulse around the toggle; extensions should use that for
+short-lived waiting states instead of adding status text.
 
 ## Trusted Code Model
 
@@ -180,7 +225,8 @@ Trust comes from where the extension is loaded from and which IDs are enabled.
 
 ## Current Example
 
-`.modus/ui/extensions/whisper-transcribe.js` is the reference extension today.
+`harness/ui/extensions/whisper-transcribe.js` is the reference built-in
+extension today.
 It demonstrates:
 
 - browser audio capture

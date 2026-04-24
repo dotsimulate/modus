@@ -9,6 +9,125 @@
   gap: 6px;
 }
 
+.exw-section-title {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 2px 0;
+}
+
+.exw-plugins {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.exw-plugin-register {
+  display: flex;
+  gap: 6px;
+}
+
+.exw-plugin-input {
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+
+.exw-plugin-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.exw-plugin-add,
+.exw-plugin-remove {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.exw-plugin-add {
+  padding: 4px 10px;
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
+.exw-plugin-remove {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.exw-plugin-add:hover:not(:disabled),
+.exw-plugin-remove:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-active);
+}
+
+.exw-plugin-add:disabled,
+.exw-plugin-remove:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.exw-plugin-error {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--error);
+}
+
+.exw-plugin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+}
+
+.exw-plugin--off {
+  opacity: 0.6;
+}
+
+.exw-plugin-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.exw-plugin-name {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.exw-plugin-path {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .exw-ext {
   border-radius: 4px;
   padding: 6px 8px;

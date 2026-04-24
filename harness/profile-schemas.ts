@@ -103,6 +103,15 @@ const LeftPanelConfigSchema = z.object({
   widgets: z.array(z.string()).optional(),
 });
 
+const PageNavConfigSchema = z.object({
+  mode: z.enum(["auto", "compact", "tabs", "launcher"]).optional(),
+  enabled: z.array(z.string()).optional(),
+  disabled: z.array(z.string()).optional(),
+  pinned: z.array(z.string()).optional(),
+  order: z.array(z.string()).optional(),
+  labels: z.record(z.string(), z.string()).optional(),
+});
+
 const PanelWidgetSchema = z.union([
   z.string(),
   z.object({
@@ -207,6 +216,7 @@ export const UserProfileSchema = z.object({
 export const UserProfileUiConfigSchema = z.object({
   dashboard: DashboardConfigSchema.optional(),
   leftPanel: LeftPanelConfigSchema.optional(),
+  pageNav: PageNavConfigSchema.optional(),
   layouts: LayoutsConfigSchema.optional(),
   computer: z.string().optional(),
   editor: z.string().optional(),

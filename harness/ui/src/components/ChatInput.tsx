@@ -5,7 +5,7 @@ import { PromptPicker } from "./PromptPicker";
 import { AttachedMove, AttachedWidgetContent } from "./QueuedMessage";
 import { PasteBlock } from "./PasteBlock";
 import type { ComposerAttachResult } from "./MoveWidget";
-import { activateComposer, registerComposer, useComposerActions } from "../client-extensions";
+import { activateComposer, registerComposer, useComposerActions, useComposerToggles } from "../client-extensions";
 import { findCompletion, loadPromptCache, usePromptCache } from "../promptCache";
 import { dispatchUiIntent, moveActivationResultToIntent, moveAttachResultToIntent } from "../widgets/intents";
 import type { PageContextHandle } from "../widgets/types";
@@ -126,6 +126,7 @@ export function ChatInput({
   const userProfileRef = useRef(userProfile);
   const handleSendRef = useRef<(textOverride?: string) => void>(() => {});
   const composerActions = useComposerActions(composerId);
+  const composerToggles = useComposerToggles(composerId);
   const historyIndex = useRef(-1);
   const draft = useRef("");
   const isActive = sessionStatus === "running" || sessionStatus === "starting";
@@ -137,14 +138,16 @@ export function ChatInput({
   // Ghost-text autocomplete against saved prompt cache
   usePromptCache();
   useEffect(() => { void loadPromptCache(); }, []);
-  const [ghost, setGhost] = useState<string | null>(null);
+  const [promptGhost, setPromptGhost] = useState<string | null>(null);
+  const [extensionGhost, setExtensionGhost] = useState<string | null>(null);
+  const ghost = extensionGhost ?? promptGhost;
   const ghostRef = useRef<HTMLDivElement>(null);
 
   const recomputeGhost = useCallback((val: string) => {
     const ta = ref.current;
     const atEnd = !ta || (ta.selectionStart === val.length && ta.selectionEnd === val.length);
-    if (!atEnd || !val) { setGhost(null); return; }
-    setGhost(findCompletion(val));
+    if (!atEnd || !val) { setPromptGhost(null); return; }
+    setPromptGhost(findCompletion(val));
   }, []);
 
   useEffect(() => {
@@ -332,6 +335,9 @@ export function ChatInput({
           const pos = start + text.length;
           ta.setSelectionRange(pos, pos);
         });
+      },
+      setGhostText: (text: string | null) => {
+        setExtensionGhost(text);
       },
       submit: (text?: string) => {
         handleSendRef.current(text);
@@ -564,7 +570,8 @@ export function ChatInput({
       if (atEnd) {
         e.preventDefault();
         const next = value + ghost;
-        setGhost(null);
+        setPromptGhost(null);
+        setExtensionGhost(null);
         onChange(next);
         requestAnimationFrame(() => {
           const t = ref.current;
@@ -576,7 +583,8 @@ export function ChatInput({
 
     // Escape dismisses ghost (without stopping an active session)
     if (ghost && e.key === "Escape") {
-      setGhost(null);
+      setPromptGhost(null);
+      setExtensionGhost(null);
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -629,7 +637,7 @@ export function ChatInput({
 
   const hasContent = value.trim() || attachments.length > 0 || !!attachedMove || !!widgetContent;
 
-  // Icon-only actions (no label) go to top-left corner; labelled actions stay in the button row
+  // Icon-only actions and compact toggles go to the top-left corner; labelled actions stay in the button row
   const iconActions = composerActions.filter((a) => a.icon && !a.label);
   const buttonActions = composerActions.filter((a) => !a.icon || !!a.label);
   const buttonStatuses = buttonActions.filter((a) => a.status?.label);
@@ -884,6 +892,23 @@ export function ChatInput({
               </div>
             )}
             <div className="composer-button-row">
+              {composerToggles.map((toggle) => {
+                const tone = toggle.busy ? "busy" : toggle.tone ?? (toggle.enabled ? "active" : "default");
+                return (
+                  <button
+                    key={toggle.key}
+                    type="button"
+                    className={`composer-toggle composer-toggle--toolbar composer-toggle--${tone}${toggle.enabled ? " is-enabled" : ""}${toggle.busy ? " is-busy" : ""}`}
+                    onClick={() => { void toggle.toggle(); }}
+                    disabled={disabled || toggle.disabled}
+                    title={toggle.title ?? toggle.extensionId}
+                    aria-label={toggle.title ?? toggle.extensionId}
+                    aria-pressed={!!toggle.enabled}
+                  >
+                    <span className="composer-toggle-label">{toggle.label}</span>
+                  </button>
+                );
+              })}
               {buttonActions.map((action) => (
                 <button
                   key={action.key}

@@ -245,6 +245,14 @@ export type ProfileUiConfig = NonNullable<Profile["ui"]>;
 export type UserProfileUiConfig = {
   dashboard?: UserProfile["dashboard"];
   leftPanel?: { widgets?: string[] };
+  pageNav?: {
+    mode?: "auto" | "compact" | "tabs" | "launcher";
+    enabled?: string[];
+    disabled?: string[];
+    pinned?: string[];
+    order?: string[];
+    labels?: Record<string, string>;
+  };
   /** Per-view panel layout overrides. Keys are view names (e.g. "chat", "actions"). */
   layouts?: Record<string, {
     left?: { mode?: "list" | "tabs"; widgets?: Array<string | { id?: string; type: string; [key: string]: unknown }>; tree?: unknown };
@@ -432,6 +440,13 @@ function mergeUserProfileUi(
       : undefined,
     leftPanel: (base?.leftPanel || override?.leftPanel)
       ? { ...(base?.leftPanel ?? {}), ...(override?.leftPanel ?? {}) }
+      : undefined,
+    pageNav: (base?.pageNav || override?.pageNav)
+      ? {
+          ...(base?.pageNav ?? {}),
+          ...(override?.pageNav ?? {}),
+          labels: override?.pageNav?.labels ?? base?.pageNav?.labels,
+        }
       : undefined,
     layouts: mergeLayouts(base?.layouts, override?.layouts),
     computer: override?.computer ?? base?.computer,

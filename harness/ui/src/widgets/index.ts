@@ -33,6 +33,7 @@ export type {
   DashboardConfig,
   PageContextHandle,
   ScopeEvent,
+  ScopeBinding,
 } from "./types";
 
 // Chrome context

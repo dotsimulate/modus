@@ -10,6 +10,7 @@
  *   profiles/_global.json     — shared MCP servers merged into every session
  *   profiles/_users.json      — template var defaults
  *   profiles/prompt-cache.json — provider prompt cache
+ *   plugins.json              — user-registered Modus plugin roots
  *   projects.json             — registry of known projects on this machine
  *   history/                  — workspace-history shadow repos
  *
@@ -71,6 +72,10 @@ export function homePromptCachePath(): string {
 
 export function homeProjectsJsonPath(): string {
   return join(MODUS_HOME, "projects.json");
+}
+
+export function homePluginsJsonPath(): string {
+  return join(MODUS_HOME, "plugins.json");
 }
 
 export function homeHistoryDir(): string {
