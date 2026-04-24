@@ -7,7 +7,7 @@
 
 import { useCallback, useState } from "react";
 import { modus } from "../modusClient";
-import type { ClientExtensionManifestItem, ExtensionSettingSchema } from "../../../sdk/index";
+import type { ClientExtensionManifestItem, ExtensionSettingSchema, ModusPlugin } from "../../../sdk/index";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 import { useProfiles } from "../providers/ProfileContext";
@@ -168,13 +168,117 @@ function ExtensionRow({
   );
 }
 
+function PluginRow({
+  plugin,
+  onRefresh,
+}: {
+  plugin: ModusPlugin;
+  onRefresh: () => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+
+  const handleToggle = async () => {
+    setSaving(true);
+    await modus.patchPlugin(plugin.id, { enabled: !plugin.enabled });
+    await onRefresh();
+    setSaving(false);
+  };
+
+  const handleRemove = async () => {
+    setSaving(true);
+    await modus.unregisterPlugin(plugin.id);
+    await onRefresh();
+    setSaving(false);
+  };
+
+  return (
+    <div className={`exw-plugin ${plugin.enabled ? "exw-plugin--on" : "exw-plugin--off"}`}>
+      <button
+        className={`exw-toggle ${plugin.enabled ? "exw-toggle--on" : ""}`}
+        onClick={handleToggle}
+        disabled={saving}
+        title={plugin.enabled ? "Disable plugin" : "Enable plugin"}
+      >
+        <span className="exw-toggle-dot" />
+      </button>
+      <div className="exw-plugin-info">
+        <span className="exw-plugin-name">{plugin.name || plugin.id}</span>
+        <span className="exw-plugin-path">{plugin.path}</span>
+      </div>
+      <button className="exw-plugin-remove" onClick={handleRemove} disabled={saving} title="Unregister plugin">
+        &times;
+      </button>
+    </div>
+  );
+}
+
+function PluginRegistry({
+  plugins,
+  onRefresh,
+}: {
+  plugins: ModusPlugin[];
+  onRefresh: () => Promise<void>;
+}) {
+  const [path, setPath] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleRegister = async () => {
+    const trimmed = path.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await modus.registerPlugin(trimmed);
+      setPath("");
+      await onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "failed to register plugin");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="exw-plugins">
+      <div className="exw-section-title">plugins</div>
+      <div className="exw-plugin-register">
+        <input
+          className="exw-plugin-input"
+          value={path}
+          placeholder="/path/to/modus-plugin"
+          onChange={(event) => setPath(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void handleRegister();
+            }
+          }}
+        />
+        <button className="exw-plugin-add" onClick={() => { void handleRegister(); }} disabled={saving || !path.trim()}>
+          add
+        </button>
+      </div>
+      {error && <div className="exw-plugin-error">{error}</div>}
+      {plugins.map((plugin) => (
+        <PluginRow key={plugin.id} plugin={plugin} onRefresh={onRefresh} />
+      ))}
+    </div>
+  );
+}
+
 export default function ExtensionsWidget() {
-  const { activeUserProfile, activeCwd, projectRoot } = useProfiles();
-  const extCwd = projectRoot ?? activeCwd;
+  const { activeUserProfile, activeCwd } = useProfiles();
+  const extCwd = activeCwd;
 
   const load = useCallback(
     () => modus.listClientExtensions(extCwd, activeUserProfile),
     [extCwd, activeUserProfile],
+  );
+
+  const loadPlugins = useCallback(
+    () => modus.listPlugins(),
+    [],
   );
 
   const { value: extensions, loading, refresh } = useWidgetPollingValue<ClientExtensionManifestItem[]>({
@@ -184,6 +288,18 @@ export default function ExtensionsWidget() {
     initialValue: [],
   });
 
+  const { value: plugins, refresh: refreshPlugins } = useWidgetPollingValue<ModusPlugin[]>({
+    load: loadPlugins,
+    scopeKey: "plugins",
+    intervalMs: 30_000,
+    initialValue: [],
+  });
+
+  const refreshAll = useCallback(async () => {
+    await refreshPlugins();
+    await refresh();
+  }, [refresh, refreshPlugins]);
+
   if (!activeUserProfile) {
     return <WidgetEmptyState>no user profile active</WidgetEmptyState>;
   }
@@ -192,20 +308,20 @@ export default function ExtensionsWidget() {
     return <WidgetEmptyState>loading extensions...</WidgetEmptyState>;
   }
 
-  if (extensions.length === 0) {
-    return <WidgetEmptyState>no extensions discovered</WidgetEmptyState>;
-  }
-
   return (
     <div className="exw-widget">
-      {extensions.map((ext) => (
-        <ExtensionRow
-          key={ext.id}
-          ext={ext}
-          userProfile={activeUserProfile}
-          onRefresh={refresh}
-        />
-      ))}
+      <PluginRegistry plugins={plugins} onRefresh={refreshAll} />
+      <div className="exw-section-title">extensions</div>
+      {extensions.length === 0
+        ? <WidgetEmptyState>no extensions discovered</WidgetEmptyState>
+        : extensions.map((ext) => (
+          <ExtensionRow
+            key={ext.id}
+            ext={ext}
+            userProfile={activeUserProfile}
+            onRefresh={refresh}
+          />
+        ))}
     </div>
   );
 }

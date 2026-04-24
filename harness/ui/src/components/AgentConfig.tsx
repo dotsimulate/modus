@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { modus } from "../modusClient";
 import type { ProviderModel, AgentConfigState } from "../../../sdk/index";
+import { providerFallbackModel } from "../../../provider-defaults";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
 import { isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
@@ -16,6 +17,13 @@ import { isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamil
 export type { AgentConfigState };
 
 const EFFORT_OPTIONS = ["off", "low", "medium", "high", "max"] as const;
+
+function formatContextWindow(tokens?: number): string | null {
+  if (!tokens) return null;
+  if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(1))}m`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
+  return String(tokens);
+}
 
 export type SessionConfigPatch = {
   provider?: string;
@@ -166,7 +174,13 @@ export function AgentConfig({
             value={config.model}
             options={providerModels
               .filter((v) => v.id !== profileModel)
-              .map((v) => ({ value: v.id }))}
+              .map((v) => {
+                const context = formatContextWindow(v.contextWindow);
+                return {
+                  value: v.id,
+                  label: context ? `${v.id}  ${context} ctx` : v.id,
+                };
+              })}
             placeholder={profileModel ?? "default"}
             searchPlaceholder="search models..."
             onChange={(model) => update({ model })}
@@ -306,10 +320,7 @@ export function AgentConfig({
 }
 
 function providerSeedModel(provider: string): string {
-  if (provider === "codex") return "gpt-5.1-codex";
-  if (provider === "gemini-cli") return "auto-gemini-3";
-  if (provider === "claude-code" || provider === "anthropic") return "claude-opus-4-6[1m]";
-  return "";
+  return providerFallbackModel(provider);
 }
 
 export function createEmptyAgentConfig(): AgentConfigState {

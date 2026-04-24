@@ -133,11 +133,38 @@ export interface MoveCapabilities {
 
 // ── Move Input (user form field) ──
 
+export interface MoveInputOption {
+  value: string;
+  label: string;
+}
+
+export interface MoveInputOptionsSource {
+  type: "agentProfiles" | "projects" | "sessions";
+  /** For project pickers, select the current project by default when possible. */
+  defaultToCurrent?: boolean;
+  /** For session pickers, resolve sessions against another input's selected project path. */
+  projectField?: string;
+  /** For session pickers, prepend an empty/default option with this label. */
+  emptyLabel?: string;
+  /** Session query limit for dynamic session menus. */
+  limit?: number;
+}
+
+export interface MoveInputVisibilityRule {
+  input: string;
+  equals?: string;
+  notEquals?: string;
+  isEmpty?: boolean;
+  notEmpty?: boolean;
+}
+
 export interface MoveInput {
   name: string;
   label?: string;
   type: "text" | "textarea" | "select" | "toggle" | "number";
-  options?: string[] | string;   // literal array or template var ref "{{agentProfiles}}"
+  options?: Array<string | MoveInputOption> | string;   // literal array or template var ref "{{agentProfiles}}"
+  optionsSource?: MoveInputOptionsSource;
+  visibleWhen?: MoveInputVisibilityRule;
   required?: boolean;
   default?: unknown;
   placeholder?: string;
@@ -502,6 +529,8 @@ export interface MoveApiContext {
    * With a payload, the agent receives: `[modus:{type}] {json}\n{message}`
    */
   notify: (message: string, emit?: { type: string; [key: string]: unknown }) => void;
+  /** Send a message to any existing session in this project. */
+  sendMessage: (sessionId: string, message: string) => Promise<void>;
 
   /** Read from the process-scoped instance store. Survives module reloads. */
   store: <T = unknown>() => T | undefined;

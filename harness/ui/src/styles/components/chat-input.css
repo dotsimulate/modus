@@ -179,6 +179,88 @@
   cursor: default;
 }
 
+.composer-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.composer-toggle::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent) inset;
+}
+
+.composer-toggle-label {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  font-weight: 600;
+  line-height: 1;
+  color: inherit;
+}
+
+.composer-toggle:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: var(--bg-hover);
+}
+
+.composer-toggle.is-enabled {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+}
+
+.composer-toggle.is-enabled::after {
+  opacity: 0.45;
+}
+
+.composer-toggle.is-busy::after {
+  opacity: 0.9;
+  animation: composer-toggle-edge 1.05s ease-in-out infinite;
+}
+
+.composer-toggle--toolbar {
+  width: 30px;
+  height: 28px;
+}
+
+.composer-toggle--error {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 45%, var(--border));
+}
+
+.composer-toggle:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+@keyframes composer-toggle-edge {
+  0%, 100% {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent) inset;
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent) inset;
+  }
+}
+
 /* Active state — mic button glows amber while recording */
 .is-recording .composer-icon-btn,
 .is-finishing .composer-icon-btn {

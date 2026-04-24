@@ -4,7 +4,7 @@ import type { MoveWidgetInfo, TerminalInfo } from "../../../sdk/index";
 import { WIDGET_DEFS, WIDGETS, dispatchUiIntent, panelHandlesIntent, panelHandlesUiIntent, widgetHandlesUiIntent, type LayoutLeaf, type LayoutNode, type UiIntent, type WidgetBase } from "../widgets";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
 import { WidgetPicker } from "./WidgetPicker";
-import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSessionBinder, ScopeSelectSessionIntentBridge } from "./pageScope";
+import { usePageContext, useLeafVisible, ScopeProvider, useScopeBus, ScopeUrlSessionBinder, ScopeSelectSessionIntentBridge, ScopeBindingBridge } from "./pageScope";
 import { MoveWidgetEmbed } from "./MoveWidgetEmbed";
 import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { modus } from "../modusClient";
@@ -735,6 +735,65 @@ function ResizableSplit({
   );
 }
 
+type ScopeNode = Extract<LayoutNode, { kind: "scope" }>;
+
+function ScopeRenderer({
+  node,
+  onNavigate,
+  onSelectSession,
+  onActivateSession,
+  empty,
+}: {
+  node: ScopeNode;
+  onNavigate: (view: View) => void;
+  onSelectSession: (id: string) => void;
+  onActivateSession?: (id: string) => void;
+  empty: ReactNode;
+}) {
+  const parentBus = useScopeBus();
+
+  const child = node.children.length === 1 ? (
+    <PanelTreeRenderer
+      node={node.children[0]}
+      onNavigate={onNavigate}
+      onSelectSession={onSelectSession}
+      onActivateSession={onActivateSession}
+      empty={empty}
+    />
+  ) : (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: "100%" }}>
+      {node.children.map((c, i) => (
+        <PanelTreeRenderer
+          key={c.id ?? `${c.kind}-${i}`}
+          node={c}
+          onNavigate={onNavigate}
+          onSelectSession={onSelectSession}
+          onActivateSession={onActivateSession}
+          empty={empty}
+        />
+      ))}
+    </div>
+  );
+
+  return (
+    <ScopeProvider
+      context={node.context}
+      onNavigate={onNavigate as unknown as (view: string) => void}
+      onSelectSession={onSelectSession}
+      onActivateSession={onActivateSession}
+    >
+      <ScopeSessionWatcher />
+      <ScopeFileOpenIntentBridge />
+      <ScopeSelectSessionIntentBridge />
+      {node.bindUrlSession && <ScopeUrlSessionBinder />}
+      {parentBus && node.bindings && node.bindings.length > 0 && (
+        <ScopeBindingBridge parentBus={parentBus} bindings={node.bindings} />
+      )}
+      {child}
+    </ScopeProvider>
+  );
+}
+
 export function PanelTreeRenderer({
   node,
   onNavigate,
@@ -808,42 +867,14 @@ export function PanelTreeRenderer({
   }
 
   if (node.kind === "scope") {
-    const child = node.children.length === 1 ? (
-      <PanelTreeRenderer
-        node={node.children[0]}
+    return (
+      <ScopeRenderer
+        node={node}
         onNavigate={onNavigate}
         onSelectSession={onSelectSession}
         onActivateSession={onActivateSession}
         empty={empty}
       />
-    ) : (
-      <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: "100%" }}>
-        {node.children.map((child, i) => (
-          <PanelTreeRenderer
-            key={child.id ?? `${child.kind}-${i}`}
-            node={child}
-            onNavigate={onNavigate}
-            onSelectSession={onSelectSession}
-            onActivateSession={onActivateSession}
-            empty={empty}
-          />
-        ))}
-      </div>
-    );
-
-    return (
-      <ScopeProvider
-        context={node.context}
-        onNavigate={onNavigate as unknown as (view: string) => void}
-        onSelectSession={onSelectSession}
-        onActivateSession={onActivateSession}
-      >
-        <ScopeSessionWatcher />
-        <ScopeFileOpenIntentBridge />
-        <ScopeSelectSessionIntentBridge />
-        {node.bindUrlSession && <ScopeUrlSessionBinder />}
-        {child}
-      </ScopeProvider>
     );
   }
 

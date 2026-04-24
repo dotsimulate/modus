@@ -42,6 +42,9 @@ import { forkConfigPage, listConfigPages } from "./pages";
 import {
   listClientExtensions, getClientExtensionById, resolveExtensionSettings,
 } from "./client-extensions";
+import {
+  listModusPlugins, patchModusPlugin, registerModusPlugin, unregisterModusPlugin,
+} from "./modus-plugins";
 import { getResolvedClientExtensionsConfig } from "./profiles";
 import {
   ProfileCoreSchema, ProfileUiSchema,
@@ -224,6 +227,7 @@ function splitUserProfilePayload(body: Record<string, unknown> | null | undefine
   const {
     dashboard,
     leftPanel,
+    pageNav,
     computer,
     editor,
     clientExtensions,
@@ -232,6 +236,7 @@ function splitUserProfilePayload(body: Record<string, unknown> | null | undefine
   const ui = {
     ...(dashboard !== undefined ? { dashboard } : {}),
     ...(leftPanel !== undefined ? { leftPanel } : {}),
+    ...(pageNav !== undefined ? { pageNav } : {}),
     ...(computer !== undefined ? { computer } : {}),
     ...(editor !== undefined ? { editor } : {}),
     ...(clientExtensions !== undefined ? { clientExtensions } : {}),
@@ -2396,6 +2401,47 @@ app.patch("/api/ui/fonts/:id", async (c) => {
   }
 });
 
+// ── Modus Plugins ──
+
+app.get("/api/plugins", (c) => {
+  return c.json(listModusPlugins());
+});
+
+app.post("/api/plugins", async (c) => {
+  try {
+    const body = await c.req.json() as { path?: string; id?: string; name?: string; enabled?: boolean };
+    if (typeof body.path !== "string" || !body.path.trim()) {
+      return c.json({ error: "path is required" }, 400);
+    }
+    const plugin = registerModusPlugin(body.path, {
+      ...(typeof body.id === "string" ? { id: body.id } : {}),
+      ...(typeof body.name === "string" ? { name: body.name } : {}),
+      ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
+    });
+    return c.json(plugin);
+  } catch (err: any) {
+    return c.json({ error: err.message ?? "failed to register plugin" }, 400);
+  }
+});
+
+app.patch("/api/plugins/:id", async (c) => {
+  try {
+    const body = await c.req.json() as { path?: string; name?: string; enabled?: boolean };
+    const plugin = patchModusPlugin(c.req.param("id"), body);
+    if (!plugin) return c.json({ error: "plugin not found" }, 404);
+    return c.json(plugin);
+  } catch (err: any) {
+    return c.json({ error: err.message ?? "failed to update plugin" }, 400);
+  }
+});
+
+app.delete("/api/plugins/:id", (c) => {
+  if (!unregisterModusPlugin(c.req.param("id"))) {
+    return c.json({ error: "plugin not found" }, 404);
+  }
+  return c.json({ ok: true });
+});
+
 // ── Client Extensions ──
 
 app.get("/api/client-extensions", (c) => {
@@ -2415,6 +2461,8 @@ app.get("/api/client-extensions", (c) => {
       id: extension.id,
       fileName: extension.fileName,
       source: extension.source,
+      pluginId: extension.pluginId,
+      pluginPath: extension.pluginPath,
       enabled: extension.enabled,
       moduleUrl: `/api/client-extensions/${encodeURIComponent(extension.id)}/module${moduleQuery}`,
       meta: extension.meta,
@@ -2544,25 +2592,33 @@ import {
   triggerAction, handleWebhook, updateActionConfig,
   resetAction, setActionPreference, getActionPreferences,
   reloadActions, cancelExecution, startNewExecution,
-  addActionTag, removeActionTag,
+  addActionTag, removeActionTag, getActionScopeKey,
 } from "./action-runner";
 import { getActionRuns as dbGetActionRuns, clearActionRuns, getExecutions, getRunsByExecution } from "./db";
 
+function actionResolveQuery(c: any): { userProfile?: string; cwd?: string } {
+  const params = new URL(c.req.url).searchParams;
+  return {
+    userProfile: params.get("userProfile") ?? undefined,
+    cwd: params.get("cwd") ?? undefined,
+  };
+}
+
+function actionResolveOpts(c: any, body?: any): { userProfile?: string; cwd?: string } {
+  const query = actionResolveQuery(c);
+  return {
+    userProfile: body?.userProfile ?? query.userProfile,
+    cwd: body?.cwd ?? query.cwd,
+  };
+}
+
 app.get("/api/actions", (c) => {
-  const userProfileName = new URL(c.req.url).searchParams.get("userProfile");
-  let actions = getActions();
-  if (userProfileName) {
-    const userProf = getUserProfile(userProfileName);
-    if (userProf?.actions && !userProf.actions.includes("*")) {
-      actions = actions.filter(a => userProf.actions!.includes(a.name));
-    }
-  }
-  return c.json(actions);
+  return c.json(getActions(actionResolveQuery(c)));
 });
 
 app.get("/api/actions/:name", (c) => {
   const name = c.req.param("name");
-  const state = getActionState(name);
+  const state = getActionState(name, actionResolveQuery(c));
   if (!state) return c.json({ error: "action not found" }, 404);
   // Derive flat fields from active execution for API compat
   const exec = Array.from(state.activeExecutions.values()).find(e => e.status === "running");
@@ -2578,7 +2634,7 @@ app.get("/api/actions/:name", (c) => {
 app.get("/api/actions/:name/runs", (c) => {
   const name = c.req.param("name");
   const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 20);
-  return c.json(dbGetActionRuns(name, limit));
+  return c.json(dbGetActionRuns(name, limit, getActionScopeKey(name, actionResolveQuery(c))));
 });
 
 // ── Execution endpoints ──
@@ -2586,7 +2642,7 @@ app.get("/api/actions/:name/runs", (c) => {
 app.get("/api/actions/:name/executions", (c) => {
   const name = c.req.param("name");
   const limit = Number(new URL(c.req.url).searchParams.get("limit") ?? 20);
-  return c.json(getExecutions(name, limit));
+  return c.json(getExecutions(name, limit, getActionScopeKey(name, actionResolveQuery(c))));
 });
 
 app.get("/api/actions/:name/executions/:execId/runs", (c) => {
@@ -2597,7 +2653,7 @@ app.get("/api/actions/:name/executions/:execId/runs", (c) => {
 
 app.post("/api/actions/:name/executions", (c) => {
   const name = c.req.param("name");
-  const result = startNewExecution(name);
+  const result = startNewExecution(name, actionResolveQuery(c));
   if (!result.ok) return c.json({ error: result.error }, 400);
   return c.json({ ok: true, executionId: result.executionId });
 });
@@ -2606,7 +2662,7 @@ app.delete("/api/actions/:name/executions/:execId", (c) => {
   const name = c.req.param("name");
   const execId = Number(c.req.param("execId"));
   if (isNaN(execId)) return c.json({ error: "invalid execution id" }, 400);
-  const ok = cancelExecution(name, execId);
+  const ok = cancelExecution(name, execId, actionResolveQuery(c));
   if (!ok) return c.json({ error: "execution not found or not active" }, 404);
   return c.json({ ok: true });
 });
@@ -2614,7 +2670,7 @@ app.delete("/api/actions/:name/executions/:execId", (c) => {
 app.post("/api/actions/:name/trigger", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json().catch(() => ({}));
-  const ok = await triggerAction(name, { userProfile: body.userProfile });
+  const ok = await triggerAction(name, actionResolveOpts(c, body));
   if (!ok) return c.json({ error: "action not found or already running" }, 400);
   return c.json({ ok: true });
 });
@@ -2630,7 +2686,7 @@ app.post("/api/actions/:name/hook", async (c) => {
 
 app.get("/api/actions/:name/info", async (c) => {
   const name = c.req.param("name");
-  const state = getActionState(name);
+  const state = getActionState(name, actionResolveQuery(c));
   if (!state) return c.json({ error: "action not found" }, 404);
   const actDir = state.actionDir;
   let contextSource = "";
@@ -2642,26 +2698,28 @@ app.get("/api/actions/:name/info", async (c) => {
 
 app.delete("/api/actions/:name/runs", (c) => {
   const name = c.req.param("name");
-  const state = getActionState(name);
+  const opts = actionResolveQuery(c);
+  const state = getActionState(name, opts);
   if (!state) return c.json({ error: "action not found" }, 404);
-  clearActionRuns(name);
+  clearActionRuns(name, state.scopeKey);
   return c.json({ ok: true });
 });
 
 app.post("/api/actions/:name/reset", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json().catch(() => ({}));
-  const ok = resetAction(name);
+  const opts = actionResolveOpts(c, body);
+  const ok = resetAction(name, opts);
   if (!ok) return c.json({ error: "action not found or running" }, 400);
   if (body.skipConfirm) {
-    setActionPreference(name, "skipResetConfirm", true);
+    setActionPreference(name, "skipResetConfirm", true, opts);
   }
   return c.json({ ok: true });
 });
 
 app.get("/api/actions/:name/preferences", (c) => {
   const name = c.req.param("name");
-  return c.json(getActionPreferences(name));
+  return c.json(getActionPreferences(name, actionResolveQuery(c)));
 });
 
 app.post("/api/actions/:name/tags", async (c) => {
@@ -2669,7 +2727,7 @@ app.post("/api/actions/:name/tags", async (c) => {
   const body = await c.req.json();
   const tag = body.tag;
   if (!tag || typeof tag !== "string") return c.json({ error: "tag required" }, 400);
-  const ok = addActionTag(name, tag.toLowerCase().trim());
+  const ok = addActionTag(name, tag.toLowerCase().trim(), actionResolveQuery(c));
   if (!ok) return c.json({ error: "action not found" }, 404);
   return c.json({ ok: true });
 });
@@ -2677,7 +2735,7 @@ app.post("/api/actions/:name/tags", async (c) => {
 app.delete("/api/actions/:name/tags/:tag", (c) => {
   const name = c.req.param("name");
   const tag = c.req.param("tag");
-  const ok = removeActionTag(name, tag);
+  const ok = removeActionTag(name, tag, actionResolveQuery(c));
   if (!ok) return c.json({ error: "action not found" }, 404);
   return c.json({ ok: true });
 });
@@ -2685,14 +2743,14 @@ app.delete("/api/actions/:name/tags/:tag", (c) => {
 app.patch("/api/actions/:name", async (c) => {
   const name = c.req.param("name");
   const body = await c.req.json();
-  const ok = updateActionConfig(name, body);
+  const ok = updateActionConfig(name, body, actionResolveOpts(c, body));
   if (!ok) return c.json({ error: "action not found" }, 404);
   return c.json({ ok: true });
 });
 
 app.post("/api/actions/reload", (c) => {
   reloadActions();
-  const actions = getActions();
+  const actions = getActions(actionResolveQuery(c));
   return c.json({ ok: true, count: actions.length });
 });
 
@@ -3360,6 +3418,7 @@ import {
   listMissionSessionIds,
   pauseMissionRun, resumeMissionRun,
 } from "./mission-runner";
+import { exportMissionTrace } from "./mission-export";
 
 // List mission definitions
 app.get("/api/missions", (c) => {
@@ -3463,6 +3522,15 @@ app.post("/api/missions/runs/:id/resume", async (c) => {
   const id = Number(c.req.param("id"));
   if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
   const result = await resumeMissionRun(id);
+  if (!result.ok) return c.json(result, 400);
+  return c.json(result);
+});
+
+// Export mission trace to project folder
+app.post("/api/missions/runs/:id/export", (c) => {
+  const id = Number(c.req.param("id"));
+  if (isNaN(id)) return c.json({ error: "invalid id" }, 400);
+  const result = exportMissionTrace(id);
   if (!result.ok) return c.json(result, 400);
   return c.json(result);
 });

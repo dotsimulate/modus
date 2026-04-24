@@ -20,6 +20,7 @@ import { readFileSync, readdirSync, existsSync } from "fs";
 import { join, resolve } from "path";
 import { interactWithSession, startSession, type StartSessionOpts, type ActiveSession } from "./session-manager";
 import { logActivity } from "./activity";
+import { exportMissionTrace } from "./mission-export";
 import {
   insertMissionRun, getMissionRun, getMissionRunNumber, listMissionRuns, updateMissionRun,
   insertMissionStep, getMissionSteps, getMissionStep, updateMissionStep,
@@ -824,6 +825,20 @@ function handleAdvance(
       summary: `Mission completed: ${run.mission_name}${cycleEnabled ? ` (after ${currentCycle} cycles)` : ""}`,
       metadata: { runId: run.id, cycles: currentCycle },
     });
+    // Export trace to mission folder
+    try {
+      const exported = exportMissionTrace(run.id);
+      if (exported.ok) {
+        logActivity({
+          userProfile: run.user_profile ?? undefined,
+          eventType: "mission_export",
+          summary: `Mission trace exported: ${exported.path}`,
+          metadata: { runId: run.id, path: exported.path },
+        });
+      }
+    } catch (e) {
+      console.error(`[mission-export] Failed to export trace for run ${run.id}:`, e);
+    }
     return { ok: true, message: `Step "${stepId}" complete. All steps done — mission complete.` };
   }
 

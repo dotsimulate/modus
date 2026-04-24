@@ -17,6 +17,7 @@ import * as ReactJSXRuntime from "react/jsx-runtime";
 import * as ReactJSXDevRuntime from "react/jsx-dev-runtime";
 import { modus, authHeaders } from "../modusClient";
 import type { MoveWidgetInfo } from "../../../sdk/index";
+import type { PageContextHandle } from "../widgets/types";
 import { onUiEvent } from "../sessionStore";
 
 export type MoveWidgetEvent = {
@@ -61,6 +62,7 @@ export type MoveWidgetProps = {
    * Returns null if no composer is available.
    */
   attachToComposer?: (payload: ComposerAttachPayload) => Promise<ComposerAttachResult> | null;
+  pageContext?: PageContextHandle;
 };
 
 export type Props = {
@@ -70,6 +72,7 @@ export type Props = {
   sessionId: string;
   /** Whether this widget was mounted via mountOnAttach (enables activate prop) */
   mountedOnAttach?: boolean;
+  pageContext?: PageContextHandle;
 };
 
 // ── Module-level widget cache ──
@@ -157,7 +160,7 @@ ${js.replace(/import\s*\{([^}]+)\}\s*from\s*["']__MODUS_REACT__["']/g, 'const {$
   }
 }
 
-export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnAttach }: Props) {
+export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnAttach, pageContext }: Props) {
   const [Component, setComponent] = useState<ComponentType<MoveWidgetProps> | null>(
     // Synchronous cache hit — no loading flash on remount
     () => moduleCache.get(widget.moduleUrl) ?? null,
@@ -268,6 +271,7 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
       activate={activate}
       subscribe={subscribe}
       attachToComposer={attachToComposer}
+      pageContext={pageContext}
     />
   );
 }

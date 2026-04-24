@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { basename, extname, join, resolve } from "path";
 import { getResolvedClientExtensionsConfig } from "./profiles";
+import { getPluginClientExtensionsDir, listEnabledModusPlugins } from "./modus-plugins";
 
 const PROJECT_EXTENSIONS_DIR = ".modus/ui/extensions";
 const BUILTIN_EXTENSIONS_DIR = join(import.meta.dir, "ui/extensions");
@@ -22,11 +23,15 @@ export type ExtensionMeta = {
   settings?: Record<string, ExtensionSettingSchema>;
 };
 
+export type ClientExtensionSource = "builtin" | "plugin" | "global" | "project";
+
 export type ClientExtensionInfo = {
   id: string;
   fileName: string;
   absolutePath: string;
-  source: "project" | "global";
+  source: ClientExtensionSource;
+  pluginId?: string;
+  pluginPath?: string;
   enabled: boolean;
   meta: ExtensionMeta;
 };
@@ -53,7 +58,15 @@ function readExtensionMeta(jsPath: string): ExtensionMeta {
   }
 }
 
-function listExtensionFiles(root: string, source: "project" | "global"): ClientExtensionInfo[] {
+function defaultEnabled(source: ClientExtensionSource): boolean {
+  return source === "builtin" || source === "plugin" || source === "project";
+}
+
+function listExtensionFiles(
+  root: string,
+  source: ClientExtensionSource,
+  context: { pluginId?: string; pluginPath?: string } = {},
+): ClientExtensionInfo[] {
   if (!existsSync(root)) return [];
   return readdirSync(root)
     .filter((entry) => EXTENSION_EXTENSIONS.has(extname(entry).toLowerCase()))
@@ -64,7 +77,8 @@ function listExtensionFiles(root: string, source: "project" | "global"): ClientE
         fileName: entry,
         absolutePath,
         source,
-        enabled: source === "project",
+        ...context,
+        enabled: defaultEnabled(source),
         meta: readExtensionMeta(absolutePath),
       };
     });
@@ -85,8 +99,8 @@ export function listClientExtensions(opts?: {
 
   const discovered = new Map<string, ClientExtensionInfo>();
 
-  // Built-in harness extensions — always enabled, not configurable
-  for (const extension of listExtensionFiles(BUILTIN_EXTENSIONS_DIR, "project")) {
+  // Built-in harness extensions ship with the executable and are enabled unless disabled.
+  for (const extension of listExtensionFiles(BUILTIN_EXTENSIONS_DIR, "builtin")) {
     discovered.set(extension.id, extension);
   }
 
@@ -96,6 +110,16 @@ export function listClientExtensions(opts?: {
         ...extension,
         enabled: enabledIds.has(extension.id),
       });
+    }
+  }
+
+  // Registered plugins mount Modus resources from arbitrary user-trusted paths.
+  for (const plugin of listEnabledModusPlugins()) {
+    for (const extension of listExtensionFiles(getPluginClientExtensionsDir(plugin), "plugin", {
+      pluginId: plugin.id,
+      pluginPath: plugin.path,
+    })) {
+      discovered.set(extension.id, extension);
     }
   }
 

@@ -17,6 +17,7 @@ import {
   SettingsManager,
   DefaultResourceLoader,
   type AgentSessionEvent,
+  type ContextUsage,
 } from "@mariozechner/pi-coding-agent";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
@@ -76,6 +77,11 @@ type PiAgentState = {
 
 function getState(session: ActiveSession): PiAgentState | null {
   return session._providerState as PiAgentState | null;
+}
+
+function getPiContextUsage(session: ActiveSession): ContextUsage | undefined {
+  const state = getState(session);
+  return state?.agentSession.getContextUsage();
 }
 
 // ── OpenRouter Pricing ──
@@ -366,7 +372,10 @@ function translateEvents(
       const usage = lastAssistant?.usage;
       const inputTokens = usage?.input ?? 0;
       const outputTokens = usage?.output ?? 0;
+      const cacheReadTokens = usage?.cacheRead ?? 0;
+      const cacheWriteTokens = usage?.cacheWrite ?? 0;
       const costTotal = usage?.cost?.total ?? 0;
+      const contextUsage = getPiContextUsage(session);
 
       const durationMs = Date.now() - session.turnStartedAt;
       session.numTurns++;
@@ -388,6 +397,11 @@ function translateEvents(
           input_tokens: inputTokens,
           output_tokens: outputTokens,
           total_tokens: inputTokens + outputTokens,
+          ...(cacheReadTokens > 0 && { cache_read_tokens: cacheReadTokens }),
+          ...(cacheWriteTokens > 0 && { cache_write_tokens: cacheWriteTokens }),
+          context_window: contextUsage?.contextWindow,
+          context_tokens_used: contextUsage?.tokens,
+          context_percent: contextUsage?.percent,
           num_turns: session.numTurns,
           total_cost_usd: session.costUsd,
         });
@@ -701,8 +715,8 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         return;
       }
 
-      if (session.status === "running" || session.status === "starting") {
-        // Streaming — queue as follow-up
+      if ((session.status === "running" || session.status === "starting") && state.agentSession.isStreaming) {
+        // Agent is actively streaming — queue as follow-up
         session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }

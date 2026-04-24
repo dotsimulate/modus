@@ -1,18 +1,20 @@
 /**
- * Codex Provider — OpenAI Codex SDK execution backend.
+ * Codex Provider — external Codex CLI execution backend.
  *
- * Handles: per-turn subprocess via Codex SDK, async event streaming,
+ * Handles: per-turn subprocess via Codex CLI, async event streaming,
  * thread resume for multi-turn, event translation to harness canonical format.
  *
  * Key difference from claude-code: Codex spawns a fresh subprocess per turn
  * (no long-lived process, no input channel). Multi-turn achieved via thread ID resume.
  */
 
-import { Codex, type Thread, type ThreadEvent, type ThreadItem } from "@openai/codex-sdk";
+import { canResumeCodexThread, Codex, Thread } from "./codex-cli-sdk";
+import type { ApprovalMode, ModelReasoningEffort, SandboxMode, ThreadEvent, ThreadItem, ThreadOptions, WebSearchMode } from "./codex-cli-sdk";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
+import { getCodexSeedModel } from "./codex-model-cache";
 import { resolveSecret } from "../secrets";
 import {
   getGlobalConfig, getProfile, resolveProfilePrompt,
@@ -28,7 +30,7 @@ type CodexState = {
   codex: Codex;
   thread: Thread | null;
   threadId: string | null;
-  threadOptions: import("@openai/codex-sdk").ThreadOptions;
+  threadOptions: ThreadOptions;
   abortController: AbortController;
   rulesFilePath?: string;
 };
@@ -70,9 +72,9 @@ function getState(session: ActiveSession): CodexState {
 
 function mapCodexReasoningEffort(
   effort?: string,
-): import("@openai/codex-sdk").ModelReasoningEffort | undefined {
+): ModelReasoningEffort | undefined {
   if (!effort || effort === "off" || effort === "max") return undefined;
-  const effortMap: Record<string, import("@openai/codex-sdk").ModelReasoningEffort> = {
+  const effortMap: Record<string, ModelReasoningEffort> = {
     low: "low",
     medium: "medium",
     high: "high",
@@ -95,7 +97,7 @@ function buildCodexInput(content: MessageContent, ctx: TurnContext): string {
   const userInput = contentToString(content);
   if (!prompt?.text) return userInput;
 
-  // Codex SDK does not expose a first-class system prompt or provider preset API.
+  // Codex CLI does not expose a first-class system prompt or provider preset API.
   // For now both prompt modes are applied as an injected instruction prelude so
   // Codex sessions actually honor the profile contract instead of ignoring it.
   const header = prompt.mode === "custom"
@@ -225,11 +227,11 @@ function mapPermissionPolicy(
   policy: PermissionPolicy | undefined,
   codexSandboxMode?: "read-only" | "workspace-write" | "danger-full-access",
 ): {
-  approvalPolicy: import("@openai/codex-sdk").ApprovalMode;
-  sandboxMode: import("@openai/codex-sdk").SandboxMode;
+  approvalPolicy: ApprovalMode;
+  sandboxMode: SandboxMode;
 } {
-  let approvalPolicy: import("@openai/codex-sdk").ApprovalMode = "never";
-  let sandboxMode: import("@openai/codex-sdk").SandboxMode = "danger-full-access";
+  let approvalPolicy: ApprovalMode = "never";
+  let sandboxMode: SandboxMode = "danger-full-access";
 
   if (!policy || policy === "bypass") {
     approvalPolicy = "never";
@@ -262,8 +264,8 @@ function mapPermissionPolicy(
 }
 
 type CodexProviderControls = {
-  sandboxMode?: import("@openai/codex-sdk").SandboxMode;
-  webSearchMode?: import("@openai/codex-sdk").WebSearchMode;
+  sandboxMode?: SandboxMode;
+  webSearchMode?: WebSearchMode;
 };
 
 function readCodexProviderControls(raw: unknown): CodexProviderControls {
@@ -277,14 +279,14 @@ function readCodexProviderControls(raw: unknown): CodexProviderControls {
     || (codex as Record<string, unknown>).sandboxMode === "workspace-write"
     || (codex as Record<string, unknown>).sandboxMode === "danger-full-access"
   ) {
-    controls.sandboxMode = (codex as Record<string, import("@openai/codex-sdk").SandboxMode>).sandboxMode;
+    controls.sandboxMode = (codex as Record<string, SandboxMode>).sandboxMode;
   }
   if (
     (codex as Record<string, unknown>).webSearchMode === "disabled"
     || (codex as Record<string, unknown>).webSearchMode === "cached"
     || (codex as Record<string, unknown>).webSearchMode === "live"
   ) {
-    controls.webSearchMode = (codex as Record<string, import("@openai/codex-sdk").WebSearchMode>).webSearchMode;
+    controls.webSearchMode = (codex as Record<string, WebSearchMode>).webSearchMode;
   }
   return controls;
 }
@@ -308,9 +310,9 @@ function resolveCodexRuntimeSettings(
     permissionPolicy?: PermissionPolicy;
   },
 ): {
-  approvalPolicy: import("@openai/codex-sdk").ApprovalMode;
-  sandboxMode: import("@openai/codex-sdk").SandboxMode;
-  webSearchMode: import("@openai/codex-sdk").WebSearchMode;
+  approvalPolicy: ApprovalMode;
+  sandboxMode: SandboxMode;
+  webSearchMode: WebSearchMode;
 } {
   const controls = readCodexProviderControls(opts.providerControls);
   const { approvalPolicy, sandboxMode: derivedSandbox } = mapPermissionPolicy(
@@ -591,8 +593,8 @@ export function createCodexProvider(): SessionProvider {
         toolStates: opts.toolStates,
         providerControls: opts.providerControls,
       });
-      const threadOptions: import("@openai/codex-sdk").ThreadOptions = {
-        model: opts.model ?? profileDef?.model ?? "gpt-5.1-codex",
+      const threadOptions: ThreadOptions = {
+        model: opts.model ?? profileDef?.model ?? getCodexSeedModel(),
         workingDirectory: session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
         skipGitRepoCheck: true,
         sandboxMode,
@@ -605,7 +607,11 @@ export function createCodexProvider(): SessionProvider {
       threadOptions.modelReasoningEffort = mapCodexReasoningEffort(opts.effort ?? profileDef?.effort);
 
       // Check if this is a resume
-      const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
+      const requestedResume = !!opts.sessionId && !!getSession(opts.sessionId);
+      const isResume = requestedResume && !!opts.sessionId && canResumeCodexThread(opts.sessionId);
+      if (requestedResume && opts.sessionId && !isResume) {
+        console.warn(`[codex] No local rollout state for ${opts.sessionId}; starting a fresh thread instead of resuming`);
+      }
 
       // On resume, session ID IS the Codex thread ID (set by rekeySession on first turn)
       const state: CodexState = {
@@ -684,7 +690,7 @@ export function createCodexProvider(): SessionProvider {
     },
 
     abort(session: ActiveSession) {
-      // Only abort when a turn may be in flight. The Codex SDK strips the
+      // Only abort when a turn may be in flight. The Codex CLI wrapper strips the
       // child's 'error' listener in its finally block, so aborting the signal
       // after a turn completes crashes the runtime via an uncaught EventEmitter
       // 'error' from Node's internal abortChildProcess.
@@ -726,8 +732,8 @@ export function createCodexProvider(): SessionProvider {
     async dispose(session: ActiveSession) {
       const state = getState(session);
       if (!state) return;
-      // Only abort when a turn may be in flight. Aborting after the Codex SDK's
-      // child_process has already exited crashes the runtime: the SDK calls
+      // Only abort when a turn may be in flight. Aborting after the Codex CLI's
+      // child_process has already exited crashes the runtime: the wrapper calls
       // child.removeAllListeners() in its finally, so the subsequent abort's
       // internal 'error' emit has no listener and bubbles up uncaught.
       if (session.status === "running" || session.status === "starting") {
@@ -834,7 +840,7 @@ async function runTurn(
               type: "system",
               subtype: "init",
               session_id: realId,
-              model: state.threadOptions.model ?? "gpt-5.1-codex",
+              model: state.threadOptions.model ?? getCodexSeedModel(),
               config: {
                 provider: ctx.opts.provider ?? "codex",
                 model: ctx.opts.model ?? state.threadOptions.model ?? "",
@@ -881,7 +887,7 @@ async function runTurn(
               break;
             }
             case "todo_list": {
-              const todos = item.items.map((it, idx) => ({
+              const todos = ((item.items ?? []) as Array<{ text: string; completed: boolean }>).map((it: { text: string; completed: boolean }, idx: number) => ({
                 content: it.text,
                 status: it.completed ? "completed" : "pending",
                 order: idx,
@@ -1035,7 +1041,7 @@ async function runTurn(
 
     session.status = "idle";
     // Replace the AbortController now that the turn's child_process has exited.
-    // The Codex SDK strips the child's 'error' listener in its finally block,
+    // The Codex CLI wrapper strips the child's 'error' listener in its finally block,
     // so aborting the old signal later would crash via an uncaught EventEmitter
     // 'error' from Node's internal abortChildProcess.
     session.abortController = new AbortController();
@@ -1066,13 +1072,26 @@ async function runTurn(
     console.error(`[codex] drain caught for ${session.sessionId}:`, err);
     const isAbort = err?.name === "AbortError" || err?.type === "abort"
       || String(err).includes("abort");
+    const isMissingRollout = isResume && String(err).includes("no rollout found for thread id");
 
-    if (isAbort) {
+    if (isMissingRollout) {
+      console.warn("[codex] missing stored rollout for " + session.sessionId + "; restarting as a fresh thread");
+      state.thread = null;
+      state.threadId = null;
+      runTurn(ctx, state, input, false, skipPromptPersist).catch((retryErr) => {
+        console.error("[codex] fresh-start retry failed for " + session.sessionId + ":", retryErr);
+        session.error = String(retryErr);
+        session.status = "error";
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: String(retryErr) });
+      });
+      return;
+    } else if (isAbort) {
       console.log(`[codex] aborted ${session.sessionId}`);
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
       // Fresh AbortController — the old signal is now attached to a dead
-      // child whose 'error' listener was stripped by the SDK's finally.
+      // child whose 'error' listener was stripped during wrapper cleanup.
       session.abortController = new AbortController();
       state.abortController = session.abortController;
 

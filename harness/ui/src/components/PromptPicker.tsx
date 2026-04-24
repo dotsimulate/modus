@@ -11,7 +11,14 @@ import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 import { estimateTokens } from "../utils/tokens";
-import type { PromptListItem, RenderResult, MoveInput, MoveListItem, ActivateMoveResult } from "../../../sdk/index";
+import type { PromptListItem, RenderResult, MoveListItem, ActivateMoveResult } from "../../../sdk/index";
+import {
+  MoveInputFields,
+  buildMoveInputs,
+  isMoveInputReady,
+  stringifyDefault,
+  useMoveInputResolver,
+} from "./MoveInputFields";
 
 export type PromptSettings = RenderResult["config"]["settings"];
 
@@ -39,61 +46,6 @@ type Props = {
   /** Notify parent when open state changes */
   onOpenChange?: (open: boolean) => void;
 };
-
-function stringifyDefault(value: unknown): string {
-  if (value === undefined || value === null) return "";
-  if (typeof value === "boolean") return value ? "yes" : "";
-  return String(value);
-}
-
-function selectOptions(
-  input: { options?: string[] | string },
-  profileNames: string[],
-): string[] {
-  if (Array.isArray(input.options)) return input.options;
-  if (input.options === "{{agentProfiles}}") return profileNames;
-  return [];
-}
-
-function isMoveInputReady(move: MoveListItem, values: Record<string, string>, profileNames: string[]): boolean {
-  return (move.inputs ?? []).every((input) => {
-    if (!input.required) return true;
-    if (input.type === "toggle") return values[input.name] !== undefined;
-    const options = selectOptions(input, profileNames);
-    if (input.type === "select" && options.length > 0) {
-      return !!(values[input.name] ?? stringifyDefault(input.default) ?? options[0]);
-    }
-    return !!String(values[input.name] ?? stringifyDefault(input.default)).trim();
-  });
-}
-
-function buildMoveInputs(
-  move: MoveListItem,
-  values: Record<string, string>,
-  profileNames: string[],
-): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const input of move.inputs ?? []) {
-    const raw = values[input.name] ?? stringifyDefault(input.default);
-    if (input.type === "toggle") {
-      result[input.name] = raw === "yes";
-      continue;
-    }
-    if (input.type === "number") {
-      const trimmed = raw.trim();
-      if (trimmed) result[input.name] = Number(trimmed);
-      continue;
-    }
-    if (input.type === "select") {
-      const options = selectOptions(input, profileNames);
-      const resolved = raw || options[0] || "";
-      if (resolved) result[input.name] = resolved;
-      continue;
-    }
-    if (raw.trim()) result[input.name] = raw;
-  }
-  return result;
-}
 
 export function PromptPicker({
   onInject, onAutoSend, onMoveActivated, onMoveAttach, direction = "up", tags,
@@ -264,6 +216,24 @@ export function PromptPicker({
     setPreviewLoading(false);
   }, []);
 
+  const selectedPrompt = selected?.kind === "prompt" ? selected.item : null;
+  const selectedMove = selected?.kind === "move" ? selected.item : null;
+  const selectedPromptInputs = (selectedPrompt?.inputs ?? []).map((input) => ({
+    ...input,
+    type: input.type ?? "text",
+  }));
+  const { resolveInputOptions, dynamicLoading } = useMoveInputResolver({
+    inputs: selectedMove?.inputs,
+    values: inputValues,
+    profileNames: resolveProfileNames(),
+    projectCwd,
+    userProfile: userProfile ?? activeUserProfile ?? undefined,
+    allowedProjectPaths: activeUP?.projects,
+  });
+  const moveReady = selectedMove
+    ? isMoveInputReady(selectedMove, inputValues, resolveInputOptions, dynamicLoading)
+    : false;
+
   const handleRender = useCallback(async (mode: "inject" | "send") => {
     if (!selected || selected.kind !== "prompt") return;
     setRendering(true);
@@ -304,7 +274,7 @@ export function PromptPicker({
     try {
       const body = {
         moveName: selected.item.name,
-        inputs: buildMoveInputs(selected.item, inputValues, resolveProfileNames()),
+        inputs: buildMoveInputs(selected.item, inputValues, resolveInputOptions),
         cwd: projectCwd,
         userProfile: userProfile ?? activeUserProfile ?? undefined,
       };
@@ -324,7 +294,7 @@ export function PromptPicker({
     inputValues,
     onMoveActivated,
     projectCwd,
-    resolveProfileNames,
+    resolveInputOptions,
     selected,
     sessionId,
     setOpenAndNotify,
@@ -334,12 +304,12 @@ export function PromptPicker({
 
   const handleAttachMove = useCallback(() => {
     if (!selected || selected.kind !== "move") return;
-    const inputs = buildMoveInputs(selected.item, inputValues, resolveProfileNames());
+    const inputs = buildMoveInputs(selected.item, inputValues, resolveInputOptions);
     onMoveAttach?.(selected.item, inputs);
     setOpenAndNotify(false);
     setSelected(null);
     setSearch("");
-  }, [selected, inputValues, resolveProfileNames, onMoveAttach, setOpenAndNotify]);
+  }, [selected, inputValues, resolveInputOptions, onMoveAttach, setOpenAndNotify]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -372,11 +342,6 @@ export function PromptPicker({
   const filteredSkills = open && q
     ? skills.filter(s => s.filename.toLowerCase().includes(q))
     : skills;
-  const selectedPrompt = selected?.kind === "prompt" ? selected.item : null;
-  const selectedMove = selected?.kind === "move" ? selected.item : null;
-  const pickerInputs = selectedPrompt?.inputs ?? selectedMove?.inputs ?? [];
-  const moveReady = selectedMove ? isMoveInputReady(selectedMove, inputValues, resolveProfileNames()) : false;
-
   return (
     <div className="prompt-picker-wrap" ref={dropdownRef}>
       <button
@@ -534,83 +499,32 @@ export function PromptPicker({
             <div className="prompt-picker-desc">{selectedPrompt?.description ?? selectedMove?.description}</div>
           )}
 
-          {pickerInputs.map((inp) => {
-            const options = selectOptions(inp as MoveInput, resolveProfileNames());
-            const isToggle = inp.type === "toggle" || inp.placeholder?.includes("yes/no");
-            const isSelect = inp.type === "select" && options.length > 0;
-            const isTextarea = inp.type === "textarea";
-            const label = ("label" in inp ? inp.label : undefined) ?? inp.placeholder ?? inp.name;
+          {selectedMove && (
+            <MoveInputFields
+              inputs={selectedMove.inputs ?? []}
+              values={inputValues}
+              profileNames={resolveProfileNames()}
+              projectCwd={projectCwd}
+              userProfile={userProfile ?? activeUserProfile ?? undefined}
+              allowedProjectPaths={activeUP?.projects}
+              onChange={(name, value) => setInputValues(prev => ({ ...prev, [name]: value }))}
+              variant="prompt-picker"
+              autoFocusFirst={true}
+              onKeyDown={handleKeyDown}
+            />
+          )}
 
-            if (isSelect) {
-              const current = inputValues[inp.name] ?? stringifyDefault(inp.default) ?? options[0];
-              return (
-                <div key={inp.name} className="prompt-picker-select">
-                  <span className="prompt-picker-select-label">{label}</span>
-                  <div className="prompt-picker-select-row">
-                    {options.map(opt => (
-                      <button
-                        key={opt}
-                        className={`prompt-picker-select-btn${current === opt ? " active" : ""}`}
-                        onClick={() => setInputValues(prev => ({ ...prev, [inp.name]: opt }))}
-                        type="button"
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
-
-            if (isToggle) {
-              const checked = (inputValues[inp.name] ?? stringifyDefault(inp.default) ?? "no") === "yes";
-              const toggleLabel = ("label" in inp ? inp.label : undefined)
-                ?? inp.placeholder?.replace(/\s*\(yes\/no\)\s*/i, "")
-                ?? inp.name;
-              return (
-                <label key={inp.name} className="prompt-picker-toggle">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => setInputValues(prev => ({
-                      ...prev,
-                      [inp.name]: e.target.checked ? "yes" : "",
-                    }))}
-                  />
-                  <span>{toggleLabel}</span>
-                </label>
-              );
-            }
-
-            if (isTextarea) {
-              return (
-                <textarea
-                  key={inp.name}
-                  className="prompt-picker-textarea"
-                  value={inputValues[inp.name] ?? ""}
-                  onChange={(e) => setInputValues(prev => ({ ...prev, [inp.name]: e.target.value }))}
-                  onKeyDown={handleKeyDown}
-                  placeholder={label}
-                  rows={3}
-                  autoFocus={pickerInputs[0]?.name === inp.name}
-                  spellCheck={false}
-                />
-              );
-            }
-
-            return (
-              <input
-                key={inp.name}
-                className="prompt-picker-input"
-                value={inputValues[inp.name] ?? ""}
-                onChange={(e) => setInputValues(prev => ({ ...prev, [inp.name]: e.target.value }))}
-                onKeyDown={handleKeyDown}
-                placeholder={label}
-                autoFocus={pickerInputs[0]?.name === inp.name}
-                spellCheck={false}
-              />
-            );
-          })}
+          {selectedPrompt && selectedPromptInputs.length > 0 && (
+            <MoveInputFields
+              inputs={selectedPromptInputs}
+              values={inputValues}
+              profileNames={resolveProfileNames()}
+              onChange={(name, value) => setInputValues(prev => ({ ...prev, [name]: value }))}
+              variant="prompt-picker"
+              autoFocusFirst={true}
+              onKeyDown={handleKeyDown}
+            />
+          )}
 
           {selectedPrompt && (
             <textarea
@@ -621,7 +535,7 @@ export function PromptPicker({
               placeholder="additional context..."
               rows={2}
               spellCheck={false}
-              autoFocus={!selectedPrompt.inputs?.length}
+              autoFocus={selectedPromptInputs.length === 0}
             />
           )}
 

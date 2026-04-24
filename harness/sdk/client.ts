@@ -52,6 +52,7 @@ import type {
   DeepAnalytics,
   MemoryItem,
   PromptCache,
+  ModusPlugin,
   ClientExtensionManifestItem,
   ProjectUiState,
   ProjectUiAssetInfo,
@@ -521,28 +522,43 @@ export class ModusClient {
   }
 
   // ── Actions ──
-  /** Lists configured actions, optionally filtered by user profile. */
-  async listActions(userProfile?: string | null): Promise<ActionInfo[]> { const q = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : ""; return (await this.fetch(`/api/actions${q}`)).json(); }
+  private actionScopeQuery(scope?: { userProfile?: string | null; cwd?: string | null } | string | null, limit?: number): string {
+    const p = new URLSearchParams();
+    if (typeof scope === "string") p.set("userProfile", scope);
+    else if (scope) {
+      if (scope.userProfile) p.set("userProfile", scope.userProfile);
+      if (scope.cwd) p.set("cwd", scope.cwd);
+    }
+    if (limit != null) p.set("limit", String(limit));
+    const q = p.toString();
+    return q ? `?${q}` : "";
+  }
+  /** Lists configured actions, optionally filtered by user profile and cwd. */
+  async listActions(scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<ActionInfo[]> { return (await this.fetch(`/api/actions${this.actionScopeQuery(scope)}`)).json(); }
   /** Returns context source and config source paths for an action. */
-  async getActionInfo(name: string): Promise<{ contextSource: string; configSource: string }> { return (await this.fetch(`/api/actions/${encodeURIComponent(name)}/info`)).json(); }
+  async getActionInfo(name: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<{ contextSource: string; configSource: string }> { return (await this.fetch(`/api/actions/${encodeURIComponent(name)}/info${this.actionScopeQuery(scope)}`)).json(); }
   /** Manually triggers an action. */
-  async triggerAction(name: string, userProfile?: string | null): Promise<void> { const r = await this.fetch(`/api/actions/${encodeURIComponent(name)}/trigger`, { method: "POST", body: JSON.stringify({ userProfile: userProfile ?? undefined }) }); if (!r.ok) throw new Error("trigger failed"); }
+  async triggerAction(name: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> {
+    const body = typeof scope === "string" ? { userProfile: scope } : { userProfile: scope?.userProfile ?? undefined, cwd: scope?.cwd ?? undefined };
+    const r = await this.fetch(`/api/actions/${encodeURIComponent(name)}/trigger`, { method: "POST", body: JSON.stringify(body) });
+    if (!r.ok) throw new Error("trigger failed");
+  }
   /** Updates action config fields (partial patch). */
-  async patchAction(name: string, patch: Record<string, unknown>): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) }); }
+  async patchAction(name: string, patch: Record<string, unknown>, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}${this.actionScopeQuery(scope)}`, { method: "PATCH", body: JSON.stringify(patch) }); }
   /** Returns execution history for an action. */
-  async getActionRuns(name: string, limit?: number): Promise<ActionRun[]> { const q = limit ? `?limit=${limit}` : ""; return (await this.fetch(`/api/actions/${encodeURIComponent(name)}/runs${q}`)).json(); }
+  async getActionRuns(name: string, limit?: number, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<ActionRun[]> { return (await this.fetch(`/api/actions/${encodeURIComponent(name)}/runs${this.actionScopeQuery(scope, limit)}`)).json(); }
   /** Deletes all run history for an action. */
-  async clearRuns(name: string): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/runs`, { method: "DELETE" }); }
+  async clearRuns(name: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/runs${this.actionScopeQuery(scope)}`, { method: "DELETE" }); }
   /** Resets an action's state (clears runs, resets schedule). */
-  async resetAction(name: string, skipConfirm?: boolean): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/reset`, { method: "POST", body: JSON.stringify({ skipConfirm }) }); }
+  async resetAction(name: string, skipConfirm?: boolean, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/reset${this.actionScopeQuery(scope)}`, { method: "POST", body: JSON.stringify({ skipConfirm }) }); }
   /** Re-scans and reloads all action configs from disk. */
-  async reloadActions(): Promise<{ ok: boolean; count: number }> { return (await this.fetch("/api/actions/reload", { method: "POST" })).json(); }
+  async reloadActions(scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<{ ok: boolean; count: number }> { return (await this.fetch(`/api/actions/reload${this.actionScopeQuery(scope)}`, { method: "POST" })).json(); }
   /** Returns user preferences for an action. */
-  async getActionPreferences(name: string): Promise<Record<string, boolean>> { return (await this.fetch(`/api/actions/${encodeURIComponent(name)}/preferences`)).json(); }
+  async getActionPreferences(name: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<Record<string, boolean>> { return (await this.fetch(`/api/actions/${encodeURIComponent(name)}/preferences${this.actionScopeQuery(scope)}`)).json(); }
   /** Adds a tag to an action. */
-  async addActionTag(name: string, tag: string): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/tags`, { method: "POST", body: JSON.stringify({ tag }) }); }
+  async addActionTag(name: string, tag: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/tags${this.actionScopeQuery(scope)}`, { method: "POST", body: JSON.stringify({ tag }) }); }
   /** Removes a tag from an action. */
-  async removeActionTag(name: string, tag: string): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/tags/${encodeURIComponent(tag)}`, { method: "DELETE" }); }
+  async removeActionTag(name: string, tag: string, scope?: { userProfile?: string | null; cwd?: string | null } | string | null): Promise<void> { await this.fetch(`/api/actions/${encodeURIComponent(name)}/tags/${encodeURIComponent(tag)}${this.actionScopeQuery(scope)}`, { method: "DELETE" }); }
 
   // ── Missions ──
   /** Lists available mission definitions for a project. Returns empty array on error. */
@@ -676,6 +692,30 @@ export class ModusClient {
   async updateNote(id: string, cwd: string, note: { title?: string; content?: string; tags?: string[] }): Promise<NoteDetail> { return (await this.fetchOrThrow(`/api/notes/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ cwd, ...note }) })).json(); }
   /** Deletes a note. */
   async deleteNote(id: string, cwd: string): Promise<void> { await this.fetchOrThrow(`/api/notes/${encodeURIComponent(id)}?cwd=${encodeURIComponent(cwd)}`, { method: "DELETE" }); }
+
+  // ── Modus Plugins ──
+  /** Lists user-registered Modus plugin roots. */
+  async listPlugins(): Promise<ModusPlugin[]> {
+    return (await this.fetchOrThrow("/api/plugins")).json();
+  }
+  /** Registers an arbitrary local path as a Modus plugin root. */
+  async registerPlugin(path: string, opts?: { id?: string; name?: string; enabled?: boolean }): Promise<ModusPlugin> {
+    return (await this.fetchOrThrow("/api/plugins", {
+      method: "POST",
+      body: JSON.stringify({ path, ...(opts ?? {}) }),
+    })).json();
+  }
+  /** Enables/disables or edits a registered Modus plugin. */
+  async patchPlugin(id: string, patch: { enabled?: boolean; path?: string; name?: string }): Promise<ModusPlugin> {
+    return (await this.fetchOrThrow(`/api/plugins/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    })).json();
+  }
+  /** Unregisters a Modus plugin root without deleting files on disk. */
+  async unregisterPlugin(id: string): Promise<void> {
+    await this.fetchOrThrow(`/api/plugins/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
 
   // ── Client Extensions ──
   /** Lists client-side extensions with their enabled status. */

@@ -6,7 +6,7 @@
  * Shows one action's status, last run info, and a trigger button.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import type { ActionInfo, ActionRun } from "../../../sdk/index";
@@ -35,12 +35,16 @@ function dotClass(a: ActionInfo): string {
 }
 
 export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfig>) {
-  const { activeUserProfile } = useProfiles();
+  const { activeUserProfile, activeCwd } = useProfiles();
   const [action, setAction] = useState<ActionInfo | null>(null);
   const [lastRun, setLastRun] = useState<ActionRun | null>(null);
   const [, setTick] = useState(0);
 
   const actionName = config.actionName;
+  const actionScope = useMemo(
+    () => ({ userProfile: activeUserProfile, cwd: activeCwd }),
+    [activeUserProfile, activeCwd],
+  );
 
   // Poll for action state
   useEffect(() => {
@@ -49,13 +53,13 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
 
     const poll = async () => {
       try {
-        const actions = await modus.listActions(activeUserProfile);
+        const actions = await modus.listActions(actionScope);
         const found = actions.find((a) => a.name === actionName);
         if (active && found) setAction(found);
       } catch { /* silent */ }
 
       try {
-        const runs = await modus.getActionRuns(actionName);
+        const runs = await modus.getActionRuns(actionName, undefined, actionScope);
         if (active && runs.length > 0) setLastRun(runs[0]);
       } catch { /* silent */ }
     };
@@ -64,18 +68,18 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
     const interval = setInterval(poll, 3000);
     const tickInterval = setInterval(() => setTick((n) => n + 1), 1000);
     return () => { active = false; clearInterval(interval); clearInterval(tickInterval); };
-  }, [actionName, activeUserProfile]);
+  }, [actionName, actionScope]);
 
   const handleTrigger = useCallback(async () => {
     if (!actionName) return;
-    await modus.triggerAction(actionName).catch(() => {});
-  }, [actionName]);
+    await modus.triggerAction(actionName, actionScope).catch(() => {});
+  }, [actionName, actionScope]);
 
   const handleToggle = useCallback(async (enabled: boolean) => {
     if (!actionName) return;
-    await modus.patchAction(actionName, { enabled }).catch(() => {});
+    await modus.patchAction(actionName, { enabled }, actionScope).catch(() => {});
     setAction((prev) => prev ? { ...prev, enabled } : prev);
-  }, [actionName]);
+  }, [actionName, actionScope]);
 
   if (!actionName) {
     return <WidgetEmptyState>no action configured</WidgetEmptyState>;

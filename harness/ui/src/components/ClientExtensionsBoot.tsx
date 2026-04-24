@@ -4,8 +4,8 @@ import { loadClientExtensions, unloadClientExtensions } from "../client-extensio
 import { useProfiles } from "../providers/ProfileContext";
 
 export function ClientExtensionsBoot() {
-  const { activeCwd, projectRoot, activeUserProfile } = useProfiles();
-  const extCwd = projectRoot ?? activeCwd;
+  const { activeCwd, activeUserProfile } = useProfiles();
+  const extCwd = activeCwd;
 
   useEffect(() => {
     let cancelled = false;

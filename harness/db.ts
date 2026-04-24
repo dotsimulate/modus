@@ -155,6 +155,8 @@ db.run(`
   )
 `);
 db.run(`CREATE INDEX IF NOT EXISTS idx_executions_action ON action_executions(action_name)`);
+try { db.run(`ALTER TABLE action_executions ADD COLUMN action_scope TEXT`); } catch { /* already exists */ }
+db.run(`CREATE INDEX IF NOT EXISTS idx_executions_scope ON action_executions(action_scope)`);
 
 // ── Action Runs (tracks each execution of an action) ──
 db.run(`
@@ -176,6 +178,8 @@ db.run(`
   )
 `);
 db.run(`CREATE INDEX IF NOT EXISTS idx_action_runs_name ON action_runs(action_name, run_number DESC)`);
+try { db.run(`ALTER TABLE action_runs ADD COLUMN action_scope TEXT`); } catch { /* already exists */ }
+db.run(`CREATE INDEX IF NOT EXISTS idx_action_runs_scope ON action_runs(action_scope, run_number DESC)`);
 // Migration: rename schedule_runs → action_runs (copy data if old table exists)
 try {
   const hasOld = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='schedule_runs'`).get();
@@ -439,8 +443,8 @@ const stmts = {
   setUiState: db.prepare(`UPDATE sessions SET ui_state = $ui_state WHERE id = $id`),
   // Action Executions
   insertExecution: db.prepare(`
-    INSERT INTO action_executions (action_name, status, started_at, config_snapshot)
-    VALUES ($action_name, $status, $started_at, $config_snapshot)
+    INSERT INTO action_executions (action_name, action_scope, status, started_at, config_snapshot)
+    VALUES ($action_name, $action_scope, $status, $started_at, $config_snapshot)
   `),
   updateExecution: db.prepare(`
     UPDATE action_executions SET
@@ -452,16 +456,21 @@ const stmts = {
     WHERE id = $id
   `),
   getExecutions: db.prepare(`
-    SELECT * FROM action_executions WHERE action_name = $action_name
+    SELECT * FROM action_executions
+    WHERE action_name = $action_name
+      AND ($action_scope IS NULL OR action_scope = $action_scope OR action_scope IS NULL)
     ORDER BY id DESC LIMIT $limit
   `),
   getActiveExecutions: db.prepare(`
-    SELECT * FROM action_executions WHERE action_name = $action_name AND status = 'running'
+    SELECT * FROM action_executions
+    WHERE action_name = $action_name
+      AND status = 'running'
+      AND ($action_scope IS NULL OR action_scope = $action_scope OR action_scope IS NULL)
   `),
   // Action Runs
   insertActionRun: db.prepare(`
-    INSERT INTO action_runs (action_name, session_id, run_number, status, started_at, cycle_number, trigger_type, user_profile, execution_id)
-    VALUES ($action_name, $session_id, $run_number, $status, $started_at, $cycle_number, $trigger_type, $user_profile, $execution_id)
+    INSERT INTO action_runs (action_name, action_scope, session_id, run_number, status, started_at, cycle_number, trigger_type, user_profile, execution_id)
+    VALUES ($action_name, $action_scope, $session_id, $run_number, $status, $started_at, $cycle_number, $trigger_type, $user_profile, $execution_id)
   `),
   updateActionRun: db.prepare(`
     UPDATE action_runs SET
@@ -478,7 +487,9 @@ const stmts = {
   `),
   getActionRuns: db.prepare(`
     SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, execution_id
-    FROM action_runs WHERE action_name = $action_name
+    FROM action_runs
+    WHERE action_name = $action_name
+      AND ($action_scope IS NULL OR action_scope = $action_scope OR action_scope IS NULL)
     ORDER BY run_number DESC LIMIT $limit
   `),
   getRunsByExecution: db.prepare(`
@@ -490,13 +501,18 @@ const stmts = {
     SELECT run_number, summary, completed_at FROM (
       SELECT run_number, summary, completed_at
       FROM action_runs
-      WHERE action_name = $action_name AND status = 'done' AND summary IS NOT NULL
+      WHERE action_name = $action_name
+        AND ($action_scope IS NULL OR action_scope = $action_scope OR action_scope IS NULL)
+        AND status = 'done'
+        AND summary IS NOT NULL
       ORDER BY run_number DESC LIMIT $limit
     ) ORDER BY run_number ASC
   `),
   getNextRunNumber: db.prepare(`
     SELECT COALESCE(MAX(run_number), 0) + 1 AS next
-    FROM action_runs WHERE action_name = $action_name
+    FROM action_runs
+    WHERE action_name = $action_name
+      AND ($action_scope IS NULL OR action_scope = $action_scope OR action_scope IS NULL)
   `),
   // Session Artifacts
   insertSessionArtifact: db.prepare(`
@@ -1117,6 +1133,7 @@ export function findAssistantUuid(sessionId: string, maxSeq: number): string | n
 export type ExecutionRow = {
   id: number;
   action_name: string;
+  action_scope: string | null;
   status: string;
   started_at: number;
   completed_at: number | null;
@@ -1126,9 +1143,14 @@ export type ExecutionRow = {
   config_snapshot: string | null;
 };
 
-export function insertExecution(actionName: string, configSnapshot?: string): number {
+export function insertExecution(actionName: string, actionScope?: string | null, configSnapshot?: string): number {
+  if (configSnapshot === undefined && typeof actionScope === "string" && actionScope.trim().startsWith("{")) {
+    configSnapshot = actionScope;
+    actionScope = null;
+  }
   stmts.insertExecution.run({
     $action_name: actionName,
+    $action_scope: actionScope ?? null,
     $status: "running",
     $started_at: Date.now(),
     $config_snapshot: configSnapshot ?? null,
@@ -1153,12 +1175,12 @@ export function updateExecution(id: number, updates: {
   });
 }
 
-export function getExecutions(actionName: string, limit = 20): ExecutionRow[] {
-  return stmts.getExecutions.all({ $action_name: actionName, $limit: limit }) as ExecutionRow[];
+export function getExecutions(actionName: string, limit = 20, actionScope?: string | null): ExecutionRow[] {
+  return stmts.getExecutions.all({ $action_name: actionName, $action_scope: actionScope ?? null, $limit: limit }) as ExecutionRow[];
 }
 
-export function getActiveExecutions(actionName: string): ExecutionRow[] {
-  return stmts.getActiveExecutions.all({ $action_name: actionName }) as ExecutionRow[];
+export function getActiveExecutions(actionName: string, actionScope?: string | null): ExecutionRow[] {
+  return stmts.getActiveExecutions.all({ $action_name: actionName, $action_scope: actionScope ?? null }) as ExecutionRow[];
 }
 
 export function getRunsByExecution(executionId: number): RunMeta[] {
@@ -1190,9 +1212,32 @@ function mapRunRow(r: any): RunMeta {
   };
 }
 
-export function insertActionRun(actionName: string, runNumber: number, sessionId: string | null, startedAt: number, cycleNumber = 1, triggerType?: string, userProfile?: string, executionId?: number): number {
+export function insertActionRun(
+  actionName: string,
+  actionScopeOrRunNumber: string | null | undefined | number,
+  runNumberOrSessionId: number | string | null,
+  sessionIdOrStartedAt: string | null | number,
+  startedAtOrCycleNumber?: number,
+  cycleNumberOrTriggerType: number | string = 1,
+  triggerTypeOrUserProfile?: string | null,
+  userProfileOrExecutionId?: string | null | number,
+  executionIdArg?: number,
+): number {
+  const scopedCall = typeof actionScopeOrRunNumber !== "number";
+  const actionScope = scopedCall ? actionScopeOrRunNumber : null;
+  const runNumber = scopedCall ? runNumberOrSessionId as number : actionScopeOrRunNumber;
+  const sessionId = scopedCall ? sessionIdOrStartedAt as string | null : runNumberOrSessionId as string | null;
+  const startedAt = scopedCall ? startedAtOrCycleNumber! : sessionIdOrStartedAt as number;
+  const cycleNumber = scopedCall ? cycleNumberOrTriggerType as number : startedAtOrCycleNumber ?? 1;
+  const triggerType = scopedCall
+    ? triggerTypeOrUserProfile ?? undefined
+    : typeof cycleNumberOrTriggerType === "string" ? cycleNumberOrTriggerType : undefined;
+  const userProfile = scopedCall ? userProfileOrExecutionId as string | null | undefined : triggerTypeOrUserProfile ?? undefined;
+  const executionId = scopedCall ? executionIdArg : userProfileOrExecutionId as number | undefined;
+
   stmts.insertActionRun.run({
     $action_name: actionName,
+    $action_scope: actionScope ?? null,
     $session_id: sessionId,
     $run_number: runNumber,
     $status: "running",
@@ -1230,13 +1275,13 @@ export function updateActionRun(id: number, updates: {
   });
 }
 
-export function getActionRuns(actionName: string, limit = 20): RunMeta[] {
-  const rows = stmts.getActionRuns.all({ $action_name: actionName, $limit: limit }) as any[];
+export function getActionRuns(actionName: string, limit = 20, actionScope?: string | null): RunMeta[] {
+  const rows = stmts.getActionRuns.all({ $action_name: actionName, $action_scope: actionScope ?? null, $limit: limit }) as any[];
   return rows.map(mapRunRow);
 }
 
-export function getRunSummaries(actionName: string, limit = 5): RunSummary[] {
-  const rows = stmts.getRunSummaries.all({ $action_name: actionName, $limit: limit }) as any[];
+export function getRunSummaries(actionName: string, limit = 5, actionScope?: string | null): RunSummary[] {
+  const rows = stmts.getRunSummaries.all({ $action_name: actionName, $action_scope: actionScope ?? null, $limit: limit }) as any[];
   return rows.map(r => ({
     runNumber: r.run_number,
     summary: r.summary,
@@ -1244,13 +1289,17 @@ export function getRunSummaries(actionName: string, limit = 5): RunSummary[] {
   }));
 }
 
-export function getNextRunNumber(actionName: string): number {
-  const row = stmts.getNextRunNumber.get({ $action_name: actionName }) as { next: number };
+export function getNextRunNumber(actionName: string, actionScope?: string | null): number {
+  const row = stmts.getNextRunNumber.get({ $action_name: actionName, $action_scope: actionScope ?? null }) as { next: number };
   return row.next;
 }
 
-export function clearActionRuns(actionName: string): void {
-  db.prepare(`DELETE FROM action_runs WHERE action_name = $name`).run({ $name: actionName });
+export function clearActionRuns(actionName: string, actionScope?: string | null): void {
+  db.prepare(`
+    DELETE FROM action_runs
+    WHERE action_name = $name
+      AND ($scope IS NULL OR action_scope = $scope OR action_scope IS NULL)
+  `).run({ $name: actionName, $scope: actionScope ?? null });
 }
 
 export function insertSessionArtifact(opts: {

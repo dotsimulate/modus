@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { modus } from "../modusClient";
-import type { ActiveSessionInfo } from "../../../sdk/index";
+import type { ActiveSessionInfo, Profile } from "../../../sdk/index";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
 import { useSession } from "../providers/SessionContext";
@@ -63,12 +63,21 @@ const editIcon = (
   </svg>
 );
 
+const duplicateIcon = (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="4" width="7" height="7" rx="1" />
+    <path d="M8 4V2.5A.5.5 0 007.5 2h-5A.5.5 0 002 2.5v5A.5.5 0 002.5 8H4" />
+  </svg>
+);
+
 export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
-  const { visibleProfiles, profiles: contextProfiles, selectProfile, activeUserProfile } = useProfiles();
+  const { visibleProfiles, profiles: contextProfiles, selectProfile, activeUserProfile, activeCwd, refreshProfiles, refreshUserProfiles } = useProfiles();
   const { newSession } = useSession();
+  const profileCwd = activeCwd;
   const [activeSessions, setActiveSessions] = useState<ActiveSessionInfo[]>([]);
   const [editorMode, setEditorMode] = useState<"closed" | "new" | "edit">("closed");
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
+  const [duplicateProfileData, setDuplicateProfileData] = useState<Profile | null>(null);
   const [hoveredBadge, setHoveredBadge] = useState<string | null>(null);
 
   useEffect(() => {
@@ -91,14 +100,45 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
   const openEdit = (name: string) => {
     setEditorMode("edit");
     setEditingProfile(name);
+    setDuplicateProfileData(null);
   };
   const openNew = () => {
     setEditorMode("new");
     setEditingProfile(null);
+    setDuplicateProfileData(null);
+  };
+  const duplicateProfile = async (name: string) => {
+    const src = contextProfiles.find((p) => p.name === name);
+    if (!src) return;
+    const copyName = `${name} (copy)`;
+    const copyData: Profile = { ...src, name: copyName };
+    // Normalize for the API call (API rejects "all" string)
+    const apiData: Record<string, unknown> = { ...copyData };
+    if (apiData.tools === "all") {
+      delete apiData.tools;
+    }
+    // Save first, then open editor so the profile is in context
+    await modus.saveProfile(copyName, apiData, profileCwd);
+    await refreshProfiles();
+    await refreshUserProfiles();
+    setEditorMode("new");
+    setEditingProfile(copyName);
+    // Store pre-loaded data so the editor doesn't need to look it up from context
+    setDuplicateProfileData(copyData);
   };
   const closeEditor = () => {
+    // If we're in new mode and the user cancels, remove the unsaved profile
+    if (editorMode === "new" && editingProfile) {
+      modus.deleteProfile(editingProfile, profileCwd).catch(() => {});
+    }
     setEditorMode("closed");
     setEditingProfile(null);
+    setDuplicateProfileData(null);
+  };
+  const finishEditor = () => {
+    setEditorMode("closed");
+    setEditingProfile(null);
+    setDuplicateProfileData(null);
   };
 
   // Editor takes over the full view
@@ -107,9 +147,10 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
       <div className="dashboard profiles-view">
         <ProfileEditor
           profiles={contextProfiles}
-          onProfilesChange={() => { closeEditor(); }}
+          onProfilesChange={finishEditor}
           mode={editorMode}
           initialProfile={editingProfile}
+          preloadedProfile={duplicateProfileData}
           onCancel={closeEditor}
         />
       </div>
@@ -132,6 +173,9 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
                 <div key={p.name} className="agent-profile-card">
                   <div className="apc-row apc-row--header">
                     <span className="apc-name">{p.name}</span>
+                    <button className="apc-edit-btn" title="duplicate" onClick={() => duplicateProfile(p.name)}>
+                      {duplicateIcon}
+                    </button>
                     <button className="apc-edit-btn" title="edit" onClick={() => openEdit(p.name)}>
                       {editIcon}
                     </button>
@@ -159,7 +203,8 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
                     </span>
                     <span className="apc-actions-spacer" />
                     <button
-                      className="apc-action apc-action--primary"
+                      className="apc-action apc-action--primary apc-action--new-session"
+                      title={`${p.name}${p.model ? ` · ${shortModel(p.model)}${p.effort ? ` · ${p.effort}` : ''}` : ''}`}
                       onClick={async () => {
                         selectProfile(p.name);
                         const id = await newSession(p.name);

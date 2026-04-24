@@ -28,7 +28,6 @@
     "@mariozechner/pi-ai": "^0.56.2",
     "@mariozechner/pi-coding-agent": "^0.56.2",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@openai/codex-sdk": "^0.113.0",
     "@resvg/resvg-js": "^2.6.2",
     "handlebars": "^4.7.8",
     "hono": "^4.12.5",

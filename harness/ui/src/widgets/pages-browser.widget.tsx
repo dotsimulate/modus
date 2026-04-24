@@ -1,20 +1,22 @@
 /**
- * Pages browser widget — lists all DashboardPages available for the project.
+ * Pages browser widget — manages the active user's page nav set.
  *
- * Groups by origin (standalone/project first, then harness, moves, actions,
- * missions). Each row: title, id, layout/block hint, "open" and "fork" buttons.
- *
- * open  → calls onNavigate(`page:${id}`)
- * fork  → POSTs /api/pages/fork (not yet implemented server-side).
- *         Until the endpoint exists, the button is disabled with a tooltip.
+ * Discovery still comes from /api/pages plus bare move pages. Rendering and
+ * enable/pin/order controls are delegated to PagePicker so the top-nav launcher
+ * and full manager share the same page preference model.
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE, authHeaders } from "../modusClient";
+import type { MoveListItem } from "../../../sdk/index";
+import { API_BASE, authHeaders, modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import type { WidgetProps } from "./types";
 import type { View } from "../views";
+import { customPageView, movePageView } from "../views";
 import { WidgetEmptyState } from "./widget-components";
+import { PagePicker } from "../components/PagePicker";
+import { usePageNavPrefs } from "../hooks/usePageNavPrefs";
+import { countPageWidgets, type PageNavItem, type PageNavOrigin } from "../pageNav";
 
 type ApiPage = {
   id: string;
@@ -24,21 +26,8 @@ type ApiPage = {
   padding?: number;
   source?: string;
   origin?: "standalone" | "harness" | "move" | "action" | "mission";
+  nav?: boolean;
 };
-
-type GroupKey = "standalone" | "harness" | "move" | "action" | "mission";
-
-const GROUP_ORDER: GroupKey[] = ["standalone", "harness", "move", "action", "mission"];
-const GROUP_LABELS: Record<GroupKey, string> = {
-  standalone: "project",
-  harness: "harness",
-  move: "moves",
-  action: "actions",
-  mission: "missions",
-};
-
-// Set to true once a POST /api/pages/fork endpoint ships.
-const FORK_ENDPOINT_READY = true;
 
 type Props = WidgetProps & {
   projectCwdOverride?: string;
@@ -46,34 +35,43 @@ type Props = WidgetProps & {
 
 export default function PagesBrowserWidget({ onNavigate, projectCwdOverride }: Props) {
   const { activeUP, activeCwd, projectRoot } = useProfiles();
+  const { prefs, canSave, savePrefs } = usePageNavPrefs();
   const cwd = projectCwdOverride ?? projectRoot ?? activeCwd ?? activeUP?.projects?.[0] ?? null;
 
   const [pages, setPages] = useState<ApiPage[]>([]);
+  const [moves, setMoves] = useState<MoveListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [forking, setForking] = useState<string | null>(null);
+  const [forking, setForking] = useState<View | null>(null);
   const [forkMessage, setForkMessage] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!cwd) {
       setPages([]);
+      setMoves([]);
       return;
     }
     setLoading(true);
     setError(null);
-    fetch(`${API_BASE}/api/pages?cwd=${encodeURIComponent(cwd)}`, {
-      headers: authHeaders(),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`status ${res.status}`);
-        return res.json();
+    Promise.all([
+      fetch(`${API_BASE}/api/pages?cwd=${encodeURIComponent(cwd)}`, {
+        headers: authHeaders(),
       })
-      .then((data) => {
-        setPages(Array.isArray(data) ? data : []);
+        .then((res) => {
+          if (!res.ok) throw new Error(`status ${res.status}`);
+          return res.json();
+        })
+        .then((data) => Array.isArray(data) ? data : []),
+      modus.listMoves(cwd).catch(() => [] as MoveListItem[]),
+    ])
+      .then(([pageData, moveData]) => {
+        setPages(pageData);
+        setMoves(moveData);
       })
       .catch((err) => {
         setError(`failed to load pages: ${err?.message ?? err}`);
         setPages([]);
+        setMoves([]);
       })
       .finally(() => setLoading(false));
   }, [cwd]);
@@ -82,17 +80,11 @@ export default function PagesBrowserWidget({ onNavigate, projectCwdOverride }: P
     load();
   }, [load]);
 
-  const handleOpen = useCallback(
-    (id: string) => {
-      onNavigate(`page:${id}` as View);
-    },
-    [onNavigate],
-  );
-
   const handleFork = useCallback(
-    async (pageId: string) => {
-      if (!cwd || !FORK_ENDPOINT_READY) return;
-      setForking(pageId);
+    async (page: PageNavItem) => {
+      if (!cwd || !page.key.startsWith("page:")) return;
+      const pageId = page.key.slice("page:".length);
+      setForking(page.key);
       setForkMessage(null);
       try {
         const res = await fetch(`${API_BASE}/api/pages/fork`, {
@@ -116,98 +108,49 @@ export default function PagesBrowserWidget({ onNavigate, projectCwdOverride }: P
   if (!cwd) return <WidgetEmptyState>no project selected</WidgetEmptyState>;
   if (loading && pages.length === 0) return <WidgetEmptyState>loading pages...</WidgetEmptyState>;
   if (error) return <WidgetEmptyState>{error}</WidgetEmptyState>;
-  if (pages.length === 0) return <WidgetEmptyState>no pages available</WidgetEmptyState>;
-
-  // Group by origin (default bucket = standalone when missing)
-  const buckets: Record<GroupKey, ApiPage[]> = {
-    standalone: [],
-    harness: [],
-    move: [],
-    action: [],
-    mission: [],
-  };
-  for (const p of pages) {
-    const key: GroupKey = (p.origin as GroupKey) ?? "standalone";
-    (buckets[key] ?? buckets.standalone).push(p);
-  }
-
+  const navItems = buildPageNavItems(pages, moves);
+  if (navItems.length === 0) return <WidgetEmptyState>no pages available</WidgetEmptyState>;
   return (
     <div className="pages-browser">
       {forkMessage && <div className="pages-browser-toast">{forkMessage}</div>}
-      {GROUP_ORDER.map((key) => {
-        const items = buckets[key];
-        if (!items.length) return null;
-        return (
-          <div key={key} className="pages-browser-group">
-            <div className="pages-browser-group-header">
-              <span className="pages-browser-group-label">{GROUP_LABELS[key]}</span>
-              <span className="pages-browser-group-count">{items.length}</span>
-            </div>
-            <div className="pages-browser-list">
-              {items.map((p) => {
-                const layoutCount = countLayoutWidgets(p);
-                const canFork = key !== "standalone";
-                return (
-                  <div key={`${key}:${p.id}`} className="pages-browser-row">
-                    <div className="pages-browser-row-main">
-                      <span className="pages-browser-row-title">{p.title}</span>
-                      <span className="pages-browser-row-id">{p.id}</span>
-                    </div>
-                    <div className="pages-browser-row-meta">
-                      {layoutCount > 0 && (
-                        <span className="pages-browser-row-count">
-                          {layoutCount} widget{layoutCount === 1 ? "" : "s"}
-                        </span>
-                      )}
-                    </div>
-                    <div className="pages-browser-row-actions">
-                      <button
-                        type="button"
-                        className="pages-browser-btn"
-                        onClick={() => handleOpen(p.id)}
-                      >
-                        open
-                      </button>
-                      {canFork && (
-                        <button
-                          type="button"
-                          className="pages-browser-btn pages-browser-btn--secondary"
-                          onClick={() => handleFork(p.id)}
-                          disabled={!FORK_ENDPOINT_READY || forking === p.id}
-                          title={
-                            FORK_ENDPOINT_READY
-                              ? "copy this page into .modus/pages for editing"
-                              : "fork endpoint pending — not yet implemented"
-                          }
-                        >
-                          {forking === p.id ? "forking..." : "fork"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+      <PagePicker
+        pages={navItems}
+        activeView={"page:pages"}
+        prefs={prefs}
+        canEdit={canSave}
+        variant="manager"
+        onNavigate={onNavigate}
+        onPrefsChange={savePrefs}
+        onFork={handleFork}
+        forkingKey={forking}
+      />
     </div>
   );
 }
 
-function countLayoutWidgets(page: ApiPage): number {
-  if (Array.isArray(page.blocks)) return page.blocks.length;
-  if (page.layout) return countInLayoutNode(page.layout);
-  return 0;
-}
-
-function countInLayoutNode(node: unknown): number {
-  if (!node || typeof node !== "object") return 0;
-  const n = node as Record<string, unknown>;
-  if (n.kind === "widget") return 1;
-  const children = n.children;
-  if (Array.isArray(children)) {
-    return children.reduce<number>((sum, child) => sum + countInLayoutNode(child), 0);
-  }
-  return 0;
+function buildPageNavItems(pages: ApiPage[], moves: MoveListItem[]): PageNavItem[] {
+  const items = pages.map((page): PageNavItem => ({
+    key: customPageView(page.id),
+    view: customPageView(page.id),
+    id: page.id,
+    title: page.title,
+    label: page.title,
+    origin: (page.origin as PageNavOrigin | undefined) ?? "standalone",
+    navDefault: page.nav !== false,
+    widgetCount: countPageWidgets(page),
+    canFork: page.origin !== undefined && page.origin !== "standalone",
+  }));
+  const pageIds = new Set(pages.map((page) => page.id));
+  const bareMovePages = moves
+    .filter((move) => move.page && !move.page.layout && !pageIds.has(move.page.id))
+    .map((move): PageNavItem => ({
+      key: movePageView(move.name),
+      view: movePageView(move.name),
+      id: move.page!.id,
+      title: move.page!.title,
+      label: move.page!.title,
+      origin: "move",
+      navDefault: move.page!.nav !== false,
+    }));
+  return [...items, ...bareMovePages];
 }

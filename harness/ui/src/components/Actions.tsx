@@ -278,17 +278,19 @@ function RunRow({ run, onSelect, onPeek }: { run: ActionRun; onSelect: (id: stri
 
 // ── Tab: About ──
 
-function AboutTab({ action }: { action: ActionInfo }) {
+type ActionScope = { userProfile?: string | null; cwd?: string | null };
+
+function AboutTab({ action, scope }: { action: ActionInfo; scope: ActionScope }) {
   const [desc, setDesc] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    modus.getActionInfo(action.name).then(info => {
+    modus.getActionInfo(action.name, scope).then(info => {
       try {
         const config = JSON.parse(info.configSource);
         setDesc(config.longDescription || null);
       } catch { setDesc(null); }
     }).catch(() => setDesc(null));
-  }, [action.name]);
+  }, [action.name, scope]);
 
   const hasRetry = (action.maxRetries ?? 0) > 0 || (action.maxTransientRetries ?? 0) > 0;
   const hasNotify = action.notify && action.notify.length > 0;
@@ -358,12 +360,12 @@ function AboutTab({ action }: { action: ActionInfo }) {
 
 // ── Tab: Files ──
 
-function FilesTab({ actionName }: { actionName: string }) {
+function FilesTab({ actionName, scope }: { actionName: string; scope: ActionScope }) {
   const [info, setInfo] = useState<{ contextSource: string; configSource: string } | null>(null);
 
   useEffect(() => {
-    modus.getActionInfo(actionName).then(setInfo).catch(() => {});
-  }, [actionName]);
+    modus.getActionInfo(actionName, scope).then(setInfo).catch(() => {});
+  }, [actionName, scope]);
 
   if (!info) return <div className="sched-tab-content sched-runs-empty">loading...</div>;
 
@@ -468,6 +470,7 @@ function ActionCard({
   onPeekSession,
   onClearRuns,
   onArchive,
+  scope,
 }: {
   action: ActionInfo;
   expanded: boolean;
@@ -479,6 +482,7 @@ function ActionCard({
   onPeekSession?: (id: string) => void;
   onClearRuns: () => void;
   onArchive: () => void;
+  scope: ActionScope;
 }) {
   const [runs, setRuns] = useState<ActionRun[]>([]);
   const [tab, setTab] = useState<TabKey>("runs");
@@ -489,26 +493,26 @@ function ActionCard({
     let active = true;
     const load = async () => {
       try {
-        const r = await modus.getActionRuns(action.name);
+        const r = await modus.getActionRuns(action.name, undefined, scope);
         if (active) setRuns(r);
       } catch { /* silent */ }
     };
     load();
-    modus.getActionPreferences(action.name).then(prefs => {
+    modus.getActionPreferences(action.name, scope).then(prefs => {
       if (active && prefs.skipResetConfirm) setSkipResetConfirm(true);
     }).catch(() => {});
     const interval = setInterval(load, 2000);
     return () => { active = false; clearInterval(interval); };
-  }, [expanded, action.name]);
+  }, [expanded, action.name, scope]);
 
   const handleClear = async () => {
-    await modus.clearRuns(action.name).catch(() => {});
+    await modus.clearRuns(action.name, scope).catch(() => {});
     setRuns([]);
     onClearRuns();
   };
 
   const handleReset = async (dontAskAgain: boolean) => {
-    await modus.resetAction(action.name, dontAskAgain).catch(() => {});
+    await modus.resetAction(action.name, dontAskAgain, scope).catch(() => {});
     setRuns([]);
     if (dontAskAgain) setSkipResetConfirm(true);
   };
@@ -614,8 +618,8 @@ function ActionCard({
                 }
               />
             )}
-            {tab === "about" && <AboutTab action={action} />}
-            {tab === "files" && <FilesTab actionName={action.name} />}
+            {tab === "about" && <AboutTab action={action} scope={scope} />}
+            {tab === "files" && <FilesTab actionName={action.name} scope={scope} />}
           </div>
         </div>
       </div>
@@ -626,11 +630,15 @@ function ActionCard({
 // ── Actions View ──
 
 export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Props) {
-  const { activeUserProfile } = useProfiles();
+  const { activeUserProfile, activeCwd } = useProfiles();
   const [actions, setActions] = useState<ActionInfo[]>([]);
   const [expandedName, setExpandedName] = useState<string | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const actionScope = useMemo(
+    () => ({ userProfile: activeUserProfile, cwd: activeCwd }),
+    [activeUserProfile, activeCwd],
+  );
 
   // 1s render tick for smooth countdowns
   const [, setTick] = useState(0);
@@ -644,41 +652,41 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
     let active = true;
     const poll = async () => {
       try {
-        const a = await modus.listActions(activeUserProfile);
+        const a = await modus.listActions(actionScope);
         if (active) setActions(a);
       } catch { /* silent */ }
     };
-    modus.reloadActions().then(poll, poll);
+    modus.reloadActions(actionScope).then(poll, poll);
     const interval = setInterval(poll, 2000);
     return () => { active = false; clearInterval(interval); };
-  }, [activeUserProfile]);
+  }, [actionScope]);
 
   const handleToggle = useCallback(async (name: string, enabled: boolean) => {
-    await modus.patchAction(name, { enabled }).catch(() => {});
+    await modus.patchAction(name, { enabled }, actionScope).catch(() => {});
     setActions(prev => prev.map(a =>
       a.name === name ? { ...a, enabled } : a
     ));
-  }, []);
+  }, [actionScope]);
 
   const handleTrigger = useCallback(async (name: string) => {
-    await modus.triggerAction(name).catch(() => {});
-  }, []);
+    await modus.triggerAction(name, actionScope).catch(() => {});
+  }, [actionScope]);
 
   const handleArchive = useCallback(async (name: string) => {
     const action = actions.find(a => a.name === name);
     const isArchived = action?.tags?.includes("archived");
     if (isArchived) {
-      await modus.removeActionTag(name, "archived").catch(() => {});
+      await modus.removeActionTag(name, "archived", actionScope).catch(() => {});
       setActions(prev => prev.map(a =>
         a.name === name ? { ...a, tags: (a.tags ?? []).filter(t => t !== "archived") } : a
       ));
     } else {
-      await modus.addActionTag(name, "archived").catch(() => {});
+      await modus.addActionTag(name, "archived", actionScope).catch(() => {});
       setActions(prev => prev.map(a =>
         a.name === name ? { ...a, tags: [...(a.tags ?? []), "archived"] } : a
       ));
     }
-  }, [actions]);
+  }, [actions, actionScope]);
 
   // Collect all unique tags (excluding "archived")
   const allTags = useMemo(() => {
@@ -744,7 +752,7 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
         <div className="sched-empty">
           <span>no actions configured</span>
           <span className="sched-empty-hint">
-            create a directory in harness/actions/ with action.json + context.ts
+            create a directory in .modus/actions/ with action.json + context.ts
           </span>
         </div>
       )}
@@ -753,10 +761,10 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
       <div className="sched-grid">
         {activeActions.map(a => (
           <ActionCard
-            key={a.name}
+            key={a.scopeKey ?? a.name}
             action={a}
-            expanded={expandedName === a.name}
-            onToggleExpand={() => setExpandedName(expandedName === a.name ? null : a.name)}
+            expanded={expandedName === (a.scopeKey ?? a.name)}
+            onToggleExpand={() => setExpandedName(expandedName === (a.scopeKey ?? a.name) ? null : (a.scopeKey ?? a.name))}
             onToggleEnabled={(enabled) => handleToggle(a.name, enabled)}
             onTrigger={() => handleTrigger(a.name)}
             onOpenTerminal={onOpenTerminal}
@@ -764,6 +772,7 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
             onPeekSession={onPeekSession}
             onClearRuns={() => {}}
             onArchive={() => handleArchive(a.name)}
+            scope={actionScope}
           />
         ))}
       </div>
@@ -784,16 +793,18 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
             <div className="sched-grid">
               {archivedActions.map(a => (
                 <ActionCard
-                  key={a.name}
+                  key={a.scopeKey ?? a.name}
                   action={a}
-                  expanded={expandedName === a.name}
-                  onToggleExpand={() => setExpandedName(expandedName === a.name ? null : a.name)}
+                  expanded={expandedName === (a.scopeKey ?? a.name)}
+                  onToggleExpand={() => setExpandedName(expandedName === (a.scopeKey ?? a.name) ? null : (a.scopeKey ?? a.name))}
                   onToggleEnabled={(enabled) => handleToggle(a.name, enabled)}
                   onTrigger={() => handleTrigger(a.name)}
                   onOpenTerminal={onOpenTerminal}
                   onSelectSession={onSelectSession}
+                  onPeekSession={onPeekSession}
                   onClearRuns={() => {}}
                   onArchive={() => handleArchive(a.name)}
+                  scope={actionScope}
                 />
               ))}
             </div>

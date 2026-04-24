@@ -2,13 +2,20 @@
  * Provider Models — fetch available models from each provider's API.
  */
 
-import { readFileSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import { readCodexModelsCache } from "./codex-model-cache";
 import { resolveSecret } from "../secrets";
 import { cursorAgentSpawnArgv0 } from "./cursor-resolve-bin";
+import { getGlobalConfig } from "../profiles";
 
-type ModelInfo = { id: string; owned_by?: string };
+export type ProviderModelInfo = {
+  id: string;
+  owned_by?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  contextSource?: "api" | "provider-default" | "fallback";
+};
+
+type ModelInfo = ProviderModelInfo;
 
 const CLAUDE_MODELS: ModelInfo[] = [
   { id: "claude-opus-4-7", owned_by: "anthropic" },
@@ -28,21 +35,6 @@ const GEMINI_MODELS: ModelInfo[] = [
   { id: "gemini-3-pro-preview", owned_by: "google" },
   { id: "gemini-3-flash-preview", owned_by: "google" },
 ];
-
-/** Read models from Codex CLI's local cache (~/.codex/models_cache.json). */
-function readCodexModelsCache(): ModelInfo[] {
-  try {
-    const cachePath = join(homedir(), ".codex", "models_cache.json");
-    const raw = JSON.parse(readFileSync(cachePath, "utf-8"));
-    if (!Array.isArray(raw.models)) return [];
-    return raw.models
-      .filter((m: any) => m.visibility !== "hide")
-      .sort((a: any, b: any) => (a.priority ?? 99) - (b.priority ?? 99))
-      .map((m: any) => ({ id: m.slug, owned_by: "openai" }));
-  } catch {
-    return [{ id: "gpt-5.1-codex", owned_by: "openai" }];
-  }
-}
 
 /** Fetch models from cursor-agent CLI by parsing its `models` command output. */
 async function fetchCursorModels(): Promise<ModelInfo[]> {
@@ -73,6 +65,43 @@ const CURSOR_FALLBACK_MODELS: ModelInfo[] = [
   { id: "composer-2", owned_by: "cursor" },
   { id: "composer-1.5", owned_by: "cursor" },
 ];
+
+function positiveNumber(value: unknown): number | undefined {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function contextWindowFromModel(raw: any): number | undefined {
+  return positiveNumber(raw?.contextWindow)
+    ?? positiveNumber(raw?.context_window)
+    ?? positiveNumber(raw?.context_length)
+    ?? positiveNumber(raw?.max_context_tokens)
+    ?? positiveNumber(raw?.max_input_tokens)
+    ?? positiveNumber(raw?.max_tokens);
+}
+
+function maxOutputTokensFromModel(raw: any): number | undefined {
+  return positiveNumber(raw?.maxOutputTokens)
+    ?? positiveNumber(raw?.max_output_tokens)
+    ?? positiveNumber(raw?.max_completion_tokens)
+    ?? positiveNumber(raw?.top_provider?.max_completion_tokens);
+}
+
+function withProviderDefaults(provider: string, model: ModelInfo): ModelInfo {
+  const defaults = getGlobalConfig().providerDefaults?.[provider];
+  const contextWindow = defaults?.contextWindow ?? model.contextWindow;
+  const maxOutputTokens = defaults?.maxOutputTokens ?? model.maxOutputTokens;
+  return {
+    ...model,
+    ...(contextWindow ? { contextWindow } : {}),
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
+    contextSource: defaults?.contextWindow
+      ? "provider-default"
+      : model.contextWindow
+        ? "api"
+        : model.contextSource,
+  };
+}
 
 function getBaseURL(provider: string): { url: string; apiKey: string } {
   switch (provider) {
@@ -140,5 +169,18 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
     : (json && typeof json === "object" && "data" in json && Array.isArray(json.data))
       ? json.data
       : [];
-  return data.map((m: any) => ({ id: m.id ?? m.name, owned_by: m.owned_by }));
+  return data
+    .map((m: any) => {
+      const id = m.id ?? m.name;
+      if (!id) return null;
+      const contextWindow = contextWindowFromModel(m);
+      const maxOutputTokens = maxOutputTokensFromModel(m);
+      return withProviderDefaults(provider, {
+        id,
+        owned_by: m.owned_by,
+        ...(contextWindow ? { contextWindow } : {}),
+        ...(maxOutputTokens ? { maxOutputTokens } : {}),
+      });
+    })
+    .filter((m): m is ModelInfo => !!m);
 }

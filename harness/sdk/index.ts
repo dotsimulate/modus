@@ -76,6 +76,9 @@ export type {
   ActionExecution,
   // Moves
   MoveInput,
+  MoveInputOption,
+  MoveInputOptionsSource,
+  MoveInputVisibilityRule,
   MovePageInfo,
   MoveListItem,
   MoveWidgetInfo,
@@ -132,6 +135,7 @@ export type {
   // Client extensions
   ExtensionSettingSchema,
   ExtensionMeta,
+  ModusPlugin,
   ClientExtensionManifestItem,
   // Memory
   MemoryItem,

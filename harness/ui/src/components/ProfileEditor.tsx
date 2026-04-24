@@ -11,6 +11,7 @@ type Props = {
   onProfilesChange: () => void;
   mode?: "closed" | "new" | "edit";
   initialProfile?: string | null;
+  preloadedProfile?: Profile | null;
   onCancel?: () => void;
 };
 
@@ -248,7 +249,8 @@ function ProfileForm({
   const previousProviderRef = useRef(provider);
 
   const enabledToolCount = Object.values(toolStates).filter((s) => s === "on").length;
-  const toolSummary = enabledToolCount === 0 ? "all" : `${enabledToolCount} selected`;
+  const toolsAll = enabledToolCount === 0;
+  const toolSummary = toolsAll ? "all" : enabledToolCount === 0 ? "all" : `${enabledToolCount} selected`;
 
   useEffect(() => {
     const providerChanged = previousProviderRef.current !== provider;
@@ -427,6 +429,7 @@ export function ProfileEditor({
   onProfilesChange,
   mode = "closed",
   initialProfile = null,
+  preloadedProfile = null,
   onCancel,
 }: Props) {
   const { activeUserProfile, activeUP, activeCwd, projectRoot, refreshProfiles, refreshUserProfiles } = useProfiles();
@@ -434,10 +437,10 @@ export function ProfileEditor({
 
   const isOpen = mode !== "closed";
   const isNew = mode === "new";
-  const selected = profiles.find((p) => p.name === initialProfile) ?? null;
+  const selected = preloadedProfile ?? profiles.find((p) => p.name === initialProfile) ?? null;
 
   const formProfile: Profile = isNew
-    ? { name: "", description: "", prompt: "", tools: "all" as const }
+    ? (selected ?? { name: "", description: "", prompt: "", tools: "all" as const })
     : (selected ?? { name: "", description: "", prompt: "", tools: "all" as const });
 
   const handleSave = async (data: Omit<Profile, "name"> & { name?: string }) => {
@@ -471,7 +474,7 @@ export function ProfileEditor({
       <div className="profile-editor-body">
         {(isNew || selected) ? (
           <ProfileForm
-            key={isNew ? "new" : selected!.name}
+            key={isNew ? `new:${formProfile.name}` : selected!.name}
             profile={formProfile}
             onSave={handleSave}
             onDelete={!isNew && selected ? handleDelete : undefined}

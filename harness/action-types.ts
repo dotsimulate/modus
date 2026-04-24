@@ -465,9 +465,13 @@ export interface ExecutionState {
 /** Runtime state per action (in-memory, not persisted) */
 export interface ActionState {
   config: ActionConfig;
+  /** Stable internal identity: "harness:<name>" or "project:<cwd>:<name>" */
+  scopeKey: string;
   /** Filesystem directory containing this action's config + context.ts */
   actionDir: string;
   origin: "harness" | "project";
+  /** Project root for project-local actions. Undefined for harness actions. */
+  projectCwd?: string;
   activeExecutions: Map<number, ExecutionState>; // keyed by execution ID
   lastRunAt: number | null;
   nextRunAt: number | null;

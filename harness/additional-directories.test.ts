@@ -115,7 +115,7 @@ describe("additionalDirectories", () => {
   test("passes additional directories to Codex thread options", async () => {
     let capturedThreadOptions: any;
 
-    mock.module("@openai/codex-sdk", () => ({
+    mock.module("./providers/codex-cli-sdk", () => ({
       Codex: class {
         startThread(options: any) {
           capturedThreadOptions = options;
@@ -151,5 +151,98 @@ describe("additionalDirectories", () => {
     await Bun.sleep(0);
 
     expect(capturedThreadOptions.additionalDirectories).toEqual(["/tmp/shared"]);
+  });
+
+  test("starts a fresh Codex thread when persisted rollout state is missing", async () => {
+    const calls: string[] = [];
+    let capturedThreadOptions: any;
+
+    mock.module("./db", () => ({
+      getSession(id: string) {
+        return id === "stale-thread" ? { id, message_count: 0 } : null;
+      },
+      updateSessionStatus() {},
+      getMaxSeq() {
+        return 0;
+      },
+    }));
+
+    mock.module("./activity", () => ({
+      logActivity() {},
+    }));
+
+    mock.module("./secrets", () => ({
+      resolveSecret() {
+        return undefined;
+      },
+    }));
+
+    mock.module("./profiles", () => ({
+      getGlobalConfig() {
+        return {};
+      },
+      getProfile() {
+        return undefined;
+      },
+      resolveProfilePrompt() {
+        return undefined;
+      },
+    }));
+
+    mock.module("./providers/codex-model-cache", () => ({
+      getCodexSeedModel() {
+        return "gpt-5.4";
+      },
+    }));
+
+    mock.module("./providers/codex-cli-sdk", () => ({
+      canResumeCodexThread(id: string) {
+        calls.push(`canResume:${id}`);
+        return false;
+      },
+      Thread: class {},
+      Codex: class {
+        startThread(options: any) {
+          capturedThreadOptions = options;
+          calls.push("startThread");
+          return {
+            async runStreamed() {
+              return {
+                events: (async function* () {
+                  yield { type: "thread.started", thread_id: "fresh-thread" };
+                  yield { type: "turn.started" };
+                  yield {
+                    type: "turn.completed",
+                    usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 },
+                  };
+                })(),
+              };
+            },
+          };
+        }
+
+        resumeThread() {
+          calls.push("resumeThread");
+          throw new Error("resumeThread should not be called without local rollout state");
+        }
+      },
+    }));
+
+    const { createCodexProvider } = await import("./providers/codex");
+    const session = makeSession(["/tmp/shared"]);
+    session.provider = "codex";
+    session.sessionId = "stale-thread";
+    session.tempId = "stale-thread";
+    const provider = createCodexProvider();
+    provider.startTurn(makeTurnContext(session, { provider: "codex", sessionId: "stale-thread" }));
+
+    await Bun.sleep(10);
+
+    expect(calls).toContain("canResume:stale-thread");
+    expect(calls).toContain("startThread");
+    expect(calls).not.toContain("resumeThread");
+    expect(capturedThreadOptions.additionalDirectories).toEqual(["/tmp/shared"]);
+    expect(session.sessionId).toBe("fresh-thread");
+    expect(session.status).toBe("idle");
   });
 });

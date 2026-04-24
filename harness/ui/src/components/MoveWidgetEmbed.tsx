@@ -31,7 +31,7 @@ function cacheKey(moveName: string, cwd: string, widgetId: string): string {
   return `${moveName}\0${cwd}\0${widgetId}`;
 }
 
-export function MoveWidgetEmbed({ moveName, widgetId }: Props) {
+export function MoveWidgetEmbed({ moveName, widgetId, pageContext }: Props) {
   const { activeCwd, activeUserProfile } = useProfiles();
   const cwd = activeCwd ?? "";
   const key = cacheKey(moveName, cwd, widgetId);
@@ -87,6 +87,7 @@ export function MoveWidgetEmbed({ moveName, widgetId }: Props) {
       instanceId={attachment.instanceId}
       sessionId=""
       mountedOnAttach
+      pageContext={pageContext}
     />
   );
 }

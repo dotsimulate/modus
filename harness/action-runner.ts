@@ -23,8 +23,8 @@
  */
 
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs";
-import { join } from "path";
-import { getAllUserProfiles } from "./profiles";
+import { join, resolve } from "path";
+import { getAllUserProfiles, getUserProfile } from "./profiles";
 import {
   interactWithSession, startSession, getActiveSession, switchProfile,
   attachArtifactToSession, watchSession, type ActiveSession,
@@ -87,6 +87,125 @@ function mimeToExtension(mime: string): string {
 const actionStates = new Map<string, ActionState>();
 let tickInterval: ReturnType<typeof setInterval> | null = null;
 
+type ActionResolveOpts = {
+  userProfile?: string | null;
+  cwd?: string | null;
+};
+
+type ActionInfo = ActionConfig & {
+  origin: "harness" | "project";
+  scopeKey: string;
+  projectCwd?: string;
+  nextRunAt: number | null;
+  lastRunAt: number | null;
+  lastStatus: string | null;
+  running: boolean;
+  activeSessions: number;
+  cycleNumber: number;
+  cycleRunCount: number;
+  exhausted: boolean;
+};
+
+function normalizeCwd(cwd: string): string {
+  return resolve(cwd);
+}
+
+function harnessActionKey(name: string): string {
+  return `harness:${name}`;
+}
+
+function projectActionKey(projectCwd: string, name: string): string {
+  return `project:${normalizeCwd(projectCwd)}:${name}`;
+}
+
+function actionScopeKey(name: string, projectCwd?: string): string {
+  return projectCwd ? projectActionKey(projectCwd, name) : harnessActionKey(name);
+}
+
+function userProfileProjectCwds(userProfileName?: string | null): string[] {
+  if (!userProfileName) return [];
+  const profile = getUserProfile(userProfileName);
+  return (profile?.projects ?? []).map(normalizeCwd);
+}
+
+function stateMatchesCwd(state: ActionState, cwd?: string | null): boolean {
+  if (!cwd) return true;
+  if (state.origin === "harness") return true;
+  if (!state.projectCwd) return false;
+  const normalized = normalizeCwd(cwd);
+  return normalized === state.projectCwd || normalized.startsWith(`${state.projectCwd}/`);
+}
+
+function stateVisibleToUserProfile(state: ActionState, userProfileName?: string | null): boolean {
+  if (!userProfileName || state.origin === "harness") return true;
+  if (!state.projectCwd) return false;
+  return userProfileProjectCwds(userProfileName).includes(state.projectCwd);
+}
+
+function actionAllowedByUserProfile(state: ActionState, userProfileName?: string | null): boolean {
+  if (!userProfileName) return true;
+  const profile = getUserProfile(userProfileName);
+  if (!profile?.actions || profile.actions.includes("*")) return true;
+  return profile.actions.includes(state.config.name);
+}
+
+function visibleActionStates(opts: ActionResolveOpts = {}): ActionState[] {
+  const states = Array.from(actionStates.values())
+    .filter((state) => stateVisibleToUserProfile(state, opts.userProfile))
+    .filter((state) => stateMatchesCwd(state, opts.cwd))
+    .filter((state) => actionAllowedByUserProfile(state, opts.userProfile));
+
+  const projectNames = new Set(states
+    .filter((state) => state.origin === "project")
+    .map((state) => state.config.name));
+
+  return states.filter((state) => state.origin === "project" || !projectNames.has(state.config.name));
+}
+
+function resolveActionState(name: string, opts: ActionResolveOpts = {}): ActionState | undefined {
+  const candidates = Array.from(actionStates.values())
+    .filter((state) => state.config.name === name)
+    .filter((state) => stateVisibleToUserProfile(state, opts.userProfile))
+    .filter((state) => stateMatchesCwd(state, opts.cwd))
+    .filter((state) => actionAllowedByUserProfile(state, opts.userProfile));
+
+  const projectCandidates = candidates.filter((state) => state.origin === "project");
+  if (projectCandidates.length > 0) {
+    if (opts.cwd) return projectCandidates[0];
+    const projects = userProfileProjectCwds(opts.userProfile);
+    return projectCandidates.sort((a, b) =>
+      projects.indexOf(a.projectCwd ?? "") - projects.indexOf(b.projectCwd ?? ""),
+    )[0];
+  }
+
+  return candidates.find((state) => state.origin === "harness") ?? candidates[0];
+}
+
+function actionToInfo(s: ActionState): ActionInfo {
+  const exec = findActiveExecution(s);
+  const activeSessions = [...s.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
+  return {
+    ...s.config,
+    origin: s.origin,
+    scopeKey: s.scopeKey,
+    ...(s.projectCwd ? { projectCwd: s.projectCwd } : {}),
+    nextRunAt: s.nextRunAt,
+    lastRunAt: s.lastRunAt,
+    lastStatus: exec?.lastStatus ?? null,
+    running: activeSessions > 0,
+    activeSessions,
+    cycleNumber: exec?.cycleNumber ?? 1,
+    cycleRunCount: exec?.cycleRunCount ?? 0,
+    exhausted: s.exhausted,
+  };
+}
+
+function chainScopeMatches(sourceState: ActionState, watchState: ActionState): boolean {
+  if (watchState.origin === "harness") return sourceState.origin === "harness";
+  if (sourceState.origin === "harness") return true;
+  return watchState.projectCwd === sourceState.projectCwd;
+}
+
 // ── Interval Parsing ──
 
 function parseInterval(interval: string): number {
@@ -140,8 +259,8 @@ function findActiveExecution(state: ActionState): ExecutionState | null {
 }
 
 /** Create a new execution in DB and return in-memory state */
-function createExecution(actionName: string, config: ActionConfig): ExecutionState {
-  const id = insertExecution(actionName, JSON.stringify(config));
+function createExecution(actionName: string, actionScope: string, config: ActionConfig): ExecutionState {
+  const id = insertExecution(actionName, actionScope, JSON.stringify(config));
   return {
     id,
     actionName,
@@ -186,13 +305,13 @@ function handleOnExhausted(state: ActionState): void {
   switch (mode) {
     case "archive":
       state.exhausted = true;
-      setActionEnabled(state.config.name, false);
+      setActionEnabledForState(state, false);
       break;
     case "idle":
       state.nextRunAt = null;
       break;
     case "restart": {
-      const exec = createExecution(state.config.name, state.config);
+      const exec = createExecution(state.config.name, state.scopeKey, state.config);
       state.activeExecutions.set(exec.id, exec);
       break;
     }
@@ -220,10 +339,11 @@ function discoverProjectActionDirs(): Array<{ actionsDir: string; projectCwd: st
   const seen = new Set<string>();
   for (const up of Object.values(userProfiles)) {
     for (const proj of up.projects ?? []) {
-      if (seen.has(proj)) continue;
-      seen.add(proj);
-      const dir = join(proj, MODUS_ACTIONS);
-      if (existsSync(dir)) result.push({ actionsDir: dir, projectCwd: proj });
+      const projectCwd = normalizeCwd(proj);
+      if (seen.has(projectCwd)) continue;
+      seen.add(projectCwd);
+      const dir = join(projectCwd, MODUS_ACTIONS);
+      if (existsSync(dir)) result.push({ actionsDir: dir, projectCwd });
     }
   }
   return result;
@@ -231,8 +351,9 @@ function discoverProjectActionDirs(): Array<{ actionsDir: string; projectCwd: st
 
 // ── Action Loading ──
 
-function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
+function loadActionsFromDir(actionsDir: string, seen: Set<string>, defaultCwd?: string): void {
   if (!existsSync(actionsDir)) return;
+  const projectCwd = defaultCwd ? normalizeCwd(defaultCwd) : undefined;
   const dirs = readdirSync(actionsDir, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name);
@@ -243,9 +364,9 @@ function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
     try {
       const config = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
       config.name = name;
-      config.origin = defaultCwd ? "project" : "harness";
+      config.origin = projectCwd ? "project" : "harness";
       // Project-local actions default their CWD to the project they came from
-      if (defaultCwd && !config.cwd) config.cwd = defaultCwd;
+      if (projectCwd && !config.cwd) config.cwd = projectCwd;
 
       if (config.trigger.type === "interval") {
         parseInterval(config.trigger.every);
@@ -257,14 +378,16 @@ function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
         console.log(`[actions] Generated webhook token for "${name}"`);
       }
 
-      const existing = actionStates.get(name);
-      const lastRunNumber = getNextRunNumber(name) - 1;
-      const lastRuns = dbGetActionRuns(name, 1);
+      const scopeKey = actionScopeKey(name, projectCwd);
+      seen.add(scopeKey);
+      const existing = actionStates.get(scopeKey);
+      const lastRunNumber = getNextRunNumber(name, scopeKey) - 1;
+      const lastRuns = dbGetActionRuns(name, 1, scopeKey);
       const lastRun = lastRuns[0];
 
       // Determine cycle state from DB
       let currentCycle = lastRun?.cycleNumber ?? 1;
-      const recentRuns = dbGetActionRuns(name, 100);
+      const recentRuns = dbGetActionRuns(name, 100, scopeKey);
       let cycleRunCount = recentRuns.filter(r => r.cycleNumber === currentCycle).length;
 
       if (config.cycleInterval && config.maxRuns && cycleRunCount >= config.maxRuns) {
@@ -285,8 +408,10 @@ function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
       } else {
         const state: ActionState = existing ?? {
           config,
+          scopeKey,
           actionDir,
           origin: config.origin ?? "harness",
+          ...(projectCwd ? { projectCwd } : {}),
           activeExecutions: new Map(),
           lastRunAt: null,
           nextRunAt: null,
@@ -294,15 +419,17 @@ function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
         };
         Object.assign(state, {
           config,
+          scopeKey,
           actionDir,
           origin: config.origin ?? state.origin,
+          projectCwd,
           lastRunAt: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
           nextRunAt,
           exhausted: deriveExhausted(config, lastRunNumber, currentCycle, cycleRunCount),
         });
         if (!existing) {
           state.activeExecutions = new Map();
-          actionStates.set(name, state);
+          actionStates.set(scopeKey, state);
         }
       }
     } catch (err) {
@@ -312,9 +439,15 @@ function loadActionsFromDir(actionsDir: string, defaultCwd?: string): void {
 }
 
 function loadActions(): void {
-  loadActionsFromDir(ACTIONS_DIR);
+  const seen = new Set<string>();
+  loadActionsFromDir(ACTIONS_DIR, seen);
   for (const { actionsDir, projectCwd } of discoverProjectActionDirs()) {
-    loadActionsFromDir(actionsDir, projectCwd);
+    loadActionsFromDir(actionsDir, seen, projectCwd);
+  }
+  for (const [scopeKey, state] of actionStates) {
+    if (seen.has(scopeKey)) continue;
+    if (state.activeExecutions.size > 0) continue;
+    actionStates.delete(scopeKey);
   }
 }
 
@@ -425,6 +558,7 @@ function mapEvent(r: EventRow): EventInfo {
 
 function buildActionDB(
   actionName: string,
+  actionScope: string,
   projectCwd: string | undefined,
   origin: "harness" | "project",
 ): ActionDB {
@@ -433,8 +567,8 @@ function buildActionDB(
     ? { cwdPrefixes: [projectCwd] } : undefined;
 
   return {
-    getRunSummaries: (limit = 20) => dbGetRunSummaries(actionName, limit),
-    getRunHistory: (limit = 20) => dbGetActionRuns(actionName, limit),
+    getRunSummaries: (limit = 20) => dbGetRunSummaries(actionName, limit, actionScope),
+    getRunHistory: (limit = 20) => dbGetActionRuns(actionName, limit, actionScope),
     getActionRuns: (name, limit = 20) => dbGetActionRuns(name, limit),
     listSessions: (limit = 50) => cwdScope
       ? listSessionsForProjects(cwdScope.cwdPrefixes, limit).map(mapSession)
@@ -454,19 +588,14 @@ function buildActionDB(
 // ── Core: Fire an Action ──
 
 async function fireAction(
-  name: string,
+  state: ActionState,
   triggerInfo: TriggerInfo,
   chainDepth: number = 0,
-  overrides?: { userProfile?: string },
+  overrides?: ActionResolveOpts,
 ): Promise<void> {
+  const name = state.config.name;
   if (chainDepth >= MAX_CHAIN_DEPTH) {
     console.error(`[actions] Chain depth limit (${MAX_CHAIN_DEPTH}) reached — refusing to fire "${name}"`);
-    return;
-  }
-
-  const state = actionStates.get(name);
-  if (!state) {
-    console.error(`[actions] Unknown action "${name}" — skipping`);
     return;
   }
 
@@ -481,7 +610,7 @@ async function fireAction(
   // Find or create execution
   let exec = findActiveExecution(state);
   if (!exec) {
-    exec = createExecution(name, state.config);
+    exec = createExecution(name, state.scopeKey, state.config);
     state.activeExecutions.set(exec.id, exec);
   }
 
@@ -493,11 +622,11 @@ async function fireAction(
 
   const runStartedAt = Date.now();
   exec.runStartedAt = runStartedAt;
-  const runNumber = getNextRunNumber(name);
+  const runNumber = getNextRunNumber(name, state.scopeKey);
   exec.runNumber++;
   const execRunNumber = exec.runNumber; // per-execution run number
   const cfg = state.config;
-  const effectiveUserProfile = overrides?.userProfile ?? cfg.userProfile;
+  const effectiveUserProfile = overrides?.userProfile ?? cfg.userProfile ?? undefined;
   const actionDir = state.actionDir;
 
   // For "from: start" triggers, set nextRunAt immediately so the timer
@@ -538,7 +667,7 @@ async function fireAction(
     }
 
     const startedAt = Date.now();
-    runId = insertActionRun(name, runNumber, null, startedAt, exec.cycleNumber, triggerInfo.type, effectiveUserProfile, exec.id);
+    runId = insertActionRun(name, state.scopeKey, runNumber, null, startedAt, exec.cycleNumber, triggerInfo.type, effectiveUserProfile, exec.id);
 
     const maxRetries = cfg.maxRetries ?? 0;
     let attempt = 1;
@@ -550,7 +679,7 @@ async function fireAction(
       const runDir = join(actionDir, "output", `exec-${exec.id}`, `run-${execRunNumber}`);
       let artifactDirCreated = false;
 
-      const db = buildActionDB(name, cfg.cwd, state.origin);
+      const db = buildActionDB(name, state.scopeKey, state.projectCwd ?? cfg.cwd, state.origin);
       const totalSteps = (cfg.steps?.length ?? 0) + 1;
       const ctx: ActionContext = {
         actionName: name,
@@ -940,7 +1069,7 @@ async function fireAction(
         exec.currentSessionId = null;
         exec.runStartedAt = null;
         await new Promise(r => setTimeout(r, bkoff));
-        return fireAction(name, triggerInfo, chainDepth, overrides);
+        return fireAction(state, triggerInfo, chainDepth, overrides);
       }
       console.error(`[actions] Transient retries exhausted for "${name}" run #${runNumber} after ${ta} attempts`);
     }
@@ -1015,11 +1144,13 @@ async function fireAction(
 
   // Post-run: fire chain watchers
   if (runResult) {
-    for (const [watchName, watchState] of actionStates) {
+    for (const watchState of actionStates.values()) {
+      const watchName = watchState.config.name;
       const watchTrigger = watchState.config.trigger;
       if (watchTrigger.type !== "action") continue;
       if (watchTrigger.source !== name) continue;
       if (!watchState.config.enabled) continue;
+      if (!chainScopeMatches(state, watchState)) continue;
 
       const condition = watchTrigger.condition;
       if (condition === "any" || condition === runResult.status) {
@@ -1028,7 +1159,7 @@ async function fireAction(
           source: name,
           payload: runResult,
         };
-        fireAction(watchName, chainTrigger, chainDepth + 1).catch(err => {
+        fireAction(watchState, chainTrigger, chainDepth + 1).catch(err => {
           console.error(`[actions] Chain trigger error for "${watchName}":`, err);
         });
       }
@@ -1040,7 +1171,8 @@ async function fireAction(
 
 function tick(): void {
   const now = Date.now();
-  for (const [name, state] of actionStates) {
+  for (const state of actionStates.values()) {
+    const name = state.config.name;
     if (!state.config.enabled) continue;
     if (state.config.trigger.type !== "interval") continue;
 
@@ -1085,7 +1217,7 @@ function tick(): void {
             console.log(`[actions] "${name}" reached maxCycles (${maxCycles}) — auto-disabling`);
             closeExecution(exec, state);
             state.exhausted = true;
-            setActionEnabled(name, false);
+            setActionEnabledForState(state, false);
             continue;
           }
           exec.cycleNumber++;
@@ -1096,7 +1228,7 @@ function tick(): void {
           console.log(`[actions] "${name}" reached maxRuns (${maxRuns}) — auto-disabling`);
           closeExecution(exec, state);
           state.exhausted = true;
-          setActionEnabled(name, false);
+          setActionEnabledForState(state, false);
           continue;
         }
       }
@@ -1110,7 +1242,7 @@ function tick(): void {
 
     // Due — fire
     const triggerInfo: TriggerInfo = { type: "interval" };
-    fireAction(name, triggerInfo).catch(err => {
+    fireAction(state, triggerInfo).catch(err => {
       console.error(`[actions] Unhandled error in fireAction for "${name}":`, err);
     });
   }
@@ -1134,44 +1266,22 @@ export function stopActions(): void {
 }
 
 /** Get all actions with runtime state — derives flat fields from active executions for API compat */
-export function getActions(): Array<ActionConfig & {
-  origin: "harness" | "project";
-  nextRunAt: number | null;
-  lastRunAt: number | null;
-  lastStatus: string | null;
-  running: boolean;
-  activeSessions: number;
-  cycleNumber: number;
-  cycleRunCount: number;
-  exhausted: boolean;
-}> {
-  return Array.from(actionStates.values()).map(s => {
-    // Derive flat fields from most recent active execution
-    const exec = findActiveExecution(s);
-    const activeSessions = [...s.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
-    return {
-      ...s.config,
-      origin: s.origin,
-      nextRunAt: s.nextRunAt,
-      lastRunAt: s.lastRunAt,
-      lastStatus: exec?.lastStatus ?? null,
-      running: activeSessions > 0,
-      activeSessions,
-      cycleNumber: exec?.cycleNumber ?? 1,
-      cycleRunCount: exec?.cycleRunCount ?? 0,
-      exhausted: s.exhausted,
-    };
-  });
+export function getActions(opts: ActionResolveOpts = {}): ActionInfo[] {
+  return visibleActionStates(opts).map(actionToInfo);
 }
 
 /** Get single action state */
-export function getActionState(name: string): ActionState | undefined {
-  return actionStates.get(name);
+export function getActionState(name: string, opts: ActionResolveOpts = {}): ActionState | undefined {
+  return resolveActionState(name, opts);
+}
+
+export function getActionScopeKey(name: string, opts: ActionResolveOpts = {}): string | undefined {
+  return resolveActionState(name, opts)?.scopeKey;
 }
 
 /** Manually trigger an action (bypasses interval and active hours) */
-export async function triggerAction(name: string, opts?: { userProfile?: string }): Promise<boolean> {
-  const state = actionStates.get(name);
+export async function triggerAction(name: string, opts: ActionResolveOpts = {}): Promise<boolean> {
+  const state = resolveActionState(name, opts);
   if (!state) return false;
   // Only manual and interval actions can be manually triggered — session/action/webhook
   // actions depend on payloads constructed by their trigger path and will crash without them.
@@ -1185,7 +1295,7 @@ export async function triggerAction(name: string, opts?: { userProfile?: string 
   const activeSessions = [...state.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
   if (activeSessions >= maxConcurrency) return false;
   const triggerInfo: TriggerInfo = { type: "manual" };
-  fireAction(name, triggerInfo, 0, opts).catch(err => {
+  fireAction(state, triggerInfo, 0, opts).catch(err => {
     console.error(`[actions] Manual trigger error for "${name}":`, err);
   });
   return true;
@@ -1193,10 +1303,17 @@ export async function triggerAction(name: string, opts?: { userProfile?: string 
 
 /** Handle incoming webhook — validates token, fires the action */
 export async function handleWebhook(name: string, token: string, payload?: unknown): Promise<{ ok: boolean; error?: string; sessionId?: string; continued?: boolean }> {
-  const state = actionStates.get(name);
-  if (!state) return { ok: false, error: "unknown action" };
+  const webhookActions = Array.from(actionStates.values()).filter((candidate) =>
+    candidate.config.name === name
+    && candidate.config.trigger.type === "webhook",
+  );
+  const matches = webhookActions.filter((candidate) => {
+    const trigger = candidate.config.trigger;
+    return trigger.type === "webhook" && trigger.token === token;
+  });
+  const state = matches[0];
+  if (!state) return { ok: false, error: webhookActions.length > 0 ? "invalid token" : "unknown action" };
   if (state.config.trigger.type !== "webhook") return { ok: false, error: "action is not webhook-triggered" };
-  if (state.config.trigger.token !== token) return { ok: false, error: "invalid token" };
   if (!state.config.enabled) return { ok: false, error: "action is disabled" };
 
   // ── Session routing: if sessionKey is configured, try to continue an existing session ──
@@ -1239,20 +1356,21 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
   }
 
   const triggerInfo: TriggerInfo = { type: "webhook", payload, webhookSessionTag };
-  fireAction(name, triggerInfo).catch(err => {
+  fireAction(state, triggerInfo).catch(err => {
     console.error(`[actions] Webhook trigger error for "${name}":`, err);
   });
   return { ok: true };
 }
 
-/** Toggle an action on/off — persists to action.json */
-export function setActionEnabled(name: string, enabled: boolean): boolean {
-  const state = actionStates.get(name);
-  if (!state) return false;
-  state.config.enabled = enabled;
-  if (enabled) state.exhausted = false;
+function writeActionConfig(state: ActionState): void {
   const configPath = join(state.actionDir, "action.json");
   writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
+}
+
+function setActionEnabledForState(state: ActionState, enabled: boolean): boolean {
+  state.config.enabled = enabled;
+  if (enabled) state.exhausted = false;
+  writeActionConfig(state);
   if (enabled && state.config.trigger.type === "interval") {
     state.nextRunAt = Date.now() + parseInterval(state.config.trigger.every);
   } else if (!enabled) {
@@ -1267,12 +1385,20 @@ export function setActionEnabled(name: string, enabled: boolean): boolean {
   return true;
 }
 
+/** Toggle an action on/off — persists to action.json */
+export function setActionEnabled(name: string, enabled: boolean, opts: ActionResolveOpts = {}): boolean {
+  const state = resolveActionState(name, opts);
+  if (!state) return false;
+  return setActionEnabledForState(state, enabled);
+}
+
 /** Update action config fields — persists to action.json */
 export function updateActionConfig(
   name: string,
   updates: { enabled?: boolean; interval?: string },
+  opts: ActionResolveOpts = {},
 ): boolean {
-  const state = actionStates.get(name);
+  const state = resolveActionState(name, opts);
   if (!state) return false;
   if (updates.enabled !== undefined) {
     state.config.enabled = updates.enabled;
@@ -1281,8 +1407,7 @@ export function updateActionConfig(
     parseInterval(updates.interval);
     state.config.trigger.every = updates.interval;
   }
-  const configPath = join(state.actionDir, "action.json");
-  writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
+  writeActionConfig(state);
   const running = state.activeExecutions.size > 0;
   if (state.config.enabled && !running && state.config.trigger.type === "interval") {
     state.nextRunAt = Date.now() + parseInterval(state.config.trigger.every);
@@ -1293,8 +1418,8 @@ export function updateActionConfig(
 }
 
 /** Reset an action — marks old executions as "reset", preserves history */
-export function resetAction(name: string): boolean {
-  const state = actionStates.get(name);
+export function resetAction(name: string, opts: ActionResolveOpts = {}): boolean {
+  const state = resolveActionState(name, opts);
   if (!state) return false;
 
   // Close all active executions as "reset" (data preserved in DB)
@@ -1315,8 +1440,8 @@ export function resetAction(name: string): boolean {
 }
 
 /** Save a preference for an action */
-export function setActionPreference(name: string, key: string, value: boolean): boolean {
-  const state = actionStates.get(name);
+export function setActionPreference(name: string, key: string, value: boolean, opts: ActionResolveOpts = {}): boolean {
+  const state = resolveActionState(name, opts);
   if (!state) return false;
   const configPath = join(state.actionDir, "action.json");
   const config = JSON.parse(readFileSync(configPath, "utf-8"));
@@ -1328,14 +1453,14 @@ export function setActionPreference(name: string, key: string, value: boolean): 
 }
 
 /** Get action preferences */
-export function getActionPreferences(name: string): Record<string, boolean> {
-  const state = actionStates.get(name);
+export function getActionPreferences(name: string, opts: ActionResolveOpts = {}): Record<string, boolean> {
+  const state = resolveActionState(name, opts);
   return (state?.config as any)?.preferences ?? {};
 }
 
 /** Add a tag to an action */
-export function addActionTag(name: string, tag: string): boolean {
-  const state = actionStates.get(name);
+export function addActionTag(name: string, tag: string, opts: ActionResolveOpts = {}): boolean {
+  const state = resolveActionState(name, opts);
   if (!state) return false;
   if (!state.config.tags) state.config.tags = [];
   if (state.config.tags.includes(tag)) return true;
@@ -1346,8 +1471,8 @@ export function addActionTag(name: string, tag: string): boolean {
 }
 
 /** Remove a tag from an action */
-export function removeActionTag(name: string, tag: string): boolean {
-  const state = actionStates.get(name);
+export function removeActionTag(name: string, tag: string, opts: ActionResolveOpts = {}): boolean {
+  const state = resolveActionState(name, opts);
   if (!state) return false;
   if (!state.config.tags) return true;
   state.config.tags = state.config.tags.filter(t => t !== tag);
@@ -1358,8 +1483,8 @@ export function removeActionTag(name: string, tag: string): boolean {
 }
 
 /** Cancel an active execution */
-export function cancelExecution(actionName: string, executionId: number): boolean {
-  const state = actionStates.get(actionName);
+export function cancelExecution(actionName: string, executionId: number, opts: ActionResolveOpts = {}): boolean {
+  const state = resolveActionState(actionName, opts);
   if (!state) return false;
   const exec = state.activeExecutions.get(executionId);
   if (!exec) return false;
@@ -1371,14 +1496,14 @@ export function cancelExecution(actionName: string, executionId: number): boolea
 }
 
 /** Manually start a new execution for an action */
-export function startNewExecution(actionName: string): { ok: boolean; executionId?: number; error?: string } {
-  const state = actionStates.get(actionName);
+export function startNewExecution(actionName: string, opts: ActionResolveOpts = {}): { ok: boolean; executionId?: number; error?: string } {
+  const state = resolveActionState(actionName, opts);
   if (!state) return { ok: false, error: "action not found" };
   const maxConcurrency = state.config.concurrency ?? 1;
   if (state.activeExecutions.size >= maxConcurrency) {
     return { ok: false, error: `at concurrency limit (${maxConcurrency})` };
   }
-  const exec = createExecution(actionName, state.config);
+  const exec = createExecution(actionName, state.scopeKey, state.config);
   state.activeExecutions.set(exec.id, exec);
   console.log(`[actions] Manually created execution #${exec.id} for "${actionName}"`);
   return { ok: true, executionId: exec.id };
@@ -1417,7 +1542,8 @@ export function onSessionEvent(
     assistantMessageUuid?: string;
   },
 ): void {
-  for (const [name, state] of actionStates) {
+  for (const state of actionStates.values()) {
+    const name = state.config.name;
     if (!state.config.enabled) continue;
     const trigger = state.config.trigger;
     if (trigger.type !== "session") continue;
@@ -1466,7 +1592,7 @@ export function onSessionEvent(
     const triggerInfo: TriggerInfo = { type: "session", payload };
     console.log(`[actions] Session trigger matched: "${name}" on ${typeof event === "string" ? event : `${event.role}:${event.at}:${event.round}`} for session ${session.id.slice(0, 12)}…`);
 
-    fireAction(name, triggerInfo).catch(err => {
+    fireAction(state, triggerInfo).catch(err => {
       console.error(`[actions] Session trigger error for "${name}":`, err);
     });
   }

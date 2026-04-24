@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { modus } from "../modusClient";
 import type { ProviderModel, UserProfile } from "../../../sdk/index";
+import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 
@@ -16,10 +17,7 @@ type Tab = "profile" | "defaults" | "environment" | "project" | "security";
 const EFFORT_OPTIONS = ["off", "low", "medium", "high", "max"] as const;
 
 function providerSeedModel(provider: string): string {
-  if (provider === "codex") return "gpt-5.1-codex";
-  if (provider === "gemini-cli") return "auto-gemini-3";
-  if (provider === "claude-code" || provider === "anthropic") return "claude-opus-4-6";
-  return "";
+  return providerFallbackModel(provider);
 }
 
 export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {

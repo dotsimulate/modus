@@ -514,6 +514,25 @@ export async function handleMoveApiSubmit(
         metadata: { moveName: reg.moveName, op, emitType: emit?.type },
       });
     },
+    sendMessage: async (targetSessionId: string, message: string) => {
+      await interactWithSession({
+        sessionId: targetSessionId,
+        prompt: message,
+        cwd: reg.cwd,
+        createIfMissing: false,
+      });
+      logActivity({
+        eventType: "move_send_message",
+        sessionId: reg.sessionId || undefined,
+        summary: `${reg.moveName} → session ${targetSessionId}: ${message.slice(0, 80)}`,
+        metadata: {
+          moveName: reg.moveName,
+          targetSessionId,
+          contentLength: message.length,
+          source: "move_api",
+        },
+      });
+    },
   };
 
   // Pass the inner data payload to the handler, not the full {op, data} envelope.
@@ -1157,7 +1176,7 @@ function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: stri
     },
     async triggerAction(actionName) {
       assertCapability(caps, "actionTrigger", moveName, `action: ${actionName}`, trust);
-      await triggerAction(actionName);
+      await triggerAction(actionName, { userProfile, cwd });
       // ── Audit: log action trigger ──
       logActivity({
         eventType: "move_trigger_action",

@@ -103,7 +103,7 @@ const AGENT_BINARIES = ["claude", "codex"];
 
 /**
  * Kill orphaned agent subprocesses (claude, codex) that survived the tree kill.
- * The Codex SDK spawns `codex exec` as a child process; Claude Code spawns `claude`.
+ * The Codex provider spawns `codex exec` as a child process; Claude Code spawns `claude`.
  * On unclean shutdown these can outlive the harness and block restart.
  */
 function killOrphanedAgents() {
