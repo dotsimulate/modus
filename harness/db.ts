@@ -631,7 +631,11 @@ export function updateSessionTitle(id: string, title: string | null) {
 }
 
 export function listSessions(limit = 50): SessionRow[] {
-  return stmts.list.all({ $limit: limit }) as SessionRow[];
+  const t0 = performance.now();
+  const result = stmts.list.all({ $limit: limit }) as SessionRow[];
+  const ms = performance.now() - t0;
+  if (ms > 5) console.log(`[DB-TIMING] listSessions rows=${result.length} ${ms.toFixed(1)}ms`);
+  return result;
 }
 
 /** List sessions spawned by a specific action */
@@ -753,6 +757,7 @@ export function removeSessionTag(id: string, tag: string) {
 // ── Event Functions ──
 
 export function addEvent(sessionId: string, seq: number, type: string, subtype: string | null, data: string) {
+  const t0 = performance.now();
   stmts.addEvent.run({
     $session_id: sessionId,
     $seq: seq,
@@ -761,11 +766,20 @@ export function addEvent(sessionId: string, seq: number, type: string, subtype: 
     $data: data,
     $created_at: Date.now(),
   });
+  const t1 = performance.now();
   indexEvent(sessionId, type, data);
+  const t2 = performance.now();
+  const insertMs = (t1 - t0).toFixed(1);
+  const indexMs = (t2 - t1).toFixed(1);
+  if (t2 - t0 > 5) console.log(`[DB-TIMING] addEvent ${type}/${subtype} insert=${insertMs}ms index=${indexMs}ms total=${(t2-t0).toFixed(1)}ms session=${sessionId.slice(0,8)}`);
 }
 
 export function getEvents(sessionId: string, afterSeq = 0): EventRow[] {
-  return stmts.getEvents.all({ $session_id: sessionId, $after_seq: afterSeq }) as EventRow[];
+  const t0 = performance.now();
+  const result = stmts.getEvents.all({ $session_id: sessionId, $after_seq: afterSeq }) as EventRow[];
+  const ms = performance.now() - t0;
+  if (ms > 5) console.log(`[DB-TIMING] getEvents session=${sessionId.slice(0,8)} afterSeq=${afterSeq} rows=${result.length} ${ms.toFixed(1)}ms`);
+  return result;
 }
 
 export function getStoredSessionConfig(sessionId: string): StoredSessionConfig | null {

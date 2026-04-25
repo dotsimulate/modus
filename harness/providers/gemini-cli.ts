@@ -676,6 +676,7 @@ async function runTurn(
       ...(state.thinkingDurationMs != null ? { thinking_duration_ms: state.thinkingDurationMs } : {}),
     });
     updateSessionStatus(session.sessionId, "error");
+    ctx.emitEvent({ type: "done" });
   };
 
   const finalizeMaxTurns = () => {
@@ -989,6 +990,8 @@ async function runTurn(
       session.status = "error";
       session.error = String(err);
       updateSessionStatus(session.sessionId, "error");
+      ctx.broadcastEvent({ type: "error", error: String(err) });
+      ctx.emitEvent({ type: "done" });
     });
   }
 }
@@ -1018,6 +1021,8 @@ export function createGeminiCliProvider(): SessionProvider {
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
     },
 
@@ -1047,6 +1052,8 @@ export function createGeminiCliProvider(): SessionProvider {
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
     },
 

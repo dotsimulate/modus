@@ -721,6 +721,7 @@ function updateLiveStreamSnapshot(session: ActiveSession, event: any) {
 }
 
 function persistAndBroadcastEvent(session: ActiveSession, event: any) {
+  const _pbt0 = performance.now();
   session.seq++;
   updateLiveStreamSnapshot(session, event);
   persistSemanticMessage(session, event);
@@ -740,6 +741,8 @@ function persistAndBroadcastEvent(session: ActiveSession, event: any) {
   sseLog("PERSIST", session.sessionId,
     `seq=${session.seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} subs=${session.subscribers.size}`);
   broadcastEventToSession(session, event, session.seq);
+  const _pbMs = performance.now() - _pbt0;
+  if (_pbMs > 5) console.log(`[TIMING] persistAndBroadcast ${event.type}/${event.subtype} ${_pbMs.toFixed(1)}ms session=${session.sessionId.slice(0,8)}`);
 }
 
 function broadcastEventToSession(session: ActiveSession, event: any, seq = session.seq) {
@@ -1431,6 +1434,7 @@ export function steerMessage(sessionId: string, prompt: string, attachments?: Im
 }
 
 export function stopSession(sessionId: string): boolean {
+  const t0 = performance.now();
   const session = activeSessions.get(sessionId);
   if (!session) return false;
 
@@ -1472,6 +1476,7 @@ export function stopSession(sessionId: string): boolean {
     summary: "Session interrupted by user",
   });
 
+  console.log(`[TIMING] stopSession ${sessionId.slice(0,8)} took ${(performance.now() - t0).toFixed(1)}ms`);
   return true;
 }
 

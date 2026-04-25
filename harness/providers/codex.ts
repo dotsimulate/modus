@@ -20,8 +20,8 @@ import {
   getGlobalConfig, getProfile, resolveProfilePrompt,
   type McpServerConfig, type PermissionPolicy, type Profile,
 } from "../profiles";
-import { isAbsolute, join } from "path";
-import { mkdirSync, writeFileSync, unlinkSync } from "fs";
+import { dirname, isAbsolute, join } from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { homedir } from "os";
 
 // ── Provider-specific state stored on session._providerState ──
@@ -147,6 +147,10 @@ function buildRemoteCodexMcpServer(
     return null;
   }
 
+  // Codex CLI supports bearer tokens natively via env var and can pass
+  // arbitrary HTTP headers via http_headers config. Use the direct URL
+  // instead of routing through the MCP proxy — the proxy's notification
+  // handling (202/null body) breaks the rmcp transport in the Codex binary.
   const serverConfig: CodexConfigObject = {
     url: config.url,
   };
@@ -160,16 +164,34 @@ function buildRemoteCodexMcpServer(
     serverConfig.bearer_token_env_var = envName;
   }
 
-  const unsupportedHeaders = Object.keys(config.headers ?? {}).filter(
-    (key) => key.toLowerCase() !== "authorization",
+  const passthroughHeaders = Object.fromEntries(
+    Object.entries(config.headers ?? {}).filter(([key]) => key.toLowerCase() !== "authorization"),
   );
-  if (unsupportedHeaders.length > 0) {
-    console.warn(
-      `[codex] MCP server "${name}" has unsupported HTTP headers for Codex CLI and they will be ignored: ${unsupportedHeaders.join(", ")}`,
-    );
+  if (Object.keys(passthroughHeaders).length > 0) {
+    serverConfig.http_headers = passthroughHeaders;
   }
 
   return serverConfig;
+}
+
+/**
+ * Read MCP server configs from a project's .claude/mcp.json, matching the
+ * Claude Code provider's project-local discovery path.
+ */
+function readProjectMcpServers(cwd: string | undefined): Record<string, McpServerConfig> {
+  if (!cwd) return {};
+  const mcpJsonPath = join(cwd, ".claude", "mcp.json");
+  try {
+    if (!existsSync(mcpJsonPath)) return {};
+    const raw = JSON.parse(readFileSync(mcpJsonPath, "utf-8"));
+    const servers = raw?.mcpServers ?? {};
+    if (!servers || typeof servers !== "object" || Array.isArray(servers)) return {};
+    console.log(`[codex] Discovered project MCP servers at ${mcpJsonPath}: ${Object.keys(servers).join(", ")}`);
+    return servers as Record<string, McpServerConfig>;
+  } catch (err) {
+    console.warn(`[codex] Failed to read ${mcpJsonPath}:`, err);
+    return {};
+  }
 }
 
 // ── Codex Rules File (.rules) ──
@@ -345,23 +367,30 @@ function resolveCodexRuntimeSettings(
 
 function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?: Record<string, string> } {
   const { opts, profile } = ctx;
-  const globalConfig = getGlobalConfig(ctx.session.cwd);
+  const projectRoot = ctx.session.projectRoot ?? opts.cwd ?? ctx.session.cwd;
+  const globalConfig = getGlobalConfig(projectRoot);
+  const projectMcp = readProjectMcpServers(projectRoot ?? process.cwd());
   const mergedMcp = {
+    ...projectMcp,
     ...(globalConfig.mcpServers ?? {}),
     ...(profile?.mcpServers ?? {}),
     ...(opts.mcpServers as Record<string, any> ?? {}),
   };
   if (Object.keys(mergedMcp).length === 0) return {};
 
+  console.log(`[codex] MCP merge: projectRoot=${projectRoot} sessionCwd=${ctx.session.cwd} projectMcp=${JSON.stringify(Object.keys(projectMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profile?.mcpServers ?? {}))} sessionMcp=${JSON.stringify(Object.keys(opts.mcpServers ?? {}))}`);
+
   // Resolve relative --directory args to absolute (same as claude-code provider)
-  const harnessRoot = join(import.meta.dir, "..");
-  for (const server of Object.values(mergedMcp) as any[]) {
+  const harnessRoot = dirname(import.meta.dir.endsWith("/") ? import.meta.dir.slice(0, -1) : import.meta.dir);
+  const projectMcpNames = new Set(Object.keys(projectMcp));
+  for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
     const args = server.args as string[] | undefined;
     if (!args) continue;
     const dirIdx = args.indexOf("--directory");
     const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
     if (dirVal && !isAbsolute(dirVal)) {
-      args[dirIdx + 1] = join(harnessRoot, dirVal);
+      const anchor = projectMcpNames.has(name) ? (opts.cwd ?? ctx.session.cwd ?? process.cwd()) : harnessRoot;
+      args[dirIdx + 1] = join(anchor, dirVal);
     }
   }
 
@@ -635,6 +664,8 @@ export function createCodexProvider(): SessionProvider {
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
 
       // Startup timeout
@@ -646,10 +677,8 @@ export function createCodexProvider(): SessionProvider {
           session.status = "error";
           session.error = reason;
           abortController.abort();
-          const errData = JSON.stringify({ type: "error", error: reason });
-          for (const sub of session.subscribers) {
-            try { sub.write("error", errData, String(session.seq)); } catch { /* ignore */ }
-          }
+          ctx.broadcastEvent({ type: "error", error: reason });
+          ctx.emitEvent({ type: "done" });
         }
       }, 30_000);
     },
@@ -686,6 +715,8 @@ export function createCodexProvider(): SessionProvider {
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
     },
 
@@ -783,12 +814,15 @@ async function runTurn(
   let thread: Thread;
   if (state.threadId && isResume) {
     // Resume existing thread
+    console.log(`[codex] resuming thread ${state.threadId} for ${session.sessionId}`);
     thread = state.codex.resumeThread(state.threadId, state.threadOptions);
   } else if (state.thread && isResume) {
     // Reuse thread object (same process, multi-turn)
+    console.log(`[codex] reusing thread object for ${session.sessionId}`);
     thread = state.thread;
   } else {
     // Fresh thread
+    console.log(`[codex] starting fresh thread for ${session.sessionId} (threadId=${state.threadId}, isResume=${isResume})`);
     thread = state.codex.startThread(state.threadOptions);
   }
   state.thread = thread;
@@ -1084,18 +1118,18 @@ async function runTurn(
         session.status = "error";
         updateSessionStatus(session.sessionId, "error");
         ctx.broadcastEvent({ type: "error", error: String(retryErr) });
+        ctx.emitEvent({ type: "done" });
       });
       return;
     } else if (isAbort) {
       console.log(`[codex] aborted ${session.sessionId}`);
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
-      // Fresh AbortController — the old signal is now attached to a dead
-      // child whose 'error' listener was stripped during wrapper cleanup.
       session.abortController = new AbortController();
       state.abortController = session.abortController;
 
-      // Handle pending messages after abort
+      ctx.emitEvent({ type: "done" });
+
       if (session.pendingDispatch.length > 0) {
         const next = session.pendingDispatch.shift()!.content;
         session.initialContent = next;
@@ -1111,6 +1145,7 @@ async function runTurn(
           session.status = "error";
           session.error = String(err2);
           updateSessionStatus(session.sessionId, "error");
+          ctx.emitEvent({ type: "done" });
         });
       }
     } else {
@@ -1118,6 +1153,7 @@ async function runTurn(
       session.status = "error";
       updateSessionStatus(session.sessionId, "error");
       ctx.broadcastEvent({ type: "error", error: String(err) });
+      ctx.emitEvent({ type: "done" });
     }
   }
 }

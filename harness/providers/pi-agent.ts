@@ -388,6 +388,7 @@ function translateEvents(
         session.status = "error";
         session.error = message;
         ctx.updateSessionDb({ status: "error" });
+        ctx.emitEvent({ type: "done" });
       } else {
         ctx.emitEvent({
           type: "result",
@@ -702,6 +703,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         session.status = "error";
         session.error = message;
         ctx.updateSessionDb({ status: "error" });
+        ctx.emitEvent({ type: "done" });
       }
     },
 
@@ -739,6 +741,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         session.status = "error";
         session.error = message;
         ctx.updateSessionDb({ status: "error" });
+        ctx.emitEvent({ type: "done" });
       });
     },
 

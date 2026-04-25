@@ -1061,7 +1061,9 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
   return sseResponse(c.req.raw, async (writer, signal) => {
     // Send catch-up events from DB, bookended by catchup-start/catchup-end
     // so the client can batch them into a single React render.
+    const _sseT0 = performance.now();
     const pastEvents = getEvents(sessionId, afterSeq);
+    const _sseT1 = performance.now();
     if (pastEvents.length > 0) {
       await writer.write("catchup-start", "{}", "");
       for (const evt of pastEvents) {
@@ -1071,6 +1073,8 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
       }
       await writer.write("catchup-end", "{}", "");
     }
+    const _sseT2 = performance.now();
+    console.log(`[TIMING] SSE catch-up session=${sessionId.slice(0,8)} query=${(_sseT1-_sseT0).toFixed(1)}ms serialize+send=${(_sseT2-_sseT1).toFixed(1)}ms events=${pastEvents.length}`);
 
     // Check if catch-up already included a "done" event (persisted by emitEvent).
     // If the session is finished but the replay didn't include "done" (legacy sessions),
@@ -3407,7 +3411,6 @@ app.all("/api/mcp/modus", async (c) => {
 app.all("/api/mcp/modus/*", async (c) => {
   return handleModusMcpRequest(c.req.raw);
 });
-
 // ── Missions ──
 
 import {
