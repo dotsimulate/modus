@@ -429,6 +429,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         session.error = reason;
         updateSessionStatus(session.sessionId, "error");
         ctx.broadcastEvent({ type: "error", error: reason });
+        ctx.emitEvent({ type: "done" });
         return;
       }
 
@@ -757,6 +758,8 @@ export function createClaudeCodeProvider(): SessionProvider {
           costUsd: session.costUsd,
           lastResponse: session.lastAssistantText?.slice(0, 2000),
         });
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
 
       // Startup timeout — only fires if this specific turn is still starting.
@@ -773,10 +776,8 @@ export function createClaudeCodeProvider(): SessionProvider {
           session.status = "error";
           session.error = reason;
           abortController.abort();
-          const errData = JSON.stringify({ type: "error", error: reason });
-          for (const sub of session.subscribers) {
-            try { sub.write("error", errData, String(session.seq)); } catch { /* ignore */ }
-          }
+          ctx.broadcastEvent({ type: "error", error: reason });
+          ctx.emitEvent({ type: "done" });
         }
       }, startupTimeoutMs);
     },
@@ -860,6 +861,8 @@ export function createClaudeCodeProvider(): SessionProvider {
           costUsd: session.costUsd,
           lastResponse: session.lastAssistantText?.slice(0, 2000),
         });
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
     },
 
@@ -1347,6 +1350,8 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           costUsd: session.costUsd,
           lastResponse: session.lastAssistantText?.slice(0, 2000),
         });
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
       return;
     }

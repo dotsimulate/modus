@@ -257,6 +257,7 @@ export function createCursorProvider(): SessionProvider {
         session.error = reason;
         updateSessionStatus(session.sessionId, "error");
         ctx.broadcastEvent({ type: "error", error: reason });
+        ctx.emitEvent({ type: "done" });
         return;
       }
 
@@ -285,6 +286,7 @@ export function createCursorProvider(): SessionProvider {
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
         ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
 
       // Startup timeout
@@ -296,10 +298,8 @@ export function createCursorProvider(): SessionProvider {
           session.status = "error";
           session.error = reason;
           abortController.abort();
-          const errData = JSON.stringify({ type: "error", error: reason });
-          for (const sub of session.subscribers) {
-            try { sub.write("error", errData, String(session.seq)); } catch { /* ignore */ }
-          }
+          ctx.broadcastEvent({ type: "error", error: reason });
+          ctx.emitEvent({ type: "done" });
         }
       }, 60_000);
     },
@@ -332,6 +332,8 @@ export function createCursorProvider(): SessionProvider {
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
     },
 
@@ -656,6 +658,7 @@ async function runTurn(
             session.status = "error";
             session.error = event.error ?? event.result ?? "cursor error";
             updateSessionStatus(session.sessionId, "error");
+            ctx.emitEvent({ type: "done" });
             return;
           }
           // Success result handled after loop ends
@@ -738,6 +741,8 @@ async function runTurn(
         session.status = "error";
         session.error = String(err);
         updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: String(err) });
+        ctx.emitEvent({ type: "done" });
       });
     }
 
@@ -752,6 +757,7 @@ async function runTurn(
       console.log(`[cursor] aborted ${session.sessionId}`);
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
+      ctx.emitEvent({ type: "done" });
 
       if (session.pendingDispatch.length > 0) {
         const next = session.pendingDispatch.shift()!.content;
@@ -768,6 +774,8 @@ async function runTurn(
           session.status = "error";
           session.error = String(err2);
           updateSessionStatus(session.sessionId, "error");
+          ctx.broadcastEvent({ type: "error", error: String(err2) });
+          ctx.emitEvent({ type: "done" });
         });
       }
     } else {
@@ -775,6 +783,7 @@ async function runTurn(
       session.status = "error";
       updateSessionStatus(session.sessionId, "error");
       ctx.broadcastEvent({ type: "error", error: String(err) });
+      ctx.emitEvent({ type: "done" });
     }
   }
 }

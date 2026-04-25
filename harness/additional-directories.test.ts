@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { join } from "path";
 import { validate, ProfileSchema } from "./profile-schemas";
 import {
   CreateSessionRequestSchema,
@@ -244,5 +246,78 @@ describe("additionalDirectories", () => {
     expect(capturedThreadOptions.additionalDirectories).toEqual(["/tmp/shared"]);
     expect(session.sessionId).toBe("fresh-thread");
     expect(session.status).toBe("idle");
+  });
+
+  test("passes project .claude MCP servers to Codex config", async () => {
+    const projectDir = join(process.cwd(), ".tmp-codex-mcp-test");
+    rmSync(projectDir, { recursive: true, force: true });
+    mkdirSync(join(projectDir, ".claude"), { recursive: true });
+    writeFileSync(
+      join(projectDir, ".claude", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          TD: { type: "http", url: "http://127.0.0.1:18565/mcp" },
+        },
+      }),
+    );
+
+    let capturedConfig: any;
+
+    mock.module("./profiles", () => ({
+      getGlobalConfig() {
+        return {};
+      },
+      getProfile() {
+        return undefined;
+      },
+      resolveProfilePrompt() {
+        return undefined;
+      },
+    }));
+
+    mock.module("./providers/codex-cli-sdk", () => ({
+      canResumeCodexThread() {
+        return false;
+      },
+      Thread: class {},
+      Codex: class {
+        constructor(options: any) {
+          capturedConfig = options.config;
+        }
+
+        startThread() {
+          return {
+            async runStreamed() {
+              return {
+                events: (async function* () {
+                  yield { type: "thread.started", thread_id: "codex-thread" };
+                  yield { type: "turn.started" };
+                  yield {
+                    type: "turn.completed",
+                    usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 1 },
+                  };
+                })(),
+              };
+            },
+          };
+        }
+      },
+    }));
+
+    try {
+      const { createCodexProvider } = await import("./providers/codex");
+      const session = makeSession([]);
+      session.provider = "codex";
+      session.cwd = projectDir;
+      session.projectRoot = projectDir;
+      const provider = createCodexProvider();
+      provider.startTurn(makeTurnContext(session, { provider: "codex", cwd: projectDir }));
+
+      await Bun.sleep(10);
+
+      expect(capturedConfig?.mcp_servers?.TD?.url).toBe("http://127.0.0.1:18565/mcp");
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 });

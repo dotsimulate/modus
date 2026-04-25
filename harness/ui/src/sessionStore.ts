@@ -151,6 +151,7 @@ function resolveId(id: string): string {
 
 /** Apply a batch of events in one pass, notifying React only once at the end */
 export function applyEventBatch(id: string, events: { event: string; data: any; seq: number }[]) {
+  const _aebT0 = performance.now();
   const resolvedId = resolveId(id);
   const entry = sessions.get(resolvedId);
   if (!entry) return;
@@ -166,13 +167,32 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
       continue;
     }
 
+    // Skip events that only matter for real-time streaming display.
+    // During catch-up replay, the materialized assistant/user/result
+    // events already contain the final content. Streaming deltas would
+    // just rebuild text character-by-character, copying the messages
+    // array on each delta — for large sessions (50k+ deltas) this
+    // freezes the browser for seconds to minutes.
+    if (
+      event.type === "stream_event"
+      || event.type === "tool_progress"
+      || event.type === "tool_use_summary"
+      || (event.type === "system" && event.subtype === "live_snapshot")
+    ) {
+      continue;
+    }
+
     const prevStatus = entry.state.status;
     entry.state = reduceEvent(entry.state, event, seq);
     if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting")) {
       entry.state = { ...entry.state, status: prevStatus };
     }
-    // Handle rekey within batch
-    if (event.type === "system" && event.subtype === "init" && event.session_id && event.session_id !== resolvedId) {
+    // Handle rekey within batch — but NOT during catch-up replay.
+    // Completed sessions may contain multiple init events with different
+    // session_id values (e.g. temp → real → temp again after interrupts).
+    // Replaying those rekeys creates an infinite subscribe loop between
+    // the old and new IDs. The store already has the correct final ID.
+    if (!entry.catchingUp && event.type === "system" && event.subtype === "init" && event.session_id && event.session_id !== resolvedId) {
       rekeySession(resolvedId, event.session_id);
       return; // rekey triggers notify
     }
@@ -182,8 +202,20 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
       entry.nextAgentConfig = undefined;
     }
   }
+
+  // Ensure lastSeq covers all events in the batch including skipped ones,
+  // so the next SSE subscribe doesn't replay them again.
+  if (events.length > 0) {
+    const batchMaxSeq = events[events.length - 1].seq;
+    if (batchMaxSeq > entry.state.lastSeq) {
+      entry.state = { ...entry.state, lastSeq: batchMaxSeq };
+    }
+  }
+
   entry.revision++;
   notify(); // single React re-render for the entire batch
+  const _aebMs = performance.now() - _aebT0;
+  if (_aebMs > 10) console.log(`[CLIENT-TIMING] applyEventBatch ${events.length} events ${_aebMs.toFixed(1)}ms session=${id.slice(0,8)}`);
 }
 
 /** Update state for a session via a reducer event */
@@ -207,8 +239,9 @@ export function applyEvent(id: string, event: any, seq: number) {
     entry.state = { ...entry.state, status: prevStatus };
   }
   // Auto-rekey when provider's init event carries a different session ID
-  // (e.g. temp ses-* → real UUID from claude-code-pty or other providers)
-  if (event.type === "system" && event.subtype === "init" && event.session_id && event.session_id !== resolvedId) {
+  // (e.g. temp ses-* → real UUID from claude-code-pty or other providers).
+  // Skip during catch-up — replaying old rekeys creates infinite loops.
+  if (!entry.catchingUp && event.type === "system" && event.subtype === "init" && event.session_id && event.session_id !== resolvedId) {
     rekeySession(resolvedId, event.session_id);
     return; // rekeySession already calls notify()
   }
@@ -339,13 +372,27 @@ export function subscribeSession(
     },
     onDisconnect: () => {
       subscriptions.delete(sessionId);
-      // Clear catch-up mode so reconnect works normally
       const entry = sessions.get(sessionId);
       if (entry) entry.catchingUp = false;
-      // Reconnect after brief delay
+
+      // Reconnect with a cap — prevents infinite reconnect loops for
+      // sessions that always fail (corrupted data, server crash, etc.)
+      const retryKey = `__sseDisconnectRetry_${sessionId}`;
+      const disconnectRetry = entry ? ((entry as any)[retryKey] ?? 0) : 0;
+      if (disconnectRetry >= 5) {
+        if (entry) {
+          (entry as any)[retryKey] = 0;
+          entry.state = { ...entry.state, status: "error" };
+          entry.revision++;
+          notify();
+        }
+        return;
+      }
+
       setTimeout(() => {
         const entry2 = sessions.get(sessionId);
         if (entry2) {
+          (entry2 as any)[retryKey] = (disconnectRetry + 1);
           subscribeSession(sessionId, entry2.state.lastSeq, entry2.profile, onDone);
         }
       }, 2000);
@@ -424,8 +471,10 @@ export function ensureSubscribed(
   if (pending) return pending;
 
   const run = (async () => {
+    const _ensT0 = performance.now();
     try {
       const existing = getSessionState(sessionId);
+      const hasWarmState = !!existing && (existing.lastSeq > 0 || existing.messages.length > 0);
 
       const hinted = opts.activeStatus;
       const storedStatus = existing?.status;
@@ -440,23 +489,23 @@ export function ensureSubscribed(
       // lets the UI render stale messages before SSE catch-up lands.
       // The snapshot is authoritative; let it overwrite.
       //
-      // Mid-flight sessions skip the snapshot because (a) in-progress tool
-      // calls are not represented cleanly in the snapshot format and (b)
-      // the live SSE replay is authoritative.
-      if (!isActive) {
+      // Cold active sessions also fetch the snapshot first. That restores
+      // completed history after a hard refresh while live SSE rebuilds the
+      // current in-flight turn on top of the snapshot cursor.
+      if (!isActive || !hasWarmState) {
         try {
           const snap = await modus.getSessionHistorySnapshot(sessionId);
           if (subscriptions.has(sessionId)) return; // another caller won
 
           const latest = getSessionState(sessionId);
-          const hasWarmState = !!latest && (latest.lastSeq > 0 || latest.messages.length > 0);
+          const latestHasWarmState = !!latest && (latest.lastSeq > 0 || latest.messages.length > 0);
           const hasAssistantToolCalls = snap.messages.some((m) => (
             m.role === "assistant"
             && Array.isArray((m as any).toolCalls)
             && (m as any).toolCalls.length > 0
           ));
 
-          if (hasAssistantToolCalls && !hasWarmState) {
+          if (hasAssistantToolCalls && !latestHasWarmState) {
             // Cold entry with tool-call history — snapshot's tool-call
             // serialization is historically ambiguous, so do a full event
             // replay from seq=0 against a clean state.
@@ -489,6 +538,7 @@ export function ensureSubscribed(
       subscribeSession(sessionId, afterSeq, opts.profile, opts.onDone);
     } finally {
       pendingEnsure.delete(sessionId);
+      console.log(`[CLIENT-TIMING] ensureSubscribed ${sessionId.slice(0,8)} ${(performance.now() - _ensT0).toFixed(1)}ms`);
     }
   })();
 

@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { getSessionState, hydrateSessionHistorySnapshot, removeSession } from "./src/sessionStore";
+import { getSessionState, hydrateSessionHistorySnapshot, removeSession, unsubscribeAll } from "./src/sessionStore";
 
 describe("sessionStore history snapshot hydration", () => {
   afterEach(() => {
     removeSession("ses-history");
+    unsubscribeAll();
   });
 
   test("hydrates semantic turns without event replay", () => {

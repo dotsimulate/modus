@@ -74,6 +74,12 @@ const INTERNAL_ORIGINATOR_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
 const HARNESS_ORIGINATOR = "modus_harness";
 const TOML_BARE_KEY = /^[A-Za-z0-9_-]+$/;
 
+function createAbortError(): Error {
+  const error = new Error("The operation was aborted.");
+  error.name = "AbortError";
+  return error;
+}
+
 function getCodexHome(): string {
   return process.env.CODEX_HOME || join(homedir(), ".codex");
 }
@@ -209,6 +215,7 @@ class CodexExec {
     if (args.apiKey) env.CODEX_API_KEY = args.apiKey;
 
     const child = spawn(this.executablePath, commandArgs, {
+      cwd: args.workingDirectory,
       env,
       signal: args.signal,
     });
@@ -247,10 +254,15 @@ class CodexExec {
 
     try {
       for await (const line of rl) {
+        if (args.signal?.aborted) throw createAbortError();
         yield line;
       }
-      if (spawnError) throw spawnError;
+      if (spawnError) {
+        if (args.signal?.aborted || spawnError.name === "AbortError") throw createAbortError();
+        throw spawnError;
+      }
       const { code, signal } = await exitPromise;
+      if (args.signal?.aborted) throw createAbortError();
       if (code !== 0 || signal) {
         const stderrBuffer = Buffer.concat(stderrChunks);
         const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`;
