@@ -8,6 +8,18 @@ const db = new Database(DB_PATH);
 db.run("PRAGMA journal_mode = WAL");
 db.run("PRAGMA foreign_keys = ON");
 
+// Disable auto-checkpoint — we'll do passive checkpoints on a timer instead
+// to avoid blocking the main thread during writes
+db.run("PRAGMA wal_autocheckpoint = 0");
+
+// Periodic passive WAL checkpoint (non-blocking)
+setInterval(() => {
+  const t0 = performance.now();
+  const result = db.prepare("PRAGMA wal_checkpoint(PASSIVE)").get() as any;
+  const ms = performance.now() - t0;
+  console.log(`[WAL] passive checkpoint ${ms.toFixed(1)}ms busy=${result.busy} checkpointed=${result.checkpointed}/${result.log} pages`);
+}, 30_000);
+
 // ── Sessions ──
 db.run(`
   CREATE TABLE IF NOT EXISTS sessions (
@@ -574,6 +586,7 @@ export function upsertSession(opts: {
   branchMessageUuid?: string;
   title?: string;
 }) {
+  const t0 = performance.now();
   stmts.upsert.run({
     $id: opts.id,
     $preview: opts.preview,
@@ -597,6 +610,8 @@ export function upsertSession(opts: {
   if (opts.title || opts.preview) {
     indexSessionTitle(opts.id, opts.title ?? "", opts.preview);
   }
+  const ms = performance.now() - t0;
+  if (ms > 5) console.log(`[DB-TIMING] upsertSession ${ms.toFixed(1)}ms session=${opts.id.slice(0,8)} status=${opts.status}`);
 }
 
 export function renameSession(oldId: string, newId: string) {
@@ -614,13 +629,17 @@ export function renameSession(oldId: string, newId: string) {
 }
 
 export function updateSessionStatus(id: string, status: string) {
+  const t0 = performance.now();
   stmts.updateStatus.run({ $id: id, $status: status, $now: Date.now() });
+  const t1 = performance.now();
   // Auto-prune stream events when session completes
   if (status === "idle" || status === "done") {
     try { pruneSessionEvents(id); } catch (e) {
       console.error(`[db] Auto-prune failed for session ${id}:`, e);
     }
   }
+  const ms = performance.now() - t0;
+  if (ms > 5) console.log(`[DB-TIMING] updateSessionStatus ${ms.toFixed(1)}ms (update=${(t1-t0).toFixed(1)}ms prune=${(performance.now()-t1).toFixed(1)}ms) session=${id.slice(0,8)} status=${status}`);
 }
 
 export function updateSessionTitle(id: string, title: string | null) {
@@ -1661,16 +1680,17 @@ const markPrunedStmt = db.prepare(`UPDATE sessions SET pruned = 1 WHERE id = $si
 
 /** Prune a single session — delete all stream_event rows if assembled assistant events exist */
 export function pruneSessionEvents(sessionId: string): { deleted: number } {
+  const t0 = performance.now();
   const hasAssembled = hasAssistantEventsStmt.get({ $sid: sessionId });
   if (!hasAssembled) {
-    // No assistant events — stream_events are the only record of content, keep them
     markPrunedStmt.run({ $sid: sessionId });
     return { deleted: 0 };
   }
   const result = pruneDeleteStmt.run({ $sid: sessionId });
   markPrunedStmt.run({ $sid: sessionId });
-  if (result.changes > 0) {
-    console.log(`[db] Pruned ${result.changes} stream events from session ${sessionId.slice(0, 12)}…`);
+  const ms = performance.now() - t0;
+  if (result.changes > 0 || ms > 5) {
+    console.log(`[DB-TIMING] pruneSessionEvents ${ms.toFixed(1)}ms deleted=${result.changes} session=${sessionId.slice(0, 12)}`);
   }
   return { deleted: result.changes };
 }
@@ -2684,10 +2704,44 @@ export function getDeepAnalytics(
 }
 
 // ── Startup Cleanup ──
-// Mark orphaned running/starting/idle/error sessions as done (harness restarted while they were active)
+// Mark orphaned running/starting/interrupting/idle/error sessions as done
+// (harness restarted while they were active)
 // Wrapped in try/catch: on Windows, a ghost process may still hold the DB write lock.
 try {
-  db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'idle', 'error')`);
+  // Inject a terminal `system/interrupted` event for any orphaned session whose
+  // event log doesn't already end in a terminal event. Without this, the UI
+  // subscribes, sees an in-progress assistant turn with no closer, and freezes
+  // waiting on SSE for a stream that will never come ("poisoned" sessions).
+  const orphanedSessions = db.query<{ id: string }, []>(
+    `SELECT id FROM sessions WHERE status IN ('running', 'starting', 'interrupting', 'idle', 'paused')`
+  ).all();
+  let injected = 0;
+  for (const { id } of orphanedSessions) {
+    const last = db.query<{ type: string; subtype: string | null; seq: number }, [string]>(
+      `SELECT type, subtype, seq FROM events WHERE session_id = ? ORDER BY seq DESC LIMIT 1`
+    ).get(id);
+    if (!last) continue;
+    const isTerminal =
+      last.type === "result" ||
+      last.type === "error" ||
+      (last.type === "system" && last.subtype === "interrupted");
+    if (isTerminal) continue;
+    const nextSeq = last.seq + 1;
+    const payload = JSON.stringify({
+      type: "system",
+      subtype: "interrupted",
+      reason: "harness restarted while session was active",
+    });
+    db.run(
+      `INSERT INTO events (session_id, seq, type, subtype, data, created_at) VALUES (?, ?, 'system', 'interrupted', ?, ?)`,
+      [id, nextSeq, payload, Date.now()]
+    );
+    injected++;
+  }
+  if (injected > 0) {
+    console.log(`[db] Injected synthetic interrupted event for ${injected} orphaned session(s)`);
+  }
+  db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'interrupting', 'idle', 'error')`);
   // Mark orphaned action runs as error (harness crashed mid-run)
   const staleRuns = db.run(`UPDATE action_runs SET status = 'error', error = 'harness crashed during run', completed_at = ${Date.now()} WHERE status = 'running'`);
   if (staleRuns.changes > 0) {

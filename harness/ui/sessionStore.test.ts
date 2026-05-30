@@ -12,8 +12,8 @@ describe("sessionStore history snapshot hydration", () => {
       sessionId: "ses-history",
       status: "done",
       model: "claude-sonnet",
-      cwd: "D:\\TOOLSHELF\\modus",
-      additionalDirectories: ["D:\\TOOLSHELF\\modus\\TODO"],
+      cwd: "/tmp/modus",
+      additionalDirectories: ["/tmp/modus/TODO"],
       loadProjectSettings: true,
       agentConfig: {
         toolStates: { bash: "on" },

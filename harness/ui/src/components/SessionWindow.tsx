@@ -26,6 +26,7 @@ type Props = {
 
 function statusLabel(status: string): string {
   if (status === "running" || status === "starting") return "working...";
+  if (status === "interrupting") return "stopping...";
   if (status === "error") return "error";
   return "idle";
 }
@@ -42,7 +43,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
-  const isActive = session?.status === "running" || session?.status === "starting";
+  const isActive = session?.status === "running" || session?.status === "starting" || session?.status === "interrupting";
   const permissions = session?.pendingPermissions ?? [];
   const resetComposer = useEffectEvent(() => {
     setInput("");
@@ -105,7 +106,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     await modus.stopSession(sessionId).catch(() => {});
     const current = getSessionState(sessionId);
     if (current) {
-      setSessionState(sessionId, { ...current, status: "idle" }, session?.profile);
+      setSessionState(sessionId, { ...current, status: "interrupting" }, session?.profile);
     }
   }
 
@@ -195,7 +196,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
 
   useEffect(() => {
     if (!queuedMessage || !sessionId) return;
-    if (session?.status === "running" || session?.status === "starting") return;
+    if (session?.status === "running" || session?.status === "starting" || session?.status === "interrupting") return;
     const { text, attachments } = queuedMessage;
     setTimeout(() => {
       flushQueuedMessage(text, attachments);
@@ -269,6 +270,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
                 disabled={false}
                 sessionId={sessionId}
                 projectCwd={projectRoot ?? session?.cwd}
+                provider={session?.provider ?? session?.agentConfig.provider}
                 autoFocus
               />
             </div>

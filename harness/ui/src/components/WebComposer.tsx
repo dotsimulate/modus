@@ -117,7 +117,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
 
   const session = getSessionState(sessionId);
   const sessionProfile = getSessionProfile(sessionId);
-  const isActive = session?.status === "running" || session?.status === "starting";
+  const isActive = session?.status === "running" || session?.status === "starting" || session?.status === "interrupting";
 
   const handleSend = useCallback(async (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => {
     const prompt = (textOverride ?? input).trim();
@@ -191,7 +191,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
     await modus.stopSession(sessionId).catch(() => {});
     const current = getSessionState(sessionId);
     if (current) {
-      setSessionState(sessionId, { ...current, status: "idle" }, sessionProfile);
+      setSessionState(sessionId, { ...current, status: "interrupting" }, sessionProfile);
     }
   }, [sessionId, sessionProfile]);
 
@@ -256,6 +256,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
         placeholder="start a conversation..."
         projectCwd={composer.projectCwd}
         userProfile={composer.userProfile}
+        provider={composer.liveProvider}
         autoFocus
       />
     </div>

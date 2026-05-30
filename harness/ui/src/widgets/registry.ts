@@ -48,6 +48,7 @@ import SessionHistoryWidget from "./session-history.widget";
 import SessionInfoWidget from "./session-info.widget";
 import SessionListWidget from "./session-list.widget";
 import SessionSidebarWidget from "./session-sidebar.widget";
+import SessionStreamsWidget from "./session-streams.widget";
 import SessionWebWidget from "./session-web.widget";
 import SessionTerminalWidget from "./session-terminal.widget";
 import SessionsWidget from "./sessions.widget";
@@ -287,6 +288,13 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     component: SessionSidebarWidget,
     minHeight: 150,
     preferredHeight: 300,
+  },
+  "session-streams": {
+    type: "session-streams",
+    component: SessionStreamsWidget,
+    zones: ["left-panel", "right-panel", "dashboard"],
+    minHeight: 220,
+    preferredHeight: 420,
   },
   "session-web": {
     type: "session-web",

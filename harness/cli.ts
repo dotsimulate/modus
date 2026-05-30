@@ -49,18 +49,34 @@ function setupTailscaleServe(port: number): TailscaleServeSetup {
     const dnsName = payload?.Self?.DNSName?.replace(/\.$/, "") ?? null;
     const remoteUrl = dnsName ? `https://${dnsName}` : null;
 
+    // Clear any stale serve config from a prior harness run (different port,
+    // dead process, etc.) before re-binding. `serve reset` is idempotent.
+    const reset = spawnSync("tailscale", ["serve", "reset"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5000,
+    });
+    if (reset.status !== 0) {
+      const details = reset.stderr?.toString().trim() || reset.stdout?.toString().trim() || "tailscale serve reset failed";
+      console.error(`[tailscale] serve reset failed:`, details);
+      return { remoteUrl, error: details };
+    }
+
     const serve = spawnSync("tailscale", ["serve", "--bg", String(port)], {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 10000,
     });
     if (serve.status !== 0) {
       const details = serve.stderr?.toString().trim() || serve.stdout?.toString().trim() || "tailscale serve failed";
+      console.error(`[tailscale] serve --bg ${port} failed:`, details);
       return { remoteUrl, error: details };
     }
 
+    console.log(`[tailscale] serve --bg ${port} ok → ${remoteUrl ?? "(no DNS name)"}`);
     return { remoteUrl, error: null };
-  } catch {
-    return { remoteUrl: null, error: "failed to parse tailscale status" };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "failed to parse tailscale status";
+    console.error(`[tailscale] setup error:`, msg);
+    return { remoteUrl: null, error: msg };
   }
 }
 
@@ -81,6 +97,7 @@ const TOKEN_FILE = join(CONFIG_DIR, "harness-token");
 const PID_FILE = join(CONFIG_DIR, "harness.pid");
 const PORT_FILE = join(CONFIG_DIR, "harness.port");
 const LOG_FILE = join(HARNESS_DIR, "harness.log");
+const UI_DEPS_STAMP = join(UI_DIR, ".modus-deps.stamp");
 
 const BASE_PORT = Number(process.env.HARNESS_PORT ?? 3777);
 
@@ -258,10 +275,14 @@ function uiDepsStale(): boolean {
   const nmDir = join(UI_DIR, "node_modules");
   if (!existsSync(nmDir)) return true;
   try {
-    const nmTime = statSync(nmDir).mtimeMs;
+    const stampTime = existsSync(UI_DEPS_STAMP) ? statSync(UI_DEPS_STAMP).mtimeMs : 0;
     const pkgTime = existsSync(pkgJson) ? statSync(pkgJson).mtimeMs : 0;
     const lockTime = existsSync(lockFile) ? statSync(lockFile).mtimeMs : 0;
-    return Math.max(pkgTime, lockTime) > nmTime;
+    if (stampTime === 0) {
+      writeFileSync(UI_DEPS_STAMP, new Date().toISOString(), "utf-8");
+      return false;
+    }
+    return Math.max(pkgTime, lockTime) > stampTime;
   } catch { return true; }
 }
 
@@ -276,6 +297,7 @@ function installUiDeps(): boolean {
     console.error("UI dependency install failed.");
     return false;
   }
+  try { writeFileSync(UI_DEPS_STAMP, new Date().toISOString(), "utf-8"); } catch { /* non-critical */ }
   return true;
 }
 

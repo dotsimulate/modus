@@ -5,10 +5,13 @@ import { homedir } from "os";
 import { join } from "path";
 import readline from "readline";
 
+type SpawnFn = typeof spawn;
+
 export type ApprovalMode = "never" | "on-request" | "untrusted" | "on-failure";
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type WebSearchMode = "disabled" | "cached" | "live";
-export type ModelReasoningEffort = "low" | "medium" | "high";
+export type ModelReasoningEffort = "low" | "medium" | "high" | "xhigh";
+export type ServiceTier = "standard" | "fast" | "priority";
 
 export type ThreadOptions = {
   model?: string;
@@ -19,6 +22,8 @@ export type ThreadOptions = {
   webSearchMode?: WebSearchMode;
   approvalPolicy?: ApprovalMode;
   additionalDirectories?: string[];
+  enableFeatures?: string[];
+  serviceTier?: ServiceTier;
 };
 
 export type ThreadItem = {
@@ -55,6 +60,8 @@ type RunArgs = {
   webSearchMode?: WebSearchMode;
   approvalPolicy?: ApprovalMode;
   additionalDirectories?: string[];
+  enableFeatures?: string[];
+  serviceTier?: ServiceTier;
 };
 
 type CodexConfigValue = string | number | boolean | CodexConfigValue[] | CodexConfigObject;
@@ -68,6 +75,7 @@ type CodexOptions = {
   codexPathOverride?: string;
   env?: Record<string, string>;
   config?: CodexConfigObject;
+  spawnOverride?: SpawnFn;
 };
 
 const INTERNAL_ORIGINATOR_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
@@ -183,6 +191,7 @@ class CodexExec {
     private readonly executablePath: string = resolveCodexExecutable(),
     private readonly envOverride?: Record<string, string>,
     private readonly configOverrides?: CodexConfigObject,
+    private readonly spawnFn: SpawnFn = spawn,
   ) {}
 
   async *run(args: RunArgs): AsyncGenerator<string> {
@@ -191,6 +200,9 @@ class CodexExec {
       for (const override of serializeConfigOverrides(this.configOverrides)) {
         commandArgs.push("--config", override);
       }
+    }
+    if (args.enableFeatures?.length) {
+      for (const feature of args.enableFeatures) commandArgs.push("--enable", feature);
     }
     if (args.model) commandArgs.push("--model", args.model);
     if (args.sandboxMode) commandArgs.push("--sandbox", args.sandboxMode);
@@ -202,6 +214,7 @@ class CodexExec {
     if (args.modelReasoningEffort) commandArgs.push("--config", `model_reasoning_effort="${args.modelReasoningEffort}"`);
     if (args.webSearchMode) commandArgs.push("--config", `web_search="${args.webSearchMode}"`);
     if (args.approvalPolicy) commandArgs.push("--config", `approval_policy="${args.approvalPolicy}"`);
+    if (args.serviceTier) commandArgs.push("--config", `service_tier="${args.serviceTier}"`);
     if (args.threadId) commandArgs.push("resume", args.threadId);
     if (args.images?.length) {
       for (const image of args.images) commandArgs.push("--image", image);
@@ -214,7 +227,7 @@ class CodexExec {
     if (args.baseUrl) env.OPENAI_BASE_URL = args.baseUrl;
     if (args.apiKey) env.CODEX_API_KEY = args.apiKey;
 
-    const child = spawn(this.executablePath, commandArgs, {
+    const child = this.spawnFn(this.executablePath, commandArgs, {
       cwd: args.workingDirectory,
       env,
       signal: args.signal,
@@ -257,9 +270,10 @@ class CodexExec {
         if (args.signal?.aborted) throw createAbortError();
         yield line;
       }
-      if (spawnError) {
-        if (args.signal?.aborted || spawnError.name === "AbortError") throw createAbortError();
-        throw spawnError;
+      const err = spawnError as Error | null;
+      if (err) {
+        if (args.signal?.aborted || err.name === "AbortError") throw createAbortError();
+        throw err;
       }
       const { code, signal } = await exitPromise;
       if (args.signal?.aborted) throw createAbortError();
@@ -309,6 +323,8 @@ export class Thread {
       webSearchMode: this.threadOptions.webSearchMode,
       approvalPolicy: this.threadOptions.approvalPolicy,
       additionalDirectories: this.threadOptions.additionalDirectories,
+      enableFeatures: this.threadOptions.enableFeatures,
+      serviceTier: this.threadOptions.serviceTier,
     })) {
       let parsed: ThreadEvent;
       try {
@@ -327,7 +343,7 @@ export class Thread {
 export class Codex {
   private readonly exec: CodexExec;
   constructor(private readonly options: CodexOptions = {}) {
-    this.exec = new CodexExec(options.codexPathOverride, options.env, options.config);
+    this.exec = new CodexExec(options.codexPathOverride, options.env, options.config, options.spawnOverride);
   }
 
   startThread(options: ThreadOptions = {}): Thread {

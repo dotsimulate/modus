@@ -207,5 +207,65 @@
   .nsw-inner {
     padding: 24px 16px;
   }
+
+  /* Actions page/widget: keep expanded action details inside the phone viewport. */
+  .schedules-view {
+    max-width: 100%;
+    padding: 12px 10px;
+    overflow-x: hidden;
+  }
+  .sched-grid,
+  .sched-card,
+  .sched-detail,
+  .sched-tab-content {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .sched-grid {
+    grid-template-columns: 1fr;
+  }
+  .sched-card {
+    --stamp-pad: 0px;
+    padding: 12px 10px;
+  }
+  .sched-card-stamp {
+    position: static;
+    order: 2;
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+  }
+  .sched-card--expanded .panel-collapse {
+    margin-right: 0;
+  }
+  .sched-switch,
+  .sched-trigger-btn,
+  .sched-archive-btn {
+    min-height: 32px;
+  }
+  .sched-archive-btn {
+    opacity: 1;
+  }
+  .sched-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sched-tab {
+    flex: 1 0 auto;
+    padding: 8px 10px;
+  }
+  .sched-session-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .sched-session-main {
+    flex: 1 0 100%;
+  }
+  .sched-info-code,
+  .sched-run-summary,
+  .sched-card-desc {
+    overflow-wrap: anywhere;
+  }
 }
 

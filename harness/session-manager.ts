@@ -87,7 +87,7 @@ import type { SessionProvider, TurnContext } from "./providers/types";
 
 // ── Types ──
 
-export type SessionStatus = "starting" | "running" | "idle" | "paused" | "done" | "error";
+export type SessionStatus = "starting" | "running" | "interrupting" | "idle" | "paused" | "done" | "error";
 
 export type ExchangePayload = {
   sessionId: string;
@@ -408,9 +408,12 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     updateSessionDb(updates) {
       const completing = updates.status === "idle" || updates.status === "done";
       const terminal = completing || updates.status === "error";
-      const persistedMessageCount = completing
-        ? (session.exchangeCount + 1) * 2
-        : (updates.messageCount ?? session.exchangeCount * 2);
+      const persistedMessageCount = updates.messageCount ?? (
+        completing
+          ? (session.exchangeCount + 1) * 2
+          : session.exchangeCount * 2
+      );
+      const completedExchange = completing && persistedMessageCount > session.exchangeCount * 2;
       upsertSession({
         id: session.sessionId,
         preview: session.preview,
@@ -427,7 +430,7 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
       });
 
       // Emit session trigger: assistant round end (on successful turn completion)
-      if (completing) {
+      if (completedExchange) {
         // exchangeCount tracks user↔assistant rounds (1 per result), not SDK agentic turns
         session.exchangeCount++;
         const dbRow = getSession(session.sessionId);
@@ -852,10 +855,10 @@ export function attachArtifactToSession(opts: {
 
 export function startSession(opts: StartSessionOpts): ActiveSession {
   // Memory guard: block spawn if too many sessions or system memory pressure is high.
-  // Count only running/starting sessions — those have live CLI processes consuming memory.
+  // Count only live sessions — those have CLI processes consuming memory.
   // Idle/error/done sessions are just metadata waiting for reaper cleanup.
   const liveCount = Array.from(activeSessions.values())
-    .filter(s => s.status === "running" || s.status === "starting").length;
+    .filter(s => s.status === "running" || s.status === "starting" || s.status === "interrupting").length;
   const guard = canSpawnSession(liveCount);
   if (!guard.ok) {
     throw new Error(`[memory-guard] ${guard.reason}`);
@@ -1050,6 +1053,15 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   return session;
 }
 
+async function waitForProviderInit(session: ActiveSession, timeoutMs = 15_000): Promise<void> {
+  // Provider init is where some backends rekey from Modus' provisional UUID to
+  // their real session/thread ID. API callers need the post-init ID when possible.
+  const start = Date.now();
+  while (session.status === "starting" && Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
 /**
  * Start a session with auto-activated profile moves.
  * Handles the two-phase move binding lifecycle:
@@ -1070,7 +1082,9 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
 
   // No moves declared → fast path, just start normally
   if (!allMoves.length) {
-    return startSession(opts);
+    const session = startSession(opts);
+    await waitForProviderInit(session);
+    return session;
   }
 
   const resolvedCwd = profileDef?.cwd
@@ -1109,10 +1123,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   // Wait for provider init (rekey happens during init — session.sessionId becomes the
   // backend-assigned ID).  Condition: status leaves "starting" once the provider fires
   // its first init event.  Timeout prevents blocking forever on provider failure.
-  const idStart = Date.now();
-  while (session.status === "starting" && Date.now() - idStart < 15_000) {
-    await new Promise(r => setTimeout(r, 200));
-  }
+  await waitForProviderInit(session);
 
   // Rekey inline API move registrations to the real session ID
   const rekeyMoveByToken = getRekeyMoveByToken();
@@ -1344,7 +1355,7 @@ async function _queueMessageAsync(
     message: { role: "user", content },
   }));
 
-  const isActiveTurn = session.status === "running" || session.status === "starting";
+  const isActiveTurn = session.status === "running" || session.status === "starting" || session.status === "interrupting";
   const pendingItem = createPendingDispatchItem(
     content,
     "next_turn",
@@ -1455,9 +1466,18 @@ export function stopSession(sessionId: string): boolean {
   session.pendingDispatch = [];
   endFollowupDispatch(session);
 
-  // Do NOT force idle here. The provider must own the actual teardown and terminal
-  // status transition so we don't mark the session stopped while the backend CLI
-  // process is still draining or retrying underneath.
+  // Do NOT force idle here. Escape means "stop requested", not "stopped".
+  // Keep the turn visibly active until the provider proves teardown completed.
+  session.status = "interrupting";
+  updateSessionStatus(session.sessionId, "interrupting");
+  emitGlobalSessionEvent({
+    type: "session:status",
+    sessionId: session.sessionId,
+    status: "interrupting",
+    costUsd: session.costUsd,
+    preview: session.preview,
+  });
+
   const interruptData = JSON.stringify({ type: "system", subtype: "interrupted" });
   session.seq++;
   addEvent(session.sessionId, session.seq, "system", "interrupted", interruptData);
@@ -1871,6 +1891,7 @@ const REAP_INTERVAL_MS = 60_000;          // check every 60s
 const REAP_TERMINAL_AFTER_MS = 60_000;    // done/error: reap after 1 min
 const REAP_IDLE_AFTER_MS = 10 * 60_000;   // idle: reap after 10 min (regardless of subscribers)
 const REAP_STARTING_AFTER_MS = 3 * 60_000; // starting: reap after 3 min (stuck spawn)
+const REAP_INTERRUPTING_AFTER_MS = 5 * 60_000; // interrupting: provider teardown got stuck
 
 function reapStaleSessions(): void {
   const now = Date.now();
@@ -1896,6 +1917,19 @@ function reapStaleSessions(): void {
       // Stuck in starting state — provider failed to spawn or connect.
       // These zombies hold a slot in activeSessions but do nothing.
       if (age >= REAP_STARTING_AFTER_MS) {
+        toReap.push(id);
+      }
+    } else if (session.status === "interrupting") {
+      if (age >= REAP_INTERRUPTING_AFTER_MS) {
+        session.status = "done";
+        updateSessionStatus(session.sessionId, "done");
+        emitGlobalSessionEvent({
+          type: "session:status",
+          sessionId: session.sessionId,
+          status: "done",
+          costUsd: session.costUsd,
+          preview: session.preview,
+        });
         toReap.push(id);
       }
     }

@@ -9,7 +9,7 @@
  */
 
 import { canResumeCodexThread, Codex, Thread } from "./codex-cli-sdk";
-import type { ApprovalMode, ModelReasoningEffort, SandboxMode, ThreadEvent, ThreadItem, ThreadOptions, WebSearchMode } from "./codex-cli-sdk";
+import type { ApprovalMode, ModelReasoningEffort, SandboxMode, ServiceTier, ThreadEvent, ThreadItem, ThreadOptions, WebSearchMode } from "./codex-cli-sdk";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
@@ -33,6 +33,18 @@ type CodexState = {
   threadOptions: ThreadOptions;
   abortController: AbortController;
   rulesFilePath?: string;
+  goal?: CodexGoalState;
+};
+
+type CodexGoalStatus = "active" | "paused" | "complete" | "blocked";
+
+type CodexGoalState = {
+  objective: string;
+  status: CodexGoalStatus;
+  iterations: number;
+  startedAt: number;
+  updatedAt: number;
+  lastStatus?: string;
 };
 
 type CodexConfigValue = string | number | boolean | CodexConfigValue[] | CodexConfigObject;
@@ -51,6 +63,40 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
     { label: "web", tools: ["WebSearch"] },
   ],
   builtInToolMode: "event-derived",
+  slashCommands: [
+    {
+      command: "/goal",
+      label: "/goal",
+      argumentHint: "<objective>",
+      requiresArgument: true,
+      source: "modus",
+      description: "Start a Modus-managed Codex goal loop for this session.",
+    },
+    {
+      command: "/goal",
+      label: "/goal status",
+      source: "modus",
+      description: "Show the current Codex goal status.",
+    },
+    {
+      command: "/goal pause",
+      label: "/goal pause",
+      source: "modus",
+      description: "Pause the active Codex goal loop.",
+    },
+    {
+      command: "/goal resume",
+      label: "/goal resume",
+      source: "modus",
+      description: "Resume a paused or blocked Codex goal loop.",
+    },
+    {
+      command: "/goal clear",
+      label: "/goal clear",
+      source: "modus",
+      description: "Clear the Codex goal for this session.",
+    },
+  ],
   supportsMcp: true,
   mcpSupport: "full",
   nonToolSignals: ["reasoning", "todo_list", "file_change"],
@@ -78,6 +124,7 @@ function mapCodexReasoningEffort(
     low: "low",
     medium: "medium",
     high: "high",
+    xhigh: "xhigh",
   };
   return effortMap[effort];
 }
@@ -90,6 +137,186 @@ function contentToString(content: MessageContent): string {
     .filter((b: any) => b.type === "text")
     .map((b: any) => b.text)
     .join("\n");
+}
+
+type GoalCommand =
+  | { kind: "status" }
+  | { kind: "pause" }
+  | { kind: "resume" }
+  | { kind: "clear" }
+  | { kind: "set"; objective: string };
+
+function parseGoalCommand(content: MessageContent): GoalCommand | null {
+  const text = contentToString(content).trim();
+  const match = text.match(/^\/goal(?::|\s+)?([\s\S]*)$/i);
+  if (!match) return null;
+
+  const arg = (match[1] ?? "").trim();
+  if (!arg) return { kind: "status" };
+
+  const lower = arg.toLowerCase();
+  if (lower === "pause") return { kind: "pause" };
+  if (lower === "resume") return { kind: "resume" };
+  if (lower === "clear") return { kind: "clear" };
+  return { kind: "set", objective: arg };
+}
+
+function goalStatusLine(goal: CodexGoalState | undefined): string {
+  if (!goal) return "No active Codex goal is set for this Modus session.";
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - goal.startedAt) / 1000));
+  const checkpoint = goal.lastStatus ? `\nLast status: ${goal.lastStatus}` : "";
+  return `Goal ${goal.status}: ${goal.objective}\nTurns: ${goal.iterations}\nElapsed: ${elapsedSeconds}s${checkpoint}`;
+}
+
+function buildGoalPrompt(objective: string): string {
+  return [
+    "Modus Codex goal mode is active.",
+    "",
+    "Objective:",
+    objective,
+    "",
+    "Keep working in concrete checkpoints until the objective is met, blocked, or the user pauses or clears the goal.",
+    "Validate progress with the repo's normal checks when possible. Do not stop after a partial checkpoint if meaningful work remains.",
+    "If native Codex goal tools are available, use them according to their descriptions; Modus still requires the markers below for its chat-side continuation loop.",
+    "",
+    "At the end of every response, include exactly one marker on its own line:",
+    "GOAL_CONTINUE: <next checkpoint>",
+    "GOAL_COMPLETE: <evidence that the objective is done>",
+    "GOAL_BLOCKED: <specific blocker and what the user must decide or provide>",
+  ].join("\n");
+}
+
+function buildGoalContinuationPrompt(goal: CodexGoalState): string {
+  return [
+    "Continue the active Modus Codex goal.",
+    "",
+    "Objective:",
+    goal.objective,
+    "",
+    goal.lastStatus ? `Previous checkpoint: ${goal.lastStatus}` : "Previous checkpoint: continue from the current repository and conversation state.",
+    "",
+    "If native Codex goal tools are available, use them according to their descriptions.",
+    "Keep making scoped progress. End with exactly one marker on its own line:",
+    "GOAL_CONTINUE: <next checkpoint>",
+    "GOAL_COMPLETE: <evidence that the objective is done>",
+    "GOAL_BLOCKED: <specific blocker and what the user must decide or provide>",
+  ].join("\n");
+}
+
+function updateGoalFromAssistant(goal: CodexGoalState | undefined, text: string): boolean {
+  if (!goal || goal.status !== "active") return false;
+
+  const complete = text.match(/^\s*GOAL_COMPLETE\s*:\s*(.+)$/im);
+  if (complete) {
+    goal.status = "complete";
+    goal.lastStatus = complete[1]?.trim() ?? "";
+    goal.updatedAt = Date.now();
+    return false;
+  }
+
+  const blocked = text.match(/^\s*GOAL_BLOCKED\s*:\s*(.+)$/im);
+  if (blocked) {
+    goal.status = "blocked";
+    goal.lastStatus = blocked[1]?.trim() ?? "";
+    goal.updatedAt = Date.now();
+    return false;
+  }
+
+  const cont = text.match(/^\s*GOAL_CONTINUE\s*:\s*(.+)$/im);
+  if (cont) goal.lastStatus = cont[1]?.trim() ?? "";
+  goal.updatedAt = Date.now();
+  return true;
+}
+
+function emitLocalCodexResponse(
+  ctx: TurnContext,
+  content: MessageContent,
+  text: string,
+  skipPromptPersist: boolean,
+) {
+  const { session } = ctx;
+  if (!skipPromptPersist) {
+    ctx.emitEvent({
+      type: "user",
+      subtype: "prompt",
+      message: { role: "user", content },
+    });
+  }
+  session.lastAssistantText = text.slice(-200);
+  ctx.emitEvent(assembledAssistant({ text }));
+  ctx.emitEvent({
+    type: "result",
+    subtype: "success",
+    result: text,
+    harness_duration_ms: Date.now() - session.turnStartedAt,
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    num_turns: 0,
+    total_cost_usd: 0,
+  });
+  ctx.updateSessionDb({
+    status: "idle",
+    messageCount: session.numTurns * 2,
+    costUsd: session.costUsd,
+    lastPrompt: session.preview,
+    lastResponse: text.slice(0, 200),
+  });
+  session.status = "idle";
+}
+
+function handleGoalCommand(
+  ctx: TurnContext,
+  state: CodexState,
+  content: MessageContent,
+  skipPromptPersist: boolean,
+): { handled: boolean; input?: string } {
+  const command = parseGoalCommand(content);
+  if (!command) return { handled: false };
+
+  const now = Date.now();
+  switch (command.kind) {
+    case "set": {
+      state.goal = {
+        objective: command.objective,
+        status: "active",
+        iterations: 0,
+        startedAt: now,
+        updatedAt: now,
+      };
+      return { handled: true, input: buildGoalPrompt(command.objective) };
+    }
+    case "status": {
+      emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal), skipPromptPersist);
+      return { handled: true };
+    }
+    case "pause": {
+      if (state.goal && state.goal.status === "active") {
+        state.goal.status = "paused";
+        state.goal.updatedAt = now;
+      }
+      emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal), skipPromptPersist);
+      return { handled: true };
+    }
+    case "clear": {
+      state.goal = undefined;
+      emitLocalCodexResponse(ctx, content, "Codex goal cleared for this Modus session.", skipPromptPersist);
+      return { handled: true };
+    }
+    case "resume": {
+      if (!state.goal) {
+        emitLocalCodexResponse(ctx, content, "No Codex goal is set for this Modus session.", skipPromptPersist);
+        return { handled: true };
+      }
+      if (state.goal.status === "complete") {
+        emitLocalCodexResponse(ctx, content, goalStatusLine(state.goal), skipPromptPersist);
+        return { handled: true };
+      }
+      state.goal.status = "active";
+      state.goal.updatedAt = now;
+      return { handled: true, input: buildGoalContinuationPrompt(state.goal) };
+    }
+  }
 }
 
 function buildCodexInput(content: MessageContent, ctx: TurnContext): string {
@@ -288,6 +515,7 @@ function mapPermissionPolicy(
 type CodexProviderControls = {
   sandboxMode?: SandboxMode;
   webSearchMode?: WebSearchMode;
+  serviceTier?: ServiceTier;
 };
 
 function readCodexProviderControls(raw: unknown): CodexProviderControls {
@@ -309,6 +537,13 @@ function readCodexProviderControls(raw: unknown): CodexProviderControls {
     || (codex as Record<string, unknown>).webSearchMode === "live"
   ) {
     controls.webSearchMode = (codex as Record<string, WebSearchMode>).webSearchMode;
+  }
+  if (
+    (codex as Record<string, unknown>).serviceTier === "standard"
+    || (codex as Record<string, unknown>).serviceTier === "fast"
+    || (codex as Record<string, unknown>).serviceTier === "priority"
+  ) {
+    controls.serviceTier = (codex as Record<string, ServiceTier>).serviceTier;
   }
   return controls;
 }
@@ -335,6 +570,7 @@ function resolveCodexRuntimeSettings(
   approvalPolicy: ApprovalMode;
   sandboxMode: SandboxMode;
   webSearchMode: WebSearchMode;
+  serviceTier?: ServiceTier;
 } {
   const controls = readCodexProviderControls(opts.providerControls);
   const { approvalPolicy, sandboxMode: derivedSandbox } = mapPermissionPolicy(
@@ -362,7 +598,11 @@ function resolveCodexRuntimeSettings(
       : "disabled";
   }
 
-  return { approvalPolicy, sandboxMode, webSearchMode };
+  return { approvalPolicy, sandboxMode, webSearchMode, serviceTier: controls.serviceTier };
+}
+
+function codexEnableFeatures(serviceTier?: ServiceTier): string[] {
+  return serviceTier === "fast" ? ["goals", "fast_mode"] : ["goals"];
 }
 
 function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?: Record<string, string> } {
@@ -618,7 +858,7 @@ export function createCodexProvider(): SessionProvider {
       const apiKey = resolveCodexApiKey();
       const codex = createCodexClient(ctx, apiKey);
 
-      const { approvalPolicy, sandboxMode, webSearchMode } = resolveCodexRuntimeSettings(profileDef, {
+      const { approvalPolicy, sandboxMode, webSearchMode, serviceTier } = resolveCodexRuntimeSettings(profileDef, {
         toolStates: opts.toolStates,
         providerControls: opts.providerControls,
       });
@@ -629,7 +869,9 @@ export function createCodexProvider(): SessionProvider {
         sandboxMode,
         approvalPolicy,
         webSearchMode,
+        serviceTier,
         additionalDirectories: session.additionalDirectories.length > 0 ? session.additionalDirectories : undefined,
+        enableFeatures: codexEnableFeatures(serviceTier),
       };
 
       // Map effort levels
@@ -658,7 +900,10 @@ export function createCodexProvider(): SessionProvider {
       }
 
       // Start the turn
-      const input = buildCodexInput(session.initialContent, ctx);
+      const goalCommand = handleGoalCommand(ctx, state, session.initialContent, false);
+      if (goalCommand.handled && !goalCommand.input) return;
+
+      const input = goalCommand.input ? buildCodexInput(goalCommand.input, ctx) : buildCodexInput(session.initialContent, ctx);
       runTurn(ctx, state, input, isResume, false).catch((err) => {
         console.error(`[codex] startTurn error for ${session.sessionId}:`, err);
         session.status = "error";
@@ -709,7 +954,10 @@ export function createCodexProvider(): SessionProvider {
       // Rebuild the Codex client so next turns pick up live MCP/profile changes.
       state.codex = createCodexClient(ctx, resolveCodexApiKey());
 
-      const input = buildCodexInput(content, ctx);
+      const goalCommand = handleGoalCommand(ctx, state, content, true);
+      if (goalCommand.handled && !goalCommand.input) return;
+
+      const input = goalCommand.input ? buildCodexInput(goalCommand.input, ctx) : buildCodexInput(content, ctx);
       runTurn(ctx, state, input, true, true).catch((err) => {
         console.error(`[codex] sendMessage error for ${session.sessionId}:`, err);
         session.status = "error";
@@ -754,6 +1002,8 @@ export function createCodexProvider(): SessionProvider {
       state.threadOptions.approvalPolicy = runtime.approvalPolicy;
       state.threadOptions.sandboxMode = runtime.sandboxMode;
       state.threadOptions.webSearchMode = runtime.webSearchMode;
+      state.threadOptions.serviceTier = runtime.serviceTier;
+      state.threadOptions.enableFeatures = codexEnableFeatures(runtime.serviceTier);
 
       if (session.status === "running" || session.status === "starting") {
         session.abortController.abort();
@@ -793,6 +1043,8 @@ export function createCodexProvider(): SessionProvider {
       state.threadOptions.approvalPolicy = runtime.approvalPolicy;
       state.threadOptions.sandboxMode = runtime.sandboxMode;
       state.threadOptions.webSearchMode = runtime.webSearchMode;
+      state.threadOptions.serviceTier = runtime.serviceTier;
+      state.threadOptions.enableFeatures = codexEnableFeatures(runtime.serviceTier);
 
       state.codex = createCodexClient(ctx, resolveCodexApiKey());
     },
@@ -1049,6 +1301,16 @@ async function runTurn(
 
     session.costUsd += 0;
     session.numTurns += turnCount;
+    if (state.goal?.status === "active") {
+      state.goal.iterations++;
+    }
+    let continueGoal = updateGoalFromAssistant(state.goal, lastAgentText);
+    if (continueGoal && ctx.opts.maxTurns && state.goal && state.goal.iterations >= ctx.opts.maxTurns) {
+      state.goal.status = "paused";
+      state.goal.lastStatus = `Paused after reaching maxTurns=${ctx.opts.maxTurns}.`;
+      state.goal.updatedAt = Date.now();
+      continueGoal = false;
+    }
 
     ctx.updateSessionDb({
       status: "idle",
@@ -1081,6 +1343,22 @@ async function runTurn(
     session.abortController = new AbortController();
     state.abortController = session.abortController;
 
+    if (continueGoal && state.goal?.status === "active" && session.pendingDispatch.length === 0) {
+      session.initialContent = buildGoalContinuationPrompt(state.goal);
+      session.preview = `/goal ${state.goal.objective}`.slice(0, 80);
+      session.status = "running";
+      session.turnStartedAt = Date.now();
+      updateSessionStatus(session.sessionId, "running");
+
+      runTurn(ctx, state, buildCodexInput(session.initialContent, ctx), true, true).catch((err) => {
+        console.error(`[codex] goal continuation error for ${session.sessionId}:`, err);
+        session.status = "error";
+        session.error = String(err);
+        updateSessionStatus(session.sessionId, "error");
+      });
+      return;
+    }
+
     // Flush queued messages
     if (session.pendingDispatch.length > 0) {
       const next = session.pendingDispatch.shift()!.content;
@@ -1091,7 +1369,9 @@ async function runTurn(
       session.status = "running";
       session.turnStartedAt = Date.now();
 
-      const nextInput = buildCodexInput(next, ctx);
+      const goalCommand = handleGoalCommand(ctx, state, next, true);
+      if (goalCommand.handled && !goalCommand.input) return;
+      const nextInput = goalCommand.input ? buildCodexInput(goalCommand.input, ctx) : buildCodexInput(next, ctx);
       runTurn(ctx, state, nextInput, true, true).catch((err) => {
         console.error(`[codex] pending drain error for ${session.sessionId}:`, err);
         session.status = "error";
@@ -1139,7 +1419,9 @@ async function runTurn(
         session.status = "running";
         session.turnStartedAt = Date.now();
 
-        const nextInput = buildCodexInput(next, ctx);
+        const goalCommand = handleGoalCommand(ctx, state, next, true);
+        if (goalCommand.handled && !goalCommand.input) return;
+        const nextInput = goalCommand.input ? buildCodexInput(goalCommand.input, ctx) : buildCodexInput(next, ctx);
         runTurn(ctx, state, nextInput, true, true).catch((err2) => {
           console.error(`[codex] post-abort drain error for ${session.sessionId}:`, err2);
           session.status = "error";

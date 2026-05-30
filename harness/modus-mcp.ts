@@ -50,21 +50,18 @@ export async function handleModusMcpRequest(request: Request): Promise<Response>
     "Submit a command to the harness. Provide the token you were given and a data object for the operation.",
     {
       token: z.string().describe("The token you received"),
-      data: z.union([
-        z.record(z.string(), z.unknown()),
-        z.string(),
-      ]).optional().describe("Operation payload (object or JSON string)"),
+      data: z.string().optional().describe("Operation payload as a JSON string"),
     },
     async (params) => {
       const { token, data: rawData, ...rest } = params as Record<string, unknown> & { token: string; data?: unknown };
 
       // Three calling patterns:
-      // 1. data is an object (native MCP clients)
-      // 2. data is a JSON string (Claude Code XML serialization)
+      // 1. data is an object (native MCP clients, most models)
+      // 2. data is a JSON string (Claude Code XML serialization — handled here, not in schema)
       // 3. data is absent, fields passed flat (haiku/smaller models)
+      // Schema is plain object (no union/oneOf) to avoid llama.cpp autoparser PEG bugs.
       let data: Record<string, unknown>;
       if (rawData == null) {
-        // Flat params — everything except token IS the data
         data = rest;
       } else if (typeof rawData === "string") {
         try {

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { getPluginActionsDir, getPluginMovesDir, getPluginPagesDir, listEnabledModusPlugins } from "./modus-plugins";
 
 export type ConfigPage = {
   id: string;
@@ -15,7 +16,7 @@ export type ConfigPage = {
   padding?: number;
   source?: string;
   /** Origin primitive that declared this page */
-  origin?: "standalone" | "harness" | "move" | "action" | "mission";
+  origin?: "standalone" | "plugin" | "harness" | "move" | "action" | "mission";
   /** Show in nav bar (default true) */
   nav?: boolean;
   /** Hide app-level panels when this page is active */
@@ -78,6 +79,11 @@ function scanStandalonePages(cwd: string): ConfigPage[] {
   return scanPageDir(join(cwd, ".modus", "pages"), "standalone");
 }
 
+/** Scan enabled plugin `.modus/pages/*.json` files */
+function scanPluginStandalonePages(): ConfigPage[] {
+  return listEnabledModusPlugins().flatMap((plugin) => scanPageDir(getPluginPagesDir(plugin), "plugin"));
+}
+
 /** Scan harness-shipped `harness/pages/*.json` built-in templates */
 function scanHarnessPages(): ConfigPage[] {
   return scanPageDir(join(import.meta.dir, "pages"), "harness");
@@ -110,6 +116,7 @@ function scanMovePages(cwd: string): ConfigPage[] {
   const pages: ConfigPage[] = [];
   const dirs = [
     { dir: join(cwd, ".modus", "moves"), label: "project" },
+    ...listEnabledModusPlugins().map((plugin) => ({ dir: getPluginMovesDir(plugin), label: `plugin:${plugin.id}` })),
     { dir: join(import.meta.dir, "moves"), label: "harness" },
   ];
 
@@ -151,6 +158,7 @@ function scanActionPages(cwd: string): ConfigPage[] {
   const pages: ConfigPage[] = [];
   const dirs = [
     join(cwd, ".modus", "actions"),
+    ...listEnabledModusPlugins().map((plugin) => getPluginActionsDir(plugin)),
     join(import.meta.dir, "actions"),
   ];
 
@@ -235,6 +243,7 @@ export function listConfigPages(cwd?: string | null): ConfigPage[] {
 
   const all = [
     ...scanStandalonePages(cwd),
+    ...scanPluginStandalonePages(),
     ...scanHarnessPages(),
     ...scanMovePages(cwd),
     ...scanActionPages(cwd),

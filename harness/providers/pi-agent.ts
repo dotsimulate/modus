@@ -8,6 +8,8 @@
  */
 
 import type { Model } from "@mariozechner/pi-ai";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { isAbsolute, join } from "node:path";
 import { getModel } from "@mariozechner/pi-ai";
 import {
   createAgentSession,
@@ -73,6 +75,8 @@ type PiAgentState = {
   agentSession: AgentSession;
   unsubscribe: () => void;
   mcpConnections: McpConnection[];
+  modelBaseUrl: string;
+  extraBody?: Record<string, unknown>;
 };
 
 function getState(session: ActiveSession): PiAgentState | null {
@@ -90,6 +94,74 @@ type CostRates = { input: number; output: number; cacheRead: number; cacheWrite:
 const ZERO_COST: CostRates = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 type OpenRouterModelInfo = { cost: CostRates; contextLength: number };
+
+type PiExtraBodyContext = {
+  baseUrl: string;
+  extraBody: Record<string, unknown>;
+};
+
+const piExtraBodyContext = new AsyncLocalStorage<PiExtraBodyContext>();
+let piFetchPatchInstalled = false;
+
+function normalizeUrlPrefix(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function shouldInjectPiExtraBody(url: string, baseUrl: string): boolean {
+  const normalizedUrl = normalizeUrlPrefix(url);
+  const normalizedBaseUrl = normalizeUrlPrefix(baseUrl);
+  return normalizedUrl.startsWith(normalizedBaseUrl) && /\/chat\/completions$/.test(normalizedUrl);
+}
+
+function installPiExtraBodyFetchPatch(): void {
+  if (piFetchPatchInstalled) return;
+  piFetchPatchInstalled = true;
+  const originalFetch = globalThis.fetch.bind(globalThis);
+
+  globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    const ctx = piExtraBodyContext.getStore();
+    if (!ctx || Object.keys(ctx.extraBody).length === 0) {
+      return originalFetch(input, init);
+    }
+
+    const url = typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+    if (!shouldInjectPiExtraBody(url, ctx.baseUrl)) {
+      return originalFetch(input, init);
+    }
+
+    const body = init?.body;
+    if (typeof body !== "string") {
+      return originalFetch(input, init);
+    }
+
+    try {
+      const parsed = JSON.parse(body);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return originalFetch(input, init);
+      }
+      return originalFetch(input, {
+        ...init,
+        body: JSON.stringify({ ...parsed, ...ctx.extraBody }),
+      });
+    } catch {
+      return originalFetch(input, init);
+    }
+  }) as typeof globalThis.fetch;
+}
+
+async function withPiExtraBody<T>(
+  baseUrl: string,
+  extraBody: Record<string, unknown> | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!extraBody || Object.keys(extraBody).length === 0) return fn();
+  installPiExtraBodyFetchPatch();
+  return piExtraBodyContext.run({ baseUrl, extraBody }, fn);
+}
 
 // Cache keyed by model ID, populated lazily from OpenRouter's /api/v1/models
 let openRouterModelCache: Map<string, OpenRouterModelInfo> | null = null;
@@ -183,6 +255,54 @@ function buildAuthStorage(provider: PiProviderName): AuthStorage {
   auth.setRuntimeApiKey(provider, key || "unused");
 
   return auth;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function readPiNoTools(providerControls: unknown): boolean {
+  const controls = asRecord(providerControls);
+  const pi = asRecord(controls?.pi);
+  return pi?.noTools === true;
+}
+
+async function readPiExtraBody(
+  session: ActiveSession,
+  providerControls: unknown,
+): Promise<Record<string, unknown> | undefined> {
+  const controls = asRecord(providerControls);
+  const pi = asRecord(controls?.pi);
+  if (!pi) return undefined;
+
+  const extraBody = { ...(asRecord(pi.extraBody) ?? {}) };
+  const grammarPath = typeof pi.grammarPath === "string" ? pi.grammarPath.trim() : "";
+  if (grammarPath && typeof extraBody.grammar !== "string") {
+    const candidates = isAbsolute(grammarPath)
+      ? [grammarPath]
+      : [
+          ...(session.actionName && session.projectRoot
+            ? [join(session.projectRoot, ".modus", "actions", session.actionName, grammarPath)]
+            : []),
+          join(session.cwd ?? session.projectRoot ?? process.cwd(), grammarPath),
+        ];
+
+    let loaded = false;
+    for (const candidate of candidates) {
+      const file = Bun.file(candidate);
+      if (!(await file.exists())) continue;
+      extraBody.grammar = await file.text();
+      loaded = true;
+      break;
+    }
+    if (!loaded) {
+      throw new Error(`pi grammarPath not found: ${grammarPath}`);
+    }
+  }
+
+  return Object.keys(extraBody).length > 0 ? extraBody : undefined;
 }
 
 // ── Friendly Errors (ported from direct-api.ts) ──
@@ -528,6 +648,8 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         const orInfo = providerName === "openrouter"
           ? await fetchOpenRouterModelInfo(modelId)
           : null;
+        const extraBody = await readPiExtraBody(session, opts.providerControls);
+        const noTools = readPiNoTools(opts.providerControls);
         const model = buildModel(providerName, modelId, profile, orInfo?.cost, orInfo?.contextLength || undefined);
         const authStorage = buildAuthStorage(providerName);
         const sessionManager = SessionManager.inMemory(cwd);
@@ -556,26 +678,31 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         });
         await resourceLoader.reload();
 
-        // MCP tools: merge global + project-local + profile
         const globalConfig = getGlobalConfig(session.cwd);
-        const mergedMcp = {
-          ...(globalConfig.mcpServers ?? {}),
-          ...(profile?.mcpServers ?? {}),
-          ...(opts.mcpServers as Record<string, any> ?? {}),
-        };
-        console.log(`[pi-agent] MCP servers to connect: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
 
         let mcpConnections: McpConnection[] = [];
         let mcpTools: import("@mariozechner/pi-coding-agent").ToolDefinition[] = [];
-        if (Object.keys(mergedMcp).length > 0) {
-          const mcp = await startMcpServers(mergedMcp);
-          mcpConnections = mcp.connections;
-          mcpTools = mcp.tools;
-          console.log(`[pi-agent] MCP tools registered: ${mcpTools.map(t => t.name).join(", ") || "(none)"}`);
+        if (noTools) {
+          console.log(`[pi-agent] providerControls.pi.noTools enabled; skipping built-in and MCP tools`);
+        } else {
+          // MCP tools: merge global + project-local + profile
+          const mergedMcp = {
+            ...(globalConfig.mcpServers ?? {}),
+            ...(profile?.mcpServers ?? {}),
+            ...(opts.mcpServers as Record<string, any> ?? {}),
+          };
+          console.log(`[pi-agent] MCP servers to connect: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
+
+          if (Object.keys(mergedMcp).length > 0) {
+            const mcp = await startMcpServers(mergedMcp);
+            mcpConnections = mcp.connections;
+            mcpTools = mcp.tools;
+            console.log(`[pi-agent] MCP tools registered: ${mcpTools.map(t => t.name).join(", ") || "(none)"}`);
+          }
         }
 
         // Built-in coding tools
-        const tools = createCodingTools(cwd);
+        const tools = noTools ? [] : createCodingTools(cwd);
         console.log(`[pi-agent] Built-in tools: ${tools.map((t: any) => t.name).join(", ")}`);
 
         const { session: agentSession } = await createAgentSession({
@@ -586,7 +713,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
           settingsManager,
           resourceLoader,
           tools,
-          customTools: mcpTools.length > 0 ? mcpTools : undefined,
+          customTools: !noTools && mcpTools.length > 0 ? mcpTools : undefined,
         });
 
         // Disable auto-retry — harness manages retries at session level
@@ -689,13 +816,17 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
           agentSession,
           unsubscribe,
           mcpConnections,
+          modelBaseUrl: model.baseUrl,
+          extraBody,
         } satisfies PiAgentState;
 
         // Send the initial prompt
         session.status = "running";
         session.turnStartedAt = Date.now();
         const { text: promptText, images: promptImages } = contentToPiPrompt(session.initialContent);
-        await agentSession.prompt(promptText, promptImages ? { images: promptImages } : undefined);
+        await withPiExtraBody(model.baseUrl, extraBody, () =>
+          agentSession.prompt(promptText, promptImages ? { images: promptImages } : undefined)
+        );
       } catch (err: any) {
         const message = friendlyError(err, providerName);
         console.error(`[pi-agent] ${session.sessionId}: ${message}`);
@@ -734,7 +865,11 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         message: { role: "user", content },
       });
 
-      state.agentSession.sendUserMessage(contentToPi(content)).catch((err: any) => {
+      readPiExtraBody(session, ctx.opts.providerControls)
+        .then((extraBody) => withPiExtraBody(state.modelBaseUrl, extraBody ?? state.extraBody, () =>
+          state.agentSession.sendUserMessage(contentToPi(content))
+        ))
+        .catch((err: any) => {
         const message = friendlyError(err, providerName);
         console.error(`[pi-agent] ${session.sessionId}: ${message}`);
         ctx.emitEvent({ type: "result", subtype: "error", error: message });

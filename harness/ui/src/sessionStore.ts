@@ -184,7 +184,7 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
 
     const prevStatus = entry.state.status;
     entry.state = reduceEvent(entry.state, event, seq);
-    if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting")) {
+    if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting" || entry.state.status === "interrupting")) {
       entry.state = { ...entry.state, status: prevStatus };
     }
     // Handle rekey within batch — but NOT during catch-up replay.
@@ -235,7 +235,7 @@ export function applyEvent(id: string, event: any, seq: number) {
   const prevStatus = entry.state.status;
   entry.state = reduceEvent(entry.state, event, seq);
   // During SSE catch-up replay of a completed session, suppress spurious "running" status
-  if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting")) {
+  if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting" || entry.state.status === "interrupting")) {
     entry.state = { ...entry.state, status: prevStatus };
   }
   // Auto-rekey when provider's init event carries a different session ID
@@ -327,7 +327,7 @@ export function subscribeSession(
   if (afterSeq === 0) {
     const entry = sessions.get(sessionId)!;
     const knownStatus = entry.state.status;
-    if (knownStatus !== "running" && knownStatus !== "starting") {
+    if (knownStatus !== "running" && knownStatus !== "starting" && knownStatus !== "interrupting") {
       entry.catchingUp = true;
     }
   }
@@ -345,7 +345,7 @@ export function subscribeSession(
       if (entry) {
         entry.catchingUp = false;
         const st = entry.state;
-        if (st.status === "running" || st.status === "starting") {
+        if (st.status === "running" || st.status === "starting" || st.status === "interrupting") {
           // SSE closed while we think the session is still active — likely a race
           // between sendMessage and SSE subscribe. Retry once after a brief delay
           // to give the backend time to reactivate the session.
@@ -355,7 +355,7 @@ export function subscribeSession(
             (entry as any)[retryKey] = retryCount + 1;
             setTimeout(() => {
               const e2 = sessions.get(sessionId);
-              if (e2 && (e2.state.status === "running" || e2.state.status === "starting")) {
+              if (e2 && (e2.state.status === "running" || e2.state.status === "starting" || e2.state.status === "interrupting")) {
                 subscribeSession(sessionId, e2.state.lastSeq, e2.profile, onDone);
               }
             }, 2000);
@@ -478,8 +478,8 @@ export function ensureSubscribed(
 
       const hinted = opts.activeStatus;
       const storedStatus = existing?.status;
-      const isActive = hinted === "running" || hinted === "starting" || hinted === "paused"
-        || storedStatus === "running" || storedStatus === "starting";
+      const isActive = hinted === "running" || hinted === "starting" || hinted === "interrupting" || hinted === "paused"
+        || storedStatus === "running" || storedStatus === "starting" || storedStatus === "interrupting";
 
       let afterSeq = existing?.lastSeq ?? 0;
 
@@ -558,7 +558,7 @@ export function evictInactiveSessions(keepId: string) {
     if (id === keepId) continue;
     if (id.startsWith("pending-")) continue;
     const status = entry.state.status;
-    if (status === "running" || status === "starting") continue;
+    if (status === "running" || status === "starting" || status === "interrupting") continue;
     unsubscribeSession(id);
     sessions.delete(id);
     changed = true;

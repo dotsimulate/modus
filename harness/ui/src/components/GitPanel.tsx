@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { modus, getAuthToken } from "../modusClient";
 import type { GitStatus, GitCommit, GitCommitDetail, FileDiff } from "../../../sdk/index";
 import { replaceGitRouteState, useGitRouteState } from "../git-route";
 import { DiffView } from "./DiffView";
 import { Markdown } from "./Markdown";
+import { ResizeHandle } from "./ResizeHandle";
 import {
   Folder, FolderOpen,
   FileCode2, FileJson, FileText, FileTerminal, FileCog, File as FileGeneric,
@@ -369,20 +370,14 @@ function WorkingTreeWidget({ status, onFileClick, activeFile }: {
 
   const tree = useMemo(() => buildFileTree(treeEntries), [treeEntries]);
 
-  // Auto-expand all directories on mount
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => {
-    const dirs = new Set<string>();
-    const collect = (nodes: TreeNode[]) => {
-      for (const n of nodes) {
-        if (n.children) { dirs.add(n.path); collect(n.children); }
-      }
-    };
-    collect(tree);
-    return dirs;
-  });
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const initialized = useRef(false);
 
-  // Re-expand when tree changes
-  useMemo(() => {
+  // Auto-expand all directories once on first non-empty tree; preserve user
+  // collapse state across subsequent polls.
+  useEffect(() => {
+    if (initialized.current) return;
+    if (tree.length === 0) return;
     const dirs = new Set<string>();
     const collect = (nodes: TreeNode[]) => {
       for (const n of nodes) {
@@ -391,6 +386,7 @@ function WorkingTreeWidget({ status, onFileClick, activeFile }: {
     };
     collect(tree);
     setExpandedDirs(dirs);
+    initialized.current = true;
   }, [tree]);
 
   const toggleDir = useCallback((path: string) => {
@@ -402,10 +398,31 @@ function WorkingTreeWidget({ status, onFileClick, activeFile }: {
     });
   }, []);
 
+  const resetTree = useCallback(() => {
+    const dirs = new Set<string>();
+    const collect = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        if (n.children) { dirs.add(n.path); collect(n.children); }
+      }
+    };
+    collect(tree);
+    setExpandedDirs(dirs);
+  }, [tree]);
+
   if (count === 0 || !files) return null;
 
   return (
     <SidebarWidget title="working tree" badge={`${count}`} defaultOpen={true}>
+      <div className="git-wt-actions">
+        <button
+          className="git-wt-reset"
+          onClick={resetTree}
+          type="button"
+          title="Expand all"
+        >
+          expand all
+        </button>
+      </div>
       <div className="fb-list" style={{ maxHeight: "none", overflow: "visible" }}>
         <FileTreeNodes
           nodes={tree}
@@ -693,6 +710,25 @@ function DetailPane({ state, cwd, commits, commitDetails, onCommitFile, onBackTo
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════
 
+const SIDEBAR_MIN = 200;
+const SIDEBAR_MAX = 600;
+const SIDEBAR_DEFAULT = 280;
+const DETAIL_MIN = 320;
+const DETAIL_MAX = 1200;
+const DETAIL_DEFAULT = 560;
+
+function readStoredWidth(key: string, fallback: number, min: number, max: number): number {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+  } catch {
+    return fallback;
+  }
+}
+
 export function GitPanel({ cwd }: { cwd: string | null }) {
   const route = useGitRouteState();
   const effectiveCwd = cwd;
@@ -702,6 +738,29 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
   const [detailState, setDetailState] = useState<DetailState>({ kind: "overview" });
   const [commitDetails, setCommitDetails] = useState<Map<string, GitCommitDetail>>(new Map());
   const [loadingCommit, setLoadingCommit] = useState<string | null>(null);
+
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    () => readStoredWidth("modus.git.sidebarWidth", SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX)
+  );
+  const [detailWidth, setDetailWidth] = useState<number>(
+    () => readStoredWidth("modus.git.detailWidth", DETAIL_DEFAULT, DETAIL_MIN, DETAIL_MAX)
+  );
+
+  const handleSidebarResize = useCallback((delta: number) => {
+    setSidebarWidth(prev => {
+      const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, prev + delta));
+      try { localStorage.setItem("modus.git.sidebarWidth", String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleDetailResize = useCallback((delta: number) => {
+    setDetailWidth(prev => {
+      const next = Math.max(DETAIL_MIN, Math.min(DETAIL_MAX, prev + delta));
+      try { localStorage.setItem("modus.git.detailWidth", String(next)); } catch {}
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async () => {
     if (!effectiveCwd) return;
@@ -805,8 +864,13 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
     + (status.files?.untracked.length ?? 0);
   const isDirty = fileCount > 0;
 
+  const panelStyle = {
+    "--git-sidebar-width": `${sidebarWidth}px`,
+    "--git-detail-width": `${detailWidth}px`,
+  } as React.CSSProperties;
+
   return (
-    <div className="git-panel">
+    <div className="git-panel" style={panelStyle}>
       {/* ── LEFT SIDEBAR ── */}
       <div className="git-sidebar">
         <div className="git-repo-identity">
@@ -847,6 +911,8 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
           <ContributorsWidget commits={log} />
         </div>
       </div>
+
+      <ResizeHandle side="left" onResize={handleSidebarResize} />
 
       {/* ── CENTER: COMMIT TIMELINE ── */}
       <div className="git-center">
@@ -933,6 +999,8 @@ export function GitPanel({ cwd }: { cwd: string | null }) {
           {log.length === 0 && <div className="git-empty">No commits</div>}
         </div>
       </div>
+
+      <ResizeHandle side="right" onResize={handleDetailResize} />
 
       {/* ── RIGHT DETAIL PANE ── */}
       <div className="git-detail">

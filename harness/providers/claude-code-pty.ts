@@ -58,6 +58,20 @@ const CAPABILITIES: ProviderCapabilities = {
     { label: "other", tools: ["NotebookEdit", "AskUserQuestion"] },
   ],
   builtInToolMode: "explicit",
+  slashCommands: [
+    {
+      command: "/compact",
+      label: "/compact",
+      source: "provider",
+      description: "Ask Claude Code to compact the conversation context.",
+    },
+    {
+      command: "/context",
+      label: "/context",
+      source: "provider",
+      description: "Ask Claude Code for its current context usage/status.",
+    },
+  ],
   supportsMcp: true,
   mcpSupport: "full",
   nonToolSignals: ["thinking", "streaming"],

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { modus } from "../modusClient";
-import type { ActionInfo, ActionRun } from "../../../sdk/index";
+import type { ActionInfo, ActionRun, SessionInfo } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 
@@ -10,7 +10,44 @@ type Props = {
   onOpenTerminal?: (ownerType: string, ownerName: string, label?: string) => void;
 };
 
+type SessionMap = Map<string, SessionInfo>;
+type ActionScope = { userProfile?: string | null; cwd?: string | null };
+
+function finiteNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function optionalFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatUsd(value: unknown, digits = 3): string {
+  return `$${finiteNumber(value).toFixed(digits)}`;
+}
+
+function safeTags(tags: unknown): string[] {
+  return Array.isArray(tags) ? tags.filter((tag): tag is string => typeof tag === "string") : [];
+}
+
+function safeTrigger(action: ActionInfo): ActionInfo["trigger"] {
+  const trigger = action.trigger as ActionInfo["trigger"] | undefined;
+  return trigger && typeof trigger === "object" && typeof trigger.type === "string"
+    ? trigger
+    : { type: "manual" };
+}
+
+function parseSessionTags(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((tag): tag is string => typeof tag === "string") : [];
+  } catch {
+    return raw.split(",").map((tag) => tag.trim()).filter(Boolean);
+  }
+}
+
 function timeAgo(ts: number): string {
+  if (!Number.isFinite(ts) || ts <= 0) return "unknown";
   const diff = Date.now() - ts;
   if (diff < 0) {
     const secs = Math.ceil(Math.abs(diff) / 1000);
@@ -23,6 +60,7 @@ function timeAgo(ts: number): string {
 }
 
 function countdown(ts: number): string {
+  if (!Number.isFinite(ts) || ts <= 0) return "unknown";
   const diff = ts - Date.now();
   if (diff <= 0) return "now";
   const secs = Math.ceil(diff / 1000);
@@ -63,7 +101,7 @@ function runStatusLabel(status: string): string | null {
 }
 
 function triggerLabel(a: ActionInfo): string {
-  const t = a.trigger;
+  const t = safeTrigger(a);
   if (t.type === "interval") return t.every;
   if (t.type === "webhook") return "webhook";
   if (t.type === "manual") return "manual";
@@ -81,17 +119,19 @@ const chevron = (
 
 function CycleInfo({ action }: { action: ActionInfo }) {
   const hasCycles = !!action.cycleInterval;
+  const cycleRunCount = finiteNumber(action.cycleRunCount);
+  const cycleNumber = finiteNumber(action.cycleNumber, 1);
   const runs = action.maxRuns
-    ? `${action.cycleRunCount}/${action.maxRuns}`
-    : `${action.cycleRunCount}`;
+    ? `${cycleRunCount}/${action.maxRuns}`
+    : `${cycleRunCount}`;
 
   if (!hasCycles) {
     return <span className="sched-cycle-info">{runs} runs</span>;
   }
 
   const cycle = action.maxCycles
-    ? `${action.cycleNumber}/${action.maxCycles}`
-    : `${action.cycleNumber}`;
+    ? `${cycleNumber}/${action.maxCycles}`
+    : `${cycleNumber}`;
 
   return (
     <span className="sched-cycle-info">
@@ -105,6 +145,7 @@ function CycleInfo({ action }: { action: ActionInfo }) {
 function RunsTab({
   runs,
   action,
+  sessions,
   onSelectSession,
   onPeekSession,
   onClear,
@@ -112,6 +153,7 @@ function RunsTab({
 }: {
   runs: ActionRun[];
   action: ActionInfo;
+  sessions: SessionMap;
   onSelectSession: (id: string) => void;
   onPeekSession?: (id: string) => void;
   onClear: () => void;
@@ -121,7 +163,7 @@ function RunsTab({
   const [dontAskAgain, setDontAskAgain] = useState(false);
 
   // Group runs by cycle
-  const currentCycle = action.cycleNumber;
+  const currentCycle = finiteNumber(action.cycleNumber, 1);
   const currentRuns = runs.filter(r => r.cycleNumber === currentCycle);
   const pastRuns = runs.filter(r => r.cycleNumber !== currentCycle);
 
@@ -137,7 +179,7 @@ function RunsTab({
           <div className="sched-runs-empty">no runs in this cycle</div>
         )}
         {currentRuns.map(r => (
-          <RunRow key={r.id} run={r} onSelect={onSelectSession} onPeek={onPeekSession} />
+          <RunRow key={r.id} run={r} session={r.sessionId ? sessions.get(r.sessionId) : undefined} onSelect={onSelectSession} onPeek={onPeekSession} />
         ))}
       </div>
 
@@ -149,7 +191,7 @@ function RunsTab({
             <span className="sched-runs-count">{pastRuns.length}</span>
           </div>
           {pastRuns.map(r => (
-            <RunRow key={r.id} run={r} onSelect={onSelectSession} onPeek={onPeekSession} />
+            <RunRow key={r.id} run={r} session={r.sessionId ? sessions.get(r.sessionId) : undefined} onSelect={onSelectSession} onPeek={onPeekSession} />
           ))}
         </div>
       )}
@@ -217,15 +259,17 @@ function copyToClipboard(text: string) {
   document.body.removeChild(ta);
 }
 
-function RunRow({ run, onSelect, onPeek }: { run: ActionRun; onSelect: (id: string) => void; onPeek?: (id: string) => void }) {
+function RunRow({ run, session, onSelect, onPeek }: { run: ActionRun; session?: SessionInfo; onSelect: (id: string) => void; onPeek?: (id: string) => void }) {
   const hasSession = !!run.sessionId;
   const isError = run.status === "error" || run.status === "failed-verification" || run.status === "error-transient";
-  const elapsed = run.startedAt && run.completedAt
-    ? `${Math.floor((run.completedAt - run.startedAt) / 60000)}:${String(Math.floor(((run.completedAt - run.startedAt) % 60000) / 1000)).padStart(2, "0")}`
+  const startedAt = optionalFiniteNumber(run.startedAt);
+  const completedAt = optionalFiniteNumber(run.completedAt);
+  const elapsed = startedAt && completedAt
+    ? `${Math.floor((completedAt - startedAt) / 60000)}:${String(Math.floor(((completedAt - startedAt) % 60000) / 1000)).padStart(2, "0")}`
     : run.status === "running" ? "..." : null;
   const statusLabel = runStatusLabel(run.status);
   const attempts = run.attempts && run.attempts > 1 ? run.attempts : null;
-  const rawError = run.verifyError || run.error;
+  const rawError = run.afterRunError || run.verifyError || run.error;
   const displayError = rawError
     ? rawError.split("\n").filter(l => l.trim() && !l.includes("WARNING:")).pop()
       ?? rawError.split("\n").filter(l => l.trim())[0]
@@ -253,12 +297,13 @@ function RunRow({ run, onSelect, onPeek }: { run: ActionRun; onSelect: (id: stri
         {elapsed && <span className="sched-run-elapsed">{elapsed}</span>}
       </div>
       <div className="sched-run-footer">
-        <span className="sched-run-num">#{run.runNumber}</span>
+        <span className="sched-run-num">run #{finiteNumber(run.runNumber)}</span>
+        {run.executionId != null && <span className="sched-run-meta">exec {run.executionId}</span>}
         <span className={`dash-dot dash-dot--${runDotStatus(run.status)}`} />
         {statusLabel && <span className="sched-run-status-label">{statusLabel}</span>}
         {attempts && <span className="sched-run-attempts">{attempts} attempts</span>}
-        <span className="sched-run-meta">${run.costUsd.toFixed(3)}</span>
-        {run.startedAt ? <span className="sched-run-ago">{timeAgo(run.startedAt)}</span> : null}
+        <span className="sched-run-meta">{formatUsd(run.costUsd)}</span>
+        {startedAt ? <span className="sched-run-ago">{timeAgo(startedAt)}</span> : null}
         {hasSession && onPeek && (
           <button
             className="sched-peek-btn"
@@ -272,33 +317,117 @@ function RunRow({ run, onSelect, onPeek }: { run: ActionRun; onSelect: (id: stri
           </button>
         )}
       </div>
+      {hasSession && (
+        <div className="sched-run-audit">
+          <span title={run.sessionId ?? ""}>session {run.sessionId?.slice(0, 8)}</span>
+          <span>{session?.provider ?? "provider?"}</span>
+          <span>{session?.model ?? "model?"}</span>
+          <span>{session?.profile ?? "profile?"}</span>
+          {parseSessionTags(session?.tags).includes("internal") && <span className="sched-run-internal">internal</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SessionsTab({
+  sessions,
+  onSelectSession,
+  onPeekSession,
+}: {
+  sessions: SessionInfo[];
+  onSelectSession: (id: string) => void;
+  onPeekSession?: (id: string) => void;
+}) {
+  if (sessions.length === 0) {
+    return <div className="sched-tab-content"><div className="sched-runs-empty">no action sessions found</div></div>;
+  }
+  return (
+    <div className="sched-tab-content">
+      {sessions.map((session) => {
+        const tags = parseSessionTags(session.tags);
+        return (
+          <button key={session.id} className="sched-session-row" onClick={() => onSelectSession(session.id)} type="button">
+            <span className="sched-session-main">
+              <b>{session.title || session.preview || session.id}</b>
+              <em>{session.id}</em>
+            </span>
+            <span>{session.provider ?? "provider?"}</span>
+            <span>{session.model ?? "model?"}</span>
+            <span>{formatUsd(session.total_cost_usd)}</span>
+            <span>{timeAgo(finiteNumber(session.last_message_at))}</span>
+            {tags.includes("internal") && <span className="sched-run-internal">internal</span>}
+            {onPeekSession && (
+              <span
+                className="sched-peek-btn"
+                title="peek session"
+                onClick={(e) => { e.stopPropagation(); onPeekSession(session.id); }}
+              >
+                peek
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 // ── Tab: About ──
 
-type ActionScope = { userProfile?: string | null; cwd?: string | null };
-
 function AboutTab({ action, scope }: { action: ActionInfo; scope: ActionScope }) {
   const [desc, setDesc] = useState<string | null | undefined>(undefined);
+  const [config, setConfig] = useState<Record<string, any> | null>(null);
 
   useEffect(() => {
     modus.getActionInfo(action.name, scope).then(info => {
       try {
         const config = JSON.parse(info.configSource);
+        setConfig(config);
         setDesc(config.longDescription || null);
-      } catch { setDesc(null); }
-    }).catch(() => setDesc(null));
+      } catch {
+        setConfig(null);
+        setDesc(null);
+      }
+    }).catch(() => {
+      setConfig(null);
+      setDesc(null);
+    });
   }, [action.name, scope]);
 
   const hasRetry = (action.maxRetries ?? 0) > 0 || (action.maxTransientRetries ?? 0) > 0;
-  const hasNotify = action.notify && action.notify.length > 0;
-  const hasArtifacts = action.artifacts && action.artifacts.length > 0;
+  const notify = Array.isArray(action.notify) ? action.notify : [];
+  const artifacts = Array.isArray(action.artifacts) ? action.artifacts : [];
+  const hasNotify = notify.length > 0;
+  const hasArtifacts = artifacts.length > 0;
   const hasPipeline = hasRetry || hasNotify || hasArtifacts;
+  const inputs = config?.inputs && typeof config.inputs === "object" ? config.inputs : {};
+  const runPlan = config ? [
+    ["enabled", String(config.enabled)],
+    ["profile", config.agentProfile],
+    ["provider", config.provider ?? "profile default"],
+    ["model", config.model ?? "profile default"],
+    ["cwd", config.cwd ?? "(none)"],
+    ["target date", inputs.targetDate ?? "(lookback)"],
+    ["limit", inputs.limit ?? "(default)"],
+    ["force", String(inputs.force === true)],
+    ["rebuild queue", String(inputs.rebuildQueue === true)],
+    ["max turns", config.maxTurns ?? "profile default"],
+    ["expected cost", config.provider === "litellm" ? "$0 local profile" : "check provider"],
+  ] : [];
 
   return (
     <div className="sched-tab-content sched-about-tab">
+      {runPlan.length > 0 && (
+        <div className="sched-run-plan">
+          {runPlan.map(([label, value]) => (
+            <span key={label}>
+              <b>{label}</b>
+              <em title={String(value)}>{String(value)}</em>
+            </span>
+          ))}
+        </div>
+      )}
       {desc && (
         <div className="message-content" style={{ marginBottom: hasPipeline ? 12 : 0 }}>
           <Markdown content={desc} />
@@ -329,7 +458,7 @@ function AboutTab({ action, scope }: { action: ActionInfo; scope: ActionScope })
             <div className="sched-about-section">
               <span className="sched-about-heading">notifications</span>
               <div className="sched-about-items">
-                {action.notify!.map((n, i) => (
+                {notify.map((n, i) => (
                   <span key={i} className="sched-about-chip">
                     {n.channel} on {Array.isArray(n.on) ? n.on.join(", ") : n.on}
                   </span>
@@ -341,7 +470,7 @@ function AboutTab({ action, scope }: { action: ActionInfo; scope: ActionScope })
             <div className="sched-about-section">
               <span className="sched-about-heading">artifacts</span>
               <div className="sched-about-items">
-                {action.artifacts!.map((a, i) => (
+                {artifacts.map((a, i) => (
                   <span key={i} className="sched-about-chip">
                     {a.name} ({a.mime}){a.required === false ? " optional" : ""}
                   </span>
@@ -412,22 +541,26 @@ function MeterRow({ label, pct, kind }: { label: string; pct: number; kind: "cyc
 
 function ActionMeters({ action }: { action: ActionInfo }) {
   const off = !action.enabled;
+  const trigger = safeTrigger(action);
+  const cycleNumber = finiteNumber(action.cycleNumber, 1);
+  const cycleRunCount = finiteNumber(action.cycleRunCount);
+  const nextRunAt = optionalFiniteNumber(action.nextRunAt);
 
   // Row 1: cycles
   const hasCycles = !!action.cycleInterval;
   const cycleLabel = hasCycles
-    ? action.maxCycles ? `cycle ${action.cycleNumber}/${action.maxCycles}` : `cycle ${action.cycleNumber}`
+    ? action.maxCycles ? `cycle ${cycleNumber}/${action.maxCycles}` : `cycle ${cycleNumber}`
     : "";
   const cyclePct = hasCycles && action.maxCycles
-    ? ((action.cycleNumber - 1) / action.maxCycles) * 100
+    ? ((cycleNumber - 1) / action.maxCycles) * 100
     : 0;
 
   // Row 2: runs in current cycle
   const runLabel = action.maxRuns
-    ? `${action.cycleRunCount}/${action.maxRuns} runs`
-    : `${action.cycleRunCount} runs`;
+    ? `${cycleRunCount}/${action.maxRuns} runs`
+    : `${cycleRunCount} runs`;
   const runPct = action.maxRuns
-    ? (action.cycleRunCount / action.maxRuns) * 100
+    ? (cycleRunCount / action.maxRuns) * 100
     : 0;
 
   // Row 3: countdown (only meaningful for interval triggers)
@@ -435,15 +568,15 @@ function ActionMeters({ action }: { action: ActionInfo }) {
   let nextPct = 0;
   if (off) {
     nextLabel = "paused";
-  } else if (action.trigger.type === "interval" && action.nextRunAt) {
-    const intervalMs = parseIntervalMs(action.trigger.every);
+  } else if (trigger.type === "interval" && nextRunAt) {
+    const intervalMs = parseIntervalMs(trigger.every);
     if (intervalMs > 0) {
-      const remaining = Math.max(0, action.nextRunAt - Date.now());
-      nextLabel = `next ${countdown(action.nextRunAt)}`;
+      const remaining = Math.max(0, nextRunAt - Date.now());
+      nextLabel = `next ${countdown(nextRunAt)}`;
       nextPct = Math.min(100, Math.max(0, ((intervalMs - remaining) / intervalMs) * 100));
     }
-  } else if (action.trigger.type !== "interval") {
-    nextLabel = action.trigger.type;
+  } else if (trigger.type !== "interval") {
+    nextLabel = trigger.type;
   }
 
   return (
@@ -457,7 +590,7 @@ function ActionMeters({ action }: { action: ActionInfo }) {
 
 // ── Action Card ──
 
-type TabKey = "runs" | "about" | "files";
+type TabKey = "runs" | "sessions" | "about" | "files";
 
 function ActionCard({
   action,
@@ -485,16 +618,28 @@ function ActionCard({
   scope: ActionScope;
 }) {
   const [runs, setRuns] = useState<ActionRun[]>([]);
+  const [sessionRows, setSessionRows] = useState<SessionInfo[]>([]);
   const [tab, setTab] = useState<TabKey>("runs");
   const [skipResetConfirm, setSkipResetConfirm] = useState(false);
+  const sessionMap = useMemo(() => new Map(sessionRows.map((session) => [session.id, session])), [sessionRows]);
+  const trigger = safeTrigger(action);
+  const activeSessions = finiteNumber(action.activeSessions);
+  const concurrency = Math.max(1, finiteNumber(action.concurrency, 1));
+  const actionTags = safeTags(action.tags);
 
   useEffect(() => {
     if (!expanded) return;
     let active = true;
     const load = async () => {
       try {
-        const r = await modus.getActionRuns(action.name, undefined, scope);
-        if (active) setRuns(r);
+        const [r, s] = await Promise.all([
+          modus.getActionRuns(action.name, undefined, scope),
+          modus.listSessions({ action: action.name, limit: 50 }),
+        ]);
+        if (active) {
+          setRuns(r);
+          setSessionRows(s);
+        }
       } catch { /* silent */ }
     };
     load();
@@ -527,7 +672,7 @@ function ActionCard({
           checked={action.enabled}
           onChange={(v) => onToggleEnabled(v)}
         />
-        {(action.trigger.type === "manual" || action.trigger.type === "interval") && (
+        {(trigger.type === "manual" || trigger.type === "interval") && (
         <button
           className="sched-trigger-btn"
           onClick={(e) => {
@@ -535,9 +680,9 @@ function ActionCard({
             onOpenTerminal?.("action", action.name, action.name);
             onTrigger();
           }}
-          disabled={action.activeSessions >= (action.concurrency ?? 1)}
+          disabled={activeSessions >= concurrency}
         >
-          {action.activeSessions > 0 ? `run (${action.activeSessions}/${action.concurrency ?? 1})` : "run"}
+          {activeSessions > 0 ? `run (${activeSessions}/${concurrency})` : "run"}
         </button>
         )}
         <button
@@ -564,10 +709,10 @@ function ActionCard({
       <div className="sched-card-tags">
         <span className="override-tag">{action.agentProfile}</span>
         <span className="override-tag">{triggerLabel(action)}</span>
-        {action.trigger.type === "interval" && action.trigger.activeHours && (
-          <span className="override-tag">{action.trigger.activeHours.start}-{action.trigger.activeHours.end}</span>
+        {trigger.type === "interval" && trigger.activeHours && (
+          <span className="override-tag">{trigger.activeHours.start}-{trigger.activeHours.end}</span>
         )}
-        {action.tags?.filter(t => t !== "archived").map(t => (
+        {actionTags.filter(t => t !== "archived").map(t => (
           <span key={t} className="override-tag override-tag--user">{t}</span>
         ))}
       </div>
@@ -591,6 +736,12 @@ function ActionCard({
                 runs
               </button>
               <button
+                className={`sched-tab ${tab === "sessions" ? "sched-tab--active" : ""}`}
+                onClick={() => setTab("sessions")}
+              >
+                sessions
+              </button>
+              <button
                 className={`sched-tab ${tab === "about" ? "sched-tab--active" : ""}`}
                 onClick={() => setTab("about")}
               >
@@ -609,6 +760,7 @@ function ActionCard({
               <RunsTab
                 runs={runs}
                 action={action}
+                sessions={sessionMap}
                 onSelectSession={onSelectSession}
                 onPeekSession={onPeekSession}
                 onClear={handleClear}
@@ -616,6 +768,13 @@ function ActionCard({
                   ? () => handleReset(false)
                   : (skip) => handleReset(skip)
                 }
+              />
+            )}
+            {tab === "sessions" && (
+              <SessionsTab
+                sessions={sessionRows}
+                onSelectSession={onSelectSession}
+                onPeekSession={onPeekSession}
               />
             )}
             {tab === "about" && <AboutTab action={action} scope={scope} />}
@@ -692,7 +851,7 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
   const allTags = useMemo(() => {
     const tags = new Set<string>();
     for (const a of actions) {
-      for (const t of a.tags ?? []) {
+      for (const t of safeTags(a.tags)) {
         if (t !== "archived") tags.add(t);
       }
     }
@@ -701,13 +860,13 @@ export function Actions({ onSelectSession, onPeekSession, onOpenTerminal }: Prop
 
   // Split into active and archived
   const activeActions = useMemo(() => {
-    let list = actions.filter(a => !a.tags?.includes("archived"));
-    if (activeTag) list = list.filter(a => a.tags?.includes(activeTag));
+    let list = actions.filter(a => !safeTags(a.tags).includes("archived"));
+    if (activeTag) list = list.filter(a => safeTags(a.tags).includes(activeTag));
     return list;
   }, [actions, activeTag]);
 
   const archivedActions = useMemo(() =>
-    actions.filter(a => a.tags?.includes("archived")),
+    actions.filter(a => safeTags(a.tags).includes("archived")),
   [actions]);
 
   const runningCount = activeActions.filter(a => a.running).length;

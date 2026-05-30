@@ -11,7 +11,7 @@ import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 import { estimateTokens } from "../utils/tokens";
-import type { PromptListItem, RenderResult, MoveListItem, ActivateMoveResult } from "../../../sdk/index";
+import type { PromptListItem, RenderResult, MoveListItem, ActivateMoveResult, ProviderSlashCommand } from "../../../sdk/index";
 import {
   MoveInputFields,
   buildMoveInputs,
@@ -41,6 +41,7 @@ type Props = {
   sessionId?: string;
   projectCwd?: string;
   userProfile?: string;
+  provider?: string;
   /** External control: increment to force the picker open */
   forceOpen?: number;
   /** Notify parent when open state changes */
@@ -49,9 +50,9 @@ type Props = {
 
 export function PromptPicker({
   onInject, onAutoSend, onMoveActivated, onMoveAttach, direction = "up", tags,
-  sessionId, projectCwd, userProfile, forceOpen, onOpenChange,
+  sessionId, projectCwd, userProfile, provider, forceOpen, onOpenChange,
 }: Props) {
-  const { activeUP, activeUserProfile, profiles } = useProfiles();
+  const { activeUP, activeUserProfile, profiles, providerCapabilities } = useProfiles();
   const [open, setOpen] = useState(false);
   const lastForceOpen = useRef(0);
 
@@ -216,6 +217,30 @@ export function PromptPicker({
     setPreviewLoading(false);
   }, []);
 
+  const handleSlashCommandSelect = useCallback((command: ProviderSlashCommand) => {
+    const text = command.requiresArgument ? `${command.command} ` : command.command;
+    setOpenAndNotify(false);
+    setSelected(null);
+    setPreviewSkill(null);
+    setSearch("");
+    if (command.requiresArgument || !onAutoSend) {
+      onInject(text);
+    } else {
+      onAutoSend(text);
+    }
+  }, [onAutoSend, onInject, setOpenAndNotify]);
+
+  const sendRawSlashCommand = useCallback((raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    const cmd = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+    setOpenAndNotify(false);
+    setSelected(null);
+    setSearch("");
+    if (onAutoSend) onAutoSend(cmd);
+    else onInject(cmd);
+  }, [onAutoSend, onInject, setOpenAndNotify]);
+
   const selectedPrompt = selected?.kind === "prompt" ? selected.item : null;
   const selectedMove = selected?.kind === "move" ? selected.item : null;
   const selectedPromptInputs = (selectedPrompt?.inputs ?? []).map((input) => ({
@@ -326,6 +351,18 @@ export function PromptPicker({
 
   // Filter prompts + skills by search
   const q = search.toLowerCase().trim();
+  const effectiveProvider = provider ?? activeUP?.provider;
+  const slashCommands = effectiveProvider
+    ? (providerCapabilities[effectiveProvider]?.slashCommands ?? [])
+    : [];
+  const filteredSlashCommands = open && q
+    ? slashCommands.filter((command) =>
+        command.command.toLowerCase().includes(q)
+        || command.label.toLowerCase().includes(q)
+        || command.argumentHint?.toLowerCase().includes(q)
+        || command.description?.toLowerCase().includes(q)
+      )
+    : slashCommands;
   const filteredMoves = open && q
     ? moves.filter((move) =>
         move.label.toLowerCase().includes(q)
@@ -395,6 +432,10 @@ export function PromptPicker({
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") { setOpenAndNotify(false); setSearch(""); }
+                  if (e.key === "Enter" && !e.shiftKey && search.trim() && filteredSlashCommands.length === 0 && filteredMoves.length === 0 && filteredPrompts.length === 0 && filteredSkills.length === 0) {
+                    e.preventDefault();
+                    sendRawSlashCommand(search);
+                  }
                 }}
                 placeholder="search..."
                 spellCheck={false}
@@ -407,10 +448,33 @@ export function PromptPicker({
               </button>
             </div>
           )}
-          {filteredMoves.length === 0 && filteredPrompts.length === 0 && filteredSkills.length === 0 && (
+          {filteredSlashCommands.length === 0 && filteredMoves.length === 0 && filteredPrompts.length === 0 && filteredSkills.length === 0 && (
             <div className="prompt-picker-empty">
-              {q ? "no matches" : "no prompts or moves available"}
+              {q ? <>no matches - <kbd>enter</kbd> to send {search.trim().startsWith("/") ? search.trim() : `/${search.trim()}`}</> : "no commands, prompts, or moves available"}
             </div>
+          )}
+          {filteredSlashCommands.length > 0 && (
+            <div className="prompt-picker-section-label">commands</div>
+          )}
+          {filteredSlashCommands.map(command => (
+            <button
+              key={`${effectiveProvider ?? "provider"}:${command.label}:${command.command}`}
+              className="prompt-picker-item"
+              onClick={() => handleSlashCommandSelect(command)}
+            >
+              <span className="prompt-picker-item-row">
+                <span className="prompt-picker-item-label">
+                  {command.label}{command.argumentHint ? ` ${command.argumentHint}` : ""}
+                </span>
+                <span className="prompt-picker-item-meta">{command.source ?? "provider"}</span>
+              </span>
+              {command.description && (
+                <span className="prompt-picker-item-desc">{command.description}</span>
+              )}
+            </button>
+          ))}
+          {filteredSlashCommands.length > 0 && (filteredMoves.length > 0 || filteredSkills.length > 0 || filteredPrompts.length > 0) && (
+            <div className="prompt-picker-divider" />
           )}
           {filteredMoves.length > 0 && (
             <div className="prompt-picker-section-label">moves</div>
@@ -478,6 +542,10 @@ export function PromptPicker({
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") { setOpenAndNotify(false); setSearch(""); }
+                  if (e.key === "Enter" && !e.shiftKey && search.trim() && filteredSlashCommands.length === 0 && filteredMoves.length === 0 && filteredPrompts.length === 0 && filteredSkills.length === 0) {
+                    e.preventDefault();
+                    sendRawSlashCommand(search);
+                  }
                 }}
                 placeholder="search..."
                 spellCheck={false}

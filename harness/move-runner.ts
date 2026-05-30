@@ -44,6 +44,7 @@ import { logActivity } from "./activity";
 import { triggerAction } from "./action-runner";
 import { resolveSecret, isSecretSet } from "./secrets";
 import { addSessionTag as dbAddSessionTag } from "./db";
+import { getPluginMovesDir, listEnabledModusPlugins } from "./modus-plugins";
 
 // ── Constants ──
 
@@ -323,6 +324,7 @@ function registerMoveApi(
   handlers: Record<string, MoveApiHandler>,
   persist: boolean,
   userProfile?: string,
+  inferOp?: (data: Record<string, unknown>) => string | null | undefined,
 ): string {
   const config = getMove(moveName, cwd);
   const prefix = config?.api?.tokenPrefix ?? moveName;
@@ -336,6 +338,8 @@ function registerMoveApi(
     userProfile,
     handlers,
     persist,
+    defaultOp: typeof config?.api?.defaultOp === "string" ? config.api.defaultOp : undefined,
+    inferOp,
   });
   console.log(`[move-reg] registerMoveApi: token=${token} sessionId=${sessionId} move=${moveName}`);
 
@@ -457,9 +461,34 @@ export async function handleMoveApiSubmit(
     return { ok: false, error: "Invalid or expired API token" };
   }
 
+  // llama.cpp autoparser wraps payload under data.op as an object instead of data.op being a string.
+  // Pattern 1: {op: {op: "name", ...params}} — inner op preserved, unwrap directly
+  // Pattern 2: {op: {field: val, ...}} — op name lost, infer from registered handlers
+  if (typeof data.op === "object" && data.op !== null) {
+    const inner = data.op as Record<string, unknown>;
+    if (typeof inner.op === "string") {
+      data = inner;
+    } else {
+      const handlerNames = Object.keys(reg.handlers);
+      if (handlerNames.length === 1) {
+        data = { op: handlerNames[0], ...inner };
+      } else if (reg.defaultOp && handlerNames.includes(reg.defaultOp)) {
+        data = { op: reg.defaultOp, ...inner };
+      }
+    }
+  }
+
+  if (typeof data.op !== "string" && reg.inferOp) {
+    try {
+      const inferred = reg.inferOp(data);
+      if (typeof inferred === "string" && inferred.length > 0) data = { ...data, op: inferred };
+    } catch {}
+  }
+
   const op = data.op;
   if (typeof op !== "string") {
-    return { ok: false, error: "Missing 'op' field" };
+    const available = Object.keys(reg.handlers).join(", ");
+    return { ok: false, error: `Missing 'op' field. Available ops: ${available}` };
   }
 
   const handler = reg.handlers[op];
@@ -495,6 +524,25 @@ export async function handleMoveApiSubmit(
       });
     },
     notify: (message: string, emit?: { type: string; [key: string]: unknown }) => {
+      if (caller === "user") {
+        if (emit) {
+          broadcastUiEvent(reg.sessionId, {
+            type: "ui",
+            action: "move-widget-event",
+            moveName: reg.moveName,
+            instanceId: reg.instanceId,
+            apiToken: token,
+            event: emit,
+          });
+        }
+        logActivity({
+          eventType: "move_handler_notify",
+          sessionId: reg.sessionId || undefined,
+          summary: `${reg.moveName}:${op} notify [user/ui-only] -> ${message.slice(0, 80)}`,
+          metadata: { moveName: reg.moveName, op, emitType: emit?.type, caller },
+        });
+        return;
+      }
       const injected = emit
         ? `[modus:${emit.type}] ${JSON.stringify(emit)}\n${message}`.trim()
         : message;
@@ -607,7 +655,6 @@ export function getActiveWidgetForSession(sessionId: string): Array<{
   apiToken: string;
   instanceId: string;
 }> {
-  console.log(`[move-reg] getActiveWidgetForSession(${sessionId}) — registry has ${moveApiRegistry.size} entries: ${[...moveApiRegistry.entries()].map(([t, r]) => `${t}→${r.sessionId}`).join(", ") || "empty"}`);
   const results: Array<{ widget: { label: string; icon?: string; autoOpen?: boolean; mountOnAttach?: boolean; cache?: string; moduleUrl: string; moveName: string }; apiToken: string; instanceId: string }> = [];
   for (const [token, reg] of moveApiRegistry) {
     if (reg.sessionId === sessionId) {
@@ -645,6 +692,13 @@ export function resolveMoveLocation(name: string, cwd: string): {
   const projectDir = join(projectMovesDir(cwd), name);
   if (existsSync(join(projectDir, "move.json"))) {
     return { dir: projectDir, origin: "project" };
+  }
+
+  for (const plugin of listEnabledModusPlugins()) {
+    const pluginDir = join(getPluginMovesDir(plugin), name);
+    if (existsSync(join(pluginDir, "move.json"))) {
+      return { dir: pluginDir, origin: "project" };
+    }
   }
 
   const builtinDir = join(BUILTIN_MOVES_DIR, name);
@@ -685,7 +739,7 @@ function buildApiOpsProtocol(apiToken: string, config: MoveConfig): string {
   lines.push("");
   lines.push("Use the `modus_submit` tool:");
   lines.push("```");
-  lines.push(`modus_submit({ token: "${apiToken}", data: { op: "<op-name>", ...params } })`);
+  lines.push(`modus_submit({ token: "${apiToken}", data: { "op": "<op-name>", "field": "value", "field2": "value2" } })`);
   lines.push("```");
   lines.push("");
   lines.push("Do NOT use Bash, curl, or raw HTTP. Always use `modus_submit`.");
@@ -743,6 +797,7 @@ export async function gatherMoveOnce(
       mod.handlers,
       config.api.state?.persist ?? false,
       userProfile,
+      mod.inferOp,
     );
     await syncMoveAssistantTurnListener(apiToken, mod);
   }
@@ -922,6 +977,13 @@ export function listMoves(cwd: string): MoveConfig[] {
     const projectDir = projectMovesDir(cwd);
     if (existsSync(projectDir)) {
       for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) names.add(entry.name);
+      }
+    }
+    for (const plugin of listEnabledModusPlugins()) {
+      const pluginDir = getPluginMovesDir(plugin);
+      if (!existsSync(pluginDir)) continue;
+      for (const entry of readdirSync(pluginDir, { withFileTypes: true })) {
         if (entry.isDirectory()) names.add(entry.name);
       }
     }
@@ -1413,6 +1475,7 @@ export async function attachMove(opts: AttachMoveOpts): Promise<AttachMoveResult
     mod.handlers,
     config.api.state?.persist ?? false,
     userProfile,
+    mod.inferOp,
   );
   await syncMoveAssistantTurnListener(apiToken, mod);
 
@@ -1628,7 +1691,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     const mod = await loadMoveModule(moveName, cwd);
     if (config.api?.ops && mod?.handlers) {
       instanceId = generateInstanceId();
-      apiToken = registerMoveApi(moveName, instanceId, sourceSessionId, cwd, mod.handlers, false, userProfile);
+      apiToken = registerMoveApi(moveName, instanceId, sourceSessionId, cwd, mod.handlers, false, userProfile, mod.inferOp);
     }
 
     // Register in ambient registry
@@ -1699,6 +1762,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
         mod.handlers,
         config.api.state?.persist ?? false,
         userProfile,
+        mod.inferOp,
       );
       // Make API token and store available in context for gather()
       moveCtx.apiToken = apiToken;
@@ -2061,6 +2125,13 @@ async function rehydrateMoveApiRegistry(): Promise<void> {
     const projectDir = join(cwd, MODUS_MOVES_DIR);
     if (existsSync(projectDir)) {
       for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) names.add(entry.name);
+      }
+    }
+    for (const plugin of listEnabledModusPlugins()) {
+      const pluginDir = getPluginMovesDir(plugin);
+      if (!existsSync(pluginDir)) continue;
+      for (const entry of readdirSync(pluginDir, { withFileTypes: true })) {
         if (entry.isDirectory()) names.add(entry.name);
       }
     }

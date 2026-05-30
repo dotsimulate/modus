@@ -1,0 +1,111 @@
+{
+  "name": "project-call",
+  "label": "Call another project",
+  "description": "Bidirectional project protocol for agent-to-agent calls across Modus projects with a bounded message budget.",
+  "icon": "send",
+  "mode": "inline",
+  "inputs": [
+    {
+      "name": "targetCwd",
+      "label": "Target project",
+      "type": "select",
+      "required": true,
+      "optionsSource": {
+        "type": "projects",
+        "defaultToCurrent": true,
+        "scope": "all"
+      }
+    },
+    {
+      "name": "targetSessionId",
+      "label": "Target session",
+      "type": "select",
+      "optionsSource": {
+        "type": "sessions",
+        "projectField": "targetCwd",
+        "emptyLabel": "New session",
+        "limit": 250
+      }
+    },
+    {
+      "name": "targetProfile",
+      "label": "Target agent",
+      "type": "select",
+      "options": "{{agentProfiles}}",
+      "default": "Current profile",
+      "visibleWhen": {
+        "input": "targetSessionId",
+        "isEmpty": true
+      }
+    },
+    {
+      "name": "message",
+      "label": "Message",
+      "type": "textarea",
+      "required": true,
+      "placeholder": "What should the other project/session receive?"
+    },
+    {
+      "name": "budget",
+      "label": "Reply budget",
+      "type": "number",
+      "default": 1
+    }
+  ],
+  "api": {
+    "tokenPrefix": "project-call",
+    "ops": {
+      "call": {
+        "description": "Start a project call. Sends the initial message to an existing target session or spawns a target session in targetCwd. The target receives this API token and callId for replies.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "targetCwd": { "type": "string" },
+            "message": { "type": "string" },
+            "targetSessionId": { "type": "string" },
+            "targetProfile": { "type": "string" },
+            "title": { "type": "string" },
+            "budget": { "type": "number" }
+          },
+          "required": ["targetCwd", "message"]
+        }
+      },
+      "message": {
+        "description": "Send a follow-up message across an existing project call. Direction is caller-to-target or target-to-caller. Each message consumes one budget unit.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "callId": { "type": "string" },
+            "direction": { "type": "string", "enum": ["caller-to-target", "target-to-caller"] },
+            "message": { "type": "string" }
+          },
+          "required": ["callId", "direction", "message"]
+        }
+      },
+      "status": {
+        "description": "Read call state by callId.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "callId": { "type": "string" }
+          },
+          "required": ["callId"]
+        }
+      }
+    },
+    "state": {
+      "persist": true
+    }
+  },
+  "submit": {
+    "required": false
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "tags": [
+    "communication",
+    "project",
+    "handoff"
+  ]
+}

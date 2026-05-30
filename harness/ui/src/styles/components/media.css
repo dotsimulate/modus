@@ -22,6 +22,21 @@
   cursor: pointer;
 }
 .message-image:hover { border-color: var(--border-active); }
+.message-image--unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 180px;
+  height: 120px;
+  padding: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+  word-break: break-word;
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+  cursor: default;
+}
 
 .message-artifacts {
   display: flex;
