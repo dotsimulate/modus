@@ -49,7 +49,7 @@ function countActive(sessionIds: string[]): number {
   let count = 0;
   for (const id of sessionIds) {
     const state = getSessionState(id);
-    if (state && (state.status === "running" || state.status === "starting")) {
+    if (state && (state.status === "running" || state.status === "starting" || state.status === "interrupting")) {
       count++;
     }
   }

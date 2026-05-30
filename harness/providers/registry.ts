@@ -9,8 +9,11 @@ import { createClaudeCodeProvider } from "./claude-code";
 import { createClaudeCodePtyProvider } from "./claude-code-pty";
 import { createCodexProvider } from "./codex";
 import { createCursorProvider } from "./cursor";
+import { createOpenCodeProvider } from "./opencode";
 // Lazy-imported: Gemini CLI core spams "Experiments loaded" on import
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
+import { GEMINI_CAPABILITIES } from "./gemini-cli-capabilities";
+import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
 import { existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -18,7 +21,7 @@ import { isSecretSet } from "../secrets";
 import { resolveCursorAgentExecutable } from "./cursor-resolve-bin";
 
 const PI_PROVIDERS: PiProviderName[] = ["litellm", "ollama", "openrouter"];
-const STANDALONE_PROVIDERS = ["claude-code", "claude-code-pty", "codex", "cursor", "gemini-cli"] as const;
+const STANDALONE_PROVIDERS = ["claude-code", "claude-code-pty", "codex", "cursor", "gemini-cli", "opencode"] as const;
 
 // Lazy-init cache
 const cache = new Map<string, SessionProvider>();
@@ -36,6 +39,8 @@ export function getProvider(name: string): SessionProvider {
     provider = createCodexProvider();
   } else if (name === "cursor") {
     provider = createCursorProvider();
+  } else if (name === "opencode") {
+    provider = createOpenCodeProvider();
   } else if (name === "gemini-cli") {
     // Gemini CLI core must NOT be imported at module load time —
     // it spams "Experiments loaded" + experiment IDs to console on every import.
@@ -62,6 +67,12 @@ export function listProviders(): string[] {
 }
 
 export function getProviderCapabilities(name: string): ProviderCapabilities {
+  // Short-circuit gemini-cli — its provider module imports @google/gemini-cli-core
+  // which fires a network call to Google's experiment service on load. Capability
+  // listing must NOT pay that cost. Only `getProvider("gemini-cli")` (called when
+  // a session actually starts) should trigger the SDK import.
+  if (name === "gemini-cli") return GEMINI_CAPABILITIES;
+  if (name === "opencode") return OPENCODE_CAPABILITIES;
   return getProvider(name).capabilities;
 }
 
@@ -92,6 +103,7 @@ const PROVIDER_PREREQS: Record<string, { cli?: string; envAny?: string[] }> = {
   "claude-code-pty": { cli: "claude" },
   "codex": { cli: "codex" },
   "cursor": { cli: "cursor-agent" },
+  "opencode": { cli: "opencode" },
   // gemini-cli: SDK-based, auth checked separately (Google OAuth)
   "openrouter": { envAny: ["OPENROUTER_API_KEY"] },
   // litellm and ollama: local services, checked via ping below
@@ -143,12 +155,14 @@ export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
       const found =
         name === "cursor"
           ? resolveCursorAgentExecutable()
+          : name === "opencode"
+            ? Bun.which("opencode") ?? Bun.which("bunx")
           : Bun.which(spec.cli);
       checks.push({
         type: "cli",
         label: spec.cli,
         passed: !!found,
-        detail: found ? found : "not in PATH",
+        detail: found ? (name === "opencode" && !Bun.which("opencode") ? `${found} (uses bunx opencode-ai fallback)` : found) : "not in PATH",
       });
     }
 

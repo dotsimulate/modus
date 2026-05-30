@@ -1,0 +1,318 @@
+.room-console {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
+  background: var(--bg, #0b0d10);
+  color: var(--text, #e6e8eb);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.room-console-header,
+.room-console-top,
+.room-actions,
+.room-member-row,
+.room-message-head,
+.room-slot-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-console-header {
+  justify-content: space-between;
+  padding: 2px 2px 4px;
+}
+
+.room-console-title {
+  font-size: calc(15px * var(--font-scale, 1));
+  font-weight: 750;
+}
+
+.room-console-subtitle,
+.room-summary-meta,
+.room-member-meta,
+.room-message-meta,
+.room-slot-session,
+.room-slot-preview,
+.room-slot-empty {
+  color: var(--text-dim, #7d8794);
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
+.room-console-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.room-console-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--border, #252a31);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-surface, #11151a) 78%, transparent);
+}
+
+.room-console-create {
+  background: color-mix(in srgb, var(--accent, #4d8dff) 7%, var(--bg-surface, #11151a));
+}
+
+.room-block-title {
+  font-size: calc(11px * var(--font-scale, 1));
+  font-weight: 750;
+  text-transform: uppercase;
+  color: var(--text-label, #aab2bd);
+}
+
+.room-pair-grid,
+.room-request-grid,
+.room-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+}
+
+.room-request-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.room-slot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--border, #252a31) 80%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg, #0b0d10) 76%, transparent);
+}
+
+.room-slot-title {
+  flex: 1;
+  font-size: calc(11px * var(--font-scale, 1));
+  font-weight: 700;
+}
+
+.room-slot-session,
+.room-slot-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-pill {
+  padding: 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--accent, #4d8dff) 70%, var(--border, #252a31));
+  border-radius: 999px;
+  color: var(--accent, #4d8dff);
+  font-size: calc(9px * var(--font-scale, 1));
+}
+
+.room-thread {
+  flex: 1;
+  min-height: 180px;
+}
+
+.room-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.room-message {
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--border, #252a31) 72%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg, #0b0d10) 80%, transparent);
+}
+
+.room-message-author {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(11px * var(--font-scale, 1));
+  font-weight: 700;
+}
+
+.room-message-body {
+  margin: 6px 0 0;
+  overflow: hidden;
+  color: var(--text, #e6e8eb);
+  font: inherit;
+  font-size: calc(11px * var(--font-scale, 1));
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.room-details {
+  display: block;
+}
+
+.room-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+}
+
+.room-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.room-members-list,
+.room-manual-add,
+.room-note-box {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.room-member-row {
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--border, #252a31) 70%, transparent);
+}
+
+.room-member-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.room-member-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.room-member-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(11px * var(--font-scale, 1));
+  font-weight: 650;
+}
+
+.room-input,
+.room-select,
+.room-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border, #252a31);
+  border-radius: 6px;
+  background: var(--bg, #0b0d10);
+  color: var(--text, #e6e8eb);
+  font: inherit;
+  font-size: calc(11px * var(--font-scale, 1));
+  outline: none;
+}
+
+.room-input,
+.room-select {
+  height: 30px;
+  padding: 0 8px;
+}
+
+.room-textarea {
+  min-height: 86px;
+  padding: 8px;
+  resize: vertical;
+  line-height: 1.35;
+}
+
+.room-textarea--brief {
+  min-height: 96px;
+}
+
+.room-input:focus,
+.room-select:focus,
+.room-textarea:focus {
+  border-color: var(--accent, #4d8dff);
+}
+
+.room-primary,
+.room-secondary,
+.room-mini-btn {
+  min-height: 27px;
+  border: 1px solid var(--border, #252a31);
+  border-radius: 6px;
+  background: var(--bg-surface, #11151a);
+  color: var(--text, #e6e8eb);
+  font: inherit;
+  font-size: calc(10px * var(--font-scale, 1));
+  cursor: pointer;
+}
+
+.room-primary,
+.room-secondary {
+  padding: 0 9px;
+}
+
+.room-primary {
+  border-color: color-mix(in srgb, var(--accent, #4d8dff) 72%, var(--border, #252a31));
+  color: var(--accent, #4d8dff);
+}
+
+.room-mini-btn {
+  padding: 0 7px;
+  color: var(--text-label, #aab2bd);
+}
+
+.room-primary:hover,
+.room-secondary:hover,
+.room-mini-btn:hover {
+  border-color: var(--accent, #4d8dff);
+}
+
+.room-primary:disabled,
+.room-secondary:disabled,
+.room-mini-btn:disabled {
+  cursor: default;
+  opacity: 0.42;
+  border-color: var(--border, #252a31);
+}
+
+.room-actions--tight {
+  margin-top: 2px;
+}
+
+.room-empty,
+.room-console-empty,
+.room-error {
+  color: var(--text-dim, #7d8794);
+  font-size: calc(11px * var(--font-scale, 1));
+}
+
+.room-console-empty {
+  padding: 16px 8px;
+  text-align: center;
+}
+
+.room-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--error, #e05555) 55%, var(--border, #252a31));
+  border-radius: 7px;
+  color: var(--error, #e05555);
+}
+
+@media (max-width: 860px) {
+  .room-console {
+    min-height: 520px;
+  }
+}

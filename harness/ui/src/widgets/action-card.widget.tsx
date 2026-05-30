@@ -19,11 +19,20 @@ type ActionCardConfig = WidgetBase & {
 };
 
 function timeAgo(ts: number): string {
+  if (!Number.isFinite(ts) || ts <= 0) return "unknown";
   const diff = Date.now() - ts;
   if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
   return `${Math.floor(diff / 86400000)}d ago`;
+}
+
+function finiteNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function formatUsd(value: unknown, digits = 3): string {
+  return `$${finiteNumber(value).toFixed(digits)}`;
 }
 
 function dotClass(a: ActionInfo): string {
@@ -90,7 +99,10 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
   }
 
   const dot = dotClass(action);
-  const runCount = action.cycleRunCount;
+  const runCount = finiteNumber(action.cycleRunCount);
+  const cycleNumber = finiteNumber(action.cycleNumber, 1);
+  const activeSessions = finiteNumber(action.activeSessions);
+  const concurrency = Math.max(1, finiteNumber(action.concurrency, 1));
 
   return (
     <div className="action-card-widget">
@@ -112,7 +124,7 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
           <span className="action-card-stat">/ {action.maxRuns} max</span>
         )}
         {action.cycleInterval && (
-          <span className="action-card-stat">cycle {action.cycleNumber}</span>
+          <span className="action-card-stat">cycle {cycleNumber}</span>
         )}
       </div>
 
@@ -123,10 +135,10 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
             {lastRun.summary || lastRun.status}
           </span>
           {lastRun.startedAt && (
-            <span className="action-card-lastrun-ago">{timeAgo(lastRun.startedAt)}</span>
+            <span className="action-card-lastrun-ago">{timeAgo(finiteNumber(lastRun.startedAt))}</span>
           )}
-          {lastRun.costUsd > 0 && (
-            <span className="action-card-lastrun-cost">${lastRun.costUsd.toFixed(3)}</span>
+          {finiteNumber(lastRun.costUsd) > 0 && (
+            <span className="action-card-lastrun-cost">{formatUsd(lastRun.costUsd)}</span>
           )}
         </div>
       )}
@@ -141,7 +153,7 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
         <button
           className="action-card-trigger"
           onClick={handleTrigger}
-          disabled={action.activeSessions >= (action.concurrency ?? 1)}
+          disabled={activeSessions >= concurrency}
         >
           run
         </button>

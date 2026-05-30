@@ -115,6 +115,7 @@ export interface ActionConfig {
   cwd?: string;
   tools?: string[];
   disallowedTools?: string[];
+  providerControls?: Record<string, unknown>;
   loadProjectSettings?: boolean;
 
   // ── Artifacts ──

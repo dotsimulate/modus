@@ -166,7 +166,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const next = activeSession?.status ?? null;
     if (
       prev
-      && (prev === "running" || prev === "starting")
+      && (prev === "running" || prev === "starting" || prev === "interrupting")
       && next
       && (next === "idle" || next === "error")
     ) {
@@ -389,16 +389,45 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       ? sendAttachments.map((a) => ({ type: a.type, mediaType: a.mediaType, data: a.data, name: a.name }))
       : undefined;
 
-    const currentState = activeSessionId ? getSessionState(activeSessionId) : null;
+    let currentState = activeSessionId ? getSessionState(activeSessionId) : null;
     const activeServerSession = activeSessionId
       ? serverSessions.find((session) => session.id === activeSessionId)
       : null;
-    const hasPersistedHistory = !!activeServerSession?.preview || (currentState?.lastSeq ?? 0) > 0;
+
+    // A selected persisted session can briefly have an empty local placeholder
+    // while its history snapshot is still loading. Do not let that transient UI
+    // state classify the session as a brand-new disposable draft.
+    if (activeSessionId && !activeSessionId.startsWith("pending-") && !currentState?.messages.length && !(currentState?.lastSeq ?? 0)) {
+      await ensureSubscribed(activeSessionId, {
+        profile: activeServerSession?.profile ?? activeSession?.profile ?? undefined,
+        activeStatus: activeServerSession?.status as Session["status"] | undefined,
+        onDone: refreshSessions,
+      }).catch(() => {});
+      currentState = getSessionState(activeSessionId);
+    }
+
+    if (activeSessionId && !activeSessionId.startsWith("pending-") && !currentState) {
+      const rs = createInitialState(activeSessionId);
+      rs.status = (activeServerSession?.status as Session["status"]) ?? "idle";
+      rs.model = activeServerSession?.model ?? "";
+      rs.cwd = activeServerSession?.cwd ?? "";
+      setSessionState(activeSessionId, rs, activeServerSession?.profile ?? activeSession?.profile ?? undefined);
+      currentState = rs;
+    }
+
+    const hasPersistedHistory = (activeServerSession?.message_count ?? 0) > 0
+      || !!activeServerSession?.preview
+      || (currentState?.lastSeq ?? 0) > 0;
+    const serverConfirmsEmpty = !!activeServerSession && activeServerSession.message_count === 0 && !activeServerSession.preview;
+    const isEmptyStatus = currentState?.status === "idle"
+      || (currentState?.status === "done" && serverConfirmsEmpty);
     const isEmptySession = sessionsLoaded && activeSessionId
-      && currentState?.status === "idle"
+      && currentState
+      && isEmptyStatus
       && currentState.messages.length === 0
+      && serverConfirmsEmpty
       && !hasPersistedHistory;
-    const needsNewSession = !activeSessionId || !currentState || activeSessionId.startsWith("pending-") || isEmptySession;
+    const needsNewSession = !activeSessionId || activeSessionId.startsWith("pending-") || isEmptySession;
     if (needsNewSession) {
       const prevSessionId = activeSessionId; // capture before archiving — move registry may reference this
       if (isEmptySession && activeSessionId) modus.archiveSession(activeSessionId).catch(() => {});
@@ -456,7 +485,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
     } else {
       // Follow-up to existing session
-      const isActive = currentState.status === "running" || currentState.status === "starting";
+      const existingState = currentState!;
+      const isActive = existingState.status === "running" || existingState.status === "starting" || existingState.status === "interrupting";
 
       if (isActive) {
         // Commit to backend queue immediately — survives page navigation
@@ -476,7 +506,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       let effectiveProfile = activeSession?.profile;
       try {
         const hasPendingProfile = hasPendingProfileChange(activeSession);
-        const nextTurnConfig = getQueuedAgentConfig(activeSession, currentState.agentConfig);
+        const nextTurnConfig = getQueuedAgentConfig(activeSession, existingState.agentConfig);
         if (hasPendingProfile && activeSession?.nextProfile) {
           await modus.switchProfile(activeSessionId!, activeSession.nextProfile);
           effectiveProfile = activeSession.nextProfile;
@@ -487,11 +517,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
               nextTurnConfig,
               getProfileToolsForStartedSession(activeSession, effectiveProfile),
             ),
-            cwd: currentState.cwd,
-            loadProjectSettings: currentState.loadProjectSettings,
+            cwd: existingState.cwd,
+            loadProjectSettings: existingState.loadProjectSettings,
           });
         }
-        const rs = getSessionState(activeSessionId!) ?? currentState;
+        const rs = getSessionState(activeSessionId!) ?? existingState;
         const updated = {
           ...rs,
           status: "running" as const,
@@ -569,7 +599,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!queuedMessage) return;
     if (!activeSession) return;
     const status = activeSession.status;
-    if (status === "running" || status === "starting") return;
+    if (status === "running" || status === "starting" || status === "interrupting") return;
     if (queuedMessage.serverQueued) {
       // Already committed to backend — backend will process it; just clear the display
       setQueuedMessage(null);
@@ -597,7 +627,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       await modus.stopSession(activeSessionId).catch(() => {});
       const rs = getSessionState(activeSessionId);
       if (rs) {
-        setSessionState(activeSessionId, { ...rs, status: "idle" }, activeSession?.profile);
+        setSessionState(activeSessionId, { ...rs, status: "interrupting" }, activeSession?.profile);
       }
     }
   }, [activeSessionId, activeSession?.profile]);

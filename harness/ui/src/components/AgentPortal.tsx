@@ -145,7 +145,7 @@ export function AgentPortal({ sessions, onNavigateSession, extraContent }: Props
     .map((s) => {
       const live       = getSessionState(s.id);
       const liveStatus = live?.status ?? s.status;
-      const isActive   = liveStatus === "running" || liveStatus === "starting";
+      const isActive   = liveStatus === "running" || liveStatus === "starting" || liveStatus === "interrupting";
       const isPinned   = pinnedIds.has(s.id);
       return { ...s, liveStatus, activeToolName: live?.activeToolName, isActive, isPinned };
     })

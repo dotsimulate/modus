@@ -197,7 +197,7 @@ export type PermissionResponse = {
 
 // ── Session Status ──
 
-export type SessionStatus = "starting" | "running" | "idle" | "paused" | "done" | "error";
+export type SessionStatus = "starting" | "running" | "interrupting" | "idle" | "paused" | "done" | "error";
 
 /** Mutable agent configuration for an active session (model, tools, provider controls). */
 export type AgentConfigState = {
@@ -211,6 +211,7 @@ export type AgentConfigState = {
     codex?: {
       sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
       webSearchMode?: "disabled" | "cached" | "live";
+      serviceTier?: "standard" | "fast" | "priority";
     };
     claude?: {
       permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk";
@@ -660,6 +661,15 @@ export type ProviderToolGroup = {
   tools: string[];
 };
 
+export type ProviderSlashCommand = {
+  command: string;
+  label: string;
+  description?: string;
+  argumentHint?: string;
+  requiresArgument?: boolean;
+  source?: "provider" | "modus";
+};
+
 /**
  * Static capabilities declared by a provider -- what tools it offers, how it handles
  * permissions, MCP support level, and whether config changes apply mid-turn or next-turn.
@@ -672,6 +682,7 @@ export type ProviderCapabilities = {
   builtInToolGroups: ProviderToolGroup[];
   /** "explicit" means the tool list is known upfront; "event-derived" means tools are discovered from events. */
   builtInToolMode: "explicit" | "event-derived";
+  slashCommands?: ProviderSlashCommand[];
   supportsMcp: boolean;
   mcpSupport: "full" | "stdio-only" | "none";
   /** Events the provider emits that aren't tool calls (e.g. "thinking", "git_event"). */
@@ -935,6 +946,7 @@ export type ActionRun = {
   id: number;
   actionName: string;
   sessionId: string | null;
+  executionId?: number | null;
   runNumber: number;
   cycleNumber: number;
   status: string;
@@ -971,6 +983,8 @@ export type MoveInputOptionsSource = {
   type: "agentProfiles" | "projects" | "sessions";
   /** For project pickers, select the current project by default when possible. */
   defaultToCurrent?: boolean;
+  /** For project pickers, bypass user-profile scope and show all registered projects. */
+  scope?: "all" | "user";
   /** For session pickers, resolve sessions against another input's selected project path. */
   projectField?: string;
   /** For session pickers, prepend an empty/default option with this label. */

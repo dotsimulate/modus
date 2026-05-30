@@ -8,9 +8,9 @@
  * Includes the PermissionOverlay for tool permission prompts.
  */
 
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useSessionState, ensureSubscribed } from "../sessionStore";
-import { useSession } from "../providers/SessionContext";
+import { modus } from "../modusClient";
 import { ChatView } from "../components/ChatView";
 import { PermissionOverlay } from "../components/PermissionOverlay";
 import type { WidgetBase, WidgetProps } from "./types";
@@ -32,7 +32,19 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
-  const { handlePermissionResponse } = useSession();
+
+  // Permission responses MUST use this widget's own sessionId, not the
+  // context's activeSessionId. Failing to do so sends the response to the
+  // wrong session and leaves AskUserQuestion pending forever.
+  const handlePermission = useCallback(async (
+    requestId: string,
+    behavior: "allow" | "deny",
+    updatedInput?: Record<string, unknown>,
+    scope?: "once" | "session",
+  ) => {
+    if (!sessionId) return;
+    await modus.respondToPermission(sessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
+  }, [sessionId]);
 
   if (!sessionId) {
     return <WidgetEmptyState>no session selected</WidgetEmptyState>;
@@ -42,7 +54,7 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
     return <WidgetEmptyState>loading session...</WidgetEmptyState>;
   }
 
-  const isActive = session.status === "running" || session.status === "starting";
+  const isActive = session.status === "running" || session.status === "starting" || session.status === "interrupting";
   const permissions = session.pendingPermissions ?? [];
 
   return (
@@ -63,7 +75,7 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
         <PermissionOverlay
           permissions={permissions}
           sessionId={sessionId}
-          onRespond={handlePermissionResponse}
+          onRespond={handlePermission}
         />
       )}
     </div>

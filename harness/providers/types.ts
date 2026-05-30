@@ -15,13 +15,23 @@ export type ProviderToolGroup = {
   tools: string[];
 };
 
+export type ProviderSlashCommand = {
+  command: string;
+  label: string;
+  description?: string;
+  argumentHint?: string;
+  requiresArgument?: boolean;
+  source?: "provider" | "modus";
+};
+
 export type ProviderCapabilities = {
   name: string;
   label: string;
-  family: "claude-code" | "codex" | "cursor" | "gemini-cli" | "pi-agent";
+  family: "claude-code" | "codex" | "cursor" | "gemini-cli" | "opencode" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
   builtInToolMode: "explicit" | "event-derived";
+  slashCommands?: ProviderSlashCommand[];
   supportsMcp: boolean;
   mcpSupport: "full" | "stdio-only" | "none";
   nonToolSignals: string[];

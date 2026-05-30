@@ -153,6 +153,7 @@ function ensureElement(): HTMLAudioElement {
 }
 
 function resolveUrl(url: string): string {
+  if (url.startsWith("data:") || url.startsWith("blob:")) return url;
   const tp = tokenParam();
   if (!tp) return url;
   return url.includes("?") ? `${url}&${tp}` : `${url}?${tp}`;

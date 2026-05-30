@@ -588,6 +588,101 @@
 }
 
 /* ── About tab ── */
+.sched-run-audit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+.sched-run-audit span,
+.sched-run-internal,
+.sched-session-row > span:not(.sched-session-main) {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sched-run-internal {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border));
+}
+.sched-session-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(72px, auto) minmax(110px, auto) auto auto auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 8px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.sched-session-row:hover {
+  background: var(--bg-hover);
+}
+.sched-session-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.sched-session-main b,
+.sched-session-main em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sched-session-main em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-size: 10px;
+}
+.sched-session-row .sched-peek-btn {
+  opacity: 0.6;
+  margin-left: 0;
+}
+
+.sched-run-plan {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.sched-run-plan span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 7px;
+  background: var(--bg);
+}
+.sched-run-plan b {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.sched-run-plan em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+}
+
 .sched-about-tab {
   padding: 12px 8px;
 }

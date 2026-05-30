@@ -45,6 +45,7 @@ type Props = {
   sessionId?: string;
   projectCwd?: string;
   userProfile?: string;
+  provider?: string;
   onMoveActivated?: (result: ActivateMoveResult) => void;
   /** Called when a mountOnAttach move is attached — widget should be mounted immediately */
   onMoveAttached?: (result: AttachMoveResult) => void;
@@ -114,7 +115,7 @@ function ComposerActionIcon({ icon }: { icon?: "mic" | "mic-handsfree" }) {
 
 export function ChatInput({
   value, onChange, onSend, onStop,
-  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, onMoveActivated, onMoveAttached, onMoveDetached, pageContext, autoFocus = false,
+  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, provider, onMoveActivated, onMoveAttached, onMoveDetached, pageContext, autoFocus = false,
 }: Props) {
   const autoId = useId();
   const composerId = sessionId ? `composer:${sessionId}` : autoId;
@@ -129,7 +130,7 @@ export function ChatInput({
   const composerToggles = useComposerToggles(composerId);
   const historyIndex = useRef(-1);
   const draft = useRef("");
-  const isActive = sessionStatus === "running" || sessionStatus === "starting";
+  const isActive = sessionStatus === "running" || sessionStatus === "starting" || sessionStatus === "interrupting";
 
   // Prompt picker slash shortcut
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -596,7 +597,7 @@ export function ChatInput({
       return;
     }
 
-    // "/" on empty input → open prompt picker
+    // "/" opens the picker; provider slash commands are listed inside it.
     if (e.key === "/" && !value.trim()) {
       e.preventDefault();
       setPickerForceOpen((n) => n + 1);
@@ -830,6 +831,7 @@ export function ChatInput({
               sessionId={sessionId}
               projectCwd={projectCwd}
               userProfile={userProfile}
+              provider={provider}
               onMoveActivated={handleMoveActivated}
               onMoveAttach={async (move, inputs) => {
                 if (move.widget?.mountOnAttach && projectCwd) {
@@ -859,6 +861,9 @@ export function ChatInput({
                 if (!isOpen) {
                   ref.current?.focus();
                 }
+              }}
+              onAutoSend={(text) => {
+                handleSendRef.current?.(text);
               }}
               onInject={(text) => {
                 const ta = ref.current;

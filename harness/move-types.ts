@@ -142,6 +142,8 @@ export interface MoveInputOptionsSource {
   type: "agentProfiles" | "projects" | "sessions";
   /** For project pickers, select the current project by default when possible. */
   defaultToCurrent?: boolean;
+  /** For project pickers, bypass user-profile scope and show all registered projects. */
+  scope?: "all" | "user";
   /** For session pickers, resolve sessions against another input's selected project path. */
   projectField?: string;
   /** For session pickers, prepend an empty/default option with this label. */
@@ -184,6 +186,8 @@ export interface MoveModule {
   onAssistantTurn?(ctx: MoveAssistantTurnContext): Promise<void>;
   /** API op handlers — keyed by op name, registered on activation for api moves */
   handlers?: Record<string, MoveApiHandler>;
+  /** Infer op from data shape when the model omits the op field */
+  inferOp?: (data: Record<string, unknown>) => string | null | undefined;
   /** Optional — customize instance labels for the resume select input */
   listInstances?(states: Array<{ instanceId: string; state: unknown }>): Array<{ label: string; value: string }>;
 }
@@ -487,6 +491,8 @@ export interface MoveWidgetDeclaration {
 export interface MoveApiDeclaration {
   /** Token prefix (default: move name). Tokens are `mapi-{prefix}-{instanceId}` */
   tokenPrefix?: string;
+  /** Fallback op when model omits the op name (llama.cpp autoparser workaround) */
+  defaultOp?: string;
   /** Named operations this move provides */
   ops: Record<string, MoveOpDeclaration>;
   /** State configuration */
@@ -583,4 +589,6 @@ export interface MoveApiRegistration {
   userProfile?: string;
   handlers: Record<string, MoveApiHandler>;
   persist: boolean;
+  defaultOp?: string;
+  inferOp?: (data: Record<string, unknown>) => string | null | undefined;
 }

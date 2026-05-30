@@ -1,0 +1,159 @@
+{
+  "name": "room",
+  "label": "Room",
+  "description": "Coordinate multiple sessions through a shared file-backed room with user-controlled membership, context pushes, and targeted requests.",
+  "icon": "message-square",
+  "mode": "inline",
+  "inputs": [],
+  "api": {
+    "tokenPrefix": "room",
+    "ops": {
+      "post": {
+        "description": "Post a markdown message to a room. Agents should include their sessionId from the onboarding prompt.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "content": { "type": "string", "description": "Message content (markdown)" },
+            "room": { "type": "string", "description": "Room name" },
+            "sessionId": { "type": "string", "description": "Posting member session id" },
+            "author": { "type": "string", "description": "Optional author for user-originated notes" }
+          },
+          "required": ["content"]
+        }
+      },
+      "list-rooms": {
+        "description": "List all rooms"
+      },
+      "list-sessions": {
+        "description": "List recent sessions that can be added to a room (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "limit": { "type": "number", "description": "Max sessions to return" }
+          }
+        }
+      },
+      "read-room": {
+        "description": "Read room metadata, members, brief, and messages. Agents must be room members.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": { "type": "string" },
+            "sessionId": { "type": "string" },
+            "includeContent": { "type": "boolean" }
+          },
+          "required": ["room"]
+        }
+      },
+      "create-room": {
+        "description": "Create a new room (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "brief": { "type": "string" }
+          },
+          "required": ["name"]
+        }
+      },
+      "set-brief": {
+        "description": "Replace a room's brief markdown (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": { "type": "string" },
+            "brief": { "type": "string" }
+          },
+          "required": ["room", "brief"]
+        }
+      },
+      "add-member": {
+        "description": "Add any session as a room member and optionally send onboarding (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": { "type": "string" },
+            "sessionId": { "type": "string" },
+            "displayName": { "type": "string" },
+            "role": { "type": "string" },
+            "notify": { "type": "boolean" },
+            "sendOnboarding": { "type": "boolean" }
+          },
+          "required": ["room", "sessionId"]
+        }
+      },
+      "add-to-room": {
+        "description": "Compatibility alias for add-member (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": { "type": "string" },
+            "sessionId": { "type": "string" },
+            "displayName": { "type": "string" },
+            "notify": { "type": "boolean" }
+          },
+          "required": ["room"]
+        }
+      },
+      "remove-member": {
+        "description": "Remove a session from a room (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": { "type": "string" },
+            "sessionId": { "type": "string" }
+          },
+          "required": ["room", "sessionId"]
+        }
+      },
+      "set-notify": {
+        "description": "Toggle notification delivery for a member in a room (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": { "type": "string" },
+            "sessionId": { "type": "string" },
+            "notify": { "type": "boolean" }
+          },
+          "required": ["room", "sessionId", "notify"]
+        }
+      },
+      "send-context": {
+        "description": "Send room onboarding/context to one member or all members (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": { "type": "string" },
+            "sessionId": { "type": "string", "description": "Omit to send to all members" }
+          },
+          "required": ["room"]
+        }
+      },
+      "request": {
+        "description": "Ask one member or all members to read/respond through the room (widget only)",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "room": { "type": "string" },
+            "sessionId": { "type": "string", "description": "Omit to request all members" },
+            "prompt": { "type": "string" }
+          },
+          "required": ["room", "prompt"]
+        }
+      }
+    },
+    "state": { "persist": true }
+  },
+  "submit": { "required": false },
+  "session": { "afterSubmit": "continue" },
+  "widget": {
+    "component": "widget.tsx",
+    "panel": "right",
+    "label": "Rooms",
+    "icon": "message-square",
+    "autoOpen": true,
+    "mountOnAttach": true,
+    "cache": "instance"
+  },
+  "tags": ["communication", "rooms"]
+}

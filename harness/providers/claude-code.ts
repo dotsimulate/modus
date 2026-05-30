@@ -50,6 +50,20 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
     { label: "other", tools: ["NotebookEdit", "AskUserQuestion"] },
   ],
   builtInToolMode: "explicit",
+  slashCommands: [
+    {
+      command: "/compact",
+      label: "/compact",
+      source: "provider",
+      description: "Ask Claude Code to compact the conversation context.",
+    },
+    {
+      command: "/context",
+      label: "/context",
+      source: "provider",
+      description: "Ask Claude Code for its current context usage/status.",
+    },
+  ],
   supportsMcp: true,
   mcpSupport: "full",
   nonToolSignals: ["thinking", "streaming"],
@@ -102,91 +116,30 @@ function getState(session: ActiveSession): ClaudeCodeState | null {
  * and keeps executing tool calls as a ghost. Always call this on any
  * non-graceful termination (abort, error, drain-exit-while-running).
  */
-function killPidTree(pid: number): void {
-  if (process.platform === "win32") {
-    try { spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }); }
-    catch { /* ignore */ }
-  } else {
-    try { process.kill(pid, "SIGKILL"); } catch { /* ignore */ }
-  }
+function killPidTreeAsync(pid: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (process.platform === "win32") {
+      const t0 = Date.now();
+      try {
+        const child = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+        const done = () => {
+          console.log(`[claude-code] taskkill pid=${pid} took=${Date.now() - t0}ms`);
+          resolve();
+        };
+        child.on("close", done);
+        child.on("error", done);
+      } catch { resolve(); }
+    } else {
+      try { process.kill(pid, "SIGKILL"); } catch { /* ignore */ }
+      resolve();
+    }
+  });
 }
 
-function listDescendantPids(rootPid: number): number[] {
-  if (process.platform !== "win32" || !Number.isFinite(rootPid) || rootPid <= 0) return [];
-  try {
-    const script = [
-      `$root = ${rootPid}`,
-      "$procs = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId",
-      "$childrenByParent = @{}",
-      "foreach ($p in $procs) {",
-      "  $key = [string]$p.ParentProcessId",
-      "  if (-not $childrenByParent.ContainsKey($key)) { $childrenByParent[$key] = @() }",
-      "  $childrenByParent[$key] += [int]$p.ProcessId",
-      "}",
-      "$out = @()",
-      "$stack = @([int]$root)",
-      "while ($stack.Count -gt 0) {",
-      "  $cur = [int]$stack[$stack.Count - 1]",
-      "  if ($stack.Count -eq 1) { $stack = @() } else { $stack = $stack[0..($stack.Count - 2)] }",
-      "  $kids = $childrenByParent[[string]$cur]",
-      "  if (-not $kids) { continue }",
-      "  foreach ($kid in $kids) {",
-      "    if ($out -contains $kid) { continue }",
-      "    $out += $kid",
-      "    $stack += [int]$kid",
-      "  }",
-      "}",
-      "$out | ConvertTo-Json -Compress",
-    ].join("; ");
-    const result = spawnSync("powershell", ["-NoProfile", "-Command", script], {
-      encoding: "utf8",
-      windowsHide: true,
-    });
-    if (result.status !== 0) return [];
-    const raw = result.stdout?.trim();
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as number | number[];
-    const values = Array.isArray(parsed) ? parsed : [parsed];
-    return values.filter((pid): pid is number => Number.isFinite(pid) && pid > 0);
-  } catch {
-    return [];
-  }
-}
-
-function refreshTrackedPidTree(session: ActiveSession, rootPid: number | undefined): void {
-  if (!rootPid) return;
-  session.osPids.add(rootPid);
-  for (const childPid of listDescendantPids(rootPid)) {
-    session.osPids.add(childPid);
-  }
-}
-
-function killClaudeProcessesForSessionId(sessionId: string): void {
-  if (process.platform !== "win32" || !sessionId) return;
-  try {
-    const currentPort = Number(process.env.HARNESS_PORT ?? 3777);
-    const escapedSessionId = sessionId.replace(/'/g, "''");
-    const script = [
-      `$sid = '${escapedSessionId}'`,
-      `$port = '${currentPort}'`,
-      "$escaped = [regex]::Escape($sid)",
-      "$rows = Get-CimInstance Win32_Process | Where-Object {",
-      "  $_.CommandLine -and",
-      "  $_.CommandLine -match $escaped -and",
-      "  (",
-      "    $_.CommandLine -match '@anthropic-ai[\\\\/]claude-code[\\\\/]cli\\.js' -or",
-      "    $_.CommandLine -match ('127\\.0\\.0\\.1:' + $port + '/api/mcp/modus')",
-      "  )",
-      "} | Select-Object -ExpandProperty ProcessId",
-      "foreach ($pid in $rows) {",
-      "  try { taskkill /PID $pid /T /F | Out-Null } catch {}",
-      "}",
-    ].join("; ");
-    spawnSync("powershell", ["-NoProfile", "-Command", script], { windowsHide: true });
-  } catch {
-    // ignore fallback kill failures
-  }
-}
+// PID-tree enumeration via PowerShell was removed — `taskkill /T /F /PID <root>`
+// already kills the entire descendant tree natively. Spawning PowerShell on
+// every session start/abort caused 70MB+ ghost processes to accumulate by the
+// dozen on Windows, which itself starved new spawns.
 
 /**
  * Force-kill EVERY spawned subprocess this session has ever produced and
@@ -200,18 +153,40 @@ function killClaudeProcessesForSessionId(sessionId: string): void {
  * Call this on every non-graceful termination path (abort, drain-exit while
  * status != idle, post-drain restart, error). Never trust query.close().
  */
-function killAllSpawned(session: ActiveSession, state: ClaudeCodeState | null): void {
-  refreshTrackedPidTree(session, state?.spawnedPid);
-  const pids = Array.from(session.osPids);
-  if (state?.spawnedPid && !session.osPids.has(state.spawnedPid)) pids.push(state.spawnedPid);
-  for (const pid of pids) {
-    refreshTrackedPidTree(session, pid);
-    killPidTree(pid);
-    session.osPids.delete(pid);
-    console.log(`[claude-code] killAllSpawned pid=${pid} for ${session.sessionId}`);
+const inFlightKills = new WeakMap<ActiveSession, Promise<void>>();
+
+function killAllSpawnedAsync(session: ActiveSession, state: ClaudeCodeState | null): Promise<void> {
+  const existing = inFlightKills.get(session);
+  if (existing) {
+    console.log(`[claude-code] killAllSpawned coalesced session=${session.sessionId}`);
+    return existing;
   }
-  killClaudeProcessesForSessionId(session.sessionId);
-  if (state) state.spawnedPid = undefined;
+  const run = (async () => {
+    const t0 = Date.now();
+    // Just taskkill /T /F the root we know about. Windows handles the descendant
+    // tree natively. We previously also tracked grandchild PIDs via PowerShell,
+    // but that polling approach generated 70MB ghost processes faster than they
+    // exited and starved new spawns.
+    const rootPid = state?.spawnedPid;
+    if (rootPid) {
+      session.osPids.add(rootPid);
+      await killPidTreeAsync(rootPid);
+      session.osPids.delete(rootPid);
+    }
+    // Any other PIDs that were tracked elsewhere (e.g. resume-after-interrupt
+    // restarts) — kill those root handles too.
+    const remaining = Array.from(session.osPids);
+    await Promise.all(remaining.map(async (pid) => {
+      await killPidTreeAsync(pid);
+      session.osPids.delete(pid);
+    }));
+    if (state) state.spawnedPid = undefined;
+    console.log(`[claude-code] killAllSpawned session=${session.sessionId} took=${Date.now() - t0}ms`);
+  })().finally(() => {
+    inFlightKills.delete(session);
+  });
+  inFlightKills.set(session, run);
+  return run;
 }
 
 function normalizeClaudeEffort(effort?: string): string | undefined {
@@ -290,7 +265,8 @@ function spawnClaudeProcess(options: {
     kill(signal: NodeJS.Signals) {
       if (process.platform === "win32" && child.pid) {
         forceKilled = true;
-        spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true });
+        try { spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true }); }
+        catch { /* ignore */ }
         return true;
       }
       return child.kill(signal);
@@ -501,7 +477,15 @@ export function createClaudeCodeProvider(): SessionProvider {
         const toolName: string = hookInput.tool_name;
         const input: Record<string, unknown> = hookInput.tool_input ?? {};
 
-        if (toolName === "AskUserQuestion") return {};
+        if (toolName === "AskUserQuestion") {
+          // AskUserQuestion is always handled by canUseTool interactively.
+          // Explicitly allow it through the PreToolUse hook so the SDK
+          // doesn't treat an empty return as a block.
+          return {
+            continue: true,
+            hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
+          };
+        }
         if (isBypass) {
           return {
             continue: true,
@@ -600,6 +584,10 @@ export function createClaudeCodeProvider(): SessionProvider {
           updateSessionStatus(session.sessionId, "running");
         }
 
+        // ── AskUserQuestion — always intercept regardless of permission mode ──
+        // Even in bypass mode we must show the interactive form. Without this,
+        // AskUserQuestion runs headlessly in the CLI, gets no stdin response,
+        // and returns empty — causing Claude to write "Standing by..." fallback text.
         if (toolName === "AskUserQuestion") {
           const requestId = `perm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           ctx.emitEvent({
@@ -629,6 +617,13 @@ export function createClaudeCodeProvider(): SessionProvider {
           }
           return { behavior: "allow" as const, updatedInput: result.updatedInput ?? toolInput };
         }
+
+        // In bypass mode, allow all other tools without permission checks.
+        if (isBypass) {
+          return { behavior: "allow" as const, updatedInput: toolInput };
+        }
+
+        // Non-bypass: apply permission policy for remaining tools.
         return { behavior: "allow" as const, updatedInput: toolInput };
       };
 
@@ -648,6 +643,22 @@ export function createClaudeCodeProvider(): SessionProvider {
       } : {};
 
       _timing("pre-sdk-options");
+      const claudeEnv = {
+        ...process.env,
+        ...(profileDef?.env ?? {}),
+        // Large Windows repos with many submodules can make Claude Code's
+        // startup git status checks hang before system/init. Keep submodule
+        // status out of those inherited git calls; explicit git commands still
+        // work normally when Claude runs them with its own arguments.
+        GIT_OPTIONAL_LOCKS: "0",
+        GIT_CONFIG_COUNT: "3",
+        GIT_CONFIG_KEY_0: "diff.ignoreSubmodules",
+        GIT_CONFIG_VALUE_0: "all",
+        GIT_CONFIG_KEY_1: "status.submoduleSummary",
+        GIT_CONFIG_VALUE_1: "false",
+        GIT_CONFIG_KEY_2: "submodule.recurse",
+        GIT_CONFIG_VALUE_2: "false",
+      };
       const sdkOptions: any = {
         pathToClaudeCodeExecutable: CLAUDE_PATH,
         cwd: session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
@@ -655,7 +666,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         includePartialMessages: true,
         resume: resumeTarget,
         model: opts.model ?? profileDef?.model ?? undefined,
-        thinking: { type: "adaptive", display: "summarized" },
+        thinking: { type: "adaptive" },
         effort: normalizeClaudeEffort(opts.effort ?? profileDef?.effort),
         maxTurns: opts.maxTurns ?? profileDef?.maxTurns ?? undefined,
         disallowedTools: sdkDisallowed,
@@ -667,10 +678,13 @@ export function createClaudeCodeProvider(): SessionProvider {
         // every tool call triggers a round-trip that can fail with "Stream closed".
         permissionMode: isBypass ? "bypassPermissions" : readClaudePermissionMode(opts.providerControls),
         maxBudgetUsd: profileDef?.maxBudgetUsd,
-        env: profileDef?.env ? { ...process.env, ...profileDef.env } : undefined,
+        env: claudeEnv,
         plugins: profileDef?.plugins,
         sandbox: profileDef?.sandbox,
-        canUseTool: isBypass ? undefined : canUseTool,
+        // Always wire canUseTool — it intercepts AskUserQuestion regardless of
+        // bypass mode. Non-AskUserQuestion tools short-circuit immediately in
+        // bypass mode so there's no performance cost.
+        canUseTool,
         ...(isBypass ? {} : {
           hooks: {
             PreToolUse: [{
@@ -689,6 +703,8 @@ export function createClaudeCodeProvider(): SessionProvider {
               line.startsWith("{") || line.startsWith("]") || line.startsWith("[")) return;
           console.error(`[claude-code] stderr (${session.tempId}):`, line);
           stderrBuf += (stderrBuf ? "\n" : "") + line;
+          const liveState = session._providerState as ClaudeCodeState | null;
+          if (liveState) liveState.stderrBuf = stderrBuf;
         },
         spawnClaudeCodeProcess: (spawnOptions: {
           command: string;
@@ -701,17 +717,7 @@ export function createClaudeCodeProvider(): SessionProvider {
           onStderr: (data) => sdkOptions.stderr(data),
           onSpawn: (pid) => {
             state.spawnedPid = pid;
-            if (pid) {
-              refreshTrackedPidTree(session, pid);
-              setTimeout(() => {
-                const liveState = getState(session);
-                if (liveState?.spawnedPid === pid) refreshTrackedPidTree(session, pid);
-              }, 250);
-              setTimeout(() => {
-                const liveState = getState(session);
-                if (liveState?.spawnedPid === pid) refreshTrackedPidTree(session, pid);
-              }, 1000);
-            }
+            if (pid) session.osPids.add(pid);
           },
         }),
       };
@@ -766,7 +772,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       // Guard against false positives: if the abortController has changed (sendMessage
       // created a new turn), this timeout belongs to an already-completed turn.
       // Longer on Windows where MCP server startup and pipe buffering add latency.
-      const startupTimeoutMs = process.platform === "win32" ? 60_000 : 30_000;
+      const startupTimeoutMs = process.platform === "win32" ? 120_000 : 30_000;
       setTimeout(() => {
         if (session.status === "starting" && session.abortController === abortController) {
           const reason = stderrBuf
@@ -776,6 +782,8 @@ export function createClaudeCodeProvider(): SessionProvider {
           session.status = "error";
           session.error = reason;
           abortController.abort();
+          killAllSpawnedAsync(session, state)
+            .catch((e) => console.error(`[claude-code] startup timeout kill error session=${session.sessionId}`, e));
           ctx.broadcastEvent({ type: "error", error: reason });
           ctx.emitEvent({ type: "done" });
         }
@@ -882,22 +890,75 @@ export function createClaudeCodeProvider(): SessionProvider {
     },
 
     abort(session: ActiveSession) {
+      const tAbort = Date.now();
+      console.log(`[claude-code] abort() enter session=${session.sessionId}`);
       const state = getState(session);
       if (state) state.interrupting = true;
-      try { state?.input.close(); } catch { /* ignore cleanup errors */ }
-      try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
-      // SDK close() does not reliably kill the spawned wrapper tree on Windows;
-      // call it for cleanup but DO NOT trust it.
-      try { state?.queryObj?.close(); } catch { /* ignore cleanup errors */ }
-      if (state) state.queryObj = null;
-      // Authoritative kill: walk every PID this session has spawned and taskkill /T /F.
-      killAllSpawned(session, state);
+
+      const queryObj = state?.queryObj;
+      const finishAbort = (label: string) => {
+        const tStep1 = Date.now();
+        try { state?.input.close(); } catch { /* ignore cleanup errors */ }
+        console.log(`[claude-code] abort() ${label} input.close took=${Date.now() - tStep1}ms`);
+        const tStep2 = Date.now();
+        try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
+        console.log(`[claude-code] abort() ${label} abortController.abort took=${Date.now() - tStep2}ms`);
+        const tStep3 = Date.now();
+        // SDK close() is the documented forceful termination path. On Windows,
+        // still do not trust it alone: the cmd.exe -> claude/node tree can
+        // survive on MCP keepalives, so the PID-tree kill below remains required.
+        try { queryObj?.close(); } catch { /* ignore cleanup errors */ }
+        console.log(`[claude-code] abort() ${label} queryObj.close took=${Date.now() - tStep3}ms`);
+        if (state && state.queryObj === queryObj) state.queryObj = null;
+
+        const tDispatch = Date.now();
+        setImmediate(() => {
+          console.log(`[claude-code] abort() ${label} killAllSpawned scheduled session=${session.sessionId} schedDelay=${Date.now() - tDispatch}ms`);
+          killAllSpawnedAsync(session, state)
+            .then(() => console.log(`[claude-code] abort() ${label} kill complete session=${session.sessionId} totalElapsed=${Date.now() - tAbort}ms`))
+            .catch((e) => console.error(`[claude-code] killAllSpawnedAsync error session=${session.sessionId}`, e));
+        });
+      };
+
+      // Official Agent SDK control path for streaming queries. This asks Claude
+      // Code to interrupt the current turn before we force-close transports.
+      // A short fallback keeps Escape from becoming "stop my stream but keep
+      // executing tools" if the SDK control request hangs or the process is wedged.
+      if (queryObj?.interrupt) {
+        let finished = false;
+        const fallback = setTimeout(() => {
+          if (finished) return;
+          finished = true;
+          console.warn(`[claude-code] abort() interrupt timed out; forcing close session=${session.sessionId}`);
+          finishAbort("fallback");
+        }, 750);
+        void queryObj.interrupt()
+          .then(() => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(fallback);
+            console.log(`[claude-code] abort() queryObj.interrupt resolved session=${session.sessionId}`);
+            finishAbort("interrupt");
+          })
+          .catch((err) => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(fallback);
+            console.warn(`[claude-code] abort() queryObj.interrupt failed session=${session.sessionId}:`, err);
+            finishAbort("interrupt-error");
+          });
+      } else {
+        finishAbort("no-interrupt");
+      }
+      console.log(`[claude-code] abort() returned (sync part) session=${session.sessionId} took=${Date.now() - tAbort}ms`);
     },
 
     stopTask(session: ActiveSession, taskId: string): boolean {
       const state = getState(session);
       if (!state?.queryObj) return false;
-      state.queryObj.stopTask(taskId);
+      void state.queryObj.stopTask(taskId).catch((err: unknown) => {
+        console.warn(`[claude-code] stopTask failed task=${taskId} session=${session.sessionId}:`, err);
+      });
       return true;
     },
 
@@ -1057,13 +1118,12 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
   const { session } = ctx;
   let initSeen = false;
   let eventCount = 0;
+  let resultSeen = false;
   const spawnedAt = state.spawnedAt ?? Date.now();
   state.drainActive = true;
 
   try {
     for await (const msg of q) {
-      if (session.abortController.signal.aborted) break;
-
       const m = msg as any;
       session.lastEventAt = Date.now();
       eventCount++;
@@ -1131,6 +1191,12 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
 
       // Handle result: inject harness timing + token count
       if (m.type === "result") {
+        resultSeen = true;
+        const wasInterrupting = !!state.interrupting || session.status === "interrupting";
+        if (wasInterrupting && (m.subtype === "success" || m.subtype === "error_max_turns")) {
+          m.subtype = "interrupted";
+          m.interrupted = true;
+        }
         console.log(`[claude-code] RESULT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events total)`);
         m.harness_duration_ms = Date.now() - session.turnStartedAt;
         if (state.thinkingDurationMs) {
@@ -1169,13 +1235,34 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         session.costUsd += m.total_cost_usd ?? 0;
         session.numTurns += m.num_turns ?? 0;
 
-        ctx.updateSessionDb({
-          status: (m.subtype === "success" || m.subtype === "error_max_turns") ? "idle" : "error",
-          messageCount: session.numTurns * 2,
-          costUsd: m.total_cost_usd ?? 0,
-          lastPrompt: session.preview,
-          lastResponse: (m.result || session.lastAssistantText || "").slice(0, 2000),
-        });
+        const noVisibleAssistantOutput = !(m.result || session.lastAssistantText);
+        const completedBeforeInit = !initSeen;
+        const zeroTurnResult = (m.num_turns ?? 0) === 0;
+        if (completedBeforeInit && zeroTurnResult && noVisibleAssistantOutput) {
+          const stderrDetail = state.stderrBuf ? `\n\nstderr:\n${state.stderrBuf}` : "";
+          const reason = `Claude Code process ended before system/init with no assistant output${stderrDetail}`;
+          console.error(`[claude-code] ${reason} for ${session.sessionId}`);
+          session.status = "error";
+          session.error = reason;
+          ctx.updateSessionDb({
+            status: "error",
+            messageCount: session.exchangeCount * 2,
+            costUsd: m.total_cost_usd ?? 0,
+            lastPrompt: session.preview,
+            lastResponse: reason,
+          });
+          ctx.broadcastEvent({ type: "error", error: reason });
+          m.harness_error = reason;
+        } else {
+
+          ctx.updateSessionDb({
+            status: (m.subtype === "success" || m.subtype === "error_max_turns" || m.subtype === "interrupted") ? "idle" : "error",
+            messageCount: session.numTurns * 2,
+            costUsd: m.total_cost_usd ?? 0,
+            lastPrompt: session.preview,
+            lastResponse: (m.result || session.lastAssistantText || "").slice(0, 2000),
+          });
+        }
 
         logActivity({
           userProfile: session.userProfile,
@@ -1186,11 +1273,13 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           metadata: { costUsd: m.total_cost_usd, numTurns: m.num_turns, status: m.subtype, durationMs: m.harness_duration_ms },
         });
 
-        session.status = "idle";
+        if (session.status !== "error") session.status = "idle";
         const sid2 = session.sessionId?.slice(0, 12) ?? "?";
 
-        // Flush queued messages
-        if (session.pendingDispatch.length > 0) {
+        // Flush queued messages only after normal completion. If this turn was
+        // interrupted, never push the user's correction into the old live
+        // subprocess; wait for drain exit, close/kill it, then restart clean.
+        if (!wasInterrupting && session.pendingDispatch.length > 0) {
           const next = session.pendingDispatch.shift()!.content;
           session.initialContent = next;
           msgLog(sid2, "FLUSH-PENDING", `pushing queued message through live subprocess (${session.pendingDispatch.length} remaining)`);
@@ -1243,15 +1332,35 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     }
     console.log(`[claude-code] DRAIN EXIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms, status=${session.status}, events=${eventCount}`);
 
+    if (!resultSeen && session.status === "interrupting") {
+      const interruptedResult = {
+        type: "result",
+        subtype: "interrupted",
+        interrupted: true,
+        total_cost_usd: session.costUsd,
+      };
+      session.status = "idle";
+      state.interrupting = false;
+      ctx.updateSessionDb({
+        status: "idle",
+        messageCount: session.exchangeCount * 2,
+        costUsd: session.costUsd,
+        lastResponse: session.lastAssistantText?.slice(0, 2000),
+      });
+      ctx.emitEvent(interruptedResult);
+      resultSeen = true;
+    }
+
     // SDK iterator ended. If status is still starting/running, the SDK exited without
     // sending a result event — mark as error so the UI knows.
-    if (session.status === "starting" || session.status === "running") {
+    if (!resultSeen && (session.status === "starting" || session.status === "running")) {
       const reason = "Claude Code process ended without completing (no result event received)";
       console.error(`[claude-code] ${reason} for ${session.sessionId}`);
       session.status = "error";
       session.error = reason;
       ctx.updateSessionDb({
         status: "error",
+        messageCount: session.exchangeCount * 2,
         costUsd: session.costUsd,
         lastResponse: session.lastAssistantText?.slice(0, 2000),
       });
@@ -1264,7 +1373,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       try { state.input.close(); } catch { /* ignore */ }
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
-      killAllSpawned(session, state);
+      killAllSpawnedAsync(session, state).catch((e) => console.error(`[claude-code] killAllSpawnedAsync error session=${session.sessionId}`, e));
       // The interrupted-flag belongs to the subprocess we just killed.
       // Clear it so the next spawn isn't poisoned by stale interrupt state —
       // otherwise sendMessage will defer every follow-up forever, treating
@@ -1276,18 +1385,27 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     const isAbort = err?.name === "AbortError" || err?.type === "abort"
       || String(err).includes("aborted by user");
     const wasAlreadyIdle = session.status === "idle";
-    if (isAbort || wasAlreadyIdle) {
+    const wasAlreadyError = session.status === "error" || !!session.error;
+    if (isAbort || wasAlreadyIdle || wasAlreadyError) {
       console.log(`[claude-code] aborted ${session.sessionId}`);
       try { state.input.close(); } catch { /* ignore */ }
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
-      killAllSpawned(session, state);
+      killAllSpawnedAsync(session, state).catch((e) => console.error(`[claude-code] killAllSpawnedAsync error session=${session.sessionId}`, e));
       // Subprocess is dead — clear interrupt flag so next subprocess starts clean.
       state.interrupting = false;
-      if (!wasAlreadyIdle) {
+      if (wasAlreadyError) {
+        ctx.updateSessionDb({
+          status: "error",
+          messageCount: session.exchangeCount * 2,
+          costUsd: session.costUsd,
+          lastResponse: (session.error ?? session.lastAssistantText ?? String(err)).slice(0, 2000),
+        });
+      } else if (!wasAlreadyIdle) {
         session.status = "idle";
         ctx.updateSessionDb({
           status: "idle",
+          messageCount: session.exchangeCount * 2,
           costUsd: session.costUsd,
           lastResponse: session.lastAssistantText?.slice(0, 2000),
         });
@@ -1305,7 +1423,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       try { state.input.close(); } catch { /* ignore */ }
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
-      killAllSpawned(session, state);
+      killAllSpawnedAsync(session, state).catch((e) => console.error(`[claude-code] killAllSpawnedAsync error session=${session.sessionId}`, e));
       // Subprocess is dead — clear interrupt flag so next subprocess starts clean.
       state.interrupting = false;
     }
@@ -1363,6 +1481,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     session.status = "done";
     ctx.updateSessionDb({
       status: "done",
+      messageCount: session.exchangeCount * 2,
       costUsd: session.costUsd,
       lastResponse: session.lastAssistantText?.slice(0, 2000),
     });

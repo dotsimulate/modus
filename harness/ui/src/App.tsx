@@ -111,7 +111,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error
             </button>
             <button
               style={{ padding: "6px 14px", background: "transparent", border: "1px solid #555", borderRadius: 4, color: "#aaa", cursor: "pointer", fontSize: 12 }}
-              onClick={() => { localStorage.clear(); location.reload(); }}
+              onClick={() => { localStorage.clear(); sessionStorage.clear(); location.reload(); }}
             >
               clear data + reload
             </button>
@@ -395,7 +395,7 @@ function AppContent({ router }: { router: HashRouter }) {
 
   const activeAgentCount = serverSessions.filter(s => {
     const status = getSessionState(s.id)?.status ?? s.status;
-    return status === "running" || status === "starting";
+    return status === "running" || status === "starting" || status === "interrupting";
   }).length;
   // ── Move pages (moves that declare a page field) ──
   const [movePages, setMovePages] = useState<MoveListItem[]>([]);

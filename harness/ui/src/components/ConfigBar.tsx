@@ -241,6 +241,8 @@ export function ConfigBar({
           <span className="config-bar-sep">·</span>
           {isCodexProvider(effectiveProvider) && (
             <>
+              <span className="config-bar-value">{codexControls.serviceTier ?? "speed:auto"}</span>
+              <span className="config-bar-sep">·</span>
               <span className="config-bar-value">{codexControls.webSearchMode ?? "web:auto"}</span>
               <span className="config-bar-sep">·</span>
             </>

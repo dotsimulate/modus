@@ -93,7 +93,7 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
     case "result":
       return reduceResult(s, m);
     case "rate_limit_event":
-      return s; // could display warning, skip for now
+      return reduceProviderWait(s, "Claude is retrying after a rate limit.", ts);
     default:
       return s;
   }
@@ -102,6 +102,19 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
 /** Append to streamFeed, keeping a rolling tail of ~500 chars */
 function appendFeed(current: string, text: string): string {
   return (current + " " + text).slice(-500);
+}
+
+function reduceProviderWait(s: ReducerState, content: string, ts: number): ReducerState {
+  const trimmed = content.trim();
+  if (!trimmed) return s;
+  const msgs = [...s.messages];
+  const last = msgs[msgs.length - 1];
+  if (last?.role === "system" && last.content.startsWith("Claude is retrying")) {
+    msgs[msgs.length - 1] = { ...last, content: trimmed, timestamp: ts };
+  } else {
+    msgs.push({ id: nextMsgId(), role: "system", content: trimmed, timestamp: ts });
+  }
+  return { ...s, status: "running", messages: msgs, streamFeed: appendFeed(s.streamFeed, trimmed) };
 }
 
 function attachArtifactToMessage(
@@ -242,6 +255,12 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
       }],
     };
   }
+  if (m.subtype === "api_retry") {
+    const delay = typeof m.delay_ms === "number"
+      ? ` Retrying in ${(m.delay_ms / 1000).toFixed(1)}s.`
+      : "";
+    return reduceProviderWait(s, `Claude is retrying after an API limit or transient error.${delay}`, ts);
+  }
   if (m.subtype === "init") {
     const nextConfig = readAgentConfig(m.config);
     return {
@@ -270,14 +289,8 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
   if (m.subtype === "interrupted") {
     return {
       ...s,
-      status: "idle",
+      status: "interrupting",
       messages: [...s.messages, { id: nextMsgId(), role: "system", content: "interrupted" }],
-      _streamingText: "",
-      _streamingThinking: "",
-      _activeAgentToolId: undefined,
-      _activeSubTaskId: undefined,
-      activeToolName: undefined,
-      activeToolElapsed: undefined,
     };
   }
   if (m.subtype === "switch") {
@@ -489,6 +502,9 @@ function readProviderControls(providerControls: any): AgentConfigState["provider
     }
     if (codex.webSearchMode === "disabled" || codex.webSearchMode === "cached" || codex.webSearchMode === "live") {
       next.codex.webSearchMode = codex.webSearchMode;
+    }
+    if (codex.serviceTier === "standard" || codex.serviceTier === "fast" || codex.serviceTier === "priority") {
+      next.codex.serviceTier = codex.serviceTier;
     }
   }
   const rawClaude = (providerControls as Record<string, unknown>).claude;
@@ -961,7 +977,9 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
 
   return {
     ...s,
-    status: (m.subtype === "success" || m.subtype === "error_max_turns") ? "idle" : "error",
+    status: m.subtype === "interrupted"
+      ? "idle"
+      : (m.subtype === "success" || m.subtype === "error_max_turns") ? "idle" : "error",
     messages: msgs,
     totalCost: s.totalCost + (m.total_cost_usd ?? 0),
     totalInputTokens: s.totalInputTokens + (m.input_tokens ?? 0),

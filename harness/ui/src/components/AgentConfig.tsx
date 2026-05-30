@@ -16,7 +16,7 @@ import { isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamil
 
 export type { AgentConfigState };
 
-const EFFORT_OPTIONS = ["off", "low", "medium", "high", "max"] as const;
+const EFFORT_OPTIONS = ["off", "low", "medium", "high", "xhigh", "max"] as const;
 
 function formatContextWindow(tokens?: number): string | null {
   if (!tokens) return null;
@@ -145,10 +145,13 @@ export function AgentConfig({
 
   const codexControls = config.providerControls?.codex ?? {};
   const updateCodexControls = (patch: NonNullable<NonNullable<AgentConfigState["providerControls"]>["codex"]>) => {
+    const nextCodexControls = Object.fromEntries(
+      Object.entries({ ...codexControls, ...patch }).filter(([, value]) => !!value),
+    ) as NonNullable<NonNullable<AgentConfigState["providerControls"]>["codex"]>;
     update({
       providerControls: {
         ...(config.providerControls ?? {}),
-        codex: { ...codexControls, ...patch },
+        codex: nextCodexControls,
       },
     });
   };
@@ -264,6 +267,23 @@ export function AgentConfig({
               })}
             />
           </label>
+          <label className="agent-config-field">
+            <span>speed</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={codexControls.serviceTier ?? ""}
+              options={[
+                { value: "fast", label: "fast" },
+                { value: "standard", label: "standard" },
+                { value: "priority", label: "priority API" },
+              ]}
+              placeholder="profile default"
+              searchPlaceholder="search speed..."
+              onChange={(serviceTier) => updateCodexControls({
+                serviceTier: serviceTier as NonNullable<NonNullable<AgentConfigState["providerControls"]>["codex"]>["serviceTier"],
+              })}
+            />
+          </label>
         </div>
       ) : null}
 
@@ -355,6 +375,7 @@ function equalProviderControls(
   return (
     leftCodex.sandboxMode === rightCodex.sandboxMode
     && leftCodex.webSearchMode === rightCodex.webSearchMode
+    && leftCodex.serviceTier === rightCodex.serviceTier
     && leftClaude.permissionMode === rightClaude.permissionMode
   );
 }

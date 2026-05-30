@@ -157,3 +157,19 @@ export function unregisterModusPlugin(id: string): boolean {
 export function getPluginClientExtensionsDir(plugin: ModusPlugin): string {
   return join(plugin.path, MODUS_DIR, "ui", "extensions");
 }
+
+export function getPluginModusDir(plugin: ModusPlugin): string {
+  return join(plugin.path, MODUS_DIR);
+}
+
+export function getPluginActionsDir(plugin: ModusPlugin): string {
+  return join(getPluginModusDir(plugin), "actions");
+}
+
+export function getPluginMovesDir(plugin: ModusPlugin): string {
+  return join(getPluginModusDir(plugin), "moves");
+}
+
+export function getPluginPagesDir(plugin: ModusPlugin): string {
+  return join(getPluginModusDir(plugin), "pages");
+}

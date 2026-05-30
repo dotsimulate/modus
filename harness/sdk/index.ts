@@ -52,6 +52,7 @@ export type {
   GlobalConfig,
   // Providers
   ProviderModel,
+  ProviderSlashCommand,
   ProviderToolGroup,
   ProviderCapabilities,
   ProviderHealthCheck,

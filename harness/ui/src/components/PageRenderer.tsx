@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useState, type ReactNode } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
@@ -57,6 +57,50 @@ type ResponsivePageLayouts = {
   mobile?: PageLayoutInput;
 };
 
+class PageWidgetErrorBoundary extends Component<
+  { label: string; children: ReactNode },
+  { error: Error | null; autoRetried: boolean; autoRetrying: boolean }
+> {
+  private retryTimer: ReturnType<typeof window.setTimeout> | null = null;
+
+  constructor(props: { label: string; children: ReactNode }) {
+    super(props);
+    this.state = { error: null, autoRetried: false, autoRetrying: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(`[modus] page widget crashed: ${this.props.label}`, error);
+    if (info.componentStack) console.error("[modus] widget stack:", info.componentStack);
+    if (!this.state.autoRetried) {
+      this.setState({ autoRetried: true, autoRetrying: true });
+      this.retryTimer = window.setTimeout(() => {
+        this.retryTimer = null;
+        this.setState({ error: null, autoRetrying: false });
+      }, 250);
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.retryTimer) window.clearTimeout(this.retryTimer);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="panel-empty" style={{ padding: 12, whiteSpace: "normal", wordBreak: "break-word" }}>
+        {this.props.label} crashed{this.state.autoRetrying ? ". Retrying..." : ". Tap retry or reload the page if it keeps failing."}
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button className="sched-clear-btn" onClick={() => this.setState({ error: null, autoRetrying: false })}>retry</button>
+        </div>
+      </div>
+    );
+  }
+}
+
 const chevron = (
   <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
     <path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" strokeWidth="1.2" fill="none" />
@@ -99,7 +143,9 @@ function BlockShell({
       <div className={`panel-collapse ${collapsed ? "" : "panel-collapse--open"}`}>
         <div className="panel-collapse-clip">
           <WidgetChromeContext.Provider value={{ setHeaderSuffix }}>
-            {children}
+            <PageWidgetErrorBoundary label={title}>
+              {children}
+            </PageWidgetErrorBoundary>
           </WidgetChromeContext.Provider>
         </div>
       </div>

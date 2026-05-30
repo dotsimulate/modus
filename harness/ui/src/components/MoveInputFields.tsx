@@ -86,7 +86,7 @@ function buildProjectOptions(
   for (const project of projects) {
     const normalized = normalizePath(project.path);
     if (!project.pathExists || seen.has(normalized)) continue;
-    if (allowed.size > 0 && !allowed.has(normalized) && !projectMatches(project.path, projectCwd)) continue;
+    if (input.optionsSource?.scope !== "all" && allowed.size > 0 && !allowed.has(normalized) && !projectMatches(project.path, projectCwd)) continue;
     seen.add(normalized);
     options.push({
       value: project.path,

@@ -17,7 +17,7 @@ type Props = {
 };
 
 function statusLabel(status: string, turns: number): string {
-  if (status === "running" || status === "starting") {
+  if (status === "running" || status === "starting" || status === "interrupting") {
     return turns > 0 ? `working... (${turns} turn${turns !== 1 ? "s" : ""})` : "working...";
   }
   if (status === "error") return "error";
@@ -81,7 +81,7 @@ export function MiniSession({ sessionId, onNavigate }: Props) {
     );
   }
 
-  const isActive = session.status === "running" || session.status === "starting";
+  const isActive = session.status === "running" || session.status === "starting" || session.status === "interrupting";
   const turns = session.messages?.filter((m: any) => m.role === "assistant" && m.meta).length ?? 0;
   const tail = tailLines(lastAssistantText(session.messages ?? []), 3);
   const permissions = session.pendingPermissions ?? [];

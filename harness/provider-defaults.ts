@@ -1,6 +1,6 @@
-export const DEFAULT_CODEX_MODEL = "gpt-5.4";
+export const DEFAULT_CODEX_MODEL = "gpt-5.5";
 export const DEFAULT_GEMINI_MODEL = "auto-gemini-3";
-export const DEFAULT_CLAUDE_MODEL = "claude-opus-4-6";
+export const DEFAULT_CLAUDE_MODEL = "claude-opus-4-8[1m]";
 
 export function providerFallbackModel(provider: string): string {
   if (provider === "codex") return DEFAULT_CODEX_MODEL;

@@ -28,7 +28,8 @@ import { getSession, updateSessionStatus } from "../db";
 import { getGlobalConfig, resolveProfilePrompt, type McpServerConfig, type PermissionPolicy, type Profile } from "../profiles";
 import { resolveSecret } from "../secrets";
 import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
-import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
+import type { SessionProvider, TurnContext } from "./types";
+import { GEMINI_CAPABILITIES } from "./gemini-cli-capabilities";
 
 type GeminiState = {
   sessionId: string;
@@ -45,35 +46,6 @@ type GeminiState = {
   toolCallCount: number;
 };
 
-// Keep the curated UI-facing groups stable while the runtime can expose a broader
-// set of live tools through system/init availableTools.
-const GEMINI_TOOL_GROUPS = [
-  { label: "files", tools: ["list_directory", "write_file"] },
-  { label: "search", tools: ["grep_search"] },
-  { label: "web", tools: ["google_web_search"] },
-] as const;
-
-const GEMINI_CAPABILITIES: ProviderCapabilities = {
-  name: "gemini-cli",
-  label: "Gemini CLI",
-  family: "gemini-cli",
-  builtInTools: GEMINI_TOOL_GROUPS.flatMap((group) => group.tools),
-  builtInToolGroups: GEMINI_TOOL_GROUPS.map((group) => ({ label: group.label, tools: [...group.tools] })),
-  builtInToolMode: "explicit",
-  supportsMcp: true,
-  mcpSupport: "full",
-  nonToolSignals: ["thinking", "streaming"],
-  permissionModel: {
-    mode: "runtime-native",
-    interactive: false,
-    summary: "Gemini runtime owns approval policy at execution time. This harness path can choose approval mode, but it does not receive live per-tool approval hooks.",
-  },
-  sessionMutability: {
-    providerSwitchAfterStart: false,
-    profileSwitch: "provider-locked",
-    configApplies: "next-turn",
-  },
-};
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 

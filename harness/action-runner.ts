@@ -51,6 +51,7 @@ import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { svgToPngBase64 } from "./svg-render";
 import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBindings } from "./move-runner";
 import { createTerminal as createTerminalPty, killTerminal as killTerminalPty, writeTerminal as writeTerminalPty } from "./terminal-manager";
+import { getPluginActionsDir, listEnabledModusPlugins } from "./modus-plugins";
 
 // ── Constants ──
 
@@ -345,6 +346,13 @@ function discoverProjectActionDirs(): Array<{ actionsDir: string; projectCwd: st
       const dir = join(projectCwd, MODUS_ACTIONS);
       if (existsSync(dir)) result.push({ actionsDir: dir, projectCwd });
     }
+  }
+  for (const plugin of listEnabledModusPlugins()) {
+    const projectCwd = normalizeCwd(plugin.path);
+    if (seen.has(projectCwd)) continue;
+    seen.add(projectCwd);
+    const dir = getPluginActionsDir(plugin);
+    if (existsSync(dir)) result.push({ actionsDir: dir, projectCwd });
   }
   return result;
 }
@@ -679,7 +687,7 @@ async function fireAction(
       const runDir = join(actionDir, "output", `exec-${exec.id}`, `run-${execRunNumber}`);
       let artifactDirCreated = false;
 
-      const db = buildActionDB(name, state.scopeKey, state.projectCwd ?? cfg.cwd, state.origin);
+      const db = buildActionDB(name, state.scopeKey, cfg.cwd ?? state.projectCwd, state.origin);
       const totalSteps = (cfg.steps?.length ?? 0) + 1;
       const ctx: ActionContext = {
         actionName: name,
@@ -830,6 +838,7 @@ async function fireAction(
         cwd: cfg.cwd,
         tools: cfg.tools,
         disallowedTools: cfg.disallowedTools,
+        providerControls: cfg.providerControls,
         loadProjectSettings: cfg.loadProjectSettings,
         actionName: name,
         userProfile: effectiveUserProfile,

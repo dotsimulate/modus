@@ -51,13 +51,12 @@
    ══════════════════════════════════════════════════════════ */
 
 .git-sidebar {
-  width: 280px;
-  min-width: 240px;
+  width: var(--git-sidebar-width, 280px);
+  min-width: 200px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid var(--border);
   background: var(--bg);
 }
 
@@ -626,13 +625,12 @@
    ══════════════════════════════════════════════════════════ */
 
 .git-detail {
-  width: 420px;
-  min-width: 300px;
+  width: var(--git-detail-width, 560px);
+  min-width: 320px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-left: 1px solid var(--border);
 }
 
 .git-detail-empty {
@@ -855,7 +853,14 @@
 
 /* ── Single diff wrapper ── */
 
-.git-detail-single-diff { padding: 4px 8px; }
+.git-detail-single-diff {
+  padding: 4px 8px;
+  overflow-x: auto;
+}
+.git-detail-single-diff .diff-table {
+  width: max-content;
+  min-width: 100%;
+}
 
 /* ══════════════════════════════════════════════════════════
    Shared Diff View styles (used by DiffView component)
@@ -912,6 +917,10 @@
 .diff-stat--del { color: var(--error); }
 
 .diff-file-body { overflow-x: auto; background: var(--bg); }
+.diff-file-body .diff-table {
+  width: max-content;
+  min-width: 100%;
+}
 
 .diff-table {
   width: 100%;
@@ -940,8 +949,6 @@
 .diff-code {
   padding: 0 10px;
   white-space: pre;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--text-dim);
 }
 
@@ -961,24 +968,41 @@
   font-style: italic;
 }
 
-/* ── Responsive ── */
+/* ── Working tree reset action ── */
 
-@media (max-width: 1100px) {
-  .git-detail {
-    width: 320px;
-    min-width: 240px;
-  }
+.git-wt-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 4px;
 }
+
+.git-wt-reset {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: color 0.1s ease;
+}
+.git-wt-reset:hover { color: var(--text); }
+
+/* ── Responsive ── */
 
 @media (max-width: 900px) {
   .git-panel {
     flex-direction: column;
   }
+  .git-panel > .resize-handle {
+    display: none;
+  }
   .git-sidebar {
     width: 100%;
     min-width: 100%;
     max-height: 180px;
-    border-right: none;
     border-bottom: 1px solid var(--border);
     flex-direction: row;
     overflow-x: auto;
@@ -1003,7 +1027,6 @@
     width: auto;
     min-width: auto;
     max-height: 50vh;
-    border-left: none;
     border-top: 1px solid var(--border);
     z-index: 10;
     background: var(--bg);

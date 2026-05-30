@@ -762,16 +762,36 @@ app.get("/api/sessions", (c) => {
       : scope
         ? listSessionsScoped({ ...scope, limit })
         : listSessions(limit);
-  // Correct stale statuses: if DB says running/starting/idle but session
-  // is not actually active in memory, it's done.
+  // Correct stale live statuses: if DB says running/starting/paused but the
+  // session is not active in memory, it is done. Preserve zero-message idle
+  // placeholders created by /api/sessions/empty; the composer relies on those
+  // staying idle so the first prompt starts a real session instead of being
+  // sent as a follow-up to a nonexistent active session.
   const corrected = rows.map((s) => {
     const storedConfig = s.provider ? null : getStoredSessionConfig(s.id);
     const provider = s.provider ?? storedConfig?.provider ?? null;
-    if ((s.status === "running" || s.status === "starting" || s.status === "idle" || s.status === "paused") && !getActiveSession(s.id)) {
+    const isEmptyIdlePlaceholder = s.status === "idle"
+      && (s.message_count ?? 0) === 0
+      && !s.preview
+      && !s.last_prompt
+      && !s.last_response;
+    if (
+      (s.status === "running" || s.status === "starting" || s.status === "paused")
+      && !getActiveSession(s.id)
+    ) {
       return {
         ...s,
         provider,
         status: "done",
+        last_input_tokens: null,
+        last_output_tokens: null,
+      };
+    }
+    if (isEmptyIdlePlaceholder && !getActiveSession(s.id)) {
+      return {
+        ...s,
+        provider,
+        status: "idle",
         last_input_tokens: null,
         last_output_tokens: null,
       };
