@@ -64,8 +64,29 @@ const CURSOR_CAPABILITIES: ProviderCapabilities = {
   },
 };
 
-function getState(session: ActiveSession): CursorState {
-  return session._providerState as CursorState;
+function getState(session: ActiveSession): CursorState | null {
+  return (session._providerState as CursorState | null) ?? null;
+}
+
+function createInitialState(session: ActiveSession, model: string): CursorState {
+  return {
+    sessionId: null,
+    model,
+    proc: null,
+    abortController: session.abortController,
+    mcpConfigPath: null,
+    mcpConfigBackup: null,
+  };
+}
+
+function markCursorUnavailable(ctx: TurnContext, reason: string): void {
+  const { session } = ctx;
+  console.error(`[cursor] ${reason}`);
+  session.status = "error";
+  session.error = reason;
+  updateSessionStatus(session.sessionId, "error");
+  ctx.broadcastEvent({ type: "error", error: reason });
+  ctx.emitEvent({ type: "done" });
 }
 
 // ── Content → string ──
@@ -247,31 +268,17 @@ export function createCursorProvider(): SessionProvider {
 
     startTurn(ctx: TurnContext) {
       const { session, opts, profile: profileDef } = ctx;
+      const model = opts.model ?? profileDef?.model ?? "composer-2-fast";
+      const state = createInitialState(session, model);
+      session._providerState = state;
 
       // Pre-check: ensure cursor-agent binary is available
       if (!resolveCursorAgentExecutable()) {
         const bin = cursorAgentSpawnArgv0();
         const reason = `Provider binary "${bin}" not found in PATH. Install cursor-agent or set CURSOR_AGENT_BIN to the correct path.`;
-        console.error(`[cursor] ${reason}`);
-        session.status = "error";
-        session.error = reason;
-        updateSessionStatus(session.sessionId, "error");
-        ctx.broadcastEvent({ type: "error", error: reason });
-        ctx.emitEvent({ type: "done" });
+        markCursorUnavailable(ctx, reason);
         return;
       }
-
-      const model = opts.model ?? profileDef?.model ?? "composer-2-fast";
-
-      const state: CursorState = {
-        sessionId: null,
-        model,
-        proc: null,
-        abortController: session.abortController,
-        mcpConfigPath: null,
-        mcpConfigBackup: null,
-      };
-      session._providerState = state;
 
       // Check if this is a resume
       const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
@@ -307,6 +314,18 @@ export function createCursorProvider(): SessionProvider {
     sendMessage(ctx: TurnContext, content: MessageContent) {
       const { session } = ctx;
       const state = getState(session);
+      if (!state) {
+        const reason = "Cursor provider state missing during sendMessage. Start a new Cursor session.";
+        markCursorUnavailable(ctx, reason);
+        return;
+      }
+
+      if (!resolveCursorAgentExecutable()) {
+        const bin = cursorAgentSpawnArgv0();
+        const reason = `Provider binary "${bin}" not found in PATH. Install cursor-agent or set CURSOR_AGENT_BIN to the correct path.`;
+        markCursorUnavailable(ctx, reason);
+        return;
+      }
 
       // session-manager briefly flips idle sessions to "starting" before follow-up
       // delivery so SSE subscribers stay attached. Once Cursor has a real session
