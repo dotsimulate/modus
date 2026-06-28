@@ -171,6 +171,66 @@
   text-transform: uppercase;
 }
 
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.preview-media-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 12px;
+  background: var(--bg);
+}
+
+.preview-media-body--compact {
+  justify-content: stretch;
+  align-items: flex-start;
+}
+
+.preview-image,
+.preview-video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+}
+
+.preview-video {
+  width: min(100%, 900px);
+}
+
+.preview-audio {
+  width: 100%;
+}
+
+.preview-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  background: white;
+}
+
+.chat-file-viewer-popup .preview-panel {
+  min-height: min(65dvh, 720px);
+}
+
+.chat-file-viewer-popup .preview-frame,
+.chat-file-viewer-popup .preview-media-body {
+  min-height: min(58dvh, 660px);
+}
+
 /* Chat file viewer button styles (content-specific, not shell) */
 
 .chat-file-viewer-actions {

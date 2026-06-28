@@ -8,7 +8,7 @@
  *   profile includes. No "inherit" concept — you're setting the baseline.
  */
 
-import { getToolGroups, getAllTools, isToolEnabled, mcpToolDisplayName, type ToolGroup, type ToolState, type ToolStates } from "../tools";
+import { getToolGroups, isToolEnabled, mcpToolDisplayName, type ToolGroup, type ToolState, type ToolStates } from "../tools";
 
 type BaseProps = {
   /** Called when any tool state changes */
@@ -19,6 +19,12 @@ type BaseProps = {
   extraGroups?: ToolGroup[];
   /** Provider name — determines which built-in tool set to show */
   provider?: string;
+  /**
+   * Authoritative built-in groups from the backend provider capabilities.
+   * When provided, these win over the static per-provider fallback so the grid
+   * reflects exactly what the running provider exposes.
+   */
+  builtInGroups?: ToolGroup[];
 };
 
 type OverrideProps = BaseProps & {
@@ -50,8 +56,8 @@ export function ToolGrid(props: Props) {
   const profileTools = mode === "override" ? (props as OverrideProps).profileTools : "all";
   const extraGroups = props.extraGroups;
 
-  const builtinGroups = getToolGroups(props.provider);
-  const builtinTools = getAllTools(props.provider);
+  const builtinGroups = props.builtInGroups?.length ? props.builtInGroups : getToolGroups(props.provider);
+  const builtinTools = builtinGroups.flatMap((g) => g.tools);
   const groups = extraGroups?.length ? [...builtinGroups, ...extraGroups] : builtinGroups;
   const allTools = extraGroups?.length ? groups.flatMap(g => g.tools) : builtinTools;
 

@@ -10,7 +10,7 @@ import { useState, useCallback } from "react";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import { LAUNCH_CWD } from "../launchParams";
-import type { BrowseResult } from "../../../sdk/index";
+import { FolderPicker } from "./FolderPicker";
 
 type Props = {
   onComplete: () => void;
@@ -29,30 +29,11 @@ export function ProjectSetup({ onComplete }: Props) {
 
   // Path browser
   const [showBrowser, setShowBrowser] = useState(false);
-  const [browseResult, setBrowseResult] = useState<BrowseResult | null>(null);
-  const [browseLoading, setBrowseLoading] = useState(false);
-  const [browsePath_input, setBrowsePathInput] = useState("");
 
   const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-  const browseNav = useCallback(async (path?: string) => {
-    setBrowseLoading(true);
-    try {
-      const result = await modus.browse(path);
-      setBrowseResult(result);
-      setBrowsePathInput(result.path);
-    } catch { /* silent */ }
-    setBrowseLoading(false);
-  }, []);
-
   const openBrowser = useCallback(() => {
     setShowBrowser(true);
-    browseNav(projectPath || undefined);
-  }, [projectPath, browseNav]);
-
-  const selectBrowsedPath = useCallback((path: string) => {
-    setProjectPath(path);
-    setShowBrowser(false);
   }, []);
 
   const createProject = useCallback(async () => {
@@ -62,7 +43,8 @@ export function ProjectSetup({ onComplete }: Props) {
       await modus.saveUserProfile(slug, {
         displayName: projectName,
         projects: [projectPath.trim()],
-        agentProfiles: [],
+        agentProfiles: ["modus-dev"],
+        defaultAgentProfile: "modus-dev",
       });
       await modus.initProject(projectPath.trim(), projectName);
       sessionStorage.removeItem("modus:launch-cwd");
@@ -123,47 +105,14 @@ export function ProjectSetup({ onComplete }: Props) {
 
       {showBrowser && (
         <div className="setup-browser">
-          <div className="setup-browser-pathbar">
-            <input
-              className="setup-input"
-              value={browsePath_input}
-              onChange={(e) => setBrowsePathInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && browseNav(browsePath_input)}
-              spellCheck={false}
-            />
-          </div>
-          <div className="setup-browser-list">
-            {browseLoading && <span className="setup-dim">loading...</span>}
-            {!browseLoading && browseResult && (
-              <>
-                {browseResult.parent && (
-                  <button
-                    className="setup-browser-item"
-                    onClick={() => browseNav(browseResult.parent!)}
-                  >..</button>
-                )}
-                {browseResult.dirs.map((dir) => (
-                  <button
-                    key={dir}
-                    className="setup-browser-item"
-                    onClick={() => browseNav(`${browseResult.path}/${dir}`)}
-                  >{dir}</button>
-                ))}
-              </>
-            )}
-          </div>
-          {browseResult && (
-            <div className="setup-browser-actions">
-              <button
-                className="setup-action-btn"
-                onClick={() => selectBrowsedPath(browseResult.path)}
-              >select {browseResult.path.split("/").pop() || "/"}</button>
-              <button
-                className="setup-link-btn"
-                onClick={() => setShowBrowser(false)}
-              >cancel</button>
-            </div>
-          )}
+          <FolderPicker
+            initialPath={projectPath || undefined}
+            onSelect={(path) => {
+              setProjectPath(path);
+              setShowBrowser(false);
+            }}
+            onCancel={() => setShowBrowser(false)}
+          />
         </div>
       )}
 

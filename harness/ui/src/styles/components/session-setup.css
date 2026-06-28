@@ -418,3 +418,10 @@
 .tool-pill--forced-off .tool-pill-dot {
   background: var(--error);
 }
+/* Read-only built-ins (e.g. Codex, governed by sandbox not per-tool toggles) */
+.tool-pill--readonly {
+  cursor: default;
+}
+.tool-pill--readonly:hover {
+  border-color: var(--border-active);
+}

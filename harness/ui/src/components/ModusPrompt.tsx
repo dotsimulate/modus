@@ -1,7 +1,7 @@
 /**
  * ModusPrompt — simple tabbed prompt box on dashboard.
  *
- * Tabs: "create profile" / "customize modus" / "start mission" / "pages"
+ * Tabs: "create agent" / "customize modus" / "create mission"
  * Each prompt tab: prompt picker (downward) + textarea + run button.
  * The "pages" tab renders the pages-browser widget inline instead.
  * Recent modus-dev sessions listed below.
@@ -179,7 +179,7 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
           className={`modus-prompt-tab ${tab === "create" ? "modus-prompt-tab--active" : ""}`}
           onClick={() => setTab("create")}
         >
-          create profile
+          create agent
         </button>
         <button
           className={`modus-prompt-tab ${tab === "configure" ? "modus-prompt-tab--active" : ""}`}
@@ -191,7 +191,7 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
           className={`modus-prompt-tab ${tab === "mission" ? "modus-prompt-tab--active" : ""}`}
           onClick={() => setTab("mission")}
         >
-          start mission
+          create mission
         </button>
       </div>
 
@@ -257,9 +257,9 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
               onSubmit={run}
               submitDisabled={!prompt.trim()}
               placeholder={tab === "create"
-                ? "describe the profile you want to create..."
+                ? "describe the agent you want to create..."
                 : tab === "mission"
-                  ? "describe the mission you want to create, revise, or prepare to start..."
+                  ? "describe the mission you want to create, revise, or prepare..."
                 : "describe what you want to customize..."
               }
               rows={4}

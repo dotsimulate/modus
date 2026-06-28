@@ -8,6 +8,7 @@ import {
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
 import { getAllTools, getToolGroups, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
+import { useProfiles } from "../providers/ProfileContext";
 import type { Profile, SessionStatus, Message } from "../../../sdk/index";
 import { modus } from "../modusClient";
 
@@ -108,6 +109,7 @@ export function ConfigBar({
   onTogglePin,
 }: Props) {
   const isPinned = sessionTags?.includes("pinned") ?? false;
+  const { providerCapabilities } = useProfiles();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
@@ -189,8 +191,12 @@ export function ConfigBar({
 
   const effectiveProvider = agentConfig.provider || profileProvider;
   const mcpCount = (availableTools ?? []).filter(t => t.startsWith("mcp__")).length;
+  // Prefer the backend's reported built-in count so the summary matches what the
+  // provider actually exposes; fall back to the static catalog.
+  const builtinCount = providerCapabilities[effectiveProvider ?? ""]?.builtInTools?.length
+    ?? getAllTools(effectiveProvider).length;
   const toolCount =
-    (profileTools === "all" ? getAllTools(effectiveProvider).length : profileTools.length) + mcpCount;
+    (profileTools === "all" ? builtinCount : profileTools.length) + mcpCount;
   const codexControls = agentConfig.providerControls?.codex ?? {};
   const effort = agentConfig.effort || profileEffort || "default";
   const hasPendingProfile = !!pendingProfileName && pendingProfileName !== profileName;
@@ -320,6 +326,7 @@ export function ConfigBar({
               compact
               showProvider={showProvider}
               availableTools={availableTools}
+              toolsCollapsible
             />
           </div>
         </div>

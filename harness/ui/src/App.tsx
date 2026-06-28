@@ -155,7 +155,7 @@ type HashRouter = ReturnType<typeof useHashRouter>;
 
 function AppContent({ router }: { router: HashRouter }) {
   const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, navigateToSession, consumeHashProfile } = router;
-  const { handleLock } = useAuth();
+  const { authRequired, pinEnabled, handleLock } = useAuth();
   const {
     userProfiles,
     activeUserProfile, activeUP, projectRoot,
@@ -527,9 +527,9 @@ function AppContent({ router }: { router: HashRouter }) {
         {view === "chat" && activeSession?.id && !activeSession.id.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSession.id) && (
           <span className="chat-header-archived">archived</span>
         )}
-        <StatusBar
-          harnessUp={harnessUp}
-          onLock={handleLock}
+          <StatusBar
+            harnessUp={harnessUp}
+          onLock={(authRequired || pinEnabled) ? handleLock : undefined}
           userProfiles={userProfiles}
           activeUserProfile={activeUserProfile}
           onSwitchUserProfile={handleSwitchUserProfile}

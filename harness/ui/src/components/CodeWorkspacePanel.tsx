@@ -4,7 +4,7 @@ import { useFileViewer, type FileOpenRequest } from "../providers/FileViewerCont
 import { usePinboard } from "../providers/PinboardContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
-import type { BrowseResult, FileSearchResponse } from "../../../sdk/index";
+import type { BrowseResult, FileSearchResponse, PreviewManifest } from "../../../sdk/index";
 import { setFsWatchRoot } from "../modusClient";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser, type FileBrowserHandle } from "./FileBrowser";
@@ -12,6 +12,7 @@ import { CodeMirrorEditor, type CodeMirrorContextInfo } from "./CodeMirrorEditor
 import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
 import { HtmlPreview } from "./HtmlPreview";
+import { PreviewRenderer } from "./PreviewRenderer";
 import { PinboardView } from "./PinboardView";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 
@@ -60,7 +61,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     contentVersion,
   } = useFileViewer();
   const { groups, pinToActive, pinToGroup, unpinFromActive, isFilePinned, activeGroup } = usePinboard();
-  const { activeCwd } = useProfiles();
+  const { activeCwd, activeUserProfile } = useProfiles();
 
   useEffect(() => {
     setFsWatchRoot(activeCwd ?? null);
@@ -69,6 +70,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
   const [activeView, setActiveView] = useState<ActiveView>("browser");
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
+  const [previewManifest, setPreviewManifest] = useState<PreviewManifest | null>(null);
   const [htmlPreview, setHtmlPreview] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState("");
@@ -124,11 +126,11 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
   const reveal = pendingReveal?.request.path === viewingFile ? pendingReveal : null;
 
   useEffect(() => {
-    if (!viewingFile || isEditMode) { if (!viewingFile) setView({ kind: "idle" }); return; }
-    if (isImageFile(viewingFile)) { setView({ kind: "file", content: "" }); setLoading(false); return; }
+    if (!viewingFile || isEditMode) { if (!viewingFile) { setView({ kind: "idle" }); setPreviewManifest(null); } return; }
     let active = true;
     setLoading(true);
     setView({ kind: "loading" });
+    setPreviewManifest(null);
 
     (async () => {
       try {
@@ -136,6 +138,15 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
         if (active) setView({ kind: "directory", result: dirResult });
         return;
       } catch {
+        try {
+          const manifest = await modus.previewManifest(viewingFile, { cwd: activeCwd, userProfile: activeUserProfile ?? undefined });
+          if (!active) return;
+          setPreviewManifest(manifest);
+          if (["image", "audio", "video", "pdf"].includes(manifest.kind)) {
+            setView({ kind: "file", content: "" });
+            return;
+          }
+        } catch {}
         try {
           const text = await modus.readFile(viewingFile);
           if (!active) return;
@@ -146,7 +157,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     })().finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [viewingFile, isEditMode, contentVersion]);
+  }, [viewingFile, isEditMode, contentVersion, activeCwd, activeUserProfile]);
 
   useEffect(() => {
     if (viewingFile) setHtmlPreview(true);
@@ -512,29 +523,32 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
       );
     }
 
-    if (!isEditMode && viewingFile && isImageFile(viewingFile)) {
-      const src = `/api/file-serve?path=${encodeURIComponent(viewingFile)}`;
+    if (!isEditMode && viewingFile && previewManifest && ["image", "audio", "video", "pdf"].includes(previewManifest.kind)) {
       return (
-        <div className="right-panel-image-viewer">
-          <div className="right-panel-image-header">
-            <span className="right-panel-image-name">{basename(viewingFile)}</span>
-            <div className="right-panel-image-actions">
-              {copyPathBtn(viewingFile)}
-              {closeBtn}
-            </div>
-          </div>
-          <div className="right-panel-image-body">
-            <img src={src} alt={basename(viewingFile)} className="right-panel-image" />
-          </div>
-        </div>
+        <PreviewRenderer
+          manifest={previewManifest}
+          nameActions={copyPathBtn(viewingFile)}
+          actions={fileActions(viewingFile)}
+        />
       );
     }
 
-    if (!isEditMode && showFileContent && isHtml && htmlPreview && view.kind === "file") {
+    if (!isEditMode && showFileContent && isHtml && htmlPreview && view.kind === "file" && !previewManifest) {
       return (
         <HtmlPreview
           filePath={viewingFile!}
           content={view.content}
+          nameActions={copyPathBtn(viewingFile!)}
+          actions={fileActions(viewingFile!)}
+        />
+      );
+    }
+
+    if (!isEditMode && showFileContent && previewManifest?.kind === "html" && htmlPreview) {
+      return (
+        <PreviewRenderer
+          manifest={previewManifest}
+          content={view.kind === "file" ? view.content : null}
           nameActions={copyPathBtn(viewingFile!)}
           actions={fileActions(viewingFile!)}
         />

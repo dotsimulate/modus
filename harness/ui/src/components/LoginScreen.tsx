@@ -36,6 +36,7 @@ function GlyphField({
   value,
   onChange,
   autoComplete,
+  label,
   onSubmit,
   success,
 }: {
@@ -43,6 +44,7 @@ function GlyphField({
   value: string;
   onChange: (v: string) => void;
   autoComplete: string;
+  label: string;
   onSubmit?: () => void;
   success?: boolean;
 }) {
@@ -96,7 +98,9 @@ function GlyphField({
         onBlur={() => setFocused(false)}
         onKeyDown={(e) => { if (e.key === "Enter" && onSubmit) onSubmit(); }}
         autoComplete={autoComplete}
+        aria-label={label}
       />
+      <span className="login-label login-label-pin">{label}</span>
       <span className="login-noise" aria-hidden>{display}</span>
       <span className="login-line" />
     </div>
@@ -106,10 +110,11 @@ function GlyphField({
 type Props = {
   onAuth: (name: string) => void;
   isSetup?: boolean;
+  pinOptional?: boolean;
   savedName?: string;
 };
 
-export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
+export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) {
   const [name, setName] = useState(savedName ?? "");
   const [pin, setPin] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -118,6 +123,7 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
   const [pinSuccess, setPinSuccess] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const pinRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
 
   const nameLocked = !isSetup && !!savedName;
 
@@ -132,7 +138,12 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
     const handler = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const active = document.activeElement;
-      if (active === pinRef.current || active === nameRef.current) return;
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement ||
+        active?.getAttribute("contenteditable") === "true"
+      ) return;
       pinRef.current?.focus();
     };
     window.addEventListener("keydown", handler);
@@ -159,28 +170,46 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
 
   const submitSetup = useCallback(async () => {
     if (!name.trim()) { setError("name required"); nameRef.current?.focus(); return; }
-    if (!pin.trim() || loading) return;
-    if (pin.trim().length < 4) { setError("at least 4 characters"); return; }
-    if (pin !== confirm) { setError("pins don't match"); setConfirm(""); return; }
+    if (loading) return;
+    const wantsPin = !!pin.trim() || !!confirm.trim();
+    if (!wantsPin && !pinOptional) return;
+    if (wantsPin && pin.trim().length < 4) { setError("at least 4 characters"); return; }
+    if (wantsPin && pin !== confirm) { setError("pins don't match"); setConfirm(""); return; }
     setLoading(true);
     setError("");
     try {
-      const token = await modus.setupNewPin(pin.trim(), name.trim());
-      setAuthToken(token);
-      setPinSuccess(true);
-      setTimeout(() => onAuth(name.trim()), 1000);
+      if (wantsPin) {
+        const token = await modus.setupNewPin(pin.trim(), name.trim());
+        setAuthToken(token);
+        setPinSuccess(true);
+        setTimeout(() => onAuth(name.trim()), 1000);
+      } else {
+        await modus.setUserName(name.trim());
+        onAuth(name.trim());
+      }
     } catch {
       setError("setup failed");
       setLoading(false);
     }
-  }, [name, pin, confirm, loading, onAuth]);
+  }, [name, pin, confirm, loading, onAuth, pinOptional]);
+
+  const setupWantsPin = !!pin.trim() || !!confirm.trim();
+  const setupSubmitDisabled = loading
+    || !name.trim()
+    || (!pinOptional && (!pin.trim() || !confirm.trim()))
+    || (setupWantsPin && (!pin.trim() || !confirm.trim()));
+  const setupSubmitLabel = loading ? "..." : setupWantsPin ? "set PIN" : "continue";
 
   return (
     <div className="login-screen">
       <div className="login-glow" />
       <div className="login-box">
         <div className="login-logo"><MoLogo size={36} /></div>
-        {isSetup && <div className="login-subtitle">set a pin to secure access</div>}
+        {isSetup && (
+          <div className="login-subtitle">
+            {pinOptional ? "set your name; PIN optional" : "choose a PIN to secure browser access"}
+          </div>
+        )}
         {isSetup ? (
           <form className="login-form-stack" onSubmit={(e) => { e.preventDefault(); submitSetup(); }}>
             <div className={`login-field login-field-user${name ? " has-value" : ""}`}>
@@ -200,12 +229,15 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
               value={pin}
               onChange={setPin}
               autoComplete="new-password"
+              label={pinOptional ? "PIN optional" : "PIN"}
             />
             <GlyphField
+              inputRef={confirmRef}
               value={confirm}
               onChange={setConfirm}
               autoComplete="new-password"
               onSubmit={submitSetup}
+              label="confirm PIN"
             />
             {confirm && pin && confirm !== pin.slice(0, confirm.length) && (
               <div className="login-hint">pins don't match</div>
@@ -213,8 +245,12 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
             {confirm && pin && confirm === pin && (
               <div className="login-hint login-hint-ok">confirmed</div>
             )}
-            <button className="login-btn" type="submit" disabled={loading || !name.trim() || !pin.trim() || !confirm.trim()}>
-              {loading ? "..." : "set pin"}
+            <button
+              className="login-btn"
+              type="submit"
+              disabled={setupSubmitDisabled}
+            >
+              {setupSubmitLabel}
             </button>
           </form>
         ) : (
@@ -240,6 +276,7 @@ export function LoginScreen({ onAuth, isSetup, savedName }: Props) {
               value={pin}
               onChange={setPin}
               autoComplete="current-password"
+              label="PIN"
               onSubmit={submitLogin}
               success={pinSuccess}
             />

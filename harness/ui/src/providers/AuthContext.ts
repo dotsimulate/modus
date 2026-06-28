@@ -2,6 +2,8 @@ import { createContext, useContext } from "react";
 
 type AuthContextValue = {
   userName: string | null;
+  authRequired: boolean;
+  pinEnabled: boolean;
   handleLock: () => void;
 };
 

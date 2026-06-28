@@ -8,7 +8,10 @@
 
 import { useSyncExternalStore, useCallback } from "react";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
-import { subscribeEvents, modus } from "./modusClient";
+import { modus } from "./modusClient";
+import {
+  multiSubscribe, multiReconnect, multiRekey, multiUnsubscribeAll,
+} from "./multiEventStream";
 import { nextMsgId, type Session, type SessionHistorySnapshot } from "../../sdk/index";
 
 // ── Store State ──
@@ -288,6 +291,10 @@ export function rekeySession(oldId: string, newId: string) {
     sub.sessionId = newId;
     subscriptions.set(newId, sub);
   }
+  // Move the multiplexed-stream registration to the new id so future reconnects
+  // subscribe under the real id (events tagged with the old id still resolve
+  // through rekeyMap until the next reconnect).
+  multiRekey(oldId, newId);
 
   // Notify rekey listeners (SessionProvider uses this to update URL hash)
   for (const fn of rekeyListeners) fn(oldId, newId);
@@ -332,7 +339,10 @@ export function subscribeSession(
     }
   }
 
-  const unsub = subscribeEvents(sessionId, afterSeq, {
+  // Register on the shared multiplexed event stream. The manager owns the
+  // single connection (and its reconnection) for ALL sessions, so the browser's
+  // ~6-connection HTTP/1.1 cap can't be exhausted no matter how many agents run.
+  const unsub = multiSubscribe(sessionId, afterSeq, {
     onEvent: (event, seq) => {
       applyEvent(sessionId, event, seq);
     },
@@ -340,65 +350,38 @@ export function subscribeSession(
       applyEventBatch(sessionId, events);
     },
     onDone: () => {
-      subscriptions.delete(sessionId);
       const entry = sessions.get(sessionId);
       if (entry) {
         entry.catchingUp = false;
         const st = entry.state;
         if (st.status === "running" || st.status === "starting" || st.status === "interrupting") {
-          // SSE closed while we think the session is still active — likely a race
-          // between sendMessage and SSE subscribe. Retry once after a brief delay
-          // to give the backend time to reactivate the session.
-          const retryKey = `__sseRetry_${sessionId}`;
+          // Backend reports this session settled, but we still believe it's
+          // active — most likely a freshly-sent message is reactivating it and
+          // the shared stream connected a beat too early. Nudge a reconnect so
+          // the backend attaches a live subscription. Capped; then accept idle.
+          const retryKey = `__multiReactivate_${sessionId}`;
           const retryCount = (entry as any)[retryKey] ?? 0;
-          if (retryCount < 2) {
+          if (retryCount < 3) {
             (entry as any)[retryKey] = retryCount + 1;
             setTimeout(() => {
               const e2 = sessions.get(sessionId);
               if (e2 && (e2.state.status === "running" || e2.state.status === "starting" || e2.state.status === "interrupting")) {
-                subscribeSession(sessionId, e2.state.lastSeq, e2.profile, onDone);
+                multiReconnect();
               }
-            }, 2000);
-            return; // don't fire onDone yet — retry in progress
+            }, 1500);
+            return; // reactivation in progress — don't fire caller onDone yet
           }
-          // Exhausted retries — mark idle
           entry.state = { ...st, status: "idle" };
           (entry as any)[retryKey] = 0;
           entry.revision++;
           notify();
+        } else {
+          (entry as any)[`__multiReactivate_${sessionId}`] = 0;
         }
       }
       onDone?.();
     },
-    onDisconnect: () => {
-      subscriptions.delete(sessionId);
-      const entry = sessions.get(sessionId);
-      if (entry) entry.catchingUp = false;
-
-      // Reconnect with a cap — prevents infinite reconnect loops for
-      // sessions that always fail (corrupted data, server crash, etc.)
-      const retryKey = `__sseDisconnectRetry_${sessionId}`;
-      const disconnectRetry = entry ? ((entry as any)[retryKey] ?? 0) : 0;
-      if (disconnectRetry >= 5) {
-        if (entry) {
-          (entry as any)[retryKey] = 0;
-          entry.state = { ...entry.state, status: "error" };
-          entry.revision++;
-          notify();
-        }
-        return;
-      }
-
-      setTimeout(() => {
-        const entry2 = sessions.get(sessionId);
-        if (entry2) {
-          (entry2 as any)[retryKey] = (disconnectRetry + 1);
-          subscribeSession(sessionId, entry2.state.lastSeq, entry2.profile, onDone);
-        }
-      }, 2000);
-    },
     onError: (error) => {
-      subscriptions.delete(sessionId);
       const entry = sessions.get(sessionId);
       if (entry) {
         entry.catchingUp = false;
@@ -465,6 +448,13 @@ export function ensureSubscribed(
       const entry = sessions.get(sessionId);
       if (entry && !entry.profile) entry.profile = opts.profile;
     }
+    // If the caller knows the session is (re)activating (e.g. a message was just
+    // sent), force the shared stream to reconnect so the backend attaches a live
+    // subscription for it — it may have been settled when the stream connected.
+    const hinted = opts.activeStatus;
+    if (hinted === "running" || hinted === "starting" || hinted === "interrupting" || hinted === "paused") {
+      multiReconnect();
+    }
     return Promise.resolve();
   }
   const pending = pendingEnsure.get(sessionId);
@@ -523,7 +513,18 @@ export function ensureSubscribed(
                 || snap.messages.length >= latest.messages.length);
             if (shouldApplySnapshot) {
               hydrateSessionHistorySnapshot(snap, opts.profile);
-              afterSeq = snap.lastSeq;
+              // snap.lastSeq is the live high-water mark — for a running session
+              // it equals active.seq, which sits AHEAD of the last materialized
+              // message. The in-flight turn's already-persisted assistant/tool
+              // events live in that gap, so subscribing from snap.lastSeq skips
+              // them and the agent's mid-turn work stays invisible until the turn
+              // ends and a reload re-fetches the now-materialized snapshot. For an
+              // active session, resume from the last materialized message instead
+              // so SSE catch-up replays the in-flight turn (sub-agent nesting and
+              // all). Settled sessions have no gap, so they keep using lastSeq.
+              afterSeq = isActive
+                ? snap.messages.reduce((max, msg) => (typeof msg.seq === "number" && msg.seq > max ? msg.seq : max), 0)
+                : snap.lastSeq;
             } else {
               afterSeq = latest?.lastSeq ?? 0;
             }
@@ -568,10 +569,8 @@ export function evictInactiveSessions(keepId: string) {
 
 /** Unsubscribe all sessions */
 export function unsubscribeAll() {
-  for (const sub of subscriptions.values()) {
-    sub.unsub();
-  }
   subscriptions.clear();
+  multiUnsubscribeAll();
 }
 
 // ── Derive Session (public shape) from ReducerState ──

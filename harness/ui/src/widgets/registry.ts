@@ -18,6 +18,7 @@ import ActionCardWidget from "./action-card.widget";
 import AccountWidget from "./account.widget";
 import ActionsManagerWidget from "./actions-manager.widget";
 import AgentActivityWidget from "./agent-activity.widget";
+import ArtifactShelfWidget from "./artifact-shelf.widget";
 import ClaudePricingWidget from "./claude-pricing.widget";
 import CodeEditorWidget from "./code-editor.widget";
 import ComposerWidget from "./composer.widget";
@@ -289,6 +290,13 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     minHeight: 150,
     preferredHeight: 300,
   },
+  "artifact-shelf": {
+    type: "artifact-shelf",
+    component: ArtifactShelfWidget,
+    zones: ["dashboard", "left-panel", "right-panel"],
+    minHeight: 260,
+    preferredHeight: 620,
+  },
   "session-streams": {
     type: "session-streams",
     component: SessionStreamsWidget,
@@ -354,23 +362,20 @@ export const DEFAULT_DASHBOARD: DashboardConfig = {
       type: "project-theme",
       title: "project theme",
       size: "full",
+      collapsed: true,
     } as WidgetBase,
     {
       id: "claude-pricing-main",
       type: "claude-pricing",
       size: "full",
-    } as WidgetBase,
-    {
-      id: "deep-analytics-main",
-      type: "deep-analytics",
-      title: "deep analytics",
-      size: "full",
+      collapsed: true,
     } as WidgetBase,
     {
       id: "sessions-main",
       type: "sessions",
       size: "full",
       limit: 5,
+      collapsed: true,
     } as WidgetBase,
   ],
 };

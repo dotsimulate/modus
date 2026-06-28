@@ -18,6 +18,7 @@ const EFFORT_OPTIONS = [
   { value: "low" },
   { value: "medium" },
   { value: "high" },
+  { value: "xhigh" },
   { value: "max" },
 ];
 

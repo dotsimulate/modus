@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { modus } from "../modusClient";
-import type { BrowseResult } from "../../../sdk/index";
+import type { BrowseResult, PreviewManifest } from "../../../sdk/index";
 import { FileContentViewer } from "./FileContentViewer";
 import { FloatingWindow } from "./FloatingWindow";
+import { PreviewRenderer } from "./PreviewRenderer";
+import { useProfiles } from "../providers/ProfileContext";
 
 type Props = {
   path: string | null;
@@ -25,7 +27,9 @@ export function ChatFileViewer({ path, onClose }: Props) {
   const [activePath, setActivePath] = useState<string | null>(path);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<ViewState>({ kind: "idle" });
+  const [manifest, setManifest] = useState<PreviewManifest | null>(null);
   const [copiedPath, setCopiedPath] = useState(false);
+  const { activeCwd, activeUserProfile } = useProfiles();
 
   useEffect(() => {
     setActivePath(path);
@@ -36,6 +40,7 @@ export function ChatFileViewer({ path, onClose }: Props) {
     let active = true;
     setLoading(true);
     setView({ kind: "loading" });
+    setManifest(null);
 
     (async () => {
       try {
@@ -45,6 +50,17 @@ export function ChatFileViewer({ path, onClose }: Props) {
         }
         return;
       } catch {
+        try {
+          const m = await modus.previewManifest(activePath, { cwd: activeCwd, userProfile: activeUserProfile ?? undefined });
+          if (!active) return;
+          setManifest(m);
+          if (["image", "audio", "video", "pdf", "html"].includes(m.kind)) {
+            setView({ kind: "file", content: "" });
+            return;
+          }
+        } catch {
+          // fall through to text read
+        }
         try {
           const text = await modus.readFile(activePath);
           if (!active) return;
@@ -63,7 +79,7 @@ export function ChatFileViewer({ path, onClose }: Props) {
       .finally(() => { if (active) setLoading(false); });
 
     return () => { active = false; };
-  }, [activePath]);
+  }, [activePath, activeCwd, activeUserProfile]);
 
   useEffect(() => {
     if (!activePath) return;
@@ -178,13 +194,61 @@ export function ChatFileViewer({ path, onClose }: Props) {
             </div>
           </div>
         ) : (
-          <FileContentViewer
-            filePath={activePath!}
-            content={view.kind === "file" ? view.content : null}
-            loading={loading}
-            error={view.kind === "error" ? view.message : null}
-            onHeaderPointerDown={onPointerDown}
-            nameActions={
+          manifest && ["image", "audio", "video", "pdf", "html"].includes(manifest.kind) ? (
+            <PreviewRenderer
+              manifest={manifest}
+              content={view.kind === "file" ? view.content : null}
+              loading={loading}
+              error={view.kind === "error" ? view.message : null}
+              nameActions={
+                <button
+                  className={`chat-file-viewer-btn chat-file-viewer-btn--inline${copiedPath ? " is-copied" : ""}`}
+                  onClick={() => {
+                    navigator.clipboard.writeText(activePath!).then(() => setCopiedPath(true)).catch(() => {});
+                  }}
+                  title={copiedPath ? "Copied full path" : "Copy full file path"}
+                  aria-label={copiedPath ? "Copied full file path" : "Copy full file path"}
+                >
+                  {copiedPath ? (
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="M2.2 6.4 4.6 8.8 9.8 3.6" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <rect x="4.25" y="2.25" width="5.5" height="7.5" rx="0.9" stroke="currentColor" strokeWidth="1.1" />
+                      <path d="M2.25 8V3.1c0-.5.4-.85.9-.85h3.6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+                    </svg>
+                  )}
+                </button>
+              }
+              actions={
+                <>
+                  <button
+                    className="chat-file-viewer-btn"
+                    onClick={() => modus.openInEditor(activePath!)}
+                    title="Open in editor"
+                    aria-label="Open in editor"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                      <path d="M10 6.5V10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h3.5M7 1h4v4M5 7l6-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  <button className="chat-file-viewer-btn" onClick={onClose} title="Close" aria-label="Close">
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                      <path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </>
+              }
+            />
+          ) : (
+            <FileContentViewer
+              filePath={activePath!}
+              content={view.kind === "file" ? view.content : null}
+              loading={loading}
+              error={view.kind === "error" ? view.message : null}
+              onHeaderPointerDown={onPointerDown}
+              nameActions={
               <button
                 className={`chat-file-viewer-btn chat-file-viewer-btn--inline${copiedPath ? " is-copied" : ""}`}
                 onClick={() => {
@@ -224,7 +288,8 @@ export function ChatFileViewer({ path, onClose }: Props) {
                 </button>
               </>
             }
-          />
+            />
+          )
         )
       )}
     </FloatingWindow>

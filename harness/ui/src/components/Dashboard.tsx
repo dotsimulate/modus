@@ -28,7 +28,7 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
   const {
     activeUP,
     activeUserProfile,
-    profiles,
+    visibleProfiles,
     userProfiles,
     refreshProfiles,
     refreshUserProfiles,
@@ -38,7 +38,7 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
   const hasExtensions = configuredWidgets.some((w) => w.type === "extensions");
   const widgets = hasExtensions
     ? configuredWidgets
-    : [...configuredWidgets, { id: "extensions-auto", type: "extensions", title: "extensions", size: "full" as const }];
+    : [...configuredWidgets, { id: "extensions-auto", type: "extensions", title: "extensions", size: "full" as const, collapsed: true }];
 
   const handleDashboardWidgetsChange = useCallback((next: WidgetBase[]) => {
     if (!activeUserProfile) return;
@@ -46,19 +46,15 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
       dashboard: { ...activeUP?.dashboard, widgets: next },
     }).then(() => refreshUserProfiles()).catch(() => {});
   }, [activeUserProfile, activeUP?.dashboard, refreshUserProfiles]);
-  const configuredAgentProfiles = activeUP?.agentProfiles ?? [];
-  const hasLoadedAgentProfile = configuredAgentProfiles.some((name) => profiles.some((profile) => profile.name === name));
+  const hasUsableAgentProfile = visibleProfiles.length > 0;
 
   const needsProject = userProfiles.length === 0;
   // If launched with a cwd that isn't an exact match for any existing user profile's
   // project path, treat it as a new project request — show ProjectSetup with path pre-filled.
   const launchCwdIsNew = LAUNCH_CWD
     && !userProfiles.some((up) => up.projects?.includes(LAUNCH_CWD));
-  const needsAgents = !!activeUP && (configuredAgentProfiles.length === 0 || !hasLoadedAgentProfile);
+  const needsAgents = !!activeUP && !hasUsableAgentProfile;
   const showProjectSetup = forceSetup || (!setupDismissed && (needsProject || launchCwdIsNew));
-  const missingProfilesHint = configuredAgentProfiles.length > 0
-    ? `Listed agent profiles are missing: ${configuredAgentProfiles.join(", ")}. Use create agent to set them up.`
-    : "No agent profiles are configured for this project yet. Use create agent to set them up.";
 
   const handleSetupComplete = useCallback(() => {
     setSetupDismissed(true);
@@ -77,11 +73,6 @@ export function Dashboard({ onNavigate, onSelectSession, forceSetup, onSetupDone
           />
         ) : (
           <>
-            {needsAgents && (
-              <div className="dashboard-warning-banner">
-                {missingProfilesHint}
-              </div>
-            )}
             <ModusPrompt
               onSelectSession={onSelectSession}
               onNavigate={onNavigate}

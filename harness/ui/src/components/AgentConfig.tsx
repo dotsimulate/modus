@@ -12,7 +12,8 @@ import type { ProviderModel, AgentConfigState } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
-import { isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
+import { useProfiles } from "../providers/ProfileContext";
+import { getToolGroups, isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
 
 export type { AgentConfigState };
 
@@ -94,10 +95,15 @@ export function AgentConfig({
   const [toolsOpen, setToolsOpen] = useState(!toolsCollapsible);
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
   const configRef = useRef(config);
+  const { providerCapabilities } = useProfiles();
   const dropdownClassName = dropdownDirection === "up"
     ? "search-dropdown--compact search-dropdown--up"
     : "search-dropdown--compact";
   const effectiveProvider = config.provider || profileProvider || "claude-code";
+  // Prefer the backend's reported built-in tools for the live provider; fall
+  // back to the static catalog when capabilities haven't loaded yet.
+  const builtInGroups = providerCapabilities[effectiveProvider]?.builtInToolGroups
+    ?? getToolGroups(effectiveProvider);
 
   useEffect(() => {
     configRef.current = config;
@@ -312,7 +318,7 @@ export function AgentConfig({
       ) : null}
 
       {/* Tools section */}
-      {!isCodexProvider(effectiveProvider) && toolsCollapsible ? (
+      {toolsCollapsible ? (
         <button
           className="agent-config-tools-toggle"
           onClick={() => setToolsOpen(!toolsOpen)}
@@ -321,7 +327,33 @@ export function AgentConfig({
         </button>
       ) : null}
 
-      {!isCodexProvider(effectiveProvider) && (
+      {isCodexProvider(effectiveProvider) ? (
+        // Codex tools are governed by sandbox mode, not per-tool toggles —
+        // surface the built-ins read-only so it's clear what the agent has.
+        <div className={`panel-collapse ${toolsOpen ? "panel-collapse--open" : ""}`}>
+          <div className="panel-collapse-clip">
+            <div className="tool-grid tool-grid--readonly">
+              <div className="tool-grid-summary">
+                <span className="tool-grid-count">built-in · sandbox-managed</span>
+              </div>
+              <div className="tool-grid-groups">
+                {builtInGroups.map((group) => (
+                  <div key={group.label} className="tool-grid-group">
+                    <div className="tool-grid-group-label">{group.label}</div>
+                    <div className="tool-grid-pills">
+                      {group.tools.map((tool) => (
+                        <span key={tool} className="tool-pill tool-pill--on tool-pill--readonly" title={`${tool}: built-in`}>
+                          {tool}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
         <div className={`panel-collapse ${toolsOpen ? "panel-collapse--open" : ""}`}>
           <div className="panel-collapse-clip">
             <ToolGrid
@@ -331,6 +363,7 @@ export function AgentConfig({
               compact={compact}
               extraGroups={mcpToolGroups(availableTools ?? [])}
               provider={effectiveProvider}
+              builtInGroups={builtInGroups}
             />
           </div>
         </div>

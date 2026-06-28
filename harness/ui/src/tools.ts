@@ -8,32 +8,21 @@ export type ToolGroup = {
   tools: string[];
 };
 
-// Claude Code tools (PascalCase — SDK-native names)
+// Claude Code tools (PascalCase — SDK-native names).
+// Fallback list mirroring the backend catalog (harness/providers/tool-catalog.ts).
+// The live UI prefers the backend's builtInToolGroups (provider capabilities);
+// this is used for session seeding, the profile editor, and as an offline default.
 export const TOOL_GROUPS: ToolGroup[] = [
-  {
-    label: "files",
-    tools: ["Read", "Write", "Edit", "MultiEdit"],
-  },
-  {
-    label: "search",
-    tools: ["Glob", "Grep"],
-  },
-  {
-    label: "exec",
-    tools: ["Bash"],
-  },
-  {
-    label: "web",
-    tools: ["WebSearch", "WebFetch"],
-  },
-  {
-    label: "agent",
-    tools: ["Agent", "TodoWrite", "Skill"],
-  },
-  {
-    label: "other",
-    tools: ["NotebookEdit", "AskUserQuestion"],
-  },
+  { label: "files", tools: ["Read", "Write", "Edit", "NotebookEdit"] },
+  { label: "search", tools: ["Glob", "Grep", "LSP"] },
+  { label: "exec", tools: ["Bash", "PowerShell"] },
+  { label: "web", tools: ["WebSearch", "WebFetch"] },
+  { label: "agent", tools: ["Agent", "Skill", "Workflow", "ToolSearch"] },
+  { label: "tasks", tools: ["TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TaskStop", "TodoWrite"] },
+  { label: "schedule", tools: ["CronCreate", "CronDelete", "CronList", "ScheduleWakeup", "Monitor", "RemoteTrigger", "PushNotification"] },
+  { label: "plan", tools: ["EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree"] },
+  { label: "mcp", tools: ["ListMcpResourcesTool", "ReadMcpResourceTool", "WaitForMcpServers"] },
+  { label: "other", tools: ["AskUserQuestion"] },
 ];
 
 // PI Agent tools (lowercase — pi-coding-agent names)
@@ -43,10 +32,14 @@ export const PI_TOOL_GROUPS: ToolGroup[] = [
   { label: "exec", tools: ["bash"] },
 ];
 
+// Codex built-ins are governed by sandbox mode, not per-tool toggles — surfaced
+// read-only. Names match Codex's own tool identifiers (see tool-catalog.ts).
 export const CODEX_TOOL_GROUPS: ToolGroup[] = [
-  { label: "exec", tools: ["Bash"] },
-  { label: "files", tools: ["Edit"] },
-  { label: "web", tools: ["WebSearch"] },
+  { label: "exec", tools: ["shell"] },
+  { label: "files", tools: ["apply_patch"] },
+  { label: "plan", tools: ["update_plan"] },
+  { label: "web", tools: ["web_search"] },
+  { label: "image", tools: ["view_image"] },
 ];
 
 // Conservative Gemini list based on live harness verification.
