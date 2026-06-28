@@ -20,7 +20,7 @@ Do NOT use companion moves when:
 ## Why Not Submit?
 
 Submit tokens have a 10min TTL. Companion conversations — check-ins, reflections,
-coaching sessions — naturally run longer. The buddy's first check-in move used submit
+coaching sessions — naturally run longer. A companion agent's first check-in move used submit
 and hit token expiry mid-conversation. The fix: skip submit entirely. The agent writes
 files directly when the conversation winds down.
 

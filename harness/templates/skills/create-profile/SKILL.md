@@ -97,7 +97,7 @@ If CWD has no `.modus/`, create it.
 {
   "description": "General coding assistant",
   "prompt": "You are a helpful coding assistant working with {{name}}.",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-opus-4-8[1m]",
   "effort": "high",
   "permissionPolicy": "bypass"
 }
@@ -110,7 +110,7 @@ If CWD has no `.modus/`, create it.
   "description": "Read-only research agent",
   "prompt": "Search, read, and analyze. Never modify files. Cite sources.",
   "promptMode": "append",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-opus-4-8[1m]",
   "tools": ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "Agent"],
   "disallowedTools": ["Bash", "Write", "Edit"],
   "permissionPolicy": { "default": "approve" }

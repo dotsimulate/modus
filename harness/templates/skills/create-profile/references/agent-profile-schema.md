@@ -28,8 +28,8 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
   // Options: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama" | "openrouter"
 
   // Model ID (omit for provider's default)
-  "model": "claude-opus-4-6",
-  // Claude models: "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"
+  "model": "claude-opus-4-8[1m]",
+  // Claude models: "claude-opus-4-8[1m]", "claude-opus-4-8", "claude-haiku-4-5"
   // Other providers: any model ID from their /models endpoint
 
   // Inference effort hint
@@ -185,7 +185,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
   "description": "Read-only research agent with web search",
   "prompt": "Search, read, and analyze. Never modify files. Cite file paths and line numbers.",
   "promptMode": "append",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-opus-4-8[1m]",
   "effort": "high",
   "maxTurns": 15,
   "tools": ["Read", "Edit", "Grep", "Glob", "WebSearch", "WebFetch", "Agent"],
@@ -208,7 +208,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
     "showThinking": false,
     "placeholder": "what should I research?",
     "emptyTitle": "research",
-    "emptySubtitle": "sonnet / read-only / web search"
+    "emptySubtitle": "opus / read-only / web search"
   }
 }
 ```
@@ -235,7 +235,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
 {
   "description": "System ops agent -- monitoring and maintenance",
   "prompt": "You are a system operations agent. Monitor, diagnose, and maintain. Always explain before executing destructive commands.",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-opus-4-8[1m]",
   "effort": "medium",
   "maxTurns": 20,
   "tools": ["Read", "Bash", "Grep", "Glob"],

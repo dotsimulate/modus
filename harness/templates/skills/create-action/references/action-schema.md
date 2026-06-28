@@ -99,7 +99,7 @@ Actions live at `<cwd>/.modus/actions/<name>/action.json`. The directory name is
 
   // ── Session Overrides (optional — agent profile provides defaults) ──
   "provider": "claude-code",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-opus-4-8[1m]",
   "effort": "medium",
   "cwd": "/srv/monitoring",
   "tools": ["Read", "Bash", "Grep", "Glob"],
