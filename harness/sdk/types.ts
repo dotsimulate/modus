@@ -31,7 +31,7 @@ export type InteractOptions = {
   provider?: string;
   model?: string;
   /** Controls how much work the agent puts into reasoning. Provider-specific interpretation. */
-  effort?: "off" | "low" | "medium" | "high" | "max";
+  effort?: "off" | "low" | "medium" | "high" | "xhigh" | "max";
   /** Cap on agent turns (tool-use cycles) before the session auto-stops. */
   maxTurns?: number;
   /** Moves to activate in the session alongside this prompt. */
@@ -620,6 +620,8 @@ export type Profile = {
   disallowedTools?: string[];
   loadProjectSettings?: boolean;
   mcpServers?: Record<string, McpServerConfig>;
+  /** Provider-specific runtime controls, e.g. Codex speed/search/sandbox settings. */
+  providerControls?: AgentConfigState["providerControls"];
   ui?: ProfileUi;
   /** Suggested working directories shown in the UI profile picker. */
   cwdSuggestions?: string[];
@@ -1282,6 +1284,44 @@ export type FileSearchResponse = {
   provider: "everything" | "none";
   installHint?: string;
   results: FileSearchHit[];
+};
+
+export type PreviewKind =
+  | "directory"
+  | "html"
+  | "image"
+  | "audio"
+  | "video"
+  | "pdf"
+  | "text"
+  | "binary";
+
+export type PreviewManifest = {
+  id: string;
+  path: string;
+  pathLabel: string;
+  name: string;
+  kind: PreviewKind;
+  mime: string;
+  size: number | null;
+  safe: boolean;
+  warnings: string[];
+  urls: {
+    raw?: string;
+  };
+  actions: Array<"preview" | "download" | "openInEditor" | "copyPath">;
+};
+
+export type ArtifactShelfItem = PreviewManifest & {
+  source: "recent" | "session" | "artifact";
+  modifiedAt?: number;
+  sessionId?: string;
+  artifactId?: number;
+};
+
+export type ArtifactShelfResponse = {
+  cwd: string | null;
+  items: ArtifactShelfItem[];
 };
 
 // ── Notes ──

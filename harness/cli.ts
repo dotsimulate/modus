@@ -467,9 +467,26 @@ async function cmdStart(args: string[]): Promise<void> {
   process.on("SIGINT", () => { shutdown(); });
   process.on("SIGTERM", () => { shutdown(); });
 
-  // Wait for health, then print info and open browser
-  const healthy = await waitForHealth(usePort);
-  if (healthy) {
+  // Wait for health, then print info and open browser. Cold Windows boots can
+  // spend longer than the default 15s inside startup rehydration/indexing; if
+  // this one-shot wait times out, the server keeps running but the user never
+  // sees the ready URLs. Give foreground starts a wider window and make the
+  // wait visible.
+  const healthWait = waitForHealth(usePort, 60_000);
+  const waitNotice = setTimeout(() => {
+    console.log(`Waiting for Modus to finish cold start on port ${usePort}...`);
+  }, 5_000);
+  const healthy = await healthWait;
+  clearTimeout(waitNotice);
+  const bound = !(await canBindPort(usePort));
+  const processStillRunning = proc.exitCode === null;
+  const readyEnough = healthy || (processStillRunning && bound);
+
+  if (readyEnough) {
+    if (!healthy) {
+      console.warn(`Modus bound port ${usePort}, but /health did not respond within 60s.`);
+      console.warn("Continuing startup display anyway; the browser may need a refresh after cold initialization finishes.");
+    }
     const lanIp = getLanIp();
     const host = hostname();
     const ts = setupTailscaleServe(usePort);
@@ -493,6 +510,9 @@ async function cmdStart(args: string[]): Promise<void> {
       ? `?cwd=${encodeURIComponent(process.env.AGENT_CWD)}`
       : "";
     openBrowser(`http://localhost:${usePort}${cwdParam}`);
+  } else {
+    console.warn(`Modus process started, but port ${usePort} is not bound and /health did not respond within 60s.`);
+    console.warn("Leaving the child process alone; use `modus status` or Ctrl+C to inspect/stop it.");
   }
 
   // Wait for process to exit

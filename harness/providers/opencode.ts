@@ -205,6 +205,8 @@ async function runTurn(
     signal: state.abortController.signal,
     env: process.env as Record<string, string>,
   });
+  const procPid = typeof proc.pid === "number" ? proc.pid : null;
+  if (procPid != null) session.osPids.add(procPid);
 
   let initEmitted = false;
   let textBuffer = "";
@@ -320,7 +322,9 @@ async function runTurn(
       lastResponse: textBuffer.slice(0, 200),
     });
   } catch (error) {
-    if (state.abortController.signal.aborted) return;
+    const wasAborted = state.abortController.signal.aborted;
+    try { state.abortController.abort(); } catch {}
+    if (wasAborted) return;
     const message = error instanceof Error ? error.message : String(error);
     session.status = "error";
     session.error = message;
@@ -337,6 +341,9 @@ async function runTurn(
       total_cost_usd: usage.cost,
     });
     ctx.emitEvent({ type: "done" });
+  } finally {
+    try { await proc.exited; } catch {}
+    if (procPid != null) session.osPids.delete(procPid);
   }
 
   if (session.status === "idle" && session.pendingDispatch.length > 0) {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { McpServerConfigSchema } from "./profile-schemas";
 
-const EffortSchema = z.enum(["off", "low", "medium", "high", "max"]);
+const EffortSchema = z.enum(["off", "low", "medium", "high", "xhigh", "max"]);
 const ToolStateSchema = z.enum(["inherit", "on", "off"]);
 
 const AttachmentSchema = z.object({

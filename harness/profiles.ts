@@ -107,6 +107,8 @@ export type ProviderDefaults = {
   compaction?: CompactionConfig;
 };
 
+export type EffortLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
+
 export type Profile = {
   /** Agent system prompt */
   prompt: string;
@@ -129,7 +131,7 @@ export type Profile = {
   /** Max turns override */
   maxTurns?: number;
   /** Effort level */
-  effort?: "off" | "low" | "medium" | "high" | "max";
+  effort?: EffortLevel;
   /** Whether to load CLAUDE.md and project settings */
   loadProjectSettings?: boolean;
   /** CLAUDE.md exclusions — raw globs or named rules + custom patterns */
@@ -140,6 +142,18 @@ export type Profile = {
   mcpServers?: Record<string, McpServerConfig>;
   /** Permission policy — controls tool execution gating. Defaults to "bypass". */
   permissionPolicy?: PermissionPolicy;
+  /** Provider-specific runtime controls, e.g. Codex speed/search/sandbox settings. */
+  providerControls?: {
+    codex?: {
+      sandboxMode?: "read-only" | "workspace-write" | "danger-full-access";
+      webSearchMode?: "disabled" | "cached" | "live";
+      serviceTier?: "standard" | "fast" | "priority";
+    };
+    claude?: {
+      permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk";
+    };
+    [provider: string]: unknown;
+  };
   /** Context window size override — for models where API doesn't report it */
   contextWindow?: number;
   /** Max output tokens override — for models where API doesn't report it */
@@ -315,7 +329,7 @@ export type UserProfile = {
   /** Default model when the selected agent profile does not define one */
   model?: string;
   /** Default reasoning/thinking effort when the selected agent profile does not define one */
-  effort?: "off" | "low" | "medium" | "high" | "max";
+  effort?: EffortLevel;
   memoryFilter?: string;
   memory?: UserProfileMemory;
   /** Show project paths from ALL user profiles in the CWD picker (default: false) */

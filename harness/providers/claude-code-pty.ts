@@ -33,30 +33,23 @@ import {
   getGlobalConfig, getUserData,
   type McpServerConfig,
 } from "../profiles";
+import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 
 // ── Constants ──
 
 const CLAUDE_PATH = process.env.CLAUDE_PATH
   || (process.platform === "win32" ? "claude.cmd" : "claude");
 
-const ALL_BUILTIN = [
-  "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Bash",
-  "WebSearch", "WebFetch", "Agent", "TodoWrite", "Skill", "NotebookEdit", "AskUserQuestion",
-];
+// Universe of gate-able built-ins (catalog). Used to turn a profile tool
+// allowlist into a --disallowedTools blocklist for the CLI.
+const ALL_BUILTIN = CLAUDE_CODE_BUILTIN_TOOLS;
 
 const CAPABILITIES: ProviderCapabilities = {
   name: "claude-code-pty",
   label: "Claude Code (PTY)",
   family: "claude-code",
   builtInTools: ALL_BUILTIN,
-  builtInToolGroups: [
-    { label: "files", tools: ["Read", "Write", "Edit", "MultiEdit"] },
-    { label: "search", tools: ["Glob", "Grep"] },
-    { label: "exec", tools: ["Bash"] },
-    { label: "web", tools: ["WebSearch", "WebFetch"] },
-    { label: "agent", tools: ["Agent", "TodoWrite", "Skill"] },
-    { label: "other", tools: ["NotebookEdit", "AskUserQuestion"] },
-  ],
+  builtInToolGroups: CLAUDE_CODE_TOOL_GROUPS,
   builtInToolMode: "explicit",
   slashCommands: [
     {
@@ -94,6 +87,7 @@ type PtyState = {
   rl: ReadlineInterface | null;
   sessionId: string | null;       // Claude Code's internal session ID
   model: string;
+  effort?: string;
   cwd: string;
   stderrBuf: string;
   drainPromise: Promise<void> | null;
@@ -148,6 +142,25 @@ function resolvePermissionMode(providerControls: unknown): string {
   const mode = (claude as Record<string, unknown>).permissionMode;
   if (typeof mode === "string") return mode;
   return "default";
+}
+
+/**
+ * Resolve the set of built-in tools to disable for this turn.
+ * Mirrors the SDK provider: a tool allowlist (opts/profile `tools`) is converted
+ * to a blocklist over the full built-in catalog, merged with any explicit
+ * `disallowedTools`. Session overrides win over the profile.
+ */
+function resolveDisallowedTools(ctx: TurnContext): string[] {
+  const { opts, profile: profileDef } = ctx;
+  const rawTools = opts.tools ?? profileDef?.tools;
+  const rawDisallowed = opts.disallowedTools ?? profileDef?.disallowedTools ?? [];
+  const blocked = new Set<string>(rawDisallowed);
+  if (Array.isArray(rawTools)) {
+    for (const tool of ALL_BUILTIN) {
+      if (!rawTools.includes(tool)) blocked.add(tool);
+    }
+  }
+  return Array.from(blocked);
 }
 
 // ── MCP Config Resolution (reuses claude-code pattern) ──
@@ -265,6 +278,14 @@ function buildSpawnArgs(ctx: TurnContext, state: PtyState, resumeSessionId?: str
     // In PTY mode there's no interactive terminal for permission prompts,
     // so we must bypass permissions (the harness handles approval via its own UI)
     args.push("--dangerously-skip-permissions");
+  }
+
+  // Tool toggles — apply session/profile tool overrides so the config UI
+  // actually disables tools. --disallowedTools removes the tool entirely, which
+  // still takes effect alongside --dangerously-skip-permissions.
+  const disallowedTools = resolveDisallowedTools(ctx);
+  if (disallowedTools.length > 0) {
+    args.push("--disallowedTools", disallowedTools.join(","));
   }
 
   // System prompt — write to temp file to avoid Windows command line length limits.
@@ -854,6 +875,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         rl: null,
         sessionId: isResume ? opts.sessionId! : null,
         model,
+        effort: opts.effort ?? profileDef?.effort,
         cwd,
         stderrBuf: "",
         drainPromise: null,
@@ -1046,6 +1068,19 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         state.needsRestart = true;
         console.log(`[claude-code-pty] model changed to ${config.model}, will restart on next turn`);
       }
+      if (config.effort !== undefined && config.effort !== state.effort) {
+        state.effort = config.effort || undefined;
+        // Effort is a spawn-time CLI flag, so it applies after a process restart.
+        state.needsRestart = true;
+        console.log(`[claude-code-pty] effort changed to ${config.effort || "default"}, will restart on next turn`);
+      }
+      if (config.tools !== undefined || config.disallowedTools !== undefined) {
+        // Tool toggles are --disallowedTools spawn args, applied on restart.
+        // The new override is read from ctx.opts (merged from _configOverrides)
+        // when buildSpawnArgs runs for the next turn.
+        state.needsRestart = true;
+        console.log(`[claude-code-pty] tool overrides changed, will restart on next turn`);
+      }
     },
 
     async dispose(session: ActiveSession) {
@@ -1072,6 +1107,11 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const newModel = ctx.opts.model;
       if (newModel && newModel !== state.model) {
         state.model = newModel;
+        state.needsRestart = true;
+      }
+      const newEffort = ctx.opts.effort;
+      if (newEffort !== state.effort) {
+        state.effort = newEffort;
         state.needsRestart = true;
       }
     },

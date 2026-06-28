@@ -18,6 +18,7 @@ export type ProviderModelInfo = {
 type ModelInfo = ProviderModelInfo;
 
 const CLAUDE_MODELS: ModelInfo[] = [
+  { id: "claude-fable-5", owned_by: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 128_000, contextSource: "provider-default" },
   { id: "claude-opus-4-8[1m]", owned_by: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 128_000, contextSource: "provider-default" },
   { id: "claude-opus-4-8", owned_by: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 128_000, contextSource: "provider-default" },
   { id: "claude-opus-4-7[1m]", owned_by: "anthropic", contextWindow: 1_000_000, contextSource: "provider-default" },
