@@ -1,0 +1,14 @@
+{
+  "id": "artifacts",
+  "title": "artifacts",
+  "nav": true,
+  "fullscreen": false,
+  "padding": 0,
+  "layout": {
+    "kind": "widget",
+    "widget": {
+      "type": "artifact-shelf",
+      "id": "artifact-shelf-page"
+    }
+  }
+}

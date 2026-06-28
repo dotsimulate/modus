@@ -169,6 +169,17 @@
 .login-field:focus-within .login-label {
   color: var(--login-label-focus);
 }
+.login-label-pin {
+  top: -8px;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: var(--login-label-muted);
+  text-transform: uppercase;
+}
+.login-field-pw:focus-within .login-label-pin,
+.login-field-pw.has-value .login-label-pin {
+  top: -8px;
+}
 
 /* ── animated ASCII noise overlay ── */
 .login-noise {

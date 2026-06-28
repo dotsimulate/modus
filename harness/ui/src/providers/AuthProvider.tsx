@@ -8,6 +8,8 @@ import { AuthContext } from "./AuthContext";
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<"checking" | "login" | "setup" | "ok">("checking");
   const [userName, setUserName] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [pinEnabled, setPinEnabled] = useState(false);
 
   const isAuthFailure = useCallback((err: unknown) => (
     err instanceof ModusError && (err.status === 401 || err.status === 403)
@@ -16,9 +18,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authState !== "checking") return;
     modus.authStatus()
-      .then(async ({ required, setup, name }) => {
+      .then(async ({ required, setup, name, pinEnabled: hasPin, needsName }) => {
+        setAuthRequired(required);
+        setPinEnabled(!!hasPin || required);
         if (name) setUserName(name);
-        if (setup) { setAuthState("setup"); return; }
+        if (setup || (!required && (needsName ?? !name))) { setAuthState("setup"); return; }
         if (!required) { setAuthState("ok"); return; }
         const existing = localStorage.getItem("harness_token");
         if (existing) {
@@ -39,6 +43,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => setAuthState("ok"));
   }, [authState, isAuthFailure]);
+
+  useEffect(() => {
+    const refresh = () => setAuthState("checking");
+    window.addEventListener("modus:auth-changed", refresh);
+    return () => window.removeEventListener("modus:auth-changed", refresh);
+  }, []);
 
   // Poll to detect server-side lock
   useEffect(() => {
@@ -69,11 +79,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (authState === "checking") return null;
-  if (authState === "setup") return <LoginScreen isSetup onAuth={handleAuth} />;
+  if (authState === "setup") return <LoginScreen isSetup pinOptional={!pinEnabled} onAuth={handleAuth} />;
   if (authState === "login") return <LoginScreen savedName={userName ?? undefined} onAuth={handleAuth} />;
 
   return (
-    <AuthContext.Provider value={{ userName, handleLock }}>
+    <AuthContext.Provider value={{ userName, authRequired, pinEnabled, handleLock }}>
       {children}
     </AuthContext.Provider>
   );

@@ -27,17 +27,6 @@
   justify-content: flex-end;
 }
 
-.dashboard-warning-banner {
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--warning) 8%, var(--bg-surface));
-  font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1.5;
-  color: var(--text-dim);
-}
-
 /* ── Sections ── */
 .dash-section {
   display: flex;

@@ -102,9 +102,21 @@
   border: 1px solid var(--border-mid);
   border-radius: 3px;
   margin-bottom: 14px;
-  max-height: 240px;
   display: flex;
   flex-direction: column;
+}
+
+.project-setup .setup-browser .folder-picker {
+  position: static;
+  margin: 0;
+  border: none;
+  border-radius: 3px;
+  box-shadow: none;
+  background: transparent;
+}
+
+.project-setup .setup-browser .folder-picker-list {
+  max-height: 220px;
 }
 
 .setup-browser-pathbar {

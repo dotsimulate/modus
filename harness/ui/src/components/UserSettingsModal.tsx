@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { modus } from "../modusClient";
+import { clearAuthToken, modus, setAuthToken } from "../modusClient";
 import type { ProviderModel, UserProfile } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
@@ -14,7 +14,7 @@ type Props = {
 
 type Tab = "profile" | "defaults" | "environment" | "project" | "security";
 
-const EFFORT_OPTIONS = ["off", "low", "medium", "high", "max"] as const;
+const EFFORT_OPTIONS = ["off", "low", "medium", "high", "xhigh", "max"] as const;
 
 function providerSeedModel(provider: string): string {
   return providerFallbackModel(provider);
@@ -36,9 +36,11 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
+  const [pinEnabled, setPinEnabled] = useState(false);
+  const [pinStatusLoaded, setPinStatusLoaded] = useState(false);
   const [pinSaving, setPinSaving] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
-  const [pinSuccess, setPinSuccess] = useState(false);
+  const [pinSuccess, setPinSuccess] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +71,18 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     }
     modus.getProviderModels(defaultProvider).then(setProviderModels).catch(() => setProviderModels([]));
   }, [defaultProvider]);
+
+  useEffect(() => {
+    let alive = true;
+    modus.authStatus()
+      .then((status) => {
+        if (!alive) return;
+        setPinEnabled(!!status.pinEnabled || status.required);
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setPinStatusLoaded(true); });
+    return () => { alive = false; };
+  }, []);
 
   const handleDefaultProviderChange = async (provider: string) => {
     setDefaultProvider(provider);
@@ -123,16 +137,43 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
   const handleChangePin = async () => {
     setPinError(null);
-    setPinSuccess(false);
-    if (!oldPin) { setPinError("enter your current PIN"); return; }
+    setPinSuccess(null);
+    if (pinEnabled && !oldPin) { setPinError("enter your current PIN"); return; }
     if (!newPin) { setPinError("enter a new PIN"); return; }
     if (newPin.length < 4) { setPinError("PIN must be at least 4 characters"); return; }
     if (newPin !== confirmPin) { setPinError("PINs do not match"); return; }
     setPinSaving(true);
     try {
-      await modus.changePin(oldPin, newPin);
+      if (pinEnabled) {
+        await modus.changePin(oldPin, newPin);
+        setPinSuccess("PIN updated");
+      } else {
+        const token = await modus.setupNewPin(newPin);
+        setAuthToken(token);
+        setPinEnabled(true);
+        setPinSuccess("PIN enabled");
+      }
       setOldPin(""); setNewPin(""); setConfirmPin("");
-      setPinSuccess(true);
+      window.dispatchEvent(new Event("modus:auth-changed"));
+    } catch (e) {
+      setPinError(String(e).replace(/^Error: /, ""));
+    } finally {
+      setPinSaving(false);
+    }
+  };
+
+  const handleDisablePin = async () => {
+    setPinError(null);
+    setPinSuccess(null);
+    if (!oldPin) { setPinError("enter your current PIN"); return; }
+    setPinSaving(true);
+    try {
+      await modus.disablePin(oldPin);
+      clearAuthToken();
+      setOldPin(""); setNewPin(""); setConfirmPin("");
+      setPinEnabled(false);
+      setPinSuccess("PIN disabled");
+      window.dispatchEvent(new Event("modus:auth-changed"));
     } catch (e) {
       setPinError(String(e).replace(/^Error: /, ""));
     } finally {
@@ -396,28 +437,36 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
           {/* Security tab */}
           {tab === "security" && (
             <div className="us-section">
-              <div className="us-pin-group">
-                <div className="us-pin-row">
-                  <span className="us-row-label">current PIN</span>
-                  <input
-                    className="us-input"
-                    type="password"
-                    value={oldPin}
-                    onChange={(e) => { setOldPin(e.target.value); setPinError(null); setPinSuccess(false); }}
-                    placeholder="••••"
-                    spellCheck={false}
-                    autoFocus
-                  />
+              {pinStatusLoaded && (
+                <div className="us-security-status">
+                  Browser PIN is {pinEnabled ? "enabled" : "off"}.
                 </div>
+              )}
+              <div className="us-pin-group">
+                {pinEnabled && (
+                  <div className="us-pin-row">
+                    <span className="us-row-label">current PIN</span>
+                    <input
+                      className="us-input"
+                      type="password"
+                      value={oldPin}
+                      onChange={(e) => { setOldPin(e.target.value); setPinError(null); setPinSuccess(null); }}
+                      placeholder="current PIN"
+                      spellCheck={false}
+                      autoFocus
+                    />
+                  </div>
+                )}
                 <div className="us-pin-row">
-                  <span className="us-row-label">new PIN</span>
+                  <span className="us-row-label">{pinEnabled ? "new PIN" : "PIN"}</span>
                   <input
                     className="us-input"
                     type="password"
                     value={newPin}
-                    onChange={(e) => { setNewPin(e.target.value); setPinError(null); setPinSuccess(false); }}
-                    placeholder="••••"
+                    onChange={(e) => { setNewPin(e.target.value); setPinError(null); setPinSuccess(null); }}
+                    placeholder="4+ characters"
                     spellCheck={false}
+                    autoFocus={!pinEnabled}
                   />
                 </div>
                 <div className="us-pin-row">
@@ -426,19 +475,24 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                     className="us-input"
                     type="password"
                     value={confirmPin}
-                    onChange={(e) => { setConfirmPin(e.target.value); setPinError(null); setPinSuccess(false); }}
-                    placeholder="••••"
+                    onChange={(e) => { setConfirmPin(e.target.value); setPinError(null); setPinSuccess(null); }}
+                    placeholder="repeat PIN"
                     spellCheck={false}
                   />
                 </div>
               </div>
               <div className="us-pin-actions">
                 {pinError && <span className="us-pin-feedback error">{pinError}</span>}
-                {pinSuccess && <span className="us-pin-feedback success">PIN updated</span>}
+                {pinSuccess && <span className="us-pin-feedback success">{pinSuccess}</span>}
                 {!pinError && !pinSuccess && <span />}
                 <button className="us-pin-btn" onClick={handleChangePin} disabled={pinSaving}>
-                  {pinSaving ? "updating..." : "update PIN"}
+                  {pinSaving ? "updating..." : pinEnabled ? "update PIN" : "enable PIN"}
                 </button>
+                {pinEnabled && (
+                  <button className="us-pin-btn us-pin-btn--danger" onClick={handleDisablePin} disabled={pinSaving}>
+                    disable PIN
+                  </button>
+                )}
               </div>
             </div>
           )}

@@ -140,6 +140,13 @@
   gap: 6px;
 }
 
+.us-security-status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
 .us-pin-row {
   display: grid;
   grid-template-columns: 110px 1fr;
@@ -170,6 +177,13 @@
 .us-pin-btn:hover:not(:disabled) {
   color: var(--text);
   border-color: var(--border-focus);
+}
+.us-pin-btn--danger {
+  border-color: color-mix(in srgb, var(--error) 35%, var(--border-active));
+}
+.us-pin-btn--danger:hover:not(:disabled) {
+  border-color: var(--error);
+  color: var(--error);
 }
 .us-pin-btn:disabled {
   opacity: 0.35;
