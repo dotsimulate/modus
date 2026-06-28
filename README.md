@@ -65,6 +65,8 @@ cd modus
 ./modus.sh setup
 ```
 
+For a fresh Mac user profile, use the full [macOS setup guide](harness/docs/macos-setup.md). It covers Terminal, Homebrew/GitHub auth, Bun PATH setup, Claude Code, Codex, and common first-run errors.
+
 **Windows (PowerShell):**
 ```powershell
 .\modus.bat setup
@@ -99,7 +101,7 @@ modus dev            # dev mode (harness + vite + file watchers)
 modus --version      # print version
 ```
 
-On first run, Modus prompts for a PIN.
+On first run, Modus asks for your name. Browser PIN lock is optional and can be enabled later in settings.
 
 ## Providers
 
@@ -177,6 +179,8 @@ MODUS_NOTIFY_TOPIC=your-topic modus dev
 
 - [Bun](https://bun.sh) — runtime and package manager
 - At least one provider backend (see [Providers](#providers) above)
+
+On macOS, see [harness/docs/macos-setup.md](harness/docs/macos-setup.md) for the complete first-run setup.
 
 ## License
 
