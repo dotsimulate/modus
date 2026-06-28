@@ -26,6 +26,7 @@ function msgLog(sid: string, event: string, detail: string) {
 }
 import { resolveSecret } from "../secrets";
 import type { ProviderCapabilities } from "./types";
+import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 
 // On Windows we deliberately use the .cmd shim because that's the only thing the
 // Claude Code installer puts on PATH. The cmd.exe -> node.exe tree it creates is
@@ -33,22 +34,17 @@ import type { ProviderCapabilities } from "./types";
 const CLAUDE_PATH = process.env.CLAUDE_PATH
   || (process.platform === "win32" ? "claude.cmd" : "claude");
 
-const ALL_BUILTIN = ["Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Bash",
-  "WebSearch", "WebFetch", "Agent", "TodoWrite", "Skill", "NotebookEdit", "AskUserQuestion"];
+// Universe of gate-able built-ins (catalog). Used to convert a profile tool
+// allowlist into an SDK disallowedTools blocklist, so it must list every tool
+// the UI can toggle.
+const ALL_BUILTIN = CLAUDE_CODE_BUILTIN_TOOLS;
 
 const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   name: "claude-code",
   label: "Claude Code",
   family: "claude-code",
   builtInTools: ALL_BUILTIN,
-  builtInToolGroups: [
-    { label: "files", tools: ["Read", "Write", "Edit", "MultiEdit"] },
-    { label: "search", tools: ["Glob", "Grep"] },
-    { label: "exec", tools: ["Bash"] },
-    { label: "web", tools: ["WebSearch", "WebFetch"] },
-    { label: "agent", tools: ["Agent", "TodoWrite", "Skill"] },
-    { label: "other", tools: ["NotebookEdit", "AskUserQuestion"] },
-  ],
+  builtInToolGroups: CLAUDE_CODE_TOOL_GROUPS,
   builtInToolMode: "explicit",
   slashCommands: [
     {
@@ -815,7 +811,11 @@ export function createClaudeCodeProvider(): SessionProvider {
         return;
       }
 
-      if (state.interrupting && state.drainActive) {
+      // Defer ONLY while a live subprocess is still draining an interrupt. If it
+      // was force-killed (abort nulls queryObj), the drain may be hung and will
+      // never flip these flags — deferring here would strand every resume
+      // forever. Fall through to a clean cold-start instead.
+      if (state.interrupting && state.drainActive && state.queryObj) {
         session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         msgLog(sid, "DEFER-UNTIL-EXIT", "queued follow-up until interrupted subprocess drain exits");
         console.log(`[claude-code] deferring follow-up until interrupted subprocess exits for ${session.sessionId}`);
@@ -1116,6 +1116,11 @@ export function createClaudeCodeProvider(): SessionProvider {
 
 async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIterable<any>) {
   const { session } = ctx;
+  // Identity of the turn this drain belongs to. If a force-kill leaves this
+  // drain's iterator hung and the session later cold-starts a new turn, the
+  // abortController is replaced. A stale drain must NOT mutate the new turn's
+  // shared state — both terminal exits below bail when this no longer matches.
+  const turnAbort = session.abortController;
   let initSeen = false;
   let eventCount = 0;
   let resultSeen = false;
@@ -1381,6 +1386,9 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       state.interrupting = false;
     }
   } catch (err: any) {
+    // Superseded by a newer turn (this drain was force-killed and the session
+    // already cold-started)? Don't touch the active turn's status/flags.
+    if (session.abortController !== turnAbort) return;
     console.error(`[claude-code] drain caught for ${session.sessionId}:`, err);
     const isAbort = err?.name === "AbortError" || err?.type === "abort"
       || String(err).includes("aborted by user");
@@ -1428,6 +1436,10 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       state.interrupting = false;
     }
   }
+
+  // Superseded by a newer turn (force-killed + cold-started)? Leave the active
+  // turn's shared state alone — it owns drainActive / pendingDispatch now.
+  if (session.abortController !== turnAbort) return;
 
   // Drain is no longer actively consuming events.
   // If post-drain starts a new drain, it re-sets drainActive synchronously (before first await).

@@ -10,7 +10,7 @@ type SpawnFn = typeof spawn;
 export type ApprovalMode = "never" | "on-request" | "untrusted" | "on-failure";
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type WebSearchMode = "disabled" | "cached" | "live";
-export type ModelReasoningEffort = "low" | "medium" | "high" | "xhigh";
+export type ModelReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type ServiceTier = "standard" | "fast" | "priority";
 
 export type ThreadOptions = {
@@ -23,6 +23,7 @@ export type ThreadOptions = {
   approvalPolicy?: ApprovalMode;
   additionalDirectories?: string[];
   enableFeatures?: string[];
+  disableFeatures?: string[];
   serviceTier?: ServiceTier;
 };
 
@@ -39,7 +40,7 @@ export type ThreadEvent = {
 
 type TextInput = { type: "text"; text: string };
 type ImageInput = { type: "local_image"; path: string };
-type Input = string | Array<TextInput | ImageInput>;
+export type CodexInput = string | Array<TextInput | ImageInput>;
 
 type TurnOptions = {
   signal?: AbortSignal;
@@ -61,6 +62,7 @@ type RunArgs = {
   approvalPolicy?: ApprovalMode;
   additionalDirectories?: string[];
   enableFeatures?: string[];
+  disableFeatures?: string[];
   serviceTier?: ServiceTier;
 };
 
@@ -76,6 +78,8 @@ type CodexOptions = {
   env?: Record<string, string>;
   config?: CodexConfigObject;
   spawnOverride?: SpawnFn;
+  onSpawn?: (pid: number) => void;
+  onExit?: (pid: number) => void;
 };
 
 const INTERNAL_ORIGINATOR_ENV = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
@@ -118,7 +122,7 @@ export function canResumeCodexThread(threadId: string): boolean {
   }
 }
 
-function normalizeInput(input: Input): { prompt: string; images: string[] } {
+function normalizeInput(input: CodexInput): { prompt: string; images: string[] } {
   if (typeof input === "string") {
     return { prompt: input, images: [] };
   }
@@ -192,6 +196,8 @@ class CodexExec {
     private readonly envOverride?: Record<string, string>,
     private readonly configOverrides?: CodexConfigObject,
     private readonly spawnFn: SpawnFn = spawn,
+    private readonly onSpawn?: (pid: number) => void,
+    private readonly onExit?: (pid: number) => void,
   ) {}
 
   async *run(args: RunArgs): AsyncGenerator<string> {
@@ -203,6 +209,9 @@ class CodexExec {
     }
     if (args.enableFeatures?.length) {
       for (const feature of args.enableFeatures) commandArgs.push("--enable", feature);
+    }
+    if (args.disableFeatures?.length) {
+      for (const feature of args.disableFeatures) commandArgs.push("--disable", feature);
     }
     if (args.model) commandArgs.push("--model", args.model);
     if (args.sandboxMode) commandArgs.push("--sandbox", args.sandboxMode);
@@ -232,6 +241,8 @@ class CodexExec {
       env,
       signal: args.signal,
     });
+    const childPid = typeof child.pid === "number" ? child.pid : null;
+    if (childPid != null) this.onSpawn?.(childPid);
     let spawnError: Error | null = null;
     child.once("error", (err) => {
       spawnError = err;
@@ -257,7 +268,10 @@ class CodexExec {
     }
 
     const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
-      child.once("exit", (code, signal) => resolve({ code, signal }));
+      child.once("exit", (code, signal) => {
+        if (childPid != null) this.onExit?.(childPid);
+        resolve({ code, signal });
+      });
     });
 
     const rl = readline.createInterface({
@@ -302,11 +316,11 @@ export class Thread {
     private threadId: string | null = null,
   ) {}
 
-  async runStreamed(input: Input, turnOptions: TurnOptions = {}): Promise<{ events: AsyncGenerator<ThreadEvent> }> {
+  async runStreamed(input: CodexInput, turnOptions: TurnOptions = {}): Promise<{ events: AsyncGenerator<ThreadEvent> }> {
     return { events: this.runStreamedInternal(input, turnOptions) };
   }
 
-  private async *runStreamedInternal(input: Input, turnOptions: TurnOptions): AsyncGenerator<ThreadEvent> {
+  private async *runStreamedInternal(input: CodexInput, turnOptions: TurnOptions): AsyncGenerator<ThreadEvent> {
     const { prompt, images } = normalizeInput(input);
     for await (const line of this.exec.run({
       input: prompt,
@@ -324,6 +338,7 @@ export class Thread {
       approvalPolicy: this.threadOptions.approvalPolicy,
       additionalDirectories: this.threadOptions.additionalDirectories,
       enableFeatures: this.threadOptions.enableFeatures,
+      disableFeatures: this.threadOptions.disableFeatures,
       serviceTier: this.threadOptions.serviceTier,
     })) {
       let parsed: ThreadEvent;
@@ -343,7 +358,14 @@ export class Thread {
 export class Codex {
   private readonly exec: CodexExec;
   constructor(private readonly options: CodexOptions = {}) {
-    this.exec = new CodexExec(options.codexPathOverride, options.env, options.config, options.spawnOverride);
+    this.exec = new CodexExec(
+      options.codexPathOverride,
+      options.env,
+      options.config,
+      options.spawnOverride,
+      options.onSpawn,
+      options.onExit,
+    );
   }
 
   startThread(options: ThreadOptions = {}): Thread {

@@ -9,7 +9,7 @@
  */
 
 import { canResumeCodexThread, Codex, Thread } from "./codex-cli-sdk";
-import type { ApprovalMode, ModelReasoningEffort, SandboxMode, ServiceTier, ThreadEvent, ThreadItem, ThreadOptions, WebSearchMode } from "./codex-cli-sdk";
+import type { ApprovalMode, CodexInput, ModelReasoningEffort, SandboxMode, ServiceTier, ThreadEvent, ThreadItem, ThreadOptions, WebSearchMode } from "./codex-cli-sdk";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
@@ -20,9 +20,10 @@ import {
   getGlobalConfig, getProfile, resolveProfilePrompt,
   type McpServerConfig, type PermissionPolicy, type Profile,
 } from "../profiles";
-import { dirname, isAbsolute, join } from "path";
+import { dirname, extname, isAbsolute, join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
+import { CODEX_BUILTIN_TOOLS, CODEX_TOOL_GROUPS } from "./tool-catalog";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -56,12 +57,8 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
   name: "codex",
   label: "Codex",
   family: "codex",
-  builtInTools: ["Bash", "Write", "Edit", "WebSearch"],
-  builtInToolGroups: [
-    { label: "exec", tools: ["Bash"] },
-    { label: "files", tools: ["Write", "Edit"] },
-    { label: "web", tools: ["WebSearch"] },
-  ],
+  builtInTools: CODEX_BUILTIN_TOOLS,
+  builtInToolGroups: CODEX_TOOL_GROUPS,
   builtInToolMode: "event-derived",
   slashCommands: [
     {
@@ -119,12 +116,14 @@ function getState(session: ActiveSession): CodexState {
 function mapCodexReasoningEffort(
   effort?: string,
 ): ModelReasoningEffort | undefined {
-  if (!effort || effort === "off" || effort === "max") return undefined;
+  if (!effort || effort === "off") return undefined;
   const effortMap: Record<string, ModelReasoningEffort> = {
+    minimal: "minimal",
     low: "low",
     medium: "medium",
     high: "high",
     xhigh: "xhigh",
+    max: "xhigh",
   };
   return effortMap[effort];
 }
@@ -319,19 +318,62 @@ function handleGoalCommand(
   }
 }
 
-function buildCodexInput(content: MessageContent, ctx: TurnContext): string {
+function imageExtension(mediaType: string | undefined): string {
+  if (mediaType === "image/png") return ".png";
+  if (mediaType === "image/webp") return ".webp";
+  if (mediaType === "image/gif") return ".gif";
+  if (mediaType === "image/jpeg" || mediaType === "image/jpg") return ".jpg";
+  return extname(mediaType ?? "") || ".img";
+}
+
+function materializeCodexImages(content: MessageContent, sessionId: string): string[] {
+  if (typeof content === "string") return [];
+  const paths: string[] = [];
+  const dir = join(tmpdir(), "modus-codex-images", sessionId.replace(/[^A-Za-z0-9_.-]/g, "_"));
+  mkdirSync(dir, { recursive: true });
+  let index = 0;
+  for (const block of content as any[]) {
+    if (block?.type !== "image" || block.source?.type !== "base64" || typeof block.source.data !== "string") continue;
+    const ext = imageExtension(block.source.media_type);
+    const path = join(dir, `turn-${Date.now()}-${index++}${ext}`);
+    writeFileSync(path, Buffer.from(block.source.data, "base64"));
+    paths.push(path);
+  }
+  return paths;
+}
+
+function cleanupCodexInputImages(input: CodexInput): void {
+  const paths = typeof input === "string"
+    ? []
+    : input.filter((item) => item.type === "local_image").map((item) => item.path);
+  for (const path of paths) {
+    try { unlinkSync(path); } catch { /* best effort */ }
+  }
+}
+
+function buildCodexInput(content: MessageContent, ctx: TurnContext): CodexInput {
   const prompt = resolveProfilePrompt(ctx.profile);
   const userInput = contentToString(content);
-  if (!prompt?.text) return userInput;
+  const imagePaths = materializeCodexImages(content, ctx.session.sessionId);
 
   // Codex CLI does not expose a first-class system prompt or provider preset API.
   // For now both prompt modes are applied as an injected instruction prelude so
   // Codex sessions actually honor the profile contract instead of ignoring it.
-  const header = prompt.mode === "custom"
-    ? "System instructions:"
-    : "Additional profile instructions:";
+  const text = !prompt?.text
+    ? userInput
+    : [
+      prompt.mode === "custom" ? "System instructions:" : "Additional profile instructions:",
+      prompt.text,
+      "",
+      "User request:",
+      userInput,
+    ].join("\n");
 
-  return `${header}\n${prompt.text}\n\nUser request:\n${userInput}`;
+  if (imagePaths.length === 0) return text;
+  return [
+    { type: "text", text },
+    ...imagePaths.map((path) => ({ type: "local_image" as const, path })),
+  ];
 }
 
 function resolveMcpEnv(env: Record<string, string> | undefined, serverName: string): Record<string, string> | undefined {
@@ -572,7 +614,7 @@ function resolveCodexRuntimeSettings(
   webSearchMode: WebSearchMode;
   serviceTier?: ServiceTier;
 } {
-  const controls = readCodexProviderControls(opts.providerControls);
+  const controls = readCodexProviderControls(opts.providerControls ?? profileDef?.providerControls);
   const { approvalPolicy, sandboxMode: derivedSandbox } = mapPermissionPolicy(
     opts.permissionPolicy ?? profileDef?.permissionPolicy,
     profileDef?.codexSandboxMode,
@@ -603,6 +645,13 @@ function resolveCodexRuntimeSettings(
 
 function codexEnableFeatures(serviceTier?: ServiceTier): string[] {
   return serviceTier === "fast" ? ["goals", "fast_mode"] : ["goals"];
+}
+
+function codexDisableFeatures(): string[] {
+  // Codex CLI 0.136 can expose an image_generation tool backed by gpt-image-2.
+  // When that model is unavailable to the current auth path, the Responses API
+  // rejects the whole turn before normal chat can start.
+  return ["image_generation"];
 }
 
 function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?: Record<string, string> } {
@@ -664,6 +713,12 @@ function createCodexClient(ctx: TurnContext, apiKey: string | undefined): Codex 
     apiKey,
     config,
     env,
+    onSpawn(pid) {
+      ctx.session.osPids.add(pid);
+    },
+    onExit(pid) {
+      ctx.session.osPids.delete(pid);
+    },
   });
 }
 
@@ -872,6 +927,7 @@ export function createCodexProvider(): SessionProvider {
         serviceTier,
         additionalDirectories: session.additionalDirectories.length > 0 ? session.additionalDirectories : undefined,
         enableFeatures: codexEnableFeatures(serviceTier),
+        disableFeatures: codexDisableFeatures(),
       };
 
       // Map effort levels
@@ -973,10 +1029,16 @@ export function createCodexProvider(): SessionProvider {
       // child's 'error' listener in its finally block, so aborting the signal
       // after a turn completes crashes the runtime via an uncaught EventEmitter
       // 'error' from Node's internal abortChildProcess.
-      if (session.status !== "running" && session.status !== "starting") return;
+      //
+      // stopSession() sets status to "interrupting" right BEFORE calling abort(),
+      // so "interrupting" must be allowed too — otherwise the Stop button is a
+      // silent no-op for Codex and a running Codex agent can't be interrupted.
+      if (session.status !== "running" && session.status !== "starting" && session.status !== "interrupting") return;
       const state = getState(session);
-      if (state) state.abortController.abort();
-      session.abortController.abort();
+      // Never re-abort an already-aborted controller — that's the post-teardown
+      // path that triggers the listener-stripped crash.
+      if (state && !state.abortController.signal.aborted) state.abortController.abort();
+      if (!session.abortController.signal.aborted) session.abortController.abort();
     },
 
     updateConfig(session: ActiveSession, config: Record<string, any>) {
@@ -1004,6 +1066,7 @@ export function createCodexProvider(): SessionProvider {
       state.threadOptions.webSearchMode = runtime.webSearchMode;
       state.threadOptions.serviceTier = runtime.serviceTier;
       state.threadOptions.enableFeatures = codexEnableFeatures(runtime.serviceTier);
+      state.threadOptions.disableFeatures = codexDisableFeatures();
 
       if (session.status === "running" || session.status === "starting") {
         session.abortController.abort();
@@ -1045,6 +1108,7 @@ export function createCodexProvider(): SessionProvider {
       state.threadOptions.webSearchMode = runtime.webSearchMode;
       state.threadOptions.serviceTier = runtime.serviceTier;
       state.threadOptions.enableFeatures = codexEnableFeatures(runtime.serviceTier);
+      state.threadOptions.disableFeatures = codexDisableFeatures();
 
       state.codex = createCodexClient(ctx, resolveCodexApiKey());
     },
@@ -1056,7 +1120,7 @@ export function createCodexProvider(): SessionProvider {
 async function runTurn(
   ctx: TurnContext,
   state: CodexState,
-  input: string,
+  input: CodexInput,
   isResume: boolean,
   skipPromptPersist: boolean,
 ) {
@@ -1089,6 +1153,7 @@ async function runTurn(
   let turnTokens = { input: 0, cached: 0, output: 0 };
   let lastAgentText = "";
   let turnCount = 0;
+  let inputHandedOff = false;
 
   try {
     for await (const event of events) {
@@ -1392,6 +1457,7 @@ async function runTurn(
       console.warn("[codex] missing stored rollout for " + session.sessionId + "; restarting as a fresh thread");
       state.thread = null;
       state.threadId = null;
+      inputHandedOff = true;
       runTurn(ctx, state, input, false, skipPromptPersist).catch((retryErr) => {
         console.error("[codex] fresh-start retry failed for " + session.sessionId + ":", retryErr);
         session.error = String(retryErr);
@@ -1437,5 +1503,7 @@ async function runTurn(
       ctx.broadcastEvent({ type: "error", error: String(err) });
       ctx.emitEvent({ type: "done" });
     }
+  } finally {
+    if (!inputHandedOff) cleanupCodexInputImages(input);
   }
 }

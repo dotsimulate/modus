@@ -162,6 +162,27 @@ export function changePin(oldPin: string, newPin: string): boolean {
   return true;
 }
 
+/**
+ * Remove the configured PIN from the secrets file.
+ * Returns false when the PIN is wrong, missing, or supplied only by process.env.
+ */
+export function disablePin(pin: string): boolean {
+  const current = resolveSecret("HARNESS_PIN");
+  if (!current || current !== pin) return false;
+
+  const path = process.env.HARNESS_SECRETS_FILE ?? DEFAULT_PATH;
+  if (!existsSync(path)) return false;
+
+  const content = readFileSync(path, "utf-8");
+  const updated = content
+    .split("\n")
+    .filter((line) => !line.match(/^HARNESS_PIN=/))
+    .join("\n");
+  writeFileSync(path, updated.endsWith("\n") ? updated : `${updated}\n`, { mode: 0o600 });
+  delete secretsStore["HARNESS_PIN"];
+  return true;
+}
+
 /** Get info about where secrets are loaded from (for startup log) */
 export function getSecretsInfo(): { path: string; loadedFrom: string | null; count: number } {
   return {

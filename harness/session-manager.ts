@@ -876,6 +876,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   // Cascade: session override > agent profile > user profile > default
   const providerName = opts.provider ?? profileDef?.provider ?? userProf?.provider ?? "claude-code";
   const resolvedEffort = opts.effort ?? profileDef?.effort ?? userProf?.effort;
+  const resolvedProviderControls = opts.providerControls ?? profileDef?.providerControls;
   const provider = getProvider(providerName);
 
   // Resolve system prompt template vars
@@ -1027,6 +1028,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     provider: providerName,
     model: session.model ?? undefined,
     effort: resolvedEffort,
+    providerControls: resolvedProviderControls,
     additionalDirectories: session.additionalDirectories,
   });
   provider.startTurn(ctx);
@@ -1614,13 +1616,18 @@ export function updateSessionConfig(
   const compatibleProfileModel = profileProvider === session.provider
     ? profileDef?.model
     : undefined;
+  if (config.provider !== undefined) {
+    const requestedProvider = config.provider || profileProvider || session.provider;
+    if (requestedProvider !== session.provider) {
+      console.warn(
+        `[session-config] Rejecting provider change for active session ${sessionId}: ` +
+        `${session.provider} -> ${requestedProvider}. Provider switching requires a new session.`,
+      );
+      return false;
+    }
+  }
   if (config.model !== undefined) {
     session.model = config.model || compatibleProfileModel || session.model;
-  }
-  if (config.provider !== undefined) {
-    session.provider = config.provider
-      || profileDef?.provider
-      || session.provider;
   }
   if (config.cwd !== undefined) {
     session.cwd = nextCwd;
@@ -1640,7 +1647,7 @@ export function updateSessionConfig(
     ? config.providerControls
     : undefined;
   // Persist config overrides so follow-up turns include them
-  if (config.provider !== undefined) session._configOverrides.provider = config.provider || undefined;
+  if (config.provider !== undefined) session._configOverrides.provider = undefined;
   if (config.effort !== undefined) session._configOverrides.effort = config.effort || undefined;
   if (config.maxTurns !== undefined) session._configOverrides.maxTurns = config.maxTurns || undefined;
   if (config.tools !== undefined) session._configOverrides.tools = normalizedTools;

@@ -455,8 +455,10 @@ async function runTurn(
   // API key via env or flag
   const apiKey = resolveCursorApiKey();
 
-  // The prompt is the final positional argument
-  args.push(input);
+  // The prompt is delivered via stdin (see below), NOT as a positional argument.
+  // On Windows cursor-agent is a .cmd -> powershell shim; a multi-line positional
+  // arg gets truncated at the first newline by cmd.exe, so the agent would only
+  // ever receive the prompt's first line. stdin avoids that entirely.
 
   const bin = cursorAgentSpawnArgv0();
   const env: Record<string, string> = {};
@@ -496,7 +498,10 @@ async function runTurn(
     }
   });
 
-  // Close stdin immediately — cursor-agent reads prompt from args
+  // Deliver the prompt via stdin, then close it. cursor-agent reads the prompt
+  // from stdin in -p mode; this avoids cmd.exe/PowerShell truncating a multi-line
+  // positional argument on Windows.
+  proc.stdin?.write(input);
   proc.stdin?.end();
 
   // Collect stderr for diagnostics

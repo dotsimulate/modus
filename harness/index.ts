@@ -1,7 +1,7 @@
 // Prevent nested session detection when launched from within Claude Code
 delete process.env.CLAUDECODE;
 
-import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin } from "./secrets";
+import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin, disablePin } from "./secrets";
 import { rehydrateHome } from "./modus-home-rehydrate";
 loadSecrets();
 
@@ -112,7 +112,7 @@ import {
 import { homeProfilesDir } from "./modus-home";
 
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
-const HOST = process.env.HARNESS_HOST ?? "0.0.0.0";
+const HOST = process.env.HARNESS_HOST ?? "127.0.0.1";
 const AUTH_TOKEN = process.env.HARNESS_TOKEN || "";
 const WHISPER_TRANSCRIBE_URL = process.env.WHISPER_URL ?? "http://127.0.0.1:8080/v1/audio/transcriptions";
 const UI_DIST_DIR = resolve(import.meta.dir, "ui/dist");
@@ -141,6 +141,124 @@ function isWithinRoot(filePath: string, root: string): boolean {
     return target.toLowerCase() === base.toLowerCase() || target.toLowerCase().startsWith(`${base.toLowerCase()}\\`) || target.toLowerCase().startsWith(`${base.toLowerCase()}/`);
   }
   return target === base || target.startsWith(`${base}/`);
+}
+
+type PreviewKind = "directory" | "html" | "image" | "audio" | "video" | "pdf" | "text" | "binary";
+
+const PREVIEW_MIME: Record<string, { mime: string; kind: PreviewKind; safe?: boolean; warning?: string }> = {
+  ".html": { mime: "text/html; charset=utf-8", kind: "html", safe: false, warning: "HTML is rendered in a sandboxed frame." },
+  ".htm": { mime: "text/html; charset=utf-8", kind: "html", safe: false, warning: "HTML is rendered in a sandboxed frame." },
+  ".webp": { mime: "image/webp", kind: "image" },
+  ".png": { mime: "image/png", kind: "image" },
+  ".jpg": { mime: "image/jpeg", kind: "image" },
+  ".jpeg": { mime: "image/jpeg", kind: "image" },
+  ".gif": { mime: "image/gif", kind: "image" },
+  ".bmp": { mime: "image/bmp", kind: "image" },
+  ".ico": { mime: "image/x-icon", kind: "image" },
+  ".avif": { mime: "image/avif", kind: "image" },
+  ".tiff": { mime: "image/tiff", kind: "image" },
+  ".tif": { mime: "image/tiff", kind: "image" },
+  ".svg": { mime: "image/svg+xml", kind: "image", safe: false, warning: "SVG may contain active content; it is shown as an image." },
+  ".wav": { mime: "audio/wav", kind: "audio" },
+  ".mp3": { mime: "audio/mpeg", kind: "audio" },
+  ".ogg": { mime: "audio/ogg", kind: "audio" },
+  ".m4a": { mime: "audio/mp4", kind: "audio" },
+  ".aac": { mime: "audio/aac", kind: "audio" },
+  ".flac": { mime: "audio/flac", kind: "audio" },
+  ".mp4": { mime: "video/mp4", kind: "video" },
+  ".webm": { mime: "video/webm", kind: "video" },
+  ".mov": { mime: "video/quicktime", kind: "video" },
+  ".mkv": { mime: "video/x-matroska", kind: "video" },
+  ".avi": { mime: "video/x-msvideo", kind: "video" },
+  ".pdf": { mime: "application/pdf", kind: "pdf", safe: false, warning: "PDF preview is browser-rendered." },
+  ".md": { mime: "text/markdown; charset=utf-8", kind: "text" },
+  ".mdx": { mime: "text/markdown; charset=utf-8", kind: "text" },
+  ".txt": { mime: "text/plain; charset=utf-8", kind: "text" },
+  ".log": { mime: "text/plain; charset=utf-8", kind: "text" },
+  ".json": { mime: "application/json; charset=utf-8", kind: "text" },
+  ".css": { mime: "text/css; charset=utf-8", kind: "text" },
+  ".js": { mime: "text/javascript; charset=utf-8", kind: "text" },
+  ".ts": { mime: "text/plain; charset=utf-8", kind: "text" },
+  ".tsx": { mime: "text/plain; charset=utf-8", kind: "text" },
+};
+
+function previewInfoForPath(filePath: string, isDirectory = false) {
+  if (isDirectory) return { mime: "inode/directory", kind: "directory" as PreviewKind, safe: true, warnings: [] as string[] };
+  const ext = extname(filePath).toLowerCase();
+  const info = PREVIEW_MIME[ext] ?? { mime: "application/octet-stream", kind: "binary" as PreviewKind };
+  const safe = info.safe ?? (info.kind !== "html" && info.kind !== "pdf");
+  return { mime: info.mime, kind: info.kind, safe, warnings: info.warning ? [info.warning] : [] };
+}
+
+function previewIdForPath(filePath: string): string {
+  return Buffer.from(resolve(filePath), "utf-8").toString("base64url");
+}
+
+function pathFromPreviewId(id: string): string | null {
+  try { return Buffer.from(id, "base64url").toString("utf-8"); } catch { return null; }
+}
+
+function relativeLabel(filePath: string, roots: string[]): string {
+  const target = resolve(filePath);
+  const root = roots.find((r) => isWithinRoot(target, r));
+  if (!root) return target;
+  const rel = target.slice(resolve(root).length).replace(/^[/\\]+/, "").replace(/\\/g, "/");
+  return rel || target;
+}
+
+function previewRoots(params: URLSearchParams): string[] {
+  const roots = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value === "string" && value.trim()) roots.add(resolve(value));
+  };
+  const sessionId = params.get("sessionId");
+  if (sessionId) {
+    const active = getActiveSession(sessionId);
+    const stored = getStoredSessionConfig(sessionId);
+    const row = getSession(sessionId);
+    add(active?.cwd ?? stored?.cwd ?? row?.cwd);
+    for (const dir of active?.additionalDirectories ?? stored?.additionalDirectories ?? []) add(dir);
+  }
+  const userProfileName = params.get("userProfile");
+  if (userProfileName) {
+    const up = getUserProfile(userProfileName);
+    for (const project of up?.projects ?? []) add(project);
+  }
+  for (const project of listProjects()) add(project.path);
+  const cwd = params.get("cwd");
+  if (cwd) {
+    const resolvedCwd = resolve(cwd);
+    if ([...roots].some((root) => isWithinRoot(resolvedCwd, root))) add(resolvedCwd);
+  }
+  return [...roots];
+}
+
+function assertPreviewAllowed(filePath: string, roots: string[]): string | null {
+  const target = resolve(filePath);
+  if (roots.some((root) => isWithinRoot(target, root))) return null;
+  return "path is outside configured preview roots";
+}
+
+async function buildPreviewManifest(filePath: string, roots: string[], scopeQuery = "") {
+  const { stat } = await import("fs/promises");
+  const target = resolve(filePath);
+  const info = await stat(target);
+  const preview = previewInfoForPath(target, info.isDirectory());
+  const id = previewIdForPath(target);
+  const name = target.replace(/\\/g, "/").split("/").pop() || target;
+  return {
+    id,
+    path: target,
+    pathLabel: relativeLabel(target, roots),
+    name,
+    kind: preview.kind,
+    mime: preview.mime,
+    size: info.isDirectory() ? null : info.size,
+    safe: preview.safe,
+    warnings: preview.warnings,
+    urls: info.isDirectory() ? {} : { raw: `/api/preview/file/${encodeURIComponent(id)}${scopeQuery ? `?${scopeQuery}` : ""}` },
+    actions: ["preview", "download", "openInEditor", "copyPath"],
+  };
 }
 
 async function searchFilesWithEverything(root: string, query: string, limit: number) {
@@ -257,7 +375,17 @@ function getPin() { return resolveSecret("HARNESS_PIN"); }
 // Check if PIN auth is required (no value exposed)
 app.get("/api/auth/status", (c) => {
   const pin = getPin();
-  return c.json({ required: !!pin, setup: !pin, name: getUserName() });
+  const name = getUserName();
+  return c.json({ required: !!pin, setup: !pin && !name, pinEnabled: !!pin, needsName: !name, name });
+});
+
+// First-run identity setup — PIN is optional and can be enabled later.
+app.post("/api/auth/name", async (c) => {
+  const body = await c.req.json();
+  const name = body.name?.trim();
+  if (!name) return c.json({ error: "name required" }, 400);
+  setUserName(name);
+  return c.json({ ok: true, name });
 });
 
 // First-run setup — set PIN from UI, only if none exists yet
@@ -342,6 +470,17 @@ app.post("/api/auth/change-pin", async (c) => {
   return c.json({ ok: true });
 });
 
+// Disable PIN auth. Only works for PINs managed in the secrets file.
+app.post("/api/auth/disable-pin", async (c) => {
+  const body = await c.req.json();
+  const pin = body.pin?.trim();
+  if (!pin) return c.json({ error: "PIN is required" }, 400);
+  const ok = disablePin(pin);
+  if (!ok) return c.json({ error: "wrong PIN or PIN is managed by environment" }, 401);
+  pinSessions.clear();
+  return c.json({ ok: true });
+});
+
 // Token auth — skip if no HARNESS_TOKEN is set
 // Also allows PIN-derived session tokens
 app.use("/api/*", async (c, next) => {
@@ -369,6 +508,11 @@ app.use("/api/*", async (c, next) => {
 
   return c.json({ error: "unauthorized" }, 401);
 });
+
+function requireConfiguredFileApiAuth(c: any): Response | null {
+  if (AUTH_TOKEN || getPin()) return null;
+  return c.json({ error: "file APIs require HARNESS_TOKEN or HARNESS_PIN" }, 401);
+}
 
 // ── Health ──
 
@@ -1227,6 +1371,118 @@ app.get("/api/sessions/:id/events", (c) => {
   return streamSessionSSE(c, id, afterSeq);
 });
 
+// ── Multiplexed session events (SSE) ──
+// One connection carries catch-up + live events for MANY sessions, each tagged
+// with its session id. Replaces the one-stream-per-session model so the
+// browser's ~6-connection HTTP/1.1 cap can't be exhausted when many agents run.
+//
+// Wire format (all events carry their session id in the data envelope):
+//   event: catchup-start  data: {"sid":"..."}
+//   event: ev             data: {"sid":"...","seq":N,"ev":{...}}
+//   event: catchup-end    data: {"sid":"..."}
+//   event: done           data: {"sid":"..."}      (no live events coming for sid)
+//   event: ping           data: {}
+type MultiSpec = { id: string; after: number };
+
+function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
+  return sseResponse(c.req.raw, async (writer, signal) => {
+    // Serialize every write through one chain. Catch-up writes and live
+    // broadcast writes from independent sessions both target the same
+    // controller; without this, their byte chunks could interleave and corrupt
+    // the SSE framing.
+    let writeChain: Promise<void> = Promise.resolve();
+    const send = (event: string, obj: unknown): Promise<void> => {
+      writeChain = writeChain.then(() => writer.write(event, JSON.stringify(obj), ""));
+      return writeChain;
+    };
+
+    let resolve!: () => void;
+    const done = new Promise<void>((r) => { resolve = r; });
+    const keepAlive = setInterval(() => { void send("ping", {}); }, 30_000);
+    const unsubscribers: Array<() => void> = [];
+
+    for (const spec of specs) {
+      const sessionId = spec.id;
+      const afterSeq = Number.isFinite(spec.after) ? spec.after : 0;
+
+      // Catch-up from DB, bracketed per session so the client batch-renders it.
+      const pastEvents = getEvents(sessionId, afterSeq);
+      if (pastEvents.length > 0) {
+        await send("catchup-start", { sid: sessionId });
+        for (const evt of pastEvents) {
+          let data: any = null;
+          try { data = { ...JSON.parse(evt.data), _ts: evt.created_at }; } catch { /* skip malformed */ }
+          if (data) await send("ev", { sid: sessionId, seq: evt.seq, ev: data });
+        }
+        await send("catchup-end", { sid: sessionId });
+      }
+      const catchupLastSeq = pastEvents.length > 0 ? pastEvents[pastEvents.length - 1]!.seq : afterSeq;
+
+      const active = getActiveSession(sessionId);
+      if (active && active.status !== "error") {
+        // Restore in-flight streaming text/thinking not yet persisted.
+        if (
+          active.liveStream.seq > catchupLastSeq
+          && (active.liveStream.text || active.liveStream.thinking || active.liveStream.feed)
+        ) {
+          await send("ev", {
+            sid: sessionId,
+            seq: active.liveStream.seq,
+            ev: {
+              type: "system",
+              subtype: "live_snapshot",
+              text: active.liveStream.text,
+              thinking: active.liveStream.thinking,
+              feed: active.liveStream.feed,
+            },
+          });
+        }
+        // Live subscription — forward each broadcast event tagged with sid.
+        const sseWriter: SSEWriter = {
+          write(event: string, data: string, seqId: string) {
+            if (event === "done") return send("done", { sid: sessionId });
+            let ev: any;
+            try { ev = JSON.parse(data); } catch { return Promise.resolve(); }
+            return send("ev", { sid: sessionId, seq: Number(seqId) || 0, ev });
+          },
+          close() { /* per-session close is a no-op; the shared stream lives on */ },
+        };
+        unsubscribers.push(subscribe(sessionId, sseWriter));
+      } else {
+        // Settled / unknown session — tell the client no live events are coming
+        // for this sid so it can clear its catching-up state.
+        await send("done", { sid: sessionId });
+      }
+    }
+
+    const onAbort = () => {
+      clearInterval(keepAlive);
+      for (const unsub of unsubscribers) unsub();
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort);
+
+    await done;
+    signal.removeEventListener("abort", onAbort);
+    clearInterval(keepAlive);
+    for (const unsub of unsubscribers) unsub();
+  });
+}
+
+app.get("/api/events/multi", (c) => {
+  const raw = new URL(c.req.url).searchParams.get("sessions") ?? "[]";
+  let specs: MultiSpec[] = [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      specs = parsed
+        .filter((s) => s && typeof s.i === "string")
+        .map((s) => ({ id: s.i as string, after: Number(s.s) || 0 }));
+    }
+  } catch { /* malformed spec — empty stream, client will retry */ }
+  return streamMultiSessionSSE(c, specs);
+});
+
 // Global session lifecycle events (SSE) — used by SessionWeb for real-time updates
 app.get("/api/events/sessions", (c) => {
   return sseResponse(c.req.raw, async (writer, signal) => {
@@ -1723,7 +1979,123 @@ app.get("/api/files/search", async (c) => {
 
 // ── File Reader ──
 // Read a single file's text content by absolute path.
+app.get("/api/preview/manifest", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
+  const params = new URL(c.req.url).searchParams;
+  const raw = params.get("path");
+  if (!raw) return c.json({ error: "path required" }, 400);
+  const target = resolve(raw);
+  const roots = previewRoots(params);
+  const denied = assertPreviewAllowed(target, roots);
+  if (denied) return c.json({ error: denied }, 403);
+  try {
+    const scope = new URLSearchParams();
+    for (const key of ["cwd", "sessionId", "userProfile"]) {
+      const value = params.get(key);
+      if (value) scope.set(key, value);
+    }
+    return c.json(await buildPreviewManifest(target, roots, scope.toString()));
+  } catch (err: any) {
+    return c.json({ error: err.code === "ENOENT" ? "not found" : err.message }, 404);
+  }
+});
+
+app.get("/api/preview/file/:id", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
+  const target = pathFromPreviewId(c.req.param("id"));
+  if (!target) return c.json({ error: "invalid preview id" }, 400);
+  const params = new URL(c.req.url).searchParams;
+  const roots = previewRoots(params);
+  const denied = assertPreviewAllowed(target, roots);
+  if (denied) return c.json({ error: denied }, 403);
+  const file = Bun.file(target);
+  if (!(await file.exists())) return c.json({ error: "not found" }, 404);
+  const info = previewInfoForPath(target, false);
+  const size = file.size;
+  const rangeHeader = c.req.header("Range");
+  const baseHeaders = {
+    "Content-Type": info.mime,
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, max-age=60",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'unsafe-inline'; script-src 'none'; frame-ancestors 'self'",
+  };
+
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    if (match) {
+      const start = Math.max(0, Number(match[1]));
+      const end = Math.min(match[2] ? Number(match[2]) : size - 1, size - 1);
+      if (start <= end) {
+        const chunk = file.slice(start, end + 1);
+        return new Response(chunk, {
+          status: 206,
+          headers: {
+            ...baseHeaders,
+            "Content-Length": String(end - start + 1),
+            "Content-Range": `bytes ${start}-${end}/${size}`,
+          },
+        });
+      }
+    }
+  }
+
+  return new Response(file, {
+    headers: {
+      ...baseHeaders,
+      "Content-Length": String(size),
+    },
+  });
+});
+
+app.get("/api/artifact-shelf", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
+  const params = new URL(c.req.url).searchParams;
+  const roots = previewRoots(params);
+  const cwd = params.get("cwd") ? resolve(params.get("cwd")!) : roots[0] ?? null;
+  const limit = Math.max(1, Math.min(100, Number(params.get("limit") ?? 40) || 40));
+  if (!cwd || assertPreviewAllowed(cwd, roots)) return c.json({ cwd: null, items: [] });
+
+  const { readdir, stat } = await import("fs/promises");
+  const candidates = ["dist", "build", "out", "public", "exports", ".modus/artifacts"].map((rel) => join(cwd, rel));
+  const items: any[] = [];
+  const seen = new Set<string>();
+  async function scan(dir: string, depth: number) {
+    if (items.length >= limit || depth > 4 || assertPreviewAllowed(dir, roots)) return;
+    let entries: any[];
+    try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (items.length >= limit) break;
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
+      const p = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await scan(p, depth + 1);
+        continue;
+      }
+      if (!entry.isFile() || seen.has(p)) continue;
+      const info = previewInfoForPath(p);
+      if (!["html", "image", "audio", "video", "pdf"].includes(info.kind)) continue;
+      try {
+        const s = await stat(p);
+        seen.add(p);
+        const scope = new URLSearchParams();
+        if (cwd) scope.set("cwd", cwd);
+        const manifest = await buildPreviewManifest(p, roots, scope.toString());
+        items.push({ ...manifest, source: "recent", modifiedAt: s.mtimeMs });
+      } catch { /* skip vanished file */ }
+    }
+  }
+  for (const dir of candidates) await scan(dir, 0);
+  items.sort((a, b) => (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0));
+  return c.json({ cwd, items: items.slice(0, limit) });
+});
+
 app.get("/api/file-read", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
   const raw = new URL(c.req.url).searchParams.get("path");
   if (!raw) return c.json({ error: "path required" }, 400);
   const { resolve } = await import("path");
@@ -1738,6 +2110,8 @@ app.get("/api/file-read", async (c) => {
 });
 
 app.get("/api/file-serve", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
   const raw = new URL(c.req.url).searchParams.get("path");
   if (!raw) return c.json({ error: "path required" }, 400);
   const { resolve, extname } = await import("path");
@@ -1787,6 +2161,8 @@ app.get("/api/file-serve", async (c) => {
 });
 
 app.put("/api/file-write", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
   const { path: rawPath, content } = await c.req.json<{ path: string; content: string }>();
   if (!rawPath || typeof content !== "string") return c.json({ error: "path and content required" }, 400);
   const { resolve } = await import("path");
@@ -1797,6 +2173,8 @@ app.put("/api/file-write", async (c) => {
 });
 
 app.post("/api/file-create", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
   const { path: rawPath, content } = await c.req.json<{ path: string; content?: string }>();
   if (!rawPath) return c.json({ error: "path required" }, 400);
   const { resolve, dirname } = await import("path");
@@ -1809,6 +2187,8 @@ app.post("/api/file-create", async (c) => {
 });
 
 app.post("/api/dir-create", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
   const { path: rawPath } = await c.req.json<{ path: string }>();
   if (!rawPath) return c.json({ error: "path required" }, 400);
   const { resolve } = await import("path");
@@ -2934,6 +3314,8 @@ const MIME_MAP: Record<string, string> = {
 };
 
 app.get("/api/file/raw", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
   const filePath = new URL(c.req.url).searchParams.get("path");
   if (!filePath) return c.json({ error: "path required" }, 400);
 

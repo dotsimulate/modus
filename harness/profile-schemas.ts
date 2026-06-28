@@ -137,7 +137,18 @@ const ProviderSchema = z.string().refine(isKnownProvider, {
   message: "unknown provider",
 });
 
-const EffortSchema = z.enum(["off", "low", "medium", "high", "max"]);
+const EffortSchema = z.enum(["off", "low", "medium", "high", "xhigh", "max"]);
+
+const ProviderControlsSchema = z.object({
+  codex: z.object({
+    sandboxMode: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
+    webSearchMode: z.enum(["disabled", "cached", "live"]).optional(),
+    serviceTier: z.enum(["standard", "fast", "priority"]).optional(),
+  }).optional(),
+  claude: z.object({
+    permissionMode: z.enum(["default", "acceptEdits", "plan", "dontAsk"]).optional(),
+  }).optional(),
+}).catchall(z.unknown());
 
 // ── Agent Profile ──
 
@@ -157,6 +168,7 @@ export const ProfileSchema = z.object({
   promptMode: z.enum(["custom", "append"]).optional(),
   mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
   permissionPolicy: PermissionPolicySchema.optional(),
+  providerControls: ProviderControlsSchema.optional(),
   ui: ProfileUiSchema.optional(),
   contextWindow: z.number().int().positive().optional(),
   maxOutputTokens: z.number().int().positive().optional(),

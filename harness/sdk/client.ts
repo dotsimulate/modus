@@ -43,6 +43,8 @@ import type {
   FileDiff,
   BrowseResult,
   FileSearchResponse,
+  PreviewManifest,
+  ArtifactShelfResponse,
   PromptListItem,
   RenderResult,
   SessionStats,
@@ -168,9 +170,14 @@ export class ModusClient {
 
   // ── Auth ──
   /** Checks whether auth is required, whether a PIN has been set up, and the current account name. No auth required. */
-  async authStatus(): Promise<{ required: boolean; setup: boolean; name: string | null }> {
+  async authStatus(): Promise<{ required: boolean; setup: boolean; pinEnabled?: boolean; needsName?: boolean; name: string | null }> {
     const res = await globalThis.fetch(`${this.url}/api/auth/status`);
     return res.json();
+  }
+  /** Sets the browser display name without enabling PIN auth. */
+  async setUserName(name: string): Promise<void> {
+    const res = await globalThis.fetch(`${this.url}/api/auth/name`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    if (!res.ok) throw new Error("Name setup failed");
   }
   /** Sets up a new PIN for first-time auth and returns a bearer token. */
   async setupNewPin(pin: string, name?: string): Promise<string> {
@@ -199,6 +206,11 @@ export class ModusClient {
   async changePin(oldPin: string, newPin: string): Promise<void> {
     const res = await this.fetch("/api/auth/change-pin", { method: "POST", body: JSON.stringify({ oldPin, newPin }) });
     if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error || "Failed to change PIN"); }
+  }
+  /** Disables browser PIN auth. Throws if the PIN is wrong or environment-managed. */
+  async disablePin(pin: string): Promise<void> {
+    const res = await this.fetch("/api/auth/disable-pin", { method: "POST", body: JSON.stringify({ pin }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error || "Failed to disable PIN"); }
   }
   /** Checks server health. No auth required. */
   async healthCheck(): Promise<{ status: string; uptime: number }> { return (await globalThis.fetch(`${this.url}/health`)).json(); }
@@ -627,6 +639,30 @@ export class ModusClient {
     const r = await this.fetch(`/api/files/search?${p}`);
     if (!r.ok) throw new Error("file search failed");
     return r.json();
+  }
+  /** Returns safe preview metadata and a scoped raw URL for a local path. */
+  async previewManifest(path: string, opts?: { cwd?: string; sessionId?: string; userProfile?: string }): Promise<PreviewManifest> {
+    const p = new URLSearchParams({ path });
+    if (opts?.cwd) p.set("cwd", opts.cwd);
+    if (opts?.sessionId) p.set("sessionId", opts.sessionId);
+    if (opts?.userProfile) p.set("userProfile", opts.userProfile);
+    return (await this.fetchOrThrow(`/api/preview/manifest?${p}`)).json();
+  }
+  /** Builds a browser-loadable preview URL from a manifest raw URL, adding query-token auth when needed. */
+  previewUrl(rawUrl: string): string {
+    if (!rawUrl) return "";
+    const sep = rawUrl.includes("?") ? "&" : "?";
+    const tp = this.tokenParam();
+    return `${this.url}${rawUrl}${tp ? `${sep}${tp}` : ""}`;
+  }
+  /** Lists recent previewable project/session outputs for the artifact shelf. */
+  async artifactShelf(opts?: { cwd?: string; sessionId?: string; userProfile?: string; limit?: number }): Promise<ArtifactShelfResponse> {
+    const p = new URLSearchParams();
+    if (opts?.cwd) p.set("cwd", opts.cwd);
+    if (opts?.sessionId) p.set("sessionId", opts.sessionId);
+    if (opts?.userProfile) p.set("userProfile", opts.userProfile);
+    if (opts?.limit) p.set("limit", String(opts.limit));
+    return (await this.fetch(`/api/artifact-shelf?${p}`)).json();
   }
 
   // ── Memory ──

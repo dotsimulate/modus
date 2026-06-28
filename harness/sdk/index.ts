@@ -113,6 +113,10 @@ export type {
   BrowseResult,
   FileSearchHit,
   FileSearchResponse,
+  PreviewKind,
+  PreviewManifest,
+  ArtifactShelfItem,
+  ArtifactShelfResponse,
   // Notes
   NoteListItem,
   NoteDetail,
