@@ -2998,6 +2998,7 @@ import {
   reloadActions, cancelExecution, startNewExecution,
   addActionTag, removeActionTag, getActionScopeKey,
 } from "./action-runner";
+import { initWakeScheduler } from "./wake-scheduler";
 import { getActionRuns as dbGetActionRuns, clearActionRuns, getExecutions, getRunsByExecution } from "./db";
 
 function actionResolveQuery(c: any): { userProfile?: string; cwd?: string } {
@@ -4225,6 +4226,7 @@ const protocol = HARNESS_TLS_CERT && HARNESS_TLS_KEY ? "https" : "http";
 console.log(`Agent harness listening on ${protocol}://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
 
 initActions();
+initWakeScheduler();
 loadPrompts();
 startSessionReaper();
 startMemoryWatchdog();

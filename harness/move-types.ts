@@ -1,4 +1,5 @@
 import type { TurnContent } from "./db";
+import type { WakeWhen, WakeHandle } from "./harness-context";
 
 /**
  * Move Types — shared contracts for the move system.
@@ -55,6 +56,14 @@ export interface MoveConfig {
 
   // ── Execution mode ──
   mode?: "inline" | "branch" | "background";  // default: "inline"
+
+  // ── Gather / prepare timing ──
+  /** Override the gather() timeout (ms). Default 10000. Raise only for gathers that
+   *  legitimately need longer — prefer prepare() for heavy setup so gather() stays fast. */
+  gatherTimeoutMs?: number;
+  /** Budget (ms) for the optional prepare() hook (heavy setup before the agent starts).
+   *  Default 120000. */
+  prepareTimeoutMs?: number;
 
   // ── Persistent (ambient gather) ──
   /** When true, this move runs as an ambient gather — no token/submit lifecycle.
@@ -175,6 +184,11 @@ export interface MoveInput {
 // ── Move Module (context.ts exports) ──
 
 export interface MoveModule {
+  /** Optional heavy-setup hook run BEFORE gather() on explicit activation (activateMove /
+   *  activateAttachedMove): launch a program, poll until an MCP is reachable, etc. Awaited
+   *  with its own longer budget (prepareTimeoutMs, default 120s). Keep gather() fast — it
+   *  just builds the prompt; do the slow readiness work here. */
+  prepare?(ctx: MoveContext): Promise<void>;
   /** Gather context for this move. Return null to skip/bail (no injection this turn). */
   gather?(ctx: MoveContext): Promise<string | null>;
   onSubmit?(
@@ -537,6 +551,35 @@ export interface MoveApiContext {
   notify: (message: string, emit?: { type: string; [key: string]: unknown }) => void;
   /** Send a message to any existing session in this project. */
   sendMessage: (sessionId: string, message: string) => Promise<void>;
+
+  // ── Orchestration parity (sourced from the Harness Context — closes the
+  //    move-handler asymmetry: handlers can now do what gather()/onSubmit() could) ──
+
+  /** Spawn a new session. */
+  createSession: (opts: {
+    profile: string;
+    prompt: string;
+    cwd?: string;
+    userProfile?: string;
+    tags?: string[];
+  }) => Promise<string>;
+  /** Trigger an action by name. */
+  triggerAction: (actionName: string) => Promise<void>;
+  /** Activate a move (inline/branch/background). Returns the activation result. */
+  activateMove: (opts: {
+    moveName: string;
+    inputs?: Record<string, unknown>;
+    sessionId?: string;
+    modeOverride?: "inline" | "branch" | "background";
+  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
+  /** Watch a session's assistant turns. Returns an unsubscribe function. */
+  watchSessionTurns: (sessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>) => () => void;
+  /** Wake a session (id or tag) now, or on a schedule (at/every/onEvent). Fans out to a tagged team. */
+  wake: (target: string, content: string, when?: WakeWhen) => Promise<WakeHandle>;
+  /** Send arbitrary content to a named channel (Discord/Slack/file). The egress primitive. */
+  channels: {
+    send: (channel: string, payload: { text: string; data?: Record<string, unknown> }) => Promise<{ ok: boolean; error?: string }>;
+  };
 
   /** Read from the process-scoped instance store. Survives module reloads. */
   store: <T = unknown>() => T | undefined;

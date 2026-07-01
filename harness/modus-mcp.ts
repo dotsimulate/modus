@@ -24,6 +24,7 @@ import { handleSubmit, isMoveApiToken, handleMoveApiSubmit } from "./move-runner
 import { isMissionToken, handleMissionCommand } from "./mission-runner";
 import { addSessionTag, getSession } from "./db";
 import { broadcastUiEvent } from "./session-manager";
+import { buildHarnessContext, type HarnessContext } from "./harness-context";
 import { join } from "path";
 import { readdir, readFile, writeFile, mkdir } from "fs/promises";
 
@@ -145,6 +146,26 @@ async function handleMoveSubmit(token: string, data: Record<string, unknown>) {
 // ── API token infrastructure ──
 
 type ApiHandler = (sessionId: string, data: Record<string, unknown>) => Promise<{ ok: boolean; message?: string; error?: string }>;
+
+/** New-shape api-handler op: receives the full Harness Context instead of a bare sessionId. */
+type OpHandler = (ctx: HarnessContext, data: Record<string, unknown>) => Promise<{ ok: boolean; message?: string; error?: string }>;
+
+/** Adapt a new-shape op (ctx, data) into the uniform (sessionId, data) registry entry,
+ *  building a Harness Context per call. Project-local handlers default to "reviewed" trust. */
+function wrapOpHandler(op: string, fn: OpHandler, cwd: string): ApiHandler {
+  return async (sessionId, data) => {
+    const ctx = buildHarnessContext({
+      kind: "api-handler",
+      name: op,
+      sessionId: sessionId || null,
+      caller: "agent",
+      cwd,
+      userProfile: getSession(sessionId)?.user_profile ?? undefined,
+      trust: "reviewed",
+    });
+    return fn(ctx, data);
+  };
+}
 
 const apiHandlers = new Map<string, ApiHandler>();
 
@@ -356,14 +377,25 @@ async function loadProjectHandler(cwd: string, op: string): Promise<ApiHandler |
     const filePath = join(handlersDir, file);
     try {
       const mod = await import(filePath);
-      // Support two export shapes:
-      // 1. Named `handlers` map: export const handlers = { "op-name": fn }
-      // 2. Individual named exports that are functions (excluding non-handler exports)
+      // Three export shapes, disambiguated by export KEY (never by arity — both
+      // (sessionId, data) and (ctx, data) have length 2, so arity cannot distinguish):
+      //   - `ops`      → NEW (ctx: HarnessContext, data) — full capability context
+      //   - `handlers` → OLD (sessionId, data)
+      //   - named fns  → OLD (sessionId, data), kebab-cased — only when no ops/handlers
+      let matched = false;
+      if (mod.ops && typeof mod.ops === "object") {
+        for (const [name, fn] of Object.entries(mod.ops)) {
+          if (typeof fn === "function") cwdHandlers.set(name, wrapOpHandler(name, fn as OpHandler, cwd));
+        }
+        matched = true;
+      }
       if (mod.handlers && typeof mod.handlers === "object") {
         for (const [name, fn] of Object.entries(mod.handlers)) {
           if (typeof fn === "function") cwdHandlers.set(name, fn as ApiHandler);
         }
-      } else {
+        matched = true;
+      }
+      if (!matched) {
         for (const [name, fn] of Object.entries(mod)) {
           if (typeof fn === "function" && name !== "default") {
             // Convert camelCase/snake_case export names to kebab-case op names

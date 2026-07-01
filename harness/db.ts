@@ -215,6 +215,29 @@ try {
   db.run(`ALTER TABLE action_runs ADD COLUMN execution_id INTEGER REFERENCES action_executions(id)`);
 } catch { /* column already exists */ }
 
+// ── Scheduled Wakes (ctx.sessions.wake with at/every/onEvent) ──
+// One-shot {at} and recurring {every} fire from the wake-scheduler tick loop;
+// {onEvent} wakes match against session lifecycle events. Persisted so agent-
+// registered wakes survive restart.
+db.run(`
+  CREATE TABLE IF NOT EXISTS scheduled_wakes (
+    id           TEXT PRIMARY KEY,
+    target       TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    kind         TEXT NOT NULL,            -- 'at' | 'every' | 'onEvent'
+    fire_at      INTEGER,                  -- next fire time (ms) for at/every
+    every_ms     INTEGER,                  -- interval for recurring
+    on_event     TEXT,                     -- JSON SessionTriggerEvent for onEvent
+    origin_kind  TEXT,                     -- HarnessSelf.kind that scheduled it
+    origin_name  TEXT,                     -- HarnessSelf.name
+    cwd          TEXT,
+    user_profile TEXT,
+    created_at   INTEGER NOT NULL,
+    last_fired_at INTEGER
+  )
+`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_scheduled_wakes_fire ON scheduled_wakes(fire_at)`);
+
 function parseTempSessionCreatedAt(sessionId: string): number | null {
   if (!sessionId.startsWith("ses-")) return null;
   const rest = sessionId.slice(4);
@@ -762,6 +785,80 @@ export function getSessionByTag(tag: string): SessionRow | null {
     `SELECT * FROM sessions WHERE tags LIKE $pattern ESCAPE '\\' AND tags NOT LIKE '%"archived"%' ORDER BY last_message_at DESC LIMIT 1`,
   ).get({ $pattern: pattern }) as SessionRow | null;
   return row ?? null;
+}
+
+/** Find ALL non-archived sessions that have a given tag (newest first).
+ *  Used by ctx.sessions.wake to fan a message out to a tagged "team" of sessions. */
+export function getSessionsByTag(tag: string, limit = 100): SessionRow[] {
+  const pattern = `%"${tag.replace(/[%_]/g, "\\$&")}"%`;
+  return db.prepare(
+    `SELECT * FROM sessions WHERE tags LIKE $pattern ESCAPE '\\' AND tags NOT LIKE '%"archived"%' ORDER BY last_message_at DESC LIMIT $limit`,
+  ).all({ $pattern: pattern, $limit: limit }) as SessionRow[];
+}
+
+// ── Scheduled Wakes CRUD ──
+
+export type ScheduledWakeRow = {
+  id: string;
+  target: string;
+  content: string;
+  kind: "at" | "every" | "onEvent";
+  fire_at: number | null;
+  every_ms: number | null;
+  on_event: string | null;
+  origin_kind: string | null;
+  origin_name: string | null;
+  cwd: string | null;
+  user_profile: string | null;
+  created_at: number;
+  last_fired_at: number | null;
+};
+
+export function insertScheduledWake(row: {
+  id: string;
+  target: string;
+  content: string;
+  kind: "at" | "every" | "onEvent";
+  fireAt?: number | null;
+  everyMs?: number | null;
+  onEvent?: string | null;
+  originKind?: string | null;
+  originName?: string | null;
+  cwd?: string | null;
+  userProfile?: string | null;
+}): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO scheduled_wakes
+      (id, target, content, kind, fire_at, every_ms, on_event, origin_kind, origin_name, cwd, user_profile, created_at, last_fired_at)
+    VALUES
+      ($id, $target, $content, $kind, $fire_at, $every_ms, $on_event, $origin_kind, $origin_name, $cwd, $user_profile, $created_at, NULL)
+  `).run({
+    $id: row.id,
+    $target: row.target,
+    $content: row.content,
+    $kind: row.kind,
+    $fire_at: row.fireAt ?? null,
+    $every_ms: row.everyMs ?? null,
+    $on_event: row.onEvent ?? null,
+    $origin_kind: row.originKind ?? null,
+    $origin_name: row.originName ?? null,
+    $cwd: row.cwd ?? null,
+    $user_profile: row.userProfile ?? null,
+    $created_at: Date.now(),
+  });
+}
+
+export function listScheduledWakes(): ScheduledWakeRow[] {
+  return db.prepare(`SELECT * FROM scheduled_wakes`).all() as ScheduledWakeRow[];
+}
+
+export function updateScheduledWakeFireAt(id: string, fireAt: number | null, lastFiredAt: number): void {
+  db.prepare(`UPDATE scheduled_wakes SET fire_at = $fire_at, last_fired_at = $last_fired_at WHERE id = $id`)
+    .run({ $id: id, $fire_at: fireAt, $last_fired_at: lastFiredAt });
+}
+
+export function deleteScheduledWake(id: string): void {
+  db.prepare(`DELETE FROM scheduled_wakes WHERE id = $id`).run({ $id: id });
 }
 
 /** Remove a tag if present */

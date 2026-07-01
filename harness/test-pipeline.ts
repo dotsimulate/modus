@@ -208,6 +208,8 @@ describe("type shapes", () => {
       }),
       svgToPngBase64: () => null,
       createTerminal: () => ({ id: "test", write: () => {}, close: () => {} }) as any,
+      sessions: {} as any,
+      channels: {} as any,
     };
     expect(ctx.attempt).toBe(2);
     expect(ctx.executionId).toBe(42);

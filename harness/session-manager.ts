@@ -18,7 +18,7 @@
 
 import {
   upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
-  getStoredSessionConfig,
+  getStoredSessionConfig, getSessionsByTag,
   copyEventsToSession, findAssistantUuid, clearBranchFields,
   addSessionTag, parseTags, getMaxSeq, insertSessionArtifact, insertMessage,
 } from "./db";
@@ -64,6 +64,14 @@ function getGatherAmbientContext() {
     _gatherAmbientContext = require("./move-runner").gatherAmbientContext;
   }
   return _gatherAmbientContext!;
+}
+
+let _onWakeSessionEvent: typeof import("./wake-scheduler").onWakeSessionEvent | null = null;
+function getOnWakeSessionEvent() {
+  if (!_onWakeSessionEvent) {
+    _onWakeSessionEvent = require("./wake-scheduler").onWakeSessionEvent;
+  }
+  return _onWakeSessionEvent!;
 }
 
 let _activateMoveBindings: typeof import("./move-runner").activateMoveBindings | null = null;
@@ -436,20 +444,24 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
         const dbRow = getSession(session.sessionId);
         const tags = dbRow ? parseTags(dbRow.tags) : [];
         console.log(`[session-trigger] emission: status=${updates.status} exchange=${session.exchangeCount} session=${session.sessionId.slice(0, 12)}…`);
+        const assistantEvent = { role: "assistant", round: session.exchangeCount, at: "end" } as const;
+        const assistantSessionInfo = {
+          id: session.sessionId, userProfile: session.userProfile, tags,
+          preview: session.preview, title: dbRow?.title,
+          messageCount: persistedMessageCount,
+          lastResponse: updates.lastResponse,
+          assistantSeq: session.seq,
+          assistantMessageUuid: findAssistantUuid(session.sessionId, session.seq) ?? undefined,
+        };
         try {
-          getOnSessionEvent()(
-            { role: "assistant", round: session.exchangeCount, at: "end" },
-            {
-              id: session.sessionId, userProfile: session.userProfile, tags,
-              preview: session.preview, title: dbRow?.title,
-              messageCount: persistedMessageCount,
-              lastResponse: updates.lastResponse,
-              assistantSeq: session.seq,
-              assistantMessageUuid: findAssistantUuid(session.sessionId, session.seq) ?? undefined,
-            },
-          );
+          getOnSessionEvent()(assistantEvent, assistantSessionInfo);
         } catch (err) {
           console.error(`[session-trigger] onSessionEvent failed:`, err);
+        }
+        try {
+          getOnWakeSessionEvent()(assistantEvent, assistantSessionInfo);
+        } catch (err) {
+          console.error(`[wake] onWakeSessionEvent failed:`, err);
         }
       }
 
@@ -1250,6 +1262,43 @@ export async function interactWithSession(opts: InteractSessionOpts): Promise<In
   };
 }
 
+export type DeliverResult = { delivered: string[]; missed: boolean };
+
+/**
+ * Deliver a message to one or more existing sessions identified by `target`,
+ * which is either a session id or a tag. A session id (live or persisted)
+ * delivers to that one session; otherwise `target` is treated as a tag and the
+ * message fans out to every non-archived session carrying it. Idle targets
+ * start a turn (= wake); running targets queue (drained at the turn's end).
+ *
+ * Never throws — missing targets are logged and reported via `missed`. Shared by
+ * webhook session routing (action-runner) and ctx.sessions.wake (harness-context).
+ */
+export async function deliverToSession(target: string, content: string): Promise<DeliverResult> {
+  const ids: string[] = [];
+  if (getActiveSession(target) || getSession(target)) {
+    ids.push(target);
+  } else {
+    for (const row of getSessionsByTag(target)) ids.push(row.id);
+  }
+
+  if (ids.length === 0) {
+    console.warn(`[deliver] no session matched target "${target}" — skipping delivery`);
+    return { delivered: [], missed: true };
+  }
+
+  const delivered: string[] = [];
+  for (const id of ids) {
+    try {
+      await interactWithSession({ sessionId: id, prompt: content, createIfMissing: false });
+      delivered.push(id);
+    } catch (err) {
+      console.error(`[deliver] failed to deliver to session ${id}:`, err);
+    }
+  }
+  return { delivered, missed: delivered.length === 0 };
+}
+
 // ── Session Control ──
 
 export type QueueMessageMoveBinding = { name: string; inputs?: Record<string, unknown> };
@@ -1382,10 +1431,14 @@ async function _queueMessageAsync(
   const userRound = session.exchangeCount + 1;
   const dbRow = getSession(sessionId);
   const tags = dbRow ? parseTags(dbRow.tags) : [];
-  getOnSessionEvent()(
-    { role: "user", round: userRound, at: "start" },
-    { id: sessionId, userProfile: session.userProfile, tags, preview: session.preview, title: dbRow?.title, messageCount: session.exchangeCount * 2 },
-  );
+  const userEvent = { role: "user", round: userRound, at: "start" } as const;
+  const userSessionInfo = { id: sessionId, userProfile: session.userProfile, tags, preview: session.preview, title: dbRow?.title, messageCount: session.exchangeCount * 2 };
+  getOnSessionEvent()(userEvent, userSessionInfo);
+  try {
+    getOnWakeSessionEvent()(userEvent, userSessionInfo);
+  } catch (err) {
+    console.error(`[wake] onWakeSessionEvent failed:`, err);
+  }
 
   // Delegate to provider (provider sets status to "running" internally)
   // Include stored config overrides so provider init events reflect current state
