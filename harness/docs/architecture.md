@@ -1,9 +1,9 @@
 ---
 title: MO Architecture
 audience: agents
-lastUpdated: 2026-03-13
+lastUpdated: 2026-06-28
 lastCommit: bae0487
-covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
+covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
 
 # MO Architecture
@@ -46,9 +46,11 @@ agent_dev_zone/
     action-types.ts        # Action type contracts
     move-runner.ts         # Move activation, token management, submit handling
     move-types.ts          # Move type contracts
+    harness-context.ts     # Unified server-side capability contract (HarnessContext)
+    wake-scheduler.ts      # Scheduled + event-driven session wakes (at/every/onEvent)
     modus-mcp.ts           # Built-in MCP server (modus_submit tool)
     prompt-loader.ts       # Handlebars template rendering for moves
-    notify.ts              # Notification channels (webhook dispatch)
+    notify.ts              # Notification channels (egress primitive + action notify)
     watchdog.ts            # Process health monitoring
     git.ts                 # Git operations for session context
     profiles/              # Configuration files (see profiles doc)
@@ -125,6 +127,22 @@ The last five are all PI agent variants — a lightweight agent loop that works
 with any OpenAI-compatible API.
 
 See [Providers](./providers.md).
+
+## Harness Context
+
+The **Harness Context** (`harness-context.ts:HarnessContext`) is the unified
+server-side capability contract. Moves, actions, and api-handlers all drive the
+same engines (session-manager, action-runner, move-runner, db, notify) through one
+namespaced object — `sessions`, `channels`, `moves`, `actions`, `state`, `db`,
+`secrets`, `shell`, `artifacts`, `terminal`, `log` — built by
+`buildHarnessContext(self)`. Capability gating (builtin/reviewed/experimental
+trust) is enforced at each namespace method boundary.
+
+The historic surfaces (`HarnessBridge`, `MoveApiContext`, `ActionContext`, and the
+api-handler signature) are now thin adapters over this contract — same call sites,
+same behavior. Scheduled and event-driven session wakes are owned by
+`wake-scheduler.ts:scheduleWake`. See [Harness Context](./harness-context.md) and
+[Notify & Channels](./notify.md).
 
 ## HTTP API
 
@@ -209,6 +227,8 @@ button re-centers the view on the newest session.
 - [Providers](./providers.md) — execution backends and the SessionProvider interface
 - [Actions](./actions.md) — automation: triggers, cycles, verify, artifacts
 - [Moves](./moves.md) — user-invoked structured operations via modus_submit
+- [Harness Context](./harness-context.md) — unified server-side capability contract + session wake/mailbox
+- [Notify & Channels](./notify.md) — channel egress primitive, webhook body shaping, action notify
 - [Pages](./pages.md) — project-scoped custom pages, layouts, and page widget references
 - [Panels](./panels.md) — side-panel architecture, widget registry, and persisted panel trees
 - [Project UI](./project-ui.md) — theme/font system in .modus/ui/

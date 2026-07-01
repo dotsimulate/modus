@@ -1,8 +1,8 @@
 ---
 title: Moves
 audience: agents
-lastUpdated: 2026-04-08
-covers: harness/move-runner.ts harness/move-types.ts
+lastUpdated: 2026-06-28
+covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts
 ---
 
 # Moves
@@ -61,7 +61,8 @@ an API token and instance id.
 5. Agent receives prompt, does work, calls `modus_submit(token, data)`
 6. Harness validates data against schema (if defined)
 7. If invalid: retry feedback sent to agent (up to maxAttempts)
-8. If valid: `onSubmit()` runs — can create sessions, trigger actions, notify
+8. If valid: `onSubmit()` runs — can create sessions, trigger actions, and return a
+   `SubmitResult` whose optional `notify: { channel, body }` is dispatched to a real channel
 9. Token marked completed
 
 ## MoveConfig Key Fields
@@ -73,6 +74,8 @@ an API token and instance id.
 - `submit.maxAttempts` — cap on invalid submissions (default 3)
 - `agentProfile` — agent profile for branch/background spawned sessions
 - `mode` — `"inline" | "branch" | "background"` (default `"inline"`)
+- `gatherTimeoutMs` — override the `gather()` timeout (default 10000)
+- `prepareTimeoutMs` — budget for the optional `prepare()` hook (default 120000)
 - `persistent` — ambient gather mode; mutually distinct from branch/background execution
 - `session.profileOverride` — swap agent profile for this move
 - `session.settingsOverride` — fine-grained session settings for the spawned/inline session (provider, model, effort, maxTurns, tools, disallowedTools, toolStates, providerControls, loadProjectSettings)
@@ -110,8 +113,14 @@ an API token and instance id.
 If `api.state.persist` is true, state files live in `.modus/moves/<name>/state/<instanceId>.json`
 with `_registry.json` storing token-to-instance bindings for restart rehydration.
 
-`ctx.notify(message, emit?)` pushes a message into the agent's session. Optional `emit`
-injects a typed signal prefix: `[modus:{type}] {json}\n{message}`.
+`ctx.notify(message, emit?)` pushes a message into the agent's session (session-inject — NOT
+a channel). Optional `emit` injects a typed signal prefix: `[modus:{type}] {json}\n{message}`.
+
+**Orchestration parity**: `MoveApiContext` also exposes the same engine operations
+`gather()`/`onSubmit()` had, sourced from the Harness Context — `createSession`,
+`triggerAction`, `activateMove`, `watchSessionTurns`, `wake(target, content, when?)`, and
+`channels.send(channel, { text, data? })` for channel egress (Discord/Slack/file). See
+[Harness Context](./harness-context.md) and [Notify & Channels](./notify.md).
 
 `listInstances(states)` export in context.ts customizes instance labels for the resume UI.
 
@@ -160,6 +169,9 @@ the page and its widget/API behavior.
 
 `context.ts` can export more than `gather()` and `onSubmit()`:
 
+- `prepare(ctx)` — optional heavy-setup hook run **before** `gather()` on explicit activation
+  (launch a program, poll until an MCP is reachable). Has its own longer budget
+  (`prepareTimeoutMs`, default 120s) so `gather()` stays fast — it just builds the prompt.
 - `handlers` — API op handlers for `api` moves
 - `listInstances()` — custom labels for resume UIs
 - `onAssistantTurn()` — hook invoked on assistant round end for active API move instances
@@ -173,7 +185,9 @@ instance state, and an `emit()` helper that broadcasts `move-widget-event` UI ev
 - `session` — lastAssistantText, seq, profile, exchangeCount
 - `db` — read-only queries (listSessions, search, getMoveHistory, getSessionMessages)
 - `run(cmd)` — shell execution
-- `harness` — HarnessBridge (createSession, sendMessage, triggerAction, notify)
+- `harness` — HarnessBridge (createSession, sendMessage, triggerAction, notify, addSessionTag,
+  listMoves, activateMove, watchSessionTurns). `harness.notify({ channel, body })` now routes
+  to a real channel via the Harness Context (was a console.log stub). See [Notify & Channels](./notify.md).
 - `secrets` — safe secret/env resolution helpers
 - `meta(key, value)` — attach metadata (stored as gatheredContext for tracing)
 - `token` — short-lived submit token (available during gather)

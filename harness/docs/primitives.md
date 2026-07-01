@@ -1,7 +1,7 @@
 ---
 title: Core Primitives
 audience: agents
-lastUpdated: 2026-03-16
+lastUpdated: 2026-06-28
 lastCommit: a9adf68
 covers: harness/db.ts harness/session-manager.ts harness/index.ts
 ---
@@ -47,6 +47,15 @@ session turn (seq + optional target UUID). Created by action `afterRun` via
 **Session watchers**: `watchSession(id)` returns a promise that resolves when the session
 reaches idle/done/error — used by action-runner instead of polling. `watchSessionExchanges()`
 fires a callback on each assistant round end.
+
+**Wake / mailbox**: `ctx.sessions.wake(target, content, when?)` (Harness Context) delivers a
+message to a `target` that is a session id **or** a tag (tags fan out to every non-archived
+session carrying them — a "waiting team"). `when` omitted/`"now"` delivers immediately via
+`session-manager.deliverToSession` (idle targets wake into a turn; running targets queue).
+Scheduled forms — `{ at }` (one-shot), `{ every }` (recurring), `{ onEvent }` (fire on a
+matching session lifecycle event) — are owned by `wake-scheduler.ts:scheduleWake`, which
+persists them in the `scheduled_wakes` table so agent-registered wakes survive restart.
+See [Harness Context](./harness-context.md).
 
 **Message content**: `getSessionMessages(sessionId)` in `db.ts` reconstructs structured
 turns from raw events. Returns `TurnContent[]` — each turn has `role`, `seq`, `text`,
@@ -167,3 +176,9 @@ User Profile ──selects──→ Agent Profile ──configures──→ Sess
 - Actions can chain: one action's completion triggers another
 - Session events can trigger actions (session triggers)
 - User profiles scope which actions and agent profiles are visible
+
+Server-side extension code — moves (`gather`/`onSubmit`/`handlers`), actions
+(`gather`/`verify`/`afterRun`), and `.modus/api-handlers/` ops — reaches these engines
+through one unified capability contract, the Harness Context. The historic per-surface
+objects (`HarnessBridge`, `MoveApiContext`, `ActionContext`) are thin adapters over it.
+See [Harness Context](./harness-context.md).

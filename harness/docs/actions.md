@@ -1,8 +1,8 @@
 ---
 title: Actions
 audience: agents
-lastUpdated: 2026-04-08
-covers: harness/action-runner.ts harness/action-types.ts
+lastUpdated: 2026-06-28
+covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts
 ---
 
 # Actions
@@ -75,6 +75,17 @@ incoming payload contains that field, the runner looks for an existing session
 tagged as `${actionName}:${sessionKey}:${value}`. If found, it sends the payload
 as a follow-up message to that session instead of creating a new run. Otherwise
 it creates a new run and tags the new session for future routing.
+
+**Harness Context capabilities**: `ActionContext` exposes `ctx.sessions` (spawn / message /
+`wake` / `watchTurns` / tag sessions) and `ctx.channels` (`send(channel, { text, data? })` —
+egress to Discord/Slack/file), sourced from the unified Harness Context. These are gated by
+the action's trust/capabilities. See [Harness Context](./harness-context.md) and
+[Notify & Channels](./notify.md).
+
+**Trust & capabilities**: `ActionConfig.capabilities` (shell/session/action/notify/file) and
+`ActionConfig.trust` (`"builtin" | "reviewed" | "experimental"`) gate those Harness Context
+operations at the namespace boundary. When `trust` is omitted it defaults by origin: harness
+origin → `builtin` (fully trusted), project origin → `reviewed` (enforced as declared).
 
 **Origin**: `origin` (`"harness"` or `"project"`) is set automatically on load.
 Returned by `GET /api/actions` so callers know where the action came from.
