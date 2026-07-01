@@ -254,6 +254,8 @@ export const GlobalConfigSchema = z.object({
       url: z.string(),
       method: z.string().optional(),
       headers: z.record(z.string(), z.string()).optional(),
+      bodyTemplate: z.string().optional(),
+      contentField: z.string().optional(),
     }),
     z.object({
       type: z.literal("file"),

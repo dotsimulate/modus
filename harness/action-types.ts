@@ -10,6 +10,9 @@
  *   - context.ts   → ActionModule (gather + optional afterRun)
  */
 
+import type { MoveCapabilities } from "./move-types";
+import type { HarnessSessions, HarnessChannels } from "./harness-context";
+
 // ── Trigger Types ──
 
 export type IntervalTrigger = {
@@ -138,6 +141,12 @@ export interface ActionConfig {
 
   // ── UI preferences (managed by frontend) ──
   preferences?: Record<string, boolean>;
+
+  // ── Capability + trust (parity with moves; gates ctx.sessions / ctx.channels) ──
+  /** Runtime capability declaration (shell/session/action/notify/file). */
+  capabilities?: MoveCapabilities;
+  /** Trust tier. When omitted: harness origin → "builtin", project origin → "reviewed". */
+  trust?: "builtin" | "reviewed" | "experimental";
 }
 
 // ── Artifacts ──
@@ -262,6 +271,12 @@ export interface ActionContext {
   // ── Utilities ──
   /** Render an SVG file to a base64-encoded PNG string. Returns null on failure. */
   svgToPngBase64(svgPath: string, width?: number): string | null;
+
+  // ── Harness Context capabilities (orchestration + egress) ──
+  /** Spawn/message/wake sessions, watch turns, tag — gated by the action's trust/capabilities. */
+  sessions: HarnessSessions;
+  /** Send content to a named channel (Discord/Slack/file). */
+  channels: HarnessChannels;
 }
 
 /** Handle returned by ActionContext.createTerminal() */

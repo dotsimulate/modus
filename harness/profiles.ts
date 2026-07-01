@@ -240,7 +240,19 @@ export type ResolvedProfilePrompt = {
 };
 
 export type NotificationChannel =
-  | { type: "webhook"; url: string; method?: string; headers?: Record<string, string> }
+  | {
+      type: "webhook";
+      url: string;
+      method?: string;
+      headers?: Record<string, string>;
+      /** Shape the webhook JSON body. `{text}` is replaced with the (JSON-escaped) message,
+       *  `{data}` with the JSON-stringified data object. Example (Discord): `{"content":"{text}"}`,
+       *  (Slack): `{"text":"{text}"}`. When set, overrides the default body shape. */
+      bodyTemplate?: string;
+      /** Shorthand: wrap the text under this single JSON key (e.g. "content" → `{"content": text, ...data}`).
+       *  Ignored when `bodyTemplate` is set. */
+      contentField?: string;
+    }
   | { type: "file"; path: string };
 
 export type ClientExtensionsConfig = {

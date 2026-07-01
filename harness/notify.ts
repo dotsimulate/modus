@@ -38,14 +38,44 @@ function renderTemplate(template: string, ctx: NotifyContext): string {
     .replace(/\{profile\}/g, ctx.profile);
 }
 
-// ── Channel Dispatch ──
+// ── Channel Egress Primitive ──
 
-async function sendToChannel(
+/**
+ * Render a webhook body for a channel + payload.
+ *   - `bodyTemplate`: substitute `{text}` (JSON-escaped, quote-stripped so it drops
+ *     inside the template's own quotes) and `{data}` (JSON object).
+ *   - `contentField`: wrap text under a single key, merge `data` alongside.
+ *   - default: today's shape `{ message: text, ...data }` — keeps existing webhooks unbroken.
+ */
+function renderWebhookBody(
+  channel: Extract<NotificationChannel, { type: "webhook" }>,
+  payload: { text: string; data?: Record<string, unknown> },
+): string {
+  const { text, data } = payload;
+  if (channel.bodyTemplate) {
+    const escapedText = JSON.stringify(text).slice(1, -1); // strip surrounding quotes
+    const dataJson = JSON.stringify(data ?? {});
+    // Function replacers — a string replacement would interpret `$&`/`$1`/`$$` inside the
+    // (JSON-escaped but not $-escaped) text or data, corrupting the body.
+    return channel.bodyTemplate
+      .replace(/\{text\}/g, () => escapedText)
+      .replace(/\{data\}/g, () => dataJson);
+  }
+  if (channel.contentField) {
+    return JSON.stringify({ [channel.contentField]: text, ...(data ?? {}) });
+  }
+  return JSON.stringify({ message: text, ...(data ?? {}) });
+}
+
+/**
+ * Send content to a named sink. This is the single channel-egress primitive —
+ * action notifications, move bridge notify, and ctx.channels.send all route here.
+ * Never throws: failures are returned as { ok: false, error }.
+ */
+export async function sendToChannel(
   channel: NotificationChannel,
-  channelName: string,
-  message: string,
-  payload: NotifyContext,
-): Promise<void> {
+  payload: { text: string; data?: Record<string, unknown> },
+): Promise<{ ok: boolean; error?: string }> {
   switch (channel.type) {
     case "webhook": {
       const method = channel.method ?? "POST";
@@ -53,21 +83,30 @@ async function sendToChannel(
         "Content-Type": "application/json",
         ...(channel.headers ?? {}),
       };
-      const body = JSON.stringify({ message, ...payload });
-      const resp = await fetch(channel.url, { method, headers, body });
-      if (!resp.ok) {
-        console.error(`[notify] Webhook "${channelName}" returned ${resp.status}: ${await resp.text().catch(() => "")}`);
+      const body = renderWebhookBody(channel, payload);
+      try {
+        const resp = await fetch(channel.url, { method, headers, body });
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => "");
+          return { ok: false, error: `webhook returned ${resp.status}: ${errText.slice(0, 200)}` };
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: String(err) };
       }
-      break;
     }
     case "file": {
-      mkdirSync(dirname(channel.path), { recursive: true });
-      const line = JSON.stringify({ timestamp: new Date().toISOString(), message, ...payload }) + "\n";
-      appendFileSync(channel.path, line, "utf-8");
-      break;
+      try {
+        mkdirSync(dirname(channel.path), { recursive: true });
+        const line = JSON.stringify({ timestamp: new Date().toISOString(), message: payload.text, ...(payload.data ?? {}) }) + "\n";
+        appendFileSync(channel.path, line, "utf-8");
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
     }
     default:
-      console.error(`[notify] Unknown channel type on "${channelName}"`);
+      return { ok: false, error: "unknown channel type" };
   }
 }
 
@@ -107,11 +146,11 @@ export async function sendNotifications(
 
     const message = renderTemplate(spec.message ?? DEFAULT_MESSAGE, notifyCtx);
 
-    try {
-      await sendToChannel(channel, spec.channel, message, notifyCtx);
+    const res = await sendToChannel(channel, { text: message, data: { ...notifyCtx } });
+    if (res.ok) {
       console.log(`[notify] Sent to "${spec.channel}" for "${context.actionName}" run #${context.runNumber}`);
-    } catch (err) {
-      console.error(`[notify] Failed to send to "${spec.channel}":`, err);
+    } else {
+      console.error(`[notify] Failed to send to "${spec.channel}": ${res.error}`);
     }
   }
 }
@@ -147,11 +186,30 @@ export async function sendActionNotification(
 
     const message = renderTemplate(spec.message ?? DEFAULT_MESSAGE, notifyCtx);
 
-    try {
-      await sendToChannel(channel, spec.channel, message, notifyCtx);
+    const res = await sendToChannel(channel, { text: message, data: { ...notifyCtx } });
+    if (res.ok) {
       console.log(`[notify] Sent "${status}" to "${spec.channel}" for "${context.actionName}"`);
-    } catch (err) {
-      console.error(`[notify] Failed to send to "${spec.channel}":`, err);
+    } else {
+      console.error(`[notify] Failed to send to "${spec.channel}": ${res.error}`);
     }
   }
+}
+
+// ── Channel resolution helper (shared by ctx.channels.send) ──
+
+/**
+ * Resolve a named channel and send content to it. Used by the Harness Context
+ * channels namespace. Returns a structured result; never throws.
+ */
+export async function sendToNamedChannel(
+  channelName: string,
+  payload: { text: string; data?: Record<string, unknown> },
+  cwd?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const channels = getGlobalConfig(cwd).notificationChannels;
+  const channel = channels?.[channelName];
+  if (!channel) {
+    return { ok: false, error: `Channel "${channelName}" not found in _global.json` };
+  }
+  return sendToChannel(channel, payload);
 }

@@ -41,10 +41,10 @@ import {
   insertMoveRun, updateMoveRun, getMoveRuns,
 } from "./move-db";
 import { logActivity } from "./activity";
-import { triggerAction } from "./action-runner";
 import { resolveSecret, isSecretSet } from "./secrets";
 import { addSessionTag as dbAddSessionTag } from "./db";
 import { getPluginMovesDir, listEnabledModusPlugins } from "./modus-plugins";
+import { buildHarnessContext, type HarnessSelf } from "./harness-context";
 
 // ── Constants ──
 
@@ -53,8 +53,20 @@ const MODUS_MOVES_DIR = ".modus/moves";
 const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
 const TOKEN_CLEANUP_INTERVAL_MS = 60_000;  // sweep every 60s
-const GATHER_TIMEOUT_MS = 10_000;          // 10s timeout for gather()
+const GATHER_TIMEOUT_MS = 10_000;          // 10s default timeout for gather()
 const ACTIVATE_GATHER_TIMEOUT_MS = 120_000; // 2min timeout for widget-first activate (user-triggered, may do heavy work)
+
+/** Resolve the gather() timeout for a move — honors config.gatherTimeoutMs, else the fallback. */
+function gatherTimeoutFor(config: MoveConfig | null | undefined, fallback = GATHER_TIMEOUT_MS): number {
+  const t = config?.gatherTimeoutMs;
+  return typeof t === "number" && t > 0 ? t : fallback;
+}
+
+/** Resolve the prepare() budget for a move — honors config.prepareTimeoutMs, else 120s. */
+function prepareTimeoutFor(config: MoveConfig | null | undefined): number {
+  const t = config?.prepareTimeoutMs;
+  return typeof t === "number" && t > 0 ? t : ACTIVATE_GATHER_TIMEOUT_MS;
+}
 
 // ── Token Store (in-memory) ──
 
@@ -153,6 +165,8 @@ export async function gatherAmbientContext(sessionId: string): Promise<string | 
       const mod = await loadMoveModule(reg.moveName, reg.cwd);
       if (!mod?.gather) continue;
 
+      const moveCfg = getMove(reg.moveName, reg.cwd);
+
       const ctx = buildMoveContext(reg.moveName, sessionId, reg.cwd, reg.userProfile, {
         inputs: reg.inputs,
         apiToken: reg.apiToken,
@@ -162,7 +176,7 @@ export async function gatherAmbientContext(sessionId: string): Promise<string | 
       const result = await Promise.race([
         mod.gather(ctx),
         new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), GATHER_TIMEOUT_MS)
+          setTimeout(() => resolve(null), gatherTimeoutFor(moveCfg))
         ),
       ]);
 
@@ -171,9 +185,8 @@ export async function gatherAmbientContext(sessionId: string): Promise<string | 
 
       let text = typeof result === "string" ? result : String(result);
       // Append modus_submit protocol for API moves
-      if (reg.apiToken) {
-        const moveCfg = getMove(reg.moveName, reg.cwd);
-        if (moveCfg?.api?.ops) text += buildApiOpsProtocol(reg.apiToken, moveCfg);
+      if (reg.apiToken && moveCfg?.api?.ops) {
+        text += buildApiOpsProtocol(reg.apiToken, moveCfg);
       }
       if (text.trim()) {
         parts.push(`<!-- ambient:${reg.moveName} -->\n${text}\n<!-- /ambient:${reg.moveName} -->`);
@@ -498,6 +511,24 @@ export async function handleMoveApiSubmit(
 
   const stateApi = buildStateApi(reg.instanceId, reg.moveName, reg.cwd, reg.persist);
 
+  // Harness Context backs the orchestration-parity methods (createSession, triggerAction,
+  // activateMove, watchSessionTurns, channels). The historic fields below (notify session-inject,
+  // sendMessage, state, db, …) are kept exactly as-is — only additive parity is gained.
+  const handlerCfg = getMove(reg.moveName, reg.cwd);
+  const handlerSelf: HarnessSelf = {
+    kind: "move",
+    name: reg.moveName,
+    sessionId: reg.sessionId || null,
+    caller,
+    cwd: reg.cwd,
+    userProfile: reg.userProfile,
+    trust: resolveTrust(handlerCfg ?? undefined),
+    capabilities: handlerCfg?.capabilities ?? {},
+    instanceId: reg.instanceId,
+    statePersist: reg.persist,
+  };
+  const hctx = buildHarnessContext(handlerSelf);
+
   const ctx: MoveApiContext = {
     instanceId: reg.instanceId,
     sessionId: reg.sessionId,
@@ -581,6 +612,14 @@ export async function handleMoveApiSubmit(
         },
       });
     },
+
+    // ── Orchestration parity (Harness Context-backed) ──
+    createSession: (opts) => hctx.sessions.create(opts),
+    triggerAction: (actionName) => hctx.actions.trigger(actionName),
+    activateMove: (opts) => hctx.moves.activate(opts),
+    watchSessionTurns: (targetSessionId, onTurn) => hctx.sessions.watchTurns(targetSessionId, onTurn),
+    wake: (target, content, when) => hctx.sessions.wake(target, content, when),
+    channels: hctx.channels,
   };
 
   // Pass the inner data payload to the handler, not the full {op, data} envelope.
@@ -820,13 +859,14 @@ export async function gatherMoveOnce(
     ctx.setStore = (value: unknown) => { instanceStore.set(instanceId!, value); };
   }
 
+  const gatherTimeout = gatherTimeoutFor(config);
   const gatherStart = Date.now();
   const result = await Promise.race([
     mod.gather(ctx),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), GATHER_TIMEOUT_MS)),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), gatherTimeout)),
   ]);
   if (result === null) {
-    console.warn(`[gatherMoveOnce] move "${moveName}" gather returned null (took ${Date.now() - gatherStart}ms, timeout=${GATHER_TIMEOUT_MS}ms)`);
+    console.warn(`[gatherMoveOnce] move "${moveName}" gather returned null (took ${Date.now() - gatherStart}ms, timeout=${gatherTimeout}ms)`);
     return null;
   }
   const text = typeof result === "string" ? result : String(result);
@@ -1142,7 +1182,7 @@ function buildMoveContext(
   };
 }
 
-function buildMoveDB(moveName: string, cwd: string): MoveDB {
+export function buildMoveDB(moveName: string, cwd: string): MoveDB {
   // Scope session queries to the move's project CWD
   const cwdScope = { cwdPrefixes: [cwd] };
 
@@ -1196,108 +1236,30 @@ function buildMoveDB(moveName: string, cwd: string): MoveDB {
 }
 
 function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: string, userProfile: string | undefined, caps: MoveCapabilities = {}, trust?: ResolveTrust): HarnessBridge {
+  // Thin Adapter over the Harness Context — same historic method names/shapes and
+  // the same engine ops + safety model. Every `ctx.harness.X` call site is untouched.
+  // The one behavior change is intentional: notify() now reaches a real channel
+  // (the former console.log stub is gone) via ctx.channels.send.
+  const self: HarnessSelf = {
+    kind: "move",
+    name: moveName,
+    sessionId: sourceSessionId || null,
+    caller: "agent",
+    cwd,
+    userProfile,
+    trust: trust ?? resolveTrust(getMove(moveName, cwd) ?? undefined),
+    capabilities: caps,
+  };
+  const ctx = buildHarnessContext(self);
   return {
-    async createSession(opts) {
-      assertCapability(caps, "sessionSpawn", moveName, `profile: ${opts.profile}`, trust);
-      const session = startSession({
-        prompt: opts.prompt,
-        profile: opts.profile,
-        cwd: opts.cwd ?? cwd,
-        userProfile: opts.userProfile ?? userProfile,
-        tags: opts.tags,
-      });
-      // Wait for provider init so session.sessionId reflects the post-rekey backend ID
-      const _spawnWait = Date.now();
-      while (session.status === "starting" && Date.now() - _spawnWait < 8000) {
-        await Bun.sleep(100);
-      }
-      // ── Audit: log session spawn ──
-      logActivity({
-        eventType: "move_session_spawn",
-        sessionId: sourceSessionId || undefined,
-        agentProfile: opts.profile,
-        summary: `${moveName} spawned session ${session.sessionId} (profile: ${opts.profile})`,
-        metadata: { moveName, spawnedSessionId: session.sessionId, profile: opts.profile },
-      });
-      return session.sessionId;
-    },
-    async sendMessage(targetSessionId, content) {
-      assertCapability(caps, "sessionMessage", moveName, `target: ${targetSessionId}`, trust);
-      await interactWithSession({
-        sessionId: targetSessionId,
-        prompt: content,
-        createIfMissing: false,
-      });
-      // ── Audit: log message send ──
-      logActivity({
-        eventType: "move_send_message",
-        sessionId: sourceSessionId || undefined,
-        summary: `${moveName} → session ${targetSessionId}: ${String(content).slice(0, 80)}`,
-        metadata: { moveName, targetSessionId, contentLength: String(content).length },
-      });
-    },
-    async triggerAction(actionName) {
-      assertCapability(caps, "actionTrigger", moveName, `action: ${actionName}`, trust);
-      await triggerAction(actionName, { userProfile, cwd });
-      // ── Audit: log action trigger ──
-      logActivity({
-        eventType: "move_trigger_action",
-        sessionId: sourceSessionId || undefined,
-        actionName,
-        summary: `${moveName} triggered action "${actionName}"`,
-        metadata: { moveName },
-      });
-    },
-    async notify(spec) {
-      assertCapability(caps, "notify", moveName, `channel: ${spec.channel}`, trust);
-      console.log(`[move-runner] notify requested on channel "${spec.channel}": ${spec.body}`);
-      // ── Audit: log notification ──
-      logActivity({
-        eventType: "move_notify",
-        sessionId: sourceSessionId || undefined,
-        summary: `${moveName} notify → ${spec.channel}: ${spec.body.slice(0, 80)}`,
-        metadata: { moveName, channel: spec.channel },
-      });
-    },
-    async addSessionTag(targetSessionId: string, tag: string) {
-      dbAddSessionTag(targetSessionId, tag);
-      logActivity({
-        eventType: "move_add_tag",
-        sessionId: sourceSessionId || undefined,
-        summary: `${moveName} tagged session ${targetSessionId} with "${tag}"`,
-        metadata: { moveName, targetSessionId, tag },
-      });
-    },
-    listMoves() {
-      return listMoves(cwd);
-    },
-    async activateMove(opts) {
-      const result = await activateMove({
-        moveName: opts.moveName,
-        sessionId: opts.sessionId ?? sourceSessionId,
-        inputs: opts.inputs ?? {},
-        cwd,
-        userProfile,
-        modeOverride: opts.modeOverride,
-      });
-      if ("error" in result) throw new Error(result.error);
-      logActivity({
-        eventType: "move_activate_move",
-        sessionId: sourceSessionId || undefined,
-        summary: `${moveName} activated move "${opts.moveName}" (mode: ${result.mode})`,
-        metadata: { moveName, targetMove: opts.moveName, mode: result.mode },
-      });
-      return { token: result.token, mode: result.mode, spawnedSessionId: result.spawnedSessionId, moveRunId: result.moveRunId };
-    },
-    watchSessionTurns(targetSessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>): () => void {
-      logActivity({
-        eventType: "move_watch_session",
-        sessionId: sourceSessionId || undefined,
-        summary: `${moveName} watching turns on session ${targetSessionId}`,
-        metadata: { moveName, targetSessionId },
-      });
-      return watchMoveSessionTurns(targetSessionId, onTurn);
-    },
+    createSession: (opts) => ctx.sessions.create(opts),
+    sendMessage: (targetSessionId, content) => ctx.sessions.send(targetSessionId, content),
+    triggerAction: (actionName) => ctx.actions.trigger(actionName),
+    notify: async (spec) => { await ctx.channels.send(spec.channel, { text: spec.body }); },
+    addSessionTag: (targetSessionId, tag) => ctx.sessions.tag(targetSessionId, tag),
+    listMoves: () => ctx.moves.list(),
+    activateMove: (opts) => ctx.moves.activate(opts),
+    watchSessionTurns: (targetSessionId, onTurn) => ctx.sessions.watchTurns(targetSessionId, onTurn),
   };
 }
 
@@ -1548,15 +1510,23 @@ export async function activateAttachedMove(opts: {
   moveCtx.apiToken = opts.apiToken;
   moveCtx.instanceId = reg.instanceId;
 
-  // Run gather()
+  // Run prepare() (heavy setup) then gather()
   let prompt: string;
   try {
     const mod = await loadMoveModule(reg.moveName, reg.cwd);
+    if (mod?.prepare) {
+      await Promise.race([
+        mod.prepare(moveCtx),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("prepare() timed out")), prepareTimeoutFor(config))
+        ),
+      ]);
+    }
     if (mod?.gather) {
       const result = await Promise.race([
         mod.gather(moveCtx),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("gather() timed out")), ACTIVATE_GATHER_TIMEOUT_MS)
+          setTimeout(() => reject(new Error("gather() timed out")), gatherTimeoutFor(config, ACTIVATE_GATHER_TIMEOUT_MS))
         ),
       ]);
       if (result === null) return { ok: false, error: "gather() returned null — activation skipped" };
@@ -1775,15 +1745,23 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     }
   }
 
-  // Call gather() if context.ts exists, otherwise build a default prompt
+  // Run prepare() (heavy setup) before gather, then gather (fast prompt build)
   let prompt: string;
   try {
     const mod = await loadMoveModule(moveName, cwd);
+    if (mod?.prepare) {
+      await Promise.race([
+        mod.prepare(moveCtx),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("prepare() timed out")), prepareTimeoutFor(config))
+        ),
+      ]);
+    }
     if (mod?.gather) {
       const result = await Promise.race([
         mod.gather(moveCtx),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("gather() timed out")), GATHER_TIMEOUT_MS)
+          setTimeout(() => reject(new Error("gather() timed out")), gatherTimeoutFor(config))
         ),
       ]);
       // Gather-bail: null means skip this activation
@@ -2036,11 +2014,24 @@ export async function handleSubmit(
     completedAt: Date.now(),
   });
 
-  // Send notification if requested
+  // Send notification if requested — routes to the real channel egress primitive
+  // (gated through the Harness Context, same as ctx.harness.notify).
   if (submitResult.notify) {
-    console.log(
-      `[move-runner] notify requested on channel "${submitResult.notify.channel}": ${submitResult.notify.body}`,
-    );
+    const notifyCfg = getMove(moveToken.moveName, cwd);
+    const notifyCtx = buildHarnessContext({
+      kind: "move",
+      name: moveToken.moveName,
+      sessionId: moveToken.sessionId || null,
+      caller: "agent",
+      cwd,
+      userProfile: moveToken.userProfile ?? active?.userProfile,
+      trust: resolveTrust(notifyCfg ?? undefined),
+      capabilities: notifyCfg?.capabilities ?? {},
+    });
+    const res = await notifyCtx.channels.send(submitResult.notify.channel, { text: submitResult.notify.body });
+    if (!res.ok) {
+      console.error(`[move-runner] SubmitResult.notify failed for "${submitResult.notify.channel}": ${res.error}`);
+    }
   }
 
   // Log activity

@@ -27,7 +27,7 @@ import { join, resolve } from "path";
 import { getAllUserProfiles, getUserProfile } from "./profiles";
 import {
   interactWithSession, startSession, getActiveSession, switchProfile,
-  attachArtifactToSession, watchSession, type ActiveSession,
+  attachArtifactToSession, watchSession, deliverToSession, type ActiveSession,
 } from "./session-manager";
 import {
   insertActionRun, updateActionRun, getActionRuns as dbGetActionRuns,
@@ -52,6 +52,7 @@ import { svgToPngBase64 } from "./svg-render";
 import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBindings } from "./move-runner";
 import { createTerminal as createTerminalPty, killTerminal as killTerminalPty, writeTerminal as writeTerminalPty } from "./terminal-manager";
 import { getPluginActionsDir, listEnabledModusPlugins } from "./modus-plugins";
+import { buildHarnessContext } from "./harness-context";
 
 // ── Constants ──
 
@@ -689,6 +690,18 @@ async function fireAction(
 
       const db = buildActionDB(name, state.scopeKey, cfg.cwd ?? state.projectCwd, state.origin);
       const totalSteps = (cfg.steps?.length ?? 0) + 1;
+      // Harness Context backs ctx.sessions / ctx.channels. Trust defaults by origin:
+      // harness actions are builtin (unrestricted); project actions are reviewed (caps enforced).
+      const actionHctx = buildHarnessContext({
+        kind: "action",
+        name,
+        sessionId: null,
+        caller: "system",
+        cwd: cfg.cwd ?? state.projectCwd ?? process.cwd(),
+        userProfile: effectiveUserProfile,
+        trust: cfg.trust ?? (state.origin === "harness" ? "builtin" : "reviewed"),
+        capabilities: cfg.capabilities ?? {},
+      });
       const ctx: ActionContext = {
         actionName: name,
         executionId: exec.id,
@@ -768,6 +781,8 @@ async function fireAction(
           return handle;
         },
         svgToPngBase64,
+        sessions: actionHctx.sessions,
+        channels: actionHctx.channels,
       };
       lastCtx = ctx;
 
@@ -1339,12 +1354,9 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
       if (Array.isArray(attachmentPaths) && attachmentPaths.length > 0) {
         content += "\n\nAttachments (use Read to view these files):\n" + attachmentPaths.map((p: string) => `- ${p}`).join("\n");
       }
-      const delivered = await interactWithSession({
-        sessionId: existing.id,
-        prompt: content,
-        createIfMissing: false,
-      });
-      console.log(`[actions] Webhook "${name}" routed to existing session ${existing.id} (tag: ${tag}, queued: ${delivered.queued})`);
+      // Shared delivery primitive (same path used by ctx.sessions.wake).
+      const result = await deliverToSession(existing.id, content);
+      console.log(`[actions] Webhook "${name}" routed to existing session ${existing.id} (tag: ${tag}, delivered: ${result.delivered.length})`);
       return { ok: true, sessionId: existing.id, continued: true };
     }
     // No existing session — fall through to fire a new action run.
