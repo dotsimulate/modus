@@ -10,7 +10,7 @@
  * Every entry includes a kill path. No more ghost processes.
  */
 
-import { getAllActiveSessions, getActiveSession, type ActiveSession } from "./session-manager";
+import { forceClearActiveSession, getAllActiveSessions, getActiveSession, type ActiveSession } from "./session-manager";
 import {
   getActiveMissionGrants,
   getActiveOrchestratorRunIds,
@@ -251,6 +251,7 @@ export function killProcess(sessionId: string): { ok: boolean; error?: string } 
     } catch { /* ignore */ }
     session.osPids.delete(pid);
   }
+  forceClearActiveSession(sessionId, "idle", "process killed");
   return { ok: true };
 }
 
