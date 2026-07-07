@@ -1543,6 +1543,12 @@ export function stopSession(sessionId: string): boolean {
   // Delegate to provider for cleanup
   session._provider.abort(session);
 
+  setTimeout(() => {
+    const current = activeSessions.get(sessionId);
+    if (!current || current.status !== "interrupting") return;
+    forceClearActiveSession(sessionId, "idle", "interrupt timed out");
+  }, INTERRUPT_FORCE_IDLE_AFTER_MS);
+
   logActivity({
     userProfile: session.userProfile,
     eventType: "agent_interrupted",
@@ -1952,6 +1958,62 @@ const REAP_TERMINAL_AFTER_MS = 60_000;    // done/error: reap after 1 min
 const REAP_IDLE_AFTER_MS = 10 * 60_000;   // idle: reap after 10 min (regardless of subscribers)
 const REAP_STARTING_AFTER_MS = 3 * 60_000; // starting: reap after 3 min (stuck spawn)
 const REAP_INTERRUPTING_AFTER_MS = 5 * 60_000; // interrupting: provider teardown got stuck
+const INTERRUPT_FORCE_IDLE_AFTER_MS = 30_000; // stop button: give provider teardown a short grace window
+
+export function forceClearActiveSession(
+  sessionId: string,
+  status: Extract<SessionStatus, "idle" | "done" | "error"> = "idle",
+  reason = "force clear",
+): boolean {
+  const session = activeSessions.get(sessionId);
+  if (!session) return false;
+
+  try {
+    if (session.pauseResolver) {
+      session.pauseResolver();
+      session.pauseResolver = null;
+    }
+    session.pauseRequested = false;
+
+    for (const [, pending] of session.pendingPermissions) {
+      pending.resolve({ behavior: "deny", message: reason });
+    }
+    session.pendingPermissions.clear();
+    session.pendingDispatch = [];
+    endFollowupDispatch(session);
+
+    for (const watcher of session.watchers) {
+      if (watcher.kind === "terminal") {
+        watcher.resolve({
+          sessionStatus: status,
+          response: null,
+          summary: null,
+          costUsd: session.costUsd,
+          error: reason,
+        });
+      }
+    }
+    session.watchers.clear();
+
+    session.status = status;
+    updateSessionStatus(session.sessionId, status);
+    emitGlobalSessionEvent({
+      type: "session:status",
+      sessionId: session.sessionId,
+      status,
+      costUsd: session.costUsd,
+      preview: session.preview,
+    });
+
+    try { session._provider.abort(session); } catch { /* best effort */ }
+    try { session._provider.dispose?.(session)?.catch(() => {}); } catch { /* best effort */ }
+  } finally {
+    activeSessions.delete(sessionId);
+    sseLog("SESSION-FORCE-CLEARED", sessionId, `${reason} status=${status}`);
+  }
+
+  return true;
+}
 
 function reapStaleSessions(): void {
   const now = Date.now();

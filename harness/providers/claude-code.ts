@@ -1449,10 +1449,28 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
 
   // Post-drain: handle pending messages after abort
   if (session.status === "idle") {
+    // Capture the just-drained subprocess PID BEFORE any cold-start below can
+    // overwrite state.spawnedPid, so the targeted reap can never hit the new tree.
+    const deadPid = state.spawnedPid;
     try { state.input.close(); } catch { /* ignore */ }
     try { state.queryObj?.close(); } catch { /* ignore */ }
     state.queryObj = null;
     state.interrupting = false;
+
+    // Windows: queryObj.close() does NOT reliably kill the cmd.exe -> node -> MCP
+    // tree — it survives on MCP keepalives and can spin/leak as a ghost until it
+    // exhausts system virtual memory (see TODO/idle-drain-exit-ghost-leak-2026-07-02.md).
+    // Every other teardown path reaps via taskkill; the clean-idle path was the one
+    // gap. Reap it explicitly. Targeted kill (not killAllSpawnedAsync) so a concurrent
+    // cold-start's fresh PID is never taskkilled. Safe: drainActive is already false
+    // here, so this subprocess is reuse-ineligible — the next turn cold-starts anyway.
+    if (deadPid) {
+      session.osPids.delete(deadPid);
+      state.spawnedPid = undefined;
+      killPidTreeAsync(deadPid).catch((e) =>
+        console.error(`[claude-code] idle reap kill error session=${session.sessionId}`, e));
+    }
+
     if (session.pendingDispatch.length > 0) {
       console.log(`[claude-code] ${session.pendingDispatch.length} pending after drain exit, restarting ${session.sessionId}`);
 
