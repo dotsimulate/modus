@@ -1,7 +1,6 @@
 ---
 title: MO Architecture
-audience: agents
-lastUpdated: 2026-06-28
+lastUpdated: 2026-07-07
 lastCommit: bae0487
 covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
@@ -37,11 +36,17 @@ agent_dev_zone/
       registry.ts          # Provider name → implementation mapping
       types.ts             # SessionProvider interface + TurnContext
       claude-code.ts       # Claude Code SDK provider
-      codex.ts             # OpenAI Codex provider
+      claude-code-pty.ts   # Persistent Claude Code CLI provider
+      codex.ts             # OpenAI Codex CLI provider
+      codex-cli-sdk.ts     # Codex CLI exec wrapper
+      cursor.ts            # Cursor Agent CLI provider
       gemini-cli.ts        # Gemini CLI provider
-      pi-agent.ts          # PI agent (multi-provider: anthropic, openai, litellm, ollama, openrouter)
+      opencode.ts          # OpenCode CLI provider
+      pi-agent.ts          # PI agent (multi-provider: litellm, ollama, openrouter)
       mcp-bridge.ts        # MCP server lifecycle management
       models.ts            # Model listing per provider
+      tool-catalog.ts      # Shared built-in tool catalogs
+      *-capabilities.ts    # Capability descriptions safe to import for listing
     action-runner.ts       # Action scheduling, execution, verify/retry
     action-types.ts        # Action type contracts
     move-runner.ts         # Move activation, token management, submit handling
@@ -53,13 +58,13 @@ agent_dev_zone/
     notify.ts              # Notification channels (egress primitive + action notify)
     watchdog.ts            # Process health monitoring
     git.ts                 # Git operations for session context
-    profiles/              # Configuration files (see profiles doc)
+    templates/profiles/    # Shipped profile templates, seeded into ~/.modus/
+    ~/.modus/profiles/     # User-owned profile config/state (see profiles doc)
       _global.json         # Shared MCP servers + provider defaults
       _users.json          # Template variable defaults
-      _projects.json       # Project registry (id → name + path)
       agents/              # Agent profile JSONs
       users/               # User profile JSONs
-      state/               # Runtime UI state (gitignored)
+      state/               # Runtime UI state
     ui/                    # React frontend (Vite + React)
       src/
         api/               # API client modules (one per domain)
@@ -90,8 +95,8 @@ MO has five primitives. They compose but don't overlap.
 | Primitive | What it defines | Lives in |
 |-----------|----------------|----------|
 | **Session** | A single agent conversation with full event log | `harness.db` |
-| **Agent Profile** | HOW an agent behaves: model, tools, prompt, permissions | `profiles/agents/*.json` or `.modus/profiles/agents/*.json` |
-| **User Profile** | WHO is using the system: project scope, visible agents, memory isolation | `profiles/users/*.json` |
+| **Agent Profile** | HOW an agent behaves: model, tools, prompt, permissions | `~/.modus/profiles/agents/*.json` or `.modus/profiles/agents/*.json` |
+| **User Profile** | WHO is using the system: project scope, visible agents, memory isolation | `~/.modus/profiles/users/*.json` |
 | **Action** | WHEN automation runs: triggers, context gathering, verify, side effects | `.modus/actions/<name>/` |
 | **Move** | WHAT the user wants done now: structured submission with token-gated validation | `.modus/moves/<name>/` |
 
@@ -120,11 +125,11 @@ See [Profile System](./profile-system.md) and [Config Resolution](./config-resol
 Providers are execution backends. Session-manager delegates to them via the
 `SessionProvider` interface (defined in `providers/types.ts`).
 
-Registered providers: `claude-code`, `codex`, `gemini-cli`, `anthropic`,
-`openai`, `litellm`, `ollama`, `openrouter`.
+Registered providers: `claude-code`, `claude-code-pty`, `codex`, `cursor`,
+`gemini-cli`, `opencode`, `litellm`, `ollama`, `openrouter`.
 
-The last five are all PI agent variants — a lightweight agent loop that works
-with any OpenAI-compatible API.
+The last three are PI agent variants — a lightweight agent loop for
+OpenAI-compatible APIs.
 
 See [Providers](./providers.md).
 
@@ -187,10 +192,10 @@ decisions:
 
 ### View Registry
 
-`ui/src/views.ts` is the single source of truth for navigable views. It defines
-slugs, display labels, and nav order. Registered views: `home`, `sessions`,
-`profiles`, `actions`, `memory`, `git`, `web`. Adding a view here is enough to
-wire it into routing and the nav bar.
+`ui/src/views.ts` is the single source of truth for static view slugs and helper
+constructors for configured pages. Static slugs are `home` and `chat`; the only
+hardcoded nav link is `chat` with label `sessions`. Config pages add
+`page:<id>` views, and move pages add `move-page:<name>` views.
 
 ### Session Web
 
@@ -233,4 +238,5 @@ button re-centers the view on the newest session.
 - [Panels](./panels.md) — side-panel architecture, widget registry, and persisted panel trees
 - [Project UI](./project-ui.md) — theme/font system in .modus/ui/
 - [Client Extensions](./client-extensions.md) — browser-side extension discovery and runtime API
+- [Plugins](./plugins.md) — machine-wide registered `.modus/` bundles
 - [PI Agent](./pi-agent-system.md) — the multi-provider lightweight agent

@@ -1,7 +1,6 @@
 ---
 title: Provider System
-audience: agents
-lastUpdated: 2026-03-16
+lastUpdated: 2026-07-07
 lastCommit: a9adf68
 covers: harness/providers/ harness/session-manager.ts
 ---
@@ -44,10 +43,12 @@ Passed to providers by session-manager. Contains:
 
 | Name | Family | Implementation | Notes |
 |------|--------|---------------|-------|
-| `claude-code` | claude-code | Claude Agent SDK subprocess | Full MCP, tool permissions, sub-agents |
-| `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP (via .cursor/mcp.json), --approve-mcps |
-| `codex` | codex | OpenAI Codex CLI | Full MCP (HTTP transport via config object) |
-| `gemini-cli` | gemini-cli | Gemini CLI subprocess | Full MCP (via settings.json) |
+| `claude-code` | claude-code | Claude Agent SDK subprocess | Full MCP, live per-tool UI permissions, task stop, steer |
+| `claude-code-pty` | claude-code | Persistent Claude Code CLI process | Full MCP, runtime-native permissions, warm PTY across turns |
+| `codex` | codex | OpenAI Codex CLI | Full MCP, event-derived tools, Codex sandbox/approval settings |
+| `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP via `.cursor/mcp.json`, event-derived tools, `--approve-mcps` |
+| `gemini-cli` | gemini-cli | Gemini CLI runtime | Full MCP, Gemini-owned approval policy |
+| `opencode` | opencode | OpenCode CLI subprocess | Full MCP, event-derived tools, `bunx opencode-ai` fallback |
 | `litellm` | pi-agent | LiteLLM proxy | PI agent loop, MCP via mcp-bridge |
 | `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge |
 | `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge |
@@ -63,14 +64,30 @@ compaction support.
 the fully-resolved value.
 
 Provider-specific normalization:
-- **claude-code**: `"off"` → `undefined` (no thinking). `"low"/"medium"/"high"/"max"` pass through.
-- **codex**: `"off"` and `"max"` → `undefined` (no reasoning). `"low"/"medium"/"high"` map to SDK `ModelReasoningEffort`.
+- **claude-code / claude-code-pty**: `"off"` disables thinking. Other effort values are passed to Claude Code.
+- **codex**: `"off"` disables reasoning. `"low"/"medium"/"high"/"xhigh"` map to Codex reasoning effort; `"max"` maps to `"xhigh"`.
+- Other providers accept the resolved effort only if their implementation uses it.
 
 ## Claude Permission Mode
 
-The claude-code provider reads `opts.providerControls.claude.permissionMode` to set the SDK permission mode at session start. Valid values: `"default"`, `"acceptEdits"`, `"plan"`, `"dontAsk"`. The `updateConfig` path also updates this when `providerControls` changes.
+The Claude providers read `opts.providerControls.claude.permissionMode` to set permission mode. Valid values: `"default"`, `"acceptEdits"`, `"plan"`, `"dontAsk"`. The SDK provider can update this through its `updateConfig` path; the PTY provider applies config changes on the next turn or process restart.
 
 When the agent calls the `ExitPlanMode` tool, the provider automatically resets `permissionMode` to `"default"` and notifies session-manager via `notifyConfigChange`, so the config_updated event reflects the cleared state.
+
+## Provider Health
+
+`checkAllProviderHealth()` reports readiness from registry-declared prerequisites:
+
+| Provider | Checks |
+|----------|--------|
+| `claude-code`, `claude-code-pty` | `claude` CLI |
+| `codex` | `codex` CLI plus `CODEX_API_KEY` / `OPENAI_API_KEY` or `~/.codex/auth.json` |
+| `cursor` | `cursor-agent` CLI (or configured resolver path) |
+| `gemini-cli` | Google OAuth in `~/.gemini/oauth_creds.json` or `GEMINI_API_KEY` / `GOOGLE_API_KEY` |
+| `opencode` | `opencode` CLI, or `bunx` for `opencode-ai` fallback |
+| `litellm` | local proxy health at `LITELLM_BASE_URL` or `http://localhost:4000` |
+| `ollama` | local server at `OLLAMA_HOST` or `http://localhost:11434` |
+| `openrouter` | `OPENROUTER_API_KEY` |
 
 ## MCP Server Composition
 
@@ -85,9 +102,10 @@ Environment variables injected into MCP servers:
 - `AGENT_PROFILE` — active agent profile name
 - `USER_PROFILE` — active user profile name
 
-Relative `--directory` args are resolved from harness root.
+Provider-specific wiring differs: Claude uses SDK/CLI MCP config, Cursor writes a temporary `.cursor/mcp.json`, Codex passes MCP config through its CLI wrapper, Gemini builds runtime MCP servers, and PI providers use `mcp-bridge.ts`.
 
 **Source**: `providers/claude-code.ts` (MCP merge), `providers/cursor.ts`
 (MCP via .cursor/mcp.json), `providers/codex.ts` (MCP via config object),
+`providers/gemini-cli.ts`, `providers/opencode.ts`,
 `providers/mcp-bridge.ts` (MCP lifecycle for PI agents),
 `providers/registry.ts` (provider lookup).

@@ -5,7 +5,8 @@ every HTTP endpoint into typed methods on a single `ModusClient` class. The same
 is used by the React frontend, the CLI (`modus` command), agent moves, and external
 scripts.
 
-For method-level API reference, see the [generated docs](./api/README.md).
+For method-level API reference, generate the TypeDoc output with
+`bun run docs:sdk` from `harness/`.
 
 ---
 
@@ -332,7 +333,7 @@ Providers are execution backends (Claude Code, Codex, Gemini CLI, PI agent varia
 
 ```typescript
 const providers = await client.listProviders();
-// ["claude-code", "codex", "gemini-cli", "anthropic", "openai", ...]
+// ["claude-code", "claude-code-pty", "codex", "cursor", "gemini-cli", "opencode", ...]
 
 const caps = await client.getProviderCapabilities();
 // Each: { name, streaming, tools, vision, builtInToolMode, ... }
@@ -340,7 +341,7 @@ const caps = await client.getProviderCapabilities();
 const health = await client.getProviderHealth();
 // Each: { name, healthy, checks: [...] }
 
-const models = await client.getProviderModels("anthropic");
+const models = await client.getProviderModels("openrouter");
 // Each: { id, label, contextWindow, ... }
 ```
 
@@ -478,7 +479,7 @@ modus search "auth refactor" --limit 10
 # Profiles and providers
 modus profiles
 modus providers
-modus provider anthropic models
+modus provider openrouter models
 
 # Tags
 modus tag <session-id> add release-v2

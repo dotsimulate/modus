@@ -667,8 +667,19 @@ async function cmdOpen(args: string[]): Promise<void> {
 function cmdSetup(_args: string[]): void {
   console.log("Setting up Modus...\n");
 
-  // 1. Harness deps
-  console.log("Installing harness dependencies...");
+  // 1. Root deps (bun-pty for the Windows terminal PTY — resolves from the
+  // repo-root node_modules)
+  console.log("Installing root dependencies...");
+  const rootResult = Bun.spawnSync([BUN, "install"], {
+    cwd: dirname(HARNESS_DIR), stdout: "inherit", stderr: "inherit",
+  });
+  if (rootResult.exitCode !== 0) {
+    console.error("Failed to install root dependencies.");
+    process.exit(1);
+  }
+
+  // 2. Harness deps
+  console.log("\nInstalling harness dependencies...");
   const harnessResult = Bun.spawnSync([BUN, "install"], {
     cwd: HARNESS_DIR, stdout: "inherit", stderr: "inherit",
   });
@@ -677,7 +688,7 @@ function cmdSetup(_args: string[]): void {
     process.exit(1);
   }
 
-  // 2. UI deps
+  // 3. UI deps
   console.log("\nInstalling UI dependencies...");
   if (!existsSync(UI_DIR)) {
     console.error(`UI directory not found: ${UI_DIR}`);
@@ -691,7 +702,7 @@ function cmdSetup(_args: string[]): void {
     process.exit(1);
   }
 
-  // 3. Build UI
+  // 4. Build UI
   console.log("\nBuilding UI...");
   const buildResult = Bun.spawnSync([BUN, "run", "build"], {
     cwd: UI_DIR, stdout: "inherit", stderr: "inherit",
@@ -701,7 +712,7 @@ function cmdSetup(_args: string[]): void {
     process.exit(1);
   }
 
-  // 4. Register global `modus` command
+  // 5. Register global `modus` command
   console.log("\nRegistering global modus command...");
   const linkResult = Bun.spawnSync([BUN, "link"], {
     cwd: HARNESS_DIR, stdout: "inherit", stderr: "inherit",

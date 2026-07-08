@@ -1036,12 +1036,34 @@ export function listMoves(cwd: string): MoveConfig[] {
     .filter((config): config is MoveConfig => !!config && config.enabled !== false);
 }
 
+/** Install move-local dependencies on first activation. Moves can ship their
+ * own package.json — deps resolve from the move dir's node_modules, staying
+ * scoped to the move instead of the host project. Explicit install (rather
+ * than Bun's runtime auto-install) so versions are pinned and failures are
+ * visible. Async so a slow network install never blocks the event loop.
+ * Skipped when node_modules already exists — delete it to force a refresh
+ * after editing the move's package.json. */
+async function ensureMoveDeps(dir: string): Promise<void> {
+  if (!existsSync(join(dir, "package.json"))) return;
+  if (existsSync(join(dir, "node_modules"))) return;
+  console.log(`[moves] installing dependencies for ${dir}`);
+  const proc = Bun.spawn([process.execPath, "install"], {
+    cwd: dir, stdout: "pipe", stderr: "pipe",
+  });
+  const exitCode = await proc.exited;
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    console.warn(`[moves] dependency install failed for ${dir}:`, stderr);
+  }
+}
+
 /** Load move module (context.ts) if it exists */
 async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | null> {
   const location = resolveMoveLocation(name, cwd);
   if (!location) return null;
   const modulePath = join(location.dir, "context.ts");
   if (!existsSync(modulePath)) return null;
+  await ensureMoveDeps(location.dir);
   try {
     // Bust module cache so move code changes take effect on re-activation
     const resolved = require.resolve(modulePath);

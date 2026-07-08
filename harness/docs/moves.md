@@ -1,7 +1,6 @@
 ---
 title: Moves
-audience: agents
-lastUpdated: 2026-06-28
+lastUpdated: 2026-07-07
 covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts
 ---
 
@@ -13,17 +12,40 @@ done right now, with structured submission and validation.
 ## Directory Structure
 
 Built-in harness moves live in `harness/moves/<name>/`. Project-local moves live
-in `.modus/moves/<name>/` and override built-ins of the same name.
+in `.modus/moves/<name>/`. Resolution order (first match wins): project
+`.modus/moves/` → enabled plugin `.modus/moves/` → built-in `harness/moves/`.
 
 Each move directory contains:
 ```
 move.json    — MoveConfig (required)
 context.ts   — MoveModule: gather?(), onSubmit?(), handlers?, listInstances?() (optional)
 widget.tsx   — React component (optional, for api moves with a widget)
+package.json — move-local dependencies (optional, see below)
 ```
 
 No Handlebars templates. `gather()` returns the full prompt string directly.
 The move.json `prompt` field is a fallback used only when context.ts has no `gather()`.
+
+### Per-Move Dependencies
+
+A move directory may ship its own `package.json`. On activation, the move runner
+installs it before importing `context.ts` (`ensureMoveDeps` in move-runner.ts:
+async `bun install` scoped to the move dir, so a slow install never blocks the
+event loop). Bare imports in `context.ts` resolve from the move's own
+`node_modules` first; widget imports are bundled from the same location by the
+widget build. Dependencies stay scoped to the move — nothing is added to the
+host project or the harness.
+
+- Install runs only when `node_modules` is missing. After changing a move's
+  `package.json`, delete the move's `node_modules` to force a reinstall.
+- Install failure logs a warning and module load proceeds (imports of the
+  missing package then fail and are caught by the normal load-error path).
+- Bun does not run dependency lifecycle scripts (postinstall) unless the
+  package is explicitly trusted, which limits install-time supply-chain
+  exposure. The move's own code runs with full harness privileges regardless —
+  the trust boundary is who can write into the moves directory, unchanged by
+  this feature.
+- Reference: the chess example (`.modus/moves/chess/`) uses `chess.js` this way.
 
 ## Execution Modes
 

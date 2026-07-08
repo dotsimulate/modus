@@ -4,15 +4,15 @@
 
 # Modus
 
-Modus is a modular, project-based environment for building and controlling structured agent systems.
+Modus is a self-hosted workspace for building systems of agents. Each project defines its own agents, interfaces, workflows, and automation, running locally against whichever provider backends you already use.
 
-It is self-hosted, multi-provider, and designed to be shaped through built-in agent surfaces. Instead of treating agents as a single chat surface, Modus gives you a live workspace where each project can define how agents behave, what interfaces they use, what workflows they run, and how those workflows persist.
+Coding agents like Claude Code and Codex are execution engines. Chat apps give you one assistant in one window. Modus is the layer above both: it runs those agents as interchangeable backends and wraps them in durable, per-project structure. The goal is not just to chat with an AI. The goal is to control a system of agents shaped per project and per use case.
 
-## What It Is
+## Primitives
 
-Modus combines a few core ideas:
+Five primitives, composed per project:
 
-- **Profiles** define who an agent is and how it behaves
+- **Profiles** define who an agent is and how it behaves: model, tools, prompt, permissions
 - **Moves** define structured user-invoked interactions, often with widgets or typed protocols
 - **Actions** define automated workflows triggered by time, webhooks, or other events
 - **Missions** define longer-running multi-step, multi-agent project workflows
@@ -20,35 +20,27 @@ Modus combines a few core ideas:
 
 Underneath those primitives is a shared harness for sessions, memory, provider abstraction, persistence, authentication, and a streaming UI.
 
-The goal is not just to "chat with an AI." The goal is to control a system of agents that can be shaped per project and per use case.
-
 ## Architecture
 
-A multi-provider agent harness with concurrent sessions, configurable profiles, persistent memory, structured workflows, and a live streaming UI from one `bun run dev`.
+A multi-provider agent harness with concurrent sessions, configurable profiles, persistent memory, structured workflows, and a live streaming UI, all from one `modus start`.
 
-```
-┌──────────────────────────────────┐
-│   Frontend — React 19 + Vite     │  :5180
-│   Chat, sessions, memory, git    │
-└──────────────┬───────────────────┘
-               │ REST + SSE
-┌──────────────▼───────────────────┐
-│   Harness — Hono + Bun           │  :3777
-│   Sessions, profiles, scheduler  │
-│   SQLite, auth, git integration  │
-└──────────────┬───────────────────┘
-               │ SessionProvider interface
-       ┌───────┼───────┬───────┬───────┐
-       ▼       ▼       ▼       ▼       ▼
-   Claude   Codex   Gemini  Cursor   PI Agent
-    Code     CLI     CLI     CLI    (Anthropic,
-    SDK                              OpenAI,
-                                     LiteLLM,
-               │ MCP (stdio/http)    Ollama,
-┌──────────────▼───────────────────┐ OpenRouter)
-│   Agent Memory — FastMCP/Python  │
-│   query() + save() over markdown │
-└──────────────────────────────────┘
+```text
+Frontend: React 19 + Vite (:5180)
+  chat, pages, panels, sessions, files, git, actions
+        |
+        | REST + SSE
+        v
+Harness: Hono + Bun (:3777)
+  sessions, profiles, pages, moves, actions, scheduler, SQLite, auth
+        |
+        | SessionProvider interface
+        v
+Providers:
+  claude-code, claude-code-pty, codex, cursor, gemini-cli, opencode,
+  litellm, ollama, openrouter
+
+Shared extension surfaces:
+  MCP servers, moves, actions, pages, client extensions, plugins
 ```
 
 ## Quick Start
@@ -82,7 +74,7 @@ cd /path/to/your/project
 modus
 ```
 
-That's it. If the folder isn't a Modus project yet, it scaffolds `.modus/`, starts the server, and opens your browser to the new project setup screen. The project path and name are pre-filled — just hit create.
+That's it. If the folder isn't a Modus project yet, it scaffolds `.modus/`, starts the server, and opens your browser to the new project setup screen. The project path and name are pre-filled, so just hit create.
 
 If the server is already running, `modus` opens the browser pointed at that folder.
 
@@ -110,32 +102,36 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 | Provider | Backend | What you need |
 |----------|---------|---------------|
 | `claude-code` | Claude Agent SDK | [Claude Code](https://claude.com/claude-code) CLI installed |
-| `codex` | OpenAI Codex SDK | `CODEX_API_KEY` or `OPENAI_API_KEY` env var |
+| `claude-code-pty` | Claude Code CLI PTY | [Claude Code](https://claude.com/claude-code) CLI installed |
+| `codex` | OpenAI Codex CLI | `codex` CLI plus `CODEX_API_KEY`, `OPENAI_API_KEY`, or Codex OAuth |
 | `gemini-cli` | Google Gemini CLI | [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed |
 | `cursor` | Cursor Agent CLI | `cursor-agent login` (Cursor subscription) |
+| `opencode` | opencode CLI | [opencode](https://opencode.ai) installed |
 | `litellm` | LiteLLM proxy | LiteLLM running locally |
 | `ollama` | Ollama API | Ollama running locally |
 | `openrouter` | OpenRouter API | `OPENROUTER_API_KEY` env var |
 
-The last three (`litellm`, `ollama`, `openrouter`) are PI agent variants — a lightweight agent loop for local models and routing services.
+The last three (`litellm`, `ollama`, `openrouter`) are PI agent variants, a lightweight agent loop for local models and routing services.
 
 See [harness/docs/providers.md](harness/docs/providers.md) for the full provider system documentation.
 
 ## Profiles
 
-**Agent profiles** define how an agent behaves: model, tools, system prompt, permissions, and MCP servers. Stored in `harness/profiles/agents/` as JSON.
+**Agent profiles** define how an agent behaves: model, tools, system prompt, permissions, and MCP servers. User-owned profiles live in `~/.modus/profiles/agents/`, and project-local overrides live in `<project>/.modus/profiles/agents/`.
 
-**User profiles** define who is using the system: project scope, visible agents, memory isolation, and UI state. Stored in `harness/profiles/users/`.
+**User profiles** define who is using the system: project scope, visible agents, memory isolation, and UI state. They live in `~/.modus/profiles/users/`.
 
 Profiles compose through a cascade: session override > agent profile > user profile > default. MCP servers merge additively across all layers.
 
-See [harness/docs/profile-system.md](harness/docs/profile-system.md) and [harness/profiles/README.md](harness/profiles/README.md).
+See [harness/docs/profile-system.md](harness/docs/profile-system.md).
 
 ## Moves
 
 Moves are structured, user-invoked interactions. They are how Modus turns agent behavior into explicit interfaces instead of relying only on open-ended chat. A move can combine prompt gathering, token-gated submission, widgets, persistence, and typed operations. Examples: handoffs, interactive tools, games, and other domain-specific workflows.
 
-Each move is a directory in `.modus/moves/<name>/` with a `move.json` config and `context.ts` module.
+Each move is a directory in `.modus/moves/<name>/` with a `move.json` config and `context.ts` module. Moves are self-contained: a move can ship its own `package.json`, and its dependencies install automatically on first activation, scoped to the move directory rather than the host project. This makes moves portable: copy a move directory into any project's `.modus/moves/` and it works.
+
+This repo's own `.modus/` contains four example moves as reference implementations. Wordle shows the core loop (typed ops, persisted state, hidden state the agent can't see, a widget). Chess adds the widget-first flow, a setup op, agent-vs-user turn-taking, and per-move dependencies. To try one in your project, copy its directory into your project's `.modus/moves/`.
 
 See [harness/docs/moves.md](harness/docs/moves.md).
 
@@ -149,7 +145,7 @@ See [harness/docs/actions.md](harness/docs/actions.md).
 
 ## Pages
 
-Pages are project-scoped dashboards that appear as entries in the top nav. Each page is a JSON file defining a layout tree of widgets — session views, terminals, file browsers, composers, and any other registered widget. Pages augment the built-in views (sessions, profiles, actions, git, web, trace) with project-specific workspaces.
+Pages are project- or harness-scoped dashboards that appear as entries in the top nav. Each page is a JSON file defining a layout tree of widgets: session views, terminals, file browsers, composers, and any other registered widget. Pages augment the built-in `home` and `chat` views with project-specific workspaces.
 
 Each page lives in `.modus/pages/<name>.json` and is discovered automatically per `cwd`.
 
@@ -160,6 +156,10 @@ See [harness/docs/pages.md](harness/docs/pages.md).
 Missions are longer-running, multi-step, multi-agent project workflows. They coordinate roles, handoffs, and gates over time when a task is larger than one move or one action.
 
 See [harness/docs/missions.md](harness/docs/missions.md).
+
+## Documentation
+
+Full architecture and subsystem reference lives in [harness/docs/](harness/docs/). Start with [architecture.md](harness/docs/architecture.md), which maps the repo and links out to detailed docs for each subsystem: primitives, profiles, config resolution, providers, actions, moves, pages, panels, harness context, notifications, client extensions, and the PI agent.
 
 ## Dev Mode
 
@@ -177,11 +177,15 @@ MODUS_NOTIFY_TOPIC=your-topic modus dev
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) — runtime and package manager
+- [Bun](https://bun.sh), the runtime and package manager
 - At least one provider backend (see [Providers](#providers) above)
 
 On macOS, see [harness/docs/macos-setup.md](harness/docs/macos-setup.md) for the complete first-run setup.
 
+## Status
+
+Early and moving fast. Modus runs daily for a small group of testers, but the primitives are still evolving and there are sharp edges. Here be dragons. Issues and feedback are welcome.
+
 ## License
 
-Private — not yet licensed for distribution.
+[Apache 2.0](LICENSE)

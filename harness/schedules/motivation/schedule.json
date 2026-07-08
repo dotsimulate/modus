@@ -1,9 +1,0 @@
-{
-  "name": "motivation",
-  "description": "Drops a friendly motivational message for dot every 10 minutes",
-  "agentProfile": "personal-assistant",
-  "interval": "10m",
-  "enabled": false,
-  "maxTurns": 2,
-  "userProfile": "modus-dev"
-}

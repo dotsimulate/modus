@@ -1,6 +1,6 @@
 ---
 title: Notify & Channels
-audience: agents
+lastUpdated: 2026-07-07
 covers: harness/notify.ts harness/profiles.ts (NotificationChannel)
 ---
 

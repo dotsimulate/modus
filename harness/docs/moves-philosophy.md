@@ -1,7 +1,6 @@
 ---
 title: Moves — Philosophy & Intent
-audience: agents, developers
-lastUpdated: 2026-03-15
+lastUpdated: 2026-07-07
 ---
 
 # Moves — Philosophy & Intent

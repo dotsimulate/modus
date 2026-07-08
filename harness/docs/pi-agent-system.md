@@ -1,29 +1,26 @@
 ---
 title: PI Agent System
-audience: agents
-lastUpdated: 2026-03-16
+lastUpdated: 2026-07-07
 lastCommit: a9adf68
 covers: harness/providers/pi-agent.ts harness/providers/mcp-bridge.ts
 ---
 
 # PI Agent System
 
-The harness supports two execution backends: **Claude Agent SDK** (for `claude-code` provider)
-and **PI Agent** (for everything else). This doc covers the PI side.
+The harness has several execution backends. This doc covers the PI Agent backend,
+currently registered for `litellm`, `ollama`, and `openrouter`.
 
 ## Architecture
 
 ```
 Provider Name     Engine                    Notes
 ─────────────     ────────────────────      ──────────────────────────────
-claude-code       Claude Agent SDK          Full claude-code experience
-anthropic         PI AgentSession           pi-ai "anthropic" provider
-openai            PI AgentSession           pi-ai "openai" provider
 litellm           PI AgentSession           OpenAI-compat, custom baseURL
 ollama            PI AgentSession           OpenAI-compat, custom baseURL
+openrouter        PI AgentSession           OpenAI-compat, OpenRouter metadata/pricing
 ```
 
-All five providers share the same session interface (`SessionProvider` in
+All registered providers share the same session interface (`SessionProvider` in
 `providers/types.ts`), SSE event format, and DB persistence. The session manager
 doesn't know or care which backend runs a given session.
 
@@ -33,16 +30,8 @@ doesn't know or care which backend runs a given session.
 providers/
   types.ts          SessionProvider interface + TurnContext
   registry.ts       Maps provider names → implementations
-  claude-code.ts    Claude Agent SDK provider
   pi-agent.ts       PI AgentSession provider (this doc's focus)
   mcp-bridge.ts     Connects MCP servers to PI's tool system
-
-ui/src/
-  tools.ts          Provider-aware tool definitions (PI vs Claude namespaces)
-  components/
-    ToolGrid.tsx    Tool toggle grid (provider-aware)
-    AgentConfig.tsx Session config (provider, effort, turns, tools)
-    ConfigBar.tsx   Compact config bar above chat
 ```
 
 ## PI Provider (`providers/pi-agent.ts`)
@@ -51,8 +40,6 @@ ui/src/
 
 `buildModel()` creates a PI `Model` object for the session:
 
-- **anthropic / openai**: Uses PI's built-in `getModel()` registry. Falls back to
-  manual construction for unknown model IDs. Fallback sets `input: ["text", "image"]`.
 - **litellm / ollama**: Always manually constructed as OpenAI-compatible. Base URLs
   come from `LITELLM_BASE_URL` / `OLLAMA_BASE_URL` env vars (or harness secrets),
   defaulting to `localhost:4000/v1` and `localhost:11434/v1`. `input: ["text", "image"]`.
@@ -62,7 +49,7 @@ ui/src/
 
 ### Auth
 
-`buildAuthStorage()` resolves API keys from harness secrets (`.secrets.json`) or
+`buildAuthStorage()` resolves API keys from harness secrets or
 environment variables. Uses `setRuntimeApiKey()` to inject into PI's auth chain at
 highest priority — bypasses PI's own env var lookup (which doesn't know litellm/ollama).
 
@@ -101,7 +88,7 @@ re-emit an assistant message — text was already streamed, tools already emitte
 ## MCP Bridge (`providers/mcp-bridge.ts`)
 
 Connects external MCP servers to PI's tool system. MCP servers are configured per-profile
-(and globally in `config.json`). Both sources are merged at session start.
+and in global/project `_global.json` files. Sources are merged at session start.
 
 ### How it works
 
@@ -133,16 +120,8 @@ Agent, TodoWrite, Skill       (not available)
 NotebookEdit, AskUserQuestion (not available)
 ```
 
-The frontend is provider-aware via `tools.ts`:
-
-- `isPiProvider(name)` checks if a provider uses PI tools
-- `getToolGroups(provider)` returns the correct tool group list
-- `getAllTools(provider)` returns the flat tool name list
-- The ToolGrid, AgentConfig, ConfigBar, and ProfileEditor all pass `provider` through
-  so they display the correct tool set
-
-When switching between Claude and PI providers in the profile editor, tool states
-are automatically reset (since the tool names don't overlap).
+Provider capabilities expose PI's lowercase tool groups to the UI so profile and
+session controls do not have to infer them from provider names.
 
 ## PI Skills
 
@@ -151,8 +130,6 @@ PI has a built-in skills system loaded by `DefaultResourceLoader`:
 - Skills are loaded from `.pi/skills/` directories (local and global)
 - Skills are injected into the system prompt via `formatSkillsForPrompt()`
 - Skills are enabled by default (`noSkills: false` in resource loader config)
-- Can be disabled per-profile by setting `noSkills: true` in the profile JSON
-
 The resource loader also picks up `CLAUDE.md` from the working directory automatically,
 so PI agents inherit the same project instructions as Claude agents.
 
@@ -186,5 +163,5 @@ new DefaultResourceLoader({
 2. Add default model to `DEFAULT_MODELS`
 3. Add env var mapping in `buildAuthStorage()`
 4. Add to `PI_PROVIDERS` in `registry.ts`
-5. Add to `PI_PROVIDERS` in `ui/src/tools.ts` (for `isPiProvider()`)
-6. If OpenAI-compat, add base URL resolution in `buildModel()` and `getProviderUrl()`
+5. If OpenAI-compat, add base URL resolution in `buildModel()` and `getProviderUrl()`
+6. Add any capability or health-check metadata needed by the registry/UI.

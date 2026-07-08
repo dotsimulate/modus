@@ -1,7 +1,6 @@
 ---
 title: Client Extensions
-audience: agents
-lastUpdated: 2026-04-23
+lastUpdated: 2026-07-07
 lastCommit: bae0487
 covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx .modus/ui/extensions/
 ---
@@ -97,6 +96,7 @@ Routes live in `harness/index.ts`.
 - `DELETE /api/plugins/:id` unregisters a plugin path without deleting files
 - `GET /api/client-extensions` returns the manifest for the current `cwd` and `userProfile`
 - `GET /api/client-extensions/:id/module` serves the JS module source
+- `PATCH /api/client-extensions/:id?userProfile=...` updates per-user enable/disable state and settings
 
 Manifest items include:
 - `id`
@@ -105,6 +105,8 @@ Manifest items include:
 - `pluginId` / `pluginPath` for plugin-mounted extensions
 - `enabled`
 - `moduleUrl`
+- `meta`
+- `settingsValues`
 
 Only `.js` and `.mjs` files are served. The harness does not transpile TS/TSX
 extension files.
@@ -219,9 +221,12 @@ That means an extension can:
 There is currently:
 - no per-extension permission prompt
 - no sandbox for extension modules
-- no dedicated UI listing loaded extensions
 
 Trust comes from where the extension is loaded from and which IDs are enabled.
+
+The `extensions` widget lists discovered extensions, toggles per-user
+enablement, edits extension settings declared by sidecar metadata, and manages
+registered plugins.
 
 ## Current Example
 

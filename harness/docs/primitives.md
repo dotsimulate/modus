@@ -1,7 +1,6 @@
 ---
 title: Core Primitives
-audience: agents
-lastUpdated: 2026-06-28
+lastUpdated: 2026-07-07
 lastCommit: a9adf68
 covers: harness/db.ts harness/session-manager.ts harness/index.ts
 ---
@@ -71,8 +70,8 @@ Exposed via `GET /api/sessions/:id/messages-content` (optional `?seq=<n>` for a 
 
 ## Agent Profiles
 
-Define HOW an agent behaves. JSON files in `profiles/agents/` (base) or
-`.modus/profiles/agents/` (project-local override).
+Define HOW an agent behaves. JSON files in `~/.modus/profiles/agents/`
+(user-home) or `.modus/profiles/agents/` (project-local override).
 
 **Key fields**: prompt, description, provider, model, tools, disallowedTools,
 maxTurns, effort, permissionPolicy, mcpServers, promptMode, loadProjectSettings,
@@ -86,7 +85,7 @@ prompt. `"custom"` replaces it entirely.
 
 **Resolution**: project-local profiles override base profiles of the same name.
 `getProfile(name, cwd)` checks `.modus/profiles/agents/` first, falls back to
-`harness/profiles/agents/`.
+`~/.modus/profiles/agents/`.
 
 **Source**: `profiles.ts`, `profile-schemas.ts`.
 
@@ -101,14 +100,14 @@ agent names), defaultAgentProfile, provider, model, effort, templateVars, memory
 **Scoping**: user profile filters which agent profiles appear in the UI, which
 project paths are available in the CWD picker, and which actions are visible.
 
-**State**: separate from config. `profiles/state/<name>.json` stores runtime UI
+**State**: separate from config. `~/.modus/profiles/state/<name>.json` stores runtime UI
 state (last selected profile, window positions, etc.). Gitignored.
 
 **Not the same as agent profiles**: user profiles control the view/scope. Agent
 profiles control agent behavior. They compose — a user profile selects which
 agent profiles are available and provides template vars that agent prompts use.
 
-**Source**: `profiles.ts`, `profiles/users/*.json`.
+**Source**: `profiles.ts`, `~/.modus/profiles/users/*.json`.
 
 ## Actions
 
@@ -143,12 +142,13 @@ Define WHAT the user wants done right now. User-facing structured operations.
 **Directory**: `.modus/moves/<name>/` containing:
 - `move.json` — MoveConfig
 - `context.ts` — MoveModule (optional gather, optional onSubmit)
-- `prompt.hbs` — Handlebars template (optional, inline prompt is fine)
+- `widget.tsx` — optional React widget for API moves
 
 **Execution modes**:
 - `inline` — current session handles it, injected as a message
 - `branch` — spawns a sibling session
 - `background` — fire-and-forget
+- `persistent` — ambient gather-only move until deactivated
 
 **Token flow**: activating a move generates a short-lived token (10min TTL).
 The agent receives the token in its prompt and calls `modus_submit(token, data)`

@@ -1,6 +1,6 @@
 ---
 title: Harness Context
-audience: agents
+lastUpdated: 2026-07-07
 covers: harness/harness-context.ts harness/wake-scheduler.ts harness/move-runner.ts harness/action-runner.ts harness/modus-mcp.ts
 ---
 
