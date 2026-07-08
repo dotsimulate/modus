@@ -1,7 +1,6 @@
 ---
 title: Missions
-audience: agents
-lastUpdated: 2026-04-08
+lastUpdated: 2026-07-07
 covers: harness/mission-runner.ts harness/mission-types.ts harness/mission-db.ts harness/modus-mcp.ts
 ---
 
@@ -163,12 +162,12 @@ File: `<project>/.modus/missions/<name>/mission.json`
 
 ### Roles
 
-Each role maps to an agent profile. The profile must be resolvable — either
-in the harness profiles (`harness/profiles/agents/`) or in the project's
-`.modus/profiles/agents/`. Profile resolution order:
+Each role maps to an agent profile. The profile must be resolvable either from
+the user's profile home or the project's `.modus/profiles/agents/`. Profile
+resolution order:
 
 1. Project-local: `<cwd>/.modus/profiles/agents/<name>.json`
-2. Harness-level: `harness/profiles/agents/<name>.json`
+2. User-home: `~/.modus/profiles/agents/<name>.json`
 
 The `orchestrator` role is special — the runner spawns the orchestrator
 session first and injects the full mission context as the session prompt.
@@ -494,12 +493,12 @@ my-project/
 ```
 
 The profiles referenced in `mission.json` roles can be:
-- **Harness-level** (in `harness/profiles/agents/`) — shared across projects
+- **User-home** (in `~/.modus/profiles/agents/`) — shared across projects
 - **Project-local** (in `<project>/.modus/profiles/agents/`) — scoped to this project
 
-For most missions, harness-level profiles are sufficient. Create
+For most missions, user-home profiles are sufficient. Create
 project-local profiles only when the mission needs specialized behavior
-not covered by harness profiles.
+not covered by user-home profiles.
 
 ### GitOps Convention
 

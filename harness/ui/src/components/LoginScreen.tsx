@@ -184,7 +184,8 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) 
         setPinSuccess(true);
         setTimeout(() => onAuth(name.trim()), 1000);
       } else {
-        await modus.setUserName(name.trim());
+        const token = await modus.setUserName(name.trim());
+        if (token) setAuthToken(token);
         onAuth(name.trim());
       }
     } catch {

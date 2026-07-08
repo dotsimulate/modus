@@ -1,0 +1,7 @@
+{
+  "name": "modus-root",
+  "private": true,
+  "dependencies": {
+    "bun-pty": "^0.4.8"
+  }
+}

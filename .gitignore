@@ -34,11 +34,8 @@ build/
 .mcp.json
 
 # Project-local .modus/ — runtime/personal data, mostly ignored
-# Selectively track example moves (chess, wordle, nano-banana) for reference
+# Selectively track example moves (chess, wordle, council, nano-banana) for reference
 .modus/*
-!.modus/ui/
-.modus/ui/*
-!.modus/ui/themes/
 !.modus/moves/
 .modus/moves/*
 !.modus/moves/chess/
@@ -59,7 +56,6 @@ harness/TODO/
 research_output/
 research_scraps/
 test_website/
-/package.json
 
 # Generated docs (reproduced by `bun run docs:sdk` from JSDoc source)
 harness/docs/sdk/api/
@@ -73,16 +69,28 @@ harness/package-lock.json
 harness/actions/
 harness/actions/*/output/
 harness/actions/*/gallery/
+harness/schedules/
 harness/TODO/
 TODO/
+
+# Legacy harness/profiles/ leftovers from before the ~/.modus/ migration
+# (personal runtime data — only README.md and _users.json are tracked)
+harness/profiles/state/
+harness/profiles/users/
+harness/profiles/ui/
+harness/profiles/.history/
+harness/profiles/_projects.json
+
+# Generated build stamp
+harness/ui/.modus-deps.stamp
 
 # Claude skills — scaffolded per-project by modus init from harness/templates/
 .claude/skills/
 !.claude/skills/create-action/
 !.claude/skills/create-move/
 
-# Claude settings (personal per-user)
-.claude/settings.local.json
+# Claude settings (personal per-user, any depth)
+**/.claude/settings.local.json
 
 # Sandbox — local experiments, not for commit (e.g. Remotion)
 sandbox/

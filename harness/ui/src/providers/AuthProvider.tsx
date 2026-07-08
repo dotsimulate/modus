@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { modus } from "../modusClient";
-import { clearAuthToken } from "../modusClient";
+import { clearAuthToken, getAuthToken, setAuthToken } from "../modusClient";
 import { LoginScreen } from "../components/LoginScreen";
 import { ModusError } from "../../../sdk/index";
 import { AuthContext } from "./AuthContext";
@@ -15,16 +15,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     err instanceof ModusError && (err.status === 401 || err.status === 403)
   ), []);
 
+  const ensureBrowserSession = useCallback(async (): Promise<void> => {
+    const existing = getAuthToken();
+    if (existing) {
+      try {
+        await modus.checkToken();
+        return;
+      } catch (err) {
+        if (isAuthFailure(err)) clearAuthToken();
+        else return;
+      }
+    }
+    const token = await modus.createBrowserSession();
+    if (token) setAuthToken(token);
+  }, [isAuthFailure]);
+
   useEffect(() => {
     if (authState !== "checking") return;
     modus.authStatus()
-      .then(async ({ required, setup, name, pinEnabled: hasPin, needsName }) => {
+      .then(async ({ required, setup, name, pinEnabled: hasPin, needsName, tokenRequired }) => {
         setAuthRequired(required);
         setPinEnabled(!!hasPin || required);
         if (name) setUserName(name);
         if (setup || (!required && (needsName ?? !name))) { setAuthState("setup"); return; }
-        if (!required) { setAuthState("ok"); return; }
-        const existing = localStorage.getItem("harness_token");
+        if (!required) {
+          if (tokenRequired) await ensureBrowserSession();
+          setAuthState("ok");
+          return;
+        }
+        const existing = getAuthToken();
         if (existing) {
           try {
             await modus.checkToken();
@@ -42,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthState("login");
       })
       .catch(() => setAuthState("ok"));
-  }, [authState, isAuthFailure]);
+  }, [authState, ensureBrowserSession, isAuthFailure]);
 
   useEffect(() => {
     const refresh = () => setAuthState("checking");

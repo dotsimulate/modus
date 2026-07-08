@@ -372,11 +372,27 @@ app.use("/api/*", cors({ origin: "*" }));
 /** Dynamic PIN lookup — picks up changes from first-run setup */
 function getPin() { return resolveSecret("HARNESS_PIN"); }
 
+// In-memory set of valid browser session tokens from PIN or no-PIN browser setup.
+const pinSessions = new Set<string>();
+
+function mintBrowserSessionToken(): string {
+  const sessionToken = crypto.randomUUID();
+  pinSessions.add(sessionToken);
+  return sessionToken;
+}
+
 // Check if PIN auth is required (no value exposed)
 app.get("/api/auth/status", (c) => {
   const pin = getPin();
   const name = getUserName();
-  return c.json({ required: !!pin, setup: !pin && !name, pinEnabled: !!pin, needsName: !name, name });
+  return c.json({
+    required: !!pin,
+    setup: !pin && !name,
+    pinEnabled: !!pin,
+    needsName: !name,
+    name,
+    tokenRequired: !!AUTH_TOKEN,
+  });
 });
 
 // First-run identity setup — PIN is optional and can be enabled later.
@@ -385,7 +401,15 @@ app.post("/api/auth/name", async (c) => {
   const name = body.name?.trim();
   if (!name) return c.json({ error: "name required" }, 400);
   setUserName(name);
-  return c.json({ ok: true, name });
+  const token = !getPin() && AUTH_TOKEN ? mintBrowserSessionToken() : "";
+  return c.json({ ok: true, name, token });
+});
+
+// Create a browser session when PIN auth is disabled but HARNESS_TOKEN protects APIs.
+app.post("/api/auth/session", (c) => {
+  if (getPin()) return c.json({ error: "PIN verification required" }, 403);
+  const token = AUTH_TOKEN ? mintBrowserSessionToken() : "";
+  return c.json({ ok: true, token });
 });
 
 // First-run setup — set PIN from UI, only if none exists yet
@@ -397,8 +421,7 @@ app.post("/api/auth/setup", async (c) => {
   if (!pin || pin.length < 4) return c.json({ error: "pin must be at least 4 characters" }, 400);
   const ok = setupPin(pin);
   if (!ok) return c.json({ error: "pin already set" }, 403);
-  const sessionToken = crypto.randomUUID();
-  pinSessions.add(sessionToken);
+  const sessionToken = mintBrowserSessionToken();
   if (name) setUserName(name);
   return c.json({ ok: true, token: sessionToken });
 });
@@ -406,11 +429,10 @@ app.post("/api/auth/setup", async (c) => {
 // Verify PIN — returns a session token for the browser
 app.post("/api/auth/verify", async (c) => {
   const pin = getPin();
-  if (!pin) return c.json({ ok: true, token: "" });
+  if (!pin) return c.json({ ok: true, token: AUTH_TOKEN ? mintBrowserSessionToken() : "" });
   const body = await c.req.json();
   if (body.pin === pin) {
-    const sessionToken = crypto.randomUUID();
-    pinSessions.add(sessionToken);
+    const sessionToken = mintBrowserSessionToken();
     const name = body.name?.trim();
     if (name) setUserName(name);
     return c.json({ ok: true, token: sessionToken });
@@ -448,9 +470,6 @@ app.get("/api/auth/check", (c) => {
   }
   return c.json({ error: "unauthorized" }, 401);
 });
-
-// In-memory set of valid browser session tokens from PIN auth
-const pinSessions = new Set<string>();
 
 // Lock — invalidate ALL browser sessions (agents unaffected)
 app.post("/api/auth/lock", (c) => {

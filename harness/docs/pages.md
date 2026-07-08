@@ -1,7 +1,6 @@
 ---
 title: Pages
-audience: agents
-lastUpdated: 2026-04-19
+lastUpdated: 2026-07-07
 covers: harness/pages.ts harness/index.ts harness/ui/src/App.tsx harness/ui/src/components/PageRenderer.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/registry.ts harness/ui/src/widgets/ui-state.ts harness/ui/src/views.ts harness/sdk/types.ts .modus/pages/*.json harness/pages/*.json
 ---
 

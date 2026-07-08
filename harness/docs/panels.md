@@ -1,7 +1,6 @@
 ---
 title: Panels
-audience: agents
-lastUpdated: 2026-04-19
+lastUpdated: 2026-07-07
 covers: harness/ui/src/providers/LayoutProvider.tsx harness/ui/src/providers/LayoutContext.ts harness/ui/src/providers/FileViewerProvider.tsx harness/ui/src/components/PanelSurface.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/LeftPanel.tsx harness/ui/src/components/RightPanel.tsx harness/ui/src/components/RightPanelContext.tsx harness/ui/src/components/WidgetPicker.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/registry.ts harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/ui-state.ts harness/sdk/types.ts
 ---
 
@@ -335,7 +334,7 @@ session to pick the right defaults and persist changes.
 
 ### View-specific defaults — `VIEW_PANEL_DEFAULTS`
 
-Hard-coded for `chat`, `actions`, `profiles`, `web`, `trace`, `git`, `home`.
+Hard-coded for `chat` and `home`.
 Shape:
 
 ```ts
@@ -350,8 +349,9 @@ is `tabs`. Views missing from the map inherit `FALLBACK_DEFAULTS` (`widgets:
 []` on left, `["code-editor"]` on right).
 
 `panelsEnabled = !!VIEW_PANEL_DEFAULTS[view]` — views not in the map have no
-app-level panels. Currently every listed view gets panels; the check is the
-toggle point for future view-specific opt-in.
+app-level panels. Custom `page:<id>` views compose their own panels inside the
+page layout unless the page is a non-fullscreen page surrounded by enabled app
+panels in a future default.
 
 ### Resolution order — widgets
 

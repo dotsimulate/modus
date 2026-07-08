@@ -1,7 +1,6 @@
 ---
 title: Actions
-audience: agents
-lastUpdated: 2026-06-28
+lastUpdated: 2026-07-07
 covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts
 ---
 

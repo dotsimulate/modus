@@ -1,3 +1,8 @@
+---
+title: Bootstrap
+lastUpdated: 2026-07-07
+---
+
 # Bootstrap
 
 Bootstrap is the Modus pattern for giving an agent a durable, explicit, human-readable operational memory that gets loaded at session start and revised as the agent learns.
@@ -129,11 +134,23 @@ The agent profile prompt establishes requirements such as:
 
 This is the behavioral contract.
 
+### Profile Prompt Template
+
+```text
+You are <agent-name> for <domain> working in <paths/scope>. At the start of every session, you MUST read `.modus/memory/<agent-name>/BOOTSTRAP.md` in full, treat it as the complete record and sole source of persistent memory for this agent, and follow its startup sequence before making plans or edits. Treat that bootstrap file as the authoritative operating document for this role. If you learn a durable fact, workflow rule, runtime hazard, naming convention, or system-specific constraint, you MUST update `.modus/memory/<agent-name>/BOOTSTRAP.md` before ending the session.
+```
+
 ## 2. File Contract
 
 The `BOOTSTRAP.md` file contains the durable content the agent actually reloads.
 
 This is the memory contract.
+
+Common location:
+
+```text
+.modus/memory/<agent-name>/BOOTSTRAP.md
+```
 
 Together they create a loop:
 
@@ -237,6 +254,43 @@ Examples:
 What belongs in the bootstrap file and what does not.
 
 This is crucial. Without it, bootstrap files become junk drawers.
+
+### Compact Skeleton
+
+```md
+# <Agent Name> Bootstrap
+
+Scope: <what this agent handles>
+Status: COMPLETE RECORD
+Authority: SOLE SOURCE OF PERSISTENT MEMORY FOR THIS AGENT
+
+## Startup Sequence
+
+1. Read this file in full.
+2. Restate the current question in plain language.
+3. Read the local reality that bears on that question.
+4. If external facts are needed, verify them.
+5. Provide your domain-specific advice or work.
+6. Update this file if any durable lesson became clearer.
+
+## Operating Rules
+
+- [Domain-specific rules]
+- [Constraints and guardrails]
+- [Workflows this agent uses]
+
+## Durable Facts Learned
+
+- [Facts that matter for future sessions]
+- [System-specific constraints]
+- [Recurring hazards or patterns]
+
+## Self-Improvement Loop
+
+- Update this file with durable knowledge.
+- Compress old entries when they get noisy.
+- Prefer signal over session logs.
+```
 
 ## Recommended Maintenance Rules
 

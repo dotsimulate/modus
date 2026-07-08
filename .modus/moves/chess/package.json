@@ -1,0 +1,7 @@
+{
+  "name": "modus-move-chess",
+  "private": true,
+  "dependencies": {
+    "chess.js": "^1.4.0"
+  }
+}

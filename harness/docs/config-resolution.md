@@ -1,9 +1,8 @@
 ---
 title: Config Resolution
-audience: agents
-lastUpdated: 2026-03-16
+lastUpdated: 2026-07-07
 lastCommit: a9adf68
-covers: harness/config-resolver.ts harness/profiles/
+covers: harness/profiles.ts harness/profile-schemas.ts harness/session-manager.ts harness/providers/pi-agent.ts
 ---
 
 # Config Resolution
@@ -18,11 +17,13 @@ profile JSON  →  _global.json providerDefaults  →  TypeScript fallback
 (per-agent)      (per-provider, all agents)         (hardcoded, invisible)
 ```
 
-**Profile JSON** (`profiles/agents/<name>.json`): Per-agent overrides. A creative
+**Profile JSON** (`~/.modus/profiles/agents/<name>.json`, or
+`<cwd>/.modus/profiles/agents/<name>.json`): Per-agent overrides. A creative
 agent might want a smaller context window to force earlier compaction. A coding agent
 might want compaction disabled entirely.
 
-**Provider Defaults** (`profiles/_global.json` → `providerDefaults.<provider>`):
+**Provider Defaults** (`~/.modus/profiles/_global.json` and project
+`<cwd>/.modus/_global.json` → `providerDefaults.<provider>`):
 Per-provider overrides. If your llama-server runs `-c 65536`, set it once here and
 every litellm agent inherits it. Optional — most users never touch this.
 
@@ -50,7 +51,8 @@ every litellm agent inherits it. Optional — most users never touch this.
   "prompt": "You are a coding assistant."
 }
 ```
-Uses all TypeScript defaults. Context = 32768, compaction on.
+Uses all TypeScript defaults. Context = 128000 unless OpenRouter supplies model
+metadata, compaction on.
 
 ### Power user: provider-level override
 ```json
@@ -70,7 +72,7 @@ still fall through to TS defaults.
 
 ### Super power user: per-agent override
 ```json
-// profiles/agents/creative.json
+// ~/.modus/profiles/agents/creative.json
 {
   "provider": "litellm",
   "model": "deepseek-r1-qwen3-8b",
@@ -83,7 +85,12 @@ provider defaults or TS fallbacks say.
 
 ## Code Path
 
-Resolution happens in two places in `providers/pi-agent.ts`:
+Profile and global config files are loaded by `profiles.ts`; session-level values
+such as provider/model/effort are resolved by `session-manager.ts` before the
+provider receives `TurnContext`.
+
+For PI providers, model-window resolution happens in two places in
+`providers/pi-agent.ts`:
 
 1. **`buildModel()`** — resolves `contextWindow` and `maxOutputTokens` for the
    PI Model object that controls when the LLM thinks context is full.
@@ -91,4 +98,6 @@ Resolution happens in two places in `providers/pi-agent.ts`:
 2. **`startTurn()`** — resolves `compaction.*` for `SettingsManager.inMemory()`,
    which controls PI's automatic compaction behavior.
 
-Both read `getGlobalConfig().providerDefaults?.[providerName]` as the middle tier.
+Model construction reads user-home provider defaults; compaction reads
+`getGlobalConfig(session.cwd).providerDefaults?.[providerName]`, so project
+`_global.json` can override compaction settings for the active workspace.
