@@ -179,3 +179,14 @@
   color: var(--text-dim);
 }
 .empty-state-sub { font-size: 12px; color: var(--text-muted); }
+
+.empty-state-action {
+  margin-top: 10px;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-raised, var(--surface));
+  color: var(--text);
+  cursor: pointer;
+}

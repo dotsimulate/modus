@@ -109,7 +109,10 @@ function reduceProviderWait(s: ReducerState, content: string, ts: number): Reduc
   if (!trimmed) return s;
   const msgs = [...s.messages];
   const last = msgs[msgs.length - 1];
-  if (last?.role === "system" && last.content.startsWith("Claude is retrying")) {
+  if (last?.role === "system" && (
+    last.content.startsWith("Claude is retrying")
+    || last.content.startsWith("Codex is reconnecting")
+  )) {
     msgs[msgs.length - 1] = { ...last, content: trimmed, timestamp: ts };
   } else {
     msgs.push({ id: nextMsgId(), role: "system", content: trimmed, timestamp: ts });
@@ -260,6 +263,11 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
       ? ` Retrying in ${(m.delay_ms / 1000).toFixed(1)}s.`
       : "";
     return reduceProviderWait(s, `Claude is retrying after an API limit or transient error.${delay}`, ts);
+  }
+  if (m.subtype === "provider_reconnecting" && m.provider === "codex") {
+    const attempt = typeof m.attempt === "number" ? m.attempt : "?";
+    const maxAttempts = typeof m.maxAttempts === "number" ? m.maxAttempts : "?";
+    return reduceProviderWait(s, `Codex is reconnecting (${attempt}/${maxAttempts}). The turn is still running.`, ts);
   }
   if (m.subtype === "init") {
     const nextConfig = readAgentConfig(m.config);

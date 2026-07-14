@@ -72,15 +72,17 @@ type Props = {
   cwd?: string | null;
   emptyTitle?: string;
   emptySubtitle?: string;
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
   queuedMessage?: QueuedMessageType | null;
   onCancelQueued?: () => void;
   onSessionTagsChange?: () => void;
-  onBranch?: (seq: number, prefill?: string) => void;
+  onBranch?: (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => void;
   onStopTask?: (taskId: string) => void;
   onOpenSessionEdits?: () => void;
 };
 
-export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits }: Props) {
+export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits }: Props) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   // Imperative handle into the virtualizer for tick-driven scrolling.
@@ -412,7 +414,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
             )}
           </MessageBubble>
           {msg.role === "user" && (
-            <UserMeta msg={msg} onBranch={onBranch} />
+            <UserMeta msg={msg} sessionId={sessionId} provider={provider} onBranch={onBranch} />
           )}
         </div>
       );
@@ -491,6 +493,11 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       <div className="empty-state">
         <div className="empty-state-title">{emptyTitle ?? "ready"}</div>
         <div className="empty-state-sub">{emptySubtitle ?? "start typing to begin"}</div>
+        {emptyActionLabel && onEmptyAction && (
+          <button type="button" className="empty-state-action" onClick={onEmptyAction}>
+            {emptyActionLabel}
+          </button>
+        )}
       </div>
     );
   }

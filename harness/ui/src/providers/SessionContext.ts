@@ -31,7 +31,8 @@ type SessionContextValue = {
   cancelQueued: () => void;
   updateActiveSessionConfig: (config: AgentConfigState) => Promise<void>;
   updateActiveSessionProfile: (profile: string) => void;
-  branchFromMessage: (seq: number, prefill?: string) => Promise<void>;
+  branchFromMessage: (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => Promise<void>;
+  branchFromSessionMessage: (sessionId: string, seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => Promise<void>;
 };
 
 export const SessionContext = createContext<SessionContextValue>(null!);

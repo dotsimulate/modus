@@ -124,7 +124,7 @@ type Props = {
   cwd?: string | null;
   lastTodoId?: string;
   streamFeed?: string;
-  onBranch?: (seq: number, prefill?: string) => void;
+  onBranch?: (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => void;
   onStopTask?: (taskId: string) => void;
   children?: ReactNode;
 };

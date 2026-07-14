@@ -74,6 +74,10 @@ import type {
   ActivitySummaryResult,
   NoteListItem,
   NoteDetail,
+  BranchPreview,
+  BranchResult,
+  RewindPreview,
+  RewindResult,
 } from "./types";
 
 /** Error thrown by ModusClient on non-OK HTTP responses. */
@@ -275,8 +279,8 @@ export class ModusClient {
     return (await this.fetch(`/api/sessions/${id}/messages-content${q}`)).json();
   }
   /** Gets a semantic history snapshot for ordinary session hydration. */
-  async getSessionHistorySnapshot(id: string): Promise<SessionHistorySnapshot> {
-    return (await this.fetch(`/api/sessions/${id}/history-snapshot`)).json();
+  async getSessionHistorySnapshot(id: string, opts?: { signal?: AbortSignal }): Promise<SessionHistorySnapshot> {
+    return (await this.fetch(`/api/sessions/${id}/history-snapshot`, { signal: opts?.signal })).json();
   }
   /** Soft-deletes (archives) a session. */
   async archiveSession(id: string): Promise<void> { await this.fetch(`/api/sessions/${id}`, { method: "DELETE" }); }
@@ -339,11 +343,29 @@ export class ModusClient {
   async respondToPermission(id: string, opts: PermissionResponseOpts | PermissionResponse): Promise<{ ok: boolean }> {
     return (await this.fetch(`/api/sessions/${id}/permission-response`, { method: "POST", body: JSON.stringify(opts) })).json();
   }
-  /** Creates a new session branching from a specific event sequence number. Returns the new session ID. */
-  async branchSession(id: string, seq: number): Promise<string> {
-    const d = await (await this.fetch(`/api/sessions/${id}/branch`, { method: "POST", body: JSON.stringify({ seq }) })).json();
+  /** Previews both the provider-native conversation fork and exact managed-file workspace actions. */
+  async previewBranch(id: string, seq: number, opts?: { restoreCode?: boolean; checkpointSeq?: number; providerMessageId?: string }): Promise<BranchPreview> {
+    const d = await (await this.fetch(`/api/sessions/${id}/branch/preview`, { method: "POST", body: JSON.stringify({ seq, ...opts }) })).json();
     if (d.error) throw new Error(d.error);
-    return d.sessionId;
+    return d;
+  }
+  /** Creates a branch only after an explicit, freshly displayed confirmation. */
+  async branchSession(id: string, seq: number, opts: { restoreCode?: boolean; checkpointSeq?: number; providerMessageId?: string; confirmed: true }): Promise<BranchResult> {
+    const d = await (await this.fetch(`/api/sessions/${id}/branch`, { method: "POST", body: JSON.stringify({ seq, ...opts }) })).json();
+    if (d.error) throw new Error(d.error);
+    return d;
+  }
+  /** Previews an exact checkpoint restore, including an undo checkpoint. */
+  async previewCheckpointRestore(id: string, checkpointId: number): Promise<RewindPreview> {
+    const d = await (await this.fetch(`/api/sessions/${id}/checkpoints/${checkpointId}/preview`)).json();
+    if (d.error) throw new Error(d.error);
+    return d;
+  }
+  /** Restores a previously previewed checkpoint. The server requires confirmation again. */
+  async restoreCheckpoint(id: string, checkpointId: number, confirmed: true): Promise<RewindResult> {
+    const d = await (await this.fetch(`/api/sessions/${id}/checkpoints/${checkpointId}/restore`, { method: "POST", body: JSON.stringify({ confirmed }) })).json();
+    if (d.error) throw new Error(d.error);
+    return d;
   }
 
   // ── Draft / UI State ──

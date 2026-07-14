@@ -46,7 +46,7 @@ Commands:
   stop       <session-id>
   archive    <session-id>
   unarchive  <session-id>
-  branch     <session-id> <seq>
+  branch     <session-id> <seq> [--confirm]
   search     <query> [--limit <n>]
   tag        <session-id> add|remove <tag>
   config     <session-id> --model <model> --provider <provider>
@@ -255,7 +255,13 @@ async function main() {
       const id = positional[0];
       const seq = Number(positional[1]);
       if (!id || !seq) { console.error("Error: session-id and seq required"); process.exit(1); }
-      const result = await c.branchSession(id, seq);
+      const preview = await c.previewBranch(id, seq);
+      if (flags.confirm !== "true") {
+        console.log(JSON.stringify(preview, null, 2));
+        console.error("Refusing to branch without --confirm. Review the preview above first.");
+        process.exit(2);
+      }
+      const result = await c.branchSession(id, seq, { confirmed: true });
       console.log(`Branched → ${result.sessionId}`);
       break;
     }

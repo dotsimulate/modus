@@ -17,7 +17,7 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from "
 import { join, isAbsolute } from "path";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
-import { getMaxSeq, getSession, updateSessionStatus } from "../db";
+import { getMaxSeq, getSession, getSessionMessages, updateSessionStatus, type TurnContent } from "../db";
 import { getMemoryLimitedEnv } from "../memory-guard";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
@@ -101,7 +101,7 @@ function contentToString(content: MessageContent): string {
 
 function buildCursorInput(content: MessageContent, ctx: TurnContext): string {
   const prompt = resolveProfilePrompt(ctx.profile);
-  const userInput = contentToString(content);
+  const userInput = buildBranchAwareUserInput(content, ctx);
   if (!prompt?.text) return userInput;
 
   const header = prompt.mode === "custom"
@@ -109,6 +109,48 @@ function buildCursorInput(content: MessageContent, ctx: TurnContext): string {
     : "Additional profile instructions:";
 
   return `${header}\n${prompt.text}\n\nUser request:\n${userInput}`;
+}
+
+function formatCursorTranscript(turns: TurnContent[]): string {
+  const transcript = turns
+    .filter((turn) => turn.text.trim())
+    .map((turn) => {
+      const role = turn.role === "assistant" ? "Assistant" : "User";
+      const text = turn.text.trim();
+      if (!turn.toolCalls?.length) return `${role}: ${text}`;
+
+      const toolSummary = turn.toolCalls
+        .map((tool) => {
+          const result = tool.result ? ` -> ${tool.result.slice(0, 800)}` : "";
+          return `- ${tool.name}: ${JSON.stringify(tool.input)}${result}`;
+        })
+        .join("\n");
+      return `${role}: ${text}\nTool activity:\n${toolSummary}`;
+    })
+    .join("\n\n");
+  const maxChars = 120_000;
+  return transcript.length > maxChars
+    ? `[older transcript omitted]\n${transcript.slice(-maxChars)}`
+    : transcript;
+}
+
+function buildBranchAwareUserInput(content: MessageContent, ctx: TurnContext): string {
+  const userInput = contentToString(content);
+  if (!ctx.opts.branchParentId) return userInput;
+
+  const turns = getSessionMessages(ctx.session.sessionId);
+  const transcript = formatCursorTranscript(turns);
+  if (!transcript) return userInput;
+
+  return [
+    "This Cursor chat was branched from a Modus rewind. Cursor Agent does not currently expose a native fork/resume-at-message API, so continue from the copied conversation transcript below. Treat the transcript as prior context and answer only the new user request after it.",
+    "",
+    "Conversation transcript before the branch:",
+    transcript,
+    "",
+    "New user request:",
+    userInput,
+  ].join("\n");
 }
 
 // ── Resolve API key ──
@@ -280,8 +322,11 @@ export function createCursorProvider(): SessionProvider {
         return;
       }
 
-      // Check if this is a resume
-      const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
+      // Branch IDs are Modus DB IDs with copied events, not Cursor chat IDs.
+      // Cursor Agent has no fork/resume-at-message flag, so branch resumes
+      // start as fresh Cursor chats seeded with the copied Modus transcript.
+      const isBranch = !!opts.branchParentId;
+      const isResume = !isBranch && !!opts.sessionId && !!getSession(opts.sessionId);
       if (isResume && opts.sessionId) {
         state.sessionId = opts.sessionId;
       }
@@ -722,11 +767,12 @@ async function runTurn(
     });
 
     session.costUsd += 0;
+    session.exchangeCount += turnCount;
     session.numTurns += turnCount;
 
     ctx.updateSessionDb({
       status: "idle",
-      messageCount: session.numTurns * 2,
+      messageCount: session.exchangeCount * 2,
       costUsd: 0,
       lastPrompt: session.preview,
       lastResponse: (lastAssistantText || session.lastAssistantText || "").slice(0, 200),

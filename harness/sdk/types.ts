@@ -412,6 +412,8 @@ export type SessionHistorySnapshot = {
   loadProjectSettings: boolean;
   agentConfig: AgentConfigState;
   messages: TurnContent[];
+  /** True when semantic materialization was incomplete and durable events supplied the snapshot. */
+  recoveredFromEvents?: boolean;
   lastSeq: number;
   createdAt: number;
 };
@@ -876,9 +878,11 @@ export type SessionTagsResult = {
 
 // ── Branch ──
 
-/** Result of branching a session -- returns the new session's ID. */
+/** Result of a confirmed provider-native conversation branch. */
 export type BranchResult = {
   sessionId: string;
+  conversationCapability: "native-message" | "transcript-copy" | "unsupported";
+  workspace: RewindResult | null;
 };
 
 // ── Actions ──
@@ -1866,4 +1870,55 @@ export type PromptCacheEntry = {
 /** The full prompt cache payload — a shareable JSON file of saved prompts. */
 export type PromptCache = {
   prompts: PromptCacheEntry[];
+};
+
+export type RewindFileAction = {
+  path: string;
+  action: "restore" | "delete" | "provider-rewind";
+  evidence: "modus-managed" | "native-provider";
+  reason: "modified" | "missing" | "created-after-checkpoint" | "provider-reported";
+};
+
+export type RewindExclusion = {
+  path: string;
+  reason: "oversized" | "total-limit" | "directory" | "unreadable" | "unsafe-path";
+  bytes?: number;
+};
+
+export type RewindPreview = {
+  capability: "modus" | "native-claude" | "unsupported";
+  status: "ready" | "partial" | "unsupported";
+  checkpointId?: number;
+  files: RewindFileAction[];
+  excluded: RewindExclusion[];
+  unchangedCount: number;
+  managedBytes: number;
+  undoAvailable: boolean;
+  scopeNotes: string[];
+  error?: string;
+};
+
+export type RewindResult = {
+  status: "success" | "partial" | "failed" | "unsupported";
+  checkpointId?: number;
+  undoCheckpointId?: number;
+  restored: string[];
+  deleted: string[];
+  providerChanged?: string[];
+  excluded: RewindExclusion[];
+  error?: string;
+};
+
+export type BranchPreview = {
+  sourceSessionId: string;
+  branchSeq: number;
+  provider: string;
+  requiresConfirmation: true;
+  conversation: {
+    capability: "native-message" | "transcript-copy" | "unsupported";
+    supported: boolean;
+    label: string;
+    warning?: string;
+  };
+  workspace: RewindPreview | null;
 };

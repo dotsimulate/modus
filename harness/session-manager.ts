@@ -19,12 +19,21 @@
 import {
   upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
   getStoredSessionConfig, getSessionsByTag,
-  copyEventsToSession, findAssistantUuid, clearBranchFields,
-  addSessionTag, parseTags, getMaxSeq, insertSessionArtifact, insertMessage,
+  copyEventsToSession, copyMessagesToSession, findAssistantUuid, clearBranchFields,
+  addSessionTag, parseTags, getMaxSeq, insertSessionArtifact, insertMessage, syncSessionMessageCount,
+  insertFileObservation,
 } from "./db";
 import type { SessionOutcome } from "./action-types";
 import { logActivity } from "./activity";
 import { canSpawnSession } from "./memory-guard";
+import {
+  captureCheckpoint,
+  checkpointById,
+  checkpointForSeq,
+  previewCheckpoint,
+  restoreCheckpointById,
+} from "./checkpoints";
+import type { RewindPreview, RewindResult } from "./checkpoints";
 import { resolve as resolvePath, dirname as pathDirname, join as pathJoin } from "path";
 import { appendFileSync, mkdirSync } from "fs";
 
@@ -628,6 +637,35 @@ function getOrCreatePendingAssistantTurn(session: ActiveSession): PendingAssista
   return session.pendingAssistantTurn;
 }
 
+/** Materialize whatever durable assistant content has arrived so abnormal
+ * provider termination cannot leave a permanently user-only semantic history. */
+function flushPendingAssistantTurn(session: ActiveSession, terminalEvent: any = {}): boolean {
+  const turn = session.pendingAssistantTurn;
+  if (!turn) return false;
+  const content = turn.text || (typeof terminalEvent.result === "string" ? terminalEvent.result : "");
+  if (!content && !turn.thinking && turn.toolCalls.size === 0) {
+    session.pendingAssistantTurn = null;
+    return false;
+  }
+  insertMessage({
+    sessionId: session.sessionId,
+    seq: session.seq,
+    role: "assistant",
+    content,
+    uuid: turn.uuid,
+    thinking: turn.thinking || undefined,
+    toolCalls: turn.toolCalls.size > 0 ? [...turn.toolCalls.values()] : undefined,
+    costUsd: typeof terminalEvent.total_cost_usd === "number" ? terminalEvent.total_cost_usd : undefined,
+    durationMs: typeof terminalEvent.harness_duration_ms === "number" ? terminalEvent.harness_duration_ms : undefined,
+    model: session.model,
+    turns: typeof terminalEvent.num_turns === "number" ? terminalEvent.num_turns : undefined,
+    createdAt: Date.now(),
+  });
+  syncSessionMessageCount(session.sessionId);
+  session.pendingAssistantTurn = null;
+  return true;
+}
+
 function persistSemanticMessage(session: ActiveSession, event: any) {
   if (event.type === "user" && (event.subtype === "prompt" || event.message?.role === "user")) {
     const text = extractPlainText(event.message?.content);
@@ -638,6 +676,7 @@ function persistSemanticMessage(session: ActiveSession, event: any) {
       seq: session.seq,
       role: "user",
       content: text,
+      uuid: typeof event.uuid === "string" ? event.uuid : undefined,
       createdAt: Date.now(),
     });
     return;
@@ -680,29 +719,9 @@ function persistSemanticMessage(session: ActiveSession, event: any) {
     return;
   }
 
-  if (event.type === "result") {
-    const turn = session.pendingAssistantTurn;
-    if (!turn) return;
-    const content = turn.text || (typeof event.result === "string" ? event.result : "");
-    if (!content && !turn.thinking && turn.toolCalls.size === 0) {
-      session.pendingAssistantTurn = null;
-      return;
-    }
-    insertMessage({
-      sessionId: session.sessionId,
-      seq: session.seq,
-      role: "assistant",
-      content,
-      uuid: turn.uuid,
-      thinking: turn.thinking || undefined,
-      toolCalls: turn.toolCalls.size > 0 ? [...turn.toolCalls.values()] : undefined,
-      costUsd: typeof event.total_cost_usd === "number" ? event.total_cost_usd : undefined,
-      durationMs: typeof event.harness_duration_ms === "number" ? event.harness_duration_ms : undefined,
-      model: session.model,
-      turns: typeof event.num_turns === "number" ? event.num_turns : undefined,
-      createdAt: Date.now(),
-    });
-    session.pendingAssistantTurn = null;
+  if (event.type === "result" || event.type === "error" || event.type === "done"
+    || (event.type === "system" && event.subtype === "interrupted")) {
+    flushPendingAssistantTurn(session, event);
   }
 }
 
@@ -753,6 +772,7 @@ function persistAndBroadcastEvent(session: ActiveSession, event: any) {
     event.subtype ?? null,
     JSON.stringify(event),
   );
+  observeDeclaredFileTools(session, event);
   sseLog("PERSIST", session.sessionId,
     `seq=${session.seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} subs=${session.subscribers.size}`);
   broadcastEventToSession(session, event, session.seq);
@@ -912,9 +932,9 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   // pass fork opts to the provider and clear the fields so it only forks once.
   if (isResume && !opts.branchParentId) {
     const dbRow = getSession(opts.sessionId!);
-    if (dbRow?.parent_session_id && dbRow.branch_message_uuid) {
+    if (dbRow?.parent_session_id) {
       opts.branchParentId = dbRow.parent_session_id;
-      opts.branchMessageUUID = dbRow.branch_message_uuid;
+      opts.branchMessageUUID = dbRow.branch_message_uuid ?? undefined;
       // Clear branch fields so next resume is a normal resume, not another fork
       clearBranchFields(opts.sessionId!);
       console.log(`[branch-detect] Will fork ${opts.sessionId} from parent=${opts.branchParentId} at message=${opts.branchMessageUUID}`);
@@ -1033,6 +1053,17 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     preview: session.preview,
   });
 
+  // Snapshot before the provider is allowed to run. Failure does not block the
+  // turn, but capture must settle so this cannot race the provider's first edit.
+  const checkpointSeq = isResume ? getMaxSeq(tempId) : 0;
+  const checkpointReady = captureCheckpoint(resolvedCwd, tempId, checkpointSeq).then((r) => {
+    if (!r.ok && r.reason !== "not a git repository") {
+      console.warn(`[checkpoints] capture failed for ${tempId}: ${r.reason}`);
+    }
+  }).catch((err) => {
+    console.warn(`[checkpoints] capture failed for ${tempId}:`, err?.message ?? err);
+  });
+
   // Delegate to provider — provider handles init events (user/prompt, system/init)
   const ctx = createTurnContext(session, {
     ...opts,
@@ -1043,7 +1074,11 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     providerControls: resolvedProviderControls,
     additionalDirectories: session.additionalDirectories,
   });
-  provider.startTurn(ctx);
+  void checkpointReady.finally(() => {
+    if (!session.abortController.signal.aborted && activeSessions.get(session.sessionId) === session) {
+      provider.startTurn(ctx);
+    }
+  });
 
   logActivity({
     userProfile: session.userProfile,
@@ -1406,6 +1441,16 @@ async function _queueMessageAsync(
     message: { role: "user", content },
   }));
 
+  // Capture must settle before this message can be dispatched to the provider.
+  try {
+    const captured = await captureCheckpoint(session.cwd ?? process.cwd(), sessionId, session.seq);
+    if (!captured.ok && captured.reason !== "not a git repository") {
+      console.warn(`[checkpoints] capture failed for ${sessionId}: ${captured.reason}`);
+    }
+  } catch (err: any) {
+    console.warn(`[checkpoints] capture failed for ${sessionId}:`, err?.message ?? err);
+  }
+
   const isActiveTurn = session.status === "running" || session.status === "starting" || session.status === "interrupting";
   const pendingItem = createPendingDispatchItem(
     content,
@@ -1541,6 +1586,7 @@ export function stopSession(sessionId: string): boolean {
   }
 
   // Delegate to provider for cleanup
+  flushPendingAssistantTurn(session, { type: "system", subtype: "interrupted" });
   session._provider.abort(session);
 
   setTimeout(() => {
@@ -1995,6 +2041,7 @@ export function forceClearActiveSession(
     }
     session.watchers.clear();
 
+    flushPendingAssistantTurn(session, { type: "system", subtype: "interrupted", reason });
     session.status = status;
     updateSessionStatus(session.sessionId, status);
     emitGlobalSessionEvent({
@@ -2060,6 +2107,7 @@ function reapStaleSessions(): void {
   for (const id of toReap) {
     const session = activeSessions.get(id);
     if (!session) continue;
+    flushPendingAssistantTurn(session, { type: "done", reason: "session reaped" });
     try { session._provider.dispose?.(session)?.catch(() => {}); } catch { /* best effort */ }
     sseLog("SESSION-REAPED", id,
       `status=${session.status} age=${Math.round((now - session.lastEventAt) / 1000)}s totalActive=${activeSessions.size - 1}`);
@@ -2103,6 +2151,7 @@ export function shutdownAll() {
         }
       }
       session.watchers.clear();
+      flushPendingAssistantTurn(session, { type: "done", reason: "session shutdown" });
       session._provider.abort(session);
       session._provider.dispose?.(session).catch(() => {});
     } catch { /* best effort */ }
@@ -2113,15 +2162,189 @@ export function shutdownAll() {
 
 // ── Branching ──
 
-export function branchSession(
+export type ConversationBranchCapability = "native-message" | "transcript-copy" | "unsupported";
+
+export type BranchPreview = {
+  sourceSessionId: string;
+  branchSeq: number;
+  provider: string;
+  requiresConfirmation: true;
+  conversation: {
+    capability: ConversationBranchCapability;
+    supported: boolean;
+    label: string;
+    warning?: string;
+  };
+  workspace: RewindPreview | null;
+};
+
+function conversationBranchPreview(provider: string, messageUuid: string | null): BranchPreview["conversation"] {
+  if (provider === "claude-code" && messageUuid) {
+    return { capability: "native-message", supported: true, label: "Claude native message fork" };
+  }
+  if (provider === "cursor") {
+    return {
+      capability: "transcript-copy",
+      supported: false,
+      label: "Transcript copy only",
+      warning: "Cursor does not expose an arbitrary native fork here; Modus will not present transcript copying as a real branch.",
+    };
+  }
+  return {
+    capability: "unsupported",
+    supported: false,
+    label: "Provider-native branch not wired",
+    warning: "This provider does not currently have a verified native branch implementation in Modus.",
+  };
+}
+
+function observeDeclaredFileTools(session: ActiveSession, event: any): void {
+  if (event?.type !== "assistant" || !Array.isArray(event?.message?.content)) return;
+  for (const block of event.message.content) {
+    if (block?.type !== "tool_use" || typeof block.name !== "string" || !block.input || typeof block.input !== "object") continue;
+    const name = block.name.toLowerCase();
+    if (!/(write|edit|replace|patch|notebook)/.test(name)) continue;
+    const rawPath = block.input.file_path ?? block.input.path ?? block.input.notebook_path;
+    if (typeof rawPath !== "string" || !rawPath.trim()) continue;
+    const operation = /(write|create)/.test(name) ? "write" : "edit";
+    insertFileObservation({
+      sessionId: session.sessionId,
+      seq: session.seq,
+      provider: session.provider,
+      toolCallId: typeof block.id === "string" ? block.id : undefined,
+      toolName: block.name,
+      path: rawPath,
+      operation,
+      details: { source: "assistant tool_use event" },
+    });
+  }
+}
+
+export async function previewSessionBranch(
   sourceId: string,
   branchSeq: number,
-): { sessionId: string } | { error: string } {
+  opts?: { restoreCode?: boolean; checkpointSeq?: number; providerMessageId?: string },
+): Promise<BranchPreview | { error: string }> {
+  const source = getSession(sourceId);
+  if (!source) return { error: "source session not found" };
+  if (!Number.isInteger(branchSeq) || branchSeq < 0 || branchSeq > getMaxSeq(sourceId)) {
+    return { error: "branch seq is outside the stored session history" };
+  }
+  const provider = source.provider ?? "claude-code";
+  const messageUuid = findAssistantUuid(sourceId, branchSeq);
+  let workspace: RewindPreview | null = null;
+  if (opts?.restoreCode) {
+    const active = activeSessions.get(sourceId);
+    const nativePreview = active && opts.providerMessageId && active._provider.previewWorkspaceRewind
+      ? await active._provider.previewWorkspaceRewind(active, opts.providerMessageId)
+      : null;
+    if (nativePreview?.available) {
+      workspace = {
+        capability: "native-claude",
+        status: "ready",
+        files: nativePreview.files.map((path) => ({
+          path,
+          action: "provider-rewind" as const,
+          evidence: "native-provider" as const,
+          reason: "provider-reported" as const,
+        })),
+        excluded: [],
+        unchangedCount: 0,
+        managedBytes: 0,
+        undoAvailable: !!source.cwd,
+        scopeNotes: [
+          "Claude reported these exact paths from its native file checkpoint.",
+          "Claude file checkpoints may not include changes made indirectly by shell commands.",
+          "Modus will capture a bounded managed-file safety checkpoint immediately before applying the native rewind.",
+        ],
+      };
+    } else {
+      const checkpoint = checkpointForSeq(sourceId, opts.checkpointSeq ?? branchSeq);
+      workspace = checkpoint ? await previewCheckpoint(checkpoint.id) : {
+          capability: "unsupported",
+          status: "unsupported",
+          files: [],
+          excluded: [],
+          unchangedCount: 0,
+          managedBytes: 0,
+          undoAvailable: false,
+          scopeNotes: [],
+          error: "no managed checkpoint exists at or before that message",
+        };
+    }
+  }
+  return {
+    sourceSessionId: sourceId,
+    branchSeq,
+    provider,
+    requiresConfirmation: true,
+    conversation: conversationBranchPreview(provider, messageUuid),
+    workspace,
+  };
+}
+
+export async function branchSession(
+  sourceId: string,
+  branchSeq: number,
+  opts?: {
+    /** Also reset the working tree to its checkpointed state before the rewound-to message ran */
+    restoreCode?: boolean;
+    /** Seq of the original user message (for checkpoint lookup) — defaults to branchSeq */
+    checkpointSeq?: number;
+    /** Provider's original user-message ID, used only for verified native rewind APIs. */
+    providerMessageId?: string;
+    /** Must be true after the caller displays a fresh preview. */
+    confirmed?: boolean;
+  },
+): Promise<{
+  sessionId: string;
+  conversationCapability: ConversationBranchCapability;
+  workspace: RewindResult | null;
+} | { error: string }> {
+  if (!opts?.confirmed) return { error: "explicit confirmation is required" };
   const source = getSession(sourceId);
   if (!source) return { error: "source session not found" };
 
+  const preview = await previewSessionBranch(sourceId, branchSeq, opts);
+  if ("error" in preview) return preview;
+  if (!preview.conversation.supported) {
+    return { error: preview.conversation.warning ?? "conversation branch is unsupported" };
+  }
+  if (opts.restoreCode && (!preview.workspace || preview.workspace.status === "unsupported")) {
+    return { error: preview.workspace?.error ?? "workspace rewind is unsupported" };
+  }
+
   // Find the SDK assistant message UUID for resumeSessionAt
   const messageUuid = findAssistantUuid(sourceId, branchSeq);
+
+  let workspace: RewindResult | null = null;
+  if (opts.restoreCode && preview.workspace?.capability === "native-claude") {
+    const active = activeSessions.get(sourceId);
+    const applyNative = active?._provider.applyWorkspaceRewind;
+    if (!active || !applyNative || !opts.providerMessageId || !source.cwd) {
+      return { error: "Claude native file checkpoint is no longer available; review again" };
+    }
+    const safety = await captureCheckpoint(source.cwd, sourceId, getMaxSeq(sourceId));
+    if (!safety.ok) return { error: `could not create the required pre-rewind safety checkpoint: ${safety.reason}` };
+    const native = await applyNative(active, opts.providerMessageId);
+    if (!native.ok) return { error: native.error ?? "Claude native file rewind failed" };
+    workspace = {
+      status: safety.manifest.excluded.length > 0 ? "partial" : "success",
+      undoCheckpointId: safety.checkpointId,
+      restored: [],
+      deleted: [],
+      providerChanged: native.files,
+      excluded: safety.manifest.excluded,
+    };
+  } else if (opts.restoreCode && preview.workspace?.checkpointId) {
+    workspace = await restoreCheckpointById(preview.workspace.checkpointId, {
+      sessionId: sourceId,
+      seq: getMaxSeq(sourceId),
+    });
+    if (workspace.status === "failed" || workspace.status === "unsupported") {
+      return { error: workspace.error ?? "workspace rewind failed" };
+    }
+  }
 
   // Create new session — just a copy with a fresh ID
   const newId = crypto.randomUUID();
@@ -2131,12 +2354,14 @@ export function branchSession(
     id: newId,
     preview: source.preview,
     profile: source.profile ?? undefined,
+    provider: source.provider ?? undefined,
     model: source.model ?? undefined,
     status: "idle",
     messageCount: 0,
     costUsd: 0,
     lastPrompt: source.last_prompt ?? undefined,
     cwd: source.cwd ?? undefined,
+    userProfile: source.user_profile ?? undefined,
     parentSessionId: sourceId,
     branchMessageUuid: messageUuid ?? undefined,
   });
@@ -2144,6 +2369,48 @@ export function branchSession(
   // Copy events from source up to branchSeq
   const copied = copyEventsToSession(sourceId, newId, branchSeq);
   if (copied === 0) return { error: "no events to copy at that seq" };
+  const copiedMessages = copyMessagesToSession(sourceId, newId, branchSeq);
+  upsertSession({
+    id: newId,
+    preview: source.preview,
+    profile: source.profile ?? undefined,
+    provider: source.provider ?? undefined,
+    model: source.model ?? undefined,
+    status: "idle",
+    messageCount: copiedMessages,
+    costUsd: 0,
+    lastPrompt: source.last_prompt ?? undefined,
+    cwd: source.cwd ?? undefined,
+    userProfile: source.user_profile ?? undefined,
+    parentSessionId: sourceId,
+    branchMessageUuid: messageUuid ?? undefined,
+  });
 
-  return { sessionId: newId };
+  return {
+    sessionId: newId,
+    conversationCapability: preview.conversation.capability,
+    workspace,
+  };
+}
+
+export async function restoreSessionCheckpoint(
+  sessionId: string,
+  checkpointId: number,
+  confirmed: boolean,
+): Promise<RewindResult | { error: string }> {
+  if (!confirmed) return { error: "explicit confirmation is required" };
+  if (!getSession(sessionId)) return { error: "session not found" };
+  const checkpoint = checkpointById(checkpointId);
+  if (!checkpoint || checkpoint.session_id !== sessionId) return { error: "checkpoint does not belong to this session" };
+  return restoreCheckpointById(checkpointId, { sessionId, seq: getMaxSeq(sessionId) });
+}
+
+export async function previewSessionCheckpoint(
+  sessionId: string,
+  checkpointId: number,
+): Promise<RewindPreview | { error: string }> {
+  if (!getSession(sessionId)) return { error: "session not found" };
+  const checkpoint = checkpointById(checkpointId);
+  if (!checkpoint || checkpoint.session_id !== sessionId) return { error: "checkpoint does not belong to this session" };
+  return previewCheckpoint(checkpointId);
 }

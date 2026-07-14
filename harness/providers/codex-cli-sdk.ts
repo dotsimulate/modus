@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { spawn } from "child_process";
 import { existsSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import readline from "readline";
 
 type SpawnFn = typeof spawn;
@@ -37,6 +37,23 @@ export type ThreadEvent = {
   type: string;
   [key: string]: any;
 };
+
+export type CodexReconnectNotice = {
+  attempt: number;
+  maxAttempts: number;
+  message: string;
+};
+
+/** Codex can emit a turn.failed-shaped progress notice while its transport is
+ * still reconnecting. Only the explicit N/M form is transient. */
+export function parseCodexReconnectNotice(message: string): CodexReconnectNotice | null {
+  const match = /^Reconnecting\.\.\.\s+(\d+)\/(\d+)\s+\(stream disconnected before completion:/i.exec(message.trim());
+  if (!match) return null;
+  const attempt = Number(match[1]);
+  const maxAttempts = Number(match[2]);
+  if (!Number.isInteger(attempt) || !Number.isInteger(maxAttempts) || attempt < 1 || maxAttempts < attempt) return null;
+  return { attempt, maxAttempts, message };
+}
 
 type TextInput = { type: "text"; text: string };
 type ImageInput = { type: "local_image"; path: string };
@@ -96,12 +113,24 @@ function getCodexHome(): string {
   return process.env.CODEX_HOME || join(homedir(), ".codex");
 }
 
-function resolveCodexExecutable(): string {
-  return process.env.CODEX_PATH
-    ?? Bun.which("codex")
-    ?? (() => {
-      throw new Error("Codex CLI not found in PATH. Install Codex and ensure `codex` is available.");
-    })();
+export function resolveCodexExecutable(): string {
+  if (process.env.CODEX_PATH) return process.env.CODEX_PATH;
+  const shim = Bun.which("codex");
+  if (!shim) throw new Error("Codex CLI not found in PATH. Install Codex and ensure `codex` is available.");
+  if (process.platform !== "win32") return shim;
+
+  // The npm shim launches node -> native codex.exe. Killing/tracking only the
+  // Node wrapper can orphan a native task that keeps editing after Modus has
+  // declared the turn finished. Prefer the packaged native binary so the PID
+  // Modus owns is the process that actually performs the task.
+  const packageName = process.arch === "arm64" ? "codex-win32-arm64" : "codex-win32-x64";
+  const target = process.arch === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc";
+  const npmRoot = dirname(shim);
+  const candidates = [
+    join(npmRoot, "node_modules", "@openai", "codex", "node_modules", "@openai", packageName, "vendor", target, "bin", "codex.exe"),
+    join(npmRoot, "node_modules", "@openai", packageName, "vendor", target, "bin", "codex.exe"),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? shim;
 }
 
 export function canResumeCodexThread(threadId: string): boolean {
