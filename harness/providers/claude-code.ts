@@ -660,6 +660,7 @@ export function createClaudeCodeProvider(): SessionProvider {
         cwd: session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
         additionalDirectories: session.additionalDirectories.length > 0 ? session.additionalDirectories : undefined,
         includePartialMessages: true,
+        enableFileCheckpointing: true,
         resume: resumeTarget,
         model: opts.model ?? profileDef?.model ?? undefined,
         thinking: { type: "adaptive" },
@@ -960,6 +961,44 @@ export function createClaudeCodeProvider(): SessionProvider {
         console.warn(`[claude-code] stopTask failed task=${taskId} session=${session.sessionId}:`, err);
       });
       return true;
+    },
+
+    async previewWorkspaceRewind(session: ActiveSession, providerMessageId: string) {
+      const queryObj = getState(session)?.queryObj;
+      if (!queryObj?.rewindFiles) {
+        return { available: false, files: [], error: "Claude native file checkpoint is not active for this session" };
+      }
+      try {
+        const result = await queryObj.rewindFiles(providerMessageId, { dryRun: true });
+        return {
+          available: result.canRewind,
+          files: result.filesChanged ?? [],
+          insertions: result.insertions,
+          deletions: result.deletions,
+          error: result.error,
+        };
+      } catch (err: any) {
+        return { available: false, files: [], error: err?.message ?? String(err) };
+      }
+    },
+
+    async applyWorkspaceRewind(session: ActiveSession, providerMessageId: string) {
+      const queryObj = getState(session)?.queryObj;
+      if (!queryObj?.rewindFiles) {
+        return { ok: false, files: [], error: "Claude native file checkpoint is no longer active; review again" };
+      }
+      try {
+        const result = await queryObj.rewindFiles(providerMessageId);
+        return {
+          ok: result.canRewind,
+          files: result.filesChanged ?? [],
+          insertions: result.insertions,
+          deletions: result.deletions,
+          error: result.error,
+        };
+      } catch (err: any) {
+        return { ok: false, files: [], error: err?.message ?? String(err) };
+      }
     },
 
     updateConfig(session: ActiveSession, config: Record<string, any>) {

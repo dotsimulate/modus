@@ -27,6 +27,10 @@ export type {
   SendMessageOpts,
   TurnContent,
   SessionHistorySnapshot,
+  BranchPreview,
+  BranchResult,
+  RewindPreview,
+  RewindResult,
   // Events
   SSEEvent,
   TypedSSEEvent,
@@ -67,7 +71,6 @@ export type {
   // Permission
   PermissionResponseOpts,
   SessionTagsResult,
-  BranchResult,
   // Actions
   ActionTrigger,
   ActionSummary,

@@ -24,9 +24,19 @@ type SessionEntry = {
   nextAgentConfig?: Session["nextAgentConfig"];
   /** True while we're replaying historical SSE events — suppresses spurious "running" status */
   catchingUp?: boolean;
+  /** Whether persisted conversation history has actually been resolved. */
+  historyStatus?: "idle" | "loading" | "ready" | "error";
+  historyError?: string;
   /** Per-session revision — useSessionState only re-renders when this changes */
   revision: number;
 };
+
+export type SessionHistoryLoadState = {
+  status: "idle" | "loading" | "ready" | "error";
+  error?: string;
+};
+
+const HISTORY_FETCH_TIMEOUT_MS = 12_000;
 
 type Subscription = {
   unsub: () => void;
@@ -67,6 +77,8 @@ export function setSessionState(id: string, state: ReducerState, profile?: strin
     provider: existing?.provider,
     nextProfile: existing?.nextProfile,
     nextAgentConfig: existing?.nextAgentConfig,
+    historyStatus: existing?.historyStatus,
+    historyError: existing?.historyError,
     revision: (existing?.revision ?? 0) + 1,
   });
   notify();
@@ -107,6 +119,30 @@ function buildStateFromHistorySnapshot(snapshotData: SessionHistorySnapshot): Re
 
 export function hydrateSessionHistorySnapshot(snapshotData: SessionHistorySnapshot, profile?: string) {
   setSessionState(snapshotData.sessionId, buildStateFromHistorySnapshot(snapshotData), profile);
+  setHistoryLoadState(snapshotData.sessionId, "ready");
+}
+
+function setHistoryLoadState(
+  sessionId: string,
+  status: SessionHistoryLoadState["status"],
+  error?: string,
+) {
+  const entry = sessions.get(sessionId);
+  if (!entry) return;
+  if (entry.historyStatus === status && entry.historyError === error) return;
+  entry.historyStatus = status;
+  entry.historyError = error;
+  entry.revision++;
+  notify();
+}
+
+export function getSessionHistoryLoadState(sessionId: string | null): SessionHistoryLoadState {
+  if (!sessionId) return { status: "idle" };
+  const entry = sessions.get(sessionId);
+  return {
+    status: entry?.historyStatus ?? "idle",
+    ...(entry?.historyError ? { error: entry.historyError } : {}),
+  };
 }
 
 /** Set the profile queued for the next user turn */
@@ -215,6 +251,12 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
     }
   }
 
+  // A completed catch-up batch is also authoritative history hydration.
+  if (entry.historyStatus !== "ready") {
+    entry.historyStatus = "ready";
+    entry.historyError = undefined;
+  }
+
   entry.revision++;
   notify(); // single React re-render for the entire batch
   const _aebMs = performance.now() - _aebT0;
@@ -235,6 +277,10 @@ export function applyEvent(id: string, event: any, seq: number) {
 
   const entry = sessions.get(resolvedId);
   if (!entry) return;
+  if (entry.historyStatus !== "ready") {
+    entry.historyStatus = "ready";
+    entry.historyError = undefined;
+  }
   const prevStatus = entry.state.status;
   entry.state = reduceEvent(entry.state, event, seq);
   // During SSE catch-up replay of a completed session, suppress spurious "running" status
@@ -352,6 +398,8 @@ export function subscribeSession(
     onDone: () => {
       const entry = sessions.get(sessionId);
       if (entry) {
+        entry.historyStatus = "ready";
+        entry.historyError = undefined;
         entry.catchingUp = false;
         const st = entry.state;
         if (st.status === "running" || st.status === "starting" || st.status === "interrupting") {
@@ -422,7 +470,34 @@ export type EnsureSubscribedOpts = {
   activeStatus?: Session["status"];
   /** Forwarded to subscribeSession's onDone (e.g. refreshSessions) */
   onDone?: () => void;
+  /** Retry persisted-history hydration when the local thread is still empty. */
+  forceHistoryRefresh?: boolean;
 };
+
+export function shouldReuseSessionSubscription(input: {
+  subscribed: boolean;
+  forceHistoryRefresh?: boolean;
+  messageCount: number;
+  lastSeq: number;
+  historyStatus?: SessionEntry["historyStatus"];
+}): boolean {
+  if (!input.subscribed) return false;
+  if (input.forceHistoryRefresh && input.messageCount === 0) return false;
+  const hasLocalHistory = input.messageCount > 0 || input.lastSeq > 0;
+  if (hasLocalHistory) return true;
+  return input.historyStatus === "ready"
+    || input.historyStatus === "loading";
+}
+
+async function fetchHistorySnapshotWithTimeout(sessionId: string): Promise<SessionHistorySnapshot> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HISTORY_FETCH_TIMEOUT_MS);
+  try {
+    return await modus.getSessionHistorySnapshot(sessionId, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Ensure a session has an active SSE subscription, fetching a history
@@ -442,7 +517,15 @@ export function ensureSubscribed(
   sessionId: string,
   opts: EnsureSubscribedOpts = {},
 ): Promise<void> {
-  if (subscriptions.has(sessionId)) {
+  const currentEntry = sessions.get(sessionId);
+  const reuseSubscription = shouldReuseSessionSubscription({
+    subscribed: subscriptions.has(sessionId),
+    forceHistoryRefresh: opts.forceHistoryRefresh,
+    messageCount: currentEntry?.state.messages.length ?? 0,
+    lastSeq: currentEntry?.state.lastSeq ?? 0,
+    historyStatus: currentEntry?.historyStatus,
+  });
+  if (reuseSubscription) {
     // Update profile if the caller has one and the entry didn't
     if (opts.profile) {
       const entry = sessions.get(sessionId);
@@ -457,14 +540,25 @@ export function ensureSubscribed(
     }
     return Promise.resolve();
   }
+  if (subscriptions.has(sessionId)) unsubscribeSession(sessionId);
   const pending = pendingEnsure.get(sessionId);
   if (pending) return pending;
 
   const run = (async () => {
     const _ensT0 = performance.now();
     try {
+      if (!sessions.has(sessionId)) {
+        sessions.set(sessionId, {
+          state: createInitialState(sessionId),
+          profile: opts.profile,
+          revision: 1,
+          historyStatus: "idle",
+        });
+        notify();
+      }
       const existing = getSessionState(sessionId);
       const hasWarmState = !!existing && (existing.lastSeq > 0 || existing.messages.length > 0);
+      const needsForcedHistory = !!opts.forceHistoryRefresh && (existing?.messages.length ?? 0) === 0;
 
       const hinted = opts.activeStatus;
       const storedStatus = existing?.status;
@@ -482,9 +576,10 @@ export function ensureSubscribed(
       // Cold active sessions also fetch the snapshot first. That restores
       // completed history after a hard refresh while live SSE rebuilds the
       // current in-flight turn on top of the snapshot cursor.
-      if (!isActive || !hasWarmState) {
+      if (needsForcedHistory || !isActive || !hasWarmState) {
+        setHistoryLoadState(sessionId, "loading");
         try {
-          const snap = await modus.getSessionHistorySnapshot(sessionId);
+          const snap = await fetchHistorySnapshotWithTimeout(sessionId);
           if (subscriptions.has(sessionId)) return; // another caller won
 
           const latest = getSessionState(sessionId);
@@ -495,7 +590,7 @@ export function ensureSubscribed(
             && (m as any).toolCalls.length > 0
           ));
 
-          if (hasAssistantToolCalls && !latestHasWarmState) {
+          if (hasAssistantToolCalls && !latestHasWarmState && !snap.recoveredFromEvents) {
             // Cold entry with tool-call history — snapshot's tool-call
             // serialization is historically ambiguous, so do a full event
             // replay from seq=0 against a clean state.
@@ -527,9 +622,14 @@ export function ensureSubscribed(
                 : snap.lastSeq;
             } else {
               afterSeq = latest?.lastSeq ?? 0;
+              setHistoryLoadState(sessionId, "ready");
             }
           }
-        } catch {
+        } catch (error) {
+          const message = error instanceof Error && error.name === "AbortError"
+            ? "The Modus server did not answer the history request."
+            : "Modus could not load this conversation's history.";
+          setHistoryLoadState(sessionId, "error", message);
           // Snapshot fetch failed — fall back to streaming from whatever
           // cursor we have (0 for a brand-new entry).
         }
@@ -647,6 +747,16 @@ export function useSessionState(id: string | null): Session | null {
   const entry = sessions.get(id);
   if (!entry) return null;
   return deriveSession(entry.state, entry.profile, entry.provider, entry.nextProfile, entry.nextAgentConfig);
+}
+
+/** React hook for distinguishing loading/failed history from a truly empty thread. */
+export function useSessionHistoryLoadState(id: string | null): SessionHistoryLoadState {
+  const getSessionSnap = useCallback(
+    () => id ? (sessions.get(id)?.revision ?? 0) : 0,
+    [id],
+  );
+  useSyncExternalStore(subscribe, getSessionSnap);
+  return getSessionHistoryLoadState(id);
 }
 
 /**

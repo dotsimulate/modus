@@ -8,7 +8,7 @@
  * (no long-lived process, no input channel). Multi-turn achieved via thread ID resume.
  */
 
-import { canResumeCodexThread, Codex, Thread } from "./codex-cli-sdk";
+import { canResumeCodexThread, Codex, Thread, parseCodexReconnectNotice } from "./codex-cli-sdk";
 import type { ApprovalMode, CodexInput, ModelReasoningEffort, SandboxMode, ServiceTier, ThreadEvent, ThreadItem, ThreadOptions, WebSearchMode } from "./codex-cli-sdk";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
@@ -1154,6 +1154,8 @@ async function runTurn(
   let lastAgentText = "";
   let turnCount = 0;
   let inputHandedOff = false;
+  let turnCompleted = false;
+  let lastReconnectNotice: ReturnType<typeof parseCodexReconnectNotice> = null;
 
   try {
     for await (const event of events) {
@@ -1301,6 +1303,8 @@ async function runTurn(
         }
 
         case "turn.completed": {
+          turnCompleted = true;
+          lastReconnectNotice = null;
           turnTokens.input += event.usage.input_tokens;
           turnTokens.cached += event.usage.cached_input_tokens;
           turnTokens.output += event.usage.output_tokens;
@@ -1308,6 +1312,19 @@ async function runTurn(
         }
 
         case "turn.failed": {
+          const reconnect = parseCodexReconnectNotice(event.error.message);
+          if (reconnect) {
+            lastReconnectNotice = reconnect;
+            ctx.emitEvent({
+              type: "system",
+              subtype: "provider_reconnecting",
+              provider: "codex",
+              attempt: reconnect.attempt,
+              maxAttempts: reconnect.maxAttempts,
+              message: reconnect.message,
+            });
+            break;
+          }
           ctx.emitEvent({
             type: "result",
             subtype: "error",
@@ -1345,6 +1362,25 @@ async function runTurn(
           return;
         }
       }
+    }
+
+    if (!turnCompleted && lastReconnectNotice) {
+      const message = `Codex stream ended while reconnecting (${lastReconnectNotice.attempt}/${lastReconnectNotice.maxAttempts}) without a completion event`;
+      ctx.emitEvent({
+        type: "result",
+        subtype: "error",
+        error: message,
+        harness_duration_ms: Date.now() - session.turnStartedAt,
+        input_tokens: turnTokens.input,
+        output_tokens: turnTokens.output,
+        total_tokens: turnTokens.input + turnTokens.output,
+        num_turns: turnCount,
+        total_cost_usd: 0,
+      });
+      session.status = "error";
+      session.error = message;
+      updateSessionStatus(session.sessionId, "error");
+      return;
     }
 
     // Stream completed successfully — emit result

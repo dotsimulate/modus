@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { getSessionState, hydrateSessionHistorySnapshot, removeSession, unsubscribeAll } from "./src/sessionStore";
+import {
+  getSessionHistoryLoadState,
+  getSessionState,
+  hydrateSessionHistorySnapshot,
+  removeSession,
+  shouldReuseSessionSubscription,
+  unsubscribeAll,
+} from "./src/sessionStore";
 
 describe("sessionStore history snapshot hydration", () => {
   afterEach(() => {
@@ -57,5 +64,31 @@ describe("sessionStore history snapshot hydration", () => {
     expect(state?.messages[1]?.content).toBe("the hot path is wrong");
     expect(state?.messages[1]?.toolCalls?.[0]?.status).toBe("completed");
     expect(state?.messages[1]?.artifacts).toBeUndefined();
+    expect(getSessionHistoryLoadState("ses-history").status).toBe("ready");
+  });
+
+  test("does not mistake an empty subscription for hydrated history", () => {
+    expect(shouldReuseSessionSubscription({
+      subscribed: true,
+      forceHistoryRefresh: true,
+      messageCount: 0,
+      lastSeq: 0,
+      historyStatus: "error",
+    })).toBe(false);
+
+    expect(shouldReuseSessionSubscription({
+      subscribed: true,
+      messageCount: 0,
+      lastSeq: 0,
+      historyStatus: "error",
+    })).toBe(false);
+
+    expect(shouldReuseSessionSubscription({
+      subscribed: true,
+      forceHistoryRefresh: true,
+      messageCount: 2,
+      lastSeq: 8,
+      historyStatus: "ready",
+    })).toBe(true);
   });
 });

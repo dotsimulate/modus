@@ -11,8 +11,9 @@ import { useEffect, useCallback, useEffectEvent, useRef, useState } from "react"
 import type { Attachment, MoveBinding } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
-import { useSessionState, ensureSubscribed, getSessionState, setSessionState } from "../sessionStore";
+import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, getSessionState, setSessionState } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
+import { useSession } from "../providers/SessionContext";
 import { FloatingWindow } from "./FloatingWindow";
 import { ChatView } from "./ChatView";
 import { ChatInput } from "./ChatInput";
@@ -33,6 +34,7 @@ function statusLabel(status: string): string {
 
 export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   const { projectRoot } = useProfiles();
+  const { branchFromSessionMessage } = useSession();
   const [input, setInput] = useState("");
   const [queuedMessage, setQueuedMessage] = useState<{ text: string; attachments: Attachment[] } | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,6 +45,10 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
+  const historyLoad = useSessionHistoryLoadState(sessionId);
+  const retryHistory = useCallback(() => {
+    if (sessionId) void ensureSubscribed(sessionId, { forceHistoryRefresh: true });
+  }, [sessionId]);
   const isActive = session?.status === "running" || session?.status === "starting" || session?.status === "interrupting";
   const permissions = session?.pendingPermissions ?? [];
   const resetComposer = useEffectEvent(() => {
@@ -203,6 +209,11 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     }, 0);
   }, [queuedMessage, session?.status, sessionId]);
 
+  const handleBranch = useCallback(async (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => {
+    if (!sessionId) return;
+    await branchFromSessionMessage(sessionId, seq, prefill, restoreCode, providerMessageId);
+  }, [branchFromSessionMessage, sessionId]);
+
   return (
     <FloatingWindow
       open={!!sessionId}
@@ -245,14 +256,18 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
             {session ? (
               <ChatView
                 messages={session.messages ?? []}
+                provider={session.provider ?? session.agentConfig?.provider}
                 streaming={isActive ?? false}
                 streamFeed={session.streamFeed}
                 showThinking={false}
                 showMeta={false}
                 showToolCalls={true}
                 showGitEvents={false}
-                emptyTitle="waiting"
-                emptySubtitle="session starting..."
+                emptyTitle={historyLoad.status === "loading" ? "loading messages…" : historyLoad.status === "error" ? "messages unavailable" : "no messages"}
+                emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
+                emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}
+                onEmptyAction={historyLoad.status === "error" ? retryHistory : undefined}
+                onBranch={handleBranch}
               />
             ) : (
               <div className="session-window-empty">connecting...</div>

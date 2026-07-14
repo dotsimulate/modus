@@ -350,9 +350,11 @@ function AppContent({ router }: { router: HashRouter }) {
   }, [activeUserProfile, navigate, navigateToSession, newSession, selectSession]);
 
   const handleSelectSession = useCallback((id: string) => {
-    if (activeSession?.id !== id) selectSession(id);
+    // Selecting the current row is also an explicit retry if its history did
+    // not hydrate (for example after a mobile/network interruption).
+    selectSession(id);
     navigateToSession(id, activeUserProfile);
-  }, [activeSession?.id, activeUserProfile, navigateToSession, selectSession]);
+  }, [activeUserProfile, navigateToSession, selectSession]);
 
   // Wrap switchUserProfile to also update URL
   const handleSwitchUserProfile = useCallback((name: string | null) => {

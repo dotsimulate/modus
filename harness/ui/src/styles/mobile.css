@@ -157,6 +157,16 @@
     height: 14px;
   }
 
+  .user-meta {
+    padding-right: 14px;
+    padding-left: 14px;
+    gap: 8px;
+  }
+  .user-meta-branch {
+    padding: 4px 6px;
+    opacity: 0.75;
+  }
+
   /* ── Split resize handles — larger touch target ── */
   .panel-split-handle {
     flex: 0 0 8px;

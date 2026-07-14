@@ -9,10 +9,11 @@
  */
 
 import { useEffect, useCallback } from "react";
-import { useSessionState, ensureSubscribed } from "../sessionStore";
+import { useSessionState, useSessionHistoryLoadState, ensureSubscribed } from "../sessionStore";
 import { modus } from "../modusClient";
 import { ChatView } from "../components/ChatView";
 import { PermissionOverlay } from "../components/PermissionOverlay";
+import { useSession } from "../providers/SessionContext";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
@@ -22,6 +23,7 @@ type SessionChatConfig = WidgetBase & {
 };
 
 export default function SessionChatWidget({ config, pageContext }: WidgetProps<SessionChatConfig>) {
+  const { branchFromSessionMessage } = useSession();
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
   const selectedSession = pageContext?.get("selectedSession") as string | undefined;
   const sessionId = contextSessionId ?? selectedSession ?? config.sessionId ?? null;
@@ -32,6 +34,10 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
+  const historyLoad = useSessionHistoryLoadState(sessionId);
+  const retryHistory = useCallback(() => {
+    if (sessionId) void ensureSubscribed(sessionId, { forceHistoryRefresh: true });
+  }, [sessionId]);
 
   // Permission responses MUST use this widget's own sessionId, not the
   // context's activeSessionId. Failing to do so sends the response to the
@@ -45,6 +51,11 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
     if (!sessionId) return;
     await modus.respondToPermission(sessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
   }, [sessionId]);
+
+  const handleBranch = useCallback(async (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => {
+    if (!sessionId) return;
+    await branchFromSessionMessage(sessionId, seq, prefill, restoreCode, providerMessageId);
+  }, [branchFromSessionMessage, sessionId]);
 
   if (!sessionId) {
     return <WidgetEmptyState>no session selected</WidgetEmptyState>;
@@ -62,14 +73,18 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
       <ChatView
         messages={session.messages ?? []}
         sessionId={sessionId}
+        provider={session.provider ?? session.agentConfig?.provider}
         streaming={isActive}
         streamFeed={session.streamFeed}
         showThinking={true}
         showMeta={true}
         showToolCalls={true}
         showGitEvents={false}
-        emptyTitle="no messages"
-        emptySubtitle="session has no messages yet"
+        emptyTitle={historyLoad.status === "loading" ? "loading messages…" : historyLoad.status === "error" ? "messages unavailable" : "no messages"}
+        emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
+        emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}
+        onEmptyAction={historyLoad.status === "error" ? retryHistory : undefined}
+        onBranch={handleBranch}
       />
       {permissions.length > 0 && (
         <PermissionOverlay

@@ -2,6 +2,22 @@ import { describe, expect, test } from "bun:test";
 import { createInitialState, reduceEvent } from "./src/eventReducer";
 
 describe("eventReducer stream replacement semantics", () => {
+  test("keeps Codex reconnect progress non-terminal", () => {
+    let state = createInitialState("ses-test");
+    state.status = "running";
+    state = reduceEvent(state, {
+      type: "system",
+      subtype: "provider_reconnecting",
+      provider: "codex",
+      attempt: 2,
+      maxAttempts: 5,
+    }, 1);
+
+    expect(state.status).toBe("running");
+    expect(state.messages.at(-1)?.role).toBe("system");
+    expect(state.messages.at(-1)?.content).toBe("Codex is reconnecting (2/5). The turn is still running.");
+  });
+
   test("uses fullText snapshots instead of appending repeated cumulative text", () => {
     let state = createInitialState("ses-test");
     state = reduceEvent(state, {

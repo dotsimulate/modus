@@ -77,6 +77,22 @@ export interface SessionProvider {
   /** Switch active profile mid-session (optional — provider-specific swap logic) */
   switchProfile?(session: ActiveSession, ctx: TurnContext, contextMode: string): void;
 
+  /** Provider-native file rewind. Absence means Modus must not claim native support. */
+  previewWorkspaceRewind?(session: ActiveSession, providerMessageId: string): Promise<{
+    available: boolean;
+    files: string[];
+    insertions?: number;
+    deletions?: number;
+    error?: string;
+  }>;
+  applyWorkspaceRewind?(session: ActiveSession, providerMessageId: string): Promise<{
+    ok: boolean;
+    files: string[];
+    insertions?: number;
+    deletions?: number;
+    error?: string;
+  }>;
+
   /** Clean up provider-specific resources when a session is fully done.
    *  Called by session-manager on shutdown and cross-provider switch. */
   dispose?(session: ActiveSession): Promise<void>;

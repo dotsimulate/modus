@@ -82,6 +82,10 @@ export function homeHistoryDir(): string {
   return join(MODUS_HOME, "history");
 }
 
+export function homeCheckpointsDir(): string {
+  return join(MODUS_HOME, "checkpoints");
+}
+
 // ── Shipped templates (repo-tracked, read-only at runtime) ──
 // import.meta.dir is harness/ — templates ship at harness/templates/profiles/.
 

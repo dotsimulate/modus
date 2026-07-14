@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite";
 import { join } from "path";
+import { reconstructSessionTurns, shouldRecoverSessionHistory } from "./session-history";
 
 const DB_PATH = join(import.meta.dir, "harness.db");
 const db = new Database(DB_PATH);
@@ -151,6 +152,41 @@ try { db.run(`ALTER TABLE session_artifacts ADD COLUMN target_message_uuid TEXT`
 try { db.run(`ALTER TABLE session_artifacts ADD COLUMN preview_text TEXT`); } catch { /* already exists */ }
 try { db.run(`ALTER TABLE session_artifacts ADD COLUMN metadata_json TEXT`); } catch { /* already exists */ }
 db.run(`CREATE INDEX IF NOT EXISTS idx_session_artifacts_target_uuid ON session_artifacts(session_id, target_message_uuid, created_at)`);
+
+// ── Checkpoints (shadow-repo working-tree snapshots per user prompt) ──
+db.run(`
+  CREATE TABLE IF NOT EXISTS checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    commit_hash TEXT NOT NULL,
+    cwd TEXT NOT NULL,
+    manifest_json TEXT,
+    created_at INTEGER NOT NULL
+  )
+`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_checkpoints_session_seq ON checkpoints(session_id, seq)`);
+try { db.run(`ALTER TABLE checkpoints ADD COLUMN manifest_json TEXT`); } catch { /* already exists */ }
+
+// Provider tool-call observations are provenance only. They are never used as
+// authority for workspace undo because a provider can edit through shells or
+// external processes that do not emit a precise file tool call.
+db.run(`
+  CREATE TABLE IF NOT EXISTS file_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL,
+    provider TEXT,
+    tool_call_id TEXT,
+    tool_name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    evidence TEXT NOT NULL,
+    details_json TEXT,
+    created_at INTEGER NOT NULL
+  )
+`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_file_observations_session_seq ON file_observations(session_id, seq, id)`);
 
 // ── Action Executions (lifecycle instances — one complete pass through run budget) ──
 db.run(`
@@ -645,6 +681,8 @@ export function renameSession(oldId: string, newId: string) {
     db.prepare(`UPDATE messages SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     db.prepare(`UPDATE events SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     db.prepare(`UPDATE session_artifacts SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+    db.prepare(`UPDATE checkpoints SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+    db.prepare(`UPDATE file_observations SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     db.prepare(`UPDATE action_runs SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     // FTS5 virtual tables don't support UPDATE on session_id, so delete + re-insert
     db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $old`).run({ $old: oldId });
@@ -981,6 +1019,95 @@ export function getMaxSeq(sessionId: string): number {
   return row?.max_seq ?? 0;
 }
 
+// ── Checkpoints ──
+
+export type CheckpointRow = {
+  id: number;
+  session_id: string;
+  seq: number;
+  commit_hash: string;
+  cwd: string;
+  manifest_json: string | null;
+  created_at: number;
+};
+
+export function insertCheckpoint(opts: {
+  sessionId: string;
+  seq: number;
+  commitHash: string;
+  cwd: string;
+  manifestJson?: string;
+}): number {
+  const result = db.prepare(
+    `INSERT INTO checkpoints (session_id, seq, commit_hash, cwd, manifest_json, created_at) VALUES ($sid, $seq, $hash, $cwd, $manifest, $ts)`
+  ).run({
+    $sid: opts.sessionId,
+    $seq: opts.seq,
+    $hash: opts.commitHash,
+    $cwd: opts.cwd,
+    $manifest: opts.manifestJson ?? null,
+    $ts: Date.now(),
+  });
+  return Number(result.lastInsertRowid);
+}
+
+/** Latest checkpoint captured at or before `seq` — the code state before that message ran. */
+export function findCheckpointAtOrBefore(sessionId: string, seq: number): CheckpointRow | undefined {
+  return db.prepare(
+    `SELECT * FROM checkpoints WHERE session_id = $sid AND seq <= $seq ORDER BY seq DESC, id DESC LIMIT 1`
+  ).get({ $sid: sessionId, $seq: seq }) as CheckpointRow | undefined;
+}
+
+export function getCheckpointById(id: number): CheckpointRow | undefined {
+  return db.prepare(`SELECT * FROM checkpoints WHERE id = $id`).get({ $id: id }) as CheckpointRow | undefined;
+}
+
+export type FileObservationRow = {
+  id: number;
+  session_id: string;
+  seq: number;
+  provider: string | null;
+  tool_call_id: string | null;
+  tool_name: string;
+  path: string;
+  operation: string;
+  evidence: "provider-tool-declared";
+  details_json: string | null;
+  created_at: number;
+};
+
+export function insertFileObservation(opts: {
+  sessionId: string;
+  seq: number;
+  provider?: string;
+  toolCallId?: string;
+  toolName: string;
+  path: string;
+  operation: string;
+  details?: Record<string, unknown>;
+}): void {
+  db.prepare(`
+    INSERT INTO file_observations
+      (session_id, seq, provider, tool_call_id, tool_name, path, operation, evidence, details_json, created_at)
+    VALUES ($sid, $seq, $provider, $call, $tool, $path, $operation, 'provider-tool-declared', $details, $created)
+  `).run({
+    $sid: opts.sessionId,
+    $seq: opts.seq,
+    $provider: opts.provider ?? null,
+    $call: opts.toolCallId ?? null,
+    $tool: opts.toolName,
+    $path: opts.path,
+    $operation: opts.operation,
+    $details: opts.details ? JSON.stringify(opts.details) : null,
+    $created: Date.now(),
+  });
+}
+
+export function getFileObservations(sessionId: string): FileObservationRow[] {
+  return db.prepare(`SELECT * FROM file_observations WHERE session_id = $sid ORDER BY seq, id`)
+    .all({ $sid: sessionId }) as FileObservationRow[];
+}
+
 export function insertMessage(opts: {
   sessionId: string;
   seq?: number;
@@ -1009,6 +1136,16 @@ export function insertMessage(opts: {
     $turns: opts.turns ?? null,
     $created_at: opts.createdAt ?? Date.now(),
   });
+}
+
+/** Reconcile denormalized session count after abnormal-turn materialization. */
+export function syncSessionMessageCount(sessionId: string): number {
+  const row = db.prepare(`SELECT COUNT(*) AS count FROM messages WHERE session_id = $sid`)
+    .get({ $sid: sessionId }) as { count: number };
+  const count = row.count ?? 0;
+  db.prepare(`UPDATE sessions SET message_count = $count, last_message_at = $now, updated_at = $now WHERE id = $sid`)
+    .run({ $sid: sessionId, $count: count, $now: Date.now() });
+  return count;
 }
 
 function parseToolCalls(raw: string | null): TurnContent["toolCalls"] | undefined {
@@ -1050,102 +1187,7 @@ function getSessionMessagesFromEvents(sessionId: string): TurnContent[] {
      ORDER BY seq ASC`
   ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
 
-  const turns: TurnContent[] = [];
-  let current: {
-    text: string;
-    thinking: string;
-    toolCalls: Map<string, { name: string; input: Record<string, unknown>; result?: string }>;
-    seq: number;
-    timestamp: number;
-    uuid?: string;
-  } | null = null;
-
-  for (const evt of events) {
-    let d: any;
-    try { d = JSON.parse(evt.data); } catch { continue; }
-
-    if (evt.type === "user") {
-      if (evt.subtype === "prompt" || d.subtype === "prompt") {
-        const content = d.message?.content;
-        let text = "";
-        if (typeof content === "string") text = content;
-        else if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === "text" && block.text) text += block.text;
-          }
-        }
-        if (text) turns.push({ role: "user", seq: evt.seq, text, timestamp: evt.created_at });
-      } else if (current) {
-        const content = d.message?.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === "tool_result" && block.tool_use_id) {
-              const tc = current.toolCalls.get(block.tool_use_id);
-              if (tc) {
-                tc.result = typeof block.content === "string"
-                  ? block.content
-                  : JSON.stringify(block.content ?? "");
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (evt.type === "assistant") {
-      if (!current) {
-        current = {
-          text: "",
-          thinking: "",
-          toolCalls: new Map(),
-          seq: evt.seq,
-          timestamp: evt.created_at,
-          ...(typeof d.uuid === "string" ? { uuid: d.uuid } : {}),
-        };
-      } else if (!current.uuid && typeof d.uuid === "string") {
-        current.uuid = d.uuid;
-      }
-      const content = d.message?.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === "text" && block.text) current.text += block.text;
-          if (block.type === "thinking" && block.thinking) current.thinking += block.thinking;
-          if (block.type === "tool_use") {
-            current.toolCalls.set(block.id, { name: block.name, input: block.input ?? {} });
-          }
-        }
-      }
-    }
-
-    if (evt.type === "result" && current) {
-      const turn: TurnContent = {
-        role: "assistant",
-        seq: evt.seq,
-        text: current.text,
-        timestamp: current.timestamp,
-        ...(current.uuid ? { uuid: current.uuid } : {}),
-      };
-      if (current.thinking) turn.thinking = current.thinking;
-      if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
-      turns.push(turn);
-      current = null;
-    }
-  }
-
-  if (current) {
-    const turn: TurnContent = {
-      role: "assistant",
-      seq: current.seq,
-      text: current.text,
-      timestamp: current.timestamp,
-      ...(current.uuid ? { uuid: current.uuid } : {}),
-    };
-    if (current.thinking) turn.thinking = current.thinking;
-    if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
-    turns.push(turn);
-  }
-
-  return turns;
+  return reconstructSessionTurns(events);
 }
 
 // ── Draft Functions ──
@@ -1235,6 +1277,49 @@ export function copyEventsToSession(sourceId: string, targetId: string, maxSeq: 
   })();
 
   return events.length;
+}
+
+/** Copy high-level semantic messages for a branch. Keeps UI history intact after new turns add messages. */
+export function copyMessagesToSession(sourceId: string, targetId: string, maxSeq: number): number {
+  const messages = db.prepare(`
+    SELECT seq, role, content, uuid, thinking, tool_calls_json, cost_usd, duration_ms, model, turns
+    FROM messages
+    WHERE session_id = $sid AND COALESCE(seq, 0) <= $max
+    ORDER BY COALESCE(seq, 0) ASC, created_at ASC, id ASC
+  `).all({ $sid: sourceId, $max: maxSeq }) as {
+    seq: number | null;
+    role: string;
+    content: string;
+    uuid: string | null;
+    thinking: string | null;
+    tool_calls_json: string | null;
+    cost_usd: number | null;
+    duration_ms: number | null;
+    model: string | null;
+    turns: number | null;
+  }[];
+
+  const now = Date.now();
+  db.transaction(() => {
+    for (const msg of messages) {
+      stmts.insertMessage.run({
+        $session_id: targetId,
+        $seq: msg.seq,
+        $role: msg.role,
+        $content: msg.content,
+        $uuid: msg.uuid,
+        $thinking: msg.thinking,
+        $tool_calls_json: msg.tool_calls_json,
+        $cost_usd: msg.cost_usd,
+        $duration_ms: msg.duration_ms,
+        $model: msg.model,
+        $turns: msg.turns,
+        $created_at: now,
+      });
+    }
+  })();
+
+  return messages.length;
 }
 
 /** Clear branch fields so a forked session resumes normally next time */
@@ -1496,9 +1581,14 @@ function toSessionArtifactValue(row: SessionArtifactRow): SessionArtifactValue {
 
 // ── Message Content Reconstruction ──
 
-/** Reconstruct structured message content from events for a session.
- *  Returns user and assistant turns with text, thinking, and tool calls. */
-export function getSessionMessages(sessionId: string): TurnContent[] {
+export type SessionMessageHistory = {
+  messages: TurnContent[];
+  recoveredFromEvents: boolean;
+};
+
+/** Return the fastest complete history source, falling back to durable events
+ * when they contain an assistant turn newer than semantic materialization. */
+export function getSessionMessageHistory(sessionId: string): SessionMessageHistory {
   const semanticTurns = getSessionMessagesFromMessageTable(sessionId);
   const artifactRows = stmts.listSessionArtifacts.all({ $session_id: sessionId }) as SessionArtifactRow[];
   const artifactsBySeq = new Map<number, SessionArtifactValue[]>();
@@ -1515,9 +1605,15 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
     }
   }
 
-  const turns = semanticTurns.length > 0 ? semanticTurns : getSessionMessagesFromEvents(sessionId);
+  const rawAssistant = db.prepare(
+    `SELECT COALESCE(MAX(seq), 0) AS max_seq FROM events WHERE session_id = $sid AND type = 'assistant'`
+  ).get({ $sid: sessionId }) as { max_seq: number };
+  const useEventHistory = semanticTurns.length === 0
+    || shouldRecoverSessionHistory(semanticTurns, rawAssistant.max_seq ?? 0);
+  const turns = useEventHistory ? getSessionMessagesFromEvents(sessionId) : semanticTurns;
+  const recoveredFromEvents = useEventHistory && turns.length > 0;
 
-  return turns.map((turn) => {
+  const messages = turns.map((turn) => {
     if (turn.role !== "assistant") return turn;
     const artifacts: SessionArtifactValue[] = [];
     const seen = new Set<number>();
@@ -1535,6 +1631,12 @@ export function getSessionMessages(sessionId: string): TurnContent[] {
     }
     return artifacts.length > 0 ? { ...turn, artifacts } : turn;
   });
+  return { messages, recoveredFromEvents };
+}
+
+/** Reconstruct structured message content for callers that only need turns. */
+export function getSessionMessages(sessionId: string): TurnContent[] {
+  return getSessionMessageHistory(sessionId).messages;
 }
 
 // ── Full-Text Search (FTS5 v2) ──

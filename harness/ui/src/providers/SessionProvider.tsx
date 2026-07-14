@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import { setInputValue, getInputValue } from "../inputStore";
-import type { Session, SessionInfo, Attachment, ApiAttachment, MoveBinding } from "../../../sdk/index";
+import type { Session, SessionInfo, Attachment, ApiAttachment, MoveBinding, RewindPreview } from "../../../sdk/index";
 import { createInitialState } from "../eventReducer";
 import {
   agentConfigToOverrides,
@@ -32,6 +32,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [queuedMessage, setQueuedMessage] = useState<QueuedMessage | null>(null);
+  const [rewindNotice, setRewindNotice] = useState<{
+    sessionId: string;
+    checkpointId: number;
+    label: string;
+    preview?: RewindPreview;
+    busy?: boolean;
+    error?: string;
+  } | null>(null);
 
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevActiveStatusRef = useRef<Session["status"] | null>(null);
@@ -347,6 +355,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       profile: sessionProfile,
       activeStatus: info?.status as Session["status"] | undefined,
       onDone: refreshSessions,
+      forceHistoryRefresh: true,
     });
 
     // NOTE: do NOT write selectedProfile here. selectedProfile is the sidebar's
@@ -659,19 +668,71 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     );
   }, [activeSession, activeSessionId, hasPendingProfileChange]);
 
-  const branchFromMessage = useCallback(async (seq: number, prefill?: string) => {
-    if (!activeSessionId) return;
+  const branchFromSessionMessage = useCallback(async (sourceSessionId: string, seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => {
+    if (!sourceSessionId) return;
     try {
-      // Branch at seq-1: copy everything before this user message
+      // Branch at seq-1: copy everything before this user message.
+      // checkpointSeq stays at the message's own seq — the checkpoint captured
+      // at its dispatch is the code state before its turn ran.
       const branchAt = prefill ? Math.max(1, seq - 1) : seq;
-      const newId = await modus.branchSession(activeSessionId, branchAt);
+      const result = await modus.branchSession(sourceSessionId, branchAt, {
+        ...(restoreCode ? { restoreCode: true, checkpointSeq: seq, providerMessageId } : {}),
+        confirmed: true,
+      });
+      if (result.workspace?.undoCheckpointId) {
+        setRewindNotice({
+          sessionId: sourceSessionId,
+          checkpointId: result.workspace.undoCheckpointId,
+          label: result.workspace.status === "partial"
+            ? `Partial workspace rewind applied; ${result.workspace.excluded.length} excluded path${result.workspace.excluded.length === 1 ? " was" : "s were"} left untouched.`
+            : result.workspace.providerChanged?.length
+            ? `Provider-native workspace rewind applied to ${result.workspace.providerChanged.length} file${result.workspace.providerChanged.length === 1 ? "" : "s"}.`
+            : `Workspace rewind applied (${result.workspace.restored.length} restored, ${result.workspace.deleted.length} deleted).`,
+        });
+      }
       await refreshSessions();
-      await selectSession(newId);
+      await selectSession(result.sessionId);
       if (prefill) setInputValue(prefill);
     } catch (err) {
       console.error("Branch failed:", err);
+      throw err;
     }
-  }, [activeSessionId, selectSession, refreshSessions]);
+  }, [selectSession, refreshSessions]);
+
+  const reviewRewindUndo = useCallback(async () => {
+    if (!rewindNotice) return;
+    setRewindNotice({ ...rewindNotice, busy: true, error: undefined });
+    try {
+      const preview = await modus.previewCheckpointRestore(rewindNotice.sessionId, rewindNotice.checkpointId);
+      setRewindNotice({ ...rewindNotice, preview, busy: false });
+    } catch (err: any) {
+      setRewindNotice({ ...rewindNotice, busy: false, error: err?.message ?? String(err) });
+    }
+  }, [rewindNotice]);
+
+  const confirmRewindUndo = useCallback(async () => {
+    if (!rewindNotice?.preview || rewindNotice.preview.status === "unsupported") return;
+    setRewindNotice({ ...rewindNotice, busy: true, error: undefined });
+    try {
+      const result = await modus.restoreCheckpoint(rewindNotice.sessionId, rewindNotice.checkpointId, true);
+      if (result.undoCheckpointId) {
+        setRewindNotice({
+          sessionId: rewindNotice.sessionId,
+          checkpointId: result.undoCheckpointId,
+          label: `Undo applied (${result.restored.length} restored, ${result.deleted.length} deleted).`,
+        });
+      } else {
+        setRewindNotice(null);
+      }
+    } catch (err: any) {
+      setRewindNotice({ ...rewindNotice, busy: false, error: err?.message ?? String(err) });
+    }
+  }, [rewindNotice]);
+
+  const branchFromMessage = useCallback(async (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => {
+    if (!activeSessionId) return;
+    await branchFromSessionMessage(activeSessionId, seq, prefill, restoreCode, providerMessageId);
+  }, [activeSessionId, branchFromSessionMessage]);
 
   return (
     <SessionContext.Provider value={{
@@ -680,9 +741,32 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       send, stop, stopTask, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,
       queuedMessage, cancelQueued, updateActiveSessionConfig, updateActiveSessionProfile,
-      branchFromMessage,
+      branchFromMessage, branchFromSessionMessage,
     }}>
       {children}
+      {rewindNotice && (
+        <aside className="rewind-notice" aria-live="polite">
+          <div><strong>{rewindNotice.label}</strong></div>
+          {rewindNotice.error && <div className="rewind-dialog-error">{rewindNotice.error}</div>}
+          {rewindNotice.preview && (
+            <div>
+              Undo would perform {rewindNotice.preview.files.length} managed-file action{rewindNotice.preview.files.length === 1 ? "" : "s"}.
+              {rewindNotice.preview.files.length > 0 && <ul className="rewind-file-list">{rewindNotice.preview.files.map((file) => <li key={`${file.action}:${file.path}`}><b>{file.action}</b> {file.path}</li>)}</ul>}
+              {rewindNotice.preview.excluded.length > 0 && <div>{rewindNotice.preview.excluded.length} excluded path{rewindNotice.preview.excluded.length === 1 ? " is" : "s are"} protected.</div>}
+            </div>
+          )}
+          <div className="rewind-dialog-actions">
+            <button type="button" onClick={() => setRewindNotice(null)} disabled={rewindNotice.busy}>Dismiss</button>
+            {!rewindNotice.preview ? (
+              <button type="button" onClick={() => void reviewRewindUndo()} disabled={rewindNotice.busy}>{rewindNotice.busy ? "Reviewing…" : "Review undo"}</button>
+            ) : (
+              <button type="button" className="rewind-confirm" onClick={() => void confirmRewindUndo()} disabled={rewindNotice.busy || rewindNotice.preview.status === "unsupported"}>
+                {rewindNotice.busy ? "Applying…" : "Confirm undo"}
+              </button>
+            )}
+          </div>
+        </aside>
+      )}
     </SessionContext.Provider>
   );
 }

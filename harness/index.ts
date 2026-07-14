@@ -66,7 +66,7 @@ import {
   getSessionTags, getSessionByTag, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
   getProviderUsageAnalytics, getDeepAnalytics,
-  getSessionMessages, getSessionArtifact,
+  getSessionMessages, getSessionMessageHistory, getSessionArtifact, getFileObservations,
 } from "./db";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
@@ -74,7 +74,8 @@ import {
   startSession, startSessionWithMoves, interactWithSession, queueMessage, steerMessage, stopSession, stopTask,
   getActiveSession, getAllActiveSessions, subscribe, shutdownAll,
   updateSessionConfig, resolvePermission, switchProfile,
-  pauseSession, resumeSession, branchSession, cancelQueuedDispatch,
+  pauseSession, resumeSession, branchSession, previewSessionBranch,
+  previewSessionCheckpoint, restoreSessionCheckpoint, cancelQueuedDispatch,
   subscribeGlobal, emitGlobalSessionEvent,
   startSessionReaper, stopSessionReaper,
   type SSEWriter,
@@ -1597,6 +1598,7 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
       : row?.status
     )
     ?? "done";
+  const history = getSessionMessageHistory(id);
 
   return c.json({
     sessionId: id,
@@ -1606,7 +1608,8 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
     additionalDirectories: active?.additionalDirectories ?? storedConfig?.additionalDirectories ?? [],
     loadProjectSettings: active?._configOverrides.loadProjectSettings ?? storedConfig?.loadProjectSettings ?? true,
     agentConfig,
-    messages: getSessionMessages(id),
+    messages: history.messages,
+    recoveredFromEvents: history.recoveredFromEvents,
     lastSeq: active?.seq ?? getMaxSeq(id),
     createdAt: row?.created_at ?? active?.startedAt ?? Date.now(),
   });
@@ -1853,15 +1856,60 @@ app.get("/api/sessions/by-tag/:tag", (c) => {
   return c.json({ id: row.id, status: row.status, profile: row.profile, tags: parseTags(row.tags), createdAt: row.created_at, updatedAt: row.updated_at });
 });
 
-// Branch session — fork from a specific point in a past conversation
+// Branch session — fork from a specific point in a past conversation.
+// restoreCode: also rewind the working tree to the checkpoint for that message.
+app.post("/api/sessions/:id/branch/preview", async (c) => {
+  const sourceId = c.req.param("id");
+  const body = await c.req.json();
+  const { seq, restoreCode, checkpointSeq, providerMessageId } = body;
+  if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "seq required (positive integer)" }, 400);
+  const result = await previewSessionBranch(sourceId, seq, {
+    restoreCode: restoreCode === true,
+    checkpointSeq: Number.isInteger(checkpointSeq) ? checkpointSeq : undefined,
+    providerMessageId: typeof providerMessageId === "string" ? providerMessageId : undefined,
+  });
+  if ("error" in result) return c.json(result, 400);
+  return c.json(result);
+});
+
 app.post("/api/sessions/:id/branch", async (c) => {
   const sourceId = c.req.param("id");
   const body = await c.req.json();
-  const { seq } = body;
-  if (typeof seq !== "number" || seq < 1) return c.json({ error: "seq required (positive integer)" }, 400);
-  const result = branchSession(sourceId, seq);
+  const { seq, restoreCode, checkpointSeq, providerMessageId, confirmed } = body;
+  if (!Number.isInteger(seq) || seq < 1) return c.json({ error: "seq required (positive integer)" }, 400);
+  const result = await branchSession(sourceId, seq, {
+    restoreCode: restoreCode === true,
+    checkpointSeq: Number.isInteger(checkpointSeq) ? checkpointSeq : undefined,
+    providerMessageId: typeof providerMessageId === "string" ? providerMessageId : undefined,
+    confirmed: confirmed === true,
+  });
   if ("error" in result) return c.json({ error: result.error }, 400);
-  return c.json({ sessionId: result.sessionId });
+  return c.json(result);
+});
+
+app.get("/api/sessions/:id/checkpoints/:checkpointId/preview", async (c) => {
+  const checkpointId = Number(c.req.param("checkpointId"));
+  if (!Number.isInteger(checkpointId) || checkpointId < 1) return c.json({ error: "valid checkpoint id required" }, 400);
+  const result = await previewSessionCheckpoint(c.req.param("id"), checkpointId);
+  if ("error" in result) return c.json(result, 400);
+  return c.json(result);
+});
+
+app.get("/api/sessions/:id/file-observations", (c) => {
+  return c.json({
+    observations: getFileObservations(c.req.param("id")),
+    authority: "observability-only",
+    warning: "Provider-declared tool paths are provenance hints, not proof of every workspace change and never authorize undo.",
+  });
+});
+
+app.post("/api/sessions/:id/checkpoints/:checkpointId/restore", async (c) => {
+  const checkpointId = Number(c.req.param("checkpointId"));
+  if (!Number.isInteger(checkpointId) || checkpointId < 1) return c.json({ error: "valid checkpoint id required" }, 400);
+  const body = await c.req.json();
+  const result = await restoreSessionCheckpoint(c.req.param("id"), checkpointId, body.confirmed === true);
+  if ("error" in result) return c.json(result, 400);
+  return c.json(result);
 });
 
 // ── Draft Text ──

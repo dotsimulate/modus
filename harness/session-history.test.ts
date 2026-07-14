@@ -1,0 +1,57 @@
+import { describe, expect, test } from "bun:test";
+import { reconstructSessionTurns, shouldRecoverSessionHistory } from "./session-history";
+
+function event(seq: number, type: string, subtype: string | null, data: unknown) {
+  return { seq, type, subtype, data: JSON.stringify(data), created_at: 1_000 + seq };
+}
+
+describe("incomplete semantic history recovery", () => {
+  test("keeps semantic history when its assistant result is newer than raw assistant events", () => {
+    expect(shouldRecoverSessionHistory([
+      { role: "user", seq: 1, text: "go", timestamp: 1 },
+      { role: "assistant", seq: 10, text: "done", timestamp: 2 },
+    ], 9)).toBe(false);
+  });
+
+  test("detects a raw assistant turn stranded after the last semantic assistant", () => {
+    expect(shouldRecoverSessionHistory([
+      { role: "user", seq: 1, text: "go", timestamp: 1 },
+    ], 88)).toBe(true);
+  });
+
+  test("reconstructs text and completed tools without a terminal result event", () => {
+    const turns = reconstructSessionTurns([
+      event(1, "user", "prompt", { subtype: "prompt", message: { content: "do the work" } }),
+      event(2, "assistant", null, { message: { content: [{ type: "text", text: "working" }] } }),
+      event(3, "assistant", null, { message: { content: [{ type: "tool_use", id: "tool-1", name: "CommandExecution", input: { command: "test" } }] } }),
+      event(4, "user", "tool_result", { message: { content: [{ type: "tool_result", tool_use_id: "tool-1", content: "passed" }] } }),
+      event(5, "assistant", null, { message: { content: [{ type: "text", text: "\nfinished" }] } }),
+    ]);
+
+    expect(turns).toHaveLength(2);
+    expect(turns[0]).toMatchObject({ role: "user", seq: 1, text: "do the work" });
+    expect(turns[1]).toMatchObject({ role: "assistant", seq: 2, text: "working\nfinished" });
+    expect(turns[1]!.toolCalls).toEqual([{
+      name: "CommandExecution",
+      input: { command: "test" },
+      result: "passed",
+    }]);
+  });
+
+  test("closes an unterminated assistant turn before a later user prompt", () => {
+    const turns = reconstructSessionTurns([
+      event(1, "user", "prompt", { subtype: "prompt", message: { content: "first" } }),
+      event(2, "assistant", null, { message: { content: [{ type: "text", text: "partial" }] } }),
+      event(3, "user", "prompt", { subtype: "prompt", message: { content: "second" } }),
+      event(4, "assistant", null, { message: { content: [{ type: "text", text: "answer" }] } }),
+      event(5, "result", "success", { result: "answer" }),
+    ]);
+
+    expect(turns.map((turn) => [turn.role, turn.text])).toEqual([
+      ["user", "first"],
+      ["assistant", "partial"],
+      ["user", "second"],
+      ["assistant", "answer"],
+    ]);
+  });
+});
