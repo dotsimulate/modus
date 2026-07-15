@@ -1,5 +1,5 @@
 import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
-import { getSession, updateSessionStatus } from "../db";
+import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { resolveProfilePrompt, type PermissionPolicy } from "../profiles";
 import type { SessionProvider, TurnContext } from "./types";
 import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
@@ -193,6 +193,7 @@ async function runTurn(
   options: { isResume: boolean; skipPromptPersist: boolean },
 ) {
   const { session } = ctx;
+  const requestedResumeId = options.isResume ? state.sessionId : null;
   const input = buildOpenCodeInput(content, ctx);
   const command = opencodeCommand();
   const args = buildArgs(ctx, state, input, options.isResume);
@@ -215,8 +216,12 @@ async function runTurn(
 
   const emitInit = (realId: string) => {
     if (initEmitted) return;
+    if (requestedResumeId && realId !== requestedResumeId) {
+      throw new Error(`OpenCode refused resume target ${requestedResumeId} and returned ${realId}; refusing to continue without the original context`);
+    }
     initEmitted = true;
     state.sessionId = realId;
+    ctx.setProviderSessionId(realId);
     if (session.sessionId !== realId) ctx.rekeySession(realId);
     session.status = "running";
     updateSessionStatus(realId, "running");
@@ -295,7 +300,12 @@ async function runTurn(
       return;
     }
     if (exitCode !== 0) throw new Error(stderr.trim() || `${command.label} exited with code ${exitCode}`);
-    if (!initEmitted) emitInit(state.sessionId ?? session.sessionId);
+    if (!initEmitted) {
+      if (requestedResumeId) {
+        throw new Error(`OpenCode did not confirm resume target ${requestedResumeId}; refusing to treat the response as a continuation`);
+      }
+      emitInit(state.sessionId ?? session.sessionId);
+    }
 
     if (textBuffer) ctx.emitEvent(assistantEvent(textBuffer));
     const durationMs = Date.now() - session.turnStartedAt;
@@ -370,9 +380,12 @@ export function createOpenCodeProvider(): SessionProvider {
 
     startTurn(ctx: TurnContext) {
       const { session, opts, profile } = ctx;
-      const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
+      const existingRow = opts.sessionId ? getSession(opts.sessionId) : null;
+      const isResume = !!opts.sessionId && !!existingRow && (
+        existingRow.message_count > 0 || getMaxSeq(opts.sessionId) > 0
+      );
       const state: OpenCodeState = {
-        sessionId: isResume && opts.sessionId ? opts.sessionId : null,
+        sessionId: isResume && opts.sessionId ? (session.providerSessionId ?? opts.sessionId) : null,
         abortController: session.abortController,
         model: opts.model ?? profile?.model,
         effort: opts.effort ?? profile?.effort,

@@ -934,17 +934,34 @@ export function createCodexProvider(): SessionProvider {
       threadOptions.modelReasoningEffort = mapCodexReasoningEffort(opts.effort ?? profileDef?.effort);
 
       // Check if this is a resume
-      const requestedResume = !!opts.sessionId && !!getSession(opts.sessionId);
-      const isResume = requestedResume && !!opts.sessionId && canResumeCodexThread(opts.sessionId);
-      if (requestedResume && opts.sessionId && !isResume) {
-        console.warn(`[codex] No local rollout state for ${opts.sessionId}; starting a fresh thread instead of resuming`);
+      const existingRow = opts.sessionId ? getSession(opts.sessionId) : null;
+      const requestedResume = !!opts.sessionId && !!existingRow && (
+        existingRow.message_count > 0
+        || getMaxSeq(opts.sessionId) > 0
+        || !!existingRow.parent_session_id
+        || !!existingRow.branch_message_uuid
+      );
+      const resumeTarget = session.providerSessionId ?? opts.sessionId ?? null;
+      const isResume = requestedResume && !!resumeTarget && canResumeCodexThread(resumeTarget);
+      if (requestedResume && !isResume) {
+        const reason = resumeTarget
+          ? `Codex native rollout ${resumeTarget} is missing; refusing to start a context-free replacement`
+          : "Codex provider conversation identity is missing; refusing to start a context-free replacement";
+        console.error(`[codex] ${reason} modus=${session.sessionId}`);
+        session.status = "error";
+        session.error = reason;
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: reason });
+        ctx.emitEvent({ type: "done" });
+        return;
       }
+      session.providerSessionId = isResume ? resumeTarget : null;
 
       // On resume, session ID IS the Codex thread ID (set by rekeySession on first turn)
       const state: CodexState = {
         codex,
         thread: null,
-        threadId: isResume && opts.sessionId ? opts.sessionId : null,
+        threadId: isResume ? resumeTarget : null,
         threadOptions,
         abortController: session.abortController,
       };
@@ -1125,6 +1142,7 @@ async function runTurn(
   skipPromptPersist: boolean,
 ) {
   const { session } = ctx;
+  const requestedResumeThreadId = isResume ? state.threadId : null;
 
   // Start or resume thread
   let thread: Thread;
@@ -1164,13 +1182,17 @@ async function runTurn(
 
       switch (event.type) {
         case "thread.started": {
-          state.threadId = event.thread_id;
-
           // Emit init event — use thread_id as session ID for consistency
           if (!initEmitted) {
             initEmitted = true;
             const realId = event.thread_id;
 
+            if (requestedResumeThreadId && realId !== requestedResumeThreadId) {
+              throw new Error(`Codex refused resume target ${requestedResumeThreadId} and returned ${realId}; refusing to continue without the original context`);
+            }
+
+            state.threadId = realId;
+            ctx.setProviderSessionId(realId);
             ctx.rekeySession(realId);
             session.status = "running";
             updateSessionStatus(realId, "running");
@@ -1490,18 +1512,13 @@ async function runTurn(
     const isMissingRollout = isResume && String(err).includes("no rollout found for thread id");
 
     if (isMissingRollout) {
-      console.warn("[codex] missing stored rollout for " + session.sessionId + "; restarting as a fresh thread");
-      state.thread = null;
-      state.threadId = null;
-      inputHandedOff = true;
-      runTurn(ctx, state, input, false, skipPromptPersist).catch((retryErr) => {
-        console.error("[codex] fresh-start retry failed for " + session.sessionId + ":", retryErr);
-        session.error = String(retryErr);
-        session.status = "error";
-        updateSessionStatus(session.sessionId, "error");
-        ctx.broadcastEvent({ type: "error", error: String(retryErr) });
-        ctx.emitEvent({ type: "done" });
-      });
+      const reason = `Codex native rollout ${requestedResumeThreadId ?? state.threadId ?? "(unknown)"} disappeared during resume; refusing to start a context-free replacement`;
+      console.error(`[codex] ${reason} modus=${session.sessionId}`);
+      session.error = reason;
+      session.status = "error";
+      updateSessionStatus(session.sessionId, "error");
+      ctx.broadcastEvent({ type: "error", error: reason });
+      ctx.emitEvent({ type: "done" });
       return;
     } else if (isAbort) {
       console.log(`[codex] aborted ${session.sessionId}`);

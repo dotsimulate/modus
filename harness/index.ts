@@ -32,7 +32,7 @@ import {
   listProjects, getProjectById, getProjectByPath, updateProjectPath,
 } from "./profiles";
 import { initProject, getInitStatus } from "./init";
-// Lazy: gemini-usage imports @google/gemini-cli-core which spams "Experiments loaded" on every init
+// Gemini usage is loaded lazily so its external Antigravity auth probe runs only when requested.
 import { getSessionCommitAttribution } from "./commit-attribution";
 import {
   getUiState, listThemes, listFonts, getTheme, getFont, getActiveTheme, getActiveFont,
@@ -66,8 +66,9 @@ import {
   getSessionTags, getSessionByTag, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
   getProviderUsageAnalytics, getDeepAnalytics,
-  getSessionMessages, getSessionMessageHistory, getSessionArtifact, getFileObservations,
+  getSessionMessages, getSessionMessageHistory, getSessionArtifact, getFileObservations, listAllCheckpoints,
 } from "./db";
+import { planCheckpointMaintenance } from "./checkpoint-maintenance";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
 import {
@@ -98,6 +99,11 @@ import {
   type ActorInfo,
 } from "./workspace-history";
 import { isTracked } from "./workspace-history-filter";
+import {
+  buildProjectDescriptors,
+  resolveSessionProject,
+  type SessionProjectDescriptor,
+} from "./session-projects";
 import { projectEntities, userEntities } from "./workspace-entities";
 import {
   openIndex, getIndex, indexCommit, getStoredHead, rebuildIndex, queryChanges,
@@ -111,6 +117,11 @@ import {
   type RestoreTarget, type EntitySelection,
 } from "./workspace-history-restore";
 import { homeProfilesDir } from "./modus-home";
+import {
+  PinAttemptThrottle,
+  isAllowedBrowserOrigin,
+  requestSourceKey,
+} from "./security-boundary";
 
 const PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = process.env.HARNESS_HOST ?? "127.0.0.1";
@@ -363,8 +374,26 @@ function splitUserProfilePayload(body: Record<string, unknown> | null | undefine
   return Object.keys(ui).length > 0 ? { core, ui } : { core };
 }
 
-// CORS for all API routes
-app.use("/api/*", cors({ origin: "*" }));
+// Browser-origin boundary. CLI/SDK requests normally omit Origin and remain
+// valid; browser requests must come from a known Modus UI origin.
+app.use("/api/*", async (c, next) => {
+  const origin = c.req.header("Origin");
+  if (origin && !isAllowedBrowserOrigin(origin, {
+    port: PORT,
+    requestHost: c.req.header("Host"),
+    configuredOrigins: process.env.MODUS_ALLOWED_ORIGINS,
+  })) {
+    return c.json({ error: "foreign browser origin rejected" }, 403);
+  }
+  return next();
+});
+app.use("/api/*", cors({
+  origin: (origin, c) => isAllowedBrowserOrigin(origin, {
+    port: PORT,
+    requestHost: c.req.header("Host"),
+    configuredOrigins: process.env.MODUS_ALLOWED_ORIGINS,
+  }) ? origin : "",
+}));
 
 // ── PIN Auth (browser gate) ──
 // If HARNESS_PIN is set, browsers must verify the PIN to get access.
@@ -375,6 +404,25 @@ function getPin() { return resolveSecret("HARNESS_PIN"); }
 
 // In-memory set of valid browser session tokens from PIN or no-PIN browser setup.
 const pinSessions = new Set<string>();
+const pinThrottle = new PinAttemptThrottle();
+
+function pinSource(c: any): string {
+  return requestSourceKey(c.req.header("X-Modus-Peer-Address"), c.req.header("X-Forwarded-For"));
+}
+
+function pinThrottleResponse(c: any): Response | null {
+  const decision = pinThrottle.check(pinSource(c));
+  if (decision.allowed) return null;
+  c.header("Retry-After", String(decision.retryAfterSeconds));
+  return c.json({ error: "too many PIN attempts", retryAfterSeconds: decision.retryAfterSeconds }, 429);
+}
+
+function recordPinFailure(c: any): Response | null {
+  const decision = pinThrottle.recordFailure(pinSource(c));
+  if (decision.allowed) return null;
+  c.header("Retry-After", String(decision.retryAfterSeconds));
+  return c.json({ error: "too many PIN attempts", retryAfterSeconds: decision.retryAfterSeconds }, 429);
+}
 
 function mintBrowserSessionToken(): string {
   const sessionToken = crypto.randomUUID();
@@ -415,13 +463,25 @@ app.post("/api/auth/session", (c) => {
 
 // First-run setup — set PIN from UI, only if none exists yet
 app.post("/api/auth/setup", async (c) => {
-  if (getPin()) return c.json({ error: "pin already set" }, 403);
+  const throttled = pinThrottleResponse(c);
+  if (throttled) return throttled;
+  if (getPin()) {
+    const blocked = recordPinFailure(c);
+    return blocked ?? c.json({ error: "pin already set" }, 403);
+  }
   const body = await c.req.json();
   const pin = body.pin?.trim();
   const name = body.name?.trim();
-  if (!pin || pin.length < 4) return c.json({ error: "pin must be at least 4 characters" }, 400);
+  if (!pin || pin.length < 4) {
+    const blocked = recordPinFailure(c);
+    return blocked ?? c.json({ error: "pin must be at least 4 characters" }, 400);
+  }
   const ok = setupPin(pin);
-  if (!ok) return c.json({ error: "pin already set" }, 403);
+  if (!ok) {
+    const blocked = recordPinFailure(c);
+    return blocked ?? c.json({ error: "pin already set" }, 403);
+  }
+  pinThrottle.recordSuccess(pinSource(c));
   const sessionToken = mintBrowserSessionToken();
   if (name) setUserName(name);
   return c.json({ ok: true, token: sessionToken });
@@ -429,6 +489,8 @@ app.post("/api/auth/setup", async (c) => {
 
 // Verify PIN — returns a session token for the browser
 app.post("/api/auth/verify", async (c) => {
+  const throttled = pinThrottleResponse(c);
+  if (throttled) return throttled;
   const pin = getPin();
   if (!pin) return c.json({ ok: true, token: AUTH_TOKEN ? mintBrowserSessionToken() : "" });
   const body = await c.req.json();
@@ -436,9 +498,11 @@ app.post("/api/auth/verify", async (c) => {
     const sessionToken = mintBrowserSessionToken();
     const name = body.name?.trim();
     if (name) setUserName(name);
+    pinThrottle.recordSuccess(pinSource(c));
     return c.json({ ok: true, token: sessionToken });
   }
-  return c.json({ error: "wrong pin" }, 401);
+  const blocked = recordPinFailure(c);
+  return blocked ?? c.json({ error: "wrong pin" }, 401);
 });
 
 // Get current user display name
@@ -480,23 +544,35 @@ app.post("/api/auth/lock", (c) => {
 
 // Change PIN — requires old PIN to verify identity
 app.post("/api/auth/change-pin", async (c) => {
+  const throttled = pinThrottleResponse(c);
+  if (throttled) return throttled;
   const body = await c.req.json();
   const oldPin = body.oldPin?.trim();
   const newPin = body.newPin?.trim();
   if (!oldPin || !newPin) return c.json({ error: "oldPin and newPin are required" }, 400);
   if (newPin.length < 4) return c.json({ error: "new PIN must be at least 4 characters" }, 400);
   const ok = changePin(oldPin, newPin);
-  if (!ok) return c.json({ error: "wrong PIN" }, 401);
+  if (!ok) {
+    const blocked = recordPinFailure(c);
+    return blocked ?? c.json({ error: "wrong PIN" }, 401);
+  }
+  pinThrottle.recordSuccess(pinSource(c));
   return c.json({ ok: true });
 });
 
 // Disable PIN auth. Only works for PINs managed in the secrets file.
 app.post("/api/auth/disable-pin", async (c) => {
+  const throttled = pinThrottleResponse(c);
+  if (throttled) return throttled;
   const body = await c.req.json();
   const pin = body.pin?.trim();
   if (!pin) return c.json({ error: "PIN is required" }, 400);
   const ok = disablePin(pin);
-  if (!ok) return c.json({ error: "wrong PIN or PIN is managed by environment" }, 401);
+  if (!ok) {
+    const blocked = recordPinFailure(c);
+    return blocked ?? c.json({ error: "wrong PIN or PIN is managed by environment" }, 401);
+  }
+  pinThrottle.recordSuccess(pinSource(c));
   pinSessions.clear();
   return c.json({ ok: true });
 });
@@ -874,7 +950,7 @@ app.get("/api/providers/:name/models", async (c) => {
  *  <cwd>/.modus/profiles/agents/) always pass the scope filter, even when the user
  *  profile's agentProfiles whitelist is set. Without this, sessions run under
  *  project-local profiles like `hints` would be invisible in the sidebar. */
-function resolveUserProfileScope(c: any): { cwdPrefixes?: string[]; agentProfiles?: string[] } | undefined {
+function resolveUserProfileScope(c: any): { projectId: string; cwdPrefixes?: string[]; agentProfiles?: string[] } | undefined {
   const profileName = new URL(c.req.url).searchParams.get("userProfile");
   if (!profileName) return undefined;
   const profile = getUserProfile(profileName);
@@ -894,6 +970,7 @@ function resolveUserProfileScope(c: any): { cwdPrefixes?: string[]; agentProfile
   }
 
   return {
+    projectId: profileName,
     cwdPrefixes: profile.projects?.length ? profile.projects : undefined,
     agentProfiles,
   };
@@ -912,6 +989,71 @@ app.get("/api/sessions/search", (c) => {
   }));
 });
 
+function configuredSessionProjects(): SessionProjectDescriptor[] {
+  return buildProjectDescriptors(getAllUserProfiles());
+}
+
+function enrichSessionRows(rows: ReturnType<typeof listSessions>, projects = configuredSessionProjects()) {
+  return rows.map((session) => {
+    const active = getActiveSession(session.id);
+    const storedConfig = session.provider ? null : getStoredSessionConfig(session.id);
+    const provider = active?.provider ?? session.provider ?? storedConfig?.provider ?? null;
+    const isEmptyIdlePlaceholder = session.status === "idle"
+      && (session.message_count ?? 0) === 0
+      && !session.preview
+      && !session.last_prompt
+      && !session.last_response;
+    const staleLiveStatus = session.status === "running"
+      || session.status === "starting"
+      || session.status === "paused"
+      || session.status === "interrupting";
+    const status = active?.status
+      ?? (isEmptyIdlePlaceholder ? "idle" : staleLiveStatus ? "done" : session.status);
+    const project = resolveSessionProject(session, projects);
+
+    return {
+      ...session,
+      provider,
+      status,
+      updated_at: active ? Math.max(session.updated_at, active.lastEventAt) : session.updated_at,
+      total_cost_usd: active?.costUsd ?? session.total_cost_usd,
+      project_id: project.projectId,
+      project_name: project.projectName,
+      project_root: project.projectRoot,
+      project_explicit: project.explicit,
+      live_text: (active?.liveStream.text || active?.lastAssistantText || "").slice(-320) || null,
+      live_seq: active?.seq ?? null,
+      last_event_at: active?.lastEventAt ?? null,
+      last_input_tokens: null,
+      last_output_tokens: null,
+    };
+  });
+}
+
+app.get("/api/sessions/index", (c) => {
+  const requested = Number(new URL(c.req.url).searchParams.get("limit") ?? 250);
+  const limit = Number.isFinite(requested) ? Math.min(1000, Math.max(1, Math.floor(requested))) : 250;
+  const configured = configuredSessionProjects();
+  const sessions = enrichSessionRows(listSessions(limit), configured);
+  const projects = configured.map((project) => {
+    const rows = sessions.filter((session) => session.project_id === project.id);
+    return {
+      id: project.id,
+      name: project.name,
+      roots: project.roots,
+      session_count: rows.length,
+      active_count: rows.filter((session) => (
+        session.status === "running"
+        || session.status === "starting"
+        || session.status === "interrupting"
+        || session.status === "paused"
+      )).length,
+      last_activity_at: rows.length > 0 ? Math.max(...rows.map((session) => session.updated_at)) : null,
+    };
+  });
+  return c.json({ generated_at: Date.now(), projects, sessions });
+});
+
 app.get("/api/sessions", (c) => {
   const params = new URL(c.req.url).searchParams;
   const limit = Number(params.get("limit") ?? 50);
@@ -926,54 +1068,15 @@ app.get("/api/sessions", (c) => {
       : scope
         ? listSessionsScoped({ ...scope, limit })
         : listSessions(limit);
-  // Correct stale live statuses: if DB says running/starting/paused but the
-  // session is not active in memory, it is done. Preserve zero-message idle
-  // placeholders created by /api/sessions/empty; the composer relies on those
-  // staying idle so the first prompt starts a real session instead of being
-  // sent as a follow-up to a nonexistent active session.
-  const corrected = rows.map((s) => {
-    const storedConfig = s.provider ? null : getStoredSessionConfig(s.id);
-    const provider = s.provider ?? storedConfig?.provider ?? null;
-    const isEmptyIdlePlaceholder = s.status === "idle"
-      && (s.message_count ?? 0) === 0
-      && !s.preview
-      && !s.last_prompt
-      && !s.last_response;
-    if (
-      (s.status === "running" || s.status === "starting" || s.status === "paused")
-      && !getActiveSession(s.id)
-    ) {
-      return {
-        ...s,
-        provider,
-        status: "done",
-        last_input_tokens: null,
-        last_output_tokens: null,
-      };
-    }
-    if (isEmptyIdlePlaceholder && !getActiveSession(s.id)) {
-      return {
-        ...s,
-        provider,
-        status: "idle",
-        last_input_tokens: null,
-        last_output_tokens: null,
-      };
-    }
-    return {
-      ...s,
-      provider,
-      last_input_tokens: null,
-      last_output_tokens: null,
-    };
-  });
-  return c.json(corrected);
+  return c.json(enrichSessionRows(rows));
 });
 
 app.get("/api/sessions/active", (c) => {
   const scope = resolveUserProfileScope(c);
+  const projects = configuredSessionProjects();
   const memSessions = getAllActiveSessions().map((s) => {
     const dbRow = getSession(s.sessionId);
+    const project = resolveSessionProject({ user_profile: s.userProfile ?? dbRow?.user_profile, cwd: s.cwd }, projects);
     return {
       id: s.sessionId,
       status: s.status,
@@ -985,23 +1088,20 @@ app.get("/api/sessions/active", (c) => {
       startedAt: s.startedAt,
       lastEventAt: s.lastEventAt,
       preview: s.preview,
-      lastText: s.lastAssistantText || null,
+      lastText: s.liveStream.text || s.lastAssistantText || null,
       seq: s.seq,
       subscribers: s.subscribers.size,
       cwd: s.cwd ?? null,
       additionalDirectories: s.additionalDirectories.length > 0 ? s.additionalDirectories : null,
+      project_id: project.projectId,
+      project_name: project.projectName,
+      project_root: project.projectRoot,
       archived: dbRow?.archived === 1,
     };
   });
   // Apply user profile scoping server-side
   const filtered = scope
-    ? (!scope.cwdPrefixes && !scope.agentProfiles)
-      ? []  // profile has no projects and no agents → show nothing
-      : memSessions.filter((s) => {
-          if (scope.agentProfiles && s.profile && !scope.agentProfiles.includes(s.profile)) return false;
-          if (scope.cwdPrefixes && s.cwd && !scope.cwdPrefixes.some((p) => s.cwd!.startsWith(p))) return false;
-          return true;
-        })
+    ? memSessions.filter((session) => session.project_id === scope.projectId)
     : memSessions;
   return c.json(filtered);
 });
@@ -1406,18 +1506,29 @@ type MultiSpec = { id: string; after: number };
 
 function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
   return sseResponse(c.req.raw, async (writer, signal) => {
+    let resolve!: () => void;
+    const done = new Promise<void>((r) => { resolve = r; });
     // Serialize every write through one chain. Catch-up writes and live
     // broadcast writes from independent sessions both target the same
     // controller; without this, their byte chunks could interleave and corrupt
     // the SSE framing.
     let writeChain: Promise<void> = Promise.resolve();
+    let pendingWrites = 0;
+    const MAX_PENDING_WRITES = 256;
     const send = (event: string, obj: unknown): Promise<void> => {
-      writeChain = writeChain.then(() => writer.write(event, JSON.stringify(obj), ""));
+      if (pendingWrites >= MAX_PENDING_WRITES) {
+        console.warn(`[sse-multi] closing slow client with ${pendingWrites} queued writes`);
+        resolve();
+        return Promise.resolve();
+      }
+      pendingWrites++;
+      writeChain = writeChain
+        .then(() => writer.write(event, JSON.stringify(obj), ""))
+        .catch(() => { resolve(); })
+        .finally(() => { pendingWrites--; });
       return writeChain;
     };
 
-    let resolve!: () => void;
-    const done = new Promise<void>((r) => { resolve = r; });
     const keepAlive = setInterval(() => { void send("ping", {}); }, 30_000);
     const unsubscribers: Array<() => void> = [];
 
@@ -1503,6 +1614,18 @@ app.get("/api/events/multi", (c) => {
   return streamMultiSessionSSE(c, specs);
 });
 
+// POST avoids URL-length limits when many sessions are subscribed and keeps
+// bearer credentials in headers rather than query-string logs/history.
+app.post("/api/events/multi", async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { sessions?: unknown };
+  const specs: MultiSpec[] = Array.isArray(body.sessions)
+    ? body.sessions
+      .filter((spec: any) => spec && typeof spec.i === "string")
+      .map((spec: any) => ({ id: spec.i, after: Number(spec.s) || 0 }))
+    : [];
+  return streamMultiSessionSSE(c, specs);
+});
+
 // Global session lifecycle events (SSE) — used by SessionWeb for real-time updates
 app.get("/api/events/sessions", (c) => {
   return sseResponse(c.req.raw, async (writer, signal) => {
@@ -1566,18 +1689,32 @@ app.get("/api/events/fs", (c) => {
 app.get("/api/sessions/:id/messages-content", (c) => {
   const id = c.req.param("id");
   const seq = c.req.query("seq");
-  const messages = getSessionMessages(id);
   if (seq) {
     const seqNum = Number(seq);
-    const msg = messages.find(m => m.seq === seqNum);
+    if (!Number.isFinite(seqNum) || seqNum <= 0) return c.json({ error: "invalid message sequence" }, 400);
+    // Detail fetches are intentionally on demand. Reconstruct the complete
+    // turn here because interrupted assistant turns retain the sequence of
+    // their first event and may continue for hundreds of later tool events.
+    const msg = getSessionMessages(id).find(m => m.seq === seqNum);
     if (!msg) return c.json({ error: "message not found" }, 404);
     return c.json(msg);
   }
-  return c.json(messages);
+  return c.json(getSessionMessages(id));
 });
 
 app.get("/api/sessions/:id/history-snapshot", (c) => {
   const id = c.req.param("id");
+  const rawLimit = c.req.query("limit");
+  const requestedLimit = Number(rawLimit ?? 40);
+  const limit = rawLimit === "all"
+    ? undefined
+    : Number.isFinite(requestedLimit)
+      ? Math.min(100, Math.max(1, Math.floor(requestedLimit)))
+      : 40;
+  const requestedBeforeSeq = Number(c.req.query("beforeSeq"));
+  const beforeSeq = Number.isFinite(requestedBeforeSeq) && requestedBeforeSeq > 0
+    ? Math.floor(requestedBeforeSeq)
+    : undefined;
   const row = getSession(id);
   const active = getActiveSession(id);
   if (!row && !active) return c.json({ error: "session not found" }, 404);
@@ -1598,7 +1735,12 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
       : row?.status
     )
     ?? "done";
-  const history = getSessionMessageHistory(id);
+  const history = getSessionMessageHistory(id, {
+    limit,
+    beforeSeq,
+    includeDetails: c.req.query("details") !== "summary",
+    preserveEventSequence: true,
+  });
 
   return c.json({
     sessionId: id,
@@ -1610,6 +1752,8 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
     agentConfig,
     messages: history.messages,
     recoveredFromEvents: history.recoveredFromEvents,
+    hasMoreHistory: history.hasMore,
+    oldestSeq: history.oldestSeq,
     lastSeq: active?.seq ?? getMaxSeq(id),
     createdAt: row?.created_at ?? active?.startedAt ?? Date.now(),
   });
@@ -3452,6 +3596,22 @@ app.get("/api/stats/storage", (c) => {
   return c.json(storageStats());
 });
 
+app.get("/api/stats/checkpoints", (c) => {
+  const protectedSessionIds = new Set(getAllActiveSessions().map((session) => session.sessionId));
+  return c.json(planCheckpointMaintenance({ rows: listAllCheckpoints(), protectedSessionIds }));
+});
+
+app.post("/api/maintenance/checkpoints", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  if (body?.dryRun !== true) {
+    return c.json({
+      error: "checkpoint maintenance currently requires dryRun:true; apply remains disabled until a reviewed planId is confirmed",
+    }, 400);
+  }
+  const protectedSessionIds = new Set(getAllActiveSessions().map((session) => session.sessionId));
+  return c.json(planCheckpointMaintenance({ rows: listAllCheckpoints(), protectedSessionIds }));
+});
+
 app.get("/api/stats/sessions", (c) => {
   const params = new URL(c.req.url).searchParams;
   const userProfile = params.get("userProfile") ?? undefined;
@@ -4274,8 +4434,13 @@ const server = Bun.serve({
     // Intercept WebSocket upgrade requests before Hono
     const wsResult = tryUpgradeTerminalWS(req, server);
     if (wsResult !== null) return wsResult;
-    // Fall through to Hono for everything else
-    return app.fetch(req, server);
+    // Attach the socket peer address as an internal header. Always overwrite
+    // any client-supplied value; PIN throttling trusts forwarded identity only
+    // when this peer is loopback (for example, Tailscale Serve).
+    const headers = new Headers(req.headers);
+    headers.set("X-Modus-Peer-Address", server.requestIP(req)?.address ?? "unknown");
+    const internalRequest = new Request(req, { headers });
+    return app.fetch(internalRequest, server);
   },
   websocket: terminalWebSocket,
   port: PORT,

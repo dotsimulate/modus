@@ -103,7 +103,7 @@ actions/<name>/
 {
   "name": "morning-checkin",
   "description": "Daily check-in conversation with structured context",
-  "agentProfile": "buddy",
+  "agentProfile": "companion-agent",
   "trigger": { "type": "interval", "every": "1d",
     "activeHours": { "start": "09:00", "end": "10:00" } },
   "moves": [

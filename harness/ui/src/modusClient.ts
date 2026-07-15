@@ -83,8 +83,7 @@ export function subscribeEvents(
   callbacks: EventStreamCallbacks,
 ): () => void {
   const abort = new AbortController();
-  const tp = tokenParam();
-  const params = [`after=${afterSeq}`, tp].filter(Boolean).join("&");
+  const params = `after=${afterSeq}`;
   const url = `${API_BASE}/api/sessions/${sessionId}/events?${params}`;
 
   let doneFired = false;
@@ -113,7 +112,7 @@ export function subscribeEvents(
     if (staleTimer) { clearTimeout(staleTimer); staleTimer = null; }
   };
 
-  fetch(url, { signal: abort.signal })
+  fetch(url, { signal: abort.signal, headers: authHeaders() })
     .then(async (res) => {
       if (!res.ok) {
         callbacks.onError(`Event stream failed: ${res.statusText}`);

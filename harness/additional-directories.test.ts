@@ -15,6 +15,7 @@ function makeSession(additionalDirectories: string[]) {
   return {
     sessionId: "ses-test",
     tempId: "ses-test",
+    providerSessionId: null,
     status: "starting",
     profile: undefined,
     provider: "claude-code",
@@ -28,6 +29,8 @@ function makeSession(additionalDirectories: string[]) {
     error: null,
     preview: "hello",
     lastAssistantText: "",
+    liveStream: { text: "", thinking: "", feed: "", seq: 0 },
+    pendingAssistantTurn: null,
     initialPrompt: "hello",
     initialContent: "hello",
     subscribers: new Set(),
@@ -41,6 +44,8 @@ function makeSession(additionalDirectories: string[]) {
     pauseResolver: null,
     pendingPermissions: new Map(),
     sessionApprovals: new Set(),
+    osPids: new Set(),
+    watchers: new Set(),
     _provider: {} as any,
     _providerState: null,
     _configOverrides: {},
@@ -63,6 +68,9 @@ function makeTurnContext(session: any, opts: Record<string, unknown> = {}) {
     broadcastEvent() {},
     rekeySession(newId: string) {
       session.sessionId = newId;
+    },
+    setProviderSessionId(providerSessionId: string) {
+      session.providerSessionId = providerSessionId;
     },
     notifyConfigChange() {},
     updateSessionDb() {},
@@ -155,13 +163,13 @@ describe("additionalDirectories", () => {
     expect(capturedThreadOptions.additionalDirectories).toEqual(["/tmp/shared"]);
   });
 
-  test("starts a fresh Codex thread when persisted rollout state is missing", async () => {
+  test("refuses to replace a persisted Codex thread when rollout state is missing", async () => {
     const calls: string[] = [];
     let capturedThreadOptions: any;
 
     mock.module("./db", () => ({
       getSession(id: string) {
-        return id === "stale-thread" ? { id, message_count: 0 } : null;
+        return id === "stale-thread" ? { id, message_count: 2 } : null;
       },
       updateSessionStatus() {},
       getMaxSeq() {
@@ -241,11 +249,12 @@ describe("additionalDirectories", () => {
     await Bun.sleep(10);
 
     expect(calls).toContain("canResume:stale-thread");
-    expect(calls).toContain("startThread");
+    expect(calls).not.toContain("startThread");
     expect(calls).not.toContain("resumeThread");
-    expect(capturedThreadOptions.additionalDirectories).toEqual(["/tmp/shared"]);
-    expect(session.sessionId).toBe("fresh-thread");
-    expect(session.status).toBe("idle");
+    expect(capturedThreadOptions).toBeUndefined();
+    expect(session.sessionId).toBe("stale-thread");
+    expect(session.status).toBe("error");
+    expect(session.error).toContain("refusing");
   });
 
   test("passes project .claude MCP servers to Codex config", async () => {

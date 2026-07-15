@@ -400,7 +400,7 @@ top of what the moves provide.
 ```json
 {
   "name": "morning-checkin",
-  "agentProfile": "buddy",
+  "agentProfile": "companion-agent",
   "trigger": { "type": "interval", "every": "1d",
     "activeHours": { "start": "09:00", "end": "10:00" } },
   "moves": [{ "name": "check-in" }],

@@ -1,6 +1,6 @@
 ---
 title: Provider System
-lastUpdated: 2026-07-07
+lastUpdated: 2026-07-14
 lastCommit: a9adf68
 covers: harness/providers/ harness/session-manager.ts
 ---
@@ -36,6 +36,7 @@ Passed to providers by session-manager. Contains:
 - `emitEvent()` — persist + broadcast
 - `broadcastEvent()` — broadcast only (no DB)
 - `rekeySession()` — replace temp session ID with real one
+- `setProviderSessionId()` — persist a provider-native conversation/thread ID without replacing the Modus ID
 - `notifyConfigChange(patch)` — provider-initiated config change; updates `_configOverrides` and emits `config_updated` to subscribers
 - `updateSessionDb()` — update session row
 
@@ -47,7 +48,7 @@ Passed to providers by session-manager. Contains:
 | `claude-code-pty` | claude-code | Persistent Claude Code CLI process | Full MCP, runtime-native permissions, warm PTY across turns |
 | `codex` | codex | OpenAI Codex CLI | Full MCP, event-derived tools, Codex sandbox/approval settings |
 | `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP via `.cursor/mcp.json`, event-derived tools, `--approve-mcps` |
-| `gemini-cli` | gemini-cli | Gemini CLI runtime | Full MCP, Gemini-owned approval policy |
+| `antigravity` | antigravity | Google Antigravity CLI (`agy`) | Native UUID resume, JSON Hook tool events/approvals, full MCP transport bridge |
 | `opencode` | opencode | OpenCode CLI subprocess | Full MCP, event-derived tools, `bunx opencode-ai` fallback |
 | `litellm` | pi-agent | LiteLLM proxy | PI agent loop, MCP via mcp-bridge |
 | `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge |
@@ -56,6 +57,33 @@ Passed to providers by session-manager. Contains:
 PI agent providers share a single implementation (`pi-agent.ts`) parameterized
 by provider name. They implement a lightweight tool-use agent loop with
 compaction support.
+
+The embedded `gemini-cli` adapter is hidden legacy migration code. It is accepted
+only when a paid Gemini API key, explicit Vertex AI configuration, Cloud Shell,
+or compute ADC is present. It never consumes `~/.gemini/oauth_creds.json`.
+
+### Antigravity support boundary
+
+Modus runs documented `agy --print` turns and resumes them with
+`--conversation <uuid>`. A Modus-owned plugin, installed through `agy plugin`,
+uses the documented `PreInvocation`, `PreToolUse`, `PostToolUse`, and `Stop`
+JSON Hooks to capture the native UUID, observe tool lifecycle, and gate tools in
+the Modus approval UI. A turn-scoped MCP fan-in server exposes profile/global
+stdio, SSE, and Streamable HTTP servers without overwriting the user's own
+Antigravity configuration.
+
+`providerControls.antigravity.mode` maps to `agy --mode` (`accept-edits` or
+`plan`), `sandbox` maps to `agy --sandbox`, and `printTimeout` maps to
+`--print-timeout`. Profile instructions are injected as documented
+`PreInvocation` ephemeral messages rather than being disguised as user text.
+
+Antigravity's current headless interface does not expose structured model-event
+streaming, thought/token/quota metrics, non-interactive image attachment,
+structured `ask_question` responses, arbitrary-message fork, or programmatic
+rewind. It also has no `effort`, `maxTurns`, or disable-project-context flag;
+Modus reports those mismatches instead of simulating them. The TUI's `/fork`
+and `/rewind` commands remain interactive Antigravity features, not provider
+APIs.
 
 ## Effort Resolution
 
@@ -83,7 +111,7 @@ When the agent calls the `ExitPlanMode` tool, the provider automatically resets 
 | `claude-code`, `claude-code-pty` | `claude` CLI |
 | `codex` | `codex` CLI plus `CODEX_API_KEY` / `OPENAI_API_KEY` or `~/.codex/auth.json` |
 | `cursor` | `cursor-agent` CLI (or configured resolver path) |
-| `gemini-cli` | Google OAuth in `~/.gemini/oauth_creds.json` or `GEMINI_API_KEY` / `GOOGLE_API_KEY` |
+| `antigravity` | `agy` CLI plus an authenticated `agy models` probe |
 | `opencode` | `opencode` CLI, or `bunx` for `opencode-ai` fallback |
 | `litellm` | local proxy health at `LITELLM_BASE_URL` or `http://localhost:4000` |
 | `ollama` | local server at `OLLAMA_HOST` or `http://localhost:11434` |
@@ -102,10 +130,11 @@ Environment variables injected into MCP servers:
 - `AGENT_PROFILE` — active agent profile name
 - `USER_PROFILE` — active user profile name
 
-Provider-specific wiring differs: Claude uses SDK/CLI MCP config, Cursor writes a temporary `.cursor/mcp.json`, Codex passes MCP config through its CLI wrapper, Gemini builds runtime MCP servers, and PI providers use `mcp-bridge.ts`.
+Provider-specific wiring differs: Claude uses SDK/CLI MCP config, Cursor writes a temporary `.cursor/mcp.json`, Codex passes MCP config through its CLI wrapper, Antigravity uses its validated Modus plugin and turn-scoped MCP fan-in bridge, and PI providers use `mcp-bridge.ts`.
 
 **Source**: `providers/claude-code.ts` (MCP merge), `providers/cursor.ts`
 (MCP via .cursor/mcp.json), `providers/codex.ts` (MCP via config object),
-`providers/gemini-cli.ts`, `providers/opencode.ts`,
+`providers/antigravity.ts`, `providers/antigravity-plugin.ts`,
+`providers/antigravity-mcp-bridge.ts`, `providers/opencode.ts`,
 `providers/mcp-bridge.ts` (MCP lifecycle for PI agents),
 `providers/registry.ts` (provider lookup).

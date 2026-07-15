@@ -23,6 +23,26 @@ function resolvePreferredProfile(
   return names[0] ?? "";
 }
 
+function normalizeRootPath(value: string): string {
+  const slashed = value.trim().replace(/\\/g, "/");
+  const normalized = slashed === "/" ? "/" : slashed.replace(/\/+$/, "");
+  return /^[A-Za-z]:(?:\/|$)/.test(normalized) ? normalized.toLowerCase() : normalized;
+}
+
+function activeProjectRoot(roots: string[] | undefined, cwd: string): string {
+  if (!roots?.length) return "";
+  const candidate = normalizeRootPath(cwd);
+  return [...roots]
+    .filter((root) => {
+      const boundary = normalizeRootPath(root);
+      if (boundary === "/") return candidate.startsWith("/");
+      return candidate === boundary || candidate.startsWith(`${boundary}/`);
+    })
+    .sort((a, b) => normalizeRootPath(b).length - normalizeRootPath(a).length)[0]
+    ?? roots[0]
+    ?? "";
+}
+
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [availableProviders, setAvailableProviders] = useState<string[]>([]);
@@ -62,9 +82,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     return result;
   }, [profiles, activeUP, uiState.lastAgentProfile]);
 
-  // The project root for profile discovery and theme — always the user profile's
-  // first project, NOT setupState.cwd (which may be a profile subfolder override).
-  const projectRoot = activeUP?.projects?.[0] ?? "";
+  // Resolve the configured root containing the selected CWD. Multi-root projects
+  // can load root-local profiles and themes without becoming separate projects.
+  const projectRoot = useMemo(
+    () => activeProjectRoot(activeUP?.projects, setupState.cwd),
+    [activeUP?.projects, setupState.cwd],
+  );
 
   // Switch user profile
   const switchUserProfile = useCallback((name: string | null) => {
@@ -254,7 +277,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [activeUP?.defaultAgentProfile, selectedProfile, uiState.lastAgentProfile, visibleProfiles]);
 
   // When selected profile changes, auto-fill CWD from profile.cwd (hard default),
-  // cwdSuggestions (soft hint), or user profile's first project (fallback).
+  // cwdSuggestions (soft hint), or the active configured project root (fallback).
   const prevSelectedProfileRef = useRef<string>("");
   useEffect(() => {
     if (selectedProfile === prevSelectedProfileRef.current) return;
@@ -263,7 +286,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (profileData?.cwd) {
       // Profile has a hard CWD — resolve relative paths and set into setupState.cwd
       // so the sidebar dropdown displays the session's working directory.
-      const baseCwd = activeUP?.projects?.[0] ?? "";
+      const baseCwd = projectRoot;
       let resolved = profileData.cwd;
       if (resolved && !resolved.match(/^(?:\/|[A-Za-z]:)/)) {
         const sep = baseCwd.includes("\\") ? "\\" : "/";
@@ -282,14 +305,14 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         additionalDirectories: profileData!.cwdSuggestions!.slice(1),
       }));
     } else {
-      const defaultCwd = activeUP?.projects?.[0] ?? "";
+      const defaultCwd = projectRoot;
       setSetupState((prev) => ({
         ...prev,
         cwd: defaultCwd || prev.cwd,
         additionalDirectories: [],
       }));
     }
-  }, [selectedProfile, profiles, activeUP]);
+  }, [selectedProfile, profiles, activeUP, projectRoot]);
 
   return (
     <ProfileContext.Provider value={{

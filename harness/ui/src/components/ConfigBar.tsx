@@ -7,7 +7,7 @@ import {
 } from "./AgentConfig";
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
-import { getAllTools, getToolGroups, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
+import { getAllTools, getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
 import { useProfiles } from "../providers/ProfileContext";
 import type { Profile, SessionStatus, Message } from "../../../sdk/index";
 import { modus } from "../modusClient";
@@ -75,6 +75,19 @@ function summarizeGeminiTools(
     .map((group) => group.label);
 
   return labels.length > 0 ? labels.join("/") : "Gemini tools";
+}
+
+function summarizeAntigravityTools(
+  toolStates: AgentConfigState["toolStates"],
+  profileTools: string[] | "all",
+  availableTools?: string[],
+): string {
+  const runtimeTools = new Set((availableTools ?? []).filter((tool) => getAllTools("antigravity").includes(tool)));
+  if (runtimeTools.size === 0) return "Antigravity tools";
+  const labels = getToolGroups("antigravity")
+    .filter((group) => group.tools.some((tool) => runtimeTools.has(tool) && isToolEnabled(tool, toolStates[tool] ?? "inherit", profileTools)))
+    .map((group) => group.label);
+  return labels.length > 0 ? labels.join("/") : "Antigravity tools";
 }
 
 export function ConfigBar({
@@ -198,6 +211,7 @@ export function ConfigBar({
   const toolCount =
     (profileTools === "all" ? builtinCount : profileTools.length) + mcpCount;
   const codexControls = agentConfig.providerControls?.codex ?? {};
+  const antigravityControls = agentConfig.providerControls?.antigravity ?? {};
   const effort = agentConfig.effort || profileEffort || "default";
   const hasPendingProfile = !!pendingProfileName && pendingProfileName !== profileName;
   const pendingConfigBaseline = hasPendingProfile ? createEmptyAgentConfig() : agentConfig;
@@ -210,8 +224,10 @@ export function ConfigBar({
   const showPermissionMode = isClaudeCodeProvider(effectiveProvider) && !!claudePermissionMode && claudePermissionMode !== "default";
   const toolSummary = isCodexProvider(effectiveProvider)
     ? (codexControls.sandboxMode ?? "sandbox:auto")
-    : isGeminiProvider(effectiveProvider)
-      ? summarizeGeminiTools(agentConfig.toolStates, profileTools, availableTools)
+    : isAntigravityProvider(effectiveProvider)
+      ? summarizeAntigravityTools(agentConfig.toolStates, profileTools, availableTools)
+      : isGeminiProvider(effectiveProvider)
+        ? summarizeGeminiTools(agentConfig.toolStates, profileTools, availableTools)
       : `${toolCount} tools`;
   return (
     <div className={`config-bar ${open ? "config-bar--open" : ""}`} ref={barRef}>
@@ -250,6 +266,14 @@ export function ConfigBar({
               <span className="config-bar-value">{codexControls.serviceTier ?? "speed:auto"}</span>
               <span className="config-bar-sep">·</span>
               <span className="config-bar-value">{codexControls.webSearchMode ?? "web:auto"}</span>
+              <span className="config-bar-sep">·</span>
+            </>
+          )}
+          {isAntigravityProvider(effectiveProvider) && (
+            <>
+              <span className="config-bar-value">{antigravityControls.mode ?? "accept-edits"}</span>
+              <span className="config-bar-sep">·</span>
+              <span className="config-bar-value">{antigravityControls.sandbox === undefined ? "sandbox:default" : antigravityControls.sandbox ? "sandbox:on" : "sandbox:off"}</span>
               <span className="config-bar-sep">·</span>
             </>
           )}

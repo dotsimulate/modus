@@ -147,6 +147,8 @@ export type Message = {
   /** How long the model spent in extended thinking, in ms. */
   thinkingDuration?: number;
   toolCalls?: ToolCall[];
+  /** Text, thinking, and tools in provider-emitted chronological order. */
+  contentBlocks?: MessageContentBlock[];
   attachments?: Attachment[];
   artifacts?: SessionArtifact[];
   /** Position in the session's event stream. */
@@ -168,6 +170,11 @@ export type Message = {
   };
   /** Pre-rendered copy of this turn's content for display, avoiding re-parsing tool calls. */
   turnCopy?: { text: string; thinking?: string; toolCalls?: ToolCall[] };
+  /** Heavy thinking/tool payload is available through the per-message detail endpoint. */
+  detailsDeferred?: boolean;
+  deferredToolCallCount?: number;
+  detailsLoading?: boolean;
+  detailsError?: string;
 };
 
 // ── Permission Requests ──
@@ -216,8 +223,19 @@ export type AgentConfigState = {
     claude?: {
       permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk";
     };
+    antigravity?: {
+      mode?: "accept-edits" | "plan";
+      sandbox?: boolean;
+      printTimeout?: string;
+    };
   };
 };
+
+export type MessageContentBlock =
+  | { type: "text"; text: string }
+  | { type: "thinking"; thinking: string }
+  | { type: "tool_call"; toolCall: ToolCall }
+  | { type: "deferred"; hasThinking: boolean; toolCallCount: number };
 
 // ── Session ──
 
@@ -275,6 +293,21 @@ export type SessionInfo = {
   last_prompt: string | null;
   last_response: string | null;
   cwd: string | null;
+  /** Explicit legacy profile/project owner stored with the session. */
+  user_profile: string | null;
+  /** Provider-native conversation/thread identity; distinct from the Modus row ID. */
+  provider_session_id?: string | null;
+  /** Canonical project attribution, including legacy rows matched by root. */
+  project_id: string | null;
+  project_name: string | null;
+  /** Configured project root containing cwd, when one can be determined. */
+  project_root: string | null;
+  /** Whether project_id came from stored ownership rather than path backfill. */
+  project_explicit: boolean;
+  /** Lightweight live tail supplied by the all-project session index. */
+  live_text?: string | null;
+  live_seq?: number | null;
+  last_event_at?: number | null;
   /** Name of the action that spawned this session, if action-triggered. */
   action_name: string | null;
   /** Comma-separated session tags. */
@@ -302,8 +335,27 @@ export type ActiveSessionInfo = {
   subscribers: number;
   cwd: string | null;
   additionalDirectories: string[] | null;
+  project_id?: string | null;
+  project_name?: string | null;
+  project_root?: string | null;
   /** Whether the session has been archived (hidden from default lists). */
   archived?: boolean;
+};
+
+export type SessionProjectSummary = {
+  id: string;
+  name: string;
+  roots: string[];
+  session_count: number;
+  active_count: number;
+  last_activity_at: number | null;
+};
+
+/** One compact snapshot used by project-aware navigation and cross-tab sync. */
+export type SessionIndex = {
+  generated_at: number;
+  projects: SessionProjectSummary[];
+  sessions: SessionInfo[];
 };
 
 /** A full-text search result matching a session's messages. */
@@ -398,10 +450,21 @@ export type TurnContent = {
   text: string;
   thinking?: string;
   toolCalls?: { name: string; input: Record<string, unknown>; result?: string }[];
+  /** Provider content blocks in their original chronological order. */
+  contentBlocks?: TurnContentBlock[];
   uuid?: string;
   artifacts?: SessionArtifact[];
+  /** Heavy thinking/tool payload was intentionally omitted from a summary page. */
+  detailsDeferred?: boolean;
+  deferredToolCallCount?: number;
   timestamp: number;
 };
+
+export type TurnContentBlock =
+  | { type: "text"; text?: string; textStart?: number; textEnd?: number }
+  | { type: "thinking"; thinking: string }
+  | { type: "tool_call"; toolCall: { id?: string; name: string; input: Record<string, unknown>; result?: string } }
+  | { type: "deferred"; hasThinking: boolean; toolCallCount: number };
 
 export type SessionHistorySnapshot = {
   sessionId: string;
@@ -414,6 +477,10 @@ export type SessionHistorySnapshot = {
   messages: TurnContent[];
   /** True when semantic materialization was incomplete and durable events supplied the snapshot. */
   recoveredFromEvents?: boolean;
+  /** Whether messages older than this page remain available. */
+  hasMoreHistory?: boolean;
+  /** Lowest durable sequence included in this page. */
+  oldestSeq?: number | null;
   lastSeq: number;
   createdAt: number;
 };
@@ -681,7 +748,7 @@ export type ProviderSlashCommand = {
 export type ProviderCapabilities = {
   name: string;
   label: string;
-  family: "claude-code" | "codex" | "cursor" | "gemini-cli" | "pi-agent";
+  family: "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "opencode" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
   /** "explicit" means the tool list is known upfront; "event-derived" means tools are discovered from events. */

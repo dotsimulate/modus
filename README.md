@@ -36,7 +36,7 @@ Harness: Hono + Bun (:3777)
         | SessionProvider interface
         v
 Providers:
-  claude-code, claude-code-pty, codex, cursor, gemini-cli, opencode,
+  claude-code, claude-code-pty, codex, cursor, antigravity, opencode,
   litellm, ollama, openrouter
 
 Shared extension surfaces:
@@ -88,12 +88,26 @@ modus status         # show server status, uptime, active sessions
 modus init [path]    # scaffold .modus/ without starting the server
 modus setup          # re-run dependency install + UI build
 modus logs [-f]      # show server logs (-f to follow)
+modus remote on|off  # expose modus on your Tailscale tailnet (off by default)
 modus update         # git pull + setup + restart
 modus dev            # dev mode (harness + vite + file watchers)
 modus --version      # print version
 ```
 
 On first run, Modus asks for your name. Browser PIN lock is optional and can be enabled later in settings.
+
+### 4. Remote access (optional)
+
+The server binds to `127.0.0.1` — local only. To use Modus from other devices (a phone especially), the recommended path is [Tailscale](https://tailscale.com): install it on both machines, then run:
+
+```bash
+modus remote on      # every start now serves https://<machine>.<tailnet>.ts.net
+modus start --remote # or: expose for a single run
+```
+
+This uses `tailscale serve`, so traffic stays inside your private tailnet — nothing is exposed to the public internet. Modus only manages its own serve rule: if another service on the machine is already using `tailscale serve`, Modus leaves that config untouched and tells you. `modus remote off` removes the rule and the setting.
+
+Without a browser PIN, anyone on your tailnet can open the UI — set a PIN in settings if you share your tailnet.
 
 ## Providers
 
@@ -104,7 +118,7 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 | `claude-code` | Claude Agent SDK | [Claude Code](https://claude.com/claude-code) CLI installed |
 | `claude-code-pty` | Claude Code CLI PTY | [Claude Code](https://claude.com/claude-code) CLI installed |
 | `codex` | OpenAI Codex CLI | `codex` CLI plus `CODEX_API_KEY`, `OPENAI_API_KEY`, or Codex OAuth |
-| `gemini-cli` | Google Gemini CLI | [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed |
+| `antigravity` | Google Antigravity CLI | [`agy`](https://antigravity.google/docs/cli-install) installed and signed in |
 | `cursor` | Cursor Agent CLI | `cursor-agent login` (Cursor subscription) |
 | `opencode` | opencode CLI | [opencode](https://opencode.ai) installed |
 | `litellm` | LiteLLM proxy | LiteLLM running locally |
@@ -112,6 +126,8 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 | `openrouter` | OpenRouter API | `OPENROUTER_API_KEY` env var |
 
 The last three (`litellm`, `ollama`, `openrouter`) are PI agent variants, a lightweight agent loop for local models and routing services.
+
+For Google AI plans, install Antigravity CLI and run `agy` once to complete Google Sign-In. Modus uses Antigravity's documented print mode, native conversation UUID resume, JSON Hooks, plugins, and MCP interfaces. The old `gemini-cli` adapter remains hidden for explicitly configured paid API, Vertex AI, or compute-ADC deployments; Modus does not reuse Gemini CLI OAuth credentials.
 
 See [harness/docs/providers.md](harness/docs/providers.md) for the full provider system documentation.
 

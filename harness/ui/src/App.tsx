@@ -164,7 +164,7 @@ function AppContent({ router }: { router: HashRouter }) {
     uiState, saveUiState, switchUserProfile, refreshUserProfiles,
   } = useProfiles();
   const {
-    activeSession, serverSessions,
+    activeSession, serverSessions, allServerSessions,
     handleInputChange,
     newSession, selectSession,
   } = useSession();
@@ -349,12 +349,23 @@ function AppContent({ router }: { router: HashRouter }) {
     }
   }, [activeUserProfile, navigate, navigateToSession, newSession, selectSession]);
 
+  const projectForSession = useCallback((id: string): string | null => {
+    const session = allServerSessions.find((candidate) => candidate.id === id);
+    if (!session) return activeUserProfile;
+    if (!session.project_id) return null;
+    return userProfiles.some((project) => project.name === session.project_id)
+      ? session.project_id
+      : null;
+  }, [activeUserProfile, allServerSessions, userProfiles]);
+
   const handleSelectSession = useCallback((id: string) => {
     // Selecting the current row is also an explicit retry if its history did
     // not hydrate (for example after a mobile/network interruption).
+    const project = projectForSession(id);
+    if (project !== activeUserProfile) switchUserProfile(project);
     selectSession(id);
-    navigateToSession(id, activeUserProfile);
-  }, [activeUserProfile, navigateToSession, selectSession]);
+    navigateToSession(id, project);
+  }, [activeUserProfile, navigateToSession, projectForSession, selectSession, switchUserProfile]);
 
   // Wrap switchUserProfile to also update URL
   const handleSwitchUserProfile = useCallback((name: string | null) => {
@@ -364,14 +375,18 @@ function AppContent({ router }: { router: HashRouter }) {
 
   // View-based session navigation (from dashboard/schedules)
   const handleViewSession = useCallback((id: string) => {
+    const project = projectForSession(id);
+    if (project !== activeUserProfile) switchUserProfile(project);
     selectSession(id);
-    setUrlSession(id, activeUserProfile);
-  }, [activeUserProfile, selectSession, setUrlSession]);
+    setUrlSession(id, project);
+  }, [activeUserProfile, projectForSession, selectSession, setUrlSession, switchUserProfile]);
 
   const handleActivateSession = useCallback((id: string) => {
+    const project = projectForSession(id);
+    if (project !== activeUserProfile) switchUserProfile(project);
     selectSession(id);
-    navigateToSession(id, activeUserProfile);
-  }, [selectSession, navigateToSession, activeUserProfile]);
+    navigateToSession(id, project);
+  }, [selectSession, navigateToSession, activeUserProfile, projectForSession, switchUserProfile]);
 
   const handleNavigate = useCallback((target: View) => {
     if (target !== "chat") {

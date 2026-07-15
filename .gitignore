@@ -85,9 +85,16 @@ harness/profiles/_projects.json
 harness/ui/.modus-deps.stamp
 
 # Claude skills — scaffolded per-project by modus init from harness/templates/
-.claude/skills/
+# (only create-action and create-move are tracked as this repo's own skills)
+.claude/skills/*
 !.claude/skills/create-action/
 !.claude/skills/create-move/
+
+# Personal agent config at repo root (per-user, not part of the release surface)
+/CLAUDE.md
+
+# Harness-local .claude scaffolding (personal, not part of the release surface)
+harness/.claude/
 
 # Claude settings (personal per-user, any depth)
 **/.claude/settings.local.json

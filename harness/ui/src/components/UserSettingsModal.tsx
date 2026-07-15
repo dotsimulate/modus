@@ -5,6 +5,7 @@ import type { ProviderModel, UserProfile } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
+import { FolderPicker } from "./FolderPicker";
 
 type Props = {
   userProfile: UserProfile;
@@ -31,6 +32,8 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [defaultEffort, setDefaultEffort] = useState(userProfile.effort ?? "");
   const [computer, setComputer] = useState(userProfile.computer ?? "");
   const [editor, setEditor] = useState(userProfile.editor ?? "");
+  const [projectPaths, setProjectPaths] = useState<string[]>(userProfile.projects ?? []);
+  const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
 
   const [oldPin, setOldPin] = useState("");
@@ -58,6 +61,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     setDefaultEffort(userProfile.effort ?? "");
     setComputer(userProfile.computer ?? "");
     setEditor(userProfile.editor ?? "");
+    setProjectPaths(userProfile.projects ?? []);
   }, [userProfile]);
 
   useEffect(() => {
@@ -126,6 +130,10 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
         if (editor) localStorage.setItem("mo:editor", editor);
         else localStorage.removeItem("mo:editor");
       }
+      const normalizedProjects = Array.from(new Set(projectPaths.map((path) => path.trim()).filter(Boolean)));
+      if (JSON.stringify(normalizedProjects) !== JSON.stringify(userProfile.projects ?? [])) {
+        patch.projects = normalizedProjects;
+      }
       if (Object.keys(patch).length > 0) await onSave(patch);
       onClose();
     } catch (e) {
@@ -186,7 +194,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   };
 
   const profile = userProfile as UserProfile & { name?: string };
-  const isEditing = tab === "profile" || tab === "defaults" || tab === "environment";
+  const isEditing = tab === "profile" || tab === "defaults" || tab === "environment" || tab === "project";
 
   return createPortal(
     <div className="create-profile-backdrop" onKeyDown={handleKeyDown}>
@@ -329,22 +337,52 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
           {tab === "project" && (
             <div className="us-section us-section--scroll">
 
-              {userProfile.projects?.length > 0 && (
-                <div className="us-group">
-                  <button className="us-group-header" onClick={() => toggleGroup("projects")}>
-                    <span className="us-group-arrow">{openGroups.projects ? "▾" : "▸"}</span>
-                    <span className="us-group-label">projects</span>
-                    <span className="us-group-count">{userProfile.projects.length}</span>
-                  </button>
-                  <div className={`us-group-body${openGroups.projects ? " open" : ""}`}>
-                    <div className="us-group-inner">
-                      {userProfile.projects.map((p) => (
-                        <div key={p} className="us-group-row us-group-row--mono">{p}</div>
-                      ))}
-                    </div>
-                  </div>
+              <div className="us-group">
+                <div className="us-group-header us-group-header--static">
+                  <span className="us-group-label">folders</span>
+                  <span className="us-group-count">{projectPaths.length}</span>
                 </div>
-              )}
+                <div className="create-profile-paths us-project-paths">
+                  {projectPaths.map((path, index) => (
+                    <div key={path} className="create-profile-path">
+                      <span className="create-profile-path-text">
+                        {index === 0 && <b className="us-project-primary">primary</b>}
+                        {path}
+                      </span>
+                      {index > 0 && (
+                        <button
+                          className="create-profile-path-remove"
+                          title="Make primary"
+                          onClick={() => setProjectPaths((current) => [path, ...current.filter((item) => item !== path)])}
+                        >↑</button>
+                      )}
+                      <button
+                        className="create-profile-path-remove"
+                        title="Remove folder"
+                        disabled={projectPaths.length <= 1}
+                        onClick={() => setProjectPaths((current) => current.filter((item) => item !== path))}
+                      >×</button>
+                    </div>
+                  ))}
+                  {showProjectPicker ? (
+                    <div className="create-profile-folder-picker">
+                      <FolderPicker
+                        initialPath={projectPaths.at(-1)}
+                        onSelect={(path) => {
+                          setProjectPaths((current) => current.includes(path) ? current : [...current, path]);
+                          setShowProjectPicker(false);
+                        }}
+                        onCancel={() => setShowProjectPicker(false)}
+                      />
+                    </div>
+                  ) : (
+                    <button className="create-profile-add-path" onClick={() => setShowProjectPicker(true)}>
+                      + add folder
+                    </button>
+                  )}
+                </div>
+                <div className="us-row-hint">new sessions choose one primary CWD; other folders can be attached as additional roots</div>
+              </div>
 
               {userProfile.agentProfiles && userProfile.agentProfiles.length > 0 && (
                 <div className="us-group">

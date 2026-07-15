@@ -5,24 +5,38 @@
   "brief": "brief.md",
 
   "roles": {
-    "orchestrator": { "profile": "executor", "description": "Fold in previous findings, ideate this cycle's target, delegate, evaluate results, update bootstrap" },
-    "worker": { "profile": "mission-dev", "description": "Build ambitiously, discover, write findings and structured report" }
+    "orchestrator": { "profile": "executor", "description": "Evaluates findings, encodes verified output, decides next target" },
+    "worker": { "profile": "mission-dev", "description": "Investigates targets, processes findings, produces raw output" }
   },
 
   "steps": [
     {
-      "id": "build",
-      "label": "Build",
+      "id": "observe",
+      "label": "Observe",
       "role": "worker",
-      "description": "Execute the orchestrator's build brief. Write findings and a structured report. Do not edit the main output directly — write to a staging area for the orchestrator to evaluate.",
+      "description": "Investigate the current target. Write findings to context/. Update context/status.md.",
+      "gates": [{ "type": "handoff" }]
+    },
+    {
+      "id": "process",
+      "label": "Process",
+      "role": "worker",
+      "reviewer": "orchestrator",
+      "description": "Verify and refine observations. Produce output candidates. Update context/status.md.",
+      "gates": [{ "type": "review" }, { "type": "handoff" }]
+    },
+    {
+      "id": "encode",
+      "label": "Encode",
+      "role": "orchestrator",
+      "description": "Review processed output. Encode what's valuable into permanent form. Decide next target. Update context/status.md.",
       "gates": [{ "type": "handoff" }]
     }
   ],
 
   "cycle": {
     "enabled": true,
-    "maxCycles": 5,
-    "freshOrchestrator": true,
+    "maxCycles": null,
     "budget": { "usd": null }
   },
 

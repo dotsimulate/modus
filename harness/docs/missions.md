@@ -438,7 +438,7 @@ POST /api/missions/start
 {
   "missionName": "build-website",
   "cwd": "/home/user/projects/my-website",
-  "userProfile": "dot"
+  "userProfile": "alex"
 }
 ```
 
@@ -459,7 +459,7 @@ const missions = await client.listMissions("/path/to/project");
 const { runId } = await client.startMission({
   missionName: "build-website",
   cwd: "/path/to/project",
-  userProfile: "dot",
+  userProfile: "alex",
 });
 
 // Monitor progress

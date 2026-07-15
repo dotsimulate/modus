@@ -1,8 +1,10 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import { setInputValue, getInputValue } from "../inputStore";
-import type { Session, SessionInfo, Attachment, ApiAttachment, MoveBinding, RewindPreview } from "../../../sdk/index";
+import type {
+  Session, SessionInfo, SessionProjectSummary, Attachment, ApiAttachment, MoveBinding, RewindPreview,
+} from "../../../sdk/index";
 import { createInitialState } from "../eventReducer";
 import {
   agentConfigToOverrides,
@@ -20,6 +22,11 @@ import {
   rekeySession, removeSession, evictInactiveSessions, onSessionRekey,
 } from "../sessionStore";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
+import {
+  refreshSessionIndex,
+  subscribeSessionIndex,
+  type SessionIndexConnectionState,
+} from "../sessionIndexSync";
 import { SessionContext, type QueuedMessage } from "./SessionContext";
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
@@ -28,7 +35,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     projectRoot,
   } = useProfiles();
 
-  const [serverSessions, setServerSessions] = useState<SessionInfo[]>([]);
+  const [allServerSessions, setAllServerSessions] = useState<SessionInfo[]>([]);
+  const [sessionProjects, setSessionProjects] = useState<SessionProjectSummary[]>([]);
+  const [sessionIndexConnection, setSessionIndexConnection] = useState<SessionIndexConnectionState>({
+    status: "offline",
+    role: "standalone",
+    lastEventAt: null,
+    reconnects: 0,
+  });
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [queuedMessage, setQueuedMessage] = useState<QueuedMessage | null>(null);
@@ -43,8 +57,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevActiveStatusRef = useRef<Session["status"] | null>(null);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectionRequestRef = useRef(0);
+
+  const serverSessions = useMemo(() => (
+    activeUserProfile
+      ? allServerSessions.filter((session) => session.project_id === activeUserProfile)
+      : allServerSessions
+  ), [activeUserProfile, allServerSessions]);
 
   // Derive activeSession from the store
   const activeSession = useSessionState(activeSessionId);
@@ -112,62 +131,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   // ── Refresh sessions ──
 
+  const applySessionIndex = useCallback((index: Awaited<ReturnType<typeof refreshSessionIndex>>) => {
+    if (!Array.isArray(index.sessions)) return;
+    setAllServerSessions(index.sessions);
+    setSessionProjects(Array.isArray(index.projects) ? index.projects : []);
+    setSessionsLoaded(true);
+  }, []);
+
   const refreshSessions = useCallback(async () => {
     try {
-      const s = activeUserProfile
-        ? await modus.listSessions({ limit: 50, userProfile: activeUserProfile })
-        : await modus.listSessions({ limit: 50 });
-      if (!Array.isArray(s)) {
-        console.error("[refreshSessions] non-array response", s);
-        return;
-      }
-      setServerSessions(s);
-      setSessionsLoaded(true);
+      applySessionIndex(await refreshSessionIndex());
     } catch (err) {
       console.error("[refreshSessions] failed", err);
     }
-  }, [activeUserProfile]);
+  }, [applySessionIndex]);
 
-  const scheduleRefreshSessions = useCallback(() => {
-    if (refreshTimerRef.current) return;
-    refreshTimerRef.current = setTimeout(() => {
-      refreshTimerRef.current = null;
-      refreshSessions();
-    }, 150);
-  }, [refreshSessions]);
-
-  // Load sessions on mount + slow fallback poll.
-  useEffect(() => {
-    refreshSessions();
-    const interval = setInterval(refreshSessions, 60_000);
-    return () => {
-      clearInterval(interval);
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
-    };
-  }, [refreshSessions]);
-
-  // Prefer backend session lifecycle SSE over periodic polling.
-  useEffect(() => {
-    let cancelled = false;
-    const handle = modus.subscribeGlobalEvents();
-    (async () => {
-      try {
-        for await (const _evt of handle.events) {
-          if (cancelled) break;
-          scheduleRefreshSessions();
-        }
-      } catch {
-        // Fallback poll remains active.
-      }
-    })();
-    return () => {
-      cancelled = true;
-      handle.abort();
-    };
-  }, [scheduleRefreshSessions]);
+  // Exactly one elected tab owns the lifecycle stream and fallback index poll.
+  // Followers receive compact snapshots and live patches over BroadcastChannel.
+  useEffect(() => subscribeSessionIndex(applySessionIndex, setSessionIndexConnection), [applySessionIndex]);
 
   useEffect(() => {
     const prev = prevActiveStatusRef.current;
@@ -325,7 +306,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // Set up the new session SYNCHRONOUSLY before any async work.
     // This prevents a render gap where activeSession is stale/null and
     // the ConfigBar falls back to the sidebar's selectedProfile.
-    const info = serverSessions.find((s) => s.id === id);
+    const info = allServerSessions.find((s) => s.id === id);
     const sessionProfile = info?.profile ?? undefined;
 
     const existing = getSessionState(id);
@@ -367,7 +348,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setInputValue(draft);
 
     setQueuedMessage(null);
-  }, [serverSessions, saveDraftForCurrent, refreshSessions]);
+  }, [allServerSessions, saveDraftForCurrent, refreshSessions]);
 
   const archiveSession = useCallback(async (id: string) => {
     await modus.archiveSession(id).catch(() => {});
@@ -400,7 +381,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     let currentState = activeSessionId ? getSessionState(activeSessionId) : null;
     const activeServerSession = activeSessionId
-      ? serverSessions.find((session) => session.id === activeSessionId)
+      ? allServerSessions.find((session) => session.id === activeSessionId)
       : null;
 
     // A selected persisted session can briefly have an empty local placeholder
@@ -596,7 +577,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     resolveProfileProvider,
     setupState,
     profiles,
-    serverSessions,
+    allServerSessions,
   ]);
 
   // ── Auto-send queued message when model finishes ──
@@ -736,7 +717,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionContext.Provider value={{
-      activeSession, serverSessions,
+      activeSession, serverSessions, allServerSessions, sessionProjects, sessionIndexConnection,
       handleInputChange,
       send, stop, stopTask, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,

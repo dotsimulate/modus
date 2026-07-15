@@ -20,7 +20,7 @@ not exhaustive field lists.
 ## Repo Structure
 
 ```
-agent_dev_zone/
+modus/
   harness/                 # The application
     index.ts               # Hono HTTP server — all API routes
     session-manager.ts     # Session lifecycle, SSE, message routing
@@ -40,7 +40,8 @@ agent_dev_zone/
       codex.ts             # OpenAI Codex CLI provider
       codex-cli-sdk.ts     # Codex CLI exec wrapper
       cursor.ts            # Cursor Agent CLI provider
-      gemini-cli.ts        # Gemini CLI provider
+      antigravity.ts       # Google Antigravity CLI provider
+      gemini-cli.ts        # Hidden legacy paid/API/Vertex provider
       opencode.ts          # OpenCode CLI provider
       pi-agent.ts          # PI agent (multi-provider: litellm, ollama, openrouter)
       mcp-bridge.ts        # MCP server lifecycle management
@@ -126,7 +127,7 @@ Providers are execution backends. Session-manager delegates to them via the
 `SessionProvider` interface (defined in `providers/types.ts`).
 
 Registered providers: `claude-code`, `claude-code-pty`, `codex`, `cursor`,
-`gemini-cli`, `opencode`, `litellm`, `ollama`, `openrouter`.
+`antigravity`, `opencode`, `litellm`, `ollama`, `openrouter`.
 
 The last three are PI agent variants — a lightweight agent loop for
 OpenAI-compatible APIs.

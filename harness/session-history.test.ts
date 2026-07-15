@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { reconstructSessionTurns, shouldRecoverSessionHistory } from "./session-history";
+import { reconstructSessionTurns, shouldRecoverSessionHistory, summarizeContentBlocks } from "./session-history";
 
 function event(seq: number, type: string, subtype: string | null, data: unknown) {
   return { seq, type, subtype, data: JSON.stringify(data), created_at: 1_000 + seq };
@@ -36,6 +36,34 @@ describe("incomplete semantic history recovery", () => {
       input: { command: "test" },
       result: "passed",
     }]);
+    expect(turns[1]!.contentBlocks).toEqual([
+      { type: "text", text: "working" },
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "tool-1",
+          name: "CommandExecution",
+          input: { command: "test" },
+          result: "passed",
+        },
+      },
+      { type: "text", text: "\nfinished" },
+    ]);
+  });
+
+  test("keeps deferred controls at their provider positions without duplicating text", () => {
+    expect(summarizeContentBlocks([
+      { type: "thinking", thinking: "reason" },
+      { type: "text", text: "before" },
+      { type: "tool_call", toolCall: { id: "a", name: "Read", input: {} } },
+      { type: "tool_call", toolCall: { id: "b", name: "Edit", input: {} } },
+      { type: "text", text: "after" },
+    ])).toEqual([
+      { type: "deferred", hasThinking: true, toolCallCount: 0 },
+      { type: "text", textStart: 0, textEnd: 6 },
+      { type: "deferred", hasThinking: false, toolCallCount: 2 },
+      { type: "text", textStart: 6, textEnd: 11 },
+    ]);
   });
 
   test("closes an unterminated assistant turn before a later user prompt", () => {

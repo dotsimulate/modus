@@ -25,7 +25,7 @@ import { existsSync, writeFileSync, mkdirSync } from "fs";
 import { tmpdir } from "os";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
-import { getMaxSeq, getSession, updateSessionStatus } from "../db";
+import { getMaxSeq, getObservedProviderSessionIds, getSession, updateProviderSessionId, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { registerExternalTerminal, updateTerminalSession } from "../terminal-manager";
 import { getMemoryLimitedEnv } from "../memory-guard";
@@ -34,6 +34,7 @@ import {
   type McpServerConfig,
 } from "../profiles";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
+import { claudeNativeHistoryExists, selectProviderResumeTarget, type ResumeTargetSelection } from "../provider-session-identity";
 
 // ── Constants ──
 
@@ -86,6 +87,8 @@ type PtyState = {
   proc: ChildProcess | null;
   rl: ReadlineInterface | null;
   sessionId: string | null;       // Claude Code's internal session ID
+  /** Provider-native ID requested for the process currently starting. */
+  resumeTarget: string | null;
   model: string;
   effort?: string;
   cwd: string;
@@ -117,6 +120,26 @@ type PtyState = {
 
 function getState(session: ActiveSession): PtyState | null {
   return (session._providerState as PtyState | null) ?? null;
+}
+
+function resolveClaudePtyResumeTarget(sessionId?: string): ResumeTargetSelection {
+  if (!sessionId) return { target: null, source: "none" };
+  const row = getSession(sessionId);
+  if (!row) return { target: null, source: "none" };
+  const selection = selectProviderResumeTarget({
+    needsResume: row.message_count > 0
+      || getMaxSeq(sessionId) > 0
+      || !!row.parent_session_id
+      || !!row.branch_message_uuid,
+    modusSessionId: sessionId,
+    persistedProviderSessionId: row.provider_session_id,
+    observedProviderSessionIds: getObservedProviderSessionIds(sessionId),
+    providerLabel: "Claude Code PTY",
+  }, claudeNativeHistoryExists);
+  if (selection.target && selection.source.startsWith("legacy")) {
+    updateProviderSessionId(sessionId, selection.target);
+  }
+  return selection;
 }
 
 // ── Helpers ──
@@ -495,8 +518,19 @@ function attachPtyExitHandler(ctx: TurnContext, state: PtyState, prefix: string)
 function restartPtyTurn(ctx: TurnContext, state: PtyState, content: MessageContent): void {
   const { session } = ctx;
   console.log(`[claude-code-pty] restarting PTY turn for ${session.sessionId} using --resume`);
+  if (!state.sessionId || !claudeNativeHistoryExists(state.sessionId)) {
+    const reason = `Claude Code PTY native history ${state.sessionId ?? "(unknown)"} is missing; refusing to start a context-free replacement`;
+    console.error(`[claude-code-pty] ${reason} modus=${session.sessionId}`);
+    session.status = "error";
+    session.error = reason;
+    updateSessionStatus(session.sessionId, "error");
+    ctx.broadcastEvent({ type: "error", error: reason });
+    ctx.emitEvent({ type: "done" });
+    return;
+  }
   state.needsRestart = false;
   state.interrupting = false;
+  state.resumeTarget = state.sessionId;
 
   const { args, env, cwd: newCwd } = buildSpawnArgs(ctx, state, state.sessionId ?? undefined);
   state.spawnArgs = args;
@@ -557,10 +591,23 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
       if (m.type === "system" && m.subtype === "init" && m.session_id && !initSeen) {
         initSeen = true;
         const realId = m.session_id;
+        if (state.resumeTarget && realId !== state.resumeTarget) {
+          const reason = `Claude Code PTY refused resume target ${state.resumeTarget} and returned ${realId}; refusing to continue without the original context`;
+          console.error(`[claude-code-pty] ${reason}`);
+          session.status = "error";
+          session.error = reason;
+          updateSessionStatus(session.sessionId, "error");
+          ctx.broadcastEvent({ type: "error", error: reason });
+          try { state.proc?.kill("SIGTERM"); } catch { /* best effort */ }
+          ctx.emitEvent({ type: "done" });
+          return;
+        }
+        const isResume = !!state.resumeTarget;
         state.sessionId = realId;
 
-        const isResume = session.sessionId === realId && !!getSession(realId);
+        ctx.setProviderSessionId(realId);
         ctx.rekeySession(realId);
+        state.resumeTarget = null;
         // Update terminal's session ID to match the rekeyed ID so the UI can find it
         if (state.terminal) {
           updateTerminalSession(state.terminal.id, realId);
@@ -862,8 +909,18 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const cwd = session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd();
 
       // Check for resume
-      const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
-      const resumeId = isResume ? opts.sessionId : undefined;
+      const resumeSelection = resolveClaudePtyResumeTarget(opts.sessionId);
+      if (resumeSelection.error) {
+        console.error(`[claude-code-pty] ${resumeSelection.error} modus=${session.sessionId}`);
+        session.status = "error";
+        session.error = resumeSelection.error;
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: resumeSelection.error });
+        ctx.emitEvent({ type: "done" });
+        return;
+      }
+      const resumeId = resumeSelection.target ?? undefined;
+      const isResume = !!resumeId;
 
       // Build spawn args
       const { args, env, cwd: resolvedCwd } = buildSpawnArgs(ctx, {
@@ -873,7 +930,8 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const state: PtyState = {
         proc: null,
         rl: null,
-        sessionId: isResume ? opts.sessionId! : null,
+        sessionId: isResume ? (resumeId ?? null) : null,
+        resumeTarget: resumeId ?? null,
         model,
         effort: opts.effort ?? profileDef?.effort,
         cwd,

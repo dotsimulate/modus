@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useCallback } from "react";
-import { useSessionState, useSessionHistoryLoadState, ensureSubscribed } from "../sessionStore";
+import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, loadOlderSessionHistory, loadSessionMessageDetails } from "../sessionStore";
 import { modus } from "../modusClient";
 import { ChatView } from "../components/ChatView";
 import { PermissionOverlay } from "../components/PermissionOverlay";
@@ -37,6 +37,12 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
   const historyLoad = useSessionHistoryLoadState(sessionId);
   const retryHistory = useCallback(() => {
     if (sessionId) void ensureSubscribed(sessionId, { forceHistoryRefresh: true });
+  }, [sessionId]);
+  const loadOlderHistory = useCallback(() => {
+    return sessionId ? loadOlderSessionHistory(sessionId) : Promise.resolve();
+  }, [sessionId]);
+  const loadMessageDetails = useCallback((seq: number) => {
+    return sessionId ? loadSessionMessageDetails(sessionId, seq) : Promise.resolve();
   }, [sessionId]);
 
   // Permission responses MUST use this widget's own sessionId, not the
@@ -84,6 +90,11 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
         emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
         emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}
         onEmptyAction={historyLoad.status === "error" ? retryHistory : undefined}
+        hasOlderMessages={historyLoad.hasMore}
+        loadingOlderMessages={historyLoad.loadingOlder}
+        olderMessagesError={historyLoad.olderError}
+        onLoadOlderMessages={loadOlderHistory}
+        onLoadMessageDetails={loadMessageDetails}
         onBranch={handleBranch}
       />
       {permissions.length > 0 && (

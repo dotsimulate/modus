@@ -18,6 +18,7 @@ type UsageTab = "providers" | "models" | "trend";
 function providerLabel(provider: string): string {
   if (provider === "claude-code") return "claude";
   if (provider === "gemini-cli") return "gemini";
+  if (provider === "antigravity") return "antigravity";
   return provider;
 }
 

@@ -1,13 +1,14 @@
-import { ApprovalMode, AuthType, Config } from "@google/gemini-cli-core";
-import { existsSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import {
+  antigravityAuthFromModelsResult,
+  resolveAntigravityExecutable,
+  runAntigravityCommand,
+} from "./providers/antigravity-cli-runtime";
 
-function hasGeminiCredentials(): boolean {
-  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) return true;
-  return existsSync(join(homedir(), ".gemini", "oauth_creds.json"));
-}
-
+/**
+ * Backward-compatible response shape for the existing status-bar endpoint.
+ * Antigravity currently exposes quota only through its interactive `/usage`
+ * panel, so Modus reports auth availability without fabricating quota values.
+ */
 export type GeminiUsageSnapshot = {
   available: boolean;
   authType: string;
@@ -27,79 +28,32 @@ export async function fetchGeminiUsageSnapshot(opts: {
   cwd?: string;
   model?: string;
 } = {}): Promise<GeminiUsageSnapshot> {
-  const cwd = opts.cwd ?? process.cwd();
-  const model = opts.model ?? "auto-gemini-3";
-
-  if (!hasGeminiCredentials()) {
+  const model = opts.model ?? "Gemini 3.5 Flash";
+  const executable = resolveAntigravityExecutable();
+  if (!executable) {
     return {
       available: false,
-      authType: AuthType.LOGIN_WITH_GOOGLE,
+      authType: "antigravity-keyring",
       model,
       checkedAt: Date.now(),
       quota: {},
+      error: "Antigravity CLI (`agy`) is not installed.",
     };
   }
 
-  let config: Config | null = null;
-  try {
-    config = new Config({
-      sessionId: `gemini-usage-${crypto.randomUUID()}`,
-      targetDir: cwd,
-      cwd,
-      debugMode: false,
-      interactive: false,
-      noBrowser: true,
-      model,
-      approvalMode: ApprovalMode.YOLO,
-    });
-
-    // Suppress gemini-cli-core experiment spam during init
-    const _origLog = console.log;
-    const _origWarn = console.warn;
-    const _spamFilter = (orig: (...a: any[]) => void) => (...args: any[]) => {
-      const msg = String(args[0] ?? "");
-      if (msg.includes("experimentIds") || msg.includes("Experiments loaded") ||
-          msg.includes("Hook registry") || msg.includes(".geminiignore") ||
-          msg.includes("Ignore file not found") || msg.includes("Loaded cached credentials")) return;
-      orig(...args);
-    };
-    console.log = _spamFilter(_origLog);
-    console.warn = _spamFilter(_origWarn);
-    await config.initialize();
-    console.log = _origLog;
-    console.warn = _origWarn;
-    await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
-    await config.refreshUserQuotaIfStale(0);
-
-    const remaining = config.getQuotaRemaining();
-    const limit = config.getQuotaLimit();
-    const resetTime = config.getQuotaResetTime();
-
-    const result: GeminiUsageSnapshot = {
-      available: remaining != null || limit != null || !!resetTime,
-      authType: AuthType.LOGIN_WITH_GOOGLE,
-      model,
-      checkedAt: Date.now(),
-      quota: {
-        ...(remaining != null ? { remaining } : {}),
-        ...(limit != null ? { limit } : {}),
-        ...(resetTime ? { resetTime } : {}),
-      },
-      tier: config.getUserTierName(),
-      paidTier: config.getUserPaidTier() ? String(config.getUserPaidTier()) : undefined,
-    };
-
-    await config.dispose();
-    return result;
-  } catch (error) {
-    try { await config?.dispose(); } catch { /* best effort */ }
-    return {
-      available: false,
-      authType: AuthType.LOGIN_WITH_GOOGLE,
-      model,
-      checkedAt: Date.now(),
-      quota: {},
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  const result = await runAntigravityCommand(executable, ["models"], {
+    cwd: opts.cwd,
+    timeoutMs: 15_000,
+  });
+  const auth = antigravityAuthFromModelsResult(result);
+  return {
+    // Keep false because no numeric quota was returned. The legacy UI only
+    // renders this block when real remaining/limit values are available.
+    available: false,
+    authType: "antigravity-keyring",
+    model,
+    checkedAt: Date.now(),
+    quota: {},
+    ...(!auth.authenticated ? { error: auth.detail } : {}),
+  };
 }

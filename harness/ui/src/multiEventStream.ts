@@ -15,7 +15,7 @@
  * mid-deploy. Once the multiplexed endpoint is reachable, it is used.
  */
 
-import { API_BASE, tokenParam, subscribeEvents, type EventStreamCallbacks } from "./modusClient";
+import { API_BASE, authHeaders, subscribeEvents, type EventStreamCallbacks } from "./modusClient";
 
 export type MultiCallbacks = {
   onEvent: (event: any, seq: number) => void;
@@ -146,16 +146,19 @@ function connect() {
   if (registry.size === 0) { abort = null; return; }
 
   const specs = [...registry.entries()].map(([id, r]) => ({ i: id, s: r.cursor }));
-  const tp = tokenParam();
-  const params = [`sessions=${encodeURIComponent(JSON.stringify(specs))}`, tp].filter(Boolean).join("&");
-  const url = `${API_BASE}/api/events/multi?${params}`;
+  const url = `${API_BASE}/api/events/multi`;
 
   const ac = new AbortController();
   abort = ac;
 
-  fetch(url, { signal: ac.signal })
+  fetch(url, {
+    method: "POST",
+    signal: ac.signal,
+    headers: authHeaders(),
+    body: JSON.stringify({ sessions: specs }),
+  })
     .then(async (res) => {
-      if (res.status === 404) { enableFallback(); return; }
+      if (res.status === 404 || res.status === 405) { enableFallback(); return; }
       if (!res.ok) throw new Error(`multi events ${res.status}`);
       const reader = res.body?.getReader();
       if (!reader) throw new Error("no body");

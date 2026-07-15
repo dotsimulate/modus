@@ -67,4 +67,21 @@ describe("eventReducer stream replacement semantics", () => {
     expect(state._streamingText).toBe("Hello");
     expect(state.messages.at(-1)?.content).toBe("Hello");
   });
+
+  test("preserves finalized provider text and tool order", () => {
+    let state = createInitialState("ses-test");
+    state = reduceEvent(state, {
+      type: "assistant",
+      message: { content: [{ type: "text", text: "before" }] },
+    }, 1);
+    state = reduceEvent(state, {
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "tool-1", name: "Read", input: { file_path: "a.ts" } }] },
+    }, 2);
+
+    expect(state.messages.at(-1)?.contentBlocks?.map((block) => block.type)).toEqual([
+      "text",
+      "tool_call",
+    ]);
+  });
 });

@@ -1,4 +1,4 @@
-import type { TurnContent } from "./db";
+import type { TurnContent, TurnContentBlock, TurnToolCall } from "./db";
 
 export type SessionHistoryEventRow = {
   seq: number;
@@ -7,6 +7,35 @@ export type SessionHistoryEventRow = {
   data: string;
   created_at: number;
 };
+
+/** Keep text positions while replacing contiguous heavy provider blocks with
+ * lightweight placeholders. Text uses offsets into TurnContent.text so the
+ * summary response does not send the complete conversation twice. */
+export function summarizeContentBlocks(blocks: TurnContentBlock[]): TurnContentBlock[] {
+  const summary: TurnContentBlock[] = [];
+  let textOffset = 0;
+  let deferred: Extract<TurnContentBlock, { type: "deferred" }> | null = null;
+  const flushDeferred = () => {
+    if (!deferred) return;
+    summary.push(deferred);
+    deferred = null;
+  };
+
+  for (const block of blocks) {
+    if (block.type === "text") {
+      flushDeferred();
+      const textLength = block.text?.length ?? 0;
+      summary.push({ type: "text", textStart: textOffset, textEnd: textOffset + textLength });
+      textOffset += textLength;
+      continue;
+    }
+    if (!deferred) deferred = { type: "deferred", hasThinking: false, toolCallCount: 0 };
+    if (block.type === "thinking") deferred.hasThinking = true;
+    if (block.type === "tool_call") deferred.toolCallCount++;
+  }
+  flushDeferred();
+  return summary;
+}
 
 /**
  * Semantic messages are authoritative only through their latest materialized
@@ -32,7 +61,8 @@ export function reconstructSessionTurns(events: SessionHistoryEventRow[]): TurnC
   let current: {
     text: string;
     thinking: string;
-    toolCalls: Map<string, { name: string; input: Record<string, unknown>; result?: string }>;
+    toolCalls: Map<string, TurnToolCall>;
+    contentBlocks: TurnContentBlock[];
     seq: number;
     timestamp: number;
     uuid?: string;
@@ -78,6 +108,7 @@ export function reconstructSessionTurns(events: SessionHistoryEventRow[]): TurnC
           text: "",
           thinking: "",
           toolCalls: new Map(),
+          contentBlocks: [],
           seq: evt.seq,
           timestamp: evt.created_at,
           ...(typeof d.uuid === "string" ? { uuid: d.uuid } : {}),
@@ -86,12 +117,24 @@ export function reconstructSessionTurns(events: SessionHistoryEventRow[]): TurnC
         current.uuid = d.uuid;
       }
       const content = d.message?.content;
+      if (typeof content === "string" && content) {
+        current.text += content;
+        current.contentBlocks.push({ type: "text", text: content });
+      }
       if (Array.isArray(content)) {
         for (const block of content) {
-          if (block?.type === "text" && typeof block.text === "string") current.text += block.text;
-          if (block?.type === "thinking" && typeof block.thinking === "string") current.thinking += block.thinking;
+          if (block?.type === "text" && typeof block.text === "string" && block.text) {
+            current.text += block.text;
+            current.contentBlocks.push({ type: "text", text: block.text });
+          }
+          if (block?.type === "thinking" && typeof block.thinking === "string" && block.thinking) {
+            current.thinking += block.thinking;
+            current.contentBlocks.push({ type: "thinking", thinking: block.thinking });
+          }
           if (block?.type === "tool_use" && typeof block.id === "string" && typeof block.name === "string") {
-            current.toolCalls.set(block.id, { name: block.name, input: block.input ?? {} });
+            const toolCall: TurnToolCall = { id: block.id, name: block.name, input: block.input ?? {} };
+            current.toolCalls.set(block.id, toolCall);
+            current.contentBlocks.push({ type: "tool_call", toolCall });
           }
         }
       }
@@ -113,7 +156,8 @@ function materializeAssistantTurn(
   current: {
     text: string;
     thinking: string;
-    toolCalls: Map<string, { name: string; input: Record<string, unknown>; result?: string }>;
+    toolCalls: Map<string, TurnToolCall>;
+    contentBlocks: TurnContentBlock[];
     seq: number;
     timestamp: number;
     uuid?: string;
@@ -128,6 +172,9 @@ function materializeAssistantTurn(
     ...(current.uuid ? { uuid: current.uuid } : {}),
   };
   if (current.thinking) turn.thinking = current.thinking;
-  if (current.toolCalls.size > 0) turn.toolCalls = [...current.toolCalls.values()];
+  if (current.toolCalls.size > 0) {
+    turn.toolCalls = [...current.toolCalls.values()].map(({ id: _id, ...toolCall }) => toolCall);
+  }
+  if (current.contentBlocks.length > 0) turn.contentBlocks = current.contentBlocks;
   return turn;
 }

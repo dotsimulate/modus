@@ -179,10 +179,10 @@ function readRoomBrief(cwd: string, roomName: string): string {
 function readRoomMessages(cwd: string, roomName: string, includeContent: boolean): RoomMessage[] {
   return listMessageFiles(cwd, roomName).map((filename) => {
     const match = filename.match(/^(\d{3,})-(.*)-(\d{13,})\.md$/);
-    const fallback = {
-      seq: match ? Number(match[1]) : 0,
-      author: match ? match[2] : "unknown",
-      timestamp: match ? new Date(Number(match[3])).toISOString() : "",
+    const fallback: RoomMessage = {
+      seq: match?.[1] ? Number(match[1]) : 0,
+      author: match?.[2] ?? "unknown",
+      timestamp: match?.[3] ? new Date(Number(match[3])).toISOString() : "",
       filename,
     };
     try {
@@ -346,7 +346,7 @@ function resolvePostRoom(ctx: MoveApiContext, data: Record<string, unknown>): { 
     .filter((room): room is { name: string; meta: RoomMeta } => !!room.meta)
     .filter((room) => room.meta.members.some((member) => member.sessionId === sessionId));
 
-  if (matches.length === 1) return matches[0];
+  if (matches.length === 1) return matches[0]!;
   if (matches.length === 0) return { error: "Specify room. This session is not a member of exactly one room." };
   return { error: `Specify room. Member belongs to: ${matches.map((room) => room.name).join(", ")}` };
 }

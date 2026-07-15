@@ -12,7 +12,7 @@ import { modus } from "./modusClient";
 import {
   multiSubscribe, multiReconnect, multiRekey, multiUnsubscribeAll,
 } from "./multiEventStream";
-import { nextMsgId, type Session, type SessionHistorySnapshot } from "../../sdk/index";
+import { nextMsgId, type Session, type SessionHistorySnapshot, type TurnContent } from "../../sdk/index";
 
 // ── Store State ──
 
@@ -27,6 +27,10 @@ type SessionEntry = {
   /** Whether persisted conversation history has actually been resolved. */
   historyStatus?: "idle" | "loading" | "ready" | "error";
   historyError?: string;
+  historyHasMore?: boolean;
+  historyOldestSeq?: number | null;
+  historyLoadingOlder?: boolean;
+  historyOlderError?: string;
   /** Per-session revision — useSessionState only re-renders when this changes */
   revision: number;
 };
@@ -34,9 +38,15 @@ type SessionEntry = {
 export type SessionHistoryLoadState = {
   status: "idle" | "loading" | "ready" | "error";
   error?: string;
+  hasMore: boolean;
+  loadingOlder: boolean;
+  olderError?: string;
 };
 
-const HISTORY_FETCH_TIMEOUT_MS = 12_000;
+const HISTORY_FETCH_TIMEOUT_MS = 30_000;
+// Six-ish user/assistant exchanges is enough to paint useful context quickly;
+// older pages stay one click away. Tool-heavy turns can be hundreds of KB each.
+const HISTORY_PAGE_SIZE = 12;
 
 type Subscription = {
   unsub: () => void;
@@ -79,9 +89,63 @@ export function setSessionState(id: string, state: ReducerState, profile?: strin
     nextAgentConfig: existing?.nextAgentConfig,
     historyStatus: existing?.historyStatus,
     historyError: existing?.historyError,
+    historyHasMore: existing?.historyHasMore,
+    historyOldestSeq: existing?.historyOldestSeq,
+    historyLoadingOlder: existing?.historyLoadingOlder,
+    historyOlderError: existing?.historyOlderError,
     revision: (existing?.revision ?? 0) + 1,
   });
   notify();
+}
+
+function messageFromTurn(sessionId: string, turn: TurnContent): ReducerState["messages"][number] {
+  const contentBlocks = turn.contentBlocks?.map((block, index) => {
+    if (block.type === "text") {
+      const start = block.textStart ?? 0;
+      const end = block.textEnd ?? start;
+      return { type: "text" as const, text: block.text ?? turn.text.slice(start, end) };
+    }
+    if (block.type !== "tool_call") return block;
+    const toolCall = block.toolCall;
+    return {
+      type: "tool_call" as const,
+      toolCall: {
+        id: toolCall.id ?? `${sessionId}:${turn.seq}:ordered-tool:${index}`,
+        name: toolCall.name,
+        input: toolCall.input,
+        status: "completed" as const,
+        ...(toolCall.result != null ? { result: toolCall.result } : {}),
+        startedAt: turn.timestamp,
+      },
+    };
+  });
+  return {
+    id: nextMsgId(),
+    role: turn.role,
+    content: turn.text,
+    ...(turn.uuid ? { uuid: turn.uuid } : {}),
+    ...(turn.thinking ? { thinking: turn.thinking } : {}),
+    ...(turn.seq ? { seq: turn.seq } : {}),
+    ...(turn.timestamp ? { timestamp: turn.timestamp } : {}),
+    ...(turn.artifacts ? { artifacts: turn.artifacts } : {}),
+    ...(contentBlocks?.length ? { contentBlocks } : {}),
+    ...(turn.detailsDeferred ? { detailsDeferred: true } : {}),
+    ...(turn.deferredToolCallCount ? { deferredToolCallCount: turn.deferredToolCallCount } : {}),
+    ...(turn.toolCalls ? {
+      toolCalls: turn.toolCalls.map((toolCall, index) => ({
+        id: `${sessionId}:${turn.seq}:tool:${index}`,
+        name: toolCall.name,
+        input: toolCall.input,
+        status: "completed" as const,
+        ...(toolCall.result ? { result: toolCall.result } : {}),
+        startedAt: turn.timestamp,
+      })),
+    } : {}),
+  };
+}
+
+function messagesFromHistorySnapshot(snapshotData: SessionHistorySnapshot): ReducerState["messages"] {
+  return snapshotData.messages.map((turn) => messageFromTurn(snapshotData.sessionId, turn));
 }
 
 function buildStateFromHistorySnapshot(snapshotData: SessionHistorySnapshot): ReducerState {
@@ -94,31 +158,19 @@ function buildStateFromHistorySnapshot(snapshotData: SessionHistorySnapshot): Re
   state.loadProjectSettings = snapshotData.loadProjectSettings;
   state.lastSeq = snapshotData.lastSeq;
   state.createdAt = snapshotData.createdAt;
-  state.messages = snapshotData.messages.map((turn) => ({
-    id: nextMsgId(),
-    role: turn.role,
-    content: turn.text,
-    ...(turn.uuid ? { uuid: turn.uuid } : {}),
-    ...(turn.thinking ? { thinking: turn.thinking } : {}),
-    ...(turn.seq ? { seq: turn.seq } : {}),
-    ...(turn.timestamp ? { timestamp: turn.timestamp } : {}),
-    ...(turn.artifacts ? { artifacts: turn.artifacts } : {}),
-    ...(turn.toolCalls ? {
-      toolCalls: turn.toolCalls.map((toolCall, index) => ({
-        id: `${snapshotData.sessionId}:${turn.seq}:tool:${index}`,
-        name: toolCall.name,
-        input: toolCall.input,
-        status: "completed" as const,
-        ...(toolCall.result ? { result: toolCall.result } : {}),
-        startedAt: turn.timestamp,
-      })),
-    } : {}),
-  }));
+  state.messages = messagesFromHistorySnapshot(snapshotData);
   return state;
 }
 
 export function hydrateSessionHistorySnapshot(snapshotData: SessionHistorySnapshot, profile?: string) {
   setSessionState(snapshotData.sessionId, buildStateFromHistorySnapshot(snapshotData), profile);
+  const entry = sessions.get(snapshotData.sessionId);
+  if (entry) {
+    entry.historyHasMore = !!snapshotData.hasMoreHistory;
+    entry.historyOldestSeq = snapshotData.oldestSeq ?? null;
+    entry.historyLoadingOlder = false;
+    entry.historyOlderError = undefined;
+  }
   setHistoryLoadState(snapshotData.sessionId, "ready");
 }
 
@@ -137,12 +189,104 @@ function setHistoryLoadState(
 }
 
 export function getSessionHistoryLoadState(sessionId: string | null): SessionHistoryLoadState {
-  if (!sessionId) return { status: "idle" };
+  if (!sessionId) return { status: "idle", hasMore: false, loadingOlder: false };
   const entry = sessions.get(sessionId);
   return {
     status: entry?.historyStatus ?? "idle",
     ...(entry?.historyError ? { error: entry.historyError } : {}),
+    hasMore: !!entry?.historyHasMore,
+    loadingOlder: !!entry?.historyLoadingOlder,
+    ...(entry?.historyOlderError ? { olderError: entry.historyOlderError } : {}),
   };
+}
+
+/** Prepend one older bounded page without disturbing the live SSE cursor. */
+export async function loadOlderSessionHistory(sessionId: string): Promise<void> {
+  const entry = sessions.get(sessionId);
+  if (!entry || !entry.historyHasMore || entry.historyLoadingOlder) return;
+  const beforeSeq = entry.historyOldestSeq
+    ?? entry.state.messages.reduce<number | null>((min, message) => (
+      typeof message.seq === "number" && message.seq > 0 && (min === null || message.seq < min)
+        ? message.seq
+        : min
+    ), null);
+  if (!beforeSeq) return;
+
+  entry.historyLoadingOlder = true;
+  entry.historyOlderError = undefined;
+  entry.revision++;
+  notify();
+  try {
+    const snapshotData = await modus.getSessionHistorySnapshot(sessionId, {
+      limit: HISTORY_PAGE_SIZE,
+      beforeSeq,
+      details: "summary",
+    });
+    const current = sessions.get(sessionId);
+    if (!current) return;
+    const existingKeys = new Set(current.state.messages.map((message) => (
+      `${message.role}:${message.seq ?? 0}:${message.uuid ?? ""}:${message.content}`
+    )));
+    const older = messagesFromHistorySnapshot(snapshotData).filter((message) => !existingKeys.has(
+      `${message.role}:${message.seq ?? 0}:${message.uuid ?? ""}:${message.content}`
+    ));
+    current.state.messages = [...older, ...current.state.messages];
+    current.historyHasMore = !!snapshotData.hasMoreHistory;
+    current.historyOldestSeq = snapshotData.oldestSeq ?? beforeSeq;
+    current.historyLoadingOlder = false;
+    current.historyOlderError = undefined;
+    current.revision++;
+    notify();
+  } catch {
+    const current = sessions.get(sessionId);
+    if (!current) return;
+    current.historyLoadingOlder = false;
+    current.historyOlderError = "Could not load earlier messages.";
+    current.revision++;
+    notify();
+  }
+}
+
+/** Resolve heavy thinking/tool data for one summary message on demand. */
+export async function loadSessionMessageDetails(sessionId: string, seq: number): Promise<void> {
+  const entry = sessions.get(sessionId);
+  const index = entry?.state.messages.findIndex((message) => message.seq === seq) ?? -1;
+  if (!entry || index < 0) return;
+  const existing = entry.state.messages[index]!;
+  if (!existing.detailsDeferred || existing.detailsLoading) return;
+  entry.state.messages[index] = { ...existing, detailsLoading: true, detailsError: undefined };
+  entry.revision++;
+  notify();
+  try {
+    const turn = await modus.getMessages(sessionId, seq);
+    if (Array.isArray(turn)) throw new Error("message detail response was not singular");
+    const current = sessions.get(sessionId);
+    const currentIndex = current?.state.messages.findIndex((message) => message.seq === seq) ?? -1;
+    if (!current || currentIndex < 0) return;
+    const previous = current.state.messages[currentIndex]!;
+    current.state.messages[currentIndex] = {
+      ...messageFromTurn(sessionId, turn),
+      id: previous.id,
+      meta: previous.meta,
+      detailsDeferred: false,
+      detailsLoading: false,
+      detailsError: undefined,
+    };
+    current.revision++;
+    notify();
+  } catch {
+    const current = sessions.get(sessionId);
+    const currentIndex = current?.state.messages.findIndex((message) => message.seq === seq) ?? -1;
+    if (!current || currentIndex < 0) return;
+    const previous = current.state.messages[currentIndex]!;
+    current.state.messages[currentIndex] = {
+      ...previous,
+      detailsLoading: false,
+      detailsError: "Could not load message details.",
+    };
+    current.revision++;
+    notify();
+  }
 }
 
 /** Set the profile queued for the next user turn */
@@ -493,7 +637,13 @@ async function fetchHistorySnapshotWithTimeout(sessionId: string): Promise<Sessi
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), HISTORY_FETCH_TIMEOUT_MS);
   try {
-    return await modus.getSessionHistorySnapshot(sessionId, { signal: controller.signal });
+    return await modus.getSessionHistorySnapshot(sessionId, {
+      signal: controller.signal,
+      // Text and user prompts are lightweight and must remain complete and
+      // chronologically intelligible. Only thinking/tool bodies are deferred.
+      limit: "all",
+      details: "summary",
+    });
   } finally {
     clearTimeout(timer);
   }

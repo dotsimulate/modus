@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
-import { join } from "path";
-import { reconstructSessionTurns, shouldRecoverSessionHistory } from "./session-history";
+import { resolveDatabasePath } from "./database-paths";
+import { reconstructSessionTurns, summarizeContentBlocks } from "./session-history";
 
-const DB_PATH = join(import.meta.dir, "harness.db");
+const DB_PATH = resolveDatabasePath("harness.db");
 const db = new Database(DB_PATH);
 
 // WAL mode for concurrent reads during streaming
@@ -70,6 +70,9 @@ try { db.run(`ALTER TABLE sessions ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`);
 try { db.run(`UPDATE sessions SET tags = '["archived"]' WHERE archived = 1 AND tags = '[]'`); } catch { /* db locked or readonly */ }
 // Migration: add provider — resolved execution backend for sidebar/display
 try { db.run(`ALTER TABLE sessions ADD COLUMN provider TEXT`); } catch { /* already exists */ }
+// Provider-native conversation/thread identity. This is deliberately separate
+// from the stable Modus row ID: providers are free to return a different ID.
+try { db.run(`ALTER TABLE sessions ADD COLUMN provider_session_id TEXT`); } catch { /* already exists */ }
 // Migration: add ui_state — per-session UI layout persistence (panel widths, open state, etc.)
 try { db.run(`ALTER TABLE sessions ADD COLUMN ui_state TEXT DEFAULT '{}'`); } catch { /* already exists */ }
 // Migration: add archived_at — timestamp when session was archived (for recent-archive browsing)
@@ -333,6 +336,7 @@ export type SessionRow = {
   profile: string | null;
   user_profile: string | null;
   provider: string | null;
+  provider_session_id: string | null;
   model: string | null;
   status: string;
   archived: number;
@@ -383,12 +387,27 @@ export type StoredSessionConfig = {
 
 // ── Message Content Types ──
 
+export type TurnToolCall = {
+  id?: string;
+  name: string;
+  input: Record<string, unknown>;
+  result?: string;
+};
+
+export type TurnContentBlock =
+  | { type: "text"; text?: string; textStart?: number; textEnd?: number }
+  | { type: "thinking"; thinking: string }
+  | { type: "tool_call"; toolCall: TurnToolCall }
+  | { type: "deferred"; hasThinking: boolean; toolCallCount: number };
+
 export type TurnContent = {
   role: "user" | "assistant";
   seq: number;
   text: string;
   thinking?: string;
-  toolCalls?: { name: string; input: Record<string, unknown>; result?: string }[];
+  toolCalls?: TurnToolCall[];
+  /** Provider content blocks in their original chronological order. */
+  contentBlocks?: TurnContentBlock[];
   uuid?: string;
   artifacts?: SessionArtifactValue[];
   timestamp: number;
@@ -444,8 +463,8 @@ export type SessionArtifactValue = {
 const stmts = {
   // Sessions
   upsert: db.prepare(`
-    INSERT INTO sessions (id, preview, profile, provider, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile, parent_session_id, branch_message_uuid, title)
-    VALUES ($id, $preview, $profile, $provider, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile, $parent_session_id, $branch_message_uuid, $title)
+    INSERT INTO sessions (id, preview, profile, provider, provider_session_id, model, status, created_at, updated_at, last_message_at, message_count, total_cost_usd, last_prompt, last_response, cwd, action_name, user_profile, parent_session_id, branch_message_uuid, title)
+    VALUES ($id, $preview, $profile, $provider, $provider_session_id, $model, $status, $now, $now, $now, $message_count, $total_cost_usd, $last_prompt, $last_response, $cwd, $action_name, $user_profile, $parent_session_id, $branch_message_uuid, $title)
     ON CONFLICT(id) DO UPDATE SET
       updated_at = $now,
       last_message_at = $now,
@@ -455,6 +474,7 @@ const stmts = {
       last_prompt = COALESCE($last_prompt, sessions.last_prompt),
       last_response = COALESCE($last_response, sessions.last_response),
       provider = COALESCE($provider, sessions.provider),
+      provider_session_id = COALESCE($provider_session_id, sessions.provider_session_id),
       model = COALESCE($model, sessions.model),
       title = COALESCE($title, sessions.title)
   `),
@@ -632,6 +652,7 @@ export function upsertSession(opts: {
   preview: string;
   profile?: string;
   provider?: string;
+  providerSessionId?: string;
   model?: string;
   status?: string;
   messageCount: number;
@@ -651,6 +672,7 @@ export function upsertSession(opts: {
     $preview: opts.preview,
     $profile: opts.profile ?? null,
     $provider: opts.provider ?? null,
+    $provider_session_id: opts.providerSessionId ?? null,
     $model: opts.model ?? null,
     $status: opts.status ?? "done",
     $now: Date.now(),
@@ -687,6 +709,33 @@ export function renameSession(oldId: string, newId: string) {
     // FTS5 virtual tables don't support UPDATE on session_id, so delete + re-insert
     db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $old`).run({ $old: oldId });
   })();
+}
+
+/** Persist the execution backend's native conversation/thread identity. */
+export function updateProviderSessionId(sessionId: string, providerSessionId: string): void {
+  db.prepare(`UPDATE sessions SET provider_session_id = $provider_id WHERE id = $id`)
+    .run({ $id: sessionId, $provider_id: providerSessionId });
+}
+
+/** Provider IDs observed in init events, oldest first, for legacy recovery only. */
+export function getObservedProviderSessionIds(sessionId: string): string[] {
+  const rows = db.prepare(`
+    SELECT data FROM events
+    WHERE session_id = $id AND type = 'system' AND subtype = 'init'
+    ORDER BY created_at ASC, id ASC
+  `).all({ $id: sessionId }) as { data: string }[];
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    try {
+      const id = JSON.parse(row.data)?.session_id;
+      if (typeof id === "string" && id && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    } catch { /* malformed legacy event */ }
+  }
+  return ids;
 }
 
 export function updateSessionStatus(id: string, status: string) {
@@ -1062,6 +1111,10 @@ export function getCheckpointById(id: number): CheckpointRow | undefined {
   return db.prepare(`SELECT * FROM checkpoints WHERE id = $id`).get({ $id: id }) as CheckpointRow | undefined;
 }
 
+export function listAllCheckpoints(): CheckpointRow[] {
+  return db.prepare(`SELECT * FROM checkpoints ORDER BY cwd, created_at DESC, id DESC`).all() as CheckpointRow[];
+}
+
 export type FileObservationRow = {
   id: number;
   session_id: string;
@@ -1166,8 +1219,19 @@ function parseToolCalls(raw: string | null): TurnContent["toolCalls"] | undefine
   }
 }
 
-function getSessionMessagesFromMessageTable(sessionId: string): TurnContent[] {
-  const rows = stmts.getMessages.all({ $session_id: sessionId }) as MessageRow[];
+type SessionHistoryPageOptions = {
+  limit?: number;
+  beforeSeq?: number;
+  includeDetails?: boolean;
+  preserveEventSequence?: boolean;
+};
+
+type SessionTurnsPage = {
+  turns: TurnContent[];
+  hasMore: boolean;
+};
+
+function messageRowsToTurns(rows: MessageRow[]): TurnContent[] {
   if (rows.length === 0) return [];
   return rows.map((row) => ({
     role: row.role === "assistant" ? "assistant" : "user",
@@ -1180,14 +1244,89 @@ function getSessionMessagesFromMessageTable(sessionId: string): TurnContent[] {
   }));
 }
 
-function getSessionMessagesFromEvents(sessionId: string): TurnContent[] {
+function getSessionMessagesFromMessageTable(
+  sessionId: string,
+  options: SessionHistoryPageOptions = {},
+): SessionTurnsPage {
+  const limit = options.limit;
+  if (!limit) {
+    const rows = stmts.getMessages.all({ $session_id: sessionId }) as MessageRow[];
+    return { turns: messageRowsToTurns(rows), hasMore: false };
+  }
+
+  const rows = db.prepare(`
+    SELECT * FROM (
+      SELECT * FROM messages
+      WHERE session_id = $session_id
+        AND ($before_seq IS NULL OR COALESCE(seq, 0) < $before_seq)
+      ORDER BY COALESCE(seq, 0) DESC, created_at DESC, id DESC
+      LIMIT $fetch_limit
+    )
+    ORDER BY COALESCE(seq, 0) ASC, created_at ASC, id ASC
+  `).all({
+    $session_id: sessionId,
+    $before_seq: options.beforeSeq ?? null,
+    $fetch_limit: limit + 1,
+  }) as MessageRow[];
+  const hasMore = rows.length > limit;
+  return {
+    turns: messageRowsToTurns(hasMore ? rows.slice(rows.length - limit) : rows),
+    hasMore,
+  };
+}
+
+function getSessionMessagesFromEvents(
+  sessionId: string,
+  options: SessionHistoryPageOptions = {},
+): SessionTurnsPage {
+  const limit = options.limit;
+  if (!limit) {
+    const events = db.prepare(
+      `SELECT seq, type, subtype, data, created_at FROM events
+       WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
+       ORDER BY seq ASC`
+    ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
+    return { turns: reconstructSessionTurns(events), hasMore: false };
+  }
+
+  // Event-only legacy/interrupted sessions can contain tens of thousands of
+  // rows. Start at a recent user-prompt boundary so a cold open never needs to
+  // parse the whole transcript just to paint the newest messages.
+  const promptLimit = Math.max(1, Math.ceil(limit / 2));
+  const cutoff = db.prepare(`
+    SELECT MIN(seq) AS seq FROM (
+      SELECT seq FROM events
+      WHERE session_id = $sid
+        AND type = 'user' AND subtype = 'prompt'
+        AND ($before_seq IS NULL OR seq < $before_seq)
+      ORDER BY seq DESC
+      LIMIT $prompt_limit
+    )
+  `).get({
+    $sid: sessionId,
+    $before_seq: options.beforeSeq ?? null,
+    $prompt_limit: promptLimit,
+  }) as { seq: number | null } | null;
+
+  if (!cutoff?.seq) return { turns: [], hasMore: false };
   const events = db.prepare(
     `SELECT seq, type, subtype, data, created_at FROM events
      WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
+       AND seq >= $cutoff
+       AND ($before_seq IS NULL OR seq < $before_seq)
      ORDER BY seq ASC`
-  ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
+  ).all({
+    $sid: sessionId,
+    $cutoff: cutoff.seq,
+    $before_seq: options.beforeSeq ?? null,
+  }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
 
-  return reconstructSessionTurns(events);
+  const older = db.prepare(`
+    SELECT 1 AS found FROM events
+    WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt' AND seq < $cutoff
+    LIMIT 1
+  `).get({ $sid: sessionId, $cutoff: cutoff.seq }) as { found: number } | null;
+  return { turns: reconstructSessionTurns(events), hasMore: !!older };
 }
 
 // ── Draft Functions ──
@@ -1584,12 +1723,16 @@ function toSessionArtifactValue(row: SessionArtifactRow): SessionArtifactValue {
 export type SessionMessageHistory = {
   messages: TurnContent[];
   recoveredFromEvents: boolean;
+  hasMore: boolean;
+  oldestSeq: number | null;
 };
 
 /** Return the fastest complete history source, falling back to durable events
  * when they contain an assistant turn newer than semantic materialization. */
-export function getSessionMessageHistory(sessionId: string): SessionMessageHistory {
-  const semanticTurns = getSessionMessagesFromMessageTable(sessionId);
+export function getSessionMessageHistory(
+  sessionId: string,
+  options: SessionHistoryPageOptions = {},
+): SessionMessageHistory {
   const artifactRows = stmts.listSessionArtifacts.all({ $session_id: sessionId }) as SessionArtifactRow[];
   const artifactsBySeq = new Map<number, SessionArtifactValue[]>();
   const artifactsByUuid = new Map<string, SessionArtifactValue[]>();
@@ -1608,10 +1751,22 @@ export function getSessionMessageHistory(sessionId: string): SessionMessageHisto
   const rawAssistant = db.prepare(
     `SELECT COALESCE(MAX(seq), 0) AS max_seq FROM events WHERE session_id = $sid AND type = 'assistant'`
   ).get({ $sid: sessionId }) as { max_seq: number };
-  const useEventHistory = semanticTurns.length === 0
-    || shouldRecoverSessionHistory(semanticTurns, rawAssistant.max_seq ?? 0);
-  const turns = useEventHistory ? getSessionMessagesFromEvents(sessionId) : semanticTurns;
-  const recoveredFromEvents = useEventHistory && turns.length > 0;
+  const semanticAssistant = db.prepare(
+    `SELECT COALESCE(MAX(seq), 0) AS max_seq FROM messages WHERE session_id = $sid AND role = 'assistant'`
+  ).get({ $sid: sessionId }) as { max_seq: number };
+  const semanticCount = db.prepare(
+    `SELECT COUNT(*) AS count FROM messages WHERE session_id = $sid`
+  ).get({ $sid: sessionId }) as { count: number };
+  const useEventHistory = options.preserveEventSequence || semanticCount.count === 0
+    || (rawAssistant.max_seq ?? 0) > (semanticAssistant.max_seq ?? 0);
+  const eventPage = useEventHistory ? getSessionMessagesFromEvents(sessionId, options) : null;
+  // Some very old sessions only retained semantic rows. Preserve their text
+  // rather than returning an empty event-sequence page.
+  const page = eventPage && eventPage.turns.length > 0
+    ? eventPage
+    : getSessionMessagesFromMessageTable(sessionId, options);
+  const turns = page.turns;
+  const recoveredFromEvents = !!eventPage && eventPage.turns.length > 0;
 
   const messages = turns.map((turn) => {
     if (turn.role !== "assistant") return turn;
@@ -1630,13 +1785,32 @@ export function getSessionMessageHistory(sessionId: string): SessionMessageHisto
       artifacts.push(artifact);
     }
     return artifacts.length > 0 ? { ...turn, artifacts } : turn;
+  }).map((turn) => {
+    if (options.includeDetails !== false || turn.role !== "assistant") return turn;
+    const deferredToolCallCount = turn.toolCalls?.length ?? 0;
+    const detailsDeferred = !!turn.thinking || deferredToolCallCount > 0;
+    if (!detailsDeferred) return turn;
+    const { thinking: _thinking, toolCalls: _toolCalls, ...summary } = turn;
+    return {
+      ...summary,
+      ...(turn.contentBlocks ? { contentBlocks: summarizeContentBlocks(turn.contentBlocks) } : {}),
+      detailsDeferred: true,
+      ...(deferredToolCallCount > 0 ? { deferredToolCallCount } : {}),
+    };
   });
-  return { messages, recoveredFromEvents };
+  return {
+    messages,
+    recoveredFromEvents,
+    hasMore: page.hasMore,
+    oldestSeq: messages.reduce<number | null>((min, turn) => (
+      turn.seq > 0 && (min === null || turn.seq < min) ? turn.seq : min
+    ), null),
+  };
 }
 
 /** Reconstruct structured message content for callers that only need turns. */
 export function getSessionMessages(sessionId: string): TurnContent[] {
-  return getSessionMessageHistory(sessionId).messages;
+  return getSessionMessageHistory(sessionId, { preserveEventSequence: true }).messages;
 }
 
 // ── Full-Text Search (FTS5 v2) ──
@@ -2906,6 +3080,11 @@ export function getDeepAnalytics(
 // Mark orphaned running/starting/interrupting/idle/error sessions as done
 // (harness restarted while they were active)
 // Wrapped in try/catch: on Windows, a ghost process may still hold the DB write lock.
+// Database modules are also imported by tests while a real Modus backend may be
+// using the same workspace DB. Test workers must never mutate that live state.
+const runStartupMaintenance = process.env.NODE_ENV !== "test"
+  && process.env.MODUS_SKIP_STARTUP_MAINTENANCE !== "1";
+if (runStartupMaintenance) {
 try {
   // Inject a terminal `system/interrupted` event for any orphaned session whose
   // event log doesn't already end in a terminal event. Without this, the UI
@@ -2954,8 +3133,9 @@ try {
 } catch (e) {
   console.warn(`[db] Startup cleanup skipped (db may be locked by another process): ${e}`);
 }
+}
 
 // Prune stream events from all unpruned completed sessions
-pruneAllSessionEvents();
+if (runStartupMaintenance) pruneAllSessionEvents();
 
 export { db };

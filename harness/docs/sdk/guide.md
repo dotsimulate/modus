@@ -230,13 +230,13 @@ User profiles scope visibility, memory, and template variables:
 
 ```typescript
 const users = await client.listUserProfiles();
-const me = await client.getUserProfile("dot");
+const me = await client.getUserProfile("alex");
 // me.visibleAgents — which agents this user sees
 // me.templateVars — Handlebars vars injected into agent prompts
 
 // Runtime state (selected session, UI preferences)
-const state = await client.getUserProfileState("dot");
-await client.patchUserProfileState("dot", { selectedSessionId: "abc" });
+const state = await client.getUserProfileState("alex");
+await client.patchUserProfileState("alex", { selectedSessionId: "abc" });
 ```
 
 ### Mid-session profile switch
@@ -329,11 +329,11 @@ await client.resumeMission(runId);
 
 ## Providers
 
-Providers are execution backends (Claude Code, Codex, Gemini CLI, PI agent variants).
+Providers are execution backends (Claude Code, Codex, Google Antigravity, PI agent variants).
 
 ```typescript
 const providers = await client.listProviders();
-// ["claude-code", "claude-code-pty", "codex", "cursor", "gemini-cli", "opencode", ...]
+// ["claude-code", "claude-code-pty", "codex", "cursor", "antigravity", "opencode", ...]
 
 const caps = await client.getProviderCapabilities();
 // Each: { name, streaming, tools, vision, builtInToolMode, ... }
@@ -390,7 +390,7 @@ const listing = await client.browse("/home/user/project", {
 const stats = await client.getSessionStats();
 
 // Provider usage over time
-const usage = await client.getProviderUsageAnalytics("dot", 30);
+const usage = await client.getProviderUsageAnalytics("alex", 30);
 
 // Deep analytics with time bucketing
 const deep = await client.getDeepAnalytics({

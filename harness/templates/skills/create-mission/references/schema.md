@@ -36,7 +36,6 @@ detail beyond what SKILL.md covers.
   "cycle": {
     "enabled": false,
     "maxCycles": null,
-    "freshOrchestrator": false,
     "budget": { "usd": null }
   },
 
@@ -95,7 +94,7 @@ context would overflow the orchestrator or specialized tools are needed.
 
 Profile resolution order:
 1. Project-local: `<cwd>/.modus/profiles/agents/<profile>.json`
-2. Harness-level: `harness/profiles/agents/<profile>.json`
+2. User-home: `~/.modus/profiles/agents/<profile>.json`
 
 ### Steps
 
@@ -123,7 +122,6 @@ The orchestrator provides those details at delegation time.
 |-------|---------|-------------|
 | `enabled` | false | Enable cycling mode. Steps repeat after last step completes |
 | `maxCycles` | null | Maximum number of full cycles. null = unlimited |
-| `freshOrchestrator` | false | When true, the orchestrator gets a fresh session each cycle instead of continuing in a degrading context. Enables the bootstrap pattern |
 | `budget.usd` | null | Maximum USD spend for this mission. null = unlimited |
 
 When cycling is enabled:
@@ -132,15 +130,6 @@ When cycling is enabled:
 - Cycling stops when `maxCycles` is reached, `budget.usd` is exceeded,
   or the orchestrator issues a `pause`
 - With all limits null, the mission runs until the user stops it manually
-
-**Fresh orchestrator mode** (`freshOrchestrator: true`):
-- Each cycle starts with a new orchestrator session that bootstraps from scratch
-- The fresh session receives a cycle preamble with previous work summaries
-- The orchestrator's bootstrap/memory file is the source of continuity across cycles
-- Before advancing the final step, the orchestrator should update its bootstrap
-  with any durable lessons learned during the cycle
-- This prevents context degradation — the orchestrator that started cycle 1 is
-  not the same (stale, compressed) session running cycle 6
 
 **Cycling is the correct mode for:** exploration, discovery, monitoring,
 maintenance, batch processing, and any work without a fixed endpoint.

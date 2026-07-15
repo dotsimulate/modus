@@ -13,7 +13,7 @@ import { providerFallbackModel } from "../../../provider-defaults";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
 import { useProfiles } from "../providers/ProfileContext";
-import { getToolGroups, isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
+import { getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
 
 export type { AgentConfigState };
 
@@ -127,6 +127,7 @@ export function AgentConfig({
       providerControls: {
         ...(isCodexProvider(provider || profileProvider) ? { codex: config.providerControls?.codex } : {}),
         ...(isClaudeCodeProvider(provider || profileProvider) ? { claude: config.providerControls?.claude } : {}),
+        ...(isAntigravityProvider(provider || profileProvider) ? { antigravity: config.providerControls?.antigravity } : {}),
       },
     };
     onChange(nextConfig);
@@ -168,6 +169,16 @@ export function AgentConfig({
       providerControls: {
         ...(config.providerControls ?? {}),
         claude: { ...claudeControls, ...patch },
+      },
+    });
+  };
+
+  const antigravityControls = config.providerControls?.antigravity ?? {};
+  const updateAntigravityControls = (patch: NonNullable<NonNullable<AgentConfigState["providerControls"]>["antigravity"]>) => {
+    update({
+      providerControls: {
+        ...(config.providerControls ?? {}),
+        antigravity: { ...antigravityControls, ...patch },
       },
     });
   };
@@ -317,6 +328,38 @@ export function AgentConfig({
         </div>
       ) : null}
 
+      {/* Antigravity headless controls map directly to documented agy flags. */}
+      {isAntigravityProvider(effectiveProvider) ? (
+        <div className="agent-config-row">
+          <label className="agent-config-field">
+            <span>mode</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={antigravityControls.mode ?? ""}
+              options={[{ value: "accept-edits" }, { value: "plan" }]}
+              placeholder="accept-edits"
+              searchPlaceholder="search mode..."
+              onChange={(mode) => updateAntigravityControls({
+                mode: (mode || undefined) as NonNullable<NonNullable<AgentConfigState["providerControls"]>["antigravity"]>["mode"],
+              })}
+            />
+          </label>
+          <label className="agent-config-field">
+            <span>sandbox</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={antigravityControls.sandbox === undefined ? "" : antigravityControls.sandbox ? "enabled" : "disabled"}
+              options={[{ value: "enabled" }, { value: "disabled" }]}
+              placeholder="profile default"
+              searchPlaceholder="search sandbox..."
+              onChange={(sandbox) => updateAntigravityControls({
+                sandbox: sandbox ? sandbox === "enabled" : undefined,
+              })}
+            />
+          </label>
+        </div>
+      ) : null}
+
       {/* Tools section */}
       {toolsCollapsible ? (
         <button
@@ -405,11 +448,16 @@ function equalProviderControls(
   const rightCodex = right?.codex ?? {};
   const leftClaude = left?.claude ?? {};
   const rightClaude = right?.claude ?? {};
+  const leftAntigravity = left?.antigravity ?? {};
+  const rightAntigravity = right?.antigravity ?? {};
   return (
     leftCodex.sandboxMode === rightCodex.sandboxMode
     && leftCodex.webSearchMode === rightCodex.webSearchMode
     && leftCodex.serviceTier === rightCodex.serviceTier
     && leftClaude.permissionMode === rightClaude.permissionMode
+    && leftAntigravity.mode === rightAntigravity.mode
+    && leftAntigravity.sandbox === rightAntigravity.sandbox
+    && leftAntigravity.printTimeout === rightAntigravity.printTimeout
   );
 }
 

@@ -133,6 +133,7 @@
 .sh-view-modes {
   display: inline-flex;
   gap: 2px;
+  min-width: 0;
 }
 
 .sh-mode-btn {
@@ -157,6 +158,20 @@
   color: var(--text);
   background: var(--bg-surface);
 }
+
+.sh-connection {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 6px;
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+
+.sh-connection--connected { background: var(--success, #69b578); opacity: 0.9; }
+.sh-connection--connecting,
+.sh-connection--reconnecting { background: var(--warning, #c68a2b); opacity: 0.9; }
+.sh-connection--offline { background: var(--error, #e06c75); opacity: 0.9; }
 
 .sh-sort {
   position: relative;
@@ -334,6 +349,18 @@
   opacity: 0.6;
 }
 
+.sh-section-active {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: calc(8px * var(--font-scale, 1));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sh-section-active + .sh-section-count {
+  margin-left: 2px;
+}
+
 .sh-section-icon {
   font-size: calc(6px * var(--font-scale, 1));
   color: var(--text-dim);
@@ -357,6 +384,34 @@
   flex-direction: column;
   gap: var(--sh-row-gap);
   padding: 2px 0 var(--sh-section-items-pb);
+}
+
+.sh-project-reveal {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px 2px;
+}
+
+.sh-project-reveal button {
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(8px * var(--font-scale, 1));
+  letter-spacing: 0.03em;
+  padding: 3px 5px;
+  cursor: pointer;
+}
+
+.sh-project-reveal button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.sh-project-reveal button:last-child {
+  margin-left: auto;
 }
 
 /* ── Session Row ── */
@@ -591,6 +646,11 @@
 
 .sh-tag--agent {
   color: var(--text-label);
+}
+
+.sh-tag--project {
+  color: var(--accent);
+  font-style: normal;
 }
 
 .sh-tag--model {
