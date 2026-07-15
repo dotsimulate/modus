@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef, memo, type CSSProperties } from "react";
-import { modus, API_BASE, authHeaders } from "../modusClient";
+import { modus, API_BASE, authHeaders, getAuthToken } from "../modusClient";
 import type { SessionInfo, GitCommit, MissionRunSummary, MissionTransferSummary, TouchRecord } from "../../../sdk/index";
 import { ChatFileViewer } from "./ChatFileViewer";
 import { SessionWindow } from "./SessionWindow";
@@ -1430,7 +1430,7 @@ export function SessionWeb() {
 
   // ── Global SSE: real-time session lifecycle events ──
   useEffect(() => {
-    const token = localStorage.getItem("harness_token") || "";
+    const token = getAuthToken();
     const url = `${API_BASE}/api/events/sessions${token ? `?token=${token}` : ""}`;
     const es = new EventSource(url);
 

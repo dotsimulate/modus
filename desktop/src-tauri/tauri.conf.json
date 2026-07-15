@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Modus",
+  "version": "0.1.0",
+  "identifier": "com.modus.desktop",
+  "build": {
+    "beforeDevCommand": "bun run --cwd ../harness/ui dev",
+    "beforeBuildCommand": "bun run --cwd ../harness/ui build",
+    "devUrl": "http://localhost:5180",
+    "frontendDist": "../../harness/ui/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Modus — Local backend",
+        "url": "index.html?modusTarget=http%3A%2F%2F127.0.0.1%3A3777&modusTargetMode=external-local&modusTargetLabel=Local+Modus",
+        "width": 1440,
+        "height": 960,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "capabilities": ["default"],
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:3777 http://localhost:3777 ws://127.0.0.1:3777 ws://localhost:3777; img-src 'self' data: blob: http://127.0.0.1:3777 http://localhost:3777; media-src 'self' data: blob: http://127.0.0.1:3777 http://localhost:3777; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all"
+  }
+}

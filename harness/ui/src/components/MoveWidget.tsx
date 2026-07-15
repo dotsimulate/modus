@@ -16,6 +16,7 @@ import * as ReactModule from "react";
 import * as ReactJSXRuntime from "react/jsx-runtime";
 import * as ReactJSXDevRuntime from "react/jsx-dev-runtime";
 import { modus, authHeaders } from "../modusClient";
+import { backendUrl } from "../backendTarget";
 import type { MoveWidgetInfo } from "../../../sdk/index";
 import type { PageContextHandle } from "../widgets/types";
 import { onUiEvent } from "../sessionStore";
@@ -103,7 +104,7 @@ async function loadWidgetCSS(cssUrl: string, moveName: string): Promise<void> {
 
 /** Evict a module from the cache (for reload). Returns true if it was cached. */
 export function evictWidgetModule(url: string): boolean {
-  return moduleCache.delete(url);
+  return moduleCache.delete(backendUrl(url));
 }
 
 /**
@@ -161,24 +162,25 @@ ${js.replace(/import\s*\{([^}]+)\}\s*from\s*["']__MODUS_REACT__["']/g, 'const {$
 }
 
 export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnAttach, pageContext }: Props) {
+  const moduleUrl = backendUrl(widget.moduleUrl);
   const [Component, setComponent] = useState<ComponentType<MoveWidgetProps> | null>(
     // Synchronous cache hit — no loading flash on remount
-    () => moduleCache.get(widget.moduleUrl) ?? null,
+    () => moduleCache.get(moduleUrl) ?? null,
   );
   const [error, setError] = useState<string | null>(null);
-  const loadedUrl = useRef<string | null>(widget.moduleUrl);
+  const loadedUrl = useRef<string | null>(moduleUrl);
 
   useEffect(() => {
-    if (loadedUrl.current === widget.moduleUrl && Component) return;
-    loadedUrl.current = widget.moduleUrl;
+    if (loadedUrl.current === moduleUrl && Component) return;
+    loadedUrl.current = moduleUrl;
 
     // For cache: "none", evict before loading
     if (widget.cache === "none") {
-      evictWidgetModule(widget.moduleUrl);
+      evictWidgetModule(moduleUrl);
     }
 
     // Synchronous cache check (module or instance cache mode)
-    const cached = moduleCache.get(widget.moduleUrl);
+    const cached = moduleCache.get(moduleUrl);
     if (cached) {
       setComponent(() => cached);
       return;
@@ -188,20 +190,20 @@ export function MoveWidget({ widget, apiToken, instanceId, sessionId, mountedOnA
     setError(null);
 
     // Derive CSS URL from module URL: /api/moves/:name/widget?cwd=... → /api/moves/:name/widget.css?cwd=...
-    const cssUrl = widget.moduleUrl.replace("/widget?", "/widget.css?").replace(/\/widget$/, "/widget.css");
+    const cssUrl = moduleUrl.replace("/widget?", "/widget.css?").replace(/\/widget$/, "/widget.css");
     loadWidgetCSS(cssUrl, widget.moveName);
 
-    loadWidgetModule(widget.moduleUrl, widget.moveName)
+    loadWidgetModule(moduleUrl, widget.moveName)
       .then(Comp => setComponent(() => Comp))
       .catch(err => setError(`Failed to load widget: ${err}`));
-  }, [widget.moduleUrl, widget.moveName, widget.cache]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [moduleUrl, widget.moveName, widget.cache]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const callOp = useCallback(async (op: string, data?: Record<string, unknown>) => {
     return modus.callMoveOp(widget.moveName, apiToken, op, data);
   }, [widget.moveName, apiToken]);
 
   const submitMessage = useCallback(async (prompt: string) => {
-    await fetch(`/api/sessions/${sessionId}/messages`, {
+    await fetch(backendUrl(`/api/sessions/${sessionId}/messages`), {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ prompt }),
