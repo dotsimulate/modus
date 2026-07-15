@@ -148,6 +148,11 @@ const ProviderControlsSchema = z.object({
   claude: z.object({
     permissionMode: z.enum(["default", "acceptEdits", "plan", "dontAsk"]).optional(),
   }).optional(),
+  antigravity: z.object({
+    mode: z.enum(["accept-edits", "plan"]).optional(),
+    sandbox: z.boolean().optional(),
+    printTimeout: z.string().min(1).optional(),
+  }).optional(),
 }).catchall(z.unknown());
 
 // ── Agent Profile ──

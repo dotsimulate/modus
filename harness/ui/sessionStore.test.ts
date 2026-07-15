@@ -91,4 +91,44 @@ describe("sessionStore history snapshot hydration", () => {
       historyStatus: "ready",
     })).toBe(true);
   });
+
+  test("hydrates lightweight ordered blocks around deferred provider activity", () => {
+    hydrateSessionHistorySnapshot({
+      sessionId: "ses-history",
+      status: "done",
+      model: "gpt-5",
+      cwd: "/tmp/modus",
+      additionalDirectories: [],
+      loadProjectSettings: true,
+      agentConfig: {
+        toolStates: {},
+        model: "gpt-5",
+        provider: "codex",
+        effort: "high",
+        maxTurns: "",
+        providerControls: {},
+      },
+      messages: [{
+        role: "assistant",
+        seq: 20,
+        text: "beforeafter",
+        timestamp: 1000,
+        detailsDeferred: true,
+        deferredToolCallCount: 1,
+        contentBlocks: [
+          { type: "text", textStart: 0, textEnd: 6 },
+          { type: "deferred", hasThinking: false, toolCallCount: 1 },
+          { type: "text", textStart: 6, textEnd: 11 },
+        ],
+      }],
+      lastSeq: 20,
+      createdAt: 500,
+    });
+
+    expect(getSessionState("ses-history")?.messages[0]?.contentBlocks).toEqual([
+      { type: "text", text: "before" },
+      { type: "deferred", hasThinking: false, toolCallCount: 1 },
+      { type: "text", text: "after" },
+    ]);
+  });
 });

@@ -126,6 +126,7 @@ type Props = {
   streamFeed?: string;
   onBranch?: (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => void;
   onStopTask?: (taskId: string) => void;
+  onLoadDetails?: () => void | Promise<void>;
   children?: ReactNode;
 };
 
@@ -215,8 +216,49 @@ function renderArtifact(
   );
 }
 
+function DeferredDetailsControl({
+  hasThinking,
+  toolCallCount,
+  loading,
+  error,
+  onLoad,
+}: {
+  hasThinking: boolean;
+  toolCallCount: number;
+  loading?: boolean;
+  error?: string;
+  onLoad: () => void | Promise<void>;
+}) {
+  const detailLabel = [
+    hasThinking ? "thinking" : "",
+    toolCallCount > 0 ? `${toolCallCount} tool call${toolCallCount === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(" + ");
+  return (
+    <div className="message-details-loader">
+      <button
+        type="button"
+        disabled={loading}
+        title={error}
+        aria-busy={loading || undefined}
+        onClick={() => { void onLoad(); }}
+      >
+        {loading ? (
+          <>
+            <span>loading {detailLabel || "details"}</span>
+            <span className="message-details-loader__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+          </>
+        ) : error ? (
+          "retry message details"
+        ) : (
+          `load ${detailLabel || "details"}`
+        )}
+      </button>
+    </div>
+  );
+}
 
-export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, children }: Props) {
+
+export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, onLoadDetails, children }: Props) {
   void onBranch;
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -278,43 +320,106 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
         </div>
       )}
 
-      {showThinking && msg.thinking && (
-        <ThinkingBlock
-          thinking={msg.thinking}
-          duration={msg.thinkingDuration}
-          isStreaming={isStreaming}
-          hasContent={!!msg.content}
-        />
-      )}
-
-      {msg.content && (
-        <div
-          className={`message-content${isNew ? " message-content--new" : ""}`}
-          onContextMenu={handleContextMenu}
-        >
-          <Markdown content={msg.content} />
-          {savedToast && (
-            <div className="prompt-cache-toast">saved to prompt cache</div>
+      {msg.contentBlocks?.length ? (
+        <>
+          {msg.contentBlocks.map((block, index) => {
+            if (block.type === "text") {
+              return block.text ? (
+                <div
+                  key={`${msg.id}:ordered-text:${index}`}
+                  className={`message-content${isNew ? " message-content--new" : ""}`}
+                  onContextMenu={handleContextMenu}
+                >
+                  <Markdown content={block.text} />
+                </div>
+              ) : null;
+            }
+            if (block.type === "thinking") {
+              return showThinking ? (
+                <ThinkingBlock
+                  key={`${msg.id}:ordered-thinking:${index}`}
+                  thinking={block.thinking}
+                  duration={msg.thinkingDuration}
+                  isStreaming={isStreaming}
+                  hasContent={!!msg.content}
+                />
+              ) : null;
+            }
+            if (block.type === "tool_call") {
+              const tc = block.toolCall;
+              return showToolCalls ? (
+                <div className="message-tools" key={`${msg.id}:ordered-tool:${index}:${tc.id}`}>
+                  <ToolCallView
+                    tool={tc}
+                    anchorId={`${msg.id}:${index}:${tc.id}`}
+                    defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
+                    showGitEvents={showGitEvents}
+                    cwd={cwd}
+                    onStopTask={onStopTask}
+                  />
+                </div>
+              ) : null;
+            }
+            return onLoadDetails ? (
+              <DeferredDetailsControl
+                key={`${msg.id}:ordered-deferred:${index}`}
+                hasThinking={block.hasThinking}
+                toolCallCount={block.toolCallCount}
+                loading={msg.detailsLoading}
+                error={msg.detailsError}
+                onLoad={onLoadDetails}
+              />
+            ) : null;
+          })}
+        </>
+      ) : (
+        <>
+          {msg.detailsDeferred && onLoadDetails && (
+            <DeferredDetailsControl
+              hasThinking={!!msg.thinking || !msg.deferredToolCallCount}
+              toolCallCount={msg.deferredToolCallCount ?? 0}
+              loading={msg.detailsLoading}
+              error={msg.detailsError}
+              onLoad={onLoadDetails}
+            />
           )}
-        </div>
+          {showThinking && msg.thinking && (
+            <ThinkingBlock
+              thinking={msg.thinking}
+              duration={msg.thinkingDuration}
+              isStreaming={isStreaming}
+              hasContent={!!msg.content}
+            />
+          )}
+          {msg.content && (
+            <div
+              className={`message-content${isNew ? " message-content--new" : ""}`}
+              onContextMenu={handleContextMenu}
+            >
+              <Markdown content={msg.content} />
+            </div>
+          )}
+          {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
+            <div className="message-tools">
+              {msg.toolCalls.map((tc, index) => (
+                <ToolCallView
+                  key={`${msg.id}:${index}:${tc.id}`}
+                  tool={tc}
+                  anchorId={`${msg.id}:${index}:${tc.id}`}
+                  defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
+                  showGitEvents={showGitEvents}
+                  cwd={cwd}
+                  onStopTask={onStopTask}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {savedToast && (
+        <div className="prompt-cache-toast">saved to prompt cache</div>
       )}
       {contextMenuPortal}
-
-      {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
-        <div className="message-tools">
-          {msg.toolCalls.map((tc, index) => (
-            <ToolCallView
-              key={`${msg.id}:${index}:${tc.id}`}
-              tool={tc}
-              anchorId={`${msg.id}:${index}:${tc.id}`}
-              defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
-              showGitEvents={showGitEvents}
-              cwd={cwd}
-              onStopTask={onStopTask}
-            />
-          ))}
-        </div>
-      )}
 
       {msg.attachments && msg.attachments.length > 0 && (
         <div className="message-images">

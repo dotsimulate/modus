@@ -17,7 +17,7 @@
  */
 
 import {
-  upsertSession, updateSessionStatus, addEvent, renameSession, getSession,
+  upsertSession, updateSessionStatus, addEvent, renameSession, getSession, updateProviderSessionId,
   getStoredSessionConfig, getSessionsByTag,
   copyEventsToSession, copyMessagesToSession, findAssistantUuid, clearBranchFields,
   addSessionTag, parseTags, getMaxSeq, insertSessionArtifact, insertMessage, syncSessionMessageCount,
@@ -197,6 +197,8 @@ type PendingAssistantTurn = {
 export type ActiveSession = {
   sessionId: string;
   tempId: string;
+  /** Execution backend's native conversation/thread identity. Never infer this from sessionId. */
+  providerSessionId: string | null;
   status: SessionStatus;
   profile: string | undefined;
   provider: string;
@@ -422,6 +424,11 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
         `from=${oldId.slice(0, 12)} to=${newId.slice(0, 12)} subsRetained=${session.subscribers.size} status=${session.status}`);
     },
 
+    setProviderSessionId(providerSessionId: string) {
+      session.providerSessionId = providerSessionId;
+      updateProviderSessionId(session.sessionId, providerSessionId);
+    },
+
     updateSessionDb(updates) {
       const completing = updates.status === "idle" || updates.status === "done";
       const terminal = completing || updates.status === "error";
@@ -436,6 +443,7 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
         preview: session.preview,
         profile: session.profile,
         provider: updates.provider ?? session.provider,
+        providerSessionId: session.providerSessionId ?? undefined,
         model: session.model,
         status: updates.status ?? session.status,
         messageCount: persistedMessageCount,
@@ -754,15 +762,81 @@ function updateLiveStreamSnapshot(session: ActiveSession, event: any) {
   }
 }
 
+type PendingLiveBroadcast = {
+  timer: ReturnType<typeof setTimeout> | null;
+  lastSentAt: number;
+};
+
+const pendingLiveBroadcasts = new WeakMap<ActiveSession, PendingLiveBroadcast>();
+const lastGlobalActivityAt = new WeakMap<ActiveSession, number>();
+const LIVE_BROADCAST_INTERVAL_MS = 40;
+const GLOBAL_ACTIVITY_INTERVAL_MS = 250;
+
+function liveSummaryText(session: ActiveSession): string | null {
+  const text = session.liveStream.text || session.lastAssistantText;
+  return text ? text.slice(-320) : null;
+}
+
+function emitGlobalSessionActivity(session: ActiveSession) {
+  const now = Date.now();
+  const last = lastGlobalActivityAt.get(session) ?? 0;
+  if (now - last < GLOBAL_ACTIVITY_INTERVAL_MS) return;
+  lastGlobalActivityAt.set(session, now);
+  emitGlobalSessionEvent({
+    type: "session:activity",
+    sessionId: session.sessionId,
+    status: session.status,
+    seq: session.seq,
+    lastText: liveSummaryText(session),
+    lastEventAt: session.lastEventAt,
+    costUsd: session.costUsd,
+  });
+}
+
+function flushLiveBroadcast(session: ActiveSession) {
+  const pending = pendingLiveBroadcasts.get(session);
+  if (pending?.timer) clearTimeout(pending.timer);
+  if (pending) {
+    pending.timer = null;
+    pending.lastSentAt = Date.now();
+  }
+  if (!session.liveStream.text && !session.liveStream.thinking && !session.liveStream.feed) return;
+  broadcastEventToSession(session, {
+    type: "system",
+    subtype: "live_snapshot",
+    text: session.liveStream.text,
+    thinking: session.liveStream.thinking,
+    feed: session.liveStream.feed,
+  }, session.liveStream.seq || session.seq);
+  emitGlobalSessionActivity(session);
+}
+
+function scheduleLiveBroadcast(session: ActiveSession) {
+  const pending = pendingLiveBroadcasts.get(session) ?? { timer: null, lastSentAt: 0 };
+  pendingLiveBroadcasts.set(session, pending);
+  if (pending.timer) return;
+  const delay = Math.max(0, LIVE_BROADCAST_INTERVAL_MS - (Date.now() - pending.lastSentAt));
+  pending.timer = setTimeout(() => flushLiveBroadcast(session), delay);
+}
+
+function isCoalescibleLiveDelta(event: any): boolean {
+  if (event?.type !== "stream_event" || event.event?.type !== "content_block_delta") return false;
+  const type = event.event?.delta?.type;
+  return type === "text_delta" || type === "thinking_delta";
+}
+
 function persistAndBroadcastEvent(session: ActiveSession, event: any) {
   const _pbt0 = performance.now();
   session.seq++;
+  session.lastEventAt = Date.now();
+  if (event.type !== "stream_event") flushLiveBroadcast(session);
   updateLiveStreamSnapshot(session, event);
   persistSemanticMessage(session, event);
   if (event.type === "stream_event") {
     sseLog("LIVE-ONLY", session.sessionId,
       `seq=${session.seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} subs=${session.subscribers.size}`);
-    broadcastEventToSession(session, event, session.seq);
+    if (isCoalescibleLiveDelta(event)) scheduleLiveBroadcast(session);
+    else broadcastEventToSession(session, event, session.seq);
     return;
   }
   addEvent(
@@ -927,6 +1001,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   // ses-* temp-ID class of bugs (stale lookups, sidebar invisibility, race conditions).
   const tempId = opts.sessionId ?? crypto.randomUUID();
   const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
+  const existingRow = isResume ? getSession(tempId) : null;
 
   // Branch detection: if resuming a session that has parent_session_id,
   // pass fork opts to the provider and clear the fields so it only forks once.
@@ -951,6 +1026,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   const session: ActiveSession = {
     sessionId: tempId,
     tempId,
+    providerSessionId: existingRow?.provider_session_id ?? null,
     status: "starting",
     profile: opts.profile,
     provider: providerName,
@@ -1022,6 +1098,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       preview: session.preview,
       profile: session.profile,
       provider: session.provider,
+      providerSessionId: session.providerSessionId ?? undefined,
       model: session.model,
       status: "starting",
       messageCount: 0,
@@ -1974,6 +2051,7 @@ export function subscribe(sessionId: string, writer: SSEWriter): () => void {
 export type GlobalSessionEvent =
   | { type: "session:created"; sessionId: string; status: SessionStatus; profile?: string; userProfile?: string; preview?: string }
   | { type: "session:status"; sessionId: string; status: SessionStatus; costUsd?: number; preview?: string }
+  | { type: "session:activity"; sessionId: string; status: SessionStatus; seq: number; lastText: string | null; lastEventAt: number; costUsd?: number }
   | { type: "session:archived"; sessionId: string };
 
 type GlobalSSEWriter = {
@@ -1991,7 +2069,11 @@ export function subscribeGlobal(writer: GlobalSSEWriter): () => void {
 export function emitGlobalSessionEvent(event: GlobalSessionEvent) {
   const data = JSON.stringify(event);
   for (const sub of globalSubscribers) {
-    try { sub.write(data); } catch { globalSubscribers.delete(sub); }
+    try {
+      sub.write(data).catch(() => { globalSubscribers.delete(sub); });
+    } catch {
+      globalSubscribers.delete(sub);
+    }
   }
 }
 

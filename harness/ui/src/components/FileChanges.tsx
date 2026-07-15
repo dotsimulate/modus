@@ -3,7 +3,7 @@ import type { ToolCall } from "../../../sdk/index";
 import { API_BASE, tokenParam } from "../modusClient";
 import { useFileViewer } from "../providers/FileViewerContext";
 
-type FileEdit = {
+export type FileEdit = {
   filePath: string;
   type: "edit" | "write";
   oldString?: string;
@@ -99,7 +99,9 @@ export function countChanges(edits: FileEdit[]): { additions: number; deletions:
   let deletions = 0;
   for (const edit of edits) {
     if (edit.type === "write") {
-      additions += (edit.content ?? "").split("\n").length;
+      // Trace-backed writes know that the file was written but intentionally
+      // do not carry the full file body. Do not invent a +1 line for those.
+      if (edit.content != null) additions += edit.content.split("\n").length;
     } else {
       const oldLines = (edit.oldString ?? "").split("\n").filter(Boolean).length;
       const newLines = (edit.newString ?? "").split("\n").filter(Boolean).length;
@@ -125,7 +127,18 @@ function basename(p: string): string {
 /** Render a single edit as a table hunk — reuses git diff CSS */
 export function EditHunk({ edit, idx }: { edit: FileEdit; idx: number }) {
   if (edit.type === "write") {
-    const lines = (edit.content ?? "").split("\n");
+    if (edit.content == null) {
+      return (
+        <tbody className="diff-hunk-block">
+          <tr className="diff-hunk-header">
+            <td className="diff-gutter" colSpan={3}></td>
+            <td className="diff-hunk-range">file written</td>
+          </tr>
+        </tbody>
+      );
+    }
+
+    const lines = edit.content.split("\n");
     const show = lines.slice(0, 30);
     return (
       <tbody className="diff-hunk-block">

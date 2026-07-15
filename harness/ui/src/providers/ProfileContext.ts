@@ -13,7 +13,7 @@ type ProfileContextValue = {
   activeUserProfile: string | null;
   activeUP: UserProfile | null;
   activeCwd: string | undefined;
-  /** Project root — always the user profile's first project, not a profile subfolder */
+  /** Configured project root containing the selected CWD (first root as fallback). */
   projectRoot: string | undefined;
   selectedProfile: string;
   selectProfile: (name: string) => void;

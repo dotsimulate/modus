@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Boolean / GEO.FX</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      background: #070908;
+      color: #f4f6ef;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+
+    body {
+      background:
+        radial-gradient(circle at 50% 42%, rgba(184, 255, 38, .06), transparent 35%),
+        #070908;
+    }
+
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
+
+    .hud {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(22px, 4vw, 54px);
+      pointer-events: none;
+    }
+
+    .topline, .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .23em;
+      text-transform: uppercase;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .16em;
+      color: #8c948c;
+      text-transform: uppercase;
+    }
+
+    .status::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #b8ff26;
+      box-shadow: 0 0 14px #b8ff26;
+    }
+
+    .title {
+      position: absolute;
+      top: 50%;
+      left: clamp(22px, 4vw, 54px);
+      transform: translateY(-50%);
+      max-width: 310px;
+    }
+
+    .eyebrow {
+      margin: 0 0 18px;
+      font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .18em;
+      color: #b8ff26;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(48px, 7vw, 106px);
+      font-weight: 600;
+      line-height: .78;
+      letter-spacing: -.075em;
+    }
+
+    h1 span {
+      display: block;
+      margin-left: .68em;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(244, 246, 239, .5);
+    }
+
+    .description {
+      width: 210px;
+      margin: 28px 0 0 3px;
+      color: #858b84;
+      font-size: 11px;
+      line-height: 1.7;
+      letter-spacing: .03em;
+    }
+
+    .controls {
+      display: flex;
+      padding: 4px;
+      border: 1px solid rgba(244, 246, 239, .13);
+      border-radius: 999px;
+      background: rgba(7, 9, 8, .6);
+      backdrop-filter: blur(12px);
+      pointer-events: auto;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      background: transparent;
+      color: #777e76;
+      font: 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: color .2s, background .2s;
+    }
+
+    button:hover { color: #f4f6ef; }
+    button.active { color: #070908; background: #b8ff26; }
+
+    .hint {
+      font: 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #5f655f;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .error {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      padding: 30px;
+      white-space: pre-wrap;
+      color: #ff806a;
+      background: #070908;
+      font: 12px/1.7 ui-monospace, monospace;
+    }
+
+    @media (max-width: 720px) {
+      .title { top: 24%; transform: none; }
+      .description { display: none; }
+      .footer { flex-direction: column-reverse; align-items: flex-start; }
+      .controls { align-self: center; }
+      .hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+
+  <main class="hud">
+    <header class="topline">
+      <div class="brand">Geo / Lab—01</div>
+      <div class="status">Shader live</div>
+    </header>
+
+    <section class="title">
+      <p class="eyebrow">Signed distance study</p>
+      <h1>BOOL<span>EAN</span></h1>
+      <p class="description">Two primitives. One field. Real-time constructive solid geometry rendered on the GPU.</p>
+    </section>
+
+    <footer class="footer">
+      <div class="hint">Drag to orbit · move to disturb</div>
+      <nav class="controls" aria-label="Boolean operation">
+        <button type="button" data-mode="0" class="active">Union</button>
+        <button type="button" data-mode="1">Subtract</button>
+        <button type="button" data-mode="2">Intersect</button>
+      </nav>
+      <div class="hint" id="readout">OP / 00—UNION</div>
+    </footer>
+  </main>
+
+  <pre class="error" id="error"></pre>
+
+  <script type="module">
+    const canvas = document.querySelector("#gl");
+    const errorPanel = document.querySelector("#error");
+    const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+
+    if (!gl) fail("This piece requires WebGL 2.");
+
+    const vertexSource = `#version 300 es
+      precision highp float;
+      out vec2 vUv;
+      void main() {
+        vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+        vUv = p;
+        gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+      }
+    `;
+
+    const fragmentSource = `#version 300 es
+      precision highp float;
+
+      in vec2 vUv;
+      out vec4 fragColor;
+
+      uniform vec2 uResolution;
+      uniform vec2 uPointer;
+      uniform float uTime;
+      uniform float uMode;
+      uniform float uYaw;
+      uniform float uPitch;
+
+      #define MAX_STEPS 110
+      #define FAR_CLIP 12.0
+      #define EPSILON .0015
+
+      mat2 rot(float a) {
+        float c = cos(a), s = sin(a);
+        return mat2(c, -s, s, c);
+      }
+
+      float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+      float sdBox(vec3 p, vec3 b) {
+        vec3 q = abs(p) - b;
+        return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+      }
+
+      // Polynomial smooth-min preserves the signed-distance character while
+      // adding a controllable fillet to the Boolean union.
+      float smoothUnion(float a, float b, float k) {
+        float h = clamp(.5 + .5 * (b - a) / k, 0.0, 1.0);
+        return mix(b, a, h) - k * h * (1.0 - h);
+      }
+
+      float opSubtract(float a, float b) { return max(a, -b); }
+      float opIntersect(float a, float b) { return max(a, b); }
+
+      vec2 mapScene(vec3 p) {
+        vec3 q = p;
+        q.xy *= rot((uPointer.x - .5) * .18);
+        q.yz *= rot((uPointer.y - .5) * -.12);
+        q.xz *= rot(uTime * .16);
+        q.xy *= rot(-.20 + sin(uTime * .23) * .12);
+
+        float pulse = sin(uTime * .65) * .14;
+        float sphere = sdSphere(q - vec3(.42 + pulse, .04, .0), 1.05);
+
+        vec3 bp = q + vec3(.36, -.03, .0);
+        bp.xy *= rot(.68 + uTime * .08);
+        bp.yz *= rot(.55);
+        float box = sdBox(bp, vec3(.82));
+
+        float d;
+        float material;
+        if (uMode < .5) {
+          d = smoothUnion(sphere, box, .16);
+          material = sphere < box ? 1.0 : 2.0;
+        } else if (uMode < 1.5) {
+          d = opSubtract(box, sphere);
+          material = sphere < -box ? 3.0 : 2.0;
+        } else {
+          d = opIntersect(sphere, box);
+          material = 3.0;
+        }
+        return vec2(d, material);
+      }
+
+      vec3 normalAt(vec3 p) {
+        vec2 e = vec2(EPSILON, 0.0);
+        return normalize(vec3(
+          mapScene(p + e.xyy).x - mapScene(p - e.xyy).x,
+          mapScene(p + e.yxy).x - mapScene(p - e.yxy).x,
+          mapScene(p + e.yyx).x - mapScene(p - e.yyx).x
+        ));
+      }
+
+      float ambientOcclusion(vec3 p, vec3 n) {
+        float occ = 0.0;
+        float weight = 1.0;
+        for (int i = 1; i <= 5; i++) {
+          float len = .055 * float(i);
+          occ += (len - mapScene(p + n * len).x) * weight;
+          weight *= .55;
+        }
+        return clamp(1.0 - occ * 2.1, 0.0, 1.0);
+      }
+
+      float softShadow(vec3 ro, vec3 rd, float minT, float maxT) {
+        float shade = 1.0;
+        float t = minT;
+        for (int i = 0; i < 48; i++) {
+          float h = mapScene(ro + rd * t).x;
+          shade = min(shade, 14.0 * h / t);
+          t += clamp(h, .015, .22);
+          if (h < EPSILON || t > maxT) break;
+        }
+        return clamp(shade, 0.0, 1.0);
+      }
+
+      vec2 raymarch(vec3 ro, vec3 rd) {
+        float t = 0.0;
+        float material = 0.0;
+        for (int i = 0; i < MAX_STEPS; i++) {
+          vec2 hit = mapScene(ro + rd * t);
+          if (abs(hit.x) < EPSILON || t > FAR_CLIP) {
+            material = hit.y;
+            break;
+          }
+          t += hit.x * .72;
+        }
+        return vec2(t, material);
+      }
+
+      vec3 aces(vec3 x) {
+        return clamp((x * (2.51 * x + .03)) / (x * (2.43 * x + .59) + .14), 0.0, 1.0);
+      }
+
+      void main() {
+        vec2 uv = (gl_FragCoord.xy * 2.0 - uResolution.xy) / uResolution.y;
+
+        vec3 ro = vec3(0.0, .15, 4.7);
+        ro.yz *= rot(uPitch);
+        ro.xz *= rot(uYaw);
+        vec3 target = vec3(0.0);
+        vec3 forward = normalize(target - ro);
+        vec3 right = normalize(cross(forward, vec3(0.0, 1.0, 0.0)));
+        vec3 up = cross(right, forward);
+        vec3 rd = normalize(forward * 2.05 + right * uv.x + up * uv.y);
+
+        vec3 bg = mix(vec3(.018, .022, .020), vec3(.045, .052, .045), max(0.0, 1.0 - length(uv) * .48));
+        bg += vec3(.012) * (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - .5);
+
+        vec2 trace = raymarch(ro, rd);
+        vec3 color = bg;
+
+        if (trace.x < FAR_CLIP) {
+          vec3 p = ro + rd * trace.x;
+          vec3 n = normalAt(p);
+          vec3 lightDir = normalize(vec3(-.7, 1.1, 1.0));
+          float diffuse = max(dot(n, lightDir), 0.0);
+          float back = max(dot(n, normalize(vec3(.8, -.2, -.7))), 0.0);
+          float shadow = softShadow(p + n * .012, lightDir, .03, 5.0);
+          float ao = ambientOcclusion(p, n);
+          float fresnel = pow(1.0 + dot(rd, n), 4.0);
+          float specular = pow(max(dot(reflect(-lightDir, n), -rd), 0.0), 40.0);
+
+          vec3 base = trace.y < 1.5 ? vec3(.52, .57, .50) : vec3(.25, .28, .25);
+          if (trace.y > 2.5) base = vec3(.32, .38, .24);
+
+          color = base * (.11 + diffuse * shadow * .82 + back * .15) * ao;
+          color += vec3(.72, 1.0, .12) * (specular * .7 + fresnel * .18) * ao;
+          color += vec3(.025) * n.y;
+
+          // Fine contour bands reveal the distance field without texture maps.
+          float contour = smoothstep(.47, .5, abs(fract(p.y * 13.0) - .5));
+          color *= mix(.94, 1.0, contour);
+        }
+
+        float vignette = 1.0 - smoothstep(.35, 1.45, length(uv * vec2(.72, .9)));
+        color *= mix(.66, 1.0, vignette);
+        color = aces(color);
+        color = pow(color, vec3(1.0 / 2.2));
+        fragColor = vec4(color, 1.0);
+      }
+    `;
+
+    function fail(message) {
+      errorPanel.style.display = "grid";
+      errorPanel.textContent = message;
+      throw new Error(message);
+    }
+
+    function shader(type, source) {
+      const value = gl.createShader(type);
+      gl.shaderSource(value, source);
+      gl.compileShader(value);
+      if (!gl.getShaderParameter(value, gl.COMPILE_STATUS)) {
+        fail(gl.getShaderInfoLog(value) || "Shader compilation failed.");
+      }
+      return value;
+    }
+
+    const program = gl.createProgram();
+    gl.attachShader(program, shader(gl.VERTEX_SHADER, vertexSource));
+    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, fragmentSource));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) fail(gl.getProgramInfoLog(program));
+    gl.useProgram(program);
+    gl.bindVertexArray(gl.createVertexArray());
+
+    const uniforms = Object.fromEntries(
+      ["uResolution", "uPointer", "uTime", "uMode", "uYaw", "uPitch"]
+        .map(name => [name, gl.getUniformLocation(program, name)])
+    );
+
+    const pointer = { x: .5, y: .5, down: false, startX: 0, startY: 0 };
+    let yaw = -.18;
+    let pitch = -.08;
+    let startYaw = yaw;
+    let startPitch = pitch;
+    let mode = 0;
+
+    function point(event) {
+      pointer.x = event.clientX / innerWidth;
+      pointer.y = 1 - event.clientY / innerHeight;
+    }
+
+    addEventListener("pointermove", event => {
+      point(event);
+      if (!pointer.down) return;
+      yaw = startYaw + (event.clientX - pointer.startX) * .006;
+      pitch = Math.max(-.8, Math.min(.8, startPitch + (event.clientY - pointer.startY) * .005));
+    });
+
+    addEventListener("pointerdown", event => {
+      pointer.down = true;
+      pointer.startX = event.clientX;
+      pointer.startY = event.clientY;
+      startYaw = yaw;
+      startPitch = pitch;
+      canvas.setPointerCapture?.(event.pointerId);
+    });
+
+    addEventListener("pointerup", () => { pointer.down = false; });
+
+    const labels = ["UNION", "SUBTRACT", "INTERSECT"];
+    document.querySelectorAll("button[data-mode]").forEach(button => {
+      button.addEventListener("click", () => {
+        mode = Number(button.dataset.mode);
+        document.querySelectorAll("button[data-mode]").forEach(item => item.classList.toggle("active", item === button));
+        document.querySelector("#readout").textContent = `OP / 0${mode}—${labels[mode]}`;
+      });
+    });
+
+    function resize() {
+      const dpr = Math.min(devicePixelRatio, 2);
+      const width = Math.round(innerWidth * dpr);
+      const height = Math.round(innerHeight * dpr);
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      gl.viewport(0, 0, width, height);
+    }
+
+    function render(now) {
+      resize();
+      gl.uniform2f(uniforms.uResolution, canvas.width, canvas.height);
+      gl.uniform2f(uniforms.uPointer, pointer.x, pointer.y);
+      gl.uniform1f(uniforms.uTime, now * .001);
+      gl.uniform1f(uniforms.uMode, mode);
+      gl.uniform1f(uniforms.uYaw, yaw);
+      gl.uniform1f(uniforms.uPitch, pitch);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      requestAnimationFrame(render);
+    }
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

@@ -7,7 +7,7 @@
 
 import type {
   AgentConfigState, Message, ToolCall, SubTask, SessionStatus,
-  Attachment, PendingPermission, SessionArtifact,
+  Attachment, PendingPermission, SessionArtifact, MessageContentBlock,
 } from "../../sdk/index";
 import { nextMsgId } from "../../sdk/index";
 
@@ -528,6 +528,18 @@ function readProviderControls(providerControls: any): AgentConfigState["provider
       next.claude.permissionMode = claude.permissionMode;
     }
   }
+  const rawAntigravity = (providerControls as Record<string, unknown>).antigravity;
+  if (rawAntigravity && typeof rawAntigravity === "object") {
+    const antigravity = rawAntigravity as Record<string, unknown>;
+    next.antigravity = {};
+    if (antigravity.mode === "accept-edits" || antigravity.mode === "plan") {
+      next.antigravity.mode = antigravity.mode;
+    }
+    if (typeof antigravity.sandbox === "boolean") next.antigravity.sandbox = antigravity.sandbox;
+    if (typeof antigravity.printTimeout === "string" && antigravity.printTimeout.trim()) {
+      next.antigravity.printTimeout = antigravity.printTimeout;
+    }
+  }
   return next;
 }
 
@@ -542,15 +554,18 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
   let text = "";
   let thinking = "";
   const toolCalls: ToolCall[] = [];
+  const contentBlocks: MessageContentBlock[] = [];
   const feedParts: string[] = [];
 
   for (const block of content) {
     if (block.type === "text" && block.text) {
       text += block.text;
+      contentBlocks.push({ type: "text", text: block.text });
       feedParts.push(block.text);
     }
     if (block.type === "thinking" && block.thinking) {
       thinking = block.thinking;
+      contentBlocks.push({ type: "thinking", thinking: block.thinking });
       feedParts.push(block.thinking);
     }
     if (block.type === "tool_use") {
@@ -562,6 +577,7 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
         startedAt: ts,
       };
       toolCalls.push(tc);
+      contentBlocks.push({ type: "tool_call", toolCall: tc });
       // Track in pending map for result matching (immutable copy)
       s._pendingToolCalls = new Map(s._pendingToolCalls);
       s._pendingToolCalls.set(block.id, tc);
@@ -581,6 +597,7 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
       timestamp: ts,
       thinking: thinking || undefined,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
     };
 
     const lastSub = getLastSubMessage(s.messages, s._activeAgentToolId);
@@ -594,6 +611,7 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
         content: text || prev.content,
         thinking: thinking || prev.thinking,
         toolCalls: [...(prev.toolCalls ?? []), ...toolCalls],
+        contentBlocks: [...(prev.contentBlocks ?? []), ...contentBlocks],
       }));
     } else {
       msgs = appendSubMessage(s.messages, s._activeAgentToolId, subMsg);
@@ -621,6 +639,7 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
         content: text || last.content,
         thinking: thinking || last.thinking,
         toolCalls: [...(last.toolCalls ?? []), ...toolCalls],
+        contentBlocks: [...(last.contentBlocks ?? []), ...contentBlocks],
         ...(messageUuid && !last.uuid ? { uuid: messageUuid } : {}),
         ...(thinkingDuration != null && !last.thinkingDuration && { thinkingDuration }),
       };
@@ -633,6 +652,7 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
         timestamp: ts,
         thinking: thinking || undefined,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
         ...(thinkingDuration != null && { thinkingDuration }),
       });
     }
@@ -673,10 +693,16 @@ function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
             for (let i = msgs.length - 1; i >= 0; i--) {
               const msg = msgs[i];
               if (msg.toolCalls?.some((t) => t.id === block.tool_use_id)) {
+                const nextToolCalls = msg.toolCalls!.map((t) =>
+                  t.id === block.tool_use_id ? { ...t, ...updateFields } : t
+                );
                 msgs[i] = {
                   ...msg,
-                  toolCalls: msg.toolCalls!.map((t) =>
-                    t.id === block.tool_use_id ? { ...t, ...updateFields } : t
+                  toolCalls: nextToolCalls,
+                  contentBlocks: msg.contentBlocks?.map((contentBlock) =>
+                    contentBlock.type === "tool_call" && contentBlock.toolCall.id === block.tool_use_id
+                      ? { ...contentBlock, toolCall: { ...contentBlock.toolCall, ...updateFields } }
+                      : contentBlock
                   ),
                 };
                 found = true;

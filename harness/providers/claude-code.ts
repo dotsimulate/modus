@@ -9,12 +9,19 @@ import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import type { SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getUserData, type McpServerConfig, type PermissionPolicy } from "../profiles";
-import { getMaxSeq, getSession, updateSessionStatus } from "../db";
+import {
+  getMaxSeq,
+  getObservedProviderSessionIds,
+  getSession,
+  updateProviderSessionId,
+  updateSessionStatus,
+} from "../db";
 import { logActivity } from "../activity";
 import { dirname, isAbsolute, join } from "path";
 import { existsSync, appendFileSync, mkdirSync } from "fs";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { getMemoryLimitedEnv } from "../memory-guard";
+import { claudeNativeHistoryExists, selectProviderResumeTarget, type ResumeTargetSelection } from "../provider-session-identity";
 
 // Dedicated message-flow log — gitignored, append-only, easy to tail
 const MSG_LOG = join(import.meta.dir, "..", ".modus", "msg-flow.log");
@@ -91,6 +98,10 @@ type ClaudeCodeState = {
   interrupting?: boolean;
   spawnedAt?: number;
   spawnedPid?: number;
+  /** Native conversation requested for this subprocess, if it must resume. */
+  resumeTarget?: string;
+  /** Branch subprocesses legitimately return a new ID instead of resumeTarget. */
+  isBranch?: boolean;
 };
 
 type InputChannel = {
@@ -190,11 +201,25 @@ function normalizeClaudeEffort(effort?: string): string | undefined {
   return effort;
 }
 
-function hasClaudeResumeState(sessionId?: string): boolean {
-  if (!sessionId) return false;
+function resolveClaudeResumeTarget(sessionId?: string): ResumeTargetSelection {
+  if (!sessionId) return { target: null, source: "none" };
   const row = getSession(sessionId);
-  if (!row) return false;
-  return row.message_count > 0 || !!row.parent_session_id || !!row.branch_message_uuid;
+  if (!row) return { target: null, source: "none" };
+  const needsResume = row.message_count > 0
+    || getMaxSeq(sessionId) > 0
+    || !!row.parent_session_id
+    || !!row.branch_message_uuid;
+  const selection = selectProviderResumeTarget({
+    needsResume,
+    modusSessionId: sessionId,
+    persistedProviderSessionId: row.provider_session_id,
+    observedProviderSessionIds: getObservedProviderSessionIds(sessionId),
+    providerLabel: "Claude Code",
+  }, claudeNativeHistoryExists);
+  if (selection.target && selection.source.startsWith("legacy")) {
+    updateProviderSessionId(sessionId, selection.target);
+  }
+  return selection;
 }
 
 type ClaudePermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk";
@@ -627,9 +652,21 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       // Branch fork: resume from parent session, fork to new ID
       const isBranch = !!opts.branchParentId;
-      const canResume = hasClaudeResumeState(opts.sessionId);
-      const resumeTarget = isBranch ? opts.branchParentId : (canResume ? opts.sessionId : undefined);
-      console.log(`[claude-code] startTurn isBranch=${isBranch} resume=${resumeTarget} sessionId=${opts.sessionId} branchParent=${opts.branchParentId} branchMsgUUID=${opts.branchMessageUUID}`);
+      const resumeSelection = resolveClaudeResumeTarget(isBranch ? opts.branchParentId : opts.sessionId);
+      const resumeTarget = resumeSelection.target ?? undefined;
+      const resumeError = resumeSelection.error
+        ?? (isBranch && !resumeTarget ? "Claude Code branch parent has no verifiable native conversation" : undefined);
+      if (resumeError) {
+        console.error(`[claude-code] ${resumeError} session=${session.sessionId}`);
+        session.status = "error";
+        session.error = resumeError;
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: resumeError });
+        ctx.emitEvent({ type: "done" });
+        return;
+      }
+      session.providerSessionId = resumeTarget ?? null;
+      console.log(`[claude-code] startTurn isBranch=${isBranch} resume=${resumeTarget} resumeSource=${resumeSelection.source} sessionId=${opts.sessionId} branchParent=${opts.branchParentId} branchMsgUUID=${opts.branchMessageUUID}`);
 
       // Fork options are one-shot — only used for the initial query(), never stored
       const forkOpts = isBranch ? {
@@ -736,6 +773,8 @@ export function createClaudeCodeProvider(): SessionProvider {
         sdkOptions,
         input: channel,
         stderrBuf: "",
+        resumeTarget,
+        isBranch,
       };
       session._providerState = state;
 
@@ -844,14 +883,29 @@ export function createClaudeCodeProvider(): SessionProvider {
       session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
       channel.push(content);
 
+      const resumeSelection = resolveClaudeResumeTarget(session.sessionId);
+      if (!resumeSelection.target) {
+        const reason = resumeSelection.error ?? "Claude Code native conversation identity is unavailable; refusing to start fresh";
+        console.error(`[claude-code] ${reason} session=${session.sessionId}`);
+        session.status = "error";
+        session.error = reason;
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: reason });
+        ctx.emitEvent({ type: "done" });
+        return;
+      }
+      session.providerSessionId = resumeSelection.target;
+      state.resumeTarget = resumeSelection.target;
+      state.isBranch = false;
+
       const sdkOpts = {
         ...state.sdkOptions,
-        resume: session.sessionId,
+        resume: resumeSelection.target,
         abortController: session.abortController,
       };
       const spawnedAt = Date.now();
       msgLog(sid, "COLD-START", "spawning new subprocess with --resume");
-      console.log(`[claude-code] SPAWN (resume) ${session.sessionId} at ${new Date(spawnedAt).toLocaleTimeString()}`);
+      console.log(`[claude-code] SPAWN (resume) modus=${session.sessionId} provider=${resumeSelection.target} source=${resumeSelection.source} at ${new Date(spawnedAt).toLocaleTimeString()}`);
       const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
       state.queryObj = newQ;
       state.spawnedAt = spawnedAt;
@@ -1200,8 +1254,22 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
         initSeen = true;
         console.log(`[claude-code] INIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events so far)`);
         const realId = m.session_id;
-        const isResume = session.sessionId === realId && hasClaudeResumeState(realId);
+        if (!state.isBranch && state.resumeTarget && realId !== state.resumeTarget) {
+          const reason = `Claude Code refused resume target ${state.resumeTarget} and returned ${realId}; refusing to continue without the original context`;
+          console.error(`[claude-code] ${reason}`);
+          session.status = "error";
+          session.error = reason;
+          updateSessionStatus(session.sessionId, "error");
+          ctx.broadcastEvent({ type: "error", error: reason });
+          try { session.abortController.abort(); } catch { /* best effort */ }
+          try { state.input.close(); } catch { /* best effort */ }
+          try { state.queryObj?.close(); } catch { /* best effort */ }
+          ctx.emitEvent({ type: "done" });
+          return;
+        }
+        const isResume = !!state.resumeTarget && state.resumeTarget === realId;
 
+        ctx.setProviderSessionId(realId);
         ctx.rekeySession(realId);
         session.model = m.model ?? session.model;
         session.status = "running";
@@ -1525,7 +1593,21 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       const { generator, channel } = createInputChannel();
       state.input = channel;
       channel.push(next);
-      const sdkOpts = { ...state.sdkOptions, resume: session.sessionId, abortController: session.abortController };
+      const resumeSelection = resolveClaudeResumeTarget(session.sessionId);
+      if (!resumeSelection.target) {
+        const reason = resumeSelection.error ?? "Claude Code native conversation identity is unavailable; refusing to start fresh";
+        console.error(`[claude-code] ${reason} session=${session.sessionId}`);
+        session.status = "error";
+        session.error = reason;
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: reason });
+        ctx.emitEvent({ type: "done" });
+        return;
+      }
+      session.providerSessionId = resumeSelection.target;
+      state.resumeTarget = resumeSelection.target;
+      state.isBranch = false;
+      const sdkOpts = { ...state.sdkOptions, resume: resumeSelection.target, abortController: session.abortController };
       const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
       state.queryObj = newQ;
       drainEvents(ctx, state, newQ).catch((err) => {

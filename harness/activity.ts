@@ -8,9 +8,9 @@
  */
 
 import { Database } from "bun:sqlite";
-import { join } from "path";
+import { resolveDatabasePath } from "./database-paths";
 
-const DB_PATH = join(import.meta.dir, "activity.db");
+const DB_PATH = resolveDatabasePath("activity.db");
 const adb = new Database(DB_PATH);
 
 adb.run("PRAGMA journal_mode = WAL");

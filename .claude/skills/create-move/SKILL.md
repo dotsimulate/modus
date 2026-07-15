@@ -59,9 +59,7 @@ by name).
 
 **"I need a visual interface"**
   Add a `widget` block to any of the above.
-  See [references/widget-moves.md](references/widget-moves.md) for wiring and lifecycle.
-  Read [references/widget-design.md](references/widget-design.md) for design expectations,
-  available components/hooks, the CSS token catalog, and the design checklist.
+  See [references/widget-moves.md](references/widget-moves.md).
 
 **"I need a full page in the app nav"**
   Add a `page` block.

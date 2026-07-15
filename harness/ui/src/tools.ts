@@ -49,6 +49,15 @@ export const GEMINI_TOOL_GROUPS: ToolGroup[] = [
   { label: "web", tools: ["google_web_search"] },
 ];
 
+// Google Antigravity tool identifiers from its documented JSON Hooks contract.
+export const ANTIGRAVITY_TOOL_GROUPS: ToolGroup[] = [
+  { label: "files", tools: ["view_file", "write_to_file", "replace_file_content", "multi_replace_file_content", "list_dir", "find_by_name"] },
+  { label: "search", tools: ["grep_search", "search_web", "read_url_content"] },
+  { label: "exec", tools: ["run_command", "manage_task", "schedule", "list_permissions", "ask_permission"] },
+  { label: "agent", tools: ["invoke_subagent", "define_subagent", "send_message", "manage_subagents"] },
+  { label: "interaction", tools: ["generate_image"] },
+];
+
 // Cursor Agent tools (matches cursor.ts builtInToolGroups)
 export const CURSOR_TOOL_GROUPS: ToolGroup[] = [
   { label: "exec", tools: ["Bash"] },
@@ -72,6 +81,10 @@ export function isGeminiProvider(provider?: string): boolean {
   return provider === "gemini-cli";
 }
 
+export function isAntigravityProvider(provider?: string): boolean {
+  return provider === "antigravity";
+}
+
 export function isCursorProvider(provider?: string): boolean {
   return provider === "cursor";
 }
@@ -80,9 +93,10 @@ export function isClaudeCodeProvider(provider?: string): boolean {
   return !provider || provider === "claude-code";
 }
 
-export function providerToolFamily(provider?: string): "claude-code" | "codex" | "cursor" | "gemini-cli" | "pi-agent" {
+export function providerToolFamily(provider?: string): "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "pi-agent" {
   if (isPiProvider(provider)) return "pi-agent";
   if (isCodexProvider(provider)) return "codex";
+  if (isAntigravityProvider(provider)) return "antigravity";
   if (isGeminiProvider(provider)) return "gemini-cli";
   if (isCursorProvider(provider)) return "cursor";
   return "claude-code";
@@ -96,6 +110,8 @@ export function getToolGroups(provider?: string): ToolGroup[] {
       return CODEX_TOOL_GROUPS;
     case "gemini-cli":
       return GEMINI_TOOL_GROUPS;
+    case "antigravity":
+      return ANTIGRAVITY_TOOL_GROUPS;
     case "cursor":
       return CURSOR_TOOL_GROUPS;
     default:

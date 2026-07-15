@@ -8,12 +8,14 @@
  *   start       Start the harness server (foreground by default)
  *   stop        Stop a running daemon
  *   status      Show server status
+ *   remote      Manage tailnet exposure via tailscale serve (on|off|status)
  *   init [path] Initialize a .modus/ project
  *   open [path] Init + start + open browser to project
  *   setup       Install dependencies and build UI
  *   dev         Dev mode (harness + vite + file watchers)
  *   logs        Tail server output
  *   update      Pull latest + re-setup + restart
+ *   maintenance Inspect or apply plan-bound checkpoint storage maintenance
  *   --version   Print version
  */
 
@@ -27,21 +29,128 @@ import {
 } from "fs";
 import { createServer } from "net";
 import { spawnSync } from "child_process";
+import {
+  canAdoptLegacyRule,
+  classifyHttps443,
+  ownershipFor,
+  parseOwnership,
+  tailscaleServeOffArgs,
+  tailscaleServeOnArgs,
+} from "./tailscale-serve";
 
 // ── Tailscale Serve ──
+//
+// Remote access is opt-in: `modus remote on` persists it, `modus start --remote`
+// enables it for one run. Modus only ever manages a single HTTPS:443 root-path
+// proxy to its own local port. It classifies and mutates the :443 endpoint
+// alone — rules on any other port (belonging to other apps, or stale/dead) are
+// left completely untouched, and teardown removes only modus's own :443 rule
+// via `--https=443 off`, never `serve reset` (which would wipe everything).
 
 type TailscaleServeSetup = {
   remoteUrl: string | null;
   error: string | null;
+  skipped: string | null;
 };
 
+function tailscaleInstalled(): boolean {
+  try {
+    const res = spawnSync("tailscale", ["version"], {
+      stdio: ["ignore", "pipe", "pipe"], timeout: 3000,
+    });
+    return res.status === 0;
+  } catch { return false; }
+}
+
+/**
+ * Classify the machine's HTTPS:443 serve endpoint — the only thing modus
+ * manages. Rules on any other port are ignored entirely (never inspected,
+ * never touched), so modus coexists with unrelated serve rules and is
+ * unbothered by stale/dead ones left over from earlier experiments.
+ *   "none"    — no :443 web rule (safe to create ours, whatever else exists)
+ *   "modus"   — :443 root proxy to a local modus port (ours to replace)
+ *   "foreign" — :443 owned by something else (other target/paths/funnel) — never touch
+ */
+function classifyServeConfig(): "none" | "modus" | "foreign" {
+  const res = spawnSync("tailscale", ["serve", "status", "--json"], {
+    stdio: ["ignore", "pipe", "pipe"], timeout: 5000,
+  });
+  if (res.status !== 0) {
+    const err = (res.stderr?.toString() ?? "").toLowerCase();
+    // Some versions exit non-zero when nothing is served
+    if (err.includes("no serve config")) return "none";
+    return "foreign"; // could not read config — be conservative, don't touch :443
+  }
+  const raw = res.stdout.toString().trim();
+  if (!raw || raw === "{}" || raw === "null") return "none";
+  let cfg: any;
+  try { cfg = JSON.parse(raw); } catch { return "foreign"; }
+  if (!cfg || Object.keys(cfg).length === 0) return "none";
+
+  // Inspect ONLY the :443 web endpoint. Rules on other ports are none of our
+  // business — modus never reads or mutates them.
+  const web = cfg.Web ?? {};
+  const key443 = Object.keys(web).find((k) => k.endsWith(":443"));
+  if (!key443) return "none"; // no :443 rule → safe to create ours
+
+  // Funnel (public internet) on :443 was set deliberately by someone else.
+  if (cfg.AllowFunnel?.[key443]) return "foreign";
+
+  const handlers = web[key443]?.Handlers ?? {};
+  const paths = Object.keys(handlers);
+  if (paths.length !== 1 || paths[0] !== "/") return "foreign";
+  const proxy: string = handlers["/"]?.Proxy ?? "";
+  const m = proxy.match(/^https?:\/\/(?:127\.0\.0\.1|localhost):(\d+)$/);
+  if (!m) return "foreign";
+  // A prior modus run may have rotated within the ghost-port scan range.
+  const modusPorts = new Set<number>();
+  for (let offset = 0; offset < PORT_SCAN_RANGE; offset++) modusPorts.add(BASE_PORT + offset);
+  return modusPorts.has(Number(m[1])) ? "modus" : "foreign";
+}
+
+function readTailscaleOwnership() {
+  try { return parseOwnership(readFileSync(TAILSCALE_OWNERSHIP_FILE, "utf-8")); } catch { return null; }
+}
+
+function writeTailscaleOwnership(dnsName: string, port: number): void {
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  writeFileSync(TAILSCALE_OWNERSHIP_FILE, JSON.stringify(ownershipFor(dnsName, port), null, 2), "utf-8");
+}
+
+function serveConfigJson(): string | null {
+  const res = spawnSync("tailscale", ["serve", "status", "--json"], {
+    stdio: ["ignore", "pipe", "pipe"], timeout: 5000,
+  });
+  if (res.status !== 0) {
+    const err = (res.stderr?.toString() ?? "").toLowerCase();
+    if (err.includes("no serve config")) return "{}";
+    return null;
+  }
+  return res.stdout.toString().trim() || "{}";
+}
+
+function classifyOwnedServeConfig(): "none" | "modus" | "foreign" {
+  const raw = serveConfigJson();
+  return raw == null ? "foreign" : classifyHttps443(raw, readTailscaleOwnership());
+}
+
 function setupTailscaleServe(port: number): TailscaleServeSetup {
-  const status = spawnSync("tailscale", ["status", "--json"], {
+  // Right after a reboot the tailscale backend can lag behind modus; `status`
+  // exits non-zero until it finishes coming up. Retry briefly so a cold-start
+  // race doesn't silently disable remote access for the whole session.
+  let status = spawnSync("tailscale", ["status", "--json"], {
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 5000,
   });
+  for (let attempt = 0; attempt < 5 && status.status !== 0; attempt++) {
+    Bun.sleepSync(1000);
+    status = spawnSync("tailscale", ["status", "--json"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5000,
+    });
+  }
   if (status.status !== 0) {
-    return { remoteUrl: null, error: null }; // Tailscale not installed or not running
+    return { remoteUrl: null, error: null, skipped: "tailscale is not running — start it, then restart modus" };
   }
 
   try {
@@ -49,35 +158,90 @@ function setupTailscaleServe(port: number): TailscaleServeSetup {
     const dnsName = payload?.Self?.DNSName?.replace(/\.$/, "") ?? null;
     const remoteUrl = dnsName ? `https://${dnsName}` : null;
 
-    // Clear any stale serve config from a prior harness run (different port,
-    // dead process, etc.) before re-binding. `serve reset` is idempotent.
-    const reset = spawnSync("tailscale", ["serve", "reset"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    if (reset.status !== 0) {
-      const details = reset.stderr?.toString().trim() || reset.stdout?.toString().trim() || "tailscale serve reset failed";
-      console.error(`[tailscale] serve reset failed:`, details);
-      return { remoteUrl, error: details };
+    const rawConfig = serveConfigJson();
+    if (rawConfig == null) {
+      return { remoteUrl: null, error: null, skipped: "could not read tailscale serve configuration — leaving it untouched" };
+    }
+    let owner = classifyHttps443(rawConfig, readTailscaleOwnership());
+    if (owner === "foreign" && !readTailscaleOwnership() && canAdoptLegacyRule(
+      rawConfig, port, existsSync(REMOTE_FILE), BASE_PORT, PORT_SCAN_RANGE,
+    ) && dnsName) {
+      // One-time migration for the pre-ownership Modus rule. Persisted remote
+      // opt-in plus an exact current target are both required.
+      writeTailscaleOwnership(dnsName, port);
+      owner = classifyHttps443(rawConfig, readTailscaleOwnership());
+    }
+    if (owner === "foreign") {
+      return {
+        remoteUrl: null,
+        error: null,
+        skipped: `tailscale serve is already used by another service — leaving it untouched.\n           To expose modus manually: tailscale serve --bg ${port}`,
+      };
     }
 
-    const serve = spawnSync("tailscale", ["serve", "--bg", String(port)], {
+    // Empty or modus-owned config — set/replace our rule in place.
+    // --yes answers the interactive replace prompt non-interactively.
+    const serve = spawnSync("tailscale", tailscaleServeOnArgs(port), {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 10000,
     });
     if (serve.status !== 0) {
       const details = serve.stderr?.toString().trim() || serve.stdout?.toString().trim() || "tailscale serve failed";
       console.error(`[tailscale] serve --bg ${port} failed:`, details);
-      return { remoteUrl, error: details };
+      return { remoteUrl, error: details, skipped: null };
     }
 
+    if (dnsName) writeTailscaleOwnership(dnsName, port);
     console.log(`[tailscale] serve --bg ${port} ok → ${remoteUrl ?? "(no DNS name)"}`);
-    return { remoteUrl, error: null };
+    return { remoteUrl, error: null, skipped: null };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed to parse tailscale status";
     console.error(`[tailscale] setup error:`, msg);
-    return { remoteUrl: null, error: msg };
+    return { remoteUrl: null, error: msg, skipped: null };
   }
+}
+
+/**
+ * Remove modus's own serve rule — only the :443 endpoint, via `--https=443 off`.
+ * Never `serve reset` (which would wipe unrelated rules on other ports). Acts
+ * only when :443 is modus-owned. Returns true if the rule was removed.
+ */
+function clearTailscaleServe(): boolean {
+  try {
+    const raw = serveConfigJson();
+    if (raw == null) return false;
+    const owner = readTailscaleOwnership();
+    const classification = classifyHttps443(raw, owner);
+    if (classification === "none" && owner) {
+      try { unlinkSync(TAILSCALE_OWNERSHIP_FILE); } catch {}
+      return false;
+    }
+    if (classification !== "modus") return false;
+    const res = spawnSync("tailscale", tailscaleServeOffArgs(), {
+      stdio: ["ignore", "pipe", "pipe"], timeout: 5000,
+    });
+    if (res.status === 0) {
+      try { unlinkSync(TAILSCALE_OWNERSHIP_FILE); } catch {}
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
+/** Remote access resolution: --remote / --no-remote override the persisted setting. */
+function remoteEnabled(args: string[]): boolean {
+  if (hasFlag(args, "--no-remote")) return false;
+  if (hasFlag(args, "--remote")) return true;
+  try { return readFileSync(REMOTE_FILE, "utf-8").trim() === "tailscale"; } catch { return false; }
+}
+
+/** Best-effort check for a configured browser PIN (secrets file or env). */
+function pinConfigured(): boolean {
+  if (process.env.HARNESS_PIN) return true;
+  try {
+    const path = process.env.HARNESS_SECRETS_FILE ?? join(CONFIG_DIR, "secrets.env");
+    return /^\s*HARNESS_PIN\s*=\s*\S/m.test(readFileSync(path, "utf-8"));
+  } catch { return false; }
 }
 
 // ── Paths ──
@@ -88,6 +252,7 @@ const UI_DIR = join(HARNESS_DIR, "ui");
 const UI_SRC_DIR = join(UI_DIR, "src");
 const UI_DIST_DIR = join(UI_DIR, "dist");
 const BUN = process.execPath;
+const CLI_PATH = Bun.fileURLToPath(import.meta.url);
 
 const CONFIG_DIR = join(
   process.env.USERPROFILE ?? process.env.HOME ?? "",
@@ -96,10 +261,15 @@ const CONFIG_DIR = join(
 const TOKEN_FILE = join(CONFIG_DIR, "harness-token");
 const PID_FILE = join(CONFIG_DIR, "harness.pid");
 const PORT_FILE = join(CONFIG_DIR, "harness.port");
+const REMOTE_FILE = join(CONFIG_DIR, "remote");
+const TAILSCALE_OWNERSHIP_FILE = join(CONFIG_DIR, "tailscale-serve-owner.json");
 const LOG_FILE = join(HARNESS_DIR, "harness.log");
 const UI_DEPS_STAMP = join(UI_DIR, ".modus-deps.stamp");
 
 const BASE_PORT = Number(process.env.HARNESS_PORT ?? 3777);
+// Ghost-port rotation range, shared by cmdStart and the tailscale serve
+// ownership check (a prior run may have served a rotated port).
+const PORT_SCAN_RANGE = 5;
 
 // ── Helpers ──
 
@@ -328,6 +498,26 @@ function getArg(args: string[], index: number): string | undefined {
 
 // ── Commands ──
 
+async function cmdDaemonSupervise(): Promise<void> {
+  const child = spawn([BUN, "run", "index.ts"], {
+    cwd: HARNESS_DIR,
+    stdout: "inherit",
+    stderr: "inherit",
+    env: process.env,
+  });
+  let stopping = false;
+  const stopChild = () => {
+    if (stopping) return;
+    stopping = true;
+    killTree(child);
+  };
+  process.on("SIGINT", stopChild);
+  process.on("SIGTERM", stopChild);
+  const code = await child.exited;
+  clearTailscaleServe();
+  process.exit(code ?? 1);
+}
+
 async function cmdStart(args: string[]): Promise<void> {
   const daemon = hasFlag(args, "-d", "--daemon");
 
@@ -365,7 +555,6 @@ async function cmdStart(args: string[]): Promise<void> {
     }
     // Ghost socket — scan for a free port nearby (same strategy as watchdog.ts)
     console.log(`Port ${BASE_PORT} has orphaned TCP state from a dead process.`);
-    const PORT_SCAN_RANGE = 5;
     let found = false;
     for (let offset = 1; offset < PORT_SCAN_RANGE; offset++) {
       const candidate = BASE_PORT + offset;
@@ -384,6 +573,8 @@ async function cmdStart(args: string[]): Promise<void> {
 
   // Token
   const { token, source: tokenSource } = loadToken();
+  const remote = remoteEnabled(args);
+  if (!remote) clearTailscaleServe();
 
   // Clear nested-session guard
   delete process.env.CLAUDECODE;
@@ -397,7 +588,7 @@ async function cmdStart(args: string[]): Promise<void> {
   if (daemon) {
     // ── Daemon mode ──
     const logFd = openSync(LOG_FILE, "a");
-    const proc = spawn([BUN, "run", "index.ts"], {
+    const proc = spawn([BUN, "run", CLI_PATH, "__daemon-supervise"], {
       cwd: HARNESS_DIR,
       stdout: logFd,
       stderr: logFd,
@@ -412,16 +603,26 @@ async function cmdStart(args: string[]): Promise<void> {
     const healthy = await waitForHealth(usePort);
     if (!healthy) {
       console.error("Server did not become healthy within 15s. Check logs: modus logs");
+      killPid(proc.pid);
+      clearTailscaleServe();
+      cleanStateFiles();
       process.exit(1);
     }
 
     const lanIp = getLanIp();
-    const ts = setupTailscaleServe(usePort);
+    const ts = remote ? setupTailscaleServe(usePort) : null;
     console.log(`Modus running (pid ${proc.pid})`);
     console.log(`  http://localhost:${usePort}`);
     if (lanIp) console.log(`  http://${lanIp}:${usePort}`);
-    if (ts.remoteUrl) console.log(`  remote  ${ts.remoteUrl}`);
-    if (ts.error) console.log(`  tailscale: ${ts.error}`);
+    if (ts?.remoteUrl && !ts.error && !ts.skipped) console.log(`  remote  ${ts.remoteUrl}`);
+    if (ts?.skipped) console.log(`  tailscale: ${ts.skipped}`);
+    if (ts?.error) console.log(`  tailscale: ${ts.error}`);
+    if (ts?.remoteUrl && !ts.error && !ts.skipped && !pinConfigured()) {
+      console.log(`  note: no browser PIN is set — anyone on your tailnet can open modus`);
+    }
+    if (!remote && tailscaleInstalled()) {
+      console.log(`  remote access off — enable with: modus remote on`);
+    }
     console.log(`  token: ${token} (${tokenSource})`);
     console.log(`  logs:  modus logs`);
 
@@ -443,10 +644,13 @@ async function cmdStart(args: string[]): Promise<void> {
   writeStateFiles(proc.pid, usePort);
 
   let stopping = false;
+  let remoteActive = false;
   async function shutdown() {
     if (stopping) return;
     stopping = true;
     console.log("\nShutting down...");
+
+    if (remoteActive) clearTailscaleServe();
 
     const acked = await requestGracefulShutdown(usePort);
     if (acked) {
@@ -489,18 +693,29 @@ async function cmdStart(args: string[]): Promise<void> {
     }
     const lanIp = getLanIp();
     const host = hostname();
-    const ts = setupTailscaleServe(usePort);
+    const ts = remote ? setupTailscaleServe(usePort) : null;
+    remoteActive = Boolean(ts && ts.remoteUrl && !ts.error && !ts.skipped);
     console.log("");
     console.log(`  modus   http://localhost:${usePort}`);
     if (lanIp) {
       console.log(`  lan     http://${lanIp}:${usePort}`);
       console.log(`          http://${host}.local:${usePort}`);
     }
-    if (ts.remoteUrl) console.log(`  remote  ${ts.remoteUrl}`);
-    if (ts.error) {
+    if (remoteActive) console.log(`  remote  ${ts!.remoteUrl}`);
+    if (ts?.skipped) {
+      console.log("");
+      console.log(`  tailscale: ${ts.skipped}`);
+    }
+    if (ts?.error) {
       console.log("");
       console.log("  tailscale serve setup failed:");
       console.log(`           ${ts.error}`);
+    }
+    if (remoteActive && !pinConfigured()) {
+      console.log(`  note    no browser PIN is set — anyone on your tailnet can open modus`);
+    }
+    if (!remote && tailscaleInstalled()) {
+      console.log(`  remote  off — enable with: modus remote on`);
     }
     console.log(`  token   ${token} (${tokenSource})`);
     console.log("");
@@ -520,6 +735,7 @@ async function cmdStart(args: string[]): Promise<void> {
   if (!stopping) {
     // Process exited on its own (crash or clean exit)
     const code = proc.exitCode ?? 1;
+    clearTailscaleServe();
     cleanStateFiles();
     if (code !== 0) {
       console.error(`\nServer exited with code ${code}`);
@@ -538,6 +754,7 @@ async function cmdStop(_args: string[]): Promise<void> {
   if (!pid || !isPidAlive(pid)) {
     console.log("Modus is not running.");
     cleanStateFiles();
+    if (clearTailscaleServe()) console.log("Removed stale tailscale serve rule.");
     return;
   }
 
@@ -566,7 +783,55 @@ async function cmdStop(_args: string[]): Promise<void> {
   }
 
   cleanStateFiles();
+  if (clearTailscaleServe()) console.log("Removed tailscale serve rule.");
   console.log("Stopped.");
+}
+
+async function cmdRemote(args: string[]): Promise<void> {
+  const sub = getArg(args, 0);
+
+  if (sub === "on") {
+    if (!tailscaleInstalled()) {
+      console.error("Tailscale is not installed (or not on PATH).");
+      console.error("Install it from https://tailscale.com/download, then re-run: modus remote on");
+      process.exit(1);
+    }
+    mkdirSync(CONFIG_DIR, { recursive: true });
+    writeFileSync(REMOTE_FILE, "tailscale", "utf-8");
+    console.log("Remote access enabled — every start now exposes modus on your tailnet.");
+    if (!pinConfigured()) {
+      console.log("note: no browser PIN is set — anyone on your tailnet can open modus. Consider setting a PIN in settings.");
+    }
+    // If the server is already running, expose it now.
+    const pid = readPidFile();
+    if (pid && isPidAlive(pid)) {
+      const port = readPortFile() ?? BASE_PORT;
+      const ts = setupTailscaleServe(port);
+      if (ts.remoteUrl && !ts.error && !ts.skipped) console.log(`remote  ${ts.remoteUrl}`);
+      if (ts.skipped) console.log(`tailscale: ${ts.skipped}`);
+      if (ts.error) console.log(`tailscale: ${ts.error}`);
+    }
+    return;
+  }
+
+  if (sub === "off") {
+    try { unlinkSync(REMOTE_FILE); } catch { /* was not set */ }
+    const cleared = clearTailscaleServe();
+    console.log(`Remote access disabled.${cleared ? " Removed tailscale serve rule." : ""}`);
+    return;
+  }
+
+  // Default: status
+  const persisted = existsSync(REMOTE_FILE);
+  console.log(`Remote access: ${persisted ? "on (tailscale)" : "off"}`);
+  if (!tailscaleInstalled()) {
+    console.log("  tailscale: not installed");
+    return;
+  }
+  const owner = classifyOwnedServeConfig();
+  if (owner === "modus") console.log("  tailscale serve: active (modus-owned rule)");
+  else if (owner === "foreign") console.log("  tailscale serve: in use by another service — modus will not touch it");
+  else console.log("  tailscale serve: no active rule");
 }
 
 async function cmdStatus(_args: string[]): Promise<void> {
@@ -601,6 +866,38 @@ async function cmdStatus(_args: string[]): Promise<void> {
     }
   } catch {
     console.log("  health   unreachable");
+  }
+}
+
+async function cmdMaintenance(args: string[]): Promise<void> {
+  const subject = getArg(args, 0);
+  const apply = hasFlag(args, "--apply");
+  const dryRun = hasFlag(args, "--dry-run");
+  const planIdIndex = args.indexOf("--plan-id");
+  const expectedPlanId = planIdIndex >= 0 ? args[planIdIndex + 1] : undefined;
+  if (subject !== "checkpoints" || apply === dryRun || (apply && !expectedPlanId)) {
+    console.error("Usage: modus maintenance checkpoints --dry-run | --apply --plan-id <reviewed-plan-id>");
+    process.exit(1);
+  }
+  const { Database } = await import("bun:sqlite");
+  const { applyCheckpointMaintenance, planCheckpointMaintenance } = await import("./checkpoint-maintenance");
+  const dbPath = join(HARNESS_DIR, "harness.db");
+  const db = new Database(dbPath, dryRun ? { readonly: true } : undefined);
+  try {
+    if (dryRun) {
+      const rows = db.query(`SELECT * FROM checkpoints ORDER BY cwd, created_at DESC, id DESC`).all() as any[];
+      const active = db.query(
+        `SELECT id FROM sessions WHERE status IN ('running','starting','interrupting','idle','paused')`,
+      ).all() as Array<{ id: string }>;
+      console.log(JSON.stringify(planCheckpointMaintenance({
+        rows: rows as any,
+        protectedSessionIds: new Set(active.map((entry) => entry.id)),
+      }), null, 2));
+    } else {
+      console.log(JSON.stringify(applyCheckpointMaintenance({ db, expectedPlanId: expectedPlanId! }), null, 2));
+    }
+  } finally {
+    db.close();
   }
 }
 
@@ -844,8 +1141,12 @@ Usage: modus <command> [options]
 Commands:
   start         Start the server (foreground, ctrl+c to stop)
     -d           Run as background daemon
+    --remote     Expose on your tailnet for this run (see: modus remote)
+    --no-remote  Skip tailnet exposure for this run
   stop          Stop a running daemon
   status        Show server status
+  remote        Show remote access status
+    on|off       Persistently expose modus on your tailnet via tailscale serve
   init [path]   Initialize a .modus/ project structure
   open [path]   Init + start + open browser to project
   setup         Install dependencies and build UI
@@ -854,20 +1155,26 @@ Commands:
   logs          Show server logs
     -f           Follow (live tail)
   update        Pull latest, re-setup, restart if needed
+  maintenance   Checkpoint storage maintenance
+    checkpoints --dry-run  Print a non-destructive retention/GC plan
+    checkpoints --apply --plan-id <id>  Apply that exact reviewed plan
   --version     Print version`);
   process.exit(0);
 }
 
 switch (command) {
+  case "__daemon-supervise": await cmdDaemonSupervise(); break;
   case "start":   await cmdStart(commandArgs); break;
   case "stop":    await cmdStop(commandArgs); break;
   case "status":  await cmdStatus(commandArgs); break;
+  case "remote":  await cmdRemote(commandArgs); break;
   case "init":    cmdInit(commandArgs); break;
   case "open":    await cmdOpen(commandArgs); break;
   case "setup":   cmdSetup(commandArgs); break;
   case "dev":     await cmdDev(commandArgs); break;
   case "logs":    await cmdLogs(commandArgs); break;
   case "update":  await cmdUpdate(commandArgs); break;
+  case "maintenance": await cmdMaintenance(commandArgs); break;
   default:
     console.error(`Unknown command: ${command}\nRun 'modus --help' for usage.`);
     process.exit(1);

@@ -53,7 +53,7 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
   "loadProjectSettings": true,
   "effort": "low",
   "maxTurns": 30,
-  "additionalDirectories": ["/home/dot/shared-notes"],
+  "additionalDirectories": ["/home/alex/shared-notes"],
   "tools": ["Read", "Edit", "Bash"],
   "contextWindow": 65536,
   "maxOutputTokens": 2048,
@@ -67,7 +67,7 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 ### Key Fields
 
 **`provider`**: Execution backend. Registered providers are `"claude-code"`,
-`"claude-code-pty"`, `"codex"`, `"cursor"`, `"gemini-cli"`, `"opencode"`,
+`"claude-code-pty"`, `"codex"`, `"cursor"`, `"antigravity"`, `"opencode"`,
 `"litellm"`, `"ollama"`, and `"openrouter"`.
 
 **`additionalDirectories`**: Extra workspace roots to grant alongside the primary cwd.
@@ -92,15 +92,19 @@ Tool names differ between providers — see `docs/pi-agent-system.md` § Tool Na
 **`permissionPolicy`**: `"bypass"` (no checks), `"ask"` (approve every tool call),
 or an object with `autoApprove`/`requireApproval` lists for granular control.
 
+**`providerControls.antigravity`**: Optional documented Antigravity headless
+flags: `{ "mode": "accept-edits" | "plan", "sandbox": boolean,
+"printTimeout": "1h" }`.
+
 ## User Profiles (`~/.modus/profiles/users/*.json`)
 
 Scoped views of the harness. Filter which projects and agent profiles a user sees.
 
 ```json
 {
-  "displayName": "dot",
+  "displayName": "alex",
   "templateVars": { "stack": "TypeScript, Bun, Hono, React" },
-  "projects": ["/home/dot/dev/infra/agent_dev_zone"],
+  "projects": ["/home/alex/projects/webapp"],
   "agentProfiles": ["dev-agent", "web-ui", "research"],
   "showAllProjectPaths": true,
   "provider": "claude-code",
@@ -145,7 +149,7 @@ Three purposes:
 Flat key-value defaults. User profiles can override per-user.
 
 ```json
-{ "name": "dot", "stack": "TypeScript, Bun, Hono, React" }
+{ "name": "alex", "stack": "TypeScript, Bun, Hono, React" }
 ```
 
 Referenced in agent prompts as `{{name}}`, `{{stack}}`, etc.

@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
-import type { Session, SessionInfo, Attachment, MoveBinding } from "../../../sdk/index";
+import type { Session, SessionInfo, SessionProjectSummary, Attachment, MoveBinding } from "../../../sdk/index";
 import type { AgentConfigState } from "../components/AgentConfig";
+import type { SessionIndexConnectionState } from "../sessionIndexSync";
 
 export type QueuedMessage = {
   text: string;
@@ -13,6 +14,9 @@ export type QueuedMessage = {
 type SessionContextValue = {
   activeSession: Session | null;
   serverSessions: SessionInfo[];
+  allServerSessions: SessionInfo[];
+  sessionProjects: SessionProjectSummary[];
+  sessionIndexConnection: SessionIndexConnectionState;
   handleInputChange: (text: string) => void;
   send: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => Promise<void>;
   stop: () => Promise<void>;

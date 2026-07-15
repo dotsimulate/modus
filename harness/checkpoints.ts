@@ -26,9 +26,14 @@ import {
   getCheckpointById,
   type CheckpointRow,
 } from "./db";
+import {
+  checkpointMaintenancePolicy,
+  checkpointRepositoryBytes,
+} from "./checkpoint-maintenance";
 
 const DEFAULT_MAX_FILE_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+const DEFAULT_CAPTURE_TIMEOUT_MS = 30_000;
 const MANIFEST_VERSION = 2 as const;
 
 function positiveEnvInt(name: string, fallback: number): number {
@@ -46,7 +51,7 @@ export type CheckpointEntry = {
 
 export type CheckpointExclusion = {
   path: string;
-  reason: "oversized" | "total-limit" | "directory" | "unreadable" | "unsafe-path";
+  reason: "oversized" | "total-limit" | "time-limit" | "directory" | "unreadable" | "unsafe-path";
   bytes?: number;
 };
 
@@ -183,9 +188,15 @@ async function collectManifest(root: string): Promise<CheckpointManifest> {
   const excluded: CheckpointExclusion[] = [];
   const maxFileBytes = positiveEnvInt("MODUS_CHECKPOINT_MAX_FILE_BYTES", DEFAULT_MAX_FILE_BYTES);
   const maxTotalBytes = positiveEnvInt("MODUS_CHECKPOINT_MAX_TOTAL_BYTES", DEFAULT_MAX_TOTAL_BYTES);
+  const captureTimeoutMs = positiveEnvInt("MODUS_CHECKPOINT_CAPTURE_TIMEOUT_MS", DEFAULT_CAPTURE_TIMEOUT_MS);
+  const startedAt = Date.now();
   let totalBytes = 0;
 
   for (const candidate of candidates) {
+    if (Date.now() - startedAt > captureTimeoutMs) {
+      excluded.push({ path: candidate.path, reason: "time-limit" });
+      continue;
+    }
     const path = normalizeRelativePath(candidate.path);
     if (!path || seen.has(path)) {
       if (!path) excluded.push({ path: candidate.path, reason: "unsafe-path" });
@@ -272,6 +283,14 @@ export async function captureCheckpoint(cwd: string, sessionId: string, seq: num
   if (!root) return { ok: false, reason: "not a git repository" };
 
   return serialize(root, async () => {
+    const policy = checkpointMaintenancePolicy();
+    const repositoryBytes = checkpointRepositoryBytes(shadowDirFor(root));
+    if (repositoryBytes > policy.maxRepositoryBytes) {
+      return {
+        ok: false as const,
+        reason: `checkpoint repository exceeds ${policy.maxRepositoryBytes} bytes; run checkpoint maintenance before capturing more history`,
+      };
+    }
     await ensureShadowRepo(root);
     const manifest = await collectManifest(root);
     const g = shadowGit(root);

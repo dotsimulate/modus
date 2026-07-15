@@ -80,9 +80,14 @@ type Props = {
   onBranch?: (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => void;
   onStopTask?: (taskId: string) => void;
   onOpenSessionEdits?: () => void;
+  hasOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  olderMessagesError?: string;
+  onLoadOlderMessages?: () => void | Promise<void>;
+  onLoadMessageDetails?: (seq: number) => void | Promise<void>;
 };
 
-export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits }: Props) {
+export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits, hasOlderMessages = false, loadingOlderMessages = false, olderMessagesError, onLoadOlderMessages, onLoadMessageDetails }: Props) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   // Imperative handle into the virtualizer for tick-driven scrolling.
@@ -281,6 +286,17 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     [displayItems],
   );
 
+  const handleLoadOlderMessages = useCallback(async () => {
+    if (!onLoadOlderMessages) return;
+    const anchorKey = virtualItems[0]?.key;
+    await onLoadOlderMessages();
+    if (anchorKey) {
+      requestAnimationFrame(() => {
+        listControlsRef.current?.scrollToKey(anchorKey, { behavior: "auto", offset: 44 });
+      });
+    }
+  }, [onLoadOlderMessages, virtualItems]);
+
   const spineItems = useMemo<ChatSpineItem[]>(
     () =>
       displayItems
@@ -391,6 +407,9 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
               : undefined}
             onBranch={msg.role === "user" && msg.seq != null ? onBranch : undefined}
             onStopTask={onStopTask}
+            onLoadDetails={msg.detailsDeferred && msg.seq != null && onLoadMessageDetails
+              ? () => onLoadMessageDetails(msg.seq!)
+              : undefined}
           >
             {showFileChanges && (
               <>
@@ -422,7 +441,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     [sessionId, claimedCommitTags, onSessionTagsChange, turnFileEdits, provider,
      streaming, lastUser, lastAssistant, messages.length, showThinking, showMeta,
      showToolCalls, showGitEvents, cwd, lastTodoId, streamFeed, onBranch, onStopTask,
-     onOpenSessionEdits],
+     onOpenSessionEdits, onLoadMessageDetails],
   );
 
   const showAssistantPrelude = streaming && lastMessage?.role === "user";
@@ -504,6 +523,18 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
 
   return (
     <div className="chat-scroll-wrapper">
+      {(hasOlderMessages || loadingOlderMessages || olderMessagesError) && onLoadOlderMessages && (
+        <div className="chat-history-loader">
+          <button
+            type="button"
+            onClick={() => { void handleLoadOlderMessages(); }}
+            disabled={loadingOlderMessages}
+            title={olderMessagesError}
+          >
+            {loadingOlderMessages ? "loading earlier messages…" : olderMessagesError ? "retry earlier messages" : "load earlier messages"}
+          </button>
+        </div>
+      )}
       <div className="chat-scroll-row" data-spine={spineEnabled ? "on" : "off"}>
         <VirtualMessageList
           items={virtualItems}

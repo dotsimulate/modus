@@ -4,10 +4,14 @@ import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { getSessionState } from "../sessionStore";
 import { useWidgetUiState } from "./ui-state";
-import { useWidgetPollingValue } from "./widget-data";
 import { ProfilePanel } from "../components/sidebar/ProfilePanel";
+import {
+  isActiveProjectSessionStatus,
+  selectVisibleProjectSessions,
+  type ProjectWindow,
+} from "../sessionHistoryVisibility";
 import type { WidgetBase, WidgetProps } from "./types";
-import type { SessionInfo, ActiveSessionInfo } from "../../../sdk/index";
+import type { SessionInfo } from "../../../sdk/index";
 
 type SessionHistoryConfig = WidgetBase & {
   type: "session-history";
@@ -16,9 +20,12 @@ type SessionHistoryConfig = WidgetBase & {
   focusTabOnSelect?: string;
 };
 
-type ViewMode = "timeline" | "agents" | "status";
+type ViewMode = "projects" | "timeline" | "agents" | "status";
 type SortKey = "updated" | "created" | "cost" | "messages";
 type Density = "spacey" | "compact";
+
+const PROJECT_RECENT_LIMIT = 8;
+const PROJECT_REVEAL_STEP = 10;
 
 type LiveInfo = {
   status: string;
@@ -46,14 +53,14 @@ function relativeTime(ts: number): string {
 }
 
 function statusLabel(status: string): string {
-  if (status === "running") return "active";
+  if (status === "running" || status === "interrupting" || status === "paused") return "active";
   if (status === "starting" || status === "idle") return "idle";
   if (status === "error") return "error";
   return "done";
 }
 
 function statusOrder(status: string): number {
-  if (status === "running") return 0;
+  if (status === "running" || status === "active" || status === "interrupting" || status === "paused") return 0;
   if (status === "starting" || status === "idle") return 1;
   if (status === "error") return 2;
   return 3;
@@ -88,7 +95,7 @@ function truncateText(text: string, max: number): string {
   return text.slice(0, max).trimEnd() + "\u2026";
 }
 
-type TimelineGroup = { label: string; sessions: SessionInfo[] };
+type TimelineGroup = { key: string; label: string; sessions: SessionInfo[]; activeCount?: number };
 
 function groupByTimeline(sessions: SessionInfo[]): TimelineGroup[] {
   const now = Date.now();
@@ -112,7 +119,7 @@ function groupByTimeline(sessions: SessionInfo[]): TimelineGroup[] {
     buckets[label].push(s);
   }
 
-  return order.map(label => ({ label, sessions: buckets[label] }));
+  return order.map(label => ({ key: `timeline:${label}`, label, sessions: buckets[label] }));
 }
 
 function groupByAgent(sessions: SessionInfo[]): TimelineGroup[] {
@@ -128,7 +135,7 @@ function groupByAgent(sessions: SessionInfo[]): TimelineGroup[] {
       const bMax = Math.max(...b[1].map(s => s.updated_at));
       return bMax - aMax;
     })
-    .map(([label, sessions]) => ({ label, sessions }));
+    .map(([label, sessions]) => ({ key: `agent:${label}`, label, sessions }));
 }
 
 function groupByStatus(sessions: SessionInfo[]): TimelineGroup[] {
@@ -140,7 +147,36 @@ function groupByStatus(sessions: SessionInfo[]): TimelineGroup[] {
   }
   return Array.from(map.entries())
     .sort((a, b) => statusOrder(a[0]) - statusOrder(b[0]))
-    .map(([label, sessions]) => ({ label, sessions }));
+    .map(([label, sessions]) => ({ key: `status:${label}`, label, sessions }));
+}
+
+function isActiveStatus(status: string): boolean {
+  return isActiveProjectSessionStatus(status);
+}
+
+function groupByProject(sessions: SessionInfo[]): TimelineGroup[] {
+  const map = new Map<string, { label: string; sessions: SessionInfo[] }>();
+  for (const session of sessions) {
+    const key = session.project_id ?? "__other";
+    const group = map.get(key) ?? { label: session.project_name ?? "other", sessions: [] };
+    group.sessions.push(session);
+    map.set(key, group);
+  }
+  return Array.from(map.entries())
+    .map(([projectId, group]) => {
+      const ordered = [...group.sessions].sort((a, b) => {
+        const activity = Number(isActiveStatus(b.status)) - Number(isActiveStatus(a.status));
+        return activity || b.updated_at - a.updated_at;
+      });
+      return {
+        key: `project:${projectId}`,
+        label: group.label,
+        sessions: ordered,
+        activeCount: ordered.filter((session) => isActiveStatus(session.status)).length,
+      };
+    })
+    .sort((a, b) => (b.activeCount ?? 0) - (a.activeCount ?? 0)
+      || Math.max(...b.sessions.map((session) => session.updated_at)) - Math.max(...a.sessions.map((session) => session.updated_at)));
 }
 
 export default function SessionHistoryWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<SessionHistoryConfig>) {
@@ -150,11 +186,14 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     selectedProfile, selectProfile,
     setupState, setSetupState,
   } = useProfiles();
-  const { serverSessions, archiveSession, refreshSessions, newSession } = useSession();
+  const {
+    serverSessions, allServerSessions, sessionIndexConnection,
+    archiveSession, refreshSessions, newSession,
+  } = useSession();
 
   const [viewMode, setViewMode] = useWidgetUiState<ViewMode>(
     { userProfile: activeUserProfile },
-    widgetId, "view-mode", "timeline",
+    widgetId, "view-mode-v2", "projects",
   );
   const [sortKey, setSortKey] = useWidgetUiState<SortKey>(
     { userProfile: activeUserProfile },
@@ -170,9 +209,14 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     { userProfile: activeUserProfile },
     widgetId, "rounded", true,
   );
+  const [projectWindow, setProjectWindow] = useWidgetUiState<ProjectWindow>(
+    { userProfile: activeUserProfile },
+    widgetId, "project-window", "12h",
+  );
 
   const [search, setSearch] = useState("");
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set(["today", "active"]));
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const [projectRevealCounts, setProjectRevealCounts] = useState<Record<string, number>>({});
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -200,41 +244,30 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     ?? null
   );
 
-  // Poll active sessions for live preview text
-  const userProfile = activeUserProfile ?? undefined;
-  const loadActive = useCallback(async () => {
-    return modus.getActiveSessions(userProfile);
-  }, [userProfile]);
-
-  const { value: activeSessions } = useWidgetPollingValue<ActiveSessionInfo[]>({
-    load: loadActive,
-    scopeKey: `sh-active:${userProfile ?? ""}`,
-    intervalMs: 3000,
-    initialValue: [],
-  });
+  const sourceSessions = viewMode === "projects" ? allServerSessions : serverSessions;
 
   const liveMap = useMemo(() => {
     const map = new Map<string, LiveInfo>();
-    for (const a of activeSessions) {
-      map.set(a.id, {
-        status: a.status,
-        lastText: a.lastText,
-        preview: a.preview,
-        costUsd: a.costUsd,
-        numTurns: a.numTurns,
+    for (const session of sourceSessions) {
+      map.set(session.id, {
+        status: session.status,
+        lastText: session.live_text ?? null,
+        preview: session.preview,
+        costUsd: session.total_cost_usd,
+        numTurns: Math.ceil(session.message_count / 2),
       });
     }
     return map;
-  }, [activeSessions]);
+  }, [sourceSessions]);
 
   const sessions = useMemo(() => {
-    return serverSessions.map(s => {
+    return sourceSessions.map(s => {
       const live = getSessionState(s.id);
       const active = liveMap.get(s.id);
       const status = live?.status ?? active?.status ?? s.status;
       return { ...s, status };
     });
-  }, [serverSessions, liveMap]);
+  }, [sourceSessions, liveMap]);
 
   const pinned = useMemo(() => sessions.filter(s => parseTagList(s.tags).includes("pinned")), [sessions]);
   const unpinned = useMemo(() => sessions.filter(s => !parseTagList(s.tags).includes("pinned")), [sessions]);
@@ -247,7 +280,9 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
       (s.last_prompt ?? "").toLowerCase().includes(q) ||
       (s.preview ?? "").toLowerCase().includes(q) ||
       (s.profile ?? "").toLowerCase().includes(q) ||
-      (s.model ?? "").toLowerCase().includes(q)
+      (s.model ?? "").toLowerCase().includes(q) ||
+      (s.project_name ?? "").toLowerCase().includes(q) ||
+      (s.cwd ?? "").toLowerCase().includes(q)
     );
   }, [unpinned, search]);
 
@@ -264,17 +299,64 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
 
   const groups = useMemo(() => {
     switch (viewMode) {
+      case "projects": return groupByProject(sorted);
       case "agents": return groupByAgent(sorted);
       case "status": return groupByStatus(sorted);
       default: return groupByTimeline(sorted);
     }
   }, [sorted, viewMode]);
 
+  const displayGroups = useMemo(() => groups.map((group) => {
+    if (viewMode !== "projects") {
+      return { ...group, visibleSessions: group.sessions, hiddenCount: 0, revealCount: 0 };
+    }
+    const revealCount = projectRevealCounts[group.key] ?? 0;
+    const visibleSessions = selectVisibleProjectSessions(group.sessions, {
+      window: projectWindow,
+      selectedId,
+      searching: !!search.trim(),
+      recentLimit: PROJECT_RECENT_LIMIT,
+      revealCount,
+    });
+    return {
+      ...group,
+      visibleSessions,
+      hiddenCount: group.sessions.length - visibleSessions.length,
+      revealCount,
+    };
+  }), [groups, projectRevealCounts, projectWindow, search, selectedId, viewMode]);
+
+  useEffect(() => {
+    setProjectRevealCounts({});
+  }, [projectWindow, search]);
+
+  const expandedModeRef = useRef<ViewMode | null>(null);
+  useEffect(() => {
+    if (groups.length === 0 || expandedModeRef.current === viewMode) return;
+    expandedModeRef.current = viewMode;
+    setExpandedGroups(new Set(viewMode === "projects" ? groups.map((group) => group.key) : [groups[0]!.key]));
+  }, [groups, viewMode]);
+
   const toggleGroup = useCallback((label: string) => {
     setExpandedGroups(prev => {
       const next = new Set(prev);
       if (next.has(label)) next.delete(label);
       else next.add(label);
+      return next;
+    });
+  }, []);
+
+  const revealProjectSessions = useCallback((key: string, count: number) => {
+    setProjectRevealCounts((previous) => ({
+      ...previous,
+      [key]: (previous[key] ?? 0) + count,
+    }));
+  }, []);
+
+  const collapseProjectSessions = useCallback((key: string) => {
+    setProjectRevealCounts((previous) => {
+      const next = { ...previous };
+      delete next[key];
       return next;
     });
   }, []);
@@ -296,7 +378,7 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
   }, [newSession, handleSelect]);
 
   const handleTogglePin = useCallback(async (id: string) => {
-    const session = serverSessions.find(s => s.id === id);
+    const session = allServerSessions.find(s => s.id === id);
     const tags = parseTagList(session?.tags);
     if (tags.includes("pinned")) {
       await modus.removeTag(id, "pinned").catch(() => {});
@@ -304,7 +386,7 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
       await modus.addTag(id, "pinned").catch(() => {});
     }
     refreshSessions();
-  }, [serverSessions, refreshSessions]);
+  }, [allServerSessions, refreshSessions]);
 
   const handleArchive = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -312,19 +394,19 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
   }, [archiveSession]);
 
   const handleRename = useCallback(async (id: string, title: string | null) => {
-    const session = serverSessions.find(s => s.id === id);
+    const session = allServerSessions.find(s => s.id === id);
     if (session) session.title = title; // optimistic
     await modus.updateTitle(id, title);
     refreshSessions();
-  }, [serverSessions, refreshSessions]);
+  }, [allServerSessions, refreshSessions]);
 
   const lastAutoExpandedId = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedId || selectedId === lastAutoExpandedId.current) return;
     lastAutoExpandedId.current = selectedId;
     for (const g of groups) {
-      if (g.sessions.some(s => s.id === selectedId) && !expandedGroups.has(g.label)) {
-        setExpandedGroups(prev => new Set([...prev, g.label]));
+      if (g.sessions.some(s => s.id === selectedId) && !expandedGroups.has(g.key)) {
+        setExpandedGroups(prev => new Set([...prev, g.key]));
         break;
       }
     }
@@ -366,7 +448,7 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
         {/* Controls row */}
         <div className="sh-controls">
           <div className="sh-view-modes">
-            {(["timeline", "agents", "status"] as ViewMode[]).map(m => (
+            {(["projects", "timeline", "agents", "status"] as ViewMode[]).map(m => (
               <button
                 key={m}
                 className={`sh-mode-btn${viewMode === m ? " active" : ""}`}
@@ -374,6 +456,10 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
               >{m}</button>
             ))}
           </div>
+          <span
+            className={`sh-connection sh-connection--${sessionIndexConnection.status}`}
+            title={`session index: ${sessionIndexConnection.status} · ${sessionIndexConnection.role}${sessionIndexConnection.reconnects ? ` · ${sessionIndexConnection.reconnects} reconnects` : ""}`}
+          />
           <div className={`sh-sort${sortOpen ? " open" : ""}`} ref={sortRef}>
             <button
               className="sh-sort-btn"
@@ -422,6 +508,21 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
                     ))}
                   </div>
                 </div>
+                {viewMode === "projects" && (
+                  <div className="sh-sort-density">
+                    <span className="sh-sort-density-label">show</span>
+                    <div className="sh-sort-density-toggle">
+                      {(["12h", "24h", "7d", "all"] as ProjectWindow[]).map(window => (
+                        <button
+                          key={window}
+                          className={`sh-density-btn${projectWindow === window ? " active" : ""}`}
+                          onClick={event => { event.stopPropagation(); setProjectWindow(window); }}
+                          type="button"
+                        >{window}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -452,6 +553,7 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
                   onTogglePin={handleTogglePin}
                   onRename={handleRename}
                   isPinned
+                  showProject={viewMode === "projects"}
                 />
               ))}
             </div>
@@ -459,20 +561,25 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
         )}
 
         {/* Dynamic groups */}
-        {groups.map(g => (
-          <div key={g.label} className="sh-section">
-            <div className="sh-section-head" onClick={() => toggleGroup(g.label)}>
-              <span className={`sh-section-chevron${expandedGroups.has(g.label) ? " open" : ""}`}>
+        {displayGroups.map(g => (
+          <div key={g.key} className="sh-section">
+            <div className="sh-section-head" onClick={() => toggleGroup(g.key)}>
+              <span className={`sh-section-chevron${expandedGroups.has(g.key) ? " open" : ""}`}>
                 <svg width="7" height="7" viewBox="0 0 8 8" fill="none">
                   <path d="M2 3l2 2 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </span>
               <span className="sh-section-label">{g.label}</span>
-              <span className="sh-section-count">{g.sessions.length}</span>
+              {!!g.activeCount && <span className="sh-section-active">{g.activeCount} active</span>}
+              <span className="sh-section-count">
+                {g.visibleSessions.length === g.sessions.length
+                  ? g.sessions.length
+                  : `${g.visibleSessions.length} / ${g.sessions.length}`}
+              </span>
             </div>
-            {expandedGroups.has(g.label) && (
+            {expandedGroups.has(g.key) && (
               <div className="sh-section-items">
-                {g.sessions.map(s => (
+                {g.visibleSessions.map(s => (
                   <SessionRow
                     key={s.id}
                     session={s}
@@ -485,8 +592,31 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
                     onTogglePin={handleTogglePin}
                     onRename={handleRename}
                     isPinned={parseTagList(s.tags).includes("pinned")}
+                    showProject={viewMode === "projects"}
                   />
                 ))}
+                {viewMode === "projects" && (g.hiddenCount > 0 || g.revealCount > 0) && (
+                  <div className="sh-project-reveal">
+                    {g.hiddenCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => revealProjectSessions(g.key, PROJECT_REVEAL_STEP)}
+                      >show {Math.min(PROJECT_REVEAL_STEP, g.hiddenCount)} more</button>
+                    )}
+                    {g.hiddenCount > PROJECT_REVEAL_STEP && (
+                      <button
+                        type="button"
+                        onClick={() => revealProjectSessions(g.key, g.sessions.length)}
+                      >show all {g.sessions.length}</button>
+                    )}
+                    {g.revealCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => collapseProjectSessions(g.key)}
+                      >show less</button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -502,7 +632,7 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
 
 // ── Row Component ──
 
-function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect, onArchive, onTogglePin, onRename, isPinned }: {
+function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect, onArchive, onTogglePin, onRename, isPinned, showProject }: {
   session: SessionInfo;
   selected: boolean;
   hovered: boolean;
@@ -513,6 +643,7 @@ function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect
   onTogglePin: (id: string) => void;
   onRename: (id: string, title: string | null) => void;
   isPinned: boolean;
+  showProject: boolean;
 }) {
   const title = displayTitle(s);
   const model = compactModel(s.model);
@@ -619,6 +750,7 @@ function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect
       {/* Full-width meta row — identity on the left, stats on the right */}
       <div className="sh-row-meta">
         <div className="sh-row-meta-left">
+          {showProject && <span className="sh-tag sh-tag--project">{s.project_name ?? "other"}</span>}
           {s.profile && <span className="sh-tag sh-tag--agent">{s.profile}</span>}
           {model && <span className="sh-tag sh-tag--model">{model}</span>}
         </div>

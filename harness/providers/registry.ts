@@ -10,18 +10,26 @@ import { createClaudeCodePtyProvider } from "./claude-code-pty";
 import { createCodexProvider } from "./codex";
 import { createCursorProvider } from "./cursor";
 import { createOpenCodeProvider } from "./opencode";
+import { createAntigravityProvider } from "./antigravity";
 // Lazy-imported: Gemini CLI core spams "Experiments loaded" on import
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
 import { GEMINI_CAPABILITIES } from "./gemini-cli-capabilities";
 import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
+import { ANTIGRAVITY_CAPABILITIES } from "./antigravity-capabilities";
 import { existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { isSecretSet } from "../secrets";
 import { resolveCursorAgentExecutable } from "./cursor-resolve-bin";
+import {
+  antigravityAuthFromModelsResult,
+  resolveAntigravityExecutable,
+  runAntigravityCommand,
+} from "./antigravity-cli-runtime";
 
 const PI_PROVIDERS: PiProviderName[] = ["litellm", "ollama", "openrouter"];
-const STANDALONE_PROVIDERS = ["claude-code", "claude-code-pty", "codex", "cursor", "gemini-cli", "opencode"] as const;
+const STANDALONE_PROVIDERS = ["claude-code", "claude-code-pty", "codex", "cursor", "antigravity", "opencode"] as const;
+const HIDDEN_LEGACY_PROVIDERS = ["gemini-cli"] as const;
 
 // Lazy-init cache
 const cache = new Map<string, SessionProvider>();
@@ -41,7 +49,19 @@ export function getProvider(name: string): SessionProvider {
     provider = createCursorProvider();
   } else if (name === "opencode") {
     provider = createOpenCodeProvider();
+  } else if (name === "antigravity") {
+    provider = createAntigravityProvider();
   } else if (name === "gemini-cli") {
+    const supportedLegacyAuth = !!process.env.GEMINI_API_KEY
+      || (process.env.GOOGLE_GENAI_USE_VERTEXAI === "true" && (
+        !!process.env.GOOGLE_API_KEY
+        || !!((process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT_ID) && process.env.GOOGLE_CLOUD_LOCATION)
+      ))
+      || process.env.CLOUD_SHELL === "true"
+      || process.env.GEMINI_CLI_USE_COMPUTE_ADC === "true";
+    if (!supportedLegacyAuth) {
+      throw new Error("The legacy `gemini-cli` provider is hidden and cannot reuse Gemini CLI OAuth. Use `antigravity`, or explicitly configure a paid Gemini API/Vertex AI/ADC deployment.");
+    }
     // Gemini CLI core must NOT be imported at module load time —
     // it spams "Experiments loaded" + experiment IDs to console on every import.
     // Use a variable path to prevent Bun from statically resolving the import.
@@ -59,7 +79,9 @@ export function getProvider(name: string): SessionProvider {
 }
 
 export function isKnownProvider(name: string): boolean {
-  return STANDALONE_PROVIDERS.includes(name as (typeof STANDALONE_PROVIDERS)[number]) || PI_PROVIDERS.includes(name as PiProviderName);
+  return STANDALONE_PROVIDERS.includes(name as (typeof STANDALONE_PROVIDERS)[number])
+    || HIDDEN_LEGACY_PROVIDERS.includes(name as (typeof HIDDEN_LEGACY_PROVIDERS)[number])
+    || PI_PROVIDERS.includes(name as PiProviderName);
 }
 
 export function listProviders(): string[] {
@@ -72,6 +94,7 @@ export function getProviderCapabilities(name: string): ProviderCapabilities {
   // listing must NOT pay that cost. Only `getProvider("gemini-cli")` (called when
   // a session actually starts) should trigger the SDK import.
   if (name === "gemini-cli") return GEMINI_CAPABILITIES;
+  if (name === "antigravity") return ANTIGRAVITY_CAPABILITIES;
   if (name === "opencode") return OPENCODE_CAPABILITIES;
   return getProvider(name).capabilities;
 }
@@ -103,8 +126,8 @@ const PROVIDER_PREREQS: Record<string, { cli?: string; envAny?: string[] }> = {
   "claude-code-pty": { cli: "claude" },
   "codex": { cli: "codex" },
   "cursor": { cli: "cursor-agent" },
+  "antigravity": { cli: "agy" },
   "opencode": { cli: "opencode" },
-  // gemini-cli: SDK-based, auth checked separately (Google OAuth)
   "openrouter": { envAny: ["OPENROUTER_API_KEY"] },
   // litellm and ollama: local services, checked via ping below
 };
@@ -130,19 +153,6 @@ function checkCodexAuth(): ProviderHealthCheck {
   return { type: "auth", label: "api key", passed: false, detail: "no key or oauth" };
 }
 
-/** Check if Gemini CLI core has Google OAuth credentials. */
-function checkGeminiAuth(): ProviderHealthCheck {
-  const credsFile = join(homedir(), ".gemini", "oauth_creds.json");
-  if (existsSync(credsFile)) {
-    return { type: "auth", label: "google oauth", passed: true, detail: "authenticated" };
-  }
-  // Also check for API key as alternative
-  if (isSecretSet("GEMINI_API_KEY") || isSecretSet("GOOGLE_API_KEY")) {
-    return { type: "auth", label: "api key", passed: true, detail: "key set" };
-  }
-  return { type: "auth", label: "google oauth", passed: false, detail: "not authenticated" };
-}
-
 /** Check availability of all registered providers. Returns health info per provider. */
 export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
   return Promise.all(listProviders().map(async (name) => {
@@ -155,9 +165,11 @@ export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
       const found =
         name === "cursor"
           ? resolveCursorAgentExecutable()
-          : name === "opencode"
-            ? Bun.which("opencode") ?? Bun.which("bunx")
-          : Bun.which(spec.cli);
+          : name === "antigravity"
+            ? resolveAntigravityExecutable()
+            : name === "opencode"
+              ? Bun.which("opencode") ?? Bun.which("bunx")
+              : Bun.which(spec.cli);
       checks.push({
         type: "cli",
         label: spec.cli,
@@ -181,8 +193,12 @@ export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
     if (name === "codex") {
       checks.push(checkCodexAuth());
     }
-    if (name === "gemini-cli") {
-      checks.push(checkGeminiAuth());
+    if (name === "antigravity") {
+      const executable = resolveAntigravityExecutable();
+      if (executable) {
+        const auth = antigravityAuthFromModelsResult(await runAntigravityCommand(executable, ["models"], { timeoutMs: 15_000 }));
+        checks.push({ type: "auth", label: "google sign-in", passed: auth.authenticated, detail: auth.detail });
+      }
     }
 
     // Local service reachability

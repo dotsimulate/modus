@@ -16,13 +16,19 @@ import {
   type CompletedToolCall,
 } from "@google/gemini-cli-core";
 import { CoreEvent, coreEvents } from "@google/gemini-cli-core/dist/src/utils/events.js";
-import { existsSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
 
-function hasGeminiCredentials(): boolean {
-  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) return true;
-  return existsSync(join(homedir(), ".gemini", "oauth_creds.json"));
+function supportedLegacyAuthType(): AuthType | null {
+  if (process.env.GEMINI_API_KEY) return AuthType.USE_GEMINI;
+  if (process.env.GOOGLE_GENAI_USE_VERTEXAI === "true") {
+    const hasVertexCredentials = !!process.env.GOOGLE_API_KEY
+      || !!((process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT_ID) && process.env.GOOGLE_CLOUD_LOCATION);
+    if (hasVertexCredentials) return AuthType.USE_VERTEX_AI;
+  }
+  if (process.env.CLOUD_SHELL === "true" || process.env.GEMINI_CLI_USE_COMPUTE_ADC === "true") {
+    return AuthType.COMPUTE_ADC;
+  }
+  return null;
 }
 import { getSession, updateSessionStatus } from "../db";
 import { getGlobalConfig, resolveProfilePrompt, type McpServerConfig, type PermissionPolicy, type Profile } from "../profiles";
@@ -242,10 +248,9 @@ function isTurnAborted(session: ActiveSession, state: GeminiState): boolean {
 }
 
 function shouldMintGeminiSessionId(session: ActiveSession, options: { isResume: boolean }): boolean {
+  if (options.isResume) return false;
   if (UUID_RE.test(session.sessionId)) return false;
-  if (!options.isResume) return true;
-  const stored = getSession(session.sessionId);
-  return (stored?.message_count ?? 0) === 0;
+  return true;
 }
 
 function formatThoughtDelta(value: { subject?: string; description?: string }): string {
@@ -516,16 +521,17 @@ async function createGeminiRuntime(
     cleanupFns.push(() => coreEvents.off(CoreEvent.RetryAttempt, onRetryAttempt));
     cleanupFns.push(() => coreEvents.off(CoreEvent.OauthDisplayMessage, onOauthDisplayMessage));
 
-    if (!hasGeminiCredentials()) {
-      throw new Error("Gemini authentication required: no credentials found at ~/.gemini/oauth_creds.json and no GEMINI_API_KEY/GOOGLE_API_KEY env var set. Run `gemini` once to authenticate, or set an API key.");
+    const authType = supportedLegacyAuthType();
+    if (!authType) {
+      throw new Error("The hidden legacy Gemini CLI provider does not reuse Gemini CLI OAuth. Configure GEMINI_API_KEY, an explicit Vertex AI environment, or compute ADC; use the public `antigravity` provider for Google AI plans.");
     }
-    await config.refreshAuth(AuthType.LOGIN_WITH_GOOGLE);
+    await config.refreshAuth(authType);
 
     const client = config.getGeminiClient();
     if (options.isResume) {
-      const resumed = await loadResumedSessionData(config, session.sessionId);
+      const resumed = await loadResumedSessionData(config, state.sessionId);
       if (!resumed) {
-        throw new Error(`Gemini session ${session.sessionId} could not be resumed from local Gemini history.`);
+        throw new Error(`Gemini native session ${state.sessionId} could not be resumed from local Gemini history; refusing to start a context-free replacement.`);
       }
       await client.resumeChat(convertSessionToClientHistory(resumed.conversation.messages), resumed);
     } else if (!client.isInitialized()) {
@@ -552,8 +558,11 @@ async function runTurn(
   const { session, profile: profileDef } = ctx;
   if (shouldMintGeminiSessionId(session, options)) {
     const realId = crypto.randomUUID();
+    ctx.setProviderSessionId(realId);
     ctx.rekeySession(realId);
     state.sessionId = realId;
+  } else if (state.sessionId) {
+    ctx.setProviderSessionId(state.sessionId);
   }
   state.textBuffer = "";
   state.thinkingBuffer = "";
@@ -976,7 +985,7 @@ export function createGeminiCliProvider(): SessionProvider {
       const { session, opts, profile: profileDef } = ctx;
       const isResume = !!opts.sessionId && !!getSession(opts.sessionId);
       const state: GeminiState = {
-        sessionId: session.sessionId,
+        sessionId: isResume ? (session.providerSessionId ?? opts.sessionId!) : session.sessionId,
         model: opts.model ?? profileDef?.model ?? "auto-gemini-3",
         config: null,
         client: null,

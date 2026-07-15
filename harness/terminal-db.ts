@@ -8,9 +8,9 @@
  */
 
 import { Database } from "bun:sqlite";
-import { join } from "path";
+import { resolveDatabasePath } from "./database-paths";
 
-const DB_PATH = join(import.meta.dir, "terminal.db");
+const DB_PATH = resolveDatabasePath("terminal.db");
 const tdb = new Database(DB_PATH);
 
 tdb.run("PRAGMA journal_mode = WAL");

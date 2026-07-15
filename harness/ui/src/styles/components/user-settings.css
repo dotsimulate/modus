@@ -233,6 +233,25 @@
   color: var(--text-secondary);
 }
 
+.us-group-header--static {
+  cursor: default;
+}
+
+.us-project-paths {
+  padding-bottom: 7px;
+}
+
+.us-project-primary {
+  display: inline-block;
+  margin-right: 7px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .us-group-arrow {
   font-family: var(--font-mono);
   font-size: 9px;

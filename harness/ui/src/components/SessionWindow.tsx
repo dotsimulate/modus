@@ -11,7 +11,7 @@ import { useEffect, useCallback, useEffectEvent, useRef, useState } from "react"
 import type { Attachment, MoveBinding } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
-import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, getSessionState, setSessionState } from "../sessionStore";
+import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, getSessionState, setSessionState, loadOlderSessionHistory, loadSessionMessageDetails } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
 import { useSession } from "../providers/SessionContext";
 import { FloatingWindow } from "./FloatingWindow";
@@ -48,6 +48,12 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   const historyLoad = useSessionHistoryLoadState(sessionId);
   const retryHistory = useCallback(() => {
     if (sessionId) void ensureSubscribed(sessionId, { forceHistoryRefresh: true });
+  }, [sessionId]);
+  const loadOlderHistory = useCallback(() => {
+    return sessionId ? loadOlderSessionHistory(sessionId) : Promise.resolve();
+  }, [sessionId]);
+  const loadMessageDetails = useCallback((seq: number) => {
+    return sessionId ? loadSessionMessageDetails(sessionId, seq) : Promise.resolve();
   }, [sessionId]);
   const isActive = session?.status === "running" || session?.status === "starting" || session?.status === "interrupting";
   const permissions = session?.pendingPermissions ?? [];
@@ -267,6 +273,11 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
                 emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
                 emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}
                 onEmptyAction={historyLoad.status === "error" ? retryHistory : undefined}
+                hasOlderMessages={historyLoad.hasMore}
+                loadingOlderMessages={historyLoad.loadingOlder}
+                olderMessagesError={historyLoad.olderError}
+                onLoadOlderMessages={loadOlderHistory}
+                onLoadMessageDetails={loadMessageDetails}
                 onBranch={handleBranch}
               />
             ) : (

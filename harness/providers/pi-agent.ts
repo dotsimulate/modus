@@ -25,7 +25,7 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getProfile, type ProviderDefaults } from "../profiles";
-import { updateSessionStatus } from "../db";
+import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
 import { resolveSecret } from "../secrets";
 
@@ -612,10 +612,26 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       const modelId = session.model || DEFAULT_MODELS[providerName] || "default";
       const cwd = session.cwd ?? process.cwd();
 
+      const existingRow = opts.sessionId ? getSession(opts.sessionId) : null;
+      const needsResume = !!opts.sessionId && !!existingRow && (
+        existingRow.message_count > 0 || getMaxSeq(opts.sessionId) > 0
+      );
+      if (needsResume) {
+        const reason = `${providerName} session state was in-memory and cannot be rehydrated after the backend stopped; refusing to start a context-free replacement`;
+        console.error(`[pi-agent] ${reason} modus=${session.sessionId}`);
+        session.status = "error";
+        session.error = reason;
+        updateSessionStatus(session.sessionId, "error");
+        ctx.broadcastEvent({ type: "error", error: reason });
+        ctx.emitEvent({ type: "done" });
+        return;
+      }
+
       // Rekey from temp ses- to a real UUID (PI has no external backend to provide one).
       // Skip if already a real UUID (resume case — session was already keyed on first start).
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       const realId = UUID_RE.test(session.sessionId) ? session.sessionId : crypto.randomUUID();
+      ctx.setProviderSessionId(realId);
       if (realId !== session.sessionId) ctx.rekeySession(realId);
 
       // Provider owns init events — emit user prompt + system init

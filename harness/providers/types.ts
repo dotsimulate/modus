@@ -27,7 +27,7 @@ export type ProviderSlashCommand = {
 export type ProviderCapabilities = {
   name: string;
   label: string;
-  family: "claude-code" | "codex" | "cursor" | "gemini-cli" | "opencode" | "pi-agent";
+  family: "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "opencode" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
   builtInToolMode: "explicit" | "event-derived";
@@ -115,6 +115,9 @@ export type TurnContext = {
 
   /** Re-key the session in the active sessions map (called when SDK provides real ID) */
   rekeySession(newId: string): void;
+
+  /** Persist the provider's native conversation/thread ID independently of the Modus row ID. */
+  setProviderSessionId(providerSessionId: string): void;
 
   /** Notify session-manager of a provider-initiated config change.
    *  Updates _configOverrides and emits config_updated to subscribers. */

@@ -152,6 +152,11 @@ export type Profile = {
     claude?: {
       permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk";
     };
+    antigravity?: {
+      mode?: "accept-edits" | "plan";
+      sandbox?: boolean;
+      printTimeout?: string;
+    };
     [provider: string]: unknown;
   };
   /** Context window size override — for models where API doesn't report it */

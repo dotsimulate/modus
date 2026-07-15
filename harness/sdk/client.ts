@@ -3,6 +3,7 @@ import type {
   InteractOptions,
   InteractResult,
   SessionInfo,
+  SessionIndex,
   ActiveSessionInfo,
   SearchHit,
   SessionStatusInfo,
@@ -239,6 +240,10 @@ export class ModusClient {
     const q = p.toString();
     return (await this.fetch(`/api/sessions${q ? `?${q}` : ""}`)).json();
   }
+  /** Returns a lightweight, project-attributed snapshot across every project. */
+  async getSessionIndex(limit = 250): Promise<SessionIndex> {
+    return (await this.fetch(`/api/sessions/index?limit=${encodeURIComponent(String(limit))}`)).json();
+  }
   /** Returns currently running sessions, optionally scoped to a user profile. */
   async getActiveSessions(userProfile?: string): Promise<ActiveSessionInfo[]> {
     const q = userProfile ? `?userProfile=${encodeURIComponent(userProfile)}` : "";
@@ -279,8 +284,13 @@ export class ModusClient {
     return (await this.fetch(`/api/sessions/${id}/messages-content${q}`)).json();
   }
   /** Gets a semantic history snapshot for ordinary session hydration. */
-  async getSessionHistorySnapshot(id: string, opts?: { signal?: AbortSignal }): Promise<SessionHistorySnapshot> {
-    return (await this.fetch(`/api/sessions/${id}/history-snapshot`, { signal: opts?.signal })).json();
+  async getSessionHistorySnapshot(id: string, opts?: { signal?: AbortSignal; limit?: number | "all"; beforeSeq?: number; details?: "full" | "summary" }): Promise<SessionHistorySnapshot> {
+    const params = new URLSearchParams();
+    if (opts?.limit != null) params.set("limit", String(opts.limit));
+    if (opts?.beforeSeq != null) params.set("beforeSeq", String(opts.beforeSeq));
+    if (opts?.details) params.set("details", opts.details);
+    const q = params.toString();
+    return (await this.fetch(`/api/sessions/${id}/history-snapshot${q ? `?${q}` : ""}`, { signal: opts?.signal })).json();
   }
   /** Soft-deletes (archives) a session. */
   async archiveSession(id: string): Promise<void> { await this.fetch(`/api/sessions/${id}`, { method: "DELETE" }); }
@@ -382,12 +392,11 @@ export class ModusClient {
   /** Subscribes to SSE events for a session via callbacks. Returns an unsubscribe function. Fires onDone on server completion, onDisconnect (or onDone) on connection loss. */
   subscribeEvents(sessionId: string, afterSeq: number, callbacks: EventStreamCallbacks): () => void {
     const abort = new AbortController();
-    const tp = this.tokenParam();
-    const params = [`after=${afterSeq}`, tp].filter(Boolean).join("&");
+    const params = `after=${afterSeq}`;
     const url = `${this.url}/api/sessions/${sessionId}/events?${params}`;
     let doneFired = false, gotServerDone = false;
     const fireDone = () => { if (doneFired) return; doneFired = true; gotServerDone ? callbacks.onDone() : (callbacks.onDisconnect ?? callbacks.onDone)(); };
-    globalThis.fetch(url, { signal: abort.signal }).then(async (res) => {
+    globalThis.fetch(url, { signal: abort.signal, headers: this.authHeaders() }).then(async (res) => {
       if (!res.ok) { callbacks.onError(`Event stream failed: ${res.statusText}`); return; }
       const reader = res.body?.getReader();
       if (!reader) { callbacks.onError("No response body"); return; }
@@ -413,11 +422,23 @@ export class ModusClient {
   subscribeGlobalEvents(): EventStreamHandle {
     const controller = new AbortController(); const self = this;
     const events = (async function* () {
-      const tokenQ = self.token ? `?token=${self.token}` : "";
-      const res = await globalThis.fetch(`${self.url}/api/events/sessions${tokenQ}`, { signal: controller.signal });
+      let staleTimer: ReturnType<typeof setTimeout> | null = null;
+      const resetStale = () => {
+        if (staleTimer) clearTimeout(staleTimer);
+        staleTimer = setTimeout(() => controller.abort(), 45_000);
+      };
+      const res = await globalThis.fetch(`${self.url}/api/events/sessions`, {
+        signal: controller.signal,
+        headers: self.authHeaders(),
+      });
       if (!res.ok) throw new ModusError(res.status, res.statusText, "/api/events/sessions");
       const reader = res.body?.getReader(); if (!reader) throw new Error("No response body");
-      yield* parseSSEStream(reader);
+      resetStale();
+      try {
+        yield* parseSSEStream(reader, resetStale);
+      } finally {
+        if (staleTimer) clearTimeout(staleTimer);
+      }
     })();
     return { events, abort: () => controller.abort() };
   }
@@ -938,10 +959,14 @@ export class ModusClient {
 
 // ── SSE Parser ──
 /** Parses SSE-formatted data from a ReadableStream into typed events. Terminates on "done" events and skips "ping" events. */
-async function* parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<TypedSSEEvent> {
+async function* parseSSEStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onChunk?: () => void,
+): AsyncGenerator<TypedSSEEvent> {
   const decoder = new TextDecoder(); let buffer = "";
   while (true) {
     const { done, value } = await reader.read(); if (done) break;
+    onChunk?.();
     buffer += decoder.decode(value, { stream: true }); const lines = buffer.split("\n"); buffer = lines.pop() ?? "";
     let currentEvent = "", currentId = "0";
     for (const line of lines) {

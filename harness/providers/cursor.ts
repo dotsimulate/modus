@@ -38,6 +38,17 @@ type CursorState = {
   mcpConfigBackup: string | null;  // original content if we overwrote an existing file
 };
 
+/**
+ * The shared session manager owns exchangeCount and increments it when a
+ * provider persists a newly completed user/assistant pair. Cursor must report
+ * the next count without mutating session.exchangeCount first, otherwise the
+ * shared completion detector sees no new exchange and skips assistant-end
+ * actions and wakes.
+ */
+export function cursorCompletionMessageCount(exchangeCount: number): number {
+  return (exchangeCount + 1) * 2;
+}
+
 const CURSOR_CAPABILITIES: ProviderCapabilities = {
   name: "cursor",
   label: "Cursor",
@@ -326,9 +337,12 @@ export function createCursorProvider(): SessionProvider {
       // Cursor Agent has no fork/resume-at-message flag, so branch resumes
       // start as fresh Cursor chats seeded with the copied Modus transcript.
       const isBranch = !!opts.branchParentId;
-      const isResume = !isBranch && !!opts.sessionId && !!getSession(opts.sessionId);
+      const existingRow = opts.sessionId ? getSession(opts.sessionId) : null;
+      const isResume = !isBranch && !!opts.sessionId && !!existingRow && (
+        existingRow.message_count > 0 || getMaxSeq(opts.sessionId) > 0
+      );
       if (isResume && opts.sessionId) {
-        state.sessionId = opts.sessionId;
+        state.sessionId = session.providerSessionId ?? opts.sessionId;
       }
 
       const input = buildCursorInput(session.initialContent, ctx);
@@ -469,6 +483,7 @@ async function runTurn(
   skipPromptPersist: boolean,
 ) {
   const { session } = ctx;
+  const requestedResumeId = isResume ? state.sessionId : null;
 
   // Build cursor-agent command args
   const args: string[] = [
@@ -581,12 +596,16 @@ async function runTurn(
       switch (event.type) {
         case "system": {
           if (event.subtype === "init") {
-            state.sessionId = event.session_id;
-
             if (!initEmitted) {
               initEmitted = true;
               const realId = event.session_id;
 
+              if (requestedResumeId && realId !== requestedResumeId) {
+                throw new Error(`Cursor refused resume target ${requestedResumeId} and returned ${realId}; refusing to continue without the original context`);
+              }
+
+              state.sessionId = realId;
+              ctx.setProviderSessionId(realId);
               ctx.rekeySession(realId);
               session.status = "running";
               updateSessionStatus(realId, "running");
@@ -767,12 +786,11 @@ async function runTurn(
     });
 
     session.costUsd += 0;
-    session.exchangeCount += turnCount;
     session.numTurns += turnCount;
 
     ctx.updateSessionDb({
       status: "idle",
-      messageCount: session.exchangeCount * 2,
+      messageCount: cursorCompletionMessageCount(session.exchangeCount),
       costUsd: 0,
       lastPrompt: session.preview,
       lastResponse: (lastAssistantText || session.lastAssistantText || "").slice(0, 200),
