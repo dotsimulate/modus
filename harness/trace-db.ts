@@ -4,9 +4,9 @@
  */
 
 import { Database } from "bun:sqlite";
-import { join } from "path";
+import { resolveDatabasePath } from "./database-paths";
 
-const DB_PATH = join(import.meta.dir, "harness.db");
+const DB_PATH = resolveDatabasePath("harness.db");
 const db = new Database(DB_PATH, { readonly: true });
 db.run("PRAGMA journal_mode = WAL");
 

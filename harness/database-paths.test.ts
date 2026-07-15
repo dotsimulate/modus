@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { isAbsolute, join, normalize, resolve } from "path";
 import { resolveDatabasePath } from "./database-paths";
@@ -18,7 +19,25 @@ describe("resolveDatabasePath", () => {
     expect(normalize(path).startsWith(normalize(import.meta.dir))).toBe(false);
   });
 
-  test("preserves the legacy production location before path migration", () => {
-    expect(resolveDatabasePath("terminal.db", {})).toBe(join(import.meta.dir, "terminal.db"));
+  test("uses the instance-scoped user data directory in production", () => {
+    const root = join(tmpdir(), "modus-path-test", "home");
+    const resources = join(tmpdir(), "modus-path-test", "empty-resources");
+    expect(resolveDatabasePath("terminal.db", {
+      MODUS_HOME: root,
+      MODUS_INSTANCE: "dev",
+    }, { sourceResourcesDir: resources })).toBe(join(resolve(root), "dev", "data", "terminal.db"));
+  });
+
+  test("refuses to create a blank user database while a legacy database awaits migration", () => {
+    const root = join(tmpdir(), "modus-path-test", crypto.randomUUID());
+    const resources = join(root, "resources");
+    mkdirSync(resources, { recursive: true });
+    writeFileSync(join(resources, "harness.db"), "legacy database placeholder");
+
+    expect(() => resolveDatabasePath(
+      "harness.db",
+      { MODUS_HOME: join(root, "home") },
+      { sourceResourcesDir: resources },
+    )).toThrow("Legacy database migration required");
   });
 });
