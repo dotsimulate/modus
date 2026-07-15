@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Poll to detect server-side lock
   useEffect(() => {
     if (authState !== "ok") return;
-    if (!localStorage.getItem("harness_token")) return;
+    if (!getAuthToken()) return;
     const interval = setInterval(async () => {
       try {
         await modus.checkToken();

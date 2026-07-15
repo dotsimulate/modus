@@ -24,6 +24,8 @@ dist/
 dist-ssr/
 out/
 build/
+target/
+desktop/src-tauri/gen/schemas/
 *.tgz
 
 # Environment / secrets

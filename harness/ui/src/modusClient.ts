@@ -6,8 +6,11 @@
  */
 
 import { ModusClient } from "../../sdk/index";
+import { BACKEND_TARGET } from "./backendTarget";
 
-const STORAGE_KEY = "harness_token";
+const STORAGE_KEY = BACKEND_TARGET.mode === "browser"
+  ? "harness_token"
+  : `harness_token:${encodeURIComponent(BACKEND_TARGET.id)}`;
 
 function getStoredToken(): string {
   return localStorage.getItem(STORAGE_KEY) ?? "";
@@ -15,14 +18,14 @@ function getStoredToken(): string {
 
 /** The shared ModusClient instance for all UI code. */
 export const modus = new ModusClient({
-  url: import.meta.env.VITE_API_URL || "",
+  url: BACKEND_TARGET.apiBase,
   getToken: () => getStoredToken() || undefined,
 });
 
 // ── Helpers for URL-construction (image srcs, WebSocket URLs, etc.) ──
 
 /** Base URL for the harness API (empty string = same origin). */
-export const API_BASE: string = import.meta.env.VITE_API_URL || "";
+export const API_BASE: string = BACKEND_TARGET.apiBase;
 
 /** Current auth token (reads live from localStorage). */
 export function getAuthToken(): string {

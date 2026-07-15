@@ -11,7 +11,15 @@ describe("browser origin boundary", () => {
   test("allows loopback UI/dev and the active Tailscale host", () => {
     expect(isAllowedBrowserOrigin("http://localhost:3777", base)).toBe(true);
     expect(isAllowedBrowserOrigin("http://127.0.0.1:5173", base)).toBe(true);
+    expect(isAllowedBrowserOrigin("http://localhost:5180", base)).toBe(true);
     expect(isAllowedBrowserOrigin("https://modus-host.example.ts.net", base)).toBe(true);
+  });
+
+  test("allows only the exact local Tauri application origins", () => {
+    expect(isAllowedBrowserOrigin("http://tauri.localhost", base)).toBe(true);
+    expect(isAllowedBrowserOrigin("https://tauri.localhost", base)).toBe(true);
+    expect(isAllowedBrowserOrigin("tauri://localhost", base)).toBe(true);
+    expect(isAllowedBrowserOrigin("http://evil.tauri.localhost", base)).toBe(false);
   });
 
   test("rejects foreign, malformed, and mismatched Tailscale origins", () => {

@@ -887,8 +887,11 @@ export class ModusClient {
   }
   /** Opens a WebSocket to a terminal in binary arraybuffer mode. */
   connectTerminalWS(terminalId: string): WebSocket {
-    const protocol = typeof location !== "undefined" && location.protocol === "https:" ? "wss:" : "ws:";
-    const host = this.url ? new URL(this.url).host : (typeof location !== "undefined" ? location.host : "localhost");
+    const target = this.url
+      ? new URL(this.url)
+      : new URL(typeof location !== "undefined" ? location.origin : "http://localhost");
+    const protocol = target.protocol === "https:" ? "wss:" : "ws:";
+    const host = target.host;
     const ws = new WebSocket(`${protocol}//${host}/ws/terminal/${terminalId}?token=${encodeURIComponent(this.token ?? "")}`);
     ws.binaryType = "arraybuffer"; return ws;
   }

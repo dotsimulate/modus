@@ -12,6 +12,11 @@ type OriginOptions = {
 function normalizeOrigin(value: string): string | null {
   try {
     const url = new URL(value);
+    if (url.protocol === "tauri:") {
+      if (url.hostname !== "localhost" || url.port || url.username || url.password) return null;
+      if (url.pathname !== "/" && url.pathname !== "" || url.search || url.hash) return null;
+      return "tauri://localhost";
+    }
     if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
     if (url.pathname !== "/" || url.search || url.hash) return null;
     return url.origin;
@@ -57,8 +62,11 @@ export function isAllowedBrowserOrigin(origin: string, options: OriginOptions): 
   const originHost = hostWithoutDefaultPort(url.host);
   const sameRequestHost = !!requestHost && requestHost === originHost;
 
+  if (url.protocol === "tauri:" && hostname === "localhost" && !url.port) return true;
+  if ((url.protocol === "http:" || url.protocol === "https:") && hostname === "tauri.localhost" && !url.port) return true;
+
   if (isLoopback(hostname)) {
-    return effectivePort === options.port || effectivePort === 5173 || effectivePort === 5174;
+    return effectivePort === options.port || effectivePort === 5173 || effectivePort === 5174 || effectivePort === 5180;
   }
   if (url.protocol === "https:" && hostname.endsWith(".ts.net") && effectivePort === 443) {
     return sameRequestHost;
