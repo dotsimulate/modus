@@ -621,6 +621,8 @@ async function cmdStart(args: string[]): Promise<void> {
       stdout: logFd,
       stderr: logFd,
       env,
+      detached: true,
+      windowsHide: true,
     });
 
     // Detach: unref so CLI can exit while child runs
