@@ -571,6 +571,34 @@ async function cmdStart(args: string[]): Promise<void> {
     }
   }
 
+  // Migrate legacy source-tree databases before the backend imports any DB
+  // module. The migration copies, integrity-checks, and retains each source as
+  // a backup; it never merges two independently existing databases.
+  if (!process.env.MODUS_DATA_DIR?.trim() && !process.env.MODUS_INSTANCE?.trim()) {
+    const { applyStorageMigration, planStorageMigration } = await import("./storage-migration");
+    const storagePlan = planStorageMigration();
+    if (storagePlan.conflicts > 0) {
+      console.error("Storage migration cannot continue because legacy and user-level databases both exist.");
+      console.error("Run: modus maintenance storage --dry-run");
+      process.exit(1);
+    }
+    if (storagePlan.migrationCount > 0) {
+      console.log(`Migrating ${storagePlan.migrationCount} legacy database(s) to ${storagePlan.locations.dataDir}...`);
+      try {
+        applyStorageMigration({
+          expectedPlanId: storagePlan.planId,
+          locations: storagePlan.locations,
+          onProgress: (message) => console.log(`  ${message}`),
+        });
+        console.log("Storage migration verified. Legacy database files were retained as backups.");
+      } catch (error) {
+        console.error(`Storage migration failed: ${error instanceof Error ? error.message : String(error)}`);
+        console.error("The legacy databases were retained and the server was not started.");
+        process.exit(1);
+      }
+    }
+  }
+
   // Token
   const { token, source: tokenSource } = loadToken();
   const remote = remoteEnabled(args);
@@ -875,13 +903,35 @@ async function cmdMaintenance(args: string[]): Promise<void> {
   const dryRun = hasFlag(args, "--dry-run");
   const planIdIndex = args.indexOf("--plan-id");
   const expectedPlanId = planIdIndex >= 0 ? args[planIdIndex + 1] : undefined;
-  if (subject !== "checkpoints" || apply === dryRun || (apply && !expectedPlanId)) {
-    console.error("Usage: modus maintenance checkpoints --dry-run | --apply --plan-id <reviewed-plan-id>");
+  if (!(["checkpoints", "storage"].includes(subject ?? "")) || apply === dryRun || (apply && !expectedPlanId)) {
+    console.error("Usage:");
+    console.error("  modus maintenance checkpoints --dry-run | --apply --plan-id <reviewed-plan-id>");
+    console.error("  modus maintenance storage --dry-run | --apply --plan-id <reviewed-plan-id>");
     process.exit(1);
+  }
+  if (subject === "storage") {
+    const { applyStorageMigration, planStorageMigration } = await import("./storage-migration");
+    const plan = planStorageMigration();
+    if (dryRun) {
+      console.log(JSON.stringify(plan, null, 2));
+      return;
+    }
+    const pid = readPidFile();
+    if (pid && isPidAlive(pid)) {
+      console.error("Stop Modus before applying a storage migration.");
+      process.exit(1);
+    }
+    console.log(JSON.stringify(applyStorageMigration({
+      expectedPlanId: expectedPlanId!,
+      locations: plan.locations,
+      onProgress: (message) => console.log(`  ${message}`),
+    }), null, 2));
+    return;
   }
   const { Database } = await import("bun:sqlite");
   const { applyCheckpointMaintenance, planCheckpointMaintenance } = await import("./checkpoint-maintenance");
-  const dbPath = join(HARNESS_DIR, "harness.db");
+  const { resolveDatabasePath } = await import("./database-paths");
+  const dbPath = resolveDatabasePath("harness.db");
   const db = new Database(dbPath, dryRun ? { readonly: true } : undefined);
   try {
     if (dryRun) {
@@ -1155,7 +1205,9 @@ Commands:
   logs          Show server logs
     -f           Follow (live tail)
   update        Pull latest, re-setup, restart if needed
-  maintenance   Checkpoint storage maintenance
+  maintenance   Storage maintenance
+    storage --dry-run  Inspect legacy database migration into ~/.modus/data
+    storage --apply --plan-id <id>  Apply that exact copy-and-verify plan
     checkpoints --dry-run  Print a non-destructive retention/GC plan
     checkpoints --apply --plan-id <id>  Apply that exact reviewed plan
   --version     Print version`);

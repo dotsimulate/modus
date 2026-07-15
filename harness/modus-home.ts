@@ -21,10 +21,10 @@
  */
 
 import { existsSync, mkdirSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
+import { APP_PATHS } from "./app-paths";
 
-export const MODUS_HOME = join(homedir(), ".modus");
+export const MODUS_HOME = APP_PATHS.modusHome;
 
 // ── ~/.modus/profiles ──
 
@@ -89,7 +89,7 @@ export function homeCheckpointsDir(): string {
 // ── Shipped templates (repo-tracked, read-only at runtime) ──
 // import.meta.dir is harness/ — templates ship at harness/templates/profiles/.
 
-export const TEMPLATES_PROFILES_DIR = join(import.meta.dir, "templates", "profiles");
+export const TEMPLATES_PROFILES_DIR = join(APP_PATHS.resourcesDir, "templates", "profiles");
 
 export function templatesAgentsDir(): string {
   return join(TEMPLATES_PROFILES_DIR, "agents");
