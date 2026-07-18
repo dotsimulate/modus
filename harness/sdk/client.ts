@@ -281,7 +281,24 @@ export class ModusClient {
   /** Gets rendered message content. With a seq number, returns a single turn; without, returns all turns. */
   async getMessages(id: string, seq?: number): Promise<TurnContent | TurnContent[]> {
     const q = seq != null ? `?seq=${seq}` : "";
-    return (await this.fetch(`/api/sessions/${id}/messages-content${q}`)).json();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const response = await this.fetchOrThrow(`/api/sessions/${id}/messages-content${q}`, {
+        signal: controller.signal,
+      });
+      const data = await response.json() as TurnContent | TurnContent[];
+      const turns = Array.isArray(data) ? data : [data];
+      if (turns.some((turn) => (
+        !turn || (turn.role !== "user" && turn.role !== "assistant")
+        || typeof turn.seq !== "number" || typeof turn.text !== "string"
+      ))) {
+        throw new Error("Invalid message content response");
+      }
+      return data;
+    } finally {
+      clearTimeout(timer);
+    }
   }
   /** Gets a semantic history snapshot for ordinary session hydration. */
   async getSessionHistorySnapshot(id: string, opts?: { signal?: AbortSignal; limit?: number | "all"; beforeSeq?: number; details?: "full" | "summary" }): Promise<SessionHistorySnapshot> {

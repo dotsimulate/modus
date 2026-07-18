@@ -8,23 +8,17 @@ import { VirtualMessageList, type VirtualItem, type VirtualListControls, type Vi
 import { estimateMessageHeight } from "./textMeasure";
 import { ChatScrollSpine, type ChatSpineItem } from "./ChatScrollSpine";
 import { modus } from "../modusClient";
-import type { Message, ToolCall, CommitAttribution, GitCommit } from "../../../sdk/index";
+import type { Message, ToolCall, ToolCallDisplayMode, CommitAttribution, GitCommit } from "../../../sdk/index";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionContext";
 import { navigateToGitRoute } from "../git-route";
+import { INTERFACE_SETTINGS_EVENT, readLocalInterfaceSettings } from "../interface-settings";
 
 type DisplayItem =
   | { kind: "message"; key: string; message: Message; index: number }
   | { kind: "commit"; key: string; commit: GitCommit };
 
 function readSpineEnabled(): boolean {
-  try {
-    const raw = localStorage.getItem("mo-chat-settings");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed?.spineEnabled === "boolean") return parsed.spineEnabled;
-    }
-  } catch { /* ignore */ }
-  return true;
+  return readLocalInterfaceSettings().chat.spineEnabled;
 }
 
 function formatCommitWhen(date: string): string {
@@ -68,7 +62,9 @@ type Props = {
   showThinking?: boolean;
   showMeta?: boolean;
   showToolCalls?: boolean;
+  toolCallDisplay?: ToolCallDisplayMode;
   showGitEvents?: boolean;
+  showFileChanges?: boolean;
   cwd?: string | null;
   emptyTitle?: string;
   emptySubtitle?: string;
@@ -87,7 +83,8 @@ type Props = {
   onLoadMessageDetails?: (seq: number) => void | Promise<void>;
 };
 
-export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits, hasOlderMessages = false, loadingOlderMessages = false, olderMessagesError, onLoadOlderMessages, onLoadMessageDetails }: Props) {
+export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, toolCallDisplay = "collapsed", showGitEvents = true, showFileChanges = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits, hasOlderMessages = false, loadingOlderMessages = false, olderMessagesError, onLoadOlderMessages, onLoadMessageDetails }: Props) {
+  const resolvedToolCallDisplay: ToolCallDisplayMode = showToolCalls ? toolCallDisplay : "hidden";
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   // Imperative handle into the virtualizer for tick-driven scrolling.
@@ -116,10 +113,12 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail && typeof detail.spineEnabled === "boolean") setSpineEnabled(detail.spineEnabled);
+      if (detail && typeof detail.chat?.spineEnabled === "boolean") {
+        setSpineEnabled(detail.chat.spineEnabled);
+      }
     };
-    window.addEventListener("mo-chat-settings-change", handler);
-    return () => window.removeEventListener("mo-chat-settings-change", handler);
+    window.addEventListener(INTERFACE_SETTINGS_EVENT, handler);
+    return () => window.removeEventListener(INTERFACE_SETTINGS_EVENT, handler);
   }, []);
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [commitAttribution, setCommitAttribution] = useState<CommitAttribution | null>(null);
@@ -325,13 +324,13 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       const estimate = estimateMessageHeight(msg.content, width, {
         hasRole: false,
         hasMeta: showMeta && !!msg.meta,
-        toolCallCount: showToolCalls ? countToolCalls(msg.toolCalls) : 0,
+        toolCallCount: resolvedToolCallDisplay !== "hidden" ? countToolCalls(msg.toolCalls) : 0,
         imageCount: countImages(msg),
         hasThinking: showThinking && !!msg.thinking,
       });
       return estimate.totalHeight;
     },
-    [scrollWidth, showMeta, showToolCalls, showThinking],
+    [scrollWidth, showMeta, resolvedToolCallDisplay, showThinking],
   );
 
   const scrollToSpineItem = useCallback((key: string) => {
@@ -346,13 +345,13 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       const estimate = estimateMessageHeight(msg.content, containerWidth, {
         hasRole: false,
         hasMeta: showMeta && !!msg.meta,
-        toolCallCount: showToolCalls ? countToolCalls(msg.toolCalls) : 0,
+        toolCallCount: resolvedToolCallDisplay !== "hidden" ? countToolCalls(msg.toolCalls) : 0,
         imageCount: countImages(msg),
         hasThinking: showThinking && !!msg.thinking,
       });
       return estimate.totalHeight;
     },
-    [showMeta, showToolCalls, showThinking],
+    [showMeta, resolvedToolCallDisplay, showThinking],
   );
 
   const renderItem = useCallback(
@@ -373,7 +372,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       const msg = item.message;
       const i = item.index;
       const turnTools = turnFileEdits.get(i);
-      const showFileChanges = turnTools && extractFileEdits(turnTools).length > 0;
+      const hasFileChanges = showFileChanges && turnTools && extractFileEdits(turnTools).length > 0;
 
       if (msg.role === "system") {
         return (
@@ -398,7 +397,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
             hideRole
             showThinking={showThinking}
             showMeta={showMeta}
-            showToolCalls={showToolCalls}
+            toolCallDisplay={resolvedToolCallDisplay}
             showGitEvents={showGitEvents}
             cwd={cwd}
             lastTodoId={lastTodoId}
@@ -411,7 +410,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
               ? () => onLoadMessageDetails(msg.seq!)
               : undefined}
           >
-            {showFileChanges && (
+            {hasFileChanges && (
               <>
                 <FileChanges toolCalls={turnTools} />
                 {onOpenSessionEdits && (
@@ -440,7 +439,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     },
     [sessionId, claimedCommitTags, onSessionTagsChange, turnFileEdits, provider,
      streaming, lastUser, lastAssistant, messages.length, showThinking, showMeta,
-     showToolCalls, showGitEvents, cwd, lastTodoId, streamFeed, onBranch, onStopTask,
+     resolvedToolCallDisplay, showGitEvents, showFileChanges, cwd, lastTodoId, streamFeed, onBranch, onStopTask,
      onOpenSessionEdits, onLoadMessageDetails],
   );
 

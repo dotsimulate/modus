@@ -133,6 +133,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     setPreviewManifest(null);
 
     (async () => {
+      let previewFailure: unknown = null;
       try {
         const dirResult = await modus.browse(viewingFile, { includeHidden: true });
         if (active) setView({ kind: "directory", result: dirResult });
@@ -146,13 +147,18 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
             setView({ kind: "file", content: "" });
             return;
           }
-        } catch {}
+        } catch (error) {
+          previewFailure = error;
+        }
         try {
           const text = await modus.readFile(viewingFile);
           if (!active) return;
           if (text !== null) { setView({ kind: "file", content: text }); return; }
         } catch {}
-        if (active) setView({ kind: "error", message: "Could not load this path." });
+        if (active) {
+          const detail = previewFailure instanceof Error ? previewFailure.message : "Preview request failed.";
+          setView({ kind: "error", message: `Could not preview this path. ${detail}` });
+        }
       }
     })().finally(() => { if (active) setLoading(false); });
 

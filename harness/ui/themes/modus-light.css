@@ -1,0 +1,86 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f2ec;
+  --bg-raised: #ebe7df;
+  --bg-surface: #dfdbd3;
+  --bg-hover: #d4d0c7;
+  --thinking: #eeebe4;
+
+  --border: #c9c4bb;
+  --border-active: #a8a299;
+  --border-mid: #8c8880;
+  --border-visible: #706c65;
+  --border-focus: #33312e;
+
+  --text: #171614;
+  --text-secondary: #292723;
+  --text-label: #37342f;
+  --text-tertiary: #494640;
+  --text-placeholder: #666159;
+  --text-dim: #5c5851;
+  --text-muted: #777169;
+  --accent: #151412;
+
+  --success: #237a35;
+  --warning: #a85f17;
+  --error: #bd2828;
+  --error-soft: #a43c3c;
+  --error-dim: #843b3b;
+  --info: #2763b2;
+
+  --dot-running: var(--success);
+  --dot-idle: #777169;
+  --dot-done: #777169;
+  --dot-error: var(--error-dim);
+  --dot-connected: var(--success);
+
+  --tool-running: var(--warning);
+  --tool-ok: var(--success);
+  --tool-error: var(--error);
+  --tool-commit: var(--info);
+  --tool-push: var(--success);
+  --tool-border-running: var(--warning);
+
+  --mem-tag-bg: rgba(0, 0, 0, 0.035);
+  --mem-tag-text: rgba(0, 0, 0, 0.42);
+  --mem-tag-border: rgba(0, 0, 0, 0.1);
+  --mem-tag-hover-text: rgba(0, 0, 0, 0.62);
+  --mem-tag-hover-border: rgba(0, 0, 0, 0.17);
+
+  --flash-user: #bd6818;
+  --flash-assistant: #7d36b6;
+
+  --login-glow: color-mix(in srgb, var(--warning) 8%, transparent);
+  --login-line: color-mix(in srgb, var(--accent) 10%, transparent);
+  --login-line-scan: color-mix(in srgb, var(--accent) 32%, transparent);
+  --login-line-hover: color-mix(in srgb, var(--warning) 48%, transparent);
+  --login-line-focus: color-mix(in srgb, var(--warning) 58%, transparent);
+  --login-line-success: color-mix(in srgb, var(--success) 65%, transparent);
+  --login-label: color-mix(in srgb, var(--accent) 38%, transparent);
+  --login-label-muted: color-mix(in srgb, var(--accent) 28%, transparent);
+  --login-label-focus: color-mix(in srgb, var(--warning) 72%, transparent);
+  --login-noise: color-mix(in srgb, var(--accent) 20%, transparent);
+  --login-noise-hover: color-mix(in srgb, var(--accent) 32%, transparent);
+  --login-noise-focus: color-mix(in srgb, var(--accent) 27%, transparent);
+  --login-noise-locked: color-mix(in srgb, var(--accent) 75%, transparent);
+  --login-cursor-dim: color-mix(in srgb, var(--accent) 13%, transparent);
+  --login-cursor: color-mix(in srgb, var(--accent) 72%, transparent);
+  --login-button-border: color-mix(in srgb, var(--accent) 12%, transparent);
+  --login-button-hover-border: color-mix(in srgb, var(--warning) 45%, transparent);
+
+  --syn-keyword: #9b2393;
+  --syn-builtin: #9b6800;
+  --syn-type: #9b6800;
+  --syn-literal: #875e08;
+  --syn-number: #875e08;
+  --syn-string: #3b7e3f;
+  --syn-regexp: #3b7e3f;
+  --syn-symbol: #08789f;
+  --syn-comment: #6d6962;
+  --syn-function: #3467c3;
+  --syn-variable: #33312e;
+  --syn-tag: #08789f;
+  --syn-attr: #875e08;
+  --syn-addition: #3b7e3f;
+  --syn-deletion: #a33d37;
+}

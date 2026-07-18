@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { modus, setAuthToken } from "../modusClient";
 import { MoLogo } from "./MoLogo";
+import { BackendTargetControl } from "./BackendTargetManager";
 
 const GLYPHS = "0123456789abcdefnrstiouxlm{}[]()=></:;.&|!?#@$%~^+*";
 const WORDS = [
@@ -206,6 +207,7 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) 
       <div className="login-glow" />
       <div className="login-box">
         <div className="login-logo"><MoLogo size={36} /></div>
+        <div className="login-backend-target"><BackendTargetControl /></div>
         {isSetup && (
           <div className="login-subtitle">
             {pinOptional ? "set your name; PIN optional" : "choose a PIN to secure browser access"}

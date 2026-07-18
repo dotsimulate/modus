@@ -484,8 +484,19 @@ export async function loadClientExtensions(items: ClientExtensionManifestItem[])
     const moduleUrl = item.moduleUrl.startsWith("http://") || item.moduleUrl.startsWith("https://")
       ? item.moduleUrl
       : `${API_BASE}${item.moduleUrl}`;
-    const mod = await import(/* @vite-ignore */ moduleUrl);
-    const definition = toDefinition(mod as Record<string, unknown>);
+    // Fetch through the authenticated client boundary, then evaluate from a
+    // same-window blob. This keeps remote backend script origins out of the
+    // Tauri CSP while still allowing trusted, backend-configured extensions.
+    const response = await fetch(moduleUrl, { headers: authHeaders() });
+    if (!response.ok) throw new Error(`Client extension fetch failed: ${response.status}`);
+    const blobUrl = URL.createObjectURL(new Blob([await response.text()], { type: "application/javascript" }));
+    let mod: Record<string, unknown>;
+    try {
+      mod = await import(/* @vite-ignore */ blobUrl) as Record<string, unknown>;
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+    const definition = toDefinition(mod);
     if (!definition) continue;
     const onLoad = typeof definition === "function" ? definition : definition.onLoad;
     if (!onLoad) continue;

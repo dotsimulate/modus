@@ -708,10 +708,19 @@ function AppContent({ router }: { router: HashRouter }) {
           onClose={() => setShowUserSettings(false)}
           onSave={async (patch) => {
             if (!activeUserProfile) return;
-            const { computer, editor, ...corePatch } = patch;
+            const {
+              computer, editor, interface: interfaceConfig, pageNav, layouts, leftPanel,
+              dashboard, clientExtensions, ...corePatch
+            } = patch;
             const uiPatch = {
               ...(computer !== undefined ? { computer } : {}),
               ...(editor !== undefined ? { editor } : {}),
+              ...(interfaceConfig !== undefined ? { interface: interfaceConfig } : {}),
+              ...(pageNav !== undefined ? { pageNav } : {}),
+              ...(layouts !== undefined ? { layouts } : {}),
+              ...(leftPanel !== undefined ? { leftPanel } : {}),
+              ...(dashboard !== undefined ? { dashboard } : {}),
+              ...(clientExtensions !== undefined ? { clientExtensions } : {}),
             };
             if (Object.keys(corePatch).length > 0) {
               await modus.patchUserProfile(activeUserProfile, corePatch);

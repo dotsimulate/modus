@@ -1,54 +1,48 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-
-const STORAGE_KEY = "mo-chat-settings";
-
-type ChatSettings = {
-  fontScale: number;
-  chatWidth: number;
-  spineEnabled: boolean;
-};
-
-const DEFAULTS: ChatSettings = { fontScale: 100, chatWidth: 840, spineEnabled: true };
-
-function load(): ChatSettings {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
-  } catch { /* ignore */ }
-  return { ...DEFAULTS };
-}
-
-function save(s: ChatSettings) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-  // Broadcast so live consumers (ChatView, etc.) can react without
-  // a full reload.
-  window.dispatchEvent(new CustomEvent("mo-chat-settings-change", { detail: s }));
-}
-
-function apply(s: ChatSettings) {
-  const root = document.documentElement;
-  root.style.setProperty("--chat-max-width", `${s.chatWidth}px`);
-  root.style.setProperty("--font-scale", `${s.fontScale / 100}`);
-}
-
-// Apply saved settings on module load
-apply(load());
+import { modus } from "../modusClient";
+import { useProfiles } from "../providers/ProfileContext";
+import {
+  applyInterfaceSettings,
+  DEFAULT_INTERFACE_SETTINGS,
+  readLocalInterfaceSettings,
+  resolveInterfaceSettings,
+  type ResolvedInterfaceSettings,
+} from "../interface-settings";
 
 export function ChatSettings() {
+  const { activeUserProfile, activeUP, refreshUserProfiles } = useProfiles();
   const [open, setOpen] = useState(false);
-  const [settings, setSettings] = useState<ChatSettings>(load);
+  const [settings, setSettings] = useState<ResolvedInterfaceSettings>(readLocalInterfaceSettings);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pos, setPos] = useState<{ bottom: number; right: number } | null>(null);
 
-  const update = useCallback((patch: Partial<ChatSettings>) => {
+  useEffect(() => {
+    const next = resolveInterfaceSettings(activeUP?.interface);
+    setSettings(next);
+    applyInterfaceSettings(next);
+  }, [activeUP?.interface]);
+
+  useEffect(() => () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+  }, []);
+
+  const update = useCallback((patch: Partial<ResolvedInterfaceSettings["chat"]>) => {
     setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      save(next);
-      apply(next);
+      const next = { ...prev, chat: { ...prev.chat, ...patch } };
+      applyInterfaceSettings(next);
+      if (activeUserProfile) {
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        saveTimer.current = setTimeout(() => {
+          modus.patchUserProfileUiConfig(activeUserProfile, { interface: next })
+            .then(refreshUserProfiles)
+            .catch(() => {});
+        }, 300);
+      }
       return next;
     });
-  }, []);
+  }, [activeUserProfile, refreshUserProfiles]);
 
   const toggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -83,9 +77,9 @@ export function ChatSettings() {
   }, [open]);
 
   const isDefault =
-    settings.fontScale === DEFAULTS.fontScale &&
-    settings.chatWidth === DEFAULTS.chatWidth &&
-    settings.spineEnabled === DEFAULTS.spineEnabled;
+    settings.chat.fontScale === DEFAULT_INTERFACE_SETTINGS.chat.fontScale &&
+    settings.chat.chatWidth === DEFAULT_INTERFACE_SETTINGS.chat.chatWidth &&
+    settings.chat.spineEnabled === DEFAULT_INTERFACE_SETTINGS.chat.spineEnabled;
 
   return (
     <div className="chat-settings" ref={ref}>
@@ -112,34 +106,34 @@ export function ChatSettings() {
             <span className="chat-settings-label">font</span>
             <input
               type="range" min={75} max={175} step={5}
-              value={settings.fontScale}
+              value={settings.chat.fontScale}
               onChange={(e) => update({ fontScale: +e.target.value })}
             />
-            <span className="chat-settings-value">{settings.fontScale}%</span>
+            <span className="chat-settings-value">{settings.chat.fontScale}%</span>
           </div>
           <div className="chat-settings-row">
             <span className="chat-settings-label">width</span>
             <input
               type="range" min={500} max={1600} step={20}
-              value={settings.chatWidth}
+              value={settings.chat.chatWidth}
               onChange={(e) => update({ chatWidth: +e.target.value })}
             />
-            <span className="chat-settings-value">{settings.chatWidth}</span>
+            <span className="chat-settings-value">{settings.chat.chatWidth}</span>
           </div>
           <div className="chat-settings-row">
             <span className="chat-settings-label">spine</span>
             <button
               type="button"
-              className={`chat-settings-toggle${settings.spineEnabled ? " on" : ""}`}
-              onClick={() => update({ spineEnabled: !settings.spineEnabled })}
-              aria-pressed={settings.spineEnabled}
+              className={`chat-settings-toggle${settings.chat.spineEnabled ? " on" : ""}`}
+              onClick={() => update({ spineEnabled: !settings.chat.spineEnabled })}
+              aria-pressed={settings.chat.spineEnabled}
             >
               <span className="chat-settings-toggle-dot" />
             </button>
-            <span className="chat-settings-value">{settings.spineEnabled ? "on" : "off"}</span>
+            <span className="chat-settings-value">{settings.chat.spineEnabled ? "on" : "off"}</span>
           </div>
           {!isDefault && (
-            <button className="chat-settings-reset" onClick={() => update(DEFAULTS)}>reset</button>
+            <button className="chat-settings-reset" onClick={() => update(DEFAULT_INTERFACE_SETTINGS.chat)}>reset</button>
           )}
         </div>
       )}

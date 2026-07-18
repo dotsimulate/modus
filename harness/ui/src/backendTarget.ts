@@ -1,30 +1,13 @@
-export type BackendTargetMode = "managed-local" | "external-local" | "remote" | "browser";
+import { normalizeBackendUrl, type BackendTarget, type BackendTargetMode } from "./backend-targets";
 
-export type BackendTarget = {
-  id: string;
-  label: string;
-  mode: BackendTargetMode;
-  apiBase: string;
-};
+export { normalizeBackendUrl } from "./backend-targets";
+export type { BackendTarget, BackendTargetMode } from "./backend-targets";
 
 type ResolveBackendTargetOptions = {
   search?: string;
   envUrl?: string;
   pageOrigin?: string;
 };
-
-export function normalizeBackendUrl(value: string): string {
-  const candidate = value.trim();
-  if (!candidate) return "";
-  const url = new URL(candidate);
-  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
-    throw new Error("Backend target must be an HTTP(S) origin without embedded credentials");
-  }
-  if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) {
-    throw new Error("Backend target must be an origin without a path, query, or fragment");
-  }
-  return url.origin;
-}
 
 export function resolveBackendTarget(options: ResolveBackendTargetOptions = {}): BackendTarget {
   const params = new URLSearchParams(options.search ?? "");
@@ -38,10 +21,11 @@ export function resolveBackendTarget(options: ResolveBackendTargetOptions = {}):
     : apiBase
       ? "external-local"
       : "browser";
+  const explicitId = params.get("modusTargetId")?.trim();
   const identity = apiBase || options.pageOrigin || "same-origin";
 
   return {
-    id: `${mode}:${identity}`,
+    id: explicitId || `${mode}:${identity}`,
     label: params.get("modusTargetLabel")?.trim() || (apiBase ? new URL(apiBase).host : "This browser"),
     mode,
     apiBase,
@@ -58,4 +42,11 @@ export function backendUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${BACKEND_TARGET.apiBase}${normalizedPath}`;
+}
+
+/** Namespace backend-owned browser state while preserving existing browser keys. */
+export function backendStorageKey(key: string): string {
+  return BACKEND_TARGET.mode === "browser"
+    ? key
+    : `${key}:${encodeURIComponent(BACKEND_TARGET.id)}`;
 }

@@ -70,6 +70,8 @@ export type {
   ProviderHealth,
   // User profiles
   UserProfileUiConfig,
+  ToolCallDisplayMode,
+  UserInterfaceConfig,
   UserProfileState,
   UserProfile,
   // Permission

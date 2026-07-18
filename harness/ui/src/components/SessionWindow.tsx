@@ -16,6 +16,7 @@ import { useProfiles } from "../providers/ProfileContext";
 import { useSession } from "../providers/SessionContext";
 import { FloatingWindow } from "./FloatingWindow";
 import { ChatView } from "./ChatView";
+import { resolveInterfaceSettings } from "../interface-settings";
 import { ChatInput } from "./ChatInput";
 import { PermissionOverlay } from "./PermissionOverlay";
 
@@ -33,7 +34,8 @@ function statusLabel(status: string): string {
 }
 
 export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
-  const { projectRoot } = useProfiles();
+  const { activeUP, projectRoot } = useProfiles();
+  const conversation = resolveInterfaceSettings(activeUP?.interface).conversation;
   const { branchFromSessionMessage } = useSession();
   const [input, setInput] = useState("");
   const [queuedMessage, setQueuedMessage] = useState<{ text: string; attachments: Attachment[] } | null>(null);
@@ -265,10 +267,11 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
                 provider={session.provider ?? session.agentConfig?.provider}
                 streaming={isActive ?? false}
                 streamFeed={session.streamFeed}
-                showThinking={false}
-                showMeta={false}
-                showToolCalls={true}
-                showGitEvents={false}
+                showThinking={conversation.showThinking}
+                showMeta={conversation.showMeta}
+                toolCallDisplay={conversation.toolCalls}
+                showGitEvents={conversation.showGitEvents}
+                showFileChanges={conversation.showFileChanges}
                 emptyTitle={historyLoad.status === "loading" ? "loading messages…" : historyLoad.status === "error" ? "messages unavailable" : "no messages"}
                 emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
                 emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}

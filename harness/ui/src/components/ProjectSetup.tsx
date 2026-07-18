@@ -10,6 +10,7 @@ import { useState, useCallback } from "react";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import { LAUNCH_CWD } from "../launchParams";
+import { backendStorageKey } from "../backendTarget";
 import { FolderPicker } from "./FolderPicker";
 
 type Props = {
@@ -47,7 +48,7 @@ export function ProjectSetup({ onComplete }: Props) {
         defaultAgentProfile: "modus-dev",
       });
       await modus.initProject(projectPath.trim(), projectName);
-      sessionStorage.removeItem("modus:launch-cwd");
+      sessionStorage.removeItem(backendStorageKey("modus:launch-cwd"));
       switchUserProfile(slug);
       await Promise.all([refreshUserProfiles(), refreshProfiles()]);
       onComplete();

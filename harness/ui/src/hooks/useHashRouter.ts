@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { type View, VIEW_SLUGS, DEFAULT_VIEW } from "../views";
 import { isSessionId } from "../sessionIds";
+import { backendStorageKey } from "../backendTarget";
 
 // Re-export for convenience
 export type { View } from "../views";
@@ -77,7 +78,7 @@ function buildHash(profile: string | null, view: View, sessionId?: string | null
   return `${profile}/${suffix}`;
 }
 
-const USER_PROFILE_KEY = "harness:active-user-profile";
+const USER_PROFILE_KEY = backendStorageKey("harness:active-user-profile");
 
 export function useHashRouter() {
   const initial = parseHash(window.location.hash);
