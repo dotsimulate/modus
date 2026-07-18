@@ -36,12 +36,13 @@ import {
 import type { RewindPreview, RewindResult } from "./checkpoints";
 import { resolve as resolvePath, dirname as pathDirname, join as pathJoin } from "path";
 import { appendFileSync, mkdirSync } from "fs";
+import { APP_PATHS } from "./app-paths";
 
 // ── SSE flow log ──
 // Append-only diagnostic log of every subscriber lifecycle event and broadcast.
 // Gitignored, no secrets (only ID prefixes, event types, sizes, counts).
 // Tail with: Get-Content harness/.modus/sse-flow.log -Wait
-const SSE_LOG = pathJoin(import.meta.dir, ".modus", "sse-flow.log");
+const SSE_LOG = pathJoin(APP_PATHS.logsDir, "sse-flow.log");
 try { mkdirSync(pathDirname(SSE_LOG), { recursive: true }); } catch {}
 function sseLog(event: string, sid: string | undefined, detail: string): void {
   const ts = new Date().toLocaleTimeString("en-US", { hour12: false, fractionalSecondDigits: 3 });

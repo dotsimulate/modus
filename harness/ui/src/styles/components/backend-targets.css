@@ -67,7 +67,25 @@
 .backend-target-hint { padding-left: 100px; color: var(--text-muted); font-size: 8px; line-height: 1.5; }
 .backend-target-connect, .backend-target-retry { align-self: flex-end; padding: 7px 11px; border: 1px solid var(--border-active); border-radius: 4px; background: var(--bg-surface); color: var(--text); font: 9px var(--font-mono); cursor: pointer; }
 .backend-target-connect:disabled { opacity: .45; cursor: default; }
+.backend-target-tailnet { display: flex; flex-direction: column; gap: 8px; padding: 15px 20px 18px; border-top: 1px solid var(--border); }
+.backend-target-tailnet .backend-target-hint { padding-left: 0; }
+.backend-target-tailnet-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.backend-target-tailnet-title { font-size: 11px; }
+.backend-target-tailnet-state { padding: 3px 6px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); font-size: 8px; letter-spacing: .06em; text-transform: uppercase; }
+.backend-target-tailnet-state.active { border-color: color-mix(in srgb, var(--success) 55%, var(--border)); color: var(--success); }
+.backend-target-tailnet-state.blocked,
+.backend-target-tailnet-state.error,
+.backend-target-tailnet-state.unavailable { border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); color: var(--warning); }
+.backend-target-tailnet-url { padding: 7px 9px; overflow: hidden; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--accent); font-size: 9px; text-overflow: ellipsis; user-select: text; white-space: nowrap; }
+.backend-target-tailnet-message { color: var(--text-dim); font-size: 8px; line-height: 1.5; }
+.backend-target-tailnet-warning { padding: 7px 9px; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); border-radius: 4px; color: var(--warning); font-size: 8px; line-height: 1.5; }
+.backend-target-tailnet-actions { display: flex; justify-content: flex-end; gap: 7px; }
+.backend-target-tailnet-actions button { padding: 6px 9px; border: 1px solid var(--border-active); border-radius: 4px; background: var(--bg-surface); color: var(--text); font: 8px var(--font-mono); cursor: pointer; }
+.backend-target-tailnet-actions button:disabled { opacity: .45; cursor: wait; }
 .backend-target-error { margin: 0 20px 18px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--error) 45%, var(--border)); border-radius: 4px; color: var(--error); font-size: 9px; line-height: 1.5; }
+.backend-target-lifecycle { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 20px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 8px; line-height: 1.5; }
+.backend-target-lifecycle button { flex: 0 0 auto; padding: 6px 9px; border: 1px solid color-mix(in srgb, var(--error) 45%, var(--border)); border-radius: 4px; background: transparent; color: var(--error-soft); font: 8px var(--font-mono); cursor: pointer; }
+.backend-target-lifecycle button:hover { border-color: var(--error); color: var(--error); }
 .backend-connection-screen { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: var(--bg); color: var(--text); }
 .backend-connection-shell { width: min(560px, 100%); display: flex; flex-direction: column; gap: 12px; }
 .backend-connection-message { color: var(--warning); font: 10px/1.5 var(--font-mono); }

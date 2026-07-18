@@ -26,12 +26,20 @@ describe("Tailscale Serve ownership", () => {
     expect(classifyHttps443(config(), null)).toBe("foreign");
   });
 
+  test("records whether the CLI or desktop owns the exact Modus route", () => {
+    expect(owner.managedBy).toBe("cli");
+    const desktopOwner = ownershipFor("host.example.ts.net", 3777, new Date(0), "desktop");
+    expect(desktopOwner.managedBy).toBe("desktop");
+    expect(classifyHttps443(config(), desktopOwner)).toBe("modus");
+  });
+
   test("never claims funnel or non-Modus targets", () => {
     const funnel = JSON.stringify({
       Web: { "host.example.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:3777" } } } },
       AllowFunnel: { "host.example.ts.net:443": true },
     });
     expect(classifyHttps443(funnel, owner)).toBe("foreign");
+    expect(classifyHttps443(JSON.stringify({ TCP: { "443": { TCPForward: "127.0.0.1:9000" } } }), null)).toBe("foreign");
     expect(classifyHttps443(config("http://127.0.0.1:9999"), owner)).toBe("foreign");
     expect(classifyHttps443("not-json", owner)).toBe("foreign");
   });

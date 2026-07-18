@@ -93,6 +93,7 @@ import './styles/mobile.css'
 import { initFavicon } from './favicon'
 import {
   backendIdentityChanged,
+  EXTERNAL_LOCAL_BACKEND_TARGET,
   getActiveBackendTarget,
   inspectBackendTarget,
   isDesktopClient,
@@ -102,6 +103,16 @@ import {
   targetSearchParams,
   type SavedBackendTarget,
 } from './backend-targets'
+import {
+  acknowledgeManagedDesktopTarget,
+  bindManagedDesktopTarget,
+  bootstrapDesktop,
+  isTauriRuntime,
+  type DesktopBootstrapResponse,
+  type DesktopBootstrapMode,
+} from './desktopBridge'
+import { BACKEND_TARGET, configureBackendTarget } from './backendTarget'
+import { configureModusClient, modus } from './modusClient'
 
 initFavicon()
 
@@ -127,10 +138,52 @@ async function bootstrap() {
   const root = createRoot(document.getElementById('root')!)
   let params = new URLSearchParams(location.search)
   const desktopClient = isDesktopClient(location.search, location.origin)
+  const nativeDesktop = isTauriRuntime() || params.get('modusDesktop') === '1'
+  let managedDesktop: DesktopBootstrapResponse | null = null
 
-  if (params.get('modusDiscover') === 'local' && !params.has('modusTarget')) {
+  if (nativeDesktop) {
     const preferred = getActiveBackendTarget()
-    if (preferred.mode === 'remote' && preferred.url) {
+    const queryMode = params.get('modusTargetMode')
+    const requestedMode: DesktopBootstrapMode = params.get('modusDiscover') === 'external' || queryMode === 'external-local'
+      ? 'external-local'
+      : preferred.mode === 'remote' || queryMode === 'remote'
+        ? 'remote'
+        : 'managed-local'
+    const requestedUrl = requestedMode === 'remote'
+      ? (preferred.mode === 'remote' ? preferred.url : params.get('modusTarget') ?? undefined)
+      : undefined
+    try {
+      const response = await bootstrapDesktop(requestedMode, requestedUrl)
+      if (response.mode === 'managed-local') {
+        await bindManagedDesktopTarget(response)
+        managedDesktop = response
+        params.delete('modusDiscover')
+        params.set('modusTarget', response.apiBase)
+        params.set('modusTargetId', response.targetId)
+        params.set('modusTargetMode', 'managed-local')
+        params.set('modusTargetLabel', response.label)
+      } else if (response.mode === 'remote') {
+        params.delete('modusDiscover')
+        params.set('modusTarget', response.apiBase)
+        params.set('modusTargetId', preferred.mode === 'remote' ? preferred.id : response.targetId)
+        params.set('modusTargetMode', 'remote')
+        params.set('modusTargetLabel', preferred.mode === 'remote' ? preferred.label : response.label)
+      } else {
+        params.delete('modusTarget')
+        params.set('modusDiscover', 'external')
+        params.set('modusTargetMode', 'external-local')
+      }
+      history.replaceState(null, '', `${location.pathname}?${params.toString()}${location.hash}`)
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      await renderConnectionError(root, `Modus could not prepare the selected desktop backend: ${message}`)
+      return
+    }
+  }
+
+  if ((params.get('modusDiscover') === 'external' || (!nativeDesktop && params.get('modusDiscover') === 'local')) && !params.has('modusTarget')) {
+    const preferred = getActiveBackendTarget()
+    if (!nativeDesktop && preferred.mode === 'remote' && preferred.url) {
       params = targetSearchParams(preferred, location.search)
     } else {
       const backend = await discoverLocalBackend()
@@ -140,9 +193,9 @@ async function bootstrap() {
       }
       params.delete('modusDiscover')
       params.set('modusTarget', backend)
-      params.set('modusTargetId', LOCAL_BACKEND_TARGET.id)
+      params.set('modusTargetId', EXTERNAL_LOCAL_BACKEND_TARGET.id)
       params.set('modusTargetMode', 'external-local')
-      params.set('modusTargetLabel', `Local Modus · ${new URL(backend).port}`)
+      params.set('modusTargetLabel', `Development daemon · ${new URL(backend).port}`)
     }
     history.replaceState(null, '', `${location.pathname}?${params.toString()}${location.hash}`)
   }
@@ -163,7 +216,9 @@ async function bootstrap() {
     }
     const connected: SavedBackendTarget = id === 'local'
       ? LOCAL_BACKEND_TARGET
-      : {
+      : id === 'external-local'
+        ? EXTERNAL_LOCAL_BACKEND_TARGET
+        : {
           id,
           label: params.get('modusTargetLabel') || new URL(apiBase).host,
           mode: params.get('modusTargetMode') === 'remote' ? 'remote' : 'external-local',
@@ -174,8 +229,31 @@ async function bootstrap() {
     rememberBackendConnected(connected)
   }
 
-  // Import only after discovery so the SDK's immutable backend target sees the
-  // resolved runtime port instead of a build-time assumption.
+  // Explicitly rebind after discovery. Rollup can hoist shared modules into the
+  // entry chunk even when App is dynamically imported, so import order alone
+  // cannot protect the managed runtime port and credential namespace.
+  configureBackendTarget({
+    search: `?${params.toString()}`,
+    envUrl: import.meta.env.VITE_API_URL || '',
+    pageOrigin: location.origin,
+  })
+  configureModusClient()
+  if (managedDesktop) {
+    try {
+      if (BACKEND_TARGET.id !== managedDesktop.targetId
+        || BACKEND_TARGET.apiBase !== managedDesktop.apiBase
+        || modus.baseUrl !== managedDesktop.apiBase) {
+        throw new Error('the UI client did not bind to the supervisor-provided backend')
+      }
+      await modus.checkToken()
+      await acknowledgeManagedDesktopTarget(managedDesktop)
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause)
+      await renderConnectionError(root, `Modus could not bind the desktop UI to its managed backend: ${message}`)
+      return
+    }
+  }
+
   const { default: App } = await import('./App')
   root.render(
     <StrictMode>

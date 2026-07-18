@@ -19,6 +19,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import { readFile, readdir } from "fs/promises";
 import { join, resolve, isAbsolute } from "path";
+import { APP_PATHS } from "./app-paths";
 import { getAllUserProfiles } from "./profiles";
 import type { PromptGatherContext } from "./gather-types";
 
@@ -90,7 +91,7 @@ export interface PromptListItem {
 
 // ── Constants ──
 
-const BUILT_IN_DIR = join(import.meta.dir, "prompts");
+const BUILT_IN_DIR = join(APP_PATHS.resourcesDir, "prompts");
 const MODUS_PROMPTS = ".modus/prompts";
 const RUN_TIMEOUT_MS = 10_000;
 const READ_MAX_BYTES = 50_000;

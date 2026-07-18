@@ -19,9 +19,10 @@ loadSecrets();
 }
 
 import { join, resolve, extname, dirname } from "path";
+import { APP_PATHS } from "./app-paths";
 import { BACKEND_IDENTITY } from "./backend-identity";
 import { configuredRootsForCwd } from "./preview-roots";
-import { existsSync, statSync } from "fs";
+import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "fs";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
@@ -125,11 +126,11 @@ import {
   requestSourceKey,
 } from "./security-boundary";
 
-const PORT = Number(process.env.HARNESS_PORT ?? 3777);
+let PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = process.env.HARNESS_HOST ?? "127.0.0.1";
 const AUTH_TOKEN = process.env.HARNESS_TOKEN || "";
 const WHISPER_TRANSCRIBE_URL = process.env.WHISPER_URL ?? "http://127.0.0.1:8080/v1/audio/transcriptions";
-const UI_DIST_DIR = resolve(import.meta.dir, "ui/dist");
+const UI_DIST_DIR = resolve(APP_PATHS.resourcesDir, "ui/dist");
 const UI_INDEX_PATH = join(UI_DIST_DIR, "index.html");
 
 type FileSearchHit = {
@@ -708,7 +709,7 @@ app.post("/api/admin/restart", async (c) => {
   }
 
   // Write sentinel file — watchdog sees this and does a clean restart (no backoff)
-  const sentinelPath = join(import.meta.dir, ".watchdog-restart");
+  const sentinelPath = join(APP_PATHS.runtimeDir, ".watchdog-restart");
   await Bun.write(sentinelPath, Date.now().toString());
 
   // Respond before shutting down
@@ -4466,6 +4467,8 @@ const server = Bun.serve({
       }
     : undefined,
 });
+if (!server.port) throw new Error("Bun did not report the bound backend port");
+PORT = server.port;
 const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
 const protocol = HARNESS_TLS_CERT && HARNESS_TLS_KEY ? "https" : "http";
 console.log(`Agent harness listening on ${protocol}://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
@@ -4475,6 +4478,24 @@ initWakeScheduler();
 loadPrompts();
 startSessionReaper();
 startMemoryWatchdog();
+
+function publishDesktopReadiness(): void {
+  const readyPath = process.env.MODUS_DESKTOP_READY_FILE?.trim();
+  if (!readyPath) return;
+  const temporaryPath = `${readyPath}.${process.pid}.tmp`;
+  mkdirSync(dirname(readyPath), { recursive: true });
+  const record = {
+    event: "ready",
+    pid: process.pid,
+    port: PORT,
+    instanceId: BACKEND_IDENTITY.id,
+    version: process.env.MODUS_DESKTOP_VERSION?.trim() || "development",
+  };
+  writeFileSync(temporaryPath, `${JSON.stringify(record)}\n`, { encoding: "utf8", flag: "wx" });
+  renameSync(temporaryPath, readyPath);
+}
+
+publishDesktopReadiness();
 
 // ── Workspace history — shadow repos, index, fs-watcher subscriber ──
 

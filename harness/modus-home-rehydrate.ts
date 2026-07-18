@@ -13,6 +13,7 @@
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "fs";
 import { dirname, join } from "path";
+import { APP_PATHS } from "./app-paths";
 import {
   ensureHomeLayout,
   homeAgentsDir, homeGlobalPath, homePromptCachePath,
@@ -25,7 +26,7 @@ import {
 // Phase 2 of the relocation; rehydrateHome() is the one-way bridge that
 // copies their contents to ~/.modus/profiles/ before the repo dirs are
 // removed in Phase 3.
-const LEGACY_PROFILES_DIR = join(import.meta.dir, "profiles");
+const LEGACY_PROFILES_DIR = join(APP_PATHS.resourcesDir, "profiles");
 const LEGACY_AGENTS_DIR = join(LEGACY_PROFILES_DIR, "agents");
 const LEGACY_USERS_DIR = join(LEGACY_PROFILES_DIR, "users");
 const LEGACY_UI_AGENTS_DIR = join(LEGACY_PROFILES_DIR, "ui", "agents");

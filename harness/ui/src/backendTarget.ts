@@ -38,6 +38,19 @@ export const BACKEND_TARGET = resolveBackendTarget({
   pageOrigin: typeof location === "undefined" ? "" : location.origin,
 });
 
+/**
+ * Rebind the shared target after the native desktop readiness handshake.
+ *
+ * Production bundlers may evaluate this module before a dynamic App import, so
+ * import timing is not a safe way to wait for Rust to choose the managed port.
+ * Mutating the exported object keeps every existing importer on the same live
+ * target object.
+ */
+export function configureBackendTarget(options: ResolveBackendTargetOptions): BackendTarget {
+  Object.assign(BACKEND_TARGET, resolveBackendTarget(options));
+  return BACKEND_TARGET;
+}
+
 export function backendUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;

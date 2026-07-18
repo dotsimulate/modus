@@ -1,6 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { BACKEND_TARGET } from "../backendTarget";
+import {
+  getDesktopTailscaleStatus,
+  isTauriRuntime,
+  quitDesktopModus,
+  setDesktopTailscaleEnabled,
+  type DesktopTailscaleStatus,
+} from "../desktopBridge";
 import {
   activateBackendTarget,
   backendIdentityChanged,
@@ -14,7 +21,8 @@ import {
 } from "../backend-targets";
 
 function targetSubtitle(target: SavedBackendTarget): string {
-  if (target.id === "local") return "Daemon on this computer · ports 3777–3781";
+  if (target.id === "local") return "Managed by the desktop · OS-assigned private port";
+  if (target.id === "external-local") return "Existing CLI daemon · ports 3777–3781";
   if (!target.lastConnectedAt) return target.url ?? "";
   return `${target.url} · used ${new Date(target.lastConnectedAt).toLocaleDateString()}`;
 }
@@ -25,13 +33,40 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
   const [url, setUrl] = useState("");
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tailscale, setTailscale] = useState<DesktopTailscaleStatus | null>(null);
+  const [tailscaleWorking, setTailscaleWorking] = useState(false);
+  const nativeDesktop = useMemo(() => isTauriRuntime(), []);
 
   const currentId = BACKEND_TARGET.id;
+  const managedLocal = nativeDesktop && BACKEND_TARGET.mode === "managed-local";
+
+  useEffect(() => {
+    if (!managedLocal) return;
+    let cancelled = false;
+    void getDesktopTailscaleStatus()
+      .then((status) => { if (!cancelled) setTailscale(status); })
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      });
+    return () => { cancelled = true; };
+  }, [managedLocal]);
+
+  const configureTailscale = async (enabled: boolean) => {
+    setError(null);
+    setTailscaleWorking(true);
+    try {
+      setTailscale(await setDesktopTailscaleEnabled(enabled));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setTailscaleWorking(false);
+    }
+  };
 
   const connect = async (target: SavedBackendTarget) => {
     setError(null);
     setConnectingId(target.id);
-    if (target.id === "local") {
+    if (target.mode !== "remote") {
       activateBackendTarget(target);
       return;
     }
@@ -81,7 +116,7 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
 
       <div className="backend-target-list">
         {targets.map((target) => {
-          const active = target.id === currentId || (target.id === "local" && BACKEND_TARGET.mode === "external-local");
+          const active = target.id === currentId;
           return (
             <div className={`backend-target-row${active ? " active" : ""}`} key={target.id}>
               <button type="button" className="backend-target-select" onClick={() => void connect(target)} disabled={!!connectingId}>
@@ -91,7 +126,7 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
                 </span>
                 <span className="backend-target-subtitle">{targetSubtitle(target)}</span>
               </button>
-              {target.id !== "local" && (
+              {target.mode === "remote" && (
                 <button type="button" className="backend-target-remove" onClick={() => remove(target)} title="Forget backend">×</button>
               )}
               {connectingId === target.id && <span className="backend-target-working">connecting…</span>}
@@ -121,6 +156,53 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
           test and connect
         </button>
       </div>
+
+      {managedLocal && (
+        <div className="backend-target-tailnet">
+          <div className="backend-target-tailnet-heading">
+            <div>
+              <div className="backend-target-section-label">Phone and browser access</div>
+              <div className="backend-target-tailnet-title">Tailscale Serve</div>
+            </div>
+            <span className={`backend-target-tailnet-state ${tailscale?.state ?? "loading"}`}>
+              {tailscale?.state ?? "checking"}
+            </span>
+          </div>
+          <div className="backend-target-hint">
+            The desktop publishes this exact managed backend to your stable tailnet HTTPS address. Closing keeps it online; Quit removes the route.
+          </div>
+          {tailscale?.url && <div className="backend-target-tailnet-url">{tailscale.url}</div>}
+          {tailscale?.message && <div className="backend-target-tailnet-message">{tailscale.message}</div>}
+          {tailscale?.enabled && !tailscale.pinConfigured && (
+            <div className="backend-target-tailnet-warning">Set a browser PIN before sharing this machine with other tailnet users.</div>
+          )}
+          <div className="backend-target-tailnet-actions">
+            {!tailscale?.enabled ? (
+              <button type="button" disabled={!tailscale || tailscaleWorking} onClick={() => void configureTailscale(true)}>
+                {tailscaleWorking ? "enabling…" : "Enable Tailnet access"}
+              </button>
+            ) : (
+              <>
+                {tailscale.state !== "active" && (
+                  <button type="button" disabled={tailscaleWorking} onClick={() => void configureTailscale(true)}>
+                    {tailscaleWorking ? "retrying…" : "Retry"}
+                  </button>
+                )}
+                <button type="button" disabled={tailscaleWorking} onClick={() => void configureTailscale(false)}>
+                  Turn off
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {nativeDesktop && (
+        <div className="backend-target-lifecycle">
+          <div>Closing the window hides Modus to the tray and keeps the managed backend running.</div>
+          <button type="button" onClick={() => void quitDesktopModus()}>Quit Modus and stop backend</button>
+        </div>
+      )}
 
       {error && <div className="backend-target-error">{error}</div>}
     </div>

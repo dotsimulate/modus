@@ -8,26 +8,37 @@
 import { ModusClient } from "../../sdk/index";
 import { BACKEND_TARGET, backendStorageKey } from "./backendTarget";
 
-const STORAGE_KEY = backendStorageKey("harness_token");
+let storageKey = backendStorageKey("harness_token");
 
 function getStoredToken(): string {
-  return localStorage.getItem(STORAGE_KEY) ?? "";
+  return localStorage.getItem(storageKey) ?? "";
 }
 
-/** The shared ModusClient instance for all UI code. */
-export const modus = new ModusClient({
-  url: BACKEND_TARGET.apiBase,
-  getToken: () => getStoredToken() || undefined,
-});
+function createModusClient(): ModusClient {
+  return new ModusClient({
+    url: BACKEND_TARGET.apiBase,
+    getToken: () => getStoredToken() || undefined,
+  });
+}
+
+/** The shared ModusClient binding for all UI code. */
+export let modus = createModusClient();
 
 // ── Helpers for URL-construction (image srcs, WebSocket URLs, etc.) ──
 
 /** Base URL for the harness API (empty string = same origin). */
-export const API_BASE: string = BACKEND_TARGET.apiBase;
+export let API_BASE: string = BACKEND_TARGET.apiBase;
+
+/** Recreate immutable SDK state after the desktop selects its runtime target. */
+export function configureModusClient(): void {
+  storageKey = backendStorageKey("harness_token");
+  API_BASE = BACKEND_TARGET.apiBase;
+  modus = createModusClient();
+}
 
 /** Current auth token (reads live from localStorage). */
 export function getAuthToken(): string {
-  return localStorage.getItem(STORAGE_KEY) ?? "";
+  return localStorage.getItem(storageKey) ?? "";
 }
 
 /** Returns `token=...` or `""` — for use in URL query strings. */
@@ -46,7 +57,7 @@ export function authHeaders(): Record<string, string> {
 
 /** Update the stored token (called after auth flows). */
 export function setAuthToken(token: string): void {
-  localStorage.setItem(STORAGE_KEY, token);
+  localStorage.setItem(storageKey, token);
   // Re-create client internals would require a new instance — for now
   // the SDK reads the token we passed at construction. Auth flows that
   // change the token should reload the page.
@@ -54,7 +65,7 @@ export function setAuthToken(token: string): void {
 
 /** Clear stored token. */
 export function clearAuthToken(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(storageKey);
 }
 
 // ── Callback-based SSE (used by sessionStore) ──

@@ -18,6 +18,7 @@
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
+import { APP_PATHS } from "./app-paths";
 import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
   ActivateMoveOpts, ActivateMoveResult, SubmitResult,
@@ -48,7 +49,7 @@ import { buildHarnessContext, type HarnessSelf } from "./harness-context";
 
 // ── Constants ──
 
-const BUILTIN_MOVES_DIR = join(import.meta.dir, "moves");
+const BUILTIN_MOVES_DIR = join(APP_PATHS.resourcesDir, "moves");
 const MODUS_MOVES_DIR = ".modus/moves";
 const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -2125,7 +2126,7 @@ export function getActiveTokensForSession(sessionId: string): MoveToken[] {
  */
 async function rehydrateMoveApiRegistry(): Promise<void> {
   // Determine project root — harness runs from harness/, project root is one level up
-  const cwd = resolve(import.meta.dir, "..");
+  const cwd = APP_PATHS.resourcesDir;
 
   // Collect all move names (builtin + project-local)
   const names = new Set<string>();

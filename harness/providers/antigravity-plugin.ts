@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { MODUS_HOME } from "../modus-home";
+import { APP_PATHS } from "../app-paths";
 import { runAntigravityCommand } from "./antigravity-cli-runtime";
 
 export const MODUS_ANTIGRAVITY_PLUGIN = "modus-provider";
@@ -18,10 +19,13 @@ export function antigravityPluginFiles(options: {
   platform?: NodeJS.Platform;
 } = {}): Record<string, string> {
   const bunPath = options.bunPath ?? process.execPath;
-  const providersDir = options.providersDir ?? import.meta.dir;
+  const providersDir = options.providersDir ?? (process.env.MODUS_DESKTOP_MANAGED
+    ? join(APP_PATHS.resourcesDir, "providers")
+    : import.meta.dir);
   const platform = options.platform ?? process.platform;
-  const hookScript = join(providersDir, "antigravity-hook.ts");
-  const bridgeScript = join(providersDir, "antigravity-mcp-bridge.ts");
+  const scriptExtension = process.env.MODUS_DESKTOP_MANAGED ? "js" : "ts";
+  const hookScript = join(providersDir, `antigravity-hook.${scriptExtension}`);
+  const bridgeScript = join(providersDir, `antigravity-mcp-bridge.${scriptExtension}`);
   const hookCommand = (mode: string) => [bunPath, hookScript, mode].map((part) => shellQuote(part, platform)).join(" ");
   const hookHandler = (mode: string) => ({
     type: "command",

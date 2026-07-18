@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { APP_PATHS } from "./app-paths";
 import { getPluginActionsDir, getPluginMovesDir, getPluginPagesDir, listEnabledModusPlugins } from "./modus-plugins";
 
 export type ConfigPage = {
@@ -86,7 +87,7 @@ function scanPluginStandalonePages(): ConfigPage[] {
 
 /** Scan harness-shipped `harness/pages/*.json` built-in templates */
 function scanHarnessPages(): ConfigPage[] {
-  return scanPageDir(join(import.meta.dir, "pages"), "harness");
+  return scanPageDir(join(APP_PATHS.resourcesDir, "pages"), "harness");
 }
 
 /** Page declaration shape embedded in move/action/mission configs */
@@ -117,7 +118,7 @@ function scanMovePages(cwd: string): ConfigPage[] {
   const dirs = [
     { dir: join(cwd, ".modus", "moves"), label: "project" },
     ...listEnabledModusPlugins().map((plugin) => ({ dir: getPluginMovesDir(plugin), label: `plugin:${plugin.id}` })),
-    { dir: join(import.meta.dir, "moves"), label: "harness" },
+    { dir: join(APP_PATHS.resourcesDir, "moves"), label: "harness" },
   ];
 
   const seen = new Set<string>(); // deduplicate move names (project overrides harness)
@@ -159,7 +160,7 @@ function scanActionPages(cwd: string): ConfigPage[] {
   const dirs = [
     join(cwd, ".modus", "actions"),
     ...listEnabledModusPlugins().map((plugin) => getPluginActionsDir(plugin)),
-    join(import.meta.dir, "actions"),
+    join(APP_PATHS.resourcesDir, "actions"),
   ];
 
   const seen = new Set<string>();

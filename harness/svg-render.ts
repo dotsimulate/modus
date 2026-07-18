@@ -9,12 +9,16 @@
 
 import { spawnSync } from "child_process";
 import { join } from "path";
+import { APP_PATHS } from "./app-paths";
 
-const WORKER_PATH = join(import.meta.dir, "svg-render-worker.ts");
+const WORKER_PATH = join(
+  APP_PATHS.resourcesDir,
+  process.env.MODUS_DESKTOP_MANAGED ? "svg-render-worker.js" : "svg-render-worker.ts",
+);
 
 export function svgToPngBase64(svgPath: string, width = 800): string | null {
   try {
-    const result = spawnSync("bun", [WORKER_PATH, svgPath, String(width)], {
+    const result = spawnSync(process.execPath, [WORKER_PATH, svgPath, String(width)], {
       timeout: 10_000,
       maxBuffer: 50 * 1024 * 1024, // 50MB for large PNGs
     });

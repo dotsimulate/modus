@@ -109,6 +109,48 @@ This uses `tailscale serve`, so traffic stays inside your private tailnet — no
 
 Without a browser PIN, anyone on your tailnet can open the UI — set a PIN in settings if you share your tailnet.
 
+On Windows, the managed desktop application uses the same persisted remote
+setting. After Tailnet access is enabled once, launching Modus Desktop starts
+its packaged backend and automatically rebinds the Modus-owned Serve rule to
+that backend's dynamic port. Closing to the tray keeps phone/browser access
+online; **Quit Modus** removes the route and stops the owned backend. No CLI
+daemon or second start command is required for this desktop mode.
+
+### Existing source-checkout users moving to desktop
+
+Current development mode and the managed desktop backend share user-owned data
+under `~/.modus/` (`%USERPROFILE%\.modus` on Windows). The desktop intentionally
+does not scan arbitrary Git checkouts for old database or profile files.
+
+If this machine ran Modus before data moved out of `harness/`, update the
+checkout and start the updated CLI once before installing the desktop build:
+
+```powershell
+git pull
+.\modus.bat setup
+modus stop
+modus start -d
+modus status
+modus stop
+```
+
+That first updated `modus start` safely copies `harness.db`, `activity.db`, and
+`terminal.db` into `%USERPROFILE%\.modus\data`, verifies SQLite integrity, keeps
+the repo copies as backups, records migration provenance, and copies missing
+legacy profiles into `%USERPROFILE%\.modus\profiles`. It refuses to merge an
+unverified legacy database with an independently existing destination.
+
+To inspect or apply the database step explicitly instead:
+
+```powershell
+modus maintenance storage --dry-run
+modus maintenance storage --apply --plan-id <planId-from-dry-run>
+```
+
+After this one-time bridge, repo development and the desktop use the same user
+database and profiles. Do not delete the retained repo databases until the
+desktop has been launched and historical sessions have been verified.
+
 ## Providers
 
 Each provider is an execution backend that implements the `SessionProvider` interface. Modus is intentionally cross-provider: use whichever backends you have access to, mix local and hosted models, and keep the surrounding environment and workflow model consistent.
