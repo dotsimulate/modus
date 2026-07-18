@@ -13,7 +13,7 @@
   margin-bottom: 2px;
   background: var(--bg-raised);
 }
-.tool-call.running { background: rgba(232, 155, 80, 0.04); }
+.tool-call.running { background: color-mix(in srgb, var(--tool-running) 4%, transparent); }
 
 .tool-call-header {
   display: flex;
@@ -32,7 +32,7 @@
   display: inline-block;
   width: 6px;
   height: 6px;
-  border: 1px solid rgba(232, 155, 80, 0.25);
+  border: 1px solid color-mix(in srgb, var(--tool-running) 25%, transparent);
   border-top-color: var(--tool-running);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
@@ -71,7 +71,7 @@
 .tool-call.running:hover .tool-call-cancel { opacity: 1; }
 .tool-call-cancel:hover {
   color: var(--tool-error);
-  background: rgba(255, 80, 80, 0.1);
+  background: color-mix(in srgb, var(--tool-error) 10%, transparent);
 }
 .tool-call-expand { color: var(--text-muted); width: 14px; text-align: center; flex-shrink: 0; font-size: 10px; }
 
@@ -209,7 +209,7 @@
 .tool-call.tool-call--agent.error {
   border-radius: 3px;
   background: var(--bg);
-  border-color: rgba(255, 255, 255, 0.04);
+  border-color: color-mix(in srgb, var(--accent) 4%, transparent);
 }
 .subagent-detail {
   display: flex;

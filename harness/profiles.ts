@@ -291,7 +291,26 @@ export type UserProfileUiConfig = {
   }>;
   computer?: string;
   editor?: string;
+  interface?: UserInterfaceConfig;
   clientExtensions?: ClientExtensionsConfig;
+};
+
+export type ToolCallDisplayMode = "expanded" | "collapsed" | "hidden";
+
+export type UserInterfaceConfig = {
+  chat?: {
+    fontScale?: number;
+    chatWidth?: number;
+    spineEnabled?: boolean;
+  };
+  conversation?: {
+    showThinking?: boolean;
+    showMeta?: boolean;
+    toolCalls?: ToolCallDisplayMode;
+    showGitEvents?: boolean;
+    showFileChanges?: boolean;
+  };
+  motion?: "system" | "reduced";
 };
 
 export type GlobalConfig = {
@@ -372,6 +391,8 @@ export type UserProfile = {
   computer?: string;
   /** Preferred editor CLI command for "open in editor" */
   editor?: string;
+  /** User-level chat, conversation, and motion settings. */
+  interface?: UserInterfaceConfig;
   /** Client-side UI extensions enabled/disabled for this project-scoped view */
   clientExtensions?: ClientExtensionsConfig;
 };
@@ -482,6 +503,17 @@ function mergeUserProfileUi(
     layouts: mergeLayouts(base?.layouts, override?.layouts),
     computer: override?.computer ?? base?.computer,
     editor: override?.editor ?? base?.editor,
+    interface: (base?.interface || override?.interface)
+      ? {
+          chat: (base?.interface?.chat || override?.interface?.chat)
+            ? { ...(base?.interface?.chat ?? {}), ...(override?.interface?.chat ?? {}) }
+            : undefined,
+          conversation: (base?.interface?.conversation || override?.interface?.conversation)
+            ? { ...(base?.interface?.conversation ?? {}), ...(override?.interface?.conversation ?? {}) }
+            : undefined,
+          motion: override?.interface?.motion ?? base?.interface?.motion,
+        }
+      : undefined,
     clientExtensions: mergeClientExtensions(base?.clientExtensions, override?.clientExtensions),
   };
   return hasOwnKeys(merged as Record<string, unknown>) ? merged : undefined;
@@ -508,6 +540,7 @@ function legacyUserProfileUi(profile?: UserProfile): UserProfileUiConfig | undef
     leftPanel: profile.leftPanel,
     computer: profile.computer,
     editor: profile.editor,
+    interface: profile.interface,
     clientExtensions: profile.clientExtensions,
   };
   return hasOwnKeys(ui as Record<string, unknown>) ? ui : undefined;

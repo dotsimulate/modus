@@ -8,9 +8,11 @@ import { createDefaultSetupState, type SessionSetupState } from "../components/S
 import { agentConfigToOverrides } from "../components/AgentConfig";
 import { addRecentPath } from "../recentPaths";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
+import { applyInterfaceSettings, resolveInterfaceSettings } from "../interface-settings";
 import { ProfileContext } from "./ProfileContext";
+import { backendStorageKey } from "../backendTarget";
 
-const USER_PROFILE_KEY = "harness:active-user-profile";
+const USER_PROFILE_KEY = backendStorageKey("harness:active-user-profile");
 
 function resolvePreferredProfile(
   names: string[],
@@ -121,9 +123,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         const fallback: UserProfileUiConfig = {
           dashboard: profile.dashboard,
           leftPanel: profile.leftPanel,
+          pageNav: profile.pageNav,
           layouts: profile.layouts,
           computer: profile.computer,
           editor: profile.editor,
+          interface: profile.interface,
           clientExtensions: profile.clientExtensions,
         };
         return [profile.name, fallback] as const;
@@ -221,6 +225,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     };
     loadInitial();
   }, [activeUserProfile, hydrateProfilesWithUi, hydrateUserProfilesWithUi]);
+
+  useEffect(() => {
+    applyInterfaceSettings(resolveInterfaceSettings(activeUP?.interface));
+  }, [activeUP?.interface]);
 
   // Reload profiles when project root changes (project-local profiles may differ).
   // Uses projectRoot, NOT setupState.cwd — a profile's subfolder cwd override

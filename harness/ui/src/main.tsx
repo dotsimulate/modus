@@ -74,6 +74,7 @@ import './styles/components/extensions-widget.css'
 import './styles/components/widget-picker.css'
 import './styles/components/chat-scroll-spine.css'
 import './styles/components/paste-block.css'
+import './styles/components/backend-targets.css'
 
 // Views
 import './styles/views/login.css'
@@ -89,13 +90,98 @@ import './styles/views/editor.css'
 
 // Overrides (last — responsive)
 import './styles/mobile.css'
-import App from './App'
 import { initFavicon } from './favicon'
+import {
+  backendIdentityChanged,
+  getActiveBackendTarget,
+  inspectBackendTarget,
+  isDesktopClient,
+  LOCAL_BACKEND_TARGET,
+  probeBackendTarget,
+  rememberBackendConnected,
+  targetSearchParams,
+  type SavedBackendTarget,
+} from './backend-targets'
 
 initFavicon()
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+const LOCAL_PORTS = [3777, 3778, 3779, 3780, 3781] as const
+
+async function probeLocalBackend(port: number): Promise<string | null> {
+  const base = `http://127.0.0.1:${port}`
+  return await probeBackendTarget(base, 900) ? base : null
+}
+
+async function discoverLocalBackend(): Promise<string | null> {
+  const results = await Promise.all(LOCAL_PORTS.map(probeLocalBackend))
+  return results.find((result): result is string => !!result) ?? null
+}
+
+async function renderConnectionError(root: ReturnType<typeof createRoot>, message: string) {
+  // Keep backendTarget.ts unloaded until the launch query has been finalized.
+  const { BackendConnectionScreen } = await import('./components/BackendTargetManager')
+  root.render(<BackendConnectionScreen message={message} />)
+}
+
+async function bootstrap() {
+  const root = createRoot(document.getElementById('root')!)
+  let params = new URLSearchParams(location.search)
+  const desktopClient = isDesktopClient(location.search, location.origin)
+
+  if (params.get('modusDiscover') === 'local' && !params.has('modusTarget')) {
+    const preferred = getActiveBackendTarget()
+    if (preferred.mode === 'remote' && preferred.url) {
+      params = targetSearchParams(preferred, location.search)
+    } else {
+      const backend = await discoverLocalBackend()
+      if (!backend) {
+        await renderConnectionError(root, 'No local daemon was found on ports 3777–3781. Start Modus here or connect to another computer.')
+        return
+      }
+      params.delete('modusDiscover')
+      params.set('modusTarget', backend)
+      params.set('modusTargetId', LOCAL_BACKEND_TARGET.id)
+      params.set('modusTargetMode', 'external-local')
+      params.set('modusTargetLabel', `Local Modus · ${new URL(backend).port}`)
+    }
+    history.replaceState(null, '', `${location.pathname}?${params.toString()}${location.hash}`)
+  }
+
+  if (desktopClient) {
+    const apiBase = params.get('modusTarget') ?? ''
+    const probe = apiBase ? await inspectBackendTarget(apiBase) : null
+    if (!apiBase || !probe) {
+      const label = params.get('modusTargetLabel') || (apiBase ? new URL(apiBase).host : 'selected backend')
+      await renderConnectionError(root, `Could not connect to ${label}. Nothing was changed on that daemon.`)
+      return
+    }
+    const id = params.get('modusTargetId') || `remote:${new URL(apiBase).origin}`
+    const preferred = getActiveBackendTarget()
+    if (preferred.id === id && backendIdentityChanged(preferred.backendId, probe.backendId)) {
+      await renderConnectionError(root, `Backend identity changed for ${preferred.label}. Forget and add it again only if that replacement was intentional.`)
+      return
+    }
+    const connected: SavedBackendTarget = id === 'local'
+      ? LOCAL_BACKEND_TARGET
+      : {
+          id,
+          label: params.get('modusTargetLabel') || new URL(apiBase).host,
+          mode: params.get('modusTargetMode') === 'remote' ? 'remote' : 'external-local',
+          url: apiBase,
+          ...(probe.backendId ? { backendId: probe.backendId } : {}),
+          ...(preferred.id === id ? { lastConnectedAt: preferred.lastConnectedAt } : {}),
+        }
+    rememberBackendConnected(connected)
+  }
+
+  // Import only after discovery so the SDK's immutable backend target sees the
+  // resolved runtime port instead of a build-time assumption.
+  const { default: App } = await import('./App')
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+}
+
+void bootstrap()

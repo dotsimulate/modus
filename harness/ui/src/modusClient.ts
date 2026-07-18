@@ -6,11 +6,9 @@
  */
 
 import { ModusClient } from "../../sdk/index";
-import { BACKEND_TARGET } from "./backendTarget";
+import { BACKEND_TARGET, backendStorageKey } from "./backendTarget";
 
-const STORAGE_KEY = BACKEND_TARGET.mode === "browser"
-  ? "harness_token"
-  : `harness_token:${encodeURIComponent(BACKEND_TARGET.id)}`;
+const STORAGE_KEY = backendStorageKey("harness_token");
 
 function getStoredToken(): string {
   return localStorage.getItem(STORAGE_KEY) ?? "";

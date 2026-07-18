@@ -19,6 +19,8 @@ loadSecrets();
 }
 
 import { join, resolve, extname, dirname } from "path";
+import { BACKEND_IDENTITY } from "./backend-identity";
+import { configuredRootsForCwd } from "./preview-roots";
 import { existsSync, statSync } from "fs";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -66,7 +68,7 @@ import {
   getSessionTags, getSessionByTag, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
   getProviderUsageAnalytics, getDeepAnalytics,
-  getSessionMessages, getSessionMessageHistory, getSessionArtifact, getFileObservations, listAllCheckpoints,
+  getSessionMessage, getSessionMessages, getSessionMessageHistory, getSessionArtifact, getFileObservations, listAllCheckpoints,
 } from "./db";
 import { planCheckpointMaintenance } from "./checkpoint-maintenance";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
@@ -239,8 +241,14 @@ function previewRoots(params: URLSearchParams): string[] {
   for (const project of listProjects()) add(project.path);
   const cwd = params.get("cwd");
   if (cwd) {
-    const resolvedCwd = resolve(cwd);
-    if ([...roots].some((root) => isWithinRoot(resolvedCwd, root))) add(resolvedCwd);
+    // The UI can know the active project before its user-profile hydration has
+    // completed. Authorize that explicit cwd against configured profile roots
+    // instead of requiring the transient userProfile query parameter. Merely
+    // passing an arbitrary cwd still grants nothing.
+    const configuredProfileRoots = Object.values(getAllUserProfiles())
+      .flatMap((profile) => profile.projects ?? [])
+      .map((project) => resolve(project));
+    for (const root of configuredRootsForCwd(cwd, [...roots], configuredProfileRoots)) add(root);
   }
   return [...roots];
 }
@@ -358,8 +366,10 @@ function splitUserProfilePayload(body: Record<string, unknown> | null | undefine
     dashboard,
     leftPanel,
     pageNav,
+    layouts,
     computer,
     editor,
+    interface: interfaceConfig,
     clientExtensions,
     ...core
   } = body;
@@ -367,8 +377,10 @@ function splitUserProfilePayload(body: Record<string, unknown> | null | undefine
     ...(dashboard !== undefined ? { dashboard } : {}),
     ...(leftPanel !== undefined ? { leftPanel } : {}),
     ...(pageNav !== undefined ? { pageNav } : {}),
+    ...(layouts !== undefined ? { layouts } : {}),
     ...(computer !== undefined ? { computer } : {}),
     ...(editor !== undefined ? { editor } : {}),
+    ...(interfaceConfig !== undefined ? { interface: interfaceConfig } : {}),
     ...(clientExtensions !== undefined ? { clientExtensions } : {}),
   };
   return Object.keys(ui).length > 0 ? { core, ui } : { core };
@@ -393,6 +405,9 @@ app.use("/api/*", cors({
     requestHost: c.req.header("Host"),
     configuredOrigins: process.env.MODUS_ALLOWED_ORIGINS,
   }) ? origin : "",
+  allowHeaders: ["Authorization", "Content-Type"],
+  allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  exposeHeaders: ["Accept-Ranges", "Content-Length", "Content-Range", "Content-Type"],
 }));
 
 // ── PIN Auth (browser gate) ──
@@ -441,6 +456,7 @@ app.get("/api/auth/status", (c) => {
     needsName: !name,
     name,
     tokenRequired: !!AUTH_TOKEN,
+    backend: BACKEND_IDENTITY,
   });
 });
 
@@ -1692,10 +1708,7 @@ app.get("/api/sessions/:id/messages-content", (c) => {
   if (seq) {
     const seqNum = Number(seq);
     if (!Number.isFinite(seqNum) || seqNum <= 0) return c.json({ error: "invalid message sequence" }, 400);
-    // Detail fetches are intentionally on demand. Reconstruct the complete
-    // turn here because interrupted assistant turns retain the sequence of
-    // their first event and may continue for hundreds of later tool events.
-    const msg = getSessionMessages(id).find(m => m.seq === seqNum);
+    const msg = getSessionMessage(id, seqNum);
     if (!msg) return c.json({ error: "message not found" }, 404);
     return c.json(msg);
   }

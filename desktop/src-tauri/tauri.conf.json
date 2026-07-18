@@ -13,8 +13,8 @@
     "windows": [
       {
         "label": "main",
-        "title": "Modus — Local backend",
-        "url": "index.html?modusTarget=http%3A%2F%2F127.0.0.1%3A3777&modusTargetMode=external-local&modusTargetLabel=Local+Modus",
+        "title": "Modus",
+        "url": "index.html?modusDiscover=local",
         "width": 1440,
         "height": 960,
         "minWidth": 960,
@@ -25,7 +25,7 @@
     ],
     "security": {
       "capabilities": ["default"],
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:3777 http://localhost:3777 ws://127.0.0.1:3777 ws://localhost:3777; img-src 'self' data: blob: http://127.0.0.1:3777 http://localhost:3777; media-src 'self' data: blob: http://127.0.0.1:3777 http://localhost:3777; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* https: wss:; img-src 'self' data: blob: http://127.0.0.1:* http://localhost:* https:; media-src 'self' data: blob: http://127.0.0.1:* http://localhost:* https:; frame-src 'self' blob: http://127.0.0.1:* http://localhost:* https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:"
     }
   },
   "bundle": {

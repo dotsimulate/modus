@@ -65,7 +65,7 @@ function shortSessionId(sessionId: string): string {
 
 function buildSessionHref(sessionId: string, userProfile: string | null): string {
   const hash = userProfile ? `${userProfile}/${sessionId}` : sessionId;
-  return `${window.location.origin}${window.location.pathname}#${hash}`;
+  return `${window.location.origin}${window.location.pathname}${window.location.search}#${hash}`;
 }
 
 export default function TerminalsWidget({ config, onSelectSession, pageContext }: WidgetProps<TerminalsConfig>) {

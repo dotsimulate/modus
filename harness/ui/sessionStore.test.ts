@@ -3,10 +3,12 @@ import {
   getSessionHistoryLoadState,
   getSessionState,
   hydrateSessionHistorySnapshot,
+  loadSessionMessageDetails,
   removeSession,
   shouldReuseSessionSubscription,
   unsubscribeAll,
 } from "./src/sessionStore";
+import { modus } from "./src/modusClient";
 
 describe("sessionStore history snapshot hydration", () => {
   afterEach(() => {
@@ -130,5 +132,58 @@ describe("sessionStore history snapshot hydration", () => {
       { type: "deferred", hasThinking: false, toolCallCount: 1 },
       { type: "text", text: "after" },
     ]);
+  });
+
+  test("loads deferred details with an immutable message-array update", async () => {
+    hydrateSessionHistorySnapshot({
+      sessionId: "ses-history",
+      status: "done",
+      model: "gpt-5",
+      cwd: "/tmp/modus",
+      additionalDirectories: [],
+      loadProjectSettings: true,
+      agentConfig: {
+        toolStates: {}, model: "gpt-5", provider: "codex", effort: "high", maxTurns: "", providerControls: {},
+      },
+      messages: [{
+        role: "assistant",
+        seq: 20,
+        text: "beforeafter",
+        timestamp: 1000,
+        detailsDeferred: true,
+        deferredToolCallCount: 1,
+        contentBlocks: [
+          { type: "text", textStart: 0, textEnd: 6 },
+          { type: "deferred", hasThinking: false, toolCallCount: 1 },
+          { type: "text", textStart: 6, textEnd: 11 },
+        ],
+      }],
+      lastSeq: 20,
+      createdAt: 500,
+    });
+    const before = getSessionState("ses-history")!.messages;
+    const original = modus.getMessages;
+    modus.getMessages = async () => ({
+      role: "assistant",
+      seq: 20,
+      text: "beforeafter",
+      timestamp: 1000,
+      toolCalls: [{ name: "Read", input: { path: "README.md" }, result: "ok" }],
+      contentBlocks: [
+        { type: "text", text: "before" },
+        { type: "tool_call", toolCall: { name: "Read", input: { path: "README.md" }, result: "ok" } },
+        { type: "text", text: "after" },
+      ],
+    });
+    try {
+      await loadSessionMessageDetails("ses-history", 20);
+    } finally {
+      modus.getMessages = original;
+    }
+    const after = getSessionState("ses-history")!.messages;
+    expect(after).not.toBe(before);
+    expect(after[0]?.detailsDeferred).toBe(false);
+    expect(after[0]?.toolCalls?.[0]?.name).toBe("Read");
+    expect(after[0]?.contentBlocks?.[1]?.type).toBe("tool_call");
   });
 });

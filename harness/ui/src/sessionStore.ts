@@ -254,7 +254,12 @@ export async function loadSessionMessageDetails(sessionId: string, seq: number):
   if (!entry || index < 0) return;
   const existing = entry.state.messages[index]!;
   if (!existing.detailsDeferred || existing.detailsLoading) return;
-  entry.state.messages[index] = { ...existing, detailsLoading: true, detailsError: undefined };
+  entry.state = {
+    ...entry.state,
+    messages: entry.state.messages.map((message, messageIndex) => (
+      messageIndex === index ? { ...existing, detailsLoading: true, detailsError: undefined } : message
+    )),
+  };
   entry.revision++;
   notify();
   try {
@@ -264,13 +269,18 @@ export async function loadSessionMessageDetails(sessionId: string, seq: number):
     const currentIndex = current?.state.messages.findIndex((message) => message.seq === seq) ?? -1;
     if (!current || currentIndex < 0) return;
     const previous = current.state.messages[currentIndex]!;
-    current.state.messages[currentIndex] = {
-      ...messageFromTurn(sessionId, turn),
-      id: previous.id,
-      meta: previous.meta,
-      detailsDeferred: false,
-      detailsLoading: false,
-      detailsError: undefined,
+    current.state = {
+      ...current.state,
+      messages: current.state.messages.map((message, messageIndex) => messageIndex === currentIndex
+        ? {
+            ...messageFromTurn(sessionId, turn),
+            id: previous.id,
+            meta: previous.meta,
+            detailsDeferred: false,
+            detailsLoading: false,
+            detailsError: undefined,
+          }
+        : message),
     };
     current.revision++;
     notify();
@@ -279,10 +289,15 @@ export async function loadSessionMessageDetails(sessionId: string, seq: number):
     const currentIndex = current?.state.messages.findIndex((message) => message.seq === seq) ?? -1;
     if (!current || currentIndex < 0) return;
     const previous = current.state.messages[currentIndex]!;
-    current.state.messages[currentIndex] = {
-      ...previous,
-      detailsLoading: false,
-      detailsError: "Could not load message details.",
+    current.state = {
+      ...current.state,
+      messages: current.state.messages.map((message, messageIndex) => messageIndex === currentIndex
+        ? {
+            ...previous,
+            detailsLoading: false,
+            detailsError: "Could not load message details.",
+          }
+        : message),
     };
     current.revision++;
     notify();

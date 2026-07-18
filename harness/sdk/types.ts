@@ -841,12 +841,31 @@ export type UserProfileUiConfig = {
   }>;
   computer?: string;
   editor?: string;
+  interface?: UserInterfaceConfig;
   clientExtensions?: {
     paths?: string[];
     enabled?: string[];
     disabled?: string[];
     settings?: Record<string, Record<string, unknown>>;
   };
+};
+
+export type ToolCallDisplayMode = "expanded" | "collapsed" | "hidden";
+
+export type UserInterfaceConfig = {
+  chat?: {
+    fontScale?: number;
+    chatWidth?: number;
+    spineEnabled?: boolean;
+  };
+  conversation?: {
+    showThinking?: boolean;
+    showMeta?: boolean;
+    toolCalls?: ToolCallDisplayMode;
+    showGitEvents?: boolean;
+    showFileChanges?: boolean;
+  };
+  motion?: "system" | "reduced";
 };
 
 /** Persisted UI state for a user profile (sidebar preferences, last-used agent/session). */
@@ -916,6 +935,7 @@ export type UserProfile = {
   }>;
   computer?: string;
   editor?: string;
+  interface?: UserInterfaceConfig;
   clientExtensions?: {
     paths?: string[];
     enabled?: string[];

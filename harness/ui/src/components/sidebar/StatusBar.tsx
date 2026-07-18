@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { modus } from "../../modusClient";
 import type { GeminiUsageInfo, UserProfile } from "../../../../sdk/index";
+import { BackendTargetControl } from "../BackendTargetManager";
 
 type Props = {
   harnessUp: boolean | null;
@@ -84,6 +85,7 @@ export function StatusBar({
           {geminiText}
         </span>
       )}
+      <BackendTargetControl compact />
       <div
         className={`status-dot ${harnessUp === true ? "connected" : harnessUp === false ? "error" : ""}`}
       />

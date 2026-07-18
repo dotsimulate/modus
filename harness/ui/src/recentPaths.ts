@@ -1,6 +1,8 @@
 /** Recent CWD path storage — localStorage-backed */
 
-const RECENT_PATHS_KEY = "harness:recent-cwds";
+import { backendStorageKey } from "./backendTarget";
+
+const RECENT_PATHS_KEY = backendStorageKey("harness:recent-cwds");
 const MAX_RECENT = 8;
 
 export function getRecentPaths(): string[] {

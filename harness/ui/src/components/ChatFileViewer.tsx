@@ -43,6 +43,7 @@ export function ChatFileViewer({ path, onClose }: Props) {
     setManifest(null);
 
     (async () => {
+      let previewFailure: unknown = null;
       try {
         const dirResult = await modus.browse(activePath, { includeHidden: true });
         if (active) {
@@ -58,8 +59,8 @@ export function ChatFileViewer({ path, onClose }: Props) {
             setView({ kind: "file", content: "" });
             return;
           }
-        } catch {
-          // fall through to text read
+        } catch (error) {
+          previewFailure = error;
         }
         try {
           const text = await modus.readFile(activePath);
@@ -72,7 +73,8 @@ export function ChatFileViewer({ path, onClose }: Props) {
           // fall through to error state below
         }
         if (active) {
-          setView({ kind: "error", message: "Could not load this path." });
+          const detail = previewFailure instanceof Error ? previewFailure.message : "Preview request failed.";
+          setView({ kind: "error", message: `Could not preview this path. ${detail}` });
         }
       }
     })()

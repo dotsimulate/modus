@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { ThinkingBlock } from "./ThinkingBlock";
-import type { Message, ToolCall } from "../../../sdk/index";
+import type { Message, ToolCall, ToolCallDisplayMode } from "../../../sdk/index";
 import { tokenParam } from "../modusClient";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
@@ -119,7 +119,7 @@ type Props = {
   hideRole?: boolean;
   showThinking?: boolean;
   showMeta?: boolean;
-  showToolCalls?: boolean;
+  toolCallDisplay?: ToolCallDisplayMode;
   showGitEvents?: boolean;
   cwd?: string | null;
   lastTodoId?: string;
@@ -258,7 +258,7 @@ function DeferredDetailsControl({
 }
 
 
-export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, showToolCalls = true, showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, onLoadDetails, children }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, toolCallDisplay = "collapsed", showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, onLoadDetails, children }: Props) {
   void onBranch;
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -295,6 +295,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
   const liveElapsed = useElapsed(isStreaming && !msg.meta, msg.timestamp);
   const duration = msg.meta?.duration ?? liveElapsed;
   const usageText = formatProviderTokenUsage(provider, msg.meta?.inputTokens, msg.meta?.outputTokens);
+  const showToolCalls = toolCallDisplay !== "hidden";
 
   // Track streaming → meta transition for resolve animation
   useEffect(() => {
@@ -352,7 +353,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
                   <ToolCallView
                     tool={tc}
                     anchorId={`${msg.id}:${index}:${tc.id}`}
-                    defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
+                    defaultExpanded={toolCallDisplay === "expanded" ? true : tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
                     showGitEvents={showGitEvents}
                     cwd={cwd}
                     onStopTask={onStopTask}
@@ -360,11 +361,12 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
                 </div>
               ) : null;
             }
-            return onLoadDetails ? (
+            const visibleToolCount = showToolCalls ? block.toolCallCount : 0;
+            return onLoadDetails && (showThinking && block.hasThinking || visibleToolCount > 0) ? (
               <DeferredDetailsControl
                 key={`${msg.id}:ordered-deferred:${index}`}
-                hasThinking={block.hasThinking}
-                toolCallCount={block.toolCallCount}
+                hasThinking={showThinking && block.hasThinking}
+                toolCallCount={visibleToolCount}
                 loading={msg.detailsLoading}
                 error={msg.detailsError}
                 onLoad={onLoadDetails}
@@ -374,10 +376,10 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
         </>
       ) : (
         <>
-          {msg.detailsDeferred && onLoadDetails && (
+          {msg.detailsDeferred && onLoadDetails && (showThinking || showToolCalls) && (
             <DeferredDetailsControl
-              hasThinking={!!msg.thinking || !msg.deferredToolCallCount}
-              toolCallCount={msg.deferredToolCallCount ?? 0}
+              hasThinking={showThinking && (!!msg.thinking || !msg.deferredToolCallCount)}
+              toolCallCount={showToolCalls ? msg.deferredToolCallCount ?? 0 : 0}
               loading={msg.detailsLoading}
               error={msg.detailsError}
               onLoad={onLoadDetails}
@@ -406,7 +408,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
                   key={`${msg.id}:${index}:${tc.id}`}
                   tool={tc}
                   anchorId={`${msg.id}:${index}:${tc.id}`}
-                  defaultExpanded={tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
+                  defaultExpanded={toolCallDisplay === "expanded" ? true : tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
                   showGitEvents={showGitEvents}
                   cwd={cwd}
                   onStopTask={onStopTask}

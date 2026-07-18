@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { resolveDatabasePath } from "./database-paths";
-import { reconstructSessionTurns, summarizeContentBlocks } from "./session-history";
+import { reconstructSessionTurns, summarizeContentBlocks, type SessionHistoryEventRow } from "./session-history";
 
 const DB_PATH = resolveDatabasePath("harness.db");
 const db = new Database(DB_PATH);
@@ -1726,6 +1726,101 @@ export type SessionMessageHistory = {
   hasMore: boolean;
   oldestSeq: number | null;
 };
+
+function attachArtifactsToTurn(sessionId: string, turn: TurnContent, alternateSeq?: number): TurnContent {
+  if (turn.role !== "assistant") return turn;
+  const rows = db.prepare(`
+    SELECT * FROM session_artifacts
+    WHERE session_id = $session_id
+      AND (
+        seq = $seq
+        OR ($alternate_seq IS NOT NULL AND seq = $alternate_seq)
+        OR ($uuid IS NOT NULL AND target_message_uuid = $uuid)
+      )
+    ORDER BY created_at ASC, id ASC
+  `).all({
+    $session_id: sessionId,
+    $seq: turn.seq,
+    $alternate_seq: alternateSeq ?? null,
+    $uuid: turn.uuid ?? null,
+  }) as SessionArtifactRow[];
+  if (rows.length === 0) return turn;
+  const seen = new Set<number>();
+  const artifacts = rows
+    .filter((row) => !seen.has(row.id) && !!seen.add(row.id))
+    .map(toSessionArtifactValue);
+  return artifacts.length > 0 ? { ...turn, artifacts } : turn;
+}
+
+/** Reconstruct one requested turn without rebuilding the complete transcript. */
+export function getSessionMessage(sessionId: string, requestedSeq: number): TurnContent | null {
+  const exactEvents = db.prepare(`
+    SELECT seq, type, subtype, data, created_at
+    FROM events
+    WHERE session_id = $sid AND seq = $seq AND type IN ('user', 'assistant', 'result')
+    ORDER BY id ASC
+  `).all({ $sid: sessionId, $seq: requestedSeq }) as SessionHistoryEventRow[];
+
+  const exactPrompt = exactEvents.find((event) => event.type === "user" && event.subtype === "prompt");
+  if (exactPrompt) {
+    return reconstructSessionTurns([exactPrompt]).find((turn) => turn.role === "user") ?? null;
+  }
+
+  if (exactEvents.length > 0) {
+    const start = db.prepare(`
+      SELECT COALESCE(MAX(seq), 0) AS seq
+      FROM events
+      WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt' AND seq <= $seq
+    `).get({ $sid: sessionId, $seq: requestedSeq }) as { seq: number };
+    const nextPrompt = db.prepare(`
+      SELECT MIN(seq) AS seq
+      FROM events
+      WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt' AND seq > $seq
+    `).get({ $sid: sessionId, $seq: requestedSeq }) as { seq: number | null } | null;
+    const requestedIsResult = exactEvents.some((event) => event.type === "result");
+    const nextResult = requestedIsResult
+      ? requestedSeq
+      : (db.prepare(`
+          SELECT MIN(seq) AS seq
+          FROM events
+          WHERE session_id = $sid AND type = 'result' AND seq >= $seq
+            AND ($next_prompt IS NULL OR seq < $next_prompt)
+        `).get({
+          $sid: sessionId,
+          $seq: requestedSeq,
+          $next_prompt: nextPrompt?.seq ?? null,
+        }) as { seq: number | null } | null)?.seq ?? null;
+    const endSeq = nextResult ?? ((nextPrompt?.seq ?? null) != null ? nextPrompt!.seq! - 1 : null);
+    const events = db.prepare(`
+      SELECT seq, type, subtype, data, created_at
+      FROM events
+      WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
+        AND seq >= $start
+        AND ($end IS NULL OR seq <= $end)
+      ORDER BY seq ASC, id ASC
+    `).all({
+      $sid: sessionId,
+      $start: start.seq || requestedSeq,
+      $end: endSeq,
+    }) as SessionHistoryEventRow[];
+    const assistant = reconstructSessionTurns(events).findLast((turn) => turn.role === "assistant");
+    if (assistant) {
+      const materializedSeq = assistant.seq;
+      const stableTurn = materializedSeq === requestedSeq ? assistant : { ...assistant, seq: requestedSeq };
+      return attachArtifactsToTurn(sessionId, stableTurn, materializedSeq);
+    }
+  }
+
+  // Very old sessions may only have semantic message rows.
+  const row = db.prepare(`
+    SELECT * FROM messages
+    WHERE session_id = $sid AND seq = $seq
+    ORDER BY id DESC LIMIT 1
+  `).get({ $sid: sessionId, $seq: requestedSeq }) as MessageRow | null;
+  if (!row) return null;
+  const turn = messageRowsToTurns([row])[0];
+  return turn ? attachArtifactsToTurn(sessionId, turn) : null;
+}
 
 /** Return the fastest complete history source, falling back to durable events
  * when they contain an assistant turn newer than semantic materialization. */

@@ -4,6 +4,8 @@ import { extname, join, resolve } from "path";
 const MODUS_UI_DIR = ".modus/ui";
 const BUILTIN_THEME_SOURCE = "builtin:harness";
 const BUILTIN_MODUS_DARK_FILE = "ui/themes/modus-dark.css";
+const BUILTIN_MODUS_LIGHT_FILE = "ui/themes/modus-light.css";
+const BUILTIN_MODUS_GRAPHITE_FILE = "ui/themes/modus-graphite.css";
 const THEMES_DIR = "themes";
 const FONTS_DIR = "fonts";
 const ACTIVE_DIR = "active";
@@ -68,6 +70,24 @@ const BUILTIN_THEMES: ThemeRecord[] = [
     archived: false,
     source: BUILTIN_THEME_SOURCE,
     notes: "Harness default dark theme.",
+  },
+  {
+    id: "modus-light",
+    label: "Modus Light",
+    file: BUILTIN_MODUS_LIGHT_FILE,
+    createdAt: "2026-07-16T00:00:00.000Z",
+    archived: false,
+    source: BUILTIN_THEME_SOURCE,
+    notes: "Warm, low-glare light theme.",
+  },
+  {
+    id: "modus-graphite",
+    label: "Modus Graphite",
+    file: BUILTIN_MODUS_GRAPHITE_FILE,
+    createdAt: "2026-07-16T00:00:00.000Z",
+    archived: false,
+    source: BUILTIN_THEME_SOURCE,
+    notes: "Soft charcoal dark theme with cooler contrast.",
   },
 ];
 

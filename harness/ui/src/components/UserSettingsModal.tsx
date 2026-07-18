@@ -1,19 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { clearAuthToken, modus, setAuthToken } from "../modusClient";
-import type { ProviderModel, UserProfile } from "../../../sdk/index";
+import type { ProviderModel, UserInterfaceConfig, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 import { FolderPicker } from "./FolderPicker";
+import { ProjectAppearanceSettings } from "./ProjectAppearanceSettings";
+import {
+  applyInterfaceSettings,
+  DEFAULT_INTERFACE_SETTINGS,
+  resetClientInterfaceState,
+  resolveInterfaceSettings,
+  type ResolvedInterfaceSettings,
+} from "../interface-settings";
 
 type Props = {
   userProfile: UserProfile;
   onClose: () => void;
-  onSave: (patch: Partial<UserProfile>) => Promise<void>;
+  onSave: (patch: Partial<UserProfile> & Partial<UserProfileUiConfig>) => Promise<void>;
 };
 
-type Tab = "profile" | "defaults" | "environment" | "project" | "security";
+type Tab = "profile" | "defaults" | "interface" | "environment" | "project" | "security";
 
 const EFFORT_OPTIONS = ["off", "low", "medium", "high", "xhigh", "max"] as const;
 
@@ -21,9 +29,30 @@ function providerSeedModel(provider: string): string {
   return providerFallbackModel(provider);
 }
 
+function InterfaceToggle({ label, value, onChange }: {
+  label: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="us-row">
+      <span className="us-row-label">{label}</span>
+      <button
+        type="button"
+        className={`us-switch${value ? " on" : ""}`}
+        aria-pressed={value}
+        onClick={() => onChange(!value)}
+      >
+        <span className="us-switch-track"><span /></span>
+        <span className="us-switch-value">{value ? "on" : "off"}</span>
+      </button>
+    </div>
+  );
+}
+
 export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [tab, setTab] = useState<Tab>("profile");
-  const { visibleProfiles, availableProviders } = useProfiles();
+  const { visibleProfiles, availableProviders, projectRoot, activeCwd } = useProfiles();
 
   const [displayName, setDisplayName] = useState(userProfile.displayName ?? "");
   const [defaultAgentProfile, setDefaultAgentProfile] = useState(userProfile.defaultAgentProfile ?? "");
@@ -35,6 +64,11 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [projectPaths, setProjectPaths] = useState<string[]>(userProfile.projects ?? []);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
+  const [interfaceSettings, setInterfaceSettings] = useState<ResolvedInterfaceSettings>(
+    () => resolveInterfaceSettings(userProfile.interface),
+  );
+  const [pageNavMode, setPageNavMode] = useState(userProfile.pageNav?.mode ?? "auto");
+  const [resetLayout, setResetLayout] = useState(false);
 
   const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -62,7 +96,16 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     setComputer(userProfile.computer ?? "");
     setEditor(userProfile.editor ?? "");
     setProjectPaths(userProfile.projects ?? []);
+    const nextInterface = resolveInterfaceSettings(userProfile.interface);
+    setInterfaceSettings(nextInterface);
+    setPageNavMode(userProfile.pageNav?.mode ?? "auto");
+    setResetLayout(false);
   }, [userProfile]);
+
+  const updateInterfaceSettings = (next: ResolvedInterfaceSettings) => {
+    setInterfaceSettings(next);
+    applyInterfaceSettings(next);
+  };
 
   useEffect(() => {
     providerRef.current = defaultProvider;
@@ -112,7 +155,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const patch: Partial<UserProfile> = {};
+      const patch: Partial<UserProfile> & Partial<UserProfileUiConfig> = {};
       if (displayName.trim() !== (userProfile.displayName ?? ""))
         patch.displayName = displayName.trim();
       if (defaultAgentProfile !== (userProfile.defaultAgentProfile ?? ""))
@@ -134,7 +177,20 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
       if (JSON.stringify(normalizedProjects) !== JSON.stringify(userProfile.projects ?? [])) {
         patch.projects = normalizedProjects;
       }
+      if (JSON.stringify(interfaceSettings) !== JSON.stringify(resolveInterfaceSettings(userProfile.interface))) {
+        patch.interface = interfaceSettings as UserInterfaceConfig;
+      }
+      if (pageNavMode !== (userProfile.pageNav?.mode ?? "auto") || resetLayout) {
+        patch.pageNav = resetLayout
+          ? { mode: pageNavMode, enabled: [], disabled: [], pinned: [], order: [], labels: {} }
+          : { ...(userProfile.pageNav ?? {}), mode: pageNavMode };
+      }
+      if (resetLayout) {
+        patch.layouts = {};
+        patch.leftPanel = {};
+      }
       if (Object.keys(patch).length > 0) await onSave(patch);
+      if (resetLayout) resetClientInterfaceState();
       onClose();
     } catch (e) {
       setError(String(e));
@@ -190,11 +246,14 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
+    if (e.key === "Escape") {
+      applyInterfaceSettings(resolveInterfaceSettings(userProfile.interface));
+      onClose();
+    }
   };
 
   const profile = userProfile as UserProfile & { name?: string };
-  const isEditing = tab === "profile" || tab === "defaults" || tab === "environment" || tab === "project";
+  const isEditing = tab !== "security";
 
   return createPortal(
     <div className="create-profile-backdrop" onKeyDown={handleKeyDown}>
@@ -202,12 +261,12 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
         {/* Header */}
         <div className="create-profile-header">
           <span className="create-profile-title">settings</span>
-          <button className="create-profile-close" onClick={onClose}>&times;</button>
+          <button className="create-profile-close" onClick={() => { applyInterfaceSettings(resolveInterfaceSettings(userProfile.interface)); onClose(); }}>&times;</button>
         </div>
 
         {/* Tabs */}
         <div className="us-tabs">
-          {(["profile", "defaults", "environment", "project", "security"] as Tab[]).map((t) => (
+          {(["profile", "defaults", "interface", "environment", "project", "security"] as Tab[]).map((t) => (
             <button
               key={t}
               className={`us-tab${tab === t ? " active" : ""}`}
@@ -299,6 +358,138 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
             </div>
           )}
 
+          {tab === "interface" && (
+            <div className="us-section us-section--interface">
+              <div className="us-section-title">chat</div>
+              <div className="us-row">
+                <span className="us-row-label">text scale</span>
+                <div className="us-range-control">
+                  <input
+                    type="range" min={75} max={175} step={5}
+                    value={interfaceSettings.chat.fontScale}
+                    onChange={(event) => updateInterfaceSettings({
+                      ...interfaceSettings,
+                      chat: { ...interfaceSettings.chat, fontScale: Number(event.target.value) },
+                    })}
+                  />
+                  <span>{interfaceSettings.chat.fontScale}%</span>
+                </div>
+              </div>
+              <div className="us-row">
+                <span className="us-row-label">max width</span>
+                <div className="us-range-control">
+                  <input
+                    type="range" min={500} max={1600} step={20}
+                    value={interfaceSettings.chat.chatWidth}
+                    onChange={(event) => updateInterfaceSettings({
+                      ...interfaceSettings,
+                      chat: { ...interfaceSettings.chat, chatWidth: Number(event.target.value) },
+                    })}
+                  />
+                  <span>{interfaceSettings.chat.chatWidth}px</span>
+                </div>
+              </div>
+              <InterfaceToggle
+                label="scroll spine"
+                value={interfaceSettings.chat.spineEnabled}
+                onChange={(value) => updateInterfaceSettings({
+                  ...interfaceSettings,
+                  chat: { ...interfaceSettings.chat, spineEnabled: value },
+                })}
+              />
+
+              <div className="us-section-title us-section-title--spaced">conversation</div>
+              <InterfaceToggle
+                label="thinking"
+                value={interfaceSettings.conversation.showThinking}
+                onChange={(value) => updateInterfaceSettings({
+                  ...interfaceSettings,
+                  conversation: { ...interfaceSettings.conversation, showThinking: value },
+                })}
+              />
+              <InterfaceToggle
+                label="metadata"
+                value={interfaceSettings.conversation.showMeta}
+                onChange={(value) => updateInterfaceSettings({
+                  ...interfaceSettings,
+                  conversation: { ...interfaceSettings.conversation, showMeta: value },
+                })}
+              />
+              <div className="us-row">
+                <span className="us-row-label">tool calls</span>
+                <select
+                  className="us-select"
+                  value={interfaceSettings.conversation.toolCalls}
+                  onChange={(event) => updateInterfaceSettings({
+                    ...interfaceSettings,
+                    conversation: {
+                      ...interfaceSettings.conversation,
+                      toolCalls: event.target.value as ResolvedInterfaceSettings["conversation"]["toolCalls"],
+                    },
+                  })}
+                >
+                  <option value="collapsed">collapsed</option>
+                  <option value="expanded">expanded</option>
+                  <option value="hidden">hidden</option>
+                </select>
+              </div>
+              <InterfaceToggle
+                label="file summaries"
+                value={interfaceSettings.conversation.showFileChanges}
+                onChange={(value) => updateInterfaceSettings({
+                  ...interfaceSettings,
+                  conversation: { ...interfaceSettings.conversation, showFileChanges: value },
+                })}
+              />
+              <InterfaceToggle
+                label="git events"
+                value={interfaceSettings.conversation.showGitEvents}
+                onChange={(value) => updateInterfaceSettings({
+                  ...interfaceSettings,
+                  conversation: { ...interfaceSettings.conversation, showGitEvents: value },
+                })}
+              />
+
+              <div className="us-section-title us-section-title--spaced">workspace</div>
+              <div className="us-row">
+                <span className="us-row-label">navigation</span>
+                <select className="us-select" value={pageNavMode} onChange={(event) => setPageNavMode(event.target.value as typeof pageNavMode)}>
+                  <option value="auto">auto</option>
+                  <option value="compact">compact</option>
+                  <option value="tabs">tabs</option>
+                  <option value="launcher">launcher</option>
+                </select>
+              </div>
+              <div className="us-row">
+                <span className="us-row-label">motion</span>
+                <select
+                  className="us-select"
+                  value={interfaceSettings.motion}
+                  onChange={(event) => updateInterfaceSettings({
+                    ...interfaceSettings,
+                    motion: event.target.value === "reduced" ? "reduced" : "system",
+                  })}
+                >
+                  <option value="system">follow system</option>
+                  <option value="reduced">reduce motion</option>
+                </select>
+              </div>
+              <div className="us-reset-row">
+                <button
+                  type="button"
+                  className={`us-reset-btn${resetLayout ? " pending" : ""}`}
+                  onClick={() => {
+                    updateInterfaceSettings(DEFAULT_INTERFACE_SETTINGS);
+                    setPageNavMode("auto");
+                    setResetLayout(true);
+                  }}
+                >
+                  {resetLayout ? "defaults ready — save to apply" : "restore interface defaults"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Environment tab */}
           {tab === "environment" && (
             <div className="us-section">
@@ -336,6 +527,8 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
           {/* Project tab */}
           {tab === "project" && (
             <div className="us-section us-section--scroll">
+
+              <ProjectAppearanceSettings cwd={projectRoot || activeCwd} />
 
               <div className="us-group">
                 <div className="us-group-header us-group-header--static">
@@ -540,7 +733,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
         {/* Footer — only show save on editable tabs */}
         <div className="create-profile-footer">
-          <button className="create-profile-cancel" onClick={onClose}>cancel</button>
+          <button className="create-profile-cancel" onClick={() => { applyInterfaceSettings(resolveInterfaceSettings(userProfile.interface)); onClose(); }}>cancel</button>
           {isEditing && (
             <button className="create-profile-save" onClick={handleSave} disabled={saving}>
               {saving ? "saving..." : "save"}

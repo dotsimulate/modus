@@ -133,6 +133,22 @@ const LayoutsConfigSchema = z.record(z.string(), z.object({
   right: PanelLayoutSchema.optional(),
 }));
 
+const UserInterfaceConfigSchema = z.object({
+  chat: z.object({
+    fontScale: z.number().min(75).max(175).optional(),
+    chatWidth: z.number().min(500).max(1600).optional(),
+    spineEnabled: z.boolean().optional(),
+  }).optional(),
+  conversation: z.object({
+    showThinking: z.boolean().optional(),
+    showMeta: z.boolean().optional(),
+    toolCalls: z.enum(["expanded", "collapsed", "hidden"]).optional(),
+    showGitEvents: z.boolean().optional(),
+    showFileChanges: z.boolean().optional(),
+  }).optional(),
+  motion: z.enum(["system", "reduced"]).optional(),
+});
+
 const ProviderSchema = z.string().refine(isKnownProvider, {
   message: "unknown provider",
 });
@@ -227,6 +243,7 @@ export const UserProfileSchema = z.object({
   leftPanel: LeftPanelConfigSchema.optional(),
   computer: z.string().optional(),
   editor: z.string().optional(),
+  interface: UserInterfaceConfigSchema.optional(),
   clientExtensions: ClientExtensionsSchema.optional(),
 });
 
@@ -237,6 +254,7 @@ export const UserProfileUiConfigSchema = z.object({
   layouts: LayoutsConfigSchema.optional(),
   computer: z.string().optional(),
   editor: z.string().optional(),
+  interface: UserInterfaceConfigSchema.optional(),
   clientExtensions: ClientExtensionsSchema.optional(),
 });
 
@@ -245,6 +263,7 @@ export const UserProfileCoreSchema = UserProfileSchema.omit({
   leftPanel: true,
   computer: true,
   editor: true,
+  interface: true,
   clientExtensions: true,
 });
 

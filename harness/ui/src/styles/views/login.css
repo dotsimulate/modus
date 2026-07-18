@@ -169,6 +169,11 @@
 .login-field:focus-within .login-label {
   color: var(--login-label-focus);
 }
+.login-backend-target {
+  display: flex;
+  justify-content: center;
+  margin-top: -12px;
+}
 .login-label-pin {
   top: -8px;
   font-size: 8px;

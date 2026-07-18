@@ -16,6 +16,8 @@ import { PermissionOverlay } from "../components/PermissionOverlay";
 import { useSession } from "../providers/SessionContext";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
+import { useProfiles } from "../providers/ProfileContext";
+import { resolveInterfaceSettings } from "../interface-settings";
 
 type SessionChatConfig = WidgetBase & {
   type: "session-chat";
@@ -24,6 +26,7 @@ type SessionChatConfig = WidgetBase & {
 
 export default function SessionChatWidget({ config, pageContext }: WidgetProps<SessionChatConfig>) {
   const { branchFromSessionMessage } = useSession();
+  const { activeUP, profiles } = useProfiles();
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
   const selectedSession = pageContext?.get("selectedSession") as string | undefined;
   const sessionId = contextSessionId ?? selectedSession ?? config.sessionId ?? null;
@@ -73,6 +76,9 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
 
   const isActive = session.status === "running" || session.status === "starting" || session.status === "interrupting";
   const permissions = session.pendingPermissions ?? [];
+  const profileUi = profiles.find((profile) => profile.name === session.profile)?.ui;
+  const interfaceSettings = resolveInterfaceSettings(activeUP?.interface);
+  const conversation = interfaceSettings.conversation;
 
   return (
     <div className="session-chat-widget" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden", position: "relative" }}>
@@ -82,10 +88,11 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
         provider={session.provider ?? session.agentConfig?.provider}
         streaming={isActive}
         streamFeed={session.streamFeed}
-        showThinking={true}
-        showMeta={true}
-        showToolCalls={true}
-        showGitEvents={false}
+        showThinking={profileUi?.showThinking ?? conversation.showThinking}
+        showMeta={profileUi?.showMeta ?? conversation.showMeta}
+        toolCallDisplay={profileUi?.showToolCalls === false ? "hidden" : conversation.toolCalls}
+        showGitEvents={profileUi?.showGitEvents ?? conversation.showGitEvents}
+        showFileChanges={conversation.showFileChanges}
         emptyTitle={historyLoad.status === "loading" ? "loading messages…" : historyLoad.status === "error" ? "messages unavailable" : "no messages"}
         emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
         emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}
