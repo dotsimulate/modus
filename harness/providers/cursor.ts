@@ -19,6 +19,7 @@ import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, getSessionMessages, updateSessionStatus, type TurnContent } from "../db";
 import { getMemoryLimitedEnv } from "../memory-guard";
+import { APP_PATHS } from "../app-paths";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
 import {
@@ -258,7 +259,7 @@ function writeCursorMcpConfig(ctx: TurnContext, workspaceDir: string): string | 
   if (Object.keys(mergedMcp).length === 0) return null;
 
   // Resolve relative --directory args to absolute
-  const harnessRoot = join(import.meta.dir, "..");
+  const harnessRoot = APP_PATHS.resourcesDir;
   for (const server of Object.values(mergedMcp)) {
     if ("command" in server) {
       const args = server.args;

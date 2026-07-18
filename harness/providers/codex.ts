@@ -24,6 +24,7 @@ import { dirname, extname, isAbsolute, join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { CODEX_BUILTIN_TOOLS, CODEX_TOOL_GROUPS } from "./tool-catalog";
+import { APP_PATHS } from "../app-paths";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -670,7 +671,7 @@ function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?:
   console.log(`[codex] MCP merge: projectRoot=${projectRoot} sessionCwd=${ctx.session.cwd} projectMcp=${JSON.stringify(Object.keys(projectMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profile?.mcpServers ?? {}))} sessionMcp=${JSON.stringify(Object.keys(opts.mcpServers ?? {}))}`);
 
   // Resolve relative --directory args to absolute (same as claude-code provider)
-  const harnessRoot = dirname(import.meta.dir.endsWith("/") ? import.meta.dir.slice(0, -1) : import.meta.dir);
+  const harnessRoot = APP_PATHS.resourcesDir;
   const projectMcpNames = new Set(Object.keys(projectMcp));
   for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
     const args = server.args as string[] | undefined;

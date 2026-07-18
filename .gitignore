@@ -109,6 +109,10 @@ archive/
 
 # Logs
 *.log
+
+# Generated Tauri managed-backend staging (rebuilt before every desktop build)
+desktop/src-tauri/binaries/
+desktop/src-tauri/resources/
 logs/
 
 # OS junk

@@ -24,6 +24,7 @@
 
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join, resolve } from "path";
+import { APP_PATHS } from "./app-paths";
 import { getAllUserProfiles, getUserProfile } from "./profiles";
 import {
   interactWithSession, startSession, getActiveSession, switchProfile,
@@ -56,7 +57,7 @@ import { buildHarnessContext } from "./harness-context";
 
 // ── Constants ──
 
-const ACTIONS_DIR = join(import.meta.dir, "actions");
+const ACTIONS_DIR = join(APP_PATHS.resourcesDir, "actions");
 const MODUS_ACTIONS = ".modus/actions";
 const TICK_INTERVAL_MS = 10_000;       // check every 10 seconds
 const SESSION_TIMEOUT_MS = 30 * 60_000; // 30 minute max per run

@@ -114,7 +114,7 @@ function readTailscaleOwnership() {
 
 function writeTailscaleOwnership(dnsName: string, port: number): void {
   mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(TAILSCALE_OWNERSHIP_FILE, JSON.stringify(ownershipFor(dnsName, port), null, 2), "utf-8");
+  writeFileSync(TAILSCALE_OWNERSHIP_FILE, JSON.stringify(ownershipFor(dnsName, port, new Date(), "cli"), null, 2), "utf-8");
 }
 
 function serveConfigJson(): string | null {
@@ -171,6 +171,14 @@ function setupTailscaleServe(port: number): TailscaleServeSetup {
       writeTailscaleOwnership(dnsName, port);
       owner = classifyHttps443(rawConfig, readTailscaleOwnership());
     }
+    const recordedOwner = readTailscaleOwnership();
+    if (owner === "modus" && recordedOwner?.managedBy === "desktop") {
+      return {
+        remoteUrl,
+        error: null,
+        skipped: "the desktop-managed backend currently owns the Modus Tailscale route — leaving it untouched",
+      };
+    }
     if (owner === "foreign") {
       return {
         remoteUrl: null,
@@ -206,11 +214,12 @@ function setupTailscaleServe(port: number): TailscaleServeSetup {
  * Never `serve reset` (which would wipe unrelated rules on other ports). Acts
  * only when :443 is modus-owned. Returns true if the rule was removed.
  */
-function clearTailscaleServe(): boolean {
+function clearTailscaleServe(allowDesktopOwner = false): boolean {
   try {
     const raw = serveConfigJson();
     if (raw == null) return false;
     const owner = readTailscaleOwnership();
+    if (owner?.managedBy === "desktop" && !allowDesktopOwner) return false;
     const classification = classifyHttps443(raw, owner);
     if (classification === "none" && owner) {
       try { unlinkSync(TAILSCALE_OWNERSHIP_FILE); } catch {}
@@ -846,7 +855,7 @@ async function cmdRemote(args: string[]): Promise<void> {
 
   if (sub === "off") {
     try { unlinkSync(REMOTE_FILE); } catch { /* was not set */ }
-    const cleared = clearTailscaleServe();
+    const cleared = clearTailscaleServe(true);
     console.log(`Remote access disabled.${cleared ? " Removed tailscale serve rule." : ""}`);
     return;
   }

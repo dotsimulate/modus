@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { extname, join, resolve } from "path";
+import { APP_PATHS } from "./app-paths";
 
 const MODUS_UI_DIR = ".modus/ui";
 const BUILTIN_THEME_SOURCE = "builtin:harness";
@@ -122,7 +123,7 @@ function themeFilePath(cwd: string, rel: string): string {
 }
 
 function builtinThemeFilePath(rel: string): string {
-  return join(import.meta.dir, rel);
+  return join(APP_PATHS.resourcesDir, rel);
 }
 
 function fontFilePath(cwd: string, rel: string): string {

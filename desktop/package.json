@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build --no-bundle",
-    "build:bundle": "tauri build"
+    "build:bundle": "tauri build",
+    "stage:backend": "bun run stage-managed-backend.ts"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4"

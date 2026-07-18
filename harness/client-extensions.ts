@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { basename, extname, join, resolve } from "path";
+import { APP_PATHS } from "./app-paths";
 import { getResolvedClientExtensionsConfig } from "./profiles";
 import { getPluginClientExtensionsDir, listEnabledModusPlugins } from "./modus-plugins";
 
 const PROJECT_EXTENSIONS_DIR = ".modus/ui/extensions";
-const BUILTIN_EXTENSIONS_DIR = join(import.meta.dir, "ui/extensions");
+const BUILTIN_EXTENSIONS_DIR = join(APP_PATHS.resourcesDir, "ui/extensions");
 const EXTENSION_EXTENSIONS = new Set([".js", ".mjs"]);
 
 export type ExtensionSettingType = "string" | "number" | "boolean" | "select";

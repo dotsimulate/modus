@@ -15,12 +15,13 @@
 
 import { existsSync, mkdirSync, readFileSync, copyFileSync, readdirSync } from "fs";
 import { join, resolve, basename } from "path";
+import { APP_PATHS } from "./app-paths";
 import { registerProject, getProjectByPath, getProjectById, updateProjectPath } from "./profiles";
 
 const MODUS_DIR = ".modus";
 /** Default agent profiles to copy into new projects */
 const DEFAULT_PROFILES = ["modus-dev"];
-const TEMPLATES_DIR = join(import.meta.dir, "templates");
+const TEMPLATES_DIR = join(APP_PATHS.resourcesDir, "templates");
 /** Skills to copy into new projects (SDK resolves from <cwd>/.claude/skills/) */
 const DEFAULT_SKILLS = ["create-profile", "create-action", "create-mission"];
 const SKILLS_SRC_DIR = join(TEMPLATES_DIR, "skills");

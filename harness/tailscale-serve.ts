@@ -5,6 +5,9 @@ export type TailscaleOwnership = {
   proxy: string;
   targetPort: number;
   createdAt: string;
+  managedBy?: "cli" | "desktop";
+  desktopPid?: number;
+  instanceId?: string;
 };
 
 export type ServeEndpoint = {
@@ -54,7 +57,7 @@ export function classifyHttps443(raw: string, ownership: TailscaleOwnership | nu
   try {
     const parsed = JSON.parse(raw);
     const endpoints = Object.keys(parsed?.Web ?? {}).filter((key) => key.endsWith(":443"));
-    if (endpoints.length === 0) return "none";
+    if (endpoints.length === 0) return parsed?.TCP?.["443"] ? "foreign" : "none";
     if (endpoints.length !== 1) return "foreign";
   } catch {
     return "foreign";
@@ -82,7 +85,12 @@ export function canAdoptLegacyRule(
   return endpoint.targetPort >= basePort && endpoint.targetPort < basePort + scanRange;
 }
 
-export function ownershipFor(dnsName: string, targetPort: number, now = new Date()): TailscaleOwnership {
+export function ownershipFor(
+  dnsName: string,
+  targetPort: number,
+  now = new Date(),
+  managedBy: "cli" | "desktop" = "cli",
+): TailscaleOwnership {
   const cleanDns = dnsName.replace(/\.$/, "");
   return {
     version: 1,
@@ -91,6 +99,7 @@ export function ownershipFor(dnsName: string, targetPort: number, now = new Date
     proxy: `http://127.0.0.1:${targetPort}`,
     targetPort,
     createdAt: now.toISOString(),
+    managedBy,
   };
 }
 

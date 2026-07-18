@@ -10,7 +10,7 @@ export type BackendTarget = {
 export type SavedBackendTarget = {
   id: string;
   label: string;
-  mode: "external-local" | "remote";
+  mode: "managed-local" | "external-local" | "remote";
   url?: string;
   lastConnectedAt?: string;
   backendId?: string;
@@ -32,6 +32,12 @@ const ACTIVE_TARGET_KEY = "modus:active-backend-target:v1";
 export const LOCAL_BACKEND_TARGET: SavedBackendTarget = {
   id: "local",
   label: "Local Modus",
+  mode: "managed-local",
+};
+
+export const EXTERNAL_LOCAL_BACKEND_TARGET: SavedBackendTarget = {
+  id: "external-local",
+  label: "Development daemon",
   mode: "external-local",
 };
 
@@ -63,6 +69,7 @@ function sanitizeSavedTarget(value: unknown): SavedBackendTarget | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
   if (record.id === "local") return { ...LOCAL_BACKEND_TARGET };
+  if (record.id === "external-local") return { ...EXTERNAL_LOCAL_BACKEND_TARGET };
   if (record.mode !== "remote" || typeof record.url !== "string") return null;
   try {
     const url = normalizeRemoteBackendUrl(record.url);
@@ -90,13 +97,13 @@ export function loadBackendTargets(storage: Pick<Storage, "getItem"> = localStor
   }
   const remote = stored
     .map(sanitizeSavedTarget)
-    .filter((target): target is SavedBackendTarget => !!target && target.id !== "local");
+    .filter((target): target is SavedBackendTarget => !!target && target.mode === "remote");
   const deduped = new Map(remote.map((target) => [target.id, target]));
-  return [LOCAL_BACKEND_TARGET, ...deduped.values()];
+  return [LOCAL_BACKEND_TARGET, EXTERNAL_LOCAL_BACKEND_TARGET, ...deduped.values()];
 }
 
 function persistBackendTargets(targets: SavedBackendTarget[], storage: Pick<Storage, "setItem"> = localStorage): void {
-  storage.setItem(TARGETS_KEY, JSON.stringify(targets.filter((target) => target.id !== "local")));
+  storage.setItem(TARGETS_KEY, JSON.stringify(targets.filter((target) => target.mode === "remote")));
 }
 
 export function getActiveBackendTarget(storage: Pick<Storage, "getItem"> = localStorage): SavedBackendTarget {
@@ -121,7 +128,8 @@ export function saveRemoteBackendTarget(
   const existing = targets.find((candidate) => candidate.id === target.id);
   persistBackendTargets([
     LOCAL_BACKEND_TARGET,
-    ...targets.filter((candidate) => candidate.id !== "local" && candidate.id !== target.id),
+    EXTERNAL_LOCAL_BACKEND_TARGET,
+    ...targets.filter((candidate) => candidate.mode === "remote" && candidate.id !== target.id),
     { ...existing, ...target },
   ], storage);
   return { ...existing, ...target };
@@ -136,7 +144,8 @@ export function rememberBackendConnected(
   const targets = loadBackendTargets(storage);
   persistBackendTargets([
     LOCAL_BACKEND_TARGET,
-    ...targets.filter((candidate) => candidate.id !== "local" && candidate.id !== target.id),
+    EXTERNAL_LOCAL_BACKEND_TARGET,
+    ...targets.filter((candidate) => candidate.mode === "remote" && candidate.id !== target.id),
     { ...target, lastConnectedAt: new Date().toISOString() },
   ], storage);
 }
@@ -145,7 +154,7 @@ export function removeBackendTarget(
   id: string,
   storage: Pick<Storage, "getItem" | "setItem" | "removeItem"> = localStorage,
 ): void {
-  if (id === "local") return;
+  if (id === "local" || id === "external-local") return;
   persistBackendTargets(loadBackendTargets(storage).filter((target) => target.id !== id), storage);
   if (storage.getItem(ACTIVE_TARGET_KEY) === id) storage.removeItem(ACTIVE_TARGET_KEY);
 }
@@ -157,6 +166,8 @@ export function targetSearchParams(target: SavedBackendTarget, currentSearch = "
   }
   if (target.id === "local") {
     params.set("modusDiscover", "local");
+  } else if (target.id === "external-local") {
+    params.set("modusDiscover", "external");
   } else {
     params.set("modusTarget", target.url!);
     params.set("modusTargetId", target.id);

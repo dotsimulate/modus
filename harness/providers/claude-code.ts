@@ -22,9 +22,10 @@ import { existsSync, appendFileSync, mkdirSync } from "fs";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { getMemoryLimitedEnv } from "../memory-guard";
 import { claudeNativeHistoryExists, selectProviderResumeTarget, type ResumeTargetSelection } from "../provider-session-identity";
+import { APP_PATHS } from "../app-paths";
 
 // Dedicated message-flow log — gitignored, append-only, easy to tail
-const MSG_LOG = join(import.meta.dir, "..", ".modus", "msg-flow.log");
+const MSG_LOG = join(APP_PATHS.logsDir, "msg-flow.log");
 try { mkdirSync(dirname(MSG_LOG), { recursive: true }); } catch {}
 function msgLog(sid: string, event: string, detail: string) {
   const ts = new Date().toLocaleTimeString("en-US", { hour12: false, fractionalSecondDigits: 3 });
@@ -463,7 +464,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       // Resolve relative --directory args to absolute
       // Project CWD servers: resolve relative to session CWD
       // Harness servers (global/profile): resolve relative to harness root
-      const harnessRoot = dirname(import.meta.dir.endsWith("/") ? import.meta.dir.slice(0, -1) : import.meta.dir);
+      const harnessRoot = APP_PATHS.resourcesDir;
       const projectCwdNames = new Set(Object.keys(sessionCwdMcp));
       for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
         const args = server.args as string[] | undefined;
@@ -1135,7 +1136,7 @@ export function createClaudeCodeProvider(): SessionProvider {
       };
 
       // Resolve relative --directory args to absolute
-      const harnessRoot = dirname(import.meta.dir.endsWith("/") ? import.meta.dir.slice(0, -1) : import.meta.dir);
+      const harnessRoot = APP_PATHS.resourcesDir;
       const projectCwdNames = new Set(Object.keys(sessionCwdMcp));
       for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
         const args = server.args as string[] | undefined;

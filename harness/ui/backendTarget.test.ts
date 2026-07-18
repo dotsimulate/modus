@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeBackendUrl, resolveBackendTarget } from "./src/backendTarget";
+import {
+  BACKEND_TARGET,
+  configureBackendTarget,
+  normalizeBackendUrl,
+  resolveBackendTarget,
+} from "./src/backendTarget";
 import {
   backendIdentityChanged,
   getActiveBackendTarget,
@@ -39,6 +44,21 @@ describe("desktop backend target", () => {
     });
   });
 
+  test("rebinds an eagerly evaluated production target after the desktop handshake", () => {
+    const target = configureBackendTarget({
+      search: "?modusTarget=http%3A%2F%2F127.0.0.1%3A62240&modusTargetId=local&modusTargetMode=managed-local&modusTargetLabel=Local+Modus",
+      pageOrigin: "http://tauri.localhost",
+    });
+
+    expect(target).toBe(BACKEND_TARGET);
+    expect(BACKEND_TARGET).toEqual({
+      id: "local",
+      label: "Local Modus",
+      mode: "managed-local",
+      apiBase: "http://127.0.0.1:62240",
+    });
+  });
+
   test("rejects credentials and non-origin target paths", () => {
     expect(() => normalizeBackendUrl("http://user:secret@localhost:3777")).toThrow();
     expect(() => normalizeBackendUrl("https://host.example/api")).toThrow();
@@ -62,6 +82,7 @@ describe("desktop backend target", () => {
     });
     expect(loadBackendTargets(storage).map((target) => target.id)).toEqual([
       "local",
+      "external-local",
       "remote:https://modus-host.example.ts.net",
     ]);
   });
