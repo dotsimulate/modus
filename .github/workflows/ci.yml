@@ -54,6 +54,7 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/check-publication-boundary.ps1
       - name: Run Bun tests
+        working-directory: harness
         run: bun test
       - name: Typecheck harness
         run: bun x tsc -p harness/tsconfig.json --noEmit
