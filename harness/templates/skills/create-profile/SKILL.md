@@ -1,19 +1,19 @@
 ---
 name: create-profile
 description: >
-  Create and configure MO (modus operandi) profiles for AI agents and users.
+  Create and configure Modus profiles for AI agents and users.
   Use when someone wants to: (1) create a new agent profile (model, tools, prompt,
   permissions, MCP servers), (2) set up a user profile (project scope, visible agents,
   memory isolation), (3) configure global defaults or provider tuning, (4) build a
   complete agent stack (user profile + agent profile + global config together), or
-  (5) add a specialized agent to an existing MO installation. Covers all profile types
-  in the MO personal AI infrastructure. TRIGGER on: "create a profile", "new agent",
+  (5) add a specialized agent to an existing Modus installation. Covers all profile types
+  in the Modus local-first agent harness. TRIGGER on: "create a profile", "new agent",
   "set up an agent", "add a profile", "configure agent", "user profile", "new user".
 ---
 
 # Create Profile
 
-MO profiles are JSON files that configure AI agent behavior across three layers:
+Modus profiles are JSON files that configure AI agent behavior across three layers:
 
 - **Agent profiles** — what the agent does
 - **User profiles** — who uses the system
@@ -21,16 +21,20 @@ MO profiles are JSON files that configure AI agent behavior across three layers:
 
 ## Path Resolution — CRITICAL
 
-- Agent profiles: `<cwd>/.modus/profiles/agents/<name>.json`
-- Global config: `<cwd>/.modus/_global.json`
-- User profiles: `<harness>/profiles/users/<name>.json` — harness-level only, NOT project-local
+- User-global agent profiles: `~/.modus/profiles/agents/<name>.json`
+- Project-local agent profiles: `<project>/.modus/profiles/agents/<name>.json`
+- User profiles: `~/.modus/profiles/users/<name>.json`
+- User-global config: `~/.modus/profiles/_global.json`
+- Project-local config: `<project>/.modus/_global.json`
 
-If CWD has no `.modus/`, create it.
+Choose user-global scope for configuration that should follow the person across
+projects. Choose project-local scope for configuration owned by one project. Never
+write a person's profile or configuration into the Modus source checkout or templates.
 
 ## Workflow
 
 1. Determine what the user needs (see decision tree)
-2. **Check if CWD has `.modus/`** — this determines where agent profiles go
+2. Decide whether the requested agent/config is user-global or project-local
 3. Gather requirements through focused questions
 4. Read the relevant reference file for schema details
 5. Generate valid JSON
@@ -40,20 +44,21 @@ If CWD has no `.modus/`, create it.
 
 **"I want a new agent / assistant / bot"**
   Read [references/agent-profile-schema.md](references/agent-profile-schema.md).
-  Create `<cwd>/.modus/profiles/agents/<name>.json`.
-  If CWD has no `.modus/`, tell the user to init the project first.
+  Create `~/.modus/profiles/agents/<name>.json` for a reusable user-global agent,
+  or `<project>/.modus/profiles/agents/<name>.json` for a project override.
 
 **"I want to organize my projects / set up my account"**
   Read [references/user-profile-schema.md](references/user-profile-schema.md).
-  User profiles live in the harness at `profiles/users/<name>.json` — NOT inside any project's `.modus/`.
-  Only create from a harness-context session (CWD = harness directory).
+  Create `~/.modus/profiles/users/<name>.json`.
 
 **"I want to set defaults for all agents" / "configure my local LLM"**
   Read [references/global-config.md](references/global-config.md).
-  Update `<cwd>/.modus/_global.json`.
+  Update `~/.modus/profiles/_global.json` for user-global defaults or
+  `<project>/.modus/_global.json` for project-local overrides.
 
 **"Set up everything for a new use case"** (full stack)
-  Create all three: user profile + agent profile + update global config if needed.
+  Create the user profile and reusable agent profile under `~/.modus/profiles/`,
+  plus user-global or project-local config if needed.
   Create the agent profile first (it defines the behavior), then the user profile
   (which references the agent profile by name).
 
@@ -62,8 +67,9 @@ If CWD has no `.modus/`, create it.
 ### For agent profiles, ask:
 
 1. **What should it do?** (coding, research, creative, ops, monitoring, etc.)
-2. **What provider/model?** Default is `claude-code` with Claude Opus. Alternatives:
-   `anthropic`, `openai`, `litellm` (local models), `ollama`
+2. **What provider/model?** Default is `claude-code` with the current Modus default model.
+   Omit `model` when the provider default is acceptable. For Cursor or Codex, read the
+   matching reference before writing JSON. Do not offer hidden legacy providers by default.
 3. **What tools should it have?** Full access, read-only, or specific allowlist?
 4. **Should it load project settings?** (CLAUDE.md from the working directory)
 5. **Any MCP servers?** (web search, memory, databases, custom tools)
@@ -110,7 +116,7 @@ If CWD has no `.modus/`, create it.
   "description": "Read-only research agent",
   "prompt": "Search, read, and analyze. Never modify files. Cite sources.",
   "promptMode": "append",
-  "model": "claude-opus-4-8[1m]",
+  "model": "claude-opus-4-8",
   "tools": ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "Agent"],
   "disallowedTools": ["Bash", "Write", "Edit"],
   "permissionPolicy": { "default": "approve" }
@@ -150,14 +156,21 @@ MCP tools use the pattern: `mcp__<server-name>__<tool-name>`
 
 ## Available Providers
 
-| Provider | Models | Use case |
-|----------|--------|----------|
-| `claude-code` | Claude Opus/Sonnet/Haiku (Anthropic) | Full agent features, sub-agents, permissions |
-| `anthropic` | Same models via PI framework | Simpler, auto-compaction |
-| `openai` | GPT-4o, GPT models | OpenAI API |
-| `litellm` | Any OpenAI-compatible endpoint | Local models, vLLM, llama.cpp |
-| `ollama` | Ollama models | Local Ollama server |
-| `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers |
+| Provider | Models | Use case | Reference |
+|----------|--------|----------|-----------|
+| `claude-code` | Current Claude models | Full agent features, sub-agents, permissions | (default, no ref needed) |
+| `claude-code-pty` | Current Claude CLI models | Persistent Claude CLI process | (no ref needed) |
+| `cursor` | composer-2-fast (default), others | Cursor Agent CLI; auto-approve, no per-tool approval | [references/cursor.md](references/cursor.md) |
+| `codex` | Runtime-discovered Codex models | OpenAI Codex CLI; sandbox modes and Starlark rules | [references/codex.md](references/codex.md) |
+| `antigravity` | Runtime-discovered Antigravity models | Google Antigravity CLI with Modus hooks | See `harness/docs/providers.md` |
+| `opencode` | Runtime-discovered OpenCode models | OpenCode CLI or `bunx` fallback | See `harness/docs/providers.md` |
+| `litellm` | Any OpenAI-compatible endpoint | Local models, vLLM, llama.cpp | — |
+| `ollama` | Ollama models | Local Ollama server | — |
+| `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers | — |
+
+The embedded `gemini-cli` adapter is hidden legacy migration code and must not be offered
+as a normal new-profile choice. For `cursor` and `codex`, read the linked reference before
+writing profile JSON; their permissions, tools, and MCP behavior differ materially.
 
 ## Output Format
 

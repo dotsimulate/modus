@@ -63,10 +63,17 @@ Enable cycling in mission.json:
   "cycle": {
     "enabled": true,
     "maxCycles": null,
+    "freshOrchestrator": true,
     "budget": { "usd": 50 }
   }
 }
 ```
+
+When `freshOrchestrator` is true, the orchestrator gets a **fresh session**
+each cycle. This prevents context degradation across many cycles and enables
+the bootstrap pattern — where agents read curated memory files on startup
+and update them before session end. Without it, the orchestrator accumulates
+stale conversation history and degrades over time.
 
 The orchestrator ends cycling by issuing a `pause` with reason, or
 cycling stops when `maxCycles` or `budget` is reached. With no limits
@@ -119,11 +126,13 @@ Good for: contract-first APIs, protocol implementations.
 These repeat. The orchestrator decides when to stop or what to
 target next. Each cycle produces independent, committed output.
 
-**observe → process → encode**
-Study a target, process findings, encode into permanent output.
+**ideate → build → evaluate** (single worker step)
+The orchestrator bootstraps fresh, folds in previous findings, ideates
+the cycle's target, writes a build brief, and delegates. The worker
+builds ambitiously and writes findings to a staging area. The
+orchestrator evaluates results, promotes what's valuable, and updates
+its bootstrap before the session ends. Uses `freshOrchestrator: true`.
 Good for: discovery, exploration, knowledge extraction, research.
-The orchestrator chooses the next target after each cycle based on
-what was actually found — not a static queue prescribed upfront.
 
 **scan → triage → resolve**
 Scan for issues, prioritize them, fix the highest-priority ones.
@@ -360,7 +369,7 @@ Multiple missions are NOT appropriate when:
 
 Template mission.json files are in `assets/shapes/`. Copy and customize.
 Directed templates: `research-synthesize-build.json`, `audit-fix-verify.json`, etc.
-Cycling templates: `observe-process-encode.json`, `scan-triage-resolve.json`.
+Cycling templates: `ideate-build-evaluate.json`, `scan-triage-resolve.json`.
 
 ## Starting a Mission
 

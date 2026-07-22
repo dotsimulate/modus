@@ -2,14 +2,20 @@
 
 ## `_global.json`
 
-Located at `profiles/_global.json`. Contains shared configuration merged into
-every session regardless of which agent or user profile is active.
+User-global defaults live at `~/.modus/profiles/_global.json`. Project-local overrides
+live at `<project>/.modus/_global.json`. The resolved configuration is merged into every
+session regardless of which agent or user profile is active.
 
 ```jsonc
 {
   // MCP servers available to ALL sessions
   // Agent profile MCP servers override these by key name
   "mcpServers": {
+    "agent-memory": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/agent_memory", "run", "python", "server.py"],
+      "env": {}
+    },
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"],
@@ -57,13 +63,13 @@ These fields can be set per-provider in `_global.json`:
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `contextWindow` | 32768 | Context size (match your inference server's `-c` flag) |
-| `maxOutputTokens` | 2048 | Max tokens per response |
+| `contextWindow` | 128000 (or OpenRouter API metadata) | Context size (match your inference server's `-c` flag) |
+| `maxOutputTokens` | 8192 | Max tokens per response |
 | `compaction.enabled` | true | Auto-summarize when context fills |
-| `compaction.reserveTokens` | 16384 | Tokens reserved for the next response |
+| `compaction.reserveTokens` | `max(4096, maxOutputTokens)` | Tokens reserved for the next response |
 | `compaction.keepRecentTokens` | 20000 | Recent context preserved during compaction |
 
-These only apply to PI providers (`anthropic`, `openai`, `litellm`, `ollama`).
+These only apply to PI providers (`litellm`, `ollama`, `openrouter`).
 Claude Code provider manages context through the SDK directly.
 
 ## MCP Server Merging
@@ -73,9 +79,9 @@ Claude Code provider manages context through the SDK directly.
 3. Result is passed to the session
 
 ```
-Global:  { "filesystem": {...} }
+Global:  { "agent-memory": {...}, "filesystem": {...} }
 Profile: { "filesystem": {...custom...}, "tavily": {...} }
-Result:  { "filesystem": {...custom...}, "tavily": {...} }
+Result:  { "agent-memory": {...}, "filesystem": {...custom...}, "tavily": {...} }
 ```
 
 ## MCP Server Config Format
@@ -92,6 +98,17 @@ Result:  { "filesystem": {...custom...}, "tavily": {...} }
 ```
 
 ## Common MCP Server Examples
+
+### Agent memory (persistent knowledge)
+```json
+{
+  "agent-memory": {
+    "command": "uv",
+    "args": ["--directory", "/path/to/agent_memory", "run", "python", "server.py"],
+    "env": {}
+  }
+}
+```
 
 ### Web search (Tavily)
 ```json

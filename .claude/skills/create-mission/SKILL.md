@@ -369,7 +369,7 @@ Multiple missions are NOT appropriate when:
 
 Template mission.json files are in `assets/shapes/`. Copy and customize.
 Directed templates: `research-synthesize-build.json`, `audit-fix-verify.json`, etc.
-Cycling templates: `observe-process-encode.json`, `scan-triage-resolve.json`.
+Cycling templates: `ideate-build-evaluate.json`, `scan-triage-resolve.json`.
 
 ## Starting a Mission
 

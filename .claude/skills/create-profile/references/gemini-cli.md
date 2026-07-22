@@ -2,23 +2,20 @@
 
 Provider name: `"gemini-cli"`
 
-Uses the `@google/gemini-cli-core` SDK (not a subprocess — it's an in-process library).
-Read this before writing a gemini-cli profile.
+This is hidden legacy migration code backed by `@google/gemini-cli-core`. Do not offer
+it as a normal new-profile provider. Prefer the supported `antigravity` provider for
+Google's authenticated agent CLI workflow.
 
 ## Authentication
 
-Two options (checked in order):
-
-1. **Google OAuth** — run `gemini auth login` once; credentials stored at
-   `~/.gemini/oauth_creds.json`. This is the standard path.
-2. **API key** — set `GEMINI_API_KEY` or `GOOGLE_API_KEY` in your secrets file or environment.
+The adapter is accepted only when the operator explicitly configures a paid Gemini API
+key, Vertex AI, Cloud Shell, or compute ADC deployment. It intentionally does not consume
+Gemini CLI OAuth credentials from `~/.gemini/oauth_creds.json`.
 
 ## Models
 
-Default: `"gemini-2.5-pro"` (if `model` is omitted).
-
-Common values: `"gemini-2.5-pro"`, `"gemini-2.5-flash"`, `"gemini-2.0-flash"`.
-Pass any valid Gemini model ID — it goes directly to the SDK.
+Omit `model` to use Modus's current legacy-adapter fallback, or use a model supported by
+the explicitly configured paid/Vertex deployment.
 
 ## Built-in Tools
 
@@ -89,20 +86,19 @@ supported; `"low"` disables it.
   "prompt": "You are a research assistant. Cite sources. Prefer google_web_search for current info.",
   "promptMode": "append",
   "provider": "gemini-cli",
-  "model": "gemini-2.5-pro",
   "effort": "high",
   "permissionPolicy": "bypass",
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/dot"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"],
       "env": {}
     }
   },
   "ui": {
     "label": "gemini",
     "emptyTitle": "gemini-agent",
-    "emptySubtitle": "gemini-2.5-pro / research"
+    "emptySubtitle": "legacy Gemini / research"
   }
 }
 ```
