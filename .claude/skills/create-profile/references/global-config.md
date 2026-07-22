@@ -2,8 +2,9 @@
 
 ## `_global.json`
 
-Located at `profiles/_global.json`. Contains shared configuration merged into
-every session regardless of which agent or user profile is active.
+User-global defaults live at `~/.modus/profiles/_global.json`. Project-local overrides
+live at `<project>/.modus/_global.json`. The resolved configuration is merged into every
+session regardless of which agent or user profile is active.
 
 ```jsonc
 {
@@ -62,10 +63,10 @@ These fields can be set per-provider in `_global.json`:
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `contextWindow` | 32768 | Context size (match your inference server's `-c` flag) |
-| `maxOutputTokens` | 2048 | Max tokens per response |
+| `contextWindow` | 128000 (or OpenRouter API metadata) | Context size (match your inference server's `-c` flag) |
+| `maxOutputTokens` | 8192 | Max tokens per response |
 | `compaction.enabled` | true | Auto-summarize when context fills |
-| `compaction.reserveTokens` | 16384 | Tokens reserved for the next response |
+| `compaction.reserveTokens` | `max(4096, maxOutputTokens)` | Tokens reserved for the next response |
 | `compaction.keepRecentTokens` | 20000 | Recent context preserved during compaction |
 
 These only apply to PI providers (`litellm`, `ollama`, `openrouter`).

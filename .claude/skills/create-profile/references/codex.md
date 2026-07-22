@@ -2,8 +2,8 @@
 
 Provider name: `"codex"`
 
-Uses the `@openai/codex-sdk` (in-process, no subprocess). Read this before writing a
-codex profile — the permission model is fundamentally different from claude-code.
+Uses the local `codex` CLI through Modus's event-stream wrapper. Read this before writing
+a Codex profile — the permission model is fundamentally different from claude-code.
 
 ## Authentication
 
@@ -14,7 +14,9 @@ Two options:
 
 ## Models
 
-Common values: `"codex-1"`, `"o4-mini"`, `"o3"`. Pass any valid OpenAI model ID.
+Models are discovered from the installed Codex environment and cached by Modus. Omit
+`model` to use the current Modus fallback, or select a model returned by the running CLI.
+Do not hard-code an example model merely because it appeared in an older document.
 
 ## Permission Model — Critical Difference
 
@@ -88,7 +90,8 @@ If not set, the harness derives it from the `WebSearch` tool state:
 
 Maps to Codex `ModelReasoningEffort`:
 - `"low"` / `"medium"` / `"high"` → passed through
-- `"off"` or `"max"` → no reasoning effort set (Codex default applies)
+- `"off"` → no reasoning effort set
+- `"max"` → `"xhigh"`
 
 ## MCP Servers
 
@@ -119,7 +122,6 @@ Define `mcpServers` in the profile the same way as claude-code. HTTP/stdio serve
   "prompt": "You are a coding agent. Prefer small, targeted edits. Explain before executing destructive commands.",
   "promptMode": "append",
   "provider": "codex",
-  "model": "codex-1",
   "effort": "medium",
   "codexSandboxMode": "danger-full-access",
   "codexRules": [
@@ -129,7 +131,7 @@ Define `mcpServers` in the profile the same way as claude-code. HTTP/stdio serve
   "ui": {
     "label": "codex",
     "emptyTitle": "codex-agent",
-    "emptySubtitle": "codex-1 / full-access"
+    "emptySubtitle": "codex / full-access"
   }
 }
 ```
@@ -141,12 +143,11 @@ Define `mcpServers` in the profile the same way as claude-code. HTTP/stdio serve
   "description": "Codex read-only research agent",
   "prompt": "Search, read, and analyze. Do not modify files.",
   "provider": "codex",
-  "model": "o4-mini",
   "effort": "high",
   "codexSandboxMode": "read-only",
   "ui": {
     "label": "codex-ro",
-    "emptySubtitle": "o4-mini / read-only"
+    "emptySubtitle": "codex / read-only"
   }
 }
 ```

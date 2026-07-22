@@ -1,7 +1,9 @@
 # Agent Profile Schema
 
-Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
-(without `.json`) is the profile's ID used everywhere in the system.
+Reusable user-global agent profiles live at
+`~/.modus/profiles/agents/<name>.json`. Project-local profiles and overrides live at
+`<project>/.modus/profiles/agents/<name>.json`. The filename (without `.json`) is the
+profile's ID used everywhere in the system.
 
 ## Complete Schema
 
@@ -25,16 +27,17 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
 
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
-  // Options: "claude-code" | "anthropic" | "openai" | "litellm" | "ollama" | "openrouter"
+  // Common options: "claude-code" | "claude-code-pty" | "cursor" | "codex" |
+  // "antigravity" | "opencode" | "litellm" | "ollama" | "openrouter"
 
   // Model ID (omit for provider's default)
   "model": "claude-opus-4-8[1m]",
-  // Claude models: "claude-opus-4-8[1m]", "claude-opus-4-8", "claude-haiku-4-5"
+  // Prefer omitting this field when the provider's current default is acceptable.
   // Other providers: any model ID from their /models endpoint
 
   // Inference effort hint
   "effort": "high",
-  // Options: "low" | "medium" | "high" | "max"
+  // Options: "off" | "low" | "medium" | "high" | "xhigh" | "max"
 
   // Max agentic turns per session turn (omit = unlimited)
   "maxTurns": 50,
@@ -84,7 +87,8 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
   // object = granular per-tool control
   "permissionPolicy": "bypass",
 
-  // ── Provider Tuning (PI providers only: anthropic, openai, litellm, ollama, openrouter) ──
+  // ── Provider Tuning (PI providers only: litellm, ollama, openrouter) ──
+  // These fields are ignored by non-PI providers such as claude-code, cursor, and codex.
 
   // Context window size (must match inference server's -c flag for local models)
   "contextWindow": 65536,
@@ -98,6 +102,44 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
     "reserveTokens": 16384,      // tokens reserved for next response
     "keepRecentTokens": 20000    // recent context preserved during compaction
   },
+
+  // ── CWD Suggestions ──
+
+  // Auto-populates cwd + additionalDirectories when this profile is selected.
+  // First entry → cwd, remaining entries → additionalDirectories.
+  // Cleared when switching to a profile without this field.
+  "cwdSuggestions": ["/home/user/project", "/home/user/project/subdir"],
+
+  // ── Session Environment ──
+
+  // Inject env vars into the agent session (resolved before start)
+  "env": {
+    "MY_VAR": "value"
+  },
+
+  // Spending cap — session errors out if cost exceeds this (claude-code only)
+  "maxBudgetUsd": 5.0,
+
+  // ── Sandbox (claude-code only) ──
+
+  // See harness/docs/profile-system.md for the full network ACL sub-schema.
+  // Stub — don't template this in profile creation; configure manually if needed.
+  "sandbox": { /* enabled, network.allowedDomains, autoAllowBashIfSandboxed, ... */ },
+
+  // ── Codex-specific ──
+
+  // Override the sandbox mode derived from permissionPolicy (codex only)
+  // "danger-full-access" = full shell + filesystem
+  // "workspace-write"    = filesystem writes, no arbitrary shell
+  // "read-only"          = read-only, no exec
+  "codexSandboxMode": "danger-full-access",
+
+  // Starlark rules written to ~/.codex/rules/ for command-level enforcement (codex only)
+  // Use this instead of permissionPolicy:"ask" — Codex cannot surface interactive approvals
+  "codexRules": [
+    "prefix_rule(pattern=[\"rm\", \"-rf\"], decision=\"forbidden\")",
+    "prefix_rule(pattern=[\"curl\"], decision=\"ask\")"
+  ],
 
   // ── UI Hints (frontend display only) ──
 
@@ -150,10 +192,10 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
 
 | Field | TS Fallback |
 |-------|-------------|
-| `contextWindow` | 32768 |
-| `maxOutputTokens` | 2048 |
+| `contextWindow` | 128000 (or OpenRouter API metadata) |
+| `maxOutputTokens` | 8192 |
 | `compaction.enabled` | true |
-| `compaction.reserveTokens` | 16384 |
+| `compaction.reserveTokens` | `max(4096, maxOutputTokens)` |
 | `compaction.keepRecentTokens` | 20000 |
 
 ## Real-World Examples
@@ -165,7 +207,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
   "description": "Full self-learning agent with all tools and memory",
   "prompt": "You are a collaborative assistant working with {{name}}. Use your tools, skills, and memory system as directed by CLAUDE.md.",
   "promptMode": "append",
-  "model": "claude-opus-4-6",
+  "model": "claude-opus-4-8[1m]",
   "effort": "high",
   "loadProjectSettings": true,
   "permissionPolicy": "bypass",
@@ -185,16 +227,13 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
   "description": "Read-only research agent with web search",
   "prompt": "Search, read, and analyze. Never modify files. Cite file paths and line numbers.",
   "promptMode": "append",
-  "model": "claude-opus-4-8[1m]",
+  "model": "claude-opus-4-8",
   "effort": "high",
   "maxTurns": 15,
-  "tools": ["Read", "Edit", "Grep", "Glob", "WebSearch", "WebFetch", "Agent"],
-  "disallowedTools": ["Bash", "Write", "MultiEdit", "NotebookEdit"],
+  "tools": ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "Agent"],
+  "disallowedTools": ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"],
   "loadProjectSettings": true,
-  "permissionPolicy": {
-    "default": "approve",
-    "requireApproval": ["Edit"]
-  },
+  "permissionPolicy": { "default": "approve" },
   "mcpServers": {
     "tavily": {
       "type": "stdio",
@@ -208,7 +247,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
     "showThinking": false,
     "placeholder": "what should I research?",
     "emptyTitle": "research",
-    "emptySubtitle": "opus / read-only / web search"
+    "emptySubtitle": "claude / read-only / web search"
   }
 }
 ```
@@ -235,7 +274,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
 {
   "description": "System ops agent -- monitoring and maintenance",
   "prompt": "You are a system operations agent. Monitor, diagnose, and maintain. Always explain before executing destructive commands.",
-  "model": "claude-opus-4-8[1m]",
+  "model": "claude-opus-4-8",
   "effort": "medium",
   "maxTurns": 20,
   "tools": ["Read", "Bash", "Grep", "Glob"],

@@ -1,6 +1,6 @@
 # User Profile Schema
 
-User profiles live at `<cwd>/.modus/profiles/users/<name>.json`. They scope the
+User profiles live at `~/.modus/profiles/users/<name>.json`. They scope the
 UI and session management to a specific person or project context.
 
 ## Complete Schema
@@ -41,7 +41,23 @@ UI and session management to a specific person or project context.
   // Agent profile provider overrides this; session override overrides both
   "provider": "claude-code",
 
+  // ── Memory Scoping ──
+
+  // Controls where agent-memory MCP saves and reads memories
+  "memory": {
+    // "global" = shared memory store (default)
+    // "profile" = isolated to this user profile's directory
+    "scope": "global",
+
+    // When scope="profile", also read from global store (default: true)
+    // Set false for full isolation
+    "inheritGlobal": true
+  },
+
   // ── UI Filtering ──
+
+  // Tag filter pre-applied to memory visualization (optional)
+  "memoryFilter": "webapp",
 
   // Show project paths from ALL user profiles in CWD picker (default: false)
   "showAllProjectPaths": false,
@@ -60,7 +76,7 @@ User profiles and agent profiles are separate systems:
 |--------|-------------|---------------|
 | Controls | Who uses the system, what they see | How the agent behaves |
 | Scope | Projects, sessions, memories | Model, tools, prompt, permissions |
-| Location | `profiles/users/` | `profiles/agents/` |
+| Location | `~/.modus/profiles/users/` | user-global `~/.modus/profiles/agents/` or project-local `<project>/.modus/profiles/agents/` |
 | Selection | Login screen / profile switcher | Sidebar dropdown |
 
 **Connection:** User profile's `agentProfiles` array lists which agent profiles
@@ -68,7 +84,7 @@ this user can see. The user selects one of these to start a session.
 
 ## Shared User Data (`_users.json`)
 
-Located at `profiles/_users.json`. Flat key-value defaults for template variables:
+Located at `~/.modus/profiles/_users.json`. Flat key-value defaults for template variables:
 
 ```json
 {
@@ -83,12 +99,12 @@ User profile `templateVars` override these per-profile. If no user profile is ac
 
 ## Runtime State (auto-managed)
 
-Runtime UI state is stored separately at `profiles/state/<name>.json`. This is
+Runtime UI state is stored separately at `~/.modus/profiles/state/<name>.json`. This is
 app-managed and should never be hand-edited:
 
 ```jsonc
 {
-  "sidebarGroupMode": "time",       // "time" | "agent"
+  "sidebarGroupMode": "time",
   "sidebarCollapsedGroups": [],
   "sidebarConfigExpanded": false,
   "lastAgentProfile": "dev-agent",

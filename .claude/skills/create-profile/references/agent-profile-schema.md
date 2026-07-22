@@ -1,7 +1,9 @@
 # Agent Profile Schema
 
-Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
-(without `.json`) is the profile's ID used everywhere in the system.
+Reusable user-global agent profiles live at
+`~/.modus/profiles/agents/<name>.json`. Project-local profiles and overrides live at
+`<project>/.modus/profiles/agents/<name>.json`. The filename (without `.json`) is the
+profile's ID used everywhere in the system.
 
 ## Complete Schema
 
@@ -25,16 +27,17 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
 
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
-  // Options: "claude-code" | "cursor" | "codex" | "gemini-cli" | "litellm" | "ollama" | "openrouter"
+  // Common options: "claude-code" | "claude-code-pty" | "cursor" | "codex" |
+  // "antigravity" | "opencode" | "litellm" | "ollama" | "openrouter"
 
   // Model ID (omit for provider's default)
-  "model": "claude-opus-4-6",
-  // Claude models: "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"
+  "model": "claude-opus-4-8[1m]",
+  // Prefer omitting this field when the provider's current default is acceptable.
   // Other providers: any model ID from their /models endpoint
 
   // Inference effort hint
   "effort": "high",
-  // Options: "low" | "medium" | "high" | "max"
+  // Options: "off" | "low" | "medium" | "high" | "xhigh" | "max"
 
   // Max agentic turns per session turn (omit = unlimited)
   "maxTurns": 50,
@@ -85,7 +88,7 @@ Agent profiles live at `<cwd>/.modus/profiles/agents/<name>.json`. The filename
   "permissionPolicy": "bypass",
 
   // ── Provider Tuning (PI providers only: litellm, ollama, openrouter) ──
-  // These fields are ignored by claude-code, cursor, codex, and gemini-cli.
+  // These fields are ignored by non-PI providers such as claude-code, cursor, and codex.
 
   // Context window size (must match inference server's -c flag for local models)
   "contextWindow": 65536,
@@ -189,10 +192,10 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
 
 | Field | TS Fallback |
 |-------|-------------|
-| `contextWindow` | 32768 |
-| `maxOutputTokens` | 2048 |
+| `contextWindow` | 128000 (or OpenRouter API metadata) |
+| `maxOutputTokens` | 8192 |
 | `compaction.enabled` | true |
-| `compaction.reserveTokens` | 16384 |
+| `compaction.reserveTokens` | `max(4096, maxOutputTokens)` |
 | `compaction.keepRecentTokens` | 20000 |
 
 ## Real-World Examples
@@ -204,7 +207,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
   "description": "Full self-learning agent with all tools and memory",
   "prompt": "You are a collaborative assistant working with {{name}}. Use your tools, skills, and memory system as directed by CLAUDE.md.",
   "promptMode": "append",
-  "model": "claude-opus-4-6",
+  "model": "claude-opus-4-8[1m]",
   "effort": "high",
   "loadProjectSettings": true,
   "permissionPolicy": "bypass",
@@ -224,16 +227,13 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
   "description": "Read-only research agent with web search",
   "prompt": "Search, read, and analyze. Never modify files. Cite file paths and line numbers.",
   "promptMode": "append",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-opus-4-8",
   "effort": "high",
   "maxTurns": 15,
-  "tools": ["Read", "Edit", "Grep", "Glob", "WebSearch", "WebFetch", "Agent"],
-  "disallowedTools": ["Bash", "Write", "MultiEdit", "NotebookEdit"],
+  "tools": ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "Agent"],
+  "disallowedTools": ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"],
   "loadProjectSettings": true,
-  "permissionPolicy": {
-    "default": "approve",
-    "requireApproval": ["Edit"]
-  },
+  "permissionPolicy": { "default": "approve" },
   "mcpServers": {
     "tavily": {
       "type": "stdio",
@@ -247,7 +247,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
     "showThinking": false,
     "placeholder": "what should I research?",
     "emptyTitle": "research",
-    "emptySubtitle": "sonnet / read-only / web search"
+    "emptySubtitle": "claude / read-only / web search"
   }
 }
 ```
@@ -274,7 +274,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
 {
   "description": "System ops agent -- monitoring and maintenance",
   "prompt": "You are a system operations agent. Monitor, diagnose, and maintain. Always explain before executing destructive commands.",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-opus-4-8",
   "effort": "medium",
   "maxTurns": 20,
   "tools": ["Read", "Bash", "Grep", "Glob"],

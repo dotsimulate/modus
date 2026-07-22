@@ -1,0 +1,39 @@
+{
+  "name": "",
+  "label": "",
+  "description": "",
+  "brief": "brief.md",
+
+  "roles": {
+    "orchestrator": { "profile": "executor", "description": "Fold in previous findings, ideate this cycle's target, delegate, evaluate results, update bootstrap" },
+    "worker": { "profile": "mission-dev", "description": "Build ambitiously, discover, write findings and structured report" }
+  },
+
+  "steps": [
+    {
+      "id": "build",
+      "label": "Build",
+      "role": "worker",
+      "description": "Execute the orchestrator's build brief. Write findings and a structured report. Do not edit the main output directly — write to a staging area for the orchestrator to evaluate.",
+      "gates": [{ "type": "handoff" }]
+    }
+  ],
+
+  "cycle": {
+    "enabled": true,
+    "maxCycles": 5,
+    "freshOrchestrator": true,
+    "budget": { "usd": null }
+  },
+
+  "policy": {
+    "requireCommitBeforeAdvance": false,
+    "requireHandoffOnTransfer": true,
+    "allowParallelSteps": false,
+    "maxConcurrentAgents": 1
+  },
+
+  "budgets": { "turnsPerSession": 40 },
+  "onFailure": { "strategy": "pause", "maxRetriesPerStep": 2 },
+  "tags": ["cycling", "discovery", "exploration"]
+}
