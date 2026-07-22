@@ -4,6 +4,12 @@
 
 # Modus
 
+> **Early source preview.** Modus is used by a small tester group, but its
+> interfaces and security boundaries are still evolving. The Windows `v0.1.0`
+> desktop installer is an unsigned tester prerelease and is not qualified for
+> broad public distribution. Packaged macOS and Linux applications have not
+> been released. See [support scope](SUPPORT.md) and the [release policy](RELEASES.md).
+
 Modus is a self-hosted workspace for building systems of agents. Each project defines its own agents, interfaces, workflows, and automation, running locally against whichever provider backends you already use.
 
 Coding agents like Claude Code and Codex are execution engines. Chat apps give you one assistant in one window. Modus is the layer above both: it runs those agents as interchangeable backends and wraps them in durable, per-project structure. The goal is not just to chat with an AI. The goal is to control a system of agents shaped per project and per use case.
@@ -94,7 +100,7 @@ modus dev            # dev mode (harness + vite + file watchers)
 modus --version      # print version
 ```
 
-On first run, Modus asks for your name. Browser PIN lock is optional and can be enabled later in settings.
+On first run, Modus asks for your name. Browser PIN lock is optional and can be enabled later in settings. A PIN-authenticated browser is an operator-level, full-machine principal: it can use the same broad filesystem and agent authority as the local Modus application. It is not a project-root sandbox.
 
 ### 4. Remote access (optional)
 
@@ -108,6 +114,8 @@ modus start --remote # or: expose for a single run
 This uses `tailscale serve`, so traffic stays inside your private tailnet — nothing is exposed to the public internet. Modus only manages its own serve rule: if another service on the machine is already using `tailscale serve`, Modus leaves that config untouched and tells you. `modus remote off` removes the rule and the setting.
 
 Without a browser PIN, anyone on your tailnet can open the UI — set a PIN in settings if you share your tailnet.
+
+Treat a PIN as protection for operator-level access, not as a narrower project permission: an authenticated browser can act with the same broad local authority as the installed application. Only connect a remote backend that you trust as local code. Remote-backend-supplied executable client extensions are not yet isolated from the privileged desktop renderer; that unresolved boundary is a release gate, not a sandboxed feature.
 
 On Windows, the managed desktop application uses the same persisted remote
 setting. After Tailnet access is enabled once, launching Modus Desktop starts

@@ -9,10 +9,11 @@
 > When Tailnet access is enabled, the same launch also publishes that exact
 > managed backend at the machine's stable Tailscale HTTPS URL.
 
-This is not yet a claim that every desktop release criterion is complete.
-Provider-by-provider installed-app authorability, signing, upgrades,
-cross-platform packages, and the full lifecycle stress matrix still require
-release qualification.
+This is not yet a claim that every desktop release criterion is complete. The
+current Windows build is an unsigned tester prerelease, not a broadly qualified
+public installer. Provider-by-provider installed-app authorability, signing,
+upgrades, cross-platform packages, and the full lifecycle stress matrix still
+require release qualification.
 
 ## Existing checkout data
 
@@ -37,6 +38,8 @@ packages the build machine's legacy profile state/history.
   3777–3781. The desktop does not own or stop it.
 - **Remote backend** connects to a saved Tailscale Serve HTTPS origin. Selecting
   remote mode stops any desktop-owned local backend and does not start another.
+  Treat a remote backend as trusted for now: remote-backend-supplied executable
+  client extensions are not yet isolated from the privileged renderer.
 
 The bundled UI receives the managed token over Tauri IPC. The token is not put
 in the launch URL or ordinary backend logs. HTTP, SSE, terminal WebSocket,
@@ -71,6 +74,10 @@ raw-TCP services, other ports, and the existing `:8443` service untouched. A
 foreign `:443` rule blocks activation and is reported in the panel. Set a
 browser PIN before exposing Modus to a shared tailnet.
 
+An authenticated browser is an operator-level, full-machine principal with the
+same broad local authority as the installed application; it is not restricted
+to one project.
+
 The backend continues serving the browser UI, so an iPhone or browser-only
 laptop on the same tailnet uses the stable HTTPS URL without installing Modus.
 The first browser request after moving the URL from a CLI daemon to the desktop
@@ -85,7 +92,7 @@ Tauri expects it:
 
 ```powershell
 cd desktop
-npm install
+npm ci
 npm run stage:backend
 ```
 
