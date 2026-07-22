@@ -21,8 +21,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import { createInterface, type Interface as ReadlineInterface } from "readline";
 import { join, dirname, isAbsolute } from "path";
-import { existsSync, writeFileSync, mkdirSync } from "fs";
-import { tmpdir } from "os";
+import { existsSync } from "fs";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getObservedProviderSessionIds, getSession, updateProviderSessionId, updateSessionStatus } from "../db";
@@ -35,6 +34,16 @@ import {
 } from "../profiles";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 import { claudeNativeHistoryExists, selectProviderResumeTarget, type ResumeTargetSelection } from "../provider-session-identity";
+import {
+  createSensitiveTempDirectory,
+  removeSensitiveTempDirectory,
+  writeSensitiveTempFile,
+} from "../sensitive-temp";
+import {
+  ProviderProcessOwner,
+  type ProviderProcessLease,
+} from "./provider-process-owner";
+import { redactProviderDiagnostic } from "./provider-diagnostics";
 
 // ── Constants ──
 
@@ -104,14 +113,22 @@ type PtyState = {
   lifetimeTokens: { input: number; output: number; cached: number };
   /** Whether the process died and needs restart on next sendMessage */
   needsRestart: boolean;
+  /** True after a config change has requested a close-gated replacement. */
+  restartPending: boolean;
   /** True after interrupt until the old PTY has fully exited */
   interrupting: boolean;
-  /** Force-kill timer from abort() — must be cleared on new sendMessage */
+  /** Prevent any close handler from restarting a disposed session. */
+  disposed: boolean;
+  /** Generation-bound force-kill timer, cleared only when that process closes. */
   forceKillTimer: ReturnType<typeof setTimeout> | null;
   /** CLI args used to spawn — stored for restart */
   spawnArgs: string[];
   spawnEnv: Record<string, string>;
   spawnCwd: string;
+  /** Private per-process directory containing MCP config/system prompt files. */
+  sensitiveTempDir: string | null;
+  /** Enforces one close-delimited provider process generation at a time. */
+  processOwner: ProviderProcessOwner<ChildProcess>;
   /** Terminal registration for UI visibility */
   terminal: { id: string; pushData: (data: Uint8Array) => void; unregister: () => void; clearInputBuffer: () => void } | null;
   /** Exit code from the process (set by exit handler, consumed by drain loop) */
@@ -120,6 +137,16 @@ type PtyState = {
 
 function getState(session: ActiveSession): PtyState | null {
   return (session._providerState as PtyState | null) ?? null;
+}
+
+function cleanupSensitiveTempDir(state: PtyState, directory = state.sensitiveTempDir): void {
+  if (!directory) return;
+  if (state.sensitiveTempDir === directory) state.sensitiveTempDir = null;
+  try {
+    removeSensitiveTempDirectory(directory);
+  } catch {
+    console.warn("[claude-code-pty] could not remove private temporary directory");
+  }
 }
 
 function resolveClaudePtyResumeTarget(sessionId?: string): ResumeTargetSelection {
@@ -199,7 +226,7 @@ function readProjectMcpServers(projectRoot: string): Record<string, McpServerCon
   }
 }
 
-function buildMcpArgs(ctx: TurnContext): string[] {
+function buildMcpArgs(ctx: TurnContext, privateTempDir: () => string): string[] {
   const { session, opts, profile: profileDef } = ctx;
   const projectRoot = session.projectRoot ?? opts.cwd ?? session.cwd ?? process.cwd();
   const globalConfig = getGlobalConfig(projectRoot);
@@ -238,7 +265,7 @@ function buildMcpArgs(ctx: TurnContext): string[] {
       const args = (config as any).args as string[] | undefined;
       if ((config as any).command === "npx" && args?.[0] === "mcp-remote" && args[1]?.startsWith("http")) {
         mcpEntries[name] = { type: "http", url: args[1] };
-        console.log(`[claude-code-pty] converted ${name} from npx mcp-remote to native HTTP: ${args[1]}`);
+        console.log("[claude-code-pty] converted an mcp-remote server to native HTTP");
       } else {
         mcpEntries[name] = {
           command: (config as any).command,
@@ -257,28 +284,35 @@ function buildMcpArgs(ctx: TurnContext): string[] {
 
   if (Object.keys(mcpEntries).length === 0) return [];
   const mcpJson = JSON.stringify({ mcpServers: mcpEntries });
-  console.log(`[claude-code-pty] mcp-config:`, mcpJson.slice(0, 500));
+  console.log(`[claude-code-pty] configured ${Object.keys(mcpEntries).length} MCP server(s)`);
   // Write to temp file instead of passing inline JSON as CLI arg.
   // On Windows, inline JSON gets mangled by cmd.exe shell escaping.
-  const mcpDir = join(tmpdir(), "modus-mcp");
-  try { mkdirSync(mcpDir, { recursive: true }); } catch {}
-  const mcpFile = join(mcpDir, `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`);
-  writeFileSync(mcpFile, mcpJson, "utf-8");
+  const mcpFile = writeSensitiveTempFile(privateTempDir(), "mcp.json", mcpJson);
   return ["--mcp-config", mcpFile];
 }
 
 // ── Build CLI spawn args ──
 
-function buildSpawnArgs(ctx: TurnContext, state: PtyState, resumeSessionId?: string): { args: string[]; env: Record<string, string>; cwd: string } {
+function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
+  args: string[];
+  env: Record<string, string>;
+  cwd: string;
+  sensitiveTempDir: string | null;
+} {
   const { session, opts, profile: profileDef } = ctx;
+  let sensitiveTempDir: string | null = null;
+  const privateTempDir = (): string => {
+    sensitiveTempDir ??= createSensitiveTempDirectory();
+    return sensitiveTempDir;
+  };
 
-  const args: string[] = [
+  try {
+    const args: string[] = [
     "-p",                                // headless/print mode
     "--output-format", "stream-json",    // NDJSON streaming
     "--input-format", "stream-json",     // streaming JSON input (stdin stays open)
     "--verbose",                         // include all event types
     "--include-partial-messages",         // streaming deltas
-    "--debug",                           // MCP debug + general debug logging
   ];
 
   // Model
@@ -316,10 +350,7 @@ function buildSpawnArgs(ctx: TurnContext, state: PtyState, resumeSessionId?: str
   // which can silently drop flags that come after (like --mcp-config).
   const systemPrompt = resolveSystemPrompt(profileDef);
   if (systemPrompt) {
-    const promptDir = join(tmpdir(), "modus-mcp");
-    try { mkdirSync(promptDir, { recursive: true }); } catch {}
-    const promptFile = join(promptDir, `prompt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.txt`);
-    writeFileSync(promptFile, systemPrompt, "utf-8");
+    const promptFile = writeSensitiveTempFile(privateTempDir(), "prompt.txt", systemPrompt);
     if (profileDef?.promptMode === "custom") {
       args.push("--system-prompt-file", promptFile);
     } else {
@@ -337,7 +368,7 @@ function buildSpawnArgs(ctx: TurnContext, state: PtyState, resumeSessionId?: str
   }
 
   // MCP servers
-  const mcpArgs = buildMcpArgs(ctx);
+  const mcpArgs = buildMcpArgs(ctx, privateTempDir);
   args.push(...mcpArgs);
   // Only use harness-provided MCP config — ignore CLI's own discovery
   if (mcpArgs.length > 0) args.push("--strict-mcp-config");
@@ -357,27 +388,56 @@ function buildSpawnArgs(ctx: TurnContext, state: PtyState, resumeSessionId?: str
     Object.assign(env, profileDef.env);
   }
 
-  return { args, env, cwd };
+    return { args, env, cwd, sensitiveTempDir };
+  } catch (error) {
+    if (sensitiveTempDir) {
+      try {
+        removeSensitiveTempDirectory(sensitiveTempDir);
+      } catch {
+        console.warn("[claude-code-pty] could not clean up failed launch configuration");
+      }
+    }
+    throw error;
+  }
 }
 
 // ── Spawn the CLI process ──
 
-function spawnClaude(state: PtyState, sessionId?: string): ChildProcess {
+function spawnClaude(state: PtyState, sessionId?: string): {
+  proc: ChildProcess;
+  lease: ProviderProcessLease<ChildProcess>;
+  rl: ReadlineInterface;
+} {
   const bin = CLAUDE_PATH;
-  console.log(`[claude-code-pty] spawning: ${bin} ${state.spawnArgs.join(" ")}`);
+  if (state.processOwner.current()) {
+    throw new Error("refusing to spawn a replacement Claude PTY before the prior process closed");
+  }
+  console.log(`[claude-code-pty] spawning provider with ${state.spawnArgs.length} arguments`);
 
-  const proc = spawn(bin, state.spawnArgs, {
-    cwd: state.spawnCwd,
-    env: getMemoryLimitedEnv(state.spawnEnv),
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+  let proc: ChildProcess;
+  try {
+    proc = spawn(bin, state.spawnArgs, {
+      cwd: state.spawnCwd,
+      env: getMemoryLimitedEnv(state.spawnEnv),
+      stdio: ["pipe", "pipe", "pipe"],
+      // A dedicated POSIX process group lets shutdown reach descendants that
+      // inherited the wrapper's stdio. Windows uses taskkill /T below.
+      detached: process.platform !== "win32",
+    });
+  } catch (error) {
+    cleanupSensitiveTempDir(state);
+    throw error;
+  }
 
   // Collect stderr and pipe to terminal
   proc.stderr?.on("data", (chunk: Buffer) => {
     const line = chunk.toString().trim().slice(0, 2000);
     if (line) {
-      console.error(`[claude-code-pty] stderr:`, line);
-      state.stderrBuf += (state.stderrBuf ? "\n" : "") + line;
+      console.error(`[claude-code-pty] provider stderr received (${line.length} characters)`);
+      // Raw stderr remains visible only in the attached local terminal. Do not
+      // copy it into long-lived session errors/logs where debug output could
+      // retain headers, environment values, prompts, or private paths.
+      state.stderrBuf = "Provider stderr was emitted; inspect the attached provider terminal for details.";
     }
     // Also push stderr to terminal UI for visibility
     if (state.terminal) state.terminal.pushData(new Uint8Array(chunk));
@@ -385,13 +445,20 @@ function spawnClaude(state: PtyState, sessionId?: string): ChildProcess {
 
   state.proc = proc;
   state.rl = createInterface({ input: proc.stdout!, crlfDelay: Infinity });
+  const lease = state.processOwner.claim(proc);
+  const processTempDir = state.sensitiveTempDir;
+  proc.once("error", () => {
+    // A missing executable has no live process to consume these files. Other
+    // ChildProcess errors (for example a failed kill) do not prove closure.
+    if (!proc.pid) cleanupSensitiveTempDir(state, processTempDir);
+  });
 
   // Pipe stdout to terminal UI for raw visibility (after readline is wired)
   let stdoutChunks = 0;
   proc.stdout?.on("data", (chunk: Buffer) => {
     stdoutChunks++;
     if (stdoutChunks <= 3) {
-      console.log(`[claude-code-pty] stdout chunk #${stdoutChunks} (${chunk.length} bytes): ${chunk.toString().slice(0, 120)}`);
+      console.log(`[claude-code-pty] stdout chunk #${stdoutChunks} (${chunk.length} bytes)`);
     }
     if (state.terminal) state.terminal.pushData(new Uint8Array(chunk));
   });
@@ -464,7 +531,7 @@ function spawnClaude(state: PtyState, sessionId?: string): ChildProcess {
     clearInputBuffer() { inputBuffer = ""; },
   };
 
-  return proc;
+  return { proc, lease, rl: state.rl };
 }
 
 // ── Write a user message to the live process stdin ──
@@ -497,13 +564,65 @@ function writeMessageToStdin(state: PtyState, content: MessageContent): boolean 
   return true;
 }
 
-function attachPtyExitHandler(ctx: TurnContext, state: PtyState, prefix: string): void {
+function terminatePtyProcessTree(lease: ProviderProcessLease<ChildProcess>, force: boolean): void {
+  const proc = lease.process;
+  if (process.platform === "win32" && proc.pid) {
+    const args = ["taskkill", "/T", ...(force ? ["/F"] : []), "/PID", String(proc.pid)];
+    try { Bun.spawnSync(args, { stdout: "ignore", stderr: "ignore" }); } catch { /* best effort */ }
+    return;
+  }
+  const signal = force ? "SIGKILL" : "SIGTERM";
+  if (proc.pid) {
+    try {
+      process.kill(-proc.pid, signal);
+      return;
+    } catch { /* fall back to the direct child */ }
+  }
+  try { proc.kill(signal); } catch { /* best effort */ }
+}
+
+function requestPtyRestart(ctx: TurnContext, state: PtyState, content?: MessageContent): void {
   const { session } = ctx;
-  state.proc?.on("exit", (code) => {
+  if (content !== undefined) {
+    session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
+  }
+  if (state.restartPending) return;
+
+  const lease = state.processOwner.current();
+  if (!lease) {
+    const next = session.pendingDispatch.shift()?.content;
+    if (next !== undefined) restartPtyTurn(ctx, state, next);
+    return;
+  }
+
+  state.restartPending = true;
+  state.needsRestart = true;
+  console.log(`[claude-code-pty] closing process generation ${lease.generation} before config restart`);
+  terminatePtyProcessTree(lease, false);
+
+  if (state.forceKillTimer) clearTimeout(state.forceKillTimer);
+  state.forceKillTimer = setTimeout(() => {
+    state.forceKillTimer = null;
+    if (!state.processOwner.isCurrent(lease) || state.disposed) return;
+    console.warn(`[claude-code-pty] force-closing process generation ${lease.generation} after restart timeout`);
+    terminatePtyProcessTree(lease, true);
+  }, 5000);
+}
+
+function attachPtyExitHandler(
+  ctx: TurnContext,
+  state: PtyState,
+  prefix: string,
+  lease: ProviderProcessLease<ChildProcess>,
+  processTempDir: string | null,
+): void {
+  const { session } = ctx;
+  lease.process.on("exit", (code) => {
+    if (!state.processOwner.isCurrent(lease)) return;
     console.log(`[claude-code-pty] ${prefix} process exited (code=${code}) for ${session.sessionId}`);
     state.needsRestart = true;
     state.processExitCode = code;
-    if (session.status === "running" && !state.interrupting) {
+    if (session.status === "running" && !state.interrupting && !state.restartPending && !state.disposed) {
       session.status = "error";
       session.error = `Claude Code process exited unexpectedly (code ${code})`;
       ctx.updateSessionDb({
@@ -512,6 +631,47 @@ function attachPtyExitHandler(ctx: TurnContext, state: PtyState, prefix: string)
         lastResponse: session.lastAssistantText?.slice(0, 2000),
       });
     }
+  });
+  state.processOwner.releaseOnClose(lease, lease.process, () => {
+    // A generation remains owned until close, not merely exit. Command wrappers
+    // can exit while descendants still hold stdout/stderr and remain alive.
+    cleanupSensitiveTempDir(state, processTempDir);
+    if (state.forceKillTimer) {
+      clearTimeout(state.forceKillTimer);
+      state.forceKillTimer = null;
+    }
+    if (state.proc === lease.process) {
+      state.proc = null;
+      state.rl = null;
+    }
+    if (state.terminal) {
+      state.terminal.unregister();
+      state.terminal = null;
+    }
+
+    const shouldRestart = state.restartPending || state.interrupting;
+    state.interrupting = false;
+    if (!shouldRestart || state.disposed) {
+      state.restartPending = false;
+      return;
+    }
+    state.restartPending = true;
+
+    // Let the readline iterator finish its generation before installing the next
+    // one. The owner is already vacant, so no old/new process overlap is possible.
+    setImmediate(() => {
+      if (state.disposed) {
+        state.restartPending = false;
+        return;
+      }
+      if (state.processOwner.current()) return;
+      const next = session.pendingDispatch.shift()?.content;
+      if (next !== undefined) {
+        restartPtyTurn(ctx, state, next);
+      } else {
+        state.restartPending = false;
+      }
+    });
   });
 }
 
@@ -526,18 +686,24 @@ function restartPtyTurn(ctx: TurnContext, state: PtyState, content: MessageConte
     updateSessionStatus(session.sessionId, "error");
     ctx.broadcastEvent({ type: "error", error: reason });
     ctx.emitEvent({ type: "done" });
+    state.restartPending = false;
     return;
   }
   state.needsRestart = false;
+  state.restartPending = false;
   state.interrupting = false;
   state.resumeTarget = state.sessionId;
+  state.processExitCode = undefined;
+  state.stderrBuf = "";
 
-  const { args, env, cwd: newCwd } = buildSpawnArgs(ctx, state, state.sessionId ?? undefined);
+  cleanupSensitiveTempDir(state);
+  const { args, env, cwd: newCwd, sensitiveTempDir } = buildSpawnArgs(ctx, state.sessionId ?? undefined);
   state.spawnArgs = args;
   state.spawnEnv = env;
   state.spawnCwd = newCwd;
+  state.sensitiveTempDir = sensitiveTempDir;
 
-  const proc = spawnClaude(state, session.sessionId);
+  const { proc, lease, rl } = spawnClaude(state, session.sessionId);
   proc.stdin?.write(formatStdinMessage(content) + "\n");
 
   session.initialContent = content;
@@ -547,33 +713,39 @@ function restartPtyTurn(ctx: TurnContext, state: PtyState, content: MessageConte
   session.abortController = new AbortController();
 
   updateSessionStatus(session.sessionId, "running");
-  attachPtyExitHandler(ctx, state, "restarted");
+  attachPtyExitHandler(ctx, state, "restarted", lease, sensitiveTempDir);
 
-  state.drainPromise = drainEvents(ctx, state).catch((err) => {
-    console.error(`[claude-code-pty] restart drain error:`, err);
+  state.drainPromise = drainEvents(ctx, state, lease, rl).catch((err) => {
+    const safeError = redactProviderDiagnostic(String(err));
+    console.error(`[claude-code-pty] restart drain error: ${safeError}`);
     session.status = "error";
-    session.error = String(err);
+    session.error = safeError;
   });
 }
 
 // ── NDJSON Event Drain Loop ──
 
-async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
+async function drainEvents(
+  ctx: TurnContext,
+  state: PtyState,
+  lease: ProviderProcessLease<ChildProcess>,
+  rl: ReadlineInterface,
+): Promise<void> {
   const { session } = ctx;
-  const rl = state.rl;
-  if (!rl) return;
+  if (!state.processOwner.isCurrent(lease)) return;
 
   state.draining = true;
-  console.log(`[claude-code-pty] drain loop starting for ${session.sessionId}, proc pid=${state.proc?.pid}`);
+  console.log(`[claude-code-pty] drain loop starting for ${session.sessionId}, generation=${lease.generation}`);
   let initSeen = false;
   let turnTokens = { input: 0, output: 0, cached: 0, cacheWrite: 0 };
   let turnCount = 0;
 
   try {
     for await (const line of rl) {
+      if (!state.processOwner.isCurrent(lease)) return;
 
       if (!initSeen) {
-        console.log(`[claude-code-pty] first line (${line.length} chars): ${line.slice(0, 200)}`);
+        console.log(`[claude-code-pty] first line received (${line.length} characters)`);
       }
 
       let m: any;
@@ -581,7 +753,7 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
         m = JSON.parse(line);
       } catch {
         // Skip non-JSON lines (ANSI, progress, etc.)
-        console.log(`[claude-code-pty] non-JSON line: ${line.slice(0, 100)}`);
+        console.log(`[claude-code-pty] non-JSON provider output received (${line.length} characters)`);
         continue;
       }
 
@@ -598,7 +770,7 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
           session.error = reason;
           updateSessionStatus(session.sessionId, "error");
           ctx.broadcastEvent({ type: "error", error: reason });
-          try { state.proc?.kill("SIGTERM"); } catch { /* best effort */ }
+          terminatePtyProcessTree(lease, false);
           ctx.emitEvent({ type: "done" });
           return;
         }
@@ -790,6 +962,11 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
 
         // Flush queued messages — pipe to the SAME process (no new subprocess!)
         if (session.pendingDispatch.length > 0) {
+          if (state.needsRestart) {
+            requestPtyRestart(ctx, state);
+            ctx.emitEvent(m);
+            continue;
+          }
           const next = session.pendingDispatch.shift()!.content;
           session.initialContent = next;
           session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
@@ -843,7 +1020,8 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
   } catch (err: any) {
     if (session.status === "idle") return;
 
-    console.error(`[claude-code-pty] drain caught for ${session.sessionId}:`, err);
+    const safeError = redactProviderDiagnostic(String(err));
+    console.error(`[claude-code-pty] drain caught for ${session.sessionId}: ${safeError}`);
     const isAbort = err?.name === "AbortError" || String(err).includes("abort")
       || session.abortController.signal.aborted;
 
@@ -856,7 +1034,7 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
       });
     } else {
       session.status = "error";
-      session.error = String(err);
+      session.error = safeError;
       ctx.updateSessionDb({
         status: "error",
         costUsd: session.costUsd,
@@ -864,23 +1042,12 @@ async function drainEvents(ctx: TurnContext, state: PtyState): Promise<void> {
       });
     }
   } finally {
+    if (!state.processOwner.isCurrent(lease)) return;
     state.draining = false;
-    const procExited = !!(state.proc && state.proc.exitCode !== null);
+    const procExited = lease.process.exitCode !== null;
     if (procExited) {
-      console.log(`[claude-code-pty] process exited with code ${state.proc!.exitCode}`);
+      console.log(`[claude-code-pty] process generation ${lease.generation} exited with code ${lease.process.exitCode}`);
       state.needsRestart = true;
-    }
-
-    // Interrupt + immediate follow-up: hold the queued message until the old PTY
-    // has actually exited, then restart cleanly with --resume.
-    if (procExited && state.interrupting) {
-      state.interrupting = false;
-      if (session.status === "idle" && session.pendingDispatch.length > 0) {
-        const next = session.pendingDispatch.shift()!.content;
-        restartPtyTurn(ctx, state, next);
-      }
-    } else if (procExited) {
-      state.interrupting = false;
     }
   }
 }
@@ -923,9 +1090,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const isResume = !!resumeId;
 
       // Build spawn args
-      const { args, env, cwd: resolvedCwd } = buildSpawnArgs(ctx, {
-        model, cwd,
-      } as any, resumeId);
+      const { args, env, cwd: resolvedCwd, sensitiveTempDir } = buildSpawnArgs(ctx, resumeId);
 
       const state: PtyState = {
         proc: null,
@@ -943,17 +1108,21 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         thinkingDurationMs: undefined,
         lifetimeTokens: { input: 0, output: 0, cached: 0 },
         needsRestart: false,
+        restartPending: false,
         interrupting: false,
+        disposed: false,
         forceKillTimer: null,
         spawnArgs: args,
         spawnEnv: env,
         spawnCwd: resolvedCwd,
+        sensitiveTempDir,
+        processOwner: new ProviderProcessOwner<ChildProcess>(),
         terminal: null,
       };
       session._providerState = state;
 
       // Spawn the process (pass session ID for terminal registration)
-      const proc = spawnClaude(state, session.sessionId);
+      const { proc, lease, rl } = spawnClaude(state, session.sessionId);
 
       // Write the initial user message to stdin (stream-json format)
       proc.stdin?.write(formatStdinMessage(session.initialContent) + "\n");
@@ -962,10 +1131,11 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       session.turnStartedAt = Date.now();
 
       // Start drain loop
-      state.drainPromise = drainEvents(ctx, state).catch((err) => {
-        console.error(`[claude-code-pty] drain error for ${session.sessionId}:`, err);
+      state.drainPromise = drainEvents(ctx, state, lease, rl).catch((err) => {
+        const safeError = redactProviderDiagnostic(String(err));
+        console.error(`[claude-code-pty] drain error for ${session.sessionId}: ${safeError}`);
         session.status = "error";
-        session.error = String(err);
+        session.error = safeError;
         ctx.updateSessionDb({
           status: "error",
           costUsd: session.costUsd,
@@ -977,7 +1147,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       // On Windows, .cmd wrappers can fire 'exit' before buffered stdout is delivered,
       // so DON'T immediately error during startup — let the drain loop consume remaining
       // stdout first. The drain loop handles the "exited without init" case.
-      attachPtyExitHandler(ctx, state, "initial");
+      attachPtyExitHandler(ctx, state, "initial", lease, sensitiveTempDir);
 
       // Startup timeout — longer on Windows where pipe buffering delays stdout delivery.
       // If the process already exited, the drain loop handles the error — don't double-fire.
@@ -997,7 +1167,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
           session.status = "error";
           session.error = reason;
           abortController.abort();
-          state.proc?.kill("SIGTERM");
+          terminatePtyProcessTree(lease, false);
         }
       }, startupTimeoutMs);
     },
@@ -1005,17 +1175,17 @@ export function createClaudeCodePtyProvider(): SessionProvider {
     sendMessage(ctx: TurnContext, content: MessageContent) {
       const { session } = ctx;
       const state = getState(session);
-      const procAlive = state?.proc && !state.proc.killed && state.proc.exitCode === null;
-      console.log(`[claude-code-pty] sendMessage for ${session.sessionId}: status=${session.status} procAlive=${procAlive} needsRestart=${state?.needsRestart} interrupting=${state?.interrupting} draining=${state?.draining} pending=${session.pendingDispatch?.length}`);
       if (!state) {
         throw new Error("claude-code-pty provider state missing during sendMessage");
       }
+      const processOpen = !!state.processOwner.current();
+      console.log(`[claude-code-pty] sendMessage for ${session.sessionId}: status=${session.status} processOpen=${processOpen} needsRestart=${state.needsRestart} restartPending=${state.restartPending} interrupting=${state.interrupting} draining=${state.draining} pending=${session.pendingDispatch?.length}`);
 
-      // Cancel any pending force-kill timer from a previous abort — the process
-      // handled SIGINT gracefully and we're reusing it for a new turn.
-      if (state.forceKillTimer) {
-        clearTimeout(state.forceKillTimer);
-        state.forceKillTimer = null;
+      // A close-gated replacement is already draining. Additional turns queue
+      // behind the same replacement rather than spawning another generation.
+      if (state.restartPending) {
+        session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
+        return;
       }
 
       // If currently running, queue the message
@@ -1028,15 +1198,20 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       // After an interrupt, the old PTY may still be unwinding even though the
       // session-manager already marked the session idle. Queue the follow-up
       // until the old process actually exits, then restart cleanly.
-      if (state.interrupting && procAlive) {
+      if (state.interrupting && processOpen) {
         console.log(`[claude-code-pty] deferring follow-up until interrupted PTY exits for ${session.sessionId}`);
         session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
 
-      // If process died, restart it with --resume
-      if (state.needsRestart || !state.proc || state.proc.killed || state.proc.exitCode !== null) {
-        console.log(`[claude-code-pty] process needs restart for ${session.sessionId}, using --resume (needsRestart=${state.needsRestart} killed=${state.proc?.killed} exitCode=${state.proc?.exitCode})`);
+      // Spawn-time config changed: close the current generation before resume.
+      if (state.needsRestart && processOpen) {
+        requestPtyRestart(ctx, state, content);
+        return;
+      }
+
+      if (state.needsRestart || !processOpen) {
+        console.log(`[claude-code-pty] process needs restart for ${session.sessionId}, using --resume`);
         restartPtyTurn(ctx, state, content);
         return;
       }
@@ -1073,8 +1248,10 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       // If the drain loop isn't running (shouldn't happen if process is alive),
       // restart it
       if (!state.draining && state.rl) {
-        state.drainPromise = drainEvents(ctx, state).catch((err) => {
-          console.error(`[claude-code-pty] re-drain error:`, err);
+        const lease = state.processOwner.current();
+        if (!lease) return;
+        state.drainPromise = drainEvents(ctx, state, lease, state.rl).catch((err) => {
+          console.error(`[claude-code-pty] re-drain error: ${redactProviderDiagnostic(String(err))}`);
         });
       }
     },
@@ -1087,28 +1264,23 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       // On Linux: SIGINT works directly.
       // On Windows: SIGINT is a no-op for .cmd wrappers, so we close stdin
       // which forces the CLI to finish the current turn and emit a result.
-      if (state.proc && !state.proc.killed) {
+      const lease = state.processOwner.current();
+      if (lease) {
         state.interrupting = true;
         state.needsRestart = true;
         if (process.platform === "win32") {
           // Close stdin — CLI will finish current operation and exit cleanly
-          try { state.proc.stdin?.end(); } catch {}
+          try { lease.process.stdin?.end(); } catch {}
         } else {
-          state.proc.kill("SIGINT");
+          lease.process.kill("SIGINT");
         }
         // If still alive after 5s, force kill.
-        // Store the timer so sendMessage can clear it (prevents killing a
-        // process that has already moved on to a new turn).
         if (state.forceKillTimer) clearTimeout(state.forceKillTimer);
         state.forceKillTimer = setTimeout(() => {
           state.forceKillTimer = null;
-          if (state.proc && !state.proc.killed && state.proc.exitCode === null) {
-            console.log(`[claude-code-pty] force-killing after SIGINT timeout`);
-            if (process.platform === "win32") {
-              try { Bun.spawnSync(["taskkill", "/T", "/F", "/PID", String(state.proc!.pid)], { stdout: "ignore", stderr: "ignore" }); } catch {}
-            } else {
-              state.proc.kill("SIGTERM");
-            }
+          if (state.processOwner.isCurrent(lease)) {
+            console.log(`[claude-code-pty] force-killing generation ${lease.generation} after SIGINT timeout`);
+            terminatePtyProcessTree(lease, true);
             state.needsRestart = true;
             session.abortController.abort();
           }
@@ -1144,17 +1316,32 @@ export function createClaudeCodePtyProvider(): SessionProvider {
     async dispose(session: ActiveSession) {
       const state = getState(session);
       if (!state) return;
+      state.disposed = true;
+      state.restartPending = false;
+      state.interrupting = false;
+      if (state.forceKillTimer) {
+        clearTimeout(state.forceKillTimer);
+        state.forceKillTimer = null;
+      }
 
       if (state.terminal) {
         state.terminal.unregister();
         state.terminal = null;
       }
-      if (state.proc && !state.proc.killed) {
-        state.proc.kill("SIGTERM");
+      const sensitiveTempDir = state.sensitiveTempDir;
+      const lease = state.processOwner.current();
+      if (lease) {
+        const closed = new Promise<void>((resolve) => lease.process.once("close", () => resolve()));
+        terminatePtyProcessTree(lease, false);
+        await Promise.race([closed, new Promise<void>((resolve) => setTimeout(resolve, 5000))]);
+        if (state.processOwner.isCurrent(lease)) {
+          terminatePtyProcessTree(lease, true);
+          await Promise.race([closed, new Promise<void>((resolve) => setTimeout(resolve, 1000))]);
+        }
       }
-      if (state.rl) {
-        state.rl.close();
-      }
+      // Disposal is terminal for this provider state. Remove private launch
+      // material even if a broken descendant prevents Node's close event.
+      cleanupSensitiveTempDir(state, sensitiveTempDir);
       session.abortController.abort();
       session._providerState = null;
     },
