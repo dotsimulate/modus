@@ -95,6 +95,15 @@ jobs:
         with:
           toolchain: 1.88.0
           components: rustfmt, clippy
+      - name: Create non-packaging sidecar fixture
+        shell: pwsh
+        run: |
+          $fixture = "desktop/src-tauri/binaries/bun-x86_64-pc-windows-msvc.exe"
+          if (Test-Path -LiteralPath $fixture) {
+            throw "Refusing to replace an existing sidecar at $fixture"
+          }
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $fixture) | Out-Null
+          New-Item -ItemType File -Path $fixture | Out-Null
       - name: Format check
         run: cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --check
       - name: Clippy
