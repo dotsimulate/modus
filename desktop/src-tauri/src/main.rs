@@ -156,8 +156,7 @@ fn main() {
             quit_modus
         ])
         .setup(|app| {
-            let supervisor =
-                BackendSupervisor::new(&app.handle()).map_err(std::io::Error::other)?;
+            let supervisor = BackendSupervisor::new(app.handle()).map_err(std::io::Error::other)?;
             app.manage(Arc::new(supervisor));
 
             let show = MenuItem::with_id(app, "show", "Show Modus", true, None::<&str>)?;

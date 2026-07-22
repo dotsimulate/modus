@@ -37,9 +37,16 @@ type WSData = {
 
 /** Set by index.ts at startup */
 let _checkAuth: (token: string) => boolean = () => true;
+let _checkOrigin: (origin: string | null, req: Request) => boolean = (origin) => !origin;
 
 export function setAuthChecker(fn: (token: string) => boolean): void {
   _checkAuth = fn;
+}
+
+/** Browser WebSockets always send Origin. Requests without Origin are reserved
+ * for non-browser SDK/CLI clients and are evaluated by the configured policy. */
+export function setOriginChecker(fn: (origin: string | null, req: Request) => boolean): void {
+  _checkOrigin = fn;
 }
 
 // ── Upgrade helper (called from fetch wrapper in index.ts) ──
@@ -58,6 +65,10 @@ export function tryUpgradeTerminalWS(
 
   const terminalId = match[1]!;
   const token = url.searchParams.get("token") ?? "";
+
+  if (!_checkOrigin(req.headers.get("Origin"), req)) {
+    return new Response("Forbidden origin", { status: 403 });
+  }
 
   // Auth check
   if (!_checkAuth(token)) {

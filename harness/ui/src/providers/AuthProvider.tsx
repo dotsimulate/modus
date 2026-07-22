@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { modus } from "../modusClient";
 import { clearAuthToken, getAuthToken, setAuthToken } from "../modusClient";
 import { LoginScreen } from "../components/LoginScreen";
+import { BackendConnectionScreen } from "../components/BackendTargetManager";
 import { ModusError } from "../../../sdk/index";
 import { AuthContext } from "./AuthContext";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [authState, setAuthState] = useState<"checking" | "login" | "setup" | "ok">("checking");
+  const [authState, setAuthState] = useState<"checking" | "login" | "setup" | "unavailable" | "ok">("checking");
   const [userName, setUserName] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [pinEnabled, setPinEnabled] = useState(false);
@@ -23,7 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       } catch (err) {
         if (isAuthFailure(err)) clearAuthToken();
-        else return;
+        else throw err;
       }
     }
     const token = await modus.createBrowserSession();
@@ -53,14 +54,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (isAuthFailure(err)) {
               clearAuthToken();
             } else {
-              setAuthState("ok");
-              return;
+              throw err;
             }
           }
         }
         setAuthState("login");
       })
-      .catch(() => setAuthState("ok"));
+      .catch(() => setAuthState("unavailable"));
   }, [authState, ensureBrowserSession, isAuthFailure]);
 
   useEffect(() => {
@@ -98,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   if (authState === "checking") return null;
+  if (authState === "unavailable") return <BackendConnectionScreen message="backend authentication status unavailable" />;
   if (authState === "setup") return <LoginScreen isSetup pinOptional={!pinEnabled} onAuth={handleAuth} />;
   if (authState === "login") return <LoginScreen savedName={userName ?? undefined} onAuth={handleAuth} />;
 
