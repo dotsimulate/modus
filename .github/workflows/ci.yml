@@ -21,16 +21,23 @@ jobs:
     timeout-minutes: 30
     env:
       CI: "true"
-      MODUS_HOME: ${{ runner.temp }}\modus-home
-      MODUS_CONFIG_DIR: ${{ runner.temp }}\modus-config
-      MODUS_DATA_DIR: ${{ runner.temp }}\modus-data
-      MODUS_LOGS_DIR: ${{ runner.temp }}\modus-logs
-      MODUS_RUNTIME_DIR: ${{ runner.temp }}\modus-runtime
-      MODUS_CACHE_DIR: ${{ runner.temp }}\modus-cache
-      HARNESS_SECRETS_FILE: ${{ runner.temp }}\modus-config\secrets.env
     steps:
       - name: Check out source
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Configure isolated state paths
+        shell: pwsh
+        env:
+          MODUS_CI_ROOT: ${{ runner.temp }}\modus-ci
+        run: |
+          @(
+            "MODUS_HOME=$env:MODUS_CI_ROOT\home"
+            "MODUS_CONFIG_DIR=$env:MODUS_CI_ROOT\config"
+            "MODUS_DATA_DIR=$env:MODUS_CI_ROOT\data"
+            "MODUS_LOGS_DIR=$env:MODUS_CI_ROOT\logs"
+            "MODUS_RUNTIME_DIR=$env:MODUS_CI_ROOT\runtime"
+            "MODUS_CACHE_DIR=$env:MODUS_CI_ROOT\cache"
+            "HARNESS_SECRETS_FILE=$env:MODUS_CI_ROOT\config\secrets.env"
+          ) | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -64,16 +71,24 @@ jobs:
     timeout-minutes: 45
     env:
       CI: "true"
-      MODUS_HOME: ${{ runner.temp }}\modus-home
-      MODUS_CONFIG_DIR: ${{ runner.temp }}\modus-config
-      MODUS_DATA_DIR: ${{ runner.temp }}\modus-data
-      MODUS_LOGS_DIR: ${{ runner.temp }}\modus-logs
-      MODUS_RUNTIME_DIR: ${{ runner.temp }}\modus-runtime
-      MODUS_CACHE_DIR: ${{ runner.temp }}\modus-cache
-      HARNESS_SECRETS_FILE: ${{ runner.temp }}\modus-config\secrets.env
     steps:
       - name: Check out source
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Configure isolated state paths
+        shell: pwsh
+        env:
+          MODUS_CI_ROOT: ${{ runner.temp }}\modus-ci
+        run: |
+          @(
+            "MODUS_HOME=$env:MODUS_CI_ROOT\home"
+            "MODUS_CONFIG_DIR=$env:MODUS_CI_ROOT\config"
+            "MODUS_DATA_DIR=$env:MODUS_CI_ROOT\data"
+            "MODUS_LOGS_DIR=$env:MODUS_CI_ROOT\logs"
+            "MODUS_RUNTIME_DIR=$env:MODUS_CI_ROOT\runtime"
+            "MODUS_CACHE_DIR=$env:MODUS_CI_ROOT\cache"
+            "HARNESS_SECRETS_FILE=$env:MODUS_CI_ROOT\config\secrets.env"
+            "CARGO_TARGET_DIR=$env:MODUS_CI_ROOT\cargo-target"
+          ) | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable action; toolchain fixed below
         with:
