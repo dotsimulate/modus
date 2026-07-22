@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 import { validate, ProfileSchema } from "./profile-schemas";
 import {
@@ -258,8 +259,7 @@ describe("additionalDirectories", () => {
   });
 
   test("passes project .claude MCP servers to Codex config", async () => {
-    const projectDir = join(process.cwd(), ".tmp-codex-mcp-test");
-    rmSync(projectDir, { recursive: true, force: true });
+    const projectDir = mkdtempSync(join(tmpdir(), "modus-codex-mcp-"));
     mkdirSync(join(projectDir, ".claude"), { recursive: true });
     writeFileSync(
       join(projectDir, ".claude", "mcp.json"),

@@ -8,11 +8,10 @@ tag does not authorize uploading or replacing an artifact.
 
 - The source project is early and the public-readiness gates are still being
   completed.
-- If source becomes public before a replacement installer is qualified, retire
-  the existing prerelease and asset first; public repository visibility would
-  make that download public as well.
-- Windows `v0.1.0` is an unsigned tester prerelease, not a generally qualified
-  public installer.
+- The old unsigned Windows `v0.1.0` asset was withdrawn. Its prerelease page
+  and tag remain as historical records with zero downloadable assets.
+- No generally qualified Windows installer is currently available. Any future
+  candidate requires a new version and the qualification below.
 - macOS and Linux desktop packages have not been released.
 - The updater remains disabled until install, upgrade, downgrade, rollback,
   uninstall, and data-preservation behavior is qualified.

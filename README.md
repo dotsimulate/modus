@@ -5,10 +5,11 @@
 # Modus
 
 > **Early source preview.** Modus is used by a small tester group, but its
-> interfaces and security boundaries are still evolving. The Windows `v0.1.0`
-> desktop installer is an unsigned tester prerelease and is not qualified for
-> broad public distribution. Packaged macOS and Linux applications have not
-> been released. See [support scope](SUPPORT.md) and the [release policy](RELEASES.md).
+> interfaces and security boundaries are still evolving. The old unsigned
+> Windows `v0.1.0` tester asset was withdrawn; the prerelease page/tag remains
+> for history but has no downloadable installer. Packaged macOS and Linux
+> applications have not been released. See [support scope](SUPPORT.md) and the
+> [release policy](RELEASES.md).
 
 Modus is a self-hosted workspace for building systems of agents. Each project defines its own agents, interfaces, workflows, and automation, running locally against whichever provider backends you already use.
 
@@ -115,7 +116,7 @@ This uses `tailscale serve`, so traffic stays inside your private tailnet — no
 
 Without a browser PIN, anyone on your tailnet can open the UI — set a PIN in settings if you share your tailnet.
 
-Treat a PIN as protection for operator-level access, not as a narrower project permission: an authenticated browser can act with the same broad local authority as the installed application. Only connect a remote backend that you trust as local code. Remote-backend-supplied executable client extensions are not yet isolated from the privileged desktop renderer; that unresolved boundary is a release gate, not a sandboxed feature.
+Treat a PIN as protection for operator-level access, not as a narrower project permission: an authenticated browser can act with the same broad local authority as the installed application. Only connect a remote backend that you trust with that backend's full-machine authority. The native desktop client does not load executable client extensions supplied by a remote backend; local/operator-installed extensions and ordinary browser clients retain the documented trusted-code model.
 
 On Windows, the managed desktop application uses the same persisted remote
 setting. After Tailnet access is enabled once, launching Modus Desktop starts
