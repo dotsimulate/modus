@@ -1,9 +1,17 @@
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
 import hljs from "highlight.js/lib/core";
-import { memo, useEffect, useId, useRef, useState, type ReactElement } from "react";
+import type { LanguageFn } from "highlight.js";
+import { isValidElement, memo, useEffect, useId, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from "react";
 import { useFileViewer } from "../providers/FileViewerContext";
+import {
+  MERMAID_RENDER_TIMEOUT_MS,
+  limitMarkdownContent,
+  markdownRehypePlugins,
+  mermaidInputError,
+  mermaidSecurityConfig,
+  sanitizeMermaidSvg,
+} from "../markdown-security";
 import { PasteBlock } from "./PasteBlock";
 
 // Register languages — core set for dev/AI chat
@@ -26,7 +34,7 @@ import cpp from "highlight.js/lib/languages/cpp";
 import java from "highlight.js/lib/languages/java";
 import ruby from "highlight.js/lib/languages/ruby";
 
-const langs: Record<string, any> = {
+const langs: Record<string, LanguageFn> = {
   javascript, js: javascript, jsx: javascript,
   typescript, ts: typescript, tsx: typescript,
   python, py: python,
@@ -56,12 +64,23 @@ for (const alias of ["toml", "graphql", "gql", "proto", "protobuf", "hcl", "terr
 // Mermaid — lazy loaded (71MB package, only needed for mermaid code fences)
 let mermaidReady: Promise<typeof import("mermaid")["default"]> | null = null;
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("Diagram render timed out")), timeoutMs);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 function getMermaid() {
   if (!mermaidReady) {
     mermaidReady = import("mermaid").then((mod) => {
       mod.default.initialize({
         startOnLoad: false,
         theme: "dark",
+        ...mermaidSecurityConfig,
         themeVariables: {
           darkMode: true,
           background: "#000000",
@@ -95,26 +114,35 @@ function MermaidDiagram({ code }: { code: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const id = useId().replace(/:/g, "_");
   const [error, setError] = useState<string | null>(null);
+  const inputError = mermaidInputError(code);
 
   useEffect(() => {
     let cancelled = false;
+    if (ref.current) ref.current.replaceChildren();
+    if (inputError) {
+      return () => { cancelled = true; };
+    }
     getMermaid().then(async (m) => {
       try {
-        const { svg } = await m.render(`mermaid${id}`, code);
+        const { svg } = await withTimeout(
+          m.render(`mermaid${id}`, code),
+          MERMAID_RENDER_TIMEOUT_MS,
+        );
         if (!cancelled && ref.current) {
-          ref.current.innerHTML = svg;
+          const sanitized = sanitizeMermaidSvg(svg);
+          ref.current.innerHTML = sanitized;
           setError(null);
         }
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Diagram render failed");
+      } catch (caught: unknown) {
+        if (!cancelled) setError(caught instanceof Error && caught.message ? caught.message : "Diagram render failed");
       }
-    }).catch((e: any) => {
-      if (!cancelled) setError(e?.message || "Failed to load mermaid");
+    }).catch((caught: unknown) => {
+      if (!cancelled) setError(caught instanceof Error && caught.message ? caught.message : "Failed to load mermaid");
     });
     return () => { cancelled = true; };
-  }, [code, id]);
+  }, [code, id, inputError]);
 
-  if (error) {
+  if (error || inputError) {
     return (
       <div className="code-block">
         <div className="code-block-header">
@@ -182,7 +210,6 @@ function CopyButton({ text }: { text: string }) {
 }
 
 const remarkPlugins = [remarkGfm];
-const rehypePlugins = [rehypeRaw];
 
 function isLocalFilePath(href: string): boolean {
   if (!href) return false;
@@ -195,21 +222,23 @@ function isLocalFilePath(href: string): boolean {
   return false;
 }
 
-function extractText(node: any): string {
+function extractText(node: unknown): string {
   if (node == null) return "";
   if (typeof node === "string") return node;
   if (Array.isArray(node)) return node.map(extractText).join("");
-  if (typeof node === "object" && node.props) return extractText(node.props.children);
+  if (isValidElement<{ children?: ReactNode }>(node)) return extractText(node.props.children);
   return "";
 }
 
-const markdownComponents: Record<string, any> = {
-  pasted({ children }: { children?: React.ReactNode }) {
+type MarkdownComponents = Components & Record<"pasted", ComponentType<{ children?: ReactNode }>>;
+
+const markdownComponents: MarkdownComponents = {
+  pasted({ children }: { children?: ReactNode }) {
     const text = extractText(children).replace(/^\n+/, "").replace(/\n+$/, "");
     return <PasteBlock text={text} />;
   },
-  pre({ children }: { children?: React.ReactNode }) {
-    const child = children as ReactElement<any>;
+  pre({ children }: { children?: ReactNode }) {
+    const child = children as ReactElement<{ className?: string; children?: ReactNode }>;
     const props = child?.props;
     if (!props) return <pre>{children}</pre>;
 
@@ -240,6 +269,7 @@ const markdownComponents: Record<string, any> = {
 
 export const Markdown = memo(function Markdown({ content }: { content: string }) {
   const { openFile } = useFileViewer();
+  const bounded = limitMarkdownContent(content);
 
   function parseLineFragment(href: string): { path: string; line?: number; endLine?: number } {
     const [path, fragment] = href.split("#", 2);
@@ -269,8 +299,8 @@ export const Markdown = memo(function Markdown({ content }: { content: string })
 
   return (
     <div onClick={handleClick}>
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
-        {content}
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={markdownRehypePlugins} components={markdownComponents}>
+        {bounded.content}
       </ReactMarkdown>
     </div>
   );

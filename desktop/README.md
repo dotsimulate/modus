@@ -10,8 +10,8 @@
 > managed backend at the machine's stable Tailscale HTTPS URL.
 
 This is not yet a claim that every desktop release criterion is complete. The
-current Windows build is an unsigned tester prerelease, not a broadly qualified
-public installer. Provider-by-provider installed-app authorability, signing,
+old unsigned `v0.1.0` tester asset was withdrawn, and no broadly qualified
+Windows installer is currently available. Provider-by-provider authorability, signing,
 upgrades, cross-platform packages, and the full lifecycle stress matrix still
 require release qualification.
 
@@ -38,8 +38,8 @@ packages the build machine's legacy profile state/history.
   3777–3781. The desktop does not own or stop it.
 - **Remote backend** connects to a saved Tailscale Serve HTTPS origin. Selecting
   remote mode stops any desktop-owned local backend and does not start another.
-  Treat a remote backend as trusted for now: remote-backend-supplied executable
-  client extensions are not yet isolated from the privileged renderer.
+  The privileged desktop renderer refuses executable client extensions supplied
+  by a remote backend; the backend itself still has its documented machine authority.
 
 The bundled UI receives the managed token over Tauri IPC. The token is not put
 in the launch URL or ordinary backend logs. HTTP, SSE, terminal WebSocket,

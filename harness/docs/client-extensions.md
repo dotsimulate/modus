@@ -22,9 +22,10 @@ The current system is intentionally small:
 This document describes operator-authored or explicitly operator-installed local
 extensions. They are trusted local code. It does **not** make a saved remote backend
 trusted to supply executable client modules to the privileged desktop renderer.
-That remote-extension boundary is unresolved (`REMOTE-01`): treat any backend that can
-supply such modules as trusted with local application authority until the renderer is
-separated or an explicit per-backend local-code trust design is implemented and tested.
+The native desktop client fails closed here: when connected in remote-backend mode it
+does not request or execute backend-supplied client extension modules. Ordinary browser
+clients still follow the trusted-backend code model, and managed/external-local desktop
+backends may load the operator's local extensions.
 
 ## Directory Structure
 

@@ -2,7 +2,7 @@
 
 ## Project status
 
-Modus is pre-release, local-first agent infrastructure for trusted operators. The current desktop build is a Windows tester preview, not a broadly qualified production release. macOS and Linux desktop packages have not been released.
+Modus is pre-release, local-first agent infrastructure for trusted operators. The old unsigned Windows `v0.1.0` tester asset was withdrawn, and no broadly qualified installer is currently available. macOS and Linux desktop packages have not been released.
 
 Security fixes currently target the latest source on `main` and the newest prerelease. Older prereleases may be superseded rather than maintained as separate supported lines; published artifacts are never silently replaced in place.
 
@@ -27,7 +27,9 @@ Please allow time to reproduce, fix, and coordinate a release before public disc
 
 Modus is a power-user development tool. A trusted operator can intentionally run provider CLIs, MCP servers, terminals, moves, actions, plugins, extensions, and project-local `.modus` code. Operator-authored or explicitly operator-installed local code is inside the trusted execution envelope and may read or modify files and launch processes with the authority of the Modus user.
 
-A PIN-authenticated browser is also an operator-level, full-machine principal. It may use the same broad filesystem and agent authority as the locally installed application; it is not a project-root sandbox. Protect Tailnet/browser access accordingly. Remote backends and their supplied content do not automatically deserve that authority. In particular, remote-backend-supplied executable client extensions are an unresolved privileged-renderer boundary and must be treated as trusted until REMOTE-01 is closed.
+A PIN-authenticated browser is also an operator-level, full-machine principal. It may use the same broad filesystem and agent authority as the locally installed application; it is not a project-root sandbox. Protect Tailnet/browser access accordingly. Remote backends and their supplied content do not automatically deserve local desktop authority. The native desktop client therefore refuses to load executable client extensions supplied by a remote backend. This does not sandbox ordinary browser clients or operator-authored/installed local extensions.
+
+Agent- and project-supplied Markdown supports a restricted raw-HTML subset. Active tags, event handlers, and active URL protocols are removed before React rendering. Mermaid runs with strict security, HTML labels disabled, bounded input/edge counts, a render timeout, and a second SVG sanitizer/active-markup guard. Standalone generated HTML previews use a separate iframe boundary and should not be confused with trusted extension code.
 
 A report about trusted local code doing what the operator installed or authored it to do is not, by itself, a security-boundary bypass. Reports are especially useful when they demonstrate that a less-trusted surface acquires that authority unexpectedly, including:
 

@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { modus } from "../modusClient";
 import { loadClientExtensions, unloadClientExtensions } from "../client-extensions";
+import { refreshBackendClientExtensions } from "../client-extension-policy";
+import { BACKEND_TARGET } from "../backendTarget";
+import { isTauriRuntime } from "../desktopBridge";
 import { useProfiles } from "../providers/ProfileContext";
 
 export function ClientExtensionsBoot() {
@@ -10,11 +13,14 @@ export function ClientExtensionsBoot() {
   useEffect(() => {
     let cancelled = false;
 
-    modus.listClientExtensions(extCwd, activeUserProfile)
-      .then((items) => {
-        if (cancelled) return;
-        return loadClientExtensions(items);
-      })
+    refreshBackendClientExtensions({
+      targetMode: BACKEND_TARGET.mode,
+      nativeDesktop: isTauriRuntime(),
+      list: () => modus.listClientExtensions(extCwd, activeUserProfile),
+      load: loadClientExtensions,
+      unload: unloadClientExtensions,
+      cancelled: () => cancelled,
+    })
       .catch(() => {});
 
     return () => {
