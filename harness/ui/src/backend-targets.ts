@@ -23,7 +23,10 @@ export type BackendProbe = {
 };
 
 export function backendIdentityChanged(expected?: string, actual?: string): boolean {
-  return !!expected && !!actual && expected !== actual;
+  // Once a target has been pinned, losing the identity is itself a change.
+  // Otherwise a replacement or downgraded backend could bypass the pin simply
+  // by omitting its identity from the probe response.
+  return !!expected && actual !== expected;
 }
 
 const TARGETS_KEY = "modus:backend-targets:v1";
@@ -79,7 +82,7 @@ function sanitizeSavedTarget(value: unknown): SavedBackendTarget | null {
       mode: "remote",
       url,
       ...(typeof record.lastConnectedAt === "string" ? { lastConnectedAt: record.lastConnectedAt } : {}),
-      ...(typeof record.backendId === "string" ? { backendId: record.backendId } : {}),
+      ...(typeof record.backendId === "string" && record.backendId.trim() ? { backendId: record.backendId } : {}),
     };
   } catch {
     return null;
@@ -211,7 +214,7 @@ export async function inspectBackendTarget(url: string, timeoutMs = 4_000): Prom
       ? body.backend as Record<string, unknown>
       : null;
     return {
-      ...(typeof backend?.id === "string" ? { backendId: backend.id } : {}),
+      ...(typeof backend?.id === "string" && backend.id.trim() ? { backendId: backend.id } : {}),
       ...(typeof backend?.host === "string" ? { host: backend.host } : {}),
       ...(typeof backend?.instance === "string" ? { instance: backend.instance } : {}),
     };

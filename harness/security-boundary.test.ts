@@ -50,4 +50,15 @@ describe("PIN throttling", () => {
     expect(requestSourceKey("127.0.0.1", "100.64.0.2, 127.0.0.1")).toBe("100.64.0.2");
     expect(requestSourceKey("192.168.1.4", "spoofed")).toBe("192.168.1.4");
   });
+
+  test("does not retain unseen sources and prunes expired unique-source failures", () => {
+    const throttle = new PinAttemptThrottle(5, 100, 200, 10);
+    for (let i = 0; i < 1_000; i++) throttle.check(`unseen-${i}`, 0);
+    expect((throttle as any).sources.size).toBe(0);
+
+    for (let i = 0; i < 10; i++) throttle.recordFailure(`failed-${i}`, i);
+    expect((throttle as any).sources.size).toBe(10);
+    throttle.check("fresh", 500);
+    expect((throttle as any).sources.size).toBe(0);
+  });
 });

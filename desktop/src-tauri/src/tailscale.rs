@@ -635,8 +635,8 @@ fn can_adopt_legacy_rule(raw: &str, dns_name: &str) -> bool {
         parse_https_443(raw),
         Ok(Some(ServeEndpoint { endpoint, target_port, .. }))
             if endpoint == format!("{}:443", dns_name.trim_end_matches('.'))
-                && target_port >= LEGACY_BASE_PORT
-                && target_port < LEGACY_BASE_PORT + LEGACY_PORT_RANGE
+                && (LEGACY_BASE_PORT..LEGACY_BASE_PORT + LEGACY_PORT_RANGE)
+                    .contains(&target_port)
     )
 }
 

@@ -630,12 +630,20 @@ fn append_log(path: &Path) -> std::io::Result<File> {
 }
 
 fn validated_remote_url(value: Option<&str>) -> Result<String, String> {
-    let value = value.unwrap_or_default().trim().trim_end_matches('/');
-    if value.starts_with("https://") && value.len() > "https://".len() {
-        Ok(value.to_string())
-    } else {
-        Err("remote desktop mode requires a Tailscale HTTPS origin".into())
+    let value = value.unwrap_or_default().trim();
+    let parsed = url::Url::parse(value)
+        .map_err(|_| "remote desktop mode requires a valid Tailscale HTTPS origin")?;
+    if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err("remote desktop mode requires a Tailscale HTTPS origin without credentials, path, query, or fragment".into());
     }
+    Ok(parsed.origin().ascii_serialization())
 }
 
 fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String {
@@ -653,5 +661,10 @@ mod tests {
             validated_remote_url(Some("https://machine.ts.net/")).unwrap(),
             "https://machine.ts.net"
         );
+        assert!(validated_remote_url(Some("https://user:secret@machine.ts.net")).is_err());
+        assert!(validated_remote_url(Some("https://machine.ts.net/api")).is_err());
+        assert!(validated_remote_url(Some("https://machine.ts.net?target=other")).is_err());
+        assert!(validated_remote_url(Some("https://machine.ts.net/#fragment")).is_err());
+        assert!(validated_remote_url(Some("https://")).is_err());
     }
 }

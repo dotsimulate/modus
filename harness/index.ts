@@ -90,7 +90,7 @@ import {
   getActiveTerminal, getAllActiveTerminals, getTerminalInfo, listAllTerminals,
   shutdownAllTerminals,
 } from "./terminal-manager";
-import { tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker } from "./terminal-ws";
+import { tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker, setOriginChecker } from "./terminal-ws";
 import { getProcessSnapshot, killProcess } from "./process-registry";
 import { getPromptCache, savePromptCache, type PromptCache } from "./prompt-cache";
 import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
@@ -4442,6 +4442,11 @@ setAuthChecker((token: string) => {
   if (pinSessions.has(token)) return true;
   return false;
 });
+setOriginChecker((origin, req) => !origin || isAllowedBrowserOrigin(origin, {
+  port: PORT,
+  requestHost: req.headers.get("Host"),
+  configuredOrigins: process.env.MODUS_ALLOWED_ORIGINS,
+}));
 
 const server = Bun.serve({
   fetch(req, server) {

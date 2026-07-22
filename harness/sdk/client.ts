@@ -174,35 +174,41 @@ export class ModusClient {
   }
 
   // ── Auth ──
+  /** Fetches an intentionally unauthenticated endpoint and preserves HTTP failures as typed errors. */
+  private async publicFetchOrThrow(path: string, init?: RequestInit): Promise<Response> {
+    const res = await globalThis.fetch(`${this.url}${path}`, init);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => res.statusText);
+      throw new ModusError(res.status, detail || res.statusText, path);
+    }
+    return res;
+  }
+
   /** Checks whether auth is required, whether a PIN has been set up, and the current account name. No auth required. */
   async authStatus(): Promise<{ required: boolean; setup: boolean; pinEnabled?: boolean; needsName?: boolean; tokenRequired?: boolean; name: string | null }> {
-    const res = await globalThis.fetch(`${this.url}/api/auth/status`);
+    const res = await this.publicFetchOrThrow("/api/auth/status");
     return res.json();
   }
   /** Sets the browser display name without enabling PIN auth. */
   async setUserName(name: string): Promise<string | null> {
-    const res = await globalThis.fetch(`${this.url}/api/auth/name`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-    if (!res.ok) throw new Error("Name setup failed");
+    const res = await this.publicFetchOrThrow("/api/auth/name", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
     const data = await res.json() as { token?: string };
     return data.token || null;
   }
   /** Creates a browser session token when PIN auth is disabled but API auth is active. */
   async createBrowserSession(): Promise<string | null> {
-    const res = await globalThis.fetch(`${this.url}/api/auth/session`, { method: "POST", headers: { "Content-Type": "application/json" } });
-    if (!res.ok) throw new Error("Browser session setup failed");
+    const res = await this.publicFetchOrThrow("/api/auth/session", { method: "POST", headers: { "Content-Type": "application/json" } });
     const data = await res.json() as { token?: string };
     return data.token || null;
   }
   /** Sets up a new PIN for first-time auth and returns a bearer token. */
   async setupNewPin(pin: string, name?: string): Promise<string> {
-    const res = await globalThis.fetch(`${this.url}/api/auth/setup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, name }) });
-    if (!res.ok) throw new Error("Setup failed");
+    const res = await this.publicFetchOrThrow("/api/auth/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, name }) });
     return (await res.json()).token;
   }
   /** Verifies an existing PIN and returns a bearer token. */
   async verifyPin(pin: string, name?: string): Promise<string> {
-    const res = await globalThis.fetch(`${this.url}/api/auth/verify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, name }) });
-    if (!res.ok) throw new Error("Wrong PIN");
+    const res = await this.publicFetchOrThrow("/api/auth/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, name }) });
     return (await res.json()).token;
   }
   /** Returns the authenticated user's name. */

@@ -109,12 +109,18 @@ export class PinAttemptThrottle {
     if (state.blockedUntil <= now) state.blockedUntil = 0;
   }
 
+  private pruneSources(now: number): void {
+    for (const [source, state] of this.sources) {
+      this.prune(state, now);
+      if (state.failures.length === 0 && state.blockedUntil === 0) this.sources.delete(source);
+    }
+  }
+
   check(source: string, now = Date.now()): ThrottleDecision {
-    const state = this.sources.get(source) ?? { failures: [], blockedUntil: 0 };
-    this.prune(state, now);
+    this.pruneSources(now);
     this.prune(this.global, now);
-    this.sources.set(source, state);
-    const blockedUntil = Math.max(state.blockedUntil, this.global.blockedUntil);
+    const state = this.sources.get(source);
+    const blockedUntil = Math.max(state?.blockedUntil ?? 0, this.global.blockedUntil);
     if (blockedUntil > now) {
       return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((blockedUntil - now) / 1000)) };
     }
@@ -122,6 +128,7 @@ export class PinAttemptThrottle {
   }
 
   recordFailure(source: string, now = Date.now()): ThrottleDecision {
+    this.pruneSources(now);
     const state = this.sources.get(source) ?? { failures: [], blockedUntil: 0 };
     this.prune(state, now);
     this.prune(this.global, now);

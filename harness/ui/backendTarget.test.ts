@@ -99,9 +99,12 @@ describe("desktop backend target", () => {
     expect(params.has("cwd")).toBe(false);
   });
 
-  test("fails closed only when two known backend identities differ", () => {
+  test("fails closed when a pinned backend changes or omits its identity", () => {
     expect(backendIdentityChanged("one", "two")).toBe(true);
     expect(backendIdentityChanged("one", "one")).toBe(false);
-    expect(backendIdentityChanged("one", undefined)).toBe(false);
+    expect(backendIdentityChanged("one", undefined)).toBe(true);
+    expect(backendIdentityChanged("", "replacement")).toBe(false);
+    expect(backendIdentityChanged(undefined, "one")).toBe(false);
+    expect(backendIdentityChanged(undefined, undefined)).toBe(false);
   });
 });
