@@ -1,5 +1,10 @@
 # Council
 
+> **Curated public example.** This tracked move demonstrates an authored Modus
+> extension. Ordinary project-local `.modus` configuration and runtime state are
+> private and are not part of the public repository. The `state/` directory shown
+> below is runtime-only and remains ignored.
+
 Multi-agent orchestration move. Spawns N agent sessions, chains their responses through a turn-based engine, and renders a live transcript in a widget panel.
 
 Despite the name, it's not limited to debates — the configuration matrix (profiles × stances × response length × judge) supports brainstorming, creative jams, adversarial reviews, structured decision-making, and anything else that benefits from multiple agents taking turns on a shared topic.

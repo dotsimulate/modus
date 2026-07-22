@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a focused capability or workflow improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before proposing
+      options:
+        - label: I searched existing issues and documentation for this request.
+          required: true
+        - label: I removed private paths, names, project/session content, and credentials.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the user problem independently of a preferred implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the smallest useful behavior and its expected UX.
+    validations:
+      required: true
+  - type: textarea
+    id: trust
+    attributes:
+      label: Authority and trust boundary
+      description: If relevant, say what local code, files, credentials, remote content, or browser clients this feature would authorize.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: surfaces
+    attributes:
+      label: Primary surface
+      options:
+        - Source / browser
+        - Windows desktop
+        - macOS desktop
+        - Linux desktop
+        - Provider integration
+        - Authored move / action / plugin / MCP
+        - Other
+    validations:
+      required: true

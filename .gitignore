@@ -10,8 +10,12 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# Lock files (regenerated per-platform by bun/uv)
+# Bun's root, harness, and UI text lockfiles are cross-platform release inputs.
+# Keep move-local/generated locks ignored unless a move explicitly owns one.
 bun.lock
+!/bun.lock
+!/harness/bun.lock
+!/harness/ui/bun.lock
 uv.lock
 
 # SQLite runtime files
@@ -31,6 +35,22 @@ desktop/src-tauri/gen/schemas/
 # Environment / secrets
 .env
 .env.*
+*.env
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+*.jks
+*.keystore
+*.asc
+*.gpg
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.npmrc
 
 # MCP config (has machine-specific absolute paths)
 .mcp.json
@@ -76,7 +96,7 @@ harness/TODO/
 TODO/
 
 # Legacy harness/profiles/ leftovers from before the ~/.modus/ migration
-# (personal runtime data — only README.md and _users.json are tracked)
+# (personal runtime data — only README.md is tracked)
 harness/profiles/state/
 harness/profiles/users/
 harness/profiles/ui/
@@ -86,19 +106,19 @@ harness/profiles/_projects.json
 # Generated build stamp
 harness/ui/.modus-deps.stamp
 
-# Claude skills — scaffolded per-project by modus init from harness/templates/
-# (only create-action and create-move are tracked as this repo's own skills)
+# Public contributor skills. Packaged copies live under harness/templates/skills/.
+# Other root-local skills remain private unless explicitly curated here.
 .claude/skills/*
 !.claude/skills/create-action/
+!.claude/skills/create-mission/
 !.claude/skills/create-move/
-
-# Personal agent config at repo root (per-user, not part of the release surface)
-/CLAUDE.md
+!.claude/skills/create-profile/
 
 # Harness-local .claude scaffolding (personal, not part of the release surface)
 harness/.claude/
 
 # Claude settings (personal per-user, any depth)
+**/.claude/settings.json
 **/.claude/settings.local.json
 
 # Sandbox — local experiments, not for commit (e.g. Remotion)

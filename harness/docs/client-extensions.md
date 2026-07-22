@@ -17,6 +17,15 @@ The current system is intentionally small:
 - loading and lifecycle are handled by the frontend runtime
 - extensions run in the browser as plain JS modules
 
+## Remote backend limitation
+
+This document describes operator-authored or explicitly operator-installed local
+extensions. They are trusted local code. It does **not** make a saved remote backend
+trusted to supply executable client modules to the privileged desktop renderer.
+That remote-extension boundary is unresolved (`REMOTE-01`): treat any backend that can
+supply such modules as trusted with local application authority until the renderer is
+separated or an explicit per-backend local-code trust design is implemented and tested.
+
 ## Directory Structure
 
 ```

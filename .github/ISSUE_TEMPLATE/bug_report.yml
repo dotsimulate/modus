@@ -1,0 +1,89 @@
+name: Bug report
+description: Report reproducible incorrect behavior without exposing private data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Modus. Security vulnerabilities belong in a private GitHub Security Advisory, not here.
+
+        Remove tokens, private host or Tailnet names, usernames, personal paths, project/session content, databases, and credentials from every field, log, and screenshot.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checks
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
+        - label: I sanitized all text and images and can publish them safely.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide the Modus version, tag, or commit SHA.
+      placeholder: v0.1.0 or full commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Runtime surface
+      options:
+        - Source / browser
+        - Windows desktop tester
+        - Remote desktop client
+        - Other / unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - iOS / mobile browser
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and backend mode
+      description: Name the provider if relevant and choose managed-local, development daemon, remote backend, or browser-only.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Give deterministic steps using synthetic names and paths.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste only the smallest relevant, redacted text. Prefer text to screenshots and do not upload databases or profiles.
+      render: shell
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Include frequency, regression range, recovery behavior, and whether data or processes were left in an unexpected state.

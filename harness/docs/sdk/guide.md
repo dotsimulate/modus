@@ -16,6 +16,8 @@ For method-level API reference, generate the TypeDoc output with
 import { ModusClient } from "./harness/sdk";
 
 const client = new ModusClient({
+  // Source/CLI mode defaults to this port. The managed desktop chooses a
+  // per-launch loopback port and supplies its own target.
   url: "http://localhost:3777",
   pin: "1234",             // or token: "bearer-token-here"
 });
@@ -35,29 +37,37 @@ creation, SSE streaming, and text extraction internally.
 
 ## Authentication
 
-MO uses PIN-based auth. First access requires setup; subsequent access verifies the PIN
-and returns a bearer token.
+Modus browser PIN protection is optional. `authStatus()` reports whether a PIN is enabled,
+whether first-run setup is needed, and whether the backend currently requires a token.
+When a PIN is enabled, verifying it returns a browser session token. A
+PIN-authenticated browser is an operator-level, full-machine principal rather than a
+project-root sandbox, so SDK/browser callers must protect that token accordingly.
 
 ```typescript
-// Check if auth is required and if a PIN exists
-const { required, setup } = await client.authStatus();
+// Discover first-run, PIN, and token requirements.
+const { required, setup, tokenRequired } = await client.authStatus();
 
-if (required && !setup) {
-  // First time — set up a PIN
+if (setup) {
+  // First run: this example chooses to enable a PIN.
   const token = await client.setupNewPin("1234", "my-machine");
   client.setToken(token);
 } else if (required) {
   // Verify existing PIN
   const token = await client.verifyPin("1234");
   client.setToken(token);
+} else if (tokenRequired) {
+  // No PIN: obtain a distinct browser session token without putting it in the URL.
+  const token = await client.createBrowserSession();
+  if (token) client.setToken(token);
 }
 ```
 
 **Automatic PIN auth:** If you pass `pin` in the constructor options, the client
-auto-authenticates on the first API call. You don't need to call `verifyPin` manually.
+auto-authenticates on the first API call when PIN protection is enabled. You don't need
+to call `verifyPin` manually.
 
-**Browser usage:** Pass a `getToken` callback instead of a static token. The frontend
-uses this to read from `localStorage`:
+**Browser usage:** Pass a `getToken` callback instead of a static token. The current
+frontend reads its browser-session token from `localStorage`:
 
 ```typescript
 const client = new ModusClient({
@@ -492,6 +502,6 @@ modus trigger <action-name>
 ```
 
 Environment variables:
-- `MODUS_URL` — harness URL (default: `http://localhost:3777`)
+- `MODUS_URL` — source/CLI harness URL (default: `http://localhost:3777`); managed desktop uses its per-launch target instead
 - `MODUS_TOKEN` — bearer token (skips PIN auth)
 - `MODUS_PIN` — PIN for auto-auth (also reads from `~/.config/agent-dev-zone/secrets.env`)
