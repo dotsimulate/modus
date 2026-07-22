@@ -114,7 +114,7 @@ describe("additionalDirectories", () => {
 
     const { createClaudeCodeProvider } = await import("./providers/claude-code");
     const session = makeSession(["/tmp/shared", "/tmp/other"]);
-    const provider = createClaudeCodeProvider();
+    const provider = createClaudeCodeProvider({ which: () => "test-claude" });
     provider.startTurn(makeTurnContext(session));
 
     await Bun.sleep(0);

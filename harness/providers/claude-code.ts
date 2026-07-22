@@ -409,7 +409,13 @@ function readProjectMcpServers(cwd: string | undefined): Record<string, McpServe
 
 // ── Provider Implementation ──
 
-export function createClaudeCodeProvider(): SessionProvider {
+type ClaudeCodeProviderDependencies = {
+  /** Override executable discovery for deterministic tests without a local CLI. */
+  which?: (command: string) => string | null;
+};
+
+export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDependencies = {}): SessionProvider {
+  const which = dependencies.which ?? ((command: string) => Bun.which(command));
   return {
     capabilities: CLAUDE_CAPABILITIES,
     startTurn(ctx: TurnContext) {
@@ -420,7 +426,7 @@ export function createClaudeCodeProvider(): SessionProvider {
 
       // Pre-check: ensure claude binary is available
       _timing("which-check");
-      if (!Bun.which(CLAUDE_PATH)) {
+      if (!which(CLAUDE_PATH)) {
         const reason = `Provider binary "${CLAUDE_PATH}" not found in PATH. Install Claude Code CLI or set CLAUDE_PATH.`;
         console.error(`[claude-code] ${reason}`);
         session.status = "error";
