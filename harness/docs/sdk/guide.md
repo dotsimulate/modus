@@ -343,7 +343,7 @@ Providers are execution backends (Claude Code, Codex, Google Antigravity, PI age
 
 ```typescript
 const providers = await client.listProviders();
-// ["claude-code", "claude-code-pty", "codex", "cursor", "antigravity", "opencode", ...]
+// ["claude-code", "claude-code-pty", "codex", "cursor", "antigravity", "grok-build", "opencode", ...]
 
 const caps = await client.getProviderCapabilities();
 // Each: { name, streaming, tools, vision, builtInToolMode, ... }

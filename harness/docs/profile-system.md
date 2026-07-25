@@ -67,7 +67,7 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 ### Key Fields
 
 **`provider`**: Execution backend. Registered providers are `"claude-code"`,
-`"claude-code-pty"`, `"codex"`, `"cursor"`, `"antigravity"`, `"opencode"`,
+`"claude-code-pty"`, `"codex"`, `"cursor"`, `"antigravity"`, `"grok-build"`, `"opencode"`,
 `"litellm"`, `"ollama"`, and `"openrouter"`.
 
 **`additionalDirectories`**: Extra workspace roots to grant alongside the primary cwd.
@@ -95,6 +95,12 @@ or an object with `autoApprove`/`requireApproval` lists for granular control.
 **`providerControls.antigravity`**: Optional documented Antigravity headless
 flags: `{ "mode": "accept-edits" | "plan", "sandbox": boolean,
 "printTimeout": "1h" }`.
+
+**`providerControls.grokBuild`**: Optional Grok Build ACP controls. `mode` may
+be `"default"`, `"auto"`, `"plan"`, or `"always-approve"`; `sandbox` names a
+Grok sandbox profile. `noMemory`, `noSubagents`, and `disableWebSearch` disable
+their corresponding Grok features. Launch-affecting changes apply on the next
+turn by restarting the ACP child and loading the same Grok session.
 
 ## User Profiles (`~/.modus/profiles/users/*.json`)
 

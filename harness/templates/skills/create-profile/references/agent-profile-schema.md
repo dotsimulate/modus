@@ -28,7 +28,7 @@ profile's ID used everywhere in the system.
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
   // Common options: "claude-code" | "claude-code-pty" | "cursor" | "codex" |
-  // "antigravity" | "opencode" | "litellm" | "ollama" | "openrouter"
+  // "antigravity" | "grok-build" | "opencode" | "litellm" | "ollama" | "openrouter"
 
   // Model ID (omit for provider's default)
   "model": "claude-opus-4-8[1m]",

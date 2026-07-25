@@ -1,8 +1,8 @@
 ---
 title: Client Extensions
-lastUpdated: 2026-07-07
+lastUpdated: 2026-07-25
 lastCommit: bae0487
-covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx .modus/ui/extensions/
+covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/whisper-credential.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx harness/ui/src/widgets/extensions.widget.tsx .modus/ui/extensions/
 ---
 
 # Client Extensions
@@ -145,6 +145,7 @@ The frontend runtime exposes a narrow API to extensions:
 - `registerShortcut(binding, handler)`
 - `registerComposerAction(config)`
 - `registerComposerToggle(config)`
+- `registerSetting(name, config)`
 - `getComposer()`
 - `setDraft(text)`
 - `insertText(text)`
@@ -155,6 +156,27 @@ The frontend runtime exposes a narrow API to extensions:
 
 `request()` automatically applies harness auth headers and handles `FormData`
 uploads without forcing `Content-Type: application/json`.
+
+### Live Setting Options
+
+`.extension.json` can only declare `select` options statically. Some choices
+only exist in the browser — audio input devices being the motivating case — so a
+loaded extension can publish them at runtime:
+
+```js
+const setting = api.registerSetting("micDevice", {
+  options: [{ value: "a1b2c3", label: "Shure MV7" }],
+  emptyLabel: "system default",
+});
+setting.update({ options: nextOptions });
+setting.unregister();
+```
+
+The extensions widget renders the live list as a dropdown for that setting,
+overriding the declared field type. A saved value that is no longer in the list
+stays selectable and marked unavailable, so unplugging a device does not
+silently rewrite the setting. Options only exist while the extension is loaded;
+when it is disabled the manifest-declared field is rendered instead.
 
 ### Composer Target
 
@@ -171,6 +193,16 @@ available. That target exposes:
 The active composer is whichever `ChatInput` was focused most recently. This
 lets extensions target both the main chat composer and floating session windows
 without DOM queries.
+
+**Hold the handle for deferred work.** The top-level `api.setDraft` / `insertText`
+/ `submitComposer` helpers resolve through the *active* composer, and when
+nothing has been focused they fall back to whichever composer registered last.
+Clicking a composer action focuses the button, not the textarea, so the active
+composer may be a different session entirely. An extension that produces output
+later — on a timer, or after a network round trip — must keep the composer
+target it was handed and call that, or the result lands in an unrelated
+composer with no error. The target is a live proxy that re-resolves on every
+call, so retaining it across remounts is safe.
 
 ## Composer Actions
 
@@ -248,8 +280,22 @@ It demonstrates:
 - WAV encoding in the browser
 - authenticated upload to `/api/whisper/transcribe`
 - composer-side mic button via `registerComposerAction()`
+- a live device dropdown via `registerSetting("micDevice", …)`
 - streaming chunk append to the draft
 - voice-triggered submit through `composer.submit(text)`
+
+Its `micDevice` setting accepts a device id or any part of a device name; when
+nothing matches, capture falls back to the system default and the status chip's
+tooltip says so. If the device produces no signal at all for a few seconds the
+chip switches to `no input`, which distinguishes a dead or wrong input from a
+user who simply is not speaking.
+
+Its `whisperSecretName` setting names a Modus secret rather than holding a key.
+Extension settings are stored in the user profile UI config and returned by
+`GET /api/client-extensions`, so a literal key would be served to any client
+that can list extensions. The harness resolves the named secret and attaches it
+as a bearer token — and only to an `https` or loopback endpoint, since the
+target URL is itself user-supplied (`harness/whisper-credential.ts`).
 
 ## Recommended Pattern
 

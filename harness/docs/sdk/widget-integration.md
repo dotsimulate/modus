@@ -15,7 +15,15 @@ exposes two endpoints:
   bare `import` statements for `react`, `react/jsx-runtime`, etc.)
 - **`GET /api/moves/:name/widget.css?cwd=...`** — returns the widget's CSS
 
-Both endpoints require authentication (Bearer token header or `?token=` param).
+Both endpoints require authentication. Prefer an `Authorization: Bearer` header.
+
+A `?token=` parameter is accepted only because a browser constructs these URLs
+itself (script/link elements cannot send a header), and only a **browser-session
+token** is valid there. The supervisor `HARNESS_TOKEN` is rejected from a query
+string on every route: a URL reaches history, copied links, and proxy logs, and
+that credential authenticates every API and cannot be revoked without a restart.
+A client holding the supervisor bearer trades it for a session token via
+`POST /api/auth/exchange` (header-authenticated) and uses that in URLs.
 
 The JS output uses JSX runtime imports (`jsx`, `jsxs`, `jsxDEV`) rather than
 `React.createElement` — this is important for the shimming approach below.
