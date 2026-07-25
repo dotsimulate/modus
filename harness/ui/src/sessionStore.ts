@@ -188,6 +188,23 @@ function setHistoryLoadState(
   notify();
 }
 
+/**
+ * Event replay is a legitimate hydration path — ensureSubscribed deliberately
+ * rebuilds some threads from seq=0 — so events may resolve history status, but
+ * only once they have materialized a message. `applyEventBatch` advances
+ * lastSeq for the event types it skips (stream deltas, tool progress, live
+ * snapshots), so a catch-up made purely of those leaves the thread empty. If
+ * that were allowed to claim "ready", the session looks resolved-but-empty and
+ * every later mount reuses it instead of fetching the snapshot — which is why
+ * chats showed "no messages" until a reload.
+ */
+function markHistoryReadyFromEvents(entry: SessionEntry) {
+  if (entry.state.messages.length === 0) return;
+  if (entry.historyStatus === "ready") return;
+  entry.historyStatus = "ready";
+  entry.historyError = undefined;
+}
+
 export function getSessionHistoryLoadState(sessionId: string | null): SessionHistoryLoadState {
   if (!sessionId) return { status: "idle", hasMore: false, loadingOlder: false };
   const entry = sessions.get(sessionId);
@@ -410,11 +427,9 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
     }
   }
 
-  // A completed catch-up batch is also authoritative history hydration.
-  if (entry.historyStatus !== "ready") {
-    entry.historyStatus = "ready";
-    entry.historyError = undefined;
-  }
+  // A completed catch-up batch is also authoritative history hydration —
+  // but only if it actually materialized something.
+  markHistoryReadyFromEvents(entry);
 
   entry.revision++;
   notify(); // single React re-render for the entire batch
@@ -436,12 +451,9 @@ export function applyEvent(id: string, event: any, seq: number) {
 
   const entry = sessions.get(resolvedId);
   if (!entry) return;
-  if (entry.historyStatus !== "ready") {
-    entry.historyStatus = "ready";
-    entry.historyError = undefined;
-  }
   const prevStatus = entry.state.status;
   entry.state = reduceEvent(entry.state, event, seq);
+  markHistoryReadyFromEvents(entry);
   // During SSE catch-up replay of a completed session, suppress spurious "running" status
   if (entry.catchingUp && (entry.state.status === "running" || entry.state.status === "starting" || entry.state.status === "interrupting")) {
     entry.state = { ...entry.state, status: prevStatus };
@@ -557,9 +569,17 @@ export function subscribeSession(
     onDone: () => {
       const entry = sessions.get(sessionId);
       if (entry) {
-        entry.historyStatus = "ready";
-        entry.historyError = undefined;
         entry.catchingUp = false;
+        if (entry.state.messages.length > 0) {
+          entry.historyStatus = "ready";
+          entry.historyError = undefined;
+        } else if (entry.historyStatus === "loading") {
+          // Catch-up finished without materializing anything. Don't strand the
+          // UI on a spinner, but don't claim history is resolved either — the
+          // next mount should fetch the snapshot rather than reuse this.
+          entry.historyStatus = "idle";
+          entry.historyError = undefined;
+        }
         const st = entry.state;
         if (st.status === "running" || st.status === "starting" || st.status === "interrupting") {
           // Backend reports this session settled, but we still believe it's
@@ -613,8 +633,10 @@ export function unsubscribeSession(sessionId: string) {
 }
 
 // In-flight ensureSubscribed calls, keyed by sessionId — lets multiple widgets
-// racing to mount on the same session share a single snapshot fetch.
-const pendingEnsure = new Map<string, Promise<void>>();
+// racing to mount on the same session share a single snapshot fetch. The
+// forced flag is tracked because a forced caller must not inherit a non-forced
+// run's outcome; see ensureSubscribed.
+const pendingEnsure = new Map<string, { run: Promise<void>; forced: boolean }>();
 
 export type EnsureSubscribedOpts = {
   /** Profile to attach to the store entry if not yet set */
@@ -637,15 +659,37 @@ export function shouldReuseSessionSubscription(input: {
   subscribed: boolean;
   forceHistoryRefresh?: boolean;
   messageCount: number;
-  lastSeq: number;
   historyStatus?: SessionEntry["historyStatus"];
 }): boolean {
   if (!input.subscribed) return false;
   if (input.forceHistoryRefresh && input.messageCount === 0) return false;
-  const hasLocalHistory = input.messageCount > 0 || input.lastSeq > 0;
-  if (hasLocalHistory) return true;
+  // Materialized messages are the only local history. A lastSeq cursor is
+  // deliberately NOT one: a catch-up batch of only-skipped event types advances
+  // it past an empty thread, and treating that as warm was what stopped the
+  // snapshot fetch that would have painted the conversation.
+  if (input.messageCount > 0) return true;
   return input.historyStatus === "ready"
     || input.historyStatus === "loading";
+}
+
+/**
+ * Bounded one-shot self-heal: the store says history is resolved, the thread is
+ * empty, and the server index says this session has content. Insurance against
+ * any path other than the known lastSeq/ready one that can strand an empty
+ * thread. It can only fire when there is nothing on screen, so it never adds a
+ * fetch to a load that worked.
+ */
+export function shouldRefetchEmptyResolvedHistory(input: {
+  historyStatus?: SessionEntry["historyStatus"];
+  messageCount: number;
+  serverMessageCount?: number;
+  serverPreview?: string;
+  alreadyAttempted: boolean;
+}): boolean {
+  if (input.alreadyAttempted) return false;
+  if (input.messageCount > 0) return false;
+  if (input.historyStatus !== "ready") return false;
+  return (input.serverMessageCount ?? 0) > 0 || !!input.serverPreview?.trim();
 }
 
 async function fetchHistorySnapshotWithTimeout(sessionId: string): Promise<SessionHistorySnapshot> {
@@ -682,12 +726,19 @@ export function ensureSubscribed(
   sessionId: string,
   opts: EnsureSubscribedOpts = {},
 ): Promise<void> {
+  return ensureSubscribedInternal(sessionId, opts, true);
+}
+
+function ensureSubscribedInternal(
+  sessionId: string,
+  opts: EnsureSubscribedOpts,
+  mayRetryAfterPending: boolean,
+): Promise<void> {
   const currentEntry = sessions.get(sessionId);
   const reuseSubscription = shouldReuseSessionSubscription({
     subscribed: subscriptions.has(sessionId),
     forceHistoryRefresh: opts.forceHistoryRefresh,
     messageCount: currentEntry?.state.messages.length ?? 0,
-    lastSeq: currentEntry?.state.lastSeq ?? 0,
     historyStatus: currentEntry?.historyStatus,
   });
   if (reuseSubscription) {
@@ -707,7 +758,25 @@ export function ensureSubscribed(
   }
   if (subscriptions.has(sessionId)) unsubscribeSession(sessionId);
   const pending = pendingEnsure.get(sessionId);
-  if (pending) return pending;
+  if (pending) {
+    // A forced caller (e.g. selectSession) must not silently inherit a plain
+    // widget-mount run that may reuse warm state and skip the very snapshot
+    // fetch it asked for. Let the in-flight run settle, then re-evaluate once.
+    if (opts.forceHistoryRefresh && !pending.forced && mayRetryAfterPending) {
+      return pending.run.then(() => ensureSubscribedInternal(sessionId, opts, false));
+    }
+    return pending.run;
+  }
+
+  // Registered BEFORE the run starts. When the warm-active path is taken the
+  // async body reaches its `finally` without ever awaiting, so a set-after-run
+  // would re-add an already-settled promise and every later ensureSubscribed
+  // for this session would resolve instantly and do nothing.
+  const slot: { run: Promise<void>; forced: boolean } = {
+    run: Promise.resolve(),
+    forced: !!opts.forceHistoryRefresh,
+  };
+  pendingEnsure.set(sessionId, slot);
 
   const run = (async () => {
     const _ensT0 = performance.now();
@@ -722,7 +791,10 @@ export function ensureSubscribed(
         notify();
       }
       const existing = getSessionState(sessionId);
-      const hasWarmState = !!existing && (existing.lastSeq > 0 || existing.messages.length > 0);
+      // Only materialized messages count as warm. A bare lastSeq cursor left by
+      // a catch-up that skipped every event it saw would otherwise send an
+      // active session straight to subscribe with nothing on screen.
+      const hasWarmState = !!existing && existing.messages.length > 0;
       const needsForcedHistory = !!opts.forceHistoryRefresh && (existing?.messages.length ?? 0) === 0;
 
       const hinted = opts.activeStatus;
@@ -803,12 +875,12 @@ export function ensureSubscribed(
       if (subscriptions.has(sessionId)) return; // raced with another caller
       subscribeSession(sessionId, afterSeq, opts.profile, opts.onDone);
     } finally {
-      pendingEnsure.delete(sessionId);
+      if (pendingEnsure.get(sessionId) === slot) pendingEnsure.delete(sessionId);
       console.log(`[CLIENT-TIMING] ensureSubscribed ${sessionId.slice(0,8)} ${(performance.now() - _ensT0).toFixed(1)}ms`);
     }
   })();
 
-  pendingEnsure.set(sessionId, run);
+  slot.run = run;
   return run;
 }
 
