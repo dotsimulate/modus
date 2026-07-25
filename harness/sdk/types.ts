@@ -228,6 +228,13 @@ export type AgentConfigState = {
       sandbox?: boolean;
       printTimeout?: string;
     };
+    grokBuild?: {
+      mode?: "default" | "auto" | "plan" | "always-approve";
+      sandbox?: string;
+      noMemory?: boolean;
+      noSubagents?: boolean;
+      disableWebSearch?: boolean;
+    };
   };
 };
 
@@ -748,7 +755,7 @@ export type ProviderSlashCommand = {
 export type ProviderCapabilities = {
   name: string;
   label: string;
-  family: "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "opencode" | "pi-agent";
+  family: "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "grok-build" | "opencode" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
   /** "explicit" means the tool list is known upfront; "event-derived" means tools are discovered from events. */

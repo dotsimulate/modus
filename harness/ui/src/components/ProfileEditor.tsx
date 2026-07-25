@@ -263,9 +263,6 @@ function ProfileForm({
     setModelsLoading(true);
     modus.getProviderModels(p).then((models) => {
       setProviderModels(models);
-      if (model && models.length > 0 && !models.some((m) => m.id === model)) {
-        setModel("");
-      }
     }).catch(() => setProviderModels([])).finally(() => setModelsLoading(false));
     const previousFamily = providerToolFamily(profile.provider);
     const nextFamily = providerToolFamily(provider);

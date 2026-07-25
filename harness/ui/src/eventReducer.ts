@@ -540,6 +540,18 @@ function readProviderControls(providerControls: any): AgentConfigState["provider
       next.antigravity.printTimeout = antigravity.printTimeout;
     }
   }
+  const rawGrokBuild = (providerControls as Record<string, unknown>).grokBuild;
+  if (rawGrokBuild && typeof rawGrokBuild === "object") {
+    const grokBuild = rawGrokBuild as Record<string, unknown>;
+    next.grokBuild = {};
+    if (grokBuild.mode === "default" || grokBuild.mode === "auto" || grokBuild.mode === "plan" || grokBuild.mode === "always-approve") {
+      next.grokBuild.mode = grokBuild.mode;
+    }
+    if (typeof grokBuild.sandbox === "string" && grokBuild.sandbox.trim()) next.grokBuild.sandbox = grokBuild.sandbox;
+    if (typeof grokBuild.noMemory === "boolean") next.grokBuild.noMemory = grokBuild.noMemory;
+    if (typeof grokBuild.noSubagents === "boolean") next.grokBuild.noSubagents = grokBuild.noSubagents;
+    if (typeof grokBuild.disableWebSearch === "boolean") next.grokBuild.disableWebSearch = grokBuild.disableWebSearch;
+  }
   return next;
 }
 

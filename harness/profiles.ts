@@ -157,6 +157,13 @@ export type Profile = {
       sandbox?: boolean;
       printTimeout?: string;
     };
+    grokBuild?: {
+      mode?: "default" | "auto" | "plan" | "always-approve";
+      sandbox?: string;
+      noMemory?: boolean;
+      noSubagents?: boolean;
+      disableWebSearch?: boolean;
+    };
     [provider: string]: unknown;
   };
   /** Context window size override — for models where API doesn't report it */
