@@ -18,6 +18,7 @@ import {
   rekeyTerminalSessionIds as dbRekeySessionIds, touchTerminalOutput,
   type TerminalRow,
 } from "./terminal-db";
+import { pipeErrorCode, tryPipeOperation } from "./pipe-errors";
 
 // ── Platform ──
 
@@ -263,14 +264,24 @@ export function createTerminal(opts: CreateTerminalOpts = {}): ActiveTerminal {
 export function writeTerminal(id: string, data: string | Uint8Array): boolean {
   const t = terminals.get(id);
   if (!t) return false;
-  t.terminal.write(data);
-  return true;
+  return tryPipeOperation(
+    () => t.terminal.write(data),
+    (error) => {
+      console.warn(`[terminal] input write failed id=${id} code=${pipeErrorCode(error)}`);
+    },
+  );
 }
 
 export function resizeTerminal(id: string, cols: number, rows: number): boolean {
   const t = terminals.get(id);
   if (!t) return false;
-  t.terminal.resize(cols, rows);
+  const resized = tryPipeOperation(
+    () => t.terminal.resize(cols, rows),
+    (error) => {
+      console.warn(`[terminal] resize failed id=${id} code=${pipeErrorCode(error)}`);
+    },
+  );
+  if (!resized) return false;
   t.cols = cols;
   t.rows = rows;
   return true;

@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "
 import { homedir, tmpdir } from "os";
 import { CODEX_BUILTIN_TOOLS, CODEX_TOOL_GROUPS } from "./tool-catalog";
 import { APP_PATHS } from "../app-paths";
+import { providerChildEnv } from "./child-env";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -396,11 +397,7 @@ function resolveMcpEnv(env: Record<string, string> | undefined, serverName: stri
 }
 
 function buildCodexEnv(extraEnv: Record<string, string>): Record<string, string> {
-  const merged: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) merged[key] = value;
-  }
-  return { ...merged, ...extraEnv };
+  return { ...providerChildEnv(), ...extraEnv };
 }
 
 function codexBearerEnvName(serverName: string): string {

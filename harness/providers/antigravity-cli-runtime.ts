@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+import { providerChildEnv } from "./child-env";
 
 export type AntigravityCommandResult = {
   exitCode: number;
@@ -86,7 +87,7 @@ export async function runAntigravityCommand(
     cmd: [executable, ...args],
     cwd: options.cwd ?? process.cwd(),
     env: {
-      ...process.env,
+      ...providerChildEnv(),
       ...(options.env ?? {}),
       AGY_CLI_DISABLE_AUTO_UPDATE: options.env?.AGY_CLI_DISABLE_AUTO_UPDATE ?? "true",
     },
