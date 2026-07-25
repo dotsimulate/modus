@@ -3,6 +3,7 @@
 mod backend;
 mod job;
 mod tailscale;
+mod updates;
 
 use std::{
     env,
@@ -22,6 +23,7 @@ use tauri::{
     tray::TrayIconBuilder,
     AppHandle, Manager, State, WindowEvent,
 };
+use updates::{desktop_check_for_update, desktop_install_pending_update, PendingUpdate};
 
 static QUITTING: AtomicBool = AtomicBool::new(false);
 static SMOKE_QUIT_SCHEDULED: AtomicBool = AtomicBool::new(false);
@@ -139,6 +141,10 @@ fn allow_parallel_smoke_instance() -> bool {
 }
 
 fn main() {
+    if let Some(exit_code) = backend::maybe_run_backend_launcher() {
+        std::process::exit(exit_code);
+    }
+
     let mut builder = tauri::Builder::default();
     if !allow_parallel_smoke_instance() {
         builder = builder.plugin(tauri_plugin_single_instance::init(
@@ -147,17 +153,24 @@ fn main() {
             },
         ));
     }
+    builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(PendingUpdate::default());
     let app = builder
         .invoke_handler(tauri::generate_handler![
             desktop_bootstrap,
             desktop_ui_connected,
             desktop_tailscale_status,
             desktop_set_tailscale_enabled,
+            desktop_check_for_update,
+            desktop_install_pending_update,
             quit_modus
         ])
         .setup(|app| {
-            let supervisor = BackendSupervisor::new(app.handle()).map_err(std::io::Error::other)?;
-            app.manage(Arc::new(supervisor));
+            let supervisor =
+                Arc::new(BackendSupervisor::new(app.handle()).map_err(std::io::Error::other)?);
+            supervisor.start_monitor(app.handle().clone());
+            app.manage(supervisor);
 
             let show = MenuItem::with_id(app, "show", "Show Modus", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Modus", true, None::<&str>)?;

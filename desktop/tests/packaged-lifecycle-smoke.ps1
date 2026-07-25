@@ -10,6 +10,40 @@ if (!(Test-Path -LiteralPath $Executable -PathType Leaf)) {
   throw "Packaged desktop executable not found: $Executable"
 }
 
+Add-Type @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class ModusVisibleWindowProbe {
+  private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+  [DllImport("user32.dll")]
+  private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+  [DllImport("user32.dll")]
+  private static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")]
+  private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+  private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+
+  public static string[] Find(uint[] processIds) {
+    var targets = new HashSet<uint>(processIds);
+    var found = new List<string>();
+    EnumWindows((window, _) => {
+      if (!IsWindowVisible(window)) return true;
+      uint processId;
+      GetWindowThreadProcessId(window, out processId);
+      if (!targets.Contains(processId)) return true;
+      var title = new StringBuilder(512);
+      GetWindowText(window, title, title.Capacity);
+      found.Add(string.Format("{0}:{1}:{2}", processId, window.ToInt64(), title));
+      return true;
+    }, IntPtr.Zero);
+    return found.ToArray();
+  }
+}
+'@
+
 $existing3778 = @(
   Get-NetTCPConnection -LocalPort 3778 -State Listen -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess -Unique
@@ -19,7 +53,8 @@ $modusTestHome = Join-Path $smokeRoot 'home'
 $runtime = Join-Path $smokeRoot 'runtime'
 $logs = Join-Path $smokeRoot 'logs'
 $config = Join-Path $smokeRoot 'config'
-New-Item -ItemType Directory -Path $modusTestHome, $runtime, $logs, $config -Force | Out-Null
+$project = Join-Path $smokeRoot 'project'
+New-Item -ItemType Directory -Path $modusTestHome, $runtime, $logs, $config, $project -Force | Out-Null
 
 $env:MODUS_HOME = $modusTestHome
 $env:MODUS_CONFIG_DIR = $config
@@ -76,6 +111,9 @@ if ($Scenario -eq 'remote') {
 $desktop = $null
 $state = $null
 $closeHidden = $null
+$brainBridgeVerified = $null
+$claudeOpus5Listed = $null
+$backendVisibleWindows = @()
 try {
   $desktop = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path -Parent $Executable) -WindowStyle Hidden -PassThru
   $statePath = Join-Path $runtime 'desktop-supervisor.json'
@@ -114,6 +152,85 @@ try {
     if ($health.status -ne 'ok') { throw 'Managed backend health failed' }
     if (!(Get-Process -Id ([int]$state.backendPid) -ErrorAction SilentlyContinue)) {
       throw 'Managed backend process is missing'
+    }
+
+    $baseUri = "http://127.0.0.1:$($state.port)"
+    $auth = Invoke-RestMethod `
+      -Method Post `
+      -Uri "$baseUri/api/auth/verify" `
+      -ContentType 'application/json' `
+      -Body (@{ pin = 'packaged-smoke-pin' } | ConvertTo-Json -Compress) `
+      -TimeoutSec 5
+    if (!$auth.ok -or !$auth.token) { throw 'Packaged backend PIN verification failed' }
+    $headers = @{ Authorization = "Bearer $($auth.token)" }
+
+    $claudeModels = Invoke-RestMethod `
+      -Uri "$baseUri/api/providers/claude-code/models" `
+      -Headers $headers `
+      -TimeoutSec 5
+    if (!($claudeModels | Where-Object { $_.id -eq 'claude-opus-5' })) {
+      throw 'Packaged backend did not list claude-opus-5'
+    }
+    $claudeOpus5Listed = $true
+
+    $moves = Invoke-RestMethod `
+      -Uri ("$baseUri/api/moves?cwd=" + [uri]::EscapeDataString($project)) `
+      -Headers $headers `
+      -TimeoutSec 5
+    if (!($moves | Where-Object { $_.name -eq 'modus-brain' })) {
+      throw 'Packaged backend did not discover the built-in modus-brain move'
+    }
+
+    $activationBody = @{
+      moveName = 'modus-brain'
+      inputs = @{ request = 'Verify packaged Modus documentation access.' }
+      cwd = $project
+    } | ConvertTo-Json -Depth 5 -Compress
+    $activation = Invoke-RestMethod `
+      -Method Post `
+      -Uri "$baseUri/api/moves/activate" `
+      -Headers $headers `
+      -ContentType 'application/json' `
+      -Body $activationBody `
+      -TimeoutSec 15
+    if ($activation.mode -ne 'inline' -or
+        !$activation.apiToken -or
+        !$activation.apiToken.StartsWith('mapi-brain-') -or
+        $activation.prompt -notmatch 'Documentation index') {
+      throw "Packaged modus-brain activation returned an invalid result: $($activation | ConvertTo-Json -Depth 5 -Compress)"
+    }
+
+    $docsResult = Invoke-RestMethod `
+      -Method Post `
+      -Uri "$baseUri/api/moves/modus-brain/op" `
+      -Headers $headers `
+      -ContentType 'application/json' `
+      -Body (@{
+        apiToken = $activation.apiToken
+        op = 'docs_get'
+        id = 'capability-surface'
+      } | ConvertTo-Json -Compress) `
+      -TimeoutSec 10
+    if (!$docsResult.ok -or $docsResult.message -notmatch 'Capability Surface') {
+      throw "Packaged modus-brain docs_get failed: $($docsResult | ConvertTo-Json -Depth 5 -Compress)"
+    }
+    $brainBridgeVerified = $true
+
+    $processSnapshot = @(Get-CimInstance Win32_Process)
+    $backendTreeIds = [System.Collections.Generic.HashSet[uint32]]::new()
+    [void]$backendTreeIds.Add([uint32]$state.backendPid)
+    do {
+      $added = $false
+      foreach ($candidate in $processSnapshot) {
+        if ($backendTreeIds.Contains([uint32]$candidate.ParentProcessId) -and
+            $backendTreeIds.Add([uint32]$candidate.ProcessId)) {
+          $added = $true
+        }
+      }
+    } while ($added)
+    $backendVisibleWindows = @([ModusVisibleWindowProbe]::Find([uint32[]]$backendTreeIds))
+    if ($backendVisibleWindows.Count -gt 0) {
+      throw "Managed backend created a visible top-level window: $($backendVisibleWindows -join ', ')"
     }
 
     $templateProfile = Join-Path $modusTestHome 'profiles\agents\modus-dev.json'
@@ -250,11 +367,17 @@ public static class ModusWindowSmoke {
     TailscaleState = $state.tailscale.state
     TailscaleUrl = $state.tailscale.url
     Listener3778 = $after3778 -join ','
+    BackendVisibleWindows = $backendVisibleWindows.Count
+    BrainBridgeVerified = $brainBridgeVerified
+    ClaudeOpus5Listed = $claudeOpus5Listed
   }
 } finally {
   if ($desktop) {
     $desktop.Refresh()
-    if (!$desktop.HasExited) { Stop-Process -Id $desktop.Id -Force }
+    if (!$desktop.HasExited) {
+      Stop-Process -Id $desktop.Id -Force
+      [void]$desktop.WaitForExit(5000)
+    }
   }
   $fullSmokeRoot = [System.IO.Path]::GetFullPath($smokeRoot)
   $fullTempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
@@ -263,6 +386,14 @@ public static class ModusWindowSmoke {
     throw "Refusing smoke cleanup outside the intended temporary root: $fullSmokeRoot"
   }
   if (Test-Path -LiteralPath $fullSmokeRoot) {
-    Remove-Item -LiteralPath $fullSmokeRoot -Recurse -Force
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+      try {
+        Remove-Item -LiteralPath $fullSmokeRoot -Recurse -Force
+        break
+      } catch {
+        if ($attempt -eq 39) { throw }
+        Start-Sleep -Milliseconds 100
+      }
+    }
   }
 }

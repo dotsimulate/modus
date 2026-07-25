@@ -22,6 +22,15 @@ export type DesktopBootstrapResponse = {
   tailscale?: DesktopTailscaleStatus;
 };
 
+export type DesktopUpdateCheck = {
+  configured: boolean;
+  available: boolean;
+  version?: string | null;
+  currentVersion: string;
+  notes?: string | null;
+  date?: string | null;
+};
+
 type TauriInternals = {
   invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
 };
@@ -59,22 +68,48 @@ export async function bootstrapDesktop(
   });
 }
 
-/** Install and prove the supervisor-provided credential. The token never
- * appears in the URL or normal backend logs. */
+/**
+ * Prove the supervisor-provided credential, then store a bounded session token.
+ *
+ * The stored credential is what the UI later splices into media and EventSource
+ * URLs, which cannot carry an Authorization header. Persisting the supervisor
+ * bearer there would put a non-revocable, full-authority credential into copied
+ * links, browser history, and proxy logs, so it is exchanged for a revocable
+ * browser-session token and never written to storage itself.
+ */
 export async function bindManagedDesktopTarget(response: DesktopBootstrapResponse): Promise<void> {
   if (response.mode !== "managed-local" || !response.token || !response.instanceId || !response.port) {
     throw new Error("Managed backend bootstrap returned an incomplete identity or credential");
   }
   const storageKey = `harness_token:${encodeURIComponent(response.targetId)}`;
-  localStorage.setItem(storageKey, response.token);
   const verification = await fetch(`${response.apiBase}/api/auth/check`, {
     cache: "no-store",
     headers: { Authorization: `Bearer ${response.token}` },
   });
   if (!verification.ok) {
-    localStorage.removeItem(storageKey);
     throw new Error(`Managed backend rejected its desktop credential (${verification.status})`);
   }
+
+  let stored = response.token;
+  try {
+    const exchange = await fetch(`${response.apiBase}/api/auth/exchange`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${response.token}` },
+    });
+    if (exchange.ok) {
+      const minted = (await exchange.json())?.token;
+      if (typeof minted === "string" && minted) stored = minted;
+    }
+  } catch {
+    // Fall through to the supervisor credential below.
+  }
+  if (stored === response.token) {
+    // Availability is preserved, but URL-carried resources will not authenticate
+    // because a supervisor bearer is not accepted from a query string.
+    console.warn("[desktop] session-token exchange unavailable; media and event URLs may not authenticate");
+  }
+  localStorage.setItem(storageKey, stored);
 }
 
 /** Acknowledge only after the configured SDK has independently authenticated. */
@@ -97,4 +132,12 @@ export async function getDesktopTailscaleStatus(): Promise<DesktopTailscaleStatu
 
 export async function setDesktopTailscaleEnabled(enabled: boolean): Promise<DesktopTailscaleStatus> {
   return invokeDesktop<DesktopTailscaleStatus>("desktop_set_tailscale_enabled", { enabled });
+}
+
+export async function checkDesktopUpdate(): Promise<DesktopUpdateCheck> {
+  return invokeDesktop<DesktopUpdateCheck>("desktop_check_for_update");
+}
+
+export async function installPendingDesktopUpdate(): Promise<void> {
+  await invokeDesktop<void>("desktop_install_pending_update");
 }

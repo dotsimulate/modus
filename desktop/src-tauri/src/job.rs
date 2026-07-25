@@ -6,9 +6,9 @@ mod platform {
         Foundation::{CloseHandle, HANDLE},
         System::{
             JobObjects::{
-                AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-                SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob,
+                JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
             },
             Threading::{
                 OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SET_QUOTA,
@@ -81,6 +81,25 @@ mod platform {
                 Ok(())
             }
         }
+
+        pub fn contains(&self, pid: u32) -> io::Result<bool> {
+            let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+            if process.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            let mut result = 0;
+            let checked = unsafe { IsProcessInJob(process, self.handle, &mut result) };
+            let error = if checked == 0 {
+                Some(io::Error::last_os_error())
+            } else {
+                None
+            };
+            unsafe { CloseHandle(process) };
+            match error {
+                Some(error) => Err(error),
+                None => Ok(result != 0),
+            }
+        }
     }
 
     impl Drop for ProcessJob {
@@ -110,6 +129,10 @@ mod platform {
 
         pub fn terminate(&self, _exit_code: u32) -> io::Result<()> {
             Ok(())
+        }
+
+        pub fn contains(&self, _pid: u32) -> io::Result<bool> {
+            Ok(true)
         }
     }
 }
@@ -166,6 +189,7 @@ mod tests {
         let job = ProcessJob::new().expect("create test Job Object");
         job.assign(parent.id())
             .expect("assign test parent to Job Object");
+        assert!(job.contains(parent.id()).expect("check parent membership"));
 
         let deadline = Instant::now() + Duration::from_secs(10);
         while !marker.is_file() && Instant::now() < deadline {
@@ -178,6 +202,9 @@ mod tests {
             .expect("descendant PID");
         assert!(process_is_running(parent.id()));
         assert!(process_is_running(descendant_pid));
+        assert!(job
+            .contains(descendant_pid)
+            .expect("check inherited descendant membership"));
 
         job.terminate(77).expect("terminate test Job Object");
         let _ = parent.wait();
