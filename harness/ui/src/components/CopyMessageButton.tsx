@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import type { Message, ToolCall } from "../../../sdk/index";
+import { userAuthoredMessageText } from "../move-context";
 
 type CopyMode = "last" | "text" | "thinking" | "full";
 
@@ -16,7 +17,7 @@ function formatToolCallsText(toolCalls?: ToolCall[]): string {
 }
 
 function buildCopyText(msg: Message, mode: CopyMode): string {
-  if (msg.role === "user") return msg.content;
+  if (msg.role === "user") return userAuthoredMessageText(msg.content);
   const tc = msg.turnCopy;
 
   if (mode === "last") return msg.content;

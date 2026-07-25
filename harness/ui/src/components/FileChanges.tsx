@@ -311,11 +311,18 @@ export const FileChanges = memo(function FileChanges({ toolCalls }: Props) {
   const grouped = groupByFile(edits);
   const totalChanges = countChanges(edits);
   const fileCount = grouped.size;
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="fc-container">
       <div className="fc-container-inner">
-        <div className="fc-header">
+        <div
+          className="fc-header fc-header--toggle"
+          onClick={() => setCollapsed((c) => !c)}
+          role="button"
+          aria-expanded={!collapsed}
+        >
+          <span className="diff-file-toggle">{collapsed ? ">" : "v"}</span>
           <span className="fc-header-label">
             {fileCount} file{fileCount !== 1 ? "s" : ""} changed
           </span>
@@ -328,11 +335,13 @@ export const FileChanges = memo(function FileChanges({ toolCalls }: Props) {
             )}
           </span>
         </div>
-        <div className="fc-files">
-          {[...grouped.entries()].map(([fp, edits]) => (
-            <FileCard key={fp} filePath={fp} edits={edits} />
-          ))}
-        </div>
+        {!collapsed && (
+          <div className="fc-files">
+            {[...grouped.entries()].map(([fp, edits]) => (
+              <FileCard key={fp} filePath={fp} edits={edits} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
