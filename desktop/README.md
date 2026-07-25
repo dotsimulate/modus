@@ -71,18 +71,32 @@ ready. The stable URL is shown in the panel.
 
 Modus never runs `tailscale serve reset`. It leaves foreign paths, Funnel,
 raw-TCP services, other ports, and the existing `:8443` service untouched. A
-foreign `:443` rule blocks activation and is reported in the panel. Set a
-browser PIN before exposing Modus to a shared tailnet.
+foreign `:443` rule blocks activation and is reported in the panel. Enabling
+Serve without a browser PIN requires a second explicit confirmation; set a PIN
+first before exposing Modus to a shared tailnet.
 
 An authenticated browser is an operator-level, full-machine principal with the
 same broad local authority as the installed application; it is not restricted
-to one project.
+to one project. The PIN protects browser sessions, not the host OS or native
+desktop window. Setup, forgotten-PIN reset, and PIN removal are local-machine
+operations. PIN changes and authenticated remote lock revoke all browser
+sessions and live streams.
 
 The backend continues serving the browser UI, so an iPhone or browser-only
 laptop on the same tailnet uses the stable HTTPS URL without installing Modus.
 The first browser request after moving the URL from a CLI daemon to the desktop
 backend may require signing in with the browser PIN again. Remote-client mode
 consumes a saved Tailscale URL and never edits local Serve rules.
+
+## Desktop updates
+
+Update checks are opt-in and at most daily unless the user selects **Check
+now**. A configured release build checks a signed HTTPS channel and can label a
+release normal, recommended, or critical. Urgency changes presentation only:
+download and installation always require user confirmation. The endpoint and
+signature public key are compile-time release inputs and are absent from
+ordinary builds. The withdrawn unsigned `v0.1.0` build has no updater, so a
+future signed bridge release must be installed manually after qualification.
 
 ## Build
 

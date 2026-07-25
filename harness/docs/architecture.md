@@ -43,6 +43,8 @@ modus/
       antigravity.ts       # Google Antigravity CLI provider
       gemini-cli.ts        # Hidden legacy paid/API/Vertex provider
       opencode.ts          # OpenCode CLI provider
+      grok-build.ts        # xAI Grok Build ACP provider
+      grok-build-acp.ts    # newline-delimited JSON-RPC transport
       pi-agent.ts          # PI agent (multi-provider: litellm, ollama, openrouter)
       mcp-bridge.ts        # MCP server lifecycle management
       models.ts            # Model listing per provider
@@ -127,7 +129,7 @@ Providers are execution backends. Session-manager delegates to them via the
 `SessionProvider` interface (defined in `providers/types.ts`).
 
 Registered providers: `claude-code`, `claude-code-pty`, `codex`, `cursor`,
-`antigravity`, `opencode`, `litellm`, `ollama`, `openrouter`.
+`antigravity`, `grok-build`, `opencode`, `litellm`, `ollama`, `openrouter`.
 
 The last three are PI agent variants — a lightweight agent loop for
 OpenAI-compatible APIs.

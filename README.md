@@ -43,7 +43,7 @@ Harness: Hono + Bun (:3777)
         | SessionProvider interface
         v
 Providers:
-  claude-code, claude-code-pty, codex, cursor, antigravity, opencode,
+  claude-code, claude-code-pty, codex, cursor, antigravity, grok-build, opencode,
   litellm, ollama, openrouter
 
 Shared extension surfaces:
@@ -90,6 +90,7 @@ If the server is already running, `modus` opens the browser pointed at that fold
 ```bash
 modus start          # start the server (foreground, ctrl+c to stop)
 modus start -d       # start as background daemon
+modus start --show-token  # print the harness token (masked in the banner by default)
 modus stop           # stop a running daemon
 modus status         # show server status, uptime, active sessions
 modus init [path]    # scaffold .modus/ without starting the server
@@ -101,7 +102,7 @@ modus dev            # dev mode (harness + vite + file watchers)
 modus --version      # print version
 ```
 
-On first run, Modus asks for your name. Browser PIN lock is optional and can be enabled later in settings. A PIN-authenticated browser is an operator-level, full-machine principal: it can use the same broad filesystem and agent authority as the local Modus application. It is not a project-root sandbox.
+On first run, Modus asks for your name. Browser PIN lock is optional and can be enabled later in settings. The PIN gates browser sessions; it does not lock Windows, macOS, Linux, or the native desktop window. PIN setup, reset, and removal are local-machine operations. Changing or resetting it revokes existing browser sessions and live streams. A PIN-authenticated browser is an operator-level, full-machine principal: it can use the same broad filesystem and agent authority as the local Modus application. It is not a project-root sandbox.
 
 ### 4. Remote access (optional)
 
@@ -114,7 +115,7 @@ modus start --remote # or: expose for a single run
 
 This uses `tailscale serve`, so traffic stays inside your private tailnet — nothing is exposed to the public internet. Modus only manages its own serve rule: if another service on the machine is already using `tailscale serve`, Modus leaves that config untouched and tells you. `modus remote off` removes the rule and the setting.
 
-Without a browser PIN, anyone on your tailnet can open the UI — set a PIN in settings if you share your tailnet.
+Without a browser PIN, anyone on your tailnet can open the UI. The desktop requires an extra confirmation before enabling an unpinned Tailnet route; set a PIN first if you share your tailnet. Only an authenticated browser can remotely lock browser access, and that lock revokes all browser sessions rather than locking the host operating system.
 
 Treat a PIN as protection for operator-level access, not as a narrower project permission: an authenticated browser can act with the same broad local authority as the installed application. Only connect a remote backend that you trust with that backend's full-machine authority. The native desktop client does not load executable client extensions supplied by a remote backend; local/operator-installed extensions and ordinary browser clients retain the documented trusted-code model.
 
@@ -124,6 +125,13 @@ its packaged backend and automatically rebinds the Modus-owned Serve rule to
 that backend's dynamic port. Closing to the tray keeps phone/browser access
 online; **Quit Modus** removes the route and stops the owned backend. No CLI
 daemon or second start command is required for this desktop mode.
+
+Desktop update checks are opt-in. A configured release build may check a signed
+HTTPS update channel and show normal, recommended, or critical urgency, but it
+never downloads or installs an update without confirmation. Ordinary source and
+tester builds have no update endpoint or public key configured. The withdrawn
+`v0.1.0` build cannot update itself; a future signed bridge release must first be
+installed manually after installer and data-preservation qualification.
 
 ### Existing source-checkout users moving to desktop
 
@@ -171,6 +179,7 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 | `codex` | OpenAI Codex CLI | `codex` CLI plus `CODEX_API_KEY`, `OPENAI_API_KEY`, or Codex OAuth |
 | `antigravity` | Google Antigravity CLI | [`agy`](https://antigravity.google/docs/cli-install) installed and signed in |
 | `cursor` | Cursor Agent CLI | `cursor-agent login` (Cursor subscription) |
+| `grok-build` | xAI Grok Build CLI | [`grok`](https://docs.x.ai/build/overview) installed; browser login or `XAI_API_KEY` |
 | `opencode` | opencode CLI | [opencode](https://opencode.ai) installed |
 | `litellm` | LiteLLM proxy | LiteLLM running locally |
 | `ollama` | Ollama API | Ollama running locally |
@@ -179,6 +188,8 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 The last three (`litellm`, `ollama`, `openrouter`) are PI agent variants, a lightweight agent loop for local models and routing services.
 
 For Google AI plans, install Antigravity CLI and run `agy` once to complete Google Sign-In. Modus uses Antigravity's documented print mode, native conversation UUID resume, JSON Hooks, plugins, and MCP interfaces. The old `gemini-cli` adapter remains hidden for explicitly configured paid API, Vertex AI, or compute-ADC deployments; Modus does not reuse Gemini CLI OAuth credentials.
+
+For Grok Build, install the official CLI (`irm https://x.ai/cli/install.ps1 | iex` on Windows, or `curl -fsSL https://x.ai/cli/install.sh | bash` on macOS/Linux/WSL), then run `grok login`. A paid subscription is not required while xAI's current free Grok Build offer is available; limits and eligibility are controlled by xAI and may change. Modus also supports `XAI_API_KEY` for API-backed use.
 
 See [harness/docs/providers.md](harness/docs/providers.md) for the full provider system documentation.
 

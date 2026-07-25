@@ -13,8 +13,11 @@ tag does not authorize uploading or replacing an artifact.
 - No generally qualified Windows installer is currently available. Any future
   candidate requires a new version and the qualification below.
 - macOS and Linux desktop packages have not been released.
-- The updater remains disabled until install, upgrade, downgrade, rollback,
-  uninstall, and data-preservation behavior is qualified.
+- The opt-in updater foundation is present, but ordinary builds have no update
+  endpoint or signature key configured. Enabling a production channel remains
+  blocked on install, upgrade, downgrade, rollback, uninstall, and
+  data-preservation qualification. Updates are never downloaded or installed
+  without user confirmation; urgency labels only change presentation.
 
 ## Version and artifact rules
 

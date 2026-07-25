@@ -1,7 +1,7 @@
 ---
 title: Moves
-lastUpdated: 2026-07-07
-covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts
+lastUpdated: 2026-07-25
+covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/bridged-modules.ts harness/harness-bridge.ts
 ---
 
 # Moves
@@ -46,6 +46,24 @@ host project or the harness.
   the trust boundary is who can write into the moves directory, unchanged by
   this feature.
 - Reference: the chess example (`.modus/moves/chess/`) uses `chess.js` this way.
+
+### Harness Imports (built-in moves only)
+
+A built-in move under `harness/moves/` may import harness runtime modules by
+relative path — `modus-brain` imports `../../docs-registry`, `docs-doctor` also
+imports `../../profile-schemas`. In a dev run those resolve to the same on-disk
+modules the server already loaded, so the move shares one DB connection, one
+token store, one session manager.
+
+A packaged build bundles the backend into a single `server.js` and ships no
+harness sources, so each importable module needs an entry in
+`harness/bridged-modules.ts`. Packaging emits a shim per entry that re-exports
+the live instance from a process global (`harness/harness-bridge.ts`); bundling
+a *copy* into the move would silently give it a second DB and break state.
+
+**Importing a harness module from a built-in move without adding it to that list
+fails only in a packaged build, never in dev.** Type-only imports are erased by
+the transpiler and need no entry.
 
 ## Execution Modes
 
@@ -126,14 +144,29 @@ an API token and instance id.
 
 - `tokenPrefix` — token becomes `mapi-{prefix}-{instanceId}` (default: move name)
 - `ops` — declares what ops exist; unknown ops are rejected
-- `state.persist` — write state and registry to `.modus/moves/<name>/state/` for restart survival
+- `state.persist` — write handler *state* to `.modus/moves/<name>/state/` for restart survival
+
+Declaring `ops` is enough to persist the *registration* — you do not need
+`state.persist` for that. The two are independent on purpose: a stateless move's
+token is baked into the session transcript and an agent may call it hours or days
+later, so the token-to-instance binding has to survive a restart even when there
+is no handler state to save.
 
 `context.ts` exports `handlers: Record<string, MoveApiHandler>`. Each handler receives
 `MoveApiContext` (instanceId, sessionId, caller, state API, notify) and the submitted data.
 
 `ctx.state.get/set/delete` is the state API. Typed interface; shape is your contract.
-If `api.state.persist` is true, state files live in `.modus/moves/<name>/state/<instanceId>.json`
-with `_registry.json` storing token-to-instance bindings for restart rehydration.
+If `api.state.persist` is true, state files live in `.modus/moves/<name>/state/<instanceId>.json`.
+`_registry.json` in that same directory stores token-to-instance bindings for restart
+rehydration, and is written for every API move regardless of `state.persist`. It is
+pruned on write: registrations older than 30 days, or beyond the newest 200 per move,
+are dropped.
+
+Rehydration runs at boot over every project root in session history, and again for a
+single token when an unknown one is submitted — so a registration written by a process
+that never appeared in that boot scan is still recoverable. A token that cannot be
+recovered reports a lifecycle failure naming the recovery step; it is never described
+as expired, because API tokens have no TTL.
 
 `ctx.notify(message, emit?)` pushes a message into the agent's session (session-inject — NOT
 a channel). Optional `emit` injects a typed signal prefix: `[modus:{type}] {json}\n{message}`.
