@@ -1206,6 +1206,12 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   const profileMoves = profileDef?.moves ?? [];
   const requestMoves = opts.moves ?? [];
   const allMoves = [...profileMoves, ...requestMoves];
+  const existingLogicalSession = opts.sessionId ? getSession(opts.sessionId) : null;
+  // A pending branch is a new logical conversation even though its copied
+  // history contains the parent's move markers.
+  const existingLogicalSessionId = existingLogicalSession && !existingLogicalSession.parent_session_id
+    ? existingLogicalSession.id
+    : undefined;
 
   // No moves declared → fast path, just start normally
   if (!allMoves.length) {
@@ -1220,16 +1226,35 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
 
   // Phase 1: gather inline (non-persistent) moves before session starts
   const activateMoveBindings = getActivateMoveBindings();
-  const logPrefix = requestMoves.length
-    ? `profile:${opts.profile ?? "none"}+request`
-    : `profile:${opts.profile}`;
-  const phase1 = await activateMoveBindings(
-    allMoves,
-    "", // no session ID yet
-    resolvedCwd,
-    opts.userProfile,
-    { persistentOnly: false, logPrefix },
-  );
+  const profilePhase1 = profileMoves.length
+    ? await activateMoveBindings(
+        profileMoves,
+        "", // no provider session ID yet
+        resolvedCwd,
+        opts.userProfile,
+        {
+          persistentOnly: false,
+          logPrefix: `profile:${opts.profile}`,
+          skipPreviouslyInjectedForSession: existingLogicalSessionId,
+          persistInlineApiRegistrations: true,
+        },
+      )
+    : { inlineContext: null, apiTokens: [], activatedPersistent: [] };
+  const requestPhase1 = requestMoves.length
+    ? await activateMoveBindings(
+        requestMoves,
+        "",
+        resolvedCwd,
+        opts.userProfile,
+        { persistentOnly: false, logPrefix: "request" },
+      )
+    : { inlineContext: null, apiTokens: [], activatedPersistent: [] };
+  const phase1 = {
+    inlineContext: [profilePhase1.inlineContext, requestPhase1.inlineContext]
+      .filter((value): value is string => !!value)
+      .join("\n\n") || null,
+    apiTokens: [...profilePhase1.apiTokens, ...requestPhase1.apiTokens],
+  };
 
   // Prepend inline move context to the prompt
   let prompt = opts.prompt;
@@ -1264,7 +1289,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
     session.sessionId,
     resolvedCwd,
     opts.userProfile,
-    { persistentOnly: true, logPrefix },
+    { persistentOnly: true, logPrefix: `profile:${opts.profile ?? "none"}+request` },
   );
 
   return session;

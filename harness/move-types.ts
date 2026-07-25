@@ -631,7 +631,10 @@ export interface MoveApiRegistration {
   cwd: string;
   userProfile?: string;
   handlers: Record<string, MoveApiHandler>;
+  /** Persist handler state values to disk. */
   persist: boolean;
+  /** Persist the token-to-handler registration so it survives a harness restart. */
+  persistRegistration?: boolean;
   defaultOp?: string;
   inferOp?: (data: Record<string, unknown>) => string | null | undefined;
 }
