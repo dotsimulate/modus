@@ -12,7 +12,9 @@
  * Built-in harness moves live in `harness/moves/<name>/`.
  * Project-local moves live in `.modus/moves/<name>/` and override built-ins.
  *
- * Token management is in-memory with TTL expiry.
+ * Two token kinds, with different lifetimes: submit tokens are in-memory with a
+ * TTL, while API tokens (`mapi-*`) never expire — their registration is
+ * persisted per move and rehydrated after a restart.
  * Execution records are persisted to DB for recall.
  */
 
@@ -36,6 +38,7 @@ import {
   listSessions as dbListSessions, listSessionsForProjects as dbListSessionsForProjects,
   getSession as dbGetSession,
   searchSessions as dbSearchSessions, getSessionMessages, insertSessionArtifact,
+  listSessionCwds, sessionHasMoveContext,
   type TurnContent,
 } from "./db";
 import {
@@ -54,6 +57,11 @@ const MODUS_MOVES_DIR = ".modus/moves";
 const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
 const TOKEN_CLEANUP_INTERVAL_MS = 60_000;  // sweep every 60s
+// Persisted API registrations are pruned by age and count on write. Move API
+// tokens themselves never expire — a session resumed days later must still be
+// able to call its ops — so the only bound is this retention policy.
+const MOVE_REGISTRY_RETENTION_DAYS = 30;
+const MOVE_REGISTRY_RETAINED_COUNT = 200;
 const GATHER_TIMEOUT_MS = 10_000;          // 10s default timeout for gather()
 const ACTIVATE_GATHER_TIMEOUT_MS = 120_000; // 2min timeout for widget-first activate (user-triggered, may do heavy work)
 
@@ -127,8 +135,10 @@ export function deactivateAmbientMove(sessionId: string, moveName: string): bool
   if (idx === -1) return false;
   const removed = list.splice(idx, 1)[0]!;
   if (list.length === 0) ambientMoveRegistry.delete(sessionId);
-  // Clean up API registration if present
+  // Clean up API registration if present. Drop the persisted row first, or the
+  // token would be rehydrated on the next boot for a deactivated move.
   if (removed.apiToken) {
+    dropPersistedMoveRegistration(removed.apiToken);
     moveApiRegistry.delete(removed.apiToken);
   }
   // Update DB record
@@ -312,8 +322,17 @@ export function watchMoveSessionTurns(
 
 // ── Registry Persistence ──
 
+type PersistedMoveRegistration = {
+  instanceId: string;
+  sessionId: string;
+  cwd: string;
+  createdAt: number;
+  userProfile?: string;
+  persistState?: boolean;
+};
+
 /** Read the _registry.json for a move's state directory */
-function readMoveRegistry(cwd: string, moveName: string): Record<string, { instanceId: string; sessionId: string; cwd: string; createdAt: number }> {
+function readMoveRegistry(cwd: string, moveName: string): Record<string, PersistedMoveRegistration> {
   const path = join(cwd, ".modus/moves", moveName, "state", "_registry.json");
   try {
     return JSON.parse(readFileSync(path, "utf-8"));
@@ -322,11 +341,44 @@ function readMoveRegistry(cwd: string, moveName: string): Record<string, { insta
   }
 }
 
+/**
+ * Drop registrations that are older than the retention window or beyond the
+ * retained count, newest first. Without this, every interactive activation of an
+ * API move would leave a permanent row (each activation mints a new instanceId).
+ */
+function pruneMoveRegistry(
+  registry: Record<string, PersistedMoveRegistration>,
+  now = Date.now(),
+): Record<string, PersistedMoveRegistration> {
+  const maxAgeMs = MOVE_REGISTRY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+  const kept = Object.entries(registry)
+    .filter(([, entry]) => {
+      const createdAt = typeof entry?.createdAt === "number" ? entry.createdAt : 0;
+      // Legacy rows without a timestamp are kept — they predate this policy and
+      // a live agent may still hold their token.
+      return createdAt === 0 || now - createdAt <= maxAgeMs;
+    })
+    .sort((a, b) => (b[1]?.createdAt ?? 0) - (a[1]?.createdAt ?? 0))
+    .slice(0, MOVE_REGISTRY_RETAINED_COUNT);
+  return Object.fromEntries(kept);
+}
+
 /** Write the _registry.json for a move's state directory */
 function writeMoveRegistry(cwd: string, moveName: string, registry: Record<string, unknown>): void {
   const dir = join(cwd, ".modus/moves", moveName, "state");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "_registry.json"), JSON.stringify(registry, null, 2));
+  const pruned = pruneMoveRegistry(registry as Record<string, PersistedMoveRegistration>);
+  writeFileSync(join(dir, "_registry.json"), JSON.stringify(pruned, null, 2));
+}
+
+/** Remove a token's persisted registration so it cannot be rehydrated later. */
+function dropPersistedMoveRegistration(apiToken: string): void {
+  const reg = moveApiRegistry.get(apiToken);
+  if (!reg?.persistRegistration) return;
+  const registry = readMoveRegistry(reg.cwd, reg.moveName);
+  if (!registry[apiToken]) return;
+  delete registry[apiToken];
+  writeMoveRegistry(reg.cwd, reg.moveName, registry);
 }
 
 /** Create a move-api token and register handlers */
@@ -339,6 +391,11 @@ function registerMoveApi(
   persist: boolean,
   userProfile?: string,
   inferOp?: (data: Record<string, unknown>) => string | null | undefined,
+  // Declaring `api.ops` is enough to earn a persisted registration. Handler
+  // state persistence (`persist`) is a separate opt-in: a stateless move still
+  // needs its token to survive a harness restart, because the token is baked
+  // into the session transcript and the agent may call it hours later.
+  persistRegistration = true,
 ): string {
   const config = getMove(moveName, cwd);
   const prefix = config?.api?.tokenPrefix ?? moveName;
@@ -352,20 +409,30 @@ function registerMoveApi(
     userProfile,
     handlers,
     persist,
+    persistRegistration,
     defaultOp: typeof config?.api?.defaultOp === "string" ? config.api.defaultOp : undefined,
     inferOp,
   });
-  console.log(`[move-reg] registerMoveApi: token=${token} sessionId=${sessionId} move=${moveName}`);
+  console.log(`[move-reg] registerMoveApi: sessionId=${sessionId} move=${moveName}`);
 
   // Initialize state if not already present (resume case)
   if (!moveApiState.has(instanceId)) {
     moveApiState.set(instanceId, undefined);
   }
 
-  // Persist registration for restart survival
-  if (persist) {
+  // Persist registration for restart survival. Profile-bound inline moves can
+  // persist their capability registration without opting their handler state
+  // into disk persistence.
+  if (persistRegistration) {
     const registry = readMoveRegistry(cwd, moveName);
-    registry[token] = { instanceId, sessionId, cwd, createdAt: Date.now() };
+    registry[token] = {
+      instanceId,
+      sessionId,
+      cwd,
+      createdAt: Date.now(),
+      userProfile,
+      persistState: persist,
+    };
     writeMoveRegistry(cwd, moveName, registry);
   }
 
@@ -470,9 +537,24 @@ export async function handleMoveApiSubmit(
   data: Record<string, unknown>,
   caller: "agent" | "user" = "agent",
 ): Promise<{ ok: boolean; message?: string; error?: string }> {
-  const reg = moveApiRegistry.get(token);
+  // A missing registration is a lifecycle problem, not a caller mistake: these
+  // tokens have no TTL. Try to recover it from disk before failing, then say
+  // exactly what happened and how to get unstuck.
+  const reg = moveApiRegistry.get(token) ?? await recoverMoveApiRegistration(token);
   if (!reg) {
-    return { ok: false, error: "Invalid or expired API token" };
+    return {
+      ok: false,
+      error: [
+        `Move API token is not registered: ${token}`,
+        "",
+        "This token did not expire — move API tokens have no lifetime. Its registration",
+        "is missing, which means the move was detached, or it was activated by a harness",
+        "process that did not persist the registration before exiting.",
+        "",
+        "Recovery: you cannot re-mint this yourself. Tell the user to re-invoke the move,",
+        "then use the fresh token from the newly injected move context.",
+      ].join("\n"),
+    };
   }
 
   // llama.cpp autoparser wraps payload under data.op as an object instead of data.op being a string.
@@ -665,9 +747,17 @@ export function rekeyMoveRegistrySession(oldSessionId: string, newSessionId: str
   for (const [token, reg] of moveApiRegistry) {
     if (reg.sessionId === oldSessionId) {
       reg.sessionId = newSessionId;
+      if (reg.persistRegistration) {
+        const registry = readMoveRegistry(reg.cwd, reg.moveName);
+        const entry = registry[token];
+        if (entry) {
+          entry.sessionId = newSessionId;
+          writeMoveRegistry(reg.cwd, reg.moveName, registry);
+        }
+      }
       void loadMoveModule(reg.moveName, reg.cwd).then((mod) => syncMoveAssistantTurnListener(token, mod));
       matched++;
-      console.log(`[move-reg] rekey: token=${token} ${oldSessionId} → ${newSessionId}`);
+      console.log(`[move-reg] rekey: move=${reg.moveName} ${oldSessionId} → ${newSessionId}`);
     }
   }
   if (matched === 0) {
@@ -679,13 +769,21 @@ export function rekeyMoveRegistrySession(oldSessionId: string, newSessionId: str
 export function rekeyMoveByToken(apiToken: string, newSessionId: string): boolean {
   const reg = moveApiRegistry.get(apiToken);
   if (!reg) {
-    console.log(`[move-reg] rekey-by-token: token=${apiToken} not found in registry`);
+    console.log("[move-reg] rekey-by-token: unknown capability");
     return false;
   }
   const oldSessionId = reg.sessionId;
   reg.sessionId = newSessionId;
+  if (reg.persistRegistration) {
+    const registry = readMoveRegistry(reg.cwd, reg.moveName);
+    const entry = registry[apiToken];
+    if (entry) {
+      entry.sessionId = newSessionId;
+      writeMoveRegistry(reg.cwd, reg.moveName, registry);
+    }
+  }
   void loadMoveModule(reg.moveName, reg.cwd).then((mod) => syncMoveAssistantTurnListener(apiToken, mod));
-  console.log(`[move-reg] rekey-by-token: token=${apiToken} ${oldSessionId} → ${newSessionId}`);
+  console.log(`[move-reg] rekey-by-token: move=${reg.moveName} ${oldSessionId} → ${newSessionId}`);
   return true;
 }
 
@@ -815,6 +913,7 @@ export async function gatherMoveOnce(
   cwd: string,
   userProfile: string | undefined,
   inputs: Record<string, unknown>,
+  opts?: { persistApiRegistration?: boolean },
 ): Promise<{ text: string; apiToken?: string } | null> {
   const mod = await loadMoveModule(moveName, cwd);
   if (!mod?.gather) {
@@ -838,6 +937,7 @@ export async function gatherMoveOnce(
       config.api.state?.persist ?? false,
       userProfile,
       mod.inferOp,
+      opts?.persistApiRegistration,
     );
     await syncMoveAssistantTurnListener(apiToken, mod);
   }
@@ -950,7 +1050,14 @@ export async function activateMoveBindings(
   sessionId: string,
   cwd: string,
   userProfile: string | undefined,
-  opts?: { persistentOnly?: boolean; logPrefix?: string },
+  opts?: {
+    persistentOnly?: boolean;
+    logPrefix?: string;
+    /** Logical session whose already-recorded inline move blocks must not be injected again. */
+    skipPreviouslyInjectedForSession?: string;
+    /** Keep inline API capabilities alive across a harness restart. */
+    persistInlineApiRegistrations?: boolean;
+  },
 ): Promise<MoveBindingResult> {
   const prefix = opts?.logPrefix ?? "move-bindings";
   const result: MoveBindingResult = { inlineContext: null, apiTokens: [], activatedPersistent: [] };
@@ -983,9 +1090,26 @@ export async function activateMoveBindings(
     } else {
       // Non-persistent: one-shot gather
       if (opts?.persistentOnly) continue;
+      if (
+        opts?.skipPreviouslyInjectedForSession
+        && sessionHasMoveContext(opts.skipPreviouslyInjectedForSession, spec.name)
+      ) {
+        console.log(
+          `[${prefix}] inline move "${spec.name}" already present in logical session `
+          + `${opts.skipPreviouslyInjectedForSession}; skipping duplicate gather`,
+        );
+        continue;
+      }
       try {
         console.log(`[${prefix}] gathering inline move "${spec.name}" (cwd=${cwd}, origin=${moveCfg.origin})`);
-        const gathered = await gatherMoveOnce(spec.name, sessionId, cwd, userProfile, spec.inputs ?? {});
+        const gathered = await gatherMoveOnce(
+          spec.name,
+          sessionId,
+          cwd,
+          userProfile,
+          spec.inputs ?? {},
+          { persistApiRegistration: opts?.persistInlineApiRegistrations },
+        );
         if (gathered) {
           console.log(`[${prefix}] move "${spec.name}" gathered ${gathered.text.length} chars`);
           inlineParts.push(`<!-- move:${spec.name} -->\n${gathered.text}\n<!-- /move:${spec.name} -->`);
@@ -1508,7 +1632,7 @@ export async function activateAttachedMove(opts: {
       if (reg.sessionId) break;
     }
     if (!reg.sessionId) {
-      console.log(`[move-reg] activateAttachedMove: timed out waiting for session rekey (token=${opts.apiToken})`);
+      console.log("[move-reg] activateAttachedMove: timed out waiting for session rekey");
       return { ok: false, error: "No session created — activate timed out waiting for session" };
     }
     console.log(`[move-reg] activateAttachedMove: session rekey arrived → ${reg.sessionId}`);
@@ -1632,18 +1756,12 @@ export function detachMove(apiToken: string): boolean {
   if (!reg) return false;
 
   // Clean up persisted registry entry
-  if (reg.persist) {
-    const registry = readMoveRegistry(reg.cwd, reg.moveName);
-    if (registry[apiToken]) {
-      delete registry[apiToken];
-      writeMoveRegistry(reg.cwd, reg.moveName, registry);
-    }
-  }
+  dropPersistedMoveRegistration(apiToken);
 
   clearMoveAssistantTurnListener(apiToken);
   instanceStore.delete(reg.instanceId);
   moveApiRegistry.delete(apiToken);
-  console.log(`[move-runner] detached: ${reg.moveName} token=${apiToken}`);
+  console.log(`[move-runner] detached: ${reg.moveName}`);
   return true;
 }
 
@@ -2119,91 +2237,105 @@ export function getActiveTokensForSession(sessionId: string): MoveToken[] {
 // ── Registry Rehydration (restart survival) ──
 
 /**
- * On startup, scan all moves with `api` + `persist` declarations.
- * For each, read `_registry.json` and re-register handlers from context.ts.
- * Tokens remain stable — the same token that was active before restart
- * continues working after.
+ * Scan every project root referenced by session history for persisted API
+ * registrations. Handler state and capability-registration persistence are
+ * independent: stateless profile moves still need their existing token
+ * reconnected after a harness restart.
+ *
+ * Runs once at boot, and again for a single token when an unknown one is
+ * submitted — a project whose cwd was not yet in session history at boot, or a
+ * registration written by a later process, is only reachable that way.
  */
-async function rehydrateMoveApiRegistry(): Promise<void> {
-  // Determine project root — harness runs from harness/, project root is one level up
-  const cwd = APP_PATHS.resourcesDir;
-
-  // Collect all move names (builtin + project-local)
-  const names = new Set<string>();
-  try {
-    if (existsSync(BUILTIN_MOVES_DIR)) {
-      for (const entry of readdirSync(BUILTIN_MOVES_DIR, { withFileTypes: true })) {
-        if (entry.isDirectory()) names.add(entry.name);
-      }
-    }
-    const projectDir = join(cwd, MODUS_MOVES_DIR);
-    if (existsSync(projectDir)) {
-      for (const entry of readdirSync(projectDir, { withFileTypes: true })) {
-        if (entry.isDirectory()) names.add(entry.name);
-      }
-    }
-    for (const plugin of listEnabledModusPlugins()) {
-      const pluginDir = getPluginMovesDir(plugin);
-      if (!existsSync(pluginDir)) continue;
-      for (const entry of readdirSync(pluginDir, { withFileTypes: true })) {
-        if (entry.isDirectory()) names.add(entry.name);
-      }
-    }
-  } catch { /* directories don't exist */ }
-
+async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<number> {
+  const scopes = new Set<string>([
+    resolve(process.cwd()),
+    APP_PATHS.resourcesDir,
+    ...listSessionCwds().map((cwd) => resolve(cwd)),
+  ]);
   let rehydrated = 0;
 
-  for (const name of names) {
-    const config = getMove(name, cwd);
-    if (!config?.api || !config.api.state?.persist) continue;
+  for (const cwd of scopes) {
+    const movesRoot = join(cwd, MODUS_MOVES_DIR);
+    if (!existsSync(movesRoot)) continue;
 
-    // State is always stored relative to project CWD (even for builtin moves)
-    const registry = readMoveRegistry(cwd, name);
-    if (Object.keys(registry).length === 0) continue;
-
-    // Load handlers once per move
-    const mod = await loadMoveModule(name, cwd);
-    if (!mod?.handlers) {
-      console.warn(`[move-runner] rehydrate: ${name} has _registry.json but no handlers in context.ts`);
+    let names: string[];
+    try {
+      names = readdirSync(movesRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+    } catch {
       continue;
     }
 
-    for (const [token, entry] of Object.entries(registry)) {
-      const { instanceId, sessionId } = entry as { instanceId: string; sessionId: string; cwd: string };
-      const entryCwd = (entry as any).cwd ?? cwd;
+    for (const name of names) {
+      const registry = readMoveRegistry(cwd, name);
+      if (Object.keys(registry).length === 0) continue;
+      if (opts?.onlyToken && !registry[opts.onlyToken]) continue;
 
-      // Check that state file still exists
-      const statePath = join(entryCwd, ".modus/moves", name, "state", `${instanceId}.json`);
-      if (!existsSync(statePath)) {
-        console.log(`[move-runner] rehydrate: skipping ${name}/${instanceId} — state file missing`);
+      const config = getMove(name, cwd);
+      if (!config?.api) continue;
+
+      const mod = await loadMoveModule(name, cwd);
+      if (!mod?.handlers) {
+        console.warn(`[move-runner] rehydrate: ${name} has _registry.json but no handlers in context.ts`);
         continue;
       }
 
-      // Re-register in-memory (skip writeMoveRegistry since it's already persisted)
-      moveApiRegistry.set(token, {
-        moveName: name,
-        instanceId,
-        sessionId,
-        cwd: entryCwd,
-        handlers: mod.handlers,
-        persist: true,
-      });
+      for (const [token, entry] of Object.entries(registry)) {
+        if (opts?.onlyToken && token !== opts.onlyToken) continue;
+        const entryCwd = entry.cwd ? resolve(entry.cwd) : cwd;
+        const persistState = entry.persistState ?? config.api.state?.persist ?? false;
 
-      // Load persisted state into memory
-      try {
-        const raw = readFileSync(statePath, "utf-8");
-        moveApiState.set(instanceId, JSON.parse(raw));
-      } catch {
-        moveApiState.set(instanceId, undefined);
+        moveApiRegistry.set(token, {
+          moveName: name,
+          instanceId: entry.instanceId,
+          sessionId: entry.sessionId,
+          cwd: entryCwd,
+          userProfile: entry.userProfile,
+          handlers: mod.handlers,
+          persist: persistState,
+          persistRegistration: true,
+          defaultOp: typeof config.api.defaultOp === "string" ? config.api.defaultOp : undefined,
+          inferOp: mod.inferOp,
+        });
+
+        if (persistState) {
+          const statePath = join(entryCwd, MODUS_MOVES_DIR, name, "state", `${entry.instanceId}.json`);
+          try {
+            const raw = readFileSync(statePath, "utf-8");
+            moveApiState.set(entry.instanceId, JSON.parse(raw));
+          } catch {
+            moveApiState.set(entry.instanceId, undefined);
+          }
+        } else {
+          moveApiState.set(entry.instanceId, undefined);
+        }
+
+        await syncMoveAssistantTurnListener(token, mod);
+        rehydrated++;
       }
-
-      rehydrated++;
     }
   }
 
   if (rehydrated > 0) {
     console.log(`[move-runner] rehydrated ${rehydrated} API move instance(s) from disk`);
   }
+  return rehydrated;
+}
+
+/**
+ * Last chance for an unknown token: it may be a live registration written by an
+ * earlier process that this one never scanned. Returns the registration if the
+ * scan recovered it.
+ */
+async function recoverMoveApiRegistration(token: string): Promise<MoveApiRegistration | undefined> {
+  if (!isMoveApiToken(token)) return undefined;
+  try {
+    await rehydrateMoveApiRegistry({ onlyToken: token });
+  } catch (err) {
+    console.error(`[move-runner] on-demand rehydration failed for ${token}:`, err);
+  }
+  return moveApiRegistry.get(token);
 }
 
 // Run rehydration on module load (harness boot)

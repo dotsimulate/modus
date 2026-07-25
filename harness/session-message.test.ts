@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { addEvent, getSessionMessage, upsertSession } from "./db";
+import { addEvent, getSessionMessage, sessionHasMoveContext, upsertSession } from "./db";
 
 test("getSessionMessage reconstructs only the requested completed or interrupted turn", () => {
   const sessionId = `single-turn-${crypto.randomUUID()}`;
@@ -44,4 +44,18 @@ test("getSessionMessage reconstructs only the requested completed or interrupted
     seq: 7,
     toolCalls: [{ name: "Grep", input: { pattern: "TODO" } }],
   });
+});
+
+test("sessionHasMoveContext detects a move injected on an earlier logical turn", () => {
+  const sessionId = `move-context-${crypto.randomUUID()}`;
+  upsertSession({ id: sessionId, preview: "move context test", messageCount: 0, costUsd: 0 });
+  addEvent(sessionId, 1, "user", "prompt", JSON.stringify({
+    subtype: "prompt",
+    message: {
+      content: "<!-- move:modus-brain -->\nbrain instructions\n<!-- /move:modus-brain -->\n\nhello",
+    },
+  }));
+
+  expect(sessionHasMoveContext(sessionId, "modus-brain")).toBe(true);
+  expect(sessionHasMoveContext(sessionId, "another-move")).toBe(false);
 });

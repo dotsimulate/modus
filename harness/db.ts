@@ -486,6 +486,19 @@ const stmts = {
   listArchived: db.prepare(`SELECT * FROM sessions WHERE tags LIKE '%"archived"%' ORDER BY archived_at DESC, updated_at DESC LIMIT $limit`),
   updateTags: db.prepare(`UPDATE sessions SET tags = $tags, updated_at = $now WHERE id = $id`),
   get: db.prepare(`SELECT * FROM sessions WHERE id = $id`),
+  listCwds: db.prepare(`
+    SELECT DISTINCT cwd
+    FROM sessions
+    WHERE cwd IS NOT NULL AND cwd != ''
+  `),
+  hasMoveContext: db.prepare(`
+    SELECT 1
+    FROM events
+    WHERE session_id = $session_id
+      AND type = 'user'
+      AND instr(data, $marker) > 0
+    LIMIT 1
+  `),
   // Events
   addEvent: db.prepare(`
     INSERT INTO events (session_id, seq, type, subtype, data, created_at)
@@ -693,6 +706,20 @@ export function upsertSession(opts: {
   }
   const ms = performance.now() - t0;
   if (ms > 5) console.log(`[DB-TIMING] upsertSession ${ms.toFixed(1)}ms session=${opts.id.slice(0,8)} status=${opts.status}`);
+}
+
+/** Project roots referenced by persisted sessions, used to restore project-scoped move state. */
+export function listSessionCwds(): string[] {
+  return (stmts.listCwds.all() as Array<{ cwd: string }>).map((row) => row.cwd);
+}
+
+/** Whether a move context block has already been injected into this logical session. */
+export function sessionHasMoveContext(sessionId: string, moveName: string): boolean {
+  const marker = `<!-- move:${moveName} -->`;
+  return !!stmts.hasMoveContext.get({
+    $session_id: sessionId,
+    $marker: marker,
+  });
 }
 
 export function renameSession(oldId: string, newId: string) {
