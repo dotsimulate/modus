@@ -1,0 +1,67 @@
+{
+  "name": "modus-brain",
+  "label": "Modus brain",
+  "description": "Interactive Modus knowledge. Gives the agent searchable access to the core documentation so it can answer questions about Modus or refine a request into Modus-native primitives (moves, actions, pages, profiles) and build them.",
+  "icon": "brain",
+  "mode": "inline",
+  "inputs": [
+    {
+      "name": "request",
+      "label": "What do you want to do or understand?",
+      "type": "textarea",
+      "required": false,
+      "placeholder": "ask about modus, or describe something you want built with it..."
+    }
+  ],
+  "submit": {
+    "required": false
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "api": {
+    "tokenPrefix": "brain",
+    "ops": {
+      "docs_list": {
+        "description": "List the documentation index (id, title, one-line summary per doc). Optionally filter by audience: user | dev | agent.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "audience": { "type": "string", "enum": ["user", "dev", "agent", "all"] }
+          }
+        }
+      },
+      "docs_search": {
+        "description": "Batch search the documentation. Send multiple query strings at once; each returns ranked docs with matching snippets.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "queries": { "type": "array", "items": { "type": "string" } },
+            "limit": { "type": "number" }
+          },
+          "required": ["queries"]
+        }
+      },
+      "docs_get": {
+        "description": "Fetch a full document by id (ids come from docs_list or docs_search results, e.g. \"capability-surface\", \"moves\", \"generated/move-ops\").",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" }
+          },
+          "required": ["id"]
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "shell": false,
+    "sessionSpawn": false,
+    "sessionMessage": false,
+    "actionTrigger": false,
+    "notify": false,
+    "fileRead": true,
+    "fileWrite": false
+  },
+  "tags": ["docs", "meta", "knowledge", "capability"]
+}
