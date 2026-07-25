@@ -11,18 +11,47 @@ import type { ClientExtensionManifestItem, ExtensionSettingSchema, ModusPlugin }
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 import { useProfiles } from "../providers/ProfileContext";
+import { useExtensionSettingOptions, type ExtensionSettingOption } from "../client-extensions";
 
 function SettingField({
   name,
   schema,
   value,
+  liveOptions,
   onChange,
 }: {
   name: string;
   schema: ExtensionSettingSchema;
   value: unknown;
+  liveOptions?: { options: ExtensionSettingOption[]; emptyLabel?: string };
   onChange: (name: string, value: unknown) => void;
 }) {
+  // A loaded extension can publish options that only exist in the browser
+  // (audio devices, for one), which the static manifest cannot express. When it
+  // has, that list wins over the declared field type.
+  if (liveOptions) {
+    const selected = String(value ?? "");
+    const known = !selected || liveOptions.options.some((opt) => opt.value === selected);
+    return (
+      <label className="exw-setting">
+        <span className="exw-setting-label">{schema.label}</span>
+        <select
+          className="exw-setting-input"
+          value={selected}
+          onChange={(e) => onChange(name, e.target.value)}
+        >
+          <option value="">{liveOptions.emptyLabel ?? "(unset)"}</option>
+          {liveOptions.options.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+          {/* Keep a saved value that is not currently present selectable — an
+              unplugged device must not be silently rewritten on the next save. */}
+          {!known && <option value={selected}>{`${selected} (not available)`}</option>}
+        </select>
+      </label>
+    );
+  }
+
   if (schema.type === "boolean") {
     return (
       <label className="exw-setting exw-setting--toggle">
@@ -95,6 +124,7 @@ function ExtensionRow({
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [localSettings, setLocalSettings] = useState<Record<string, unknown>>(ext.settingsValues);
+  const liveOptions = useExtensionSettingOptions(ext.id);
   const hasSettings = ext.meta.settings && Object.keys(ext.meta.settings).length > 0;
 
   const handleToggle = async () => {
@@ -154,6 +184,7 @@ function ExtensionRow({
               name={key}
               schema={schema}
               value={localSettings[key]}
+              liveOptions={liveOptions[key]}
               onChange={handleSettingChange}
             />
           ))}
