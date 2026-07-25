@@ -1,7 +1,9 @@
 // Prevent nested session detection when launched from within Claude Code
 delete process.env.CLAUDECODE;
 
-import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin, disablePin } from "./secrets";
+import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin, disablePin, resetPin } from "./secrets";
+import { BrowserSessionStore } from "./browser-auth";
+import { probeClaudeAccount } from "./claude-account";
 import { rehydrateHome } from "./modus-home-rehydrate";
 loadSecrets();
 
@@ -20,6 +22,9 @@ loadSecrets();
 
 import { join, resolve, extname, dirname } from "path";
 import { APP_PATHS } from "./app-paths";
+import { initHarnessBridge } from "./harness-bridge";
+import { cursorMcpConfigStore } from "./providers/cursor-mcp-config";
+import { pruneAbandonedSensitiveTempDirectories } from "./sensitive-temp";
 import { BACKEND_IDENTITY } from "./backend-identity";
 import { configuredRootsForCwd } from "./preview-roots";
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "fs";
@@ -42,6 +47,7 @@ import {
   registerTheme, registerFont, activateTheme, activateFont, patchTheme, patchFont,
 } from "./project-ui";
 import { forkConfigPage, listConfigPages } from "./pages";
+import { listDocs, getDoc, searchDocs, type DocAudience } from "./docs-registry";
 import {
   listClientExtensions, getClientExtensionById, resolveExtensionSettings,
 } from "./client-extensions";
@@ -49,6 +55,7 @@ import {
   listModusPlugins, patchModusPlugin, registerModusPlugin, unregisterModusPlugin,
 } from "./modus-plugins";
 import { getResolvedClientExtensionsConfig } from "./profiles";
+import { resolveWhisperCredential } from "./whisper-credential";
 import {
   ProfileCoreSchema, ProfileUiSchema,
   UserProfileCoreSchema, UserProfileUiConfigSchema,
@@ -90,7 +97,7 @@ import {
   getActiveTerminal, getAllActiveTerminals, getTerminalInfo, listAllTerminals,
   shutdownAllTerminals,
 } from "./terminal-manager";
-import { tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker, setOriginChecker } from "./terminal-ws";
+import { closeTerminalWebSockets, tryUpgradeTerminalWS, terminalWebSocket, setAuthChecker, setOriginChecker } from "./terminal-ws";
 import { getProcessSnapshot, killProcess } from "./process-registry";
 import { getPromptCache, savePromptCache, type PromptCache } from "./prompt-cache";
 import { startWatching, subscribeFsEvents, type FsChangeEvent } from "./fs-watcher";
@@ -123,6 +130,7 @@ import { homeProfilesDir } from "./modus-home";
 import {
   PinAttemptThrottle,
   isAllowedBrowserOrigin,
+  isLoopbackAddress,
   requestSourceKey,
 } from "./security-boundary";
 
@@ -418,9 +426,88 @@ app.use("/api/*", cors({
 /** Dynamic PIN lookup — picks up changes from first-run setup */
 function getPin() { return resolveSecret("HARNESS_PIN"); }
 
-// In-memory set of valid browser session tokens from PIN or no-PIN browser setup.
-const pinSessions = new Set<string>();
+// In-memory browser sessions die on restart and have idle + absolute ceilings.
+const browserSessions = new BrowserSessionStore();
+browserSessions.onRevoke(closeTerminalWebSockets);
 const pinThrottle = new PinAttemptThrottle();
+
+function bearerToken(c: any): string {
+  const header = c.req.header("Authorization");
+  return header?.startsWith("Bearer ") ? header.slice(7) : "";
+}
+
+function isAgentBearer(c: any): boolean {
+  return !!AUTH_TOKEN && bearerToken(c) === AUTH_TOKEN;
+}
+
+function hasLocalAuthAdmin(c: any): boolean {
+  if (isAgentBearer(c)) return true;
+  if (AUTH_TOKEN) return false;
+  const source = requestSourceKey(
+    c.req.header("X-Modus-Peer-Address"),
+    c.req.header("X-Forwarded-For"),
+  );
+  const host = (c.req.header("Host") ?? "").split(":")[0]!.toLowerCase();
+  return isLoopbackAddress(source) && !host.endsWith(".ts.net");
+}
+
+function operatorKind(c: any, allowQuery = false): "agent" | "browser" | null {
+  const bearer = bearerToken(c);
+  if (AUTH_TOKEN && bearer === AUTH_TOKEN) return "agent";
+  if (browserSessions.validate(bearer)) return "browser";
+  if (allowQuery) {
+    // Only a bounded, revocable browser-session token may ride in a URL.
+    //
+    // A URL leaks in ways a header does not: copied links, browser history,
+    // referrers, and proxy access logs. The supervisor bearer authenticates
+    // every API including file and profile mutation and cannot be revoked
+    // without restarting the backend, so it is never accepted from a query
+    // string. Browser clients exchange it for a session token at bind time
+    // (POST /api/auth/exchange).
+    const token = new URL(c.req.url).searchParams.get("token") ?? "";
+    if (browserSessions.validate(token)) return "browser";
+  }
+  if (!AUTH_TOKEN && !getPin()) return "browser";
+  return null;
+}
+
+function allowsQueryCredential(c: any): boolean {
+  if (c.req.method !== "GET" && c.req.method !== "HEAD") return false;
+  const path = c.req.path as string;
+  return path === "/api/events/sessions"
+    || path === "/api/events/fs"
+    || path === "/api/events/multi"
+    || path === "/api/file/raw"
+    || /^\/api\/preview\/file\/[^/]+$/.test(path)
+    || /^\/api\/git\/raw\//.test(path)
+    || /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/.test(path)
+    || /^\/api\/moves\/[^/]+\/widget(?:\.css)?$/.test(path);
+}
+
+function browserSessionToken(c: any, allowQuery = false): string {
+  const bearer = bearerToken(c);
+  if (browserSessions.validate(bearer, Date.now(), false)) return bearer;
+  if (allowQuery) {
+    const query = new URL(c.req.url).searchParams.get("token") ?? "";
+    if (browserSessions.validate(query, Date.now(), false)) return query;
+  }
+  return "";
+}
+
+function registerBrowserConnection(c: any, close: () => void, allowQuery = false): () => void {
+  const token = browserSessionToken(c, allowQuery);
+  return token ? browserSessions.registerConnection(token, close) : () => {};
+}
+
+function requireOperator(c: any): Response | null {
+  return operatorKind(c) ? null : c.json({ error: "authenticated Modus session required" }, 401);
+}
+
+function requireLocalAuthAdmin(c: any): Response | null {
+  return hasLocalAuthAdmin(c)
+    ? null
+    : c.json({ error: "PIN administration is available only from the local Modus host" }, 403);
+}
 
 function pinSource(c: any): string {
   return requestSourceKey(c.req.header("X-Modus-Peer-Address"), c.req.header("X-Forwarded-For"));
@@ -441,9 +528,7 @@ function recordPinFailure(c: any): Response | null {
 }
 
 function mintBrowserSessionToken(): string {
-  const sessionToken = crypto.randomUUID();
-  pinSessions.add(sessionToken);
-  return sessionToken;
+  return browserSessions.mint().token;
 }
 
 // Check if PIN auth is required (no value exposed)
@@ -457,12 +542,17 @@ app.get("/api/auth/status", (c) => {
     needsName: !name,
     name,
     tokenRequired: !!AUTH_TOKEN,
+    canManagePin: hasLocalAuthAdmin(c),
     backend: BACKEND_IDENTITY,
   });
 });
 
 // First-run identity setup — PIN is optional and can be enabled later.
 app.post("/api/auth/name", async (c) => {
+  if (getPin()) {
+    const denied = requireOperator(c);
+    if (denied) return denied;
+  }
   const body = await c.req.json();
   const name = body.name?.trim();
   if (!name) return c.json({ error: "name required" }, 400);
@@ -478,8 +568,29 @@ app.post("/api/auth/session", (c) => {
   return c.json({ ok: true, token });
 });
 
+/**
+ * Exchange a header-presented operator credential for a browser session token.
+ *
+ * Resource URLs that a browser constructs itself (media elements, EventSource)
+ * cannot carry an Authorization header, so they carry a token in the query
+ * string. Only bounded, revocable session tokens are accepted there, so a client
+ * holding the supervisor bearer — notably the managed desktop shell — trades it
+ * for one here instead of putting the supervisor credential into URLs.
+ *
+ * Requires a header credential: this route never reads a query token, and the
+ * minted session inherits revocation on lock and PIN change.
+ */
+app.post("/api/auth/exchange", (c) => {
+  if (!AUTH_TOKEN && !getPin()) return c.json({ ok: true, token: "" });
+  const kind = operatorKind(c);
+  if (!kind) return c.json({ error: "unauthorized" }, 401);
+  return c.json({ ok: true, token: mintBrowserSessionToken() });
+});
+
 // First-run setup — set PIN from UI, only if none exists yet
 app.post("/api/auth/setup", async (c) => {
+  const denied = requireLocalAuthAdmin(c);
+  if (denied) return denied;
   const throttled = pinThrottleResponse(c);
   if (throttled) return throttled;
   if (getPin()) {
@@ -499,9 +610,9 @@ app.post("/api/auth/setup", async (c) => {
     return blocked ?? c.json({ error: "pin already set" }, 403);
   }
   pinThrottle.recordSuccess(pinSource(c));
-  const sessionToken = mintBrowserSessionToken();
   if (name) setUserName(name);
-  return c.json({ ok: true, token: sessionToken });
+  browserSessions.revokeAll();
+  return c.json({ ok: true });
 });
 
 // Verify PIN — returns a session token for the browser
@@ -524,6 +635,8 @@ app.post("/api/auth/verify", async (c) => {
 
 // Get current user display name
 app.get("/api/auth/me", (c) => {
+  const denied = requireOperator(c);
+  if (denied) return denied;
   return c.json({ name: getUserName() });
 });
 
@@ -534,33 +647,24 @@ app.get("/api/auth/check", (c) => {
   // validate the presented token itself.
   if (!AUTH_TOKEN && !getPin()) return c.json({ ok: true });
 
-  const header = c.req.header("Authorization");
-  const tokenParam = new URL(c.req.url).searchParams.get("token");
-  const bearerToken = header?.startsWith("Bearer ") ? header.slice(7) : null;
-
-  if (AUTH_TOKEN && (bearerToken === AUTH_TOKEN || tokenParam === AUTH_TOKEN)) {
-    return c.json({ ok: true, kind: "agent" });
-  }
-  if (bearerToken && pinSessions.has(bearerToken)) {
-    return c.json({ ok: true, kind: "browser" });
-  }
-  if (tokenParam && pinSessions.has(tokenParam)) {
-    return c.json({ ok: true, kind: "browser" });
-  }
-  if (!AUTH_TOKEN && !getPin()) {
-    return c.json({ ok: true });
-  }
+  const kind = operatorKind(c);
+  if (kind) return c.json({ ok: true, kind });
   return c.json({ error: "unauthorized" }, 401);
 });
 
 // Lock — invalidate ALL browser sessions (agents unaffected)
 app.post("/api/auth/lock", (c) => {
-  pinSessions.clear();
+  const denied = requireOperator(c);
+  if (denied) return denied;
+  if (!getPin()) return c.json({ error: "enable a PIN before locking remote browser access" }, 409);
+  browserSessions.revokeAll();
   return c.json({ ok: true });
 });
 
 // Change PIN — requires old PIN to verify identity
 app.post("/api/auth/change-pin", async (c) => {
+  const denied = requireLocalAuthAdmin(c);
+  if (denied) return denied;
   const throttled = pinThrottleResponse(c);
   if (throttled) return throttled;
   const body = await c.req.json();
@@ -574,23 +678,33 @@ app.post("/api/auth/change-pin", async (c) => {
     return blocked ?? c.json({ error: "wrong PIN" }, 401);
   }
   pinThrottle.recordSuccess(pinSource(c));
+  browserSessions.revokeAll();
+  return c.json({ ok: true });
+});
+
+// Local recovery â€” the desktop/host token can replace a forgotten PIN.
+app.post("/api/auth/reset-pin", async (c) => {
+  const denied = requireLocalAuthAdmin(c);
+  if (denied) return denied;
+  const body = await c.req.json();
+  const newPin = body.newPin?.trim();
+  if (!newPin || newPin.length < 4) return c.json({ error: "new PIN must be at least 4 characters" }, 400);
+  if (!resetPin(newPin)) return c.json({ error: "environment-managed PIN cannot be reset at runtime" }, 409);
+  browserSessions.revokeAll();
   return c.json({ ok: true });
 });
 
 // Disable PIN auth. Only works for PINs managed in the secrets file.
 app.post("/api/auth/disable-pin", async (c) => {
-  const throttled = pinThrottleResponse(c);
-  if (throttled) return throttled;
-  const body = await c.req.json();
-  const pin = body.pin?.trim();
-  if (!pin) return c.json({ error: "PIN is required" }, 400);
+  const denied = requireLocalAuthAdmin(c);
+  if (denied) return denied;
+  const pin = getPin();
+  if (!pin) return c.json({ error: "PIN is not enabled" }, 409);
   const ok = disablePin(pin);
   if (!ok) {
-    const blocked = recordPinFailure(c);
-    return blocked ?? c.json({ error: "wrong PIN or PIN is managed by environment" }, 401);
+    return c.json({ error: "environment-managed PIN cannot be disabled at runtime" }, 409);
   }
-  pinThrottle.recordSuccess(pinSource(c));
-  pinSessions.clear();
+  browserSessions.revokeAll();
   return c.json({ ok: true });
 });
 
@@ -606,18 +720,7 @@ app.use("/api/*", async (c, next) => {
   // If neither HARNESS_TOKEN nor HARNESS_PIN is set, no auth at all
   if (!AUTH_TOKEN && !getPin()) return next();
 
-  const header = c.req.header("Authorization");
-  const tokenParam = new URL(c.req.url).searchParams.get("token");
-  const bearerToken = header?.startsWith("Bearer ") ? header.slice(7) : null;
-
-  // Agent auth: HARNESS_TOKEN (always takes priority)
-  if (AUTH_TOKEN && (bearerToken === AUTH_TOKEN || tokenParam === AUTH_TOKEN)) {
-    return next();
-  }
-
-  // Browser auth: PIN session token
-  if (bearerToken && pinSessions.has(bearerToken)) return next();
-  if (tokenParam && pinSessions.has(tokenParam)) return next();
+  if (operatorKind(c, allowsQueryCredential(c))) return next();
 
   return c.json({ error: "unauthorized" }, 401);
 });
@@ -917,6 +1020,46 @@ app.post("/api/pages/fork", async (c) => {
     recordAttributionHint({ kind: "project", projectId: project.id }, result.path, { type: "human" });
   }
   return c.json({ ok: true, path: result.path });
+});
+
+// —— Docs (built-in documentation: index, content, batch search) ——
+// Header-auth only — these routes are NOT in the query-credential allowlist.
+
+function parseDocAudience(value: string | undefined): DocAudience | "all" | undefined {
+  if (value === "user" || value === "dev" || value === "agent" || value === "all") return value;
+  return undefined;
+}
+
+app.get("/api/docs", (c) => {
+  return c.json(listDocs({
+    audience: parseDocAudience(c.req.query("audience")),
+    cwd: c.req.query("cwd"),
+  }));
+});
+
+app.post("/api/docs/search", async (c) => {
+  const body = await c.req.json<{
+    queries?: unknown;
+    limit?: unknown;
+    audience?: string;
+    cwd?: string;
+  }>().catch(() => null);
+  if (!body || !Array.isArray(body.queries) || body.queries.some((q) => typeof q !== "string")) {
+    return c.json({ error: "queries must be an array of strings" }, 400);
+  }
+  const results = searchDocs(body.queries as string[], {
+    limit: typeof body.limit === "number" ? body.limit : undefined,
+    audience: parseDocAudience(body.audience),
+    cwd: body.cwd,
+  });
+  return c.json({ results });
+});
+
+app.get("/api/docs/*", (c) => {
+  const id = decodeURIComponent(c.req.path.slice("/api/docs/".length));
+  const doc = getDoc(id, { cwd: c.req.query("cwd") });
+  if (!doc) return c.json({ error: "doc not found" }, 404);
+  return c.json(doc);
 });
 
 // ── Secrets Status (booleans only, no values) ──
@@ -1408,6 +1551,7 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
 
       let resolve: () => void;
       const done = new Promise<void>((r) => { resolve = r; });
+      const unregisterBrowser = registerBrowserConnection(c, () => resolve(), true);
 
       const keepAlive = setInterval(async () => {
         try { await writer.write("ping", "{}", ""); } catch { /* connection dead */ }
@@ -1478,6 +1622,7 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
       if (graceTimer) clearTimeout(graceTimer);
       clearInterval(keepAlive);
       unsubscribe();
+      unregisterBrowser();
     } else if (!catchupHadDone) {
       // Session is not active — send synthetic done so client doesn't hang
       await writer.write("done", "{}", "done");
@@ -1525,6 +1670,7 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
   return sseResponse(c.req.raw, async (writer, signal) => {
     let resolve!: () => void;
     const done = new Promise<void>((r) => { resolve = r; });
+    const unregisterBrowser = registerBrowserConnection(c, () => resolve(), true);
     // Serialize every write through one chain. Catch-up writes and live
     // broadcast writes from independent sessions both target the same
     // controller; without this, their byte chunks could interleave and corrupt
@@ -1614,6 +1760,7 @@ function streamMultiSessionSSE(c: any, specs: MultiSpec[]) {
     signal.removeEventListener("abort", onAbort);
     clearInterval(keepAlive);
     for (const unsub of unsubscribers) unsub();
+    unregisterBrowser();
   });
 }
 
@@ -1648,6 +1795,7 @@ app.get("/api/events/sessions", (c) => {
   return sseResponse(c.req.raw, async (writer, signal) => {
     let resolve: () => void;
     const done = new Promise<void>((r) => { resolve = r; });
+    const unregisterBrowser = registerBrowserConnection(c, () => resolve(), true);
 
     const keepAlive = setInterval(async () => {
       try { await writer.write("ping", "{}", ""); } catch { /* dead */ }
@@ -1668,6 +1816,7 @@ app.get("/api/events/sessions", (c) => {
     signal.removeEventListener("abort", onAbort);
     clearInterval(keepAlive);
     unsubscribe();
+    unregisterBrowser();
   });
 });
 
@@ -1680,6 +1829,7 @@ app.get("/api/events/fs", (c) => {
   return sseResponse(c.req.raw, async (sseWriter, signal) => {
     let resolve: () => void;
     const done = new Promise<void>((r) => { resolve = r; });
+    const unregisterBrowser = registerBrowserConnection(c, () => resolve(), true);
 
     const keepAlive = setInterval(async () => {
       try { await sseWriter.write("ping", "{}", ""); } catch { /* dead */ }
@@ -1699,6 +1849,7 @@ app.get("/api/events/fs", (c) => {
     signal.removeEventListener("abort", onAbort);
     clearInterval(keepAlive);
     unsub();
+    unregisterBrowser();
   });
 });
 
@@ -3147,6 +3298,15 @@ app.patch("/api/client-extensions/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+const WHISPER_EXTENSION_ID = "whisper-transcribe";
+
+/** Read the whisper extension's configured secret name from stored settings. */
+function readWhisperSecretName(cwd?: string, userProfile?: string): string | undefined {
+  const settings = getResolvedClientExtensionsConfig(cwd, userProfile).settings?.[WHISPER_EXTENSION_ID];
+  const name = settings?.whisperSecretName;
+  return typeof name === "string" && name.trim() ? name.trim() : undefined;
+}
+
 app.post("/api/whisper/transcribe", async (c) => {
   try {
     const form = await c.req.formData();
@@ -3175,9 +3335,23 @@ app.post("/api/whisper/transcribe", async (c) => {
     const whisperBody = new FormData();
     whisperBody.set("file", file, file.name);
     whisperBody.set("response_format", "verbose_json");
+    const model = form.get("model");
+    if (typeof model === "string" && model.trim()) whisperBody.set("model", model.trim());
+    const language = form.get("language");
+    if (typeof language === "string" && language.trim()) whisperBody.set("language", language.trim());
+
+    const headers: Record<string, string> = {};
+    const credential = resolveWhisperCredential({
+      secretName: readWhisperSecretName(c.req.query("cwd"), c.req.query("userProfile")),
+      targetUrl: whisperUrl,
+      lookup: resolveSecret,
+    });
+    if (credential.kind === "reject") return c.json({ error: credential.error }, 400);
+    if (credential.kind === "attach") headers.Authorization = credential.authorization;
 
     const upstream = await fetch(whisperUrl, {
       method: "POST",
+      headers,
       body: whisperBody,
     });
     const upstreamText = await upstream.text();
@@ -3718,17 +3892,7 @@ app.get("/api/account", async (c) => {
   const params = new URL(c.req.url).searchParams;
   const userProfile = params.get("userProfile") ?? undefined;
 
-  // Get Claude Code auth status
-  let account: Record<string, unknown> | null = null;
-  try {
-    const proc = Bun.spawn(
-      [process.platform === "win32" ? "claude.cmd" : "claude", "auth", "status", "--json"],
-      { env: { ...process.env, CLAUDECODE: "" }, stdout: "pipe", stderr: "pipe" },
-    );
-    const text = await new Response(proc.stdout).text();
-    await proc.exited;
-    if (text.trim()) account = JSON.parse(text.trim());
-  } catch { /* silent — account info is optional */ }
+  const account = await probeClaudeAccount();
 
   // Get period-based cost summaries from local DB
   const costs = getPeriodCosts(userProfile);
@@ -4435,11 +4599,36 @@ app.get("*", async (c) => {
 
 // ── Start ──
 
+// Publish live harness module namespaces on the process global so packaged
+// move shims resolve to server.js's singletons. Must run before any move loads.
+initHarnessBridge();
+
+// Cursor has to write MCP servers into the user's project while a turn runs, and
+// that file carries resolved credentials. If a previous backend died mid-turn the
+// restore never ran, so complete it now rather than leaving the file in place.
+try {
+  const recovered = cursorMcpConfigStore.recoverStranded();
+  if (recovered > 0) {
+    console.log(`[cursor] recovered ${recovered} project MCP config file(s) left by a previous run`);
+  }
+} catch (error) {
+  console.warn(`[cursor] could not recover project MCP config files: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+// Provider credential material lives in process-private temp directories. Remove
+// any left by a dead process; directories owned by a live process are untouched.
+try {
+  const pruned = pruneAbandonedSensitiveTempDirectories();
+  if (pruned > 0) console.log(`[providers] pruned ${pruned} abandoned private temporary director(ies)`);
+} catch (error) {
+  console.warn(`[providers] could not prune private temporary directories: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 // Wire terminal auth checker (reuses same PIN + token auth as REST)
 setAuthChecker((token: string) => {
   if (!AUTH_TOKEN && !getPin()) return true;  // no auth configured
   if (AUTH_TOKEN && token === AUTH_TOKEN) return true;
-  if (pinSessions.has(token)) return true;
+  if (browserSessions.validate(token)) return true;
   return false;
 });
 setOriginChecker((origin, req) => !origin || isAllowedBrowserOrigin(origin, {
@@ -4474,6 +4663,11 @@ const server = Bun.serve({
 });
 if (!server.port) throw new Error("Bun did not report the bound backend port");
 PORT = server.port;
+// Write the actually-bound port back to env so env-reading consumers agree with the
+// real port. The desktop backend spawns us with HARNESS_PORT=0 (ephemeral); without this,
+// getBuiltInMcpServers() builds http://127.0.0.1:0/api/mcp/modus (unconnectable), which
+// silently drops the modus_submit MCP tool from every spawned session.
+process.env.HARNESS_PORT = String(server.port);
 const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
 const protocol = HARNESS_TLS_CERT && HARNESS_TLS_KEY ? "https" : "http";
 console.log(`Agent harness listening on ${protocol}://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);

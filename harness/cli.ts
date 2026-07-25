@@ -37,6 +37,7 @@ import {
   tailscaleServeOffArgs,
   tailscaleServeOnArgs,
 } from "./tailscale-serve";
+import { formatTokenForBanner } from "./token-display";
 
 // ── Tailscale Serve ──
 //
@@ -610,6 +611,7 @@ async function cmdStart(args: string[]): Promise<void> {
 
   // Token
   const { token, source: tokenSource } = loadToken();
+  const revealToken = hasFlag(args, "--show-token");
   const remote = remoteEnabled(args);
   if (!remote) clearTailscaleServe();
 
@@ -662,7 +664,7 @@ async function cmdStart(args: string[]): Promise<void> {
     if (!remote && tailscaleInstalled()) {
       console.log(`  remote access off — enable with: modus remote on`);
     }
-    console.log(`  token: ${token} (${tokenSource})`);
+    console.log(`  token: ${formatTokenForBanner(token, tokenSource, revealToken)}`);
     console.log(`  logs:  modus logs`);
 
     const cwdParam = process.env.AGENT_CWD
@@ -756,7 +758,7 @@ async function cmdStart(args: string[]): Promise<void> {
     if (!remote && tailscaleInstalled()) {
       console.log(`  remote  off — enable with: modus remote on`);
     }
-    console.log(`  token   ${token} (${tokenSource})`);
+    console.log(`  token   ${formatTokenForBanner(token, tokenSource, revealToken)}`);
     console.log("");
     console.log("  ctrl+c to stop");
     console.log("");
@@ -1204,6 +1206,7 @@ Commands:
     -d           Run as background daemon
     --remote     Expose on your tailnet for this run (see: modus remote)
     --no-remote  Skip tailnet exposure for this run
+    --show-token Print the harness token in the banner (it is masked by default)
   stop          Stop a running daemon
   status        Show server status
   remote        Show remote access status

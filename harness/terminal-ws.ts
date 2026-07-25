@@ -13,8 +13,8 @@
  *       { type: "error", message: string }
  *
  * Auth:
- *   WebSocket connections authenticate via ?token= query parameter,
- *   validated by the same auth function used for REST endpoints.
+ *   WebSocket connections authenticate with a base64url bearer carried in the
+ *   Sec-WebSocket-Protocol request header, never in a query string.
  *
  * Integration:
  *   This module exports a Bun WebSocket handler object to be passed
@@ -31,13 +31,29 @@ import {
 
 type WSData = {
   terminalId: string;
+  authToken: string;
 };
+
+type TerminalSocket = {
+  data: WSData;
+  send(data: string | ArrayBuffer | Uint8Array): void;
+  close(): void;
+  _termClient?: TerminalClient;
+};
+
+function closeForTerminalIoFailure(ws: TerminalSocket): void {
+  try {
+    ws.send(JSON.stringify({ type: "error", message: "Terminal input stream is closed" }));
+  } catch {}
+  try { ws.close(); } catch {}
+}
 
 // ── Auth ──
 
 /** Set by index.ts at startup */
 let _checkAuth: (token: string) => boolean = () => true;
 let _checkOrigin: (origin: string | null, req: Request) => boolean = (origin) => !origin;
+const socketsByToken = new Map<string, Set<TerminalSocket>>();
 
 export function setAuthChecker(fn: (token: string) => boolean): void {
   _checkAuth = fn;
@@ -49,6 +65,39 @@ export function setOriginChecker(fn: (origin: string | null, req: Request) => bo
   _checkOrigin = fn;
 }
 
+export function closeTerminalWebSockets(tokens: readonly string[]): void {
+  for (const token of tokens) {
+    const sockets = socketsByToken.get(token);
+    socketsByToken.delete(token);
+    for (const socket of sockets ?? []) {
+      try {
+        socket.send(JSON.stringify({ type: "error", message: "Modus session revoked" }));
+        socket.close();
+      } catch { /* an already-closed socket is already revoked */ }
+    }
+  }
+}
+
+const AUTH_PROTOCOL_PREFIX = "modus-auth.";
+
+function protocolToken(req: Request): string {
+  const protocols = (req.headers.get("Sec-WebSocket-Protocol") ?? "")
+    .split(",")
+    .map((value) => value.trim());
+  const encoded = protocols
+    .find((value) => value.startsWith(AUTH_PROTOCOL_PREFIX))
+    ?.slice(AUTH_PROTOCOL_PREFIX.length);
+  if (!encoded) return "";
+  try {
+    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const binary = atob(padded);
+    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+  } catch {
+    return "";
+  }
+}
+
 // ── Upgrade helper (called from fetch wrapper in index.ts) ──
 
 /**
@@ -57,14 +106,14 @@ export function setOriginChecker(fn: (origin: string | null, req: Request) => bo
  */
 export function tryUpgradeTerminalWS(
   req: Request,
-  server: { upgrade(req: Request, opts?: { data?: unknown }): boolean },
+  server: { upgrade(req: Request, opts: { data: WSData; headers?: Record<string, string> }): boolean },
 ): Response | null {
   const url = new URL(req.url);
   const match = url.pathname.match(/^\/ws\/terminal\/([^/]+)$/);
   if (!match) return null;
 
   const terminalId = match[1]!;
-  const token = url.searchParams.get("token") ?? "";
+  const token = protocolToken(req);
 
   if (!_checkOrigin(req.headers.get("Origin"), req)) {
     return new Response("Forbidden origin", { status: 403 });
@@ -80,7 +129,10 @@ export function tryUpgradeTerminalWS(
     return new Response("Terminal not found", { status: 404 });
   }
 
-  const upgraded = server.upgrade(req, { data: { terminalId } as WSData });
+  const upgraded = server.upgrade(req, {
+    data: { terminalId, authToken: token },
+    headers: { "Sec-WebSocket-Protocol": "modus-v1" },
+  });
   if (!upgraded) {
     return new Response("WebSocket upgrade failed", { status: 500 });
   }
@@ -92,8 +144,15 @@ export function tryUpgradeTerminalWS(
 // ── Bun WebSocket handler ──
 
 export const terminalWebSocket = {
-  open(ws: { data: WSData; send(data: string | ArrayBuffer | Uint8Array): void; close(): void }) {
-    const { terminalId } = ws.data;
+  open(ws: TerminalSocket) {
+    const { terminalId, authToken } = ws.data;
+    if (!_checkAuth(authToken)) {
+      ws.close();
+      return;
+    }
+    const sockets = socketsByToken.get(authToken) ?? new Set<TerminalSocket>();
+    sockets.add(ws);
+    socketsByToken.set(authToken, sockets);
 
     const client: TerminalClient = {
       send(data) { ws.send(data); },
@@ -109,7 +168,7 @@ export const terminalWebSocket = {
     }
 
     // Store client ref on ws for detach in close handler
-    (ws as any)._termClient = client;
+    ws._termClient = client;
 
     // Replay scrollback so the client sees existing output
     for (const chunk of scrollback) {
@@ -117,42 +176,55 @@ export const terminalWebSocket = {
     }
   },
 
-  message(ws: { data: WSData; send(data: string | ArrayBuffer | Uint8Array): void }, message: string | ArrayBuffer | Uint8Array) {
-    const { terminalId } = ws.data;
+  message(ws: TerminalSocket, message: string | ArrayBuffer | Uint8Array) {
+    const { terminalId, authToken } = ws.data;
+    if (!_checkAuth(authToken)) {
+      ws.close();
+      return;
+    }
 
     // Binary frame → PTY input
     if (message instanceof ArrayBuffer || message instanceof Uint8Array) {
       const data = message instanceof ArrayBuffer ? new Uint8Array(message) : message;
-      writeTerminal(terminalId, data);
+      if (!writeTerminal(terminalId, data)) closeForTerminalIoFailure(ws);
       return;
     }
 
     // Text frame → JSON control message
     if (typeof message === "string") {
+      let ctrl: any;
       try {
-        const ctrl = JSON.parse(message);
-        switch (ctrl.type) {
-          case "resize":
-            if (typeof ctrl.cols === "number" && typeof ctrl.rows === "number") {
-              resizeTerminal(terminalId, ctrl.cols, ctrl.rows);
-            }
-            break;
-          case "ping":
-            ws.send(JSON.stringify({ type: "pong" }));
-            break;
-          default:
-            ws.send(JSON.stringify({ type: "error", message: `Unknown control type: ${ctrl.type}` }));
-        }
+        ctrl = JSON.parse(message);
       } catch {
         // Not JSON — treat as raw text input to PTY
-        writeTerminal(terminalId, message);
+        if (!writeTerminal(terminalId, message)) closeForTerminalIoFailure(ws);
+        return;
+      }
+      switch (ctrl.type) {
+        case "resize":
+          if (
+            typeof ctrl.cols === "number"
+            && typeof ctrl.rows === "number"
+            && !resizeTerminal(terminalId, ctrl.cols, ctrl.rows)
+          ) {
+            closeForTerminalIoFailure(ws);
+          }
+          break;
+        case "ping":
+          ws.send(JSON.stringify({ type: "pong" }));
+          break;
+        default:
+          ws.send(JSON.stringify({ type: "error", message: `Unknown control type: ${ctrl.type}` }));
       }
     }
   },
 
-  close(ws: { data: WSData }) {
-    const { terminalId } = ws.data;
-    const client = (ws as any)._termClient as TerminalClient | undefined;
+  close(ws: TerminalSocket) {
+    const { terminalId, authToken } = ws.data;
+    const sockets = socketsByToken.get(authToken);
+    sockets?.delete(ws);
+    if (sockets?.size === 0) socketsByToken.delete(authToken);
+    const client = ws._termClient;
     if (client) {
       detachClient(terminalId, client);
     }

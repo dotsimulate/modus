@@ -40,3 +40,19 @@ test("MCP proxy normalizes null notification responses", async () => {
   expect(response.status).toBe(202);
   expect(await response.text()).toBe("");
 });
+
+test("MCP proxy URLs never embed the harness bearer token", () => {
+  const prior = process.env.HARNESS_TOKEN;
+  process.env.HARNESS_TOKEN = "mcp-proxy-token-canary";
+  try {
+    const proxyUrl = registerMcpProxyTarget("canary", {
+      type: "http",
+      url: "https://example.invalid/mcp",
+    });
+    expect(proxyUrl).not.toContain("mcp-proxy-token-canary");
+    expect(new URL(proxyUrl).searchParams.has("token")).toBe(false);
+  } finally {
+    if (prior === undefined) delete process.env.HARNESS_TOKEN;
+    else process.env.HARNESS_TOKEN = prior;
+  }
+});

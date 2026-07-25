@@ -12,6 +12,10 @@ const server = {
   },
 };
 
+function authProtocol(token: string): string {
+  return `modus-v1, modus-auth.${btoa(token).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
+
 beforeEach(() => {
   setAuthChecker(() => true);
   setOriginChecker((origin, req) => !origin || isAllowedBrowserOrigin(origin, {
@@ -22,8 +26,8 @@ beforeEach(() => {
 
 describe("terminal WebSocket browser-origin boundary", () => {
   test("rejects a cross-site browser before terminal lookup or upgrade", async () => {
-    const response = tryUpgradeTerminalWS(new Request("http://127.0.0.1:3777/ws/terminal/missing?token=test", {
-      headers: { Origin: "https://evil.example", Host: "127.0.0.1:3777" },
+    const response = tryUpgradeTerminalWS(new Request("http://127.0.0.1:3777/ws/terminal/missing", {
+      headers: { Origin: "https://evil.example", Host: "127.0.0.1:3777", "Sec-WebSocket-Protocol": authProtocol("test") },
     }), server);
 
     expect(response?.status).toBe(403);
@@ -31,8 +35,8 @@ describe("terminal WebSocket browser-origin boundary", () => {
   });
 
   test("allows the active loopback browser origin to reach terminal lookup", () => {
-    const response = tryUpgradeTerminalWS(new Request("http://127.0.0.1:3777/ws/terminal/missing?token=test", {
-      headers: { Origin: "http://127.0.0.1:3777", Host: "127.0.0.1:3777" },
+    const response = tryUpgradeTerminalWS(new Request("http://127.0.0.1:3777/ws/terminal/missing", {
+      headers: { Origin: "http://127.0.0.1:3777", Host: "127.0.0.1:3777", "Sec-WebSocket-Protocol": authProtocol("test") },
     }), server);
 
     expect(response?.status).toBe(404);
@@ -40,7 +44,9 @@ describe("terminal WebSocket browser-origin boundary", () => {
 
   test("preserves non-browser SDK clients that omit Origin", () => {
     const response = tryUpgradeTerminalWS(
-      new Request("http://127.0.0.1:3777/ws/terminal/missing?token=test"),
+      new Request("http://127.0.0.1:3777/ws/terminal/missing", {
+        headers: { "Sec-WebSocket-Protocol": authProtocol("test") },
+      }),
       server,
     );
 
@@ -48,10 +54,21 @@ describe("terminal WebSocket browser-origin boundary", () => {
   });
 
   test("rejects opaque browser origins", () => {
-    const response = tryUpgradeTerminalWS(new Request("http://127.0.0.1:3777/ws/terminal/missing?token=test", {
-      headers: { Origin: "null", Host: "127.0.0.1:3777" },
+    const response = tryUpgradeTerminalWS(new Request("http://127.0.0.1:3777/ws/terminal/missing", {
+      headers: { Origin: "null", Host: "127.0.0.1:3777", "Sec-WebSocket-Protocol": authProtocol("test") },
     }), server);
 
     expect(response?.status).toBe(403);
+  });
+
+  test("does not accept a bearer from the WebSocket URL", async () => {
+    setAuthChecker((token) => token === "test");
+    const response = tryUpgradeTerminalWS(
+      new Request("http://127.0.0.1:3777/ws/terminal/missing?token=test"),
+      server,
+    );
+
+    expect(response?.status).toBe(401);
+    expect(await response?.text()).toBe("Unauthorized");
   });
 });

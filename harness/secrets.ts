@@ -137,7 +137,7 @@ export function setupPin(pin: string): boolean {
  */
 export function changePin(oldPin: string, newPin: string): boolean {
   const current = resolveSecret("HARNESS_PIN");
-  if (!current || current !== oldPin) return false;
+  if (!current || current !== oldPin || !("HARNESS_PIN" in secretsStore)) return false;
 
   const path = process.env.HARNESS_SECRETS_FILE ?? DEFAULT_PATH;
   if (!existsSync(path)) return false;
@@ -163,12 +163,30 @@ export function changePin(oldPin: string, newPin: string): boolean {
 }
 
 /**
+ * Replace or create the file-managed PIN for a locally authenticated owner.
+ * Environment-managed PINs remain immutable at runtime.
+ */
+export function resetPin(newPin: string): boolean {
+  if (process.env.HARNESS_PIN !== undefined && !("HARNESS_PIN" in secretsStore)) return false;
+
+  const path = process.env.HARNESS_SECRETS_FILE ?? DEFAULT_PATH;
+  ensureSecretsFile(path);
+  const content = existsSync(path) ? readFileSync(path, "utf-8") : "";
+  const lines = content.split("\n").filter((line) => !line.match(/^HARNESS_PIN=/));
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  lines.push(`HARNESS_PIN=${newPin}`, "");
+  writeFileSync(path, lines.join("\n"), { mode: 0o600 });
+  secretsStore["HARNESS_PIN"] = newPin;
+  return true;
+}
+
+/**
  * Remove the configured PIN from the secrets file.
  * Returns false when the PIN is wrong, missing, or supplied only by process.env.
  */
 export function disablePin(pin: string): boolean {
   const current = resolveSecret("HARNESS_PIN");
-  if (!current || current !== pin) return false;
+  if (!current || current !== pin || !("HARNESS_PIN" in secretsStore)) return false;
 
   const path = process.env.HARNESS_SECRETS_FILE ?? DEFAULT_PATH;
   if (!existsSync(path)) return false;
