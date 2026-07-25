@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { UserProfileCoreSchema, UserProfileUiConfigSchema } from "./profile-schemas";
+import { ProfileSchema, UserProfileCoreSchema, UserProfileSchema, UserProfileUiConfigSchema } from "./profile-schemas";
 
 test("interface settings validate in the UI sidecar and stay out of profile core", () => {
   const interfaceConfig = {
@@ -22,4 +22,21 @@ test("interface settings validate in the UI sidecar and stay out of profile core
     interface: interfaceConfig,
   });
   expect("interface" in core).toBe(false);
+});
+
+test("agent and user profiles preserve provider-specific custom model IDs", () => {
+  const customModel = "vendor/future-model-2030-01";
+  const agent = ProfileSchema.parse({
+    prompt: "Use the selected model.",
+    description: "Custom model profile",
+    model: customModel,
+  });
+  const user = UserProfileSchema.parse({
+    displayName: "Tester",
+    projects: [],
+    model: customModel,
+  });
+
+  expect(agent.model).toBe(customModel);
+  expect(user.model).toBe(customModel);
 });

@@ -13,7 +13,7 @@ import { providerFallbackModel } from "../../../provider-defaults";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
 import { useProfiles } from "../providers/ProfileContext";
-import { getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
+import { getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGrokBuildProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
 
 export type { AgentConfigState };
 
@@ -128,6 +128,7 @@ export function AgentConfig({
         ...(isCodexProvider(provider || profileProvider) ? { codex: config.providerControls?.codex } : {}),
         ...(isClaudeCodeProvider(provider || profileProvider) ? { claude: config.providerControls?.claude } : {}),
         ...(isAntigravityProvider(provider || profileProvider) ? { antigravity: config.providerControls?.antigravity } : {}),
+        ...(isGrokBuildProvider(provider || profileProvider) ? { grokBuild: config.providerControls?.grokBuild } : {}),
       },
     };
     onChange(nextConfig);
@@ -183,6 +184,16 @@ export function AgentConfig({
     });
   };
 
+  const grokBuildControls = config.providerControls?.grokBuild ?? {};
+  const updateGrokBuildControls = (patch: NonNullable<NonNullable<AgentConfigState["providerControls"]>["grokBuild"]>) => {
+    update({
+      providerControls: {
+        ...(config.providerControls ?? {}),
+        grokBuild: { ...grokBuildControls, ...patch },
+      },
+    });
+  };
+
   return (
     <div className={`agent-config ${compact ? "agent-config--compact" : ""}`}>
       {/* Model + Provider + Effort + Max Turns row */}
@@ -203,6 +214,7 @@ export function AgentConfig({
               })}
             placeholder={profileModel ?? "default"}
             searchPlaceholder="search models..."
+            allowCustom
             onChange={(model) => update({ model })}
           />
         </label>
@@ -355,6 +367,46 @@ export function AgentConfig({
               onChange={(sandbox) => updateAntigravityControls({
                 sandbox: sandbox ? sandbox === "enabled" : undefined,
               })}
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {isGrokBuildProvider(effectiveProvider) ? (
+        <div className="agent-config-row">
+          <label className="agent-config-field">
+            <span>mode</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={grokBuildControls.mode ?? ""}
+              options={[{ value: "default" }, { value: "auto" }, { value: "plan" }, { value: "always-approve" }]}
+              placeholder="default"
+              searchPlaceholder="search mode..."
+              onChange={(mode) => updateGrokBuildControls({
+                mode: (mode || undefined) as NonNullable<NonNullable<AgentConfigState["providerControls"]>["grokBuild"]>["mode"],
+              })}
+            />
+          </label>
+          <label className="agent-config-field">
+            <span>memory</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={grokBuildControls.noMemory === undefined ? "" : grokBuildControls.noMemory ? "disabled" : "enabled"}
+              options={[{ value: "enabled" }, { value: "disabled" }]}
+              placeholder="profile default"
+              searchPlaceholder="search memory mode..."
+              onChange={(memory) => updateGrokBuildControls({ noMemory: memory ? memory === "disabled" : undefined })}
+            />
+          </label>
+          <label className="agent-config-field">
+            <span>web</span>
+            <SearchDropdown
+              className={dropdownClassName}
+              value={grokBuildControls.disableWebSearch === undefined ? "" : grokBuildControls.disableWebSearch ? "disabled" : "enabled"}
+              options={[{ value: "enabled" }, { value: "disabled" }]}
+              placeholder="profile default"
+              searchPlaceholder="search web mode..."
+              onChange={(web) => updateGrokBuildControls({ disableWebSearch: web ? web === "disabled" : undefined })}
             />
           </label>
         </div>

@@ -4,7 +4,10 @@
  */
 
 import { z } from "zod";
-import { isKnownProvider } from "./providers/registry";
+// Leaf module on purpose: importing ./providers/registry here would pull every
+// provider implementation and the database into anything that only wants to
+// validate a profile.
+import { isKnownProvider } from "./providers/provider-names";
 
 // ── MCP Server Config ──
 
@@ -168,6 +171,13 @@ const ProviderControlsSchema = z.object({
     mode: z.enum(["accept-edits", "plan"]).optional(),
     sandbox: z.boolean().optional(),
     printTimeout: z.string().min(1).optional(),
+  }).optional(),
+  grokBuild: z.object({
+    mode: z.enum(["default", "auto", "plan", "always-approve"]).optional(),
+    sandbox: z.string().min(1).optional(),
+    noMemory: z.boolean().optional(),
+    noSubagents: z.boolean().optional(),
+    disableWebSearch: z.boolean().optional(),
   }).optional(),
 }).catchall(z.unknown());
 

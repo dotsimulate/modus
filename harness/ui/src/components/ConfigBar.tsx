@@ -7,7 +7,7 @@ import {
 } from "./AgentConfig";
 import { SearchDropdown } from "./SearchDropdown";
 import { ChatSettings } from "./ChatSettings";
-import { getAllTools, getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isToolEnabled } from "../tools";
+import { getAllTools, getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isGrokBuildProvider, isToolEnabled } from "../tools";
 import { useProfiles } from "../providers/ProfileContext";
 import type { Profile, SessionStatus, Message } from "../../../sdk/index";
 import { modus } from "../modusClient";
@@ -212,6 +212,7 @@ export function ConfigBar({
     (profileTools === "all" ? builtinCount : profileTools.length) + mcpCount;
   const codexControls = agentConfig.providerControls?.codex ?? {};
   const antigravityControls = agentConfig.providerControls?.antigravity ?? {};
+  const grokBuildControls = agentConfig.providerControls?.grokBuild ?? {};
   const effort = agentConfig.effort || profileEffort || "default";
   const hasPendingProfile = !!pendingProfileName && pendingProfileName !== profileName;
   const pendingConfigBaseline = hasPendingProfile ? createEmptyAgentConfig() : agentConfig;
@@ -275,6 +276,12 @@ export function ConfigBar({
               <span className="config-bar-sep">·</span>
               <span className="config-bar-value">{antigravityControls.sandbox === undefined ? "sandbox:default" : antigravityControls.sandbox ? "sandbox:on" : "sandbox:off"}</span>
               <span className="config-bar-sep">·</span>
+            </>
+          )}
+          {isGrokBuildProvider(effectiveProvider) && (
+            <>
+              <span className="config-bar-value">{grokBuildControls.mode ?? "default"}</span>
+              <span className="config-bar-sep">Â·</span>
             </>
           )}
           <span className="config-bar-value">{effort}</span>

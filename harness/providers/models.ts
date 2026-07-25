@@ -12,6 +12,7 @@ import {
   resolveAntigravityExecutable,
   runAntigravityCommand,
 } from "./antigravity-cli-runtime";
+import { probeGrokBuildModels } from "./grok-build-runtime";
 
 export type ProviderModelInfo = {
   id: string;
@@ -25,6 +26,16 @@ type ModelInfo = ProviderModelInfo;
 
 const CLAUDE_MODELS: ModelInfo[] = [
   { id: "claude-fable-5", owned_by: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 128_000, contextSource: "provider-default" },
+  { id: "claude-opus-5", owned_by: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 128_000, contextSource: "provider-default" },
+  { id: "claude-sonnet-5", owned_by: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 128_000, contextSource: "provider-default" },
+  { id: "default", owned_by: "anthropic", contextSource: "provider-default" },
+  { id: "best", owned_by: "anthropic", contextSource: "provider-default" },
+  { id: "opus", owned_by: "anthropic", contextSource: "provider-default" },
+  { id: "sonnet", owned_by: "anthropic", contextSource: "provider-default" },
+  { id: "haiku", owned_by: "anthropic", contextSource: "provider-default" },
+  { id: "opus[1m]", owned_by: "anthropic", contextWindow: 1_000_000, contextSource: "provider-default" },
+  { id: "sonnet[1m]", owned_by: "anthropic", contextWindow: 1_000_000, contextSource: "provider-default" },
+  { id: "opusplan", owned_by: "anthropic", contextSource: "provider-default" },
   { id: "claude-opus-4-8[1m]", owned_by: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 128_000, contextSource: "provider-default" },
   { id: "claude-opus-4-8", owned_by: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 128_000, contextSource: "provider-default" },
   { id: "claude-opus-4-7[1m]", owned_by: "anthropic", contextWindow: 1_000_000, contextSource: "provider-default" },
@@ -49,6 +60,10 @@ const GEMINI_MODELS: ModelInfo[] = [
 const ANTIGRAVITY_FALLBACK_MODELS: ModelInfo[] = [
   { id: "Gemini 3.5 Flash", owned_by: "google", contextSource: "provider-default" },
   { id: "Gemini 3.1 Pro", owned_by: "google", contextSource: "provider-default" },
+];
+
+const GROK_BUILD_FALLBACK_MODELS: ModelInfo[] = [
+  { id: "grok-4.5", owned_by: "xai", contextSource: "provider-default" },
 ];
 
 async function fetchAntigravityModels(): Promise<ModelInfo[]> {
@@ -172,6 +187,15 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
 
   if (provider === "antigravity") {
     return fetchAntigravityModels();
+  }
+
+  if (provider === "grok-build") {
+    try {
+      const models = await probeGrokBuildModels();
+      return models.length ? models : GROK_BUILD_FALLBACK_MODELS;
+    } catch {
+      return GROK_BUILD_FALLBACK_MODELS;
+    }
   }
 
   // Cursor: shell out to cursor-agent models and parse output

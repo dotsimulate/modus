@@ -11,11 +11,13 @@ import { createCodexProvider } from "./codex";
 import { createCursorProvider } from "./cursor";
 import { createOpenCodeProvider } from "./opencode";
 import { createAntigravityProvider } from "./antigravity";
+import { createGrokBuildProvider } from "./grok-build";
 // Lazy-imported: Gemini CLI core spams "Experiments loaded" on import
 import { createPiAgentProvider, type PiProviderName } from "./pi-agent";
 import { GEMINI_CAPABILITIES } from "./gemini-cli-capabilities";
 import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
 import { ANTIGRAVITY_CAPABILITIES } from "./antigravity-capabilities";
+import { GROK_BUILD_CAPABILITIES } from "./grok-build-capabilities";
 import { existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -26,10 +28,13 @@ import {
   resolveAntigravityExecutable,
   runAntigravityCommand,
 } from "./antigravity-cli-runtime";
+import { probeGrokBuildAuth, resolveGrokBuildCommand } from "./grok-build-runtime";
 
-const PI_PROVIDERS: PiProviderName[] = ["litellm", "ollama", "openrouter"];
-const STANDALONE_PROVIDERS = ["claude-code", "claude-code-pty", "codex", "cursor", "antigravity", "opencode"] as const;
-const HIDDEN_LEGACY_PROVIDERS = ["gemini-cli"] as const;
+// Names live in a leaf module so profile validation can know them without
+// importing every provider implementation (and, transitively, the database).
+import { PI_PROVIDERS, STANDALONE_PROVIDERS, isKnownProvider, listProviders } from "./provider-names";
+
+export { isKnownProvider, listProviders };
 
 // Lazy-init cache
 const cache = new Map<string, SessionProvider>();
@@ -51,6 +56,8 @@ export function getProvider(name: string): SessionProvider {
     provider = createOpenCodeProvider();
   } else if (name === "antigravity") {
     provider = createAntigravityProvider();
+  } else if (name === "grok-build") {
+    provider = createGrokBuildProvider();
   } else if (name === "gemini-cli") {
     const supportedLegacyAuth = !!process.env.GEMINI_API_KEY
       || (process.env.GOOGLE_GENAI_USE_VERTEXAI === "true" && (
@@ -78,15 +85,6 @@ export function getProvider(name: string): SessionProvider {
   return provider;
 }
 
-export function isKnownProvider(name: string): boolean {
-  return STANDALONE_PROVIDERS.includes(name as (typeof STANDALONE_PROVIDERS)[number])
-    || HIDDEN_LEGACY_PROVIDERS.includes(name as (typeof HIDDEN_LEGACY_PROVIDERS)[number])
-    || PI_PROVIDERS.includes(name as PiProviderName);
-}
-
-export function listProviders(): string[] {
-  return [...STANDALONE_PROVIDERS, ...PI_PROVIDERS];
-}
 
 export function getProviderCapabilities(name: string): ProviderCapabilities {
   // Short-circuit gemini-cli — its provider module imports @google/gemini-cli-core
@@ -95,6 +93,7 @@ export function getProviderCapabilities(name: string): ProviderCapabilities {
   // a session actually starts) should trigger the SDK import.
   if (name === "gemini-cli") return GEMINI_CAPABILITIES;
   if (name === "antigravity") return ANTIGRAVITY_CAPABILITIES;
+  if (name === "grok-build") return GROK_BUILD_CAPABILITIES;
   if (name === "opencode") return OPENCODE_CAPABILITIES;
   return getProvider(name).capabilities;
 }
@@ -127,6 +126,7 @@ const PROVIDER_PREREQS: Record<string, { cli?: string; envAny?: string[] }> = {
   "codex": { cli: "codex" },
   "cursor": { cli: "cursor-agent" },
   "antigravity": { cli: "agy" },
+  "grok-build": { cli: "grok" },
   "opencode": { cli: "opencode" },
   "openrouter": { envAny: ["OPENROUTER_API_KEY"] },
   // litellm and ollama: local services, checked via ping below
@@ -167,6 +167,8 @@ export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
           ? resolveCursorAgentExecutable()
           : name === "antigravity"
             ? resolveAntigravityExecutable()
+            : name === "grok-build"
+              ? resolveGrokBuildCommand()?.executable
             : name === "opencode"
               ? Bun.which("opencode") ?? Bun.which("bunx")
               : Bun.which(spec.cli);
@@ -199,6 +201,15 @@ export async function checkAllProviderHealth(): Promise<ProviderHealthInfo[]> {
         const auth = antigravityAuthFromModelsResult(await runAntigravityCommand(executable, ["models"], { timeoutMs: 15_000 }));
         checks.push({ type: "auth", label: "google sign-in", passed: auth.authenticated, detail: auth.detail });
       }
+    }
+    if (name === "grok-build") {
+      const auth = await probeGrokBuildAuth();
+      checks.push({
+        type: "auth",
+        label: "xAI sign-in",
+        passed: auth.authenticated,
+        detail: auth.detail,
+      });
     }
 
     // Local service reachability
