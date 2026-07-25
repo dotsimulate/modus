@@ -13,6 +13,7 @@ import type { TSchema } from "@sinclair/typebox";
 import type { ToolDefinition, AgentToolResult } from "@mariozechner/pi-coding-agent";
 import type { McpServerConfig } from "../profiles";
 import { resolveSecret } from "../secrets";
+import { providerChildEnv } from "./child-env";
 
 export type McpConnection = {
   name: string;
@@ -73,7 +74,7 @@ async function connectMcpServer(
 
   if ("command" in config) {
     // stdio transport
-    const env: Record<string, string> = { ...process.env as Record<string, string> };
+    const env: Record<string, string> = providerChildEnv();
     if (config.env) {
       for (const [k, v] of Object.entries(config.env)) {
         // Resolve $VAR_NAME references in env values

@@ -12,13 +12,14 @@ import {
   type PermissionPolicy,
 } from "../profiles";
 import { resolveSecret } from "../secrets";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
+import { createSensitiveTempDirectory, removeSensitiveTempDirectory, writeSensitiveTempFile } from "../sensitive-temp";
 import type { SessionProvider, TurnContext } from "./types";
 import { ANTIGRAVITY_CAPABILITIES } from "./antigravity-capabilities";
 import { resolveAntigravityExecutable } from "./antigravity-cli-runtime";
 import { ensureAntigravityPlugin } from "./antigravity-plugin";
+import { providerChildEnv } from "./child-env";
 
 type AntigravityProcess = {
   pid?: number;
@@ -161,20 +162,22 @@ function mergedMcpServers(ctx: TurnContext): Record<string, McpServerConfig> {
   return Object.fromEntries(Object.entries(merged).map(([name, config]) => [name, resolveMcpConfig(name, config)]));
 }
 
-function makeIpcDirectory(sessionId: string): string {
-  const base = join(tmpdir(), "modus-antigravity");
-  mkdirSync(base, { recursive: true });
-  const directory = join(base, `${sessionId}-${crypto.randomUUID()}`);
-  mkdirSync(directory, { recursive: false });
-  return directory;
+/**
+ * Create the per-turn hook/IPC directory.
+ *
+ * This directory holds fully resolved MCP credentials (including the Modus
+ * supervisor bearer), so it must be process-private rather than a predictable
+ * path under the shared system temp root that any local user can read.
+ */
+function makeIpcDirectory(): string {
+  return createSensitiveTempDirectory();
 }
 
 function cleanupIpcDirectory(directory: string | null): void {
   if (!directory) return;
-  const base = resolve(join(tmpdir(), "modus-antigravity"));
-  const target = resolve(directory);
-  if (target === base || !target.startsWith(`${base}${process.platform === "win32" ? "\\" : "/"}`)) return;
-  try { rmSync(target, { recursive: true, force: true }); } catch { /* best effort */ }
+  try {
+    removeSensitiveTempDirectory(directory);
+  } catch { /* best effort */ }
 }
 
 function toolKey(input: Record<string, any>): string {
@@ -404,15 +407,19 @@ async function runTurn(
       return;
     }
 
-    state.hookDir = makeIpcDirectory(session.sessionId);
+    state.hookDir = makeIpcDirectory();
     state.processedHookLines = 0;
     state.protocolError = null;
     state.observedTools.clear();
-    const mcpConfigPath = join(state.hookDir, "mcp-servers.json");
-    writeFileSync(mcpConfigPath, JSON.stringify(mergedMcpServers(ctx)), "utf8");
+    // Credential-bearing: written 0600 inside the private per-turn directory.
+    const mcpConfigPath = writeSensitiveTempFile(
+      state.hookDir,
+      "mcp-servers.json",
+      JSON.stringify(mergedMcpServers(ctx)),
+    );
     const instruction = profileInstruction(ctx);
     if (instruction) {
-      writeFileSync(join(state.hookDir, "profile-instructions.json"), JSON.stringify({ text: instruction }), "utf8");
+      writeSensitiveTempFile(state.hookDir, "profile-instructions.json", JSON.stringify({ text: instruction }));
     }
 
     if (!options.skipPromptPersist) {
@@ -460,7 +467,7 @@ async function runTurn(
       cmd: [executable, ...args],
       cwd: session.cwd ?? ctx.opts.cwd ?? process.cwd(),
       env: {
-        ...process.env,
+        ...providerChildEnv(),
         AGY_CLI_DISABLE_AUTO_UPDATE: "true",
         MODUS_ANTIGRAVITY_HOOK_DIR: state.hookDir,
         MODUS_ANTIGRAVITY_MCP_CONFIG_PATH: mcpConfigPath,

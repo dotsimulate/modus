@@ -3,6 +3,7 @@ import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { resolveProfilePrompt, type PermissionPolicy } from "../profiles";
 import type { SessionProvider, TurnContext } from "./types";
 import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
+import { providerChildEnv } from "./child-env";
 
 type OpenCodeState = {
   sessionId: string | null;
@@ -204,7 +205,7 @@ async function runTurn(
     stderr: "pipe",
     stdin: "ignore",
     signal: state.abortController.signal,
-    env: process.env as Record<string, string>,
+    env: providerChildEnv(),
   });
   const procPid = typeof proc.pid === "number" ? proc.pid : null;
   if (procPid != null) session.osPids.add(procPid);

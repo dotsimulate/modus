@@ -28,6 +28,7 @@ import { getMaxSeq, getObservedProviderSessionIds, getSession, updateProviderSes
 import { logActivity } from "../activity";
 import { registerExternalTerminal, updateTerminalSession } from "../terminal-manager";
 import { getMemoryLimitedEnv } from "../memory-guard";
+import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe-errors";
 import {
   getGlobalConfig, getUserData,
   type McpServerConfig,
@@ -44,6 +45,7 @@ import {
   type ProviderProcessLease,
 } from "./provider-process-owner";
 import { redactProviderDiagnostic } from "./provider-diagnostics";
+import { providerChildEnv } from "./child-env";
 
 // ── Constants ──
 
@@ -380,10 +382,7 @@ function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
   }
 
   // Build env
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) env[key] = value;
-  }
+  const env: Record<string, string> = providerChildEnv();
   if (profileDef?.env) {
     Object.assign(env, profileDef.env);
   }
@@ -427,6 +426,17 @@ function spawnClaude(state: PtyState, sessionId?: string): {
   } catch (error) {
     cleanupSensitiveTempDir(state);
     throw error;
+  }
+
+  if (proc.stdin) {
+    attachPipeErrorHandler(proc.stdin, (error) => {
+      state.stderrBuf = `Provider input stream closed unexpectedly (${pipeErrorCode(error)}).`;
+      const current = state.processOwner.current();
+      if (current?.process === proc) terminatePtyProcessTree(current, true);
+      else {
+        try { proc.kill("SIGKILL"); } catch { /* best effort */ }
+      }
+    });
   }
 
   // Collect stderr and pipe to terminal
@@ -502,7 +512,17 @@ function spawnClaude(state: PtyState, sessionId?: string): {
             // Echo newline
             registration.pushData(new TextEncoder().encode("\r\n"));
             const msg = formatStdinMessage(inputBuffer.trim());
-            proc.stdin.write(msg + "\n");
+            const wrote = tryPipeOperation(
+              () => proc.stdin!.write(msg + "\n"),
+              (error) => {
+                state.stderrBuf = `Provider input stream closed unexpectedly (${pipeErrorCode(error)}).`;
+                const current = state.processOwner.current();
+                if (current?.process === proc) terminatePtyProcessTree(current, true);
+              },
+            );
+            if (!wrote) {
+              registration.pushData(new TextEncoder().encode("\r\nProvider input stream closed.\r\n"));
+            }
             inputBuffer = "";
           }
         } else if (ch === "\x7f" || ch === "\b") {
@@ -560,8 +580,14 @@ function writeMessageToStdin(state: PtyState, content: MessageContent): boolean 
   // Discard any partial keystrokes from the terminal UI
   if (state.terminal) state.terminal.clearInputBuffer();
 
-  state.proc.stdin.write(formatStdinMessage(content) + "\n");
-  return true;
+  return tryPipeOperation(
+    () => state.proc!.stdin!.write(formatStdinMessage(content) + "\n"),
+    (error) => {
+      state.stderrBuf = `Provider input stream closed unexpectedly (${pipeErrorCode(error)}).`;
+      const current = state.processOwner.current();
+      if (current?.process === state.proc) terminatePtyProcessTree(current, true);
+    },
+  );
 }
 
 function terminatePtyProcessTree(lease: ProviderProcessLease<ChildProcess>, force: boolean): void {
@@ -704,7 +730,10 @@ function restartPtyTurn(ctx: TurnContext, state: PtyState, content: MessageConte
   state.sensitiveTempDir = sensitiveTempDir;
 
   const { proc, lease, rl } = spawnClaude(state, session.sessionId);
-  proc.stdin?.write(formatStdinMessage(content) + "\n");
+  if (!writeMessageToStdin(state, content)) {
+    terminatePtyProcessTree(lease, true);
+    throw new Error("Claude Code provider input stream closed during restart");
+  }
 
   session.initialContent = content;
   session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
@@ -1125,7 +1154,10 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const { proc, lease, rl } = spawnClaude(state, session.sessionId);
 
       // Write the initial user message to stdin (stream-json format)
-      proc.stdin?.write(formatStdinMessage(session.initialContent) + "\n");
+      if (!writeMessageToStdin(state, session.initialContent)) {
+        terminatePtyProcessTree(lease, true);
+        throw new Error("Claude Code provider input stream closed during startup");
+      }
 
       session.status = "starting";
       session.turnStartedAt = Date.now();

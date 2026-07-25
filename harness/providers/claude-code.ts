@@ -23,6 +23,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { getMemoryLimitedEnv } from "../memory-guard";
 import { claudeNativeHistoryExists, selectProviderResumeTarget, type ResumeTargetSelection } from "../provider-session-identity";
 import { APP_PATHS } from "../app-paths";
+import { attachPipeErrorHandler, pipeErrorCode } from "../pipe-errors";
 
 // Dedicated message-flow log — gitignored, append-only, easy to tail
 const MSG_LOG = join(APP_PATHS.logsDir, "msg-flow.log");
@@ -35,6 +36,7 @@ function msgLog(sid: string, event: string, detail: string) {
 import { resolveSecret } from "../secrets";
 import type { ProviderCapabilities } from "./types";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
+import { providerChildEnv } from "./child-env";
 
 // On Windows we deliberately use the .cmd shim because that's the only thing the
 // Claude Code installer puts on PATH. The cmd.exe -> node.exe tree it creates is
@@ -269,12 +271,24 @@ function spawnClaudeProcess(options: {
     windowsVerbatimArguments: isWinShim ? false : undefined,
   });
 
+  let forceKilled = false;
+  if (child.stdin) {
+    attachPipeErrorHandler(child.stdin, (error) => {
+      forceKilled = true;
+      console.warn(`[claude-code] provider stdin closed code=${pipeErrorCode(error)}`);
+      if (process.platform === "win32" && child.pid) {
+        try { spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { windowsHide: true }); }
+        catch { /* best effort */ }
+      } else {
+        try { child.kill("SIGKILL"); } catch { /* best effort */ }
+      }
+    });
+  }
   child.stderr?.on("data", (chunk) => {
     options.onStderr?.(chunk.toString());
   });
   options.onSpawn?.(child.pid);
 
-  let forceKilled = false;
   const wrapped = {
     stdin: child.stdin!,
     stdout: child.stdout!,
@@ -684,7 +698,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
       _timing("pre-sdk-options");
       const claudeEnv = {
-        ...process.env,
+        ...providerChildEnv(),
         ...(profileDef?.env ?? {}),
         // Large Windows repos with many submodules can make Claude Code's
         // startup git status checks hang before system/init. Keep submodule

@@ -4,6 +4,8 @@ import { existsSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
 import readline from "readline";
+import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe-errors";
+import { providerChildEnv } from "./child-env";
 
 type SpawnFn = typeof spawn;
 
@@ -258,9 +260,7 @@ class CodexExec {
       for (const image of args.images) commandArgs.push("--image", image);
     }
 
-    const env = this.envOverride ? { ...this.envOverride } : Object.fromEntries(
-      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-    );
+    const env = this.envOverride ? { ...this.envOverride } : providerChildEnv();
     if (!env[INTERNAL_ORIGINATOR_ENV]) env[INTERNAL_ORIGINATOR_ENV] = HARNESS_ORIGINATOR;
     if (args.baseUrl) env.OPENAI_BASE_URL = args.baseUrl;
     if (args.apiKey) env.CODEX_API_KEY = args.apiKey;
@@ -281,8 +281,21 @@ class CodexExec {
       child.kill();
       throw new Error("Codex child process has no stdin");
     }
-    child.stdin.write(args.input);
-    child.stdin.end();
+    attachPipeErrorHandler(child.stdin, (error) => {
+      spawnError ??= new Error(`Codex provider input stream closed (${pipeErrorCode(error)})`);
+      try { child.kill("SIGKILL"); } catch { /* best effort */ }
+    });
+    const wroteInput = tryPipeOperation(
+      () => {
+        child.stdin!.write(args.input);
+        child.stdin!.end();
+      },
+      (error) => {
+        spawnError ??= new Error(`Codex provider input stream closed (${pipeErrorCode(error)})`);
+        try { child.kill("SIGKILL"); } catch { /* best effort */ }
+      },
+    );
+    if (!wroteInput && spawnError) throw spawnError;
 
     if (!child.stdout) {
       child.kill();

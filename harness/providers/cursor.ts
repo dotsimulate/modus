@@ -13,7 +13,6 @@
 
 import { spawn, type ChildProcess } from "child_process";
 import { createInterface } from "readline";
-import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from "fs";
 import { join, isAbsolute } from "path";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
@@ -27,6 +26,10 @@ import {
   type McpServerConfig, type Profile,
 } from "../profiles";
 import { cursorAgentSpawnArgv0, resolveCursorAgentExecutable } from "./cursor-resolve-bin";
+import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe-errors";
+import { hasExited, terminateProcessTree, waitForClose } from "./process-tree";
+import { cursorMcpConfigStore } from "./cursor-mcp-config";
+import { providerChildEnv } from "./child-env";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -36,7 +39,7 @@ type CursorState = {
   proc: ChildProcess | null;
   abortController: AbortController;
   mcpConfigPath: string | null;    // path to .cursor/mcp.json we wrote
-  mcpConfigBackup: string | null;  // original content if we overwrote an existing file
+  mcpJournalPath: string | null;   // durable restore journal for that write
 };
 
 /**
@@ -87,7 +90,7 @@ function createInitialState(session: ActiveSession, model: string): CursorState 
     proc: null,
     abortController: session.abortController,
     mcpConfigPath: null,
-    mcpConfigBackup: null,
+    mcpJournalPath: null,
   };
 }
 
@@ -245,9 +248,17 @@ function toolCallEvents(event: Extract<CursorEvent, { type: "tool_call" }>): any
 
 /**
  * Build a .cursor/mcp.json in the workspace directory with merged MCP servers
- * (built-in + global + profile). Returns the path written, or null if no servers.
+ * (built-in + global + profile).
+ *
+ * `cursor-agent` has no flag for an alternative MCP config path, so this file has
+ * to live in the user's project while the session runs. It carries resolved
+ * credentials, so the write goes through a durable journal that lets any later
+ * process finish the restore after a crash. Returns null if there are no servers.
  */
-function writeCursorMcpConfig(ctx: TurnContext, workspaceDir: string): string | null {
+function writeCursorMcpConfig(
+  ctx: TurnContext,
+  workspaceDir: string,
+): { mcpPath: string; journalPath: string } | null {
   const { opts, profile } = ctx;
   const globalConfig = getGlobalConfig(ctx.session.cwd);
 
@@ -291,27 +302,13 @@ function writeCursorMcpConfig(ctx: TurnContext, workspaceDir: string): string | 
 
   if (Object.keys(cursorMcpServers).length === 0) return null;
 
-  const mcpDir = join(workspaceDir, ".cursor");
-  const mcpPath = join(mcpDir, "mcp.json");
-
-  // Back up existing file if present
-  let backup: string | null = null;
-  if (existsSync(mcpPath)) {
-    try { backup = readFileSync(mcpPath, "utf-8"); } catch { /* ignore */ }
-  }
-
-  mkdirSync(mcpDir, { recursive: true });
-  writeFileSync(mcpPath, JSON.stringify({ mcpServers: cursorMcpServers }, null, 2));
-
-  console.log(`[cursor] wrote MCP config: ${mcpPath} (${Object.keys(cursorMcpServers).length} servers: ${Object.keys(cursorMcpServers).join(", ")}${backup ? ", backed up existing" : ""})`);
-  return mcpPath;
-}
-
-/** Read existing .cursor/mcp.json content for backup, or null */
-function readExistingMcpConfig(workspaceDir: string): string | null {
   const mcpPath = join(workspaceDir, ".cursor", "mcp.json");
-  if (!existsSync(mcpPath)) return null;
-  try { return readFileSync(mcpPath, "utf-8"); } catch { return null; }
+  const content = JSON.stringify({ mcpServers: cursorMcpServers }, null, 2);
+  const journalPath = cursorMcpConfigStore.install(mcpPath, content);
+
+  // Server names only: the config body carries resolved credentials.
+  console.log(`[cursor] wrote MCP config: ${mcpPath} (${Object.keys(cursorMcpServers).length} servers: ${Object.keys(cursorMcpServers).join(", ")})`);
+  return { mcpPath, journalPath };
 }
 
 // ── Provider Implementation ──
@@ -418,14 +415,18 @@ export function createCursorProvider(): SessionProvider {
 
     abort(session: ActiveSession) {
       const state = getState(session);
-      if (state?.proc) {
-        state.proc.kill("SIGTERM");
-        // Force kill after 3s if still alive
-        setTimeout(() => {
-          if (state.proc && !state.proc.killed) {
-            state.proc.kill("SIGKILL");
-          }
+      const proc = state?.proc;
+      if (proc) {
+        void terminateProcessTree(proc, false);
+        // Escalate if the tree is still alive. `killed` only means a signal was
+        // delivered, so liveness is read from the exit/signal codes instead, and
+        // the timer is bound to this exact process so it cannot kill a
+        // replacement turn's child.
+        const timer = setTimeout(() => {
+          if (!hasExited(proc)) void terminateProcessTree(proc, true);
         }, 3000);
+        timer.unref?.();
+        proc.once("close", () => clearTimeout(timer));
       }
       state?.abortController.abort();
       session.abortController.abort();
@@ -447,20 +448,28 @@ export function createCursorProvider(): SessionProvider {
     async dispose(session: ActiveSession) {
       const state = getState(session);
       if (!state) return;
-      if (state.proc && !state.proc.killed) {
-        state.proc.kill("SIGTERM");
-      }
-      // Restore or clean up .cursor/mcp.json
-      if (state.mcpConfigPath) {
-        try {
-          if (state.mcpConfigBackup) {
-            writeFileSync(state.mcpConfigPath, state.mcpConfigBackup);
-          } else {
-            unlinkSync(state.mcpConfigPath);
+      const proc = state.proc;
+      if (proc && !hasExited(proc)) {
+        // Own the whole tree: cursor-agent is a shim on Windows, so signalling the
+        // direct child alone leaves the real agent and its descendants running.
+        await terminateProcessTree(proc, false);
+        if (!(await waitForClose(proc, 3000))) {
+          await terminateProcessTree(proc, true);
+          if (!(await waitForClose(proc, 1000))) {
+            console.warn("[cursor] provider process tree did not confirm closure after forced termination");
           }
-        } catch { /* ignore */ }
+        }
+      }
+      // Restore the user's project MCP config through the journal, so a partial
+      // failure here is still recoverable by the next backend start.
+      if (state.mcpJournalPath) {
+        try {
+          cursorMcpConfigStore.restore(state.mcpJournalPath);
+        } catch (error) {
+          console.warn(`[cursor] could not restore project MCP config: ${error instanceof Error ? error.message : String(error)}`);
+        }
         state.mcpConfigPath = null;
-        state.mcpConfigBackup = null;
+        state.mcpJournalPath = null;
       }
       state.abortController.abort();
       session._providerState = null;
@@ -501,8 +510,9 @@ async function runTurn(
 
   // Write MCP config and auto-approve
   if (!state.mcpConfigPath) {
-    state.mcpConfigBackup = readExistingMcpConfig(cwd);
-    state.mcpConfigPath = writeCursorMcpConfig(ctx, cwd);
+    const installed = writeCursorMcpConfig(ctx, cwd);
+    state.mcpConfigPath = installed?.mcpPath ?? null;
+    state.mcpJournalPath = installed?.journalPath ?? null;
   }
   if (state.mcpConfigPath) {
     args.push("--approve-mcps");
@@ -522,10 +532,7 @@ async function runTurn(
   // ever receive the prompt's first line. stdin avoids that entirely.
 
   const bin = cursorAgentSpawnArgv0();
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) env[key] = value;
-  }
+  const env: Record<string, string> = providerChildEnv();
   if (apiKey) {
     env.CURSOR_API_KEY = apiKey;
   }
@@ -547,6 +554,19 @@ async function runTurn(
   }
   state.proc = proc;
 
+  // Register the root PID so the process registry can find and force-kill a
+  // survivor if this provider's own teardown fails or the backend dies. The PID
+  // is captured so a late close event cannot deregister a replacement turn's
+  // process.
+  const rootPid = proc.pid;
+  if (rootPid != null) {
+    session.osPids.add(rootPid);
+    proc.once("close", () => {
+      session.osPids.delete(rootPid);
+      if (state.proc === proc) state.proc = null;
+    });
+  }
+
   // Catch early spawn errors (e.g. ENOENT if binary not found)
   // so they don't become unhandled before we reach the exit-wait promise.
   let earlySpawnError: Error | null = null;
@@ -558,12 +578,31 @@ async function runTurn(
       earlySpawnError = new Error(msg);
     }
   });
+  if (proc.stdin) {
+    attachPipeErrorHandler(proc.stdin, (error) => {
+      earlySpawnError ??= new Error(`Cursor provider input stream closed (${pipeErrorCode(error)})`);
+      try { proc.kill("SIGKILL"); } catch { /* best effort */ }
+    });
+  }
 
   // Deliver the prompt via stdin, then close it. cursor-agent reads the prompt
   // from stdin in -p mode; this avoids cmd.exe/PowerShell truncating a multi-line
   // positional argument on Windows.
-  proc.stdin?.write(input);
-  proc.stdin?.end();
+  if (!proc.stdin) {
+    earlySpawnError = new Error("Cursor provider input stream is unavailable");
+    try { proc.kill("SIGKILL"); } catch { /* best effort */ }
+  } else {
+    tryPipeOperation(
+      () => {
+        proc.stdin!.write(input);
+        proc.stdin!.end();
+      },
+      (error) => {
+        earlySpawnError ??= new Error(`Cursor provider input stream closed (${pipeErrorCode(error)})`);
+        try { proc.kill("SIGKILL"); } catch { /* best effort */ }
+      },
+    );
+  }
 
   // Collect stderr for diagnostics
   let stderrBuf = "";
