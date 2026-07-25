@@ -86,10 +86,31 @@ type RegisteredComposerToggle = {
   unregister: () => void;
 };
 
+export type ExtensionSettingOption = { value: string; label: string };
+
+type SettingOptionsConfig = {
+  options: ExtensionSettingOption[];
+  /** Label for the "leave unset" choice. Omit to require an explicit value. */
+  emptyLabel?: string;
+};
+
+type RegisteredSetting = {
+  update: (next: Partial<SettingOptionsConfig>) => void;
+  unregister: () => void;
+};
+
 type ClientExtensionApi = {
   registerShortcut: (binding: string, handler: ShortcutHandler) => () => void;
   registerComposerAction: (config: ComposerActionConfig) => RegisteredComposerAction;
   registerComposerToggle: (config: ComposerToggleConfig) => RegisteredComposerToggle;
+  /**
+   * Publish a live option list for one of this extension's declared settings.
+   * The sidecar manifest can only express static options, but some choices —
+   * audio devices being the motivating case — only exist in the browser. The
+   * settings UI renders these as a dropdown while the extension is loaded and
+   * falls back to the manifest's declared field when it is not.
+   */
+  registerSetting: (name: string, config: SettingOptionsConfig) => RegisteredSetting;
   getComposer: () => ComposerSnapshot | null;
   setDraft: (text: string) => void;
   insertText: (text: string) => void;
@@ -160,6 +181,8 @@ let activeComposerId: string | null = null;
 const shortcuts: ShortcutRegistration[] = [];
 const composerActions = new Map<string, ComposerActionRegistration>();
 const composerToggles = new Map<string, ComposerToggleRegistration>();
+/** Live setting options, keyed `${extensionId}:${settingName}`. */
+const settingOptions = new Map<string, SettingOptionsConfig>();
 const loadedExtensions: LoadedExtension[] = [];
 let listenerAttached = false;
 const composerControlListeners = new Set<() => void>();
@@ -334,6 +357,25 @@ export function useComposerToggles(composerId: string): ComposerToggleView[] {
     })), [snapshot, composerId]);
 }
 
+/**
+ * Live option lists published by one loaded extension, keyed by setting name.
+ * Empty when the extension is disabled or has not registered anything — the
+ * settings UI then renders the manifest-declared field as before.
+ */
+export function useExtensionSettingOptions(
+  extensionId: string,
+): Record<string, SettingOptionsConfig> {
+  const snapshot = useSyncExternalStore(subscribeComposerControls, getComposerControlsSnapshot);
+  return useMemo(() => {
+    const prefix = `${extensionId}:`;
+    const result: Record<string, SettingOptionsConfig> = {};
+    for (const [key, config] of settingOptions) {
+      if (key.startsWith(prefix)) result[key.slice(prefix.length)] = config;
+    }
+    return result;
+  }, [snapshot, extensionId]);
+}
+
 function createApi(extensionId: string, settings: Record<string, unknown> = {}): ClientExtensionApi {
   return {
     registerShortcut(binding, handler) {
@@ -379,6 +421,29 @@ function createApi(extensionId: string, settings: Record<string, unknown> = {}):
           if (removed) return;
           removed = true;
           composerActions.delete(actionKey);
+          notifyComposerControls();
+        },
+      };
+    },
+    registerSetting(name, config) {
+      const settingKey = `${extensionId}:${name}`;
+      settingOptions.set(settingKey, { ...config });
+      notifyComposerControls();
+
+      let removed = false;
+
+      return {
+        update(next) {
+          if (removed) return;
+          const current = settingOptions.get(settingKey);
+          if (!current) return;
+          settingOptions.set(settingKey, { ...current, ...next });
+          notifyComposerControls();
+        },
+        unregister() {
+          if (removed) return;
+          removed = true;
+          settingOptions.delete(settingKey);
           notifyComposerControls();
         },
       };
@@ -474,6 +539,7 @@ export async function unloadClientExtensions(): Promise<void> {
   shortcuts.splice(0, shortcuts.length);
   composerActions.clear();
   composerToggles.clear();
+  settingOptions.clear();
   notifyComposerControls();
 }
 

@@ -1,4 +1,4 @@
-console.log("[Whisper] Loading extension... version 2.5");
+console.log("[Whisper] Loading extension... version 2.7");
 const SHORTCUT = "Ctrl+Shift+~";
 const BUFFER_SIZE = 4096;
 const RMS_THRESHOLD = 0.015;
@@ -6,6 +6,11 @@ const SILENCE_MS = 1000;
 const MIN_CHUNK_MS = 2000;
 const MAX_CHUNK_MS = 30000;
 const PRE_ROLL_MS = 250;
+// A dead or hardware-muted capture device produces digital silence. A live mic
+// in a quiet room still floats well above this, so it separates "no signal at
+// all" from "nobody is talking" — the distinction RMS_THRESHOLD cannot make.
+const NO_INPUT_LEVEL = 0.001;
+const NO_INPUT_GRACE_MS = 4000;
 const SEND_TRIGGER_RE = /(?:^|[\s"'([{])(send it now|send it|send now|send this|send the message|submit(?: the)? message)\s*["'"')\].,!?\s]*$/i;
 
 const TRIGGER_WINDOW_WORDS = 4;
@@ -134,12 +139,82 @@ function encodeWav(samples, sampleRate) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-async function createRecordingSession() {
+/**
+ * Resolve a configured microphone preference against a device list. Exact
+ * deviceId first, then a case-insensitive label substring, so the user can
+ * paste either the opaque id or any recognizable chunk of the device name.
+ * Returns null when nothing matches — callers fall back to the system default
+ * and say so, rather than silently recording the wrong input.
+ */
+export function matchAudioInputDevice(devices, preference) {
+  const wanted = String(preference ?? "").trim();
+  if (!wanted) return null;
+  const inputs = (devices ?? []).filter((device) => device?.kind === "audioinput");
+  const exact = inputs.find((device) => device.deviceId === wanted);
+  if (exact) return exact;
+  const needle = wanted.toLowerCase();
+  return inputs.find((device) => String(device.label ?? "").toLowerCase().includes(needle)) ?? null;
+}
+
+/**
+ * Whether a recording has gone long enough with no measurable signal to call
+ * the capture device dead. Silence alone is not enough — the user may simply
+ * not be speaking yet — so this only fires once the grace window has elapsed.
+ */
+export function shouldWarnNoInput({ elapsedMs, peakLevel, graceMs = NO_INPUT_GRACE_MS, level = NO_INPUT_LEVEL }) {
+  return elapsedMs >= graceMs && peakLevel < level;
+}
+
+/** Short human label for whichever input actually ended up live. */
+export function describeMicDevice(device, preference) {
+  if (device) return device.label || device.deviceId || "selected mic";
+  const wanted = String(preference ?? "").trim();
+  return wanted ? `system default (no match for "${wanted}")` : "system default";
+}
+
+async function enumerateAudioInputs() {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return devices.filter((device) => device.kind === "audioinput");
+}
+
+async function resolveMicDevice(preference) {
+  const wanted = String(preference ?? "").trim();
+  if (!wanted) return null;
+
+  let inputs = await enumerateAudioInputs();
+  // Device labels stay blank until the page has held a mic stream at least
+  // once, so a label preference cannot match on a cold start. Take a throwaway
+  // default stream to unlock them, then look again.
+  if (inputs.length > 0 && inputs.every((device) => !device.label)) {
+    try {
+      const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+      probe.getTracks().forEach((track) => track.stop());
+      inputs = await enumerateAudioInputs();
+    } catch {
+      // Fall through and match against whatever we could see.
+    }
+  }
+
+  const match = matchAudioInputDevice(inputs, wanted);
+  if (!match) {
+    console.warn(
+      `[whisper-transcribe] no audio input matched "${wanted}" — using the system default.`,
+      `Available: ${inputs.map((device) => device.label || device.deviceId).join(" | ") || "(none)"}`,
+    );
+  }
+  return match;
+}
+
+async function createRecordingSession(micPreference) {
   if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
     throw new Error("browser audio capture is not available");
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const device = await resolveMicDevice(micPreference);
+  const stream = await navigator.mediaDevices.getUserMedia(
+    device ? { audio: { deviceId: { exact: device.deviceId } } } : { audio: true },
+  );
   const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
   const processor = context.createScriptProcessor(BUFFER_SIZE, 1, 1);
@@ -151,6 +226,8 @@ async function createRecordingSession() {
   let chunkHasSpeech = false;
   let silenceMs = 0;
   let closed = false;
+  let peakLevel = 0;
+  const startedAt = Date.now();
 
   async function closeGraph() {
     if (closed) return;
@@ -207,6 +284,7 @@ async function createRecordingSession() {
     copy.set(input);
 
     const level = calculateLevel(copy);
+    if (level > peakLevel) peakLevel = level;
     const isSpeech = level >= RMS_THRESHOLD;
     const frameMs = estimateDurationMs(copy.length, context.sampleRate);
 
@@ -235,6 +313,12 @@ async function createRecordingSession() {
   await context.resume();
 
   return {
+    device,
+    deviceLabel: describeMicDevice(device, micPreference),
+    /** True once the capture device has produced nothing for the grace window. */
+    isSilent() {
+      return shouldWarnNoInput({ elapsedMs: Date.now() - startedAt, peakLevel });
+    },
     takeReadyChunk() {
       if (chunkLength === 0) return null;
       const durationMs = estimateDurationMs(chunkLength, context.sampleRate);
@@ -270,6 +354,12 @@ function isDesktop() {
 export default function whisperTranscribeExtension(api) {
   const settings = api.getSettings();
   let recording = null;
+  // The composer whose mic button started this recording. Chunks flush from a
+  // timer, long after the click, and api.setDraft() resolves to whichever
+  // composer registered last — so transcripts would land in an unrelated
+  // session. Hold the handle for the life of the recording instead. It is a
+  // live proxy, so it survives remounts.
+  let activeComposer = null;
   let pendingUploads = 0;
   let disposed = false;
   let uploadChain = Promise.resolve();
@@ -277,6 +367,7 @@ export default function whisperTranscribeExtension(api) {
   let typingTimer = null;
   let intendedDraft = null;
   let isGated = false;
+  let noInputActive = false;
   let lastAddedChunks = [];
   let clearedBuffer = "";
 
@@ -291,6 +382,7 @@ export default function whisperTranscribeExtension(api) {
 
   function syncAction() {
     const finishing = !recording && pendingUploads > 0;
+    const noInput = !!recording && recording.isSilent();
     let label = null;
     let tone = null;
 
@@ -298,7 +390,12 @@ export default function whisperTranscribeExtension(api) {
       label = "finishing";
       tone = "busy";
     } else if (recording) {
-      if (isGated) {
+      if (noInput) {
+        // A silent device is otherwise indistinguishable from a working one:
+        // chunks simply never flush and the chip keeps saying "recording".
+        label = "no input";
+        tone = "error";
+      } else if (isGated) {
         label = `say "start listening to me"`;
         tone = "gated";
       } else {
@@ -307,11 +404,16 @@ export default function whisperTranscribeExtension(api) {
       }
     }
 
+    const micSuffix = recording ? ` — mic: ${recording.deviceLabel}` : "";
     action.update({
       title: finishing
         ? "Finishing voice transcription"
         : recording
-          ? isGated ? "Transcription paused (say start listening to me)" : "Stop voice recording"
+          ? (noInput
+              ? `No audio from ${recording.deviceLabel} — check the micDevice setting`
+              : isGated
+                ? `Transcription paused (say start listening to me)${micSuffix}`
+                : `Stop voice recording${micSuffix}`)
           : "Start voice transcription",
       disabled: finishing,
       status: label ? { label, tone } : null,
@@ -462,11 +564,22 @@ export default function whisperTranscribeExtension(api) {
     const file = new File([blob], `recording-${Date.now()}.wav`, { type: "audio/wav" });
     const body = new FormData();
     body.set("file", file);
+    if (settings.model) body.set("model", String(settings.model));
+    if (settings.language) body.set("language", String(settings.language));
 
     const headers = {};
     if (settings.whisperUrl) headers["X-Whisper-Url"] = settings.whisperUrl;
 
-    const response = await api.request("/api/whisper/transcribe", {
+    // The API key is never held here — the harness resolves whisperSecretName
+    // from its own secret store, so it needs to know which settings scope to
+    // read. Both are advisory: the server merges its own configured defaults.
+    const snapshot = composer ? composer.getSnapshot() : api.getComposer();
+    const query = new URLSearchParams();
+    if (snapshot?.cwd) query.set("cwd", snapshot.cwd);
+    if (snapshot?.userProfile) query.set("userProfile", snapshot.userProfile);
+    const suffix = query.toString();
+
+    const response = await api.request(`/api/whisper/transcribe${suffix ? `?${suffix}` : ""}`, {
       method: "POST",
       headers,
       body,
@@ -506,9 +619,16 @@ export default function whisperTranscribeExtension(api) {
 
   function flushReadyChunk() {
     if (!recording || disposed) return;
+    // isSilent() latches off for good once any signal arrives, so this flips at
+    // most twice per recording — cheap enough to poll on the chunk timer.
+    const silent = recording.isSilent();
+    if (silent !== noInputActive) {
+      noInputActive = silent;
+      syncAction();
+    }
     const blob = recording.takeReadyChunk();
     if (!blob || blob.size === 0) return;
-    queueTranscription(blob, null);
+    queueTranscription(blob, activeComposer);
   }
 
   async function toggleRecording(composer) {
@@ -522,7 +642,7 @@ export default function whisperTranscribeExtension(api) {
       try {
         const wavBlob = await activeRecording.stop();
         if (!disposed && wavBlob && wavBlob.size > 0) {
-          queueTranscription(wavBlob, null);
+          queueTranscription(wavBlob, activeComposer);
         }
       } catch (error) {
         console.error("[whisper-transcribe] recording failed", {
@@ -530,7 +650,9 @@ export default function whisperTranscribeExtension(api) {
         });
       } finally {
         await uploadChain;
+        activeComposer = null;
         isGated = false;
+        noInputActive = false;
         syncAction();
       }
       return;
@@ -539,15 +661,21 @@ export default function whisperTranscribeExtension(api) {
     if (!composer) return;
 
     try {
-      recording = await createRecordingSession();
+      recording = await createRecordingSession(settings.micDevice);
+      activeComposer = composer;
       chunkTimer = setInterval(flushReadyChunk, 250);
       isGated = false;
+      noInputActive = false;
       syncAction();
+      // Holding a stream unlocks device labels — republish so the settings
+      // dropdown shows names instead of opaque ids from here on.
+      void publishMicOptions();
     } catch (error) {
       console.error("[whisper-transcribe] recording failed", {
         message: error instanceof Error ? error.message : String(error),
       });
       recording = null;
+      activeComposer = null;
       syncAction();
     }
   }
@@ -555,6 +683,30 @@ export default function whisperTranscribeExtension(api) {
   const unregister = api.registerShortcut(SHORTCUT, async ({ getComposer }) => {
     await toggleRecording(getComposer());
   });
+
+  // Audio devices only exist in the browser, so the sidecar manifest cannot
+  // list them. Publish them live instead, and refresh when hardware changes.
+  const micSetting = api.registerSetting?.("micDevice", {
+    options: [],
+    emptyLabel: "system default",
+  });
+
+  async function publishMicOptions() {
+    if (!micSetting || disposed) return;
+    const inputs = await enumerateAudioInputs().catch(() => []);
+    micSetting.update({
+      options: inputs.map((device) => ({
+        value: device.deviceId,
+        // Labels stay blank until the page has held a mic stream once; the id
+        // is still selectable so the dropdown is never empty of real choices.
+        label: device.label || device.deviceId,
+      })),
+    });
+  }
+
+  const onDeviceChange = () => { void publishMicOptions(); };
+  navigator.mediaDevices?.addEventListener?.("devicechange", onDeviceChange);
+  void publishMicOptions();
 
   syncAction();
 
@@ -564,9 +716,12 @@ export default function whisperTranscribeExtension(api) {
     cancelTyping();
     unregister();
     action.unregister();
+    micSetting?.unregister();
+    navigator.mediaDevices?.removeEventListener?.("devicechange", onDeviceChange);
     if (recording) {
       void recording.dispose();
       recording = null;
     }
+    activeComposer = null;
   };
 }
