@@ -112,10 +112,11 @@ type Props = {
   onAuth: (name: string) => void;
   isSetup?: boolean;
   pinOptional?: boolean;
+  canManagePin?: boolean;
   savedName?: string;
 };
 
-export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) {
+export function LoginScreen({ onAuth, isSetup, pinOptional, canManagePin = false, savedName }: Props) {
   const [name, setName] = useState(savedName ?? "");
   const [pin, setPin] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -172,7 +173,7 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) 
   const submitSetup = useCallback(async () => {
     if (!name.trim()) { setError("name required"); nameRef.current?.focus(); return; }
     if (loading) return;
-    const wantsPin = !!pin.trim() || !!confirm.trim();
+    const wantsPin = canManagePin && (!!pin.trim() || !!confirm.trim());
     if (!wantsPin && !pinOptional) return;
     if (wantsPin && pin.trim().length < 4) { setError("at least 4 characters"); return; }
     if (wantsPin && pin !== confirm) { setError("pins don't match"); setConfirm(""); return; }
@@ -180,8 +181,7 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) 
     setError("");
     try {
       if (wantsPin) {
-        const token = await modus.setupNewPin(pin.trim(), name.trim());
-        setAuthToken(token);
+        await modus.setupNewPin(pin.trim(), name.trim());
         setPinSuccess(true);
         setTimeout(() => onAuth(name.trim()), 1000);
       } else {
@@ -193,9 +193,9 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) 
       setError("setup failed");
       setLoading(false);
     }
-  }, [name, pin, confirm, loading, onAuth, pinOptional]);
+  }, [name, pin, confirm, loading, onAuth, pinOptional, canManagePin]);
 
-  const setupWantsPin = !!pin.trim() || !!confirm.trim();
+  const setupWantsPin = canManagePin && (!!pin.trim() || !!confirm.trim());
   const setupSubmitDisabled = loading
     || !name.trim()
     || (!pinOptional && (!pin.trim() || !confirm.trim()))
@@ -210,7 +210,9 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) 
         <div className="login-backend-target"><BackendTargetControl /></div>
         {isSetup && (
           <div className="login-subtitle">
-            {pinOptional ? "set your name; PIN optional" : "choose a PIN to secure browser access"}
+            {canManagePin
+              ? pinOptional ? "set your name; PIN optional" : "choose a PIN to secure browser access"
+              : "set your name; PIN management stays on the Modus host"}
           </div>
         )}
         {isSetup ? (
@@ -227,26 +229,30 @@ export function LoginScreen({ onAuth, isSetup, pinOptional, savedName }: Props) 
               <span className="login-label">user</span>
               <span className="login-line" />
             </div>
-            <GlyphField
-              inputRef={pinRef}
-              value={pin}
-              onChange={setPin}
-              autoComplete="new-password"
-              label={pinOptional ? "PIN optional" : "PIN"}
-            />
-            <GlyphField
-              inputRef={confirmRef}
-              value={confirm}
-              onChange={setConfirm}
-              autoComplete="new-password"
-              onSubmit={submitSetup}
-              label="confirm PIN"
-            />
-            {confirm && pin && confirm !== pin.slice(0, confirm.length) && (
-              <div className="login-hint">pins don't match</div>
-            )}
-            {confirm && pin && confirm === pin && (
-              <div className="login-hint login-hint-ok">confirmed</div>
+            {canManagePin && (
+              <>
+                <GlyphField
+                  inputRef={pinRef}
+                  value={pin}
+                  onChange={setPin}
+                  autoComplete="new-password"
+                  label={pinOptional ? "PIN optional" : "PIN"}
+                />
+                <GlyphField
+                  inputRef={confirmRef}
+                  value={confirm}
+                  onChange={setConfirm}
+                  autoComplete="new-password"
+                  onSubmit={submitSetup}
+                  label="confirm PIN"
+                />
+                {confirm && pin && confirm !== pin.slice(0, confirm.length) && (
+                  <div className="login-hint">pins don't match</div>
+                )}
+                {confirm && pin && confirm === pin && (
+                  <div className="login-hint login-hint-ok">confirmed</div>
+                )}
+              </>
             )}
             <button
               className="login-btn"

@@ -11,6 +11,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userName, setUserName] = useState<string | null>(null);
   const [authRequired, setAuthRequired] = useState(false);
   const [pinEnabled, setPinEnabled] = useState(false);
+  const [canManagePin, setCanManagePin] = useState(false);
 
   const isAuthFailure = useCallback((err: unknown) => (
     err instanceof ModusError && (err.status === 401 || err.status === 403)
@@ -34,9 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (authState !== "checking") return;
     modus.authStatus()
-      .then(async ({ required, setup, name, pinEnabled: hasPin, needsName, tokenRequired }) => {
+      .then(async ({ required, setup, name, pinEnabled: hasPin, needsName, tokenRequired, canManagePin: localAdmin }) => {
         setAuthRequired(required);
         setPinEnabled(!!hasPin || required);
+        setCanManagePin(!!localAdmin);
         if (name) setUserName(name);
         if (setup || (!required && (needsName ?? !name))) { setAuthState("setup"); return; }
         if (!required) {
@@ -91,15 +93,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleLock = useCallback(() => {
-    modus.lockAll().catch(() => {});
-    clearAuthToken();
-    setUserName(null);
-    setAuthState("checking");
-  }, []);
+    void modus.lockAll().then(() => {
+      // The local native supervisor credential administers the gate but is not
+      // one of the browser sessions being locked.
+      if (canManagePin) return;
+      clearAuthToken();
+      setUserName(null);
+      setAuthState("checking");
+    }).catch(() => {});
+  }, [canManagePin]);
 
   if (authState === "checking") return null;
   if (authState === "unavailable") return <BackendConnectionScreen message="backend authentication status unavailable" />;
-  if (authState === "setup") return <LoginScreen isSetup pinOptional={!pinEnabled} onAuth={handleAuth} />;
+  if (authState === "setup") return <LoginScreen isSetup pinOptional={!pinEnabled} canManagePin={canManagePin} onAuth={handleAuth} />;
   if (authState === "login") return <LoginScreen savedName={userName ?? undefined} onAuth={handleAuth} />;
 
   return (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { clearAuthToken, modus, setAuthToken } from "../modusClient";
+import { modus } from "../modusClient";
 import type { ProviderModel, UserInterfaceConfig, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
@@ -14,6 +14,16 @@ import {
   resolveInterfaceSettings,
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
+import { isTauriRuntime } from "../desktopBridge";
+import {
+  checkForDesktopUpdate,
+  getDesktopUpdateState,
+  subscribeDesktopUpdateState,
+} from "../desktop-update-service";
+import {
+  automaticUpdateChecksEnabled,
+  setAutomaticUpdateChecksEnabled,
+} from "../update-policy";
 
 type Props = {
   userProfile: UserProfile;
@@ -70,14 +80,16 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [pageNavMode, setPageNavMode] = useState(userProfile.pageNav?.mode ?? "auto");
   const [resetLayout, setResetLayout] = useState(false);
 
-  const [oldPin, setOldPin] = useState("");
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [pinEnabled, setPinEnabled] = useState(false);
+  const [canManagePin, setCanManagePin] = useState(false);
   const [pinStatusLoaded, setPinStatusLoaded] = useState(false);
   const [pinSaving, setPinSaving] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinSuccess, setPinSuccess] = useState<string | null>(null);
+  const [updateChecksEnabled, setUpdateChecksEnabled] = useState(automaticUpdateChecksEnabled);
+  const [desktopUpdateState, setDesktopUpdateState] = useState(getDesktopUpdateState);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,11 +137,20 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
       .then((status) => {
         if (!alive) return;
         setPinEnabled(!!status.pinEnabled || status.required);
+        setCanManagePin(!!status.canManagePin);
       })
       .catch(() => {})
       .finally(() => { if (alive) setPinStatusLoaded(true); });
     return () => { alive = false; };
   }, []);
+
+  useEffect(() => subscribeDesktopUpdateState(setDesktopUpdateState), []);
+
+  const setUpdateChecks = (enabled: boolean) => {
+    setAutomaticUpdateChecksEnabled(enabled);
+    setUpdateChecksEnabled(enabled);
+    if (enabled) void checkForDesktopUpdate();
+  };
 
   const handleDefaultProviderChange = async (provider: string) => {
     setDefaultProvider(provider);
@@ -202,22 +223,20 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const handleChangePin = async () => {
     setPinError(null);
     setPinSuccess(null);
-    if (pinEnabled && !oldPin) { setPinError("enter your current PIN"); return; }
     if (!newPin) { setPinError("enter a new PIN"); return; }
     if (newPin.length < 4) { setPinError("PIN must be at least 4 characters"); return; }
     if (newPin !== confirmPin) { setPinError("PINs do not match"); return; }
     setPinSaving(true);
     try {
       if (pinEnabled) {
-        await modus.changePin(oldPin, newPin);
-        setPinSuccess("PIN updated");
+        await modus.resetPin(newPin);
+        setPinSuccess("PIN reset; remote browser sessions were revoked");
       } else {
-        const token = await modus.setupNewPin(newPin);
-        setAuthToken(token);
+        await modus.setupNewPin(newPin);
         setPinEnabled(true);
         setPinSuccess("PIN enabled");
       }
-      setOldPin(""); setNewPin(""); setConfirmPin("");
+      setNewPin(""); setConfirmPin("");
       window.dispatchEvent(new Event("modus:auth-changed"));
     } catch (e) {
       setPinError(String(e).replace(/^Error: /, ""));
@@ -229,12 +248,10 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const handleDisablePin = async () => {
     setPinError(null);
     setPinSuccess(null);
-    if (!oldPin) { setPinError("enter your current PIN"); return; }
     setPinSaving(true);
     try {
-      await modus.disablePin(oldPin);
-      clearAuthToken();
-      setOldPin(""); setNewPin(""); setConfirmPin("");
+      await modus.disablePin();
+      setNewPin(""); setConfirmPin("");
       setPinEnabled(false);
       setPinSuccess("PIN disabled");
       window.dispatchEvent(new Event("modus:auth-changed"));
@@ -339,6 +356,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                     placeholder={defaultProvider ? "select model" : "choose provider first"}
                     searchPlaceholder="search models..."
                     disabled={!defaultProvider}
+                    allowCustom
                     onChange={setDefaultModel}
                   />
                 </label>
@@ -670,24 +688,15 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
             <div className="us-section">
               {pinStatusLoaded && (
                 <div className="us-security-status">
-                  Browser PIN is {pinEnabled ? "enabled" : "off"}.
+                  Browser PIN is {pinEnabled ? "enabled" : "off"}. It gates Modus browser access, not the operating system.
                 </div>
               )}
-              <div className="us-pin-group">
-                {pinEnabled && (
-                  <div className="us-pin-row">
-                    <span className="us-row-label">current PIN</span>
-                    <input
-                      className="us-input"
-                      type="password"
-                      value={oldPin}
-                      onChange={(e) => { setOldPin(e.target.value); setPinError(null); setPinSuccess(null); }}
-                      placeholder="current PIN"
-                      spellCheck={false}
-                      autoFocus
-                    />
-                  </div>
-                )}
+              {!canManagePin && (
+                <div className="us-security-status">
+                  PIN setup, reset, and removal are available only in the native app on the Modus host.
+                </div>
+              )}
+              {canManagePin && <div className="us-pin-group">
                 <div className="us-pin-row">
                   <span className="us-row-label">{pinEnabled ? "new PIN" : "PIN"}</span>
                   <input
@@ -697,7 +706,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                     onChange={(e) => { setNewPin(e.target.value); setPinError(null); setPinSuccess(null); }}
                     placeholder="4+ characters"
                     spellCheck={false}
-                    autoFocus={!pinEnabled}
+                    autoFocus
                   />
                 </div>
                 <div className="us-pin-row">
@@ -711,20 +720,44 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                     spellCheck={false}
                   />
                 </div>
-              </div>
-              <div className="us-pin-actions">
+              </div>}
+              {canManagePin && <div className="us-pin-actions">
                 {pinError && <span className="us-pin-feedback error">{pinError}</span>}
                 {pinSuccess && <span className="us-pin-feedback success">{pinSuccess}</span>}
                 {!pinError && !pinSuccess && <span />}
                 <button className="us-pin-btn" onClick={handleChangePin} disabled={pinSaving}>
-                  {pinSaving ? "updating..." : pinEnabled ? "update PIN" : "enable PIN"}
+                  {pinSaving ? "updating..." : pinEnabled ? "reset PIN and revoke browsers" : "enable PIN"}
                 </button>
                 {pinEnabled && (
                   <button className="us-pin-btn us-pin-btn--danger" onClick={handleDisablePin} disabled={pinSaving}>
                     disable PIN
                   </button>
                 )}
-              </div>
+              </div>}
+              {isTauriRuntime() && (
+                <div className="us-pin-group">
+                  <InterfaceToggle
+                    label="check for signed updates"
+                    value={updateChecksEnabled}
+                    onChange={setUpdateChecks}
+                  />
+                  <div className="us-security-status">
+                    Checks are opt-in. Modus never downloads or installs an update until you explicitly confirm it.
+                  </div>
+                  <div className="us-pin-actions">
+                    <span className={desktopUpdateState.status === "error" ? "us-pin-feedback error" : "us-pin-feedback"}>
+                      {desktopUpdateState.status === "checking" && "checking…"}
+                      {desktopUpdateState.status === "available" && `version ${desktopUpdateState.update?.version} available`}
+                      {desktopUpdateState.status === "idle" && desktopUpdateState.update && "Modus is up to date"}
+                      {desktopUpdateState.status === "unavailable" && desktopUpdateState.error}
+                      {desktopUpdateState.status === "error" && desktopUpdateState.error}
+                    </span>
+                    <button className="us-pin-btn" type="button" onClick={() => void checkForDesktopUpdate()} disabled={desktopUpdateState.status === "checking" || desktopUpdateState.status === "installing"}>
+                      Check now
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

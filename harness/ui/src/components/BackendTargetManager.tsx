@@ -35,6 +35,7 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
   const [error, setError] = useState<string | null>(null);
   const [tailscale, setTailscale] = useState<DesktopTailscaleStatus | null>(null);
   const [tailscaleWorking, setTailscaleWorking] = useState(false);
+  const [confirmUnpinnedTailscale, setConfirmUnpinnedTailscale] = useState(false);
   const nativeDesktop = useMemo(() => isTauriRuntime(), []);
 
   const currentId = BACKEND_TARGET.id;
@@ -52,10 +53,15 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
   }, [managedLocal]);
 
   const configureTailscale = async (enabled: boolean) => {
+    if (enabled && tailscale && !tailscale.enabled && !tailscale.pinConfigured && !confirmUnpinnedTailscale) {
+      setConfirmUnpinnedTailscale(true);
+      return;
+    }
     setError(null);
     setTailscaleWorking(true);
     try {
       setTailscale(await setDesktopTailscaleEnabled(enabled));
+      setConfirmUnpinnedTailscale(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -176,11 +182,21 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
           {tailscale?.enabled && !tailscale.pinConfigured && (
             <div className="backend-target-tailnet-warning">Set a browser PIN before sharing this machine with other tailnet users.</div>
           )}
+          {tailscale && !tailscale.enabled && !tailscale.pinConfigured && (
+            <div className="backend-target-tailnet-warning">
+              A browser PIN is recommended before Tailnet access. Without one, every tailnet peer that can reach this host is a full Modus operator. Configure it in Settings → Security, or confirm below.
+            </div>
+          )}
           <div className="backend-target-tailnet-actions">
             {!tailscale?.enabled ? (
-              <button type="button" disabled={!tailscale || tailscaleWorking} onClick={() => void configureTailscale(true)}>
-                {tailscaleWorking ? "enabling…" : "Enable Tailnet access"}
-              </button>
+              <>
+                <button type="button" disabled={!tailscale || tailscaleWorking} onClick={() => void configureTailscale(true)}>
+                  {tailscaleWorking ? "enabling…" : confirmUnpinnedTailscale ? "Confirm: enable without PIN" : "Enable Tailnet access"}
+                </button>
+                {confirmUnpinnedTailscale && (
+                  <button type="button" disabled={tailscaleWorking} onClick={() => setConfirmUnpinnedTailscale(false)}>Cancel</button>
+                )}
+              </>
             ) : (
               <>
                 {tailscale.state !== "active" && (

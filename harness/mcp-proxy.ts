@@ -16,9 +16,7 @@ export function registerMcpProxyTarget(name: string, config: Extract<McpServerCo
   const id = encodeProxyId(name, config.url);
   targets.set(id, { url: config.url, headers: config.headers });
   const port = Number(process.env.HARNESS_PORT ?? 3777);
-  const token = process.env.HARNESS_TOKEN;
-  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
-  return `http://127.0.0.1:${port}/api/mcp/proxy?id=${encodeURIComponent(id)}${tokenParam}`;
+  return `http://127.0.0.1:${port}/api/mcp/proxy?id=${encodeURIComponent(id)}`;
 }
 
 function isJsonRpcNotification(bodyText: string): boolean {

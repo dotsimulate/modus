@@ -184,14 +184,20 @@ export class ModusClient {
     return res;
   }
 
-  /** Checks whether auth is required, whether a PIN has been set up, and the current account name. No auth required. */
-  async authStatus(): Promise<{ required: boolean; setup: boolean; pinEnabled?: boolean; needsName?: boolean; tokenRequired?: boolean; name: string | null }> {
-    const res = await this.publicFetchOrThrow("/api/auth/status");
+  /** Checks auth state. A host bearer token additionally reveals local PIN-management authority. */
+  async authStatus(): Promise<{ required: boolean; setup: boolean; pinEnabled?: boolean; needsName?: boolean; tokenRequired?: boolean; canManagePin?: boolean; name: string | null }> {
+    const token = this.token;
+    const res = await this.publicFetchOrThrow(
+      "/api/auth/status",
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
+    );
     return res.json();
   }
   /** Sets the browser display name without enabling PIN auth. */
   async setUserName(name: string): Promise<string | null> {
-    const res = await this.publicFetchOrThrow("/api/auth/name", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    const res = await this.publicFetchOrThrow("/api/auth/name", { method: "POST", headers, body: JSON.stringify({ name }) });
     const data = await res.json() as { token?: string };
     return data.token || null;
   }
@@ -201,10 +207,10 @@ export class ModusClient {
     const data = await res.json() as { token?: string };
     return data.token || null;
   }
-  /** Sets up a new PIN for first-time auth and returns a bearer token. */
-  async setupNewPin(pin: string, name?: string): Promise<string> {
-    const res = await this.publicFetchOrThrow("/api/auth/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, name }) });
-    return (await res.json()).token;
+  /** Sets up a new PIN from the local host authority. */
+  async setupNewPin(pin: string, name?: string): Promise<void> {
+    const res = await this.fetch("/api/auth/setup", { method: "POST", body: JSON.stringify({ pin, name }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error || "Failed to set PIN"); }
   }
   /** Verifies an existing PIN and returns a bearer token. */
   async verifyPin(pin: string, name?: string): Promise<string> {
@@ -227,9 +233,14 @@ export class ModusClient {
     const res = await this.fetch("/api/auth/change-pin", { method: "POST", body: JSON.stringify({ oldPin, newPin }) });
     if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error || "Failed to change PIN"); }
   }
-  /** Disables browser PIN auth. Throws if the PIN is wrong or environment-managed. */
-  async disablePin(pin: string): Promise<void> {
-    const res = await this.fetch("/api/auth/disable-pin", { method: "POST", body: JSON.stringify({ pin }) });
+  /** Replaces a forgotten file-managed PIN using local host authority. */
+  async resetPin(newPin: string): Promise<void> {
+    const res = await this.fetch("/api/auth/reset-pin", { method: "POST", body: JSON.stringify({ newPin }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error || "Failed to reset PIN"); }
+  }
+  /** Disables a file-managed browser PIN using local host authority. */
+  async disablePin(): Promise<void> {
+    const res = await this.fetch("/api/auth/disable-pin", { method: "POST" });
     if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error || "Failed to disable PIN"); }
   }
   /** Checks server health. No auth required. */
@@ -831,8 +842,10 @@ export class ModusClient {
   // ── Client Extensions ──
   /** Lists client-side extensions with their enabled status. */
   async listClientExtensions(cwd?: string, userProfile?: string | null): Promise<ClientExtensionManifestItem[]> {
+    // No query token: `this.fetch` already sends the credential as an
+    // Authorization header, and this route never accepted a query credential —
+    // so adding one only leaked it into logs and history.
     const p = new URLSearchParams(); if (cwd) p.set("cwd", cwd); if (userProfile) p.set("userProfile", userProfile);
-    const tp = this.tokenParam(); if (tp) p.set("token", tp.replace(/^token=/, ""));
     const q = p.toString(); return (await this.fetch(`/api/client-extensions${q ? `?${q}` : ""}`)).json();
   }
   /** Enables/disables or configures a client extension. */
@@ -915,7 +928,10 @@ export class ModusClient {
       : new URL(typeof location !== "undefined" ? location.origin : "http://localhost");
     const protocol = target.protocol === "https:" ? "wss:" : "ws:";
     const host = target.host;
-    const ws = new WebSocket(`${protocol}//${host}/ws/terminal/${terminalId}?token=${encodeURIComponent(this.token ?? "")}`);
+    const token = this.token ?? "";
+    const protocols = ["modus-v1"];
+    if (token) protocols.push(`modus-auth.${base64UrlEncode(token)}`);
+    const ws = new WebSocket(`${protocol}//${host}/ws/terminal/${terminalId}`, protocols);
     ws.binaryType = "arraybuffer"; return ws;
   }
 
@@ -985,6 +1001,13 @@ export class ModusClient {
 
 // ── SSE Parser ──
 /** Parses SSE-formatted data from a ReadableStream into typed events. Terminates on "done" events and skips "ping" events. */
+function base64UrlEncode(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 async function* parseSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onChunk?: () => void,
