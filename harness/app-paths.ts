@@ -22,8 +22,21 @@ type ResolveAppPathsOptions = {
   systemTempDir?: string;
 };
 
+/**
+ * Strip the Windows `\\?\` extended-length path prefix (and its UNC form).
+ * The desktop shell may hand us `MODUS_RESOURCES_DIR=\\?\C:\...`, but Bun's
+ * dynamic `import()` cannot resolve a module from a `\\?\`-prefixed path, so
+ * every built-in move loaded out of the resources dir fails to load. Resource
+ * paths are well under the 260-char limit, so the prefix is safe to drop.
+ */
+function stripExtendedLengthPrefix(p: string): string {
+  if (p.startsWith("\\\\?\\UNC\\")) return "\\\\" + p.slice("\\\\?\\UNC\\".length);
+  if (p.startsWith("\\\\?\\")) return p.slice("\\\\?\\".length);
+  return p;
+}
+
 function configuredPath(value: string | undefined, fallback: string): string {
-  return resolve(value?.trim() || fallback);
+  return stripExtendedLengthPrefix(resolve(value?.trim() || fallback));
 }
 
 export function resolveAppPaths(options: ResolveAppPathsOptions = {}): AppPaths {

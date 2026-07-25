@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import type { MoveApiContext, MoveApiHandler, MoveContext } from "../../../harness/move-types";
-import { startSession } from "../../../harness/session-manager";
-import { getAllUserProfiles } from "../../../harness/profiles";
+import { startSession } from "../../session-manager";
+import { getAllUserProfiles } from "../../profiles";
 
 type Direction = "caller-to-target" | "target-to-caller";
 
