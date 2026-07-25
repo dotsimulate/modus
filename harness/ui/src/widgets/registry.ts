@@ -25,6 +25,7 @@ import ComposerWidget from "./composer.widget";
 import ConfigBarWidget from "./config-bar.widget";
 import ConfigInspectorWidget from "./config-inspector.widget";
 import DeepAnalyticsWidget from "./deep-analytics.widget";
+import DocsWidget from "./docs.widget";
 import DefaultAgentWidget from "./default-agent.widget";
 import ExtensionsWidget from "./extensions.widget";
 import InboxWidget from "./inbox.widget";
@@ -131,6 +132,13 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     component: DeepAnalyticsWidget,
     minHeight: 140,
     preferredHeight: 280,
+  },
+  "docs": {
+    type: "docs",
+    component: DocsWidget,
+    zones: ["dashboard", "left-panel", "right-panel"],
+    minHeight: 240,
+    preferredHeight: 560,
   },
   "default-agent": {
     type: "default-agent",

@@ -1,0 +1,68 @@
+{
+  "name": "docs-doctor",
+  "label": "Docs doctor",
+  "description": "Check authored Modus content against the live schemas, and check the shipped documentation against the code it claims to cover. Answers \"is what I just wrote actually correct\" instead of \"does the doc say so\".",
+  "icon": "stethoscope",
+  "mode": "inline",
+  "inputs": [
+    {
+      "name": "target",
+      "label": "What should be checked?",
+      "type": "textarea",
+      "required": false,
+      "placeholder": "a profile path to validate, a doc id to audit, or leave blank for a full sweep..."
+    }
+  ],
+  "submit": {
+    "required": false
+  },
+  "session": {
+    "afterSubmit": "continue"
+  },
+  "api": {
+    "tokenPrefix": "doctor",
+    "ops": {
+      "schema_keys": {
+        "description": "List the keys a live Zod schema actually accepts, with best-effort types and optionality. Use this instead of trusting prose documentation about fields.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "schema": { "type": "string", "enum": ["agent-profile", "user-profile", "global-config"] }
+          },
+          "required": ["schema"]
+        }
+      },
+      "validate": {
+        "description": "Validate a JSON document against a live schema. Pass either `content` (an inline object) or `path` (a JSON file relative to the project cwd). Reports schema errors AND unknown keys, which the schemas themselves accept silently.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "schema": { "type": "string", "enum": ["agent-profile", "user-profile", "global-config"] },
+            "content": { "type": "object" },
+            "path": { "type": "string" }
+          },
+          "required": ["schema"]
+        }
+      },
+      "doc_drift": {
+        "description": "Audit shipped docs against the source they declare in `covers:` frontmatter — missing source files, and schema keys the covering doc never mentions. Omit docId to sweep every doc.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "docId": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "shell": false,
+    "sessionSpawn": false,
+    "sessionMessage": false,
+    "actionTrigger": false,
+    "notify": false,
+    "fileRead": true,
+    "fileWrite": false
+  },
+  "tags": ["docs", "meta", "validation", "audit"]
+}

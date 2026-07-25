@@ -1,0 +1,10 @@
+{
+  "id": "docs",
+  "title": "docs",
+  "nav": true,
+  "padding": 12,
+  "layout": {
+    "kind": "widget",
+    "widget": { "type": "docs", "id": "docs-main" }
+  }
+}
