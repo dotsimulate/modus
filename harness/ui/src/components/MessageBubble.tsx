@@ -12,6 +12,8 @@ import { AudioArtifact } from "./AudioArtifact";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { addPrompt } from "../promptCache";
 import { isCodexProvider } from "../tools";
+import { parseMessageText, userAuthoredMessageText } from "../move-context";
+import { MoveContextDisclosure } from "./MoveContextDisclosure";
 
 function artifactSrc(url: string): string {
   const tp = tokenParam();
@@ -257,6 +259,51 @@ function DeferredDetailsControl({
   );
 }
 
+function MessageTextBlock({
+  messageId,
+  role,
+  text,
+  isNew,
+  onContextMenu,
+}: {
+  messageId: string;
+  role: Message["role"];
+  text: string;
+  isNew: boolean;
+  onContextMenu: (event: React.MouseEvent) => void;
+}) {
+  const parts = role === "user" ? parseMessageText(text) : [];
+  const moveContexts = parts.filter(
+    (part): part is Extract<(typeof parts)[number], { type: "move_context" }> =>
+      part.type === "move_context",
+  );
+  const visibleText = moveContexts.length ? userAuthoredMessageText(text) : text;
+
+  return (
+    <>
+      {visibleText && (
+        <div
+          className={`message-content${isNew ? " message-content--new" : ""}`}
+          onContextMenu={onContextMenu}
+        >
+          <Markdown content={visibleText} />
+        </div>
+      )}
+      {moveContexts.length > 0 && (
+        <div className="move-context-list">
+          {moveContexts.map((context, index) => (
+            <MoveContextDisclosure
+              key={`${messageId}:move-context:${context.moveName}:${index}`}
+              moveName={context.moveName}
+              content={context.content}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 
 export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, toolCallDisplay = "collapsed", showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, onLoadDetails, children }: Props) {
   void onBranch;
@@ -326,13 +373,14 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
           {msg.contentBlocks.map((block, index) => {
             if (block.type === "text") {
               return block.text ? (
-                <div
+                <MessageTextBlock
                   key={`${msg.id}:ordered-text:${index}`}
-                  className={`message-content${isNew ? " message-content--new" : ""}`}
+                  messageId={`${msg.id}:ordered-text:${index}`}
+                  role={msg.role}
+                  text={block.text}
+                  isNew={isNew}
                   onContextMenu={handleContextMenu}
-                >
-                  <Markdown content={block.text} />
-                </div>
+                />
               ) : null;
             }
             if (block.type === "thinking") {
@@ -394,12 +442,13 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             />
           )}
           {msg.content && (
-            <div
-              className={`message-content${isNew ? " message-content--new" : ""}`}
+            <MessageTextBlock
+              messageId={msg.id}
+              role={msg.role}
+              text={msg.content}
+              isNew={isNew}
               onContextMenu={handleContextMenu}
-            >
-              <Markdown content={msg.content} />
-            </div>
+            />
           )}
           {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
             <div className="message-tools">

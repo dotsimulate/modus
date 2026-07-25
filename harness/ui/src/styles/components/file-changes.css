@@ -82,6 +82,20 @@
   background: var(--bg);
 }
 
+.fc-header--toggle {
+  cursor: pointer;
+  transition: background 0.1s ease;
+  user-select: none;
+}
+
+.fc-header--toggle:hover {
+  background: var(--bg-hover);
+}
+
+.fc-header:last-child {
+  border-bottom: none;
+}
+
 .fc-header-label {
   color: var(--text-dim);
   font-weight: 500;
