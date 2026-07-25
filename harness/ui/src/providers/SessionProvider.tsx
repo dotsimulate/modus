@@ -20,6 +20,7 @@ import {
   setSessionNextProfile,
   ensureSubscribed, unsubscribeSession,
   rekeySession, removeSession, evictInactiveSessions, onSessionRekey,
+  useSessionHistoryLoadState, shouldRefetchEmptyResolvedHistory,
 } from "../sessionStore";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
 import {
@@ -601,6 +602,42 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setInputValue(text);
     setTimeout(() => sendRef.current(attachments), 0);
   }, [activeSession?.status, queuedMessage]);
+
+  // ── Self-heal a resolved-but-empty thread ──
+  // Last-resort insurance for the "chat shows no messages until reload" class of
+  // bug: the store thinks history is settled, nothing is on screen, but the
+  // server index says this session has content. One forced refetch per session,
+  // and it can never fire on a conversation that painted normally.
+
+  const healedHistoryRef = useRef(new Set<string>());
+  const activeHistoryLoad = useSessionHistoryLoadState(activeSessionId);
+
+  useEffect(() => {
+    if (!activeSessionId || !sessionsLoaded) return;
+    const info = allServerSessions.find((session) => session.id === activeSessionId);
+    if (!info) return;
+    const shouldHeal = shouldRefetchEmptyResolvedHistory({
+      historyStatus: activeHistoryLoad.status,
+      messageCount: activeSession?.messages.length ?? 0,
+      serverMessageCount: info.message_count,
+      serverPreview: info.preview,
+      alreadyAttempted: healedHistoryRef.current.has(activeSessionId),
+    });
+    if (!shouldHeal) return;
+    healedHistoryRef.current.add(activeSessionId);
+    void ensureSubscribed(activeSessionId, {
+      profile: info.profile ?? undefined,
+      forceHistoryRefresh: true,
+      onDone: refreshSessions,
+    }).catch(() => {});
+  }, [
+    activeSessionId,
+    sessionsLoaded,
+    allServerSessions,
+    activeHistoryLoad.status,
+    activeSession?.messages.length,
+    refreshSessions,
+  ]);
 
   const cancelQueued = useCallback(() => {
     if (!queuedMessage) return;
