@@ -29,6 +29,12 @@
       "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* https: wss:; img-src 'self' data: blob: http://127.0.0.1:* http://localhost:* https:; media-src 'self' data: blob: http://127.0.0.1:* http://localhost:* https:; frame-src 'self' blob: http://127.0.0.1:* http://localhost:* https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' blob:"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": []
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
@@ -38,7 +44,8 @@
     },
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "nsis-hooks.nsh"
       }
     }
   }

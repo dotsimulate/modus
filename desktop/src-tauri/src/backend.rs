@@ -5,7 +5,10 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -19,6 +22,75 @@ use crate::tailscale::{DesktopTailscaleStatus, TailscaleManager};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
 const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(8);
+#[cfg(windows)]
+const BACKEND_LAUNCHER_FLAG: &str = "--modus-backend-launcher";
+#[cfg(windows)]
+const BACKEND_LAUNCHER_TIMEOUT: Duration = Duration::from_secs(45);
+const BACKEND_STABLE_RESET: Duration = Duration::from_secs(60);
+const BACKEND_RESTART_BACKOFF: [Duration; 3] = [
+    Duration::from_millis(250),
+    Duration::from_secs(1),
+    Duration::from_secs(3),
+];
+
+#[cfg(windows)]
+pub fn maybe_run_backend_launcher() -> Option<i32> {
+    let mut arguments = env::args_os();
+    let _executable = arguments.next()?;
+    if arguments.next()?.to_string_lossy() != BACKEND_LAUNCHER_FLAG {
+        return None;
+    }
+
+    let gate = arguments.next().map(PathBuf::from);
+    let bun = arguments.next().map(PathBuf::from);
+    let server = arguments.next().map(PathBuf::from);
+    if arguments.next().is_some() {
+        return Some(2);
+    }
+    Some(match (gate, bun, server) {
+        (Some(gate), Some(bun), Some(server)) => run_backend_launcher(&gate, &bun, &server),
+        _ => 2,
+    })
+}
+
+#[cfg(not(windows))]
+pub fn maybe_run_backend_launcher() -> Option<i32> {
+    None
+}
+
+#[cfg(windows)]
+fn run_backend_launcher(gate: &Path, bun: &Path, server: &Path) -> i32 {
+    let deadline = Instant::now() + BACKEND_LAUNCHER_TIMEOUT;
+    while !gate.is_file() {
+        if Instant::now() >= deadline {
+            eprintln!("[desktop-launcher] timed out waiting for Job Object assignment gate");
+            return 3;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    let _ = fs::remove_file(gate);
+
+    let mut command = Command::new(bun);
+    command.arg(server).stdin(Stdio::null());
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut backend = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            eprintln!("[desktop-launcher] failed to start packaged Bun backend: {error}");
+            return 4;
+        }
+    };
+    match backend.wait() {
+        Ok(status) => status.code().unwrap_or(1),
+        Err(error) => {
+            eprintln!("[desktop-launcher] failed while waiting for packaged backend: {error}");
+            5
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -87,6 +159,8 @@ pub struct BackendSupervisor {
     tailscale: TailscaleManager,
     owned: Mutex<Option<OwnedBackend>>,
     runtime_state: PathBuf,
+    desired_managed: AtomicBool,
+    restart_budget_reset: AtomicBool,
 }
 
 impl BackendSupervisor {
@@ -102,12 +176,15 @@ impl BackendSupervisor {
             tailscale,
             owned: Mutex::new(None),
             runtime_state,
+            desired_managed: AtomicBool::new(false),
+            restart_budget_reset: AtomicBool::new(false),
         })
     }
 
     pub fn bootstrap(&self, request: BootstrapRequest) -> Result<BootstrapResponse, String> {
         match request.mode.as_str() {
             "remote" => {
+                self.desired_managed.store(false, Ordering::SeqCst);
                 self.stop_owned()?;
                 let url = validated_remote_url(request.url.as_deref())?;
                 let response = BootstrapResponse {
@@ -126,6 +203,7 @@ impl BackendSupervisor {
                 Ok(response)
             }
             "external-local" => {
+                self.desired_managed.store(false, Ordering::SeqCst);
                 self.stop_owned()?;
                 let response = BootstrapResponse {
                     mode: "external-local".into(),
@@ -142,7 +220,11 @@ impl BackendSupervisor {
                 self.write_runtime_record(&response, false)?;
                 Ok(response)
             }
-            "managed-local" => self.ensure_managed(),
+            "managed-local" => {
+                self.desired_managed.store(true, Ordering::SeqCst);
+                self.restart_budget_reset.store(true, Ordering::SeqCst);
+                self.ensure_managed()
+            }
             other => Err(format!("unsupported desktop backend mode: {other}")),
         }
     }
@@ -164,6 +246,7 @@ impl BackendSupervisor {
     }
 
     pub fn stop_owned(&self) -> Result<(), String> {
+        self.desired_managed.store(false, Ordering::SeqCst);
         let mut owned = self
             .owned
             .lock()
@@ -291,6 +374,120 @@ impl BackendSupervisor {
         let _ = fs::remove_file(&self.runtime_state);
     }
 
+    pub fn start_monitor(self: &Arc<Self>, app: AppHandle) {
+        let supervisor = Arc::downgrade(self);
+        thread::spawn(move || {
+            let mut restart_attempts = 0usize;
+            let mut stable_since = None;
+
+            loop {
+                thread::sleep(Duration::from_millis(500));
+                let Some(supervisor) = supervisor.upgrade() else {
+                    return;
+                };
+                if supervisor
+                    .restart_budget_reset
+                    .swap(false, Ordering::SeqCst)
+                {
+                    restart_attempts = 0;
+                    stable_since = None;
+                }
+
+                let crashed = {
+                    let mut owned = match supervisor.owned.lock() {
+                        Ok(owned) => owned,
+                        Err(_) => {
+                            eprintln!(
+                                "[desktop] backend monitor stopped: supervisor lock poisoned"
+                            );
+                            return;
+                        }
+                    };
+                    match owned.as_mut().map(|backend| backend.child.try_wait()) {
+                        Some(Ok(Some(status))) => {
+                            eprintln!(
+                                "[desktop] managed backend process exited unexpectedly: {status}"
+                            );
+                            owned.take()
+                        }
+                        Some(Err(error)) => {
+                            eprintln!(
+                                "[desktop] managed backend process could not be polled: {error}"
+                            );
+                            owned.take()
+                        }
+                        Some(Ok(None)) => {
+                            let since = stable_since.get_or_insert_with(Instant::now);
+                            if since.elapsed() >= BACKEND_STABLE_RESET {
+                                restart_attempts = 0;
+                            }
+                            None
+                        }
+                        None => None,
+                    }
+                };
+
+                if let Some(mut backend) = crashed {
+                    stable_since = None;
+                    let port = backend.response.port.unwrap_or_default();
+                    let instance_id = backend.response.instance_id.as_deref().unwrap_or_default();
+                    if let Err(error) = supervisor.tailscale.release(port, instance_id) {
+                        eprintln!("[desktop] Tailnet cleanup after backend crash failed: {error}");
+                    }
+                    let _ = backend.job.terminate(1);
+                    let _ = backend.child.wait();
+                    let _ = fs::remove_file(&supervisor.runtime_state);
+                }
+
+                let needs_restart = supervisor.desired_managed.load(Ordering::SeqCst)
+                    && supervisor
+                        .owned
+                        .lock()
+                        .map(|owned| owned.is_none())
+                        .unwrap_or(false);
+                if !needs_restart {
+                    continue;
+                }
+
+                while restart_attempts < BACKEND_RESTART_BACKOFF.len()
+                    && supervisor.desired_managed.load(Ordering::SeqCst)
+                {
+                    let delay = BACKEND_RESTART_BACKOFF[restart_attempts];
+                    restart_attempts += 1;
+                    thread::sleep(delay);
+                    match supervisor.ensure_managed() {
+                        Ok(_) => {
+                            stable_since = Some(Instant::now());
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.eval("window.location.reload()");
+                            }
+                            break;
+                        }
+                        Err(error) => eprintln!(
+                            "[desktop] managed backend restart {restart_attempts}/{} failed: {error}",
+                            BACKEND_RESTART_BACKOFF.len()
+                        ),
+                    }
+                }
+
+                if restart_attempts >= BACKEND_RESTART_BACKOFF.len()
+                    && supervisor
+                        .owned
+                        .lock()
+                        .map(|owned| owned.is_none())
+                        .unwrap_or(true)
+                {
+                    supervisor.desired_managed.store(false, Ordering::SeqCst);
+                    let _ = fs::remove_file(&supervisor.runtime_state);
+                    eprintln!(
+                        "[desktop] managed backend recovery stopped after {} bounded attempts",
+                        BACKEND_RESTART_BACKOFF.len()
+                    );
+                }
+            }
+        });
+    }
+
     fn ensure_managed(&self) -> Result<BootstrapResponse, String> {
         let mut owned = self
             .owned
@@ -306,7 +503,16 @@ impl BackendSupervisor {
                 existing.response.tailscale = Some(self.tailscale.reconcile(port, instance_id));
                 return Ok(existing.response.clone());
             }
-            owned.take();
+            if let Some(mut stale) = owned.take() {
+                let port = stale.response.port.unwrap_or_default();
+                let instance_id = stale.response.instance_id.as_deref().unwrap_or_default();
+                if let Err(error) = self.tailscale.release(port, instance_id) {
+                    eprintln!("[desktop] stale Tailnet route cleanup failed: {error}");
+                }
+                let _ = stale.job.terminate(1);
+                let _ = stale.child.wait();
+                let _ = fs::remove_file(&self.runtime_state);
+            }
         }
 
         self.paths.validate()?;
@@ -316,11 +522,32 @@ impl BackendSupervisor {
             .paths
             .runtime
             .join(format!("desktop-ready-{}-{nonce}.json", std::process::id()));
+        let gate_path = self.paths.runtime.join(format!(
+            "desktop-launch-{}-{nonce}.gate",
+            std::process::id()
+        ));
         let _ = fs::remove_file(&ready_path);
+        let _ = fs::remove_file(&gate_path);
 
+        let job = ProcessJob::new().map_err(display_error("create backend Job Object"))?;
+
+        #[cfg(windows)]
+        let mut command = {
+            let executable =
+                env::current_exe().map_err(display_error("resolve desktop launcher"))?;
+            let mut command = Command::new(executable);
+            command
+                .arg(BACKEND_LAUNCHER_FLAG)
+                .arg(&gate_path)
+                .arg(&self.paths.bun)
+                .arg(&self.paths.server);
+            command
+        };
+        #[cfg(not(windows))]
         let mut command = Command::new(&self.paths.bun);
+        #[cfg(not(windows))]
+        command.arg(&self.paths.server);
         command
-            .arg(&self.paths.server)
             .current_dir(&self.paths.resources)
             .env("HARNESS_HOST", "127.0.0.1")
             .env("HARNESS_PORT", "0")
@@ -349,11 +576,21 @@ impl BackendSupervisor {
         let mut child = command
             .spawn()
             .map_err(display_error("start packaged Bun backend"))?;
-        let job = ProcessJob::new().map_err(display_error("create backend Job Object"))?;
         if let Err(error) = job.assign(child.id()) {
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!("assign backend to Job Object: {error}"));
+        }
+        #[cfg(windows)]
+        if let Err(error) = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&gate_path)
+            .and_then(|mut gate| gate.write_all(b"assigned"))
+        {
+            let _ = job.terminate(1);
+            let _ = child.wait();
+            return Err(format!("release assigned backend launcher: {error}"));
         }
 
         let log_path = self.paths.logs.join("desktop-backend.log");
@@ -370,11 +607,14 @@ impl BackendSupervisor {
                 let _ = job.terminate(1);
                 let _ = child.wait();
                 let _ = fs::remove_file(&ready_path);
+                let _ = fs::remove_file(&gate_path);
                 return Err(error);
             }
         };
         let _ = fs::remove_file(&ready_path);
+        let _ = fs::remove_file(&gate_path);
 
+        #[cfg(not(windows))]
         if ready.pid != child.id() {
             let _ = job.terminate(1);
             let _ = child.wait();
@@ -384,15 +624,38 @@ impl BackendSupervisor {
                 child.id()
             ));
         }
-        if request_local(ready.port, "GET", "/health", None)? != 200 {
-            let _ = job.terminate(1);
-            let _ = child.wait();
-            return Err("managed backend failed its health verification".into());
+        #[cfg(windows)]
+        match job.contains(ready.pid) {
+            Ok(true) => {}
+            Ok(false) => {
+                let _ = job.terminate(1);
+                let _ = child.wait();
+                return Err(format!(
+                    "backend readiness PID {} was not contained by the supervisor Job Object",
+                    ready.pid
+                ));
+            }
+            Err(error) => {
+                let _ = job.terminate(1);
+                let _ = child.wait();
+                return Err(format!("verify backend Job Object membership: {error}"));
+            }
         }
-        if request_local(ready.port, "GET", "/api/auth/check", Some(&token))? != 200 {
+        let health_status = request_local(ready.port, "GET", "/health", None);
+        if !matches!(health_status, Ok(200)) {
             let _ = job.terminate(1);
             let _ = child.wait();
-            return Err("managed backend rejected the supervisor token".into());
+            return Err(format!(
+                "managed backend failed its health verification: {health_status:?}"
+            ));
+        }
+        let auth_status = request_local(ready.port, "GET", "/api/auth/check", Some(&token));
+        if !matches!(auth_status, Ok(200)) {
+            let _ = job.terminate(1);
+            let _ = child.wait();
+            return Err(format!(
+                "managed backend rejected the supervisor token: {auth_status:?}"
+            ));
         }
 
         let tailscale = self.tailscale.reconcile(ready.port, &ready.instance_id);
@@ -654,6 +917,12 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 mod tests {
     use super::validated_remote_url;
 
+    #[cfg(windows)]
+    use std::{fs, path::PathBuf, thread, time::Duration};
+
+    #[cfg(windows)]
+    use super::run_backend_launcher;
+
     #[test]
     fn remote_mode_requires_https() {
         assert!(validated_remote_url(Some("http://machine.ts.net")).is_err());
@@ -666,5 +935,43 @@ mod tests {
         assert!(validated_remote_url(Some("https://machine.ts.net?target=other")).is_err());
         assert!(validated_remote_url(Some("https://machine.ts.net/#fragment")).is_err());
         assert!(validated_remote_url(Some("https://")).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn backend_launcher_waits_for_assignment_gate() {
+        let directory = std::env::temp_dir().join(format!(
+            "modus-launch-gate-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::create_dir_all(&directory).expect("create launcher test directory");
+        let gate = directory.join("assigned.gate");
+        let marker = directory.join("backend-started.txt");
+        let script = directory.join("backend.ps1");
+        let escaped_marker = marker.to_string_lossy().replace('\'', "''");
+        fs::write(
+            &script,
+            format!("[IO.File]::WriteAllText('{escaped_marker}', 'started')"),
+        )
+        .expect("write launcher test script");
+        let powershell = PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot"))
+            .join("System32/WindowsPowerShell/v1.0/powershell.exe");
+
+        let launcher_gate = gate.clone();
+        let launcher =
+            thread::spawn(move || run_backend_launcher(&launcher_gate, &powershell, &script));
+        thread::sleep(Duration::from_millis(200));
+        assert!(
+            !marker.exists(),
+            "backend started before the assignment gate"
+        );
+
+        fs::write(&gate, b"assigned").expect("release launcher gate");
+        assert_eq!(launcher.join().expect("join launcher"), 0);
+        assert_eq!(
+            fs::read_to_string(&marker).expect("read backend marker"),
+            "started"
+        );
+        let _ = fs::remove_dir_all(directory);
     }
 }

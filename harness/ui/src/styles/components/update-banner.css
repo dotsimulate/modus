@@ -1,0 +1,26 @@
+.update-banner {
+  position: fixed;
+  z-index: 10000;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: min(760px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  background: var(--bg-raised, #151515);
+  color: var(--text, #ddd);
+  box-shadow: 0 8px 30px #000a;
+  font-size: 12px;
+}
+
+.update-banner > div:first-child { display: grid; gap: 2px; }
+.update-banner span { color: var(--text-muted, #888); }
+.update-banner.recommended { border-color: #9b7a32; }
+.update-banner.critical { border-color: #b64b4b; }
+.update-banner-actions { display: flex; gap: 8px; margin-left: auto; }
+.update-banner button { white-space: nowrap; }
+

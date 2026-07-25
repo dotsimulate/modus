@@ -28,6 +28,7 @@ import { PanelCollapseTab } from "./components/PanelCollapseTab";
 import { LayoutProvider } from "./providers/LayoutProvider";
 import { useLayout } from "./providers/LayoutContext";
 import { ClientExtensionsBoot } from "./components/ClientExtensionsBoot";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { AgentPortal } from "./components/AgentPortal";
 import { WIDGET_DEFS, widgetHandlesIntent, type DashboardPage } from "./widgets";
 import { PagePicker } from "./components/PagePicker";
@@ -132,6 +133,7 @@ function App() {
           <FileViewerProvider>
             <PinboardProvider>
               <ClientExtensionsBoot />
+              <UpdateBanner />
               <AppShell />
             </PinboardProvider>
           </FileViewerProvider>
