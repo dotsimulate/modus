@@ -12,7 +12,7 @@ import {
   listSessions,
   listSessionsScoped,
   parseTags,
-} from "../../../harness/db";
+} from "../../db";
 import type { TurnContent } from "../../../harness/db";
 
 // ── gather() ──
