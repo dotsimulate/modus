@@ -31,6 +31,7 @@ import * as sessionManager from "./session-manager";
 import * as profiles from "./profiles";
 import * as profileSchemas from "./profile-schemas";
 import * as moveRunner from "./move-runner";
+import * as modusHome from "./modus-home";
 import { BRIDGED_HARNESS_MODULES } from "./bridged-modules";
 
 export { BRIDGED_HARNESS_MODULES } from "./bridged-modules";
@@ -65,6 +66,7 @@ export function initHarnessBridge(): void {
     "profiles": profiles,
     "profile-schemas": profileSchemas,
     "move-runner": moveRunner,
+    "modus-home": modusHome,
   };
   for (const name of BRIDGED_HARNESS_MODULES) {
     if (!reg.has(name)) reg.set(name, namespaces[name]);

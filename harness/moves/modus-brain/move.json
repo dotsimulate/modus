@@ -51,6 +51,41 @@
           },
           "required": ["id"]
         }
+      },
+      "feedback": {
+        "description": "REQUIRED. File feedback about using Modus itself — a documentation gap, a rough edge in a primitive, a capability you wanted and could not find, or behavior that contradicted what you were told. File it rather than working around it silently. One call per distinct issue.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": ["docs", "friction", "missing", "wrong"],
+              "description": "docs = the documentation did not answer it; friction = it works but authoring/using it was awkward, verbose, or surprising; missing = you wanted a capability that does not exist; wrong = behavior contradicted the docs or the stated contract."
+            },
+            "what": { "type": "string", "description": "What you were trying to do, in one sentence." },
+            "friction": { "type": "string", "description": "What actually got in the way. Be concrete — name the field, op, file, or behavior. Not \"the docs are thin\"." },
+            "primitive": {
+              "type": "string",
+              "enum": ["move", "action", "page", "profile", "mission", "plugin", "skill", "provider", "docs", "other"],
+              "description": "Which part of Modus this concerns."
+            },
+            "doc": { "type": "string", "description": "Doc id that should have covered this, if there is an obvious one (e.g. \"moves\", \"capability-surface\")." },
+            "queries": { "type": "array", "items": { "type": "string" }, "description": "Searches you tried that failed to surface an answer." },
+            "resolvedBy": { "type": "string", "description": "How you got past it — read source, trial and error, gave up. The fix gets written from this." }
+          },
+          "required": ["kind", "what", "friction"]
+        }
+      },
+      "feedback_list": {
+        "description": "Read feedback already filed. Check before filing so you sharpen an existing entry rather than restating it, or use it to work through the backlog.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "limit": { "type": "number", "description": "Max entries to return, newest first. Default 50." },
+            "kind": { "type": "string", "enum": ["docs", "friction", "missing", "wrong"] },
+            "primitive": { "type": "string", "description": "Only entries about this primitive." }
+          }
+        }
       }
     }
   },
@@ -61,7 +96,7 @@
     "actionTrigger": false,
     "notify": false,
     "fileRead": true,
-    "fileWrite": false
+    "fileWrite": true
   },
   "tags": ["docs", "meta", "knowledge", "capability"]
 }

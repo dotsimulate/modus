@@ -1,6 +1,53 @@
 import { describe, expect, test } from "bun:test";
 import { createInitialState, reduceEvent } from "./src/eventReducer";
 
+describe("eventReducer user prompt dedup", () => {
+  /** What move-runner injects: the gathered block, then a blank line, then the prompt. */
+  const withMoveContext = (move: string, context: string, prompt: string) =>
+    `<!-- move:${move} -->\n${context}\n<!-- /move:${move} -->\n\n${prompt}`;
+
+  test("folds the echoed turn into the optimistic message when a move is attached", () => {
+    let state = createInitialState("ses-test");
+    // The composer inserts exactly what the user typed.
+    state.messages.push({ id: "optimistic", role: "user", content: "how do profiles work?", timestamp: 1 });
+
+    state = reduceEvent(state, {
+      type: "user",
+      subtype: "prompt",
+      message: { content: withMoveContext("modus-brain", "brain instructions", "how do profiles work?") },
+    }, 2);
+
+    const userMessages = state.messages.filter((m) => m.role === "user");
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0]!.id).toBe("optimistic");
+    // Adopted the injected content so the move disclosure renders on it.
+    expect(userMessages[0]!.content).toContain("<!-- move:modus-brain -->");
+    expect(userMessages[0]!.content).toContain("how do profiles work?");
+  });
+
+  test("still dedups a plain turn with no injected context", () => {
+    let state = createInitialState("ses-test");
+    state.messages.push({ id: "optimistic", role: "user", content: "hello", timestamp: 1, seq: 1 });
+
+    state = reduceEvent(state, { type: "user", subtype: "prompt", message: { content: "hello" } }, 2);
+
+    expect(state.messages.filter((m) => m.role === "user")).toHaveLength(1);
+  });
+
+  test("appends a genuinely different prompt", () => {
+    let state = createInitialState("ses-test");
+    state.messages.push({ id: "optimistic", role: "user", content: "hello", timestamp: 1, seq: 1 });
+
+    state = reduceEvent(state, {
+      type: "user",
+      subtype: "prompt",
+      message: { content: withMoveContext("modus-brain", "brain instructions", "a different question") },
+    }, 2);
+
+    expect(state.messages.filter((m) => m.role === "user")).toHaveLength(2);
+  });
+});
+
 describe("eventReducer stream replacement semantics", () => {
   test("keeps Codex reconnect progress non-terminal", () => {
     let state = createInitialState("ses-test");
