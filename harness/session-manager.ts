@@ -2282,8 +2282,22 @@ export function stopSessionReaper(): void {
 
 // ── Cleanup ──
 
-export function shutdownAll() {
+/**
+ * How long shutdown waits for provider teardown before giving up on it. A provider's
+ * dispose() is what reaps its CLI subprocess, so exiting while it is still running
+ * orphans that subprocess — on POSIX it is reparented to init and survives us.
+ */
+const PROVIDER_DISPOSE_TIMEOUT_MS = 5_000;
+
+/**
+ * Tear down every active session. Returns once provider teardown has settled or the
+ * timeout above expires, whichever comes first; callers must await it before exiting
+ * the process. abort() below is synchronous and reaps the subprocess on the ordinary
+ * path — the wait matters for the degraded path, where dispose() is doing the work.
+ */
+export function shutdownAll(): Promise<void> {
   stopSessionReaper();
+  const disposals: Promise<unknown>[] = [];
   for (const [id, session] of activeSessions) {
     try {
       if (session.pauseResolver) {
@@ -2303,11 +2317,17 @@ export function shutdownAll() {
       session.watchers.clear();
       flushPendingAssistantTurn(session, { type: "done", reason: "session shutdown" });
       session._provider.abort(session);
-      session._provider.dispose?.(session).catch(() => {});
+      const disposal = session._provider.dispose?.(session);
+      if (disposal) disposals.push(disposal.catch(() => {}));
     } catch { /* best effort */ }
     sseLog("SESSION-UNREGISTERED", id, `subsAtRemoval=${session.subscribers.size} totalActive=${activeSessions.size - 1}`);
     activeSessions.delete(id);
   }
+  if (disposals.length === 0) return Promise.resolve();
+  return Promise.race([
+    Promise.all(disposals).then(() => {}),
+    Bun.sleep(PROVIDER_DISPOSE_TIMEOUT_MS),
+  ]);
 }
 
 // ── Branching ──

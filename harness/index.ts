@@ -783,11 +783,13 @@ app.delete("/api/processes/:id", (c) => {
 
 // Internal shutdown — called by watchdog to trigger graceful exit (closes connections, frees port)
 app.post("/api/internal/shutdown", (c) => {
-  setTimeout(() => {
+  setTimeout(async () => {
     stopActions();
     stopSessionReaper();
     stopMemoryWatchdog();
-    shutdownAll();
+    // Await provider teardown: it reaps the provider CLI subprocess, and exiting
+    // out from under it orphans that process rather than killing it.
+    await shutdownAll();
     shutdownAllTerminals();
     server.stop(true);
     setTimeout(() => process.exit(0), 500);
@@ -825,7 +827,7 @@ app.post("/api/admin/restart", async (c) => {
 
   // Shut down after response flushes (~100ms)
   setTimeout(async () => {
-    shutdownAll();
+    await shutdownAll();
     server.stop(true);
     await Bun.sleep(200);
     process.exit(0);
@@ -4862,12 +4864,14 @@ process.on("unhandledRejection", (reason) => {
 });
 
 // Graceful shutdown
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   console.log("Shutting down...");
   stopActions();
   stopSessionReaper();
   stopMemoryWatchdog();
-  shutdownAll();
+  // Await provider teardown before exiting, or the provider CLI subprocess is
+  // orphaned instead of reaped. Capped inside shutdownAll.
+  await shutdownAll();
   shutdownAllTerminals();
   // Force-close active connections (WebSocket, SSE) so the port is released immediately.
   // Without this, Windows holds ghost sockets and the port stays bound after exit.

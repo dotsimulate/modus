@@ -346,6 +346,23 @@ async function requestGracefulShutdown(port: number): Promise<boolean> {
   } catch { return false; }
 }
 
+/**
+ * POSIX has no `taskkill /T`. Signalling a bare pid reaches only that process, so the
+ * provider CLIs the backend spawned survive as orphans reparented to init — the
+ * ghost-process failure this project keeps hitting. A negative pid signals the whole
+ * process group instead, which is safe only when the target is a group leader: the
+ * processes below are spawned `detached` precisely so that holds (pgid === pid).
+ * Falls back to the bare pid when no such group exists, which is what the old code did.
+ */
+function signalGroup(pid: number | undefined, signal: "SIGTERM" | "SIGKILL"): void {
+  if (!pid) return;
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try { process.kill(pid, signal); } catch { /* already dead */ }
+  }
+}
+
 function killTree(proc: Subprocess): void {
   try {
     if (process.platform === "win32") {
@@ -353,9 +370,25 @@ function killTree(proc: Subprocess): void {
         stdout: "ignore", stderr: "ignore",
       });
     } else {
-      proc.kill();
+      signalGroup(proc.pid, "SIGTERM");
     }
   } catch { /* best effort */ }
+}
+
+/**
+ * SIGTERM the tree, then SIGKILL anything still alive. Windows needs no escalation —
+ * `taskkill /F` is already forceful — so this only adds a second stage on POSIX.
+ */
+async function killTreeAndWait(proc: Subprocess, graceMs = 3_000): Promise<void> {
+  killTree(proc);
+  const deadline = Date.now() + graceMs;
+  while (Date.now() < deadline) {
+    if (proc.exitCode !== null) return;
+    await Bun.sleep(100);
+  }
+  if (proc.exitCode === null && process.platform !== "win32") {
+    signalGroup(proc.pid, "SIGKILL");
+  }
 }
 
 function killPid(pid: number): void {
@@ -365,7 +398,7 @@ function killPid(pid: number): void {
         stdout: "ignore", stderr: "ignore",
       });
     } else {
-      process.kill(pid, "SIGTERM");
+      signalGroup(pid, "SIGTERM");
     }
   } catch { /* process may already be dead */ }
 }
@@ -509,6 +542,9 @@ function getArg(args: string[], index: number): string | undefined {
 // ── Commands ──
 
 async function cmdDaemonSupervise(): Promise<void> {
+  // Deliberately NOT detached: this supervisor is itself a group leader (spawned
+  // detached by cmdStart), and keeping the backend and its providers inside that same
+  // group is what lets `modus stop` reap the whole daemon with one group signal.
   const child = spawn([BUN, "run", "index.ts"], {
     cwd: HARNESS_DIR,
     stdout: "inherit",
@@ -519,7 +555,8 @@ async function cmdDaemonSupervise(): Promise<void> {
   const stopChild = () => {
     if (stopping) return;
     stopping = true;
-    killTree(child);
+    // Fire-and-forget: the escalation timer runs while we await child.exited below.
+    void killTreeAndWait(child);
   };
   process.on("SIGINT", stopChild);
   process.on("SIGTERM", stopChild);
@@ -675,11 +712,16 @@ async function cmdStart(args: string[]): Promise<void> {
   }
 
   // ── Foreground mode ──
+  // Detached on POSIX so the backend leads its own process group and killTree can
+  // reap the provider CLIs beneath it. Ctrl-C then reaches only this CLI, which is
+  // what we want: shutdown() below drives the graceful HTTP path and force-kills the
+  // group as a fallback. Windows is left alone — taskkill /T already walks the tree.
   const proc = spawn([BUN, "run", "index.ts"], {
     cwd: HARNESS_DIR,
     stdout: "inherit",
     stderr: "inherit",
     env,
+    detached: process.platform !== "win32",
   });
 
   writeStateFiles(proc.pid, usePort);
@@ -703,7 +745,7 @@ async function cmdStart(args: string[]): Promise<void> {
     }
 
     if (proc.exitCode === null) {
-      killTree(proc);
+      await killTreeAndWait(proc);
     }
 
     cleanStateFiles();
@@ -817,9 +859,14 @@ async function cmdStop(_args: string[]): Promise<void> {
     killPid(pid);
     await Bun.sleep(500);
 
-    // Last resort: SIGKILL
+    // Last resort: SIGKILL the whole group, not just the leader — a bare SIGKILL
+    // here is what leaves the backend and its provider CLIs running as orphans.
     if (isPidAlive(pid)) {
-      try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ }
+      if (process.platform === "win32") {
+        try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ }
+      } else {
+        signalGroup(pid, "SIGKILL");
+      }
     }
   }
 
