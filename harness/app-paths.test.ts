@@ -26,12 +26,18 @@ describe("app path contract", () => {
     expect(paths.resourcesDir).toBe(resolve("D:/app/resources"));
   });
 
-  test("strips the Windows extended-length prefix from configured paths", () => {
-    const paths = resolveAppPaths({
-      env: { MODUS_RESOURCES_DIR: "\\\\?\\C:\\Apps\\Modus\\modus" },
-    });
-    expect(paths.resourcesDir).toBe(resolve("C:\\Apps\\Modus\\modus"));
-  });
+  // The `\\?\` extended-length prefix is Windows-only path semantics; on POSIX
+  // the backslashes are ordinary filename characters and resolve() never yields
+  // such a prefix, so this contract only applies on Windows.
+  test.skipIf(process.platform !== "win32")(
+    "strips the Windows extended-length prefix from configured paths",
+    () => {
+      const paths = resolveAppPaths({
+        env: { MODUS_RESOURCES_DIR: "\\\\?\\C:\\Apps\\Modus\\modus" },
+      });
+      expect(paths.resourcesDir).toBe(resolve("C:\\Apps\\Modus\\modus"));
+    },
+  );
 
   test("rejects an instance name that could escape its root", () => {
     expect(() => resolveAppPaths({ env: { MODUS_INSTANCE: "../other" } })).toThrow();
