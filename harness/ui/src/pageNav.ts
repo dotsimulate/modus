@@ -12,7 +12,7 @@ export type NormalizedPageNavPrefs = {
   labels: Record<string, string>;
 };
 
-export type PageNavOrigin = "standalone" | "harness" | "move" | "action" | "mission" | "profile";
+export type PageNavOrigin = "standalone" | "plugin" | "harness" | "move" | "action" | "mission" | "profile";
 
 export type PageNavItem = {
   key: View;

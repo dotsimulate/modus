@@ -142,7 +142,7 @@ async function stage(): Promise<void> {
     throw new Error("Legacy checkout profiles must not be included in the desktop package");
   }
 
-  for (const file of ["version.json"]) {
+  for (const file of ["version.json", "plugin.json", "ABOUT.md"]) {
     const source = join(harnessDir, file);
     if (existsSync(source)) copyFileSync(source, join(stageDir, file));
   }

@@ -25,7 +25,9 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join, resolve } from "path";
 import { APP_PATHS } from "./app-paths";
-import { getAllUserProfiles, getUserProfile } from "./profiles";
+import { buildModusMcpServer, getAllUserProfiles, getProfile, getUserProfile, resolveProfileKey } from "./profiles";
+import { bindSessionSkillScope, collectSkills, createSkillScope } from "./skill-attachment";
+import { acceptsInjectedSkillPaths } from "./providers/provider-names";
 import {
   interactWithSession, startSession, getActiveSession, switchProfile,
   attachArtifactToSession, watchSession, deliverToSession, type ActiveSession,
@@ -50,9 +52,9 @@ import { MAX_CHAIN_DEPTH } from "./action-types";
 import { sendNotifications, sendActionNotification } from "./notify";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { svgToPngBase64 } from "./svg-render";
-import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBindings } from "./move-runner";
+import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBindings, getMoveSkillSources } from "./move-runner";
 import { createTerminal as createTerminalPty, killTerminal as killTerminalPty, writeTerminal as writeTerminalPty } from "./terminal-manager";
-import { getPluginActionsDir, listEnabledModusPlugins } from "./modus-plugins";
+import { getPluginActionsDir, listEnabledModusPlugins, type ModusPlugin } from "./modus-plugins";
 import { buildHarnessContext } from "./harness-context";
 
 // ── Constants ──
@@ -96,9 +98,11 @@ type ActionResolveOpts = {
 };
 
 type ActionInfo = ActionConfig & {
-  origin: "harness" | "project";
+  origin: "harness" | "project" | "plugin";
   scopeKey: string;
   projectCwd?: string;
+  pluginId?: string;
+  pluginPath?: string;
   nextRunAt: number | null;
   lastRunAt: number | null;
   lastStatus: string | null;
@@ -121,7 +125,12 @@ function projectActionKey(projectCwd: string, name: string): string {
   return `project:${normalizeCwd(projectCwd)}:${name}`;
 }
 
-function actionScopeKey(name: string, projectCwd?: string): string {
+function pluginActionKey(pluginId: string, name: string): string {
+  return `plugin:${pluginId}:${name}`;
+}
+
+function actionScopeKey(name: string, projectCwd?: string, pluginId?: string): string {
+  if (pluginId) return pluginActionKey(pluginId, name);
   return projectCwd ? projectActionKey(projectCwd, name) : harnessActionKey(name);
 }
 
@@ -133,14 +142,14 @@ function userProfileProjectCwds(userProfileName?: string | null): string[] {
 
 function stateMatchesCwd(state: ActionState, cwd?: string | null): boolean {
   if (!cwd) return true;
-  if (state.origin === "harness") return true;
+  if (state.origin === "harness" || state.origin === "plugin") return true;
   if (!state.projectCwd) return false;
   const normalized = normalizeCwd(cwd);
   return normalized === state.projectCwd || normalized.startsWith(`${state.projectCwd}/`);
 }
 
 function stateVisibleToUserProfile(state: ActionState, userProfileName?: string | null): boolean {
-  if (!userProfileName || state.origin === "harness") return true;
+  if (!userProfileName || state.origin === "harness" || state.origin === "plugin") return true;
   if (!state.projectCwd) return false;
   return userProfileProjectCwds(userProfileName).includes(state.projectCwd);
 }
@@ -161,8 +170,20 @@ function visibleActionStates(opts: ActionResolveOpts = {}): ActionState[] {
   const projectNames = new Set(states
     .filter((state) => state.origin === "project")
     .map((state) => state.config.name));
+  const preferredPluginScopes = new Map<string, string>();
+  for (const state of states) {
+    if (state.origin !== "plugin" || preferredPluginScopes.has(state.config.name)) continue;
+    preferredPluginScopes.set(state.config.name, state.scopeKey);
+  }
 
-  return states.filter((state) => state.origin === "project" || !projectNames.has(state.config.name));
+  return states.filter((state) => {
+    if (state.origin === "project") return true;
+    if (projectNames.has(state.config.name)) return false;
+    if (state.origin === "plugin") {
+      return preferredPluginScopes.get(state.config.name) === state.scopeKey;
+    }
+    return !preferredPluginScopes.has(state.config.name);
+  });
 }
 
 function resolveActionState(name: string, opts: ActionResolveOpts = {}): ActionState | undefined {
@@ -181,6 +202,8 @@ function resolveActionState(name: string, opts: ActionResolveOpts = {}): ActionS
     )[0];
   }
 
+  const pluginCandidate = candidates.find((state) => state.origin === "plugin");
+  if (pluginCandidate) return pluginCandidate;
   return candidates.find((state) => state.origin === "harness") ?? candidates[0];
 }
 
@@ -192,6 +215,8 @@ function actionToInfo(s: ActionState): ActionInfo {
     origin: s.origin,
     scopeKey: s.scopeKey,
     ...(s.projectCwd ? { projectCwd: s.projectCwd } : {}),
+    ...(s.pluginId ? { pluginId: s.pluginId } : {}),
+    ...(s.pluginPath ? { pluginPath: s.pluginPath } : {}),
     nextRunAt: s.nextRunAt,
     lastRunAt: s.lastRunAt,
     lastStatus: exec?.lastStatus ?? null,
@@ -205,7 +230,12 @@ function actionToInfo(s: ActionState): ActionInfo {
 
 function chainScopeMatches(sourceState: ActionState, watchState: ActionState): boolean {
   if (watchState.origin === "harness") return sourceState.origin === "harness";
+  if (watchState.origin === "plugin") {
+    return sourceState.origin === "harness"
+      || (sourceState.origin === "plugin" && sourceState.pluginId === watchState.pluginId);
+  }
   if (sourceState.origin === "harness") return true;
+  if (sourceState.origin === "plugin") return true;
   return watchState.projectCwd === sourceState.projectCwd;
 }
 
@@ -335,9 +365,16 @@ function deriveExhausted(config: ActionConfig, runCount: number, cycle: number, 
 
 // ── Project-local action discovery ──
 
-/** Collect all .modus/actions/ directories from known user-profile project paths */
-function discoverProjectActionDirs(): Array<{ actionsDir: string; projectCwd: string }> {
-  const result: Array<{ actionsDir: string; projectCwd: string }> = [];
+type AuthoredActionDir = {
+  actionsDir: string;
+  defaultCwd: string;
+  origin: "project" | "plugin";
+  plugin?: ModusPlugin;
+};
+
+/** Collect project and plugin action roots without erasing their source identity. */
+function discoverProjectActionDirs(): AuthoredActionDir[] {
+  const result: AuthoredActionDir[] = [];
   const userProfiles = getAllUserProfiles();
   const seen = new Set<string>();
   for (const up of Object.values(userProfiles)) {
@@ -346,7 +383,11 @@ function discoverProjectActionDirs(): Array<{ actionsDir: string; projectCwd: st
       if (seen.has(projectCwd)) continue;
       seen.add(projectCwd);
       const dir = join(projectCwd, MODUS_ACTIONS);
-      if (existsSync(dir)) result.push({ actionsDir: dir, projectCwd });
+      if (existsSync(dir)) result.push({
+        actionsDir: dir,
+        defaultCwd: projectCwd,
+        origin: "project",
+      });
     }
   }
   for (const plugin of listEnabledModusPlugins()) {
@@ -354,16 +395,38 @@ function discoverProjectActionDirs(): Array<{ actionsDir: string; projectCwd: st
     if (seen.has(projectCwd)) continue;
     seen.add(projectCwd);
     const dir = getPluginActionsDir(plugin);
-    if (existsSync(dir)) result.push({ actionsDir: dir, projectCwd });
+    if (existsSync(dir)) result.push({
+      actionsDir: dir,
+      defaultCwd: projectCwd,
+      origin: "plugin",
+      plugin,
+    });
   }
   return result;
 }
 
 // ── Action Loading ──
 
-function loadActionsFromDir(actionsDir: string, seen: Set<string>, defaultCwd?: string): void {
+function expandPluginValue(value: unknown, pluginPath: string): unknown {
+  if (typeof value === "string") return value.replace(/\$\{pluginDir\}/g, pluginPath);
+  if (Array.isArray(value)) return value.map((entry) => expandPluginValue(entry, pluginPath));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+      key,
+      expandPluginValue(entry, pluginPath),
+    ]));
+  }
+  return value;
+}
+
+function loadActionsFromDir(
+  actionsDir: string,
+  seen: Set<string>,
+  source?: Omit<AuthoredActionDir, "actionsDir">,
+): void {
   if (!existsSync(actionsDir)) return;
-  const projectCwd = defaultCwd ? normalizeCwd(defaultCwd) : undefined;
+  const projectCwd = source?.defaultCwd ? normalizeCwd(source.defaultCwd) : undefined;
+  const plugin = source?.plugin;
   const dirs = readdirSync(actionsDir, { withFileTypes: true })
     .filter(d => d.isDirectory())
     .map(d => d.name);
@@ -372,23 +435,32 @@ function loadActionsFromDir(actionsDir: string, seen: Set<string>, defaultCwd?: 
     const configPath = join(actionsDir, name, "action.json");
     if (!existsSync(configPath)) continue;
     try {
-      const config = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
+      const authoredConfig = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
+      if (authoredConfig.trigger.type === "webhook" && !authoredConfig.trigger.token) {
+        authoredConfig.trigger.token = crypto.randomUUID();
+        writeFileSync(configPath, JSON.stringify(authoredConfig, null, 2) + "\n", "utf-8");
+        console.log(`[actions] Generated webhook token for "${name}"`);
+      }
+
+      // Runtime source metadata and token expansion must never be persisted back
+      // into the authored action file (especially as machine-specific paths).
+      const config = structuredClone(authoredConfig);
       config.name = name;
-      config.origin = projectCwd ? "project" : "harness";
-      // Project-local actions default their CWD to the project they came from
+      config.origin = source?.origin ?? "harness";
+      if (plugin) {
+        config.pluginId = plugin.id;
+        config.pluginPath = plugin.path;
+        if (config.cwd) config.cwd = expandPluginValue(config.cwd, plugin.path) as string;
+        if (config.inputs) config.inputs = expandPluginValue(config.inputs, plugin.path) as Record<string, unknown>;
+      }
+      // Project and plugin actions default their CWD to the root they came from.
       if (projectCwd && !config.cwd) config.cwd = projectCwd;
 
       if (config.trigger.type === "interval") {
         parseInterval(config.trigger.every);
       }
 
-      if (config.trigger.type === "webhook" && !config.trigger.token) {
-        config.trigger.token = crypto.randomUUID();
-        writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-        console.log(`[actions] Generated webhook token for "${name}"`);
-      }
-
-      const scopeKey = actionScopeKey(name, projectCwd);
+      const scopeKey = actionScopeKey(name, projectCwd, plugin?.id);
       seen.add(scopeKey);
       const existing = actionStates.get(scopeKey);
       const lastRunNumber = getNextRunNumber(name, scopeKey) - 1;
@@ -422,6 +494,7 @@ function loadActionsFromDir(actionsDir: string, seen: Set<string>, defaultCwd?: 
           actionDir,
           origin: config.origin ?? "harness",
           ...(projectCwd ? { projectCwd } : {}),
+          ...(plugin ? { pluginId: plugin.id, pluginPath: plugin.path } : {}),
           activeExecutions: new Map(),
           lastRunAt: null,
           nextRunAt: null,
@@ -433,6 +506,8 @@ function loadActionsFromDir(actionsDir: string, seen: Set<string>, defaultCwd?: 
           actionDir,
           origin: config.origin ?? state.origin,
           projectCwd,
+          pluginId: plugin?.id,
+          pluginPath: plugin?.path,
           lastRunAt: lastRun?.completedAt ?? lastRun?.startedAt ?? null,
           nextRunAt,
           exhausted: deriveExhausted(config, lastRunNumber, currentCycle, cycleRunCount),
@@ -451,8 +526,8 @@ function loadActionsFromDir(actionsDir: string, seen: Set<string>, defaultCwd?: 
 function loadActions(): void {
   const seen = new Set<string>();
   loadActionsFromDir(ACTIONS_DIR, seen);
-  for (const { actionsDir, projectCwd } of discoverProjectActionDirs()) {
-    loadActionsFromDir(actionsDir, seen, projectCwd);
+  for (const { actionsDir, ...source } of discoverProjectActionDirs()) {
+    loadActionsFromDir(actionsDir, seen, source);
   }
   for (const [scopeKey, state] of actionStates) {
     if (seen.has(scopeKey)) continue;
@@ -570,7 +645,7 @@ function buildActionDB(
   actionName: string,
   actionScope: string,
   projectCwd: string | undefined,
-  origin: "harness" | "project",
+  origin: "harness" | "project" | "plugin",
 ): ActionDB {
   // Harness-internal actions see everything. Project actions are scoped to their CWD.
   const cwdScope = origin === "project" && projectCwd
@@ -593,6 +668,40 @@ function buildActionDB(
     getActivityLog,
     getActivitySummary,
   };
+}
+
+function resolveActionProfileReference(
+  reference: string,
+  state: ActionState,
+  runId: number,
+  warnings: string[],
+  userProfile?: string,
+): string {
+  const lookupCwd = state.origin === "project"
+    ? state.projectCwd
+    : state.config.cwd ?? state.projectCwd;
+  const resolved = resolveProfileKey(reference, lookupCwd, { pluginId: state.pluginId });
+  if (resolved) return resolved;
+
+  const warning = `Action "${state.config.name}" references missing agent profile "${reference}"; continuing with fallback defaults`;
+  if (warnings.includes(warning)) return reference;
+  warnings.push(warning);
+  console.warn(`[actions] ${warning}`);
+  logActivity({
+    eventType: "automation_profile_missing",
+    actionName: state.config.name,
+    agentProfile: reference,
+    userProfile,
+    summary: warning,
+    metadata: {
+      kind: "action",
+      actionScope: state.scopeKey,
+      runId,
+      pluginId: state.pluginId,
+    },
+  });
+  updateActionRun(runId, { warning: warnings.join("\n") });
+  return reference;
 }
 
 // ── Core: Fire an Action ──
@@ -678,6 +787,14 @@ async function fireAction(
 
     const startedAt = Date.now();
     runId = insertActionRun(name, state.scopeKey, runNumber, null, startedAt, exec.cycleNumber, triggerInfo.type, effectiveUserProfile, exec.id);
+    const profileWarnings: string[] = [];
+    const initialProfile = resolveActionProfileReference(
+      cfg.agentProfile,
+      state,
+      runId,
+      profileWarnings,
+      effectiveUserProfile,
+    );
 
     const maxRetries = cfg.maxRetries ?? 0;
     let attempt = 1;
@@ -700,6 +817,7 @@ async function fireAction(
         caller: "system",
         cwd: cfg.cwd ?? state.projectCwd ?? process.cwd(),
         userProfile: effectiveUserProfile,
+        pluginId: state.pluginId,
         trust: cfg.trust ?? (state.origin === "harness" ? "builtin" : "reviewed"),
         capabilities: cfg.capabilities ?? {},
       });
@@ -784,6 +902,7 @@ async function fireAction(
         svgToPngBase64,
         sessions: actionHctx.sessions,
         channels: actionHctx.channels,
+        pluginSettings: actionHctx.pluginSettings,
       };
       lastCtx = ctx;
 
@@ -844,9 +963,29 @@ async function fireAction(
         moveApiTokens = phase1.apiTokens;
       }
 
+      // ── Skills ──
+      // This path calls startSession() directly rather than
+      // startSessionWithMoves(), so attachment is resolved here too. Same
+      // ordering constraint: the scope key must exist before spawn because the
+      // provider is handed its MCP endpoint URL at that moment.
+      const actionProfile = initialProfile ? getProfile(initialProfile, effectiveCwd) : undefined;
+      const attachedSkills = collectSkills(effectiveCwd, {
+        names: [...(actionProfile?.skills ?? []), ...(cfg.skills ?? [])],
+        moves: cfg.moves?.length ? getMoveSkillSources(cfg.moves, effectiveCwd) : [],
+      });
+      for (const miss of attachedSkills.missing) {
+        console.warn(`[skills] ${logPrefix}: ${miss.requestedBy} attached "${miss.name}", which resolves to nothing under ${effectiveCwd}`);
+      }
+      const skillScopeKey = createSkillScope(attachedSkills.skills);
+      // PI loads the attached files natively; only the other providers need the
+      // scoped endpoint that carries the skill tools.
+      const scopedMcp = skillScopeKey && !acceptsInjectedSkillPaths(cfg.provider ?? actionProfile?.provider ?? "")
+        ? { modus: buildModusMcpServer(skillScopeKey) }
+        : undefined;
+
       const session = startSession({
         prompt,
-        profile: cfg.agentProfile,
+        profile: initialProfile,
         provider: cfg.provider,
         maxTurns: cfg.maxTurns,
         model: cfg.model,
@@ -858,6 +997,8 @@ async function fireAction(
         loadProjectSettings: cfg.loadProjectSettings,
         actionName: name,
         userProfile: effectiveUserProfile,
+        ...(skillScopeKey ? { skillScopeKey } : {}),
+        ...(scopedMcp ? { mcpServers: scopedMcp } : {}),
       });
 
       // Wait for provider init so session.sessionId reflects the post-rekey backend ID
@@ -868,6 +1009,8 @@ async function fireAction(
       ) {
         await new Promise(r => setTimeout(r, 200));
       }
+
+      if (skillScopeKey) bindSessionSkillScope(session.sessionId, skillScopeKey);
 
       exec.currentSessionId = session.sessionId;
 
@@ -924,7 +1067,14 @@ async function fireAction(
           const stepIndex = si + 1;
 
           // 1. Switch profile
-          const switched = await switchProfile(session.sessionId, step.profile, {
+          const stepProfile = resolveActionProfileReference(
+            step.profile,
+            state,
+            runId,
+            profileWarnings,
+            effectiveUserProfile,
+          );
+          const switched = await switchProfile(session.sessionId, stepProfile, {
             contextMode: step.contextMode ?? "full",
           });
           if (!switched) {
@@ -1386,7 +1536,12 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
 
 function writeActionConfig(state: ActionState): void {
   const configPath = join(state.actionDir, "action.json");
-  writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
+  const authored = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
+  authored.enabled = state.config.enabled;
+  if (authored.trigger.type === "interval" && state.config.trigger.type === "interval") {
+    authored.trigger.every = state.config.trigger.every;
+  }
+  writeFileSync(configPath, JSON.stringify(authored, null, 2) + "\n", "utf-8");
 }
 
 function setActionEnabledForState(state: ActionState, enabled: boolean): boolean {
@@ -1470,7 +1625,7 @@ export function setActionPreference(name: string, key: string, value: boolean, o
   if (!config.preferences) config.preferences = {};
   config.preferences[key] = value;
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  state.config = config;
+  state.config.preferences = config.preferences;
   return true;
 }
 
@@ -1488,7 +1643,9 @@ export function addActionTag(name: string, tag: string, opts: ActionResolveOpts 
   if (state.config.tags.includes(tag)) return true;
   state.config.tags.push(tag);
   const configPath = join(state.actionDir, "action.json");
-  writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
+  const authored = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
+  authored.tags = [...state.config.tags];
+  writeFileSync(configPath, JSON.stringify(authored, null, 2) + "\n", "utf-8");
   return true;
 }
 
@@ -1500,7 +1657,10 @@ export function removeActionTag(name: string, tag: string, opts: ActionResolveOp
   state.config.tags = state.config.tags.filter(t => t !== tag);
   if (state.config.tags.length === 0) delete state.config.tags;
   const configPath = join(state.actionDir, "action.json");
-  writeFileSync(configPath, JSON.stringify(state.config, null, 2) + "\n", "utf-8");
+  const authored = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
+  if (state.config.tags) authored.tags = [...state.config.tags];
+  else delete authored.tags;
+  writeFileSync(configPath, JSON.stringify(authored, null, 2) + "\n", "utf-8");
   return true;
 }
 

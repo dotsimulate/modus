@@ -1,5 +1,5 @@
 import type { TurnContent } from "./db";
-import type { WakeWhen, WakeHandle } from "./harness-context";
+import type { WakeWhen, WakeHandle, HarnessContext } from "./harness-context";
 
 /**
  * Move Types — shared contracts for the move system.
@@ -39,7 +39,10 @@ export interface MoveConfig {
   label: string;
   description: string;
   icon?: string;
-  origin?: "harness" | "project";
+  origin?: "harness" | "project" | "plugin";
+  /** Runtime source metadata; never required in move.json. */
+  pluginId?: string;
+  pluginPath?: string;
 
   // ── User inputs (form fields before execution) ──
   inputs?: MoveInput[];
@@ -92,6 +95,11 @@ export interface MoveConfig {
 
   // ── Page (move-owned full page in the nav) ──
   page?: MovePageDeclaration;
+
+  // ── Skills (available while the move is active) ──
+  /** Installed skills to attach by name. Skills bundled at `<move>/skills/`
+   *  attach automatically — this is for referencing ones installed elsewhere. */
+  skills?: string[];
 
   // ── Capability declaration (runtime enforcement) ──
   capabilities?: MoveCapabilities;
@@ -223,6 +231,8 @@ export interface MoveContext {
   db: MoveDB;
   run: (cmd: string) => Promise<string>;
   harness: HarnessBridge;
+  /** Manifest-declared settings for the plugin that supplied this move. */
+  pluginSettings: HarnessContext["pluginSettings"];
 
   /** Resolve a secret by name. Checks secrets file first, then process.env. */
   secrets: MoveSecrets;
@@ -543,6 +553,8 @@ export interface MoveApiContext {
   db: MoveDB;
   /** Resolve secrets by name */
   secrets: MoveSecrets;
+  /** Manifest-declared settings for the plugin that supplied this move. */
+  pluginSettings: HarnessContext["pluginSettings"];
   /**
    * Push a message into the agent's session.
    * Pass an optional typed payload to emit a structured signal the agent can branch on.

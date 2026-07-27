@@ -1,0 +1,20 @@
+{
+  "id": "modus-core",
+  "name": "Modus Core",
+  "description": "Built-in moves, actions, pages, prompts, and starter content.",
+  "about": "ABOUT.md",
+  "integration": {
+    "agentProfiles": [
+      "modus-dev",
+      "modus-docs-auditor"
+    ],
+    "pageNav": "auto"
+  },
+  "contents": {
+    "moves": { "mode": "merge" },
+    "actions": { "mode": "merge" },
+    "pages": { "mode": "merge" },
+    "profiles": { "mode": "merge" },
+    "skills": { "mode": "merge" }
+  }
+}

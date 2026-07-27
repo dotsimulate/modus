@@ -6,6 +6,7 @@ import {
   type AgentConfigState,
 } from "./AgentConfig";
 import { SearchDropdown } from "./SearchDropdown";
+import { profileOptions } from "../profile-options";
 import { ChatSettings } from "./ChatSettings";
 import { getAllTools, getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isGrokBuildProvider, isToolEnabled } from "../tools";
 import { useProfiles } from "../providers/ProfileContext";
@@ -335,7 +336,7 @@ export function ConfigBar({
                     <SearchDropdown
                       className="search-dropdown--compact"
                       value={editorProfileName ?? ""}
-                      options={profiles.map((p) => ({ value: p.name }))}
+                      options={profileOptions(profiles)}
                       placeholder="select profile"
                       searchPlaceholder="search profiles..."
                       clearable={false}

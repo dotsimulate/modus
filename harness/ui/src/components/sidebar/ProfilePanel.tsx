@@ -4,6 +4,7 @@ import type { Profile, UserProfile } from "../../../../sdk/index";
 import { providerFallbackModel } from "../../../../provider-defaults";
 import { useProfiles } from "../../providers/ProfileContext";
 import { SearchDropdown } from "../SearchDropdown";
+import { profileOptions } from "../../profile-options";
 import { SessionSetup, type SessionSetupState } from "../SessionSetup";
 
 type Props = {
@@ -140,7 +141,7 @@ export function ProfilePanel({
               <SearchDropdown
                 className="search-dropdown--compact"
                 value={selectedProfile}
-                options={profiles.map((p) => ({ value: p.name }))}
+                options={profileOptions(profiles)}
                 placeholder="select profile"
                 searchPlaceholder="search profiles..."
                 clearable={false}

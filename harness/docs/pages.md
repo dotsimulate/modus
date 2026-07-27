@@ -1,6 +1,6 @@
 ---
 title: Pages
-lastUpdated: 2026-07-07
+lastUpdated: 2026-07-26
 covers: harness/pages.ts harness/index.ts harness/ui/src/App.tsx harness/ui/src/components/PageRenderer.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/registry.ts harness/ui/src/widgets/ui-state.ts harness/ui/src/views.ts harness/sdk/types.ts .modus/pages/*.json harness/pages/*.json
 ---
 
@@ -21,6 +21,7 @@ how the same primitives render inside the app-level side panels.
 | Layer | Source |
 |-------|--------|
 | Project standalone | `.modus/pages/*.json` under the active `cwd` |
+| Plugin standalone | `<plugin>/.modus/pages/*.json`, when listed in `integration.pages` |
 | Harness built-ins | `harness/pages/*.json` (ships in-tree, e.g. `chat-studio.json`, `chat-mobile.json`, `pages.json`) |
 | Moves | any `.modus/moves/<name>/move.json` or `harness/moves/<name>/move.json` with a `page` field |
 | Actions | any `.modus/actions/<name>/action.json` with a `page` field |
@@ -35,11 +36,16 @@ how the same primitives render inside the app-level side panels.
 
 `listConfigPages(cwd)` scans in this fixed order and tags each page with an `origin`:
 
-1. `scanStandalonePages(cwd)` → `origin: "standalone"`
-2. `scanHarnessPages()`       → `origin: "harness"`
-3. `scanMovePages(cwd)`       → `origin: "move"`    (projects override harness moves)
-4. `scanActionPages(cwd)`     → `origin: "action"`
-5. `scanMissionPages(cwd)`    → `origin: "mission"`
+1. `scanStandalonePages(cwd)`       → `origin: "standalone"`
+2. `scanPluginStandalonePages()`    → `origin: "plugin"`
+3. `scanHarnessPages()`             → `origin: "harness"`
+4. `scanMovePages(cwd)`             → `origin: "move"`
+5. `scanActionPages(cwd)`           → `origin: "action"`
+6. `scanMissionPages(cwd)`          → `origin: "mission"`
+
+Plugin standalone and embedded move/action pages are visible only when their
+page id appears in the plugin manifest's `integration.pages` list. Files remain
+at the plugin source path; the loader does not seed them into projects.
 
 Disabled primitives (`enabled: false` in the owning `move.json` / `action.json` /
 `mission.json`) are skipped. Directory scans fail silently. JSON parse errors log a

@@ -39,6 +39,7 @@ db.run(`
 `);
 // Add current_cycle column if missing (migration for existing DBs)
 try { db.run(`ALTER TABLE mission_runs ADD COLUMN current_cycle INTEGER NOT NULL DEFAULT 1`); } catch { /* column already exists */ }
+try { db.run(`ALTER TABLE mission_runs ADD COLUMN warning TEXT`); } catch { /* column already exists */ }
 
 db.run(`CREATE INDEX IF NOT EXISTS idx_mission_runs_name ON mission_runs(mission_name, started_at DESC)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_mission_runs_status ON mission_runs(status)`);
@@ -145,6 +146,7 @@ const stmts = {
       orchestrator_session_id = COALESCE($orchestrator_session_id, orchestrator_session_id),
       halt_kind = $halt_kind,
       halt_message = $halt_message,
+      warning = COALESCE($warning, warning),
       updated_at = $updated_at,
       completed_at = $completed_at
     WHERE id = $id
@@ -297,6 +299,7 @@ export function updateMissionRun(id: number, updates: {
   orchestratorSessionId?: string;
   haltKind?: MissionHaltKind | null;
   haltMessage?: string | null;
+  warning?: string;
   completedAt?: number | null;
 }): void {
   stmts.updateRun.run({
@@ -307,6 +310,7 @@ export function updateMissionRun(id: number, updates: {
     $orchestrator_session_id: updates.orchestratorSessionId ?? null,
     $halt_kind: updates.haltKind ?? null,
     $halt_message: updates.haltMessage ?? null,
+    $warning: updates.warning ?? null,
     $updated_at: Date.now(),
     $completed_at: updates.completedAt ?? null,
   });

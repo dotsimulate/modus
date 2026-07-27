@@ -35,6 +35,7 @@ import type {
   MoveCapabilities, MoveConfig, MoveDB, MoveSecrets, MoveStateAPI, SessionRef,
 } from "./move-types";
 import type { SessionTriggerEvent, ActionTerminalHandle } from "./action-types";
+import { createPluginSettingsAccessor } from "./plugin-settings";
 
 // ── Engine dependency seam ──
 // The whole external surface harness-context drives is bundled here. This keeps the
@@ -118,6 +119,8 @@ export interface HarnessSelf {
   caller: "agent" | "user" | "system";
   cwd: string;
   userProfile?: string;
+  /** Set when the authored caller came from an enabled Modus plugin. */
+  pluginId?: string;
   trust: HarnessTrust;
   capabilities?: HarnessCapabilities;
   /** Instance-scoped state binding (api/persistent moves). When present, ctx.state is wired. */
@@ -198,6 +201,10 @@ export interface HarnessContext {
   shell: { run(cmd: string): Promise<string> };
   artifacts: HarnessArtifacts;
   terminal: HarnessTerminalApi;
+  pluginSettings: {
+    get<T = unknown>(key: string): T | undefined;
+    all(): Record<string, unknown>;
+  };
   log(message: string, metadata?: Record<string, unknown>): void;
 }
 
@@ -488,6 +495,10 @@ export function buildHarnessContextWith(self: HarnessSelf, eng: HarnessEngines):
     shell: createShell(self, gate, eng),
     artifacts: createArtifacts(self, eng),
     terminal: createTerminal(self, eng),
+    pluginSettings: createPluginSettingsAccessor(self.pluginId, {
+      cwd: self.cwd,
+      userProfile: self.userProfile,
+    }),
     log(message, metadata) {
       eng.logActivity({
         eventType: "harness_log",

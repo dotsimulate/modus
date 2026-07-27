@@ -1,6 +1,6 @@
 ---
 title: Config Resolution
-lastUpdated: 2026-07-07
+lastUpdated: 2026-07-26
 lastCommit: a9adf68
 covers: harness/profiles.ts harness/profile-schemas.ts harness/session-manager.ts harness/providers/pi-agent.ts
 ---
@@ -26,6 +26,18 @@ might want compaction disabled entirely.
 `<cwd>/.modus/_global.json` → `providerDefaults.<provider>`):
 Per-provider overrides. If your llama-server runs `-c 65536`, set it once here and
 every litellm agent inherits it. Optional — most users never touch this.
+
+Enabled plugins contribute `.modus/_global.json` between those two writable
+layers. For MCP servers, provider defaults, notifications, and client-extension
+config, the merge order is:
+
+```
+built-in → user-home _global.json → enabled plugin _global.json files
+         → project _global.json → agent profile
+```
+
+Later layers win per key. Plugin registration order determines ordering between
+enabled plugins.
 
 **TypeScript fallback** (in `pi-agent.ts`): Ships with sane defaults. 128000 context
 (or API-provided for openrouter), 8192 max output, compaction enabled with

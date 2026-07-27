@@ -6,6 +6,7 @@ import { useProfiles } from "../providers/ProfileContext";
 import { useSession } from "../providers/SessionContext";
 import { SessionsPanel } from "./SessionsPanel";
 import { ProfileEditor } from "./ProfileEditor";
+import { profileOptionLabel } from "../profile-options";
 
 type Props = {
   onSelectSession: (id: string) => void;
@@ -110,8 +111,17 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
   const duplicateProfile = async (name: string) => {
     const src = contextProfiles.find((p) => p.name === name);
     if (!src) return;
-    const copyName = `${name} (copy)`;
-    const copyData: Profile = { ...src, name: copyName };
+    const copyName = `${src.displayName ?? name} (copy)`;
+    const {
+      origin: _origin,
+      key: _key,
+      displayName: _displayName,
+      pluginId: _pluginId,
+      pluginName: _pluginName,
+      pluginPath: _pluginPath,
+      ...profileData
+    } = src;
+    const copyData: Profile = { ...profileData, name: copyName };
     // Normalize for the API call (API rejects "all" string)
     const apiData: Record<string, unknown> = { ...copyData };
     if (apiData.tools === "all") {
@@ -172,13 +182,15 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
               return (
                 <div key={p.name} className="agent-profile-card">
                   <div className="apc-row apc-row--header">
-                    <span className="apc-name">{p.name}</span>
+                    <span className="apc-name">{profileOptionLabel(p)}</span>
                     <button className="apc-edit-btn" title="duplicate" onClick={() => duplicateProfile(p.name)}>
                       {duplicateIcon}
                     </button>
-                    <button className="apc-edit-btn" title="edit" onClick={() => openEdit(p.name)}>
-                      {editIcon}
-                    </button>
+                    {p.origin !== "plugin" && (
+                      <button className="apc-edit-btn" title="edit" onClick={() => openEdit(p.name)}>
+                        {editIcon}
+                      </button>
+                    )}
                   </div>
                   <div className="apc-desc">{p.description}</div>
                   <div className="apc-row apc-row--stats">
@@ -204,7 +216,7 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
                     <span className="apc-actions-spacer" />
                     <button
                       className="apc-action apc-action--primary apc-action--new-session"
-                      title={`${p.name}${p.model ? ` · ${shortModel(p.model)}${p.effort ? ` · ${p.effort}` : ''}` : ''}`}
+                      title={`${profileOptionLabel(p)}${p.model ? ` · ${shortModel(p.model)}${p.effort ? ` · ${p.effort}` : ''}` : ''}`}
                       onClick={async () => {
                         selectProfile(p.name);
                         const id = await newSession(p.name);

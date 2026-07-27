@@ -49,6 +49,8 @@ import { resolveSecret, isSecretSet } from "./secrets";
 import { addSessionTag as dbAddSessionTag } from "./db";
 import { getPluginMovesDir, listEnabledModusPlugins } from "./modus-plugins";
 import { buildHarnessContext, type HarnessSelf } from "./harness-context";
+import { resolveProfileKey } from "./profiles";
+import type { MoveSkillSource } from "./skill-attachment";
 
 // ── Constants ──
 
@@ -605,6 +607,7 @@ export async function handleMoveApiSubmit(
     caller,
     cwd: reg.cwd,
     userProfile: reg.userProfile,
+    pluginId: handlerCfg?.pluginId,
     trust: resolveTrust(handlerCfg ?? undefined),
     capabilities: handlerCfg?.capabilities ?? {},
     instanceId: reg.instanceId,
@@ -624,6 +627,7 @@ export async function handleMoveApiSubmit(
       resolve: (name: string) => resolveSecret(name),
       isSet: (name: string) => isSecretSet(name),
     },
+    pluginSettings: hctx.pluginSettings,
     store: <T = unknown>() => instanceStore.get(reg.instanceId) as T | undefined,
     setStore: (value: unknown) => { instanceStore.set(reg.instanceId, value); },
     insertArtifact: (opts) => {
@@ -825,7 +829,9 @@ function projectMovesDir(cwd: string): string {
 
 export function resolveMoveLocation(name: string, cwd: string): {
   dir: string;
-  origin: "harness" | "project";
+  origin: "harness" | "project" | "plugin";
+  pluginId?: string;
+  pluginPath?: string;
 } | null {
   const projectDir = join(projectMovesDir(cwd), name);
   if (existsSync(join(projectDir, "move.json"))) {
@@ -835,7 +841,12 @@ export function resolveMoveLocation(name: string, cwd: string): {
   for (const plugin of listEnabledModusPlugins()) {
     const pluginDir = join(getPluginMovesDir(plugin), name);
     if (existsSync(join(pluginDir, "move.json"))) {
-      return { dir: pluginDir, origin: "project" };
+      return {
+        dir: pluginDir,
+        origin: "plugin",
+        pluginId: plugin.id,
+        pluginPath: plugin.path,
+      };
     }
   }
 
@@ -845,6 +856,29 @@ export function resolveMoveLocation(name: string, cwd: string): {
   }
 
   return null;
+}
+
+/**
+ * Move locations plus their declared skill names, for skill attachment.
+ * Lives here because it needs move resolution; `skill-attachment.ts` stays a
+ * leaf and takes these as input rather than importing the move runner.
+ * Unresolvable moves are skipped — move activation reports those separately.
+ */
+export function getMoveSkillSources(moves: { name: string }[], cwd: string): MoveSkillSource[] {
+  const sources: MoveSkillSource[] = [];
+  const seen = new Set<string>();
+  for (const binding of moves) {
+    if (seen.has(binding.name)) continue;
+    seen.add(binding.name);
+    const location = resolveMoveLocation(binding.name, cwd);
+    if (!location) continue;
+    sources.push({
+      name: binding.name,
+      dir: location.dir,
+      skills: getMove(binding.name, cwd)?.skills,
+    });
+  }
+  return sources;
 }
 
 /** Load a single move config from disk */
@@ -857,6 +891,8 @@ export function getMove(name: string, cwd: string): MoveConfig | null {
     const config: MoveConfig = JSON.parse(raw);
     config.name = name; // enforce directory name as canonical
     config.origin = location.origin;
+    config.pluginId = location.pluginId;
+    config.pluginPath = location.pluginPath;
     return config;
   } catch (err) {
     console.error(`[move-runner] Failed to load move "${name}":`, err);
@@ -1288,6 +1324,18 @@ function buildMoveContext(
   const persist = moveCfg?.api?.state?.persist ?? false;
   const state = instanceId ? buildStateApi(instanceId, moveName, cwd, persist) : undefined;
 
+  const settingsContext = buildHarnessContext({
+    kind: "move",
+    name: moveName,
+    sessionId: sessionId || null,
+    caller: "agent",
+    cwd,
+    userProfile,
+    pluginId: moveCfg?.pluginId,
+    trust,
+    capabilities: caps,
+  });
+
   return {
     moveName,
     sessionId,
@@ -1315,6 +1363,7 @@ function buildMoveContext(
       return out.trim();
     },
     harness: buildHarnessBridge(moveName, sessionId, cwd, userProfile, caps, trust),
+    pluginSettings: settingsContext.pluginSettings,
     secrets: {
       resolve: (name: string) => resolveSecret(name),
       isSet: (name: string) => isSecretSet(name),
@@ -1394,6 +1443,7 @@ function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: stri
     caller: "agent",
     cwd,
     userProfile,
+    pluginId: getMove(moveName, cwd)?.pluginId,
     trust: trust ?? resolveTrust(getMove(moveName, cwd) ?? undefined),
     capabilities: caps,
   };
@@ -1447,11 +1497,14 @@ function buildSpawnSessionOpts(
     ? inputs.agentProfile
     : undefined;
   const explicitProfile = inputProfile ?? config.agentProfile ?? config.session?.profileOverride ?? undefined;
+  const resolvedProfile = explicitProfile
+    ? resolveProfileKey(explicitProfile, cwd, { pluginId: config.pluginId }) ?? explicitProfile
+    : undefined;
 
-  const base: StartSessionOpts = explicitProfile
+  const base: StartSessionOpts = resolvedProfile
     ? {
         prompt,
-        profile: explicitProfile,
+        profile: resolvedProfile,
         cwd,
         userProfile,
       }
@@ -2166,6 +2219,7 @@ export async function handleSubmit(
       caller: "agent",
       cwd,
       userProfile: moveToken.userProfile ?? active?.userProfile,
+      pluginId: notifyCfg?.pluginId,
       trust: resolveTrust(notifyCfg ?? undefined),
       capabilities: notifyCfg?.capabilities ?? {},
     });

@@ -54,6 +54,11 @@ import {
 import {
   listModusPlugins, patchModusPlugin, registerModusPlugin, unregisterModusPlugin,
 } from "./modus-plugins";
+import { getInstalledSkill, listInstalledSkills, listPluginSkills, buildSkillPayload } from "./skills";
+import {
+  getPluginSettings,
+  patchPluginSettings as patchScopedPluginSettings,
+} from "./plugin-settings";
 import { getResolvedClientExtensionsConfig } from "./profiles";
 import { resolveWhisperCredential } from "./whisper-credential";
 import {
@@ -835,8 +840,8 @@ app.get("/api/profiles", (c) => {
   const cwd = c.req.query("cwd");
   const all = getAllProfiles(cwd);
   const list = Object.entries(all).map(([name, p]) => ({
-    name,
     ...p,
+    name,
     tools: p.tools ?? "all",
   }));
   return c.json(list);
@@ -861,13 +866,16 @@ app.get("/api/profiles/:name", (c) => {
   const cwd = c.req.query("cwd");
   const profile = getProfile(name, cwd);
   if (!profile) return c.json({ error: "profile not found" }, 404);
-  return c.json({ name, ...profile });
+  return c.json({ ...profile, name });
 });
 
 app.put("/api/profiles/:name", async (c) => {
   const name = c.req.param("name");
   const cwd = c.req.query("cwd");
   if (name.startsWith("_")) return c.json({ error: "reserved name" }, 400);
+  if (getProfileConfig(name, cwd)?.origin === "plugin" || name.startsWith("plugin:")) {
+    return c.json({ error: "plugin profiles are read-only merged content" }, 403);
+  }
   const body = await c.req.json<Record<string, unknown>>();
   const { core, ui } = splitProfilePayload(body);
   const coreValidation = validate(ProfileCoreSchema, core);
@@ -896,6 +904,9 @@ app.patch("/api/profiles/:name/ui-config", async (c) => {
   const cwd = c.req.query("cwd");
   const profile = getProfileConfig(name, cwd);
   if (!profile) return c.json({ error: "profile not found" }, 404);
+  if (profile.origin === "plugin") {
+    return c.json({ error: "plugin profile UI is read-only merged content" }, 403);
+  }
   const body = await c.req.json<Record<string, unknown>>();
   const next = { ...(getProfileUiConfig(name, cwd) ?? {}), ...body };
   const v = validate(ProfileUiSchema, next);
@@ -1106,10 +1117,9 @@ app.get("/api/providers/:name/models", async (c) => {
 // ── Sessions ──
 
 /** Resolve user profile scoping from query param.
- *  Mirrors the UI ProfileProvider rule: project-origin agent profiles (loaded from
- *  <cwd>/.modus/profiles/agents/) always pass the scope filter, even when the user
- *  profile's agentProfiles whitelist is set. Without this, sessions run under
- *  project-local profiles like `hints` would be invisible in the sidebar. */
+ * Mirrors the UI visibility rules while retaining legacy, unqualified session
+ * profile names: project profiles are always visible; manifest-integrated plugin
+ * profiles are visible unless hidden; user profiles honor the whitelist. */
 function resolveUserProfileScope(c: any): { projectId: string; cwdPrefixes?: string[]; agentProfiles?: string[] } | undefined {
   const profileName = new URL(c.req.url).searchParams.get("userProfile");
   if (!profileName) return undefined;
@@ -1118,12 +1128,25 @@ function resolveUserProfileScope(c: any): { projectId: string; cwdPrefixes?: str
 
   let agentProfiles: string[] | undefined;
   if (profile.agentProfiles?.length) {
-    // Union the whitelist with project-origin profiles discovered in each project cwd.
     const allowed = new Set(profile.agentProfiles);
+    const hiddenPluginProfiles = new Set(profile.hiddenPluginProfiles ?? []);
     for (const proj of profile.projects ?? []) {
       const merged = getAllProfiles(proj);
-      for (const [name, p] of Object.entries(merged)) {
-        if (p.origin === "project") allowed.add(name);
+      for (const [key, candidate] of Object.entries(merged)) {
+        const displayName = candidate.displayName ?? key;
+        if (candidate.origin === "project") {
+          allowed.add(key);
+          allowed.add(displayName);
+        } else if (candidate.origin === "plugin" && !hiddenPluginProfiles.has(key)) {
+          allowed.add(key);
+          allowed.add(displayName);
+        } else if (
+          candidate.origin === "user"
+          && (allowed.has(key) || allowed.has(displayName))
+        ) {
+          allowed.add(key);
+          allowed.add(displayName);
+        }
       }
     }
     agentProfiles = Array.from(allowed);
@@ -3184,7 +3207,12 @@ app.patch("/api/ui/fonts/:id", async (c) => {
 // ── Modus Plugins ──
 
 app.get("/api/plugins", (c) => {
-  return c.json(listModusPlugins());
+  // Skills are disclosed with the plugin: shipping one ships behavior, not just
+  // capability, and the About surface is where that belongs.
+  return c.json(listModusPlugins().map((plugin) => {
+    const providedSkills = listPluginSkills(plugin).map(({ name, description }) => ({ name, description }));
+    return providedSkills.length ? { ...plugin, providedSkills } : plugin;
+  }));
 });
 
 app.post("/api/plugins", async (c) => {
@@ -3220,6 +3248,32 @@ app.delete("/api/plugins/:id", (c) => {
     return c.json({ error: "plugin not found" }, 404);
   }
   return c.json({ ok: true });
+});
+
+app.get("/api/plugins/:id/settings", (c) => {
+  try {
+    return c.json(getPluginSettings(c.req.param("id"), {
+      cwd: c.req.query("cwd"),
+      userProfile: c.req.query("userProfile"),
+    }));
+  } catch (err: any) {
+    return c.json({ error: err.message ?? "failed to read plugin settings" }, 404);
+  }
+});
+
+app.patch("/api/plugins/:id/settings", async (c) => {
+  try {
+    const body = await c.req.json() as { values?: Record<string, unknown> };
+    if (!body.values || typeof body.values !== "object" || Array.isArray(body.values)) {
+      return c.json({ error: "values object is required" }, 400);
+    }
+    return c.json(patchScopedPluginSettings(c.req.param("id"), body.values, {
+      cwd: c.req.query("cwd"),
+      userProfile: c.req.query("userProfile"),
+    }));
+  } catch (err: any) {
+    return c.json({ error: err.message ?? "failed to update plugin settings" }, 400);
+  }
 });
 
 // ── Client Extensions ──
@@ -3948,6 +4002,36 @@ app.get("/api/moves", (c) => {
   return c.json(listMoves(cwd));
 });
 
+// ── Skills ──
+
+// Installed skills visible from a project (project, user home, enabled plugins).
+// Installed is not the same as attached: this is what the composer's picker can
+// offer, since a user choosing one is itself the decision to load it.
+app.get("/api/skills", (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  return c.json(listInstalledSkills(cwd).map((skill) => ({
+    name: skill.name,
+    description: skill.description,
+    origin: skill.origin,
+    pluginId: skill.pluginId,
+    dir: skill.dir,
+  })));
+});
+
+// Activation payload — what the composer injects when a skill is chosen.
+// Frontmatter stripped and `Base Path:` prefixed, matching the Agent Skills
+// ecosystem; the raw file is still reachable via the file API for previews.
+app.get("/api/skills/:name", (c) => {
+  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  const skill = getInstalledSkill(c.req.param("name"), cwd);
+  if (!skill) return c.json({ error: "skill not found" }, 404);
+  const text = buildSkillPayload(skill);
+  if (text === null) return c.json({ error: "skill could not be read" }, 404);
+  return c.json({ name: skill.name, description: skill.description, dir: skill.dir, origin: skill.origin, text });
+});
+
 // Get a specific move definition
 app.get("/api/moves/:name", (c) => {
   const cwd = new URL(c.req.url).searchParams.get("cwd");
@@ -4216,8 +4300,11 @@ app.post("/api/moves/:name/op", async (c) => {
 app.all("/api/mcp/modus", async (c) => {
   return handleModusMcpRequest(c.req.raw);
 });
+// Suffixed form: the first path segment is a session's skill scope key. An
+// unknown or absent key simply yields the plain single-tool surface.
 app.all("/api/mcp/modus/*", async (c) => {
-  return handleModusMcpRequest(c.req.raw);
+  const suffix = c.req.path.slice("/api/mcp/modus/".length).split("/")[0];
+  return handleModusMcpRequest(c.req.raw, suffix || undefined);
 });
 // ── Missions ──
 

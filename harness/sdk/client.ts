@@ -18,6 +18,8 @@ import type {
   ProfileUi,
   GlobalConfig,
   MoveListItem,
+  SkillListItem,
+  SkillContent,
   ActivateMoveResult,
   MoveWidgetInfo,
   AttachMoveResult,
@@ -56,6 +58,7 @@ import type {
   MemoryItem,
   PromptCache,
   ModusPlugin,
+  PluginSettingsSnapshot,
   ClientExtensionManifestItem,
   ProjectUiState,
   ProjectUiAssetInfo,
@@ -531,6 +534,12 @@ export class ModusClient {
   /** Partially updates a user profile's runtime state. */
   async patchUserProfileState(name: string, patch: Partial<UserProfileState>): Promise<void> { await this.fetch(`/api/user-profiles/${encodeURIComponent(name)}/state`, { method: "PATCH", body: JSON.stringify(patch) }); }
 
+  // ── Skills ──
+  /** Lists skills installed for a project (project, user home, enabled plugins). Empty on error. */
+  async listSkills(cwd: string): Promise<SkillListItem[]> { const r = await this.fetch(`/api/skills?cwd=${encodeURIComponent(cwd)}`); if (!r.ok) return []; return r.json(); }
+  /** Reads one skill's full SKILL.md text. Null when it does not resolve. */
+  async getSkill(name: string, cwd: string): Promise<SkillContent | null> { const r = await this.fetch(`/api/skills/${encodeURIComponent(name)}?cwd=${encodeURIComponent(cwd)}`); if (!r.ok) return null; return r.json(); }
+
   // ── Moves ──
   /** Lists available moves for a project. Returns empty array on error. */
   async listMoves(cwd: string): Promise<MoveListItem[]> { const r = await this.fetch(`/api/moves?cwd=${encodeURIComponent(cwd)}`); if (!r.ok) return []; return r.json(); }
@@ -837,6 +846,29 @@ export class ModusClient {
   /** Unregisters a Modus plugin root without deleting files on disk. */
   async unregisterPlugin(id: string): Promise<void> {
     await this.fetchOrThrow(`/api/plugins/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+  /** Resolves manifest defaults and user/project/global scoped values for a plugin. */
+  async getPluginSettings(id: string, opts?: { cwd?: string; userProfile?: string | null }): Promise<PluginSettingsSnapshot> {
+    const p = new URLSearchParams();
+    if (opts?.cwd) p.set("cwd", opts.cwd);
+    if (opts?.userProfile) p.set("userProfile", opts.userProfile);
+    const q = p.toString();
+    return (await this.fetchOrThrow(`/api/plugins/${encodeURIComponent(id)}/settings${q ? `?${q}` : ""}`)).json();
+  }
+  /** Writes each value to the scope declared for that manifest field. */
+  async patchPluginSettings(
+    id: string,
+    values: Record<string, unknown>,
+    opts?: { cwd?: string; userProfile?: string | null },
+  ): Promise<PluginSettingsSnapshot> {
+    const p = new URLSearchParams();
+    if (opts?.cwd) p.set("cwd", opts.cwd);
+    if (opts?.userProfile) p.set("userProfile", opts.userProfile);
+    const q = p.toString();
+    return (await this.fetchOrThrow(`/api/plugins/${encodeURIComponent(id)}/settings${q ? `?${q}` : ""}`, {
+      method: "PATCH",
+      body: JSON.stringify({ values }),
+    })).json();
   }
 
   // ── Client Extensions ──

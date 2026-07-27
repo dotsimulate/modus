@@ -25,7 +25,7 @@ type ApiPage = {
   layout?: unknown;
   padding?: number;
   source?: string;
-  origin?: "standalone" | "harness" | "move" | "action" | "mission";
+  origin?: "standalone" | "plugin" | "harness" | "move" | "action" | "mission";
   nav?: boolean;
 };
 
