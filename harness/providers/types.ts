@@ -34,6 +34,9 @@ export type ProviderCapabilities = {
   slashCommands?: ProviderSlashCommand[];
   supportsMcp: boolean;
   mcpSupport: "full" | "stdio-only" | "none";
+  /** Whether the provider discovers skills on disk by itself. Derived centrally
+   *  in `registry.ts` from `provider-names.ts`, not declared per provider. */
+  readsNativeSkills?: boolean;
   nonToolSignals: string[];
   permissionModel: {
     mode: "per-tool-ui" | "runtime-native" | "none";

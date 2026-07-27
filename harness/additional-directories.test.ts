@@ -100,6 +100,38 @@ describe("additionalDirectories", () => {
     expect(configReq.ok).toBe(true);
   });
 
+  test("advertises additional roots to PI coding tools and its system prompt", async () => {
+    const {
+      createPiCodingTools,
+      piAdditionalDirectoriesPrompt,
+      piAdditionalSkillPaths,
+    } = await import("./providers/pi-agent");
+    const tools = createPiCodingTools(
+      "/tmp/workspace",
+      ["/tmp/shared", "/tmp/other"],
+      (() => [{
+        name: "read",
+        label: "read",
+        description: "Read a file.",
+        parameters: {},
+        execute: async () => ({ content: [] }),
+      }]) as any,
+    );
+
+    expect(tools[0]?.description).toContain("/tmp/shared");
+    expect(tools[0]?.description).toContain("/tmp/other");
+    expect(piAdditionalDirectoriesPrompt(["/tmp/shared"])).toContain("/tmp/shared");
+
+    const pluginRoot = mkdtempSync(join(tmpdir(), "modus-pi-skills-"));
+    try {
+      const skillsDir = join(pluginRoot, ".claude", "skills");
+      mkdirSync(skillsDir, { recursive: true });
+      expect(piAdditionalSkillPaths(pluginRoot)).toEqual([skillsDir]);
+    } finally {
+      rmSync(pluginRoot, { recursive: true, force: true });
+    }
+  });
+
   test("passes additional directories to Claude Code launch options", async () => {
     let capturedOptions: any;
 

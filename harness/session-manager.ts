@@ -99,7 +99,17 @@ function getRekeyMoveByToken() {
   }
   return _rekeyMoveByToken!;
 }
-import { getProfile, getUserData, getUserProfile } from "./profiles";
+
+let _getMoveSkillSources: typeof import("./move-runner").getMoveSkillSources | null = null;
+function getMoveSkillSources() {
+  if (!_getMoveSkillSources) {
+    _getMoveSkillSources = require("./move-runner").getMoveSkillSources;
+  }
+  return _getMoveSkillSources!;
+}
+import { buildModusMcpServer, getProfile, getUserData, getUserProfile } from "./profiles";
+import { bindSessionSkillScope, collectSkills, createSkillScope } from "./skill-attachment";
+import { acceptsInjectedSkillPaths } from "./providers/provider-names";
 import { getProvider } from "./providers/registry";
 import type { SessionProvider, TurnContext } from "./providers/types";
 
@@ -544,6 +554,9 @@ export type StartSessionOpts = {
   moves?: { name: string; inputs?: Record<string, unknown> }[];
   /** Session-level MCP servers — merged with (and override) profile MCP servers at session creation */
   mcpServers?: Record<string, unknown>;
+  /** Set when skills are attached: identifies this session's skill scope to the
+   *  Modus MCP endpoint and to providers that can load skills natively. */
+  skillScopeKey?: string;
 };
 
 export type InteractSessionOpts = {
@@ -1213,16 +1226,43 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
     ? existingLogicalSession.id
     : undefined;
 
-  // No moves declared → fast path, just start normally
-  if (!allMoves.length) {
-    const session = startSession(opts);
-    await waitForProviderInit(session);
-    return session;
-  }
-
   const resolvedCwd = profileDef?.cwd
     ? resolvePath(baseCwd, profileDef.cwd)
     : baseCwd;
+
+  // Skills resolve before spawn: a provider is handed its MCP endpoint URL when
+  // it starts and cannot be given a new one afterward, so the scope key has to
+  // exist before startSession(). It is bound to the real session ID once the
+  // provider assigns one, the same ordering the inline move API tokens use.
+  const attached = collectSkills(resolvedCwd, {
+    names: profileDef?.skills,
+    moves: allMoves.length ? getMoveSkillSources()(allMoves, resolvedCwd) : [],
+  });
+  for (const miss of attached.missing) {
+    console.warn(`[skills] ${miss.requestedBy} attached "${miss.name}", which resolves to nothing under ${resolvedCwd}`);
+  }
+  const skillScopeKey = createSkillScope(attached.skills);
+  // PI is handed the attached SKILL.md files directly, so it loads them the way
+  // it loads its own — registering the skill tools too would serve the same
+  // text through a second path. Every other provider gets the scoped endpoint.
+  const nativeSkillDelivery = acceptsInjectedSkillPaths(opts.provider ?? profileDef?.provider ?? "");
+  const skillOpts: StartSessionOpts = skillScopeKey
+    ? {
+        ...opts,
+        skillScopeKey,
+        ...(nativeSkillDelivery
+          ? {}
+          : { mcpServers: { ...(opts.mcpServers ?? {}), modus: buildModusMcpServer(skillScopeKey) } }),
+      }
+    : opts;
+
+  // No moves declared → fast path, just start normally
+  if (!allMoves.length) {
+    const session = startSession(skillOpts);
+    await waitForProviderInit(session);
+    if (skillScopeKey) bindSessionSkillScope(session.sessionId, skillScopeKey);
+    return session;
+  }
 
   // Phase 1: gather inline (non-persistent) moves before session starts
   const activateMoveBindings = getActivateMoveBindings();
@@ -1269,13 +1309,15 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
 
   _timing("pre-startSession");
   // Start the session with the augmented prompt
-  const session = startSession({ ...opts, prompt });
+  const session = startSession({ ...skillOpts, prompt });
 
   _timing("post-startSession");
   // Wait for provider init (rekey happens during init — session.sessionId becomes the
   // backend-assigned ID).  Condition: status leaves "starting" once the provider fires
   // its first init event.  Timeout prevents blocking forever on provider failure.
   await waitForProviderInit(session);
+
+  if (skillScopeKey) bindSessionSkillScope(session.sessionId, skillScopeKey);
 
   // Rekey inline API move registrations to the real session ID
   const rekeyMoveByToken = getRekeyMoveByToken();

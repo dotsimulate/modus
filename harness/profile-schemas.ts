@@ -226,6 +226,7 @@ export const ProfileSchema = z.object({
     name: z.string(),
     inputs: z.record(z.string(), z.unknown()).optional(),
   })).optional(),
+  skills: z.array(z.string()).optional(),
 });
 
 export const ProfileCoreSchema = ProfileSchema.omit({ ui: true });

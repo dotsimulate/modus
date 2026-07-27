@@ -9,6 +9,7 @@ import { activateComposer, registerComposer, useComposerActions, useComposerTogg
 import { findCompletion, loadPromptCache, usePromptCache } from "../promptCache";
 import { dispatchUiIntent, moveActivationResultToIntent, moveAttachResultToIntent } from "../widgets/intents";
 import type { PageContextHandle } from "../widgets/types";
+import { wrapSkillContext } from "../move-context";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
 const sentHistory: string[] = [];
@@ -20,6 +21,23 @@ const PASTE_CHAR_THRESHOLD = 400;
 const PASTE_LINE_THRESHOLD = 6;
 
 type StagedPaste = { id: string; text: string };
+
+/**
+ * A skill staged on the composer. The full SKILL.md is held here rather than
+ * dropped into the textarea: the user picked it, so it should read as an
+ * attachment, not as something they typed. Several can stack.
+ */
+type StagedSkill = { id: string; name: string; text: string };
+
+/**
+ * Skills reach the model as plain text, the same way provider-native skills do.
+ * Wrapping each in the fold marker keeps the transcript readable and keeps the
+ * copy button returning only what the user wrote.
+ */
+function serializeSkills(skills: StagedSkill[]): string {
+  if (!skills.length) return "";
+  return skills.map((s) => wrapSkillContext(s.name, s.text)).join("\n\n");
+}
 
 function serializePastes(pastes: StagedPaste[]): string {
   if (!pastes.length) return "";
@@ -164,6 +182,7 @@ export function ChatInput({
   // Attachment state
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [pastes, setPastes] = useState<StagedPaste[]>([]);
+  const [stagedSkills, setStagedSkills] = useState<StagedSkill[]>([]);
   const shiftHeldRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -466,7 +485,12 @@ export function ChatInput({
   async function handleSend(textOverride?: string) {
     const text = (textOverride ?? value).trim();
     const pasteBlock = serializePastes(pastes);
-    const finalText = pasteBlock ? (text ? `${pasteBlock}\n\n${text}` : pasteBlock) : text;
+    const authoredText = pasteBlock ? (text ? `${pasteBlock}\n\n${text}` : pasteBlock) : text;
+    // Skills lead, so the model reads the instructions before the request.
+    const skillBlock = serializeSkills(stagedSkills);
+    const finalText = skillBlock
+      ? (authoredText ? `${skillBlock}\n\n${authoredText}` : skillBlock)
+      : authoredText;
     const hasText = !!finalText || attachments.length > 0;
     if (!attachedMove && !widgetContent && !hasText) return;
 
@@ -501,6 +525,7 @@ export function ChatInput({
           onSend(attachments, sendText || " ", [moveBinding]);
           setAttachments([]);
           setPastes([]);
+          setStagedSkills([]);
           return;
         }
 
@@ -530,6 +555,7 @@ export function ChatInput({
               onSend(attachments, combined);
               setAttachments([]);
               setPastes([]);
+              setStagedSkills([]);
             }
             handleMoveActivated(result);
             return;
@@ -549,6 +575,7 @@ export function ChatInput({
       onSend(attachments, finalText);
       setAttachments([]);
       setPastes([]);
+      setStagedSkills([]);
     }
   }
 
@@ -714,6 +741,24 @@ export function ChatInput({
         </div>
       )}
 
+      {stagedSkills.length > 0 && (
+        <div className="skill-chips">
+          {stagedSkills.map((s) => (
+            <span key={s.id} className="skill-chip" title={`${s.name} — sent as text with your next message`}>
+              <span className="skill-chip-glyph">/</span>
+              {s.name}
+              <button
+                className="skill-chip-remove"
+                onClick={() => setStagedSkills((prev) => prev.filter((x) => x.id !== s.id))}
+                title={`Remove ${s.name}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {attachedMove && (
         <AttachedMove
           move={attachedMove.item}
@@ -833,6 +878,15 @@ export function ChatInput({
               userProfile={userProfile}
               provider={provider}
               onMoveActivated={handleMoveActivated}
+              onSkillAttach={(name, text) => {
+                setStagedSkills((prev) =>
+                  // Re-picking a staged skill is a no-op rather than a duplicate
+                  // injection of the same text.
+                  prev.some((s) => s.name === name)
+                    ? prev
+                    : [...prev, { id: crypto.randomUUID(), name, text }],
+                );
+              }}
               onMoveAttach={async (move, inputs) => {
                 if (move.widget?.mountOnAttach && projectCwd) {
                   // Widget-first: don't store in attachedMove — widget IS the interface.
