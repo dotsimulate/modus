@@ -10,6 +10,7 @@ import type {
   Attachment, PendingPermission, SessionArtifact, MessageContentBlock,
 } from "../../sdk/index";
 import { nextMsgId } from "../../sdk/index";
+import { userAuthoredMessageText } from "./move-context";
 
 export type ReducerState = {
   sessionId: string;
@@ -797,20 +798,34 @@ function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
 
     if (!text && !attachments?.length) return s;
 
-    // Dedup: don't add if any recent user message has identical text
-    // (optimistic insert from handleSend may not be the last message anymore)
+    // Dedup: don't add if any recent user message has the same user-authored
+    // text (optimistic insert from handleSend may not be the last message
+    // anymore). Compare the authored portion, not the raw string: when a move
+    // is attached the harness prepends its gathered context to the turn, so the
+    // echoed event never equals what the composer optimistically inserted. An
+    // exact-match check appended a second bubble carrying the move context —
+    // the same message twice, with the move disclosure only on the copy.
+    const authoredText = userAuthoredMessageText(text);
     for (let i = s.messages.length - 1; i >= 0 && i >= s.messages.length - 4; i--) {
       const prev = s.messages[i];
-      if (prev.role === "user" && prev.content === text) {
-        // If existing msg has no attachments but event does, update it
-        // Also stamp seq if missing
-        if ((attachments && !prev.attachments) || !prev.seq) {
-          const msgs = [...s.messages];
-          msgs[i] = { ...prev, seq: s.lastSeq, timestamp: prev.timestamp ?? ts, ...(attachments && !prev.attachments && { attachments }) };
-          return { ...s, messages: msgs };
-        }
-        return s;
+      if (prev.role !== "user") continue;
+      if (prev.content !== text && userAuthoredMessageText(prev.content) !== authoredText) continue;
+
+      // The echo carries injected context the optimistic copy lacks — adopt it
+      // so the move disclosure renders on the message the user already sees.
+      const gainsMoveContext = prev.content !== text;
+      if (gainsMoveContext || (attachments && !prev.attachments) || !prev.seq) {
+        const msgs = [...s.messages];
+        msgs[i] = {
+          ...prev,
+          ...(gainsMoveContext && { content: text }),
+          seq: s.lastSeq,
+          timestamp: prev.timestamp ?? ts,
+          ...(attachments && !prev.attachments && { attachments }),
+        };
+        return { ...s, messages: msgs };
       }
+      return s;
     }
 
     return {

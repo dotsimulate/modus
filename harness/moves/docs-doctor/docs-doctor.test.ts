@@ -28,7 +28,9 @@ beforeAll(() => {
   writeFileSync(join(cwd, "profiles", "drifted.json"), JSON.stringify({
     prompt: "You are a reviewer.",
     description: "Reviews code.",
-    skills: ["create-profile"],
+    // Plausible-looking and definitely not in ProfileSchema. (`skills` used to
+    // play this role, but it became a real field once attachment landed.)
+    temperature: 0.7,
   }));
   writeFileSync(join(cwd, "profiles", "broken.json"), "{ not json");
 });
@@ -42,12 +44,12 @@ describe("schema_keys", () => {
     const result = await handlers.schema_keys!(ctx(), { schema: "agent-profile" });
     expect(result.ok).toBe(true);
     // Keys the field report found missing from prose but live in the schema.
-    for (const key of ["disallowedTools", "moves", "env", "plugins", "claudeMdExcludes",
+    for (const key of ["disallowedTools", "moves", "skills", "env", "plugins", "claudeMdExcludes",
       "maxBudgetUsd", "codexSandboxMode", "codexRules", "cwdSuggestions"]) {
       expect(result.message).toContain(`\`${key}\``);
     }
-    // ...and a key that appears in prose but nothing reads.
-    expect(result.message).not.toContain("`skills`");
+    // ...and not a key that merely looks like it belongs.
+    expect(result.message).not.toContain("`temperature`");
     expect(result.message).toContain("`prompt` — string (required)");
     expect(result.message).toContain("`cwd` — optional (optional)");
   });
@@ -71,14 +73,14 @@ describe("validate", () => {
   });
 
   test("surfaces an unknown key that the schema itself accepts silently", async () => {
-    // This is the whole point of the move: `skills` passes safeParse and is
-    // then ignored at runtime, so validation alone reports success.
+    // This is the whole point of the move: an unknown key passes safeParse and
+    // is then ignored at runtime, so validation alone reports success.
     const result = await handlers.validate!(ctx(), {
       schema: "agent-profile",
       path: "profiles/drifted.json",
     });
     expect(result.message).toContain("Schema: valid");
-    expect(result.message).toContain("`skills`");
+    expect(result.message).toContain("`temperature`");
     expect(result.message).toContain("nothing reads it");
   });
 

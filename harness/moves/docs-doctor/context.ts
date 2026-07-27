@@ -3,9 +3,9 @@
  * shipped docs against the code they claim to cover.
  *
  * The failure this exists for: prose drifts. A doc can describe a profile field
- * that nothing reads (`skills`) and omit nine fields that are live, and nothing
- * catches it — the Zod object schemas are non-strict, so an unknown key
- * validates cleanly and is then silently ignored at runtime. Every op here
+ * that nothing reads and omit nine fields that are live, and nothing catches it
+ * — the Zod object schemas are non-strict, so an unknown key validates cleanly
+ * and is then silently ignored at runtime. Every op here
  * reads the schema objects and the docs registry directly, so its answers
  * cannot drift from the code the way documentation can.
  *

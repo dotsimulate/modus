@@ -20,6 +20,8 @@ export const BRIDGED_HARNESS_MODULES = [
   "profiles",
   "profile-schemas",
   "move-runner",
+  // modus-brain's feedback ops resolve MODUS_HOME to append their JSONL.
+  "modus-home",
 ] as const;
 
 export type BridgedHarnessModule = (typeof BRIDGED_HARNESS_MODULES)[number];
