@@ -1,27 +1,40 @@
 export type MessageTextPart =
   | { type: "text"; text: string }
-  | { type: "move_context"; moveName: string; content: string };
+  | { type: "move_context"; moveName: string; content: string }
+  | { type: "skill_context"; skillName: string; content: string };
 
-const MOVE_CONTEXT_PATTERN =
-  /<!-- move:([A-Za-z0-9][A-Za-z0-9._-]*) -->\r?\n?([\s\S]*?)\r?\n?<!-- \/move:\1 -->(?:\r?\n){0,2}/g;
+/**
+ * Both moves and skills inject a block into the user turn that the user did not
+ * type. They share one marker shape so the transcript can fold either kind and
+ * the copy button returns only the authored text. Group 1 is the kind, group 2
+ * the name — the closing tag backreferences both, so a stray opener cannot
+ * swallow the rest of the message.
+ */
+const INJECTED_CONTEXT_PATTERN =
+  /<!-- (move|skill):([A-Za-z0-9][A-Za-z0-9._-]*) -->\r?\n?([\s\S]*?)\r?\n?<!-- \/\1:\2 -->(?:\r?\n){0,2}/g;
 
-/** Split harness-injected move context from the user-authored portion of a prompt. */
+/** Wrap skill text in the marker the transcript folds. Mirrors the move form. */
+export function wrapSkillContext(skillName: string, content: string): string {
+  return `<!-- skill:${skillName} -->\n${content}\n<!-- /skill:${skillName} -->`;
+}
+
+/** Split harness-injected move/skill context from the user-authored portion of a prompt. */
 export function parseMessageText(content: string): MessageTextPart[] {
   if (!content) return [];
 
   const parts: MessageTextPart[] = [];
   let cursor = 0;
 
-  for (const match of content.matchAll(MOVE_CONTEXT_PATTERN)) {
+  for (const match of content.matchAll(INJECTED_CONTEXT_PATTERN)) {
     const index = match.index ?? 0;
     if (index > cursor) {
       parts.push({ type: "text", text: content.slice(cursor, index) });
     }
-    parts.push({
-      type: "move_context",
-      moveName: match[1]!,
-      content: match[2]!.trim(),
-    });
+    parts.push(
+      match[1] === "skill"
+        ? { type: "skill_context", skillName: match[2]!, content: match[3]!.trim() }
+        : { type: "move_context", moveName: match[2]!, content: match[3]!.trim() },
+    );
     cursor = index + match[0].length;
   }
 

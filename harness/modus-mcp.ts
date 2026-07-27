@@ -25,6 +25,8 @@ import { isMissionToken, handleMissionCommand } from "./mission-runner";
 import { addSessionTag, getSession } from "./db";
 import { broadcastUiEvent } from "./session-manager";
 import { buildHarnessContext, type HarnessContext } from "./harness-context";
+import { getScopedSkill, getScopedSkills } from "./skill-attachment";
+import { buildSkillPayload } from "./skills";
 import { join } from "path";
 import { readdir, readFile, writeFile, mkdir } from "fs/promises";
 
@@ -34,8 +36,13 @@ import { readdir, readFile, writeFile, mkdir } from "fs/promises";
  * Stateless mode: each request gets a fresh server + transport pair.
  * This is fine because modus_submit is synchronous request/response —
  * no server-initiated notifications, no long-lived connections needed.
+ *
+ * `scopeKey` comes from the URL path suffix and identifies the calling
+ * session's attached skills. Because the server is rebuilt per request, the
+ * skill tools are simply a registration branch: sessions with no attached
+ * skills never see them at all.
  */
-export async function handleModusMcpRequest(request: Request): Promise<Response> {
+export async function handleModusMcpRequest(request: Request, scopeKey?: string): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // stateless
     enableJsonResponse: true,
@@ -91,8 +98,63 @@ export async function handleModusMcpRequest(request: Request): Promise<Response>
     },
   );
 
+  registerSkillTools(server, scopeKey);
+
   await server.connect(transport);
   return transport.handleRequest(request);
+}
+
+// ── Skill tools (registered only for sessions that attached skills) ──
+
+/**
+ * Skills are a read, not a submit, so they get their own tools rather than
+ * widening `modus_submit`. There is no token: the tools return user-installed
+ * text and mutate nothing, and the scope key in the URL already says which
+ * skills the caller may see.
+ */
+function registerSkillTools(server: McpServer, scopeKey?: string): void {
+  if (!scopeKey) return;
+  const attached = getScopedSkills(scopeKey);
+  if (!attached || attached.length === 0) return;
+
+  server.tool(
+    "skills_list",
+    "List the skills attached to this session. Returns each skill's name and description only — call skills_load to read one.",
+    {},
+    async () => {
+      const listing = (getScopedSkills(scopeKey) ?? []).map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify(listing, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    "skills_load",
+    "Load an attached skill's full instructions. Returns the SKILL.md text and the directory it lives in, so any files it references can be read with ordinary file tools.",
+    { name: z.string().describe("Skill name, as returned by skills_list") },
+    async ({ name }) => {
+      const skill = getScopedSkill(scopeKey, name);
+      if (!skill) {
+        const available = (getScopedSkills(scopeKey) ?? []).map((s) => s.name).join(", ");
+        return {
+          content: [{ type: "text" as const, text: `No skill named "${name}" is attached. Available: ${available || "(none)"}` }],
+          isError: true,
+        };
+      }
+      // Same payload shape the composer injects and other harnesses emit —
+      // frontmatter stripped, `Base Path:` leading. See buildSkillPayload.
+      const text = buildSkillPayload(skill);
+      if (text === null) {
+        return {
+          content: [{ type: "text" as const, text: `Skill "${name}" could not be read from ${skill.path}` }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: "text" as const, text }] };
+    },
+  );
 }
 
 // ── Move API token handler (multi-submit, stateful) ──

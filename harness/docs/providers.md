@@ -1,8 +1,8 @@
 ---
 title: Provider System
-lastUpdated: 2026-07-14
+lastUpdated: 2026-07-26
 lastCommit: a9adf68
-covers: harness/providers/ harness/session-manager.ts
+covers: harness/providers/ harness/session-manager.ts harness/skill-attachment.ts
 ---
 
 # Provider System
@@ -68,6 +68,32 @@ current full model IDs and its durable aliases (`default`, `best`, `opus`,
 PI agent providers share a single implementation (`pi-agent.ts`) parameterized
 by provider name. They implement a lightweight tool-use agent loop with
 compaction support.
+
+### Additional workspace roots
+
+Every current provider consumes `additionalDirectories`. PI's upstream
+`createCodingTools(cwd)` has one primary root, but its file tools accept
+absolute paths and bash is already unrestricted. Modus adds declared roots to
+PI's resource system prompt and every coding-tool description so the agent can
+address them by absolute path. PI still loads `CLAUDE.md` and skills from the
+primary `cwd`; Modus explicitly adds `<cwd>/.claude/skills` when present for
+cross-provider plugin skills. Extra roots widen coding access, not
+resource-loader discovery.
+
+### Skills
+
+Only the Claude-family CLIs and the PI providers read skills at all
+(`readsNativeSkills` in `provider-names.ts`, surfaced on `ProviderCapabilities`
+so the composer's `/` picker can stop offering native skills to providers that
+ignore them). Everything else reads none.
+
+PI is the one provider Modus can hand specific skills to: `additionalSkillPaths`
+accepts individual `SKILL.md` file paths as well as directories, so attached
+skills are passed as files rather than as a root — otherwise every skill
+installed under `.modus/skills/` would load, not just the attached ones. Native
+roots are passed first, and PI keeps the first path on a name collision, so a
+user's own skill always wins. Sessions on PI therefore do **not** get the Modus
+skill tools; every other provider does. See `skills`.
 
 The embedded `gemini-cli` adapter is hidden legacy migration code. It is accepted
 only when a paid Gemini API key, explicit Vertex AI configuration, Cloud Shell,

@@ -9,6 +9,7 @@
 
 import type { Model } from "@mariozechner/pi-ai";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { getModel } from "@mariozechner/pi-ai";
 import {
@@ -25,6 +26,7 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getProfile, type ProviderDefaults } from "../profiles";
+import { getScopedSkills } from "../skill-attachment";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
 import { resolveSecret } from "../secrets";
@@ -288,7 +290,6 @@ async function readPiExtraBody(
             : []),
           join(session.cwd ?? session.projectRoot ?? process.cwd(), grammarPath),
         ];
-
     let loaded = false;
     for (const candidate of candidates) {
       const file = Bun.file(candidate);
@@ -303,6 +304,61 @@ async function readPiExtraBody(
   }
 
   return Object.keys(extraBody).length > 0 ? extraBody : undefined;
+}
+
+/**
+ * PI's coding tools accept absolute paths and do not enforce a workspace-root
+ * sandbox. Additional roots therefore need discovery context, not alternate
+ * tool instances. Relative paths still resolve from cwd; every declared extra
+ * root is advertised on each coding tool so the model can use its absolute path.
+ * Bash intentionally keeps PI's existing unrestricted behavior.
+ */
+export function createPiCodingTools(
+  cwd: string,
+  additionalDirectories: string[],
+  factory: typeof createCodingTools = createCodingTools,
+) {
+  const tools = factory(cwd);
+  if (!additionalDirectories.length) return tools;
+  const roots = additionalDirectories.map((entry) => `- ${entry}`).join("\n");
+  const note = `\n\nAdditional workspace roots (use absolute paths):\n${roots}`;
+  return tools.map((tool) => ({
+    ...tool,
+    description: `${tool.description}${note}`,
+  }));
+}
+
+export function piAdditionalDirectoriesPrompt(additionalDirectories: string[]): string {
+  if (!additionalDirectories.length) return "";
+  return [
+    "## Additional workspace roots",
+    "The following directories are part of this workspace. Use their absolute paths when reading, editing, writing, or running commands:",
+    ...additionalDirectories.map((entry) => `- ${entry}`),
+  ].join("\n");
+}
+
+/**
+ * Skill roots and files handed to PI's resource loader.
+ *
+ * Two sources, deliberately different shapes. `<cwd>/.claude/skills` is a
+ * *root* — PI walks it and picks up whatever the user has, unfiltered, exactly
+ * as their own tooling would. Modus-attached skills are passed as individual
+ * `SKILL.md` file paths (which `loadSkills` accepts alongside directories), so
+ * only the skills something actually attached load — never everything installed
+ * under `.modus/skills/`.
+ *
+ * Nothing is copied or projected into a provider directory: PI reads the files
+ * where they already live. On a name collision PI keeps the first path, and
+ * native roots come first, so a user's own skill always beats an attached one.
+ */
+export function piAdditionalSkillPaths(cwd: string, skillScopeKey?: string): string[] {
+  const paths: string[] = [];
+  const claudeSkills = join(cwd, ".claude", "skills");
+  if (existsSync(claudeSkills)) paths.push(claudeSkills);
+  if (skillScopeKey) {
+    for (const skill of getScopedSkills(skillScopeKey) ?? []) paths.push(skill.path);
+  }
+  return paths;
 }
 
 // ── Friendly Errors (ported from direct-api.ts) ──
@@ -683,10 +739,12 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         const settingsManager = SettingsManager.inMemory({ compaction });
 
         // Resource loader with our profile prompt
+        const additionalRootsPrompt = piAdditionalDirectoriesPrompt(session.additionalDirectories);
         const resourceLoader = new DefaultResourceLoader({
           cwd,
           settingsManager,
-          systemPrompt: profile?.prompt,
+          systemPrompt: [profile?.prompt, additionalRootsPrompt].filter(Boolean).join("\n\n") || undefined,
+          additionalSkillPaths: piAdditionalSkillPaths(cwd, opts.skillScopeKey),
           noExtensions: true,
           noSkills: false,
           noPromptTemplates: true,
@@ -718,7 +776,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
         }
 
         // Built-in coding tools
-        const tools = noTools ? [] : createCodingTools(cwd);
+        const tools = noTools ? [] : createPiCodingTools(cwd, session.additionalDirectories);
         console.log(`[pi-agent] Built-in tools: ${tools.map((t: any) => t.name).join(", ")}`);
 
         const { session: agentSession } = await createAgentSession({

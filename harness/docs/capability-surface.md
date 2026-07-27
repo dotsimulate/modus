@@ -1,7 +1,7 @@
 ---
 title: Capability Surface (condensed)
-lastUpdated: 2026-07-24
-covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts
+lastUpdated: 2026-07-26
+covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts
 audience: agent
 ---
 
@@ -134,6 +134,34 @@ preconfigure right-panel widgets for sessions), and **`moves: [{name,
 inputs?}]`** — auto-activated at session start (`startSessionWithMoves`):
 inline moves gather pre-spawn and prepend the prompt; persistent moves activate
 post-spawn. **A profile + a persistent move = a standing Modus-aware agent.**
+Also `skills: ["name"]` — see below.
+
+## Skills — `.modus/skills/<name>/SKILL.md`
+
+Packaged text, standard `SKILL.md` + front-matter (`name`, `description`), so
+files stay portable out of Modus. Resolved project → user (`~/.modus/skills/`)
+→ plugin, most specific wins. Moves may also bundle skills at `<move>/skills/`.
+
+**Attachment is required.** `skills: [...]` on an agent profile, `move.json`, or
+`action.json`; a move's bundled skills come along whenever the move is attached.
+Unresolvable names are logged and skipped, never fatal.
+
+Delivery is per provider and automatic. PI is handed the attached `SKILL.md`
+paths directly (`additionalSkillPaths` accepts individual files) and loads them
+natively. Everyone else gets two tools on a session-scoped MCP endpoint
+(`/api/mcp/modus/<scope>`):
+
+- `skills_list` → `[{name, description}]`
+- `skills_load {name}` → full `SKILL.md` + its directory, for reading
+  `references/*` with ordinary file tools
+
+Both are token-less reads. **Neither tool is registered when nothing is
+attached** — sessions without skills keep the plain single-tool surface. Because
+the URL is fixed at spawn, skills attached mid-session may not reach the agent
+by tool until restart.
+
+Modus never scans, copies into, or overrides `.claude/skills/` or `.pi/skills/`.
+Full contract: `skills`.
 
 ## User profiles — `~/.modus/profiles/users/*.json`
 
@@ -180,10 +208,10 @@ Scheduled wakes persist in `scheduled_wakes` and survive restart.
   (file-change cards, tool calls).
 - `widget.panel: "right"` is schema-present but unread — placement is
   hard-coded to the right panel.
-- Agent profiles have **no working `skills` field** — skill loading is
-  filesystem-based (`<cwd>/.claude/skills/`) and only reaches Claude-family
-  CLIs and the PI-agent providers. Other provider CLIs read no skills; moves +
-  `modus_submit` are the provider-neutral path.
+- **Installed skills are not available skills.** A profile, move, or action must
+  attach one by name; nothing under `.modus/skills/` reaches an agent otherwise.
+  Provider CLIs other than the Claude family and PI read no skills of their own,
+  so on those the Modus skill tools are the only path. See `skills`.
 - Moves are **user-invoked by default**. Programmatic activation exists only
   through opted-in configuration: profile `moves`, action `moves`, or a move
   handler's `activateMove` — each is authored by the user.

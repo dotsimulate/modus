@@ -82,6 +82,11 @@ export function homeHistoryDir(): string {
   return join(MODUS_HOME, "history");
 }
 
+/** User-global skills, addressable from every project. Authored, not runtime state. */
+export function homeSkillsDir(): string {
+  return join(MODUS_HOME, "skills");
+}
+
 export function homeCheckpointsDir(): string {
   return join(MODUS_HOME, "checkpoints");
 }

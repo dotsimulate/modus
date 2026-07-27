@@ -1,7 +1,7 @@
 ---
 title: Moves
-lastUpdated: 2026-07-25
-covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/bridged-modules.ts harness/harness-bridge.ts
+lastUpdated: 2026-07-26
+covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
 ---
 
 # Moves
@@ -14,6 +14,8 @@ done right now, with structured submission and validation.
 Built-in harness moves live in `harness/moves/<name>/`. Project-local moves live
 in `.modus/moves/<name>/`. Resolution order (first match wins): project
 `.modus/moves/` → enabled plugin `.modus/moves/` → built-in `harness/moves/`.
+Resolved move records carry `origin: "harness" | "project" | "plugin"` plus
+plugin identity for plugin-origin moves.
 
 Each move directory contains:
 ```
@@ -21,10 +23,15 @@ move.json    — MoveConfig (required)
 context.ts   — MoveModule: gather?(), onSubmit?(), handlers?, listInstances?() (optional)
 widget.tsx   — React component (optional, for api moves with a widget)
 package.json — move-local dependencies (optional, see below)
+skills/      — move-bundled skills, each `<name>/SKILL.md` (optional)
 ```
 
 No Handlebars templates. `gather()` returns the full prompt string directly.
 The move.json `prompt` field is a fallback used only when context.ts has no `gather()`.
+
+Plugin move contexts expose manifest settings through
+`ctx.pluginSettings.get(key)` and `ctx.pluginSettings.all()`. The same accessor
+is present in move API handlers and branch/background session construction.
 
 ### Per-Move Dependencies
 
@@ -125,7 +132,26 @@ an API token and instance id.
 - `page` — registers a move-owned full page in the nav
 - `capabilities` — runtime capability declaration for shell/session/action/notify/file access
 - `trust` — `"builtin" | "reviewed" | "experimental"`
+- `skills` — installed skills to attach while this move is active (see below)
 - `origin` — `"harness"` or `"project"` (set automatically, not written to move.json)
+
+## Skills (`skills` field and `skills/` directory)
+
+A move contributes skills two ways: `skills: ["name"]` in `move.json` attaches
+installed skills by name, and anything under `<move>/skills/<name>/SKILL.md` is
+bundled and attached whenever the move is.
+
+Attachment is transitive. Profiles and actions already attach moves, so a move
+that bundles domain knowledge carries it wherever it is attached — without the
+attaching profile naming the skills at all. That also gives a move an exportable
+component: the protocol stays Modus-only, the packaged text does not.
+
+Installed skills win over bundled ones on a name collision, so a project can
+override a move's bundled copy by installing its own at
+`.modus/skills/<name>/`. Unresolvable names are logged and skipped. Skills
+attached by a move activated mid-session are recorded but may not reach the
+agent by tool until the session restarts, because the provider's MCP endpoint
+URL is fixed at spawn. See [Skills](./skills.md).
 
 ## API Contract (`api` field)
 

@@ -7,24 +7,18 @@
  *     _global.json          — project-level MCP servers
  *     profiles/agents/      — project-specific agent profiles
  *     actions/              — project-specific automation
+ *     moves/ pages/ ui/extensions/ — project-authored merge surfaces
  *     memory/               — project-scoped memory files
  *
  * Registers the project in the harness-level _projects.json registry.
  * Idempotent — won't overwrite existing files, only creates missing structure.
  */
 
-import { existsSync, mkdirSync, readFileSync, copyFileSync, readdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { join, resolve, basename } from "path";
-import { APP_PATHS } from "./app-paths";
 import { registerProject, getProjectByPath, getProjectById, updateProjectPath } from "./profiles";
 
 const MODUS_DIR = ".modus";
-/** Default agent profiles to copy into new projects */
-const DEFAULT_PROFILES = ["modus-dev"];
-const TEMPLATES_DIR = join(APP_PATHS.resourcesDir, "templates");
-/** Skills to copy into new projects (SDK resolves from <cwd>/.claude/skills/) */
-const DEFAULT_SKILLS = ["create-profile", "create-action", "create-mission"];
-const SKILLS_SRC_DIR = join(TEMPLATES_DIR, "skills");
 
 type ProjectMeta = { id: string; name?: string; created?: string };
 
@@ -45,20 +39,6 @@ function generateProjectId(): string {
 
 function writeJson(filePath: string, data: unknown): void {
   Bun.write(filePath, JSON.stringify(data, null, 2) + "\n");
-}
-
-/** Recursively copy a directory */
-function copyDirRecursive(src: string, dest: string): void {
-  mkdirSync(dest, { recursive: true });
-  for (const entry of readdirSync(src, { withFileTypes: true })) {
-    const srcPath = join(src, entry.name);
-    const destPath = join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirRecursive(srcPath, destPath);
-    } else {
-      copyFileSync(srcPath, destPath);
-    }
-  }
 }
 
 export type InitResult = {
@@ -95,6 +75,9 @@ export function initProject(cwd: string, opts?: { name?: string }): InitResult {
     modusDir,
     join(modusDir, "profiles", "agents"),
     join(modusDir, "actions"),
+    join(modusDir, "moves"),
+    join(modusDir, "pages"),
+    join(modusDir, "ui", "extensions"),
     join(modusDir, "prompts"),
     join(modusDir, "missions"),
     join(modusDir, "memory"),
@@ -106,29 +89,6 @@ export function initProject(cwd: string, opts?: { name?: string }): InitResult {
     } else {
       mkdirSync(dir, { recursive: true });
       created.push(dir);
-    }
-  }
-
-  // Copy default agent profiles (only if missing)
-  const projectAgentsDir = join(modusDir, "profiles", "agents");
-  for (const profileName of DEFAULT_PROFILES) {
-    const dest = join(projectAgentsDir, `${profileName}.json`);
-    const src = join(TEMPLATES_DIR, "profiles", "agents", `${profileName}.json`);
-    if (!existsSync(dest) && existsSync(src)) {
-      copyFileSync(src, dest);
-      created.push(dest);
-    }
-  }
-
-  // Copy default skills to <cwd>/.claude/skills/ (SDK resolves skills from here)
-  const projectSkillsDir = join(target, ".claude", "skills");
-  for (const skillName of DEFAULT_SKILLS) {
-    const srcDir = join(SKILLS_SRC_DIR, skillName);
-    const destDir = join(projectSkillsDir, skillName);
-    if (!existsSync(srcDir)) continue;
-    if (!existsSync(destDir)) {
-      copyDirRecursive(srcDir, destDir);
-      created.push(destDir);
     }
   }
 
@@ -156,6 +116,7 @@ export function initProject(cwd: string, opts?: { name?: string }): InitResult {
   } else {
     writeJson(globalPath, {
       mcpServers: {},
+      notificationChannels: {},
     });
     created.push(globalPath);
   }

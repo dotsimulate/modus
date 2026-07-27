@@ -32,7 +32,7 @@ import { probeGrokBuildAuth, resolveGrokBuildCommand } from "./grok-build-runtim
 
 // Names live in a leaf module so profile validation can know them without
 // importing every provider implementation (and, transitively, the database).
-import { PI_PROVIDERS, STANDALONE_PROVIDERS, isKnownProvider, listProviders } from "./provider-names";
+import { PI_PROVIDERS, STANDALONE_PROVIDERS, isKnownProvider, listProviders, readsNativeSkills } from "./provider-names";
 
 export { isKnownProvider, listProviders };
 
@@ -91,11 +91,15 @@ export function getProviderCapabilities(name: string): ProviderCapabilities {
   // which fires a network call to Google's experiment service on load. Capability
   // listing must NOT pay that cost. Only `getProvider("gemini-cli")` (called when
   // a session actually starts) should trigger the SDK import.
-  if (name === "gemini-cli") return GEMINI_CAPABILITIES;
-  if (name === "antigravity") return ANTIGRAVITY_CAPABILITIES;
-  if (name === "grok-build") return GROK_BUILD_CAPABILITIES;
-  if (name === "opencode") return OPENCODE_CAPABILITIES;
-  return getProvider(name).capabilities;
+  const base =
+    name === "gemini-cli" ? GEMINI_CAPABILITIES
+    : name === "antigravity" ? ANTIGRAVITY_CAPABILITIES
+    : name === "grok-build" ? GROK_BUILD_CAPABILITIES
+    : name === "opencode" ? OPENCODE_CAPABILITIES
+    : getProvider(name).capabilities;
+  // Derived centrally rather than declared in each provider file, so the list of
+  // skill-reading providers stays in one place (`provider-names.ts`).
+  return { ...base, readsNativeSkills: readsNativeSkills(name) };
 }
 
 export function listProviderCapabilities(): ProviderCapabilities[] {

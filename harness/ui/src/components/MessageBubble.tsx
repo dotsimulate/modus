@@ -12,7 +12,7 @@ import { AudioArtifact } from "./AudioArtifact";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { addPrompt } from "../promptCache";
 import { isCodexProvider } from "../tools";
-import { parseMessageText, userAuthoredMessageText } from "../move-context";
+import { parseMessageText, userAuthoredMessageText, type MessageTextPart } from "../move-context";
 import { MoveContextDisclosure } from "./MoveContextDisclosure";
 
 function artifactSrc(url: string): string {
@@ -273,11 +273,10 @@ function MessageTextBlock({
   onContextMenu: (event: React.MouseEvent) => void;
 }) {
   const parts = role === "user" ? parseMessageText(text) : [];
-  const moveContexts = parts.filter(
-    (part): part is Extract<(typeof parts)[number], { type: "move_context" }> =>
-      part.type === "move_context",
+  const injectedContexts = parts.filter(
+    (part): part is Exclude<MessageTextPart, { type: "text" }> => part.type !== "text",
   );
-  const visibleText = moveContexts.length ? userAuthoredMessageText(text) : text;
+  const visibleText = injectedContexts.length ? userAuthoredMessageText(text) : text;
 
   return (
     <>
@@ -289,15 +288,20 @@ function MessageTextBlock({
           <Markdown content={visibleText} />
         </div>
       )}
-      {moveContexts.length > 0 && (
+      {injectedContexts.length > 0 && (
         <div className="move-context-list">
-          {moveContexts.map((context, index) => (
-            <MoveContextDisclosure
-              key={`${messageId}:move-context:${context.moveName}:${index}`}
-              moveName={context.moveName}
-              content={context.content}
-            />
-          ))}
+          {injectedContexts.map((context, index) => {
+            const isSkill = context.type === "skill_context";
+            const name = isSkill ? context.skillName : context.moveName;
+            return (
+              <MoveContextDisclosure
+                key={`${messageId}:${context.type}:${name}:${index}`}
+                moveName={name}
+                content={context.content}
+                kind={isSkill ? "skill" : "move"}
+              />
+            );
+          })}
         </div>
       )}
     </>

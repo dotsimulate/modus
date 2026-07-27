@@ -11,7 +11,7 @@ import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
 import { estimateTokens } from "../utils/tokens";
-import type { PromptListItem, RenderResult, MoveListItem, ActivateMoveResult, ProviderSlashCommand } from "../../../sdk/index";
+import type { PromptListItem, RenderResult, MoveListItem, ActivateMoveResult, ProviderSlashCommand, SkillListItem } from "../../../sdk/index";
 import {
   MoveInputFields,
   buildMoveInputs,
@@ -22,7 +22,23 @@ import {
 
 export type PromptSettings = RenderResult["config"]["settings"];
 
-type SkillItem = { name: string; filename: string; path: string };
+/**
+ * A skill offered in the picker, from either of two systems that coexist:
+ *
+ * - `native` — the user's own `.claude/skills/`, read by the provider itself.
+ *   Only listed when the session's provider actually reads them; selecting one
+ *   types `/name` and lets the provider load it. Modus never touches these.
+ * - `modus` — installed under `.modus/skills/`, works on every provider.
+ *   Selecting one injects the SKILL.md text, since the harness is the loader.
+ */
+type SkillItem = {
+  name: string;
+  filename: string;
+  path: string;
+  source: "native" | "modus";
+  description?: string;
+  origin?: SkillListItem["origin"];
+};
 type SelectedItem =
   | { kind: "prompt"; item: PromptListItem }
   | { kind: "move"; item: MoveListItem }
@@ -33,6 +49,8 @@ type Props = {
   onAutoSend?: (text: string, settings?: PromptSettings) => void;
   onMoveActivated?: (result: ActivateMoveResult) => void;
   onMoveAttach?: (move: MoveListItem, inputs: Record<string, unknown>) => void;
+  /** Stage a Modus skill on the composer. Falls back to raw injection when absent. */
+  onSkillAttach?: (name: string, text: string) => void;
   /** "up" (default, chat input) or "down" (dashboard) */
   direction?: "up" | "down";
   /** Filter prompts by tag */
@@ -49,7 +67,7 @@ type Props = {
 };
 
 export function PromptPicker({
-  onInject, onAutoSend, onMoveActivated, onMoveAttach, direction = "up", tags,
+  onInject, onAutoSend, onMoveActivated, onMoveAttach, onSkillAttach, direction = "up", tags,
   sessionId, projectCwd, userProfile, provider, forceOpen, onOpenChange,
 }: Props) {
   const { activeUP, activeUserProfile, profiles, providerCapabilities } = useProfiles();
@@ -114,24 +132,45 @@ export function PromptPicker({
       setMoves([]);
     }
 
-    // Load skills from project's .claude/skills/
+    // Skills come from two systems. Native skills are only listed when this
+    // session's provider actually reads them — on codex, cursor and the rest
+    // they would be dead entries. Modus skills work on every provider.
     const paths = activeUP?.projects ?? [];
-    if (paths.length > 0) {
-      const skillsPath = `${paths[0]}/.claude/skills`;
-      modus.browse(skillsPath).then(result => {
-        if (result?.dirs?.length) {
-          const items: SkillItem[] = result.dirs
+    const nativeRoot = paths.length > 0 ? `${paths[0]}/.claude/skills` : null;
+    // Hide native skills only when we positively know this provider ignores
+    // them. With no session provider (the dashboard picker) or capabilities not
+    // loaded yet, keep listing them rather than silently dropping entries.
+    const caps = provider ? providerCapabilities[provider] : undefined;
+    const wantsNative = nativeRoot !== null && (caps ? caps.readsNativeSkills !== false : true);
+
+    Promise.all([
+      wantsNative
+        ? modus.browse(nativeRoot).then(result => (result?.dirs ?? [])
             .filter(name => !name.startsWith("."))
-            .map(name => ({
+            .map((name): SkillItem => ({
               filename: name,
               name: name.replace(/-/g, " "),
-              path: `${skillsPath}/${name}/SKILL.md`,
-            }));
-          setSkills(items);
-        }
-      }).catch(() => setSkills([]));
-    }
-  }, [open, activeUP, projectCwd, sessionId, tags]);
+              path: `${nativeRoot}/${name}/SKILL.md`,
+              source: "native",
+            }))).catch(() => [])
+        : Promise.resolve([] as SkillItem[]),
+      projectCwd
+        ? modus.listSkills(projectCwd).then(items => items.map((skill): SkillItem => ({
+            filename: skill.name,
+            name: skill.name.replace(/-/g, " "),
+            path: `${skill.dir}/SKILL.md`,
+            source: "modus",
+            description: skill.description,
+            origin: skill.origin,
+          }))).catch(() => [])
+        : Promise.resolve([] as SkillItem[]),
+    ]).then(([native, modusSkills]) => {
+      // One list, one namespace. A native skill wins its name so a user's own
+      // file is never shadowed by an installed one — the same rule PI applies.
+      const taken = new Set(native.map(skill => skill.filename));
+      setSkills([...native, ...modusSkills.filter(skill => !taken.has(skill.filename))]);
+    });
+  }, [open, activeUP, projectCwd, sessionId, tags, provider, providerCapabilities]);
 
   // Focus search on open
   useEffect(() => {
@@ -199,13 +238,30 @@ export function PromptPicker({
     setTokenEstimate(null);
   }, []);
 
-  const handleSkillSelect = useCallback((skill: SkillItem) => {
-    onInject(`/${skill.filename}`);
+  const handleSkillSelect = useCallback(async (skill: SkillItem) => {
     setOpenAndNotify(false);
     setSelected(null);
     setPreviewSkill(null);
     setSearch("");
-  }, [onInject]);
+    if (skill.source === "native") {
+      // The provider owns discovery for its own skills; typing the command is
+      // exactly what a user would do outside Modus.
+      onInject(`/${skill.filename}`);
+      return;
+    }
+    // No provider will resolve `/name` for a Modus skill, so the harness loads
+    // it. The user choosing it is the disclosure decision, so send the whole
+    // thing rather than announcing it and hoping the model asks. It is staged
+    // as a chip instead of dropped into the textarea — the user did not type
+    // it, and several skills need to stack.
+    const loaded = projectCwd ? await modus.getSkill(skill.filename, projectCwd) : null;
+    if (!loaded) {
+      setError(`could not load skill "${skill.filename}"`);
+      return;
+    }
+    if (onSkillAttach) onSkillAttach(skill.filename, loaded.text);
+    else onInject(loaded.text);
+  }, [onInject, onSkillAttach, projectCwd, setOpenAndNotify]);
 
   const handleSkillPreview = useCallback(async (skill: SkillItem) => {
     setPreviewSkill(skill);
@@ -504,7 +560,15 @@ export function PromptPicker({
                 className="prompt-picker-item-main"
                 onClick={() => handleSkillSelect(s)}
               >
-                <span className="prompt-picker-item-label">/{s.filename}</span>
+                <span className="prompt-picker-item-label">
+                  /{s.filename}
+                  {s.source === "modus" && (
+                    <span className="prompt-picker-item-meta">{s.origin}</span>
+                  )}
+                </span>
+                {s.description && (
+                  <span className="prompt-picker-item-desc">{s.description}</span>
+                )}
               </button>
               <button
                 className="prompt-picker-preview-btn"
