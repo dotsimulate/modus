@@ -1,6 +1,6 @@
 ---
 title: MO Architecture
-lastUpdated: 2026-07-07
+lastUpdated: 2026-07-26
 lastCommit: bae0487
 covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
@@ -24,8 +24,10 @@ modus/
   harness/                 # The application
     index.ts               # Hono HTTP server — all API routes
     session-manager.ts     # Session lifecycle, SSE, message routing
-    profiles.ts            # Profile loading, merging, template vars
+    profiles.ts            # Qualified profile loading, global merging, template vars
     profile-schemas.ts     # JSON Schema validation for profiles
+    modus-plugins.ts       # Plugin manifests, registration, built-in core descriptor
+    plugin-settings.ts     # User/project/global plugin setting storage
     db.ts                  # SQLite (harness.db) — sessions, events, search
     activity.ts            # Activity log (activity.db) — audit trail
     secrets.ts             # API key isolation + PIN auth
@@ -61,7 +63,8 @@ modus/
     notify.ts              # Notification channels (egress primitive + action notify)
     watchdog.ts            # Process health monitoring
     git.ts                 # Git operations for session context
-    templates/profiles/    # Shipped profile templates, seeded into ~/.modus/
+    plugin.json            # Built-in modus-core manifest over resources in place
+    templates/profiles/    # Built-in merged profiles + home rehydration source
     ~/.modus/profiles/     # User-owned profile config/state (see profiles doc)
       _global.json         # Shared MCP servers + provider defaults
       _users.json          # Template variable defaults
@@ -83,7 +86,7 @@ modus/
   .modus/                  # Project-local MO config (see modus-dir doc)
     _global.json           # Project MCP servers (merged with base)
     _project.json          # Project metadata
-    profiles/agents/       # Project-local agent profiles (override base)
+    profiles/agents/       # Project-local agent profiles (qualified project:<name>)
     actions/               # Automated workflows
     moves/                 # User-invoked structured operations
     ui/                    # Theme and font assets
@@ -102,6 +105,10 @@ MO has five primitives. They compose but don't overlap.
 | **User Profile** | WHO is using the system: project scope, visible agents, memory isolation | `~/.modus/profiles/users/*.json` |
 | **Action** | WHEN automation runs: triggers, context gathering, verify, side effects | `.modus/actions/<name>/` |
 | **Move** | WHAT the user wants done now: structured submission with token-gated validation | `.modus/moves/<name>/` |
+
+A **skill** is not one of these. It is packaged text an agent can load —
+knowledge, not protocol — with no enforcement, state, or widget. Skills exist so
+authored knowledge can leave Modus; moves cannot. See [Skills](./skills.md).
 
 See [Primitives](./primitives.md) for how each works and how they connect.
 
@@ -235,6 +242,7 @@ button re-centers the view on the newest session.
 - [Providers](./providers.md) — execution backends and the SessionProvider interface
 - [Actions](./actions.md) — automation: triggers, cycles, verify, artifacts
 - [Moves](./moves.md) — user-invoked structured operations via modus_submit
+- [Skills](./skills.md) — portable packaged instructions, attachment, and per-provider delivery
 - [Harness Context](./harness-context.md) — unified server-side capability contract + session wake/mailbox
 - [Notify & Channels](./notify.md) — channel egress primitive, webhook body shaping, action notify
 - [Pages](./pages.md) — project-scoped custom pages, layouts, and page widget references

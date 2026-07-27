@@ -249,6 +249,9 @@ try {
 try {
   db.run(`ALTER TABLE action_runs ADD COLUMN verify_error TEXT`);
 } catch { /* column already exists */ }
+try {
+  db.run(`ALTER TABLE action_runs ADD COLUMN warning TEXT`);
+} catch { /* column already exists */ }
 // Migration: add execution_id column linking runs to executions
 try {
   db.run(`ALTER TABLE action_runs ADD COLUMN execution_id INTEGER REFERENCES action_executions(id)`);
@@ -586,18 +589,19 @@ const stmts = {
       session_id = COALESCE($session_id, session_id),
       after_run_error = COALESCE($after_run_error, after_run_error),
       attempts = COALESCE($attempts, attempts),
-      verify_error = COALESCE($verify_error, verify_error)
+      verify_error = COALESCE($verify_error, verify_error),
+      warning = COALESCE($warning, warning)
     WHERE id = $id
   `),
   getActionRuns: db.prepare(`
-    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, execution_id
+    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, warning, execution_id
     FROM action_runs
     WHERE action_name = $action_name
       AND ($action_scope IS NULL OR action_scope = $action_scope OR action_scope IS NULL)
     ORDER BY run_number DESC LIMIT $limit
   `),
   getRunsByExecution: db.prepare(`
-    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, execution_id
+    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, warning, execution_id
     FROM action_runs WHERE execution_id = $execution_id
     ORDER BY run_number ASC
   `),
@@ -1589,6 +1593,7 @@ function mapRunRow(r: any): RunMeta {
     afterRunError: r.after_run_error,
     attempts: r.attempts ?? 1,
     verifyError: r.verify_error ?? null,
+    warning: r.warning ?? null,
     executionId: r.execution_id ?? null,
   };
 }
@@ -1641,6 +1646,7 @@ export function updateActionRun(id: number, updates: {
   afterRunError?: string;
   attempts?: number;
   verifyError?: string;
+  warning?: string;
 }) {
   stmts.updateActionRun.run({
     $id: id,
@@ -1653,6 +1659,7 @@ export function updateActionRun(id: number, updates: {
     $after_run_error: updates.afterRunError ?? null,
     $attempts: updates.attempts ?? null,
     $verify_error: updates.verifyError ?? null,
+    $warning: updates.warning ?? null,
   });
 }
 

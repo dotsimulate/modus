@@ -1,7 +1,7 @@
 ---
 title: Actions
-lastUpdated: 2026-07-07
-covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts
+lastUpdated: 2026-07-26
+covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts harness/skill-attachment.ts
 ---
 
 # Actions
@@ -12,7 +12,8 @@ what context, and what happens after.
 ## Directory Structure
 
 Built-in harness actions live in `harness/actions/<name>/`. Project-local actions
-live in `.modus/actions/<name>/` and override built-ins of the same name.
+live in `.modus/actions/<name>/`, and enabled plugin actions live in
+`<plugin>/.modus/actions/<name>/`. Resolution is project → plugin → built-in.
 
 Each action directory contains:
 ```
@@ -64,10 +65,18 @@ via `/api/sessions/:id/artifacts/:artifactId`.
 **Static inputs**: `ActionConfig.inputs?: Record<string, unknown>` passes fixed
 data into every run. Available as `ctx.inputs` in gather, verify, and afterRun.
 `ctx.cwd` carries the action's configured working directory (from `cfg.cwd`).
+Plugin actions default `cwd` to the plugin root and expand `${pluginDir}`
+recursively in `cwd` and `inputs`.
 
 **Move activation**: `ActionConfig.moves?: ActionMoveSpec[]` declares moves to
 activate on the spawned session. The runner uses move activation after session
 creation, so actions can combine automation with move-defined submit/API flows.
+
+**Skill attachment**: `ActionConfig.skills?: string[]` attaches installed skills
+to the spawned session by name. Skills bundled inside an activated move come
+along transitively, so an action that attaches a move also gets that move's
+skills. Names that resolve to nothing are logged and skipped rather than failing
+the run. See [Skills](./skills.md).
 
 **Webhook session routing**: webhook actions can declare `sessionKey`. When the
 incoming payload contains that field, the runner looks for an existing session
@@ -86,8 +95,14 @@ the action's trust/capabilities. See [Harness Context](./harness-context.md) and
 operations at the namespace boundary. When `trust` is omitted it defaults by origin: harness
 origin → `builtin` (fully trusted), project origin → `reviewed` (enforced as declared).
 
-**Origin**: `origin` (`"harness"` or `"project"`) is set automatically on load.
+**Origin**: `origin` (`"harness"`, `"project"`, or `"plugin"`) is set automatically on load.
 Returned by `GET /api/actions` so callers know where the action came from.
+
+**Profile resolution**: plugin actions resolve unqualified `agentProfile`
+references against their own plugin first. Resolved sessions store a qualified
+profile key. A missing initial or step profile emits
+`automation_profile_missing`, records a warning on the action run, and continues
+with normal session fallbacks.
 
 **Source**: `action-runner.ts`, `action-types.ts`.
 

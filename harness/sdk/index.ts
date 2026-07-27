@@ -91,6 +91,8 @@ export type {
   MoveInputVisibilityRule,
   MovePageInfo,
   MoveListItem,
+  SkillListItem,
+  SkillContent,
   MoveWidgetInfo,
   ActivateMoveResult,
   MoveDetail,
@@ -149,6 +151,8 @@ export type {
   // Client extensions
   ExtensionSettingSchema,
   ExtensionMeta,
+  PluginSettingDefinition,
+  PluginSettingsSnapshot,
   ModusPlugin,
   ClientExtensionManifestItem,
   // Memory

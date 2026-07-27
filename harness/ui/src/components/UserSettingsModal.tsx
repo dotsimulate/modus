@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { modus } from "../modusClient";
-import type { ProviderModel, UserInterfaceConfig, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
+import type { ModusPlugin, ProviderModel, UserInterfaceConfig, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
+import { profileOptions } from "../profile-options";
+import { PluginSettingsPanel } from "./PluginSettingsPanel";
 import { FolderPicker } from "./FolderPicker";
 import { ProjectAppearanceSettings } from "./ProjectAppearanceSettings";
 import {
@@ -31,7 +33,7 @@ type Props = {
   onSave: (patch: Partial<UserProfile> & Partial<UserProfileUiConfig>) => Promise<void>;
 };
 
-type Tab = "profile" | "defaults" | "interface" | "environment" | "project" | "security";
+type Tab = "profile" | "defaults" | "interface" | "environment" | "project" | "plugins" | "security";
 
 const EFFORT_OPTIONS = ["off", "low", "medium", "high", "xhigh", "max"] as const;
 
@@ -62,7 +64,7 @@ function InterfaceToggle({ label, value, onChange }: {
 
 export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [tab, setTab] = useState<Tab>("profile");
-  const { visibleProfiles, availableProviders, projectRoot, activeCwd } = useProfiles();
+  const { profiles, visibleProfiles, availableProviders, projectRoot, activeCwd } = useProfiles();
 
   const [displayName, setDisplayName] = useState(userProfile.displayName ?? "");
   const [defaultAgentProfile, setDefaultAgentProfile] = useState(userProfile.defaultAgentProfile ?? "");
@@ -72,6 +74,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [computer, setComputer] = useState(userProfile.computer ?? "");
   const [editor, setEditor] = useState(userProfile.editor ?? "");
   const [projectPaths, setProjectPaths] = useState<string[]>(userProfile.projects ?? []);
+  const [hiddenPluginProfiles, setHiddenPluginProfiles] = useState<string[]>(userProfile.hiddenPluginProfiles ?? []);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
   const [interfaceSettings, setInterfaceSettings] = useState<ResolvedInterfaceSettings>(
@@ -90,6 +93,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [pinSuccess, setPinSuccess] = useState<string | null>(null);
   const [updateChecksEnabled, setUpdateChecksEnabled] = useState(automaticUpdateChecksEnabled);
   const [desktopUpdateState, setDesktopUpdateState] = useState(getDesktopUpdateState);
+  const [plugins, setPlugins] = useState<ModusPlugin[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +112,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     setComputer(userProfile.computer ?? "");
     setEditor(userProfile.editor ?? "");
     setProjectPaths(userProfile.projects ?? []);
+    setHiddenPluginProfiles(userProfile.hiddenPluginProfiles ?? []);
     const nextInterface = resolveInterfaceSettings(userProfile.interface);
     setInterfaceSettings(nextInterface);
     setPageNavMode(userProfile.pageNav?.mode ?? "auto");
@@ -145,6 +150,11 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   }, []);
 
   useEffect(() => subscribeDesktopUpdateState(setDesktopUpdateState), []);
+
+  useEffect(() => {
+    if (tab !== "plugins") return;
+    modus.listPlugins().then(setPlugins).catch(() => setPlugins([]));
+  }, [tab]);
 
   const setUpdateChecks = (enabled: boolean) => {
     setAutomaticUpdateChecksEnabled(enabled);
@@ -187,6 +197,8 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
         patch.model = defaultModel || undefined;
       if (defaultEffort !== (userProfile.effort ?? ""))
         patch.effort = defaultEffort || undefined;
+      if (JSON.stringify(hiddenPluginProfiles) !== JSON.stringify(userProfile.hiddenPluginProfiles ?? []))
+        patch.hiddenPluginProfiles = hiddenPluginProfiles.length ? hiddenPluginProfiles : undefined;
       if (computer.trim() !== (userProfile.computer ?? ""))
         patch.computer = computer.trim() || undefined;
       if (editor !== (userProfile.editor ?? "")) {
@@ -283,7 +295,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
         {/* Tabs */}
         <div className="us-tabs">
-          {(["profile", "defaults", "interface", "environment", "project", "security"] as Tab[]).map((t) => (
+          {(["profile", "defaults", "interface", "environment", "project", "plugins", "security"] as Tab[]).map((t) => (
             <button
               key={t}
               className={`us-tab${tab === t ? " active" : ""}`}
@@ -328,7 +340,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                   <SearchDropdown
                     className="search-dropdown--compact"
                     value={defaultAgentProfile}
-                    options={visibleProfiles.map((profile) => ({ value: profile.name }))}
+                    options={profileOptions(visibleProfiles)}
                     placeholder="select profile"
                     searchPlaceholder="search profiles..."
                     onChange={setDefaultAgentProfile}
@@ -680,6 +692,42 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                !userProfile.defaultAgentProfile && (
                 <div className="us-empty">no project data</div>
               )}
+            </div>
+          )}
+
+          {tab === "plugins" && (
+            <div className="us-section us-section--scroll">
+              {plugins.length === 0 && <div className="us-empty">no plugins available</div>}
+              {plugins.map((plugin) => (
+                <details className="us-group" key={plugin.id}>
+                  <summary className="us-group-header">
+                    <span className="us-group-label">{plugin.name ?? plugin.id}</span>
+                    <span className="us-group-count">{plugin.builtin ? "built in" : plugin.enabled ? "on" : "off"}</span>
+                  </summary>
+                  <div className="us-group-inner">
+                    {plugin.description && <div className="us-row-hint">{plugin.description}</div>}
+                    <div className="us-group-row us-group-row--mono">{plugin.path}</div>
+                    {plugin.about && <pre className="exw-plugin-about">{plugin.about}</pre>}
+                    {profiles.filter((candidate) => candidate.pluginId === plugin.id).map((candidate) => (
+                      <label className="exw-setting exw-setting--toggle" key={candidate.name}>
+                        <span className="exw-setting-label">
+                          show {candidate.displayName ?? candidate.name} in profile pickers
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={!hiddenPluginProfiles.includes(candidate.name)}
+                          onChange={(event) => setHiddenPluginProfiles((current) => event.target.checked
+                            ? current.filter((key) => key !== candidate.name)
+                            : [...new Set([...current, candidate.name])])}
+                        />
+                      </label>
+                    ))}
+                    {plugin.manifest.settings?.length
+                      ? <PluginSettingsPanel plugin={plugin} cwd={projectRoot || activeCwd} userProfile={profile.name} />
+                      : <div className="us-empty">no settings declared</div>}
+                  </div>
+                </details>
+              ))}
             </div>
           )}
 

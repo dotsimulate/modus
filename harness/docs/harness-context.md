@@ -1,6 +1,6 @@
 ---
 title: Harness Context
-lastUpdated: 2026-07-07
+lastUpdated: 2026-07-26
 covers: harness/harness-context.ts harness/wake-scheduler.ts harness/move-runner.ts harness/action-runner.ts harness/modus-mcp.ts
 ---
 
@@ -17,7 +17,7 @@ Context unifies them: one namespaced capability object, one safety model.
 `buildHarnessContext(self)` returns a `HarnessContext` (`harness-context.ts`):
 
 ```ts
-ctx.self        // identity + gating inputs: { kind, name, sessionId, caller, cwd, userProfile, trust, capabilities }
+ctx.self        // identity + gating inputs, including pluginId for plugin-origin code
 ctx.sessions    // create, send, wake, watchTurns, tag, untag, get, list
 ctx.channels    // send(channel, { text, data? })  → the egress primitive (see notify.md)
 ctx.moves       // activate, list
@@ -28,6 +28,7 @@ ctx.secrets     // resolve, isSet
 ctx.shell       // run(cmd)
 ctx.artifacts   // insert, attach
 ctx.terminal    // create(opts) → pty handle
+ctx.pluginSettings // get(key), all() → resolved values for self.pluginId + user/project context
 ctx.log(message, metadata?)
 ```
 
@@ -60,6 +61,9 @@ untouched:
 | `MoveApiContext` (move API handlers) | Keeps its historic fields (session-inject `notify`, `sendMessage`, state, db, …) **plus** new orchestration parity: `createSession`, `triggerAction`, `activateMove`, `watchSessionTurns`, `channels`. |
 | `ActionContext` (actions) | Keeps all existing fields **plus** `ctx.sessions` / `ctx.channels`. Actions gain `trust`/`capabilities` (default: harness origin → builtin, project origin → reviewed). |
 | `.modus/api-handlers/*.ts` | Dual signature, detected by **export key** (never arity): `export const handlers = {…}` or named fns → old `(sessionId, data)`; `export const ops = {…}` → new `(ctx, data)` with the full Harness Context. |
+
+Plugin-origin move/action adapters also expose `pluginSettings`. Code without a
+plugin identity receives an empty accessor.
 
 ## Session wake / mailbox
 

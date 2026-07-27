@@ -91,11 +91,59 @@
 
 .exw-plugin {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   border-radius: 4px;
   padding: 6px 8px;
   background: var(--bg-elevated);
+}
+
+.exw-plugin-details {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+.exw-plugin-about {
+  margin: 6px 0 0 36px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.exw-plugin-skills {
+  margin: 6px 0 0 36px;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  line-height: 1.45;
+}
+
+.exw-plugin-skills-label {
+  color: var(--text-muted);
+  opacity: 0.75;
+  padding-bottom: 2px;
+}
+
+.exw-plugin-skill {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.exw-plugin-skill-name {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.exw-plugin-skill-desc {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .exw-plugin--off {
@@ -239,7 +287,57 @@
 .exw-setting {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.exw-setting-description,
+.exw-setting-scope {
+  font-family: var(--font-mono);
+  font-size: calc(8px * var(--font-scale, 1));
+  color: var(--text-muted);
+}
+
+.exw-setting-description {
+  flex: 0 0 100%;
+  padding-left: 88px;
+}
+
+.exw-setting-scope {
+  text-transform: uppercase;
+}
+
+.exw-setting--projects {
+  align-items: flex-start;
+}
+
+.exw-project-list {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.exw-project-option {
+  display: grid;
+  grid-template-columns: auto minmax(80px, auto) minmax(120px, 1fr);
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-dim);
+}
+
+.exw-project-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.exw-project-option--missing {
+  opacity: 0.65;
 }
 
 .exw-setting--toggle {

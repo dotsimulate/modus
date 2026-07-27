@@ -1,18 +1,17 @@
 ---
 title: Profile System
-lastUpdated: 2026-07-07
+lastUpdated: 2026-07-26
 lastCommit: a9adf68
-covers: harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/templates/profiles/
+covers: harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/templates/profiles/ harness/skills.ts
 ---
 
 # Profile System
 
 Profiles are the harness config layer. User-owned config and runtime state live
-under `~/.modus/profiles/`. Project-local agent profiles live under
-`<project>/.modus/profiles/agents/` and override user-home profiles of the same
-name. Shipped templates live in `harness/templates/profiles/` and are seeded into
-the user home on first boot; runtime code does not write profile state inside
-the harness tree.
+under `~/.modus/profiles/`. Project-local profiles live under
+`<project>/.modus/profiles/agents/`, and plugin profiles live under
+`<plugin>/.modus/profiles/agents/`. Same-named profiles coexist under qualified
+runtime identities instead of shadowing one another.
 
 ## Directory Structure
 
@@ -37,7 +36,32 @@ the harness tree.
 <project>/.modus/
   profiles/agents/      Project-local agent profiles
   ui/profiles/agents/   Project-local agent UI sidecars
+
+<plugin>/.modus/
+  profiles/agents/      Plugin-merged agent profiles
+  ui/profiles/agents/   Read-only plugin profile UI sidecars
 ```
+
+## Identity and Resolution
+
+The API and session runtime use collision-free keys:
+
+- `user:<name>`
+- `project:<name>`
+- `plugin:<plugin-id>/<name>`
+
+Picker labels remain clean and display a source marker. A plugin manifest's
+`integration.agentProfiles` list controls picker visibility only; other
+plugin-shipped profiles still resolve for that plugin's automation.
+
+An unqualified plugin action reference checks its own plugin first. An
+unqualified project reference checks project then user. Explicit qualified keys
+select an exact source. Legacy unqualified user/project preferences remain
+accepted by the UI.
+
+Plugin profiles may use `${pluginDir}` in `cwd`, `additionalDirectories`, and
+`cwdSuggestions`. The plugin root is automatically appended to
+`additionalDirectories`.
 
 ## Agent Profiles (`~/.modus/profiles/agents/*.json`)
 
@@ -70,8 +94,10 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 `"claude-code-pty"`, `"codex"`, `"cursor"`, `"antigravity"`, `"grok-build"`, `"opencode"`,
 `"litellm"`, `"ollama"`, and `"openrouter"`.
 
-**`additionalDirectories`**: Extra workspace roots to grant alongside the primary cwd.
-Passed to the Claude Agent SDK as `additionalDirectories`.
+**`additionalDirectories`**: Extra workspace roots to grant alongside the
+primary cwd. All current providers consume them. PI-backed providers advertise
+absolute extra roots in the system prompt and coding-tool descriptions; their
+bash tool keeps PI's existing unrestricted behavior.
 
 **`ui.panelWidgets`**: Widget types shown in the LeftPanel when this profile is active.
 
@@ -102,6 +128,13 @@ Grok sandbox profile. `noMemory`, `noSubagents`, and `disableWebSearch` disable
 their corresponding Grok features. Launch-affecting changes apply on the next
 turn by restarting the ACP child and loading the same Grok session.
 
+**`skills`**: `string[]` of installed skill names to attach for the whole
+session. Resolved from `<project>/.modus/skills/`, `~/.modus/skills/`, and
+enabled plugins, most specific first. Installing a skill does not make it
+available — this field (or a move/action) is what makes it reachable. Names that
+resolve to nothing are logged and skipped, never fatal. Skills bundled inside a
+move listed in `moves` come along transitively. See [Skills](./skills.md).
+
 ## User Profiles (`~/.modus/profiles/users/*.json`)
 
 Scoped views of the harness. Filter which projects and agent profiles a user sees.
@@ -129,7 +162,9 @@ agent prompts. Use for user name, preferred stack, editor, etc.
 **`clientExtensions`**: Per-user `paths/enabled/disabled` config merged with global and
 project layers. See `docs/client-extensions.md`.
 
-**`agentProfiles`**: Which agent profiles appear in the UI sidebar. Omit for all.
+**`agentProfiles`**: Which user-home agent profiles appear in the UI sidebar.
+Project profiles always appear. Manifest-integrated plugin profiles appear
+unless their qualified key is in `hiddenPluginProfiles`.
 
 **`projects`**: Working directories available in the CWD picker.
 
@@ -149,6 +184,8 @@ Three purposes:
    global browser-side extension roots. See `docs/client-extensions.md`.
 4. **Notification channels** — `notificationChannels` defines named webhook or file
    channels used by action notifications.
+5. **Plugin settings** — project-scoped values live under
+   `pluginSettings.<plugin-id>`.
 
 ## Template Variables (`_users.json`)
 

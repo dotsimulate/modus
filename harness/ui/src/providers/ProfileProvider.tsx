@@ -15,14 +15,23 @@ import { backendStorageKey } from "../backendTarget";
 const USER_PROFILE_KEY = backendStorageKey("harness:active-user-profile");
 
 function resolvePreferredProfile(
-  names: string[],
+  profiles: Profile[],
   lastAgentProfile?: string,
   defaultAgentProfile?: string,
 ): string {
-  if (!names.length) return "";
-  if (lastAgentProfile && names.includes(lastAgentProfile)) return lastAgentProfile;
-  if (defaultAgentProfile && names.includes(defaultAgentProfile)) return defaultAgentProfile;
-  return names[0] ?? "";
+  if (!profiles.length) return "";
+  const resolveReference = (reference?: string) => {
+    if (!reference) return undefined;
+    const exact = profiles.find((profile) => profile.name === reference);
+    if (exact) return exact.name;
+    const matches = profiles.filter((profile) => profile.displayName === reference);
+    return matches.find((profile) => profile.origin === "project")?.name
+      ?? matches.find((profile) => profile.origin === "user")?.name
+      ?? matches[0]?.name;
+  };
+  return resolveReference(lastAgentProfile)
+    ?? resolveReference(defaultAgentProfile)
+    ?? profiles[0]!.name;
 }
 
 function normalizeRootPath(value: string): string {
@@ -64,7 +73,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // Visibility rule:
   //   - When the active user profile has an `agentProfiles` whitelist, it constrains
   //     USER-HOME profiles (shared across projects — the user curates which show).
-  //   - PROJECT-LOCAL profiles (in `<cwd>/.modus/profiles/agents/`) ALWAYS appear —
+  //   - PROJECT-LOCAL profiles (in `<cwd>/.modus/profiles/agents/`) ALWAYS appear.
+  //   - Manifest-exposed PLUGIN profiles appear globally unless explicitly suppressed.
   //     they're scoped to this project by definition. Hiding them was a bug: our
   //     scaffolding moves (create-profile, etc.) write to `.modus/` and users expected
   //     those to show up without manually editing the user profile's whitelist.
@@ -72,11 +82,16 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   //     rest in their original order.
   const visibleProfiles = useMemo(() => {
     const lastProfile = activeUP ? uiState.lastAgentProfile : undefined;
+    const hiddenPluginProfiles = new Set(activeUP?.hiddenPluginProfiles ?? []);
     let result = activeUP?.agentProfiles?.length
-      ? profiles.filter((p) => p.origin === "project" || activeUP.agentProfiles!.includes(p.name))
-      : profiles;
+      ? profiles.filter((p) =>
+          p.origin === "project"
+          || (p.origin === "plugin" && !hiddenPluginProfiles.has(p.name))
+          || activeUP.agentProfiles!.includes(p.name)
+          || (!!p.displayName && activeUP.agentProfiles!.includes(p.displayName)))
+      : profiles.filter((p) => p.origin !== "plugin" || !hiddenPluginProfiles.has(p.name));
     if (lastProfile) {
-      const lastIdx = result.findIndex((p) => p.name === lastProfile);
+      const lastIdx = result.findIndex((p) => p.name === lastProfile || p.displayName === lastProfile);
       if (lastIdx >= 0) {
         result = [result[lastIdx], ...result.slice(0, lastIdx), ...result.slice(lastIdx + 1)];
       }
@@ -170,7 +185,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   // Build session creation opts from current setup state
   const buildSessionOpts = useCallback((prompt: string, profile?: string, seed?: SessionSetupState): CreateSessionOpts => {
     const source = seed ?? setupState;
-    const profileData = profiles.find((p) => p.name === profile);
+    const profileData = profiles.find((p) => p.name === profile || p.displayName === profile);
     const agentOverrides = agentConfigToOverrides(
       source.agent,
       profileData?.tools ?? "all",
@@ -270,14 +285,13 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [activeUserProfile, hydrateUserProfilesWithUi]);
 
   useEffect(() => {
-    const availableNames = visibleProfiles.map((profile) => profile.name);
-    if (!availableNames.length) {
+    if (!visibleProfiles.length) {
       if (selectedProfile) setSelectedProfile("");
       return;
     }
-    if (selectedProfile && availableNames.includes(selectedProfile)) return;
+    if (selectedProfile && visibleProfiles.some((profile) => profile.name === selectedProfile)) return;
     const nextProfile = resolvePreferredProfile(
-      availableNames,
+      visibleProfiles,
       uiState.lastAgentProfile,
       activeUP?.defaultAgentProfile,
     );
@@ -291,6 +305,9 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     if (selectedProfile === prevSelectedProfileRef.current) return;
     prevSelectedProfileRef.current = selectedProfile;
     const profileData = profiles.find((p) => p.name === selectedProfile);
+    const profileAdditional = profileData?.additionalDirectories ?? [];
+    const combineAdditional = (...groups: Array<string[] | undefined>) =>
+      [...new Set(groups.flatMap((group) => group ?? []).filter((entry) => entry.trim()))];
     if (profileData?.cwd) {
       // Profile has a hard CWD — resolve relative paths and set into setupState.cwd
       // so the sidebar dropdown displays the session's working directory.
@@ -304,20 +321,23 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       setSetupState((prev) => ({
         ...prev,
         cwd: resolved,
-        additionalDirectories: suggestions?.slice(0) ?? [],
+        additionalDirectories: combineAdditional(profileAdditional, suggestions),
       }));
     } else if (profileData?.cwdSuggestions && profileData.cwdSuggestions.length > 0) {
       setSetupState((prev) => ({
         ...prev,
         cwd: profileData!.cwdSuggestions![0],
-        additionalDirectories: profileData!.cwdSuggestions!.slice(1),
+        additionalDirectories: combineAdditional(
+          profileAdditional,
+          profileData!.cwdSuggestions!.slice(1),
+        ),
       }));
     } else {
       const defaultCwd = projectRoot;
       setSetupState((prev) => ({
         ...prev,
         cwd: defaultCwd || prev.cwd,
-        additionalDirectories: [],
+        additionalDirectories: profileAdditional,
       }));
     }
   }, [selectedProfile, profiles, activeUP, projectRoot]);

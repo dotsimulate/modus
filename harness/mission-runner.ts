@@ -35,6 +35,7 @@ import type {
   MissionListItem, MissionRunSummary, MissionStepRunSummary,
   MissionAssignmentSummary, MissionTransferSummary, MissionGateResultSummary,
 } from "./mission-types";
+import { resolveProfileKey } from "./profiles";
 
 // ── Constants ──
 
@@ -48,6 +49,31 @@ const grantStore = new Map<string, MissionToolGrant>();
 
 /** Live session references — lets us read the current (possibly rekeyed) session ID. */
 const orchestratorSessions = new Map<number, ActiveSession>();
+
+function resolveMissionProfileReference(
+  reference: string,
+  cwd: string,
+  runId: number,
+  role: string,
+  userProfile?: string,
+): string {
+  const resolved = resolveProfileKey(reference, cwd);
+  if (resolved) return resolved;
+  const warning = `Mission run ${runId} role "${role}" references missing agent profile "${reference}"; continuing with fallback defaults`;
+  const warnings = getMissionRun(runId)?.warning?.split("\n").filter(Boolean) ?? [];
+  if (warnings.includes(warning)) return reference;
+  warnings.push(warning);
+  console.warn(`[mission-runner] ${warning}`);
+  updateMissionRun(runId, { warning: warnings.join("\n") });
+  logActivity({
+    eventType: "automation_profile_missing",
+    agentProfile: reference,
+    userProfile,
+    summary: warning,
+    metadata: { kind: "mission", runId, role },
+  });
+  return reference;
+}
 
 setInterval(() => {
   const now = Date.now();
@@ -217,7 +243,13 @@ export async function startMission(opts: {
   // will rekey to the backend-assigned ID during init.
   const session = startSession({
     prompt,
-    profile: orchestratorProfile,
+    profile: resolveMissionProfileReference(
+      orchestratorProfile,
+      opts.cwd,
+      runId,
+      orchestratorRole,
+      opts.userProfile,
+    ),
     cwd: opts.cwd,
     userProfile: opts.userProfile,
   });
@@ -574,7 +606,13 @@ async function handleDelegate(
   // Spawn worker session — startSession generates UUID, provider rekeys during init
   const session = startSession({
     prompt: workerPrompt,
-    profile: roleConfig.profile,
+    profile: resolveMissionProfileReference(
+      roleConfig.profile,
+      run.cwd,
+      run.id,
+      role,
+      run.user_profile ?? undefined,
+    ),
     cwd: run.cwd,
     userProfile: run.user_profile ?? undefined,
   });
@@ -951,7 +989,13 @@ async function rotateOrchestrator(run: MissionRunRow, config: MissionConfig, new
   // 5. Spawn fresh session
   const session = startSession({
     prompt,
-    profile: orchestratorProfile,
+    profile: resolveMissionProfileReference(
+      orchestratorProfile,
+      run.cwd,
+      run.id,
+      orchestratorRole,
+      run.user_profile ?? undefined,
+    ),
     cwd: run.cwd,
     userProfile: run.user_profile ?? undefined,
   });
@@ -1206,7 +1250,13 @@ Start by reading the mission state, then continue from the current step.`;
   // Spawn new orchestrator session — startSession generates UUID, provider rekeys during init
   const session = startSession({
     prompt,
-    profile: orchestratorProfile,
+    profile: resolveMissionProfileReference(
+      orchestratorProfile,
+      run.cwd,
+      runId,
+      orchestratorRole,
+      run.user_profile ?? undefined,
+    ),
     cwd: run.cwd,
     userProfile: run.user_profile ?? undefined,
   });
@@ -1319,6 +1369,7 @@ function mapRunToSummary(run: MissionRunRow): MissionRunSummary {
     currentCycle: run.current_cycle ?? 1,
     haltKind: run.halt_kind,
     haltMessage: run.halt_message,
+    warning: run.warning,
     startedAt: run.started_at,
     updatedAt: run.updated_at,
     completedAt: run.completed_at,

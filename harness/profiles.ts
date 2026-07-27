@@ -24,13 +24,22 @@
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, unlinkSync, mkdirSync } from "fs";
-import { join, basename, dirname } from "path";
+import { join, basename, dirname, isAbsolute, resolve } from "path";
 import { homedir } from "os";
 import {
   homeAgentsDir, homeGlobalPath, homeProjectsJsonPath, homeStateDir,
   homeUiAgentsDir, homeUiUsersDir, homeUsersDir, homeUsersJsonPath,
 } from "./modus-home";
 import { recordAttributionHint, scheduleCommit } from "./workspace-history";
+import {
+  getCoreModusPlugin,
+  getModusPlugin,
+  getPluginGlobalConfigPath,
+  getPluginProfilesDir,
+  getPluginProfileUiDir,
+  listEnabledModusPlugins,
+  type ModusPlugin,
+} from "./modus-plugins";
 
 const AGENTS_DIR = homeAgentsDir();
 const USERS_DIR = homeUsersDir();
@@ -214,6 +223,10 @@ export type Profile = {
    *  Non-persistent moves do a one-shot gather prepended to the first message.
    *  API moves get tokens created and injected into session context. */
   moves?: ProfileMoveBinding[];
+  /** Skills to attach for the whole session, by name. Resolved from
+   *  `<project>/.modus/skills/`, `~/.modus/skills/`, and enabled plugins.
+   *  Names that resolve to nothing are skipped with a warning, never fatal. */
+  skills?: string[];
   /** UI presentation hints — read by frontend, optional with sensible defaults */
   ui?: {
     label?: string;
@@ -235,7 +248,15 @@ export type Profile = {
    * Project-origin profiles always appear in the UI regardless of the active
    * user profile's `agentProfiles` whitelist.
    */
-  origin?: "user" | "project";
+  origin?: "user" | "project" | "plugin";
+  /** Collision-free runtime identity. Never persisted in a profile file. */
+  key?: string;
+  /** Clean filename-derived label used by the UI. */
+  displayName?: string;
+  /** Present for plugin-origin profiles, including the built-in core plugin. */
+  pluginId?: string;
+  pluginName?: string;
+  pluginPath?: string;
 };
 
 /** Move binding for agent profiles — declares moves that auto-activate on session start. */
@@ -325,19 +346,35 @@ export type GlobalConfig = {
   providerDefaults?: Record<string, ProviderDefaults>;
   notificationChannels?: Record<string, NotificationChannel>;
   clientExtensions?: ClientExtensionsConfig;
+  /** Project-scoped plugin setting values (`pluginId` → field values). */
+  pluginSettings?: Record<string, Record<string, unknown>>;
 };
 
-function getBuiltInMcpServers(): Record<string, McpServerConfig> {
+/**
+ * The built-in `modus` MCP server entry.
+ *
+ * `scopeKey` appends a path suffix the endpoint uses to identify which session
+ * is calling — the endpoint is otherwise one URL for everyone, and only
+ * `modus_submit` carries identity (in its token). Sessions with attached skills
+ * get the scoped form so the skill tools can resolve what they may read;
+ * everything else keeps the plain URL and the plain single-tool surface.
+ *
+ * Single source of truth for the URL and auth headers: session-level overrides
+ * build on this rather than reconstructing it.
+ */
+export function buildModusMcpServer(scopeKey?: string): McpServerConfig {
   const port = Number(process.env.HARNESS_PORT ?? 3777);
   const token = process.env.HARNESS_TOKEN;
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
   return {
-    modus: {
-      type: "http",
-      url: `http://127.0.0.1:${port}/api/mcp/modus`,
-      ...(headers ? { headers } : {}),
-    },
+    type: "http",
+    url: `http://127.0.0.1:${port}/api/mcp/modus${scopeKey ? `/${scopeKey}` : ""}`,
+    ...(headers ? { headers } : {}),
   };
+}
+
+function getBuiltInMcpServers(): Record<string, McpServerConfig> {
+  return { modus: buildModusMcpServer() };
 }
 
 // ── User Profiles ──
@@ -363,6 +400,8 @@ export type UserProfile = {
   templateVars?: Record<string, string>;
   projects: string[];
   agentProfiles?: string[];
+  /** Qualified plugin profile keys hidden from this user's otherwise-global picker. */
+  hiddenPluginProfiles?: string[];
   /** Visible actions — omit or ["*"] for all */
   actions?: string[];
   /** Default agent profile selected in the UI for this user profile */
@@ -526,12 +565,6 @@ function mergeUserProfileUi(
   return hasOwnKeys(merged as Record<string, unknown>) ? merged : undefined;
 }
 
-function profileUiPath(name: string, cwd?: string): string {
-  return cwd
-    ? join(projectProfileUiDir(cwd), `${name}.json`)
-    : join(UI_AGENTS_DIR, `${name}.json`);
-}
-
 function userProfileUiPath(name: string): string {
   return join(UI_USERS_DIR, `${name}.json`);
 }
@@ -556,7 +589,7 @@ function legacyUserProfileUi(profile?: UserProfile): UserProfileUiConfig | undef
 function resolveConfiguredPath(rawPath: string, baseDir: string): string {
   if (rawPath === "~") return homedir();
   if (rawPath.startsWith("~/")) return join(homedir(), rawPath.slice(2));
-  return rawPath.startsWith("/") ? rawPath : join(baseDir, rawPath);
+  return isAbsolute(rawPath) ? rawPath : join(baseDir, rawPath);
 }
 
 function notifyUserScopeWrite(filePath: string): void {
@@ -570,71 +603,229 @@ function readProfileFile(name: string): Profile | undefined {
   return readJson<Profile>(join(AGENTS_DIR, `${name}.json`));
 }
 
-/** Read an agent profile config without applying UI sidecars. */
-export function getProfileConfig(name: string, cwd?: string): Profile | undefined {
-  if (cwd) {
-    const proj = readJson<Profile>(join(projectAgentsDir(cwd), `${name}.json`));
-    if (proj) return proj;
+export type ProfileResolutionContext = {
+  /** Source plugin for an unqualified authored reference. */
+  pluginId?: string;
+};
+
+type ProfileSource =
+  | { origin: "user"; name: string }
+  | { origin: "project"; name: string; cwd: string }
+  | { origin: "plugin"; name: string; plugin: ModusPlugin };
+
+function isSafeProfileName(name: string): boolean {
+  return !!name && name !== "." && name !== ".." && !/[\\/:\0]/.test(name);
+}
+
+export function qualifiedProfileKey(
+  origin: "user" | "project",
+  name: string,
+): string;
+export function qualifiedProfileKey(
+  origin: "plugin",
+  name: string,
+  pluginId: string,
+): string;
+export function qualifiedProfileKey(
+  origin: "user" | "project" | "plugin",
+  name: string,
+  pluginId?: string,
+): string {
+  return origin === "plugin" ? `plugin:${pluginId}/${name}` : `${origin}:${name}`;
+}
+
+export function parseQualifiedProfileKey(
+  key: string,
+): { origin: "user" | "project" | "plugin"; name: string; pluginId?: string } | null {
+  if (key.startsWith("user:")) {
+    const name = key.slice("user:".length);
+    return isSafeProfileName(name) ? { origin: "user", name } : null;
   }
-  return readProfileFile(name);
+  if (key.startsWith("project:")) {
+    const name = key.slice("project:".length);
+    return isSafeProfileName(name) ? { origin: "project", name } : null;
+  }
+  if (key.startsWith("plugin:")) {
+    const value = key.slice("plugin:".length);
+    const slash = value.indexOf("/");
+    if (slash <= 0) return null;
+    const pluginId = value.slice(0, slash);
+    const name = value.slice(slash + 1);
+    return isSafeProfileName(pluginId) && isSafeProfileName(name)
+      ? { origin: "plugin", pluginId, name }
+      : null;
+  }
+  return null;
 }
 
-export function getProfileUiConfig(name: string, cwd?: string): ProfileUiConfig | undefined {
-  const legacy = legacyProfileUi(getProfileConfig(name, cwd));
-  const sidecar = readJson<ProfileUiConfig>(profileUiPath(name, cwd));
-  return mergeProfileUi(legacy, sidecar);
+function listJsonNames(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((entry) => entry.endsWith(".json"))
+    .map((entry) => basename(entry, ".json"))
+    .filter(isSafeProfileName);
 }
 
-/** Resolve an agent profile — checks project-local .modus/ first when cwd is provided */
-export function getProfile(name: string, cwd?: string): Profile | undefined {
-  return getProfileConfig(name, cwd);
+function readPluginProfile(plugin: ModusPlugin, name: string): Profile | undefined {
+  if (!isSafeProfileName(name)) return undefined;
+  return readJson<Profile>(join(getPluginProfilesDir(plugin), `${name}.json`));
 }
 
-/** List all agent profile names — merges project-local when cwd is provided */
-export function listProfileNames(cwd?: string): string[] {
-  const baseNames = !existsSync(AGENTS_DIR) ? [] : readdirSync(AGENTS_DIR)
-    .filter((f) => f.endsWith(".json"))
-    .map((f) => basename(f, ".json"));
+function expandPluginToken(value: string, pluginPath: string): string {
+  return value.replace(/\$\{pluginDir\}/g, pluginPath);
+}
 
-  if (cwd) {
-    const projDir = projectAgentsDir(cwd);
-    if (existsSync(projDir)) {
-      const projNames = readdirSync(projDir)
-        .filter((f) => f.endsWith(".json"))
-        .map((f) => basename(f, ".json"));
-      const merged = new Set([...projNames, ...baseNames]);
-      return [...merged].sort();
+function decorateProfile(profile: Profile, source: ProfileSource): Profile {
+  const key = source.origin === "plugin"
+    ? qualifiedProfileKey("plugin", source.name, source.plugin.id)
+    : qualifiedProfileKey(source.origin, source.name);
+  if (source.origin !== "plugin") {
+    return {
+      ...profile,
+      key,
+      displayName: source.name,
+      origin: source.origin,
+    };
+  }
+
+  const pluginPath = source.plugin.path;
+  const additionalDirectories = (profile.additionalDirectories ?? [])
+    .map((entry) => expandPluginToken(entry, pluginPath));
+  if (!additionalDirectories.some((entry) => resolve(entry) === resolve(pluginPath))) {
+    additionalDirectories.push(pluginPath);
+  }
+  return {
+    ...profile,
+    ...(profile.cwd ? { cwd: expandPluginToken(profile.cwd, pluginPath) } : {}),
+    additionalDirectories,
+    ...(profile.cwdSuggestions
+      ? { cwdSuggestions: profile.cwdSuggestions.map((entry) => expandPluginToken(entry, pluginPath)) }
+      : {}),
+    key,
+    displayName: source.name,
+    origin: "plugin",
+    pluginId: source.plugin.id,
+    pluginName: source.plugin.name ?? source.plugin.id,
+    pluginPath,
+  };
+}
+
+function resolveProfileSource(
+  reference: string,
+  cwd?: string,
+  context: ProfileResolutionContext = {},
+): { profile: Profile; source: ProfileSource } | undefined {
+  const qualified = parseQualifiedProfileKey(reference);
+  if (qualified) {
+    if (qualified.origin === "user") {
+      const profile = readProfileFile(qualified.name);
+      return profile ? { profile, source: { origin: "user", name: qualified.name } } : undefined;
+    }
+    if (qualified.origin === "project") {
+      if (!cwd) return undefined;
+      const profile = readJson<Profile>(join(projectAgentsDir(cwd), `${qualified.name}.json`));
+      return profile ? { profile, source: { origin: "project", name: qualified.name, cwd } } : undefined;
+    }
+    const plugin = getModusPlugin(qualified.pluginId!);
+    if (!plugin) return undefined;
+    const profile = readPluginProfile(plugin, qualified.name);
+    return profile ? { profile, source: { origin: "plugin", name: qualified.name, plugin } } : undefined;
+  }
+
+  if (!isSafeProfileName(reference)) return undefined;
+
+  // An unqualified reference authored by a plugin resolves against that plugin first.
+  if (context.pluginId) {
+    const plugin = getModusPlugin(context.pluginId);
+    const profile = plugin ? readPluginProfile(plugin, reference) : undefined;
+    if (plugin && profile) {
+      return { profile, source: { origin: "plugin", name: reference, plugin } };
     }
   }
-  return baseNames.sort();
+
+  if (cwd) {
+    const profile = readJson<Profile>(join(projectAgentsDir(cwd), `${reference}.json`));
+    if (profile) return { profile, source: { origin: "project", name: reference, cwd } };
+  }
+  const userProfile = readProfileFile(reference);
+  if (userProfile) return { profile: userProfile, source: { origin: "user", name: reference } };
+
+  // Core profiles remain usable by their historic unqualified names on clean homes.
+  const core = getCoreModusPlugin();
+  const coreProfile = readPluginProfile(core, reference);
+  return coreProfile
+    ? { profile: coreProfile, source: { origin: "plugin", name: reference, plugin: core } }
+    : undefined;
 }
 
-/** Get all agent profiles as a Record — merges project-local when cwd is provided.
- *  Each profile is tagged with `origin` so the UI can distinguish project-local
- *  profiles (always visible) from user-home profiles (subject to whitelist). */
-export function getAllProfiles(cwd?: string): Record<string, Profile> {
-  const result: Record<string, Profile> = {};
+/** Read and identify an agent profile without applying UI sidecars. */
+export function getProfileConfig(
+  name: string,
+  cwd?: string,
+  context: ProfileResolutionContext = {},
+): Profile | undefined {
+  const resolved = resolveProfileSource(name, cwd, context);
+  return resolved ? decorateProfile(resolved.profile, resolved.source) : undefined;
+}
 
-  // Project-local names win over user-home names of the same name (getProfileConfig
-  // already handles that override internally). Track which names are project-local.
-  const projectNames = new Set<string>();
+export function resolveProfileKey(
+  name: string,
+  cwd?: string,
+  context: ProfileResolutionContext = {},
+): string | undefined {
+  return getProfileConfig(name, cwd, context)?.key;
+}
+
+export function getProfileUiConfig(
+  name: string,
+  cwd?: string,
+  context: ProfileResolutionContext = {},
+): ProfileUiConfig | undefined {
+  const resolved = resolveProfileSource(name, cwd, context);
+  if (!resolved) return undefined;
+  const decorated = decorateProfile(resolved.profile, resolved.source);
+  const sidecarPath = resolved.source.origin === "plugin"
+    ? join(getPluginProfileUiDir(resolved.source.plugin), `${resolved.source.name}.json`)
+    : resolved.source.origin === "project"
+      ? join(projectProfileUiDir(resolved.source.cwd), `${resolved.source.name}.json`)
+      : join(UI_AGENTS_DIR, `${resolved.source.name}.json`);
+  return mergeProfileUi(legacyProfileUi(decorated), readJson<ProfileUiConfig>(sidecarPath));
+}
+
+/** Resolve an agent profile, including qualified plugin-local identities. */
+export function getProfile(
+  name: string,
+  cwd?: string,
+  context: ProfileResolutionContext = {},
+): Profile | undefined {
+  return getProfileConfig(name, cwd, context);
+}
+
+/** List collision-free profile keys. Plugin visibility is manifest-declared. */
+export function listProfileNames(cwd?: string): string[] {
+  const keys: string[] = [];
   if (cwd) {
-    const projDir = projectAgentsDir(cwd);
-    if (existsSync(projDir)) {
-      for (const f of readdirSync(projDir)) {
-        if (f.endsWith(".json")) projectNames.add(basename(f, ".json"));
+    keys.push(...listJsonNames(projectAgentsDir(cwd)).map((name) => qualifiedProfileKey("project", name)));
+  }
+  keys.push(...listJsonNames(AGENTS_DIR).map((name) => qualifiedProfileKey("user", name)));
+
+  const plugins = [getCoreModusPlugin(), ...listEnabledModusPlugins()];
+  for (const plugin of plugins) {
+    for (const name of plugin.manifest.integration?.agentProfiles ?? []) {
+      if (readPluginProfile(plugin, name)) {
+        keys.push(qualifiedProfileKey("plugin", name, plugin.id));
       }
     }
   }
+  return Array.from(new Set(keys)).sort((a, b) => a.localeCompare(b));
+}
 
-  for (const name of listProfileNames(cwd)) {
-    const p = getProfileConfig(name, cwd);
-    if (p) {
-      result[name] = {
-        ...p,
-        origin: projectNames.has(name) ? "project" : "user",
-      };
-    }
+/** Get all picker-visible profiles keyed by collision-free identity. */
+export function getAllProfiles(cwd?: string): Record<string, Profile> {
+  const result: Record<string, Profile> = {};
+  for (const key of listProfileNames(cwd)) {
+    const profile = getProfileConfig(key, cwd);
+    if (profile) result[key] = profile;
   }
   return result;
 }
@@ -652,17 +843,34 @@ export function resolveProfilePrompt(profile?: Profile): ResolvedProfilePrompt |
 /** Save an agent profile (create or update).
  *  When cwd is provided, writes to <cwd>/.modus/profiles/agents/ instead of harness-local. */
 export function saveProfile(name: string, profile: Profile, cwd?: string): void {
-  if (name.startsWith("_")) throw new Error("Profile names cannot start with _");
-  const dir = cwd ? projectAgentsDir(cwd) : AGENTS_DIR;
-  if (cwd && !existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const filePath = join(dir, `${name}.json`);
+  const qualified = parseQualifiedProfileKey(name);
+  if (qualified?.origin === "plugin") throw new Error("Plugin profiles are read-only merged content");
+  const bareName = qualified?.name ?? name;
+  if (!isSafeProfileName(bareName) || bareName.startsWith("_")) {
+    throw new Error("Invalid or reserved profile name");
+  }
+  const projectScoped = qualified?.origin === "project" || (!qualified && !!cwd);
+  if (qualified?.origin === "project" && !cwd) throw new Error("Project profile writes require cwd");
+  const dir = projectScoped ? projectAgentsDir(cwd!) : AGENTS_DIR;
+  if (projectScoped && !existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, `${bareName}.json`);
   notifyUserScopeWrite(filePath);
-  writeJson(filePath, profile);
+  const { origin: _origin, key: _key, displayName: _displayName, pluginId: _pluginId,
+    pluginName: _pluginName, pluginPath: _pluginPath, ...persisted } = profile;
+  writeJson(filePath, persisted);
 }
 
 export function saveProfileUiConfig(name: string, ui: ProfileUiConfig, cwd?: string): void {
-  const filePath = profileUiPath(name, cwd);
-  if (cwd) mkdirSync(projectProfileUiDir(cwd), { recursive: true });
+  const qualified = parseQualifiedProfileKey(name);
+  if (qualified?.origin === "plugin") throw new Error("Plugin profile UI is read-only merged content");
+  const bareName = qualified?.name ?? name;
+  if (!isSafeProfileName(bareName)) throw new Error("Invalid profile name");
+  const projectScoped = qualified?.origin === "project" || (!qualified && !!cwd);
+  if (qualified?.origin === "project" && !cwd) throw new Error("Project profile writes require cwd");
+  const filePath = projectScoped
+    ? join(projectProfileUiDir(cwd!), `${bareName}.json`)
+    : join(UI_AGENTS_DIR, `${bareName}.json`);
+  if (projectScoped) mkdirSync(projectProfileUiDir(cwd!), { recursive: true });
   notifyUserScopeWrite(filePath);
   writeJson(filePath, ui);
 }
@@ -676,9 +884,17 @@ export function patchProfileUiConfig(name: string, patch: Partial<ProfileUiConfi
 /** Delete an agent profile.
  *  When cwd is provided, deletes from <cwd>/.modus/profiles/agents/. */
 export function deleteProfile(name: string, cwd?: string): boolean {
-  const dir = cwd ? projectAgentsDir(cwd) : AGENTS_DIR;
-  const filePath = join(dir, `${name}.json`);
-  const uiFilePath = profileUiPath(name, cwd);
+  const qualified = parseQualifiedProfileKey(name);
+  if (qualified?.origin === "plugin") return false;
+  const bareName = qualified?.name ?? name;
+  if (!isSafeProfileName(bareName)) return false;
+  const projectScoped = qualified?.origin === "project" || (!qualified && !!cwd);
+  if (qualified?.origin === "project" && !cwd) return false;
+  const dir = projectScoped ? projectAgentsDir(cwd!) : AGENTS_DIR;
+  const filePath = join(dir, `${bareName}.json`);
+  const uiFilePath = projectScoped
+    ? join(projectProfileUiDir(cwd!), `${bareName}.json`)
+    : join(UI_AGENTS_DIR, `${bareName}.json`);
   const deletedCore = existsSync(filePath);
   if (deletedCore) unlinkSync(filePath);
   if (existsSync(uiFilePath)) unlinkSync(uiFilePath);
@@ -687,54 +903,87 @@ export function deleteProfile(name: string, cwd?: string): boolean {
 
 // ── Global Config ──
 
-/** Read the global config — merges project-local MCP servers when cwd is provided */
-export function getGlobalConfig(cwd?: string): GlobalConfig {
-  const base = readJson<GlobalConfig>(homeGlobalPath()) ?? {};
-  const builtInMcpServers = getBuiltInMcpServers();
-  if (!cwd) {
-    return {
-      ...base,
-      mcpServers: { ...builtInMcpServers, ...base.mcpServers },
-    };
-  }
-  const proj = readJson<GlobalConfig>(projectGlobalPath(cwd));
-  if (!proj) {
-    return {
-      ...base,
-      mcpServers: { ...builtInMcpServers, ...base.mcpServers },
-    };
-  }
+function mergePluginSettings(
+  base?: Record<string, Record<string, unknown>>,
+  override?: Record<string, Record<string, unknown>>,
+): Record<string, Record<string, unknown>> | undefined {
+  return mergeExtensionSettings(base, override);
+}
+
+function mergeGlobalConfig(base: GlobalConfig, override: GlobalConfig): GlobalConfig {
   return {
     ...base,
-    mcpServers: { ...builtInMcpServers, ...base.mcpServers, ...proj.mcpServers },
-    providerDefaults: { ...base.providerDefaults, ...proj.providerDefaults },
-    notificationChannels: { ...base.notificationChannels, ...proj.notificationChannels },
-    clientExtensions: mergeClientExtensions(base.clientExtensions, proj.clientExtensions),
+    ...override,
+    mcpServers: { ...base.mcpServers, ...override.mcpServers },
+    providerDefaults: { ...base.providerDefaults, ...override.providerDefaults },
+    notificationChannels: { ...base.notificationChannels, ...override.notificationChannels },
+    clientExtensions: mergeClientExtensions(base.clientExtensions, override.clientExtensions),
+    pluginSettings: mergePluginSettings(base.pluginSettings, override.pluginSettings),
   };
+}
+
+/** Read one writable global-config file without composing other tiers. */
+export function getStoredGlobalConfig(cwd?: string): GlobalConfig {
+  return readJson<GlobalConfig>(cwd ? projectGlobalPath(cwd) : homeGlobalPath()) ?? {};
+}
+
+/** Compose built-in → user base → enabled plugins → project. */
+export function getGlobalConfig(cwd?: string): GlobalConfig {
+  const base = getStoredGlobalConfig();
+  const builtInMcpServers = getBuiltInMcpServers();
+  let merged: GlobalConfig = {
+    ...base,
+    mcpServers: { ...builtInMcpServers, ...base.mcpServers },
+  };
+  for (const plugin of listEnabledModusPlugins()) {
+    const pluginConfig = readJson<GlobalConfig>(getPluginGlobalConfigPath(plugin));
+    if (pluginConfig) merged = mergeGlobalConfig(merged, pluginConfig);
+  }
+  if (cwd) {
+    const projectConfig = getStoredGlobalConfig(cwd);
+    merged = mergeGlobalConfig(merged, projectConfig);
+  }
+  return merged;
 }
 
 export function getResolvedClientExtensionsConfig(cwd?: string, userProfileName?: string): ClientExtensionsConfig {
   const baseFile = homeGlobalPath();
   const baseConfig = readJson<GlobalConfig>(baseFile);
-  const baseClient = baseConfig?.clientExtensions;
+  const withResolvedPaths = (
+    config: ClientExtensionsConfig | undefined,
+    baseDir: string,
+  ): ClientExtensionsConfig | undefined => config ? {
+    ...config,
+    paths: config.paths?.map((entry) => resolveConfiguredPath(entry, baseDir)),
+  } : undefined;
+  let merged = withResolvedPaths(baseConfig?.clientExtensions, dirname(baseFile));
+
+  for (const plugin of listEnabledModusPlugins()) {
+    const pluginGlobalPath = getPluginGlobalConfigPath(plugin);
+    const pluginClient = readJson<GlobalConfig>(pluginGlobalPath)?.clientExtensions;
+    merged = mergeClientExtensions(
+      merged,
+      withResolvedPaths(pluginClient, dirname(pluginGlobalPath)),
+    );
+  }
 
   const projectFile = cwd ? projectGlobalPath(cwd) : undefined;
   const projectClient = projectFile ? readJson<GlobalConfig>(projectFile)?.clientExtensions : undefined;
   const userClient = userProfileName ? getUserProfileUiConfig(userProfileName)?.clientExtensions : undefined;
 
-  const merged = mergeClientExtensions(
-    mergeClientExtensions(baseClient, projectClient),
+  merged = mergeClientExtensions(
+    mergeClientExtensions(
+      merged,
+      projectFile ? withResolvedPaths(projectClient, dirname(projectFile)) : projectClient,
+    ),
     userClient,
-  ) ?? {};
+  );
 
   return {
-    paths: merged.paths?.map((entry) => {
-      const sourceFile = projectClient?.paths?.includes(entry) && projectFile ? projectFile : baseFile;
-      return resolveConfiguredPath(entry, dirname(sourceFile));
-    }),
-    enabled: merged.enabled,
-    disabled: merged.disabled,
-    settings: merged.settings,
+    paths: merged?.paths,
+    enabled: merged?.enabled,
+    disabled: merged?.disabled,
+    settings: merged?.settings,
   };
 }
 

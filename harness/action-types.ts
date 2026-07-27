@@ -11,7 +11,7 @@
  */
 
 import type { MoveCapabilities } from "./move-types";
-import type { HarnessSessions, HarnessChannels } from "./harness-context";
+import type { HarnessSessions, HarnessChannels, HarnessContext } from "./harness-context";
 
 // ── Trigger Types ──
 
@@ -78,7 +78,10 @@ export interface ActionConfig {
   name: string;
   description: string;
   enabled: boolean;
-  origin?: "harness" | "project";
+  origin?: "harness" | "project" | "plugin";
+  /** Runtime source metadata; never required in action.json. */
+  pluginId?: string;
+  pluginPath?: string;
 
   // ── What to run ──
   agentProfile: string;
@@ -132,6 +135,9 @@ export interface ActionConfig {
 
   // ── Moves (activate moves on the spawned session) ──
   moves?: ActionMoveSpec[];
+
+  // ── Skills (attached to the spawned session) ──
+  skills?: string[];
 
   // ── Page (action-owned page in the nav) ──
   page?: ActionPageDeclaration;
@@ -277,6 +283,8 @@ export interface ActionContext {
   sessions: HarnessSessions;
   /** Send content to a named channel (Discord/Slack/file). */
   channels: HarnessChannels;
+  /** Manifest-declared settings for the plugin that supplied this action. */
+  pluginSettings: HarnessContext["pluginSettings"];
 }
 
 /** Handle returned by ActionContext.createTerminal() */
@@ -397,6 +405,7 @@ export interface RunMeta {
   afterRunError: string | null;
   attempts: number;
   verifyError: string | null;
+  warning?: string | null;
   executionId: number | null;
 }
 
@@ -485,9 +494,11 @@ export interface ActionState {
   scopeKey: string;
   /** Filesystem directory containing this action's config + context.ts */
   actionDir: string;
-  origin: "harness" | "project";
+  origin: "harness" | "project" | "plugin";
   /** Project root for project-local actions. Undefined for harness actions. */
   projectCwd?: string;
+  pluginId?: string;
+  pluginPath?: string;
   activeExecutions: Map<number, ExecutionState>; // keyed by execution ID
   lastRunAt: number | null;
   nextRunAt: number | null;

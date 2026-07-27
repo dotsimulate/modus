@@ -243,6 +243,7 @@ export const UserProfileSchema = z.object({
   templateVars: z.record(z.string(), z.string()).optional(),
   projects: z.array(z.string()),
   agentProfiles: z.array(z.string()).optional(),
+  hiddenPluginProfiles: z.array(z.string()).optional(),
   defaultAgentProfile: z.string().optional(),
   provider: ProviderSchema.optional(),
   model: z.string().optional(),
@@ -298,6 +299,7 @@ export const GlobalConfigSchema = z.object({
     }),
   ])).optional(),
   clientExtensions: ClientExtensionsSchema.optional(),
+  pluginSettings: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 });
 
 // ── Helpers ──

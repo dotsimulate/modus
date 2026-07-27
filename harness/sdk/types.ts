@@ -681,12 +681,18 @@ export type ProfileUi = {
  * Loaded from `profiles/agents/*.json` or `.modus/profiles/agents/*.json`.
  */
 export type Profile = {
+  /** Collision-free reference passed to session APIs (for example plugin:my-plugin/reviewer). */
   name: string;
+  /** Clean filename-derived label; `name` remains the internal qualified key. */
+  displayName?: string;
+  key?: string;
   description: string;
   prompt: string;
   /** "custom" replaces the base prompt entirely; "append" adds to it. Defaults to "custom". */
   promptMode?: "custom" | "append";
   cwd?: string;
+  /** Extra workspace roots granted alongside the primary CWD. */
+  additionalDirectories?: string[];
   provider?: string;
   model?: string;
   effort?: string;
@@ -709,12 +715,18 @@ export type Profile = {
    * user profile's `agentProfiles` whitelist — they're scoped to this project
    * by definition, so hiding them would be confusing.
    */
-  origin?: "user" | "project";
+  origin?: "user" | "project" | "plugin";
+  pluginId?: string;
+  pluginName?: string;
+  pluginPath?: string;
 };
 
 /** Global configuration shared across all profiles (MCP servers, client extensions). */
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
+  providerDefaults?: Record<string, unknown>;
+  notificationChannels?: Record<string, unknown>;
+  pluginSettings?: Record<string, Record<string, unknown>>;
   clientExtensions?: {
     paths?: string[];
     enabled?: string[];
@@ -763,6 +775,10 @@ export type ProviderCapabilities = {
   slashCommands?: ProviderSlashCommand[];
   supportsMcp: boolean;
   mcpSupport: "full" | "stdio-only" | "none";
+  /** Whether the provider discovers skills on disk by itself (Claude-family CLIs
+   *  read `<cwd>/.claude/skills/`, PI reads `.pi/skills/`). Others read none, and
+   *  reach Modus skills through the skill tools instead. */
+  readsNativeSkills?: boolean;
   /** Events the provider emits that aren't tool calls (e.g. "thinking", "git_event"). */
   nonToolSignals: string[];
   permissionModel: {
@@ -898,6 +914,8 @@ export type UserProfile = {
   projects: string[];
   /** Which agent profiles are visible to this user. If omitted, all are visible. */
   agentProfiles?: string[];
+  /** Qualified plugin profile keys explicitly hidden for this user. */
+  hiddenPluginProfiles?: string[];
   defaultAgentProfile?: string;
   provider?: string;
   model?: string;
@@ -1003,7 +1021,9 @@ export type ActionInfo = {
   name: string;
   description: string;
   /** Whether this action is defined in the harness or the project's .modus/ directory. */
-  origin?: "harness" | "project";
+  origin?: "harness" | "project" | "plugin";
+  pluginId?: string;
+  pluginPath?: string;
   /** Stable internal identity used to disambiguate same-named project actions. */
   scopeKey?: string;
   /** Project root for project-local actions. */
@@ -1061,6 +1081,8 @@ export type ActionRun = {
   attempts?: number;
   /** Error from the verify step, if the action uses verification. */
   verifyError?: string | null;
+  /** Non-fatal automation configuration warning (for example a missing profile). */
+  warning?: string | null;
 };
 
 export type ActionExecution = {
@@ -1142,11 +1164,29 @@ export type MovePageInfo = {
  * Summary of a registered move, returned by list endpoints.
  * Moves are user-invoked structured operations -- the WHAT of agent interaction.
  */
+/** An installed skill — packaged instructions an agent or the user can load. */
+export type SkillListItem = {
+  name: string;
+  description: string;
+  /** Where it was found. Project beats user beats plugin on a name collision. */
+  origin: "project" | "user" | "plugin" | "move";
+  pluginId?: string;
+  /** Directory holding SKILL.md; files it references are relative to this. */
+  dir: string;
+};
+
+export type SkillContent = SkillListItem & {
+  /** Full SKILL.md, front-matter included. */
+  text: string;
+};
+
 export type MoveListItem = {
   name: string;
   label: string;
   description: string;
-  origin?: "harness" | "project";
+  origin?: "harness" | "project" | "plugin";
+  pluginId?: string;
+  pluginPath?: string;
   icon?: string;
   /** How the move executes: inline (current session), branch (new sibling session), or background (fire-and-forget). */
   mode?: "inline" | "branch" | "background";
@@ -1263,6 +1303,7 @@ export type MissionRunSummary = {
   /** If paused, what kind of halt (e.g. "gate_failed", "user_review"). */
   haltKind: string | null;
   haltMessage: string | null;
+  warning?: string | null;
   startedAt: number;
   updatedAt: number;
   completedAt: number | null;
@@ -1672,6 +1713,22 @@ export type ExtensionSettingSchema = {
   options?: Array<{ value: string; label: string }>;
 };
 
+export type PluginSettingDefinition = {
+  key: string;
+  type: "string" | "number" | "toggle" | "select" | "project-list" | "secret-name";
+  label?: string;
+  description?: string;
+  default?: unknown;
+  scope?: "user" | "project" | "global";
+  options?: Array<{ value: string; label: string }>;
+};
+
+export type PluginSettingsSnapshot = {
+  pluginId: string;
+  settings: PluginSettingDefinition[];
+  values: Record<string, unknown>;
+};
+
 /** Metadata declared by a client extension module (name, description, configurable settings). */
 export type ExtensionMeta = {
   name?: string;
@@ -1686,10 +1743,25 @@ export type ModusPlugin = {
   enabled: boolean;
   name?: string;
   description?: string;
+  about?: string;
+  builtin?: boolean;
+  removable?: boolean;
+  settings?: Record<string, unknown>;
+  /** Skills this plugin ships. A skill is instructions injected into an agent's
+   *  context, so a plugin that ships them ships behavior — disclosed here rather
+   *  than capped. Populated by the API; never stored in the manifest. */
+  providedSkills?: { name: string; description: string }[];
   manifest: {
     id?: string;
     name?: string;
     description?: string;
+    about?: string;
+    settings?: PluginSettingDefinition[];
+    integration?: {
+      agentProfiles?: string[];
+      pages?: string[];
+      pageNav?: "auto" | "hidden";
+    };
   };
 };
 

@@ -1,7 +1,13 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { APP_PATHS } from "./app-paths";
-import { getPluginActionsDir, getPluginMovesDir, getPluginPagesDir, listEnabledModusPlugins } from "./modus-plugins";
+import {
+  getPluginActionsDir,
+  getPluginMovesDir,
+  getPluginPagesDir,
+  listEnabledModusPlugins,
+  type ModusPlugin,
+} from "./modus-plugins";
 
 export type ConfigPage = {
   id: string;
@@ -82,7 +88,14 @@ function scanStandalonePages(cwd: string): ConfigPage[] {
 
 /** Scan enabled plugin `.modus/pages/*.json` files */
 function scanPluginStandalonePages(): ConfigPage[] {
-  return listEnabledModusPlugins().flatMap((plugin) => scanPageDir(getPluginPagesDir(plugin), "plugin"));
+  return listEnabledModusPlugins().flatMap((plugin) => {
+    const visible = new Set(plugin.manifest.integration?.pages ?? []);
+    return scanPageDir(getPluginPagesDir(plugin), "plugin")
+      .filter((page) => visible.has(page.id))
+      .map((page) => plugin.manifest.integration?.pageNav === "hidden"
+        ? { ...page, nav: false }
+        : page);
+  });
 }
 
 /** Scan harness-shipped `harness/pages/*.json` built-in templates */
@@ -115,15 +128,15 @@ function isEmbeddedPage(value: unknown): value is EmbeddedPageDecl {
 /** Scan move directories for moves with page.layout declarations */
 function scanMovePages(cwd: string): ConfigPage[] {
   const pages: ConfigPage[] = [];
-  const dirs = [
-    { dir: join(cwd, ".modus", "moves"), label: "project" },
-    ...listEnabledModusPlugins().map((plugin) => ({ dir: getPluginMovesDir(plugin), label: `plugin:${plugin.id}` })),
-    { dir: join(APP_PATHS.resourcesDir, "moves"), label: "harness" },
+  const dirs: Array<{ dir: string; plugin?: ModusPlugin }> = [
+    { dir: join(cwd, ".modus", "moves") },
+    ...listEnabledModusPlugins().map((plugin) => ({ dir: getPluginMovesDir(plugin), plugin })),
+    { dir: join(APP_PATHS.resourcesDir, "moves") },
   ];
 
   const seen = new Set<string>(); // deduplicate move names (project overrides harness)
 
-  for (const { dir, label } of dirs) {
+  for (const { dir, plugin } of dirs) {
     if (!existsSync(dir)) continue;
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -137,12 +150,14 @@ function scanMovePages(cwd: string): ConfigPage[] {
         if (move.enabled === false) continue;
         const page = move.page;
         if (!isEmbeddedPage(page)) continue;
+        if (plugin && !plugin.manifest.integration?.pages?.includes(page.id)) continue;
         pages.push({
           id: page.id,
           title: page.title,
           layout: page.layout,
           context: page.context,
           padding: page.padding,
+          nav: plugin?.manifest.integration?.pageNav === "hidden" ? false : page.nav,
           source: configPath,
           origin: "move",
         });
@@ -157,15 +172,15 @@ function scanMovePages(cwd: string): ConfigPage[] {
 /** Scan action directories for actions with page declarations */
 function scanActionPages(cwd: string): ConfigPage[] {
   const pages: ConfigPage[] = [];
-  const dirs = [
-    join(cwd, ".modus", "actions"),
-    ...listEnabledModusPlugins().map((plugin) => getPluginActionsDir(plugin)),
-    join(APP_PATHS.resourcesDir, "actions"),
+  const dirs: Array<{ dir: string; plugin?: ModusPlugin }> = [
+    { dir: join(cwd, ".modus", "actions") },
+    ...listEnabledModusPlugins().map((plugin) => ({ dir: getPluginActionsDir(plugin), plugin })),
+    { dir: join(APP_PATHS.resourcesDir, "actions") },
   ];
 
   const seen = new Set<string>();
 
-  for (const dir of dirs) {
+  for (const { dir, plugin } of dirs) {
     if (!existsSync(dir)) continue;
     try {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -178,12 +193,14 @@ function scanActionPages(cwd: string): ConfigPage[] {
         if (action.enabled === false) continue;
         const page = action.page;
         if (!isEmbeddedPage(page)) continue;
+        if (plugin && !plugin.manifest.integration?.pages?.includes(page.id)) continue;
         pages.push({
           id: page.id,
           title: page.title,
           layout: page.layout,
           context: page.context,
           padding: page.padding,
+          nav: plugin?.manifest.integration?.pageNav === "hidden" ? false : page.nav,
           source: configPath,
           origin: "action",
         });

@@ -227,6 +227,7 @@ export interface MissionRunRow {
   definition_snapshot: string; // JSON-serialized MissionConfig
   halt_kind: MissionHaltKind | null;
   halt_message: string | null;
+  warning: string | null;
   started_at: number;
   updated_at: number;
   completed_at: number | null;
@@ -304,6 +305,7 @@ export interface MissionRunSummary {
   currentCycle: number;
   haltKind: MissionHaltKind | null;
   haltMessage: string | null;
+  warning: string | null;
   startedAt: number;
   updatedAt: number;
   completedAt: number | null;

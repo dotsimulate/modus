@@ -12,6 +12,7 @@ import { WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 import { useProfiles } from "../providers/ProfileContext";
 import { useExtensionSettingOptions, type ExtensionSettingOption } from "../client-extensions";
+import { PluginSettingsPanel } from "../components/PluginSettingsPanel";
 
 function SettingField({
   name,
@@ -201,12 +202,19 @@ function ExtensionRow({
 
 function PluginRow({
   plugin,
+  cwd,
+  userProfile,
   onRefresh,
 }: {
   plugin: ModusPlugin;
+  cwd?: string;
+  userProfile?: string | null;
   onRefresh: () => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const hasDetails = !!plugin.about || !!plugin.description || !!plugin.manifest.settings?.length
+    || !!plugin.providedSkills?.length;
 
   const handleToggle = async () => {
     setSaving(true);
@@ -224,30 +232,59 @@ function PluginRow({
 
   return (
     <div className={`exw-plugin ${plugin.enabled ? "exw-plugin--on" : "exw-plugin--off"}`}>
-      <button
-        className={`exw-toggle ${plugin.enabled ? "exw-toggle--on" : ""}`}
-        onClick={handleToggle}
-        disabled={saving}
-        title={plugin.enabled ? "Disable plugin" : "Enable plugin"}
-      >
-        <span className="exw-toggle-dot" />
-      </button>
-      <div className="exw-plugin-info">
-        <span className="exw-plugin-name">{plugin.name || plugin.id}</span>
+      {!plugin.builtin ? (
+        <button
+          className={`exw-toggle ${plugin.enabled ? "exw-toggle--on" : ""}`}
+          onClick={handleToggle}
+          disabled={saving}
+          title={plugin.enabled ? "Disable plugin" : "Enable plugin"}
+        >
+          <span className="exw-toggle-dot" />
+        </button>
+      ) : <span className="exw-toggle exw-toggle--on" title="Built-in plugin"><span className="exw-toggle-dot" /></span>}
+      <div className="exw-plugin-info" onClick={() => hasDetails && setExpanded((value) => !value)}>
+        <span className="exw-plugin-name">{plugin.name || plugin.id}{plugin.builtin ? " · built in" : ""}</span>
         <span className="exw-plugin-path">{plugin.path}</span>
       </div>
-      <button className="exw-plugin-remove" onClick={handleRemove} disabled={saving} title="Unregister plugin">
-        &times;
-      </button>
+      {hasDetails && <button className="exw-gear" onClick={() => setExpanded((value) => !value)}>{expanded ? "\u25B4" : "\u2699"}</button>}
+      {plugin.removable !== false && (
+        <button className="exw-plugin-remove" onClick={handleRemove} disabled={saving} title="Unregister plugin">
+          &times;
+        </button>
+      )}
+      {expanded && (
+        <div className="exw-plugin-details">
+          {plugin.description && <div className="exw-ext-desc">{plugin.description}</div>}
+          {!!plugin.providedSkills?.length && (
+            <div className="exw-plugin-skills">
+              <div className="exw-plugin-skills-label">
+                Skills provided — instructions this plugin can put in an agent's context
+              </div>
+              {plugin.providedSkills.map((skill) => (
+                <div key={skill.name} className="exw-plugin-skill">
+                  <span className="exw-plugin-skill-name">{skill.name}</span>
+                  {skill.description && <span className="exw-plugin-skill-desc">{skill.description}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          {plugin.about && <pre className="exw-plugin-about">{plugin.about}</pre>}
+          <PluginSettingsPanel plugin={plugin} cwd={cwd} userProfile={userProfile} />
+        </div>
+      )}
     </div>
   );
 }
 
 function PluginRegistry({
   plugins,
+  cwd,
+  userProfile,
   onRefresh,
 }: {
   plugins: ModusPlugin[];
+  cwd?: string;
+  userProfile?: string | null;
   onRefresh: () => Promise<void>;
 }) {
   const [path, setPath] = useState("");
@@ -292,7 +329,7 @@ function PluginRegistry({
       </div>
       {error && <div className="exw-plugin-error">{error}</div>}
       {plugins.map((plugin) => (
-        <PluginRow key={plugin.id} plugin={plugin} onRefresh={onRefresh} />
+        <PluginRow key={plugin.id} plugin={plugin} cwd={cwd} userProfile={userProfile} onRefresh={onRefresh} />
       ))}
     </div>
   );
@@ -341,7 +378,7 @@ export default function ExtensionsWidget() {
 
   return (
     <div className="exw-widget">
-      <PluginRegistry plugins={plugins} onRefresh={refreshAll} />
+      <PluginRegistry plugins={plugins} cwd={extCwd} userProfile={activeUserProfile} onRefresh={refreshAll} />
       <div className="exw-section-title">extensions</div>
       {extensions.length === 0
         ? <WidgetEmptyState>no extensions discovered</WidgetEmptyState>
