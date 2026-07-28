@@ -45,6 +45,11 @@ async function bundle(input: string, output: string): Promise<void> {
     target: "bun",
     minify: false,
     sourcemap: "none",
+    // bun-pty is a Windows-only ConPTY binding, loaded solely behind an
+    // `if (IS_WINDOWS)` guard in terminal-manager.ts. It has no Linux/macOS
+    // build, so keep it external off-Windows — Bun.build must not try to
+    // resolve it, and the guarded require never runs at runtime there.
+    external: process.platform === "win32" ? [] : ["bun-pty"],
   });
   if (!result.success) {
     throw new Error(result.logs.map((log) => log.message).join("\n"));
@@ -153,6 +158,22 @@ async function stage(): Promise<void> {
   const suffix = process.platform === "win32" ? ".exe" : "";
   const bunDestination = join(binariesDir, `bun-${targetTriple()}${suffix}`);
   copyFileSync(bunSource, bunDestination);
+
+  // Native addons ship per-libc variants (e.g. resvgjs.linux-x64-{gnu,musl}-*.node).
+  // Bun.build copies every variant it can see, but only the one matching this
+  // build's target libc is ever loaded. Prune the mismatched variant: a stray
+  // musl binary breaks linuxdeploy (unresolvable libc.musl-*.so) on a glibc host
+  // and is wrong-ABI weight in any package.
+  const triple = targetTriple();
+  const dropLibc = triple.includes("-musl") ? "gnu" : triple.includes("-gnu") ? "musl" : null;
+  if (dropLibc) {
+    for (const file of new Bun.Glob(`**/*-${dropLibc}-*.node`).scanSync({ cwd: stageDir, onlyFiles: true })) {
+      const nodePath = join(stageDir, file);
+      assertGeneratedPath(nodePath, stageDir);
+      rmSync(nodePath);
+      console.log(`[desktop] pruned non-target (${dropLibc}) native addon ${file}`);
+    }
+  }
 
   const stagedBytes = [...new Bun.Glob("**/*").scanSync({ cwd: stageDir, onlyFiles: true })]
     .reduce((total, file) => total + Bun.file(join(stageDir, file)).size, 0);
