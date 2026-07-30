@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { PreviewManifest } from "../../../sdk/index";
+import { HTML_PREVIEW_SANDBOX } from "../htmlSandbox";
 import { modus } from "../modusClient";
 import { FileContentViewer } from "./FileContentViewer";
 
@@ -32,8 +33,12 @@ export function PreviewRenderer({
     setTextError(null);
   }, [content, manifest.id]);
 
+  // Both text and html render from content fetched over an authenticated
+  // request. html deliberately does not use manifest.urls.raw: previewUrl()
+  // appends the operator bearer token as a query parameter, and an html frame
+  // runs scripts, which can always read their own document URL.
   useEffect(() => {
-    if (content != null || manifest.kind !== "text") return;
+    if (content != null || (manifest.kind !== "text" && manifest.kind !== "html")) return;
     let active = true;
     setTextLoading(true);
     modus.readFile(manifest.path)
@@ -101,10 +106,33 @@ export function PreviewRenderer({
   }
 
   if (manifest.kind === "html") {
+    const htmlLoading = loading || textLoading;
+    const htmlError = error || textError;
     return (
       <div className="preview-panel">
         {header}
-        <iframe className="preview-frame" src={rawUrl} title={manifest.name} sandbox="" />
+        {htmlLoading && <div className="fcv-state">Loading file...</div>}
+        {!htmlLoading && htmlError && <div className="fcv-state">{htmlError}</div>}
+        {!htmlLoading && !htmlError && (
+          /*
+            srcDoc, not src, and the distinction is a credential boundary rather
+            than a preference. Scripts are allowed here where the PDF frame above
+            blocks them, because an HTML page that draws itself with JavaScript
+            is the common case. But a frame that runs scripts can always read its
+            own document URL, and manifest.urls.raw carries the operator bearer
+            token in its query string (previewUrl -> tokenParam; /api/file/raw is
+            in allowsQueryCredential). Pointing src at it would therefore hand
+            that token to the previewed file, which could beacon it anywhere —
+            an opaque origin stops the frame reading the app's storage, not its
+            own location. With srcDoc there is no URL and no credential to take.
+          */
+          <iframe
+            className="preview-frame"
+            srcDoc={text ?? ""}
+            title={manifest.name}
+            sandbox={HTML_PREVIEW_SANDBOX}
+          />
+        )}
       </div>
     );
   }

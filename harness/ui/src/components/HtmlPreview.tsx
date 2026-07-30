@@ -6,6 +6,7 @@
  */
 
 import type { ReactNode } from "react";
+import { HTML_PREVIEW_SANDBOX } from "../htmlSandbox";
 
 function basename(p: string): string {
   const parts = p.replace(/\\/g, "/").split("/");
@@ -37,7 +38,7 @@ export function HtmlPreview({ filePath, content, nameActions, actions }: Props) 
       <iframe
         className="right-panel-iframe"
         srcDoc={content}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox={HTML_PREVIEW_SANDBOX}
         title="HTML Preview"
       />
     </div>
