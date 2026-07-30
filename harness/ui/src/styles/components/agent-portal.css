@@ -244,7 +244,7 @@
 
 .ap-row-name {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -253,7 +253,7 @@
 
 .ap-row-detail {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -277,7 +277,7 @@
 .ap-empty {
   padding: 12px 10px 14px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.04em;
   color: var(--text-muted);
   text-align: center;

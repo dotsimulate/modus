@@ -32,14 +32,14 @@
 }
 
 .tmw-kind {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-secondary);
 }
 
 .tmw-status {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--success) 72%, var(--text-secondary));
@@ -50,14 +50,14 @@
 }
 
 .tmw-owner {
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   font-weight: 600;
   color: var(--text);
 }
 
 .tmw-session,
 .tmw-row-meta {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-secondary);
 }
 
@@ -72,7 +72,7 @@
 
 .tmw-cwd {
   max-width: 260px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -85,7 +85,7 @@
   background: transparent;
   color: var(--text-secondary);
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   cursor: pointer;
 }
 
@@ -106,7 +106,7 @@
   background: transparent;
   color: var(--text-secondary);
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   cursor: pointer;
 }
 

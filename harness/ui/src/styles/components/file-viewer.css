@@ -55,7 +55,7 @@
 
 .fcv-name {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   font-weight: 500;
   color: var(--text);
   line-height: 1.35;
@@ -66,7 +66,7 @@
   align-self: center;
   padding: 1px 0;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
 }
 
@@ -92,7 +92,7 @@
 .fcv-state {
   padding: 16px 12px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 
@@ -111,7 +111,7 @@
 .fcv-directory-path {
   padding: 0 14px 8px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   letter-spacing: 0.04em;
   word-break: break-all;
@@ -160,12 +160,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
 }
 
 .fcv-directory-type {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   letter-spacing: 0.08em;
   text-transform: uppercase;

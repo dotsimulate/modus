@@ -4,7 +4,7 @@
 
 .mini-session {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 8px 10px;
@@ -67,7 +67,7 @@
   border: none;
   padding: 0;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   cursor: pointer;
   text-decoration: underline;
@@ -83,7 +83,7 @@
 
 .mini-session-text {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   line-height: 1.5;
   white-space: pre-wrap;
   overflow: hidden;
@@ -104,13 +104,13 @@
 }
 
 .mini-session .permission-request {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
 }
 
 .mini-session .permission-request-input {
   max-height: 40px;
   overflow: hidden;
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
 }
 
 .mini-session .permission-actions {
@@ -119,5 +119,5 @@
 
 .mini-session .permission-btn {
   padding: 4px 10px;
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
 }

@@ -24,7 +24,7 @@
 
 .sc-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -33,7 +33,7 @@
 
 .sc-value {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-dim);
   text-align: right;
   overflow: hidden;

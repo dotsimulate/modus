@@ -45,7 +45,7 @@
   border-radius: 4px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   letter-spacing: 0.04em;
   cursor: pointer;
   white-space: nowrap;
@@ -56,7 +56,7 @@
 .sidebar.collapsed .new-session-btn {
   padding: 0;
   text-align: center;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   color: var(--text-dim);
 }
 .new-session-btn:hover {
@@ -88,7 +88,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
@@ -102,7 +102,7 @@
   border-radius: 6px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   outline: none;
   opacity: 0.4;
   transition: border-color 0.15s ease, opacity 0.15s ease, background 0.15s ease;
@@ -122,11 +122,11 @@
   padding: 16px 20px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
 }
 .search-hit-snippet {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-dim);
   line-height: 1.4;
   overflow: hidden;
@@ -140,7 +140,7 @@
   border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.05em;
   padding: 2px 8px;
   cursor: pointer;
@@ -155,7 +155,7 @@
 
 .sidebar-section-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -182,7 +182,7 @@
 
 .section-count {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   margin-left: auto;
 }
 
@@ -226,7 +226,7 @@
   border: 1px solid var(--border);
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   width: 20px;
   height: 20px;
   padding: 0;
@@ -249,7 +249,7 @@
   border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 2px 6px;
   cursor: pointer;
   border-radius: 3px;
@@ -270,7 +270,7 @@
     padding: 10px 12px;
   }
   .session-item-preview {
-    font-size: 13px;
+    font-size: calc(13px * var(--font-scale, 1));
   }
   .session-item-text {
     /* Force single-line ellipsis at narrow widths. */

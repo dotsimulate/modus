@@ -33,7 +33,7 @@
 /* ── Session Item Content ── */
 .session-item-preview {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   line-height: 1.4;
   color: var(--text);
   white-space: nowrap;
@@ -60,7 +60,7 @@
   border-bottom: 1px solid var(--text-muted);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   line-height: 1.4;
   padding: 0;
   margin: 0;
@@ -129,7 +129,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   padding: 0 4px;
   opacity: 0;
   transition: all 0.15s ease;

@@ -46,7 +46,7 @@
 
 .create-profile-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   letter-spacing: 0.04em;
   color: var(--accent);
 }
@@ -55,7 +55,7 @@
   background: none;
   border: none;
   color: var(--text-dim);
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale, 1));
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
@@ -73,7 +73,7 @@
 
 .create-profile-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.04em;
   color: var(--text-dim);
   margin-top: 8px;
@@ -85,13 +85,13 @@
 
 .create-profile-hint {
   color: var(--text-muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   opacity: 0.7;
 }
 
 .create-profile-section-heading {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -106,7 +106,7 @@
   width: 100%;
   padding: 8px 10px;
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale, 1));
   color: var(--accent);
   background: var(--bg-raised);
   border: 1px solid var(--border);
@@ -122,7 +122,7 @@
 }
 .create-profile-input--mono {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
 }
 
 /* ── Project Paths ── */
@@ -141,7 +141,7 @@
   background: var(--bg-raised);
   border-radius: 4px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-dim);
 }
 
@@ -158,7 +158,7 @@
   border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   cursor: pointer;
   padding: 0 2px;
   flex-shrink: 0;
@@ -173,7 +173,7 @@
   border-radius: 4px;
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 6px 10px;
   cursor: pointer;
   text-align: left;
@@ -211,7 +211,7 @@
   border-radius: 3px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 3px 8px;
   cursor: pointer;
   transition: all 0.1s ease;
@@ -230,7 +230,7 @@
 
 .create-profile-error {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--error);
   margin-top: 4px;
 }
@@ -251,7 +251,7 @@
   border-radius: 4px;
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 5px 14px;
   cursor: pointer;
   transition: all 0.1s ease;
@@ -267,7 +267,7 @@
   border-radius: 4px;
   color: var(--success);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 5px 14px;
   cursor: pointer;
   transition: all 0.1s ease;
@@ -288,7 +288,7 @@
   border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;

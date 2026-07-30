@@ -45,7 +45,7 @@
 
 .chat-settings-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   letter-spacing: 0.05em;
   width: 34px;
@@ -54,7 +54,7 @@
 
 .chat-settings-value {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   width: 36px;
   text-align: right;
@@ -127,7 +127,7 @@
   border: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   letter-spacing: 0.05em;
   cursor: pointer;
   text-align: right;

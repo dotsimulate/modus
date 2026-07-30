@@ -37,7 +37,7 @@
 
 .pinboard-group-name {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   white-space: nowrap;
   transition: color 0.1s ease;
@@ -54,7 +54,7 @@
 
 .pinboard-group-count {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   opacity: 0.6;
 }
@@ -84,7 +84,7 @@
   border-bottom: 1px solid var(--border-active);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 0 2px;
   width: 80px;
   outline: none;
@@ -130,7 +130,7 @@
 
 .pinboard-file-name {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-secondary);
   white-space: nowrap;
   flex-shrink: 0;
@@ -142,7 +142,7 @@
 
 .pinboard-file-path {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -174,7 +174,7 @@
 /* ── Empty state ── */
 .pinboard-empty {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-muted);
   text-align: center;
   padding: 24px 8px;

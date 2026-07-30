@@ -37,7 +37,7 @@
 
 .widget-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -62,7 +62,7 @@
   gap: 6px;
   padding: 8px 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
 }
 .action-card-header {
   display: flex;
@@ -74,18 +74,18 @@
   color: var(--text);
 }
 .action-card-live {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--success);
   margin-left: auto;
 }
 .action-card-done {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   margin-left: auto;
 }
 .action-card-desc {
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   line-height: 1.4;
 }
 .action-card-meta {
@@ -93,7 +93,7 @@
   align-items: center;
   gap: 8px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
 }
 .action-card-tag {
   color: var(--accent);
@@ -103,7 +103,7 @@
   align-items: center;
   gap: 6px;
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
 }
 .action-card-lastrun-summary {
   flex: 1;
@@ -126,7 +126,7 @@
 .action-card-toggle,
 .action-card-trigger {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 2px 8px;
   border: 1px solid var(--border);
   border-radius: 3px;
@@ -197,7 +197,7 @@
 .artifact-shelf-item-size,
 .artifact-shelf-item-path {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
 }
 
@@ -217,7 +217,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
 }
 
 .artifact-shelf-item-path {
@@ -234,7 +234,7 @@
 .artifact-shelf-empty {
   padding: 14px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 

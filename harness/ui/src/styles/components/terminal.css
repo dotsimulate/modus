@@ -30,7 +30,7 @@
   background: transparent;
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
@@ -74,7 +74,7 @@
   background: transparent;
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   cursor: pointer;
   white-space: nowrap;
   transition: color 0.1s;
