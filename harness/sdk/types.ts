@@ -1778,6 +1778,12 @@ export type ExtensionSettingSchema = {
   options?: Array<{ value: string; label: string }>;
   /** Rows for a `textarea` field. Default 4. */
   rows?: number;
+  /** Where the value is stored. "user" (default) is per user profile, so it may
+   *  differ between a desktop and a phone — right for local hardware, wrong for
+   *  anything the harness itself consumes. "global" is stored once for the
+   *  machine and resolved without the user-profile layer, so every client agrees
+   *  on it. */
+  scope?: "user" | "global";
 };
 
 export type PluginSettingDefinition = {

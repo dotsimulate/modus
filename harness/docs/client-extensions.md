@@ -1,8 +1,8 @@
 ---
 title: Client Extensions
-lastUpdated: 2026-07-29
+lastUpdated: 2026-07-30
 lastCommit: f60b2ac
-covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/whisper-credential.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx harness/ui/src/widgets/extensions.widget.tsx .modus/ui/extensions/
+covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/whisper-credential.ts harness/whisper-endpoint.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx harness/ui/src/widgets/extensions.widget.tsx .modus/ui/extensions/
 ---
 
 # Client Extensions
@@ -225,6 +225,41 @@ placed in a setting would be served to every client that can list extensions.
 The harness resolves the named secret server-side and the key never reaches the
 browser, which also means masking the field would hide the one thing the user
 needs to read back to check they typed it correctly.
+
+Each setting also renders its `description` beneath the control, so that string
+is the place to explain a field rather than a comment in the manifest.
+
+### Setting Scope
+
+A setting declares where its value lives, with the same vocabulary plugin
+settings use:
+
+| `scope` | Stored in | Use for |
+|---|---|---|
+| `user` (default) | the caller's user profile UI config | values that describe the client doing the talking |
+| `global` | `~/.modus/_global.json` under `clientExtensions.settings` | values the harness itself consumes |
+
+This distinction is load-bearing, not cosmetic. Client-extension settings
+resolve per user profile, and a phone seeds its own profile from `localStorage`,
+so a `user`-scoped value set on the desktop simply does not exist on any other
+client. That is correct for something like `micDevice`, which names local
+hardware and *should* differ per device. It is wrong for anything the backend
+acts on.
+
+`whisperUrl` is the worked example. The harness performs the transcription
+fetch, so the endpoint is its configuration — but it was stored per profile and
+sent up from the browser, so a phone whose profile had never been configured
+sent nothing, the route fell back to its loopback default, the backend dialled
+itself, and the user saw an unexplained `502`. It is `scope: "global"` now, and
+the route resolves it server-side rather than trusting the request.
+
+Rule of thumb: if the *backend* reads the value, it is `global`. If the
+*browser* reads it, or it names something local to one device, it is `user`.
+
+Global-scoped values are resolved without the user-profile layer so every client
+agrees on them, falling back to a per-profile value for installs configured
+before the setting declared a scope. The extensions widget labels them `shared by
+every client`, because changing one from the desktop changes it everywhere.
 
 ### Composer Target
 

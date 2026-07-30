@@ -32,7 +32,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   getAllProfiles, getProfile, listProfileNames,
-  getProfileConfig, getProfileUiConfig, saveProfile, saveProfileUiConfig, patchProfileUiConfig, deleteProfile, getGlobalConfig, saveGlobalConfig,
+  getProfileConfig, getProfileUiConfig, saveProfile, saveProfileUiConfig, patchProfileUiConfig, deleteProfile, getGlobalConfig, saveGlobalConfig, getStoredGlobalConfig,
   setUserName, getUserName,
   getUserProfile, getUserProfileConfig, getUserProfileUiConfig, listUserProfileNames, getAllUserProfiles,
   saveUserProfile, saveUserProfileUiConfig, patchUserProfileUiConfig, deleteUserProfile,
@@ -49,7 +49,7 @@ import {
 import { forkConfigPage, listConfigPages } from "./pages";
 import { listDocs, getDoc, searchDocs, type DocAudience } from "./docs-registry";
 import {
-  listClientExtensions, getClientExtensionById, resolveExtensionSettings,
+  listClientExtensions, getClientExtensionById, resolveExtensionSettings, extensionSettingScope,
 } from "./client-extensions";
 import {
   listModusPlugins, patchModusPlugin, registerModusPlugin, unregisterModusPlugin,
@@ -61,6 +61,7 @@ import {
 } from "./plugin-settings";
 import { getResolvedClientExtensionsConfig } from "./profiles";
 import { resolveWhisperCredential } from "./whisper-credential";
+import { resolveWhisperEndpoint, describeWhisperFetchFailure } from "./whisper-endpoint";
 import {
   ProfileCoreSchema, ProfileUiSchema,
   UserProfileCoreSchema, UserProfileUiConfigSchema,
@@ -142,7 +143,6 @@ import {
 let PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = process.env.HARNESS_HOST ?? "127.0.0.1";
 const AUTH_TOKEN = process.env.HARNESS_TOKEN || "";
-const WHISPER_TRANSCRIBE_URL = process.env.WHISPER_URL ?? "http://127.0.0.1:8080/v1/audio/transcriptions";
 const UI_DIST_DIR = resolve(APP_PATHS.resourcesDir, "ui/dist");
 const UI_INDEX_PATH = join(UI_DIST_DIR, "index.html");
 
@@ -424,8 +424,10 @@ app.use("/api/*", cors({
   // logged server-side and the failure is invisible from both ends. This only
   // bites cross-origin callers: the desktop shell runs on tauri.localhost and
   // talks to the backend on 127.0.0.1, while a browser served by the harness is
-  // same-origin and never preflights. X-Whisper-Url is legacy — the client now
-  // sends that value as a form field — and stays allowed for older clients.
+  // same-origin and never preflights. X-Whisper-Url is legacy and no longer read
+  // by any route — the whisper endpoint is backend config now, resolved server
+  // side — but it stays allowed so an older client's request is not dropped at
+  // preflight, which would fail silently at both ends.
   allowHeaders: ["Authorization", "Content-Type", "X-Whisper-Url"],
   allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   exposeHeaders: ["Accept-Ranges", "Content-Length", "Content-Range", "Content-Type"],
@@ -3301,6 +3303,9 @@ app.get("/api/client-extensions", (c) => {
   const suffix = query.toString();
   const moduleQuery = suffix ? `?${suffix}` : "";
   const config = getResolvedClientExtensionsConfig(cwd, userProfile);
+  // Same chain without the user-profile layer, so global-scoped settings
+  // resolve to the value every client shares rather than this caller's.
+  const sharedConfig = getResolvedClientExtensionsConfig(cwd);
   return c.json(
     listClientExtensions({ cwd, userProfile }).map((extension) => ({
       id: extension.id,
@@ -3311,7 +3316,11 @@ app.get("/api/client-extensions", (c) => {
       enabled: extension.enabled,
       moduleUrl: `/api/client-extensions/${encodeURIComponent(extension.id)}/module${moduleQuery}`,
       meta: extension.meta,
-      settingsValues: resolveExtensionSettings(extension.meta.settings, config.settings?.[extension.id]),
+      settingsValues: resolveExtensionSettings(
+        extension.meta.settings,
+        config.settings?.[extension.id],
+        sharedConfig.settings?.[extension.id],
+      ),
     })),
   );
 });
@@ -3356,7 +3365,37 @@ app.patch("/api/client-extensions/:id", async (c) => {
   }
 
   if (body.settings) {
-    ext.settings = { ...(ext.settings ?? {}), [id]: { ...(ext.settings?.[id] ?? {}), ...body.settings } };
+    // Split by declared scope. A global-scoped value is one the harness itself
+    // consumes, so writing it into a single user profile would leave every
+    // other client resolving nothing — it goes machine-wide instead.
+    const schema = getClientExtensionById(id, { cwd: c.req.query("cwd"), userProfile: userProfileName })
+      ?.meta.settings ?? {};
+    const userSettings: Record<string, unknown> = {};
+    const globalSettings: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body.settings)) {
+      const def = schema[key];
+      if (def && extensionSettingScope(def) === "global") globalSettings[key] = value;
+      else userSettings[key] = value;
+    }
+
+    if (Object.keys(userSettings).length) {
+      ext.settings = { ...(ext.settings ?? {}), [id]: { ...(ext.settings?.[id] ?? {}), ...userSettings } };
+    }
+
+    if (Object.keys(globalSettings).length) {
+      const config = getStoredGlobalConfig();
+      const clientExtensions = config.clientExtensions ?? {};
+      saveGlobalConfig({
+        ...config,
+        clientExtensions: {
+          ...clientExtensions,
+          settings: {
+            ...(clientExtensions.settings ?? {}),
+            [id]: { ...(clientExtensions.settings?.[id] ?? {}), ...globalSettings },
+          },
+        },
+      });
+    }
   }
 
   patchUserProfileUiConfig(userProfileName, { clientExtensions: ext });
@@ -3365,11 +3404,29 @@ app.patch("/api/client-extensions/:id", async (c) => {
 
 const WHISPER_EXTENSION_ID = "whisper-transcribe";
 
-/** Read the whisper extension's configured secret name from stored settings. */
+/** Read one whisper setting from the layers the backend owns, then from the
+ *  caller's profile. Both the endpoint and the secret name are consumed by the
+ *  harness, so the shared value has to win — a per-profile-only read resolves
+ *  nothing on any client that never opened the settings form. The profile read
+ *  remains as a fallback for installs configured before these settings declared
+ *  a scope. */
+function readWhisperSetting(key: string, cwd?: string, userProfile?: string): {
+  shared?: string;
+  profile?: string;
+} {
+  const pick = (settings: Record<string, unknown> | undefined) => {
+    const value = settings?.[key];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  };
+  return {
+    shared: pick(getResolvedClientExtensionsConfig(cwd).settings?.[WHISPER_EXTENSION_ID]),
+    profile: pick(getResolvedClientExtensionsConfig(cwd, userProfile).settings?.[WHISPER_EXTENSION_ID]),
+  };
+}
+
 function readWhisperSecretName(cwd?: string, userProfile?: string): string | undefined {
-  const settings = getResolvedClientExtensionsConfig(cwd, userProfile).settings?.[WHISPER_EXTENSION_ID];
-  const name = settings?.whisperSecretName;
-  return typeof name === "string" && name.trim() ? name.trim() : undefined;
+  const { shared, profile } = readWhisperSetting("whisperSecretName", cwd, userProfile);
+  return shared ?? profile;
 }
 
 app.post("/api/whisper/transcribe", async (c) => {
@@ -3377,25 +3434,20 @@ app.post("/api/whisper/transcribe", async (c) => {
     const form = await c.req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return c.json({ error: "file is required" }, 400);
-    // Prefer the form field. A custom header needs a CORS preflight allowance,
-    // which the desktop shell silently failed for a long time; a multipart field
-    // travels with the request the browser was already going to send.
-    const formWhisperUrl = form.get("whisperUrl");
-    const requestedWhisperUrl = (typeof formWhisperUrl === "string" && formWhisperUrl.trim())
-      ? formWhisperUrl.trim()
-      : c.req.header("X-Whisper-Url");
-    let whisperUrl = WHISPER_TRANSCRIBE_URL;
-    if (requestedWhisperUrl) {
-      try {
-        const parsedUrl = new URL(requestedWhisperUrl);
-        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-          return c.json({ error: "invalid whisper url protocol" }, 400);
-        }
-        whisperUrl = parsedUrl.toString();
-      } catch {
-        return c.json({ error: "invalid whisper url" }, 400);
-      }
-    }
+    // The endpoint is deliberately NOT read from the request. The backend is
+    // what dials it, so it is backend configuration; taking it from whichever
+    // client was recording meant a phone with an unconfigured profile sent
+    // nothing and the harness quietly fell back to its own loopback address.
+    const cwd = c.req.query("cwd");
+    const userProfile = c.req.query("userProfile");
+    const configuredUrl = readWhisperSetting("whisperUrl", cwd, userProfile);
+    const endpoint = resolveWhisperEndpoint({
+      sharedSetting: configuredUrl.shared,
+      profileSetting: configuredUrl.profile,
+      env: process.env.WHISPER_URL,
+    });
+    if (endpoint.kind === "invalid") return c.json({ error: endpoint.error }, 400);
+    const whisperUrl = endpoint.url;
     // Origin is logged because it is the only thing separating the desktop shell
     // (tauri.localhost) from a browser reaching the harness over the network.
     // Without it a "STT is broken on my phone" report cannot be told apart from
@@ -3406,6 +3458,7 @@ app.post("/api/whisper/transcribe", async (c) => {
       size: file.size,
       type: file.type,
       whisperUrl,
+      urlSource: endpoint.source,
       origin: c.req.header("Origin") ?? "(none)",
     });
 
@@ -3419,18 +3472,33 @@ app.post("/api/whisper/transcribe", async (c) => {
 
     const headers: Record<string, string> = {};
     const credential = resolveWhisperCredential({
-      secretName: readWhisperSecretName(c.req.query("cwd"), c.req.query("userProfile")),
+      secretName: readWhisperSecretName(cwd, userProfile),
       targetUrl: whisperUrl,
       lookup: resolveSecret,
     });
     if (credential.kind === "reject") return c.json({ error: credential.error }, 400);
     if (credential.kind === "attach") headers.Authorization = credential.authorization;
 
-    const upstream = await fetch(whisperUrl, {
-      method: "POST",
-      headers,
-      body: whisperBody,
-    });
+    // A refused connection to an endpoint nobody configured is a configuration
+    // problem, and saying "transcription failed" sends the user looking at
+    // their microphone or their network instead of their settings.
+    let upstream: Response;
+    try {
+      upstream = await fetch(whisperUrl, {
+        method: "POST",
+        headers,
+        body: whisperBody,
+      });
+    } catch (fetchErr: any) {
+      const message = describeWhisperFetchFailure(endpoint, fetchErr?.message);
+      console.error("[whisper/transcribe] unreachable", {
+        whisperUrl,
+        urlSource: endpoint.source,
+        configured: endpoint.configured,
+        error: fetchErr?.message,
+      });
+      return c.json({ error: message, whisperUrl, configured: endpoint.configured }, 502);
+    }
     const upstreamText = await upstream.text();
     console.log("[whisper/transcribe] upstream", {
       ok: upstream.ok,

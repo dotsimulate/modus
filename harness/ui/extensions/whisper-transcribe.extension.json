@@ -1,0 +1,34 @@
+{
+  "name": "Whisper Transcribe",
+  "description": "Voice-to-text transcription via a Whisper-compatible API",
+  "settings": {
+    "whisperUrl": {
+      "type": "string",
+      "label": "Whisper API URL",
+      "description": "Full URL to the Whisper-compatible transcription endpoint. The harness connects to it, not your browser, so this is shared by every client — set it once and a phone or tablet uses it too.",
+      "default": "http://127.0.0.1:8080/v1/audio/transcriptions",
+      "scope": "global"
+    },
+    "micDevice": {
+      "type": "string",
+      "label": "Microphone",
+      "description": "Device id, or any part of the device name. Leave blank for the system default. If nothing matches, the composer chip and its tooltip say which mic is actually live."
+    },
+    "model": {
+      "type": "string",
+      "label": "Model",
+      "description": "Model name to request, for endpoints that need one (e.g. whisper-1). Leave blank for the server's default."
+    },
+    "language": {
+      "type": "string",
+      "label": "Language",
+      "description": "ISO-639-1 hint (e.g. en). Leave blank to auto-detect."
+    },
+    "whisperSecretName": {
+      "type": "string",
+      "label": "API key secret name",
+      "description": "Name of a Modus secret holding the API key. The harness resolves it and sends it upstream — the key itself never reaches the browser. Only used for https or local endpoints. Shared by every client.",
+      "scope": "global"
+    }
+  }
+}

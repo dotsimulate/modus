@@ -291,6 +291,13 @@
   gap: 8px;
 }
 
+/* Control on one row, then its description and scope stacked underneath. */
+.exw-setting-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .exw-setting-description,
 .exw-setting-scope {
   font-family: var(--font-mono);

@@ -14,7 +14,44 @@ import { useProfiles } from "../providers/ProfileContext";
 import { useExtensionSettingOptions, type ExtensionSettingOption } from "../client-extensions";
 import { PluginSettingsPanel } from "../components/PluginSettingsPanel";
 
+/** Renders the control plus whatever the manifest says about it. Descriptions
+ *  were authored on every setting and displayed on none of them, so the one
+ *  place an extension can explain a field was reaching nobody. Scope is called
+ *  out for the same reason: a "global" value is shared by every client, and
+ *  changing one from the desktop silently changes it for a phone too. */
 function SettingField({
+  name,
+  schema,
+  value,
+  liveOptions,
+  onChange,
+}: {
+  name: string;
+  schema: ExtensionSettingSchema;
+  value: unknown;
+  liveOptions?: { options: ExtensionSettingOption[]; emptyLabel?: string };
+  onChange: (name: string, value: unknown) => void;
+}) {
+  return (
+    <div className="exw-setting-field">
+      <SettingInput
+        name={name}
+        schema={schema}
+        value={value}
+        liveOptions={liveOptions}
+        onChange={onChange}
+      />
+      {schema.description && <small className="exw-setting-description">{schema.description}</small>}
+      {schema.scope === "global" && (
+        <small className="exw-setting-scope" title="Stored once for this machine, not per client">
+          shared by every client
+        </small>
+      )}
+    </div>
+  );
+}
+
+function SettingInput({
   name,
   schema,
   value,
