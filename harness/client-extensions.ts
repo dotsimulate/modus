@@ -10,13 +10,33 @@ const EXTENSION_EXTENSIONS = new Set([".js", ".mjs"]);
 
 export type ExtensionSettingType = "string" | "number" | "boolean" | "select";
 
+/** Where an extension setting is stored and resolved.
+ *
+ *  "user" values describe the client doing the talking — local hardware, a
+ *  per-device preference — so they belong to that client's user profile and are
+ *  allowed to differ between a desktop and a phone.
+ *
+ *  "global" values are consumed by the harness itself. They must be identical
+ *  for every client, so they are stored machine-wide and resolved without the
+ *  user-profile layer. Storing one per profile means a client that never opened
+ *  the settings form silently resolves nothing — which is how a missing whisper
+ *  endpoint surfaced as an unexplained 502 on every phone. */
+export type ExtensionSettingScope = "user" | "global";
+
 export type ExtensionSettingSchema = {
   type: ExtensionSettingType;
   label: string;
   description?: string;
   default?: string | number | boolean;
   options?: Array<{ value: string; label: string }>;
+  /** Defaults to "user". */
+  scope?: ExtensionSettingScope;
 };
+
+/** Mirrors plugin-settings.ts: an undeclared scope is per user profile. */
+export function extensionSettingScope(def: ExtensionSettingSchema): ExtensionSettingScope {
+  return def.scope === "global" ? "global" : "user";
+}
 
 export type ExtensionMeta = {
   name?: string;
@@ -150,15 +170,25 @@ export function getClientExtensionById(
   return listClientExtensions(opts).find((entry) => entry.id === id) ?? null;
 }
 
-/** Resolve settings: schema defaults ← user overrides */
+/** Resolve settings: schema defaults ← stored overrides.
+ *
+ *  `userValues` is the fully merged map, whose last and winning layer is the
+ *  caller's user profile. `sharedValues` is the same map resolved without that
+ *  layer. Global-scoped keys read the shared map so every client agrees on
+ *  them, falling back to the merged map for installs that stored the value in a
+ *  profile before the setting declared a scope. */
 export function resolveExtensionSettings(
   schema: Record<string, ExtensionSettingSchema> | undefined,
   userValues: Record<string, unknown> | undefined,
+  sharedValues?: Record<string, unknown>,
 ): Record<string, unknown> {
   if (!schema) return {};
   const result: Record<string, unknown> = {};
   for (const [key, def] of Object.entries(schema)) {
-    result[key] = userValues?.[key] ?? def.default ?? null;
+    const stored = extensionSettingScope(def) === "global"
+      ? sharedValues?.[key] ?? userValues?.[key]
+      : userValues?.[key];
+    result[key] = stored ?? def.default ?? null;
   }
   return result;
 }
