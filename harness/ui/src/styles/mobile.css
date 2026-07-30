@@ -277,5 +277,34 @@
   .sched-card-desc {
     overflow-wrap: anywhere;
   }
+
+  /* The AskUserQuestion form had no mobile rules at all, so a phone got desktop
+     metrics unchanged: a 12px question above 10px option descriptions, on the
+     one control that blocks the agent until it is answered. */
+  .permission-question-text {
+    font-size: calc(14px * var(--font-scale, 1));
+  }
+  .permission-question-header {
+    font-size: calc(10px * var(--font-scale, 1));
+  }
+  .permission-option-label {
+    font-size: calc(13px * var(--font-scale, 1));
+  }
+  .permission-option-desc {
+    font-size: calc(12px * var(--font-scale, 1));
+  }
+  .permission-btn {
+    font-size: calc(12px * var(--font-scale, 1));
+    padding: 8px 14px;
+  }
+  /* Taller viewport share on a phone, where there is nothing else on screen. */
+  .permission-question-scroll {
+    max-height: 50vh;
+  }
+  /* Touch targets. The options are the only thing between the agent and an
+     answer, so they get finger-sized rather than cursor-sized. */
+  .permission-option {
+    padding: 10px 12px;
+  }
 }
 

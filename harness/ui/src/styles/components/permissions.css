@@ -25,7 +25,7 @@
   align-items: center;
   gap: 8px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
 }
 
 .permission-request-indicator {
@@ -53,7 +53,7 @@
 
 .permission-request-input {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   background: var(--bg-raised);
   border-radius: 4px;
@@ -73,7 +73,7 @@
 
 .permission-btn {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.03em;
   padding: 4px 12px;
   border-radius: 4px;
@@ -140,7 +140,7 @@
 
 .permission-question-collapse-label {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   color: var(--text);
   flex: 1;
   white-space: nowrap;
@@ -149,7 +149,7 @@
 }
 
 .permission-question-collapse-chevron {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   flex-shrink: 0;
   transition: color 0.1s;
@@ -173,6 +173,15 @@
   overflow: hidden;
 }
 
+/* The wrapper above must stay overflow:hidden for the collapse animation, so
+   the scroll lives here. Without a bounded height a long question simply ran
+   off the end of the clip with nothing to scroll. */
+.permission-question-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .permission-questions {
   display: flex;
   flex-direction: column;
@@ -181,7 +190,7 @@
 
 .permission-question-header {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.05em;
   color: var(--warning);
   text-transform: uppercase;
@@ -189,7 +198,7 @@
 
 .permission-question-text {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: calc(13px * var(--font-scale, 1));
   color: var(--text);
   margin: 2px 0 6px;
 }
@@ -225,14 +234,14 @@
 
 .permission-option-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(12px * var(--font-scale, 1));
   color: var(--text);
 }
 
 .permission-option-desc {
   font-family: var(--font-sans);
-  font-size: 10px;
-  color: var(--text-muted);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
 }
 
 .permission-other-input {
@@ -240,7 +249,7 @@
   margin-top: 4px;
   padding: 6px 8px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text);
   background: var(--bg-raised);
   border: 1px solid var(--border);
@@ -267,7 +276,7 @@
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -307,7 +316,7 @@
   background: transparent;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   cursor: pointer;
   transition: all 0.1s ease;
 }

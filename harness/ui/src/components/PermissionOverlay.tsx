@@ -131,6 +131,10 @@ function QuestionForm({ perm, onRespond, collapsed, onToggleCollapse }: {
       </button>
       <div className={`permission-question-body${collapsed ? " collapsed" : ""}`}>
       <div className="permission-question-body-inner">
+      {/* Bounded scroll. The inner wrapper is overflow:hidden to serve the
+          collapse animation, so without this a long question is clipped with no
+          way to reach the rest of it. */}
+      <div className="permission-question-scroll">
       {total > 1 && (
         <div className="question-steps">
           {questions.map((_: any, i: number) => (
@@ -178,24 +182,31 @@ function QuestionForm({ perm, onRespond, collapsed, onToggleCollapse }: {
         )}
       </div>
 
-      <div className="permission-actions">
-        {step > 0 && (
-          <button className="permission-btn" onClick={() => setStep(step - 1)}>
-            Back
+      </div>
+      </div>
+      </div>
+      {/* Outside the collapsible, clipped container on purpose. Rendered inside
+          it, the primary action became unreachable as soon as the options were
+          tall enough to overflow — selectable answers, no way to submit them,
+          and no signal to the agent, which just waits. */}
+      {!collapsed && (
+        <div className="permission-actions">
+          {step > 0 && (
+            <button className="permission-btn" onClick={() => setStep(step - 1)}>
+              Back
+            </button>
+          )}
+          <button className="permission-btn permission-btn--approve" onClick={handleNext} disabled={!currentAnswered}>
+            {isLast ? "Submit" : "Next"}
           </button>
-        )}
-        <button className="permission-btn permission-btn--approve" onClick={handleNext} disabled={!currentAnswered}>
-          {isLast ? "Submit" : "Next"}
-        </button>
-        <button className="permission-btn permission-btn--deny" onClick={() => {
-          formStore.delete(perm.requestId);
-          onRespond(perm.requestId, "deny");
-        }}>
-          Skip
-        </button>
-      </div>
-      </div>
-      </div>
+          <button className="permission-btn permission-btn--deny" onClick={() => {
+            formStore.delete(perm.requestId);
+            onRespond(perm.requestId, "deny");
+          }}>
+            Skip
+          </button>
+        </div>
+      )}
     </div>
   );
 }
