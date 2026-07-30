@@ -20,7 +20,7 @@
 
 .mission-graph-label {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-dim);
   flex: 1;
   min-width: 0;
@@ -35,7 +35,7 @@
   border-radius: 3px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -53,7 +53,7 @@
 
 .mgl {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 1px 6px;
   border-radius: 3px;
   border: 1px solid var(--border);
@@ -136,20 +136,20 @@
 
 .mgraph-node-title {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   fill: var(--text);
   dominant-baseline: hanging;
 }
 
 .mgraph-node-profile {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   fill: var(--text-muted);
 }
 
 .mgraph-node-id {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   fill: var(--text-muted);
   opacity: 0.6;
 }

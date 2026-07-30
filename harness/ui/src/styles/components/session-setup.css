@@ -46,7 +46,7 @@
   cursor: pointer;
   padding: 0 6px;
   flex-shrink: 0;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   line-height: 1;
 }
 .cwd-add-btn:hover { color: var(--text); border-color: var(--border-active); }
@@ -65,7 +65,7 @@
   border-radius: 3px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   outline: none;
 }
 .extra-dir-input:focus { border-color: var(--border-active); }
@@ -80,7 +80,7 @@
   cursor: pointer;
   padding: 0 6px;
   flex-shrink: 0;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   line-height: 1;
 }
 .extra-dir-remove-btn:hover { color: var(--error); border-color: var(--error); }
@@ -108,7 +108,7 @@
 }
 .folder-picker-title {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -119,7 +119,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   padding: 0;
   line-height: 1;
 }
@@ -134,7 +134,7 @@
   border: none;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   outline: none;
 }
 .folder-picker-input:focus {
@@ -153,7 +153,7 @@
   border: none;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   cursor: pointer;
   transition: background 0.1s ease;
 }
@@ -164,7 +164,7 @@
 .folder-picker-empty {
   padding: 8px 10px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 .folder-picker-error { color: var(--error); }
@@ -177,7 +177,7 @@
   border-top: 1px solid var(--border);
   color: var(--accent);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   font-weight: 500;
   cursor: pointer;
   text-align: left;
@@ -195,7 +195,7 @@
   border: none;
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   cursor: pointer;
   text-align: left;
   transition: background 0.1s ease, color 0.1s ease;
@@ -216,7 +216,7 @@
   border-radius: 3px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   outline: none;
 }
 .folder-picker-create-input:focus { background: var(--bg-hover); }
@@ -226,7 +226,7 @@
   border-radius: 3px;
   color: var(--accent);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 3px 8px;
   cursor: pointer;
 }
@@ -236,7 +236,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale, 1));
   line-height: 1;
   padding: 0 4px;
   cursor: pointer;
@@ -254,7 +254,7 @@
   border-radius: 4px;
   background: var(--bg-surface);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 .modus-init-banner.modus-init-ok {
@@ -268,7 +268,7 @@
   border-radius: 3px;
   color: var(--bg);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -290,7 +290,7 @@
 }
 .session-setup-check span {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;

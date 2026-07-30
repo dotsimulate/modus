@@ -21,7 +21,7 @@
   justify-content: center;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   padding: 32px 20px;
 }
 
@@ -46,7 +46,7 @@
   align-items: center;
   gap: 4px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 
@@ -62,7 +62,7 @@
   border-radius: 0;
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 2px 4px;
   outline: none;
   transition: border-color 0.1s ease, color 0.1s ease;
@@ -79,7 +79,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 3px 7px;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
@@ -99,7 +99,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 3px 8px;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
@@ -126,7 +126,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   cursor: pointer;
   padding: 3px 7px;
@@ -153,7 +153,7 @@
 @media (pointer: coarse) {
   .web-layer-toggle {
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
   }
 }
 
@@ -213,7 +213,7 @@
 
 .web-window-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   font-weight: 600;
   color: var(--text-muted);
   letter-spacing: 0.08em;
@@ -223,7 +223,7 @@
 
 .web-window-count {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: calc(8px * var(--font-scale, 1));
   color: var(--text-muted);
   opacity: 0.35;
 }
@@ -239,7 +239,7 @@
   border: 1px solid var(--border);
   border-radius: 3px;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   line-height: 1;
   padding: 5px 8px;
   cursor: pointer;
@@ -249,7 +249,7 @@
 @media (pointer: coarse) {
   .web-reset-btn {
     padding: 8px 12px;
-    font-size: 16px;
+    font-size: calc(16px * var(--font-scale, 1));
   }
 }
 
@@ -465,7 +465,7 @@
 .web-session-dot--error { background: var(--dot-error); }
 
 .web-session-title {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-secondary);
   font-weight: 600;
   line-height: 1.3;
@@ -478,7 +478,7 @@
 }
 
 .web-session-pin {
-  font-size: 7px;
+  font-size: calc(7px * var(--font-scale, 1));
   color: var(--text-muted);
   opacity: 0.6;
   flex-shrink: 0;
@@ -497,21 +497,21 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-dim);
   margin-top: auto;
   letter-spacing: 0.02em;
 }
 
 .web-session-time {
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
 
 .web-session-profile {
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -519,7 +519,7 @@
 }
 
 .web-session-handoff-type {
-  font-size: 8px;
+  font-size: calc(8px * var(--font-scale, 1));
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -570,13 +570,13 @@
 }
 
 .web-doc-icon {
-  font-size: 8px;
+  font-size: calc(8px * var(--font-scale, 1));
   color: var(--text-muted);
   flex-shrink: 0;
 }
 
 .web-doc-name {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -615,14 +615,14 @@
 }
 
 .web-commit-hash {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--info);
   letter-spacing: 0.02em;
   flex-shrink: 0;
 }
 
 .web-commit-msg {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -675,7 +675,7 @@
 }
 
 .web-detail-type {
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -686,7 +686,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
@@ -785,7 +785,7 @@
   border-radius: 6px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 5px 7px;
   outline: none;
 }
@@ -800,7 +800,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 5px 8px;
   cursor: pointer;
   text-transform: uppercase;
@@ -821,7 +821,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 3px 7px;
   cursor: pointer;
   letter-spacing: 0.04em;
@@ -836,20 +836,20 @@
 
 .web-detail-id,
 .web-detail-hash {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale, 1));
   font-weight: 600;
   color: var(--text);
 }
 .web-detail-hash { color: var(--info); }
 
 .web-detail-title {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text);
   line-height: 1.4;
 }
 
 .web-detail-msg {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-dim);
   line-height: 1.5;
   white-space: pre-wrap;
@@ -857,7 +857,7 @@
 }
 
 .web-detail-preview {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   line-height: 1.4;
   max-height: 60px;
@@ -869,7 +869,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 
@@ -886,14 +886,14 @@
 .web-detail-stats {
   display: flex;
   gap: 8px;
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 .web-detail-add { color: var(--success); }
 .web-detail-del { color: var(--error); }
 
 .web-detail-handoff {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 .web-detail-handoff span {
@@ -908,7 +908,7 @@
 }
 
 .web-detail-tag {
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 1px 6px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.03);
@@ -929,7 +929,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 4px 10px;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
@@ -948,7 +948,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 4px 10px;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
@@ -985,7 +985,7 @@
   border: none;
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   padding: 6px 14px;
   cursor: pointer;
   transition: background 0.08s ease, color 0.08s ease;
@@ -1005,7 +1005,7 @@
 
 .web-context-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   padding: 4px 14px 2px;
   text-transform: uppercase;
@@ -1113,7 +1113,7 @@
   border-radius: 3px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 5px 10px;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
@@ -1123,7 +1123,7 @@
 @media (pointer: coarse) {
   .web-layout-toggle {
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: calc(12px * var(--font-scale, 1));
   }
 }
 
@@ -1178,7 +1178,7 @@
 }
 
 .web-layout-row label {
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   width: 52px;
   flex-shrink: 0;
@@ -1196,7 +1196,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 3px 7px;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
@@ -1206,7 +1206,7 @@
 @media (pointer: coarse) {
   .web-layout-toggles button {
     padding: 6px 10px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
   }
 }
 
@@ -1238,7 +1238,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 4px 4px;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
@@ -1248,7 +1248,7 @@
 @media (pointer: coarse) {
   .web-layout-presets button {
     padding: 8px 6px;
-    font-size: 11px;
+    font-size: calc(11px * var(--font-scale, 1));
   }
 }
 
@@ -1264,7 +1264,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 4px 6px;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
@@ -1343,7 +1343,7 @@
 
 .web-mm-day-label {
   font-family: var(--font-mono);
-  font-size: 7px;
+  font-size: calc(7px * var(--font-scale, 1));
   fill: rgba(255, 255, 255, 0.18);
   letter-spacing: 0.04em;
   pointer-events: none;
@@ -1380,14 +1380,14 @@
 }
 
 .web-day-hud-label {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   font-weight: 600;
   color: var(--text-dim);
   letter-spacing: 0.04em;
 }
 
 .web-day-hud-stats {
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 
@@ -1426,7 +1426,7 @@
   align-items: center;
   gap: 5px;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-dim);
   border: none;
   border-radius: 6px;
@@ -1449,7 +1449,7 @@
   justify-content: center;
   width: 12px;
   height: 12px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   line-height: 1;
   color: var(--text-muted);
   cursor: pointer;
@@ -1497,7 +1497,7 @@
 .web-mission-filter .csel-trigger {
   background: var(--bg-raised);
   border-color: var(--border);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 5px 10px;
 }
 

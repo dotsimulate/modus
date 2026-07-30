@@ -18,7 +18,7 @@
   background: var(--bg-raised);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   cursor: pointer;
   transition: border-color 0.1s;
 }
@@ -46,7 +46,7 @@
 
 .csel-chevron {
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   line-height: 1;
   transition: transform 0.1s;
 }
@@ -82,7 +82,7 @@
   background: none;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   text-align: left;
   cursor: pointer;
   transition: background 0.08s, color 0.08s;

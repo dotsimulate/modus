@@ -30,14 +30,14 @@
 }
 .profile-panel-name {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   font-weight: 500;
   color: var(--text);
   letter-spacing: 0.02em;
 }
 .profile-panel-summary {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 .profile-panel-right {
@@ -54,7 +54,7 @@
 }
 .override-tag {
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: calc(8px * var(--font-scale, 1));
   font-weight: 500;
   color: var(--accent);
   letter-spacing: 0.04em;

@@ -53,7 +53,7 @@
 }
 
 .trace-toolbar-label {
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -70,7 +70,7 @@
 .trace-op-pill,
 .trace-time-pill {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 3px 8px;
   border-radius: 2px;
   border: 1px solid var(--border);
@@ -111,9 +111,9 @@
   background: color-mix(in srgb, var(--info) 5%, transparent);
 }
 
-.trace-stats  { font-size: 10px; color: var(--text-muted); }
-.trace-loading { font-size: 10px; color: var(--text-muted); }
-.trace-error   { font-size: 10px; color: var(--error-soft); }
+.trace-stats  { font-size: calc(10px * var(--font-scale, 1)); color: var(--text-muted); }
+.trace-loading { font-size: calc(10px * var(--font-scale, 1)); color: var(--text-muted); }
+.trace-error   { font-size: calc(10px * var(--font-scale, 1)); color: var(--error-soft); }
 
 /* ── Canvas wrap ── */
 
@@ -145,7 +145,7 @@
   border: 1px solid var(--border);
   border-radius: 3px;
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale, 1));
   line-height: 1;
   padding: 4px 7px;
   cursor: pointer;
@@ -165,7 +165,7 @@
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   pointer-events: none;
   letter-spacing: 0.04em;
@@ -197,7 +197,7 @@
 }
 
 .trace-detail-type {
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -208,7 +208,7 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 15px;
+  font-size: calc(15px * var(--font-scale, 1));
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
@@ -218,7 +218,7 @@
 .trace-detail-close:hover { color: var(--text-dim); }
 
 .trace-detail-id {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale, 1));
   font-weight: 600;
   color: var(--text);
   overflow: hidden;
@@ -232,7 +232,7 @@
 }
 
 .trace-detail-path {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -243,7 +243,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 
@@ -251,14 +251,14 @@
 .trace-detail-provider { color: var(--text-dim); }
 
 .trace-detail-stat {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 
 .trace-detail-ops {
   display: flex;
   gap: 10px;
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   font-weight: 500;
 }
 
@@ -279,7 +279,7 @@
 }
 
 .trace-detail-item {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   padding: 2px 0;
   overflow: hidden;
@@ -297,7 +297,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   color: var(--text-muted);
   pointer-events: none;
 }
@@ -330,7 +330,7 @@
 /* Play / Pause button */
 
 .trace-tl-play {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   width: 28px;
   height: 28px;
   display: flex;
@@ -376,7 +376,7 @@
   justify-content: space-between;
   align-items: center;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   letter-spacing: 0.04em;
   pointer-events: none;
@@ -513,7 +513,7 @@
 
 .trace-tl-speed-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   text-align: center;
   letter-spacing: 0.04em;
@@ -530,7 +530,7 @@
 
 .trace-tl-preset {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 3px 7px;
   background: transparent;
   border: 1px solid var(--border);
@@ -556,7 +556,7 @@
 
 .trace-tl-count {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;

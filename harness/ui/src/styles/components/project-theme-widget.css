@@ -33,7 +33,7 @@
 .pt-label {
   color: var(--text-dim);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -48,7 +48,7 @@
 .project-theme-busy,
 .project-theme-error {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
 }
 
 .project-theme-busy {

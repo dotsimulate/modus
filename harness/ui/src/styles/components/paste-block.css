@@ -25,14 +25,14 @@
 
 .paste-caret {
   color: var(--text-dim);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   width: 10px;
   flex-shrink: 0;
   transition: transform 0.15s ease;
 }
 
 .paste-meta {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-dim);
   flex: 1;
   letter-spacing: 0.02em;
@@ -44,7 +44,7 @@
   color: var(--text-dim);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   padding: 0 6px;
   line-height: 1;
 }
@@ -54,7 +54,7 @@
 }
 
 .paste-btn-x {
-  font-size: 14px;
+  font-size: calc(14px * var(--font-scale, 1));
   padding: 0 4px;
 }
 

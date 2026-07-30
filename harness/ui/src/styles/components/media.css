@@ -31,7 +31,7 @@
   padding: 8px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   text-align: center;
   word-break: break-word;
   background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
@@ -54,7 +54,7 @@
 
 .message-media-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -79,7 +79,7 @@
 
 .audio-artifact-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   letter-spacing: 0.04em;
   color: var(--text-dim);
   flex-shrink: 0;
@@ -117,7 +117,7 @@
 
 .audio-artifact-time {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-dim);
   flex-shrink: 0;
   min-width: 24px;
@@ -145,7 +145,7 @@
 
 .audio-artifact-error {
   flex-basis: 100%;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   line-height: 1.4;
   color: #f44;
   margin-top: 2px;

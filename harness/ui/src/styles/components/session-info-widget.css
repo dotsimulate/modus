@@ -55,7 +55,7 @@
 
 .si-status-text {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -96,7 +96,7 @@
 
 .si-row-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -105,7 +105,7 @@
 
 .si-row-value {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-dim);
   text-align: right;
   overflow: hidden;

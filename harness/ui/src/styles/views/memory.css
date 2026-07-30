@@ -20,7 +20,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 
@@ -49,7 +49,7 @@
   border-radius: 6px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   cursor: pointer;
   transition: all 0.12s ease;
   opacity: 0.4;
@@ -76,7 +76,7 @@
   border-radius: 6px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   outline: none;
 }
 .memviz-search::placeholder { color: var(--text-muted); }
@@ -95,7 +95,7 @@
   border-radius: 6px;
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   cursor: pointer;
   white-space: nowrap;
 }
@@ -123,7 +123,7 @@
   border-radius: 4px;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
@@ -217,14 +217,14 @@
 }
 .memviz-date-label {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 .memviz-date-reset {
   background: none;
   border: none;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   color: var(--text-muted);
   cursor: pointer;
   padding: 0 6px;
@@ -241,7 +241,7 @@
   gap: 10px;
   padding: 6px 24px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -278,7 +278,7 @@
   left: 50%;
   transform: translateX(-50%);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   opacity: 0.5;
   pointer-events: none;
@@ -314,7 +314,7 @@
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   animation: memfeed-enter 0.3s ease;
   overflow: hidden;
 }
@@ -329,7 +329,7 @@
 }
 
 .memfeed-title {
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: rgba(255, 255, 255, 0.25);
   letter-spacing: 0.08em;
   text-transform: lowercase;
@@ -337,7 +337,7 @@
 }
 
 .memfeed-count {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: rgba(255, 255, 255, 0.12);
 }
 
@@ -345,7 +345,7 @@
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.2);
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale, 1));
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
@@ -358,7 +358,7 @@
   align-items: center;
   justify-content: center;
   color: rgba(255, 255, 255, 0.1);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   letter-spacing: 0.06em;
 }
 
@@ -430,7 +430,7 @@
 }
 
 .memfeed-card-id {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: rgba(255, 255, 255, 0.45);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -448,7 +448,7 @@
   border: none;
   color: rgba(255, 255, 255, 0.12);
   font-family: var(--font-mono);
-  font-size: 8px;
+  font-size: calc(8px * var(--font-scale, 1));
   letter-spacing: 0.04em;
   cursor: pointer;
   padding: 1px 4px;
@@ -465,7 +465,7 @@
 }
 
 .memfeed-card-body {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   line-height: 1.5;
   color: rgba(255, 255, 255, 0.25);
   word-break: break-word;
@@ -480,7 +480,7 @@
 
 .md-heading {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.45);
@@ -502,7 +502,7 @@
 
 .md-code {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   padding: 1px 4px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.04);
@@ -516,7 +516,7 @@
 
 .md-codeblock {
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale, 1));
   line-height: 1.5;
   padding: 6px 8px;
   margin: 2px 0;
@@ -582,7 +582,7 @@
   background: var(--mem-tag-bg);
   border: 1px solid var(--mem-tag-border);
   border-radius: 6px;
-  font-size: 8px;
+  font-size: calc(8px * var(--font-scale, 1));
   color: var(--mem-tag-text);
 }
 
@@ -603,7 +603,7 @@
   border-radius: 4px;
   color: rgba(255, 255, 255, 0.3);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   padding: 4px 12px;
   cursor: pointer;
   letter-spacing: 0.04em;

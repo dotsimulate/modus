@@ -10,7 +10,7 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   color: var(--text);
 }
 
@@ -38,7 +38,7 @@
   background: none;
   color: var(--text);
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   cursor: pointer;
   text-align: left;
   white-space: nowrap;
@@ -97,7 +97,7 @@
   min-width: 0;
   padding: 3px 6px;
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--bg);
@@ -110,7 +110,7 @@
 .ctx-menu-input-row button {
   padding: 3px 8px;
   font: inherit;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--bg-hover);

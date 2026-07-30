@@ -51,7 +51,7 @@
 .tool-call.running .tool-call-name { color: var(--tool-running); }
 .tool-call.error .tool-call-name { color: var(--tool-error); }
 .tool-call-summary { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.tool-call-duration { color: var(--text-muted); margin-left: auto; flex-shrink: 0; font-size: 10px; }
+.tool-call-duration { color: var(--text-muted); margin-left: auto; flex-shrink: 0; font-size: calc(10px * var(--font-scale, 1)); }
 .tool-call-cancel {
   display: flex;
   align-items: center;
@@ -73,7 +73,7 @@
   color: var(--tool-error);
   background: color-mix(in srgb, var(--tool-error) 10%, transparent);
 }
-.tool-call-expand { color: var(--text-muted); width: 14px; text-align: center; flex-shrink: 0; font-size: 10px; }
+.tool-call-expand { color: var(--text-muted); width: 14px; text-align: center; flex-shrink: 0; font-size: calc(10px * var(--font-scale, 1)); }
 
 .tool-call-detail { padding: 2px 10px 8px; }
 .tool-call-detail--read { padding: 0; }
@@ -99,7 +99,7 @@
 }
 .tool-arg-key {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   flex-shrink: 0;
 }
 .tool-arg-val {
@@ -136,7 +136,7 @@
 .read-output .diff-gutter { width: auto; min-width: unset; padding: 0 5px; }
 .tool-output-label {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   flex-shrink: 0;
   margin-bottom: 2px;
@@ -217,7 +217,7 @@
   gap: 8px;
   padding: 3px 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
 }
 .todo-indicator {
   width: 12px;
@@ -278,7 +278,7 @@
 .subagent-tools { display: flex; flex-direction: column; gap: 4px; }
 .subagent-text {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text-dim);
   padding: 6px 10px;
   white-space: pre-wrap;
@@ -288,7 +288,7 @@
 }
 .subagent-summary {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   padding: 6px 10px;
   border-top: 1px solid var(--border);
@@ -297,7 +297,7 @@
   overflow-y: auto;
 }
 .tool-call-sub-count {
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   flex-shrink: 0;
 }

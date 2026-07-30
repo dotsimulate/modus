@@ -130,7 +130,7 @@
   }
 
   .profiles-manager-widget .apc-popover-preview {
-    font-size: 10px;
+    font-size: calc(10px * var(--font-scale, 1));
   }
 }
 
@@ -154,6 +154,6 @@
 
   .profiles-manager-widget .apc-action {
     padding: 2px 6px;
-    font-size: 9px;
+    font-size: calc(9px * var(--font-scale, 1));
   }
 }

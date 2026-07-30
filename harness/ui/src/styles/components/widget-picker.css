@@ -113,7 +113,7 @@
   flex-shrink: 0;
   width: 14px;
   text-align: center;
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale, 1));
   color: var(--text-muted);
 }
 .widget-picker-item--active .widget-picker-check {
@@ -154,7 +154,7 @@
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   border-radius: 2px;
 }
 .widget-picker-move:hover {

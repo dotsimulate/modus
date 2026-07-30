@@ -60,7 +60,7 @@
   border-radius: 6px;
   padding: 5px 14px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale, 1));
   color: var(--text);
   cursor: pointer;
   transition: background 0.12s ease, border-color 0.12s ease;
