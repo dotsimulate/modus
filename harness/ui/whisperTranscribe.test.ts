@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import whisperTranscribeExtension, {
   describeCaptureError,
+  describeCaptureSupport,
   describeMicDevice,
+  failure,
   levelToMeter,
   matchAudioInputDevice,
   pickLoudestChannel,
@@ -146,6 +148,50 @@ describe("whisper-transcribe failure reporting", () => {
     expect(described.label).toBe("mic failed");
     expect(described.detail).toBe("boom");
     expect(describeCaptureError(undefined).detail).toBeTruthy();
+  });
+
+  test("a self-labelled error keeps its own label instead of falling back", () => {
+    // Without this, every failure() thrown on the capture path was flattened to
+    // "mic failed" on its way to the chip and the specific diagnosis was lost.
+    const described = describeCaptureError(failure("needs https", "not a secure context"));
+    expect(described.label).toBe("needs https");
+    expect(described.detail).toBe("not a secure context");
+  });
+});
+
+describe("whisper-transcribe capture preconditions", () => {
+  const ok = { isSecureContext: true, hasMediaDevices: true, hasGetUserMedia: true, hasAudioContext: true };
+
+  test("a fully capable environment reports no problem", () => {
+    expect(describeCaptureSupport(ok)).toBeNull();
+  });
+
+  test("an insecure origin is named as such, and outranks the missing api it causes", () => {
+    // http:// on a LAN or tailnet IP removes navigator.mediaDevices entirely, so
+    // checking the api first would report "no mic api" and send the user hunting
+    // for a browser problem that does not exist.
+    const described = describeCaptureSupport({
+      ...ok, isSecureContext: false, hasMediaDevices: false, hasGetUserMedia: false,
+    });
+    expect(described?.label).toBe("needs https");
+    expect(described?.detail).toMatch(/secure context/i);
+  });
+
+  test("an absent environment flag is not treated as insecure", () => {
+    // undefined means "could not tell" — only an explicit false is a failure,
+    // otherwise a non-browser environment would report a bogus https problem.
+    expect(describeCaptureSupport({ ...ok, isSecureContext: undefined })).toBeNull();
+  });
+
+  test("a missing getUserMedia is distinguished from a missing AudioContext", () => {
+    expect(describeCaptureSupport({ ...ok, hasGetUserMedia: false })?.label).toBe("no mic api");
+    expect(describeCaptureSupport({ ...ok, hasAudioContext: false })?.label).toBe("no audio api");
+  });
+
+  test("the AudioContext message points at the webkit prefix", () => {
+    // The extension constructs AudioContext unprefixed; older iOS Safari only
+    // has webkitAudioContext, and that is the fix this message has to suggest.
+    expect(describeCaptureSupport({ ...ok, hasAudioContext: false })?.detail).toMatch(/webkitAudioContext/);
   });
 
   test("meter readings are comparable against the speech threshold", () => {

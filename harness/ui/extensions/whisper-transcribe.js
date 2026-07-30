@@ -1,4 +1,4 @@
-console.log("[Whisper] Loading extension... version 2.9");
+console.log("[Whisper] Loading extension... version 2.10");
 const SHORTCUT = "Ctrl+Shift+~";
 const BUFFER_SIZE = 4096;
 const RMS_THRESHOLD = 0.015;
@@ -245,6 +245,13 @@ export function failure(label, detail) {
 export function describeCaptureError(error) {
   const name = error?.name ?? "";
   const raw = error instanceof Error ? error.message : String(error ?? "");
+  // An error that already carries its own chip label (from failure()) has
+  // diagnosed itself more precisely than a DOMException name ever could. Without
+  // this, every such error fell through to the "mic failed" default and the
+  // specific message was discarded on its way to the chip.
+  if (typeof error?.label === "string" && error.label) {
+    return { label: error.label, detail: raw || error.label };
+  }
   switch (name) {
     case "NotAllowedError":
     case "SecurityError":
@@ -312,10 +319,57 @@ async function resolveMicDevice(preference) {
   return { device: match, requested: wanted, missing: !match };
 }
 
-async function createRecordingSession(micPreference) {
-  if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
-    throw new Error("browser audio capture is not available");
+/**
+ * Say which capture precondition is missing, rather than one message for all of
+ * them.
+ *
+ * These fail for unrelated reasons and need unrelated fixes, but they used to
+ * collapse into "browser audio capture is not available" — which on the chip
+ * read as the generic "mic failed" and told the user nothing they could act on.
+ * The packaged desktop has no devtools and a phone has no console at all, so
+ * this string is the entire diagnosis.
+ *
+ * Takes an environment snapshot rather than reading globals so it is testable.
+ */
+export function describeCaptureSupport(env) {
+  // Browsers expose getUserMedia only in a secure context. Loopback and https
+  // qualify; a plain http:// origin on a LAN or tailnet IP does not, and
+  // navigator.mediaDevices is then simply absent — indistinguishable from an
+  // ancient browser unless we check this first.
+  if (env.isSecureContext === false) {
+    return {
+      label: "needs https",
+      detail: "Microphone access requires a secure context. This page was loaded over plain http, so the browser hides the microphone entirely. Reach Modus over https (Tailscale Serve provides it) or on localhost.",
+    };
   }
+  if (!env.hasMediaDevices || !env.hasGetUserMedia) {
+    return {
+      label: "no mic api",
+      detail: "This browser exposes no navigator.mediaDevices.getUserMedia, so audio cannot be captured here.",
+    };
+  }
+  if (!env.hasAudioContext) {
+    return {
+      label: "no audio api",
+      detail: "This browser exposes no unprefixed AudioContext, so the capture graph cannot be built. Older iOS Safari only provides webkitAudioContext.",
+    };
+  }
+  return null;
+}
+
+function captureSupportFromGlobals() {
+  return describeCaptureSupport({
+    // Absent in a non-browser test environment; only an explicit false is a failure.
+    isSecureContext: typeof window === "undefined" ? undefined : window.isSecureContext,
+    hasMediaDevices: !!navigator.mediaDevices,
+    hasGetUserMedia: !!navigator.mediaDevices?.getUserMedia,
+    hasAudioContext: typeof AudioContext !== "undefined",
+  });
+}
+
+async function createRecordingSession(micPreference) {
+  const unsupported = captureSupportFromGlobals();
+  if (unsupported) throw failure(unsupported.label, unsupported.detail);
 
   const { device, requested, missing } = await resolveMicDevice(micPreference);
   // An explicitly chosen device means the user knows their hardware, so ask for
