@@ -9,6 +9,8 @@ import type {
   SessionStatusInfo,
   CreateSessionOpts,
   SendMessageOpts,
+  SteerResult,
+  MoveBinding,
   TurnContent,
   SessionHistorySnapshot,
   TypedSSEEvent,
@@ -294,9 +296,11 @@ export class ModusClient {
   async stopTask(id: string, taskId: string): Promise<{ ok: boolean }> {
     return (await this.fetch(`/api/sessions/${id}/stop-task`, { method: "POST", body: JSON.stringify({ taskId }) })).json();
   }
-  /** Injects a steering prompt mid-turn without waiting for completion. */
-  async steerSession(id: string, prompt: string, attachments?: unknown[]): Promise<{ ok: boolean }> {
-    return (await this.fetchOrThrow(`/api/sessions/${id}/steer`, { method: "POST", body: JSON.stringify({ prompt, attachments }) })).json();
+  /** Injects a steering prompt mid-turn without waiting for completion. `mode`
+   *  distinguishes a live injection ("steer") from a fallback queue ("queued",
+   *  cancellable via `dispatchId`). Takes the same move bindings as sendMessage. */
+  async steerSession(id: string, prompt: string, attachments?: unknown[], moves?: MoveBinding[]): Promise<SteerResult> {
+    return (await this.fetchOrThrow(`/api/sessions/${id}/steer`, { method: "POST", body: JSON.stringify({ prompt, attachments, moves }) })).json();
   }
   /** Gets rendered message content. With a seq number, returns a single turn; without, returns all turns. */
   async getMessages(id: string, seq?: number): Promise<TurnContent | TurnContent[]> {

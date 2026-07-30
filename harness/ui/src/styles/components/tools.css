@@ -152,6 +152,49 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
+/* Images a tool returned. Sized down so a screenshot does not dominate the
+   transcript; click opens the lightbox at full size. */
+.tool-output-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.tool-output-images .message-image {
+  max-width: 260px;
+  max-height: 200px;
+  border-radius: 4px;
+  cursor: zoom-in;
+}
+
+/* Truncation is never silent: the control states the real size. */
+.tool-output-truncation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.tool-output-expand {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  cursor: pointer;
+}
+.tool-output-expand:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+}
+.tool-output-dropped {
+  color: var(--warning);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
 .tool-output--pending {
   color: var(--warning);
   animation: pulse-dim 1.5s ease-in-out infinite;
@@ -257,4 +300,14 @@
   font-size: 10px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* Embedded PDF artifact. Sandboxed and fixed-height so a long document does
+   not push the rest of the transcript off screen. */
+.message-pdf {
+  width: 100%;
+  height: 380px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
 }

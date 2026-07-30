@@ -144,6 +144,8 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "  the runtime then ignores them. A field that \"validates\" may do nothing.",
     "- `doc_drift` — audit docs against their `covers:` frontmatter: source files",
     "  that no longer exist, and live schema keys the covering doc never mentions.",
+    "  A doc that documents a pattern rather than code declares `covers: none`,",
+    "  which is treated as answered — do not \"fix\" those by inventing paths.",
     "",
     "## How to work",
     "",
@@ -259,7 +261,11 @@ export const handlers: Record<string, MoveApiHandler> = {
       const covers = entry.covers ?? [];
       const docLines: string[] = [];
 
-      if (!covers.length) {
+      if (entry.coversNone) {
+        // `covers: none` is an explicit statement that the doc describes a
+        // pattern or a procedure, not code. There is nothing to verify, and
+        // repeating that every run is exactly the noise this tool avoids.
+      } else if (!covers.length) {
         docLines.push("- no `covers:` frontmatter — nothing to check it against");
       } else if (resolvable) {
         for (const path of covers) {

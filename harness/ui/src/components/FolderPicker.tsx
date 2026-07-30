@@ -1,16 +1,18 @@
 /**
  * FolderPicker — server-side directory browser.
  *
- * Two modes:
+ * Three modes:
  * - Browse: click folders to navigate the server filesystem
  * - Type: paste/type a path directly and hit enter
+ * - Create: make a new folder in the current directory and descend into it
  *
  * Navigates the harness server's filesystem. Click folders to descend,
  * ".." to go up. "Select" picks the current directory as the cwd.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { modus } from "../modusClient";
+import { folderLabel, joinBrowsePath, validateFolderName } from "../folderPath";
 import type { BrowseResult } from "../../../sdk/index";
 
 type Props = {
@@ -24,10 +26,20 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pathInput, setPathInput] = useState(initialPath ?? "");
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createBusy, setCreateBusy] = useState(false);
+  const newNameRef = useRef<HTMLInputElement>(null);
 
   const navigate = (path?: string) => {
     setLoading(true);
     setError(null);
+    // Leaving the directory invalidates a half-typed name and the sibling list
+    // it was being checked against.
+    setCreating(false);
+    setNewName("");
+    setCreateError(null);
     modus.browse(path)
       .then((r) => {
         setResult(r);
@@ -36,6 +48,61 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   };
+
+  const beginCreate = () => {
+    setCreating(true);
+    setNewName("");
+    setCreateError(null);
+  };
+
+  const cancelCreate = () => {
+    setCreating(false);
+    setNewName("");
+    setCreateError(null);
+  };
+
+  const submitCreate = async () => {
+    if (!result || createBusy) return;
+    const check = validateFolderName(newName, result.dirs);
+    if (!check.ok) {
+      setCreateError(check.error);
+      return;
+    }
+    const target = joinBrowsePath(result.path, check.name);
+    setCreateBusy(true);
+    setCreateError(null);
+    try {
+      const ok = await modus.createDirectory(target);
+      if (!ok) {
+        // createDirectory collapses every failure into false, so the reason
+        // (permissions, read-only volume) is not recoverable here.
+        setCreateError("could not create folder");
+        return;
+      }
+      cancelCreate();
+      navigate(target);
+    } catch (e) {
+      setCreateError(String(e));
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const handleNewNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void submitCreate();
+    }
+    // Escape backs out of creating without closing the whole picker.
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      cancelCreate();
+    }
+  };
+
+  useEffect(() => {
+    if (creating) newNameRef.current?.focus();
+  }, [creating]);
 
   useEffect(() => {
     navigate(initialPath || undefined);
@@ -105,11 +172,51 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
       </div>
 
       {result && (
+        <div className="folder-picker-create">
+          {creating ? (
+            <>
+              <div className="folder-picker-create-row">
+                <input
+                  ref={newNameRef}
+                  className="folder-picker-create-input"
+                  value={newName}
+                  onChange={(e) => { setNewName(e.target.value); setCreateError(null); }}
+                  onKeyDown={handleNewNameKeyDown}
+                  spellCheck={false}
+                  placeholder="folder name"
+                  disabled={createBusy}
+                />
+                <button
+                  className="folder-picker-create-confirm"
+                  onClick={() => void submitCreate()}
+                  disabled={createBusy || !newName.trim()}
+                >
+                  {createBusy ? "..." : "create"}
+                </button>
+                <button
+                  className="folder-picker-create-cancel"
+                  onClick={cancelCreate}
+                  disabled={createBusy}
+                >
+                  &times;
+                </button>
+              </div>
+              {createError && <div className="folder-picker-error">{createError}</div>}
+            </>
+          ) : (
+            <button className="folder-picker-new" onClick={beginCreate}>
+              + new folder
+            </button>
+          )}
+        </div>
+      )}
+
+      {result && (
         <button
           className="folder-picker-select"
           onClick={() => onSelect(result.path)}
         >
-          select {result.path.split("/").pop() || "/"}
+          select {folderLabel(result.path)}
         </button>
       )}
     </div>

@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useSessionState, ensureSubscribed, getSessionState, setSessionState, setSessionNextProfile, setSessionNextAgentConfig } from "../sessionStore";
 import { useInputValue, setInputValue, setActiveInputSession } from "../inputStore";
-import { useSession } from "../providers/SessionContext";
+import { useSession, type DeliverMode } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import { ChatInput } from "../components/ChatInput";
@@ -115,7 +115,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
   // ── Send / stop ──
 
   const handleSend = useCallback(
-    (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => {
+    (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode) => {
       if (!sessionId) return;
       const prompt = (textOverride ?? input).trim();
       if (!prompt && attachments.length === 0) return;
@@ -126,7 +126,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
       // that dance and drops profile/config overrides on empty sessions.
       if (activeSession?.id === sessionId) {
         setInputValue("");
-        void sessionSend(attachments, prompt, moves).catch((err) => {
+        void sessionSend(attachments, prompt, moves, deliver).catch((err) => {
           console.error("[composer-widget] sessionSend failed:", err);
         });
         return;
@@ -141,6 +141,16 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
       const apiAtts = attachments.length > 0
         ? attachments.map((a) => ({ type: a.type, mediaType: a.mediaType, data: a.data, name: a.name }))
         : undefined;
+
+      // Interjections take the steer route. No optimistic insert here: on a
+      // successful steer the backend broadcasts the user message itself, so
+      // adding one locally would show it twice.
+      if (deliver === "steer") {
+        modus.steerSession(sessionId, prompt, apiAtts, moves).catch((err) => {
+          console.error("[composer-widget] steerSession failed:", err);
+        });
+        return;
+      }
 
       // Optimistically insert the user message so it appears immediately
       const current = getSessionState(sessionId);

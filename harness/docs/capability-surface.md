@@ -66,7 +66,7 @@ state). On activation the runner registers handlers, mints a reusable
 `ctx.apiToken`. The agent calls ops repeatedly via
 `modus_submit(token, { op, ...data })`.
 
-**Handler powers** (`MoveApiContext`) — full orchestration parity:
+**Handler powers** (`MoveApiContext`) — orchestration, but not shell:
 `createSession`, `sendMessage(sessionId, msg)`, `triggerAction(name)`,
 `activateMove({moveName, inputs, sessionId, modeOverride})`,
 `watchSessionTurns(sessionId, cb)`, `wake(target, content, when?)`,
@@ -76,6 +76,13 @@ agent receives a typed signal line `[modus:{type}] {json}` it can branch on.
 Plus `state` (get/set/delete), `store`/`setStore` (process-scoped), `db`
 (read-only sessions/messages/search), `secrets` (resolve/isSet), `caller`
 ("agent" | "user").
+
+Handlers are **not** a superset of `gather()`/`onSubmit()`. `run` and `harness`
+exist only on `MoveContext`, so an api-only move cannot shell out through the
+gated path — and `capabilities.shell` currently gates a method its handlers
+cannot call. For the exact per-surface member list see
+[`generated/authoring-contracts`](./generated/authoring-contracts.md), which is
+generated from the declarations and cannot drift from them.
 
 **Widget** (`widget` in move.json): `component` (e.g. "widget.tsx"), `label`,
 `icon`, `autoOpen`, `mountOnAttach` (mount before any message; requires `api`),

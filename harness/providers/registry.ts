@@ -32,7 +32,7 @@ import { probeGrokBuildAuth, resolveGrokBuildCommand } from "./grok-build-runtim
 
 // Names live in a leaf module so profile validation can know them without
 // importing every provider implementation (and, transitively, the database).
-import { PI_PROVIDERS, STANDALONE_PROVIDERS, isKnownProvider, listProviders, readsNativeSkills } from "./provider-names";
+import { PI_PROVIDERS, STANDALONE_PROVIDERS, isKnownProvider, listProviders, readsNativeSkills, supportsSteering } from "./provider-names";
 
 export { isKnownProvider, listProviders };
 
@@ -97,9 +97,13 @@ export function getProviderCapabilities(name: string): ProviderCapabilities {
     : name === "grok-build" ? GROK_BUILD_CAPABILITIES
     : name === "opencode" ? OPENCODE_CAPABILITIES
     : getProvider(name).capabilities;
-  // Derived centrally rather than declared in each provider file, so the list of
-  // skill-reading providers stays in one place (`provider-names.ts`).
-  return { ...base, readsNativeSkills: readsNativeSkills(name) };
+  // Derived centrally rather than declared in each provider file, so the lists of
+  // skill-reading and steerable providers stay in one place (`provider-names.ts`).
+  return {
+    ...base,
+    readsNativeSkills: readsNativeSkills(name),
+    messageDelivery: supportsSteering(name) ? "steer" : "next-turn",
+  };
 }
 
 export function listProviderCapabilities(): ProviderCapabilities[] {

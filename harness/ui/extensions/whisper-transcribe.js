@@ -1,4 +1,4 @@
-console.log("[Whisper] Loading extension... version 2.7");
+console.log("[Whisper] Loading extension... version 2.9");
 const SHORTCUT = "Ctrl+Shift+~";
 const BUFFER_SIZE = 4096;
 const RMS_THRESHOLD = 0.015;
@@ -11,6 +11,18 @@ const PRE_ROLL_MS = 250;
 // all" from "nobody is talking" — the distinction RMS_THRESHOLD cannot make.
 const NO_INPUT_LEVEL = 0.001;
 const NO_INPUT_GRACE_MS = 4000;
+// Between NO_INPUT_LEVEL and RMS_THRESHOLD is a dead zone: the device is
+// plainly alive, but nothing ever crosses the speech threshold, so no chunk is
+// ever cut and no request is ever sent. Left unreported that state is
+// indistinguishable from "recording normally" — the chip just says recording
+// forever. This is the grace period before we call it out.
+const TOO_QUIET_GRACE_MS = 6000;
+// Multi-channel interfaces (a MOTU 1-2, a Scarlett, any two-input box) put the
+// mic on whichever jack the user plugged into. Reading only channel 0 means a
+// mic in input 2 records an open jack at its noise floor — live enough to
+// defeat the silence check, far too quiet to transcribe. Capture both and use
+// whichever channel actually carries signal.
+const CAPTURE_CHANNELS = 2;
 const SEND_TRIGGER_RE = /(?:^|[\s"'([{])(send it now|send it|send now|send this|send the message|submit(?: the)? message)\s*["'"')\].,!?\s]*$/i;
 
 const TRIGGER_WINDOW_WORDS = 4;
@@ -95,6 +107,34 @@ function calculateLevel(samples) {
   return Math.sqrt(sum / samples.length);
 }
 
+/**
+ * Pick the input channel actually carrying signal.
+ *
+ * Averaging channels would halve a mono source that only occupies one of them,
+ * pushing a usable mic further toward the speech threshold; summing would clip.
+ * Taking the loudest is the only mix that leaves a correctly-wired mono input
+ * at full level regardless of which jack it landed on.
+ */
+export function pickLoudestChannel(channels) {
+  let best = null;
+  let bestLevel = -1;
+  let bestIndex = 0;
+  for (let i = 0; i < channels.length; i++) {
+    const level = calculateLevel(channels[i]);
+    if (level > bestLevel) {
+      bestLevel = level;
+      best = channels[i];
+      bestIndex = i;
+    }
+  }
+  return { samples: best, level: bestLevel < 0 ? 0 : bestLevel, channel: bestIndex };
+}
+
+/** Peak level as a 0-100 meter reading, so the chip can show a real number. */
+export function levelToMeter(level) {
+  return Math.min(100, Math.round(level * 100 * 10) / 10);
+}
+
 function mergeSamples(chunks, totalLength) {
   const merged = new Float32Array(totalLength);
   let offset = 0;
@@ -165,6 +205,62 @@ export function shouldWarnNoInput({ elapsedMs, peakLevel, graceMs = NO_INPUT_GRA
   return elapsedMs >= graceMs && peakLevel < level;
 }
 
+/**
+ * Whether a recording is alive but has never been loud enough to transcribe.
+ *
+ * This is the gap `shouldWarnNoInput` cannot see. A device sitting between the
+ * silence floor and the speech threshold — an open jack on an interface, a mic
+ * on the wrong input, a channel with the gain down — never opens a chunk, so
+ * nothing is ever uploaded and nothing ever fails. The recording just runs, and
+ * reports itself healthy, indefinitely.
+ */
+export function shouldWarnTooQuiet({
+  elapsedMs,
+  peakLevel,
+  sawSpeech,
+  graceMs = TOO_QUIET_GRACE_MS,
+  floor = NO_INPUT_LEVEL,
+}) {
+  return !sawSpeech && elapsedMs >= graceMs && peakLevel >= floor;
+}
+
+/**
+ * Turn a getUserMedia rejection into something a user can act on.
+ *
+ * The raw DOMException names are the only signal distinguishing "you denied the
+ * prompt" from "the interface is claimed by your DAW", and both look identical
+ * from the composer otherwise — the recording simply never starts.
+ */
+/**
+ * An error carrying its own chip label, so the status shows what kind of
+ * failure it was ("no connection", "whisper 502") rather than one generic
+ * string for every cause.
+ */
+export function failure(label, detail) {
+  const error = new Error(detail);
+  error.label = label;
+  return error;
+}
+
+export function describeCaptureError(error) {
+  const name = error?.name ?? "";
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return { label: "mic blocked", detail: "Microphone permission was denied for this window. Allow it and try again." };
+    case "NotFoundError":
+      return { label: "no mic", detail: "No audio input device is available to this client." };
+    case "NotReadableError":
+    case "AbortError":
+      return { label: "mic busy", detail: `The audio device could not be opened — another application may hold it exclusively. (${raw})` };
+    case "OverconstrainedError":
+      return { label: "mic unusable", detail: `The selected device rejected the requested capture format. (${raw})` };
+    default:
+      return { label: "mic failed", detail: raw || "The microphone could not be opened." };
+  }
+}
+
 /** Short human label for whichever input actually ended up live. */
 export function describeMicDevice(device, preference) {
   if (device) return device.label || device.deviceId || "selected mic";
@@ -178,9 +274,19 @@ async function enumerateAudioInputs() {
   return devices.filter((device) => device.kind === "audioinput");
 }
 
+/**
+ * Resolve the configured mic preference.
+ *
+ * Returns `missing: true` when a preference was set and matched nothing, which
+ * is a reportable condition rather than a silent fallback: a deviceId is scoped
+ * to the origin that enumerated it, so an id saved from a phone browser can
+ * never match inside the desktop shell and vice versa. Falling back to the
+ * system default without saying so is how a mic setting silently stops meaning
+ * anything.
+ */
 async function resolveMicDevice(preference) {
   const wanted = String(preference ?? "").trim();
-  if (!wanted) return null;
+  if (!wanted) return { device: null, requested: "", missing: false };
 
   let inputs = await enumerateAudioInputs();
   // Device labels stay blank until the page has held a mic stream at least
@@ -203,7 +309,7 @@ async function resolveMicDevice(preference) {
       `Available: ${inputs.map((device) => device.label || device.deviceId).join(" | ") || "(none)"}`,
     );
   }
-  return match;
+  return { device: match, requested: wanted, missing: !match };
 }
 
 async function createRecordingSession(micPreference) {
@@ -211,13 +317,35 @@ async function createRecordingSession(micPreference) {
     throw new Error("browser audio capture is not available");
   }
 
-  const device = await resolveMicDevice(micPreference);
-  const stream = await navigator.mediaDevices.getUserMedia(
-    device ? { audio: { deviceId: { exact: device.deviceId } } } : { audio: true },
-  );
+  const { device, requested, missing } = await resolveMicDevice(micPreference);
+  // An explicitly chosen device means the user knows their hardware, so ask for
+  // it raw: Chromium's default processing chain (echo cancellation especially)
+  // forces a multi-channel interface down to mono channel 0, which loses a mic
+  // plugged into the second input. The system-default path keeps the processing,
+  // where it is usually a laptop mic that benefits from it.
+  const constraints = device
+    ? {
+        audio: {
+          deviceId: { exact: device.deviceId },
+          channelCount: { ideal: CAPTURE_CHANNELS },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      }
+    : { audio: true };
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (error) {
+    // Not every interface honours the raw constraint set. Retry bare rather
+    // than reporting a dead mic for what is only an unsupported constraint.
+    if (!device) throw error;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: device.deviceId } } });
+  }
   const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
-  const processor = context.createScriptProcessor(BUFFER_SIZE, 1, 1);
+  const processor = context.createScriptProcessor(BUFFER_SIZE, CAPTURE_CHANNELS, 1);
   const preRollLimit = Math.max(1, Math.round((context.sampleRate * PRE_ROLL_MS) / 1000));
   let preRollChunks = [];
   let preRollLength = 0;
@@ -227,6 +355,9 @@ async function createRecordingSession(micPreference) {
   let silenceMs = 0;
   let closed = false;
   let peakLevel = 0;
+  let recentPeak = 0;
+  let sawSpeech = false;
+  let liveChannel = 0;
   const startedAt = Date.now();
 
   async function closeGraph() {
@@ -279,13 +410,24 @@ async function createRecordingSession(micPreference) {
   }
 
   processor.onaudioprocess = (event) => {
-    const input = event.inputBuffer.getChannelData(0);
+    const buffer = event.inputBuffer;
+    const channels = [];
+    for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+    const picked = pickLoudestChannel(channels);
+    const input = picked.samples ?? channels[0];
     const copy = new Float32Array(input.length);
     copy.set(input);
 
-    const level = calculateLevel(copy);
-    if (level > peakLevel) peakLevel = level;
+    const level = picked.level;
+    if (level > peakLevel) {
+      peakLevel = level;
+      liveChannel = picked.channel;
+    }
+    // Decaying peak so the chip's meter tracks what is happening now rather
+    // than the loudest thing that ever happened.
+    recentPeak = Math.max(level, recentPeak * 0.85);
     const isSpeech = level >= RMS_THRESHOLD;
+    if (isSpeech) sawSpeech = true;
     const frameMs = estimateDurationMs(copy.length, context.sampleRate);
 
     if (chunkLength === 0) {
@@ -315,9 +457,26 @@ async function createRecordingSession(micPreference) {
   return {
     device,
     deviceLabel: describeMicDevice(device, micPreference),
+    /** Set when a mic preference was configured but matched no device here. */
+    missingPreference: missing ? requested : null,
+    /** Live 0-100 meter reading, so "is it hearing anything" is answerable. */
+    meter() {
+      return levelToMeter(recentPeak);
+    },
+    /** Which input channel is carrying the signal — 1-based for humans. */
+    channel() {
+      return liveChannel + 1;
+    },
     /** True once the capture device has produced nothing for the grace window. */
     isSilent() {
       return shouldWarnNoInput({ elapsedMs: Date.now() - startedAt, peakLevel });
+    },
+    /**
+     * Alive but never loud enough to cut a chunk. Without this the recording
+     * runs forever, uploads nothing, and reports success the whole time.
+     */
+    isTooQuiet() {
+      return shouldWarnTooQuiet({ elapsedMs: Date.now() - startedAt, peakLevel, sawSpeech });
     },
     takeReadyChunk() {
       if (chunkLength === 0) return null;
@@ -367,9 +526,19 @@ export default function whisperTranscribeExtension(api) {
   let typingTimer = null;
   let intendedDraft = null;
   let isGated = false;
-  let noInputActive = false;
   let lastAddedChunks = [];
   let clearedBuffer = "";
+  // Sticky failure text. The packaged desktop has no devtools, so a console
+  // line is not a report — anything the user needs to act on has to survive on
+  // the chip after the recording that produced it has ended. Cleared when the
+  // next recording starts.
+  let lastError = null;
+
+  function reportError(label, detail) {
+    lastError = { label, detail: detail ?? label };
+    console.error(`[whisper-transcribe] ${label}: ${detail ?? label}`);
+    syncAction();
+  }
 
   const action = api.registerComposerAction({
     id: "mic",
@@ -383,38 +552,57 @@ export default function whisperTranscribeExtension(api) {
   function syncAction() {
     const finishing = !recording && pendingUploads > 0;
     const noInput = !!recording && recording.isSilent();
+    const tooQuiet = !!recording && !noInput && recording.isTooQuiet();
+    const missingMic = recording?.missingPreference ?? null;
     let label = null;
     let tone = null;
+    let title = "Start voice transcription";
 
-    if (finishing) {
-      label = "finishing";
-      tone = "busy";
-    } else if (recording) {
+    if (recording) {
+      // The meter rides along on every recording state. "Is it hearing me" is
+      // the first question every microphone failure raises, and a number
+      // answers it without a console.
+      const meter = recording.meter();
+      const micSuffix = ` — mic: ${recording.deviceLabel}, ch ${recording.channel()}, level ${meter}`;
       if (noInput) {
-        // A silent device is otherwise indistinguishable from a working one:
-        // chunks simply never flush and the chip keeps saying "recording".
+        // Digital silence: the device is dead, muted, or not the one recording.
         label = "no input";
         tone = "error";
+        title = `No audio at all from ${recording.deviceLabel}. The device is muted or not capturing.`;
+      } else if (tooQuiet) {
+        // The dead zone. Signal is present but never crosses the speech
+        // threshold, so no chunk is ever cut and nothing is ever uploaded —
+        // previously identical to "recording" and reported forever.
+        label = `too quiet · ${meter}`;
+        tone = "error";
+        title = `${recording.deviceLabel} is producing signal on channel ${recording.channel()} but never loud enough to transcribe (level ${meter}, needs ~${levelToMeter(RMS_THRESHOLD)}). Check the input gain, or whether the mic is on a different input than the one being captured.`;
+      } else if (missingMic) {
+        label = "mic not found";
+        tone = "error";
+        title = `No input matched "${missingMic}" on this client, so the system default is being recorded (${recording.deviceLabel}). A device id saved from another browser or device cannot match here.`;
       } else if (isGated) {
         label = `say "start listening to me"`;
         tone = "gated";
+        title = `Transcription paused (say start listening to me)${micSuffix}`;
       } else {
-        label = "recording";
+        label = `recording · ${meter}`;
         tone = "active";
+        title = `Stop voice recording${micSuffix}`;
       }
+    } else if (finishing) {
+      label = "finishing";
+      tone = "busy";
+      title = "Finishing voice transcription";
+    } else if (lastError) {
+      // Survives the recording that produced it, so a failed upload is still
+      // on screen when the user looks down.
+      label = lastError.label;
+      tone = "error";
+      title = `${lastError.detail} — click the mic to try again.`;
     }
 
-    const micSuffix = recording ? ` — mic: ${recording.deviceLabel}` : "";
     action.update({
-      title: finishing
-        ? "Finishing voice transcription"
-        : recording
-          ? (noInput
-              ? `No audio from ${recording.deviceLabel} — check the micDevice setting`
-              : isGated
-                ? `Transcription paused (say start listening to me)${micSuffix}`
-                : `Stop voice recording${micSuffix}`)
-          : "Start voice transcription",
+      title,
       disabled: finishing,
       status: label ? { label, tone } : null,
     });
@@ -566,9 +754,11 @@ export default function whisperTranscribeExtension(api) {
     body.set("file", file);
     if (settings.model) body.set("model", String(settings.model));
     if (settings.language) body.set("language", String(settings.language));
-
-    const headers = {};
-    if (settings.whisperUrl) headers["X-Whisper-Url"] = settings.whisperUrl;
+    // A form field, not a custom header. The desktop shell is a different origin
+    // from the backend, so a custom header forces a CORS preflight — and when
+    // that preflight does not allow the header the browser drops the request
+    // before it is sent, logging nothing on either side.
+    if (settings.whisperUrl) body.set("whisperUrl", String(settings.whisperUrl));
 
     // The API key is never held here — the harness resolves whisperSecretName
     // from its own secret store, so it needs to know which settings scope to
@@ -579,14 +769,27 @@ export default function whisperTranscribeExtension(api) {
     if (snapshot?.userProfile) query.set("userProfile", snapshot.userProfile);
     const suffix = query.toString();
 
-    const response = await api.request(`/api/whisper/transcribe${suffix ? `?${suffix}` : ""}`, {
-      method: "POST",
-      headers,
-      body,
-    });
-    const payload = await response.json().catch(() => null);
+    const path = `/api/whisper/transcribe${suffix ? `?${suffix}` : ""}`;
+    let response;
+    try {
+      response = await api.request(path, { method: "POST", body });
+    } catch (cause) {
+      // The request never left the browser: CORS, offline, or the backend
+      // moved. Distinguished from an HTTP error because there is no status —
+      // and because nothing is logged server-side, so the chip is the only
+      // place this can ever be seen.
+      throw failure("no connection", `the request never reached the harness (${cause?.message ?? cause})`);
+    }
+
+    // Read as text first: an error response is not always JSON, and .json()
+    // throwing would have discarded the status along with the body.
+    const raw = await response.text().catch(() => "");
+    let payload = null;
+    try { payload = raw ? JSON.parse(raw) : null; } catch { /* non-JSON body */ }
+
     if (!response.ok) {
-      throw new Error(payload?.details || payload?.error || "transcription failed");
+      const detail = payload?.details || payload?.error || raw.slice(0, 300) || response.statusText || "no response body";
+      throw failure(`whisper ${response.status}`, detail);
     }
 
     const text = normalizeTranscript(payload?.text);
@@ -605,9 +808,11 @@ export default function whisperTranscribeExtension(api) {
 
     task
       .catch((error) => {
-        console.error("[whisper-transcribe] transcription failed", {
-          message: error instanceof Error ? error.message : String(error),
-        });
+        // Previously a console-only line, which in the packaged desktop meant
+        // an upstream 502 — a wrong model, an unreachable endpoint, a rejected
+        // key — was completely invisible.
+        const message = error instanceof Error ? error.message : String(error);
+        reportError(error?.label ?? "transcribe failed", message);
       })
       .finally(() => {
         pendingUploads = Math.max(0, pendingUploads - 1);
@@ -619,13 +824,9 @@ export default function whisperTranscribeExtension(api) {
 
   function flushReadyChunk() {
     if (!recording || disposed) return;
-    // isSilent() latches off for good once any signal arrives, so this flips at
-    // most twice per recording — cheap enough to poll on the chunk timer.
-    const silent = recording.isSilent();
-    if (silent !== noInputActive) {
-      noInputActive = silent;
-      syncAction();
-    }
+    // The chip carries a live meter now, so it re-syncs on every tick rather
+    // than only when the silence flag flips. 4Hz while recording only.
+    syncAction();
     const blob = recording.takeReadyChunk();
     if (!blob || blob.size === 0) return;
     queueTranscription(blob, activeComposer);
@@ -645,14 +846,11 @@ export default function whisperTranscribeExtension(api) {
           queueTranscription(wavBlob, activeComposer);
         }
       } catch (error) {
-        console.error("[whisper-transcribe] recording failed", {
-          message: error instanceof Error ? error.message : String(error),
-        });
+        reportError("recording failed", error instanceof Error ? error.message : String(error));
       } finally {
         await uploadChain;
         activeComposer = null;
         isGated = false;
-        noInputActive = false;
         syncAction();
       }
       return;
@@ -661,22 +859,20 @@ export default function whisperTranscribeExtension(api) {
     if (!composer) return;
 
     try {
+      lastError = null;
       recording = await createRecordingSession(settings.micDevice);
       activeComposer = composer;
       chunkTimer = setInterval(flushReadyChunk, 250);
       isGated = false;
-      noInputActive = false;
       syncAction();
       // Holding a stream unlocks device labels — republish so the settings
       // dropdown shows names instead of opaque ids from here on.
       void publishMicOptions();
     } catch (error) {
-      console.error("[whisper-transcribe] recording failed", {
-        message: error instanceof Error ? error.message : String(error),
-      });
       recording = null;
       activeComposer = null;
-      syncAction();
+      const described = describeCaptureError(error);
+      reportError(described.label, described.detail);
     }
   }
 
@@ -695,8 +891,16 @@ export default function whisperTranscribeExtension(api) {
     if (!micSetting || disposed) return;
     const inputs = await enumerateAudioInputs().catch(() => []);
     micSetting.update({
+      // Store the LABEL, not the deviceId. A deviceId is scoped to the origin
+      // that enumerated it, and this setting lives in one user profile shared
+      // by every client — the desktop shell at http://tauri.localhost and any
+      // browser reaching the harness over the network are different origins,
+      // so an id chosen in one can never resolve in the other. Labels are
+      // stable device names and matchAudioInputDevice already resolves them by
+      // substring, with exact-id matching tried first so ids saved by earlier
+      // versions keep working where they were saved.
       options: inputs.map((device) => ({
-        value: device.deviceId,
+        value: device.label || device.deviceId,
         // Labels stay blank until the page has held a mic stream once; the id
         // is still selectable so the dropdown is never empty of real choices.
         label: device.label || device.deviceId,

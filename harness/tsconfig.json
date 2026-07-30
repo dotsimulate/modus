@@ -29,6 +29,7 @@
   "include": [
     "./*.ts",
     "./providers/**/*.ts",
+    "./scripts/**/*.ts",
     "./actions/**/*.ts",
     "./moves/**/*.ts"
   ],

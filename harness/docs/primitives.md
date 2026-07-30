@@ -33,8 +33,13 @@ subscribers simultaneously.
 from a specific message in the parent. Events are copied up to the branch
 point.
 
-**Steer**: `POST /api/sessions/:id/steer` injects a message mid-turn at the next
-tool boundary (claude-code only). Falls back to queue if session is not running.
+**Steer**: `POST /api/sessions/:id/steer` injects a message into a turn already
+running, delivered at the next tool boundary. Accepts the same `moves` bindings
+as an ordinary send. Returns `{ ok, mode, dispatchId? }` — `mode: "steer"` means
+it reached the running turn, `mode: "queued"` means the provider could not
+deliver mid-turn (or the turn had already ended) and it is waiting, cancellable
+via `dispatchId`. Supported by `claude-code`, `claude-code-pty`, and the PI
+providers; see `messageDelivery` in provider capabilities.
 
 **UI state**: `GET/PATCH /api/sessions/:id/ui-state` — per-session JSON blob for
 panel widths, open/closed state, etc. Persisted to `ui_state` column.

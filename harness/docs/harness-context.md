@@ -1,7 +1,7 @@
 ---
 title: Harness Context
-lastUpdated: 2026-07-26
-covers: harness/harness-context.ts harness/wake-scheduler.ts harness/move-runner.ts harness/action-runner.ts harness/modus-mcp.ts
+lastUpdated: 2026-07-29
+covers: harness/harness-context.ts harness/wake-scheduler.ts harness/move-runner.ts harness/action-runner.ts harness/modus-mcp.ts harness/model-oneshot.ts harness/providers/pi-model.ts
 ---
 
 # Harness Context
@@ -58,8 +58,8 @@ untouched:
 | Surface | Adapter behavior |
 |---|---|
 | `ctx.harness` (`HarnessBridge`) in moves | Same method names/shapes; delegates to `ctx.sessions/actions/channels/moves`. `notify` now reaches a real channel (was a console.log stub). |
-| `MoveApiContext` (move API handlers) | Keeps its historic fields (session-inject `notify`, `sendMessage`, state, db, …) **plus** new orchestration parity: `createSession`, `triggerAction`, `activateMove`, `watchSessionTurns`, `channels`. |
-| `ActionContext` (actions) | Keeps all existing fields **plus** `ctx.sessions` / `ctx.channels`. Actions gain `trust`/`capabilities` (default: harness origin → builtin, project origin → reviewed). |
+| `MoveApiContext` (move API handlers) | Keeps its historic fields (session-inject `notify`, `sendMessage`, state, db, …) **plus** orchestration members sourced from this context. It is *not* a superset of `MoveContext` — there is no `run`/shell on handlers. Exact member list, generated from source: [`generated/authoring-contracts`](./generated/authoring-contracts.md). |
+| `ActionContext` (actions) | Keeps all existing fields **plus** `ctx.sessions` / `ctx.channels` / `ctx.model`. Actions gain `trust`/`capabilities` (default: harness origin → builtin, project origin → reviewed). |
 | `.modus/api-handlers/*.ts` | Dual signature, detected by **export key** (never arity): `export const handlers = {…}` or named fns → old `(sessionId, data)`; `export const ops = {…}` → new `(ctx, data)` with the full Harness Context. |
 
 Plugin-origin move/action adapters also expose `pluginSettings`. Code without a

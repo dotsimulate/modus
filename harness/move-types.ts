@@ -564,8 +564,10 @@ export interface MoveApiContext {
   /** Send a message to any existing session in this project. */
   sendMessage: (sessionId: string, message: string) => Promise<void>;
 
-  // ── Orchestration parity (sourced from the Harness Context — closes the
-  //    move-handler asymmetry: handlers can now do what gather()/onSubmit() could) ──
+  // ── Orchestration (sourced from the Harness Context). Not full parity with
+  //    MoveContext: there is no `run`/shell here, so an api-only move cannot
+  //    shell out through the capability-gated path. See
+  //    docs/generated/authoring-contracts.md for the per-surface member list. ──
 
   /** Spawn a new session. */
   createSession: (opts: {

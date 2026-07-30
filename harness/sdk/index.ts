@@ -28,6 +28,7 @@ export type {
   CommitAttributionReason,
   CreateSessionOpts,
   SendMessageOpts,
+  SteerResult,
   TurnContent,
   TurnContentBlock,
   SessionHistorySnapshot,
@@ -185,4 +186,4 @@ export type {
   PromptCache,
 } from "./types";
 
-export { nextMsgId } from "./types";
+export { nextMsgId, mimeToPreviewKind } from "./types";

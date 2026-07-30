@@ -12,6 +12,8 @@ import { getAllTools, getToolGroups, isAntigravityProvider, isClaudeCodeProvider
 import { useProfiles } from "../providers/ProfileContext";
 import type { Profile, SessionStatus, Message } from "../../../sdk/index";
 import { modus } from "../modusClient";
+import { buildSessionLink } from "../sessionLink";
+import { isTauriRuntime } from "../desktopBridge";
 
 type Props = {
   profileName?: string;
@@ -123,10 +125,23 @@ export function ConfigBar({
   onTogglePin,
 }: Props) {
   const isPinned = sessionTags?.includes("pinned") ?? false;
-  const { providerCapabilities } = useProfiles();
+  const { providerCapabilities, activeUserProfile } = useProfiles();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
+
+  const copySessionLink = useCallback(async () => {
+    if (!sessionId) return;
+    await navigator.clipboard.writeText(buildSessionLink({
+      sessionId,
+      project: activeUserProfile,
+      desktop: isTauriRuntime(),
+      base: `${window.location.origin}${window.location.pathname}`,
+    }));
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }, [sessionId, activeUserProfile]);
 
   const copySessionMetadata = useCallback(async () => {
     if (!sessionId) return;
@@ -293,6 +308,24 @@ export function ConfigBar({
             <span className="config-bar-permission">{claudePermissionMode}</span>
           )}
         </div>
+        {sessionId && (
+          <button
+            className={`config-bar-copy-meta${linkCopied ? " copied" : ""}`}
+            onClick={(e) => { e.stopPropagation(); copySessionLink(); }}
+            title={isTauriRuntime() ? "Copy link to this session (modus://)" : "Copy link to this session"}
+          >
+            {linkCopied ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M6.5 9.5a2.5 2.5 0 003.6.1l2.2-2.2a2.5 2.5 0 00-3.5-3.5l-1 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                <path d="M9.5 6.5a2.5 2.5 0 00-3.6-.1l-2.2 2.2a2.5 2.5 0 003.5 3.5l1-1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            )}
+          </button>
+        )}
         {sessionId && (
           <button
             className={`config-bar-copy-meta${copied ? " copied" : ""}`}

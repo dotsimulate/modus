@@ -1,3 +1,10 @@
+---
+title: Checkpoint, Rewind, and Branch Safety Decisions
+lastUpdated: 2026-07-11
+audience: dev
+covers: harness/checkpoints.ts harness/checkpoint-maintenance.ts
+---
+
 # Checkpoint, Rewind, and Branch Safety Decisions
 
 Date: 2026-07-11

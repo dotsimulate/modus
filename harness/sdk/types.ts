@@ -80,6 +80,18 @@ export type ToolCall = {
   input: Record<string, unknown>;
   status: "running" | "completed" | "error";
   result?: string;
+  /**
+   * Length of the full result text when it exceeded the client's store limit.
+   * Absent when nothing was dropped, so its presence is the signal that the
+   * stored `result` is incomplete.
+   */
+  resultFullLength?: number;
+  /**
+   * Images returned by the tool, lifted out of the result content so they
+   * render as pictures. Without this they were stringified into `result` as
+   * base64 and truncated mid-payload.
+   */
+  images?: Attachment[];
   /** Epoch ms when the tool call started. */
   startedAt: number;
   /** Elapsed ms for completed calls. */
@@ -448,6 +460,17 @@ export type SendMessageOpts = {
 };
 
 /**
+ * Outcome of a steer. `mode` is the part that matters: "steer" reached the turn
+ * already running, "queued" is waiting for that turn to end (cancel it with
+ * `dispatchId`), "none" means there was no live session.
+ */
+export type SteerResult = {
+  ok: boolean;
+  mode: "steer" | "queued" | "none";
+  dispatchId?: string;
+};
+
+/**
  * A single turn's content extracted from the event stream, used for polling-based clients
  * that don't subscribe to SSE but need turn-by-turn content.
  */
@@ -779,6 +802,10 @@ export type ProviderCapabilities = {
    *  read `<cwd>/.claude/skills/`, PI reads `.pi/skills/`). Others read none, and
    *  reach Modus skills through the skill tools instead. */
   readsNativeSkills?: boolean;
+  /** Where a message sent *during* a running turn lands. "steer" means the
+   *  provider injects it at the next tool boundary; "next-turn" means it can
+   *  only be queued until the turn ends. */
+  messageDelivery?: "steer" | "next-turn";
   /** Events the provider emits that aren't tool calls (e.g. "thinking", "git_event"). */
   nonToolSignals: string[];
   permissionModel: {
@@ -1434,6 +1461,34 @@ export type PreviewKind =
   | "pdf"
   | "text"
   | "binary";
+
+/**
+ * Classify a MIME type into the same vocabulary the preview surfaces use.
+ *
+ * Two surfaces render media and they disagreed: the preview shelf drove off an
+ * extension table that knows PDFs and markdown, while inline session artifacts
+ * matched `image/`, `audio/`, `video/` by prefix and `text/plain` exactly — so
+ * a PDF or markdown artifact fell through to a bare download link. This is the
+ * single classifier both use.
+ *
+ * Parameters are stripped, because stored MIME types carry them
+ * (`text/markdown; charset=utf-8`) and an exact comparison silently misses.
+ */
+export function mimeToPreviewKind(mime: string): PreviewKind {
+  const base = String(mime ?? "").split(";")[0]!.trim().toLowerCase();
+  if (!base) return "binary";
+  if (base === "inode/directory") return "directory";
+  if (base === "application/pdf") return "pdf";
+  if (base === "text/html" || base === "application/xhtml+xml") return "html";
+  if (base.startsWith("image/")) return "image";
+  if (base.startsWith("audio/")) return "audio";
+  if (base.startsWith("video/")) return "video";
+  if (base.startsWith("text/")) return "text";
+  // Structured text formats that do not live under text/*.
+  if (base === "application/json" || base === "application/xml") return "text";
+  if (base.endsWith("+json") || base.endsWith("+xml")) return "text";
+  return "binary";
+}
 
 export type PreviewManifest = {
   id: string;

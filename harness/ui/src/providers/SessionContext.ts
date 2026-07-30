@@ -9,16 +9,26 @@ export type QueuedMessage = {
   /** True when the message has already been committed to the backend queue (survives navigation) */
   serverQueued?: boolean;
   dispatchId?: string;
+  /** Set when the user asked to interject but the provider could only queue —
+   *  lets the strip say so rather than silently behaving like an ordinary send. */
+  steerDeclined?: boolean;
 };
+
+/** How a send should be delivered when a turn is already running.
+ *  "queue" waits for the turn to end; "steer" asks the provider to inject it
+ *  now, falling back to the queue where that is not supported. */
+export type DeliverMode = "queue" | "steer";
 
 type SessionContextValue = {
   activeSession: Session | null;
   serverSessions: SessionInfo[];
   allServerSessions: SessionInfo[];
+  /** False until the first session-index fetch resolves. */
+  sessionsLoaded: boolean;
   sessionProjects: SessionProjectSummary[];
   sessionIndexConnection: SessionIndexConnectionState;
   handleInputChange: (text: string) => void;
-  send: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => Promise<void>;
+  send: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode) => Promise<void>;
   stop: () => Promise<void>;
   stopTask: (taskId: string) => Promise<void>;
   newSession: (profileOverride?: string) => Promise<string | null>;

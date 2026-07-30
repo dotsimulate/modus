@@ -1,10 +1,13 @@
 import { memo, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { ThinkingBlock } from "./ThinkingBlock";
 import type { Message, ToolCall, ToolCallDisplayMode } from "../../../sdk/index";
+import { mimeToPreviewKind } from "../../../sdk/index";
 import { tokenParam } from "../modusClient";
+import { backendUrl } from "../backendTarget";
 import { ToolCallView } from "./ToolCall";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
+import { AttachmentImage } from "./AttachmentImage";
 import { StreamingCursor } from "./StreamingCursor";
 import { formatProviderTokenUsage } from "./providerStats";
 import { CopyMessageButton } from "./CopyMessageButton";
@@ -15,67 +18,21 @@ import { isCodexProvider } from "../tools";
 import { parseMessageText, userAuthoredMessageText, type MessageTextPart } from "../move-context";
 import { MoveContextDisclosure } from "./MoveContextDisclosure";
 
+/**
+ * Absolute URL for a session artifact.
+ *
+ * Artifact urls are stored root-relative (`/api/sessions/.../artifacts/3`), which
+ * only resolves when the document is served by the harness. The desktop shell is
+ * served from tauri.localhost and talks to the backend on 127.0.0.1, so a
+ * relative url there hits Tauri's asset server and comes back as the SPA's
+ * index.html — a broken image, or "bad content-type: text/html" from the audio
+ * player. backendUrl() is a no-op for same-origin browsers, where apiBase is "".
+ */
 function artifactSrc(url: string): string {
+  const absolute = backendUrl(url);
   const tp = tokenParam();
-  if (!tp) return url;
-  return `${url}?${tp}`;
-}
-
-function base64ToBlobUrl(data: string, mediaType: string): string {
-  const binary = atob(data);
-  const chunkSize = 8192;
-  const chunks: ArrayBuffer[] = [];
-  for (let offset = 0; offset < binary.length; offset += chunkSize) {
-    const slice = binary.slice(offset, offset + chunkSize);
-    const bytes = new Uint8Array(slice.length);
-    for (let i = 0; i < slice.length; i++) {
-      bytes[i] = slice.charCodeAt(i);
-    }
-    chunks.push(bytes.buffer);
-  }
-  return URL.createObjectURL(new Blob(chunks, { type: mediaType }));
-}
-
-function AttachmentImage({
-  mediaType,
-  data,
-  alt,
-  onOpen,
-}: {
-  mediaType: string;
-  data: string;
-  alt: string;
-  onOpen: (src: string, alt: string) => void;
-}) {
-  const [src, setSrc] = useState<string | null>(null);
-
-  useEffect(() => {
-    let url: string | null = null;
-    try {
-      url = base64ToBlobUrl(data, mediaType);
-      setSrc(url);
-    } catch {
-      setSrc(null);
-    }
-    return () => {
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [data, mediaType]);
-
-  if (!src) {
-    return <div className="message-image message-image--unavailable">{alt}</div>;
-  }
-
-  return (
-    <img
-      className="message-image"
-      src={src}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      onClick={() => onOpen(src, alt)}
-    />
-  );
+  if (!tp) return absolute;
+  return `${absolute}${absolute.includes("?") ? "&" : "?"}${tp}`;
 }
 
 /** Count all tool calls recursively, including sub-agent nested tools */
@@ -167,7 +124,12 @@ function renderArtifact(
   artifact: NonNullable<Message["artifacts"]>[number],
   openImage: (src: string, alt: string) => void,
 ) {
-  if (artifact.mime.startsWith("image/")) {
+  // One classifier shared with the preview shelf, so an artifact renders the
+  // same way wherever it surfaces. Prefix matching here used to miss PDFs and
+  // any text type other than exactly "text/plain".
+  const kind = mimeToPreviewKind(artifact.mime);
+
+  if (kind === "image") {
     return (
       <img
         key={artifact.id}
@@ -178,10 +140,10 @@ function renderArtifact(
       />
     );
   }
-  if (artifact.mime.startsWith("audio/")) {
+  if (kind === "audio") {
     return <AudioArtifact key={artifact.id} artifact={artifact} autoPlay />;
   }
-  if (artifact.mime.startsWith("video/")) {
+  if (kind === "video") {
     return (
       <div key={artifact.id} className="message-media-card">
         <div className="message-media-label">{artifact.name}</div>
@@ -189,14 +151,40 @@ function renderArtifact(
       </div>
     );
   }
-  if (artifact.mime === "text/plain" && artifact.previewText) {
+  if (kind === "pdf") {
+    return (
+      <div key={artifact.id} className="message-media-card">
+        <div className="message-media-label">{artifact.name}</div>
+        <iframe
+          className="message-pdf"
+          src={artifactSrc(artifact.url)}
+          title={artifact.name}
+          // A PDF is untrusted document content; keep it from acquiring an
+          // origin or navigating the app that embedded it.
+          sandbox=""
+        />
+        {/* The embedded viewer depends on the webview's PDF support, which
+            differs between the desktop shell and a browser. Keep the link so
+            this can never be worse than the plain download it replaced. */}
+        <a
+          className="message-artifact-link"
+          href={artifactSrc(artifact.url)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          open artifact
+        </a>
+      </div>
+    );
+  }
+  if (kind === "text" && artifact.previewText) {
     return (
       <div key={artifact.id} className="message-media-card">
         <div className="message-media-label">{artifact.name}</div>
         <div className="message-artifact-text">{artifact.previewText}</div>
         <a
           className="message-artifact-link"
-          href={artifact.url}
+          href={artifactSrc(artifact.url)}
           target="_blank"
           rel="noreferrer"
         >
@@ -209,7 +197,7 @@ function renderArtifact(
     <a
       key={artifact.id}
       className="message-artifact-link"
-      href={artifact.url}
+      href={artifactSrc(artifact.url)}
       target="_blank"
       rel="noreferrer"
     >

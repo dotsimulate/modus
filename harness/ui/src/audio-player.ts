@@ -7,6 +7,7 @@
  */
 
 import { tokenParam } from "./modusClient";
+import { backendUrl } from "./backendTarget";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -152,11 +153,20 @@ function ensureElement(): HTMLAudioElement {
   return el;
 }
 
-function resolveUrl(url: string): string {
+/**
+ * Absolute, authenticated URL for an artifact.
+ *
+ * Artifact urls are root-relative, so under the desktop shell they resolve
+ * against tauri.localhost rather than the backend and return the SPA's
+ * index.html — which is what surfaced as "bad content-type: text/html" instead
+ * of playback. backendUrl() is a no-op when apiBase is "" (same-origin browser).
+ */
+export function resolveUrl(url: string): string {
   if (url.startsWith("data:") || url.startsWith("blob:")) return url;
+  const absolute = backendUrl(url);
   const tp = tokenParam();
-  if (!tp) return url;
-  return url.includes("?") ? `${url}&${tp}` : `${url}?${tp}`;
+  if (!tp) return absolute;
+  return absolute.includes("?") ? `${absolute}&${tp}` : `${absolute}?${tp}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,19 +177,6 @@ function handlePlayError(err: unknown) {
   const msg = err instanceof Error ? err.message : String(err);
   console.error("[audio-player] play failed:", msg);
   update({ playing: false, error: msg });
-}
-
-/** Pre-flight: fetch the URL with a HEAD request to check for auth/network errors. */
-export async function preflight(src: string): Promise<{ error: string } | { contentType: string }> {
-  try {
-    const res = await fetch(src, { method: "HEAD" });
-    if (!res.ok) return { error: `HTTP ${res.status} ${res.statusText}` };
-    const ct = res.headers.get("content-type") || "";
-    if (!ct.startsWith("audio/")) return { error: `bad content-type: ${ct}` };
-    return { contentType: ct };
-  } catch (e) {
-    return { error: `network: ${e instanceof Error ? e.message : e}` };
-  }
 }
 
 /** Revoke the previous blob URL if any. */
@@ -213,6 +210,10 @@ export function play(id: number, url: string, sessionId?: string) {
       return res.blob();
     })
     .then((blob) => {
+      // The element's error handler reports this back. It was read there and
+      // never written, so every decode failure said "(type: unknown)" — the one
+      // detail that identifies a wrong or unsupported format.
+      el.dataset.contentType = blob.type || "unknown";
       _blobUrl = URL.createObjectURL(blob);
       el.src = _blobUrl;
       return el.play();
@@ -250,6 +251,9 @@ export function stop() {
   _el.pause();
   _el.removeAttribute("src");
   _el.load();
+  // The `ended` handler revokes; stopping by hand has to as well, or the blob
+  // stays resident for the life of the document.
+  revokeBlobUrl();
   update({ activeId: null, src: null, sessionId: null, playing: false, currentTime: 0, duration: 0, error: null });
 }
 

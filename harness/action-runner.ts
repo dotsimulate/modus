@@ -87,6 +87,29 @@ function mimeToExtension(mime: string): string {
   return MIME_EXTENSIONS[mime] ?? `.${mime.split("/").pop() ?? "bin"}`;
 }
 
+/**
+ * Confine an artifact filename to the run's own artifact directory.
+ *
+ * Actions are trusted local code, so this is not a sandbox — it is a guard
+ * against a filename that came from somewhere less deliberate (a model-authored
+ * name, a remote response, a path echoed from user input). It matters because
+ * whatever lands here is then served over HTTP by
+ * GET /api/sessions/:id/artifacts/:artifactId, so an escaping path turns into a
+ * readable URL. Strips directory components and rejects the traversal names
+ * outright rather than rewriting them into something that merely looks safe.
+ */
+export function safeArtifactFilename(filename: string): string {
+  const base = String(filename ?? "")
+    .replace(/[/\\]+/g, "/")
+    .split("/")
+    .pop() ?? "";
+  const cleaned = base.replace(/\0/g, "").trim();
+  if (!cleaned || cleaned === "." || cleaned === "..") {
+    throw new Error(`invalid artifact filename: ${JSON.stringify(filename)}`);
+  }
+  return cleaned;
+}
+
 // ── State ──
 
 const actionStates = new Map<string, ActionState>();
@@ -858,7 +881,7 @@ async function fireAction(
           return runDir;
         },
         artifactPath(filename: string) {
-          return join(ctx.artifactDir(), filename);
+          return join(ctx.artifactDir(), safeArtifactFilename(filename));
         },
         artifact(artifactName: string) {
           const spec = cfg.artifacts?.find(a => a.name === artifactName);

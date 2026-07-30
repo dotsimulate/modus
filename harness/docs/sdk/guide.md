@@ -1,3 +1,9 @@
+---
+title: MO SDK Guide
+audience: dev
+covers: harness/sdk/*.ts
+---
+
 # MO SDK Guide
 
 The MO SDK (`harness/sdk/`) is a TypeScript client for the MO harness API. It wraps

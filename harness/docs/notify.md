@@ -1,7 +1,7 @@
 ---
 title: Notify & Channels
 lastUpdated: 2026-07-07
-covers: harness/notify.ts harness/profiles.ts (NotificationChannel)
+covers: harness/notify.ts harness/profiles.ts harness/profile-schemas.ts
 ---
 
 # Notify & Channels
@@ -40,6 +40,35 @@ A channel is a **named sink that accepts content**, defined in `_global.json` un
   }
 }
 ```
+
+### Authenticated and non-default-verb webhooks
+
+A webhook channel accepts `method` and `headers` as well, so a token-protected
+sink is reachable through the gated primitive — you do not need to `fetch` from a
+move's `context.ts`, which would bypass the `notify` capability gate entirely:
+
+```json
+{
+  "notificationChannels": {
+    "relay": {
+      "type": "webhook",
+      "url": "http://127.0.0.1:8390/api/approve",
+      "method": "POST",
+      "headers": { "Authorization": "Bearer ${RELAY_TOKEN}" }
+    }
+  }
+}
+```
+
+`method` defaults to `POST`. `headers` is merged **over** a default
+`Content-Type: application/json`, so you can replace the content type but do not
+need to set it.
+
+**Header values are literal.** `sendToChannel` passes them to `fetch` unchanged;
+there is no `${VAR}` expansion and no secrets-file indirection for channel config,
+so a bearer token here is stored in plaintext in `_global.json`. Prefer a
+project-local `_global.json` you keep out of version control, and scope the token
+to the one sink it needs.
 
 ### Webhook body shaping (backwards-compatible)
 

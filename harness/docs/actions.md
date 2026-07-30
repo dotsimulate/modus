@@ -26,7 +26,7 @@ context.ts    — ActionModule: gather(), verify?(), afterRun?() (required)
 | Type | Fires when | Key fields |
 |------|-----------|------------|
 | `interval` | Timer elapsed | `every` ("30s", "5m", "1h"), `from` ("completion"/"start"), `activeHours` |
-| `webhook` | HTTP POST to `/api/actions/:name/hook` | `token` (auto-generated), `sessionKey?` |
+| `webhook` | HTTP POST to `/api/actions/:name/hook?token=<token>` | `token` (auto-generated, passed as a **query param**), `sessionKey?` |
 | `manual` | API call to `/api/actions/:name/trigger` | — |
 | `action` | Another action completes | `source` (action name), `condition` ("any"/"done"/"error") |
 | `session` | Session event fires | `on` (role + round + at, or "archived"/"deleted"), `excludeTags` — payload includes `assistantSeq` + `assistantMessageUuid` on assistant rounds |
@@ -77,6 +77,52 @@ to the spawned session by name. Skills bundled inside an activated move come
 along transitively, so an action that attaches a move also gets that move's
 skills. Names that resolve to nothing are logged and skipped rather than failing
 the run. See [Skills](./skills.md).
+
+### Calling a webhook action from outside Modus
+
+The trigger's `token` is passed as a **query parameter**, not a header and not a
+body field:
+
+```bash
+curl -X POST "http://127.0.0.1:<port>/api/actions/<name>/hook?token=<token>" \
+  -H 'Content-Type: application/json' \
+  -d '{"any":"payload"}'
+```
+
+- **No harness credential is needed.** The hook path is exempt from the harness
+  auth middleware (it is matched by `/^\/api\/actions\/[^/]+\/hook$/` and allowed
+  through before any token/PIN check), because the action's own `token` *is* the
+  authentication. Treat that token as a secret with the authority to start an
+  agent run.
+- A bad token or unknown action returns `400`. A malformed JSON body is coerced
+  to `{}` rather than rejected.
+- On success the response is `{ ok: true }`, plus `sessionId` when the run
+  spawned a session and `continued: true` when it routed into an existing one.
+
+**Finding the port.** There is no fixed address under the desktop app: the shell
+launches the harness with `HARNESS_PORT=0`, so the OS assigns a free port on
+every start and any URL you hardcode dies at the next restart. The desktop shell
+writes the live address to `<MODUS_HOME>/runtime/desktop-supervisor.json`
+(written to a `.json.tmp` and renamed into place) with this shape:
+
+```json
+{ "mode": "managed-local", "desktopPid": 1234, "backendPid": 5678, "port": 51234,
+  "instanceId": null, "version": "0.1.0", "apiBase": "http://127.0.0.1:51234",
+  "uiConnected": true, "tailscale": null }
+```
+
+`mode` is one of `managed-local` (the shell owns the backend), `external-local`,
+or `remote`; only `managed-local` carries a `backendPid`.
+
+Re-read it per call rather than caching `apiBase`. The file is **deleted on
+shutdown**, so its absence means "not running". Note this is an internal record
+that happens to be useful for local discovery — it is not a versioned contract,
+so pin nothing to fields beyond `port`/`apiBase` without checking.
+
+`apiBase` is loopback (`127.0.0.1`), so a non-local caller — a GitHub webhook,
+say — cannot reach a hook endpoint without a tunnel or a Tailscale address.
+Running `modus start` instead of the desktop app gives you a stable configured
+port.
 
 **Webhook session routing**: webhook actions can declare `sessionKey`. When the
 incoming payload contains that field, the runner looks for an existing session

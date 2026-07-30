@@ -17,7 +17,7 @@ startTurn(ctx)           — kick off a turn, emit events via ctx
 sendMessage(ctx, content) — follow-up message to idle/running session
 abort(session)           — stop current turn
 stopTask?(session, id)   — stop a sub-task (Claude SDK only)
-steerMessage?(ctx, content) — inject mid-turn at next tool boundary (Claude SDK only)
+steerMessage?(ctx, content) — inject into a turn already running (see Steering)
                               returns true if injected, false to fall back to queue
 updateConfig?(session, config) — mutate config mid-session
 switchProfile?(session, ctx, contextMode) — swap profile mid-session
@@ -45,15 +45,55 @@ Passed to providers by session-manager. Contains:
 | Name | Family | Implementation | Notes |
 |------|--------|---------------|-------|
 | `claude-code` | claude-code | Claude Agent SDK subprocess | Full MCP, live per-tool UI permissions, task stop, steer |
-| `claude-code-pty` | claude-code | Persistent Claude Code CLI process | Full MCP, runtime-native permissions, warm PTY across turns |
+| `claude-code-pty` | claude-code | Persistent Claude Code CLI process | Full MCP, runtime-native permissions, warm PTY across turns, steer |
 | `codex` | codex | OpenAI Codex CLI | Full MCP, event-derived tools, Codex sandbox/approval settings |
 | `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP via `.cursor/mcp.json`, event-derived tools, `--approve-mcps` |
 | `antigravity` | antigravity | Google Antigravity CLI (`agy`) | Native UUID resume, JSON Hook tool events/approvals, full MCP transport bridge |
 | `grok-build` | grok-build | xAI Grok Build CLI (`grok agent stdio`) | Persistent ACP session, full MCP, streaming tool/thought events, live Modus approvals |
 | `opencode` | opencode | OpenCode CLI subprocess | Full MCP, event-derived tools, `bunx opencode-ai` fallback |
-| `litellm` | pi-agent | LiteLLM proxy | PI agent loop, MCP via mcp-bridge |
-| `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge |
-| `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge |
+| `litellm` | pi-agent | LiteLLM proxy | PI agent loop, MCP via mcp-bridge, steer |
+| `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge, steer |
+| `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge, steer |
+
+## Steering (mid-turn message delivery)
+
+A message sent while a turn is running lands in one of two places, and which one
+is a property of the provider:
+
+- **`messageDelivery: "steer"`** — the harness injects it into the turn in
+  flight and the agent reads it at the next tool boundary.
+- **`messageDelivery: "next-turn"`** — there is no injection point, so it waits
+  in `session.pendingDispatch` and is delivered when the turn ends.
+
+The field is derived centrally in `registry.ts` from `STEERABLE_PROVIDERS` in
+`providers/provider-names.ts` — the same pattern as `readsNativeSkills` — rather
+than declared per provider, so clients can ask `/api/providers` which will happen
+*before* sending. `providers/steering.test.ts` fails if that list and the actual
+`steerMessage` implementations drift apart.
+
+Three providers can steer, each through a live input channel that stays open
+after the turn starts:
+
+| Provider | Channel |
+|----------|---------|
+| `claude-code` | the Agent SDK's streaming-input iterator |
+| `claude-code-pty` | stdin, kept open by `--input-format stream-json` |
+| `litellm` / `ollama` / `openrouter` | `AgentSession.sendUserMessage(content, { deliverAs: "steer" })` |
+
+Every other provider runs one prompt per turn with no way in.
+
+`steerMessage()` may still return `false` at the moment of the call — an
+interrupted PTY generation is unwinding, or the turn ended in between — so the
+caller always has a queue fallback. `session-manager.steerMessage()` reports
+which happened as `mode: "steer" | "queued"`; a `"queued"` result carries a
+`dispatchId` that cancels it. Treating those two as the same outcome is what
+makes a UI lie about whether the agent has the message.
+
+Steering takes the same per-message `moves` bindings as an ordinary send, so a
+move can be attached to an interjection. The gathers run once, before injection;
+if the provider then declines, the already-gathered text is queued rather than
+re-gathered, because activation has side effects (persistent registration, API
+token minting).
 
 ## Model selection
 

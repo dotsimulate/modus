@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
+mod deep_link;
 mod job;
 mod tailscale;
 mod updates;
@@ -16,6 +17,7 @@ use std::{
 };
 
 use backend::{BackendSupervisor, BootstrapRequest, BootstrapResponse};
+use deep_link::{DeepLinkTarget, PendingDeepLink};
 use serde::Deserialize;
 use tailscale::DesktopTailscaleStatus;
 use tauri::{
@@ -68,6 +70,14 @@ async fn desktop_ui_connected(
     })
     .await
     .map_err(|error| format!("desktop UI acknowledgement task failed: {error}"))?
+}
+
+/// Claim a `modus://` link that arrived before the webview was listening.
+///
+/// Returns `None` when the app started normally, which is the common case.
+#[tauri::command]
+fn desktop_take_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Option<DeepLinkTarget> {
+    pending.take()
 }
 
 #[tauri::command]
@@ -154,12 +164,15 @@ fn main() {
         ));
     }
     builder = builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(PendingUpdate::default());
+        .manage(PendingUpdate::default())
+        .manage(PendingDeepLink::default());
     let app = builder
         .invoke_handler(tauri::generate_handler![
             desktop_bootstrap,
             desktop_ui_connected,
+            desktop_take_pending_deep_link,
             desktop_tailscale_status,
             desktop_set_tailscale_enabled,
             desktop_check_for_update,
@@ -171,6 +184,36 @@ fn main() {
                 Arc::new(BackendSupervisor::new(app.handle()).map_err(std::io::Error::other)?);
             supervisor.start_monitor(app.handle().clone());
             app.manage(supervisor);
+
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+
+                // Linux has no installer to own the registration, and on Windows
+                // the NSIS installer registers the scheme only for installed
+                // release builds — so development builds claim it at runtime.
+                #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+                if let Err(error) = app.deep_link().register_all() {
+                    eprintln!("[desktop] could not register the modus:// scheme: {error}");
+                }
+
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    let urls = event.urls().into_iter().map(|url| url.to_string());
+                    // Only a link we actually understood raises the window here.
+                    // On Windows and Linux a link to a running app arrives as a
+                    // second process, so the single-instance callback above has
+                    // already surfaced the window whatever the link said.
+                    if deep_link::dispatch(&handle, urls) {
+                        show_main_window(&handle);
+                    }
+                });
+
+                // The OS may have launched us *because* of a link, in which case
+                // it is already waiting and no open-url event will follow.
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    deep_link::dispatch(app.handle(), urls.into_iter().map(|url| url.to_string()));
+                }
+            }
 
             let show = MenuItem::with_id(app, "show", "Show Modus", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Modus", true, None::<&str>)?;

@@ -330,8 +330,10 @@ async function main() {
       const id = positional[0];
       const prompt = positional.slice(1).join(" ");
       if (!id || !prompt) { console.error("Error: session-id and prompt required"); process.exit(1); }
-      await c.steerSession(id, prompt);
-      console.log("Steered.");
+      const steered = await c.steerSession(id, prompt);
+      console.log(steered.mode === "steer"
+        ? "Steered into the running turn."
+        : "Provider cannot steer — queued for the next turn.");
       break;
     }
 

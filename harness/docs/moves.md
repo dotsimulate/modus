@@ -1,7 +1,7 @@
 ---
 title: Moves
-lastUpdated: 2026-07-26
-covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
+lastUpdated: 2026-07-29
+covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/move-op-request.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
 ---
 
 # Moves
@@ -80,6 +80,25 @@ the transpiler and need no entry.
 | `branch` | Spawns a new sibling session |
 | `background` | Fire-and-forget, persisted status for later recall |
 | `persistent` | Ambient gather-only move; re-runs `gather()` on every user turn until deactivated |
+
+### When a move can be attached
+
+A move does not need a fresh session. Sending `moves: [{ name, inputs }]` with
+`POST /api/sessions/:id/messages` activates it against the live session and
+prepends the gathered `<!-- move:NAME -->` block to that one message — no
+interrupt, no resume, no restart. Persistent moves attached this way stay active
+for subsequent turns.
+
+`POST /api/sessions/:id/steer` takes the same bindings, so a move can ride an
+interjection into a turn that is already running on a provider that supports
+steering. See [Providers § Steering](./providers.md).
+
+Two limits are worth knowing. Attaching during a running turn on a
+non-steering provider queues the message *and* its gathered context until the
+turn ends — the gather runs at send time, not at delivery time, so it reflects
+state as of when you hit send. And skills a move attaches mid-session are
+recorded but may not reach the agent by tool until restart, because the
+provider's MCP endpoint URL is fixed at spawn.
 
 ## Submit vs API Contract
 
@@ -259,6 +278,31 @@ the page and its widget/API behavior.
 
 `onAssistantTurn()` receives `MoveAssistantTurnContext` with the current assistant turn,
 instance state, and an `emit()` helper that broadcasts `move-widget-event` UI events.
+
+## Reload Semantics (editing `context.ts` while developing)
+
+The edit-reload loop differs by export, and the difference is the single most
+confusing thing about authoring an API move. **You do not need to restart the
+harness.**
+
+| Export | When your edit takes effect |
+|---|---|
+| `gather()`, `onSubmit()`, `prepare()`, `onAssistantTurn()`, `listInstances()` | **Next activation.** `loadMoveModule()` deletes the `require.cache` entry before `await import()`, so each activation re-reads the file from disk. |
+| `handlers` (API ops) | **Next registration, not next call.** `registerMoveApi()` captures the `handlers` object into the in-memory registry, and op dispatch reads `reg.handlers[op]` from that snapshot. Editing the file changes nothing for an already-registered instance. |
+
+To pick up a handler edit: **detach and re-attach the move.**
+`POST /api/moves/:name/detach` drops the registration, and `attachMove()` calls
+`loadMoveModule()` again before re-registering — so the new code is live without
+restarting anything. Re-activating the move in a new message does the same.
+
+Two traps that make an edit look like it did not land:
+
+- **A page-embedded widget will not re-attach on navigation.** `MoveWidgetEmbed`
+  caches its attachment at module scope keyed by `(moveName, cwd, widgetId)`, so
+  leaving the page and coming back reuses the old registration. Reload the window.
+- **A move whose `context.ts` fails to import keeps working with no visible
+  error** — the loader logs and returns null. If an edit introduces a syntax
+  error, the symptom is "my change did nothing", not a failure.
 
 ## MoveContext (passed to gather/onSubmit)
 
