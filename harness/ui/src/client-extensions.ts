@@ -32,7 +32,11 @@ type ShortcutHandler = (ctx: {
 
 type ComposerActionIcon = "mic" | "mic-handsfree";
 
-type ComposerActionStatusTone = "default" | "active" | "busy" | "error" | "gated";
+/** "warning" is the advisory middle: working, but not well — a live recording
+ *  that is too quiet to transcribe, say. Without it such states had to pick
+ *  between "active" (invisible advice) and "error" (a fault that is not one),
+ *  and they kept picking error. */
+type ComposerActionStatusTone = "default" | "active" | "busy" | "error" | "gated" | "warning";
 type ComposerToggleTone = "default" | "active" | "busy" | "error";
 
 type ComposerActionState = {
