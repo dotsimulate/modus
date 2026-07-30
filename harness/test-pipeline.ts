@@ -210,6 +210,7 @@ describe("type shapes", () => {
       createTerminal: () => ({ id: "test", write: () => {}, close: () => {} }) as any,
       sessions: {} as any,
       channels: {} as any,
+      model: {} as any,
       pluginSettings: { get: () => undefined, all: () => ({}) },
     };
     expect(ctx.attempt).toBe(2);

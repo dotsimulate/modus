@@ -140,6 +140,16 @@ export interface MoveCapabilities {
   actionTrigger?: boolean;
   /** Allow harness.notify(). Default: true. */
   notify?: boolean;
+  /**
+   * Allow ctx.model.complete() one-shot model calls. Default: true.
+   *
+   * Separate from sessionSpawn even though both reach a model: a one-shot spends
+   * tokens without producing anything the user can see in their session list, so
+   * a move that should never cost money needs a way to say so that does not also
+   * forbid spawning. Promotion of a one-shot into a session is gated by
+   * sessionSpawn, since that is what it does.
+   */
+  modelCall?: boolean;
   /** Allowed network domains for shell commands (informational — not enforced at network layer). */
   network?: string[];
   /** Allow filesystem reads via ctx.db or gather. Default: true. */
@@ -300,6 +310,11 @@ export interface HarnessBridge {
   }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
   /** Watch a session's assistant turns. Returns an unsubscribe function. */
   watchSessionTurns: (sessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>) => () => void;
+  /**
+   * One-shot model calls — prompt in, text out, no session spawned. Use this
+   * rather than createSession when the answer is a value, not a conversation.
+   */
+  model: HarnessContext["model"];
 }
 
 // ── Move DB (read-only queries available to context.ts) ──
@@ -594,6 +609,12 @@ export interface MoveApiContext {
   channels: {
     send: (channel: string, payload: { text: string; data?: Record<string, unknown> }) => Promise<{ ok: boolean; error?: string }>;
   };
+  /**
+   * One-shot model calls — prompt in, text out, no session spawned. The cheap
+   * rung below `createSession`, for transforms whose answer is a value rather
+   * than a conversation. PI-family providers only; see HarnessModel.
+   */
+  model: HarnessContext["model"];
 
   /** Read from the process-scoped instance store. Survives module reloads. */
   store: <T = unknown>() => T | undefined;

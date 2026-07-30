@@ -283,6 +283,13 @@ export interface ActionContext {
   sessions: HarnessSessions;
   /** Send content to a named channel (Discord/Slack/file). */
   channels: HarnessChannels;
+  /**
+   * One-shot model calls — prompt in, text out, no session spawned. An action
+   * that already has an `agentProfile` run does not need this; it is for the
+   * *extra* transforms in gather/verify/afterRun that would otherwise each cost
+   * their own session.
+   */
+  model: HarnessContext["model"];
   /** Manifest-declared settings for the plugin that supplied this action. */
   pluginSettings: HarnessContext["pluginSettings"];
 }

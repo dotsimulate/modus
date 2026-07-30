@@ -36,6 +36,15 @@ import type {
 } from "./move-types";
 import type { SessionTriggerEvent, ActionTerminalHandle } from "./action-types";
 import { createPluginSettingsAccessor } from "./plugin-settings";
+import {
+  buildPromotionPrompt,
+  getOneShotRecord,
+  listOneShotRecords,
+  recordOneShotPromotion,
+  runOneShot,
+  type OneShotRecord,
+  type OneShotUsage,
+} from "./model-oneshot";
 
 // ── Engine dependency seam ──
 // The whole external surface harness-context drives is bundled here. This keeps the
@@ -65,6 +74,10 @@ export interface HarnessEngines {
   insertSessionArtifact: typeof insertSessionArtifact;
   addSessionTag: typeof dbAddSessionTag;
   removeSessionTag: typeof dbRemoveSessionTag;
+  runOneShot: typeof runOneShot;
+  getOneShotRecord: typeof getOneShotRecord;
+  listOneShotRecords: typeof listOneShotRecords;
+  recordOneShotPromotion: typeof recordOneShotPromotion;
 }
 
 let _live: HarnessEngines | null = null;
@@ -100,6 +113,10 @@ function liveEngines(): HarnessEngines {
     insertSessionArtifact,
     addSessionTag: dbAddSessionTag,
     removeSessionTag: dbRemoveSessionTag,
+    runOneShot,
+    getOneShotRecord,
+    listOneShotRecords,
+    recordOneShotPromotion,
   };
   return _live;
 }
@@ -179,6 +196,48 @@ export interface HarnessActions {
   trigger(name: string): Promise<void>;
 }
 
+export type HarnessModelResult = {
+  text: string;
+  /** Handle for `model.promote()`. */
+  oneShotId: string;
+  provider: string;
+  model: string;
+  usage?: OneShotUsage;
+};
+
+/**
+ * One-shot model calls — a model with no session attached.
+ *
+ * The cheap rung below `sessions.create()`. Use it for a transform whose answer
+ * is a value rather than a conversation: punctuating dictation, naming a thing,
+ * classifying, translating. Only the PI provider family can serve these
+ * (`supportsOneShotCompletion`); anything else throws rather than quietly
+ * spawning a session, because that would reintroduce the cost this exists to
+ * avoid.
+ */
+export interface HarnessModel {
+  complete(opts: {
+    prompt: string;
+    system?: string;
+    /** Resolve provider + model from an agent profile. Required for promote(). */
+    profile?: string;
+    provider?: string;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    signal?: AbortSignal;
+  }): Promise<HarnessModelResult>;
+  /**
+   * Turn a completed one-shot into a real session that opens with the original
+   * exchange replayed as its first message. Idempotent — promoting twice returns
+   * the same session id. Requires the one-shot to have named a profile, since a
+   * session cannot be spawned without one.
+   */
+  promote(oneShotId: string, opts?: { userProfile?: string; tags?: string[] }): Promise<{ sessionId: string }>;
+  /** Recent one-shots, newest first. Bounded; see ONE_SHOT_STORE_LIMIT. */
+  recent(limit?: number): OneShotRecord[];
+}
+
 export interface HarnessArtifacts {
   insert(opts: { sessionId: string; name: string; mime: string; path: string; seq?: number; previewText?: string; metadata?: Record<string, unknown> }): number;
   attach(opts: { sessionId: string; seq: number; targetMessageUuid?: string; path: string; name: string; mime: string; previewText?: string; metadata?: Record<string, unknown> }): { id: number; sessionId: string; seq: number; name: string; mime: string; url: string; createdAt: number };
@@ -195,6 +254,7 @@ export interface HarnessContext {
   channels: HarnessChannels;
   moves: HarnessMoves;
   actions: HarnessActions;
+  model: HarnessModel;
   state: MoveStateAPI;
   db: MoveDB;
   secrets: MoveSecrets;
@@ -377,6 +437,88 @@ function createActions(self: HarnessSelf, gate: Gate, eng: HarnessEngines): Harn
   };
 }
 
+function createModel(
+  self: HarnessSelf,
+  gate: Gate,
+  eng: HarnessEngines,
+  sessions: HarnessSessions,
+): HarnessModel {
+  return {
+    async complete(opts) {
+      gate("modelCall", `profile: ${opts.profile ?? opts.provider ?? "unresolved"}`);
+      const result = await eng.runOneShot({
+        prompt: opts.prompt,
+        system: opts.system,
+        profile: opts.profile,
+        provider: opts.provider,
+        model: opts.model,
+        temperature: opts.temperature,
+        maxTokens: opts.maxTokens,
+        signal: opts.signal,
+        origin: {
+          kind: self.kind,
+          name: self.name,
+          cwd: self.cwd,
+          userProfile: self.userProfile,
+          sessionId: self.sessionId,
+        },
+      });
+      eng.logActivity({
+        eventType: "harness_model_oneshot",
+        sessionId: self.sessionId ?? undefined,
+        summary: `${self.kind}:${self.name} one-shot ${result.provider}/${result.model} → ${result.text.slice(0, 80)}`,
+        metadata: {
+          kind: self.kind,
+          name: self.name,
+          provider: result.provider,
+          model: result.model,
+          oneShotId: result.oneShotId,
+          promptLength: opts.prompt.length,
+          ...(result.usage ? { totalTokens: result.usage.totalTokens, costUsd: result.usage.costUsd } : {}),
+        },
+      });
+      return result;
+    },
+    async promote(oneShotId, opts) {
+      const record = eng.getOneShotRecord(oneShotId);
+      if (!record) {
+        throw new Error(
+          `one-shot "${oneShotId}" is not in the recent history — it may have aged out of the ring or the backend restarted`,
+        );
+      }
+      // A double-clicked promote button must not cost two sessions.
+      if (record.promotedSessionId) return { sessionId: record.promotedSessionId };
+      if (!record.profile) {
+        throw new Error(
+          `one-shot "${oneShotId}" named no agent profile, so there is no profile to start a session with — `
+          + `re-run it with a profile if you want it promotable`,
+        );
+      }
+      // Spawn through the sessions namespace so promotion inherits its gate,
+      // its starting-status wait, and its activity log entry.
+      const sessionId = await sessions.create({
+        profile: record.profile,
+        prompt: buildPromotionPrompt(record),
+        cwd: record.origin.cwd,
+        userProfile: opts?.userProfile ?? record.origin.userProfile,
+        tags: opts?.tags,
+      });
+      eng.recordOneShotPromotion(oneShotId, sessionId);
+      eng.logActivity({
+        eventType: "harness_model_promote",
+        sessionId: self.sessionId ?? undefined,
+        agentProfile: record.profile,
+        summary: `${self.kind}:${self.name} promoted one-shot ${oneShotId} → session ${sessionId}`,
+        metadata: { kind: self.kind, name: self.name, oneShotId, spawnedSessionId: sessionId, profile: record.profile },
+      });
+      return { sessionId };
+    },
+    recent(limit) {
+      return eng.listOneShotRecords(limit);
+    },
+  };
+}
+
 function createArtifacts(self: HarnessSelf, eng: HarnessEngines): HarnessArtifacts {
   return {
     insert(opts) {
@@ -483,12 +625,15 @@ export function buildHarnessContextWith(self: HarnessSelf, eng: HarnessEngines):
     isSet: (name: string) => eng.isSecretSet(name),
   };
 
+  const sessions = createSessions(self, gate, eng, db);
+
   return {
     self,
-    sessions: createSessions(self, gate, eng, db),
+    sessions,
     channels: createChannels(self, gate, eng),
     moves: createMoves(self, eng),
     actions: createActions(self, gate, eng),
+    model: createModel(self, gate, eng, sessions),
     state: createState(self, eng),
     db,
     secrets,

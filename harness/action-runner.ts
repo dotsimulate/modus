@@ -925,6 +925,7 @@ async function fireAction(
         svgToPngBase64,
         sessions: actionHctx.sessions,
         channels: actionHctx.channels,
+        model: actionHctx.model,
         pluginSettings: actionHctx.pluginSettings,
       };
       lastCtx = ctx;

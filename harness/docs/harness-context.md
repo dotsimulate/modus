@@ -22,6 +22,7 @@ ctx.sessions    // create, send, wake, watchTurns, tag, untag, get, list
 ctx.channels    // send(channel, { text, data? })  → the egress primitive (see notify.md)
 ctx.moves       // activate, list
 ctx.actions     // trigger
+ctx.model       // complete, promote, recent → one-shot model calls (see below)
 ctx.state       // MoveStateAPI (instance-scoped; NOOP when no instance bound)
 ctx.db          // read-only MoveDB (sessions, search, move history, messages)
 ctx.secrets     // resolve, isSet
@@ -47,8 +48,15 @@ boundary — the same model as the old `move-runner.assertCapability`:
 - **experimental** — never blocked, but a denial is logged (audit-only).
 
 Capabilities are the move shape (`shell`, `sessionSpawn`, `sessionMessage`, `actionTrigger`,
-`notify`, `fileRead`, `fileWrite`). Because gating lives at the namespace boundary, every
-old and new surface gets identical safety behavior for the same underlying operation.
+`notify`, `modelCall`, `fileRead`, `fileWrite`). Because gating lives at the namespace
+boundary, every old and new surface gets identical safety behavior for the same underlying
+operation.
+
+`modelCall` is deliberately separate from `sessionSpawn` even though both reach a model: a
+one-shot spends tokens without producing anything visible in the session list, so code that
+must never cost money needs a way to say so without also losing the ability to spawn.
+`ctx.model.promote()` is gated by `sessionSpawn`, because spawning is what it does — so
+denying `modelCall` still allows promoting a one-shot that already ran.
 
 ## Adapters (backwards compatibility)
 
@@ -64,6 +72,78 @@ untouched:
 
 Plugin-origin move/action adapters also expose `pluginSettings`. Code without a
 plugin identity receives an empty accessor.
+
+## One-shot model calls (`ctx.model`)
+
+A model call with **no session**: prompt in, text out, no tools, no state, no subprocess.
+This is the cheap rung below `ctx.sessions.create()`, for transforms whose answer is a value
+rather than a conversation — punctuating dictated text, naming a thing, classifying,
+translating.
+
+```ts
+const { text, oneShotId } = await ctx.model.complete({
+  prompt: "Add punctuation and capitalisation. Return only the corrected text:\n\n" + raw,
+  profile: "dictation-cleanup",   // resolves provider + model
+  maxTokens: 200,
+});
+```
+
+Reachable as `ctx.model` on the Harness Context, `ctx.model` on `MoveApiContext`,
+`ctx.harness.model` in move `onSubmit`, and `ctx.model` on `ActionContext`.
+
+**Only the PI provider family can serve one-shots** — `litellm`, `ollama`, `openrouter`
+(`ONE_SHOT_PROVIDERS` in `providers/provider-names.ts`). That is structural, not a missing
+feature: PI is an in-process SDK, so `pi-ai`'s `completeSimple()` reaches the model directly,
+while every other provider is a CLI the harness spawns and converses with. A one-shot against
+`claude-code`, `codex`, `cursor`, `antigravity`, `grok-build`, `opencode` or `gemini-cli`
+**throws** and names the capable providers. It does not fall back to spawning a session — that
+would silently reintroduce the cost the primitive exists to avoid.
+
+Resolution rules (`resolveOneShotTarget`), all of which throw rather than guess:
+
+| Input | Result |
+|---|---|
+| `profile` naming an agent profile | provider + model taken from it |
+| explicit `provider` / `model` | overrides the profile |
+| profile omits `provider` | error — `GlobalConfigSchema` has no default provider to fall back to |
+| neither profile nor provider | error |
+| resolved provider is not PI-family | error naming `ONE_SHOT_PROVIDERS` |
+
+The model object is built by `buildPiModel` in `providers/pi-model.ts` — the **same** seam the
+agentic PI provider uses, so a one-shot and a session against the same profile resolve the
+same baseUrl (from secrets), the same `providerDefaults`, and the same OpenAI-compat flags.
+
+### Promotion
+
+A one-shot answer you disagree with is a dead end unless you can keep talking, so every call
+is recorded and can become a real session:
+
+```ts
+const { sessionId } = await ctx.model.promote(oneShotId);
+```
+
+- **Replay, not restore.** The new session's first user message contains the original prompt
+  and the previous answer (`buildPromotionPrompt`). Rebuilding provider-side history is a
+  different problem (see `checkpoint-rewind-decisions-2026-07-11.md`) and would only work for
+  providers that support resume; replay works everywhere and is honest that the session was
+  handed a transcript rather than having lived through it.
+- **Idempotent.** Promoting twice returns the same session id — the caller is usually a button
+  and a double click must not cost two sessions.
+- **Requires a profile.** A one-shot made with a bare `provider`/`model` has no profile to
+  spawn with, so promotion throws rather than inventing one.
+- The session is spawned into the **origin's** project (`record.origin.cwd`), not the
+  promoter's, and through `ctx.sessions.create` so it inherits that gate and audit entry.
+
+### Records
+
+`ctx.model.recent(limit?)` returns recent one-shots, newest first. The store is a bounded
+in-memory ring (`ONE_SHOT_STORE_LIMIT`, 50): promotion is a human action taken shortly after
+the call, and an unbounded map would be a slow leak in a long-running backend. Records do not
+survive a restart, deliberately — offering a promote link for a call whose context is gone
+would be worse than not offering one.
+
+Both `complete` and `promote` write audit entries (`harness_model_oneshot`,
+`harness_model_promote`) carrying the provider, model, one-shot id, and token/cost usage.
 
 ## Session wake / mailbox
 

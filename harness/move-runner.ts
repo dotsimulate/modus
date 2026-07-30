@@ -707,6 +707,7 @@ export async function handleMoveApiSubmit(
     watchSessionTurns: (targetSessionId, onTurn) => hctx.sessions.watchTurns(targetSessionId, onTurn),
     wake: (target, content, when) => hctx.sessions.wake(target, content, when),
     channels: hctx.channels,
+    model: hctx.model,
   };
 
   // Pass the inner data payload to the handler, not the full {op, data} envelope.
@@ -1457,6 +1458,7 @@ function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: stri
     listMoves: () => ctx.moves.list(),
     activateMove: (opts) => ctx.moves.activate(opts),
     watchSessionTurns: (targetSessionId, onTurn) => ctx.sessions.watchTurns(targetSessionId, onTurn),
+    model: ctx.model,
   };
 }
 

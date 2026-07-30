@@ -11,7 +11,7 @@
  * implementation; add its name here too.
  */
 
-import type { PiProviderName } from "./pi-agent";
+import type { PiProviderName } from "./pi-model";
 
 export const PI_PROVIDERS: PiProviderName[] = ["litellm", "ollama", "openrouter"];
 

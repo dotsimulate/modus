@@ -99,7 +99,43 @@ function SettingField({
     );
   }
 
-  // string fallback
+  if (schema.type === "textarea") {
+    return (
+      <label className="exw-setting exw-setting--textarea">
+        <span className="exw-setting-label">{schema.label}</span>
+        <textarea
+          className="exw-setting-input exw-setting-textarea"
+          rows={schema.rows ?? 4}
+          value={String(value ?? "")}
+          onChange={(e) => onChange(name, e.target.value)}
+        />
+      </label>
+    );
+  }
+
+  if (schema.type === "secret-name") {
+    return (
+      <label className="exw-setting">
+        <span className="exw-setting-label">{schema.label}</span>
+        <input
+          className="exw-setting-input"
+          type="text"
+          // Not a password field: the value IS a secret name, not a secret. The
+          // key itself never reaches the browser — the harness resolves the name
+          // server-side — so masking it would hide the one thing the user needs
+          // to read back to check they typed it correctly.
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="MY_API_KEY"
+          value={String(value ?? "")}
+          onChange={(e) => onChange(name, e.target.value)}
+        />
+      </label>
+    );
+  }
+
+  // string fallback — also the landing spot for an unknown type from a newer
+  // extension manifest, which stays editable rather than disappearing.
   return (
     <label className="exw-setting">
       <span className="exw-setting-label">{schema.label}</span>
