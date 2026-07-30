@@ -1759,13 +1759,25 @@ export type DeepAnalytics = {
 
 // ── Client Extensions ──
 
-/** Schema for a single setting exposed by a client extension. */
+/**
+ * Schema for a single setting exposed by a client extension.
+ *
+ * `textarea` and `secret-name` exist because the sibling primitives already had
+ * them and extensions did not inherit either: move inputs support `textarea`,
+ * and `PluginSettingDefinition` supports `secret-name`. A multi-line setting (a
+ * vocabulary list, a phrase map) is unusable in a single-line input, and a
+ * setting that names a Modus secret should say so rather than looking like free
+ * text — extension settings are served by `GET /api/client-extensions`, so the
+ * distinction between "names a secret" and "holds a secret" is load-bearing.
+ */
 export type ExtensionSettingSchema = {
-  type: "string" | "number" | "boolean" | "select";
+  type: "string" | "textarea" | "number" | "boolean" | "select" | "secret-name";
   label: string;
   description?: string;
   default?: string | number | boolean;
   options?: Array<{ value: string; label: string }>;
+  /** Rows for a `textarea` field. Default 4. */
+  rows?: number;
 };
 
 export type PluginSettingDefinition = {

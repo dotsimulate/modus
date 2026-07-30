@@ -311,6 +311,12 @@
   align-items: flex-start;
 }
 
+/* A multi-line value (a vocabulary list, a phrase map) needs the label beside
+   the top of the box, not centred against a tall field. */
+.exw-setting--textarea {
+  align-items: flex-start;
+}
+
 .exw-project-list {
   min-width: 0;
   flex: 1;
@@ -368,6 +374,15 @@
 .exw-setting-input:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.exw-setting-textarea {
+  resize: vertical;
+  line-height: 1.5;
+  /* Entries are one-per-line, so wrapping a long line would misread as two. */
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
 }
 
 .exw-setting input[type="checkbox"] {

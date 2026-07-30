@@ -4010,6 +4010,7 @@ app.get("/api/activity/summary", (c) => {
 
 import { listMoves, getMove, activateMove, attachMove, activateAttachedMove, detachMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession, rekeyMoveByToken, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
 import { getMoveRunsBySession, getMoveRunById, getRecentMoveRuns } from "./move-db";
+import { isMoveOpParseError, parseMoveOpFormData, parseMoveOpJson } from "./move-op-request";
 import { handleModusMcpRequest } from "./modus-mcp";
 
 // List available moves for a CWD
@@ -4304,12 +4305,20 @@ app.get("/api/moves/:name/widget.css", async (c) => {
 
 // Call a move API op from the frontend (caller: "user")
 app.post("/api/moves/:name/op", async (c) => {
-  const body = await c.req.json();
-  const { apiToken, op, ...rest } = body;
-  if (typeof apiToken !== "string") return c.json({ error: "apiToken required" }, 400);
-  if (typeof op !== "string") return c.json({ error: "op required" }, 400);
+  // Two content types, one envelope. Multipart exists so authored content can
+  // send media without base64ing it through JSON; see move-op-request.ts for
+  // the field contract and why `json` is a separate part.
+  const contentType = c.req.header("Content-Type") ?? "";
+  const parsed = contentType.includes("multipart/form-data")
+    ? parseMoveOpFormData(await c.req.formData())
+    : parseMoveOpJson(await c.req.json());
+  if (isMoveOpParseError(parsed)) return c.json({ error: parsed.error }, 400);
 
-  const result = await handleMoveApiSubmit(apiToken, { op, ...rest }, "user");
+  const result = await handleMoveApiSubmit(
+    parsed.apiToken,
+    { op: parsed.op, ...parsed.data },
+    "user",
+  );
   return c.json(result, result.ok ? 200 : 400);
 });
 

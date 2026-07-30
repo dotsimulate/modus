@@ -204,6 +204,28 @@ stays selectable and marked unavailable, so unplugging a device does not
 silently rewrite the setting. Options only exist while the extension is loaded;
 when it is disabled the manifest-declared field is rendered instead.
 
+### Declared Setting Types
+
+`.extension.json` settings declare a `type` (`ExtensionSettingSchema` in
+`sdk/types.ts`):
+
+| `type` | Rendered as | Notes |
+|---|---|---|
+| `string` | single-line text | also the fallback for an unknown type |
+| `textarea` | multi-line text, `rows` (default 4) | for one-value-per-line lists; does not soft-wrap, so a long line reads as one entry |
+| `number` | number input | empty clears to `null` |
+| `boolean` | checkbox | |
+| `select` | dropdown from `options[]` | static only; see Live Setting Options above |
+| `secret-name` | single-line text | names a Modus secret; see below |
+
+`secret-name` is not a password field, on purpose. The value is the *name* of a
+secret, not the secret — extension settings are stored in the user profile UI
+config and returned verbatim by `GET /api/client-extensions`, so a literal key
+placed in a setting would be served to every client that can list extensions.
+The harness resolves the named secret server-side and the key never reaches the
+browser, which also means masking the field would hide the one thing the user
+needs to read back to check they typed it correctly.
+
 ### Composer Target
 
 Shortcut handlers and composer actions receive a composer target when one is

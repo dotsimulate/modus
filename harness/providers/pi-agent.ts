@@ -7,7 +7,6 @@
  * Supports: Anthropic, OpenAI, LiteLLM (OpenAI-compat), Ollama (OpenAI-compat).
  */
 
-import type { Model } from "@mariozechner/pi-ai";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
@@ -30,16 +29,24 @@ import { getScopedSkills } from "../skill-attachment";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
 import { resolveSecret } from "../secrets";
+import {
+  buildPiModel,
+  DEFAULT_PI_MODELS,
+  resolvePiApiKey,
+  ZERO_COST,
+  type CostRates,
+  type PiProviderName,
+} from "./pi-model";
 
 // ── Provider Names ──
 
-export type PiProviderName = "litellm" | "ollama" | "openrouter";
+// Model construction lives in the shared leaf `pi-model.ts` so one-shot
+// completions resolve the same baseUrl, defaults, and compat flags a session
+// would. Re-exported here because provider-names.ts and registry.ts import the
+// name type from this module.
+export type { PiProviderName };
 
-const DEFAULT_MODELS: Record<PiProviderName, string> = {
-  litellm: "default",
-  ollama: "default",
-  openrouter: "anthropic/claude-sonnet-4.5",
-};
+const DEFAULT_MODELS = DEFAULT_PI_MODELS;
 
 const PI_TOOL_GROUPS = [
   { label: "files", tools: ["read", "write", "edit"] },
@@ -91,9 +98,6 @@ function getPiContextUsage(session: ActiveSession): ContextUsage | undefined {
 }
 
 // ── OpenRouter Pricing ──
-
-type CostRates = { input: number; output: number; cacheRead: number; cacheWrite: number };
-const ZERO_COST: CostRates = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
 type OpenRouterModelInfo = { cost: CostRates; contextLength: number };
 
@@ -200,57 +204,19 @@ async function fetchOpenRouterModelInfo(modelId: string): Promise<OpenRouterMode
 }
 
 // ── Model Construction ──
-
-function buildModel(provider: PiProviderName, modelId: string, profile?: any, cost?: CostRates, contextLengthFromApi?: number): Model<any> {
-  // OpenAI-compat providers (litellm, ollama, openrouter)
-  const baseUrlEnv = provider === "litellm" 
-    ? "LITELLM_BASE_URL" 
-    : provider === "ollama"
-    ? "OLLAMA_BASE_URL"
-    : "OPENROUTER_BASE_URL";
-  const defaultUrl = provider === "litellm"
-    ? "http://localhost:4000/v1"
-    : provider === "ollama"
-    ? "http://localhost:11434/v1"
-    : "https://openrouter.ai/api/v1";
-  const baseUrl = resolveSecret(baseUrlEnv) ?? process.env[baseUrlEnv] ?? defaultUrl;
-  const providerDefaults = getGlobalConfig().providerDefaults?.[provider];
-
-  return {
-    id: modelId,
-    name: modelId,
-    api: "openai-completions",
-    provider: provider,
-    baseUrl,
-    reasoning: false,
-    input: ["text", "image"],
-    cost: cost ?? ZERO_COST,
-    contextWindow: profile?.contextWindow ?? providerDefaults?.contextWindow ?? contextLengthFromApi ?? 128000,
-    maxTokens: profile?.maxOutputTokens ?? providerDefaults?.maxOutputTokens ?? 8192,
-    compat: {
-      supportsStore: false,
-      supportsDeveloperRole: false,
-      supportsReasoningEffort: false,
-      supportsUsageInStreaming: provider === "litellm" || provider === "openrouter",
-      maxTokensField: "max_tokens",
-    },
-  } as Model<any>;
-}
+//
+// Definition lives in `pi-model.ts`, shared with one-shot completions. Local
+// alias so the existing call sites in this file read unchanged.
+const buildModel = buildPiModel;
 
 // ── Auth Storage Setup ──
 
 function buildAuthStorage(provider: PiProviderName): AuthStorage {
   const auth = AuthStorage.inMemory();
 
-  // Resolve API key from harness secrets for the provider
-  const envMap: Record<PiProviderName, string> = {
-    litellm: "LITELLM_API_KEY",
-    ollama: "OLLAMA_API_KEY",
-    openrouter: "OPENROUTER_API_KEY",
-  };
-
-  const envVar = envMap[provider];
-  const key = resolveSecret(envVar) ?? process.env[envVar];
+  // Resolve API key from harness secrets for the provider. Shared with one-shot
+  // completions so both paths authenticate against the same secret names.
+  const key = resolvePiApiKey(provider);
 
   // setRuntimeApiKey is the highest priority in PI's auth chain —
   // bypasses env var lookup (which doesn't know litellm/ollama)

@@ -227,6 +227,16 @@ a channel). Optional `emit` injects a typed signal prefix: `[modus:{type}] {json
 Frontend API calls use `POST /api/moves/:name/op` with `{ apiToken, op, ...rest }`.
 Agent-side API calls still go through `modus_submit(apiToken, { op, ...data })`.
 
+That route also accepts **`multipart/form-data`**, so a handler can receive media
+without base64ing it through JSON. `apiToken` and `op` are parts (or keys inside an
+optional `json` part); every other part becomes a key in the handler's `data`.
+Binary parts arrive as a web `File` — `await data.audio.arrayBuffer()` — and a
+repeated key becomes a `File[]`. Plain text parts stay **strings**: multipart has
+no types and coercing `"false"` would break any field whose value is legitimately
+that string, so send structured values in the `json` part instead. Precedence,
+lowest to highest: `json` → plain parts → files. The JSON path is unchanged.
+Contract and parsing: `harness/move-op-request.ts`.
+
 ## Widget Declaration (`widget` field)
 
 ```json

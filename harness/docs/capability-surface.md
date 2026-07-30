@@ -124,7 +124,7 @@ spawned session** — this is how automated sessions get ambient context or
 widgets), `page` (action-owned nav page), `artifacts[]` (declared outputs,
 auto-verified), `inputs` (static, reaches ctx), session overrides (provider,
 model, effort, cwd, tools), `capabilities` + `trust` (same gating as moves).
-`ActionContext` includes `sessions`/`channels` (Harness Context), `db`,
+`ActionContext` includes `sessions`/`channels`/`model` (Harness Context), `db`,
 `createTerminal()` (managed PTY visible in the UI), artifact helpers, `log`.
 
 ## Agent profiles — `~/.modus/profiles/agents/*.json` (project override in `.modus/profiles/agents/`)
@@ -193,8 +193,21 @@ Layout tree: `grid` (columns, templateColumns/Rows) / `panel` (list|tabs) /
 
 `ctx.sessions` (create, send, wake, watchTurns, tag/untag, get, list),
 `ctx.channels.send`, `ctx.moves` (activate, list), `ctx.actions.trigger`,
-`ctx.state`, `ctx.db`, `ctx.secrets`, `ctx.shell.run`, `ctx.artifacts`,
-`ctx.terminal.create`, `ctx.log`.
+`ctx.model` (complete, promote, recent), `ctx.state`, `ctx.db`, `ctx.secrets`,
+`ctx.shell.run`, `ctx.artifacts`, `ctx.terminal.create`, `ctx.log`.
+
+**One-shot model calls**: `ctx.model.complete({ prompt, profile?, provider?,
+model?, system?, temperature?, maxTokens? })` → `{ text, oneShotId, provider,
+model, usage? }`. No session, no tools, no subprocess — the cheap rung below
+`sessions.create` for transforms whose answer is a value. **PI providers only**
+(`litellm`, `ollama`, `openrouter`); every other provider is a spawned CLI and
+throws rather than silently starting a session. Resolution throws instead of
+guessing: a profile with no `provider` is an error (there is no global default
+provider). `ctx.model.promote(oneShotId)` turns a completed one-shot into a real
+session whose first message replays the exchange — idempotent, requires the
+one-shot to have named a profile, spawns into the origin's project.
+`ctx.model.recent(limit?)` reads a bounded in-memory ring (50) that does not
+survive restart.
 
 **Wake / mailbox**: `wake(target, content, when?)` — target is a session id
 **or a tag** (fans out to every non-archived session carrying it: a "waiting
@@ -206,7 +219,8 @@ Scheduled wakes persist in `scheduled_wakes` and survive restart.
 `reviewed` (blocked when a capability is explicitly false, audited),
 `experimental` (never blocked, all denials audit-logged). Capabilities:
 `shell`, `sessionSpawn`, `sessionMessage`, `actionTrigger`, `notify`,
-`fileRead`, `fileWrite`.
+`modelCall`, `fileRead`, `fileWrite`. `modelCall` gates `ctx.model.complete`
+only — `promote` is gated by `sessionSpawn`, since spawning is what it does.
 
 ## Gotchas — what does NOT exist (do not assume)
 

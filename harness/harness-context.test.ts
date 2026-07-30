@@ -15,7 +15,12 @@ const calls = {
   actions: [] as string[],
   scheduled: [] as any[],
   logs: [] as any[],
+  oneShots: [] as any[],
+  promotions: [] as any[],
 };
+
+/** One-shot records the stub engine hands back to model.promote(). */
+const oneShotRecords = new Map<string, any>();
 
 function makeEngines(): HarnessEngines {
   return {
@@ -46,7 +51,34 @@ function makeEngines(): HarnessEngines {
     insertSessionArtifact: (() => 42) as any,
     addSessionTag: (() => {}) as any,
     removeSessionTag: (() => {}) as any,
+    runOneShot: (async (req: any) => {
+      calls.oneShots.push(req);
+      return { text: "ONE SHOT", oneShotId: "os-stub", provider: "ollama", model: "m", usage: { input: 1, output: 1, totalTokens: 2, costUsd: 0 } };
+    }) as any,
+    getOneShotRecord: ((id: string) => oneShotRecords.get(id)) as any,
+    listOneShotRecords: (() => Array.from(oneShotRecords.values())) as any,
+    recordOneShotPromotion: ((id: string, sessionId: string) => {
+      calls.promotions.push({ id, sessionId });
+      const record = oneShotRecords.get(id);
+      if (record) record.promotedSessionId = sessionId;
+    }) as any,
   };
+}
+
+function stubOneShot(overrides: Record<string, unknown> = {}) {
+  const record = {
+    id: "os-1",
+    createdAt: 0,
+    profile: "cleanup",
+    provider: "ollama",
+    model: "qwen",
+    prompt: "punctuate this",
+    text: "Punctuated this.",
+    origin: { kind: "move", name: "t", cwd: "/orig-proj", userProfile: "orig-user" },
+    ...overrides,
+  };
+  oneShotRecords.set(record.id, record);
+  return record;
 }
 
 function self(overrides: Partial<HarnessSelf> = {}): HarnessSelf {
@@ -66,12 +98,13 @@ const ctx = (overrides: Partial<HarnessSelf> = {}) => buildHarnessContextWith(se
 
 beforeEach(() => {
   for (const k of Object.keys(calls) as (keyof typeof calls)[]) calls[k].length = 0;
+  oneShotRecords.clear();
 });
 
 describe("composition", () => {
   test("exposes every capability namespace", () => {
     const c = ctx();
-    for (const ns of ["sessions", "channels", "moves", "actions", "state", "db", "secrets", "shell", "artifacts", "terminal"] as const) {
+    for (const ns of ["sessions", "channels", "moves", "actions", "model", "state", "db", "secrets", "shell", "artifacts", "terminal"] as const) {
       expect(c[ns]).toBeDefined();
     }
     expect(typeof c.log).toBe("function");
@@ -126,6 +159,90 @@ describe("moves / actions", () => {
   test("actions.trigger delegates by name", async () => {
     await ctx().actions.trigger("nightly");
     expect(calls.actions).toEqual(["nightly"]);
+  });
+});
+
+describe("model (one-shot completions)", () => {
+  test("complete delegates and stamps the caller as the origin", async () => {
+    const result = await ctx().model.complete({ prompt: "punctuate this", profile: "cleanup" });
+    expect(result.text).toBe("ONE SHOT");
+    expect(result.oneShotId).toBe("os-stub");
+    expect(calls.oneShots).toHaveLength(1);
+    expect(calls.oneShots[0].prompt).toBe("punctuate this");
+    expect(calls.oneShots[0].profile).toBe("cleanup");
+    // Origin is what lets promote() spawn into the right project later.
+    expect(calls.oneShots[0].origin).toMatchObject({ kind: "move", name: "test-move", cwd: "/tmp/proj", userProfile: "u" });
+  });
+
+  test("complete is audited with the target and the cost", async () => {
+    await ctx().model.complete({ prompt: "x", profile: "cleanup" });
+    const entry = calls.logs.find((l) => l.eventType === "harness_model_oneshot");
+    expect(entry).toBeDefined();
+    expect(entry.metadata).toMatchObject({ provider: "ollama", model: "m", oneShotId: "os-stub", totalTokens: 2 });
+  });
+
+  test("promote spawns a session seeded with the replayed exchange", async () => {
+    stubOneShot();
+    const { sessionId } = await ctx().model.promote("os-1");
+    expect(sessionId).toBe("ses-mock");
+    expect(calls.spawned).toHaveLength(1);
+    // Same profile, and the original project — not the promoting caller's cwd.
+    expect(calls.spawned[0].profile).toBe("cleanup");
+    expect(calls.spawned[0].cwd).toBe("/orig-proj");
+    expect(calls.spawned[0].prompt).toContain("punctuate this");
+    expect(calls.spawned[0].prompt).toContain("Punctuated this.");
+    expect(calls.promotions).toEqual([{ id: "os-1", sessionId: "ses-mock" }]);
+  });
+
+  test("promote is idempotent — a double click does not cost two sessions", async () => {
+    stubOneShot();
+    const first = await ctx().model.promote("os-1");
+    const second = await ctx().model.promote("os-1");
+    expect(second.sessionId).toBe(first.sessionId);
+    expect(calls.spawned).toHaveLength(1);
+  });
+
+  test("promote overrides the user profile when asked, keeping the origin's project", async () => {
+    stubOneShot();
+    await ctx().model.promote("os-1", { userProfile: "other-user", tags: ["internal"] });
+    expect(calls.spawned[0].userProfile).toBe("other-user");
+    expect(calls.spawned[0].tags).toEqual(["internal"]);
+  });
+
+  test("promoting an unknown id explains that the ring is bounded", async () => {
+    await expect(ctx().model.promote("os-gone")).rejects.toThrow(/aged out of the ring|backend restarted/);
+    expect(calls.spawned).toHaveLength(0);
+  });
+
+  test("promoting a profileless one-shot fails instead of guessing a profile", async () => {
+    stubOneShot({ profile: undefined });
+    await expect(ctx().model.promote("os-1")).rejects.toThrow(/named no agent profile/);
+    expect(calls.spawned).toHaveLength(0);
+  });
+
+  test("recent delegates to the record store", async () => {
+    stubOneShot();
+    expect(ctx().model.recent()).toHaveLength(1);
+  });
+
+  test("reviewed trust blocks modelCall when denied, and does not reach the model", async () => {
+    const c = ctx({ trust: "reviewed", capabilities: { modelCall: false } });
+    await expect(c.model.complete({ prompt: "x", profile: "cleanup" })).rejects.toThrow(/modelCall: false/);
+    expect(calls.oneShots).toHaveLength(0);
+  });
+
+  test("modelCall denial does not also forbid promoting an existing one-shot", async () => {
+    stubOneShot();
+    const c = ctx({ trust: "reviewed", capabilities: { modelCall: false } });
+    const { sessionId } = await c.model.promote("os-1");
+    expect(sessionId).toBe("ses-mock");
+  });
+
+  test("promote is gated by sessionSpawn, since spawning is what it does", async () => {
+    stubOneShot();
+    const c = ctx({ trust: "reviewed", capabilities: { sessionSpawn: false } });
+    await expect(c.model.promote("os-1")).rejects.toThrow(/sessionSpawn: false/);
+    expect(calls.spawned).toHaveLength(0);
   });
 });
 
