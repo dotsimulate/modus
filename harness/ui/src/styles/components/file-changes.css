@@ -201,6 +201,26 @@
   background: var(--bg-hover);
 }
 
+/* Share/copy confirmation. The result has to be visible on the button: there are
+   no devtools in the packaged desktop and no console on a phone, so an
+   unconfirmed clipboard write cannot be told apart from a failed one. */
+.fc-open-btn--shared,
+.fc-open-btn--copied {
+  color: var(--success);
+}
+
+.fc-open-btn--failed {
+  color: var(--error);
+}
+
+.fc-share-note {
+  font-family: var(--font-mono);
+  font-size: calc(8px * var(--font-scale, 1));
+  line-height: 12px;
+  min-width: 12px;
+  text-align: center;
+}
+
 /* ── Image preview ── */
 
 .fc-image-preview {
