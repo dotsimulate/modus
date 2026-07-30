@@ -4,10 +4,13 @@ import whisperTranscribeExtension, {
   describeCaptureSupport,
   describeMicDevice,
   failure,
+  levelToBar,
   levelToMeter,
+  levelToMeterFraction,
   matchAudioInputDevice,
   needsLabelProbe,
   pickLoudestChannel,
+  RMS_THRESHOLD,
   shouldWarnNoFrames,
   shouldWarnNoInput,
   shouldWarnTooQuiet,
@@ -542,7 +545,12 @@ describe("whisper-transcribe request shape", () => {
     expect(Object.keys(seen[0] ?? {})).toEqual([]);
   });
 
-  test("carries the configured whisper url as a form field", async () => {
+  // The harness performs the upstream fetch, so the endpoint is its
+  // configuration and must never be taken from the request. Sending it meant a
+  // client whose profile had no value sent nothing at all, and the backend
+  // silently fell back to dialling its own loopback address — which surfaced as
+  // an unexplained "whisper 502" on every phone.
+  test("does not send the whisper url — the harness resolves it server-side", async () => {
     audio = installAudioStubs();
     const { api, uploads, getAction } = createApiStub("ok");
     (api as any).getSettings = () => ({ whisperUrl: "http://box:8080/v1/audio/transcriptions" });
@@ -553,7 +561,10 @@ describe("whisper-transcribe request shape", () => {
     audio.speak();
     await getAction().onClick({ composer: clicked.handle });
 
-    expect(uploads[0]?.get("whisperUrl")).toBe("http://box:8080/v1/audio/transcriptions");
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]?.get("whisperUrl")).toBeNull();
+    // The parts the client legitimately owns still travel with the request.
+    expect(uploads[0]?.get("file")).toBeTruthy();
   });
 
   test("an unreachable harness reads as a connection failure, not a transcription failure", async () => {
@@ -592,5 +603,66 @@ describe("whisper-transcribe request shape", () => {
 
     expect(getAction().state.status?.label).toBe("whisper 502");
     expect(getAction().state.title).toContain("connection refused");
+  });
+});
+
+/**
+ * The recording level readout.
+ *
+ * The old readout was linear amplitude scaled to 0-100, which put the speech
+ * threshold at 1.5 and normal speech in single digits — so a working microphone
+ * always looked like almost nothing, and the number the user had to beat was
+ * only ever shown in the tooltip of the failure state.
+ */
+describe("level meter", () => {
+  test("silence sits at the bottom of the scale", () => {
+    expect(levelToMeterFraction(0)).toBe(0);
+    expect(levelToBar(0)).not.toContain("=");
+  });
+
+  test("full scale fills the bar", () => {
+    expect(levelToMeterFraction(1)).toBe(1);
+    expect(levelToBar(1).split("=").length - 1).toBe(10);
+  });
+
+  test("the threshold marker is always drawn", () => {
+    for (const level of [0, 0.001, RMS_THRESHOLD, 0.5, 1]) {
+      expect(levelToBar(level)).toContain("|");
+    }
+  });
+
+  // The whole point: crossing the marker is what "loud enough" looks like, so
+  // the fill has to be behind it below the threshold and past it above.
+  test("fill crosses the marker exactly at the speech threshold", () => {
+    const quiet = levelToBar(RMS_THRESHOLD / 4);
+    const loud = levelToBar(RMS_THRESHOLD * 4);
+    expect(quiet.indexOf("=") === -1 || quiet.lastIndexOf("=") < quiet.indexOf("|")).toBe(true);
+    expect(loud.lastIndexOf("=")).toBeGreaterThan(loud.indexOf("|"));
+  });
+
+  // A dB scale exists to spread the quiet end, where the decision happens.
+  // On the old linear scale these two levels were 0.4 and 1.5 out of 100.
+  test("the scale separates levels the linear readout crushed together", () => {
+    const low = levelToMeterFraction(0.004);
+    const threshold = levelToMeterFraction(RMS_THRESHOLD);
+    expect(threshold - low).toBeGreaterThan(0.08);
+  });
+
+  test("the threshold lands in the middle of the meter, not against the floor", () => {
+    const fraction = levelToMeterFraction(RMS_THRESHOLD);
+    expect(fraction).toBeGreaterThan(0.25);
+    expect(fraction).toBeLessThan(0.6);
+  });
+});
+
+/**
+ * "Too quiet" is advice, not a fault. It fires whenever the user pauses before
+ * speaking, and clears itself the moment they talk — reported as an error it
+ * was a transient failure message on a session that then worked fine.
+ */
+describe("too quiet is advisory", () => {
+  test("shouldWarnTooQuiet still detects the dead zone", () => {
+    expect(shouldWarnTooQuiet({ elapsedMs: 9999, peakLevel: 0.005, sawSpeech: false })).toBe(true);
+    expect(shouldWarnTooQuiet({ elapsedMs: 9999, peakLevel: 0.005, sawSpeech: true })).toBe(false);
   });
 });

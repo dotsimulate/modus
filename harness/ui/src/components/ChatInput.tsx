@@ -693,8 +693,12 @@ export function ChatInput({
   // extension has: the packaged desktop ships without devtools, so a console
   // line reaches nobody.
   const isErrored = composerActions.some((a) => a.status?.tone === "error");
+  // Ranked below a real failure and above the healthy states: an advisory must
+  // be visible without claiming something broke.
+  const isWarning = composerActions.some((a) => a.status?.tone === "warning");
   const statusDotTone = isErrored
     ? "error"
+    : isWarning ? "warning"
     : isRecording ? "active" : isFinishing ? "busy" : isGated ? "gated" : null;
 
   const wrapClass = [

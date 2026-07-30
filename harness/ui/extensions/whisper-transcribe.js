@@ -1,7 +1,7 @@
-console.log("[Whisper] Loading extension... version 2.11");
+console.log("[Whisper] Loading extension... version 2.12");
 const SHORTCUT = "Ctrl+Shift+~";
 const BUFFER_SIZE = 4096;
-const RMS_THRESHOLD = 0.015;
+export const RMS_THRESHOLD = 0.015;
 const SILENCE_MS = 1000;
 const MIN_CHUNK_MS = 2000;
 const MAX_CHUNK_MS = 30000;
@@ -130,9 +130,52 @@ export function pickLoudestChannel(channels) {
   return { samples: best, level: bestLevel < 0 ? 0 : bestLevel, channel: bestIndex };
 }
 
-/** Peak level as a 0-100 meter reading, so the chip can show a real number. */
+/** Peak level as a 0-100 meter reading. Kept for the tooltip: a number is the
+ *  right thing to read back when reporting a problem, and the wrong thing to
+ *  answer "am I loud enough" with. */
 export function levelToMeter(level) {
   return Math.min(100, Math.round(level * 100 * 10) / 10);
+}
+
+// Meter geometry. The old readout was linear amplitude on a 0-100 axis, which
+// put the speech threshold at 1.5 and ordinary speech in single digits — a
+// perfectly good signal always looked like almost nothing. dBFS spreads the
+// quiet end where the decision actually happens.
+const METER_FLOOR_DB = -60;
+const METER_CELLS = 10;
+
+export function levelToDb(level) {
+  if (!(level > 0)) return METER_FLOOR_DB;
+  return 20 * Math.log10(level);
+}
+
+/** Where a level sits on the meter, 0..1. */
+export function levelToMeterFraction(level) {
+  const db = levelToDb(level);
+  if (db <= METER_FLOOR_DB) return 0;
+  if (db >= 0) return 1;
+  return (db - METER_FLOOR_DB) / -METER_FLOOR_DB;
+}
+
+/**
+ * A bar with the speech threshold drawn on it.
+ *
+ * The question a recording indicator has to answer is "am I loud enough", and a
+ * bare number cannot answer it without the user also knowing the threshold —
+ * which was only ever shown in the tooltip of the *failure* state, invisible on
+ * a phone and absent exactly when things were working. Here the marker is
+ * always on screen, so the answer is a position rather than arithmetic: filled
+ * cells past the marker means it will transcribe.
+ */
+export function levelToBar(level, { cells = METER_CELLS, threshold = RMS_THRESHOLD } = {}) {
+  const filled = Math.round(levelToMeterFraction(level) * cells);
+  const mark = Math.max(1, Math.min(cells - 1, Math.round(levelToMeterFraction(threshold) * cells)));
+  let bar = "";
+  for (let i = 0; i < cells; i++) {
+    if (i === mark) bar += "|";
+    bar += i < filled ? "=" : ".";
+  }
+  return bar;
 }
 
 function mergeSamples(chunks, totalLength) {
@@ -565,6 +608,11 @@ async function createRecordingSession(micPreference) {
     meter() {
       return levelToMeter(recentPeak);
     },
+    /** The same level as a bar with the speech threshold marked on it, which is
+     *  what answers "am I loud enough" without the user knowing any numbers. */
+    bar() {
+      return levelToBar(recentPeak);
+    },
     /** Which input channel is carrying the signal — 1-based for humans. */
     channel() {
       return liveChannel + 1;
@@ -678,7 +726,8 @@ export default function whisperTranscribeExtension(api) {
       // the first question every microphone failure raises, and a number
       // answers it without a console.
       const meter = recording.meter();
-      const micSuffix = ` — mic: ${recording.deviceLabel}, ch ${recording.channel()}, level ${meter}`;
+      const bar = recording.bar();
+      const micSuffix = ` — mic: ${recording.deviceLabel}, ch ${recording.channel()}, level ${meter} (speech starts past the | on the meter)`;
       if (stalled) {
         // The browser handed over a microphone and then never ran the graph.
         // Distinct from silence, and the fix is unrelated to the hardware.
@@ -694,8 +743,14 @@ export default function whisperTranscribeExtension(api) {
         // The dead zone. Signal is present but never crosses the speech
         // threshold, so no chunk is ever cut and nothing is ever uploaded —
         // previously identical to "recording" and reported forever.
-        label = `too quiet · ${meter}`;
-        tone = "error";
+        //
+        // Advisory, not a fault: the capture is working and the user usually
+        // just has not spoken yet. Reported as an error it fired on anyone who
+        // opened the composer quietly, then cleared itself the moment they
+        // talked — a transient failure message for a session that went on to
+        // work perfectly.
+        label = `too quiet ${bar}`;
+        tone = "warning";
         title = `${recording.deviceLabel} is producing signal on channel ${recording.channel()} but never loud enough to transcribe (level ${meter}, needs ~${levelToMeter(RMS_THRESHOLD)}). Check the input gain, or whether the mic is on a different input than the one being captured.`;
       } else if (isGated) {
         label = `say "start listening to me"`;
@@ -706,11 +761,11 @@ export default function whisperTranscribeExtension(api) {
         // it as an error hid the live meter for the whole session and sent the
         // user hunting for a broken microphone. A mic chosen on one client can
         // never resolve on another, so on a phone this is the ordinary path.
-        label = `default mic · ${meter}`;
+        label = `default mic ${bar}`;
         tone = "active";
         title = `No input matched "${missingMic}" on this client, so the system default is being recorded${micSuffix}. A mic chosen in another browser or on another device cannot resolve here.`;
       } else {
-        label = `recording · ${meter}`;
+        label = `recording ${bar}`;
         tone = "active";
         title = `Stop voice recording${micSuffix}`;
       }
@@ -879,15 +934,14 @@ export default function whisperTranscribeExtension(api) {
     body.set("file", file);
     if (settings.model) body.set("model", String(settings.model));
     if (settings.language) body.set("language", String(settings.language));
-    // A form field, not a custom header. The desktop shell is a different origin
-    // from the backend, so a custom header forces a CORS preflight — and when
-    // that preflight does not allow the header the browser drops the request
-    // before it is sent, logging nothing on either side.
-    if (settings.whisperUrl) body.set("whisperUrl", String(settings.whisperUrl));
+    // The endpoint is deliberately not sent. The harness performs the upstream
+    // fetch, so the endpoint is its configuration, not this client's — a phone
+    // whose profile never had the setting used to send nothing and silently get
+    // the backend's own loopback default.
 
     // The API key is never held here — the harness resolves whisperSecretName
     // from its own secret store, so it needs to know which settings scope to
-    // read. Both are advisory: the server merges its own configured defaults.
+    // read.
     const snapshot = composer ? composer.getSnapshot() : api.getComposer();
     const query = new URLSearchParams();
     if (snapshot?.cwd) query.set("cwd", snapshot.cwd);
