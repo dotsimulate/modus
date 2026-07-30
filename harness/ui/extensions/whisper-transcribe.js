@@ -1,4 +1,4 @@
-console.log("[Whisper] Loading extension... version 2.10");
+console.log("[Whisper] Loading extension... version 2.11");
 const SHORTCUT = "Ctrl+Shift+~";
 const BUFFER_SIZE = 4096;
 const RMS_THRESHOLD = 0.015;
@@ -206,6 +206,21 @@ export function shouldWarnNoInput({ elapsedMs, peakLevel, graceMs = NO_INPUT_GRA
 }
 
 /**
+ * Whether the capture graph has never delivered a single audio frame.
+ *
+ * A different fault from silence, needing a different message. An AudioContext
+ * that stays suspended never fires `onaudioprocess` at all — the normal outcome
+ * on iOS Safari, where the context is constructed after getUserMedia's
+ * permission round-trip and transient user activation is therefore already gone,
+ * so `resume()` resolves without changing state. Level then sits at exactly zero
+ * forever, which `shouldWarnNoInput` reads as a dead microphone and blames
+ * hardware that is working perfectly.
+ */
+export function shouldWarnNoFrames({ elapsedMs, frames, graceMs = NO_INPUT_GRACE_MS }) {
+  return elapsedMs >= graceMs && frames <= 0;
+}
+
+/**
  * Whether a recording is alive but has never been loud enough to transcribe.
  *
  * This is the gap `shouldWarnNoInput` cannot see. A device sitting between the
@@ -275,6 +290,18 @@ export function describeMicDevice(device, preference) {
   return wanted ? `system default (no match for "${wanted}")` : "system default";
 }
 
+/**
+ * Whether a throwaway stream is the only way to evaluate a label preference.
+ *
+ * Only worth a permission round-trip when there is something to match and every
+ * label is hidden. An empty list means this browser will not name devices at
+ * all, and the real capture below produces a better error than a probe would.
+ */
+export function needsLabelProbe(inputs) {
+  const list = inputs ?? [];
+  return list.length > 0 && list.every((device) => !device?.label);
+}
+
 async function enumerateAudioInputs() {
   if (!navigator.mediaDevices?.enumerateDevices) return [];
   const devices = await navigator.mediaDevices.enumerateDevices();
@@ -290,19 +317,26 @@ async function enumerateAudioInputs() {
  * never match inside the desktop shell and vice versa. Falling back to the
  * system default without saying so is how a mic setting silently stops meaning
  * anything.
+ *
+ * Returns the probe stream when one was taken and nothing matched, because that
+ * stream is already exactly what the system-default path would ask for. Handing
+ * it back is what keeps the common phone case to a single getUserMedia call:
+ * stopping a stream and immediately opening another is a known way to get a
+ * silent or failing capture on iOS Safari, and a label saved on one client can
+ * never match on another, so that path is reached every single time.
  */
 async function resolveMicDevice(preference) {
   const wanted = String(preference ?? "").trim();
-  if (!wanted) return { device: null, requested: "", missing: false };
+  if (!wanted) return { device: null, requested: "", missing: false, stream: null };
 
   let inputs = await enumerateAudioInputs();
   // Device labels stay blank until the page has held a mic stream at least
-  // once, so a label preference cannot match on a cold start. Take a throwaway
-  // default stream to unlock them, then look again.
-  if (inputs.length > 0 && inputs.every((device) => !device.label)) {
+  // once, so a label preference cannot match on a cold start. Take a default
+  // stream to unlock them, then look again — and keep it.
+  let stream = null;
+  if (needsLabelProbe(inputs)) {
     try {
-      const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
-      probe.getTracks().forEach((track) => track.stop());
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       inputs = await enumerateAudioInputs();
     } catch {
       // Fall through and match against whatever we could see.
@@ -310,13 +344,18 @@ async function resolveMicDevice(preference) {
   }
 
   const match = matchAudioInputDevice(inputs, wanted);
+  if (match && stream) {
+    // A named device needs its own constraint set, so this stream is no use.
+    stream.getTracks().forEach((track) => track.stop());
+    stream = null;
+  }
   if (!match) {
     console.warn(
       `[whisper-transcribe] no audio input matched "${wanted}" — using the system default.`,
       `Available: ${inputs.map((device) => device.label || device.deviceId).join(" | ") || "(none)"}`,
     );
   }
-  return { device: match, requested: wanted, missing: !match };
+  return { device: match, requested: wanted, missing: !match, stream };
 }
 
 /**
@@ -371,7 +410,7 @@ async function createRecordingSession(micPreference) {
   const unsupported = captureSupportFromGlobals();
   if (unsupported) throw failure(unsupported.label, unsupported.detail);
 
-  const { device, requested, missing } = await resolveMicDevice(micPreference);
+  const { device, requested, missing, stream: probeStream } = await resolveMicDevice(micPreference);
   // An explicitly chosen device means the user knows their hardware, so ask for
   // it raw: Chromium's default processing chain (echo cancellation especially)
   // forces a multi-channel interface down to mono channel 0, which loses a mic
@@ -388,14 +427,19 @@ async function createRecordingSession(micPreference) {
         },
       }
     : { audio: true };
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-  } catch (error) {
-    // Not every interface honours the raw constraint set. Retry bare rather
-    // than reporting a dead mic for what is only an unsupported constraint.
-    if (!device) throw error;
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: device.deviceId } } });
+  // A probe stream only survives resolution when no device matched, and the
+  // constraints for that case are `{ audio: true }` — the probe's own. So this
+  // is a reuse, not a shortcut, and it avoids a second getUserMedia entirely.
+  let stream = device ? null : probeStream;
+  if (!stream) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      // Not every interface honours the raw constraint set. Retry bare rather
+      // than reporting a dead mic for what is only an unsupported constraint.
+      if (!device) throw error;
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: device.deviceId } } });
+    }
   }
   const context = new AudioContext();
   const source = context.createMediaStreamSource(stream);
@@ -411,6 +455,9 @@ async function createRecordingSession(micPreference) {
   let peakLevel = 0;
   let recentPeak = 0;
   let sawSpeech = false;
+  // Counted rather than inferred: zero frames and silent frames look identical
+  // in the level, and they have opposite causes.
+  let frames = 0;
   let liveChannel = 0;
   const startedAt = Date.now();
 
@@ -464,6 +511,7 @@ async function createRecordingSession(micPreference) {
   }
 
   processor.onaudioprocess = (event) => {
+    frames += 1;
     const buffer = event.inputBuffer;
     const channels = [];
     for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
@@ -524,6 +572,18 @@ async function createRecordingSession(micPreference) {
     /** True once the capture device has produced nothing for the grace window. */
     isSilent() {
       return shouldWarnNoInput({ elapsedMs: Date.now() - startedAt, peakLevel });
+    },
+    /**
+     * True when the graph has never delivered a frame at all — a suspended or
+     * dead AudioContext rather than a silent microphone. Checked before
+     * isSilent(), which would otherwise blame the hardware.
+     */
+    isStalled() {
+      return shouldWarnNoFrames({ elapsedMs: Date.now() - startedAt, frames });
+    },
+    /** Raw AudioContext state, so a stalled graph can name its own cause. */
+    contextState() {
+      return context.state;
     },
     /**
      * Alive but never loud enough to cut a chunk. Without this the recording
@@ -605,8 +665,9 @@ export default function whisperTranscribeExtension(api) {
 
   function syncAction() {
     const finishing = !recording && pendingUploads > 0;
-    const noInput = !!recording && recording.isSilent();
-    const tooQuiet = !!recording && !noInput && recording.isTooQuiet();
+    const stalled = !!recording && recording.isStalled();
+    const noInput = !!recording && !stalled && recording.isSilent();
+    const tooQuiet = !!recording && !stalled && !noInput && recording.isTooQuiet();
     const missingMic = recording?.missingPreference ?? null;
     let label = null;
     let tone = null;
@@ -618,7 +679,13 @@ export default function whisperTranscribeExtension(api) {
       // answers it without a console.
       const meter = recording.meter();
       const micSuffix = ` — mic: ${recording.deviceLabel}, ch ${recording.channel()}, level ${meter}`;
-      if (noInput) {
+      if (stalled) {
+        // The browser handed over a microphone and then never ran the graph.
+        // Distinct from silence, and the fix is unrelated to the hardware.
+        label = "audio stalled";
+        tone = "error";
+        title = `The microphone opened but the browser delivered no audio at all — its audio engine is "${recording.contextState()}", not running. On iOS Safari this happens when the page loses user activation before the audio graph starts: stop, then tap the mic button again.`;
+      } else if (noInput) {
         // Digital silence: the device is dead, muted, or not the one recording.
         label = "no input";
         tone = "error";
@@ -630,14 +697,18 @@ export default function whisperTranscribeExtension(api) {
         label = `too quiet · ${meter}`;
         tone = "error";
         title = `${recording.deviceLabel} is producing signal on channel ${recording.channel()} but never loud enough to transcribe (level ${meter}, needs ~${levelToMeter(RMS_THRESHOLD)}). Check the input gain, or whether the mic is on a different input than the one being captured.`;
-      } else if (missingMic) {
-        label = "mic not found";
-        tone = "error";
-        title = `No input matched "${missingMic}" on this client, so the system default is being recorded (${recording.deviceLabel}). A device id saved from another browser or device cannot match here.`;
       } else if (isGated) {
         label = `say "start listening to me"`;
         tone = "gated";
         title = `Transcription paused (say start listening to me)${micSuffix}`;
+      } else if (missingMic) {
+        // Not a failure: the recording is live on the system default. Reporting
+        // it as an error hid the live meter for the whole session and sent the
+        // user hunting for a broken microphone. A mic chosen on one client can
+        // never resolve on another, so on a phone this is the ordinary path.
+        label = `default mic · ${meter}`;
+        tone = "active";
+        title = `No input matched "${missingMic}" on this client, so the system default is being recorded${micSuffix}. A mic chosen in another browser or on another device cannot resolve here.`;
       } else {
         label = `recording · ${meter}`;
         tone = "active";

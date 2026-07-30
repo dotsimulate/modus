@@ -6,7 +6,9 @@ import whisperTranscribeExtension, {
   failure,
   levelToMeter,
   matchAudioInputDevice,
+  needsLabelProbe,
   pickLoudestChannel,
+  shouldWarnNoFrames,
   shouldWarnNoInput,
   shouldWarnTooQuiet,
 } from "./extensions/whisper-transcribe.js";
@@ -73,6 +75,63 @@ describe("whisper-transcribe no-input detection", () => {
   test("honours explicit thresholds", () => {
     expect(shouldWarnNoInput({ elapsedMs: 1000, peakLevel: 0, graceMs: 500 })).toBe(true);
     expect(shouldWarnNoInput({ elapsedMs: 5000, peakLevel: 0.02, level: 0.5 })).toBe(true);
+  });
+});
+
+describe("whisper-transcribe stalled-graph detection", () => {
+  // The iOS Safari case: getUserMedia succeeds, the AudioContext stays
+  // suspended, onaudioprocess never fires. Level is zero forever, so the
+  // silence check fired and told the user their microphone was dead.
+  test("reports a graph that has never delivered a frame", () => {
+    expect(shouldWarnNoFrames({ elapsedMs: 5000, frames: 0 })).toBe(true);
+  });
+
+  test("stays quiet once any frame has arrived, however silent", () => {
+    // One frame proves the graph is running, which makes silence a device
+    // problem and not an engine problem.
+    expect(shouldWarnNoFrames({ elapsedMs: 60_000, frames: 1 })).toBe(false);
+  });
+
+  test("gives the graph the grace window to spin up", () => {
+    expect(shouldWarnNoFrames({ elapsedMs: 500, frames: 0 })).toBe(false);
+    expect(shouldWarnNoFrames({ elapsedMs: 1000, frames: 0, graceMs: 500 })).toBe(true);
+  });
+
+  test("a stalled graph and a dead device are told apart by frames alone", () => {
+    // Both present as peakLevel 0. Only the frame count separates them, which is
+    // why it is counted rather than inferred from the level.
+    const stalled = { elapsedMs: 30_000, peakLevel: 0, frames: 0 };
+    const dead = { elapsedMs: 30_000, peakLevel: 0, frames: 400 };
+    expect(shouldWarnNoFrames(stalled)).toBe(true);
+    expect(shouldWarnNoFrames(dead)).toBe(false);
+    // The silence check cannot make this distinction on its own, which is the
+    // whole reason the stalled check has to be consulted first.
+    expect(shouldWarnNoInput(stalled)).toBe(true);
+    expect(shouldWarnNoInput(dead)).toBe(true);
+  });
+});
+
+describe("whisper-transcribe label probe", () => {
+  // The probe costs a permission round-trip and a second getUserMedia, so it
+  // must only happen when it can actually change the outcome.
+  test("probes when every label is hidden and there is something to match", () => {
+    expect(needsLabelProbe([
+      { kind: "audioinput", deviceId: "x", label: "" },
+      { kind: "audioinput", deviceId: "y", label: "" },
+    ])).toBe(true);
+  });
+
+  test("skips the probe once any label is already visible", () => {
+    expect(needsLabelProbe([
+      { kind: "audioinput", deviceId: "x", label: "" },
+      { kind: "audioinput", deviceId: "y", label: "Shure MV7" },
+    ])).toBe(false);
+  });
+
+  test("skips the probe when the browser names no devices at all", () => {
+    // Nothing to match, and the real capture below produces a better error.
+    expect(needsLabelProbe([])).toBe(false);
+    expect(needsLabelProbe(undefined)).toBe(false);
   });
 });
 

@@ -3396,11 +3396,17 @@ app.post("/api/whisper/transcribe", async (c) => {
         return c.json({ error: "invalid whisper url" }, 400);
       }
     }
+    // Origin is logged because it is the only thing separating the desktop shell
+    // (tauri.localhost) from a browser reaching the harness over the network.
+    // Without it a "STT is broken on my phone" report cannot be told apart from
+    // a healthy desktop request in the backend log, which is the only diagnostic
+    // surface a packaged build has.
     console.log("[whisper/transcribe] received", {
       name: file.name,
       size: file.size,
       type: file.type,
       whisperUrl,
+      origin: c.req.header("Origin") ?? "(none)",
     });
 
     const whisperBody = new FormData();
