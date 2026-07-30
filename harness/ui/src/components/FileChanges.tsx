@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import type { ToolCall } from "../../../sdk/index";
 import { API_BASE, tokenParam } from "../modusClient";
+import { shareableBackendUrl } from "../backendTarget";
 import { useFileViewer } from "../providers/FileViewerContext";
 
 export type FileEdit = {
@@ -231,6 +232,53 @@ function rawFileUrl(filePath: string): string {
   return `${API_BASE}/api/file/raw?path=${encodeURIComponent(filePath)}${sep}${tp}`;
 }
 
+/**
+ * The same raw-file URL, absolute, so it survives leaving this document.
+ *
+ * The token stays in the query because `/api/file/raw` is one of the routes in
+ * `allowsQueryCredential` — a header cannot be attached to a link someone pastes
+ * into another browser, which is exactly what this is for.
+ */
+function shareableFileUrl(filePath: string): string {
+  const tp = tokenParam();
+  const sep = tp ? "&" : "";
+  return shareableBackendUrl(`/api/file/raw?path=${encodeURIComponent(filePath)}${sep}${tp}`);
+}
+
+/**
+ * Hand a link to the platform, preferring the native share sheet.
+ *
+ * "Open in a new tab" is unreachable in a home-screen web app on iOS: no address
+ * bar, no tabs, and nothing that lets the user recover the URL. `navigator.share`
+ * is the way out — the iOS sheet offers both Copy and Open in Safari — and it
+ * degrades to the clipboard everywhere it does not exist.
+ *
+ * Returns what actually happened so the caller can confirm it on screen; a copy
+ * that silently succeeded is indistinguishable from one that silently failed.
+ */
+export async function shareLink(
+  url: string,
+  title: string,
+  nav: { share?: (data: { title?: string; url: string }) => Promise<void>; clipboard?: { writeText(text: string): Promise<void> } } = navigator,
+): Promise<"shared" | "copied" | "failed"> {
+  if (typeof nav.share === "function") {
+    try {
+      await nav.share({ title, url });
+      return "shared";
+    } catch (err) {
+      // A cancelled share sheet rejects with AbortError. That is the user saying
+      // no, so falling back to a silent clipboard write would override them.
+      if ((err as { name?: string } | null)?.name === "AbortError") return "failed";
+    }
+  }
+  try {
+    await nav.clipboard?.writeText(url);
+    return nav.clipboard ? "copied" : "failed";
+  } catch {
+    return "failed";
+  }
+}
+
 /** A single file card with collapsible edits */
 export function FileCard({
   filePath,
@@ -245,10 +293,21 @@ export function FileCard({
   const name = basename(filePath);
   const dir = shortPath(filePath).replace(/\/?[^/]+$/, "");
   const previewable = isBrowserPreviewable(filePath);
+  const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
 
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
     window.open(rawFileUrl(filePath), "_blank");
+  };
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const result = await shareLink(shareableFileUrl(filePath), name);
+    setShareState(result);
+    // Confirm on the button itself. There are no devtools in the packaged
+    // desktop and no console at all on a phone, so an unconfirmed clipboard
+    // write is indistinguishable from one that failed.
+    setTimeout(() => setShareState("idle"), 2000);
   };
 
   const handleViewFile = (e: React.MouseEvent) => {
@@ -273,6 +332,28 @@ export function FileCard({
               <ellipse cx="6" cy="6" rx="2.2" ry="5" stroke="currentColor" strokeWidth="1.2"/>
               <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.2"/>
             </svg>
+          </button>
+        )}
+        {previewable && (
+          // Sits next to "open in browser" because that button cannot work in a
+          // home-screen web app, where there is no tab to open and no address bar
+          // to read the URL back out of.
+          <button
+            className={`fc-open-btn${shareState !== "idle" ? ` fc-open-btn--${shareState}` : ""}`}
+            onClick={handleShare}
+            title="Copy or share link (opens in Safari from the share sheet)"
+          >
+            {shareState === "idle" ? (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M4.8 7.2 7.2 4.8" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M6.2 3.4 7.4 2.2a1.7 1.7 0 0 1 2.4 2.4L8.6 5.8" stroke="currentColor" strokeWidth="1.2"/>
+                <path d="M5.8 8.6 4.6 9.8a1.7 1.7 0 0 1-2.4-2.4l1.2-1.2" stroke="currentColor" strokeWidth="1.2"/>
+              </svg>
+            ) : (
+              <span className="fc-share-note">
+                {shareState === "failed" ? "!" : "ok"}
+              </span>
+            )}
           </button>
         )}
         <button className="fc-open-btn" onClick={handleViewFile} title="View in side panel">

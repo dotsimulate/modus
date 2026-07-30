@@ -57,6 +57,29 @@ export function backendUrl(path: string): string {
   return `${BACKEND_TARGET.apiBase}${normalizedPath}`;
 }
 
+/**
+ * A backend URL that still means something outside this document.
+ *
+ * `backendUrl()` is correct for fetching and wrong for sharing: in same-origin
+ * browser mode `apiBase` is `""`, so it returns a root-relative path. That
+ * resolves fine against the current page and is useless once it leaves — pasted
+ * into another browser, handed to the share sheet, or sent to someone else it is
+ * just a path with no host.
+ *
+ * The motivating case is a home-screen web app on iOS, which has no address bar
+ * and no tabs, so "open in a new tab" cannot work and copying the link is the
+ * only way out. `pageOrigin` is injected rather than read from `location` so
+ * this is testable.
+ */
+export function shareableBackendUrl(path: string, pageOrigin?: string): string {
+  const url = backendUrl(path);
+  if (/^https?:\/\//i.test(url)) return url;
+  const origin = (pageOrigin ?? (typeof location === "undefined" ? "" : location.origin)).replace(/\/+$/, "");
+  // With no origin to resolve against, return the relative form unchanged rather
+  // than inventing a host — a wrong absolute URL is worse than an honest path.
+  return origin ? `${origin}${url}` : url;
+}
+
 /** Namespace backend-owned browser state while preserving existing browser keys. */
 export function backendStorageKey(key: string): string {
   return BACKEND_TARGET.mode === "browser"
