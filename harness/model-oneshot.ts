@@ -253,10 +253,17 @@ let liveCompleter: OneShotCompleter | null = null;
  * Lazily bind pi-ai's completeSimple. Deferred rather than imported at module
  * top level so importing this module (for the record store, or for the pure
  * resolvers in a test) does not pull the provider SDK and its builtin registry.
+ *
+ * A dynamic import() rather than require(): pi-ai is "type": "module" and its
+ * exports map declares only an "import" condition for ".", so there is no CJS
+ * entry to require. Bun's runtime tolerates require() of ESM, which is why this
+ * worked in dev, but Bun.build honours the exports conditions strictly and
+ * failed to resolve it — breaking the desktop bundle while every test and
+ * typecheck stayed green. Keep this an import().
  */
-function getLiveCompleter(): OneShotCompleter {
+async function getLiveCompleter(): Promise<OneShotCompleter> {
   if (liveCompleter) return liveCompleter;
-  const { completeSimple } = require("@mariozechner/pi-ai") as typeof import("@mariozechner/pi-ai");
+  const { completeSimple } = await import("@mariozechner/pi-ai");
   liveCompleter = ((model, context, options) =>
     completeSimple(model as any, context as any, options as any)) as OneShotCompleter;
   return liveCompleter;
@@ -279,7 +286,7 @@ export async function runOneShot(
   });
 
   const model = buildPiModel(target.provider, target.model, target.profile);
-  const complete = deps.complete ?? getLiveCompleter();
+  const complete = deps.complete ?? (await getLiveCompleter());
 
   const completion = await complete(
     model,
