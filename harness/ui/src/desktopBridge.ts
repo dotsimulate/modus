@@ -31,14 +31,29 @@ export type DesktopUpdateCheck = {
   date?: string | null;
 };
 
+/**
+ * Destination of a `modus://` deep link, validated in Rust.
+ *
+ * Tagged by `kind` rather than discriminated by which field is present, so a
+ * new link kind cannot be silently mistaken for an existing one. Must match
+ * `DeepLinkTarget` in `desktop/src-tauri/src/deep_link.rs`.
+ */
+export type DesktopDeepLinkTarget =
+  | { kind: "session"; sessionId: string }
+  | { kind: "page"; project: string; slug: string };
+
 type TauriInternals = {
   invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
+};
+
+type TauriEvents = {
+  listen<T>(event: string, handler: (event: { payload: T }) => void): Promise<() => void>;
 };
 
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: TauriInternals;
-    __TAURI__?: { core?: TauriInternals };
+    __TAURI__?: { core?: TauriInternals; event?: TauriEvents };
   }
 }
 
@@ -124,6 +139,30 @@ export async function acknowledgeManagedDesktopTarget(response: DesktopBootstrap
 
 export async function quitDesktopModus(): Promise<void> {
   await invokeDesktop<void>("quit_modus");
+}
+
+/** Must match `DEEP_LINK_EVENT` in `desktop/src-tauri/src/deep_link.rs`. */
+const DEEP_LINK_EVENT = "modus:deep-link";
+
+/**
+ * Claim a link that arrived before this webview was listening.
+ *
+ * When the OS launches Modus *because* of a `modus://` link, the URL is handled
+ * in Rust before any listener exists, so it is parked there and claimed once.
+ * Returns null on an ordinary start.
+ */
+export async function takePendingDeepLink(): Promise<DesktopDeepLinkTarget | null> {
+  return invokeDesktop<DesktopDeepLinkTarget | null>("desktop_take_pending_deep_link");
+}
+
+/** Subscribe to `modus://` links delivered while the app is already running. */
+export async function onDesktopDeepLink(
+  handler: (target: DesktopDeepLinkTarget) => void,
+): Promise<() => void> {
+  // Provided by `withGlobalTauri`; absent in the browser build.
+  const events = window.__TAURI__?.event;
+  if (!events?.listen) return () => {};
+  return events.listen<DesktopDeepLinkTarget>(DEEP_LINK_EVENT, (event) => handler(event.payload));
 }
 
 export async function getDesktopTailscaleStatus(): Promise<DesktopTailscaleStatus> {

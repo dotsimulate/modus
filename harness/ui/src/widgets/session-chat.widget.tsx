@@ -25,7 +25,7 @@ type SessionChatConfig = WidgetBase & {
 };
 
 export default function SessionChatWidget({ config, pageContext }: WidgetProps<SessionChatConfig>) {
-  const { branchFromSessionMessage } = useSession();
+  const { branchFromSessionMessage, activeSession, queuedMessage, cancelQueued } = useSession();
   const { activeUP, profiles } = useProfiles();
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
   const selectedSession = pageContext?.get("selectedSession") as string | undefined;
@@ -76,6 +76,11 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
 
   const isActive = session.status === "running" || session.status === "starting" || session.status === "interrupting";
   const permissions = session.pendingPermissions ?? [];
+  // The pending-send strip belongs to the composer's session. This widget can be
+  // pointed at any session, so only the one the composer is actually sending to
+  // gets it — otherwise a second chat pane would show someone else's pending
+  // message and offer to cancel it.
+  const pendingSend = activeSession?.id === sessionId ? queuedMessage : null;
   const profileUi = profiles.find((profile) => profile.name === session.profile)?.ui;
   const interfaceSettings = resolveInterfaceSettings(activeUP?.interface);
   const conversation = interfaceSettings.conversation;
@@ -103,6 +108,8 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
         onLoadOlderMessages={loadOlderHistory}
         onLoadMessageDetails={loadMessageDetails}
         onBranch={handleBranch}
+        queuedMessage={pendingSend}
+        onCancelQueued={cancelQueued}
       />
       {permissions.length > 0 && (
         <PermissionOverlay

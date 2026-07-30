@@ -429,6 +429,30 @@ A leaf widget with `type: "move:chess"` is not a registered widget. Instead,
 info via SDK and mounts the remote module. This lets pages embed move widgets
 directly without running the move session — useful for ambient UIs.
 
+#### Embed lifecycle — where the embed gets its `apiToken`
+
+The embed is **not** a dead render. `MoveWidgetEmbed` calls
+`POST /api/moves/:name/attach` itself (with `inputs: {}` and the active `cwd`),
+and passes the `apiToken` and `instanceId` from that attach result straight into
+`MoveWidget`. So `callOp` works on a page embed exactly as it does in a panel tab.
+
+Four consequences worth knowing before you build a page around one:
+
+- **`widget.mountOnAttach: true` and an `api` declaration are both required.**
+  `attachMove` rejects the request outright otherwise — `"Move does not support
+  mountOnAttach"` or `"mountOnAttach requires an api declaration"` — and the embed
+  renders that string in place of the widget.
+- **There is no session.** The embed mounts with `sessionId=""`, so handler powers
+  that need one have nothing to target: `ctx.notify()` has no session to inject
+  into, and `ctx.sessionId` is empty. Design page-embedded ops around `ctx.state`
+  and explicit `sendMessage(sessionId, …)` to a session you looked up yourself.
+- **Attachment is cached at module scope** by `(moveName, cwd, widgetId)`, so it
+  survives React unmount/remount. Navigating away and back does not re-attach,
+  and therefore does not re-import `context.ts` — see
+  [Moves § Reload Semantics](./moves.md).
+- **Two embeds of the same move on the same page share one registration** if they
+  share a `widgetId`; give them distinct ids to get distinct instances.
+
 ### Persistent terminals
 
 The `persistent-terminal` widget is identity-bound, not instance-bound. Its owner

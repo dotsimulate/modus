@@ -675,6 +675,51 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
   return { ...s, status: "running", messages: msgs, _streamingText: "", _streamingThinking: "", _thinkingStartedAt: undefined, streamFeed: feed };
 }
 
+/**
+ * Upper bound on stored tool output, per call.
+ *
+ * This is a memory guard, not a display choice — the view truncates separately
+ * and offers to expand. It was previously 2000 and applied at store time with
+ * no marker, so a `Read` of any ordinary source file was silently cut in a way
+ * nothing in the UI acknowledged. Nothing downstream depends on the value.
+ */
+export const TOOL_RESULT_STORE_LIMIT = 100_000;
+
+/**
+ * Split a tool result into displayable text and renderable images.
+ *
+ * Tool results are either a plain string or an array of content blocks, and
+ * that array can carry images — a screenshot, a chart, a generated picture.
+ * Stringifying the array inlined the base64 into the text, so the user got a
+ * truncated wall of characters where the image should have been. Images come
+ * out here as attachments; everything else is flattened to text.
+ */
+export function splitToolResultContent(content: unknown): { text: string; images: Attachment[] } {
+  if (typeof content === "string") return { text: content, images: [] };
+  if (!Array.isArray(content)) {
+    return { text: content == null ? "" : JSON.stringify(content), images: [] };
+  }
+
+  const images: Attachment[] = [];
+  const parts: string[] = [];
+  for (const block of content) {
+    if (block?.type === "image" && block.source?.type === "base64" && block.source.data) {
+      images.push({
+        type: "image",
+        mediaType: block.source.media_type ?? "image/png",
+        data: block.source.data,
+      });
+    } else if (block?.type === "text" && typeof block.text === "string") {
+      parts.push(block.text);
+    } else if (block != null) {
+      // Unknown block kinds still have to be visible rather than dropped —
+      // silently losing tool output is the failure mode this whole change is about.
+      parts.push(JSON.stringify(block));
+    }
+  }
+  return { text: parts.join("\n"), images };
+}
+
 // ── User Messages (including synthetic tool_result) ──
 
 function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
@@ -690,13 +735,15 @@ function reduceUser(s: ReducerState, m: any, ts: number): ReducerState {
         if (block.type === "tool_result" && block.tool_use_id) {
           const tc = pending.get(block.tool_use_id);
           if (tc) {
-            const result = typeof block.content === "string"
-              ? block.content
-              : JSON.stringify(block.content ?? "");
+            const { text, images } = splitToolResultContent(block.content);
             // Build update fields — merged onto the CURRENT tool call, not the stale pending copy
             const updateFields = {
               status: (block.is_error ? "error" : "completed") as ToolCall["status"],
-              result: result.slice(0, 2000),
+              result: text.slice(0, TOOL_RESULT_STORE_LIMIT),
+              // Record the true size when the store limit bites, so the view can
+              // say output was dropped instead of just ending mid-sentence.
+              ...(text.length > TOOL_RESULT_STORE_LIMIT ? { resultFullLength: text.length } : {}),
+              ...(images.length > 0 ? { images } : {}),
               duration: ts - tc.startedAt,
             };
             pending.set(block.tool_use_id, { ...tc, ...updateFields });

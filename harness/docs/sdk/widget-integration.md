@@ -1,3 +1,9 @@
+---
+title: Widget Integration Guide
+audience: dev
+covers: harness/sdk/*.ts harness/move-runner.ts harness/ui/src/components/MoveWidget.tsx harness/ui/src/components/MoveWidgetEmbed.tsx
+---
+
 # Widget Integration Guide
 
 Move widgets are React components served by the harness. This guide covers how to

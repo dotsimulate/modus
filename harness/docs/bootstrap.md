@@ -1,6 +1,8 @@
 ---
 title: Bootstrap
 lastUpdated: 2026-07-07
+audience: dev
+covers: none
 ---
 
 # Bootstrap

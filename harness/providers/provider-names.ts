@@ -69,3 +69,54 @@ export function readsNativeSkills(name: string): boolean {
 export function acceptsInjectedSkillPaths(name: string): boolean {
   return (PI_PROVIDERS as string[]).includes(name);
 }
+
+// ── Mid-turn message delivery (steering) ──
+
+/**
+ * Providers that can deliver a user message *into a turn already running*,
+ * rather than holding it until the turn ends. Each needs a live input channel
+ * the harness can write to after the turn has started:
+ *
+ * - `claude-code` — the Agent SDK's streaming-input iterator.
+ * - `claude-code-pty` — the CLI is spawned with `--input-format stream-json`
+ *   and stdin stays open, which is the same channel by another route.
+ * - PI providers — `AgentSession.sendUserMessage(content, { deliverAs: "steer" })`.
+ *
+ * Everything else runs one prompt per turn with no injection point, so a
+ * message sent mid-turn there can only be queued. Keeping the list here (rather
+ * than inferring it from whether a provider happens to define `steerMessage`)
+ * is what lets `/api/providers` tell a client which of the two will happen
+ * *before* it sends.
+ */
+export const STEERABLE_PROVIDERS: string[] = [
+  "claude-code",
+  "claude-code-pty",
+  ...PI_PROVIDERS,
+];
+
+export function supportsSteering(name: string): boolean {
+  return STEERABLE_PROVIDERS.includes(name);
+}
+
+// ── One-shot completion ──
+
+/**
+ * Providers that can answer a single prompt without spawning an agent session.
+ *
+ * Only the PI family qualifies, and for a structural reason rather than a
+ * missing feature: PI is an in-process SDK, so `pi-ai`'s `completeSimple()`
+ * reaches the model directly with no tool loop, no session state, and no
+ * subprocess. Every other provider is a CLI the harness spawns and converses
+ * with — there is no way to ask one for a single completion without paying for
+ * a process launch and a full agent turn.
+ *
+ * Consequence a caller must handle: a one-shot against `claude-code`, `codex`,
+ * `cursor`, `antigravity`, `grok-build`, `opencode` or `gemini-cli` fails
+ * loudly. Falling back to a session would silently turn a sub-second call into
+ * a multi-second spawn, which is exactly the cost a one-shot exists to avoid.
+ */
+export const ONE_SHOT_PROVIDERS: string[] = [...PI_PROVIDERS];
+
+export function supportsOneShotCompletion(name: string): boolean {
+  return ONE_SHOT_PROVIDERS.includes(name);
+}

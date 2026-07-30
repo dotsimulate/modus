@@ -215,6 +215,19 @@ export const handlers: Record<string, MoveApiHandler> = {
     const lines: string[] = [];
     for (const set of resultSets) {
       lines.push(`## results for "${set.query}"`);
+      // Report the miss before the hits. A ranked list always looks plausible,
+      // so without this an agent reads a doc that merely shares a common word,
+      // finds nothing, and guesses at the contract instead of reading source.
+      if (set.missingIdentifiers.length) {
+        lines.push(
+          `!! not in any doc: ${set.missingIdentifiers.map((i) => `\`${i}\``).join(", ")}`
+          + " — read the source or check `generated/authoring-contracts`; do not infer it"
+          + " from the hits below.",
+        );
+      }
+      if (set.missingTerms.length) {
+        lines.push(`!! no doc contains: ${set.missingTerms.map((t) => `"${t}"`).join(", ")}`);
+      }
       if (!set.results.length) {
         lines.push("(no matches)", "");
         continue;

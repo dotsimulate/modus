@@ -10,6 +10,8 @@ import { findCompletion, loadPromptCache, usePromptCache } from "../promptCache"
 import { dispatchUiIntent, moveActivationResultToIntent, moveAttachResultToIntent } from "../widgets/intents";
 import type { PageContextHandle } from "../widgets/types";
 import { wrapSkillContext } from "../move-context";
+import { useProfiles } from "../providers/ProfileContext";
+import type { DeliverMode } from "../providers/SessionContext";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
 const sentHistory: string[] = [];
@@ -55,7 +57,7 @@ function serializePastes(pastes: StagedPaste[]): string {
 type Props = {
   value: string;
   onChange: (value: string) => void;
-  onSend: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => void;
+  onSend: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode) => void;
   onStop: () => void;
   sessionStatus: SessionStatus | null;
   disabled: boolean;
@@ -149,6 +151,13 @@ export function ChatInput({
   const historyIndex = useRef(-1);
   const draft = useRef("");
   const isActive = sessionStatus === "running" || sessionStatus === "starting" || sessionStatus === "interrupting";
+
+  // Whether this provider can deliver a message into a turn already running.
+  // Declared by the backend rather than guessed, so the affordance only appears
+  // where it does something (see providers/provider-names.ts).
+  const { providerCapabilities } = useProfiles();
+  const canSteer = !!provider && providerCapabilities[provider]?.messageDelivery === "steer";
+  const canInterject = isActive && canSteer;
 
   // Prompt picker slash shortcut
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -482,7 +491,7 @@ export function ChatInput({
 
   // ── Send ──
 
-  async function handleSend(textOverride?: string) {
+  async function handleSend(textOverride?: string, deliver: DeliverMode = "queue") {
     const text = (textOverride ?? value).trim();
     const pasteBlock = serializePastes(pastes);
     const authoredText = pasteBlock ? (text ? `${pasteBlock}\n\n${text}` : pasteBlock) : text;
@@ -522,7 +531,7 @@ export function ChatInput({
             historyIndex.current = -1;
             draft.current = "";
           }
-          onSend(attachments, sendText || " ", [moveBinding]);
+          onSend(attachments, sendText || " ", [moveBinding], deliver);
           setAttachments([]);
           setPastes([]);
           setStagedSkills([]);
@@ -552,7 +561,7 @@ export function ChatInput({
               }
               historyIndex.current = -1;
               draft.current = "";
-              onSend(attachments, combined);
+              onSend(attachments, combined, undefined, deliver);
               setAttachments([]);
               setPastes([]);
               setStagedSkills([]);
@@ -572,7 +581,7 @@ export function ChatInput({
         historyIndex.current = -1;
         draft.current = "";
       }
-      onSend(attachments, finalText);
+      onSend(attachments, finalText, undefined, deliver);
       setAttachments([]);
       setPastes([]);
       setStagedSkills([]);
@@ -620,7 +629,10 @@ export function ChatInput({
 
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      // Alt+Enter interjects into the running turn instead of waiting for it.
+      // Inert when the provider cannot steer, so the keystroke never silently
+      // means something different than the button says.
+      handleSend(undefined, e.altKey && canInterject ? "steer" : "queue");
       return;
     }
 
@@ -674,7 +686,16 @@ export function ChatInput({
   const isRecording = composerActions.some((a) => a.status?.tone === "active");
   const isFinishing = composerActions.some((a) => a.status?.tone === "busy");
   const isGated = iconStatus?.status?.tone === "gated";
-  const statusDotTone = isRecording ? "active" : isFinishing ? "busy" : isGated ? "gated" : null;
+  // An extension reporting a failure outranks every healthy state. Without this
+  // branch a status of tone "error" — the one tone that means something is
+  // wrong — rendered no dot at all, which made it the quietest state on the
+  // composer rather than the loudest. It is also the only failure channel an
+  // extension has: the packaged desktop ships without devtools, so a console
+  // line reaches nobody.
+  const isErrored = composerActions.some((a) => a.status?.tone === "error");
+  const statusDotTone = isErrored
+    ? "error"
+    : isRecording ? "active" : isFinishing ? "busy" : isGated ? "gated" : null;
 
   const wrapClass = [
     "chat-textarea-wrap",
@@ -830,7 +851,7 @@ export function ChatInput({
           {(statusDotTone || iconStatus) && (
             <div className="composer-status-area">
               {iconStatus && (
-                <span className="composer-status-text">
+                <span className={`composer-status-text composer-status-text--${iconStatus.status?.tone ?? "default"}`}>
                   {iconStatus.status?.label}
                 </span>
               )}
@@ -983,9 +1004,24 @@ export function ChatInput({
                 </button>
               ))}
               {isActive ? (
-                <button className="stop-btn" type="button" onClick={onStop}>
-                  stop
-                </button>
+                <>
+                  {hasContent && (
+                    <button
+                      className={`send-btn${canSteer ? " send-btn--interject" : ""}`}
+                      type="button"
+                      onClick={() => handleSend(undefined, canSteer ? "steer" : "queue")}
+                      disabled={disabled}
+                      title={canSteer
+                        ? "Interject into the running turn — the agent reads it at the next tool boundary (Alt+Enter)"
+                        : `${provider ?? "This provider"} cannot deliver mid-turn — this waits until the current turn ends`}
+                    >
+                      {canSteer ? "interject" : "queue"}
+                    </button>
+                  )}
+                  <button className="stop-btn" type="button" onClick={onStop}>
+                    stop
+                  </button>
+                </>
               ) : (
                 <button
                   className="send-btn"

@@ -30,6 +30,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["modus"]
+      }
+    },
     "updater": {
       "pubkey": "",
       "endpoints": []

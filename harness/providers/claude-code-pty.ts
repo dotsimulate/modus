@@ -1288,6 +1288,26 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       }
     },
 
+    steerMessage(ctx: TurnContext, content: MessageContent): boolean {
+      const { session } = ctx;
+      const state = getState(session);
+      if (!state) return false;
+
+      if (session.status !== "running" && session.status !== "starting") return false;
+
+      // A generation that is unwinding cannot carry the message into the turn
+      // the user is watching: an interrupted CLI is finishing and exiting, and a
+      // pending restart will replace the process outright. Refuse so the caller
+      // queues instead of writing into a doomed stdin.
+      if (state.interrupting || state.restartPending) return false;
+      if (!state.processOwner.current()) return false;
+
+      // Same channel the SDK provider steers through — this process was spawned
+      // with `--input-format stream-json` and stdin stays open for the life of
+      // the generation, so the CLI picks the message up at the next tool boundary.
+      return writeMessageToStdin(state, content);
+    },
+
     abort(session: ActiveSession) {
       const state = getState(session);
       if (!state) return;

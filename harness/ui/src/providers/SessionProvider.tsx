@@ -28,7 +28,7 @@ import {
   subscribeSessionIndex,
   type SessionIndexConnectionState,
 } from "../sessionIndexSync";
-import { SessionContext, type QueuedMessage } from "./SessionContext";
+import { SessionContext, type QueuedMessage, type DeliverMode } from "./SessionContext";
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
@@ -363,7 +363,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   // ── Send message ──
 
-  const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string, moves?: MoveBinding[]) => {
+  const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver: DeliverMode = "queue") => {
     const prompt = (textOverride ?? getInputValue()).trim();
     if (!prompt && sendAttachments.length === 0) return;
 
@@ -480,6 +480,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const isActive = existingState.status === "running" || existingState.status === "starting" || existingState.status === "interrupting";
 
       if (isActive) {
+        if (deliver === "steer") {
+          // Interject into the turn in flight. On success the backend persists
+          // and broadcasts the user message itself, so it arrives over SSE like
+          // any other — nothing to stage here. Only a fallback to the queue
+          // needs the pending strip, and it says so.
+          modus.steerSession(activeSessionId!, prompt, apiAtts, moves)
+            .then((result) => {
+              if (result.mode === "queued") {
+                setQueuedMessage({
+                  text: prompt,
+                  attachments: sendAttachments,
+                  serverQueued: true,
+                  dispatchId: result.dispatchId,
+                  steerDeclined: true,
+                });
+              }
+            })
+            .catch(() => {});
+          return;
+        }
         // Commit to backend queue immediately — survives page navigation
         modus.sendMessage(activeSessionId!, prompt, apiAtts, moves ? { moves } : undefined)
           .then((result) => {
@@ -754,7 +774,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionContext.Provider value={{
-      activeSession, serverSessions, allServerSessions, sessionProjects, sessionIndexConnection,
+      activeSession, serverSessions, allServerSessions, sessionsLoaded, sessionProjects, sessionIndexConnection,
       handleInputChange,
       send, stop, stopTask, newSession, selectSession, archiveSession,
       refreshSessions, handlePermissionResponse,

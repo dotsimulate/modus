@@ -419,7 +419,14 @@ app.use("/api/*", cors({
     requestHost: c.req.header("Host"),
     configuredOrigins: process.env.MODUS_ALLOWED_ORIGINS,
   }) ? origin : "",
-  allowHeaders: ["Authorization", "Content-Type"],
+  // Any custom request header a client sends must be listed here or the browser
+  // blocks the request at preflight — before it reaches a route, so nothing is
+  // logged server-side and the failure is invisible from both ends. This only
+  // bites cross-origin callers: the desktop shell runs on tauri.localhost and
+  // talks to the backend on 127.0.0.1, while a browser served by the harness is
+  // same-origin and never preflights. X-Whisper-Url is legacy — the client now
+  // sends that value as a form field — and stays allowed for older clients.
+  allowHeaders: ["Authorization", "Content-Type", "X-Whisper-Url"],
   allowMethods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   exposeHeaders: ["Accept-Ranges", "Content-Length", "Content-Range", "Content-Type"],
 }));
@@ -2032,14 +2039,16 @@ app.delete("/api/sessions/:id/dispatch/:dispatchId", (c) => {
   return c.json({ ok });
 });
 
-// Steer: inject a message at the next tool boundary (falls back to queue if unsupported)
+// Steer: inject a message at the next tool boundary. `mode` reports what actually
+// happened — "steer" reached the running turn, "queued" is waiting for it to end.
 app.post("/api/sessions/:id/steer", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   if (!prompt) return c.json({ error: "prompt required" }, 400);
-  const ok = steerMessage(id, prompt, body.attachments);
-  return c.json({ ok });
+  const result = await steerMessage(id, prompt, body.attachments, body.moves);
+  if (result.mode === "none") return c.json({ error: "session not found" }, 404);
+  return c.json(result);
 });
 
 // Stop session entirely
@@ -3368,7 +3377,13 @@ app.post("/api/whisper/transcribe", async (c) => {
     const form = await c.req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return c.json({ error: "file is required" }, 400);
-    const requestedWhisperUrl = c.req.header("X-Whisper-Url");
+    // Prefer the form field. A custom header needs a CORS preflight allowance,
+    // which the desktop shell silently failed for a long time; a multipart field
+    // travels with the request the browser was already going to send.
+    const formWhisperUrl = form.get("whisperUrl");
+    const requestedWhisperUrl = (typeof formWhisperUrl === "string" && formWhisperUrl.trim())
+      ? formWhisperUrl.trim()
+      : c.req.header("X-Whisper-Url");
     let whisperUrl = WHISPER_TRANSCRIBE_URL;
     if (requestedWhisperUrl) {
       try {

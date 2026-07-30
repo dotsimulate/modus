@@ -10,15 +10,32 @@
  *     which let any provider's agent learn Modus interactively via modus_submit.
  *
  * Doc IDs are the file path relative to the docs dir without the .md extension,
- * forward slashes ("moves", "sdk/guide"). Generated docs are namespaced under
- * "generated/" and built on demand:
- *   - generated/move-ops: every discoverable move with its declared api ops,
- *     capabilities, and trust tier — the audit surface for "which ops are
- *     actually exposed".
+ * forward slashes ("moves", "sdk/guide"). Reference docs are namespaced under
+ * "generated/" and come in two kinds:
+ *   - Read-time (virtual, built per request) for anything that depends on the
+ *     caller's machine. generated/move-ops is the one: every discoverable move
+ *     with its declared api ops, capabilities, and trust tier — the audit
+ *     surface for "which ops are actually exposed" — and it scans the caller's
+ *     own .modus/moves, so it cannot be precomputed.
+ *   - Build-time (ordinary .md files under docs/generated/, written by
+ *     scripts/generate-docs.ts) for anything that describes this source tree.
+ *     Packaged builds do not stage the .ts sources those quote, so they must be
+ *     generated before staging; docs/ is staged, so they ship as normal docs.
+ * A virtual id wins over a file of the same name.
  *
  * Frontmatter contract (all optional): title, lastUpdated, covers
- * (space-separated source paths), audience ("user" | "dev" | "agent",
- * default "dev").
+ * (space-separated source paths, or the literal `none`), audience
+ * ("user" | "dev" | "agent", default "dev").
+ *
+ * `covers: none` is an explicit declaration that a doc describes a pattern or a
+ * procedure rather than code (bootstrap.md, macos-setup.md). It sets
+ * `coversNone` so a drift audit can tell "the author declared there is nothing
+ * to check" apart from "the author forgot" — inventing plausible paths instead
+ * would make the audit report a verification it never performed.
+ *
+ * The one-line `summary` is derived from the first body line that is not a
+ * heading, fence, table row, or comment, so it is worth keeping that line
+ * meaningful: it is what an agent reads in docs_list to decide whether to fetch.
  *
  * Ranking is IDF-weighted with saturating term frequency, a verbatim boost for
  * code-shaped spans in the query, and normalization by query length so scores
@@ -41,6 +58,8 @@ export interface DocIndexEntry {
   audience: DocAudience;
   lastUpdated?: string;
   covers?: string[];
+  /** `covers: none` — the doc declares it documents no source file. */
+  coversNone?: boolean;
   generated?: boolean;
 }
 
@@ -63,6 +82,19 @@ export interface DocSearchHit {
 export interface DocSearchResult {
   query: string;
   results: DocSearchHit[];
+  /**
+   * Query terms that appear in no searched doc. Without this the caller cannot
+   * tell a real answer from a doc that merely shares a common word, and the
+   * observed consequence is guessing: a search for a symbol that exists nowhere
+   * still returns a confident-looking ranked list.
+   */
+  missingTerms: string[];
+  /**
+   * Code-shaped spans from the query (backticked, camelCase, snake_case) that
+   * appear verbatim in no searched doc. A miss here is the strongest possible
+   * signal to stop reading docs and go read the source.
+   */
+  missingIdentifiers: string[];
 }
 
 export interface DocsQueryOpts {
@@ -103,12 +135,27 @@ function parseFrontmatter(raw: string): { meta: Record<string, string>; body: st
   return { meta, body };
 }
 
-/** First body paragraph line that isn't a heading, fence, or comment. */
+/**
+ * First body paragraph line that isn't a heading, fence, or comment.
+ *
+ * Comment state is tracked across lines: testing only for a leading `<!--` let a
+ * wrapped HTML comment's continuation line become the summary, delimiter and
+ * all, which is silent and lands in the one field agents read to triage a doc.
+ */
 function extractSummary(body: string): string {
+  let inComment = false;
   for (const rawLine of body.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
-    if (line.startsWith("#") || line.startsWith("```") || line.startsWith("<!--")) continue;
+    if (inComment) {
+      if (line.includes("-->")) inComment = false;
+      continue;
+    }
+    if (line.startsWith("<!--")) {
+      if (!line.includes("-->")) inComment = true;
+      continue;
+    }
+    if (line.startsWith("#") || line.startsWith("```")) continue;
     if (line.startsWith("|") || line.startsWith("---")) continue;
     const plain = line.replace(/[*_`]/g, "");
     return plain.length > 200 ? `${plain.slice(0, 197)}...` : plain;
@@ -270,12 +317,26 @@ function buildIdf(terms: string[], matches: DocMatch[], docCount: number): Map<s
 function pickSnippets(match: DocMatch): DocSearchSnippet[] {
   const candidates = new Set<number>([...match.lineTerms.keys(), ...match.identifierLines]);
   return [...candidates]
-    .map((index) => ({
-      index,
-      weight: (match.lineTerms.get(index) ?? 0) * 10
-        + (match.identifierLines.has(index) ? 6 : 0)
-        + ((match.lines[index] ?? "").trimStart().startsWith("#") ? 2 : 0),
-    }))
+    .map((index) => {
+      const termCount = match.lineTerms.get(index) ?? 0;
+      const hasIdentifier = match.identifierLines.has(index);
+      const isHeading = (match.lines[index] ?? "").trimStart().startsWith("#");
+      // A heading earns its bonus only when it is genuinely on topic; otherwise
+      // it loses ties to prose. When a query shares just one common word with a
+      // doc, every heading used to tie with every prose line and outrank it on
+      // the bonus, so the snippets degraded into a table of contents — measured
+      // on "createTestContext move", which returned "# Moves", "### Per-Move
+      // Dependencies", "### Harness Imports" and no information at all.
+      // The off-topic adjustment is deliberately just a tie-breaker: a heading
+      // should lose to an equally-matching prose line, never to a weaker one.
+      const onTopic = termCount >= 2 || hasIdentifier;
+      return {
+        index,
+        weight: termCount * 10
+          + (hasIdentifier ? 6 : 0)
+          + (isHeading ? (onTopic ? 2 : -1) : 0),
+      };
+    })
     .sort((a, b) => (b.weight - a.weight) || (a.index - b.index))
     .slice(0, SNIPPET_LIMIT)
     .sort((a, b) => a.index - b.index)
@@ -426,6 +487,8 @@ export function createDocsRegistry(config: { docsDir: string; builtinMovesDir?: 
       return null;
     }
     const { meta, body } = parseFrontmatter(raw);
+    const coversRaw = meta.covers?.trim() ?? "";
+    const coversNone = coversRaw.toLowerCase() === "none";
     const parsed: ParsedDoc = {
       entry: {
         id,
@@ -433,7 +496,8 @@ export function createDocsRegistry(config: { docsDir: string; builtinMovesDir?: 
         summary: extractSummary(body),
         audience: normalizeAudience(meta.audience),
         lastUpdated: meta.lastUpdated || undefined,
-        covers: meta.covers ? meta.covers.split(/\s+/).filter(Boolean) : undefined,
+        covers: coversRaw && !coversNone ? coversRaw.split(/\s+/).filter(Boolean) : undefined,
+        ...(coversNone ? { coversNone: true } : {}),
       },
       body,
     };
@@ -456,6 +520,8 @@ export function createDocsRegistry(config: { docsDir: string; builtinMovesDir?: 
   function allDocs(opts?: DocsQueryOpts): ParsedDoc[] {
     const docs: ParsedDoc[] = [];
     for (const id of walkMarkdownFiles(docsRoot).sort()) {
+      // The virtual doc owns its id; a file of the same name would double it.
+      if (id === MOVE_OPS_ID) continue;
       const doc = loadDoc(id);
       if (doc) docs.push(doc);
     }
@@ -479,7 +545,11 @@ export function createDocsRegistry(config: { docsDir: string; builtinMovesDir?: 
     getDoc(id: string, opts?: DocsQueryOpts): DocContent | null {
       const clean = sanitizeDocId(id);
       if (!clean) return null;
-      const doc = clean.startsWith("generated/") ? loadGenerated(clean, opts) : loadDoc(clean);
+      // Virtual first, then disk. Without the fall-through every build-time file
+      // under docs/generated/ would be listed and searchable but unfetchable,
+      // because loadGenerated only knows the virtual ids.
+      const virtual = clean.startsWith("generated/") ? loadGenerated(clean, opts) : null;
+      const doc = virtual ?? loadDoc(clean);
       if (!doc) return null;
       return { ...doc.entry, content: doc.body };
     },
@@ -487,10 +557,18 @@ export function createDocsRegistry(config: { docsDir: string; builtinMovesDir?: 
     searchDocs(queries: string[], opts?: DocsSearchOpts): DocSearchResult[] {
       const limit = Math.min(Math.max(1, opts?.limit ?? 5), 20);
       const docs = allDocs(opts).filter((d) => matchesAudience(d.entry, opts?.audience));
+      // Lowercased once for the whole batch: "does this appear anywhere at all"
+      // is answered against the corpus, not against the docs that happened to
+      // rank, so a negative is a fact rather than an artifact of scoring.
+      const bodiesLower = docs.map((d) => d.body.toLowerCase());
       return queries.slice(0, 16).map((query) => {
         const terms = tokenizeQuery(query);
-        if (!terms.length) return { query, results: [] };
         const identifiers = extractIdentifiers(query);
+        const missingTerms = terms.filter((term) => !bodiesLower.some((body) => body.includes(term)));
+        const missingIdentifiers = identifiers.filter(
+          (identifier) => !docs.some((d) => d.body.includes(identifier)),
+        );
+        if (!terms.length) return { query, results: [], missingTerms, missingIdentifiers };
         const matches = docs
           .map((doc) => collectMatches(terms, identifiers, doc))
           .filter((match): match is DocMatch => match !== null);
@@ -499,7 +577,7 @@ export function createDocsRegistry(config: { docsDir: string; builtinMovesDir?: 
           .map((match) => scoreMatch(terms, match, idf))
           .sort((a, b) => (b.score - a.score) || a.id.localeCompare(b.id))
           .slice(0, limit);
-        return { query, results };
+        return { query, results, missingTerms, missingIdentifiers };
       });
     },
   };

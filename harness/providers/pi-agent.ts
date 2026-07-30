@@ -954,6 +954,28 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       });
     },
 
+    steerMessage(ctx: TurnContext, content: MessageContent): boolean {
+      const { session } = ctx;
+      const state = getState(session);
+      if (!state) return false;
+
+      // PI queues a steering message only while it is actually streaming. If it
+      // is not, `prompt()` would start a whole new turn behind the caller's
+      // back, so refuse and let the caller queue.
+      if (!state.agentSession.isStreaming) return false;
+      if (session.status !== "running" && session.status !== "starting") return false;
+
+      // Delivered after the tool call in flight, skipping PI's remaining queued
+      // tools. `sendUserMessage` routes through `prompt()` with template
+      // expansion off, so gathered move context is passed through verbatim.
+      state.agentSession
+        .sendUserMessage(contentToPi(content), { deliverAs: "steer" })
+        .catch((err: any) => {
+          console.error(`[pi-agent] steer failed for ${session.sessionId}: ${friendlyError(err, providerName)}`);
+        });
+      return true;
+    },
+
     abort(session: ActiveSession) {
       const state = getState(session);
       if (state) {

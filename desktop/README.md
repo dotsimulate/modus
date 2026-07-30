@@ -61,6 +61,88 @@ target per page load.
 - A second desktop launch focuses the existing instance and cannot create a
   second managed backend.
 
+## Deep links
+
+The desktop registers the `modus://` URL scheme and understands two forms:
+
+```
+modus://session/<sessionId>
+modus://page/<project>/<pageId>
+```
+
+A session link focuses the window and selects that session, switching to the
+project that owns it exactly as clicking the session in the sidebar would. If
+Modus is not running, the OS starts it and the link is applied once the session
+index has loaded, which is what makes that project lookup possible.
+
+A page link switches to the named project and opens the page there, resolved
+against the same discovered pages the sidebar nav lists — so pages a project
+authored in `.modus/pages/` are addressable without the link layer knowing they
+exist. Two registries back the one link kind: pages that declare a layout come
+from `GET /api/pages` (harness, project, and move-owned alike), while a move
+whose page is a bare widget is reachable under the same
+`modus://page/<project>/<moveName>` form. A project or page id that matches
+nothing is ignored rather than navigated to.
+
+**Why one form names a project and the other does not.** A session id is
+globally unique, so its owning project is *derivable* — encoding one would be
+redundant and could contradict the id. A page id is unique only *within* a
+project: the same id names different pages in different projects, and even a
+built-in page like `git` renders a different project's content, under that
+project's theme (`ProfileProvider` applies project UI state from the project
+root) and its `interface` config. There the project is not decoration, it is the
+missing half of the address. A link kind should carry exactly what cannot be
+derived from the rest of it, and no more.
+
+Because project names and page ids are free-form strings in JSON, the link
+grammar accepts a conservative subset of them — alphanumeric lead, then
+alphanumerics, `.`, `_`, `-`, up to 64 characters per segment. A page whose id
+falls outside that is simply not linkable; that is preferred over letting a
+segment carry a separator into the frontend's `page:<id>` route string.
+
+**There is deliberately no `modus://move/...`.** Opening a surface is inert;
+invoking a move is not, and anything on the machine can hand Modus a URL. A
+move is reachable through its page, where the user acts, or not at all.
+
+Neither form carries a **user profile** in the routing sense: the profile
+segment of the frontend hash route is a local view preference that the router
+seeds from storage when a route omits it, and encoding it would make the same
+link resolve differently for different people.
+
+The scheme is registered machine-wide, so any local application — including a
+web page the user clicks a link on — can hand Modus a URL. Links are treated as
+untrusted input accordingly: `src-tauri/src/deep_link.rs` validates the scheme,
+the link kind, and the shape of the id before anything reaches the frontend,
+which re-checks it. A link cannot carry a credential, cannot grant authority, is
+never evaluated as code, and can only name something that already exists. An
+unrecognized link never navigates. It also never raises the window on macOS; on
+Windows and Linux a link to an already-running Modus is delivered as a second
+process, so the single-instance handler surfaces the window before the link is
+inspected.
+
+Note that URL parsing removes dot segments before validation, so a link has more
+than one spelling — `modus://page/modus/git/../chat` opens `chat`. What survives
+is always the normalized segments.
+
+The browser equivalent needs no scheme — it is an ordinary URL fragment, and
+the same routes work there:
+
+```
+http://localhost:3777/#<sessionId>
+http://localhost:3777/#<project>/page:<pageId>
+```
+
+Note that under the desktop shell the managed backend binds an OS-assigned
+port, so there is no stable `http://` URL for it; `modus://` exists precisely
+because the port moves. To add another link kind, add a host beside `session`
+and `page` in `deep_link.rs` rather than making the grammar free-form.
+
+**Scheme registration differs by build.** The NSIS installer registers
+`modus://` for installed Windows releases, and Linux and development builds
+claim it at runtime during setup. A Windows release built with
+`tauri build --no-bundle` is neither, so deep links do not resolve there — test
+them from a development build or an installed package.
+
 ## Tailnet browser access
 
 Open the desktop backend-target panel and enable **Tailscale Serve** once. The

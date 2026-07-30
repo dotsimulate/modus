@@ -10,6 +10,8 @@ import { SessionProvider } from "./providers/SessionProvider";
 import { useSession } from "./providers/SessionContext";
 import { getSessionState } from "./sessionStore";
 import { useHashRouter } from "./hooks/useHashRouter";
+import { useDesktopDeepLink } from "./hooks/useDesktopDeepLink";
+import type { DesktopDeepLinkTarget } from "./desktopBridge";
 import { MobileNav } from "./components/MobileNav";
 import { Dashboard } from "./components/Dashboard";
 import { PageView } from "./components/PageRenderer";
@@ -157,6 +159,12 @@ type HashRouter = ReturnType<typeof useHashRouter>;
 
 function AppContent({ router }: { router: HashRouter }) {
   const { view, navigate, hashProfile, hashSessionId, setUrlProfile, setUrlSession, navigateToSession, consumeHashProfile } = router;
+  // A deep link names a session or a page, but never says which project owns it
+  // or whether it exists. Both answers need data that is still loading when a
+  // link arrives at startup, so the link is parked here and drained by the
+  // effects below once the app can resolve it.
+  const [deepLink, setDeepLink] = useState<DesktopDeepLinkTarget | null>(null);
+  useDesktopDeepLink(setDeepLink);
   const { authRequired, pinEnabled, handleLock } = useAuth();
   const {
     userProfiles,
@@ -166,7 +174,7 @@ function AppContent({ router }: { router: HashRouter }) {
     uiState, saveUiState, switchUserProfile, refreshUserProfiles,
   } = useProfiles();
   const {
-    activeSession, serverSessions, allServerSessions,
+    activeSession, serverSessions, allServerSessions, sessionsLoaded,
     handleInputChange,
     newSession, selectSession,
   } = useSession();
@@ -419,28 +427,41 @@ function AppContent({ router }: { router: HashRouter }) {
   // ── Move pages (moves that declare a page field) ──
   const [movePages, setMovePages] = useState<MoveListItem[]>([]);
   const [configPages, setConfigPages] = useState<ConfigDashboardPage[]>([]);
+  // Which project the two lists above currently describe, or null while they are
+  // in flight. A plain boolean would not do: after a project switch the new cwd
+  // and the previous `true` are both visible in the same render, so a deep link
+  // would resolve a page id against the outgoing project's pages. Comparing the
+  // marker to the current cwd cannot go stale that way.
+  const [pagesDiscoveredFor, setPagesDiscoveredFor] = useState<string | null>(null);
   const [mountedCustomPageIds, setMountedCustomPageIds] = useState<string[]>([]);
   const projectCwd = projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
+  // Both page sources are fetched together so they can never describe different
+  // projects, and a superseded run is dropped rather than overwriting a newer one.
   useEffect(() => {
+    setPagesDiscoveredFor(null);
     if (!projectCwd) {
       setMovePages([]);
-      return;
-    }
-    modus.listMoves(projectCwd).then((moves) => {
-      setMovePages(moves.filter((m) => m.page));
-    }).catch(() => setMovePages([]));
-  }, [projectCwd]);
-  useEffect(() => {
-    if (!projectCwd) {
       setConfigPages([]);
       return;
     }
-    fetch(`${API_BASE}/api/pages?cwd=${encodeURIComponent(projectCwd)}`, {
-      headers: authHeaders(),
-    })
-      .then((res) => res.ok ? res.json() : [])
-      .then((pages) => setConfigPages(Array.isArray(pages) ? pages : []))
-      .catch(() => setConfigPages([]));
+    let current = true;
+    Promise.all([
+      modus.listMoves(projectCwd)
+        .then((moves) => moves.filter((m) => m.page))
+        .catch(() => [] as MoveListItem[]),
+      fetch(`${API_BASE}/api/pages?cwd=${encodeURIComponent(projectCwd)}`, {
+        headers: authHeaders(),
+      })
+        .then((res) => res.ok ? res.json() : [])
+        .then((pages) => (Array.isArray(pages) ? pages as ConfigDashboardPage[] : []))
+        .catch(() => [] as ConfigDashboardPage[]),
+    ]).then(([moves, pages]) => {
+      if (!current) return;
+      setMovePages(moves);
+      setConfigPages(pages);
+      setPagesDiscoveredFor(projectCwd);
+    });
+    return () => { current = false; };
   }, [projectCwd]);
   const activeMovePageName = getMovePageName(view);
 
@@ -501,6 +522,55 @@ function AppContent({ router }: { router: HashRouter }) {
     if (activeSession?.id === hashSessionId) return;
     selectSession(hashSessionId);
   }, [hashSessionId, selectSession, view]); // activeSession intentionally omitted to avoid hash/session ping-pong
+
+  // `modus://session/<id>` deliberately carries no project, so the link cannot be
+  // applied until the session index can say which project owns that session —
+  // otherwise it lands under whichever project happened to be open, with the
+  // wrong cwd and a session list that does not contain it. Wait for the index,
+  // then take the same path a session-history row takes.
+  useEffect(() => {
+    if (deepLink?.kind !== "session" || !sessionsLoaded) return;
+    setDeepLink(null);
+    handleViewSession(deepLink.sessionId);
+  }, [deepLink, handleViewSession, sessionsLoaded]);
+
+  // `modus://page/<project>/<id>` names the project because a page id is only
+  // unique within one — and the same id renders different content under a
+  // different project root, which also carries its own theme and interface
+  // config. So the project is switched first and the link stays parked until the
+  // pages for that project have actually been discovered.
+  //
+  // Resolution itself defers entirely to what the nav already lists, so a
+  // project's own authored pages are addressable without this layer enumerating
+  // them. Two registries back the one link kind: pages declaring a layout arrive
+  // from /api/pages (harness, project, and move-owned alike), while a move whose
+  // page is a bare widget is only ever a `move-page:` view. An id matching
+  // neither is ignored — an unrecognized link must not move the user.
+  useEffect(() => {
+    if (deepLink?.kind !== "page") return;
+    // An empty profile list has not loaded yet rather than meaning "no such
+    // project"; a Modus with no user profiles has no project pages to link to.
+    if (userProfiles.length === 0) return;
+    if (!userProfiles.some((profile) => profile.name === deepLink.project)) {
+      setDeepLink(null);
+      return;
+    }
+    if (deepLink.project !== activeUserProfile) {
+      // Discovery re-runs against the new project root; drain on a later pass.
+      handleSwitchUserProfile(deepLink.project);
+      return;
+    }
+    if (pagesDiscoveredFor !== projectCwd) return;
+    setDeepLink(null);
+    if (configPages.some((page) => page.id === deepLink.slug)) {
+      navigate(customPageView(deepLink.slug));
+    } else if (movePages.some((move) => move.name === deepLink.slug && !move.page?.layout)) {
+      navigate(movePageView(deepLink.slug));
+    }
+  }, [
+    activeUserProfile, configPages, deepLink, handleSwitchUserProfile, movePages,
+    navigate, pagesDiscoveredFor, projectCwd, userProfiles,
+  ]);
 
   // Bare #profile/chat (no session in URL) → restore last session for this profile
   useEffect(() => {

@@ -311,6 +311,28 @@
   animation: dot-pulse-slow 2.4s ease-in-out infinite;
 }
 
+/* Note --active above is deliberately var(--error): the recording dot has
+   always been red. So an error dot needs a halo and a faster beat to be
+   distinguishable from a healthy recording at a glance, not just a colour. */
+.composer-status-dot--error {
+  background: var(--error);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--error) 35%, transparent);
+  animation: dot-alert 0.9s ease-in-out infinite;
+}
+
+@keyframes dot-alert {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--error) 45%, transparent); }
+  50%      { box-shadow: 0 0 0 4px color-mix(in srgb, var(--error) 15%, transparent); }
+}
+
+/* The label beside the dot is muted italic by default, which reads as an
+   incidental note. A failure has to read as a failure. */
+.composer-status-text--error {
+  color: var(--error);
+  font-style: normal;
+  font-weight: 600;
+}
+
 @keyframes dot-pulse-slow {
   0%, 100% { opacity: 0.9; transform: scale(1); }
   50%       { opacity: 0.3; transform: scale(0.8); }
@@ -435,6 +457,17 @@
 .send-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* Sending into a turn that is already running is a different act from sending
+   between turns, so it does not look identical to the idle send button. */
+.send-btn--interject {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.send-btn--interject:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: var(--accent);
 }
 
 .stop-btn {

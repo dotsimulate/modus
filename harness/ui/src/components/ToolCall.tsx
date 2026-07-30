@@ -2,6 +2,8 @@ import { memo, useState, useEffect, useCallback } from "react";
 import type { ToolCall as ToolCallType, Message } from "../../../sdk/index";
 import { EditHunk } from "./FileChanges";
 import { useFileViewer } from "../providers/FileViewerContext";
+import { AttachmentImage } from "./AttachmentImage";
+import { ImageLightbox } from "./ImageLightbox";
 
 type Props = {
   tool: ToolCallType;
@@ -241,6 +243,97 @@ function countSubTools(msgs: Message[]): number {
 }
 
 /** Render Edit/Write/MultiEdit as inline diff */
+/** How much tool output to paint before offering to expand. */
+const OUTPUT_PREVIEW_CHARS = 2000;
+
+/**
+ * Images a tool returned, rendered as pictures.
+ *
+ * These used to arrive base64-encoded inside the result text and be cut off
+ * partway through, so a returned screenshot read as a wall of characters.
+ */
+function ToolResultImages({ tool }: { tool: ToolCallType }) {
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  if (!tool.images || tool.images.length === 0) return null;
+
+  return (
+    <div className="tool-output-images">
+      {tool.images.map((image, i) => (
+        <AttachmentImage
+          key={i}
+          mediaType={image.mediaType}
+          data={image.data}
+          alt={image.name ?? `${tool.name} image ${i + 1}`}
+          onOpen={(src, alt) => setLightbox({ src, alt })}
+        />
+      ))}
+      {lightbox && (
+        <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tool output text, truncated for render but never silently.
+ *
+ * Painting an arbitrarily long `<pre>` is the reason a cap exists at all, so
+ * long output stays collapsed by default — but the cut is always labelled with
+ * the real size and can be expanded. Previously the text was cut at 2000
+ * characters before it ever reached this component and simply ended.
+ */
+function ToolOutputText({ tool }: { tool: ToolCallType }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (tool.result == null) {
+    return (
+      <pre className={`tool-output-content${tool.status === "running" ? " tool-output--pending" : ""}`}>
+        {tool.status === "running" ? "..." : "—"}
+      </pre>
+    );
+  }
+
+  const stored = tool.result;
+  // Anything beyond what the client kept is gone for good; say so rather than
+  // implying the expanded view is complete.
+  const droppedAtStore = tool.resultFullLength != null;
+  const clipped = !expanded && stored.length > OUTPUT_PREVIEW_CHARS;
+  const shown = clipped ? stored.slice(0, OUTPUT_PREVIEW_CHARS) : stored;
+
+  return (
+    <>
+      <pre className="tool-output-content">{shown}</pre>
+      {(clipped || droppedAtStore) && (
+        <div className="tool-output-truncation">
+          {clipped && (
+            <button
+              type="button"
+              className="tool-output-expand"
+              onClick={() => setExpanded(true)}
+            >
+              show all {stored.length.toLocaleString()} characters
+            </button>
+          )}
+          {!clipped && stored.length > OUTPUT_PREVIEW_CHARS && (
+            <button
+              type="button"
+              className="tool-output-expand"
+              onClick={() => setExpanded(false)}
+            >
+              collapse
+            </button>
+          )}
+          {droppedAtStore && (
+            <span className="tool-output-dropped">
+              output was {tool.resultFullLength!.toLocaleString()} characters; the rest was not kept
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 function EditDiffDetail({ tool }: { tool: ToolCallType }) {
   const name = tool.name;
   const inp = tool.input;
@@ -380,11 +473,10 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
           ) : (
             <div className="tool-call-detail">
               <ToolInputArgs input={tool.input} />
+              <ToolResultImages tool={tool} />
               <div className="tool-output-box">
                 <div className="tool-output-label">output</div>
-                <pre className={`tool-output-content${tool.result == null && tool.status === "running" ? " tool-output--pending" : ""}`}>
-                  {tool.result ?? (tool.status === "running" ? "..." : "—")}
-                </pre>
+                <ToolOutputText tool={tool} />
               </div>
             </div>
           )}

@@ -1,3 +1,9 @@
+---
+title: macOS Setup
+audience: user
+covers: none
+---
+
 # macOS Setup
 
 This guide is for a fresh Mac user profile where Homebrew, GitHub auth, Bun,

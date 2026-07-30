@@ -1,6 +1,8 @@
 ---
 title: Moves — Philosophy & Intent
 lastUpdated: 2026-07-07
+audience: dev
+covers: harness/move-runner.ts harness/move-types.ts
 ---
 
 # Moves — Philosophy & Intent

@@ -1531,15 +1531,23 @@ export function queueMessage(
   return { queued: true, dispatchId: pendingId };
 }
 
-async function _queueMessageAsync(
+/**
+ * Run the gathers that decorate a single user message: the ambient gather for
+ * persistent moves already active on the session, plus activation of any moves
+ * attached to this specific message.
+ *
+ * Split out of the queue path because steering needs the identical treatment —
+ * a move attached to an interjection has to be gathered before the message can
+ * be injected — and because a steer that the provider declines at the last
+ * moment must be able to fall back to the queue *without* re-running gathers
+ * that have side effects (persistent activation, API token minting).
+ */
+async function augmentPromptWithMoveContext(
   session: ActiveSession,
   sessionId: string,
-  dispatchId: string,
   prompt: string,
-  attachments?: ImageAttachment[],
   moves?: QueueMessageMoveBinding[],
-): Promise<void> {
-  // Run ambient gathers before building content
+): Promise<string> {
   let augmentedPrompt = prompt;
   try {
     const ambientContext = await getGatherAmbientContext()(sessionId);
@@ -1576,6 +1584,29 @@ async function _queueMessageAsync(
     }
   }
 
+  return augmentedPrompt;
+}
+
+async function _queueMessageAsync(
+  session: ActiveSession,
+  sessionId: string,
+  dispatchId: string,
+  prompt: string,
+  attachments?: ImageAttachment[],
+  moves?: QueueMessageMoveBinding[],
+): Promise<void> {
+  const augmentedPrompt = await augmentPromptWithMoveContext(session, sessionId, prompt, moves);
+  await _dispatchUserMessage(session, sessionId, dispatchId, augmentedPrompt, attachments);
+}
+
+/** Persist, checkpoint, and either queue or hand a fully-gathered message to the provider. */
+async function _dispatchUserMessage(
+  session: ActiveSession,
+  sessionId: string,
+  dispatchId: string,
+  augmentedPrompt: string,
+  attachments?: ImageAttachment[],
+): Promise<void> {
   const content = buildContent(augmentedPrompt, attachments);
 
   // Persist user event for catch-up replay
@@ -1653,17 +1684,53 @@ async function _queueMessageAsync(
 }
 
 /**
- * Inject a message at the next tool boundary (steer mode).
- * Falls back to queue if the provider doesn't support mid-run injection.
- * Returns false if the session doesn't exist.
+ * Where a steered message actually landed.
+ *
+ * `"steer"` — injected into the turn that was already running; the agent sees it
+ * at the next tool boundary. `"queued"` — the provider cannot inject mid-turn
+ * (or declined right then), so it is waiting in `pendingDispatch` and will be
+ * delivered when the current turn ends; `dispatchId` cancels it. `"none"` — no
+ * such live session.
+ *
+ * Callers must be able to tell these apart. Reporting a queued message as though
+ * it had been injected is the difference between "the agent is about to read
+ * this" and "the agent will read this in ten minutes".
  */
-export function steerMessage(sessionId: string, prompt: string, attachments?: ImageAttachment[]): boolean {
-  const session = activeSessions.get(sessionId);
-  if (!session) return false;
+export type SteerResult = {
+  ok: boolean;
+  mode: "steer" | "queued" | "none";
+  dispatchId?: string;
+};
 
-  const content = buildContent(prompt, attachments);
+/**
+ * Inject a message into a running turn, delivered at the next tool boundary.
+ * Accepts the same per-message move bindings as an ordinary send, so a move can
+ * be attached to an interjection without interrupting or restarting the session.
+ * Falls back to the queue whenever live injection is not possible.
+ */
+export async function steerMessage(
+  sessionId: string,
+  prompt: string,
+  attachments?: ImageAttachment[],
+  moves?: QueueMessageMoveBinding[],
+): Promise<SteerResult> {
+  const session = activeSessions.get(sessionId);
+  if (!session) return { ok: false, mode: "none" };
+
+  const queueInstead = (): SteerResult => {
+    const queued = queueMessage(sessionId, prompt, attachments, moves);
+    return { ok: queued.queued, mode: "queued", dispatchId: queued.dispatchId };
+  };
+
+  // Nothing to steer into, or a provider that cannot: take the ordinary path,
+  // which starts a turn when idle and queues when busy.
+  const turnRunning = session.status === "running" || session.status === "starting";
+  if (!turnRunning || !session._provider.steerMessage) return queueInstead();
+
+  const augmentedPrompt = await augmentPromptWithMoveContext(session, sessionId, prompt, moves);
+  const content = buildContent(augmentedPrompt, attachments);
   const ctx = createTurnContext(session, {
-    prompt,
+    prompt: augmentedPrompt,
     attachments,
     profile: session.profile,
     sessionId,
@@ -1673,20 +1740,32 @@ export function steerMessage(sessionId: string, prompt: string, attachments?: Im
     additionalDirectories: session.additionalDirectories,
   });
 
-  const steered = session._provider.steerMessage?.(ctx, content) ?? false;
-  if (steered) {
-    // Persist the event so it shows in the transcript
-    session.seq++;
-    addEvent(sessionId, session.seq, "user", "prompt", JSON.stringify({
+  if (session._provider.steerMessage(ctx, content)) {
+    // Persist *and* broadcast. A steered message is delivered inside a turn that
+    // is already streaming, so nothing else will announce it — persisting alone
+    // leaves the interjection invisible in the transcript until a reload.
+    persistAndBroadcastEvent(session, {
       type: "user",
       subtype: "prompt",
       message: { role: "user", content },
-    }));
-    return true;
+    });
+    return { ok: true, mode: "steer" };
   }
 
-  // Provider doesn't support steering — fall back to queue
-  return queueMessage(sessionId, prompt, attachments).queued;
+  // The provider declined at the last moment — its process is unwinding, or the
+  // turn ended between the status check and the write. The gathers have already
+  // run and may have had side effects, so queue the augmented text directly
+  // rather than re-entering queueMessage with the original moves.
+  beginFollowupDispatch(session);
+  const dispatchId = `dispatch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  void _dispatchUserMessage(session, sessionId, dispatchId, augmentedPrompt, attachments).catch((err) => {
+    console.error(`[session-manager] steer fallback dispatch failed for ${sessionId}:`, err);
+    endFollowupDispatch(session);
+    removePendingDispatch(session, dispatchId);
+    persistAndBroadcastEvent(session, { type: "error", message: `Message delivery failed: ${err?.message ?? err}` });
+    persistAndBroadcastEvent(session, { type: "done" });
+  });
+  return { ok: true, mode: "queued", dispatchId };
 }
 
 export function stopSession(sessionId: string): boolean {

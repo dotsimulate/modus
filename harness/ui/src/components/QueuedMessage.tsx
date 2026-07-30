@@ -14,13 +14,23 @@ export function QueuedMessage({ message, onCancel }: Props) {
     ? message.text.slice(0, 60) + "..."
     : message.text;
 
+  // The point of this strip is that the message has *not* been delivered yet.
+  // Say why, since the reason differs: an ordinary send always waits for the
+  // turn, while a declined interjection waits because the provider cannot
+  // deliver mid-turn at all.
+  const title = message.steerDeclined
+    ? "This provider cannot deliver mid-turn — sends when the current turn ends"
+    : "Sends when the current turn ends";
+
   return (
-    <div className="queued-message">
+    <div className="queued-message" title={title}>
       <div className="queued-message-header" onClick={() => setExpanded(!expanded)}>
         <span className="queued-message-indicator">
           <span className="queued-message-dot" />
         </span>
-        <span className="queued-message-label">queued</span>
+        <span className="queued-message-label">
+          {message.steerDeclined ? "queued · can't interject" : "queued"}
+        </span>
         <span className="queued-message-preview">
           {hasImages && `[${message.attachments.length} img] `}
           {preview}

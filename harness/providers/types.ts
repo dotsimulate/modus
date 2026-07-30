@@ -37,6 +37,12 @@ export type ProviderCapabilities = {
   /** Whether the provider discovers skills on disk by itself. Derived centrally
    *  in `registry.ts` from `provider-names.ts`, not declared per provider. */
   readsNativeSkills?: boolean;
+  /** Where a message sent during a running turn actually lands. `"steer"` means
+   *  the provider injects it at the next tool boundary; `"next-turn"` means it
+   *  can only be queued until the turn ends. Derived centrally in `registry.ts`
+   *  from `provider-names.ts` so clients can say which will happen before
+   *  sending. */
+  messageDelivery?: "steer" | "next-turn";
   nonToolSignals: string[];
   permissionModel: {
     mode: "per-tool-ui" | "runtime-native" | "none";

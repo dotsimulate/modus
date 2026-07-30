@@ -1,7 +1,7 @@
 ---
 title: Client Extensions
-lastUpdated: 2026-07-25
-lastCommit: bae0487
+lastUpdated: 2026-07-29
+lastCommit: f60b2ac
 covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/whisper-credential.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx harness/ui/src/widgets/extensions.widget.tsx .modus/ui/extensions/
 ---
 
@@ -153,9 +153,35 @@ The frontend runtime exposes a narrow API to extensions:
 - `focusComposer()`
 - `submitComposer(text?)`
 - `request(path, init)`
+- `getSettings()`
 
 `request()` automatically applies harness auth headers and handles `FormData`
-uploads without forcing `Content-Type: application/json`.
+uploads without forcing `Content-Type: application/json`. `getSettings()` returns
+this extension's current settings values from the user profile UI config.
+
+### Capability Ceiling
+
+That list is the entire runtime surface. Two limits follow from it, and neither
+produces an error when you hit it, so they are worth stating outright:
+
+- **Extensions cannot render their own UI.** There is no mount point — no way to
+  register a component, panel, page, or overlay. The only extension-owned pixels
+  are composer actions and toggles, and `ChatInput` owns how those are rendered.
+  Anything that needs a surface of its own is a widget or a page, not an extension.
+- **Extensions cannot subscribe to session activity.** Nothing in the API delivers
+  assistant messages, turn boundaries, or session lifecycle events. An extension
+  acts when the user triggers it: a shortcut, a composer action, a toggle.
+
+These are limits of the runtime API, not a sandbox. Extensions are plain browser
+modules, so they can reach any Web API directly and can poll authenticated harness
+routes through `request()`. Both are unsupported seams rather than walls: they sit
+outside the runtime's lifecycle, so anything built that way must tear itself down
+in the cleanup function returned from the load hook, and it will not follow
+project or profile switches the way registered controls do.
+
+`whisper-transcribe` fits inside this ceiling because dictation only ever writes
+into a draft. That is not evidence that voice features in general fit — a feature
+that must display something, or react to what the agent said, does not.
 
 ### Live Setting Options
 

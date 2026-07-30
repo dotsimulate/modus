@@ -260,7 +260,10 @@ describe("search ranking", () => {
     expect(hit).toBeDefined();
     const texts = hit!.snippets.map((s) => s.text);
     expect(texts.some((t) => t.includes("tool catalog maps each provider family"))).toBe(true);
-    expect(texts).not.toContain("Providers are execution backends.");
+    // The substantive line and its section heading take the top slots. The bare
+    // H1 is the one line with nothing to say, so it must not displace them —
+    // it previously did, because every heading got an unconditional bonus.
+    expect(texts).not.toContain("# Provider System");
   });
 
   test("a title-only match is suppressed", () => {
@@ -296,5 +299,104 @@ describe("generated/move-ops", () => {
     const doc = registry.getDoc("generated/move-ops", { cwd: projectRoot });
     expect(doc!.content).toContain("## proj-move (project)");
     expect(doc!.content).toContain("- api ops: none");
+  });
+});
+
+describe("covers: none sentinel", () => {
+  test("declares no source without pretending to cover files", () => {
+    const dir = mkdtempSync(join(tmpdir(), "modus-docs-covers-"));
+    writeFileSync(join(dir, "pattern.md"), [
+      "---",
+      "title: A Pattern",
+      "covers: none",
+      "---",
+      "",
+      "A convention rather than a code feature, so there is nothing to verify.",
+    ].join("\n"));
+    writeFileSync(join(dir, "forgot.md"), ["# Forgot", "", "No covers declared here."].join("\n"));
+
+    const reg = createDocsRegistry({ docsDir: dir });
+    const pattern = reg.listDocs().find((e) => e.id === "pattern");
+    // Distinguishable from "the author forgot": covers is empty either way, so a
+    // drift audit needs the explicit flag to tell the two apart.
+    expect(pattern?.coversNone).toBe(true);
+    expect(pattern?.covers).toBeUndefined();
+
+    const forgot = reg.listDocs().find((e) => e.id === "forgot");
+    expect(forgot?.coversNone).toBeUndefined();
+    expect(forgot?.covers).toBeUndefined();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("search negatives", () => {
+  test("reports identifiers and terms that appear in no doc", () => {
+    const [hit] = registry.searchDocs(["`createTestContext` for moves"]);
+    expect(hit!.missingIdentifiers).toContain("createTestContext");
+    expect(hit!.missingTerms).toContain("createtestcontext");
+    // The point of the negative: a plausible-looking hit is still returned, so
+    // without it the caller cannot tell this from a real answer.
+    expect(hit!.results.length).toBeGreaterThan(0);
+  });
+
+  test("reports nothing missing when every term is present", () => {
+    const [hit] = registry.searchDocs(["persistent moves gather"]);
+    expect(hit!.missingIdentifiers).toEqual([]);
+    expect(hit!.missingTerms).toEqual([]);
+  });
+
+  test("an empty query still carries the negative fields", () => {
+    const [hit] = registry.searchDocs(["!!"]);
+    expect(hit!.results).toEqual([]);
+    expect(hit!.missingTerms).toEqual([]);
+    expect(hit!.missingIdentifiers).toEqual([]);
+  });
+});
+
+describe("snippet selection", () => {
+  test("a heading matching one common term loses to a prose line", () => {
+    const dir = mkdtempSync(join(tmpdir(), "modus-docs-snippet-"));
+    writeFileSync(join(dir, "widget.md"), [
+      "---",
+      "title: Widget",
+      "---",
+      "",
+      // More headings than snippet slots, so the prose line can only appear if
+      // it outranks them.
+      "## Widget setup",
+      "## Widget teardown",
+      "## Widget caching",
+      "## Widget events",
+      "A widget is mounted with an api token and an instance id.",
+    ].join("\n"));
+    const reg = createDocsRegistry({ docsDir: dir });
+    const [hit] = reg.searchDocs(["widget"]);
+    const texts = hit!.results[0]!.snippets.map((s) => s.text);
+    // Regression guard: the heading bonus used to make every "## Widget …" line
+    // outrank prose on a one-term query, so the three slots filled with a table
+    // of contents and the only informative line was dropped.
+    expect(texts.some((t) => t.includes("mounted with an api token"))).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("summary extraction", () => {
+  test("skips a wrapped HTML comment instead of quoting its continuation", () => {
+    const dir = mkdtempSync(join(tmpdir(), "modus-docs-summary-"));
+    writeFileSync(join(dir, "gen.md"), [
+      "---",
+      "title: Generated Thing",
+      "---",
+      "",
+      "<!-- GENERATED FILE — do not edit.",
+      "     Regenerate with a command. -->",
+      "",
+      "The real summary line that a reader should see.",
+    ].join("\n"));
+    const reg = createDocsRegistry({ docsDir: dir });
+    const entry = reg.listDocs().find((e) => e.id === "gen");
+    expect(entry?.summary).toBe("The real summary line that a reader should see.");
+    expect(entry?.summary).not.toContain("-->");
+    rmSync(dir, { recursive: true, force: true });
   });
 });
