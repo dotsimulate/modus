@@ -21,6 +21,7 @@ import {
 } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { handleSubmit, isMoveApiToken, handleMoveApiSubmit } from "./move-runner";
+import { formatMoveApiResultText } from "./move-api-result";
 import { isMissionToken, handleMissionCommand } from "./mission-runner";
 import { addSessionTag, getSession } from "./db";
 import { broadcastUiEvent } from "./session-manager";
@@ -161,13 +162,16 @@ function registerSkillTools(server: McpServer, scopeKey?: string): void {
 
 async function handleMoveApiSubmitMcp(token: string, data: Record<string, unknown>) {
   const result = await handleMoveApiSubmit(token, data, "agent");
+  // Handlers may return keys beyond ok/message/error; render them instead of
+  // dropping them so the agent sees what the HTTP route would have returned.
+  const text = formatMoveApiResultText(result);
   if (result.ok) {
     return {
-      content: [{ type: "text" as const, text: result.message ?? "OK" }],
+      content: [{ type: "text" as const, text }],
     };
   }
   return {
-    content: [{ type: "text" as const, text: result.error ?? "Unknown error" }],
+    content: [{ type: "text" as const, text }],
     isError: true,
   };
 }
