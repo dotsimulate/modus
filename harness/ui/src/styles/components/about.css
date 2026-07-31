@@ -1,0 +1,122 @@
+/*
+ * About / Help panel — shared by the about widget, the docs page, and settings.
+ *
+ * No fixed heights anywhere: every box here wraps its own text, so raising the
+ * text-size setting grows the panel instead of clipping it.
+ */
+
+.about-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 14px;
+  overflow-y: auto;
+  color: var(--text-dim);
+  font-size: calc(12px * var(--font-scale, 1));
+  line-height: 1.5;
+}
+
+.about-panel--loading,
+.about-panel--error {
+  color: var(--text-muted);
+}
+
+.about-panel--error {
+  color: var(--error);
+}
+
+.about-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.about-title {
+  margin: 0;
+  color: var(--text);
+  font-size: calc(16px * var(--font-scale, 1));
+  font-weight: 600;
+}
+
+.about-version {
+  color: var(--text-dim);
+  font-size: calc(11px * var(--font-scale, 1));
+}
+
+.about-license {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
+.about-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.about-section-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--font-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.about-topic-title {
+  margin: 0 0 3px;
+  color: var(--text);
+  font-size: calc(12px * var(--font-scale, 1));
+  font-weight: 600;
+}
+
+.about-topic-body {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.about-topic-link {
+  margin-top: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: calc(11px * var(--font-scale, 1));
+  cursor: pointer;
+}
+
+.about-topic-link:hover {
+  border-color: var(--border-active);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.about-link-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.about-link {
+  color: var(--accent);
+  font-size: calc(12px * var(--font-scale, 1));
+  text-decoration: none;
+}
+
+.about-link:hover {
+  text-decoration: underline;
+}
+
+.about-link--inert {
+  color: var(--text-dim);
+}
+
+.about-link-description {
+  color: var(--text-muted);
+  font-size: calc(11px * var(--font-scale, 1));
+}
