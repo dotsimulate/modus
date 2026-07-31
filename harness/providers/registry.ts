@@ -34,6 +34,7 @@ import {
   readsNativeSkills,
   supportsOneShotCompletion,
   supportsSteering,
+  supportsSubprocessOneShot,
 } from "./provider-names";
 import { resolvePiApiKey, resolvePiBaseUrl } from "./pi-model";
 import type { ProviderCapabilities, SessionProvider } from "./types";
@@ -114,6 +115,7 @@ export function getProviderCapabilities(name: string): ProviderCapabilities {
     readsNativeSkills: readsNativeSkills(name),
     messageDelivery: supportsSteering(name) ? "steer" : "next-turn",
     supportsOneShotCompletion: supportsOneShotCompletion(name),
+    supportsSubprocessOneShot: supportsSubprocessOneShot(name),
   };
 }
 

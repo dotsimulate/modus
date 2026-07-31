@@ -197,14 +197,17 @@ Layout tree: `grid` (columns, templateColumns/Rows) / `panel` (list|tabs) /
 `ctx.shell.run`, `ctx.artifacts`, `ctx.terminal.create`, `ctx.log`.
 
 **One-shot model calls**: `ctx.model.complete({ prompt, profile?, provider?,
-model?, system?, temperature?, maxTokens? })` → `{ text, oneShotId, provider,
-model, usage? }`. No session, no tools, no subprocess — the cheap rung below
-`sessions.create` for transforms whose answer is a value. **PI providers only**
-(`openai-compat`, `ollama`, `openrouter`, and user/plugin definitions);
-`litellm` remains an alias, and every other provider is a spawned CLI and
-throws rather than silently starting a session. Resolution throws instead of
-guessing: a profile with no `provider` is an error (there is no global default
-provider). `ctx.model.promote(oneShotId)` turns a completed one-shot into a real
+model?, system?, temperature?, maxTokens?, allowSubprocess? })` → `{ text,
+oneShotId, provider, model, usage?, transport, elapsedMs }`. No session, no
+tools — the cheap rung below `sessions.create` for transforms whose answer is a
+value. **PI providers serve these in-process** (`openai-compat`, `ollama`,
+`openrouter`, and user/plugin definitions; `litellm` remains an alias) in
+milliseconds. **`claude-code-pty` can serve one with `allowSubprocess: true`**:
+a single headless CLI turn on the CLI's own subscription auth, costing seconds
+of subprocess startup — check `transport`/`elapsedMs` on the result;
+`temperature`/`maxTokens` are ignored there. Every other provider throws rather
+than silently starting a session. Resolution throws instead of guessing: a
+profile with no `provider` is an error (there is no global default provider). `ctx.model.promote(oneShotId)` turns a completed one-shot into a real
 session whose first message replays the exchange — idempotent, requires the
 one-shot to have named a profile, spawns into the origin's project.
 `ctx.model.recent(limit?)` reads a bounded in-memory ring (50) that does not

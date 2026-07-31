@@ -203,6 +203,10 @@ export type HarnessModelResult = {
   provider: string;
   model: string;
   usage?: OneShotUsage;
+  /** `"in-process"` (PI HTTP call, milliseconds) or `"subprocess"` (a CLI
+   *  launched for one headless turn, seconds). See `allowSubprocess`. */
+  transport: "in-process" | "subprocess";
+  elapsedMs: number;
 };
 
 /**
@@ -210,10 +214,11 @@ export type HarnessModelResult = {
  *
  * The cheap rung below `sessions.create()`. Use it for a transform whose answer
  * is a value rather than a conversation: punctuating dictation, naming a thing,
- * classifying, translating. Only the PI provider family can serve these
- * (`supportsOneShotCompletion`); anything else throws rather than quietly
- * spawning a session, because that would reintroduce the cost this exists to
- * avoid.
+ * classifying, translating. The PI provider family serves these in-process
+ * (`supportsOneShotCompletion`); `claude-code-pty` can serve one behind the
+ * explicit `allowSubprocess` opt-in by launching its CLI for a single headless
+ * turn. Anything else throws rather than quietly spawning a session, because
+ * that would reintroduce the cost this exists to avoid.
  */
 export interface HarnessModel {
   complete(opts: {
@@ -223,9 +228,18 @@ export interface HarnessModel {
     profile?: string;
     provider?: string;
     model?: string;
+    /** Ignored on the subprocess transport — the CLI exposes no flag for either. */
     temperature?: number;
     maxTokens?: number;
     signal?: AbortSignal;
+    /**
+     * Accept a provider that answers by launching its CLI for one headless,
+     * tool-less turn (currently `claude-code-pty`). Off by default: the launch
+     * costs seconds against milliseconds in-process, in exchange for the CLI's
+     * own subscription auth. Check `transport`/`elapsedMs` on the result rather
+     * than assuming the two paths perform alike.
+     */
+    allowSubprocess?: boolean;
   }): Promise<HarnessModelResult>;
   /**
    * Turn a completed one-shot into a real session that opens with the original
@@ -455,6 +469,7 @@ function createModel(
         temperature: opts.temperature,
         maxTokens: opts.maxTokens,
         signal: opts.signal,
+        allowSubprocess: opts.allowSubprocess,
         origin: {
           kind: self.kind,
           name: self.name,
@@ -473,6 +488,8 @@ function createModel(
           provider: result.provider,
           model: result.model,
           oneShotId: result.oneShotId,
+          transport: result.transport,
+          elapsedMs: result.elapsedMs,
           promptLength: opts.prompt.length,
           ...(result.usage ? { totalTokens: result.usage.totalTokens, costUsd: result.usage.costUsd } : {}),
         },

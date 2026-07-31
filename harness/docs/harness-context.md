@@ -1,7 +1,7 @@
 ---
 title: Harness Context
-lastUpdated: 2026-07-29
-covers: harness/harness-context.ts harness/wake-scheduler.ts harness/move-runner.ts harness/action-runner.ts harness/modus-mcp.ts harness/model-oneshot.ts harness/providers/pi-model.ts
+lastUpdated: 2026-07-30
+covers: harness/harness-context.ts harness/wake-scheduler.ts harness/move-runner.ts harness/action-runner.ts harness/modus-mcp.ts harness/model-oneshot.ts harness/providers/pi-model.ts harness/providers/claude-cli-oneshot.ts
 ---
 
 # Harness Context
@@ -75,7 +75,7 @@ plugin identity receives an empty accessor.
 
 ## One-shot model calls (`ctx.model`)
 
-A model call with **no session**: prompt in, text out, no tools, no state, no subprocess.
+A model call with **no session**: prompt in, text out, no tools, no state.
 This is the cheap rung below `ctx.sessions.create()`, for transforms whose answer is a value
 rather than a conversation — punctuating dictated text, naming a thing, classifying,
 translating.
@@ -91,7 +91,7 @@ const { text, oneShotId } = await ctx.model.complete({
 Reachable as `ctx.model` on the Harness Context, `ctx.model` on `MoveApiContext`,
 `ctx.harness.model` in move `onSubmit`, and `ctx.model` on `ActionContext`.
 
-**Only the PI provider family can serve one-shots** — `openai-compat`, `ollama`,
+**The PI provider family serves one-shots in-process** — `openai-compat`, `ollama`,
 `openrouter`, and user/plugin declarative providers (`litellm` remains an alias)
 (`listOneShotProviders()` in `providers/provider-names.ts`). That is structural, not a missing
 feature: PI is an in-process SDK, so `pi-ai`'s `completeSimple()` reaches the model directly,
@@ -99,6 +99,17 @@ while every other provider is a CLI the harness spawns and converses with. A one
 `claude-code`, `codex`, `cursor`, `antigravity`, `grok-build`, `opencode` or `gemini-cli`
 **throws** and names the capable providers. It does not fall back to spawning a session — that
 would silently reintroduce the cost the primitive exists to avoid.
+
+**One CLI provider can opt in: `claude-code-pty`, behind `allowSubprocess: true`.** The CLI's
+print mode (`claude -p --output-format json --max-turns 1 --tools ""`) answers a single
+headless, tool-less turn (`providers/claude-cli-oneshot.ts`), which makes the primitive
+reachable on the Claude CLI's own subscription auth instead of API credit. The trade is
+latency: a subprocess launch measures in seconds (~5s observed) against milliseconds for the
+in-process path, which is why the flag is required rather than the routing being silent.
+Results and records carry `transport` (`"in-process"` | `"subprocess"`) and `elapsedMs` so the
+difference stays visible. `temperature` and `maxTokens` are **ignored** on this transport (the
+CLI has no flags for them); `system` becomes `--system-prompt-file`, fully replacing the CLI's
+default system prompt.
 
 Resolution rules (`resolveOneShotTarget`), all of which throw rather than guess:
 
@@ -109,10 +120,13 @@ Resolution rules (`resolveOneShotTarget`), all of which throw rather than guess:
 | profile omits `provider` | error — `GlobalConfigSchema` has no default provider to fall back to |
 | neither profile nor provider | error |
 | resolved provider is not PI-family | error naming the current `listOneShotProviders()` result |
+| `claude-code-pty` without `allowSubprocess: true` | error naming the flag and the latency cost |
+| `claude-code-pty` with no model named anywhere | the CLI's own default answers; the record carries the model the CLI reports |
 
-The model object is built by `buildPiModel` in `providers/pi-model.ts` — the **same** seam the
-agentic PI provider uses, so a one-shot and a session against the same profile resolve the
-same baseUrl (from secrets), the same `providerDefaults`, and the same OpenAI-compat flags.
+On the in-process transport the model object is built by `buildPiModel` in
+`providers/pi-model.ts` — the **same** seam the agentic PI provider uses, so a one-shot and a
+session against the same profile resolve the same baseUrl (from secrets), the same
+`providerDefaults`, and the same OpenAI-compat flags.
 
 ### Promotion
 
