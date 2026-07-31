@@ -676,11 +676,15 @@ fn command_error(label: &str, output: &CliOutput) -> String {
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    // Write beside the target, then replace it in a single rename. Unlinking the
+    // existing file first left a window in which neither the old record nor the
+    // new one was at the canonical path, so a crash there lost the record
+    // outright — which is the opposite of what this function is named for.
+    // std::fs::rename replaces the destination on both platforms (Windows goes
+    // through MoveFileEx with MOVEFILE_REPLACE_EXISTING), so the unlink bought
+    // nothing.
     let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
     fs::write(&temporary, bytes)?;
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
     fs::rename(temporary, path)
 }
 
@@ -691,6 +695,35 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Replacement has to work without unlinking first, or removing the unlink
+    /// would trade a crash window for a broken write. This does not reproduce the
+    /// window itself — that needs a crash between two syscalls — it proves the
+    /// single-rename form is sufficient on this platform, which is the actual
+    /// risk of the change.
+    #[test]
+    fn atomic_write_replaces_an_existing_record_without_unlinking_it() {
+        let dir = std::env::temp_dir().join(format!(
+            "modus-atomic-write-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        fs::create_dir_all(&dir).expect("create test directory");
+        let path = dir.join("ownership.json");
+
+        atomic_write(&path, b"first").expect("initial write");
+        atomic_write(&path, b"second").expect("replace existing record");
+        assert_eq!(fs::read(&path).expect("read record"), b"second");
+
+        let strays: Vec<String> = fs::read_dir(&dir)
+            .expect("list directory")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".tmp"))
+            .collect();
+        assert!(strays.is_empty(), "left temporary files behind: {strays:?}");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     fn owner(port: u16) -> TailscaleOwnership {
         TailscaleOwnership {
