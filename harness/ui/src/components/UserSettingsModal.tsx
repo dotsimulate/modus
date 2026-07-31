@@ -17,6 +17,7 @@ import {
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
 import { isTauriRuntime } from "../desktopBridge";
+import AboutPanel from "./AboutPanel";
 import { providerDisplayLabel } from "../tools";
 import {
   checkForDesktopUpdate,
@@ -34,7 +35,7 @@ type Props = {
   onSave: (patch: Partial<UserProfile> & Partial<UserProfileUiConfig>) => Promise<void>;
 };
 
-type Tab = "profile" | "defaults" | "interface" | "environment" | "project" | "plugins" | "security";
+type Tab = "profile" | "defaults" | "interface" | "environment" | "project" | "plugins" | "security" | "about";
 
 const EFFORT_OPTIONS = ["off", "low", "medium", "high", "xhigh", "max"] as const;
 
@@ -290,7 +291,8 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   };
 
   const profile = userProfile as UserProfile & { name?: string };
-  const isEditing = tab !== "security";
+  // About is read-only, like security — neither tab has anything to save.
+  const isEditing = tab !== "security" && tab !== "about";
 
   return createPortal(
     <div className="create-profile-backdrop" onKeyDown={handleKeyDown}>
@@ -303,7 +305,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
         {/* Tabs */}
         <div className="us-tabs">
-          {(["profile", "defaults", "interface", "environment", "project", "plugins", "security"] as Tab[]).map((t) => (
+          {(["profile", "defaults", "interface", "environment", "project", "plugins", "security", "about"] as Tab[]).map((t) => (
             <button
               key={t}
               className={`us-tab${tab === t ? " active" : ""}`}
@@ -743,6 +745,12 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
           )}
 
           {/* Security tab */}
+          {tab === "about" && (
+            <div className="us-section">
+              <AboutPanel />
+            </div>
+          )}
+
           {tab === "security" && (
             <div className="us-section">
               {pinStatusLoaded && (

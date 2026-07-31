@@ -14,6 +14,7 @@ import type { WidgetDef, WidgetProps, WidgetBase, DashboardConfig } from "./type
 
 // ── Widget component imports ──
 
+import AboutWidget from "./about.widget";
 import ActionCardWidget from "./action-card.widget";
 import AccountWidget from "./account.widget";
 import ActionsManagerWidget from "./actions-manager.widget";
@@ -61,6 +62,13 @@ import TraceViewerWidget from "./trace-viewer.widget";
 // ── Registry ──
 
 export const WIDGET_DEFS: Record<string, WidgetDef> = {
+  "about": {
+    type: "about",
+    component: AboutWidget,
+    zones: ["dashboard", "left-panel", "right-panel"],
+    minHeight: 200,
+    preferredHeight: 460,
+  },
   "action-card": {
     type: "action-card",
     component: ActionCardWidget,

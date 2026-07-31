@@ -48,6 +48,7 @@ import {
 } from "./project-ui";
 import { forkConfigPage, listConfigPages } from "./pages";
 import { listDocs, getDoc, searchDocs, type DocAudience } from "./docs-registry";
+import { getAboutInfo } from "./about";
 import {
   listClientExtensions, getClientExtensionById, resolveExtensionSettings, extensionSettingScope,
 } from "./client-extensions";
@@ -1058,6 +1059,10 @@ app.get("/api/docs", (c) => {
     cwd: c.req.query("cwd"),
   }));
 });
+
+// Build identity and help content. One source for the about widget, the docs
+// page, and user settings, so the three cannot drift apart.
+app.get("/api/about", (c) => c.json(getAboutInfo()));
 
 app.post("/api/docs/search", async (c) => {
   const body = await c.req.json<{
