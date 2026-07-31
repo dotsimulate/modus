@@ -1,7 +1,7 @@
 ---
 title: Moves
-lastUpdated: 2026-07-29
-covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/move-op-request.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
+lastUpdated: 2026-07-31
+covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/move-op-request.ts harness/move-api-result.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
 ---
 
 # Moves
@@ -208,6 +208,13 @@ is no handler state to save.
 
 `context.ts` exports `handlers: Record<string, MoveApiHandler>`. Each handler receives
 `MoveApiContext` (instanceId, sessionId, caller, state API, notify) and the submitted data.
+
+A handler's return may carry keys beyond `ok`/`message`/`error`; they survive on both
+surfaces. The HTTP route (`POST /api/moves/:name/op`) serializes the whole object, and
+the `modus_submit` tool renders `message` (or `error`) first with the remaining keys
+following as a fenced JSON block (`formatMoveApiResultText` in `move-api-result.ts`) —
+so `{ ok: true, ms: 2832, usage: {...} }` reaches the agent instead of collapsing to
+a bare "OK".
 
 `ctx.state.get/set/delete` is the state API. Typed interface; shape is your contract.
 If `api.state.persist` is true, state files live in `.modus/moves/<name>/state/<instanceId>.json`.
