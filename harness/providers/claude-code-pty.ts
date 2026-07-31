@@ -375,10 +375,12 @@ function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
   // Only use harness-provided MCP config — ignore CLI's own discovery
   if (mcpArgs.length > 0) args.push("--strict-mcp-config");
 
-  // Project settings
+  // Project settings. The CLI dropped --no-project-settings; --setting-sources
+  // takes the list to load (user, project, local), so an empty list disables
+  // settings files and CLAUDE.md discovery. Loading stays on the CLI default.
   const loadSettings = opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true;
   if (!loadSettings) {
-    args.push("--no-project-settings");
+    args.push("--setting-sources", "");
   }
 
   // Build env
