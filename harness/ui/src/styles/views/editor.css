@@ -142,7 +142,7 @@
 .cw-search-inline-input {
   flex: 1 1 auto;
   min-width: 0;
-  height: 22px;
+  height: calc(22px * var(--font-scale, 1));
   background: transparent;
   border: none;
   outline: none;

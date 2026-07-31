@@ -227,8 +227,8 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: calc(12px * var(--font-scale, 1));
-  width: 20px;
-  height: 20px;
+  width: calc(20px * var(--font-scale, 1));
+  height: calc(20px * var(--font-scale, 1));
   padding: 0;
   cursor: pointer;
   border-radius: 3px;

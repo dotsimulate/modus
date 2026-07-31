@@ -307,7 +307,8 @@
 
 .exw-setting-description {
   flex: 0 0 100%;
-  padding-left: 88px;
+  /* Must track .exw-setting-label's min-width (80px) plus the row gap. */
+  padding-left: calc(88px * var(--font-scale, 1));
 }
 
 .exw-setting-scope {
@@ -362,7 +363,9 @@
   font-size: calc(10px * var(--font-scale, 1));
   color: var(--text-muted);
   white-space: nowrap;
-  min-width: 80px;
+  /* Paired with .exw-setting-description's padding-left, which hangs the
+     description under the input. Both scale so the two cannot drift apart. */
+  min-width: calc(80px * var(--font-scale, 1));
   flex-shrink: 0;
 }
 

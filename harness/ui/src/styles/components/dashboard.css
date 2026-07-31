@@ -420,7 +420,7 @@
   flex-shrink: 0;
   color: var(--text-dim);
   font-size: calc(10px * var(--font-scale, 1));
-  width: 56px;
+  width: calc(56px * var(--font-scale, 1));
   text-align: right;
 }
 .sessions-cell--agent {

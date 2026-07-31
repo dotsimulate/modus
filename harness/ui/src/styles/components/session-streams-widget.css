@@ -114,8 +114,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: calc(22px * var(--font-scale, 1));
+  height: calc(22px * var(--font-scale, 1));
   border-radius: 5px;
   font-size: calc(14px * var(--font-scale, 1));
   line-height: 1;
