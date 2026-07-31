@@ -849,6 +849,9 @@ export type ProviderCapabilities = {
   messageDelivery?: "steer" | "next-turn";
   /** Whether this provider can serve a sessionless one-shot completion. */
   supportsOneShotCompletion?: boolean;
+  /** Whether this provider can serve a one-shot by launching its CLI for one
+   *  headless turn — slower, and gated behind an explicit caller opt-in. */
+  supportsSubprocessOneShot?: boolean;
   /** Events the provider emits that aren't tool calls (e.g. "thinking", "git_event"). */
   nonToolSignals: string[];
   permissionModel: {

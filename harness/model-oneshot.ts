@@ -9,10 +9,14 @@
  * process launch, a full agent turn, and a row in the user's session list.
  *
  * This module is the missing bottom rung: prompt in, text out, no tools, no
- * state, no subprocess. It is deliberately *not* a second provider system —
- * every one-shot resolves its model through `pi-model.ts`, the same seam the
+ * state. It is deliberately *not* a second provider system — the default
+ * transport resolves its model through `pi-model.ts`, the same seam the
  * agentic PI provider uses, so a one-shot and a session against the same
- * profile talk to the same endpoint with the same credentials.
+ * profile talk to the same endpoint with the same credentials. A second,
+ * opt-in transport (`allowSubprocess`) launches the Claude CLI for one
+ * headless turn (`providers/claude-cli-oneshot.ts`) — slower by seconds, but
+ * it rides the CLI's own subscription auth instead of API credit. The two are
+ * never silently interchangeable: results and records carry their transport.
  *
  * Promotion is the other half of the design. A one-shot answer you disagree
  * with is a dead end unless you can keep talking, so every call is recorded and
@@ -27,9 +31,23 @@ import {
   defaultPiModel,
   resolvePiApiKey,
 } from "./providers/pi-model";
-import { listOneShotProviders, supportsOneShotCompletion } from "./providers/provider-names";
+import {
+  listOneShotProviders,
+  listSubprocessOneShotProviders,
+  supportsOneShotCompletion,
+  supportsSubprocessOneShot,
+} from "./providers/provider-names";
+import { runClaudeCliOneShot, type CliOneShotOutcome, type CliOneShotRequest } from "./providers/claude-cli-oneshot";
 
 // ── Types ──
+
+/**
+ * How the completion physically ran. `in-process` is pi-ai's HTTP call
+ * (milliseconds); `subprocess` launches a provider CLI for one headless turn
+ * (seconds, but the CLI's own auth — a subscription — pays for it). Carried on
+ * every record and result so the two never become silently interchangeable.
+ */
+export type OneShotTransport = "in-process" | "subprocess";
 
 export type OneShotUsage = {
   input: number;
@@ -59,6 +77,10 @@ export type OneShotRecord = {
   text: string;
   usage?: OneShotUsage;
   origin: OneShotOrigin;
+  transport: OneShotTransport;
+  /** Wall-clock cost of the completion, so the latency difference between the
+   *  transports stays visible instead of averaged away. */
+  elapsedMs: number;
   /**
    * Set once promoted. Promotion is idempotent — a second call returns the same
    * session rather than spawning a duplicate, because the caller is usually a UI
@@ -76,9 +98,17 @@ export type OneShotRequest = {
   provider?: string;
   /** Override the model id. */
   model?: string;
+  /** Ignored on the subprocess transport — the CLI exposes no flag for either. */
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  /**
+   * Accept a provider that serves one-shots by launching its CLI for a single
+   * headless turn (currently `claude-code-pty`). Off by default because the
+   * launch costs seconds against milliseconds for the in-process providers —
+   * the caller must knowingly trade latency for the CLI's subscription auth.
+   */
+  allowSubprocess?: boolean;
   origin: OneShotOrigin;
 };
 
@@ -88,16 +118,21 @@ export type OneShotResult = {
   provider: string;
   model: string;
   usage?: OneShotUsage;
+  transport: OneShotTransport;
+  elapsedMs: number;
 };
 
 // ── Target resolution ──
 
 export type OneShotTarget = {
   provider: string;
+  /** Empty string on the subprocess transport when nothing named a model —
+   *  the CLI then uses its own default, and the record carries what it reports. */
   model: string;
   profileName?: string;
   /** The resolved profile, passed to buildPiModel for contextWindow/maxOutputTokens. */
   profile?: unknown;
+  transport: OneShotTransport;
 };
 
 /**
@@ -115,6 +150,7 @@ export function resolveOneShotTarget(opts: {
   model?: string;
   cwd?: string;
   userProfile?: string;
+  allowSubprocess?: boolean;
   lookupProfile?: (name: string, cwd?: string, context?: { userProfile?: string }) => unknown;
 }): OneShotTarget {
   const lookup = opts.lookupProfile ?? getProfile;
@@ -136,17 +172,33 @@ export function resolveOneShotTarget(opts: {
     );
   }
 
+  let transport: OneShotTransport = "in-process";
   if (!supportsOneShotCompletion(providerName)) {
-    throw new Error(
-      `one-shot: provider "${providerName}" cannot answer a single prompt without spawning an agent session. `
-      + `One-shot capable providers: ${listOneShotProviders().join(", ")}. `
-      + `Use ctx.sessions.create() if a full session is what you want.`,
-    );
+    if (supportsSubprocessOneShot(providerName)) {
+      if (!opts.allowSubprocess) {
+        throw new Error(
+          `one-shot: provider "${providerName}" serves one-shots by launching its CLI for a single headless turn — `
+          + `seconds of startup against milliseconds for the in-process providers (${listOneShotProviders().join(", ")}). `
+          + `Pass allowSubprocess: true to knowingly accept that, or use ctx.sessions.create() for a full session.`,
+        );
+      }
+      transport = "subprocess";
+    } else {
+      throw new Error(
+        `one-shot: provider "${providerName}" cannot answer a single prompt without spawning an agent session. `
+        + `One-shot capable providers: ${listOneShotProviders().join(", ")}; `
+        + `with allowSubprocess: true also ${listSubprocessOneShotProviders().join(", ")}. `
+        + `Use ctx.sessions.create() if a full session is what you want.`,
+      );
+    }
   }
 
-  const model = opts.model ?? profile?.model ?? defaultPiModel(providerName);
+  // No default-model guess on the subprocess transport: the CLI has its own
+  // default, and the PI defaults are meaningless outside the PI family.
+  const model = opts.model ?? profile?.model
+    ?? (transport === "subprocess" ? "" : defaultPiModel(providerName));
 
-  return { provider: providerName, model, profileName: opts.profile, profile };
+  return { provider: providerName, model, profileName: opts.profile, profile, transport };
 }
 
 // ── Record store ──
@@ -267,9 +319,15 @@ async function getLiveCompleter(): Promise<OneShotCompleter> {
   return liveCompleter;
 }
 
+export type SubprocessOneShotCompleter = (req: CliOneShotRequest) => Promise<CliOneShotOutcome>;
+
 export async function runOneShot(
   req: OneShotRequest,
-  deps: { complete?: OneShotCompleter; lookupProfile?: OneShotTargetLookup } = {},
+  deps: {
+    complete?: OneShotCompleter;
+    completeSubprocess?: SubprocessOneShotCompleter;
+    lookupProfile?: OneShotTargetLookup;
+  } = {},
 ): Promise<OneShotResult> {
   const prompt = String(req.prompt ?? "");
   if (!prompt.trim()) throw new Error("one-shot: prompt is required");
@@ -280,46 +338,74 @@ export async function runOneShot(
     model: req.model,
     cwd: req.origin.cwd,
     userProfile: req.origin.userProfile,
+    allowSubprocess: req.allowSubprocess,
     lookupProfile: deps.lookupProfile,
   });
 
-  const model = buildPiModel(target.provider, target.model, target.profile);
-  const complete = deps.complete ?? (await getLiveCompleter());
+  const startedAt = Date.now();
+  let text: string;
+  let resolvedModel: string;
+  let usage: OneShotUsage | undefined;
 
-  const completion = await complete(
-    model,
-    {
-      systemPrompt: req.system,
-      messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-    },
-    {
-      // Absent for a local Ollama or an open LiteLLM; PI's own auth path
-      // substitutes a placeholder in that case, so undefined is not an error.
-      apiKey: resolvePiApiKey(target.provider),
-      temperature: req.temperature,
-      maxTokens: req.maxTokens,
+  if (target.transport === "subprocess") {
+    const completeSubprocess = deps.completeSubprocess ?? runClaudeCliOneShot;
+    const outcome = await completeSubprocess({
+      prompt,
+      system: req.system,
+      model: target.model || undefined,
+      effort: (target.profile as any)?.effort,
+      cwd: req.origin.cwd,
       signal: req.signal,
-    },
-  );
+    });
+    text = outcome.text;
+    // The CLI reports which model actually answered; prefer that over the
+    // request, and never record the empty "CLI default" placeholder.
+    resolvedModel = outcome.model ?? (target.model || "cli-default");
+    usage = outcome.usage;
+  } else {
+    const model = buildPiModel(target.provider, target.model, target.profile);
+    const complete = deps.complete ?? (await getLiveCompleter());
 
-  if (completion.stopReason === "error") {
-    throw new Error(
-      `one-shot: ${target.provider}/${target.model} failed — ${completion.errorMessage ?? "no error detail"}`,
+    const completion = await complete(
+      model,
+      {
+        systemPrompt: req.system,
+        messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+      },
+      {
+        // Absent for a local Ollama or an open LiteLLM; PI's own auth path
+        // substitutes a placeholder in that case, so undefined is not an error.
+        apiKey: resolvePiApiKey(target.provider),
+        temperature: req.temperature,
+        maxTokens: req.maxTokens,
+        signal: req.signal,
+      },
     );
+
+    if (completion.stopReason === "error") {
+      throw new Error(
+        `one-shot: ${target.provider}/${target.model} failed — ${completion.errorMessage ?? "no error detail"}`,
+      );
+    }
+
+    text = extractCompletionText(completion);
+    resolvedModel = target.model;
+    usage = normalizeUsage(completion);
   }
 
-  const text = extractCompletionText(completion);
   const record: OneShotRecord = {
     id: nextOneShotId(),
     createdAt: Date.now(),
     profile: target.profileName,
     provider: target.provider,
-    model: target.model,
+    model: resolvedModel,
     system: req.system,
     prompt,
     text,
-    usage: normalizeUsage(completion),
+    usage,
     origin: req.origin,
+    transport: target.transport,
+    elapsedMs: Date.now() - startedAt,
   };
   storeRecord(record);
 
@@ -329,6 +415,8 @@ export async function runOneShot(
     provider: record.provider,
     model: record.model,
     usage: record.usage,
+    transport: record.transport,
+    elapsedMs: record.elapsedMs,
   };
 }
 

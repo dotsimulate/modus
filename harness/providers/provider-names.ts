@@ -110,3 +110,24 @@ export function listOneShotProviders(): string[] {
 export function supportsOneShotCompletion(name: string): boolean {
   return getProviderDefinition(name)?.kind === "pi";
 }
+
+/**
+ * CLI providers that can serve a one-shot by launching their binary for a
+ * single headless print-mode turn. Kept separate from the in-process list
+ * because the two are not interchangeable: a subprocess launch costs seconds
+ * where the in-process path costs milliseconds, so `model-oneshot.ts` requires
+ * an explicit `allowSubprocess` opt-in before routing here. The payoff is that
+ * the CLI brings its own auth — a Claude subscription serves these calls where
+ * the in-process path must spend API credit.
+ *
+ * Only `claude-code-pty` for now: its print-mode invocation is the one this
+ * repo has verified end to end. The SDK-based `claude-code` could join once
+ * someone proves the same single-turn path there.
+ */
+export function listSubprocessOneShotProviders(): string[] {
+  return ["claude-code-pty"];
+}
+
+export function supportsSubprocessOneShot(name: string): boolean {
+  return name === "claude-code-pty";
+}

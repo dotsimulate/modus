@@ -79,6 +79,32 @@ describe("target resolution", () => {
       .toThrow(/ctx\.sessions\.create/);
   });
 
+  test("claude-code-pty without the opt-in is refused, naming the flag and the cost", () => {
+    expect(() => resolveOneShotTarget({ provider: "claude-code-pty" }))
+      .toThrow(/allowSubprocess/);
+    expect(() => resolveOneShotTarget({ provider: "claude-code-pty" }))
+      .toThrow(/seconds of startup/);
+  });
+
+  test("claude-code-pty with allowSubprocess resolves to the subprocess transport", () => {
+    const target = resolveOneShotTarget({ provider: "claude-code-pty", allowSubprocess: true });
+    expect(target.transport).toBe("subprocess");
+    // No PI default-model guess: empty means "let the CLI pick".
+    expect(target.model).toBe("");
+  });
+
+  test("allowSubprocess does not unlock providers outside the subprocess list", () => {
+    expect(() => resolveOneShotTarget({ provider: "codex", allowSubprocess: true }))
+      .toThrow(/cannot answer a single prompt/);
+    expect(() => resolveOneShotTarget({ provider: "claude-code", allowSubprocess: true }))
+      .toThrow(/claude-code-pty/);
+  });
+
+  test("a PI provider stays in-process even when the caller allowed a subprocess", () => {
+    const target = resolveOneShotTarget({ provider: "ollama", allowSubprocess: true });
+    expect(target.transport).toBe("in-process");
+  });
+
   test("a missing profile is an error, not a silent default", () => {
     expect(() => resolveOneShotTarget({ profile: "nope", lookupProfile: profiles({}) }))
       .toThrow(/agent profile "nope" was not found/);
@@ -177,6 +203,72 @@ describe("completion", () => {
     )).rejects.toThrow(/prompt is required/);
     expect(called).toBe(false);
   });
+
+  test("results carry the transport and the wall-clock cost", async () => {
+    const result = await runOneShot(
+      { prompt: "x", provider: "ollama", model: "m", origin },
+      { complete: completer("y") },
+    );
+    expect(result.transport).toBe("in-process");
+    expect(result.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("subprocess transport", () => {
+  test("routes through the CLI completer with the profile's model and effort", async () => {
+    let seen: any = null;
+    const result = await runOneShot(
+      { prompt: "punctuate this", system: "be terse", profile: "max", allowSubprocess: true, origin },
+      {
+        completeSubprocess: async (req) => {
+          seen = req;
+          return { text: "Punctuated.", model: "claude-opus-4-8[1m]", usage: { input: 1, output: 4, totalTokens: 5, costUsd: 0.02 } };
+        },
+        lookupProfile: (name: string) =>
+          name === "max" ? { provider: "claude-code-pty", model: "opus", effort: "low" } : undefined,
+      },
+    );
+    expect(seen.prompt).toBe("punctuate this");
+    expect(seen.system).toBe("be terse");
+    expect(seen.model).toBe("opus");
+    expect(seen.effort).toBe("low");
+    expect(seen.cwd).toBe("/proj");
+    expect(result.transport).toBe("subprocess");
+    // The record holds what the CLI says answered, not the requested alias.
+    expect(result.model).toBe("claude-opus-4-8[1m]");
+    expect(result.usage?.costUsd).toBe(0.02);
+  });
+
+  test("with no model anywhere, the CLI default is recorded as such", async () => {
+    const result = await runOneShot(
+      { prompt: "x", provider: "claude-code-pty", allowSubprocess: true, origin },
+      { completeSubprocess: async () => ({ text: "y" }) },
+    );
+    expect(result.model).toBe("cli-default");
+  });
+
+  test("a subprocess one-shot is recorded and promotable like any other", async () => {
+    const result = await runOneShot(
+      { prompt: "q", profile: "max", allowSubprocess: true, origin },
+      {
+        completeSubprocess: async () => ({ text: "a", model: "opus" }),
+        lookupProfile: profiles({ max: { provider: "claude-code-pty" } }),
+      },
+    );
+    const record = getOneShotRecord(result.oneShotId);
+    expect(record?.transport).toBe("subprocess");
+    expect(record?.profile).toBe("max");
+    expect(record?.elapsedMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test("without the opt-in, runOneShot never reaches the CLI completer", async () => {
+    let called = false;
+    await expect(runOneShot(
+      { prompt: "x", provider: "claude-code-pty", origin },
+      { completeSubprocess: async () => { called = true; return { text: "y" }; } },
+    )).rejects.toThrow(/allowSubprocess/);
+    expect(called).toBe(false);
+  });
 });
 
 describe("text extraction", () => {
@@ -245,6 +337,8 @@ describe("promotion prompt", () => {
     prompt: "punctuate: hello there",
     text: "Hello there.",
     origin: { kind: "move", name: "t", cwd: "/proj" },
+    transport: "in-process",
+    elapsedMs: 120,
   };
 
   test("replays both sides of the exchange", () => {

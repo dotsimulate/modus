@@ -47,6 +47,11 @@ export type ProviderCapabilities = {
   messageDelivery?: "steer" | "next-turn";
   /** Whether the provider can serve the low-overhead, sessionless model-call path. */
   supportsOneShotCompletion?: boolean;
+  /** Whether the provider can serve a one-shot by launching its CLI for one
+   *  headless turn — slower and gated behind an explicit caller opt-in, so it
+   *  is advertised separately from the in-process flag above. Derived centrally
+   *  in `registry.ts` from `provider-names.ts`. */
+  supportsSubprocessOneShot?: boolean;
   nonToolSignals: string[];
   permissionModel: {
     mode: "per-tool-ui" | "runtime-native" | "none";
