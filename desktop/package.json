@@ -7,6 +7,7 @@
     "dev": "tauri dev",
     "build": "tauri build --no-bundle",
     "build:bundle": "tauri build",
+    "build:signed": "tauri build --config src-tauri/tauri.signing.conf.json",
     "stage:backend": "bun run stage-managed-backend.ts"
   },
   "devDependencies": {
