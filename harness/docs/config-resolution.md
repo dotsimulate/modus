@@ -25,7 +25,7 @@ might want compaction disabled entirely.
 **Provider Defaults** (`~/.modus/profiles/_global.json` and project
 `<cwd>/.modus/_global.json` → `providerDefaults.<provider>`):
 Per-provider overrides. If your llama-server runs `-c 65536`, set it once here and
-every litellm agent inherits it. Optional — most users never touch this.
+every `openai-compat` agent inherits it. Optional — most users never touch this.
 
 Enabled plugins contribute `.modus/_global.json` between those two writable
 layers. For MCP servers, provider defaults, notifications, and client-extension
@@ -58,7 +58,7 @@ enabled plugins.
 ### Zero config (just works)
 ```json
 {
-  "provider": "litellm",
+  "provider": "openai-compat",
   "model": "glm-4.7-flash",
   "prompt": "You are a coding assistant."
 }
@@ -72,21 +72,21 @@ metadata, compaction on.
 {
   "mcpServers": { ... },
   "providerDefaults": {
-    "litellm": {
+    "openai-compat": {
       "contextWindow": 65536,
       "compaction": { "reserveTokens": 8192 }
     }
   }
 }
 ```
-All litellm agents get 65536 context and 8192 reserve. Other compaction fields
+All `openai-compat` agents get 65536 context and 8192 reserve. Other compaction fields
 still fall through to TS defaults.
 
 ### Super power user: per-agent override
 ```json
 // ~/.modus/profiles/agents/creative.json
 {
-  "provider": "litellm",
+  "provider": "openai-compat",
   "model": "deepseek-r1-qwen3-8b",
   "contextWindow": 16384,
   "compaction": { "enabled": false }

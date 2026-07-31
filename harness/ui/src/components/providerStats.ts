@@ -7,11 +7,10 @@ function fmtCompact(n: number): string {
 }
 
 export function formatProviderTokenUsage(
-  provider: string | undefined,
+  _provider: string | undefined,
   inputTokens?: number,
   outputTokens?: number,
 ): string | null {
-  if (provider !== "codex" && provider !== "gemini-cli") return null;
   if (inputTokens == null || outputTokens == null) return null;
   return `${fmtCompact(inputTokens + outputTokens)} tok`;
 }
@@ -29,9 +28,7 @@ export function formatSidebarProviderStat(
   const isClaudeModel = model.includes("claude");
   if (provider === "claude-code" || (!provider && isClaudeModel)) {
     if (stats.costUsd != null && stats.costUsd > 0) return `$${stats.costUsd.toFixed(3)}`;
-    return null;
   }
-  if (provider !== "codex" && provider !== "gemini-cli") return null;
   if (stats.inputTokens == null || stats.outputTokens == null) return null;
   return `${fmtCompact(stats.inputTokens + stats.outputTokens)} tok`;
 }

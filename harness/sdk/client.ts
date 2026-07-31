@@ -42,6 +42,7 @@ import type {
   ProviderCapabilities,
   ProviderHealthInfo,
   ProviderModel,
+  DetectedProvider,
   GitStatus,
   GitCommit,
   GitCommitDetail,
@@ -517,6 +518,8 @@ export class ModusClient {
   async getProviderCapabilities(): Promise<ProviderCapabilities[]> { return (await this.fetch("/api/provider-capabilities")).json(); }
   /** Returns health/reachability status of all providers. */
   async getProviderHealth(): Promise<ProviderHealthInfo[]> { return (await this.fetch("/api/provider-health")).json(); }
+  /** Explicitly probes known localhost ports and returns definition proposals without registering them. */
+  async detectLocalProviders(): Promise<DetectedProvider[]> { return (await this.fetchOrThrow("/api/providers/detect", { method: "POST" })).json(); }
   /** Lists available models for a provider. Returns empty array on error. */
   async getProviderModels(provider: string): Promise<ProviderModel[]> { const r = await this.fetch(`/api/providers/${encodeURIComponent(provider)}/models`); if (!r.ok) return []; return r.json(); }
 

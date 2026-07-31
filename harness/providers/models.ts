@@ -13,6 +13,8 @@ import {
   runAntigravityCommand,
 } from "./antigravity-cli-runtime";
 import { probeGrokBuildModels } from "./grok-build-runtime";
+import { getProviderDefinition } from "./provider-definitions";
+import { resolvePiApiKey, resolvePiBaseUrl } from "./pi-model";
 
 export type ProviderModelInfo = {
   id: string;
@@ -143,31 +145,26 @@ function withProviderDefaults(provider: string, model: ModelInfo): ModelInfo {
   };
 }
 
-function getBaseURL(provider: string): { url: string; apiKey: string } {
-  switch (provider) {
-    case "litellm":
-      return {
-        url: resolveSecret("LITELLM_BASE_URL") ?? process.env.LITELLM_BASE_URL ?? "http://localhost:4000/v1",
-        apiKey: resolveSecret("LITELLM_API_KEY") ?? process.env.LITELLM_API_KEY ?? "unused",
-      };
-    case "ollama":
-      return {
-        url: resolveSecret("OLLAMA_BASE_URL") ?? process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1",
-        apiKey: resolveSecret("OLLAMA_API_KEY") ?? process.env.OLLAMA_API_KEY ?? "ollama",
-      };
-    case "openai":
-      return {
-        url: "https://api.openai.com/v1",
-        apiKey: resolveSecret("OPENAI_API_KEY") ?? process.env.OPENAI_API_KEY ?? "",
-      };
-    case "openrouter":
-      return {
-        url: resolveSecret("OPENROUTER_BASE_URL") ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1",
-        apiKey: resolveSecret("OPENROUTER_API_KEY") ?? process.env.OPENROUTER_API_KEY ?? "",
-      };
-    default:
-      throw new Error(`No model list for provider: ${provider}`);
+function getBaseURL(provider: string): {
+  url: string;
+  apiKey?: string;
+  headers?: Record<string, string>;
+} {
+  const definition = getProviderDefinition(provider);
+  if (definition?.kind === "pi") {
+    return {
+      url: resolvePiBaseUrl(provider),
+      apiKey: resolvePiApiKey(provider),
+      headers: definition.headers,
+    };
   }
+  if (provider === "openai") {
+    return {
+      url: "https://api.openai.com/v1",
+      apiKey: resolveSecret("OPENAI_API_KEY") ?? process.env.OPENAI_API_KEY ?? "",
+    };
+  }
+  throw new Error(`No model list for provider: ${provider}`);
 }
 
 export async function fetchProviderModels(provider: string): Promise<ModelInfo[]> {
@@ -203,11 +200,14 @@ export async function fetchProviderModels(provider: string): Promise<ModelInfo[]
     return fetchCursorModels();
   }
 
-  const { url, apiKey } = getBaseURL(provider);
+  const { url, apiKey, headers } = getBaseURL(provider);
   const modelsUrl = url.replace(/\/+$/, "") + "/models";
 
   const res = await fetch(modelsUrl, {
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: {
+      ...(headers ?? {}),
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    },
     signal: AbortSignal.timeout(5000),
   });
 

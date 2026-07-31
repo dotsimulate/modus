@@ -6,6 +6,7 @@ import { useProfiles } from "../../providers/ProfileContext";
 import { SearchDropdown } from "../SearchDropdown";
 import { profileOptions } from "../../profile-options";
 import { SessionSetup, type SessionSetupState } from "../SessionSetup";
+import { providerDisplayLabel } from "../../tools";
 
 type Props = {
   profiles: Profile[];
@@ -35,7 +36,7 @@ export function ProfilePanel({
   setupState, onSetupChange,
   activeUserProfileObj,
 }: Props) {
-  const { userProfiles, refreshProfiles } = useProfiles();
+  const { userProfiles, refreshProfiles, providerCapabilities } = useProfiles();
   const [configExpanded, setConfigExpanded] = useState(false);
   const setupStateRef = useRef(setupState);
   const selectedProfileData = profiles.find((p) => p.name === selectedProfile);
@@ -45,7 +46,10 @@ export function ProfilePanel({
     || selectedProfileData?.provider
     || activeUserProfileObj?.provider
     || "claude-code";
-  const profileSummary = effectiveProvider;
+  const profileSummary = providerDisplayLabel(
+    effectiveProvider,
+    providerCapabilities[effectiveProvider],
+  );
 
   const toggleManual = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -154,7 +158,10 @@ export function ProfilePanel({
               <SearchDropdown
                 className="search-dropdown--compact"
                 value={setupState.agent.provider}
-                options={(availableProviders ?? []).map((provider) => ({ value: provider }))}
+                options={(availableProviders ?? []).map((provider) => ({
+                  value: provider,
+                  label: providerDisplayLabel(provider, providerCapabilities[provider]),
+                }))}
                 placeholder={selectedProfileData?.provider ?? activeUserProfileObj?.provider ?? "claude-code"}
                 searchPlaceholder="search providers..."
                 onChange={handleProviderChange}

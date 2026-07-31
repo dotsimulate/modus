@@ -1,0 +1,17 @@
+{
+  "name": "litellm-remote",
+  "label": "LiteLLM (remote)",
+  "kind": "pi",
+  "api": "openai-completions",
+  "baseUrl": "https://litellm.example.test/v1",
+  "apiKeyName": "LITELLM_REMOTE_API_KEY",
+  "defaultModel": "default",
+  "input": ["text", "image"],
+  "compat": {
+    "supportsStore": false,
+    "supportsDeveloperRole": false,
+    "supportsReasoningEffort": false,
+    "supportsUsageInStreaming": true,
+    "maxTokensField": "max_tokens"
+  }
+}

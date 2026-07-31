@@ -1,0 +1,9 @@
+{
+  "name": "lmstudio",
+  "label": "LM Studio (local)",
+  "kind": "pi",
+  "api": "openai-completions",
+  "baseUrl": "http://127.0.0.1:1234/v1",
+  "defaultModel": "default",
+  "input": ["text", "image"]
+}

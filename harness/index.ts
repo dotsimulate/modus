@@ -1114,6 +1114,11 @@ app.get("/api/provider-health", async (c) => {
   return c.json(await checkAllProviderHealth());
 });
 
+app.post("/api/providers/detect", async (c) => {
+  const { detectLocalProviders } = await import("./providers/provider-detection");
+  return c.json(await detectLocalProviders());
+});
+
 app.get("/api/providers/:name/models", async (c) => {
   const { fetchProviderModels } = await import("./providers/models");
   const name = c.req.param("name");

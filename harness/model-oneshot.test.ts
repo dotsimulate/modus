@@ -74,7 +74,7 @@ describe("target resolution", () => {
     expect(() => resolveOneShotTarget({ provider: "claude-code" }))
       .toThrow(/cannot answer a single prompt/);
     expect(() => resolveOneShotTarget({ provider: "claude-code" }))
-      .toThrow(/litellm, ollama, openrouter/);
+      .toThrow(/openai-compat, ollama, openrouter/);
     expect(() => resolveOneShotTarget({ provider: "codex" }))
       .toThrow(/ctx\.sessions\.create/);
   });

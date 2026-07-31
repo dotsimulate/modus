@@ -61,6 +61,8 @@ export type {
   GlobalConfig,
   // Providers
   ProviderModel,
+  DeclarativeProviderDefinition,
+  DetectedProvider,
   ProviderSlashCommand,
   ProviderToolGroup,
   ProviderCapabilities,

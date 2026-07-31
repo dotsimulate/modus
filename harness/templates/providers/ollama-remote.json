@@ -1,0 +1,9 @@
+{
+  "name": "ollama-remote",
+  "label": "Ollama (remote)",
+  "kind": "pi",
+  "api": "openai-completions",
+  "baseUrl": "http://ollama.example.test:11434/v1",
+  "defaultModel": "default",
+  "input": ["text", "image"]
+}

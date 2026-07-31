@@ -15,12 +15,15 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
-  PI_PROVIDERS,
   STANDALONE_PROVIDERS,
-  STEERABLE_PROVIDERS,
+  listPiProviders,
   listProviders,
+  listSteerableProviders,
   supportsSteering,
 } from "./provider-names";
+
+const PI_PROVIDERS = listPiProviders();
+const STEERABLE_PROVIDERS = listSteerableProviders();
 
 /** Provider name → the file implementing it. PI backs all of its names with one module. */
 const IMPLEMENTATION: Record<string, string> = {

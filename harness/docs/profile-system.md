@@ -1,6 +1,6 @@
 ---
 title: Profile System
-lastUpdated: 2026-07-26
+lastUpdated: 2026-07-30
 lastCommit: a9adf68
 covers: harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/templates/profiles/ harness/skills.ts
 ---
@@ -71,7 +71,7 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 {
   "description": "One-line description for UI display and subagent selection",
   "prompt": "System prompt. Supports {{templateVars}} from _users.json / user profile.",
-  "provider": "litellm",
+  "provider": "openai-compat",
   "model": "glm-4.7-flash",
   "promptMode": "append",
   "loadProjectSettings": true,
@@ -90,9 +90,12 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 
 ### Key Fields
 
-**`provider`**: Execution backend. Registered providers are `"claude-code"`,
-`"claude-code-pty"`, `"codex"`, `"cursor"`, `"antigravity"`, `"grok-build"`, `"opencode"`,
-`"litellm"`, `"ollama"`, and `"openrouter"`.
+**`provider`**: Execution backend. The built-ins are `"claude-code"`,
+`"claude-code-pty"`, `"codex"`, `"cursor"`, `"antigravity"`,
+`"grok-build"`, `"opencode"`, `"openai-compat"`, `"ollama"`, and
+`"openrouter"`. User-global and plugin declarative providers extend this set at
+runtime. Legacy `"litellm"` remains accepted as an alias of
+`"openai-compat"`.
 
 **`additionalDirectories`**: Extra workspace roots to grant alongside the
 primary cwd. All current providers consume them. PI-backed providers advertise
@@ -109,6 +112,11 @@ lives in each provider.
 `"custom"` replaces it entirely — you own the whole prompt.
 
 **`loadProjectSettings`**: Whether to load `CLAUDE.md` files from the working directory.
+
+**`env`**: Provider-specific process environment, not a universal endpoint
+override. The Claude Code SDK and Grok Build providers consume it today; other
+CLI providers ignore it. PI providers run in-process and instead use
+declarative provider `baseUrl`, `apiKeyName`, `headers`, and Modus secrets.
 
 **`tools`**: Allowlist of tool names. Omit to inherit all available tools for the provider.
 Tool names differ between providers — see `docs/pi-agent-system.md` § Tool Namespaces.

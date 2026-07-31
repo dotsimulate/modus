@@ -1,0 +1,9 @@
+{
+  "name": "llamacpp",
+  "label": "llama.cpp (local)",
+  "kind": "pi",
+  "api": "openai-completions",
+  "baseUrl": "http://127.0.0.1:8080/v1",
+  "defaultModel": "default",
+  "input": ["text"]
+}

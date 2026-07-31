@@ -17,6 +17,7 @@ import {
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
 import { isTauriRuntime } from "../desktopBridge";
+import { providerDisplayLabel } from "../tools";
 import {
   checkForDesktopUpdate,
   getDesktopUpdateState,
@@ -64,7 +65,14 @@ function InterfaceToggle({ label, value, onChange }: {
 
 export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [tab, setTab] = useState<Tab>("profile");
-  const { profiles, visibleProfiles, availableProviders, projectRoot, activeCwd } = useProfiles();
+  const {
+    profiles,
+    visibleProfiles,
+    availableProviders,
+    providerCapabilities,
+    projectRoot,
+    activeCwd,
+  } = useProfiles();
 
   const [displayName, setDisplayName] = useState(userProfile.displayName ?? "");
   const [defaultAgentProfile, setDefaultAgentProfile] = useState(userProfile.defaultAgentProfile ?? "");
@@ -351,7 +359,10 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                   <SearchDropdown
                     className="search-dropdown--compact"
                     value={defaultProvider}
-                    options={availableProviders.map((provider) => ({ value: provider }))}
+                    options={availableProviders.map((provider) => ({
+                      value: provider,
+                      label: providerDisplayLabel(provider, providerCapabilities[provider]),
+                    }))}
                     placeholder="claude-code"
                     searchPlaceholder="search providers..."
                     onChange={handleDefaultProviderChange}

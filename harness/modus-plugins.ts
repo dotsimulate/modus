@@ -41,7 +41,7 @@ export type ModusPluginManifest = {
     pages?: string[];
     pageNav?: "auto" | "hidden";
   };
-  contents?: Partial<Record<"moves" | "actions" | "pages" | "profiles" | "skills", {
+  contents?: Partial<Record<"moves" | "actions" | "pages" | "profiles" | "providers" | "skills", {
     mode?: "merge";
   }>>;
 };
@@ -278,6 +278,10 @@ export function getPluginMovesDir(plugin: ModusPlugin): string {
 
 export function getPluginPagesDir(plugin: ModusPlugin): string {
   return join(getPluginModusDir(plugin), "pages");
+}
+
+export function getPluginProvidersDir(plugin: ModusPlugin): string {
+  return join(getPluginModusDir(plugin), "providers");
 }
 
 export function getPluginSkillsDir(plugin: ModusPlugin): string {

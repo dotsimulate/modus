@@ -1,0 +1,10 @@
+{
+  "name": "openai-gateway",
+  "label": "OpenAI-compatible gateway",
+  "kind": "pi",
+  "api": "openai-completions",
+  "baseUrl": "http://127.0.0.1:8317/v1",
+  "apiKeyName": "OPENAI_GATEWAY_API_KEY",
+  "defaultModel": "default",
+  "input": ["text", "image"]
+}

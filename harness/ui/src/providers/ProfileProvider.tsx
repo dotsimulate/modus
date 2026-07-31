@@ -218,7 +218,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         ]);
         setUserProfiles(up);
         setAvailableProviders(prov);
-        setProviderCapabilities(Object.fromEntries(caps.map((cap) => [cap.name, cap])));
+        const capabilitiesByName: Record<string, ProviderCapabilities> = {};
+        for (const cap of caps) {
+          capabilitiesByName[cap.name] = cap;
+          for (const alias of cap.aliases ?? []) capabilitiesByName[alias] = cap;
+        }
+        setProviderCapabilities(capabilitiesByName);
 
         // Resolve CWD before profile fetch so project-local profiles are included
         const activeUp = up.find((u) => u.name === activeUserProfile);
