@@ -1,7 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createHash, randomUUID } from "crypto";
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -186,16 +185,29 @@ export function planStorageMigration(
   };
 }
 
-function checkpointLegacyDatabase(path: string): void {
-  const db = new Database(path);
+function sqlStringLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Copies a legacy database through SQLite's own snapshot mechanism.
+ *
+ * VACUUM INTO runs inside a read transaction, so the destination is transactionally
+ * consistent and already contains write-ahead log content that was never checkpointed —
+ * including the case that matters most here, a previous run that exited without a clean
+ * shutdown. It replaces a checkpoint-then-copyFileSync sequence that released its
+ * exclusive lock before both the checkpoint and the copy, leaving a window for a
+ * concurrent writer to change the file mid-copy.
+ *
+ * The connection must be read-only. VACUUM INTO never writes the source, but closing a
+ * read-write handle checkpoints the WAL and truncates it, which would rewrite the very
+ * database the migration retains as the user's rollback copy.
+ */
+function snapshotDatabase(source: string, destination: string): void {
+  const db = new Database(source, { readonly: true });
   try {
-    db.run("PRAGMA busy_timeout = 2000");
-    db.exec("BEGIN EXCLUSIVE");
-    db.exec("COMMIT");
-    const checkpoint = db.query("PRAGMA wal_checkpoint(TRUNCATE)").get() as { busy?: number } | null;
-    if ((checkpoint?.busy ?? 0) !== 0) {
-      throw new Error(`Database is busy and cannot be checkpointed: ${path}`);
-    }
+    db.run("PRAGMA busy_timeout = 5000");
+    db.exec(`VACUUM INTO ${sqlStringLiteral(destination)}`);
   } finally {
     db.close();
   }
@@ -239,11 +251,9 @@ export function applyStorageMigration(options: {
   const previousRecord = readMigrationRecord(plan.locations.recordPath);
   try {
     for (const item of migrating) {
-      options.onProgress?.(`Checkpointing ${item.name}...`);
-      checkpointLegacyDatabase(item.source);
       const temp = join(plan.locations.dataDir, `.${item.name}.${randomUUID()}.migration`);
-      options.onProgress?.(`Copying ${item.name} to the user data directory...`);
-      copyFileSync(item.source, temp);
+      options.onProgress?.(`Snapshotting ${item.name} into the user data directory...`);
+      snapshotDatabase(item.source, temp);
       options.onProgress?.(`Verifying ${item.name} integrity...`);
       integrityCheck(temp);
       prepared.push({ item, temp });
