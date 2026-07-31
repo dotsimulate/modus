@@ -455,6 +455,13 @@ impl BackendSupervisor {
                     let delay = BACKEND_RESTART_BACKOFF[restart_attempts];
                     restart_attempts += 1;
                     thread::sleep(delay);
+                    // The desired mode can change while we back off — the last delay is
+                    // three seconds, which is ample time to switch to remote or external.
+                    // Without this re-check the loop would spawn a managed backend that
+                    // the user has already moved away from.
+                    if !supervisor.desired_managed.load(Ordering::SeqCst) {
+                        break;
+                    }
                     match supervisor.ensure_managed() {
                         Ok(_) => {
                             stable_since = Some(Instant::now());
@@ -922,6 +929,27 @@ mod tests {
 
     #[cfg(windows)]
     use super::run_backend_launcher;
+
+    #[test]
+    fn restart_backoff_rechecks_desired_mode_after_sleeping() {
+        // The supervisor loop owns a thread and a Tauri app handle, so it cannot be
+        // driven from a unit test. Pin the invariant at the source level instead, the
+        // way the harness pins its shutdown contract: once the backoff delay has
+        // elapsed the loop must re-read desired_managed before spawning, or switching
+        // to remote/external during the delay still gets a managed backend.
+        let source = include_str!("backend.rs");
+        let sleep_at = source
+            .find("thread::sleep(delay);")
+            .expect("restart backoff sleep");
+        let spawn_offset = source[sleep_at..]
+            .find("supervisor.ensure_managed()")
+            .expect("restart spawn call");
+        let between = &source[sleep_at..sleep_at + spawn_offset];
+        assert!(
+            between.contains("desired_managed.load("),
+            "restart backoff must re-check desired_managed after sleeping; found: {between}"
+        );
+    }
 
     #[test]
     fn remote_mode_requires_https() {
