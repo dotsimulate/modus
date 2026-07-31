@@ -975,7 +975,7 @@ async function fireAction(
         // Phase 1: gather inline (non-persistent) moves before session starts
         const phase1 = await activateMoveBindings(
           cfg.moves, "", effectiveCwd, effectiveUserProfile,
-          { persistentOnly: false, logPrefix },
+          { persistentOnly: false, logPrefix, agentProfile: cfg.agentProfile },
         );
         if (phase1.inlineContext) {
           if (typeof prompt === "string") {
@@ -1052,7 +1052,7 @@ async function fireAction(
         // Phase 2: activate persistent moves on the real session
         await activateMoveBindings(
           cfg.moves, session.sessionId, effectiveCwd, effectiveUserProfile,
-          { persistentOnly: true, logPrefix },
+          { persistentOnly: true, logPrefix, agentProfile: cfg.agentProfile },
         );
       }
       console.log(`[actions] Run #${runNumber} for "${name}" → session ${session.sessionId} (attempt ${attempt})`);
