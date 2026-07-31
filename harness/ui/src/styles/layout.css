@@ -39,8 +39,8 @@
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: calc(14px * var(--font-scale, 1));
-  width: 24px;
-  height: 24px;
+  width: calc(24px * var(--font-scale, 1));
+  height: calc(24px * var(--font-scale, 1));
   border-radius: 4px;
   cursor: pointer;
   display: flex;

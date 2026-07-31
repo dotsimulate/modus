@@ -148,8 +148,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: calc(18px * var(--font-scale, 1));
+  height: calc(18px * var(--font-scale, 1));
   background: none;
   border: none;
   color: var(--text-muted);
