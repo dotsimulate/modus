@@ -561,11 +561,19 @@ export interface MoveOpDeclaration {
   schema?: Record<string, unknown>;
 }
 
-/** Handler function signature for move API ops */
+/**
+ * Handler function signature for move API ops.
+ *
+ * Extra keys beyond ok/message/error are part of the contract, not a leak:
+ * handleMoveApiSubmit returns the result verbatim, the HTTP route serializes it
+ * whole, and modus_submit renders the remaining keys to the calling agent. The
+ * index signature says so, because a handler that has to smuggle a payload
+ * through `message` is working around a type rather than an implementation.
+ */
 export type MoveApiHandler = (
   ctx: MoveApiContext,
   data: Record<string, unknown>,
-) => Promise<{ ok: boolean; message?: string; error?: string }>;
+) => Promise<{ ok: boolean; message?: string; error?: string } & Record<string, unknown>>;
 
 /** Context passed to move API handlers on each op call */
 export interface MoveApiContext {
