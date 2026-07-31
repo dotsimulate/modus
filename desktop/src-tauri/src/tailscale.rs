@@ -267,12 +267,34 @@ impl TailscaleManager {
             };
         }
         let previous_endpoint = parse_https_443(&serve_config).ok().flatten();
+        let expected = TailscaleOwnership::desktop(&dns_name, target_port, instance_id);
+
+        // Record the intent BEFORE mutating the route.
+        //
+        // The ownership record used to be written after the serve command
+        // succeeded and verified. A crash in that window left the route live
+        // with no record of who owns it, and the next start read no ownership,
+        // classified Modus's own :443 rule as foreign, and refused to touch it —
+        // locking Tailnet access out permanently with no way back short of
+        // editing Tailscale by hand. Writing first inverts the failure: a crash
+        // now leaves a record whose route was never published, which the next
+        // reconcile simply overwrites because it owns that record.
+        //
+        // Every failure path below therefore has to retract the record, or a
+        // failed attempt would claim a route it does not have.
+        if let Err(error) = self.write_ownership(&expected) {
+            return active_error(url, pin_configured, error);
+        }
 
         let serve = match self.run_cli(&["serve", "--bg", "--yes", &target_port.to_string()]) {
             Ok(output) => output,
-            Err(message) => return active_error(url, pin_configured, message),
+            Err(message) => {
+                let _ = self.remove_ownership_if_current(target_port, instance_id);
+                return active_error(url, pin_configured, message);
+            }
         };
         if serve.code != 0 {
+            let _ = self.remove_ownership_if_current(target_port, instance_id);
             return active_error(
                 url,
                 pin_configured,
@@ -280,23 +302,19 @@ impl TailscaleManager {
             );
         }
 
-        let expected = TailscaleOwnership::desktop(&dns_name, target_port, instance_id);
         let verified = match self.serve_config() {
             Ok(raw) => endpoint_matches(&raw, &expected),
             Err(_) => false,
         };
         if !verified {
             self.rollback_route(previous_endpoint.as_ref());
+            let _ = self.remove_ownership_if_current(target_port, instance_id);
             return active_error(
                 url,
                 pin_configured,
                 "Tailscale accepted the Serve command but did not publish the expected Modus route"
                     .into(),
             );
-        }
-        if let Err(error) = self.write_ownership(&expected) {
-            self.rollback_route(previous_endpoint.as_ref());
-            return active_error(url, pin_configured, error);
         }
 
         DesktopTailscaleStatus {
@@ -695,6 +713,30 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// reconcile drives the real Tailscale CLI and cannot be exercised from a
+    /// unit test, so the ordering is pinned at the source level. If the route is
+    /// mutated before ownership is recorded, a crash in that window orphans the
+    /// route: the next start reads no ownership, classifies Modus's own :443
+    /// rule as foreign, and refuses to reclaim it.
+    #[test]
+    fn reconcile_records_ownership_before_mutating_the_route() {
+        let source = include_str!("tailscale.rs");
+        let reconcile_at = source
+            .find("pub fn reconcile(")
+            .expect("reconcile definition");
+        let body = &source[reconcile_at..];
+        let write_at = body
+            .find("self.write_ownership(&expected)")
+            .expect("ownership write in reconcile");
+        let serve_at = body
+            .find(r#"self.run_cli(&["serve", "--bg""#)
+            .expect("serve mutation in reconcile");
+        assert!(
+            write_at < serve_at,
+            "reconcile must record ownership before mutating the route"
+        );
+    }
 
     /// Replacement has to work without unlinking first, or removing the unlink
     /// would trade a crash window for a broken write. This does not reproduce the
