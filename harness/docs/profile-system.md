@@ -97,6 +97,15 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 runtime. Legacy `"litellm"` remains accepted as an alias of
 `"openai-compat"`.
 
+**`cwd`**: Pins the profile to a fixed working directory. Any agent profile may
+set it, not just plugin profiles — it is a plain optional string
+(`profile-schemas.ts`). A session started from this profile opens in that
+directory regardless of which project is active, so a user-global profile in
+`~/.modus/profiles/agents/` can always target one checkout. Omit it and the
+session uses the active project's directory, which is what most profiles want.
+Plugin profiles may additionally use `${pluginDir}` here; see Identity and
+Resolution above.
+
 **`additionalDirectories`**: Extra workspace roots to grant alongside the
 primary cwd. All current providers consume them. PI-backed providers advertise
 absolute extra roots in the system prompt and coding-tool descriptions; their
