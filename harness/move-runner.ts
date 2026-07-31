@@ -30,6 +30,7 @@ import type {
   AmbientMoveRegistration, MoveAssistantTurnContext,
   MoveCapabilities,
 } from "./move-types";
+import { CURRENT_PROFILE_SENTINEL } from "./move-types";
 import {
   type StartSessionOpts,
   broadcastUiEvent, getActiveSession, interactWithSession, startSession, stopSession, watchSessionExchanges,
@@ -533,12 +534,14 @@ function clearMoveAssistantTurnListener(apiToken: string): void {
   moveAssistantTurnBindings.delete(apiToken);
 }
 
-/** Handle a move-api op call (called from modus-mcp.ts) */
+/** Handle a move-api op call (called from modus-mcp.ts). Handlers may return
+ *  keys beyond ok/message/error; they pass through verbatim to both the HTTP
+ *  route and the modus_submit rendering (see move-api-result.ts). */
 export async function handleMoveApiSubmit(
   token: string,
   data: Record<string, unknown>,
   caller: "agent" | "user" = "agent",
-): Promise<{ ok: boolean; message?: string; error?: string }> {
+): Promise<{ ok: boolean; message?: string; error?: string } & Record<string, unknown>> {
   // A missing registration is a lifecycle problem, not a caller mistake: these
   // tokens have no TTL. Try to recover it from disk before failing, then say
   // exactly what happened and how to get unstuck.
@@ -1063,6 +1066,33 @@ export async function gatherMoveOnce(
 
 export type MoveBindingSpec = { name: string; inputs?: Record<string, unknown> };
 
+/**
+ * Translate the UI picker's "Current profile" sentinel into the profile of the
+ * session the move is activating in. The pickers prepend the sentinel to every
+ * `agentProfiles` options list and it reaches inputs verbatim, so it is
+ * resolved exactly once, here, where the session's profile is known. Only
+ * inputs declared as profile pickers are touched — a text input legitimately
+ * holding the same string is left alone. With no profile to translate to, the
+ * sentinel passes through and the move's own fallback applies.
+ */
+export function resolveAgentProfileInputs(
+  config: MoveConfig,
+  inputs: Record<string, unknown>,
+  agentProfile: string | undefined,
+): Record<string, unknown> {
+  if (!agentProfile) return inputs;
+  let translated: Record<string, unknown> | null = null;
+  for (const def of config.inputs ?? []) {
+    if (inputs[def.name] !== CURRENT_PROFILE_SENTINEL) continue;
+    const isProfilePicker =
+      def.optionsSource?.type === "agentProfiles" || def.options === "{{agentProfiles}}";
+    if (!isProfilePicker) continue;
+    translated ??= { ...inputs };
+    translated[def.name] = agentProfile;
+  }
+  return translated ?? inputs;
+}
+
 export type MoveBindingResult = {
   /** Text to prepend to the initial prompt (from inline/non-persistent gathers) */
   inlineContext: string | null;
@@ -1094,6 +1124,9 @@ export async function activateMoveBindings(
     skipPreviouslyInjectedForSession?: string;
     /** Keep inline API capabilities alive across a harness restart. */
     persistInlineApiRegistrations?: boolean;
+    /** Agent profile of the session these moves run in — needed pre-spawn
+     *  (sessionId="") to translate the "Current profile" picker sentinel. */
+    agentProfile?: string;
   },
 ): Promise<MoveBindingResult> {
   const prefix = opts?.logPrefix ?? "move-bindings";
@@ -1106,6 +1139,7 @@ export async function activateMoveBindings(
       console.warn(`[${prefix}] move "${spec.name}" not found, skipping`);
       continue;
     }
+    const specInputs = resolveAgentProfileInputs(moveCfg, spec.inputs ?? {}, opts?.agentProfile);
 
     if (moveCfg.persistent) {
       // Persistent moves need a real session ID
@@ -1115,9 +1149,10 @@ export async function activateMoveBindings(
         await activateMove({
           moveName: spec.name,
           sessionId,
-          inputs: spec.inputs ?? {},
+          inputs: specInputs,
           cwd,
           userProfile,
+          agentProfile: opts?.agentProfile,
         });
         result.activatedPersistent.push(spec.name);
         console.log(`[${prefix}] persistent move "${spec.name}" activated on ${sessionId}`);
@@ -1144,7 +1179,7 @@ export async function activateMoveBindings(
           sessionId,
           cwd,
           userProfile,
-          spec.inputs ?? {},
+          specInputs,
           { persistApiRegistration: opts?.persistInlineApiRegistrations },
         );
         if (gathered) {
@@ -1495,7 +1530,7 @@ function buildSpawnSessionOpts(
   inputs?: Record<string, unknown>,
 ): StartSessionOpts {
   const active = sourceSessionId ? getActiveSession(sourceSessionId) : undefined;
-  const inputProfile = typeof inputs?.agentProfile === "string" && inputs.agentProfile !== "Current profile"
+  const inputProfile = typeof inputs?.agentProfile === "string" && inputs.agentProfile !== CURRENT_PROFILE_SENTINEL
     ? inputs.agentProfile
     : undefined;
   const explicitProfile = inputProfile ?? config.agentProfile ?? config.session?.profileOverride ?? undefined;
@@ -1823,13 +1858,21 @@ export function detachMove(apiToken: string): boolean {
 // ── Activate Move ──
 
 export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMoveResult | { error: string }> {
-  const { moveName, sessionId, inputs, cwd, userProfile, modeOverride, forceNewSession } = opts;
+  const { moveName, sessionId, cwd, userProfile, modeOverride, forceNewSession } = opts;
   const sourceSessionId = sessionId ?? "";
 
   // Load move config
   const config = getMove(moveName, cwd);
   if (!config) return { error: `Move not found: ${moveName}` };
   if (config.enabled === false) return { error: `Move is disabled: ${moveName}` };
+
+  // Direct callers (widget, SDK) do not pass agentProfile — fall back to the
+  // source session's own profile so their picker sentinels translate too.
+  const currentProfile = opts.agentProfile
+    ?? (sourceSessionId
+      ? getActiveSession(sourceSessionId)?.profile ?? dbGetSession(sourceSessionId)?.profile ?? undefined
+      : undefined);
+  const inputs = resolveAgentProfileInputs(config, opts.inputs ?? {}, currentProfile);
 
   // ── Persistent (ambient) activation ──
   if (config.persistent) {

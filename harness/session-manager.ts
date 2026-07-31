@@ -1277,6 +1277,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
           logPrefix: `profile:${opts.profile}`,
           skipPreviouslyInjectedForSession: existingLogicalSessionId,
           persistInlineApiRegistrations: true,
+          agentProfile: opts.profile,
         },
       )
     : { inlineContext: null, apiTokens: [], activatedPersistent: [] };
@@ -1286,7 +1287,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
         "",
         resolvedCwd,
         opts.userProfile,
-        { persistentOnly: false, logPrefix: "request" },
+        { persistentOnly: false, logPrefix: "request", agentProfile: opts.profile },
       )
     : { inlineContext: null, apiTokens: [], activatedPersistent: [] };
   const phase1 = {
@@ -1331,7 +1332,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
     session.sessionId,
     resolvedCwd,
     opts.userProfile,
-    { persistentOnly: true, logPrefix: `profile:${opts.profile ?? "none"}+request` },
+    { persistentOnly: true, logPrefix: `profile:${opts.profile ?? "none"}+request`, agentProfile: opts.profile },
   );
 
   return session;
@@ -1566,12 +1567,12 @@ async function augmentPromptWithMoveContext(
       // Phase 1: gather inline (non-persistent) moves
       const bindingResult = await getActivateMoveBindings()(
         moves, sessionId, cwd, session.userProfile,
-        { persistentOnly: false, logPrefix: "message-moves" },
+        { persistentOnly: false, logPrefix: "message-moves", agentProfile: session.profile },
       );
       // Phase 2: activate persistent moves (ambient gathers)
       await getActivateMoveBindings()(
         moves, sessionId, cwd, session.userProfile,
-        { persistentOnly: true, logPrefix: "message-moves" },
+        { persistentOnly: true, logPrefix: "message-moves", agentProfile: session.profile },
       );
       if (bindingResult.inlineContext) {
         console.log(`[session-manager] inline context generated (${bindingResult.inlineContext.length} chars) for moves: ${moves.map(m => m.name).join(", ")}`);

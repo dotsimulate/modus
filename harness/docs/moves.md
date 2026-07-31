@@ -134,6 +134,15 @@ an API token and instance id.
 ## MoveConfig Key Fields
 
 - `inputs[]` — form fields shown to user before activation (text, textarea, select, toggle, number)
+  - A select can source its options dynamically: `optionsSource: { "type": "agentProfiles" }`
+    (also `projects`, `sessions`), or the template form `options: "{{agentProfiles}}"`.
+  - **Profile pickers prepend a "Current profile" sentinel option.** The runner translates
+    it to the activating session's agent profile before `gather()` runs
+    (`resolveAgentProfileInputs`), so a profile-picker input normally delivers a real
+    profile name. When no session profile exists to translate to (a page embed, a
+    profile-less session), the literal string `"Current profile"`
+    (`CURRENT_PROFILE_SENTINEL` in `move-types.ts`) reaches the move verbatim — treat it,
+    or an empty value, as "no explicit choice".
 - `schema` / `schemaHint` — validation contract for modus_submit data
 - `submit.required` — agent must call modus_submit
 - `submit.retryOnInvalid` — surface validation failures back to the model for retry

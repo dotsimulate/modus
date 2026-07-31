@@ -160,6 +160,16 @@ export interface MoveCapabilities {
 
 // ── Move Input (user form field) ──
 
+/**
+ * Sentinel the UI profile pickers prepend to every `agentProfiles` options
+ * list. It means "the profile of the session this move runs in", but it is a
+ * literal string until the move runner translates it at activation
+ * (`resolveAgentProfileInputs`). When no session profile is known — a page
+ * embed, a profile-less session — it reaches the move verbatim, so moves
+ * should still treat it (or an empty value) as "no explicit choice".
+ */
+export const CURRENT_PROFILE_SENTINEL = "Current profile";
+
 export interface MoveInputOption {
   value: string;
   label: string;
@@ -446,6 +456,10 @@ export interface ActivateMoveOpts {
   inputs: Record<string, unknown>;
   cwd: string;
   userProfile?: string;
+  /** Agent profile of the activating session, used to translate the
+   *  "Current profile" picker sentinel. Falls back to the session's own
+   *  profile when omitted and sessionId is set. */
+  agentProfile?: string;
   modeOverride?: "inline" | "branch" | "background";
   forceNewSession?: boolean;
 }
