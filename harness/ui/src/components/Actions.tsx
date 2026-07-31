@@ -413,7 +413,7 @@ function AboutTab({ action, scope }: { action: ActionInfo; scope: ActionScope })
     ["force", String(inputs.force === true)],
     ["rebuild queue", String(inputs.rebuildQueue === true)],
     ["max turns", config.maxTurns ?? "profile default"],
-    ["expected cost", config.provider === "litellm" ? "$0 local profile" : "check provider"],
+    ["expected cost", "check provider"],
   ] : [];
 
   return (

@@ -3,6 +3,8 @@
  * Used by ToolGrid for display and by config components for validation.
  */
 
+import type { ProviderCapabilities } from "../../sdk/index";
+
 export type ToolGroup = {
   label: string;
   tools: string[];
@@ -74,12 +76,28 @@ export const GROK_BUILD_TOOL_GROUPS: ToolGroup[] = [
   { label: "interaction", tools: ["ask_user_question"] },
 ];
 
-// PI Agent providers use lowercase tool names (read, write, edit, bash, ...)
-// Claude Code and Codex both use PascalCase tool names (Read, Write, Edit, Bash, ...)
-const PI_PROVIDER_NAMES = new Set(["anthropic", "openai", "litellm", "ollama", "openrouter"]);
+export const OPENCODE_TOOL_GROUPS: ToolGroup[] = [
+  { label: "exec", tools: ["bash"] },
+  { label: "files", tools: ["read", "write", "edit"] },
+  { label: "search", tools: ["grep", "glob"] },
+];
 
-export function isPiProvider(provider?: string): boolean {
-  return !!provider && PI_PROVIDER_NAMES.has(provider);
+export type ProviderToolFamily =
+  | "antigravity"
+  | "claude-code"
+  | "codex"
+  | "cursor"
+  | "gemini-cli"
+  | "grok-build"
+  | "opencode"
+  | "pi-agent"
+  | "unknown";
+
+export function isPiProvider(
+  provider?: string,
+  capabilities?: ProviderCapabilities,
+): boolean {
+  return providerToolFamily(provider, capabilities) === "pi-agent";
 }
 
 export function isCodexProvider(provider?: string): boolean {
@@ -106,17 +124,43 @@ export function isClaudeCodeProvider(provider?: string): boolean {
   return !provider || provider === "claude-code";
 }
 
-export function providerToolFamily(provider?: string): "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "grok-build" | "pi-agent" {
-  if (isPiProvider(provider)) return "pi-agent";
-  if (isCodexProvider(provider)) return "codex";
-  if (isAntigravityProvider(provider)) return "antigravity";
-  if (isGeminiProvider(provider)) return "gemini-cli";
-  if (isCursorProvider(provider)) return "cursor";
-  if (isGrokBuildProvider(provider)) return "grok-build";
-  return "claude-code";
+export function providerToolFamily(
+  provider?: string,
+  capabilities?: ProviderCapabilities,
+): ProviderToolFamily {
+  if (capabilities) return capabilities.family;
+  if (!provider) return "claude-code";
+  switch (provider) {
+    case "openai-compat":
+    case "litellm":
+    case "ollama":
+    case "openrouter":
+      return "pi-agent";
+    case "codex":
+      return "codex";
+    case "antigravity":
+      return "antigravity";
+    case "gemini-cli":
+      return "gemini-cli";
+    case "cursor":
+      return "cursor";
+    case "grok-build":
+      return "grok-build";
+    case "opencode":
+      return "opencode";
+    case "claude-code":
+    case "claude-code-pty":
+      return "claude-code";
+    default:
+      return "unknown";
+  }
 }
 
-export function getToolGroups(provider?: string): ToolGroup[] {
+export function getToolGroups(
+  provider?: string,
+  capabilities?: ProviderCapabilities,
+): ToolGroup[] {
+  if (capabilities) return capabilities.builtInToolGroups;
   switch (providerToolFamily(provider)) {
     case "pi-agent":
       return PI_TOOL_GROUPS;
@@ -130,13 +174,27 @@ export function getToolGroups(provider?: string): ToolGroup[] {
       return CURSOR_TOOL_GROUPS;
     case "grok-build":
       return GROK_BUILD_TOOL_GROUPS;
-    default:
+    case "opencode":
+      return OPENCODE_TOOL_GROUPS;
+    case "claude-code":
       return TOOL_GROUPS;
+    default:
+      return [];
   }
 }
 
-export function getAllTools(provider?: string): string[] {
-  return getToolGroups(provider).flatMap((g) => g.tools);
+export function getAllTools(
+  provider?: string,
+  capabilities?: ProviderCapabilities,
+): string[] {
+  return getToolGroups(provider, capabilities).flatMap((g) => g.tools);
+}
+
+export function providerDisplayLabel(
+  provider: string,
+  capabilities?: ProviderCapabilities,
+): string {
+  return capabilities?.label ?? provider;
 }
 
 export const ALL_TOOLS = TOOL_GROUPS.flatMap((g) => g.tools);

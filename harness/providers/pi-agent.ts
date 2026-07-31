@@ -28,25 +28,19 @@ import { getGlobalConfig, getProfile, type ProviderDefaults } from "../profiles"
 import { getScopedSkills } from "../skill-attachment";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
-import { resolveSecret } from "../secrets";
 import {
   buildPiModel,
-  DEFAULT_PI_MODELS,
+  defaultPiModel,
   resolvePiApiKey,
+  resolvePiBaseUrl,
+  requirePiProviderDefinition,
   ZERO_COST,
   type CostRates,
-  type PiProviderName,
 } from "./pi-model";
+import { listProviderAliases } from "./provider-definition";
+import { getProviderDefinition } from "./provider-definitions";
 
 // ── Provider Names ──
-
-// Model construction lives in the shared leaf `pi-model.ts` so one-shot
-// completions resolve the same baseUrl, defaults, and compat flags a session
-// would. Re-exported here because provider-names.ts and registry.ts import the
-// name type from this module.
-export type { PiProviderName };
-
-const DEFAULT_MODELS = DEFAULT_PI_MODELS;
 
 const PI_TOOL_GROUPS = [
   { label: "files", tools: ["read", "write", "edit"] },
@@ -54,10 +48,12 @@ const PI_TOOL_GROUPS = [
   { label: "exec", tools: ["bash"] },
 ] as const;
 
-function buildPiCapabilities(providerName: PiProviderName): ProviderCapabilities {
+function buildPiCapabilities(providerName: string): ProviderCapabilities {
+  const definition = requirePiProviderDefinition(providerName);
   return {
-    name: providerName,
-    label: providerName,
+    name: definition.name,
+    label: definition.label ?? definition.name,
+    aliases: listProviderAliases(definition.name),
     family: "pi-agent",
     builtInTools: PI_TOOL_GROUPS.flatMap((group) => [...group.tools]),
     builtInToolGroups: PI_TOOL_GROUPS.map((group) => ({ label: group.label, tools: [...group.tools] })),
@@ -169,36 +165,76 @@ async function withPiExtraBody<T>(
   return piExtraBodyContext.run({ baseUrl, extraBody }, fn);
 }
 
-// Cache keyed by model ID, populated lazily from OpenRouter's /api/v1/models
-let openRouterModelCache: Map<string, OpenRouterModelInfo> | null = null;
+/**
+ * Live model pricing, keyed by provider name then model ID.
+ *
+ * Per-provider rather than a single module-level map: any definition may
+ * declare `pricing`, so two providers pointing at different gateways would
+ * otherwise share — and silently cross-contaminate — one cache.
+ */
+const modelPricingCache = new Map<string, Map<string, OpenRouterModelInfo>>();
 
-async function fetchOpenRouterModelInfo(modelId: string): Promise<OpenRouterModelInfo> {
+/** Parse an OpenRouter-compatible model list into per-million-token rates. */
+export function parseOpenRouterPricing(json: unknown): Map<string, OpenRouterModelInfo> {
+  const parsed = new Map<string, OpenRouterModelInfo>();
+  const data = (json as { data?: unknown })?.data;
+  if (!Array.isArray(data)) return parsed;
+  for (const entry of data) {
+    const model = entry as { id?: unknown; context_length?: unknown; pricing?: Record<string, string> };
+    if (typeof model.id !== "string" || !model.id) continue;
+    const pricing = model.pricing;
+    parsed.set(model.id, {
+      contextLength: typeof model.context_length === "number" ? model.context_length : 0,
+      // Upstream prices are per-token strings; the PI SDK wants per-million numbers.
+      cost: pricing ? {
+        input: parseFloat(pricing.prompt || "0") * 1_000_000,
+        output: parseFloat(pricing.completion || "0") * 1_000_000,
+        cacheRead: parseFloat(pricing.input_cache_read || "0") * 1_000_000,
+        cacheWrite: parseFloat(pricing.input_cache_write || "0") * 1_000_000,
+      } : ZERO_COST,
+    });
+  }
+  return parsed;
+}
+
+/**
+ * Fetch live cost/context metadata for a provider that declares `pricing`.
+ *
+ * Returns null when the definition declares none, which is the signal to fall
+ * back to its static `cost` and `contextWindow`. Driven entirely by the
+ * definition, so a user pointing at OpenRouter — or any OpenRouter-compatible
+ * gateway — under any name gets real pricing instead of zeros.
+ */
+export async function fetchDefinitionModelPricing(
+  providerName: string,
+  modelId: string,
+): Promise<OpenRouterModelInfo | null> {
+  const definition = getProviderDefinition(providerName);
+  if (!definition?.pricing) return null;
+
   const EMPTY: OpenRouterModelInfo = { cost: ZERO_COST, contextLength: 0 };
-  if (openRouterModelCache) return openRouterModelCache.get(modelId) ?? EMPTY;
+  const cached = modelPricingCache.get(providerName);
+  if (cached) return cached.get(modelId) ?? EMPTY;
 
+  const url = definition.pricing.url
+    ?? `${resolvePiBaseUrl(providerName).replace(/\/+$/, "")}/models`;
   try {
-    const baseUrl = resolveSecret("OPENROUTER_BASE_URL") ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/models`);
+    const apiKey = resolvePiApiKey(providerName);
+    const res = await fetch(url, {
+      headers: {
+        ...(definition.headers ?? {}),
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json() as { data?: { id: string; context_length?: number; pricing?: Record<string, string> }[] };
-    openRouterModelCache = new Map();
-    for (const m of json.data ?? []) {
-      // OpenRouter prices are per-token strings; PI SDK wants per-million-token numbers
-      openRouterModelCache.set(m.id, {
-        contextLength: m.context_length ?? 0,
-        cost: m.pricing ? {
-          input: parseFloat(m.pricing.prompt || "0") * 1_000_000,
-          output: parseFloat(m.pricing.completion || "0") * 1_000_000,
-          cacheRead: parseFloat(m.pricing.input_cache_read || "0") * 1_000_000,
-          cacheWrite: parseFloat(m.pricing.input_cache_write || "0") * 1_000_000,
-        } : ZERO_COST,
-      });
-    }
-    console.log(`[pi-agent] Cached OpenRouter model info for ${openRouterModelCache.size} models`);
-    return openRouterModelCache.get(modelId) ?? EMPTY;
+    const parsed = parseOpenRouterPricing(await res.json());
+    modelPricingCache.set(providerName, parsed);
+    console.log(`[pi-agent] Cached ${parsed.size} model prices for "${providerName}" from ${url}`);
+    return parsed.get(modelId) ?? EMPTY;
   } catch (err) {
-    console.error(`[pi-agent] Failed to fetch OpenRouter model info:`, err);
-    openRouterModelCache = new Map(); // don't retry on failure
+    console.error(`[pi-agent] Failed to fetch model pricing for "${providerName}" from ${url}:`, err);
+    // Negative-cache so a dead endpoint is not retried on every turn.
+    modelPricingCache.set(providerName, new Map());
     return EMPTY;
   }
 }
@@ -211,7 +247,7 @@ const buildModel = buildPiModel;
 
 // ── Auth Storage Setup ──
 
-function buildAuthStorage(provider: PiProviderName): AuthStorage {
+function buildAuthStorage(provider: string): AuthStorage {
   const auth = AuthStorage.inMemory();
 
   // Resolve API key from harness secrets for the provider. Shared with one-shot
@@ -329,22 +365,6 @@ export function piAdditionalSkillPaths(cwd: string, skillScopeKey?: string): str
 
 // ── Friendly Errors (ported from direct-api.ts) ──
 
-function getProviderUrl(provider: string): string {
-  if (provider === "litellm") {
-    const url = resolveSecret("LITELLM_BASE_URL") ?? process.env.LITELLM_BASE_URL ?? "http://localhost:4000/v1";
-    return url.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
-  }
-  if (provider === "ollama") {
-    const url = resolveSecret("OLLAMA_BASE_URL") ?? process.env.OLLAMA_BASE_URL ?? "http://localhost:11434/v1";
-    return url.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
-  }
-  if (provider === "openrouter") {
-    const url = resolveSecret("OPENROUTER_BASE_URL") ?? process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-    return url.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "");
-  }
-  return "";
-}
-
 function friendlyError(err: any, provider: string): string {
   const parts: string[] = [];
   let cur = err;
@@ -358,7 +378,14 @@ function friendlyError(err: any, provider: string): string {
   const full = parts.join(" ");
 
   if (full.includes("ConnectionRefused") || full.includes("Unable to connect") || full.includes("ECONNREFUSED")) {
-    const hint = getProviderUrl(provider);
+    let hint = "";
+    try {
+      hint = resolvePiBaseUrl(provider)
+        .replace(/^https?:\/\//, "")
+        .replace(/\/v1\/?$/, "");
+    } catch {
+      // The primary error below still names the dangling provider.
+    }
     return `Cannot connect to ${provider}${hint ? ` (${hint})` : ""}. Is the service running?`;
   }
   if (full.includes("Invalid model name") || full.includes("does not exist") || full.includes("model_not_found")) {
@@ -407,7 +434,7 @@ function contentToPiPrompt(content: MessageContent): { text: string; images?: { 
 function translateEvents(
   event: AgentSessionEvent,
   ctx: TurnContext,
-  providerName: PiProviderName,
+  providerName: string,
 ) {
   const { session } = ctx;
   const ame = "assistantMessageEvent" in event ? (event as any).assistantMessageEvent : null;
@@ -626,12 +653,17 @@ function translateEvents(
 
 // ── Provider Factory ──
 
-export function createPiAgentProvider(providerName: PiProviderName): SessionProvider {
+export function createPiAgentProvider(providerName: string): SessionProvider {
   return {
-    capabilities: buildPiCapabilities(providerName),
+    // A getter, not a snapshot: the instance is cached for the process lifetime
+    // (registry.ts) while definitions are read fresh from disk, so an edited
+    // label, alias, or tool set must not be frozen at first construction.
+    get capabilities() {
+      return buildPiCapabilities(providerName);
+    },
     async startTurn(ctx: TurnContext) {
       const { session, opts, profile } = ctx;
-      const modelId = session.model || DEFAULT_MODELS[providerName] || "default";
+      const modelId = session.model || defaultPiModel(providerName);
       const cwd = session.cwd ?? process.cwd();
 
       const existingRow = opts.sessionId ? getSession(opts.sessionId) : null;
@@ -683,9 +715,7 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       session.status = "running";
 
       try {
-        const orInfo = providerName === "openrouter"
-          ? await fetchOpenRouterModelInfo(modelId)
-          : null;
+        const orInfo = await fetchDefinitionModelPricing(providerName, modelId);
         const extraBody = await readPiExtraBody(session, opts.providerControls);
         const noTools = readPiNoTools(opts.providerControls);
         const model = buildModel(providerName, modelId, profile, orInfo?.cost, orInfo?.contextLength || undefined);
@@ -979,10 +1009,10 @@ export function createPiAgentProvider(providerName: PiProviderName): SessionProv
       const profileDef = ctx.profile;
 
       // Model swap via setModel
-      const newModelId = ctx.opts.model || DEFAULT_MODELS[providerName] || "default";
-      const cachedInfo = providerName === "openrouter" && openRouterModelCache
-        ? openRouterModelCache.get(newModelId)
-        : undefined;
+      const newModelId = ctx.opts.model || defaultPiModel(providerName);
+      // Reuse whatever was already fetched for this provider; switchProfile is
+      // synchronous, so a cold cache simply falls back to the static rates.
+      const cachedInfo = modelPricingCache.get(providerName)?.get(newModelId);
       const newModel = buildModel(providerName, newModelId, profileDef, cachedInfo?.cost, cachedInfo?.contextLength || undefined);
       state.agentSession.setModel(newModel);
 

@@ -200,7 +200,8 @@ Layout tree: `grid` (columns, templateColumns/Rows) / `panel` (list|tabs) /
 model?, system?, temperature?, maxTokens? })` → `{ text, oneShotId, provider,
 model, usage? }`. No session, no tools, no subprocess — the cheap rung below
 `sessions.create` for transforms whose answer is a value. **PI providers only**
-(`litellm`, `ollama`, `openrouter`); every other provider is a spawned CLI and
+(`openai-compat`, `ollama`, `openrouter`, and user/plugin definitions);
+`litellm` remains an alias, and every other provider is a spawned CLI and
 throws rather than silently starting a session. Resolution throws instead of
 guessing: a profile with no `provider` is an error (there is no global default
 provider). `ctx.model.promote(oneShotId)` turns a completed one-shot into a real

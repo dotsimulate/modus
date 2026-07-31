@@ -26,7 +26,7 @@ session regardless of which agent or user profile is active.
   // Per-provider defaults (optional)
   // Apply to all agents using that provider, unless the agent profile overrides
   "providerDefaults": {
-    "litellm": {
+    "openai-compat": {
       "contextWindow": 65536,
       "maxOutputTokens": 4096,
       "compaction": {
@@ -69,7 +69,8 @@ These fields can be set per-provider in `_global.json`:
 | `compaction.reserveTokens` | `max(4096, maxOutputTokens)` | Tokens reserved for the next response |
 | `compaction.keepRecentTokens` | 20000 | Recent context preserved during compaction |
 
-These only apply to PI providers (`litellm`, `ollama`, `openrouter`).
+These apply to built-in and user/plugin declarative PI providers. `litellm` is a
+legacy alias of `openai-compat`; use the canonical name for new defaults.
 Claude Code provider manages context through the SDK directly.
 
 ## MCP Server Merging

@@ -130,7 +130,7 @@ write a person's profile or configuration into the Modus source checkout or temp
   "description": "Creative writing with local model",
   "prompt": "You are a creative writer. Focus on voice, rhythm, and surprise.",
   "promptMode": "custom",
-  "provider": "litellm",
+  "provider": "openai-compat",
   "model": "deepseek-r1-qwen3-8b",
   "loadProjectSettings": false,
   "tools": ["Read", "Grep", "Glob", "WebSearch", "WebFetch"]
@@ -165,13 +165,16 @@ MCP tools use the pattern: `mcp__<server-name>__<tool-name>`
 | `antigravity` | Runtime-discovered Antigravity models | Google Antigravity CLI with Modus hooks | See `harness/docs/providers.md` |
 | `opencode` | Runtime-discovered OpenCode models | OpenCode CLI or `bunx` fallback | See `harness/docs/providers.md` |
 | `grok-build` | Runtime-discovered Grok Build models | `grok` CLI; browser login or `XAI_API_KEY` | See `harness/docs/providers.md` |
-| `litellm` | Any OpenAI-compatible endpoint | Local models, vLLM, llama.cpp | — |
+| `openai-compat` | Any OpenAI-compatible endpoint | Local models, LiteLLM, vLLM, llama.cpp | See `harness/docs/providers.md` |
 | `ollama` | Ollama models | Local Ollama server | — |
 | `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers | — |
+| User/plugin definition | Any supported PI API | Additional gateways and endpoints discovered at runtime | See `harness/docs/providers.md` |
 
 The embedded `gemini-cli` adapter is hidden legacy migration code and must not be offered
-as a normal new-profile choice. For `cursor` and `codex`, read the linked reference before
-writing profile JSON; their permissions, tools, and MCP behavior differ materially.
+as a normal new-profile choice. `litellm` is accepted only as a legacy alias of
+`openai-compat`; author new profiles with the canonical name. For `cursor` and `codex`,
+read the linked reference before writing profile JSON; their permissions, tools, and MCP
+behavior differ materially.
 
 ## Output Format
 

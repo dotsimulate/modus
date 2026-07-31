@@ -27,6 +27,8 @@ export type ProviderSlashCommand = {
 export type ProviderCapabilities = {
   name: string;
   label: string;
+  /** Legacy names accepted by the backend but omitted from new-provider pickers. */
+  aliases?: string[];
   family: "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "grok-build" | "opencode" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
@@ -43,6 +45,8 @@ export type ProviderCapabilities = {
    *  from `provider-names.ts` so clients can say which will happen before
    *  sending. */
   messageDelivery?: "steer" | "next-turn";
+  /** Whether the provider can serve the low-overhead, sessionless model-call path. */
+  supportsOneShotCompletion?: boolean;
   nonToolSignals: string[];
   permissionModel: {
     mode: "per-tool-ui" | "runtime-native" | "none";

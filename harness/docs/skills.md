@@ -164,7 +164,7 @@ source you do not control.
 | Provider | Reads its own skills | Modus can hand it skills |
 |---|---|---|
 | claude-code, claude-code-pty | yes (`.claude/skills/`) | no — uses the skill tools |
-| litellm, ollama, openrouter (PI) | yes (`.pi/skills/`) | yes, natively |
+| Any declarative PI provider | yes (`.pi/skills/`) | yes, natively |
 | codex, cursor, antigravity, grok-build, opencode, gemini-cli | no | no — uses the skill tools |
 
 The tool path depends on the provider mounting the built-in `modus` MCP server,

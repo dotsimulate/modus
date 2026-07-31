@@ -24,11 +24,10 @@
 import { getProfile } from "./profiles";
 import {
   buildPiModel,
-  DEFAULT_PI_MODELS,
+  defaultPiModel,
   resolvePiApiKey,
-  type PiProviderName,
 } from "./providers/pi-model";
-import { ONE_SHOT_PROVIDERS, supportsOneShotCompletion } from "./providers/provider-names";
+import { listOneShotProviders, supportsOneShotCompletion } from "./providers/provider-names";
 
 // ── Types ──
 
@@ -94,7 +93,7 @@ export type OneShotResult = {
 // ── Target resolution ──
 
 export type OneShotTarget = {
-  provider: PiProviderName;
+  provider: string;
   model: string;
   profileName?: string;
   /** The resolved profile, passed to buildPiModel for contextWindow/maxOutputTokens. */
@@ -140,15 +139,14 @@ export function resolveOneShotTarget(opts: {
   if (!supportsOneShotCompletion(providerName)) {
     throw new Error(
       `one-shot: provider "${providerName}" cannot answer a single prompt without spawning an agent session. `
-      + `One-shot capable providers: ${ONE_SHOT_PROVIDERS.join(", ")}. `
+      + `One-shot capable providers: ${listOneShotProviders().join(", ")}. `
       + `Use ctx.sessions.create() if a full session is what you want.`,
     );
   }
 
-  const pi = providerName as PiProviderName;
-  const model = opts.model ?? profile?.model ?? DEFAULT_PI_MODELS[pi] ?? "default";
+  const model = opts.model ?? profile?.model ?? defaultPiModel(providerName);
 
-  return { provider: pi, model, profileName: opts.profile, profile };
+  return { provider: providerName, model, profileName: opts.profile, profile };
 }
 
 // ── Record store ──

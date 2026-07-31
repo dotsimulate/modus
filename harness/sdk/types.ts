@@ -768,6 +768,45 @@ export type ProviderModel = {
   contextSource?: "api" | "provider-default" | "fallback";
 };
 
+export type DeclarativeProviderDefinition = {
+  name: string;
+  label?: string;
+  kind: "pi";
+  api:
+    | "openai-completions"
+    | "mistral-conversations"
+    | "openai-responses"
+    | "azure-openai-responses"
+    | "openai-codex-responses"
+    | "anthropic-messages"
+    | "bedrock-converse-stream"
+    | "google-generative-ai"
+    | "google-gemini-cli"
+    | "google-vertex";
+  baseUrl: string;
+  apiKeyName?: string;
+  defaultModel?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  reasoning?: boolean;
+  input?: Array<"text" | "image">;
+  headers?: Record<string, string>;
+  cost?: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  compat?: {
+    supportsStore?: boolean;
+    supportsDeveloperRole?: boolean;
+    supportsReasoningEffort?: boolean;
+    supportsUsageInStreaming?: boolean;
+    maxTokensField?: "max_completion_tokens" | "max_tokens";
+  };
+  health?: { type: "http"; url: string };
+};
+
+export type DetectedProvider = {
+  definition: DeclarativeProviderDefinition;
+  modelIds: string[];
+};
+
 /** A named group of tools exposed by a provider (e.g. "File Operations", "Git"). */
 export type ProviderToolGroup = {
   label: string;
@@ -790,6 +829,8 @@ export type ProviderSlashCommand = {
 export type ProviderCapabilities = {
   name: string;
   label: string;
+  /** Legacy names accepted by the backend but omitted from new-provider pickers. */
+  aliases?: string[];
   family: "antigravity" | "claude-code" | "codex" | "cursor" | "gemini-cli" | "grok-build" | "opencode" | "pi-agent";
   builtInTools: string[];
   builtInToolGroups: ProviderToolGroup[];
@@ -806,6 +847,8 @@ export type ProviderCapabilities = {
    *  provider injects it at the next tool boundary; "next-turn" means it can
    *  only be queued until the turn ends. */
   messageDelivery?: "steer" | "next-turn";
+  /** Whether this provider can serve a sessionless one-shot completion. */
+  supportsOneShotCompletion?: boolean;
   /** Events the provider emits that aren't tool calls (e.g. "thinking", "git_event"). */
   nonToolSignals: string[];
   permissionModel: {

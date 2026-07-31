@@ -1,8 +1,8 @@
 ---
 title: Provider System
-lastUpdated: 2026-07-26
+lastUpdated: 2026-07-30
 lastCommit: a9adf68
-covers: harness/providers/ harness/session-manager.ts harness/skill-attachment.ts
+covers: harness/providers/ harness/modus-plugins.ts harness/templates/providers/ harness/session-manager.ts harness/skill-attachment.ts
 ---
 
 # Provider System
@@ -51,9 +51,92 @@ Passed to providers by session-manager. Contains:
 | `antigravity` | antigravity | Google Antigravity CLI (`agy`) | Native UUID resume, JSON Hook tool events/approvals, full MCP transport bridge |
 | `grok-build` | grok-build | xAI Grok Build CLI (`grok agent stdio`) | Persistent ACP session, full MCP, streaming tool/thought events, live Modus approvals |
 | `opencode` | opencode | OpenCode CLI subprocess | Full MCP, event-derived tools, `bunx opencode-ai` fallback |
-| `litellm` | pi-agent | LiteLLM proxy | PI agent loop, MCP via mcp-bridge, steer |
+| `openai-compat` | pi-agent | Generic OpenAI-compatible endpoint (LiteLLM defaults) | PI agent loop, MCP via mcp-bridge, steer; `litellm` remains an accepted legacy alias |
 | `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge, steer |
 | `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge, steer |
+
+## Declarative PI providers
+
+PI-backed endpoints are data, not new `SessionProvider` implementations. Add a
+strict JSON definition at `<MODUS_HOME>/providers/<name>.json`, or ship one from
+an enabled plugin at `<plugin>/.modus/providers/<name>.json`. Providers are
+machine-global; project-local `.modus/providers` directories are not scanned,
+because provider/profile validity must not change with the active project.
+
+```json
+{
+  "name": "lmstudio",
+  "label": "LM Studio (local)",
+  "kind": "pi",
+  "api": "openai-completions",
+  "baseUrl": "http://127.0.0.1:1234/v1",
+  "defaultModel": "default",
+  "input": ["text", "image"]
+}
+```
+
+Supported fields are:
+
+- `name` (required kebab-case), `label`, and `kind: "pi"`;
+- `api`, one of pi-ai's ten shipped protocols: `openai-completions`,
+  `mistral-conversations`, `openai-responses`,
+  `azure-openai-responses`, `openai-codex-responses`,
+  `anthropic-messages`, `bedrock-converse-stream`,
+  `google-generative-ai`, `google-gemini-cli`, or `google-vertex`;
+- `baseUrl` and optional `apiKeyName`. The latter is a Modus secret name;
+  literal `apiKey` values are rejected;
+- optional `apiKeyRequired` (default `true`). Naming a secret normally declares
+  it required, so an unset one reports `misconfigured`. Set `false` for an
+  endpoint that accepts unauthenticated local requests but can optionally take a
+  key — a local LiteLLM, Ollama, vLLM, or llama.cpp;
+- `defaultModel`, `contextWindow`, `maxOutputTokens`, `reasoning`, `input`,
+  `headers`, and four-way `cost` rates;
+- `compat`, only with `openai-completions` or `openai-responses`;
+- `health: { "type": "http", "url": "..." }`, otherwise health probes
+  `<resolved baseUrl>/models`; and
+- `pricing: { "source": "openrouter", "url": "..." }` for live per-model cost
+  and context length. `source` names the *response shape*, not the vendor: any
+  gateway serving an OpenRouter-compatible model list (`data[].pricing.prompt`,
+  `.completion`, `.input_cache_read`, `.input_cache_write` as per-token strings,
+  plus `context_length`) can declare it under any provider name. `url` defaults
+  to `<resolved baseUrl>/models`, and the request carries the definition's
+  `headers` and resolved `apiKeyName` secret. Omit the block and the static
+  `cost` and `contextWindow` are used as-is. Results are cached per provider for
+  the process lifetime, including a negative cache so an unreachable endpoint is
+  not retried every turn.
+
+Definitions reject unknown fields. A misspelling must fail discovery visibly
+instead of producing a session that silently ignores the intended setting.
+Invalid files are logged and skipped without suppressing valid siblings.
+`headers` values are literal shareable configuration, not secret references;
+use `apiKeyName` for bearer credentials and do not place secrets in a template
+or plugin definition. The current schema cannot safely express a different
+sensitive custom header.
+
+Precedence is built-in, then user home, then enabled plugins. Neither user nor
+plugin definitions may shadow a built-in name or alias; user definitions beat a
+same-named plugin definition. The built-in generic endpoint is
+`openai-compat`. `litellm` remains a permanent accepted alias and continues to
+read `LITELLM_BASE_URL` and `LITELLM_API_KEY`, so existing profiles and secrets
+need no migration. Other base-URL overrides derive from the definition name
+(`my-gateway` â†’ `MY_GATEWAY_BASE_URL`); credentials use the explicit
+`apiKeyName`.
+
+Definitions are read from disk on every lookup, like every other authored
+primitive — adding or editing one takes effect on the next session with no
+restart. A session already running keeps the model object it started with.
+New PI definitions inherit native
+skill loading, injected skill paths, mid-turn steering, and sessionless
+one-shot completion. Their lowercase tool groups and display labels come from
+backend capabilities rather than frontend name inference.
+
+Examples ship under `templates/providers/` for LM Studio, remote Ollama,
+remote LiteLLM, vLLM, llama.cpp, and a generic gateway. They are examples only
+and are not auto-registered. `POST /api/providers/detect` is an explicit,
+read-only localhost probe: it checks known ports against the `/v1/models`
+response shape and returns definition proposals. It never writes or registers
+one. The response-shape check is essential on port 8080, which may instead be
+the configured speech-to-text service.
 
 ## Steering (mid-turn message delivery)
 
@@ -65,10 +148,11 @@ is a property of the provider:
 - **`messageDelivery: "next-turn"`** — there is no injection point, so it waits
   in `session.pendingDispatch` and is delivered when the turn ends.
 
-The field is derived centrally in `registry.ts` from `STEERABLE_PROVIDERS` in
+The field is derived centrally in `registry.ts` from `isSteerableProvider()` in
 `providers/provider-names.ts` — the same pattern as `readsNativeSkills` — rather
-than declared per provider, so clients can ask `/api/providers` which will happen
-*before* sending. `providers/steering.test.ts` fails if that list and the actual
+than declared per provider, so clients can ask `/api/provider-capabilities`
+which will happen *before* sending. `providers/steering.test.ts` fails if that
+list and the actual
 `steerMessage` implementations drift apart.
 
 Three providers can steer, each through a live input channel that stays open
@@ -78,7 +162,7 @@ after the turn starts:
 |----------|---------|
 | `claude-code` | the Agent SDK's streaming-input iterator |
 | `claude-code-pty` | stdin, kept open by `--input-format stream-json` |
-| `litellm` / `ollama` / `openrouter` | `AgentSession.sendUserMessage(content, { deliverAs: "steer" })` |
+| Any declarative PI provider, including `openai-compat`, `ollama`, and `openrouter` | `AgentSession.sendUserMessage(content, { deliverAs: "steer" })` |
 
 Every other provider runs one prompt per turn with no way in.
 
@@ -224,9 +308,14 @@ When the agent calls the `ExitPlanMode` tool, the provider automatically resets 
 | `antigravity` | `agy` CLI plus an authenticated `agy models` probe |
 | `grok-build` | `grok` CLI plus a headless ACP authentication probe (`grok login` or `XAI_API_KEY`) |
 | `opencode` | `opencode` CLI, or `bunx` for `opencode-ai` fallback |
-| `litellm` | local proxy health at `LITELLM_BASE_URL` or `http://localhost:4000` |
-| `ollama` | local server at `OLLAMA_HOST` or `http://localhost:11434` |
-| `openrouter` | `OPENROUTER_API_KEY` |
+| Any declarative PI provider | resolved `<baseUrl>/models`, or its explicit `health.url`; definition headers and named Modus secret are included |
+
+A definition that names `apiKeyName` but has no such secret reports
+`misconfigured` without attempting the request. Definitions that set
+`apiKeyRequired: false` are exempt: the key is used when present and its absence
+is not an error. The built-in `openai-compat` and Ollama definitions set that
+flag, so they keep working unauthenticated against a local endpoint; OpenRouter
+leaves it at the default and requires its named key.
 
 ## MCP Server Composition
 
@@ -253,9 +342,12 @@ inherited. Without this, every shell command an agent runs — and every MCP std
 server and subagent beneath it — inherits full Modus API authority regardless of
 the provider's own permission model.
 
-This filters only *inherited* values. Profile `env`, resolved provider
-credentials, and `$SECRET` references in MCP config are layered on explicitly
-afterwards and are unaffected. Set `MODUS_PROVIDER_ENV_PASSTHROUGH=1` to opt out
+This filters only *inherited* values. Resolved provider credentials and
+`$SECRET` references in MCP config are layered on explicitly afterwards and are
+unaffected. Profile `env` is provider-specific rather than a universal layer:
+the Claude Code SDK and Grok Build providers consume it today; other CLI
+providers ignore it, and in-process PI providers use definition fields plus
+Modus secrets instead. Set `MODUS_PROVIDER_ENV_PASSTHROUGH=1` to opt out
 (for example to drive the Modus SDK CLI from inside a session).
 
 Credential-bearing files are written to process-private storage:

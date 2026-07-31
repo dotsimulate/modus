@@ -28,7 +28,9 @@ profile's ID used everywhere in the system.
   // Execution provider (default: "claude-code")
   "provider": "claude-code",
   // Common options: "claude-code" | "claude-code-pty" | "cursor" | "codex" |
-  // "antigravity" | "grok-build" | "opencode" | "litellm" | "ollama" | "openrouter"
+  // "antigravity" | "grok-build" | "opencode" | "openai-compat" | "ollama" |
+  // "openrouter", plus user/plugin declarative providers discovered at runtime.
+  // "litellm" remains accepted as a legacy alias of "openai-compat".
 
   // Model ID (omit for provider's default)
   "model": "claude-opus-4-8[1m]",
@@ -87,7 +89,7 @@ profile's ID used everywhere in the system.
   // object = granular per-tool control
   "permissionPolicy": "bypass",
 
-  // ── Provider Tuning (PI providers only: litellm, ollama, openrouter) ──
+  // ── Provider Tuning (declarative PI providers only) ──
   // These fields are ignored by non-PI providers such as claude-code, cursor, and codex.
 
   // Context window size (must match inference server's -c flag for local models)
@@ -259,7 +261,7 @@ Profile JSON  >  _global.json providerDefaults  >  TypeScript fallback
   "description": "Creative exploration with local model",
   "prompt": "You are a creative explorer. Your purpose is perception, reflection, and creative dialogue.",
   "promptMode": "custom",
-  "provider": "litellm",
+  "provider": "openai-compat",
   "model": "deepseek-r1-qwen3-8b",
   "effort": "high",
   "maxTurns": 30,

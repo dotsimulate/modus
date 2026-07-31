@@ -91,8 +91,9 @@ const { text, oneShotId } = await ctx.model.complete({
 Reachable as `ctx.model` on the Harness Context, `ctx.model` on `MoveApiContext`,
 `ctx.harness.model` in move `onSubmit`, and `ctx.model` on `ActionContext`.
 
-**Only the PI provider family can serve one-shots** — `litellm`, `ollama`, `openrouter`
-(`ONE_SHOT_PROVIDERS` in `providers/provider-names.ts`). That is structural, not a missing
+**Only the PI provider family can serve one-shots** — `openai-compat`, `ollama`,
+`openrouter`, and user/plugin declarative providers (`litellm` remains an alias)
+(`listOneShotProviders()` in `providers/provider-names.ts`). That is structural, not a missing
 feature: PI is an in-process SDK, so `pi-ai`'s `completeSimple()` reaches the model directly,
 while every other provider is a CLI the harness spawns and converses with. A one-shot against
 `claude-code`, `codex`, `cursor`, `antigravity`, `grok-build`, `opencode` or `gemini-cli`
@@ -107,7 +108,7 @@ Resolution rules (`resolveOneShotTarget`), all of which throw rather than guess:
 | explicit `provider` / `model` | overrides the profile |
 | profile omits `provider` | error — `GlobalConfigSchema` has no default provider to fall back to |
 | neither profile nor provider | error |
-| resolved provider is not PI-family | error naming `ONE_SHOT_PROVIDERS` |
+| resolved provider is not PI-family | error naming the current `listOneShotProviders()` result |
 
 The model object is built by `buildPiModel` in `providers/pi-model.ts` — the **same** seam the
 agentic PI provider uses, so a one-shot and a session against the same profile resolve the

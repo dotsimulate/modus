@@ -4,7 +4,7 @@ import type { Profile, McpServerConfig, ProviderModel } from "../../../sdk/index
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
-import { providerToolFamily, type ToolStates } from "../tools";
+import { providerDisplayLabel, providerToolFamily, type ToolStates } from "../tools";
 
 type Props = {
   profiles: Profile[];
@@ -223,7 +223,7 @@ function ProfileForm({
   onCancel: () => void;
   isNew?: boolean;
 }) {
-  const { availableProviders } = useProfiles();
+  const { availableProviders, providerCapabilities } = useProfiles();
   const [name, setName] = useState(profile.name);
   const [description, setDescription] = useState(profile.description);
   const [prompt, setPrompt] = useState(profile.prompt);
@@ -247,6 +247,9 @@ function ProfileForm({
   const [modelsLoading, setModelsLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
   const previousProviderRef = useRef(provider);
+  const providerOptions = provider && !availableProviders.includes(provider)
+    ? [provider, ...availableProviders]
+    : availableProviders;
 
   const enabledToolCount = Object.values(toolStates).filter((s) => s === "on").length;
   const toolsAll = enabledToolCount === 0;
@@ -264,8 +267,14 @@ function ProfileForm({
     modus.getProviderModels(p).then((models) => {
       setProviderModels(models);
     }).catch(() => setProviderModels([])).finally(() => setModelsLoading(false));
-    const previousFamily = providerToolFamily(profile.provider);
-    const nextFamily = providerToolFamily(provider);
+    const previousFamily = providerToolFamily(
+      profile.provider,
+      profile.provider ? providerCapabilities[profile.provider] : undefined,
+    );
+    const nextFamily = providerToolFamily(
+      provider,
+      provider ? providerCapabilities[provider] : undefined,
+    );
     if (previousFamily !== nextFamily) setToolStates({});
   }, [provider]);
 
@@ -314,9 +323,13 @@ function ProfileForm({
             <span>provider</span>
             <select value={provider} onChange={(e) => setProvider(e.target.value)}>
               <option value="">claude-code</option>
-              {availableProviders
+              {providerOptions
                 .filter((v) => v !== "claude-code")
-                .map((v) => <option key={v} value={v}>{v}</option>)}
+                .map((v) => (
+                  <option key={v} value={v}>
+                    {providerDisplayLabel(v, providerCapabilities[v])}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="pf-field">
@@ -391,6 +404,7 @@ function ProfileForm({
           onChange={setToolStates}
           compact
           provider={provider}
+          builtInGroups={providerCapabilities[provider]?.builtInToolGroups}
         />
       </div>
 

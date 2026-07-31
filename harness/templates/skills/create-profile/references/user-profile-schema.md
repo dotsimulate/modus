@@ -141,7 +141,7 @@ State files are created automatically on first use.
   "displayName": "Studio",
   "projects": ["/home/alex/creative"],
   "agentProfiles": ["creative", "research"],
-  "provider": "litellm",
+  "provider": "openai-compat",
   "memory": {
     "scope": "profile",
     "inheritGlobal": false

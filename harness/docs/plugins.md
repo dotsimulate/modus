@@ -1,13 +1,13 @@
 ---
 title: Plugins
-lastUpdated: 2026-07-26
-covers: harness/modus-plugins.ts harness/plugin-settings.ts harness/profiles.ts harness/modus-home.ts harness/index.ts harness/move-runner.ts harness/action-runner.ts harness/pages.ts harness/client-extensions.ts harness/skills.ts
+lastUpdated: 2026-07-30
+covers: harness/modus-plugins.ts harness/plugin-settings.ts harness/profiles.ts harness/modus-home.ts harness/index.ts harness/move-runner.ts harness/action-runner.ts harness/pages.ts harness/client-extensions.ts harness/skills.ts harness/providers/provider-definitions.ts
 ---
 
 # Plugins
 
 A plugin is a directory containing `.modus/`, registered machine-wide. When
-enabled, its profiles, moves, actions, pages, global config, and client
+enabled, its profiles, moves, actions, pages, provider definitions, global config, and client
 extensions merge into every project. Plugin registration is user-scoped and
 lives in `~/.modus/plugins.json`; plugin content remains at its source path and
 is never copied into a project.
@@ -52,6 +52,7 @@ content semantics:
   "contents": {
     "profiles": { "mode": "merge" },
     "moves": { "mode": "merge" },
+    "providers": { "mode": "merge" },
     "skills": { "mode": "merge" }
   }
 }
@@ -71,6 +72,7 @@ manifest identity values. Plugin content supports merge semantics only.
 | Moves | `.modus/moves/<name>/` | Project → plugin → built-in |
 | Actions | `.modus/actions/<name>/` | Project → plugin → built-in; plugin actions default to the plugin root and carry `origin: "plugin"` |
 | Pages | `.modus/pages/<name>.json` | Manifest-listed pages scan between project and built-in pages |
+| Provider definitions | `.modus/providers/<name>.json` | User-home definitions win plugin collisions; built-in names and aliases cannot be shadowed |
 | Skills | `.modus/skills/<name>/SKILL.md` | Project → user home → plugin; shipping one is not the same as attaching it |
 | Global config | `.modus/_global.json` | Merges after user-home config and before project config |
 | Client extensions | `.modus/ui/extensions/` | Uses client-extension discovery and precedence |

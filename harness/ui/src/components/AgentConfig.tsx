@@ -13,7 +13,7 @@ import { providerFallbackModel } from "../../../provider-defaults";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
 import { useProfiles } from "../providers/ProfileContext";
-import { getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGrokBuildProvider, mcpToolGroups, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
+import { getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGrokBuildProvider, mcpToolGroups, providerDisplayLabel, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
 
 export type { AgentConfigState };
 
@@ -103,7 +103,7 @@ export function AgentConfig({
   // Prefer the backend's reported built-in tools for the live provider; fall
   // back to the static catalog when capabilities haven't loaded yet.
   const builtInGroups = providerCapabilities[effectiveProvider]?.builtInToolGroups
-    ?? getToolGroups(effectiveProvider);
+    ?? getToolGroups(effectiveProvider, providerCapabilities[effectiveProvider]);
 
   useEffect(() => {
     configRef.current = config;
@@ -118,7 +118,11 @@ export function AgentConfig({
   };
 
   const updateProvider = (provider: string) => {
-    const switchingToolFamilies = providerToolFamily(config.provider || profileProvider) !== providerToolFamily(provider || profileProvider);
+    const previousProvider = config.provider || profileProvider;
+    const nextProvider = provider || profileProvider;
+    const switchingToolFamilies =
+      providerToolFamily(previousProvider, previousProvider ? providerCapabilities[previousProvider] : undefined)
+      !== providerToolFamily(nextProvider, nextProvider ? providerCapabilities[nextProvider] : undefined);
     const nextConfig = {
       ...config,
       provider,
@@ -226,8 +230,14 @@ export function AgentConfig({
               value={config.provider}
               options={availableProviders
                 .filter((v) => v !== profileProvider)
-                .map((v) => ({ value: v }))}
-              placeholder={profileProvider ?? "claude-code"}
+                .map((v) => ({
+                  value: v,
+                  label: providerDisplayLabel(v, providerCapabilities[v]),
+                }))}
+              placeholder={providerDisplayLabel(
+                profileProvider ?? "claude-code",
+                providerCapabilities[profileProvider ?? "claude-code"],
+              )}
               searchPlaceholder="search providers..."
               onChange={updateProvider}
             />

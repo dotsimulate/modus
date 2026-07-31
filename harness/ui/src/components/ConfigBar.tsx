@@ -223,7 +223,10 @@ export function ConfigBar({
   // Prefer the backend's reported built-in count so the summary matches what the
   // provider actually exposes; fall back to the static catalog.
   const builtinCount = providerCapabilities[effectiveProvider ?? ""]?.builtInTools?.length
-    ?? getAllTools(effectiveProvider).length;
+    ?? getAllTools(
+      effectiveProvider,
+      effectiveProvider ? providerCapabilities[effectiveProvider] : undefined,
+    ).length;
   const toolCount =
     (profileTools === "all" ? builtinCount : profileTools.length) + mcpCount;
   const codexControls = agentConfig.providerControls?.codex ?? {};
