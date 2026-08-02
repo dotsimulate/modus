@@ -22,6 +22,7 @@ import {
   type GrokCommand,
 } from "./grok-build-runtime";
 import { resolveSecret } from "../secrets";
+import { resolveCli } from "./resolve-cli";
 
 type GrokBuildControls = {
   mode?: "default" | "auto" | "plan" | "always-approve";
@@ -207,7 +208,7 @@ function mcpServers(ctx: TurnContext): any[] {
         headers: resolvedMcpEntries(config.headers, name),
       };
     }
-    const resolved = isAbsolute(config.command) ? config.command : (Bun.which(config.command) ?? config.command);
+    const resolved = isAbsolute(config.command) ? config.command : (resolveCli(config.command) ?? config.command);
     return {
       type: "stdio",
       name,

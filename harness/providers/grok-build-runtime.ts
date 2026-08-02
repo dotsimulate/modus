@@ -1,13 +1,14 @@
 import { resolveSecret } from "../secrets";
 import { GrokAcpClient } from "./grok-build-acp";
 import { providerChildEnv } from "./child-env";
+import { resolveCli } from "./resolve-cli";
 
 export type GrokCommand = { executable: string; prefixArgs: string[] };
 
 export function resolveGrokBuildCommand(): GrokCommand | null {
   const override = process.env.MODUS_GROK_CLI?.trim();
   if (override) return { executable: override, prefixArgs: [] };
-  const executable = Bun.which("grok");
+  const executable = resolveCli("grok");
   return executable ? { executable, prefixArgs: [] } : null;
 }
 

@@ -4,6 +4,7 @@
  */
 
 import { existsSync } from "fs";
+import { resolveCli } from "./resolve-cli";
 
 /** Raw argv[0] from env or default name (PATH resolution deferred to OS / Bun.which). */
 export function cursorAgentBinArg(): string {
@@ -13,12 +14,13 @@ export function cursorAgentBinArg(): string {
 
 /**
  * Best-effort concrete path to cursor-agent, or undefined if not found.
- * Order: Bun.which(nameOrPath), then existsSync for an absolute/relative file path.
+ * Order: PATH + user install dirs (resolveCli), then existsSync for an
+ * absolute/relative file path.
  */
 export function resolveCursorAgentExecutable(): string | undefined {
   const arg = cursorAgentBinArg();
-  const viaWhich = Bun.which(arg);
-  if (viaWhich) return viaWhich;
+  const resolved = resolveCli(arg);
+  if (resolved) return resolved;
   if (existsSync(arg)) return arg;
   return undefined;
 }

@@ -46,11 +46,12 @@ import {
 } from "./provider-process-owner";
 import { redactProviderDiagnostic } from "./provider-diagnostics";
 import { providerChildEnv } from "./child-env";
+import { cliExists, resolveCli } from "./resolve-cli";
 
 // ── Constants ──
 
 const CLAUDE_PATH = process.env.CLAUDE_PATH
-  || (process.platform === "win32" ? "claude.cmd" : "claude");
+  || (process.platform === "win32" ? "claude.cmd" : resolveCli("claude") ?? "claude");
 
 // Universe of gate-able built-ins (catalog). Used to turn a profile tool
 // allowlist into a --disallowedTools blocklist for the CLI.
@@ -1093,7 +1094,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       const { session, opts, profile: profileDef } = ctx;
 
       // Pre-check
-      if (!Bun.which(CLAUDE_PATH)) {
+      if (!cliExists(CLAUDE_PATH)) {
         const reason = `Provider binary "${CLAUDE_PATH}" not found in PATH. Install Claude Code CLI or set CLAUDE_PATH.`;
         console.error(`[claude-code-pty] ${reason}`);
         session.status = "error";
