@@ -96,9 +96,29 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
       return reduceResult(s, m);
     case "rate_limit_event":
       return reduceProviderWait(s, "Claude is retrying after a rate limit.", ts);
+    case "error":
+      return reduceErrorEvent(s, m, ts);
     default:
       return s;
   }
+}
+
+/**
+ * A provider that fails before its first event (binary missing, unsupported
+ * flag, spawn refusal) broadcasts a bare error event. Dropping it renders a
+ * dead send — the message vanishes and the session sits idle with no
+ * explanation — so it must land in the transcript like any other outcome.
+ */
+function reduceErrorEvent(s: ReducerState, m: any, ts: number): ReducerState {
+  const content = typeof m.error === "string" && m.error.trim()
+    ? m.error.trim()
+    : "The provider failed before this turn could start.";
+  return {
+    ...s,
+    status: "error",
+    messages: [...s.messages, { id: nextMsgId(), role: "system", content, timestamp: ts }],
+    streamFeed: appendFeed(s.streamFeed, content),
+  };
 }
 
 /** Append to streamFeed, keeping a rolling tail of ~500 chars */
