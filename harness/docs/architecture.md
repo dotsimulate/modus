@@ -136,9 +136,11 @@ Providers are execution backends. Session-manager delegates to them via the
 `SessionProvider` interface (defined in `providers/types.ts`).
 
 Registered providers: `claude-code`, `claude-code-pty`, `codex`, `cursor`,
-`antigravity`, `grok-build`, `opencode`, `openai-compat`, `ollama`, `openrouter`,
+`grok-build`, `opencode`, `openai-compat`, `ollama`, `openrouter`,
 plus user-global and plugin declarative PI providers. `litellm` remains an
-accepted compatibility alias of `openai-compat`.
+accepted compatibility alias of `openai-compat`. `antigravity` and `gemini-cli`
+are hidden: reachable when a profile names one, absent from every listing (see
+`providers.md` § Hidden providers).
 
 The last three are PI agent variants — a lightweight agent loop for
 OpenAI-compatible APIs.

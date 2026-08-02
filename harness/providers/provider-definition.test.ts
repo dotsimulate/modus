@@ -3,13 +3,16 @@ import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import {
   BUILT_IN_PROVIDER_DEFINITIONS,
+  HIDDEN_LEGACY_PROVIDER_NAMES,
   ProviderDefinitionSchema,
+  STANDALONE_PROVIDER_NAMES,
   resolveProviderAlias,
 } from "./provider-definition";
 import {
   detectLocalProviders,
   modelIdsFromDetectionResponse,
 } from "./provider-detection";
+import { isKnownProvider, listProviders } from "./provider-names";
 
 const validDefinition = {
   name: "lmstudio",
@@ -89,6 +92,22 @@ describe("provider aliases", () => {
     expect(resolveProviderAlias("litellm")).toBe("openai-compat");
     expect(resolveProviderAlias("openai-compat")).toBe("openai-compat");
     expect(resolveProviderAlias("ollama")).toBe("ollama");
+  });
+});
+
+describe("hidden providers", () => {
+  // Both hidden names carry a deliberate reason, and the failure mode of losing
+  // one is silent: the provider simply reappears in every picker. Antigravity in
+  // particular is hidden on a terms/enforcement judgement that no test elsewhere
+  // encodes, so it is pinned by name rather than by count.
+  test("antigravity and gemini-cli are reachable but never offered in a picker", () => {
+    expect(HIDDEN_LEGACY_PROVIDER_NAMES).toContain("antigravity");
+    expect(HIDDEN_LEGACY_PROVIDER_NAMES).toContain("gemini-cli");
+    for (const name of HIDDEN_LEGACY_PROVIDER_NAMES) {
+      expect(STANDALONE_PROVIDER_NAMES).not.toContain(name as never);
+      expect(isKnownProvider(name)).toBe(true);
+      expect(listProviders()).not.toContain(name);
+    }
   });
 });
 

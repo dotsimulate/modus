@@ -3,8 +3,9 @@
 Provider name: `"gemini-cli"`
 
 This is hidden legacy migration code backed by `@google/gemini-cli-core`. Do not offer
-it as a normal new-profile provider. Prefer the supported `antigravity` provider for
-Google's authenticated agent CLI workflow.
+it as a normal new-profile provider. `antigravity` is hidden too, on Google's
+third-party-access terms — do not steer anyone to either one by default. Both work when
+a profile names them deliberately; see `harness/docs/providers.md` § Hidden providers.
 
 ## Authentication
 

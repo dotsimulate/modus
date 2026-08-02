@@ -33,16 +33,16 @@ const INDEX_SUMMARY_MAX = 110;
 // home rather than a project because the subject is the harness: the same rough
 // edge hit from two projects is one piece of feedback.
 
-const FEEDBACK_KINDS = ["docs", "friction", "missing", "wrong"] as const;
+export const FEEDBACK_KINDS = ["docs", "friction", "missing", "wrong"] as const;
 type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
 
-const PRIMITIVES = [
+export const PRIMITIVES = [
   "move", "action", "page", "profile", "mission",
-  "plugin", "skill", "provider", "docs", "other",
+  "plugin", "skill", "provider", "client", "docs", "other",
 ] as const;
 type Primitive = (typeof PRIMITIVES)[number];
 
-type Feedback = {
+export type Feedback = {
   ts: string;
   kind: FeedbackKind;
   what: string;
@@ -52,7 +52,15 @@ type Feedback = {
   queries?: string[];
   resolvedBy?: string;
   cwd?: string;
+  build?: string;
 };
+
+// The docs corpus an agent reads is a frozen build snapshot in packaged runs,
+// so "the docs do not cover X" is ambiguous without knowing which snapshot the
+// reporter read. Stamp both the index and every feedback entry with the build.
+export function corpusBuildStamp(): string {
+  return process.env.MODUS_DESKTOP_VERSION?.trim() || "dev";
+}
 
 function feedbackPath(): string {
   return join(MODUS_HOME, "modus-feedback.jsonl");
@@ -88,17 +96,165 @@ function readFeedback(): Feedback[] {
   return out;
 }
 
-function formatFeedback(entry: Feedback): string {
+export function formatFeedback(entry: Feedback, n: number): string {
   const tag = entry.primitive ? `${entry.kind}/${entry.primitive}` : entry.kind;
   const lines = [
-    `- [${tag}] ${entry.what}`,
+    `#${n} [${tag}] ${entry.what}`,
     `    friction: ${entry.friction}`,
   ];
   if (entry.doc) lines.push(`    doc: \`${entry.doc}\``);
   if (entry.queries?.length) lines.push(`    tried: ${entry.queries.map((q) => `"${q}"`).join(", ")}`);
   if (entry.resolvedBy) lines.push(`    got past it by: ${entry.resolvedBy}`);
-  lines.push(`    filed: ${entry.ts}`);
+  if (entry.cwd) lines.push(`    from: ${entry.cwd}`);
+  lines.push(`    filed: ${entry.ts}${entry.build ? ` (build ${entry.build})` : ""}`);
   return lines.join("\n");
+}
+
+function formatTitle(entry: Feedback, n: number): string {
+  const tag = entry.primitive ? `${entry.kind}/${entry.primitive}` : entry.kind;
+  return `${n}. [${tag}] ${entry.ts.slice(0, 10)} — ${entry.what}`;
+}
+
+function tally(entries: Feedback[], key: (e: Feedback) => string): string {
+  const counts = new Map<string, number>();
+  for (const e of entries) counts.set(key(e), (counts.get(key(e)) ?? 0) + 1);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, c]) => `${c} ${k}`)
+    .join(", ");
+}
+
+// Validation for the `feedback` op, kept pure so the rejection rules are
+// testable without touching the log. Returns the entry to append or the error
+// to hand back.
+export function buildFeedbackEntry(
+  data: Record<string, unknown>,
+  opts: { cwd?: string; docExists: (id: string) => boolean; now?: () => string },
+): { entry: Feedback } | { error: string } {
+  const kind = parseKind(data.kind);
+  const what = typeof data.what === "string" ? data.what.trim() : "";
+  const friction = typeof data.friction === "string" ? data.friction.trim() : "";
+
+  if (!kind) {
+    return { error: `kind is required — one of: ${FEEDBACK_KINDS.join(", ")}` };
+  }
+  if (!what) return { error: "what is required — what were you trying to do?" };
+  if (!friction) return { error: "friction is required — what actually got in the way?" };
+
+  // An unknown primitive must not silently file as unclassified — the filer
+  // meant something, and a typo here makes the entry unfindable by filter.
+  const primitive = data.primitive === undefined || data.primitive === ""
+    ? undefined
+    : parsePrimitive(data.primitive);
+  if (data.primitive !== undefined && data.primitive !== "" && !primitive) {
+    return { error: `unknown primitive: ${String(data.primitive)} — one of: ${PRIMITIVES.join(", ")}, or omit it` };
+  }
+
+  const doc = typeof data.doc === "string" && data.doc.trim() ? data.doc.trim() : undefined;
+  if (doc && !opts.docExists(doc)) {
+    return { error: `unknown doc id: ${doc} (use docs_list for valid ids, or omit doc)` };
+  }
+
+  const queries = Array.isArray(data.queries)
+    ? data.queries.filter((q): q is string => typeof q === "string" && q.trim().length > 0)
+    : undefined;
+  const resolvedBy = typeof data.resolvedBy === "string" && data.resolvedBy.trim()
+    ? data.resolvedBy.trim()
+    : undefined;
+
+  return {
+    entry: {
+      ts: opts.now ? opts.now() : new Date().toISOString(),
+      kind,
+      what,
+      friction,
+      ...(primitive ? { primitive } : {}),
+      ...(doc ? { doc } : {}),
+      ...(queries?.length ? { queries } : {}),
+      ...(resolvedBy ? { resolvedBy } : {}),
+      ...(opts.cwd ? { cwd: opts.cwd } : {}),
+      build: corpusBuildStamp(),
+    },
+  };
+}
+
+const FEEDBACK_FORMATS = ["titles", "full"] as const;
+type FeedbackFormat = (typeof FEEDBACK_FORMATS)[number];
+
+// The MCP tool-result cap fits about 8 full entries; titles are one line each.
+const FEEDBACK_DEFAULT_LIMIT: Record<FeedbackFormat, number> = { titles: 50, full: 8 };
+
+// The whole feedback_list op minus the file read, pure so paging, filtering,
+// and the invalid-filter rejections are testable against in-memory entries.
+// Entry numbers are 1-based positions in the log file, so they stay stable as
+// the append-only log grows.
+export function runFeedbackList(
+  entries: Feedback[],
+  data: Record<string, unknown>,
+): { ok: boolean; message?: string; error?: string } {
+  if (data.entry !== undefined) {
+    const n = typeof data.entry === "number" ? Math.floor(data.entry) : NaN;
+    if (!Number.isFinite(n) || n < 1 || n > entries.length) {
+      return { ok: false, error: `entry must be a number from 1 to ${entries.length}` };
+    }
+    return { ok: true, message: formatFeedback(entries[n - 1]!, n) };
+  }
+
+  // A filter value outside the enum must reject, not silently return the whole
+  // backlog — "nothing filed about this" and "the filter never applied" are
+  // opposite conclusions and the caller cannot tell them apart.
+  if (data.kind !== undefined && !parseKind(data.kind)) {
+    return { ok: false, error: `unknown kind: ${String(data.kind)} — one of: ${FEEDBACK_KINDS.join(", ")}` };
+  }
+  if (data.primitive !== undefined && !parsePrimitive(data.primitive)) {
+    return { ok: false, error: `unknown primitive: ${String(data.primitive)} — one of: ${PRIMITIVES.join(", ")}` };
+  }
+  const format: FeedbackFormat | undefined = data.format === undefined
+    ? "titles"
+    : FEEDBACK_FORMATS.includes(data.format as FeedbackFormat)
+      ? (data.format as FeedbackFormat)
+      : undefined;
+  if (!format) {
+    return { ok: false, error: `unknown format: ${String(data.format)} — one of: ${FEEDBACK_FORMATS.join(", ")}` };
+  }
+
+  const kindFilter = parseKind(data.kind);
+  const primitiveFilter = parsePrimitive(data.primitive);
+
+  let numbered = entries.map((entry, i) => ({ entry, n: i + 1 }));
+  if (kindFilter) numbered = numbered.filter(({ entry }) => entry.kind === kindFilter);
+  if (primitiveFilter) numbered = numbered.filter(({ entry }) => entry.primitive === primitiveFilter);
+
+  if (!numbered.length) {
+    const scope = kindFilter || primitiveFilter ? " matching that filter" : "";
+    return { ok: true, message: `No feedback filed${scope}.` };
+  }
+
+  const limit = typeof data.limit === "number" && data.limit > 0
+    ? Math.floor(data.limit)
+    : FEEDBACK_DEFAULT_LIMIT[format];
+  const offset = typeof data.offset === "number" && data.offset > 0 ? Math.floor(data.offset) : 0;
+
+  const newestFirst = [...numbered].reverse();
+  const page = newestFirst.slice(offset, offset + limit);
+  const scoped = numbered.map(({ entry }) => entry);
+
+  const header = [
+    `${numbered.length} entr${numbered.length === 1 ? "y" : "ies"}`
+      + (kindFilter || primitiveFilter ? " matching the filter" : " filed")
+      + ` (${tally(scoped, (e) => e.kind)})`
+      + (page.length < numbered.length
+        ? `, showing ${page.length} newest${offset ? ` from offset ${offset}` : ""} as ${format === "titles" ? "titles" : "full entries"}`
+        : ""),
+    `by primitive: ${tally(scoped, (e) => e.primitive ?? "unset")}`,
+    'Read one in full with { "op": "feedback_list", "entry": <n> }; page with offset/limit.',
+    "",
+  ];
+
+  const body = page.map(({ entry, n }) =>
+    format === "titles" ? formatTitle(entry, n) : formatFeedback(entry, n),
+  );
+  return { ok: true, message: [...header, ...body].join("\n") };
 }
 
 function formatIndex(cwd: string | undefined, audience?: DocAudience | "all"): string {
@@ -135,7 +291,9 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "re-lists the index, optionally narrowed by audience.",
     "",
     "`feedback` files a report on Modus itself. `feedback_list` reads what has",
-    "already been filed.",
+    "already been filed: a numbered titles overview with a tally by default —",
+    "pass `entry: <n>` to read one entry in full, `offset`/`limit` to page, and",
+    "`format: \"full\"` for full text (capped small; page through it).",
     "",
     "## The feedback zone — this part is required",
     "",
@@ -200,7 +358,10 @@ export async function gather(ctx: MoveContext): Promise<string> {
 export const handlers: Record<string, MoveApiHandler> = {
   docs_list: async (ctx, data) => {
     const audience = parseAudience(data.audience);
-    return { ok: true, message: formatIndex(ctx.cwd, audience) };
+    return {
+      ok: true,
+      message: `Docs corpus build: ${corpusBuildStamp()}\n\n${formatIndex(ctx.cwd, audience)}`,
+    };
   },
 
   docs_search: async (ctx, data) => {
@@ -252,42 +413,14 @@ export const handlers: Record<string, MoveApiHandler> = {
   },
 
   feedback: async (ctx, data) => {
-    const kind = parseKind(data.kind);
-    const what = typeof data.what === "string" ? data.what.trim() : "";
-    const friction = typeof data.friction === "string" ? data.friction.trim() : "";
-
-    if (!kind) {
-      return { ok: false, error: `kind is required — one of: ${FEEDBACK_KINDS.join(", ")}` };
-    }
-    if (!what) return { ok: false, error: "what is required — what were you trying to do?" };
-    if (!friction) return { ok: false, error: "friction is required — what actually got in the way?" };
-
-    const doc = typeof data.doc === "string" && data.doc.trim() ? data.doc.trim() : undefined;
-    if (doc && !getDoc(doc, { cwd: ctx.cwd })) {
-      return { ok: false, error: `unknown doc id: ${doc} (use docs_list for valid ids, or omit doc)` };
-    }
-
-    const queries = Array.isArray(data.queries)
-      ? data.queries.filter((q): q is string => typeof q === "string" && q.trim().length > 0)
-      : undefined;
-    const resolvedBy = typeof data.resolvedBy === "string" && data.resolvedBy.trim()
-      ? data.resolvedBy.trim()
-      : undefined;
-
-    const entry: Feedback = {
-      ts: new Date().toISOString(),
-      kind,
-      what,
-      friction,
-      ...(parsePrimitive(data.primitive) ? { primitive: parsePrimitive(data.primitive) } : {}),
-      ...(doc ? { doc } : {}),
-      ...(queries?.length ? { queries } : {}),
-      ...(resolvedBy ? { resolvedBy } : {}),
-      ...(ctx.cwd ? { cwd: ctx.cwd } : {}),
-    };
+    const built = buildFeedbackEntry(data, {
+      cwd: ctx.cwd,
+      docExists: (id) => Boolean(getDoc(id, { cwd: ctx.cwd })),
+    });
+    if ("error" in built) return { ok: false, error: built.error };
 
     try {
-      appendFeedback(entry);
+      appendFeedback(built.entry);
     } catch (err: any) {
       return { ok: false, error: `could not record the feedback: ${err?.message ?? String(err)}` };
     }
@@ -295,30 +428,12 @@ export const handlers: Record<string, MoveApiHandler> = {
     return {
       ok: true,
       message: [
-        `Filed [${entry.kind}${entry.primitive ? `/${entry.primitive}` : ""}].`,
+        `Filed [${built.entry.kind}${built.entry.primitive ? `/${built.entry.primitive}` : ""}].`,
         "Carry on with the task. Say what you concluded and how you established it,",
         "so the reader knows which parts did not come from the documentation.",
       ].join("\n"),
     };
   },
 
-  feedback_list: async (_ctx, data) => {
-    const limit = typeof data.limit === "number" && data.limit > 0 ? Math.floor(data.limit) : 50;
-    const kindFilter = parseKind(data.kind);
-    const primitiveFilter = parsePrimitive(data.primitive);
-
-    let entries = readFeedback();
-    if (kindFilter) entries = entries.filter((e) => e.kind === kindFilter);
-    if (primitiveFilter) entries = entries.filter((e) => e.primitive === primitiveFilter);
-
-    if (!entries.length) {
-      const scope = kindFilter || primitiveFilter ? " matching that filter" : "";
-      return { ok: true, message: `No feedback filed${scope}.` };
-    }
-
-    const recent = entries.slice(-limit).reverse();
-    const header = `${entries.length} entr${entries.length === 1 ? "y" : "ies"} filed`
-      + (recent.length < entries.length ? `, showing ${recent.length} most recent` : "");
-    return { ok: true, message: [header, "", ...recent.map(formatFeedback)].join("\n") };
-  },
+  feedback_list: async (_ctx, data) => runFeedbackList(readFeedback(), data),
 };

@@ -43,7 +43,7 @@ Harness: Hono + Bun (:3777)
         | SessionProvider interface
         v
 Providers:
-  claude-code, claude-code-pty, codex, cursor, antigravity, grok-build, opencode,
+  claude-code, claude-code-pty, codex, cursor, grok-build, opencode,
   litellm, ollama, openrouter
 
 Shared extension surfaces:
@@ -177,9 +177,8 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 | `claude-code` | Claude Agent SDK | [Claude Code](https://claude.com/claude-code) CLI installed |
 | `claude-code-pty` | Claude Code CLI PTY | [Claude Code](https://claude.com/claude-code) CLI installed |
 | `codex` | OpenAI Codex CLI | `codex` CLI plus `CODEX_API_KEY`, `OPENAI_API_KEY`, or Codex OAuth |
-| `antigravity` | Google Antigravity CLI | [`agy`](https://antigravity.google/docs/cli-install) installed and signed in |
 | `cursor` | Cursor Agent CLI | `cursor-agent login` (Cursor subscription) |
-| `grok-build` | xAI Grok Build CLI | [`grok`](https://docs.x.ai/build/overview) installed; browser login or `XAI_API_KEY` |
+| `grok-build` | xAI Grok Build CLI | [`grok`](https://docs.x.ai/build/overview) installed; SuperGrok or X Premium+ login, or `XAI_API_KEY` |
 | `opencode` | opencode CLI | [opencode](https://opencode.ai) installed |
 | `litellm` | LiteLLM proxy | LiteLLM running locally |
 | `ollama` | Ollama API | Ollama running locally |
@@ -187,9 +186,9 @@ Each provider is an execution backend that implements the `SessionProvider` inte
 
 The last three (`litellm`, `ollama`, `openrouter`) are PI agent variants, a lightweight agent loop for local models and routing services.
 
-For Google AI plans, install Antigravity CLI and run `agy` once to complete Google Sign-In. Modus uses Antigravity's documented print mode, native conversation UUID resume, JSON Hooks, plugins, and MCP interfaces. The old `gemini-cli` adapter remains hidden for explicitly configured paid API, Vertex AI, or compute-ADC deployments; Modus does not reuse Gemini CLI OAuth credentials.
+For Grok Build, install the official CLI (`irm https://x.ai/cli/install.ps1 | iex` on Windows, or `curl -fsSL https://x.ai/cli/install.sh | bash` on macOS/Linux/WSL), then run `grok login`. Grok Build access comes with a SuperGrok or X Premium+ subscription rather than a free tier; limits and eligibility are controlled by xAI and may change. Modus also supports `XAI_API_KEY` for API-backed use, which needs no subscription.
 
-For Grok Build, install the official CLI (`irm https://x.ai/cli/install.ps1 | iex` on Windows, or `curl -fsSL https://x.ai/cli/install.sh | bash` on macOS/Linux/WSL), then run `grok login`. A paid subscription is not required while xAI's current free Grok Build offer is available; limits and eligibility are controlled by xAI and may change. Modus also supports `XAI_API_KEY` for API-backed use.
+Two Google adapters exist and neither is offered in the provider picker. `antigravity` drives the [`agy`](https://antigravity.google/docs/cli-install) CLI through its documented print mode, conversation UUID resume, JSON Hooks, plugins, and MCP interfaces, and works if you name it explicitly in a profile. It is not offered by default because Google's [Antigravity terms](https://antigravity.google/terms) prohibit "using third party software, tools, or services to access the Service", and enforcement has suspended paid accounts across Antigravity, Gemini CLI, and Code Assist together — a risk that lands on your Google account, not on Modus. The older `gemini-cli` adapter is likewise reachable only when a paid API, Vertex AI, or compute-ADC deployment is configured explicitly. Modus never reads, stores, or forwards either CLI's OAuth credentials.
 
 See [harness/docs/providers.md](harness/docs/providers.md) for the full provider system documentation.
 

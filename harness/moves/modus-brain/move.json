@@ -66,8 +66,8 @@
             "friction": { "type": "string", "description": "What actually got in the way. Be concrete — name the field, op, file, or behavior. Not \"the docs are thin\"." },
             "primitive": {
               "type": "string",
-              "enum": ["move", "action", "page", "profile", "mission", "plugin", "skill", "provider", "docs", "other"],
-              "description": "Which part of Modus this concerns."
+              "enum": ["move", "action", "page", "profile", "mission", "plugin", "skill", "provider", "client", "docs", "other"],
+              "description": "Which part of Modus this concerns. client = the frontend surface (client extensions, widgets, UI components)."
             },
             "doc": { "type": "string", "description": "Doc id that should have covered this, if there is an obvious one (e.g. \"moves\", \"capability-surface\")." },
             "queries": { "type": "array", "items": { "type": "string" }, "description": "Searches you tried that failed to surface an answer." },
@@ -77,13 +77,20 @@
         }
       },
       "feedback_list": {
-        "description": "Read feedback already filed. Check before filing so you sharpen an existing entry rather than restating it, or use it to work through the backlog.",
+        "description": "Read feedback already filed. Returns a numbered titles overview with a tally by default; use entry to read one in full, offset/limit to page, format \"full\" for full text. Check before filing so you sharpen an existing entry rather than restating it.",
         "schema": {
           "type": "object",
           "properties": {
-            "limit": { "type": "number", "description": "Max entries to return, newest first. Default 50." },
+            "entry": { "type": "number", "description": "Read a single entry in full by its number (from the titles overview). Ignores the other filters." },
+            "format": { "type": "string", "enum": ["titles", "full"], "description": "titles (default) = one line per entry; full = complete entries, capped small — page with offset." },
+            "limit": { "type": "number", "description": "Max entries to return, newest first. Default 50 for titles, 8 for full." },
+            "offset": { "type": "number", "description": "Skip this many entries from the newest before returning. Default 0." },
             "kind": { "type": "string", "enum": ["docs", "friction", "missing", "wrong"] },
-            "primitive": { "type": "string", "description": "Only entries about this primitive." }
+            "primitive": {
+              "type": "string",
+              "enum": ["move", "action", "page", "profile", "mission", "plugin", "skill", "provider", "client", "docs", "other"],
+              "description": "Only entries about this primitive. An unknown value is rejected rather than ignored."
+            }
           }
         }
       }
