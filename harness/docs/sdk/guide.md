@@ -345,11 +345,12 @@ await client.resumeMission(runId);
 
 ## Providers
 
-Providers are execution backends (Claude Code, Codex, Google Antigravity, PI agent variants).
+Providers are execution backends (Claude Code, Codex, Cursor, Grok Build, PI agent variants).
 
 ```typescript
 const providers = await client.listProviders();
-// ["claude-code", "claude-code-pty", "codex", "cursor", "antigravity", "grok-build", "opencode", ...]
+// ["claude-code", "claude-code-pty", "codex", "cursor", "grok-build", "opencode", ...]
+// Hidden providers (antigravity, gemini-cli) are usable by name but never listed.
 
 const caps = await client.getProviderCapabilities();
 // Each: { name, streaming, tools, vision, builtInToolMode, ... }

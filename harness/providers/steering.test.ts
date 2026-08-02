@@ -15,6 +15,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
+  HIDDEN_LEGACY_PROVIDERS,
   STANDALONE_PROVIDERS,
   listPiProviders,
   listProviders,
@@ -73,7 +74,7 @@ describe("provider steering capability", () => {
   });
 
   test("every steerable name is a real provider name", () => {
-    const known = new Set<string>([...listProviders(), "gemini-cli"]);
+    const known = new Set<string>([...listProviders(), ...HIDDEN_LEGACY_PROVIDERS]);
     for (const name of STEERABLE_PROVIDERS) {
       expect(known.has(name)).toBe(true);
     }
@@ -82,7 +83,7 @@ describe("provider steering capability", () => {
   test("every registered provider is mapped to an implementation file", () => {
     // Keeps this suite honest as providers are added: an unmapped name would
     // otherwise be skipped by both directions of the check above.
-    for (const name of [...STANDALONE_PROVIDERS, ...PI_PROVIDERS, "gemini-cli"]) {
+    for (const name of [...STANDALONE_PROVIDERS, ...PI_PROVIDERS, ...HIDDEN_LEGACY_PROVIDERS]) {
       expect(IMPLEMENTATION[name]).toBeDefined();
     }
   });

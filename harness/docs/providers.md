@@ -48,12 +48,26 @@ Passed to providers by session-manager. Contains:
 | `claude-code-pty` | claude-code | Persistent Claude Code CLI process | Full MCP, runtime-native permissions, warm PTY across turns, steer |
 | `codex` | codex | OpenAI Codex CLI | Full MCP, event-derived tools, Codex sandbox/approval settings |
 | `cursor` | cursor | Cursor Agent CLI subprocess | Full MCP via `.cursor/mcp.json`, event-derived tools, `--approve-mcps` |
-| `antigravity` | antigravity | Google Antigravity CLI (`agy`) | Native UUID resume, JSON Hook tool events/approvals, full MCP transport bridge |
 | `grok-build` | grok-build | xAI Grok Build CLI (`grok agent stdio`) | Persistent ACP session, full MCP, streaming tool/thought events, live Modus approvals |
 | `opencode` | opencode | OpenCode CLI subprocess | Full MCP, event-derived tools, `bunx opencode-ai` fallback |
 | `openai-compat` | pi-agent | Generic OpenAI-compatible endpoint (LiteLLM defaults) | PI agent loop, MCP via mcp-bridge, steer; `litellm` remains an accepted legacy alias |
 | `ollama` | pi-agent | Ollama API | PI agent loop, MCP via mcp-bridge, steer |
 | `openrouter` | pi-agent | OpenRouter API | PI agent loop, MCP via mcp-bridge, steer |
+
+## Hidden providers
+
+`HIDDEN_LEGACY_PROVIDER_NAMES` (`providers/provider-definition.ts`) names providers
+that stay out of `listProviders()`, and therefore out of `GET /api/providers`, the
+pickers, `listProviderCapabilities()`, and the health sweep. They remain fully
+`isKnownProvider()`, so a profile naming one validates and runs.
+
+| Name | Family | Implementation | Why it is hidden |
+|------|--------|---------------|-------------------|
+| `antigravity` | antigravity | Google Antigravity CLI (`agy`) | Google's terms prohibit using third-party software to access the Service, and enforcement has suspended paid accounts across Antigravity, Gemini CLI, and Code Assist at once. Modus spawns only the user's own signed-in binary and never touches its credentials, but the exposure falls on the user's Google account, so it is opt-in by name. |
+| `gemini-cli` | gemini-cli | Gemini CLI | The free OAuth tier ended and Modus refuses to reuse those credentials; `getProvider` throws unless a paid API, Vertex AI, or compute-ADC deployment is configured explicitly. |
+
+Neither is deprecated: `antigravity` keeps native UUID resume, JSON Hook tool
+events/approvals, and the full MCP transport bridge described below.
 
 ## Declarative PI providers
 
@@ -225,6 +239,9 @@ or compute ADC is present. It never consumes `~/.gemini/oauth_creds.json`.
 
 ### Antigravity support boundary
 
+This provider is hidden from the pickers (see Hidden providers above) and runs
+only when a profile names it explicitly.
+
 Modus runs documented `agy --print` turns and resumes them with
 `--conversation <uuid>`. A Modus-owned plugin, installed through `agy plugin`,
 uses the documented `PreInvocation`, `PreToolUse`, `PostToolUse`, and `Stop`
@@ -266,10 +283,11 @@ curl -fsSL https://x.ai/cli/install.sh | bash
 grok login
 ```
 
-Browser/account login is sufficient; `XAI_API_KEY` is an optional alternative
-for non-browser or API-backed environments. xAI currently advertises limited
-free Grok Build access, so a paid subscription is not required while that offer
-and the account's eligibility remain active.
+Browser/account login is sufficient, and carries Grok Build access for SuperGrok
+and X Premium+ subscribers rather than a free tier. `XAI_API_KEY` is the
+alternative for non-browser or API-backed environments and needs no
+subscription. Eligibility and limits are xAI's to change; verify the entitlement
+shown after sign-in rather than relying on this paragraph.
 
 `providerControls.grokBuild.mode` selects `default`, `auto`, `plan`, or
 `always-approve`. `sandbox` maps to the Grok sandbox profile; `noMemory`,

@@ -162,15 +162,16 @@ MCP tools use the pattern: `mcp__<server-name>__<tool-name>`
 | `claude-code-pty` | Current Claude CLI models | Persistent Claude CLI process | (no ref needed) |
 | `cursor` | composer-2-fast (default), others | Cursor Agent CLI; auto-approve, no per-tool approval | [references/cursor.md](references/cursor.md) |
 | `codex` | Runtime-discovered Codex models | OpenAI Codex CLI; sandbox modes and Starlark rules | [references/codex.md](references/codex.md) |
-| `antigravity` | Runtime-discovered Antigravity models | Google Antigravity CLI with Modus hooks | See `harness/docs/providers.md` |
 | `opencode` | Runtime-discovered OpenCode models | OpenCode CLI or `bunx` fallback | See `harness/docs/providers.md` |
-| `grok-build` | Runtime-discovered Grok Build models | `grok` CLI; browser login or `XAI_API_KEY` | See `harness/docs/providers.md` |
+| `grok-build` | Runtime-discovered Grok Build models | `grok` CLI; SuperGrok/X Premium+ login or `XAI_API_KEY` | See `harness/docs/providers.md` |
 | `litellm` | Any OpenAI-compatible endpoint | Local models, vLLM, llama.cpp | — |
 | `ollama` | Ollama models | Local Ollama server | — |
 | `openrouter` | 300+ models (Claude, GPT, Gemini, etc.) | Unified API for multiple providers | — |
 
-The embedded `gemini-cli` adapter is hidden legacy migration code and must not be offered
-as a normal new-profile choice. For `cursor` and `codex`, read the linked reference before
+Two Google adapters are hidden and must not be offered as a normal new-profile choice:
+`gemini-cli` (legacy migration code) and `antigravity` (Google's terms prohibit
+third-party access to the Service, and enforcement suspends the user's whole Google
+account). Both still work when someone asks for them by name. For `cursor` and `codex`, read the linked reference before
 writing profile JSON; their permissions, tools, and MCP behavior differ materially.
 
 ## Output Format

@@ -27,12 +27,23 @@ export const STANDALONE_PROVIDER_NAMES = [
   "claude-code-pty",
   "codex",
   "cursor",
-  "antigravity",
   "grok-build",
   "opencode",
 ] as const;
 
-export const HIDDEN_LEGACY_PROVIDER_NAMES = ["gemini-cli"] as const;
+/**
+ * Reachable by name, kept out of the pickers.
+ *
+ * `gemini-cli` is here because its free OAuth tier is gone and Modus refuses to
+ * reuse those credentials. `antigravity` is here for a different reason: Google's
+ * terms forbid "using third party software, tools, or services to access the
+ * Service", and enforcement has suspended paid accounts across Antigravity,
+ * Gemini CLI, and Code Assist at once. Modus only spawns the user's own signed-in
+ * `agy` binary and never touches its credentials, so the provider still works for
+ * anyone who configures it deliberately — but the risk lands on their Google
+ * account, so it is not offered as a peer of the others.
+ */
+export const HIDDEN_LEGACY_PROVIDER_NAMES = ["gemini-cli", "antigravity"] as const;
 
 const CostSchema = z.object({
   input: z.number().nonnegative(),
