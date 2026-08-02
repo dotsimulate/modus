@@ -22,19 +22,65 @@ function displayToolName(name: string): string {
   return name;
 }
 
+/**
+ * Fold the many spellings of one tool onto a single key.
+ *
+ * Providers disagree about casing for the same tool (`Read`/`read`,
+ * `Bash`/`bash`) and about separators (`web_search` vs `WebSearch`), which is
+ * why this switch used to carry a case per spelling.
+ */
+function canonicalToolName(name: string): string {
+  return name.toLowerCase().replace(/[_-]/g, "");
+}
+
+/** Arguments worth putting in a headline, most specific first. */
+const SUMMARY_KEYS = [
+  "file_path", "filePath", "path", "notebook_path",
+  "command", "cmd", "script",
+  "pattern", "query", "url", "prompt", "description", "skill", "name",
+];
+
+const PATH_KEYS = new Set(["file_path", "filePath", "path", "notebook_path"]);
+
+/**
+ * Headline for a tool this build has no specific shape for.
+ *
+ * An enumerated switch structurally cannot cover every tool: antigravity and
+ * gemini-cli pass their provider's own tool names straight through, and cursor
+ * derives names from its wire keys, so the set is open-ended. Reading the input
+ * instead of the name means a new or third-party tool still says something.
+ */
+function genericSummary(input: Record<string, unknown>): string {
+  for (const key of SUMMARY_KEYS) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) {
+      return truncate(PATH_KEYS.has(key) ? shortPath(value) : value, 80);
+    }
+    // Some providers pass a command as argv rather than a string.
+    if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "string")) {
+      return truncate(value.join(" "), 80);
+    }
+  }
+  // Nothing recognised. The first short scalar still beats a bare tool name.
+  for (const [key, value] of Object.entries(input)) {
+    if (typeof value === "string" && value.trim() && value.length <= 120) {
+      return `${key}: ${truncate(value, 60)}`;
+    }
+  }
+  return "";
+}
+
 /** Extract a short human-readable summary from tool input + result */
-function summarize(name: string, input: Record<string, unknown>): string {
-  const path = input.file_path as string | undefined;
-  const shortPath = path?.replace(/^\/home\/[^/]+\//, "~/") ?? "";
+export function summarize(name: string, input: Record<string, unknown>): string {
+  const filePath = shortPath((input.file_path as string | undefined) ?? "");
   if (name.startsWith("mcp__")) {
     const parts = name.split("__");
     if (parts.length >= 3) return `${parts[1]}/${parts[2]}`;
   }
 
-  switch (name) {
-    case "Read":
+  switch (canonicalToolName(name)) {
     case "read": {
-      const p = shortPath || truncate(input.path as string, 80);
+      const p = filePath || truncate(shortPath(input.path as string ?? ""), 80);
       const offset = input.offset as number | undefined;
       const limit = input.limit as number | undefined;
       if (offset && limit) return `${p} :${offset}-${offset + limit}`;
@@ -42,58 +88,69 @@ function summarize(name: string, input: Record<string, unknown>): string {
       if (limit) return `${p} (${limit} lines)`;
       return p;
     }
-    case "FileChange": {
+    case "filechange": {
       const kind = input.change_kind as string | undefined;
-      const file = shortPath || truncate(input.path as string, 80) || truncate(input.file_path as string, 80);
+      const file = filePath || truncate(shortPath(input.path as string ?? ""), 80);
       return kind ? `${kind} ${file}` : file;
     }
-    case "Write":
     case "write":
-    case "Edit":
     case "edit":
-    case "MultiEdit":
-      return shortPath || truncate(input.path as string, 80);
-    case "CommandExecution":
-    case "Bash":
+    case "multiedit":
+    case "notebookedit":
+    case "applypatch":
+      return filePath || truncate(shortPath(input.path as string ?? ""), 80);
+    case "commandexecution":
     case "bash":
-      return truncate(input.command as string, 80);
-    case "Grep":
+    case "powershell":
+    case "shell":
+    case "exec": {
+      const command = input.command;
+      if (Array.isArray(command)) return truncate(command.join(" "), 80);
+      return truncate(command as string, 80);
+    }
     case "grep":
       return `/${input.pattern}/${input.path ? ` in ${basename(input.path as string)}` : ""}`;
-    case "Glob":
+    case "glob":
       return `${input.pattern}${input.path ? ` in ${basename(input.path as string)}` : ""}`;
     case "find":
       return truncate(input.pattern as string ?? input.path as string, 80);
     case "ls":
-      return truncate(input.path as string, 80);
-    case "WebFetch":
+      return truncate(shortPath(input.path as string ?? ""), 80);
+    case "webfetch":
       return truncate(input.url as string, 60);
-    case "WebSearch":
+    case "websearch":
       return truncate(input.query as string, 60);
-    case "MCPToolCall": {
+    case "mcptoolcall": {
       const server = input.server as string | undefined;
       const tool = input.tool as string | undefined;
       if (server && tool) return `${server}/${tool}`;
       return server || tool || "";
     }
-    case "Agent":
-      return truncate(input.description as string, 60);
-    case "TodoWrite": {
-      const todos = input.todos;
+    case "agent":
+    case "task":
+    case "workflow":
+      return truncate(input.description as string ?? input.prompt as string, 60);
+    case "todowrite":
+    case "updateplan": {
+      const todos = input.todos ?? input.plan;
       if (!Array.isArray(todos) || !todos.length) return "";
-      const done = todos.filter(t => t.status === "completed").length;
-      const active = todos.filter(t => t.status === "in_progress").length;
-      const pending = todos.filter(t => t.status === "pending").length;
+      const done = todos.filter(t => t?.status === "completed").length;
+      const active = todos.filter(t => t?.status === "in_progress").length;
+      const pending = todos.filter(t => t?.status === "pending").length;
       const parts: string[] = [];
       if (done) parts.push(`${done} done`);
       if (active) parts.push(`${active} active`);
       if (pending) parts.push(`${pending} pending`);
       return parts.join(" · ");
     }
-    case "Skill":
+    case "skill":
       return input.skill as string ?? "";
+    case "askuserquestion":
+      return truncate((input.questions as { question?: string }[] | undefined)?.[0]?.question, 60);
+    case "toolsearch":
+      return truncate(input.query as string, 60);
     default:
-      return "";
+      return genericSummary(input);
   }
 }
 
@@ -130,9 +187,16 @@ function isCodeLike(s: string): boolean {
   return false;
 }
 
-/** Shorten paths for display */
-function shortPath(s: string): string {
-  return s.replace(/^\/home\/[^/]+\//, "~/");
+/**
+ * Shorten a home-directory prefix for display, on any platform.
+ *
+ * This matched `/home/<user>/` only, so it silently did nothing on macOS and
+ * Windows — two of the three platforms Modus ships to.
+ */
+export function shortPath(s: string): string {
+  return s
+    .replace(/^\/(?:home|Users)\/[^/]+\//, "~/")
+    .replace(/^[A-Za-z]:[\\/]Users[\\/][^\\/]+[\\/]/, "~/");
 }
 
 /** Unwrap JSON-stringified text (PI results can be double-encoded) */
