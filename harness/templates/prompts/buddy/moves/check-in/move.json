@@ -1,0 +1,7 @@
+{
+  "name": "check-in",
+  "label": "Check In",
+  "description": "Structured catch-up — what's in flight, what changed, what's stuck. Saves a snapshot of project status after the conversation.",
+  "icon": "coffee",
+  "tags": ["personal", "context"]
+}
