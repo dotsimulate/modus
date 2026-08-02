@@ -97,6 +97,34 @@ export const ClientExtensionsSchema = z.object({
   settings: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 });
 
+const TextToSpeechProviderIdSchema = z.enum(["kokoro", "zonos2", "neutts", "elevenlabs"]);
+const TextToSpeechAudioFormatSchema = z.enum(["wav", "mp3", "pcm"]);
+
+const TextToSpeechProviderConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  baseUrl: z.string().optional(),
+  model: z.string().optional(),
+  apiKeyEnv: z.string().optional(),
+  outputFormat: z.string().optional(),
+  stability: z.number().optional(),
+  similarityBoost: z.number().optional(),
+  style: z.number().optional(),
+});
+
+const TextToSpeechConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  defaultProvider: TextToSpeechProviderIdSchema.optional(),
+  defaultVoice: z.string().optional(),
+  defaultFormat: TextToSpeechAudioFormatSchema.optional(),
+  voiceAliases: z.record(z.string(), z.string()).optional(),
+  providers: z.object({
+    kokoro: TextToSpeechProviderConfigSchema.optional(),
+    zonos2: TextToSpeechProviderConfigSchema.optional(),
+    neutts: TextToSpeechProviderConfigSchema.optional(),
+    elevenlabs: TextToSpeechProviderConfigSchema.optional(),
+  }).optional(),
+});
+
 const DashboardConfigSchema = z.object({
   widgets: z.array(z.record(z.string(), z.unknown())).optional(),
   pages: z.array(z.record(z.string(), z.unknown())).optional(),
@@ -307,6 +335,7 @@ export const GlobalConfigSchema = z.object({
   ])).optional(),
   clientExtensions: ClientExtensionsSchema.optional(),
   pluginSettings: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+  textToSpeech: TextToSpeechConfigSchema.optional(),
 });
 
 // ── Helpers ──

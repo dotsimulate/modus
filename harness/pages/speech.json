@@ -1,0 +1,35 @@
+{
+  "id": "speech",
+  "title": "speech",
+  "nav": true,
+  "fullscreen": true,
+  "padding": 0,
+  "layout": {
+    "kind": "split",
+    "axis": "horizontal",
+    "sizes": [1, 2],
+    "collapsible": [true, false],
+    "children": [
+      {
+        "kind": "widget",
+        "widget": { "type": "tts-settings", "id": "pg-tts-settings" }
+      },
+      {
+        "kind": "tabs",
+        "id": "pg-speech-tools",
+        "editable": true,
+        "target": true,
+        "children": [
+          {
+            "kind": "widget",
+            "widget": { "type": "extensions", "id": "pg-speech-extensions" }
+          },
+          {
+            "kind": "widget",
+            "widget": { "type": "processes", "id": "pg-speech-processes" }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@
     "cli": "bun run cli.ts",
     "dev": "bun run dev.ts",
     "start": "bun run index.ts",
+    "tts:gateway": "bun run tts-gateway.ts",
     "watch": "bun run watchdog.ts",
     "watch:dev": "MODUS_WATCH_FILES=1 bun run watchdog.ts",
     "docs:sdk": "typedoc --options sdk/typedoc.json",

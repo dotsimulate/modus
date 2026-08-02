@@ -758,6 +758,29 @@ export type Profile = {
 };
 
 /** Global configuration shared across all profiles (MCP servers, client extensions). */
+export type TextToSpeechProviderId = "kokoro" | "zonos2" | "neutts" | "elevenlabs";
+export type TextToSpeechAudioFormat = "wav" | "mp3" | "pcm";
+
+export type TextToSpeechProviderConfig = {
+  enabled?: boolean;
+  baseUrl?: string;
+  model?: string;
+  apiKeyEnv?: string;
+  outputFormat?: string;
+  stability?: number;
+  similarityBoost?: number;
+  style?: number;
+};
+
+export type TextToSpeechConfig = {
+  enabled?: boolean;
+  defaultProvider?: TextToSpeechProviderId;
+  defaultVoice?: string;
+  defaultFormat?: TextToSpeechAudioFormat;
+  voiceAliases?: Record<string, string>;
+  providers?: Partial<Record<TextToSpeechProviderId, TextToSpeechProviderConfig>>;
+};
+
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
   providerDefaults?: Record<string, unknown>;
@@ -769,6 +792,17 @@ export type GlobalConfig = {
     disabled?: string[];
     settings?: Record<string, Record<string, unknown>>;
   };
+  textToSpeech?: TextToSpeechConfig;
+};
+
+export type TtsProviderHealth = {
+  id: TextToSpeechProviderId;
+  label: string;
+  enabled: boolean;
+  configured: boolean;
+  ok: boolean;
+  url?: string;
+  error?: string;
 };
 
 // ── Providers ──
