@@ -11,6 +11,7 @@
  *   remote      Manage tailnet exposure via tailscale serve (on|off|status)
  *   init [path] Initialize a .modus/ project
  *   open [path] Init + start + open browser to project
+ *   moves export [path] Create a portable zip of project-local moves
  *   setup       Install dependencies and build UI
  *   dev         Dev mode (harness + vite + file watchers)
  *   logs        Tail server output
@@ -537,6 +538,28 @@ function getArg(args: string[], index: number): string | undefined {
   const val = args[index];
   if (val && !val.startsWith("-")) return val;
   return undefined;
+}
+
+function getFlagValue(args: string[], ...flags: string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    if (!flags.includes(args[i]!)) continue;
+    const next = args[i + 1];
+    if (next && !next.startsWith("-")) return next;
+  }
+  return undefined;
+}
+
+function getPositionalArgs(args: string[], flagsWithValues: string[] = []): string[] {
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg.startsWith("-")) {
+      if (flagsWithValues.includes(arg)) i += 1;
+      continue;
+    }
+    positional.push(arg);
+  }
+  return positional;
 }
 
 // ── Commands ──
@@ -1222,6 +1245,30 @@ async function cmdUpdate(_args: string[]): Promise<void> {
   }
 }
 
+function cmdMoves(args: string[]): void {
+  const subcommand = args[0];
+  if (subcommand !== "export") {
+    console.error("Unknown moves subcommand. Supported: export");
+    process.exit(1);
+  }
+
+  const subArgs = args.slice(1);
+  const target = resolve(getPositionalArgs(subArgs, ["--out", "-o"])[0] ?? process.cwd());
+  const outPath = getFlagValue(subArgs, "--out", "-o");
+  const { exportPortableMoves } = require("./move-export") as typeof import("./move-export");
+  const result = exportPortableMoves(target, outPath);
+
+  if (!result.ok) {
+    console.error(`Move export failed: ${result.error}`);
+    process.exit(1);
+  }
+
+  console.log(`Exported ${result.moveNames.length} move(s) to ${result.outputPath}`);
+  for (const name of result.moveNames) console.log(`  - ${name}`);
+  console.log(`Portable files: ${result.fileCount}`);
+  console.log("Import by unzipping into another project's root; the archive includes only direct files from each move.");
+}
+
 // ── Main ──
 
 const args = process.argv.slice(2);
@@ -1260,6 +1307,9 @@ Commands:
     on|off       Persistently expose modus on your tailnet via tailscale serve
   init [path]   Initialize a .modus/ project structure
   open [path]   Init + start + open browser to project
+  moves export [path]
+                Create a zip of direct move files only, excluding nested folders and runtime/private artifacts
+    --out PATH  Write the zip to a specific path
   setup         Install dependencies and build UI
   dev           Dev mode (harness + vite + file watchers)
     --watch      Use watchdog with file watching
@@ -1283,6 +1333,7 @@ switch (command) {
   case "remote":  await cmdRemote(commandArgs); break;
   case "init":    cmdInit(commandArgs); break;
   case "open":    await cmdOpen(commandArgs); break;
+  case "moves":   cmdMoves(commandArgs); break;
   case "setup":   cmdSetup(commandArgs); break;
   case "dev":     await cmdDev(commandArgs); break;
   case "logs":    await cmdLogs(commandArgs); break;
