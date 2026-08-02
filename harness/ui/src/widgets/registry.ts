@@ -58,6 +58,7 @@ import SessionsWidget from "./sessions.widget";
 import StatsWidget from "./stats.widget";
 import TerminalsWidget from "./terminals.widget";
 import TraceViewerWidget from "./trace-viewer.widget";
+import TtsSettingsWidget from "./tts-settings.widget";
 
 // ── Registry ──
 
@@ -360,6 +361,13 @@ export const WIDGET_DEFS: Record<string, WidgetDef> = {
     component: TraceViewerWidget,
     minHeight: 300,
     preferredHeight: 600,
+  },
+  "tts-settings": {
+    type: "tts-settings",
+    component: TtsSettingsWidget,
+    zones: ["dashboard", "left-panel", "right-panel"],
+    minHeight: 180,
+    preferredHeight: 420,
   },
 };
 

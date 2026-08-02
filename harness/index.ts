@@ -140,6 +140,15 @@ import {
   isLoopbackAddress,
   requestSourceKey,
 } from "./security-boundary";
+import {
+  getTextToSpeechConfig,
+  getTextToSpeechHealth,
+  listTextToSpeechVoices,
+  openAiSpeechToTtsRequest,
+  parseTtsProviderId,
+  patchTextToSpeechConfig,
+  synthesizeSpeech,
+} from "./tts";
 
 let PORT = Number(process.env.HARNESS_PORT ?? 3777);
 const HOST = process.env.HARNESS_HOST ?? "127.0.0.1";
@@ -152,6 +161,11 @@ type FileSearchHit = {
   name: string;
   parent: string;
 };
+
+function readNumericEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) ? value : fallback;
+}
 
 function splitSearchPath(filePath: string): FileSearchHit {
   const normalized = filePath.replace(/\\/g, "/");
@@ -871,6 +885,98 @@ app.put("/api/profiles/_global", async (c) => {
   if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
   saveGlobalConfig(body, cwd);
   return c.json({ ok: true });
+});
+
+// ── Text To Speech ──
+
+app.get("/api/tts/config", (c) => {
+  return c.json(getTextToSpeechConfig(c.req.query("cwd")));
+});
+
+app.patch("/api/tts/config", async (c) => {
+  const cwd = c.req.query("cwd");
+  const body = await c.req.json();
+  const current = getGlobalConfig(cwd);
+  const candidate = { ...current, textToSpeech: { ...(current.textToSpeech ?? {}), ...body } };
+  const v = validate(GlobalConfigSchema, candidate);
+  if (!v.ok) return c.json({ error: "validation failed", details: v.errors }, 400);
+  return c.json(patchTextToSpeechConfig(body, cwd));
+});
+
+app.get("/api/tts/health", async (c) => {
+  return c.json(await getTextToSpeechHealth(c.req.query("cwd")));
+});
+
+app.get("/api/tts/voices", async (c) => {
+  try {
+    const provider = parseTtsProviderId(c.req.query("provider"));
+    return c.json(await listTextToSpeechVoices(provider, c.req.query("cwd")));
+  } catch (err: any) {
+    return c.json({ error: err.message ?? "failed to list voices" }, 400);
+  }
+});
+
+app.post("/api/tts/speech", async (c) => {
+  try {
+    const body = await c.req.json() as Record<string, unknown>;
+    const result = await synthesizeSpeech({
+      cwd: c.req.query("cwd"),
+      text: String(body.text ?? body.input ?? ""),
+      voice: typeof body.voice === "string" ? body.voice : undefined,
+      provider: parseTtsProviderId(body.provider),
+      model: typeof body.model === "string" ? body.model : undefined,
+      format: body.format === "mp3" || body.format === "pcm" || body.format === "wav" ? body.format : undefined,
+      speed: typeof body.speed === "number" ? body.speed : undefined,
+    });
+    return new Response(result.data, {
+      headers: {
+        "Content-Type": result.mime,
+        "Content-Disposition": `inline; filename="speech${result.extension}"`,
+        "X-TTS-Provider": result.provider,
+        "X-TTS-Voice": result.voice,
+      },
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message ?? "TTS failed" }, 400);
+  }
+});
+
+app.post("/v1/audio/speech", async (c) => {
+  try {
+    const body = await c.req.json() as Record<string, unknown>;
+    const result = await synthesizeSpeech(openAiSpeechToTtsRequest(body, c.req.query("cwd")));
+    return new Response(result.data, {
+      headers: {
+        "Content-Type": result.mime,
+        "Content-Disposition": `inline; filename="speech${result.extension}"`,
+        "X-TTS-Provider": result.provider,
+        "X-TTS-Voice": result.voice,
+      },
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message ?? "TTS failed" }, 400);
+  }
+});
+
+app.get("/v1/audio/voices", async (c) => {
+  try {
+    return c.json(await listTextToSpeechVoices(undefined, c.req.query("cwd")));
+  } catch (err: any) {
+    return c.json({ error: err.message ?? "failed to list voices" }, 400);
+  }
+});
+
+app.get("/v1/models", (c) => {
+  const config = getTextToSpeechConfig(c.req.query("cwd"));
+  const providers = Object.entries(config.providers ?? {})
+    .filter(([, provider]) => provider?.enabled !== false)
+    .map(([id, provider]) => ({
+      id: provider?.model ?? id,
+      object: "model",
+      created: 0,
+      owned_by: id,
+    }));
+  return c.json({ object: "list", data: providers });
 });
 
 app.get("/api/profiles/:name", (c) => {
@@ -3521,14 +3627,16 @@ app.post("/api/whisper/transcribe", async (c) => {
 
     const parsed = upstreamText ? JSON.parse(upstreamText) : {};
 
-    // Filter segments by no_speech_prob to suppress noise hallucinations.
-    // Whisper's verbose_json includes per-segment confidence — segments with
-    // high no_speech_prob are silence/noise that Whisper invented text for.
+    // Filter segments to suppress silence/noise hallucinations before they reach
+    // the composer. whisper.cpp verbose_json commonly includes no_speech_prob;
+    // avg_logprob is used when present.
     const NO_SPEECH_THRESHOLD = 0.6;
+    const MIN_AVG_LOGPROB = -1.0;
     let text: string;
     if (Array.isArray(parsed?.segments) && parsed.segments.length > 0) {
       text = parsed.segments
         .filter((seg: any) => (seg.no_speech_prob ?? 0) < NO_SPEECH_THRESHOLD)
+        .filter((seg: any) => seg.avg_logprob === undefined || seg.avg_logprob >= MIN_AVG_LOGPROB)
         .map((seg: any) => seg.text)
         .join("")
         .trim();

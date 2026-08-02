@@ -288,6 +288,29 @@ export type NotificationChannel =
     }
   | { type: "file"; path: string };
 
+export type TextToSpeechProviderId = "kokoro" | "zonos2" | "neutts" | "elevenlabs";
+export type TextToSpeechAudioFormat = "wav" | "mp3" | "pcm";
+
+export type TextToSpeechProviderConfig = {
+  enabled?: boolean;
+  baseUrl?: string;
+  model?: string;
+  apiKeyEnv?: string;
+  outputFormat?: string;
+  stability?: number;
+  similarityBoost?: number;
+  style?: number;
+};
+
+export type TextToSpeechConfig = {
+  enabled?: boolean;
+  defaultProvider?: TextToSpeechProviderId;
+  defaultVoice?: string;
+  defaultFormat?: TextToSpeechAudioFormat;
+  voiceAliases?: Record<string, string>;
+  providers?: Partial<Record<TextToSpeechProviderId, TextToSpeechProviderConfig>>;
+};
+
 export type ClientExtensionsConfig = {
   /** Additional trusted extension roots on disk */
   paths?: string[];
@@ -354,6 +377,7 @@ export type GlobalConfig = {
   clientExtensions?: ClientExtensionsConfig;
   /** Project-scoped plugin setting values (`pluginId` → field values). */
   pluginSettings?: Record<string, Record<string, unknown>>;
+  textToSpeech?: TextToSpeechConfig;
 };
 
 /**
@@ -916,6 +940,19 @@ function mergePluginSettings(
   return mergeExtensionSettings(base, override);
 }
 
+function mergeTextToSpeech(
+  base?: TextToSpeechConfig,
+  override?: TextToSpeechConfig,
+): TextToSpeechConfig | undefined {
+  if (!base && !override) return undefined;
+  return {
+    ...base,
+    ...override,
+    voiceAliases: { ...base?.voiceAliases, ...override?.voiceAliases },
+    providers: { ...base?.providers, ...override?.providers },
+  };
+}
+
 function mergeGlobalConfig(base: GlobalConfig, override: GlobalConfig): GlobalConfig {
   return {
     ...base,
@@ -925,6 +962,7 @@ function mergeGlobalConfig(base: GlobalConfig, override: GlobalConfig): GlobalCo
     notificationChannels: { ...base.notificationChannels, ...override.notificationChannels },
     clientExtensions: mergeClientExtensions(base.clientExtensions, override.clientExtensions),
     pluginSettings: mergePluginSettings(base.pluginSettings, override.pluginSettings),
+    textToSpeech: mergeTextToSpeech(base.textToSpeech, override.textToSpeech),
   };
 }
 

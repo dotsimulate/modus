@@ -1,0 +1,177 @@
+.tts-settings-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  padding: 10px;
+  color: var(--text);
+  background: var(--bg);
+  overflow: auto;
+}
+
+.tts-settings-header,
+.tts-provider-head,
+.tts-settings-actions,
+.tts-settings-grid,
+.tts-provider-fields {
+  display: flex;
+  align-items: center;
+}
+
+.tts-settings-header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tts-settings-title {
+  font-size: calc(11px * var(--font-scale, 1));
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.tts-settings-subtitle {
+  margin-top: 2px;
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+}
+
+.tts-settings-actions {
+  gap: 6px;
+}
+
+.tts-settings-actions button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--bg-surface);
+  font: inherit;
+  font-size: calc(10px * var(--font-scale, 1));
+  cursor: pointer;
+}
+
+.tts-settings-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tts-settings-error {
+  padding: 7px 9px;
+  border: 1px solid var(--error);
+  border-radius: 4px;
+  color: var(--error);
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
+.tts-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.tts-settings-grid label,
+.tts-provider-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tts-settings-grid span,
+.tts-provider-fields span {
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tts-settings-grid input:not([type="checkbox"]),
+.tts-settings-grid select,
+.tts-provider-fields input {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 8px;
+  color: var(--text);
+  background: var(--bg-surface);
+  font: inherit;
+  font-size: calc(11px * var(--font-scale, 1));
+}
+
+.tts-settings-grid input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.tts-provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tts-provider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+}
+
+.tts-provider-head {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tts-provider-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: calc(11px * var(--font-scale, 1));
+}
+
+.tts-provider-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.tts-provider-status {
+  min-width: 72px;
+  text-align: right;
+  font-size: calc(10px * var(--font-scale, 1));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tts-provider-status--ok {
+  color: var(--success);
+}
+
+.tts-provider-status--bad {
+  color: var(--text-dim);
+}
+
+.tts-provider-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .tts-settings-grid,
+  .tts-provider-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .tts-settings-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

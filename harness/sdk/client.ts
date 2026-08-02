@@ -19,6 +19,9 @@ import type {
   Profile,
   ProfileUi,
   GlobalConfig,
+  TextToSpeechConfig,
+  TextToSpeechProviderId,
+  TtsProviderHealth,
   MoveListItem,
   SkillListItem,
   SkillContent,
@@ -522,6 +525,33 @@ export class ModusClient {
   async detectLocalProviders(): Promise<DetectedProvider[]> { return (await this.fetchOrThrow("/api/providers/detect", { method: "POST" })).json(); }
   /** Lists available models for a provider. Returns empty array on error. */
   async getProviderModels(provider: string): Promise<ProviderModel[]> { const r = await this.fetch(`/api/providers/${encodeURIComponent(provider)}/models`); if (!r.ok) return []; return r.json(); }
+
+  // ── Text To Speech ──
+  async getTextToSpeechConfig(cwd?: string): Promise<TextToSpeechConfig> {
+    const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+    return (await this.fetch(`/api/tts/config${q}`)).json();
+  }
+
+  async patchTextToSpeechConfig(config: TextToSpeechConfig, cwd?: string): Promise<TextToSpeechConfig> {
+    const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+    return (await this.fetchOrThrow(`/api/tts/config${q}`, {
+      method: "PATCH",
+      body: JSON.stringify(config),
+    })).json();
+  }
+
+  async getTextToSpeechHealth(cwd?: string): Promise<TtsProviderHealth[]> {
+    const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
+    return (await this.fetch(`/api/tts/health${q}`)).json();
+  }
+
+  async listTextToSpeechVoices(provider?: TextToSpeechProviderId, cwd?: string): Promise<{ provider: TextToSpeechProviderId; voices: string[] }> {
+    const p = new URLSearchParams();
+    if (provider) p.set("provider", provider);
+    if (cwd) p.set("cwd", cwd);
+    const q = p.toString();
+    return (await this.fetch(`/api/tts/voices${q ? `?${q}` : ""}`)).json();
+  }
 
   // ── User Profiles ──
   /** Lists all user profiles. */

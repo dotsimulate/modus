@@ -60,6 +60,11 @@ export type {
   ProfileUi,
   Profile,
   GlobalConfig,
+  TextToSpeechProviderId,
+  TextToSpeechAudioFormat,
+  TextToSpeechProviderConfig,
+  TextToSpeechConfig,
+  TtsProviderHealth,
   // Providers
   ProviderModel,
   DeclarativeProviderDefinition,
