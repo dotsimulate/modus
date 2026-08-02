@@ -37,12 +37,13 @@ import { resolveSecret } from "../secrets";
 import type { ProviderCapabilities } from "./types";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 import { providerChildEnv } from "./child-env";
+import { cliExists, resolveCli } from "./resolve-cli";
 
 // On Windows we deliberately use the .cmd shim because that's the only thing the
 // Claude Code installer puts on PATH. The cmd.exe -> node.exe tree it creates is
 // killed reliably below via taskkill /T /F on the wrapper PID.
 const CLAUDE_PATH = process.env.CLAUDE_PATH
-  || (process.platform === "win32" ? "claude.cmd" : "claude");
+  || (process.platform === "win32" ? "claude.cmd" : resolveCli("claude") ?? "claude");
 
 // Universe of gate-able built-ins (catalog). Used to convert a profile tool
 // allowlist into an SDK disallowedTools blocklist, so it must list every tool
@@ -429,7 +430,9 @@ type ClaudeCodeProviderDependencies = {
 };
 
 export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDependencies = {}): SessionProvider {
-  const which = dependencies.which ?? ((command: string) => Bun.which(command));
+  // CLAUDE_PATH may be an already-resolved absolute path, which Bun.which
+  // would reject — cliExists accepts both a PATH name and a concrete file.
+  const which = dependencies.which ?? ((command: string) => (cliExists(command) ? command : null));
   return {
     capabilities: CLAUDE_CAPABILITIES,
     startTurn(ctx: TurnContext) {

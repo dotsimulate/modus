@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { providerChildEnv } from "./child-env";
+import { resolveCli } from "./resolve-cli";
 
 export type AntigravityCommandResult = {
   exitCode: number;
@@ -26,7 +27,7 @@ export function resolveAntigravityExecutable(options: {
   const env = options.env ?? process.env;
   const platform = options.platform ?? process.platform;
   const home = options.home ?? homedir();
-  const which = options.which ?? ((command) => Bun.which(command));
+  const which = options.which ?? ((command) => resolveCli(command));
   const override = env.ANTIGRAVITY_CLI_PATH?.trim();
   if (override && existsSync(override)) return override;
 

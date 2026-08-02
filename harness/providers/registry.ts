@@ -37,6 +37,7 @@ import {
   supportsSubprocessOneShot,
 } from "./provider-names";
 import { resolvePiApiKey, resolvePiBaseUrl } from "./pi-model";
+import { resolveCli } from "./resolve-cli";
 import type { ProviderCapabilities, SessionProvider } from "./types";
 
 export { isKnownProvider, listProviders };
@@ -193,14 +194,14 @@ export async function checkProviderHealth(name: string): Promise<ProviderHealthI
           : name === "grok-build"
             ? resolveGrokBuildCommand()?.executable
           : name === "opencode"
-            ? Bun.which("opencode") ?? Bun.which("bunx")
-            : Bun.which(spec.cli);
+            ? resolveCli("opencode") ?? resolveCli("bunx")
+            : resolveCli(spec.cli);
     checks.push({
       type: "cli",
       label: spec.cli,
       passed: !!found,
       detail: found
-        ? (name === "opencode" && !Bun.which("opencode") ? `${found} (uses bunx opencode-ai fallback)` : found)
+        ? (name === "opencode" && !resolveCli("opencode") ? `${found} (uses bunx opencode-ai fallback)` : found)
         : "not in PATH",
     });
   }

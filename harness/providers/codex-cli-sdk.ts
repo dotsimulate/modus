@@ -6,6 +6,7 @@ import { dirname, join } from "path";
 import readline from "readline";
 import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe-errors";
 import { providerChildEnv } from "./child-env";
+import { resolveCli } from "./resolve-cli";
 
 type SpawnFn = typeof spawn;
 
@@ -117,7 +118,7 @@ function getCodexHome(): string {
 
 export function resolveCodexExecutable(): string {
   if (process.env.CODEX_PATH) return process.env.CODEX_PATH;
-  const shim = Bun.which("codex");
+  const shim = resolveCli("codex");
   if (!shim) throw new Error("Codex CLI not found in PATH. Install Codex and ensure `codex` is available.");
   if (process.platform !== "win32") return shim;
 
@@ -133,6 +134,42 @@ export function resolveCodexExecutable(): string {
     join(npmRoot, "node_modules", "@openai", packageName, "vendor", target, "bin", "codex.exe"),
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? shim;
+}
+
+/**
+ * Whether a codex CLI version accepts `--enable`/`--disable` feature flags.
+ * Feature flags landed in 0.136; passing one to an older CLI fails the whole
+ * exec with "Unknown feature flag" before the turn can start. Returns null
+ * when the version string is unrecognizable.
+ */
+export function codexVersionSupportsFeatureFlags(versionOutput: string): boolean | null {
+  const match = versionOutput.match(/(\d+)\.(\d+)\.\d+/);
+  if (!match) return null;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 0 || minor >= 136;
+}
+
+// Probed once per executable per process. Unknown versions pass flags through
+// unchanged — current CLIs accept them, and a probe failure must not change
+// behavior for the installs that already work.
+let featureFlagSupport: { executable: string; supported: boolean } | null = null;
+
+function supportsFeatureFlags(executable: string): boolean {
+  if (featureFlagSupport?.executable === executable) return featureFlagSupport.supported;
+  let supported = true;
+  try {
+    const probe = Bun.spawnSync([executable, "--version"], { stdout: "pipe", stderr: "pipe" });
+    const output = new TextDecoder().decode(probe.stdout);
+    supported = codexVersionSupportsFeatureFlags(output) ?? true;
+    if (!supported) {
+      console.log(`[codex] ${output.trim() || executable} predates feature flags; skipping --enable/--disable`);
+    }
+  } catch {
+    supported = true;
+  }
+  featureFlagSupport = { executable, supported };
+  return supported;
 }
 
 export function canResumeCodexThread(threadId: string): boolean {
@@ -238,11 +275,9 @@ class CodexExec {
         commandArgs.push("--config", override);
       }
     }
-    if (args.enableFeatures?.length) {
-      for (const feature of args.enableFeatures) commandArgs.push("--enable", feature);
-    }
-    if (args.disableFeatures?.length) {
-      for (const feature of args.disableFeatures) commandArgs.push("--disable", feature);
+    if ((args.enableFeatures?.length || args.disableFeatures?.length) && supportsFeatureFlags(this.executablePath)) {
+      for (const feature of args.enableFeatures ?? []) commandArgs.push("--enable", feature);
+      for (const feature of args.disableFeatures ?? []) commandArgs.push("--disable", feature);
     }
     if (args.model) commandArgs.push("--model", args.model);
     if (args.sandboxMode) commandArgs.push("--sandbox", args.sandboxMode);

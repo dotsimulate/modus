@@ -4,6 +4,7 @@ import { resolveProfilePrompt, type PermissionPolicy } from "../profiles";
 import type { SessionProvider, TurnContext } from "./types";
 import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
 import { providerChildEnv } from "./child-env";
+import { resolveCli } from "./resolve-cli";
 
 type OpenCodeState = {
   sessionId: string | null;
@@ -81,7 +82,8 @@ function shouldSkipPermissions(policy: PermissionPolicy | undefined): boolean {
 }
 
 function opencodeCommand(): { cmd: string[]; label: string } {
-  if (Bun.which("opencode")) return { cmd: ["opencode"], label: "opencode" };
+  const opencode = resolveCli("opencode");
+  if (opencode) return { cmd: [opencode], label: "opencode" };
   return { cmd: ["bunx", "opencode-ai"], label: "bunx opencode-ai" };
 }
 
