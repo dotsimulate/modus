@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { Fragment, useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import {
   AgentConfig,
   countAgentConfigDifferences,
@@ -14,6 +14,9 @@ import type { Profile, SessionStatus, Message } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { buildSessionLink } from "../sessionLink";
 import { isTauriRuntime } from "../desktopBridge";
+import { useInterfaceSettings } from "../useInterfaceSettings";
+import type { ConfigBarItemId } from "../interface-settings";
+import { contextFillRatio, formatContextPercent, getLatestAssistantUsage } from "./providerStats";
 
 type Props = {
   profileName?: string;
@@ -125,7 +128,8 @@ export function ConfigBar({
   onTogglePin,
 }: Props) {
   const isPinned = sessionTags?.includes("pinned") ?? false;
-  const { providerCapabilities, activeUserProfile } = useProfiles();
+  const { providerCapabilities, activeUserProfile, activeUP } = useProfiles();
+  const barItems = useInterfaceSettings(activeUP?.interface).configBar.items;
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -249,6 +253,105 @@ export function ConfigBar({
       : isGeminiProvider(effectiveProvider)
         ? summarizeGeminiTools(agentConfig.toolStates, profileTools, availableTools)
       : `${toolCount} tools`;
+
+  // The newest completed turn is the session's current usage. Providers outside
+  // the Claude and PI families report no context figures at all, so these stay
+  // null and the readouts drop out rather than showing a made-up number.
+  const latestUsage = getLatestAssistantUsage(messages ?? []);
+  const contextPercent = formatContextPercent(latestUsage);
+  const contextRatio = contextFillRatio(latestUsage);
+  const contextLevel = contextRatio == null ? null
+    : contextRatio >= 0.9 ? "critical"
+    : contextRatio >= 0.75 ? "high"
+    : "normal";
+
+  const shows = (id: ConfigBarItemId) => barItems.includes(id);
+  const strip: { key: string; node: ReactNode }[] = [];
+  if (profileName && shows("profile")) {
+    strip.push({
+      key: "profile",
+      node: (
+        <div className="config-bar-profile-wrap">
+          <span className={`config-status-dot ${status || "idle"}`} />
+          <span className="config-bar-label">{profileName}</span>
+        </div>
+      ),
+    });
+  }
+  if (hasPendingProfile && shows("profile")) {
+    strip.push({
+      key: "pending-profile",
+      node: <span className="config-bar-overrides">next: {pendingProfileName}</span>,
+    });
+  }
+  if (model && shows("model")) {
+    strip.push({ key: "model", node: <span className="config-bar-value">{shortModel(model)}</span> });
+  }
+  if (shows("tools")) {
+    strip.push({ key: "tools", node: <span className="config-bar-value">{toolSummary}</span> });
+  }
+  if (shows("controls")) {
+    if (isCodexProvider(effectiveProvider)) {
+      strip.push({ key: "codex-tier", node: <span className="config-bar-value">{codexControls.serviceTier ?? "speed:auto"}</span> });
+      strip.push({ key: "codex-web", node: <span className="config-bar-value">{codexControls.webSearchMode ?? "web:auto"}</span> });
+    }
+    if (isAntigravityProvider(effectiveProvider)) {
+      strip.push({ key: "ag-mode", node: <span className="config-bar-value">{antigravityControls.mode ?? "accept-edits"}</span> });
+      strip.push({
+        key: "ag-sandbox",
+        node: (
+          <span className="config-bar-value">
+            {antigravityControls.sandbox === undefined ? "sandbox:default" : antigravityControls.sandbox ? "sandbox:on" : "sandbox:off"}
+          </span>
+        ),
+      });
+    }
+    if (isGrokBuildProvider(effectiveProvider)) {
+      strip.push({ key: "grok-mode", node: <span className="config-bar-value">{grokBuildControls.mode ?? "default"}</span> });
+    }
+  }
+  if (shows("effort")) {
+    strip.push({ key: "effort", node: <span className="config-bar-value">{effort}</span> });
+  }
+  if (contextPercent && shows("context")) {
+    strip.push({
+      key: "context",
+      node: (
+        <span
+          className={`config-bar-value config-bar-context config-bar-context--${contextLevel}`}
+          title={latestUsage?.contextTokensUsed != null && latestUsage.contextWindow
+            ? `${latestUsage.contextTokensUsed.toLocaleString()} of ${latestUsage.contextWindow.toLocaleString()} tokens in context`
+            : "context used"}
+        >
+          {contextPercent} ctx
+        </span>
+      ),
+    });
+  }
+  if (totalCost != null && totalCost > 0 && shows("cost")) {
+    strip.push({ key: "cost", node: <span className="config-bar-value">${totalCost.toFixed(3)}</span> });
+  }
+  if (shows("tokens")) {
+    const tokens = (latestUsage?.inputTokens ?? 0) + (latestUsage?.outputTokens ?? 0);
+    if (tokens > 0) {
+      strip.push({
+        key: "tokens",
+        node: <span className="config-bar-value" title="last turn">{tokens.toLocaleString()} tok</span>,
+      });
+    }
+  }
+  if (overrideCount > 0 && shows("overrides")) {
+    strip.push({
+      key: "overrides",
+      node: <span className="config-bar-overrides">{overrideCount} override{overrideCount > 1 ? "s" : ""}</span>,
+    });
+  }
+  // Not selectable: this only appears in a non-default permission mode, which is
+  // a safety signal rather than a readout to switch off.
+  if (showPermissionMode) {
+    strip.push({ key: "permission", node: <span className="config-bar-permission">{claudePermissionMode}</span> });
+  }
+
   return (
     <div className={`config-bar ${open ? "config-bar--open" : ""}`} ref={barRef}>
       <div className="config-bar-header" onClick={() => setOpen(!open)}>
@@ -261,55 +364,12 @@ export function ConfigBar({
           <path d="M2.5 6.5L5 4L7.5 6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
         </svg>
         <div className="config-bar-items">
-          {profileName && (
-            <div className="config-bar-profile-wrap">
-              <span className={`config-status-dot ${status || "idle"}`} />
-              <span className="config-bar-label">{profileName}</span>
-            </div>
-          )}
-          {hasPendingProfile && (
-            <span className="config-bar-overrides">next: {pendingProfileName}</span>
-          )}
-          {model && (
-            <>
-              <span className="config-bar-sep">·</span>
-              <span className="config-bar-value">{shortModel(model)}</span>
-            </>
-          )}
-          <span className="config-bar-sep">·</span>
-          <span className="config-bar-value">
-            {toolSummary}
-          </span>
-          <span className="config-bar-sep">·</span>
-          {isCodexProvider(effectiveProvider) && (
-            <>
-              <span className="config-bar-value">{codexControls.serviceTier ?? "speed:auto"}</span>
-              <span className="config-bar-sep">·</span>
-              <span className="config-bar-value">{codexControls.webSearchMode ?? "web:auto"}</span>
-              <span className="config-bar-sep">·</span>
-            </>
-          )}
-          {isAntigravityProvider(effectiveProvider) && (
-            <>
-              <span className="config-bar-value">{antigravityControls.mode ?? "accept-edits"}</span>
-              <span className="config-bar-sep">·</span>
-              <span className="config-bar-value">{antigravityControls.sandbox === undefined ? "sandbox:default" : antigravityControls.sandbox ? "sandbox:on" : "sandbox:off"}</span>
-              <span className="config-bar-sep">·</span>
-            </>
-          )}
-          {isGrokBuildProvider(effectiveProvider) && (
-            <>
-              <span className="config-bar-value">{grokBuildControls.mode ?? "default"}</span>
-              <span className="config-bar-sep">Â·</span>
-            </>
-          )}
-          <span className="config-bar-value">{effort}</span>
-          {overrideCount > 0 && (
-            <span className="config-bar-overrides">{overrideCount} override{overrideCount > 1 ? "s" : ""}</span>
-          )}
-          {showPermissionMode && (
-            <span className="config-bar-permission">{claudePermissionMode}</span>
-          )}
+          {strip.map((item, index) => (
+            <Fragment key={item.key}>
+              {index > 0 && <span className="config-bar-sep">·</span>}
+              {item.node}
+            </Fragment>
+          ))}
         </div>
         {sessionId && (
           <button

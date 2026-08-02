@@ -290,8 +290,11 @@
   font-style: italic;
   font-size: calc(9px * var(--font-scale, 1));
 }
-.meta-duration-elapsed {
-  color: var(--text-muted);
+/* Live turn timer, shown beside the scramble until the result event lands. */
+.meta-elapsed-live {
+  margin-left: auto;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
 }
 .meta-tokens {
   font-size: calc(9px * var(--font-scale, 1));

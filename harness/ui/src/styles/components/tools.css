@@ -311,3 +311,86 @@
   border-radius: 4px;
   background: var(--bg);
 }
+
+/* ── Tool run group ──
+   One collapsed header standing in for a run of consecutive tool calls. The
+   same header renders whether the payload is loaded or still deferred, so a
+   long run reads the same live and after a reload. */
+.tool-run {
+  margin: 4px 0 2px;
+}
+.tool-run-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.tool-run-header:hover {
+  background: var(--bg-raised);
+  color: var(--text-secondary);
+}
+.tool-run-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.12s ease;
+  align-self: center;
+}
+.tool-run--open .tool-run-chevron {
+  transform: rotate(90deg);
+}
+.tool-run-label {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.tool-run-thinking {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.tool-run-tally {
+  color: var(--text-muted);
+  font-size: calc(10px * var(--font-scale, 1));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-run-state {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--font-scale, 1));
+  font-style: italic;
+}
+.tool-run-state--error {
+  color: var(--error-soft);
+  font-style: normal;
+}
+/* Collapse by grid row so the header never moves and nothing is unmounted. */
+.tool-run-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.16s ease;
+}
+.tool-run-collapse--open {
+  grid-template-rows: 1fr;
+}
+.tool-run-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+.tool-run-body {
+  padding-left: 9px;
+  border-left: 1px solid var(--border);
+  margin-left: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-run-collapse { transition: none; }
+}

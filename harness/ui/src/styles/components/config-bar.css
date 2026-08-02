@@ -73,6 +73,17 @@
 .config-bar-value {
   color: var(--text-muted);
 }
+/* Context fill reads at a glance: muted until it starts to matter, then it
+   warms. Inline color rather than a badge, so a full bar stays scannable. */
+.config-bar-context {
+  font-variant-numeric: tabular-nums;
+}
+.config-bar-context--high {
+  color: var(--warning);
+}
+.config-bar-context--critical {
+  color: var(--error-soft);
+}
 .config-bar-sep {
   margin: 0 8px;
   color: var(--border-active);

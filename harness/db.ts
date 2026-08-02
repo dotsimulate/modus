@@ -1,6 +1,12 @@
 import { Database } from "bun:sqlite";
 import { resolveDatabasePath } from "./database-paths";
-import { reconstructSessionTurns, summarizeContentBlocks, type SessionHistoryEventRow } from "./session-history";
+import {
+  estimateTurnDetailBytes,
+  reconstructSessionTurns,
+  summarizeContentBlocks,
+  type SessionHistoryEventRow,
+} from "./session-history";
+import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
 
 const DB_PATH = resolveDatabasePath("harness.db");
 const db = new Database(DB_PATH);
@@ -401,7 +407,13 @@ export type TurnContentBlock =
   | { type: "text"; text?: string; textStart?: number; textEnd?: number }
   | { type: "thinking"; thinking: string }
   | { type: "tool_call"; toolCall: TurnToolCall }
-  | { type: "deferred"; hasThinking: boolean; toolCallCount: number };
+  | {
+      type: "deferred";
+      hasThinking: boolean;
+      toolCallCount: number;
+      /** Tool name → count, so a deferred run renders the same header as a loaded one. */
+      toolNames: Record<string, number>;
+    };
 
 export type TurnContent = {
   role: "user" | "assistant";
@@ -413,6 +425,16 @@ export type TurnContent = {
   contentBlocks?: TurnContentBlock[];
   uuid?: string;
   artifacts?: SessionArtifactValue[];
+  /**
+   * Usage for the turn, reconstructed from its `result` event. Assistant turns
+   * only, and absent when the turn never completed.
+   */
+  meta?: TurnMeta;
+  /** Heavy thinking/tool payload was intentionally omitted from a summary page. */
+  detailsDeferred?: boolean;
+  deferredToolCallCount?: number;
+  /** Whether the omitted payload included thinking. Sent, never inferred. */
+  deferredHasThinking?: boolean;
   timestamp: number;
 };
 
@@ -1250,6 +1272,17 @@ function parseToolCalls(raw: string | null): TurnContent["toolCalls"] | undefine
   }
 }
 
+/**
+ * Turns whose thinking + tool payload exceeds this ship as a placeholder the
+ * client expands on demand. Chosen so an ordinary coding turn — a handful of
+ * file reads and edits — travels whole, while a turn carrying megabytes of tool
+ * output does not. The initial history load is unbounded (`limit: "all"`), so
+ * this is the only thing standing between a long session and its entire tool
+ * transcript; it is a per-turn decision on purpose, so the same turn always
+ * renders the same way regardless of what else is on the page.
+ */
+const DETAIL_DEFER_BYTES = 32_768;
+
 type SessionHistoryPageOptions = {
   limit?: number;
   beforeSeq?: number;
@@ -1262,17 +1295,38 @@ type SessionTurnsPage = {
   hasMore: boolean;
 };
 
+/**
+ * Cost, duration, model, and turn count were already columns on every
+ * materialized assistant message; only the token and context figures need the
+ * turn's `result` event. Reading them here means a session still shows its
+ * stats when its events have aged out from under it.
+ */
+function messageRowMeta(row: MessageRow): TurnMeta | undefined {
+  if (row.role !== "assistant") return undefined;
+  const meta: TurnMeta = {
+    ...(row.cost_usd != null ? { cost: row.cost_usd } : {}),
+    ...(row.duration_ms != null ? { duration: row.duration_ms } : {}),
+    ...(row.model ? { model: row.model } : {}),
+    ...(row.turns != null ? { turns: row.turns } : {}),
+  };
+  return hasTurnStats(meta) ? meta : undefined;
+}
+
 function messageRowsToTurns(rows: MessageRow[]): TurnContent[] {
   if (rows.length === 0) return [];
-  return rows.map((row) => ({
-    role: row.role === "assistant" ? "assistant" : "user",
-    seq: row.seq ?? 0,
-    text: row.content,
-    ...(row.thinking ? { thinking: row.thinking } : {}),
-    ...(row.uuid ? { uuid: row.uuid } : {}),
-    ...(parseToolCalls(row.tool_calls_json) ? { toolCalls: parseToolCalls(row.tool_calls_json) } : {}),
-    timestamp: row.created_at,
-  }));
+  return rows.map((row) => {
+    const meta = messageRowMeta(row);
+    return {
+      role: row.role === "assistant" ? "assistant" : "user",
+      seq: row.seq ?? 0,
+      text: row.content,
+      ...(row.thinking ? { thinking: row.thinking } : {}),
+      ...(row.uuid ? { uuid: row.uuid } : {}),
+      ...(parseToolCalls(row.tool_calls_json) ? { toolCalls: parseToolCalls(row.tool_calls_json) } : {}),
+      ...(meta ? { meta } : {}),
+      timestamp: row.created_at,
+    };
+  });
 }
 
 function getSessionMessagesFromMessageTable(
@@ -1309,6 +1363,7 @@ function getSessionMessagesFromMessageTable(
 function getSessionMessagesFromEvents(
   sessionId: string,
   options: SessionHistoryPageOptions = {},
+  fallbackModel = "",
 ): SessionTurnsPage {
   const limit = options.limit;
   if (!limit) {
@@ -1317,7 +1372,7 @@ function getSessionMessagesFromEvents(
        WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
        ORDER BY seq ASC`
     ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
-    return { turns: reconstructSessionTurns(events), hasMore: false };
+    return { turns: reconstructSessionTurns(events, fallbackModel), hasMore: false };
   }
 
   // Event-only legacy/interrupted sessions can contain tens of thousands of
@@ -1357,7 +1412,55 @@ function getSessionMessagesFromEvents(
     WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt' AND seq < $cutoff
     LIMIT 1
   `).get({ $sid: sessionId, $cutoff: cutoff.seq }) as { found: number } | null;
-  return { turns: reconstructSessionTurns(events), hasMore: !!older };
+  return { turns: reconstructSessionTurns(events, fallbackModel), hasMore: !!older };
+}
+
+/**
+ * Fill in the token and context figures the `messages` table has no columns for.
+ *
+ * Both history paths key an assistant turn on the seq of the event that closed
+ * it, but an interrupted turn is materialized at the interrupt's seq — before
+ * its own `result` arrives. So each result claims the newest assistant turn at
+ * or before it rather than requiring an exact seq match. Values already read
+ * from message columns survive anything the event does not report.
+ */
+function attachResultEventMeta(
+  sessionId: string,
+  turns: TurnContent[],
+  fallbackModel: string,
+): TurnContent[] {
+  const assistants: number[] = [];
+  for (let i = 0; i < turns.length; i++) {
+    if (turns[i]!.role === "assistant") assistants.push(i);
+  }
+  if (assistants.length === 0) return turns;
+
+  const rows = db.prepare(
+    `SELECT seq, data FROM events
+     WHERE session_id = $sid AND type = 'result' AND seq >= $min
+     ORDER BY seq ASC`
+  ).all({ $sid: sessionId, $min: turns[assistants[0]!]!.seq }) as { seq: number; data: string }[];
+  if (rows.length === 0) return turns;
+
+  const next = [...turns];
+  let cursor = 0;
+  for (const row of rows) {
+    let target = -1;
+    while (cursor < assistants.length && next[assistants[cursor]!]!.seq <= row.seq) {
+      target = assistants[cursor]!;
+      cursor++;
+    }
+    if (target < 0) continue;
+    let parsed: unknown;
+    try { parsed = JSON.parse(row.data); } catch { continue; }
+    const meta = turnMetaFromResultEvent(parsed, fallbackModel);
+    if (!hasTurnStats(meta)) continue;
+    const reported = Object.fromEntries(
+      Object.entries(meta).filter(([, value]) => value !== undefined),
+    ) as TurnMeta;
+    next[target] = { ...next[target]!, meta: { ...next[target]!.meta, ...reported } };
+  }
+  return next;
 }
 
 // ── Draft Functions ──
@@ -1888,14 +1991,22 @@ export function getSessionMessageHistory(
   ).get({ $sid: sessionId }) as { count: number };
   const useEventHistory = options.preserveEventSequence || semanticCount.count === 0
     || (rawAssistant.max_seq ?? 0) > (semanticAssistant.max_seq ?? 0);
-  const eventPage = useEventHistory ? getSessionMessagesFromEvents(sessionId, options) : null;
+  // Providers that emit no modelUsage leave the turn's model unnamed; the
+  // session's own model is the only honest fallback.
+  const sessionModel = (db.prepare(`SELECT model FROM sessions WHERE id = $sid`)
+    .get({ $sid: sessionId }) as { model: string | null } | null)?.model ?? "";
+  const eventPage = useEventHistory ? getSessionMessagesFromEvents(sessionId, options, sessionModel) : null;
   // Some very old sessions only retained semantic rows. Preserve their text
   // rather than returning an empty event-sequence page.
   const page = eventPage && eventPage.turns.length > 0
     ? eventPage
     : getSessionMessagesFromMessageTable(sessionId, options);
-  const turns = page.turns;
   const recoveredFromEvents = !!eventPage && eventPage.turns.length > 0;
+  // The event path already read each result as it closed a turn; only the
+  // message-table path needs its token and context figures filled in.
+  const turns = recoveredFromEvents
+    ? page.turns
+    : attachResultEventMeta(sessionId, page.turns, sessionModel);
 
   const messages = turns.map((turn) => {
     if (turn.role !== "assistant") return turn;
@@ -1916,14 +2027,21 @@ export function getSessionMessageHistory(
     return artifacts.length > 0 ? { ...turn, artifacts } : turn;
   }).map((turn) => {
     if (options.includeDetails !== false || turn.role !== "assistant") return turn;
+    // Defer on weight, not on presence. This used to trigger on any thinking or
+    // any single tool call, which meant a 455-byte turn and a 4MB turn were
+    // treated identically and effectively every message in a loaded session
+    // became a "load N tool calls" button. Below the threshold a turn ships
+    // whole and renders exactly as it did live.
+    if (estimateTurnDetailBytes(turn) < DETAIL_DEFER_BYTES) return turn;
     const deferredToolCallCount = turn.toolCalls?.length ?? 0;
-    const detailsDeferred = !!turn.thinking || deferredToolCallCount > 0;
-    if (!detailsDeferred) return turn;
     const { thinking: _thinking, toolCalls: _toolCalls, ...summary } = turn;
     return {
       ...summary,
       ...(turn.contentBlocks ? { contentBlocks: summarizeContentBlocks(turn.contentBlocks) } : {}),
       detailsDeferred: true,
+      // Sent rather than inferred: the client used to guess thinking from the
+      // absence of tool calls, which is wrong for any turn that had both.
+      deferredHasThinking: !!turn.thinking,
       ...(deferredToolCallCount > 0 ? { deferredToolCallCount } : {}),
     };
   });

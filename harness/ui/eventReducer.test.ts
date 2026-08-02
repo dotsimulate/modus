@@ -243,3 +243,38 @@ describe("tool result content", () => {
     expect(tool?.resultFullLength).toBe(TOOL_RESULT_STORE_LIMIT + 1234);
   });
 });
+
+describe("eventReducer turn stats", () => {
+  const result = {
+    type: "result",
+    subtype: "success",
+    total_cost_usd: 0.2,
+    harness_duration_ms: 5_000,
+    num_turns: 1,
+    context_window: 200_000,
+    context_percent: 31,
+  };
+
+  test("attaches stats to the assistant turn a system divider was appended after", () => {
+    let state = createInitialState("ses-test");
+    state.messages.push({ id: "a1", role: "assistant", content: "partial", timestamp: 1 });
+    // Interrupting appends a divider before the provider's result arrives.
+    state = reduceEvent(state, { type: "system", subtype: "interrupted" }, 2);
+    state = reduceEvent(state, { ...result, subtype: "interrupted" }, 3);
+
+    const assistant = state.messages.find((m) => m.id === "a1");
+    expect(assistant?.meta).toMatchObject({ cost: 0.2, duration: 5_000, contextPercent: 31 });
+    // The divider stays where it was.
+    expect(state.messages.at(-1)?.role).toBe("system");
+  });
+
+  test("does not reach back past the user prompt of a turn that produced nothing", () => {
+    let state = createInitialState("ses-test");
+    state.messages.push({ id: "a1", role: "assistant", content: "answered", timestamp: 1 });
+    state = reduceEvent(state, result, 2);
+    state.messages.push({ id: "u2", role: "user", content: "next", timestamp: 3 });
+    state = reduceEvent(state, { ...result, total_cost_usd: 9 }, 4);
+
+    expect(state.messages.find((m) => m.id === "a1")?.meta?.cost).toBe(0.2);
+  });
+});

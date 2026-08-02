@@ -59,9 +59,9 @@ describe("incomplete semantic history recovery", () => {
       { type: "tool_call", toolCall: { id: "b", name: "Edit", input: {} } },
       { type: "text", text: "after" },
     ])).toEqual([
-      { type: "deferred", hasThinking: true, toolCallCount: 0 },
+      { type: "deferred", hasThinking: true, toolCallCount: 0, toolNames: {} },
       { type: "text", textStart: 0, textEnd: 6 },
-      { type: "deferred", hasThinking: false, toolCallCount: 2 },
+      { type: "deferred", hasThinking: false, toolCallCount: 2, toolNames: { Read: 1, Edit: 1 } },
       { type: "text", textStart: 6, textEnd: 11 },
     ]);
   });

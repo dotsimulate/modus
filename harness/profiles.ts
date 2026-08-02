@@ -337,6 +337,12 @@ export type UserInterfaceConfig = {
     toolCalls?: ToolCallDisplayMode;
     showGitEvents?: boolean;
     showFileChanges?: boolean;
+    /** Let the harness withhold very large tool payloads until asked. */
+    deferHeavyDetails?: boolean;
+  };
+  /** Which readouts the session config bar shows. Omit for the defaults. */
+  configBar?: {
+    items?: string[];
   };
   motion?: "system" | "reduced";
 };

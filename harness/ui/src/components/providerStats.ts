@@ -1,4 +1,25 @@
-import type { Message } from "../../../sdk/index";
+import type { Message, TurnMeta } from "../../../sdk/index";
+
+/**
+ * Context fill as a whole-number percentage, or null when the provider does not
+ * report it. Only the Claude and PI families carry the figures today, so a null
+ * here means "unreported", never "empty" — callers omit the readout rather than
+ * showing a fabricated 0%.
+ */
+export function formatContextPercent(meta: TurnMeta | null | undefined): string | null {
+  if (!meta?.contextWindow) return null;
+  if (meta.contextPercent != null) return `${Math.round(meta.contextPercent)}%`;
+  if (meta.contextTokensUsed == null || meta.contextTokensUsed <= 0) return null;
+  return `${Math.round((meta.contextTokensUsed / meta.contextWindow) * 100)}%`;
+}
+
+/** Numeric context fill, for threshold styling. Null when unreported. */
+export function contextFillRatio(meta: TurnMeta | null | undefined): number | null {
+  if (!meta?.contextWindow) return null;
+  if (meta.contextPercent != null) return meta.contextPercent / 100;
+  if (meta.contextTokensUsed == null || meta.contextTokensUsed <= 0) return null;
+  return meta.contextTokensUsed / meta.contextWindow;
+}
 
 function fmtCompact(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
