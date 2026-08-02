@@ -62,3 +62,28 @@ describe("PIN throttling", () => {
     expect((throttle as any).sources.size).toBe(0);
   });
 });
+
+describe("tailnet (CGNAT) origins", () => {
+  const tailnet = { port: 3777, requestHost: "100.90.203.96:3777" };
+
+  test("allows a raw tailnet IP origin on the harness port with a matching Host", () => {
+    expect(isAllowedBrowserOrigin("http://100.90.203.96:3777", tailnet)).toBe(true);
+  });
+
+  test("rejects a tailnet origin whose Host header does not match", () => {
+    expect(isAllowedBrowserOrigin("http://100.90.203.96:3777", { port: 3777, requestHost: "127.0.0.1:3777" })).toBe(false);
+  });
+
+  test("rejects a tailnet origin on the wrong port", () => {
+    expect(isAllowedBrowserOrigin("http://100.90.203.96:9999", tailnet)).toBe(false);
+  });
+
+  test("rejects CGNAT-adjacent addresses outside 100.64.0.0/10", () => {
+    expect(isAllowedBrowserOrigin("http://100.63.0.1:3777", { port: 3777, requestHost: "100.63.0.1:3777" })).toBe(false);
+    expect(isAllowedBrowserOrigin("http://100.128.0.1:3777", { port: 3777, requestHost: "100.128.0.1:3777" })).toBe(false);
+  });
+
+  test("rejects https on a tailnet IP (TLS remote access is the MagicDNS path)", () => {
+    expect(isAllowedBrowserOrigin("https://100.90.203.96", { port: 3777, requestHost: "100.90.203.96" })).toBe(false);
+  });
+});

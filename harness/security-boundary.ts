@@ -44,6 +44,17 @@ function isPrivateIpv4(hostname: string): boolean {
     || (parts[0] === 192 && parts[1] === 168);
 }
 
+// Tailscale addresses come from CGNAT space (100.64.0.0/10), which is
+// deliberately NOT part of isPrivateIpv4 — it is not RFC1918 and mislabeling
+// it there would leak the assumption into every future caller. A raw tailnet
+// IP is only reachable when the operator explicitly binds the harness beyond
+// loopback, and then it deserves the same treatment as a LAN address.
+function isTailnetIpv4(hostname: string): boolean {
+  const parts = hostname.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127;
+}
+
 function hostWithoutDefaultPort(host: string): string {
   return host.toLowerCase().replace(/:80$/, "").replace(/:443$/, "");
 }
@@ -71,7 +82,7 @@ export function isAllowedBrowserOrigin(origin: string, options: OriginOptions): 
   if (url.protocol === "https:" && hostname.endsWith(".ts.net") && effectivePort === 443) {
     return sameRequestHost;
   }
-  if (url.protocol === "http:" && effectivePort === options.port && (isPrivateIpv4(hostname) || hostname.endsWith(".local"))) {
+  if (url.protocol === "http:" && effectivePort === options.port && (isPrivateIpv4(hostname) || isTailnetIpv4(hostname) || hostname.endsWith(".local"))) {
     return sameRequestHost;
   }
   return false;
