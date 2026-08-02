@@ -148,6 +148,13 @@ const UserInterfaceConfigSchema = z.object({
     toolCalls: z.enum(["expanded", "collapsed", "hidden"]).optional(),
     showGitEvents: z.boolean().optional(),
     showFileChanges: z.boolean().optional(),
+    deferHeavyDetails: z.boolean().optional(),
+  }).optional(),
+  // Item ids are validated in the client against its own catalog, so a config
+  // written for a newer build stays loadable here instead of failing the whole
+  // profile.
+  configBar: z.object({
+    items: z.array(z.string()).optional(),
   }).optional(),
   motion: z.enum(["system", "reduced"]).optional(),
 });

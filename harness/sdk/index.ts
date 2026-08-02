@@ -30,6 +30,7 @@ export type {
   SendMessageOpts,
   SteerResult,
   TurnContent,
+  TurnMeta,
   TurnContentBlock,
   SessionHistorySnapshot,
   BranchPreview,

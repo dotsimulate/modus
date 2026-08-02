@@ -1,4 +1,5 @@
 import type { TurnContent, TurnContentBlock, TurnToolCall } from "./db";
+import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
 
 export type SessionHistoryEventRow = {
   seq: number;
@@ -8,9 +9,34 @@ export type SessionHistoryEventRow = {
   created_at: number;
 };
 
+/**
+ * A turn is only worth deferring if its payload is actually large.
+ *
+ * Sums the fields that dominate a serialized turn without building the string —
+ * deciding not to ship four megabytes should not cost four megabytes of
+ * stringify first. Approximate on purpose: this picks a side of a threshold, it
+ * is not accounting.
+ */
+export function estimateTurnDetailBytes(turn: TurnContent): number {
+  let bytes = turn.thinking?.length ?? 0;
+  for (const toolCall of turn.toolCalls ?? []) {
+    bytes += toolCall.name.length + (toolCall.result?.length ?? 0);
+    for (const [key, value] of Object.entries(toolCall.input ?? {})) {
+      // Non-strings are bounded and small once serialized; a flat estimate
+      // keeps this O(fields) instead of recursing arbitrary JSON.
+      bytes += key.length + (typeof value === "string" ? value.length : 32);
+    }
+  }
+  return bytes;
+}
+
 /** Keep text positions while replacing contiguous heavy provider blocks with
  * lightweight placeholders. Text uses offsets into TurnContent.text so the
- * summary response does not send the complete conversation twice. */
+ * summary response does not send the complete conversation twice.
+ *
+ * The placeholder carries a per-tool-name tally so a deferred run can render the
+ * same collapsed header as a loaded one — the user sees the same summary line
+ * either way, and expanding is what differs. */
 export function summarizeContentBlocks(blocks: TurnContentBlock[]): TurnContentBlock[] {
   const summary: TurnContentBlock[] = [];
   let textOffset = 0;
@@ -29,9 +55,13 @@ export function summarizeContentBlocks(blocks: TurnContentBlock[]): TurnContentB
       textOffset += textLength;
       continue;
     }
-    if (!deferred) deferred = { type: "deferred", hasThinking: false, toolCallCount: 0 };
+    if (!deferred) deferred = { type: "deferred", hasThinking: false, toolCallCount: 0, toolNames: {} };
     if (block.type === "thinking") deferred.hasThinking = true;
-    if (block.type === "tool_call") deferred.toolCallCount++;
+    if (block.type === "tool_call") {
+      deferred.toolCallCount++;
+      const name = block.toolCall.name;
+      deferred.toolNames[name] = (deferred.toolNames[name] ?? 0) + 1;
+    }
   }
   flushDeferred();
   return summary;
@@ -55,8 +85,17 @@ export function shouldRecoverSessionHistory(
   return latestRawAssistantSeq > latestSemanticAssistantSeq;
 }
 
-/** Rebuild user/assistant turns from durable non-stream events. */
-export function reconstructSessionTurns(events: SessionHistoryEventRow[]): TurnContent[] {
+/**
+ * Rebuild user/assistant turns from durable non-stream events.
+ *
+ * `result` events close a turn *and* carry its usage. Reading only the boundary
+ * and discarding the payload is what used to make a reloaded session lose every
+ * cost, token, and context figure it had shown while streaming.
+ */
+export function reconstructSessionTurns(
+  events: SessionHistoryEventRow[],
+  fallbackModel = "",
+): TurnContent[] {
   const turns: TurnContent[] = [];
   let current: {
     text: string;
@@ -141,7 +180,8 @@ export function reconstructSessionTurns(events: SessionHistoryEventRow[]): TurnC
     }
 
     if (evt.type === "result" && current) {
-      turns.push(materializeAssistantTurn(current, evt.seq));
+      const meta = turnMetaFromResultEvent(d, fallbackModel);
+      turns.push(materializeAssistantTurn(current, evt.seq, hasTurnStats(meta) ? meta : undefined));
       current = null;
     }
   }
@@ -163,6 +203,7 @@ function materializeAssistantTurn(
     uuid?: string;
   },
   seq: number,
+  meta?: TurnMeta,
 ): TurnContent {
   const turn: TurnContent = {
     role: "assistant",
@@ -170,6 +211,7 @@ function materializeAssistantTurn(
     text: current.text,
     timestamp: current.timestamp,
     ...(current.uuid ? { uuid: current.uuid } : {}),
+    ...(meta ? { meta } : {}),
   };
   if (current.thinking) turn.thinking = current.thinking;
   if (current.toolCalls.size > 0) {

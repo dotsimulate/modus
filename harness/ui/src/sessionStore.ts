@@ -13,6 +13,7 @@ import {
   multiSubscribe, multiReconnect, multiRekey, multiUnsubscribeAll,
 } from "./multiEventStream";
 import { nextMsgId, type Session, type SessionHistorySnapshot, type TurnContent } from "../../sdk/index";
+import { readLocalInterfaceSettings } from "./interface-settings";
 
 // ── Store State ──
 
@@ -42,6 +43,18 @@ export type SessionHistoryLoadState = {
   loadingOlder: boolean;
   olderError?: string;
 };
+
+/**
+ * Whether to let the harness withhold very large tool payloads.
+ *
+ * Read from the local settings copy rather than a React context because the
+ * fetch happens outside the tree, and that copy is already the pre-mount source
+ * of truth for interface settings. Turning the setting off asks for the whole
+ * transcript up front, which is a reasonable trade on a local-first app.
+ */
+function historyDetailMode(): "full" | "summary" {
+  return readLocalInterfaceSettings().conversation.deferHeavyDetails ? "summary" : "full";
+}
 
 const HISTORY_FETCH_TIMEOUT_MS = 30_000;
 // Six-ish user/assistant exchanges is enough to paint useful context quickly;
@@ -128,9 +141,11 @@ function messageFromTurn(sessionId: string, turn: TurnContent): ReducerState["me
     ...(turn.seq ? { seq: turn.seq } : {}),
     ...(turn.timestamp ? { timestamp: turn.timestamp } : {}),
     ...(turn.artifacts ? { artifacts: turn.artifacts } : {}),
+    ...(turn.meta ? { meta: turn.meta } : {}),
     ...(contentBlocks?.length ? { contentBlocks } : {}),
     ...(turn.detailsDeferred ? { detailsDeferred: true } : {}),
     ...(turn.deferredToolCallCount ? { deferredToolCallCount: turn.deferredToolCallCount } : {}),
+    ...(turn.deferredHasThinking ? { deferredHasThinking: true } : {}),
     ...(turn.toolCalls ? {
       toolCalls: turn.toolCalls.map((toolCall, index) => ({
         id: `${sessionId}:${turn.seq}:tool:${index}`,
@@ -237,7 +252,7 @@ export async function loadOlderSessionHistory(sessionId: string): Promise<void> 
     const snapshotData = await modus.getSessionHistorySnapshot(sessionId, {
       limit: HISTORY_PAGE_SIZE,
       beforeSeq,
-      details: "summary",
+      details: historyDetailMode(),
     });
     const current = sessions.get(sessionId);
     if (!current) return;
@@ -292,7 +307,9 @@ export async function loadSessionMessageDetails(sessionId: string, seq: number):
         ? {
             ...messageFromTurn(sessionId, turn),
             id: previous.id,
-            meta: previous.meta,
+            // A live turn's meta is the richer one; only fall through to the
+            // detail response for a message hydrated from history.
+            ...(previous.meta ? { meta: previous.meta } : {}),
             detailsDeferred: false,
             detailsLoading: false,
             detailsError: undefined,
@@ -701,7 +718,7 @@ async function fetchHistorySnapshotWithTimeout(sessionId: string): Promise<Sessi
       // Text and user prompts are lightweight and must remain complete and
       // chronologically intelligible. Only thinking/tool bodies are deferred.
       limit: "all",
-      details: "summary",
+      details: historyDetailMode(),
     });
   } finally {
     clearTimeout(timer);

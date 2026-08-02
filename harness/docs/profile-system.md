@@ -91,11 +91,12 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 ### Key Fields
 
 **`provider`**: Execution backend. The built-ins are `"claude-code"`,
-`"claude-code-pty"`, `"codex"`, `"cursor"`, `"antigravity"`,
+`"claude-code-pty"`, `"codex"`, `"cursor"`,
 `"grok-build"`, `"opencode"`, `"openai-compat"`, `"ollama"`, and
 `"openrouter"`. User-global and plugin declarative providers extend this set at
 runtime. Legacy `"litellm"` remains accepted as an alias of
-`"openai-compat"`.
+`"openai-compat"`. `"antigravity"` and `"gemini-cli"` are also valid here but do
+not appear in any picker — see `providers.md` § Hidden providers.
 
 **`cwd`**: Pins the profile to a fixed working directory. Any agent profile may
 set it, not just plugin profiles — it is a plain optional string
@@ -184,6 +185,54 @@ Project profiles always appear. Manifest-integrated plugin profiles appear
 unless their qualified key is in `hiddenPluginProfiles`.
 
 **`projects`**: Working directories available in the CWD picker.
+
+**`interface`**: Chat and conversation display, written by the in-app settings
+rather than by hand. Resolved in `harness/ui/src/interface-settings.ts`, which
+also holds the defaults.
+
+```json
+{
+  "interface": {
+    "chat": { "fontScale": 100, "chatWidth": 840, "spineEnabled": true },
+    "conversation": {
+      "showThinking": true,
+      "showMeta": true,
+      "toolCalls": "collapsed",
+      "showGitEvents": false,
+      "showFileChanges": true,
+      "deferHeavyDetails": true
+    },
+    "configBar": { "items": ["profile", "model", "tools", "controls", "effort", "context", "overrides"] },
+    "motion": "system"
+  }
+}
+```
+
+`conversation.showMeta` controls the per-message stats row (model, cost, tokens,
+context %, timing).
+
+`conversation.toolCalls` governs how tool calls render. In `"collapsed"` a run of
+five or more consecutive calls on a *completed* turn folds into one header
+showing the count and a per-tool tally; the streaming turn stays flat so work in
+progress is still visible. `"expanded"` opts out of grouping entirely and
+`"hidden"` suppresses tool calls.
+
+`conversation.deferHeavyDetails` (default `true`) lets the harness withhold a
+turn's thinking and tool payload when it exceeds ~32KB, sending a placeholder the
+client expands on demand. Lighter turns always travel whole, so they render
+identically to how they rendered live. Turning it off requests complete history
+up front — reasonable on a local-first install, where the cost is browser memory
+rather than bandwidth.
+
+`configBar.items` selects which readouts the bar above the composer shows; the available ids are `profile`, `model`, `tools`, `controls`,
+`effort`, `context`, `cost`, `tokens`, `overrides`, and unknown ids are ignored.
+Omitting `items` uses the defaults — an explicit `[]` means show nothing. The
+Claude permission-mode badge is not selectable: it only appears in a non-default
+permission mode and is a safety signal.
+
+Context percentage comes from the provider's `result` event, so it only appears
+for providers that report it (the Claude and PI families). Others omit the
+readout rather than showing an estimate.
 
 **`dashboard`**: Optional layout config. `widgets?: Array<{type, ...}>` is the legacy flat list. `pages?: Array<{id, title, blocks[]}>` adds named pages; each block is one of:
 - `{ kind: "widget", widget: { type, ... } }` — embeds a widget

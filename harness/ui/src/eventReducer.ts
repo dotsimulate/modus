@@ -10,6 +10,7 @@ import type {
   Attachment, PendingPermission, SessionArtifact, MessageContentBlock,
 } from "../../sdk/index";
 import { nextMsgId } from "../../sdk/index";
+import { turnMetaFromResultEvent } from "../../turn-meta";
 import { userAuthoredMessageText } from "./move-context";
 
 export type ReducerState = {
@@ -559,6 +560,41 @@ function readProviderControls(providerControls: any): AgentConfigState["provider
 // ── Assistant Messages ──
 // Contains text, thinking, and tool_use content blocks
 
+/**
+ * Can this assistant event join the previous bubble?
+ *
+ * One turn is one bubble. The only thing that closes a bubble is the turn
+ * ending — `meta` is written by the result event — or something else being
+ * appended after it, which is handled by the role check.
+ *
+ * This deliberately does NOT break on a completed tool call. It used to, and
+ * that made a sequential agent loop render as one bubble per tool: every result
+ * arrives before the next call, so every call started a new message. History
+ * reconstruction has always accumulated the whole turn into one turn, so the
+ * same conversation had a completely different shape live and after a reload.
+ * See the pipeline-parity test in ui/turnShapeParity.test.ts.
+ */
+function canMergeIntoTurn(last: Message | undefined): boolean {
+  return last?.role === "assistant" && !last.meta;
+}
+
+/** Concatenate finalized text blocks, matching how `reconstructSessionTurns`
+ *  builds `TurnContent.text` — no separator, provider text carries its own. */
+function textFromBlocks(blocks: MessageContentBlock[] | undefined): string {
+  if (!blocks) return "";
+  let out = "";
+  for (const block of blocks) if (block.type === "text") out += block.text;
+  return out;
+}
+
+/** Same contract as textFromBlocks, for thinking. */
+function thinkingFromBlocks(blocks: MessageContentBlock[] | undefined): string {
+  if (!blocks) return "";
+  let out = "";
+  for (const block of blocks) if (block.type === "thinking") out += block.thinking;
+  return out;
+}
+
 function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
   const content = m.message?.content;
   if (!content || !Array.isArray(content)) return s;
@@ -638,21 +674,24 @@ function reduceAssistant(s: ReducerState, m: any, ts: number): ReducerState {
   const msgs = [...s.messages];
   const last = msgs[msgs.length - 1];
 
-  // A message with completed/errored tool calls is a finished turn — don't merge into it
-  const canMerge = last?.role === "assistant" && !last.meta
-    && !last.toolCalls?.some((tc) => tc.status !== "running");
+  const canMerge = canMergeIntoTurn(last);
 
   // Finalize thinking duration if thinking phase just ended
   const thinkingDuration = s._thinkingStartedAt ? ts - s._thinkingStartedAt : undefined;
 
   if (text || thinking || toolCalls.length > 0) {
     if (canMerge) {
+      // Derive the flat text/thinking from the merged blocks rather than
+      // overwriting with this round's. `content: text || last.content` was safe
+      // only while each bubble held one round — merging a whole turn into one
+      // bubble made a later round erase every earlier one.
+      const mergedBlocks = [...(last.contentBlocks ?? []), ...contentBlocks];
       msgs[msgs.length - 1] = {
         ...last,
-        content: text || last.content,
-        thinking: thinking || last.thinking,
+        content: textFromBlocks(mergedBlocks) || last.content,
+        thinking: thinkingFromBlocks(mergedBlocks) || last.thinking,
         toolCalls: [...(last.toolCalls ?? []), ...toolCalls],
-        contentBlocks: [...(last.contentBlocks ?? []), ...contentBlocks],
+        contentBlocks: mergedBlocks,
         ...(messageUuid && !last.uuid ? { uuid: messageUuid } : {}),
         ...(thinkingDuration != null && !last.thinkingDuration && { thinkingDuration }),
       };
@@ -950,18 +989,25 @@ function reduceStreamEvent(s: ReducerState, m: any, ts: number): ReducerState {
     }
 
     // ── Normal mode ──
+    // `_streamingText` holds only the round currently streaming; the rounds
+    // already finalized live in the bubble's contentBlocks. Now that a whole
+    // turn shares one bubble, the two have to be joined or each new round would
+    // visibly wipe the ones above it mid-turn.
     if (evt.delta.type === "text_delta" && evt.delta.text) {
       const newText = nextText(evt.delta.text);
       const feedText = nextFeedText(evt.delta.text);
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
-      const canMerge = last?.role === "assistant" && !last.meta
-        && !last.toolCalls?.some((tc) => tc.status !== "running");
+      const canMerge = canMergeIntoTurn(last);
       // Finalize thinking duration when text starts
       const thinkingDuration = s._thinkingStartedAt && !last?.thinkingDuration
         ? ts - s._thinkingStartedAt : undefined;
       if (canMerge) {
-        msgs[msgs.length - 1] = { ...last, content: newText, ...(thinkingDuration != null && { thinkingDuration }) };
+        msgs[msgs.length - 1] = {
+          ...last,
+          content: textFromBlocks(last.contentBlocks) + newText,
+          ...(thinkingDuration != null && { thinkingDuration }),
+        };
       } else {
         msgs.push({ id: nextMsgId(), role: "assistant", content: newText, timestamp: ts });
       }
@@ -972,10 +1018,9 @@ function reduceStreamEvent(s: ReducerState, m: any, ts: number): ReducerState {
       const startedAt = s._thinkingStartedAt ?? ts;
       const msgs = [...s.messages];
       const last = msgs[msgs.length - 1];
-      const canMerge = last?.role === "assistant" && !last.meta
-        && !last.toolCalls?.some((tc) => tc.status !== "running");
+      const canMerge = canMergeIntoTurn(last);
       if (canMerge) {
-        msgs[msgs.length - 1] = { ...last, thinking: newThinking };
+        msgs[msgs.length - 1] = { ...last, thinking: thinkingFromBlocks(last.contentBlocks) + newThinking };
       } else {
         msgs.push({ id: nextMsgId(), role: "assistant", content: "", thinking: newThinking, timestamp: ts });
       }
@@ -1004,31 +1049,34 @@ function reduceToolUseSummary(s: ReducerState, _m: any): ReducerState {
 
 // ── Result ──
 
-function pickPrimaryModel(modelUsage: Record<string, any> | undefined, fallback: string): string {
-  if (!modelUsage) return fallback;
-  const entries = Object.entries(modelUsage);
-  if (entries.length === 0) return fallback;
-  if (entries.length === 1) return entries[0][0];
-  let best = entries[0];
-  for (let i = 1; i < entries.length; i++) {
-    if ((entries[i][1]?.outputTokens ?? 0) > (best[1]?.outputTokens ?? 0)) {
-      best = entries[i];
-    }
+/**
+ * The assistant message this result closes.
+ *
+ * A turn does not always end on its own message: interrupting appends a
+ * `system` divider, and so do profile switches, compaction notices, and
+ * provider messages. Requiring the result to land on the literal last message
+ * silently dropped the stats for every one of those turns.
+ */
+function resultTargetIndex(msgs: Message[]): number {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === "system") continue;
+    return msgs[i].role === "assistant" && !msgs[i].meta ? i : -1;
   }
-  return best[0] || fallback;
+  return -1;
 }
 
 function reduceResult(s: ReducerState, m: any): ReducerState {
   const msgs = [...s.messages];
-  const last = msgs[msgs.length - 1];
+  const target = resultTargetIndex(msgs);
 
-  // Finalize the last assistant message with metadata
-  if (last?.role === "assistant" && !last.meta) {
+  // Finalize the assistant message this result closes with its metadata
+  if (target >= 0) {
+    const last = msgs[target];
     // Aggregate full-turn content: collect all assistant rounds since the last user message
     let turnText = "";
     let turnThinking = "";
     const turnToolCalls: ToolCall[] = [];
-    for (let i = msgs.length - 1; i >= 0; i--) {
+    for (let i = target; i >= 0; i--) {
       const msg = msgs[i];
       if (msg.role === "user") break;
       if (msg.role === "assistant" && !msg.meta) {
@@ -1041,40 +1089,13 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
     if (turnThinking) turnCopy.thinking = turnThinking;
     if (turnToolCalls.length > 0) turnCopy.toolCalls = turnToolCalls;
 
-    const modelName = pickPrimaryModel(m.modelUsage, s.model);
-
-    // Derive cache tokens from modelUsage (authoritative source, present in all Claude events)
-    // Fall back to top-level fields for newer events that already have them computed.
-    let cacheRead = m.cache_read_tokens ?? 0;
-    let cacheWrite = m.cache_write_tokens ?? 0;
-    let contextWindow = m.context_window ?? 0;
-    if (m.modelUsage && typeof m.modelUsage === "object") {
-      for (const model of Object.values(m.modelUsage) as any[]) {
-        if (cacheRead === 0) cacheRead += model?.cacheReadInputTokens ?? 0;
-        if (cacheWrite === 0) cacheWrite += model?.cacheCreationInputTokens ?? 0;
-        if (!contextWindow) contextWindow = model?.contextWindow ?? 0;
-      }
-    }
-
-    msgs[msgs.length - 1] = {
+    msgs[target] = {
       ...last,
       seq: s.lastSeq, // result event seq — used as branch point
       // Persist backend-measured thinking duration (survives refresh)
       ...(m.thinking_duration_ms != null && { thinkingDuration: m.thinking_duration_ms }),
       turnCopy,
-      meta: {
-        cost: m.total_cost_usd,
-        duration: m.harness_duration_ms,
-        model: modelName,
-        turns: m.num_turns,
-        inputTokens: m.input_tokens,
-        outputTokens: m.output_tokens,
-        cacheReadTokens: cacheRead,
-        cacheWriteTokens: cacheWrite,
-        contextWindow,
-        contextTokensUsed: m.context_tokens_used,
-        contextPercent: m.context_percent,
-      },
+      meta: turnMetaFromResultEvent(m, s.model),
     };
   }
 

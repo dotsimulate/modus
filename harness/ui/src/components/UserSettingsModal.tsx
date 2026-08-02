@@ -11,9 +11,11 @@ import { FolderPicker } from "./FolderPicker";
 import { ProjectAppearanceSettings } from "./ProjectAppearanceSettings";
 import {
   applyInterfaceSettings,
+  CONFIG_BAR_ITEMS,
   DEFAULT_INTERFACE_SETTINGS,
   resetClientInterfaceState,
   resolveInterfaceSettings,
+  type ConfigBarItemId,
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
 import { isTauriRuntime } from "../desktopBridge";
@@ -492,6 +494,37 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                   conversation: { ...interfaceSettings.conversation, showGitEvents: value },
                 })}
               />
+              <InterfaceToggle
+                label="defer heavy tool output"
+                value={interfaceSettings.conversation.deferHeavyDetails}
+                onChange={(value) => updateInterfaceSettings({
+                  ...interfaceSettings,
+                  conversation: { ...interfaceSettings.conversation, deferHeavyDetails: value },
+                })}
+              />
+              <div className="us-row-hint">
+                turns over 32KB of tool output load on demand; off loads whole sessions up front
+              </div>
+
+              <div className="us-section-title us-section-title--spaced">session bar</div>
+              <div className="us-row-hint">which readouts the bar above the composer shows</div>
+              {CONFIG_BAR_ITEMS.map((item) => (
+                <InterfaceToggle
+                  key={item.id}
+                  label={item.label}
+                  value={interfaceSettings.configBar.items.includes(item.id)}
+                  onChange={(value) => updateInterfaceSettings({
+                    ...interfaceSettings,
+                    configBar: {
+                      items: CONFIG_BAR_ITEMS
+                        .filter((candidate) => candidate.id === item.id
+                          ? value
+                          : interfaceSettings.configBar.items.includes(candidate.id))
+                        .map((candidate) => candidate.id as ConfigBarItemId),
+                    },
+                  })}
+                />
+              ))}
 
               <div className="us-section-title us-section-title--spaced">workspace</div>
               <div className="us-row">

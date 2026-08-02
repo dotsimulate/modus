@@ -1,15 +1,16 @@
 import { memo, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { ThinkingBlock } from "./ThinkingBlock";
-import type { Message, ToolCall, ToolCallDisplayMode } from "../../../sdk/index";
+import type { Message, MessageContentBlock, ToolCall, ToolCallDisplayMode } from "../../../sdk/index";
 import { mimeToPreviewKind } from "../../../sdk/index";
 import { tokenParam } from "../modusClient";
 import { backendUrl } from "../backendTarget";
 import { ToolCallView } from "./ToolCall";
+import { ToolCallGroup, TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
 import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
 import { AttachmentImage } from "./AttachmentImage";
 import { StreamingCursor } from "./StreamingCursor";
-import { formatProviderTokenUsage } from "./providerStats";
+import { formatContextPercent, formatProviderTokenUsage } from "./providerStats";
 import { CopyMessageButton } from "./CopyMessageButton";
 import { AudioArtifact } from "./AudioArtifact";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -89,13 +90,6 @@ type Props = {
   children?: ReactNode;
 };
 
-function formatContextPct(meta: Message["meta"]): string | null {
-  if (!meta?.contextWindow) return null;
-  if (meta.contextPercent != null) return `${Math.round(meta.contextPercent)}%`;
-  if (meta.contextTokensUsed == null || meta.contextTokensUsed <= 0) return null;
-  return `${Math.round((meta.contextTokensUsed / meta.contextWindow) * 100)}%`;
-}
-
 function formatTokensPerSecond(meta: Message["meta"], provider?: string): string | null {
   if (isCodexProvider(provider)) return null;
   if (!meta?.outputTokens || !meta.duration || meta.duration <= 0) return null;
@@ -104,20 +98,91 @@ function formatTokensPerSecond(meta: Message["meta"], provider?: string): string
   return `${rate >= 10 ? rate.toFixed(0) : rate.toFixed(1)} tok/s`;
 }
 
-function formatMeta(meta: Message["meta"], provider?: string): string {
-  if (!meta) return "";
-  const parts: string[] = [];
-  if (meta.model) parts.push(meta.model);
-  if (meta.cost != null) parts.push(`$${meta.cost.toFixed(4)}`);
-  if (meta.turns != null) parts.push(`${meta.turns} turns`);
+/** When the turn landed, and how long it took. Either half can be missing. */
+function formatMetaWhen(msg: Message): string | null {
+  const elapsed = msg.meta?.duration != null ? `${(msg.meta.duration / 1000).toFixed(1)}s` : null;
+  const clock = msg.timestamp
+    ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : null;
+  if (clock && elapsed) return `${clock} (${elapsed})`;
+  return clock ?? elapsed;
+}
+
+/**
+ * Consecutive tool calls belong together, so they are rendered as one run
+ * rather than N independent rows. Walking the blocks into segments first keeps
+ * that grouping out of the render, and gives deferred placeholders the same
+ * shape as loaded runs.
+ */
+type RenderSegment =
+  | { kind: "text"; key: string; text: string }
+  | { kind: "thinking"; key: string; thinking: string }
+  | { kind: "tools"; key: string; tools: ToolCall[] }
+  | { kind: "deferred"; key: string; hasThinking: boolean; count: number; toolNames: Record<string, number> };
+
+function segmentContentBlocks(msgId: string, blocks: MessageContentBlock[]): RenderSegment[] {
+  const segments: RenderSegment[] = [];
+  let run: ToolCall[] = [];
+  const flushRun = (index: number) => {
+    if (run.length === 0) return;
+    segments.push({ kind: "tools", key: `${msgId}:run:${index}`, tools: run });
+    run = [];
+  };
+
+  blocks.forEach((block, index) => {
+    if (block.type === "tool_call") {
+      run.push(block.toolCall);
+      return;
+    }
+    flushRun(index);
+    if (block.type === "text") {
+      if (block.text) segments.push({ kind: "text", key: `${msgId}:text:${index}`, text: block.text });
+    } else if (block.type === "thinking") {
+      segments.push({ kind: "thinking", key: `${msgId}:thinking:${index}`, thinking: block.thinking });
+    } else {
+      segments.push({
+        kind: "deferred",
+        key: `${msgId}:deferred:${index}`,
+        hasThinking: block.hasThinking,
+        count: block.toolCallCount,
+        toolNames: block.toolNames ?? {},
+      });
+    }
+  });
+  flushRun(blocks.length);
+  return segments;
+}
+
+/** Tally a loaded run so its header reads the same as a deferred one's. */
+function tallyToolNames(tools: ToolCall[]): Record<string, number> {
+  const names: Record<string, number> = {};
+  for (const tool of tools) names[tool.name] = (names[tool.name] ?? 0) + 1;
+  return names;
+}
+
+type MetaPart = { key: string; className?: string; text: string };
+
+/**
+ * One list of stats, rendered twice: as the text the resolve animation reveals,
+ * and as the settled row of spans. Building them separately let the two drift,
+ * so the animation used to finish on text the row then replaced.
+ */
+function metaParts(msg: Message, provider?: string): MetaPart[] {
+  const meta = msg.meta;
+  if (!meta) return [];
+  const parts: MetaPart[] = [];
+  if (meta.model) parts.push({ key: "model", text: meta.model });
+  if (meta.cost != null) parts.push({ key: "cost", text: `$${meta.cost.toFixed(4)}` });
+  if (meta.turns != null) parts.push({ key: "turns", text: `${meta.turns} turns` });
   const usage = formatProviderTokenUsage(provider, meta.inputTokens, meta.outputTokens);
-  if (usage) parts.push(usage);
+  if (usage) parts.push({ key: "tokens", className: "meta-tokens", text: usage });
   const tokensPerSecond = formatTokensPerSecond(meta, provider);
-  if (tokensPerSecond) parts.push(tokensPerSecond);
-  const ctx = formatContextPct(meta);
-  if (ctx) parts.push(`${ctx} ctx`);
-  if (meta.duration != null) parts.push(`${(meta.duration / 1000).toFixed(1)}s`);
-  return parts.join("  ");
+  if (tokensPerSecond) parts.push({ key: "rate", className: "meta-tokens", text: tokensPerSecond });
+  const ctx = formatContextPercent(meta);
+  if (ctx) parts.push({ key: "ctx", className: "meta-context", text: `${ctx} ctx` });
+  const when = formatMetaWhen(msg);
+  if (when) parts.push({ key: "when", className: "meta-duration", text: when });
+  return parts;
 }
 
 function renderArtifact(
@@ -203,47 +268,6 @@ function renderArtifact(
     >
       {artifact.name}
     </a>
-  );
-}
-
-function DeferredDetailsControl({
-  hasThinking,
-  toolCallCount,
-  loading,
-  error,
-  onLoad,
-}: {
-  hasThinking: boolean;
-  toolCallCount: number;
-  loading?: boolean;
-  error?: string;
-  onLoad: () => void | Promise<void>;
-}) {
-  const detailLabel = [
-    hasThinking ? "thinking" : "",
-    toolCallCount > 0 ? `${toolCallCount} tool call${toolCallCount === 1 ? "" : "s"}` : "",
-  ].filter(Boolean).join(" + ");
-  return (
-    <div className="message-details-loader">
-      <button
-        type="button"
-        disabled={loading}
-        title={error}
-        aria-busy={loading || undefined}
-        onClick={() => { void onLoad(); }}
-      >
-        {loading ? (
-          <>
-            <span>loading {detailLabel || "details"}</span>
-            <span className="message-details-loader__dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
-          </>
-        ) : error ? (
-          "retry message details"
-        ) : (
-          `load ${detailLabel || "details"}`
-        )}
-      </button>
-    </div>
   );
 }
 
@@ -333,8 +357,31 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
   const toolCount = countAllTools(msg.toolCalls);
   const liveElapsed = useElapsed(isStreaming && !msg.meta, msg.timestamp);
   const duration = msg.meta?.duration ?? liveElapsed;
-  const usageText = formatProviderTokenUsage(provider, msg.meta?.inputTokens, msg.meta?.outputTokens);
+  const parts = metaParts(msg, provider);
+  // An empty resolve target never reveals, so StreamingCursor would never call
+  // onResolved and the row would scramble forever.
+  const resolveText = parts.map((part) => part.text).join("  ");
   const showToolCalls = toolCallDisplay !== "hidden";
+  // Group only once the turn has landed. While it streams you want to watch
+  // each call arrive; collapsing mid-turn would hide the work in progress.
+  // "expanded" already means "show me everything", so it opts out.
+  const groupRuns = toolCallDisplay === "collapsed" && !isStreaming;
+
+  const renderToolRun = (tools: ToolCall[], keyPrefix: string) => (
+    <div className="message-tools">
+      {tools.map((tc, index) => (
+        <ToolCallView
+          key={`${keyPrefix}:${index}:${tc.id}`}
+          tool={tc}
+          anchorId={`${keyPrefix}:${index}:${tc.id}`}
+          defaultExpanded={toolCallDisplay === "expanded" ? true : tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
+          showGitEvents={showGitEvents}
+          cwd={cwd}
+          onStopTask={onStopTask}
+        />
+      ))}
+    </div>
+  );
 
   // Track streaming → meta transition for resolve animation
   useEffect(() => {
@@ -362,51 +409,51 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
 
       {msg.contentBlocks?.length ? (
         <>
-          {msg.contentBlocks.map((block, index) => {
-            if (block.type === "text") {
-              return block.text ? (
+          {segmentContentBlocks(msg.id, msg.contentBlocks).map((segment) => {
+            if (segment.kind === "text") {
+              return (
                 <MessageTextBlock
-                  key={`${msg.id}:ordered-text:${index}`}
-                  messageId={`${msg.id}:ordered-text:${index}`}
+                  key={segment.key}
+                  messageId={segment.key}
                   role={msg.role}
-                  text={block.text}
+                  text={segment.text}
                   isNew={isNew}
                   onContextMenu={handleContextMenu}
                 />
-              ) : null;
+              );
             }
-            if (block.type === "thinking") {
+            if (segment.kind === "thinking") {
               return showThinking ? (
                 <ThinkingBlock
-                  key={`${msg.id}:ordered-thinking:${index}`}
-                  thinking={block.thinking}
+                  key={segment.key}
+                  thinking={segment.thinking}
                   duration={msg.thinkingDuration}
                   isStreaming={isStreaming}
                   hasContent={!!msg.content}
                 />
               ) : null;
             }
-            if (block.type === "tool_call") {
-              const tc = block.toolCall;
-              return showToolCalls ? (
-                <div className="message-tools" key={`${msg.id}:ordered-tool:${index}:${tc.id}`}>
-                  <ToolCallView
-                    tool={tc}
-                    anchorId={`${msg.id}:${index}:${tc.id}`}
-                    defaultExpanded={toolCallDisplay === "expanded" ? true : tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
-                    showGitEvents={showGitEvents}
-                    cwd={cwd}
-                    onStopTask={onStopTask}
-                  />
-                </div>
-              ) : null;
+            if (segment.kind === "tools") {
+              if (!showToolCalls) return null;
+              const rows = renderToolRun(segment.tools, segment.key);
+              return groupRuns && segment.tools.length >= TOOL_RUN_GROUP_MIN ? (
+                <ToolCallGroup
+                  key={segment.key}
+                  count={segment.tools.length}
+                  toolNames={tallyToolNames(segment.tools)}
+                >
+                  {rows}
+                </ToolCallGroup>
+              ) : rows;
             }
-            const visibleToolCount = showToolCalls ? block.toolCallCount : 0;
-            return onLoadDetails && (showThinking && block.hasThinking || visibleToolCount > 0) ? (
-              <DeferredDetailsControl
-                key={`${msg.id}:ordered-deferred:${index}`}
-                hasThinking={showThinking && block.hasThinking}
-                toolCallCount={visibleToolCount}
+            const visibleToolCount = showToolCalls ? segment.count : 0;
+            return onLoadDetails && (showThinking && segment.hasThinking || visibleToolCount > 0) ? (
+              <ToolCallGroup
+                key={segment.key}
+                count={visibleToolCount}
+                toolNames={showToolCalls ? segment.toolNames : {}}
+                hasThinking={showThinking && segment.hasThinking}
+                deferred
                 loading={msg.detailsLoading}
                 error={msg.detailsError}
                 onLoad={onLoadDetails}
@@ -417,9 +464,11 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
       ) : (
         <>
           {msg.detailsDeferred && onLoadDetails && (showThinking || showToolCalls) && (
-            <DeferredDetailsControl
-              hasThinking={showThinking && (!!msg.thinking || !msg.deferredToolCallCount)}
-              toolCallCount={showToolCalls ? msg.deferredToolCallCount ?? 0 : 0}
+            <ToolCallGroup
+              count={showToolCalls ? msg.deferredToolCallCount ?? 0 : 0}
+              toolNames={{}}
+              hasThinking={showThinking && !!msg.deferredHasThinking}
+              deferred
               loading={msg.detailsLoading}
               error={msg.detailsError}
               onLoad={onLoadDetails}
@@ -443,19 +492,14 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             />
           )}
           {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
-            <div className="message-tools">
-              {msg.toolCalls.map((tc, index) => (
-                <ToolCallView
-                  key={`${msg.id}:${index}:${tc.id}`}
-                  tool={tc}
-                  anchorId={`${msg.id}:${index}:${tc.id}`}
-                  defaultExpanded={toolCallDisplay === "expanded" ? true : tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
-                  showGitEvents={showGitEvents}
-                  cwd={cwd}
-                  onStopTask={onStopTask}
-                />
-              ))}
-            </div>
+            groupRuns && msg.toolCalls.length >= TOOL_RUN_GROUP_MIN ? (
+              <ToolCallGroup
+                count={msg.toolCalls.length}
+                toolNames={tallyToolNames(msg.toolCalls)}
+              >
+                {renderToolRun(msg.toolCalls, `${msg.id}:flat`)}
+              </ToolCallGroup>
+            ) : renderToolRun(msg.toolCalls, `${msg.id}:flat`)
           )}
         </>
       )}
@@ -503,42 +547,23 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
       {isStreaming && !msg.meta && (
         <div className="message-meta">
           <StreamingCursor feed={streamFeed} />
+          {liveElapsed != null && (
+            <span className="meta-duration meta-elapsed-live">{(liveElapsed / 1000).toFixed(0)}s</span>
+          )}
         </div>
       )}
 
-      {resolving && msg.meta && (
+      {resolving && resolveText && (
         <div className="message-meta">
-          <StreamingCursor resolveText={formatMeta(msg.meta, provider)} onResolved={() => setResolving(false)} />
+          <StreamingCursor resolveText={resolveText} onResolved={() => setResolving(false)} />
         </div>
       )}
 
-      {showMeta && msg.meta && !resolving && (
+      {showMeta && parts.length > 0 && !(resolving && resolveText) && (
         <div className="message-meta">
-          {msg.meta.model && <span>{msg.meta.model}</span>}
-          {msg.meta.cost != null && (
-            <span>${msg.meta.cost.toFixed(4)}</span>
-          )}
-          {msg.meta.turns != null && <span>{msg.meta.turns} turns</span>}
-          {usageText && (
-            <span className="meta-tokens">
-              {usageText}
-            </span>
-          )}
-          {formatTokensPerSecond(msg.meta, provider) && (
-            <span className="meta-tokens">{formatTokensPerSecond(msg.meta, provider)}</span>
-          )}
-          {formatContextPct(msg.meta) && (
-            <span className="meta-context">{formatContextPct(msg.meta)} ctx</span>
-          )}
-          {msg.meta.duration != null && (
-            <span className="meta-duration">
-              {msg.timestamp
-                ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-                : null}
-              {msg.timestamp && <span className="meta-duration-elapsed"> ({(msg.meta.duration / 1000).toFixed(1)}s)</span>}
-              {!msg.timestamp && `${(msg.meta.duration / 1000).toFixed(1)}s`}
-            </span>
-          )}
+          {parts.map((part) => (
+            <span key={part.key} className={part.className}>{part.text}</span>
+          ))}
           <CopyMessageButton msg={msg} />
         </div>
       )}

@@ -1,5 +1,9 @@
 // ── ModusClient SDK Types ──
 
+import type { TurnMeta } from "../turn-meta";
+
+export type { TurnMeta };
+
 /** Options for constructing a ModusClient connection to the harness server. */
 export type ModusClientOptions = {
   url: string;
@@ -167,24 +171,14 @@ export type Message = {
   seq?: number;
   timestamp?: number;
   /** Cost, token usage, and model info for this turn. Only present on assistant messages. */
-  meta?: {
-    cost?: number;
-    duration?: number;
-    model?: string;
-    turns?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-    cacheReadTokens?: number;
-    cacheWriteTokens?: number;
-    contextWindow?: number;
-    contextTokensUsed?: number | null;
-    contextPercent?: number | null;
-  };
+  meta?: TurnMeta;
   /** Pre-rendered copy of this turn's content for display, avoiding re-parsing tool calls. */
   turnCopy?: { text: string; thinking?: string; toolCalls?: ToolCall[] };
   /** Heavy thinking/tool payload is available through the per-message detail endpoint. */
   detailsDeferred?: boolean;
   deferredToolCallCount?: number;
+  /** Whether the omitted payload included thinking. Sent by the harness, never inferred. */
+  deferredHasThinking?: boolean;
   detailsLoading?: boolean;
   detailsError?: string;
 };
@@ -254,7 +248,13 @@ export type MessageContentBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string }
   | { type: "tool_call"; toolCall: ToolCall }
-  | { type: "deferred"; hasThinking: boolean; toolCallCount: number };
+  | {
+      type: "deferred";
+      hasThinking: boolean;
+      toolCallCount: number;
+      /** Tool name → count, so a deferred run renders the same header as a loaded one. */
+      toolNames: Record<string, number>;
+    };
 
 // ── Session ──
 
@@ -484,9 +484,16 @@ export type TurnContent = {
   contentBlocks?: TurnContentBlock[];
   uuid?: string;
   artifacts?: SessionArtifact[];
+  /**
+   * Usage for the turn, reconstructed from its `result` event. Assistant turns
+   * only, and absent when the turn never completed.
+   */
+  meta?: TurnMeta;
   /** Heavy thinking/tool payload was intentionally omitted from a summary page. */
   detailsDeferred?: boolean;
   deferredToolCallCount?: number;
+  /** Whether the omitted payload included thinking. Sent, never inferred. */
+  deferredHasThinking?: boolean;
   timestamp: number;
 };
 
@@ -494,7 +501,13 @@ export type TurnContentBlock =
   | { type: "text"; text?: string; textStart?: number; textEnd?: number }
   | { type: "thinking"; thinking: string }
   | { type: "tool_call"; toolCall: { id?: string; name: string; input: Record<string, unknown>; result?: string } }
-  | { type: "deferred"; hasThinking: boolean; toolCallCount: number };
+  | {
+      type: "deferred";
+      hasThinking: boolean;
+      toolCallCount: number;
+      /** Tool name → count, so a deferred run renders the same header as a loaded one. */
+      toolNames: Record<string, number>;
+    };
 
 export type SessionHistorySnapshot = {
   sessionId: string;
@@ -960,6 +973,12 @@ export type UserInterfaceConfig = {
     toolCalls?: ToolCallDisplayMode;
     showGitEvents?: boolean;
     showFileChanges?: boolean;
+    /** Let the harness withhold very large tool payloads until asked. */
+    deferHeavyDetails?: boolean;
+  };
+  /** Which readouts the session config bar shows. Omit for the defaults. */
+  configBar?: {
+    items?: string[];
   };
   motion?: "system" | "reduced";
 };

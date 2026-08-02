@@ -1,5 +1,35 @@
 import type { UserInterfaceConfig } from "../../sdk/index";
 
+/**
+ * Everything the session config bar can show, in the order it appears.
+ *
+ * The bar is narrow and every provider adds its own controls to it, so which
+ * items earn their space is a preference rather than a fixed layout. This list
+ * is the single source for both the bar and the settings picker — adding an
+ * entry here is all a new readout needs to become selectable.
+ *
+ * The Claude permission-mode badge is deliberately absent: it only appears when
+ * the session is in a non-default permission mode, and that is a safety signal,
+ * not a decoration to switch off.
+ */
+export const CONFIG_BAR_ITEMS = [
+  { id: "profile", label: "profile" },
+  { id: "model", label: "model" },
+  { id: "tools", label: "tools" },
+  { id: "controls", label: "provider controls" },
+  { id: "effort", label: "effort" },
+  { id: "context", label: "context %" },
+  { id: "cost", label: "cost" },
+  { id: "tokens", label: "tokens" },
+  { id: "overrides", label: "overrides" },
+] as const;
+
+export type ConfigBarItemId = (typeof CONFIG_BAR_ITEMS)[number]["id"];
+
+const DEFAULT_CONFIG_BAR_ITEMS: ConfigBarItemId[] = [
+  "profile", "model", "tools", "controls", "effort", "context", "overrides",
+];
+
 export type ResolvedInterfaceSettings = {
   chat: {
     fontScale: number;
@@ -12,6 +42,15 @@ export type ResolvedInterfaceSettings = {
     toolCalls: "expanded" | "collapsed" | "hidden";
     showGitEvents: boolean;
     showFileChanges: boolean;
+    /**
+     * Let the harness withhold very large tool payloads until asked. Turning
+     * this off is reasonable here — the transport is localhost, and the real
+     * cost is browser memory on a long session rather than bandwidth.
+     */
+    deferHeavyDetails: boolean;
+  };
+  configBar: {
+    items: ConfigBarItemId[];
   };
   motion: "system" | "reduced";
 };
@@ -31,6 +70,10 @@ export const DEFAULT_INTERFACE_SETTINGS: ResolvedInterfaceSettings = {
     toolCalls: "collapsed",
     showGitEvents: false,
     showFileChanges: true,
+    deferHeavyDetails: true,
+  },
+  configBar: {
+    items: DEFAULT_CONFIG_BAR_ITEMS,
   },
   motion: "system",
 };
@@ -39,6 +82,18 @@ function finiteRange(value: unknown, fallback: number, min: number, max: number)
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(min, Math.min(max, value))
     : fallback;
+}
+
+/**
+ * An explicit empty list means "show nothing", so only a missing or malformed
+ * value falls back to the defaults. Unknown ids are dropped rather than
+ * rejected, which is what lets an older config survive a renamed item.
+ */
+function resolveConfigBarItems(raw: unknown): ConfigBarItemId[] {
+  if (!Array.isArray(raw)) return DEFAULT_CONFIG_BAR_ITEMS;
+  const chosen = new Set(raw.filter((value): value is string => typeof value === "string"));
+  // Catalog order wins, so the bar reads the same however the list was written.
+  return CONFIG_BAR_ITEMS.filter((item) => chosen.has(item.id)).map((item) => item.id);
 }
 
 export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): ResolvedInterfaceSettings {
@@ -55,6 +110,10 @@ export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): R
       toolCalls: toolCalls === "expanded" || toolCalls === "hidden" ? toolCalls : "collapsed",
       showGitEvents: config?.conversation?.showGitEvents ?? DEFAULT_INTERFACE_SETTINGS.conversation.showGitEvents,
       showFileChanges: config?.conversation?.showFileChanges ?? DEFAULT_INTERFACE_SETTINGS.conversation.showFileChanges,
+      deferHeavyDetails: config?.conversation?.deferHeavyDetails ?? DEFAULT_INTERFACE_SETTINGS.conversation.deferHeavyDetails,
+    },
+    configBar: {
+      items: resolveConfigBarItems(config?.configBar?.items),
     },
     motion: config?.motion === "reduced" ? "reduced" : "system",
   };
