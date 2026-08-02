@@ -278,3 +278,27 @@ describe("eventReducer turn stats", () => {
     expect(state.messages.find((m) => m.id === "a1")?.meta?.cost).toBe(0.2);
   });
 });
+
+describe("eventReducer provider error events", () => {
+  test("a spawn-failure error event lands in the transcript instead of vanishing", () => {
+    let state = createInitialState("ses-err");
+    state.messages.push({ id: "optimistic", role: "user", content: "hi", timestamp: 1 });
+
+    state = reduceEvent(state, {
+      type: "error",
+      error: 'Provider binary "claude" not found in PATH. Install Claude Code CLI or set CLAUDE_PATH.',
+    }, 2);
+
+    expect(state.status).toBe("error");
+    const last = state.messages[state.messages.length - 1]!;
+    expect(last.role).toBe("system");
+    expect(last.content).toContain('Provider binary "claude" not found');
+  });
+
+  test("an error event without detail still surfaces a message", () => {
+    let state = createInitialState("ses-err");
+    state = reduceEvent(state, { type: "error" }, 1);
+    expect(state.status).toBe("error");
+    expect(state.messages[state.messages.length - 1]!.content).toContain("failed before this turn");
+  });
+});
