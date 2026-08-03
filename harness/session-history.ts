@@ -1,5 +1,6 @@
 import type { TurnContent, TurnContentBlock, TurnToolCall } from "./db";
 import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
+import { providerErrorDisplayText } from "./provider-error";
 
 export type SessionHistoryEventRow = {
   seq: number;
@@ -183,6 +184,23 @@ export function reconstructSessionTurns(
       const meta = turnMetaFromResultEvent(d, fallbackModel);
       turns.push(materializeAssistantTurn(current, evt.seq, hasTurnStats(meta) ? meta : undefined));
       current = null;
+    }
+
+    // A terminal error ends the turn like `result` does, but carries an
+    // explanation instead of statistics. Without this the reload path dropped
+    // it entirely, so a failed session reconstructed as a silent one — the live
+    // reducer showed a reason and the reloaded transcript did not.
+    if (evt.type === "error") {
+      if (current) {
+        turns.push(materializeAssistantTurn(current, current.seq));
+        current = null;
+      }
+      turns.push({
+        role: "system",
+        seq: evt.seq,
+        text: providerErrorDisplayText(d),
+        timestamp: evt.created_at,
+      });
     }
   }
 

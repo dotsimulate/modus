@@ -11,6 +11,7 @@ import type {
 } from "../../sdk/index";
 import { nextMsgId } from "../../sdk/index";
 import { turnMetaFromResultEvent } from "../../turn-meta";
+import { providerErrorDisplayText } from "../../provider-error";
 import { userAuthoredMessageText } from "./move-context";
 
 export type ReducerState = {
@@ -110,9 +111,11 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
  * explanation — so it must land in the transcript like any other outcome.
  */
 function reduceErrorEvent(s: ReducerState, m: any, ts: number): ReducerState {
-  const content = typeof m.error === "string" && m.error.trim()
-    ? m.error.trim()
-    : "The provider failed before this turn could start.";
+  // Shared with the persistence and reload paths, so all three read the two
+  // event shapes ({error} from providers, {message} from the session manager)
+  // identically. The reducer used to read only `error`, so a delivery failure
+  // rendered the generic fallback and lost the real reason.
+  const content = providerErrorDisplayText(m);
   return {
     ...s,
     status: "error",

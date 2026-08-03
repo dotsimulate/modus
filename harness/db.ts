@@ -416,7 +416,9 @@ export type TurnContentBlock =
     };
 
 export type TurnContent = {
-  role: "user" | "assistant";
+  /** `system` carries harness-authored notices — currently provider failures —
+   * which are neither the user's words nor the model's. */
+  role: "user" | "assistant" | "system";
   seq: number;
   text: string;
   thinking?: string;
@@ -1217,7 +1219,7 @@ export function getFileObservations(sessionId: string): FileObservationRow[] {
 export function insertMessage(opts: {
   sessionId: string;
   seq?: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system";
   content: string;
   uuid?: string;
   thinking?: string;
@@ -1317,7 +1319,10 @@ function messageRowsToTurns(rows: MessageRow[]): TurnContent[] {
   return rows.map((row) => {
     const meta = messageRowMeta(row);
     return {
-      role: row.role === "assistant" ? "assistant" : "user",
+      // Preserve the three roles the transcript can hold. Collapsing anything
+      // non-assistant to "user" used to render a harness error notice as if the
+      // person had typed it.
+      role: row.role === "assistant" ? "assistant" : row.role === "system" ? "system" : "user",
       seq: row.seq ?? 0,
       text: row.content,
       ...(row.thinking ? { thinking: row.thinking } : {}),
