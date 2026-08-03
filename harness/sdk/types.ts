@@ -475,7 +475,8 @@ export type SteerResult = {
  * that don't subscribe to SSE but need turn-by-turn content.
  */
 export type TurnContent = {
-  role: "user" | "assistant";
+  /** `system` carries harness-authored notices — currently provider failures. */
+  role: "user" | "assistant" | "system";
   seq: number;
   text: string;
   thinking?: string;

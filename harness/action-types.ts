@@ -455,7 +455,9 @@ export interface EventInfo {
 }
 
 export interface SessionTurn {
-  role: "user" | "assistant";
+  /** `system` carries harness-authored notices — currently provider failures.
+   * An action reading a transcript sees why a turn failed, not just its absence. */
+  role: "user" | "assistant" | "system";
   seq: number;
   text: string;
   thinking?: string;

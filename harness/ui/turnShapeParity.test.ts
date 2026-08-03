@@ -207,3 +207,70 @@ describe("streaming into a merged turn", () => {
     expect(live(events)).toEqual(history(durable));
   });
 });
+
+/**
+ * Provider failures are turns too.
+ *
+ * The reducer gained a case for terminal `error` events, but the durable half
+ * was never wired: the event reached live subscribers only, was never persisted,
+ * and `reconstructSessionTurns` had no branch for it. So a failed send showed a
+ * reason live and reconstructed as a silent session — the session list went red
+ * with nothing behind it. These pin the halves together.
+ */
+function liveNotices(events: Ev[]): string[] {
+  let state = createInitialState("parity");
+  events.forEach((e, index) => {
+    state = reduceEvent(state, { ...e.data, type: e.type, subtype: e.subtype ?? e.data.subtype }, index + 1);
+  });
+  return state.messages.filter((m) => m.role === "system").map((m) => m.content);
+}
+
+function historyNotices(events: Ev[]): string[] {
+  const rows: SessionHistoryEventRow[] = events.map((e, index) => ({
+    seq: index + 1,
+    type: e.type,
+    subtype: e.subtype ?? null,
+    data: JSON.stringify(e.data),
+    created_at: 1_000 + index,
+  }));
+  return reconstructSessionTurns(rows).filter((t) => t.role === "system").map((t) => t.text);
+}
+
+const failure = (data: Record<string, unknown>): Ev => ({ type: "error", data });
+
+describe("provider failures survive a reload", () => {
+  test("a spawn failure before any output reads the same in both pipelines", () => {
+    const events: Ev[] = [prompt("go"), failure({ error: "cursor-agent exited with code 1" })];
+    expect(liveNotices(events)).toEqual(["cursor-agent exited with code 1"]);
+    expect(liveNotices(events)).toEqual(historyNotices(events));
+  });
+
+  test("a failure mid-turn keeps the assistant work and the reason, in both", () => {
+    const events: Ev[] = [
+      prompt("go"),
+      assistant([
+        { type: "text", text: "starting" },
+        { type: "tool_use", id: "a", name: "Read", input: {} },
+      ]),
+      toolResult("a", "ok"),
+      failure({ error: "provider died" }),
+    ];
+    expect(live(events)).toEqual(history(events));
+    expect(liveNotices(events)).toEqual(["provider died"]);
+    expect(liveNotices(events)).toEqual(historyNotices(events));
+  });
+
+  test("the {message} shape reads identically to the {error} shape", () => {
+    // Providers broadcast `error`; the session manager's delivery failures use
+    // `message`. The reducer read only `error`, so this shape lost its reason.
+    const viaMessage: Ev[] = [prompt("go"), failure({ message: "Message delivery failed: boom" })];
+    expect(liveNotices(viaMessage)).toEqual(["Message delivery failed: boom"]);
+    expect(liveNotices(viaMessage)).toEqual(historyNotices(viaMessage));
+  });
+
+  test("an error carrying no text still renders a notice rather than an empty one", () => {
+    const events: Ev[] = [prompt("go"), failure({})];
+    expect(liveNotices(events)[0]).toBeTruthy();
+    expect(liveNotices(events)).toEqual(historyNotices(events));
+  });
+});

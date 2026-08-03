@@ -37,6 +37,7 @@ import type { RewindPreview, RewindResult } from "./checkpoints";
 import { resolve as resolvePath, dirname as pathDirname, join as pathJoin } from "path";
 import { appendFileSync, mkdirSync } from "fs";
 import { APP_PATHS } from "./app-paths";
+import { providerErrorDisplayText } from "./provider-error";
 
 // ── SSE flow log ──
 // Append-only diagnostic log of every subscriber lifecycle event and broadcast.
@@ -407,6 +408,15 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     },
 
     broadcastEvent(event: any) {
+      // A terminal error has to outlive whichever socket happened to be open.
+      // Every provider reaches for broadcastEvent for this (36 call sites
+      // across 7 files, none using emitEvent), so promoting the one event type
+      // that is durable by nature here — rather than editing 36 call sites —
+      // is what keeps a future provider from reintroducing the silent failure.
+      if (event?.type === "error") {
+        persistAndBroadcastEvent(session, event);
+        return;
+      }
       const data = JSON.stringify(event);
       const seqStr = String(session.seq);
       for (const sub of session.subscribers) {
@@ -744,6 +754,23 @@ function persistSemanticMessage(session: ActiveSession, event: any) {
   if (event.type === "result" || event.type === "error" || event.type === "done"
     || (event.type === "system" && event.subtype === "interrupted")) {
     flushPendingAssistantTurn(session, event);
+  }
+
+  // A provider failure was the one outcome the transcript lost. The status went
+  // to the database while the explanation went to live subscribers only, so a
+  // reloaded session showed a failed turn with no reason and the session list
+  // showed red with nothing behind it. Persist it as a system message so the
+  // explanation is exactly as durable as the status beside it.
+  if (event.type === "error") {
+    const text = providerErrorDisplayText(event);
+    insertMessage({
+      sessionId: session.sessionId,
+      seq: session.seq,
+      role: "system",
+      content: text,
+      createdAt: Date.now(),
+    });
+    syncSessionMessageCount(session.sessionId);
   }
 }
 
