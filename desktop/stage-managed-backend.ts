@@ -6,7 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { BRIDGED_HARNESS_MODULES } from "../harness/bridged-modules";
 
 const desktopDir = import.meta.dir;
@@ -75,6 +75,44 @@ function copyResourceDirectory(name: string): void {
   });
 }
 
+/** Path of the ConPTY native library inside the bun-pty package, and the same
+ * path the loader probes relative to server.js once staged. */
+const PTY_LIBRARY_PATH = join("rust-pty", "target", "release", "rust_pty.dll");
+
+/**
+ * Stage bun-pty's native ConPTY library.
+ *
+ * Bundling inlines bun-pty's JavaScript into server.js, but the Rust library it
+ * dlopens cannot be inlined — it is resolved from disk at terminal-create time.
+ * The loader probes `<server.js dir>/rust-pty/target/release/` first, which is
+ * why the staged layout mirrors the package's own.
+ *
+ * Nothing copied it before, so a packaged Windows install had working terminals
+ * only while an out-of-band copy of the DLL happened to survive in the install
+ * directory — and every reinstall wiped it, breaking terminals with
+ * "librust_pty shared library not found". No test, typecheck or build can see
+ * this: the library is only ever resolved at runtime, on Windows, the first
+ * time someone opens a terminal.
+ *
+ * Missing source throws rather than skipping. A silent skip reproduces the
+ * original defect exactly — a green build that ships dead terminals.
+ */
+function stagePtyLibrary(): void {
+  // bun-pty is required only behind an `if (IS_WINDOWS)` guard in
+  // terminal-manager.ts; other platforms use Bun.spawn and never load it.
+  if (process.platform !== "win32") return;
+  const source = join(repositoryDir, "node_modules", "bun-pty", PTY_LIBRARY_PATH);
+  if (!existsSync(source)) {
+    throw new Error(
+      `bun-pty native library missing at ${source}. The packaged terminal cannot work without it; `
+      + `check that root dependencies are installed and that bun-pty still ships ${PTY_LIBRARY_PATH}.`,
+    );
+  }
+  const destination = join(stageDir, PTY_LIBRARY_PATH);
+  mkdirSync(dirname(destination), { recursive: true });
+  copyFileSync(source, destination);
+}
+
 function targetTriple(): string {
   const configured = process.env.TAURI_ENV_TARGET_TRIPLE?.trim();
   if (configured) return configured;
@@ -122,6 +160,8 @@ async function stage(): Promise<void> {
   ]) {
     copyResourceDirectory(directory);
   }
+
+  stagePtyLibrary();
 
   // Bridge shims: built-in moves import harness runtime modules by relative
   // path (e.g. `../../docs-registry`). The bundled server.js does not ship
