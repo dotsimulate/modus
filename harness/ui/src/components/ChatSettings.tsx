@@ -1,13 +1,18 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
+import { CustomSelect } from "./CustomSelect";
+import type { ChatScrollIndicator } from "../../../sdk/index";
 import {
   applyInterfaceSettings,
+  CHAT_SCROLL_INDICATORS,
   DEFAULT_INTERFACE_SETTINGS,
   readLocalInterfaceSettings,
   resolveInterfaceSettings,
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
+
+const SCROLL_INDICATOR_OPTIONS = CHAT_SCROLL_INDICATORS.map((o) => ({ ...o }));
 
 export function ChatSettings() {
   const { activeUserProfile, activeUP, refreshUserProfiles } = useProfiles();
@@ -79,7 +84,7 @@ export function ChatSettings() {
   const isDefault =
     settings.chat.fontScale === DEFAULT_INTERFACE_SETTINGS.chat.fontScale &&
     settings.chat.chatWidth === DEFAULT_INTERFACE_SETTINGS.chat.chatWidth &&
-    settings.chat.spineEnabled === DEFAULT_INTERFACE_SETTINGS.chat.spineEnabled;
+    settings.chat.scrollIndicator === DEFAULT_INTERFACE_SETTINGS.chat.scrollIndicator;
 
   return (
     <div className="chat-settings" ref={ref}>
@@ -87,7 +92,7 @@ export function ChatSettings() {
         ref={btnRef}
         className={`chat-settings-btn${open ? " active" : ""}`}
         onClick={toggle}
-        title="Chat display settings"
+        title="Chat display settings for all chats"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
           <line x1="1" y1="4" x2="15" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
@@ -120,17 +125,13 @@ export function ChatSettings() {
             />
             <span className="chat-settings-value">{settings.chat.chatWidth}</span>
           </div>
-          <div className="chat-settings-row">
-            <span className="chat-settings-label">spine</span>
-            <button
-              type="button"
-              className={`chat-settings-toggle${settings.chat.spineEnabled ? " on" : ""}`}
-              onClick={() => update({ spineEnabled: !settings.chat.spineEnabled })}
-              aria-pressed={settings.chat.spineEnabled}
-            >
-              <span className="chat-settings-toggle-dot" />
-            </button>
-            <span className="chat-settings-value">{settings.chat.spineEnabled ? "on" : "off"}</span>
+          <div className="chat-settings-row chat-settings-row--select">
+            <span className="chat-settings-label">scrollbar · all chats</span>
+            <CustomSelect
+              options={SCROLL_INDICATOR_OPTIONS}
+              value={settings.chat.scrollIndicator}
+              onChange={(value) => update({ scrollIndicator: value as ChatScrollIndicator })}
+            />
           </div>
           {!isDefault && (
             <button className="chat-settings-reset" onClick={() => update(DEFAULT_INTERFACE_SETTINGS.chat)}>reset</button>

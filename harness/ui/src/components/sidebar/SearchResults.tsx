@@ -1,5 +1,5 @@
 import type { SearchHit } from "../../../../sdk/index";
-import { timeAgo } from "./SessionItem";
+import { timeAgo } from "../../utils/format";
 
 type Props = {
   results: SearchHit[];

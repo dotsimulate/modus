@@ -61,6 +61,51 @@
   min-height: 0;
 }
 
+.fb-entry-row {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.fb-entry-row--dir {
+  position: sticky;
+  background: var(--bg);
+}
+
+.fb-entry-row .fb-entry {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.fb-entry-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 30px;
+  min-width: 30px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease, color 0.1s ease, background 0.1s ease;
+}
+
+.fb-entry-row:hover .fb-entry-more,
+.fb-entry-row:focus-within .fb-entry-more,
+.fb-entry-more:focus-visible {
+  opacity: 0.8;
+}
+
+.fb-entry-more:hover {
+  opacity: 1;
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
 .fb-entry {
   display: flex;
   align-items: center;
@@ -97,7 +142,7 @@
 /* ── Sticky folder headers ── */
 
 .fb-entry--dir {
-  position: sticky;
+  position: static;
   background: var(--bg);
 }
 
@@ -200,4 +245,26 @@
 
 .file-browser--compact .fb-entry {
   padding: 2px 8px;
+}
+
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
+  .fb-entry-row,
+  .fb-entry {
+    min-height: 40px;
+  }
+
+  .fb-entry-more {
+    flex-basis: 44px;
+    min-width: 44px;
+    min-height: 40px;
+    opacity: 1;
+    color: var(--text-dim);
+    border-left: 1px solid var(--border);
+  }
+
+  .fb-btn {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+  }
 }

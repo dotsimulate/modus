@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { estimateMessageHeight, clearMeasureCache } from "./textMeasure";
+import { calculateScrollTarget } from "../scroll-navigation";
 
 export type VirtualItem<T> = {
   data: T;
@@ -22,7 +23,7 @@ export type HeightEstimator<T> = (item: T, containerWidth: number) => number;
  * effect, which the controls reset before scrolling.
  */
 export type VirtualListControls = {
-  scrollToKey(key: string, opts?: { offset?: number; behavior?: ScrollBehavior }): void;
+  scrollToKey(key: string, opts?: { offset?: number; behavior?: ScrollBehavior; within?: number }): void;
 };
 
 /**
@@ -241,12 +242,13 @@ export function VirtualMessageList<T>({
         const computeTarget = (): number | null => {
           let offset = 0;
           for (const item of itemsRef.current) {
+            const height = getItemHeight(item);
             if (item.key === key) {
               const padding = opts?.offset ?? 12;
               const max = Math.max(0, el.scrollHeight - el.clientHeight);
-              return Math.min(Math.max(0, offset - padding), max);
+              return calculateScrollTarget(offset, height, opts?.within ?? 0, padding, max);
             }
-            offset += getItemHeight(item);
+            offset += height;
           }
           return null;
         };

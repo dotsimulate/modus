@@ -8,19 +8,22 @@ import type { BrowseResult, FileSearchResponse, PreviewManifest } from "../../..
 import { setFsWatchRoot } from "../modusClient";
 import { FileContentViewer } from "./FileContentViewer";
 import { FileBrowser, type FileBrowserHandle } from "./FileBrowser";
-import { CodeMirrorEditor, type CodeMirrorContextInfo } from "./CodeMirrorEditor";
+import { CodeMirrorEditor, type CodeMirrorContextInfo, type CodeMirrorEditorHandle } from "./CodeMirrorEditor";
 import { CopyButton } from "./CopyButton";
 import { DirectoryViewer } from "./DirectoryViewer";
 import { HtmlPreview } from "./HtmlPreview";
 import { PreviewRenderer } from "./PreviewRenderer";
 import { PinboardView } from "./PinboardView";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { buildFileHistoryItem } from "./fileHistoryMenu";
 
 type Props = {
   active?: boolean;
   initialBrowserPath?: string | null;
   onBrowserPathChange?: (path: string) => void;
   onSendToAgent?: (text: string) => void;
+  /** Navigate to a session. Enables the "sessions that edited this" menu when provided. */
+  onSelectSession?: (id: string) => void;
 };
 
 function basename(p: string): string {
@@ -54,7 +57,7 @@ const EMPTY_FILE_SEARCH: FileSearchResponse = {
   results: [],
 };
 
-export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowserPathChange, onSendToAgent }: Props) {
+export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowserPathChange, onSendToAgent, onSelectSession }: Props) {
   const {
     tabs, activePath, closeFile, openFile, subscribeFileOpens,
     setEditing, markDirty, saveFile, saving, saveError,
@@ -89,6 +92,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
   const fullBrowserRef = useRef<FileBrowserHandle>(null);
   const tabsMenuWrapRef = useRef<HTMLDivElement>(null);
   const tabsMenuBtnRef = useRef<HTMLButtonElement>(null);
+  const editorRef = useRef<CodeMirrorEditorHandle>(null);
 
   useEffect(() => {
     const prevTabs = prevTabsRef.current;
@@ -247,13 +251,15 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
 
   const editBtn = (
     <button
-      className={`chat-file-viewer-btn${isEditMode ? " active" : ""}`}
+      className={`chat-file-viewer-btn cw-edit-btn${isEditMode ? " active" : ""}`}
       onClick={handleToggleEdit}
       title={isEditMode ? "Switch to view" : "Edit file"}
+      aria-label={isEditMode ? "Switch to view" : "Edit file"}
     >
       <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
         <path d="M8.5 1.5l2 2L4 10H2v-2l6.5-6.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
       </svg>
+      <span className="cw-mobile-action-label">{isEditMode ? "View" : "Edit"}</span>
     </button>
   );
 
@@ -262,6 +268,21 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
   const fileActions = (targetPath: string) => (
     <>
       {canEdit(targetPath) && editBtn}
+      {isEditMode && (
+        <button
+          className={`chat-file-viewer-btn cw-save-btn${activeTab?.dirty ? " active" : ""}`}
+          onClick={() => editorRef.current?.save()}
+          disabled={!activeTab?.dirty || saving}
+          title={saving ? "Saving file" : activeTab?.dirty ? "Save file" : "No changes to save"}
+          aria-label="Save file"
+        >
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M2 1.5h6.7L10.5 3v7.5h-9v-9z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+            <path d="M3.5 1.5v3h4v-3M3.5 10.5V7h5v3.5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+          </svg>
+          <span className="cw-mobile-action-label">Save</span>
+        </button>
+      )}
       {saving && <span className="rp-status rp-status--saving">saving...</span>}
       {saveError && <span className="rp-status rp-status--error">{saveError}</span>}
       <CopyButton
@@ -271,6 +292,17 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
         }}
         title="Copy file contents"
       />
+      <button
+        className="chat-file-viewer-btn cw-file-more-btn"
+        onClick={(e) => tabCtxMenu.openFromElement(e.currentTarget, buildTabItems(targetPath))}
+        title="File actions"
+        aria-label="File actions"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+          <circle cx="2.2" cy="6" r="1"/><circle cx="6" cy="6" r="1"/><circle cx="9.8" cy="6" r="1"/>
+        </svg>
+        <span className="cw-mobile-action-label">More</span>
+      </button>
       {closeBtn}
     </>
   );
@@ -298,6 +330,11 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     });
   }, [groups, pinToGroup, unpinFromActive]);
 
+  const buildHistoryItem = useCallback(
+    (path: string): ContextMenuItem | null => buildFileHistoryItem(path, onSelectSession),
+    [onSelectSession],
+  );
+
   const handleEditorContextMenu = useCallback((e: React.MouseEvent, info: CodeMirrorContextInfo) => {
     const items: ContextMenuItem[] = [];
     if (info.selection) {
@@ -308,6 +345,11 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     items.push({ kind: "action", label: "Copy file path", onClick: () => navigator.clipboard.writeText(info.path) });
     items.push({ kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(info.path) });
     items.push({ kind: "action", label: "Open in external editor", onClick: () => modus.openInEditor(info.path, info.line) });
+    const history = buildHistoryItem(info.path);
+    if (history) {
+      items.push({ kind: "separator" });
+      items.push(history);
+    }
     if (groups.length > 0) {
       items.push({ kind: "separator" });
       items.push(...buildPinItems(info.path));
@@ -318,7 +360,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
       items.push({ kind: "action", label: info.selection ? "Send selection to agent" : "Send reference to agent", onClick: () => onSendToAgent(snippet) });
     }
     editorCtxMenu.open(e, items);
-  }, [buildPinItems, editorCtxMenu, groups.length, onSendToAgent]);
+  }, [buildHistoryItem, buildPinItems, editorCtxMenu, groups.length, onSendToAgent]);
 
   const handleRevealInTree = useCallback((path: string) => {
     if (!sidebarOpen) setSidebarOpen(true);
@@ -329,7 +371,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     }, 60);
   }, [sidebarOpen]);
 
-  const handleTabContextMenu = useCallback((e: React.MouseEvent, tabPath: string) => {
+  const buildTabItems = useCallback((tabPath: string): ContextMenuItem[] => {
     const items: ContextMenuItem[] = [
       { kind: "action", label: "Reveal in tree", onClick: () => handleRevealInTree(tabPath) },
       { kind: "separator" },
@@ -341,12 +383,22 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
       { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(tabPath) },
       { kind: "action", label: "Open in external editor", onClick: () => modus.openInEditor(tabPath) },
     ];
+    const history = buildHistoryItem(tabPath);
+    if (history) {
+      items.push({ kind: "separator" });
+      items.push(history);
+    }
     if (groups.length > 0) {
       items.push({ kind: "separator" });
       items.push(...buildPinItems(tabPath));
     }
+    return items;
+  }, [buildHistoryItem, buildPinItems, closeFile, groups.length, handleRevealInTree, tabs]);
+
+  const handleTabContextMenu = useCallback((e: React.MouseEvent, tabPath: string) => {
+    const items = buildTabItems(tabPath);
     tabCtxMenu.open(e, items);
-  }, [buildPinItems, closeFile, groups.length, handleRevealInTree, tabCtxMenu, tabs]);
+  }, [buildTabItems, tabCtxMenu]);
 
   const handleMarkdownContextMenu = useCallback((e: React.MouseEvent) => {
     if (!viewingFile) return;
@@ -359,6 +411,11 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     items.push({ kind: "action", label: "Copy file path", onClick: () => navigator.clipboard.writeText(viewingFile) });
     items.push({ kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(viewingFile) });
     items.push({ kind: "action", label: "Open in external editor", onClick: () => modus.openInEditor(viewingFile) });
+    const history = buildHistoryItem(viewingFile);
+    if (history) {
+      items.push({ kind: "separator" });
+      items.push(history);
+    }
     if (groups.length > 0) {
       items.push({ kind: "separator" });
       items.push(...buildPinItems(viewingFile));
@@ -369,7 +426,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
       items.push({ kind: "action", label: sel ? "Send selection to agent" : "Send reference to agent", onClick: () => onSendToAgent(snippet) });
     }
     markdownCtxMenu.open(e, items);
-  }, [buildPinItems, groups.length, markdownCtxMenu, onSendToAgent, viewingFile]);
+  }, [buildHistoryItem, buildPinItems, groups.length, markdownCtxMenu, onSendToAgent, viewingFile]);
 
   const isHtml = viewingFile ? isHtmlFile(viewingFile) : false;
   const showFileContent = viewingFile && view.kind !== "idle";
@@ -398,6 +455,16 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
     fsBrowserRef.current?.collapseAll();
     fullBrowserRef.current?.collapseAll();
   };
+
+  const startCreateAtRoot = useCallback((kind: "file" | "dir") => {
+    const browser = fsBrowserRef.current ?? fullBrowserRef.current;
+    browser?.startCreate(kind, activeCwd ?? undefined);
+  }, [activeCwd]);
+
+  const buildCreateItems = useCallback((): ContextMenuItem[] => [
+    { kind: "action", label: "New file...", onClick: () => startCreateAtRoot("file") },
+    { kind: "action", label: "New folder...", onClick: () => startCreateAtRoot("dir") },
+  ], [startCreateAtRoot]);
 
   // ── Tabs overflow detection ──
   useEffect(() => {
@@ -498,6 +565,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
               </div>
             </div>
             <CodeMirrorEditor
+              ref={editorRef}
               key={viewingFile}
               content={activeTab!.content!}
               path={viewingFile}
@@ -707,8 +775,19 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
               </svg>
             </button>
           )}
-          {showBrowser && !searchOpen && activeCwd && (
+          {(showBrowser || sidebarOpen) && !searchOpen && activeCwd && (
             <>
+              <button
+                className="right-panel-header-btn cw-create-btn"
+                onClick={(e) => tabCtxMenu.openFromElement(e.currentTarget, buildCreateItems())}
+                title="New file or folder"
+                aria-label="New file or folder"
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                <span className="cw-mobile-action-label">New</span>
+              </button>
               <button className="right-panel-header-btn" onClick={handleCollapseAll} title="Collapse all">
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
                   <path d="M1.5 6L6 1.5L10.5 6M3 5v5.5h2.25V8h1.5v2.5H9V5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
@@ -765,6 +844,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
               initialPath={initialBrowserPath}
               onFileSelect={handleFileSelect}
               onPathChange={onBrowserPathChange}
+              onSelectSession={onSelectSession}
             />
           </div>
         )}
@@ -788,6 +868,7 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
                   initialPath={initialBrowserPath}
                   onFileSelect={handleFileSelect}
                   onPathChange={onBrowserPathChange}
+                  onSelectSession={onSelectSession}
                 />
               )}
             </div>

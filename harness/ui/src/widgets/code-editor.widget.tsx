@@ -3,7 +3,7 @@ import type { WidgetProps } from "./types";
 import { CodeWorkspacePanel } from "../components/CodeWorkspacePanel";
 import { useOptionalRightPanelContext } from "../components/RightPanelContext";
 
-export default function CodeEditorWidget({ active = true }: WidgetProps) {
+export default function CodeEditorWidget({ active = true, onSelectSession, pageContext }: WidgetProps) {
   const panel = useOptionalRightPanelContext();
 
   // When inside RightPanel, use its browser path state.
@@ -22,11 +22,22 @@ export default function CodeEditorWidget({ active = true }: WidgetProps) {
     [panel],
   );
 
+  // On a page, publish the selection to the scope so the page decides what to do
+  // with it; elsewhere fall back to the host's navigation callback.
+  const handleSelectSession = useCallback((id: string) => {
+    if (pageContext) {
+      pageContext.emit({ type: "select-session", sessionId: id });
+    } else {
+      onSelectSession(id);
+    }
+  }, [pageContext, onSelectSession]);
+
   return (
     <CodeWorkspacePanel
       active={active}
       initialBrowserPath={browserPath}
       onBrowserPathChange={setBrowserPath}
+      onSelectSession={handleSelectSession}
     />
   );
 }

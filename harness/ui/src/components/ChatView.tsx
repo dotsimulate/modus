@@ -5,20 +5,21 @@ import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
 import { VirtualMessageList, type VirtualItem, type VirtualListControls, type VirtualLayoutSnapshot } from "./VirtualMessageList";
-import { estimateMessageHeight } from "./textMeasure";
-import { ChatScrollSpine, type ChatSpineItem } from "./ChatScrollSpine";
+import { estimateMessageHeight, TOOL_CALL_COLLAPSED_HEIGHT } from "./textMeasure";
+import { ChatScrollSpine, type ChatSpineItem, type ChatSpineMeasure } from "./ChatScrollSpine";
 import { modus } from "../modusClient";
-import type { Message, ToolCall, ToolCallDisplayMode, CommitAttribution, GitCommit } from "../../../sdk/index";
+import type { Message, ToolCall, ToolCallDisplayMode, ChatScrollIndicator, CommitAttribution, GitCommit } from "../../../sdk/index";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionContext";
 import { navigateToGitRoute } from "../git-route";
 import { INTERFACE_SETTINGS_EVENT, readLocalInterfaceSettings } from "../interface-settings";
+import { buildLatestMoveToolCallIds } from "../move-tool-view";
 
 type DisplayItem =
   | { kind: "message"; key: string; message: Message; index: number }
   | { kind: "commit"; key: string; commit: GitCommit };
 
-function readSpineEnabled(): boolean {
-  return readLocalInterfaceSettings().chat.spineEnabled;
+function readScrollIndicator(): ChatScrollIndicator {
+  return readLocalInterfaceSettings().chat.scrollIndicator;
 }
 
 function formatCommitWhen(date: string): string {
@@ -44,6 +45,20 @@ function commitMatchLabel(matchedFiles: string[] | undefined): string {
 function countToolCalls(tcs?: ToolCall[]): number {
   if (!tcs) return 0;
   return tcs.length;
+}
+
+/**
+ * The tool-row share of a message's estimated height. Kept identical to
+ * what estimateMessageHeight adds for the same count so the spine and the
+ * virtualizer lay out against the same numbers.
+ *
+ * Known wrong, and deliberately left alone here: MessageBubble collapses a
+ * run of TOOL_RUN_GROUP_MIN or more into one ~28px header, so a 100-call
+ * run is ~114x shorter on screen than this says. Correcting it changes the
+ * virtualizer's spacers for every session, which is a separate change.
+ */
+function estimateToolRowsHeight(count: number): number {
+  return count * TOOL_CALL_COLLAPSED_HEIGHT;
 }
 
 function countImages(msg: Message): number {
@@ -109,13 +124,11 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     ro.observe(scrollEl);
     return () => ro.disconnect();
   }, [scrollEl]);
-  const [spineEnabled, setSpineEnabled] = useState<boolean>(() => readSpineEnabled());
+  const [scrollIndicator, setScrollIndicator] = useState<ChatScrollIndicator>(() => readScrollIndicator());
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail && typeof detail.chat?.spineEnabled === "boolean") {
-        setSpineEnabled(detail.chat.spineEnabled);
-      }
+      const next = (e as CustomEvent).detail?.chat?.scrollIndicator;
+      if (next === "scroll" || next === "spine" || next === "ruler") setScrollIndicator(next);
     };
     window.addEventListener(INTERFACE_SETTINGS_EVENT, handler);
     return () => window.removeEventListener(INTERFACE_SETTINGS_EVENT, handler);
@@ -158,6 +171,11 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     }
     return undefined;
   }, [messages]);
+
+  const latestMoveToolCallIds = useMemo(
+    () => buildLatestMoveToolCallIds(messages),
+    [messages],
+  );
 
   const turnFileEdits = useMemo(() => {
     const result = new Map<number, ToolCall[]>();
@@ -313,28 +331,36 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     [displayItems],
   );
 
-  // Stable per-item height estimate for the spine. Identity changes only
-  // when the chat width or the toggle settings change — never on scroll
-  // or measurement updates, so the spine's tick layout holds still.
-  const estimateSpineItem = useCallback(
-    (item: ChatSpineItem): number => {
+  // Stable per-item measurement for the spine. Identity changes only when
+  // the chat width or the toggle settings change — never on scroll or
+  // measurement updates, so the spine's tick layout holds still.
+  //
+  // Prose and tools are measured separately because the ruler gives each
+  // its own lane, and because a tool run's call count is not recoverable
+  // from its height once the transcript collapses the run.
+  const measureSpineItem = useCallback(
+    (item: ChatSpineItem): ChatSpineMeasure => {
       const width = scrollWidth || 700;
-      if (item.kind === "commit") return 48;
+      if (item.kind === "commit") {
+        return { total: 48, prose: 48, tools: 0, toolCount: 0 };
+      }
       const msg = item.message;
-      const estimate = estimateMessageHeight(msg.content, width, {
+      const toolCount = resolvedToolCallDisplay !== "hidden" ? countToolCalls(msg.toolCalls) : 0;
+      const prose = estimateMessageHeight(msg.content, width, {
         hasRole: false,
         hasMeta: showMeta && !!msg.meta,
-        toolCallCount: resolvedToolCallDisplay !== "hidden" ? countToolCalls(msg.toolCalls) : 0,
+        toolCallCount: 0,
         imageCount: countImages(msg),
         hasThinking: showThinking && !!msg.thinking,
-      });
-      return estimate.totalHeight;
+      }).totalHeight;
+      const tools = estimateToolRowsHeight(toolCount);
+      return { total: prose + tools, prose, tools, toolCount };
     },
     [scrollWidth, showMeta, resolvedToolCallDisplay, showThinking],
   );
 
-  const scrollToSpineItem = useCallback((key: string) => {
-    listControlsRef.current?.scrollToKey(key);
+  const scrollToSpineItem = useCallback((key: string, within: number) => {
+    listControlsRef.current?.scrollToKey(key, { within });
   }, []);
 
   const estimateHeight = useCallback(
@@ -409,6 +435,8 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
             onLoadDetails={msg.detailsDeferred && msg.seq != null && onLoadMessageDetails
               ? () => onLoadMessageDetails(msg.seq!)
               : undefined}
+            sessionId={sessionId}
+            latestMoveToolCallIds={latestMoveToolCallIds}
           >
             {hasFileChanges && (
               <>
@@ -440,7 +468,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     [sessionId, claimedCommitTags, onSessionTagsChange, turnFileEdits, provider,
      streaming, lastUser, lastAssistant, messages.length, showThinking, showMeta,
      resolvedToolCallDisplay, showGitEvents, showFileChanges, cwd, lastTodoId, streamFeed, onBranch, onStopTask,
-     onOpenSessionEdits, onLoadMessageDetails],
+     onOpenSessionEdits, onLoadMessageDetails, latestMoveToolCallIds],
   );
 
   const showAssistantPrelude = streaming && lastMessage?.role === "user";
@@ -534,7 +562,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
           </button>
         </div>
       )}
-      <div className="chat-scroll-row" data-spine={spineEnabled ? "on" : "off"}>
+      <div className="chat-scroll-row" data-indicator={scrollIndicator}>
         <VirtualMessageList
           items={virtualItems}
           estimateHeight={estimateHeight}
@@ -549,11 +577,12 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
           controlsRef={listControlsRef}
           layoutRef={measuredLayoutRef}
         />
-        {spineEnabled && (
+        {scrollIndicator !== "scroll" && (
           <ChatScrollSpine
             items={spineItems}
+            mode={scrollIndicator}
             scrollEl={scrollEl}
-            estimateItemHeight={estimateSpineItem}
+            measureItem={measureSpineItem}
             measuredLayoutRef={measuredLayoutRef}
             onItemClick={scrollToSpineItem}
           />

@@ -3,6 +3,7 @@ import type { SessionInfo } from "../../../../sdk/index";
 import { modus } from "../../modusClient";
 import { useSessionState } from "../../sessionStore";
 import { formatSidebarProviderStat, getLatestAssistantUsage } from "../providerStats";
+import { compactModelName, isEmptySession, sessionDisplayText, timeAgo } from "../../utils/format";
 
 type Props = {
   session: SessionInfo;
@@ -21,31 +22,7 @@ function statusDotClass(status: string): string {
   return "dash-dot--done";
 }
 
-export function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
-}
-
-function displayText(s: SessionInfo): string {
-  return s.title || s.last_prompt || s.preview || "";
-}
-
-function isEmptySession(s: SessionInfo): boolean {
-  return !s.title && !s.last_prompt && !s.preview;
-}
-
-function compactModelName(model: string): string {
-  // Strip date suffixes like -20251101
-  let m = model.replace(/-\d{8}$/, "");
-  // Common shorthands
-  if (m.startsWith("claude-")) m = m.replace("claude-", "");
-  if (m.startsWith("gpt-")) return m;
-  if (m.startsWith("gemini-")) m = m.replace("gemini-", "");
-  return m;
-}
+const displayText = sessionDisplayText;
 
 export function SessionItem({ session: s, active, onSelect, onArchive, draftInput, tags, onTogglePin }: Props) {
   const [editing, setEditing] = useState(false);

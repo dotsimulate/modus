@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { modus } from "../modusClient";
-import type { ModusPlugin, ProviderModel, UserInterfaceConfig, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
+import type { ChatScrollIndicator, ModusPlugin, ProviderModel, UserInterfaceConfig, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 import { profileOptions } from "../profile-options";
 import { PluginSettingsPanel } from "./PluginSettingsPanel";
 import { FolderPicker } from "./FolderPicker";
+import { CustomSelect } from "./CustomSelect";
 import { ProjectAppearanceSettings } from "./ProjectAppearanceSettings";
 import {
   applyInterfaceSettings,
+  CHAT_SCROLL_INDICATORS,
   CONFIG_BAR_ITEMS,
   DEFAULT_INTERFACE_SETTINGS,
   resetClientInterfaceState,
@@ -434,14 +436,17 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                   <span>{interfaceSettings.chat.chatWidth}px</span>
                 </div>
               </div>
-              <InterfaceToggle
-                label="scroll spine"
-                value={interfaceSettings.chat.spineEnabled}
-                onChange={(value) => updateInterfaceSettings({
-                  ...interfaceSettings,
-                  chat: { ...interfaceSettings.chat, spineEnabled: value },
-                })}
-              />
+              <div className="us-row">
+                <span className="us-row-label">scrollbar · all chats</span>
+                <CustomSelect
+                  options={CHAT_SCROLL_INDICATORS.map((o) => ({ ...o }))}
+                  value={interfaceSettings.chat.scrollIndicator}
+                  onChange={(value) => updateInterfaceSettings({
+                    ...interfaceSettings,
+                    chat: { ...interfaceSettings.chat, scrollIndicator: value as ChatScrollIndicator },
+                  })}
+                />
+              </div>
 
               <div className="us-section-title us-section-title--spaced">conversation</div>
               <InterfaceToggle

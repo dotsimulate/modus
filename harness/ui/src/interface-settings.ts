@@ -1,4 +1,4 @@
-import type { UserInterfaceConfig } from "../../sdk/index";
+import type { ChatScrollIndicator, UserInterfaceConfig } from "../../sdk/index";
 
 /**
  * Everything the session config bar can show, in the order it appears.
@@ -34,7 +34,7 @@ export type ResolvedInterfaceSettings = {
   chat: {
     fontScale: number;
     chatWidth: number;
-    spineEnabled: boolean;
+    scrollIndicator: ChatScrollIndicator;
   };
   conversation: {
     showThinking: boolean;
@@ -62,7 +62,7 @@ export const DEFAULT_INTERFACE_SETTINGS: ResolvedInterfaceSettings = {
   chat: {
     fontScale: 100,
     chatWidth: 840,
-    spineEnabled: true,
+    scrollIndicator: "spine",
   },
   conversation: {
     showThinking: true,
@@ -96,13 +96,31 @@ function resolveConfigBarItems(raw: unknown): ConfigBarItemId[] {
   return CONFIG_BAR_ITEMS.filter((item) => chosen.has(item.id)).map((item) => item.id);
 }
 
+export const CHAT_SCROLL_INDICATORS = [
+  { value: "scroll", label: "scroll" },
+  { value: "spine", label: "spine" },
+  { value: "ruler", label: "ruler" },
+] as const;
+
+/**
+ * `spineEnabled` was a boolean before there were three indicators. An explicit
+ * `scrollIndicator` always wins; otherwise a stored `spineEnabled: false`
+ * still means "no spine", so an existing profile keeps the choice it made.
+ */
+function resolveScrollIndicator(chat?: UserInterfaceConfig["chat"]): ChatScrollIndicator {
+  const explicit = chat?.scrollIndicator;
+  if (explicit === "scroll" || explicit === "spine" || explicit === "ruler") return explicit;
+  if (chat?.spineEnabled === false) return "scroll";
+  return DEFAULT_INTERFACE_SETTINGS.chat.scrollIndicator;
+}
+
 export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): ResolvedInterfaceSettings {
   const toolCalls = config?.conversation?.toolCalls;
   return {
     chat: {
       fontScale: finiteRange(config?.chat?.fontScale, DEFAULT_INTERFACE_SETTINGS.chat.fontScale, 75, 175),
       chatWidth: finiteRange(config?.chat?.chatWidth, DEFAULT_INTERFACE_SETTINGS.chat.chatWidth, 500, 1600),
-      spineEnabled: config?.chat?.spineEnabled ?? DEFAULT_INTERFACE_SETTINGS.chat.spineEnabled,
+      scrollIndicator: resolveScrollIndicator(config?.chat),
     },
     conversation: {
       showThinking: config?.conversation?.showThinking ?? DEFAULT_INTERFACE_SETTINGS.conversation.showThinking,
@@ -131,6 +149,7 @@ export function readLocalInterfaceSettings(): ResolvedInterfaceSettings {
             chat: {
               fontScale: parsed.fontScale as number | undefined,
               chatWidth: parsed.chatWidth as number | undefined,
+              scrollIndicator: parsed.scrollIndicator as ChatScrollIndicator | undefined,
               spineEnabled: parsed.spineEnabled as boolean | undefined,
             },
           };

@@ -15,6 +15,7 @@ import { modus } from "../modusClient";
 import type { BrowseResult } from "../../../sdk/index";
 import { onFsChange } from "../modusClient";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { buildFileHistoryItem } from "./fileHistoryMenu";
 import { usePinboard } from "../providers/PinboardContext";
 import {
   FileText, FileCode2, FileJson, FileImage, FileVideo, FileAudio,
@@ -37,11 +38,14 @@ type FileBrowserProps = {
   onOpenExternal?: (path: string) => void;
   /** Called whenever the current browse path changes */
   onPathChange?: (path: string) => void;
+  /** Navigate to a session. Omitted surfaces get no file-history submenu. */
+  onSelectSession?: (sessionId: string) => void;
 };
 
 export type FileBrowserHandle = {
   collapseAll: () => void;
   revealPath: (path: string) => void;
+  startCreate: (kind: "file" | "dir", dir?: string) => void;
 };
 
 function basename(p: string): string {
@@ -115,7 +119,7 @@ const externalIcon = (
 );
 
 export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(function FileBrowser(
-  { rootPath, initialPath: _initialPath, compact, hideHeader, onFileSelect, onOpenExternal, onPathChange: _onPathChange },
+  { rootPath, initialPath: _initialPath, compact, hideHeader, onFileSelect, onOpenExternal, onPathChange: _onPathChange, onSelectSession },
   ref,
 ) {
   const { groups, pinToGroup, unpinFromActive } = usePinboard();
@@ -146,10 +150,23 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
     ctxMenu.open(e, items);
   }, [ctxMenu]);
 
+  const openCtxFromElement = useCallback((e: React.MouseEvent<HTMLElement>, items: ContextMenuItem[], targetPath?: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxTarget(targetPath ?? null);
+    ctxMenu.openFromElement(e.currentTarget, items);
+  }, [ctxMenu]);
+
   // ── Create file/folder ──
   const [creating, setCreating] = useState<{ kind: "file" | "dir"; dir: string } | null>(null);
   const [createName, setCreateName] = useState("");
   const createInputRef = useRef<HTMLInputElement>(null);
+
+  const startCreate = useCallback((kind: "file" | "dir", dir = rootPath ?? "") => {
+    if (!dir) return;
+    setExpanded((previous) => new Set(previous).add(dir));
+    setCreating({ kind, dir });
+  }, [rootPath]);
 
   useEffect(() => {
     if (creating) {
@@ -276,7 +293,7 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
     if (revealTimerRef.current) window.clearTimeout(revealTimerRef.current);
   }, []);
 
-  useImperativeHandle(ref, () => ({ collapseAll, revealPath }), [collapseAll, revealPath]);
+  useImperativeHandle(ref, () => ({ collapseAll, revealPath, startCreate }), [collapseAll, revealPath, startCreate]);
 
   const openFile = useCallback((path: string) => {
     onFileSelect?.(path);
@@ -326,36 +343,40 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
     return path;
   }, [rootPath]);
 
-  const buildFileItems = useCallback((path: string): ContextMenuItem[] => [
-    { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(path) },
-    { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(path) },
-    { kind: "separator" },
-    { kind: "action", label: "Copy name", onClick: () => navigator.clipboard.writeText(basename(path)) },
-    { kind: "action", label: "Copy relative path", onClick: () => navigator.clipboard.writeText(relativeTo(path)) },
-    { kind: "action", label: "Copy absolute path", onClick: () => navigator.clipboard.writeText(path) },
-    { kind: "separator" },
-    ...buildPinItems(path),
-  ], [handleOpenExternal, buildPinItems, relativeTo]);
+  const buildFileItems = useCallback((path: string): ContextMenuItem[] => {
+    const historyItem = buildFileHistoryItem(path, onSelectSession);
+    return [
+      { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(path) },
+      { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(path) },
+      { kind: "separator" },
+      { kind: "action", label: "Copy name", onClick: () => navigator.clipboard.writeText(basename(path)) },
+      { kind: "action", label: "Copy relative path", onClick: () => navigator.clipboard.writeText(relativeTo(path)) },
+      { kind: "action", label: "Copy absolute path", onClick: () => navigator.clipboard.writeText(path) },
+      ...(historyItem ? [{ kind: "separator" as const }, historyItem] : []),
+      { kind: "separator" },
+      ...buildPinItems(path),
+    ];
+  }, [handleOpenExternal, buildPinItems, relativeTo, onSelectSession]);
 
   const buildDirItems = useCallback((dirPath: string): ContextMenuItem[] => [
     { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(dirPath) },
     { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(dirPath) },
     { kind: "separator" },
-    { kind: "action", label: "New file...", onClick: () => setCreating({ kind: "file", dir: dirPath }) },
-    { kind: "action", label: "New folder...", onClick: () => setCreating({ kind: "dir", dir: dirPath }) },
+    { kind: "action", label: "New file...", onClick: () => startCreate("file", dirPath) },
+    { kind: "action", label: "New folder...", onClick: () => startCreate("dir", dirPath) },
     { kind: "separator" },
     { kind: "action", label: "Copy name", onClick: () => navigator.clipboard.writeText(basename(dirPath)) },
     { kind: "action", label: "Copy relative path", onClick: () => navigator.clipboard.writeText(relativeTo(dirPath)) },
     { kind: "action", label: "Copy absolute path", onClick: () => navigator.clipboard.writeText(dirPath) },
     { kind: "separator" },
     { kind: "action", label: "Refresh", onClick: () => refreshDir(dirPath) },
-  ], [handleOpenExternal, refreshDir, relativeTo]);
+  ], [handleOpenExternal, refreshDir, relativeTo, startCreate]);
 
   const buildBgItems = useCallback((): ContextMenuItem[] => {
     if (!rootPath) return [];
     return [
-      { kind: "action", label: "New file...", onClick: () => setCreating({ kind: "file", dir: rootPath }) },
-      { kind: "action", label: "New folder...", onClick: () => setCreating({ kind: "dir", dir: rootPath }) },
+      { kind: "action", label: "New file...", onClick: () => startCreate("file", rootPath) },
+      { kind: "action", label: "New folder...", onClick: () => startCreate("dir", rootPath) },
       { kind: "separator" },
       { kind: "action", label: "Open in folder", onClick: () => modus.openInFolder(rootPath) },
       { kind: "action", label: "Open in editor", onClick: () => handleOpenExternal(rootPath) },
@@ -364,7 +385,7 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
       { kind: "separator" },
       { kind: "action", label: "Collapse all", onClick: collapseAll },
     ];
-  }, [rootPath, handleOpenExternal, refreshDir, collapseAll]);
+  }, [rootPath, handleOpenExternal, refreshDir, collapseAll, startCreate]);
 
   // ── Tree node renderer ──
   const INDENT = 14;
@@ -380,16 +401,31 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
     return (
       <div key={dirPath}>
         {!isRoot && (
-          <button
-            className={`fb-entry fb-entry--dir${ctxTarget === dirPath ? " fb-entry--ctx" : ""}${isExpanded ? " fb-entry--open" : ""}${revealedPath === dirPath ? " fb-entry--revealed" : ""}`}
-            data-path={dirPath}
-            style={{ paddingLeft: 8 + depth * INDENT, top: 0, zIndex: 10 - depth }}
-            onClick={() => toggleDir(dirPath)}
+          <div
+            className="fb-entry-row fb-entry-row--dir"
+            style={{ top: 0, zIndex: 10 - depth }}
             onContextMenu={(e) => openCtx(e, buildDirItems(dirPath), dirPath)}
           >
-            <span className="fb-entry-chevron">{chevronIcon(isExpanded)}</span>
-            <span className="fb-entry-name">{name}</span>
-          </button>
+            <button
+              className={`fb-entry fb-entry--dir${ctxTarget === dirPath ? " fb-entry--ctx" : ""}${isExpanded ? " fb-entry--open" : ""}${revealedPath === dirPath ? " fb-entry--revealed" : ""}`}
+              data-path={dirPath}
+              style={{ paddingLeft: 8 + depth * INDENT }}
+              onClick={() => toggleDir(dirPath)}
+            >
+              <span className="fb-entry-chevron">{chevronIcon(isExpanded)}</span>
+              <span className="fb-entry-name">{name}</span>
+            </button>
+            <button
+              className="fb-entry-more"
+              onClick={(e) => openCtxFromElement(e, buildDirItems(dirPath), dirPath)}
+              title={`Actions for ${name}`}
+              aria-label={`Actions for ${name}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                <circle cx="3" cy="7" r="1"/><circle cx="7" cy="7" r="1"/><circle cx="11" cy="7" r="1"/>
+              </svg>
+            </button>
+          </div>
         )}
         {isExpanded && cached && (
           <div className={isRoot ? undefined : "fb-group"} style={isRoot ? undefined : { "--guide-left": `${depth * INDENT + 11}px` } as React.CSSProperties}>
@@ -397,17 +433,31 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
             {(cached.files ?? []).map((fname) => {
               const fpath = `${dirPath}/${fname}`;
               return (
-                <button
+                <div
                   key={fpath}
-                  className={`fb-entry fb-entry--file${ctxTarget === fpath ? " fb-entry--ctx" : ""}${revealedPath === fpath ? " fb-entry--revealed" : ""}`}
-                  data-path={fpath}
-                  style={{ paddingLeft: childDepth * INDENT + 8 }}
-                  onClick={() => openFile(fpath)}
+                  className="fb-entry-row fb-entry-row--file"
                   onContextMenu={(e) => openCtx(e, buildFileItems(fpath), fpath)}
                 >
-                  {fileIconFor(fname)}
-                  <span className="fb-entry-name">{fname}</span>
-                </button>
+                  <button
+                    className={`fb-entry fb-entry--file${ctxTarget === fpath ? " fb-entry--ctx" : ""}${revealedPath === fpath ? " fb-entry--revealed" : ""}`}
+                    data-path={fpath}
+                    style={{ paddingLeft: childDepth * INDENT + 8 }}
+                    onClick={() => openFile(fpath)}
+                  >
+                    {fileIconFor(fname)}
+                    <span className="fb-entry-name">{fname}</span>
+                  </button>
+                  <button
+                    className="fb-entry-more"
+                    onClick={(e) => openCtxFromElement(e, buildFileItems(fpath), fpath)}
+                    title={`Actions for ${fname}`}
+                    aria-label={`Actions for ${fname}`}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+                      <circle cx="3" cy="7" r="1"/><circle cx="7" cy="7" r="1"/><circle cx="11" cy="7" r="1"/>
+                    </svg>
+                  </button>
+                </div>
               );
             })}
             {creating && creating.dir === dirPath && (
@@ -445,6 +495,12 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
         <div className="fb-breadcrumb">
           <span className="fb-breadcrumb-path">{basename(rootPath)}</span>
           <div className="fb-breadcrumb-actions">
+            <button className="fb-btn fb-create-btn" onClick={(e) => openCtxFromElement(e, buildBgItems())} title="New file or folder" aria-label="New file or folder">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+              <span className="cw-mobile-action-label">New</span>
+            </button>
             <button className="fb-btn" onClick={collapseAll} title="Collapse all">
               {homeIcon}
             </button>

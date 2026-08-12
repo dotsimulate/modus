@@ -733,6 +733,7 @@ function AppContent({ router }: { router: HashRouter }) {
                 modus.detachMove(moveName, apiToken).catch(() => {});
               }}
               sessionId={activeSession?.id}
+              onSelectSession={handleViewSession}
               onSendToAgent={(text) => { const current = getInputValue(); handleInputChange(current ? `${current}\n${text}` : text); }}
             />
           </>

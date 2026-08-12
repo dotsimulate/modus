@@ -478,6 +478,12 @@ When the editor is inside the app-level `RightPanel`, it uses the shared panel
 browser path (synced per session and persisted via `saveSessionUiState`). When
 rendered on a page layout, it falls back to local state.
 
+File commands have both pointer/keyboard and touch paths. Desktop clients keep
+right-click menus and `Ctrl/Cmd+S`; touch clients get an explicit Save button,
+New file/folder and per-item action triggers, with the same commands presented
+as a bottom sheet. Core file operations must not depend on hover or a context-menu
+gesture alone.
+
 File-open events are routed by three layers:
 
 1. `FileViewerProvider.openFile(path)` — authoritative state (tabs, active path,

@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { basename, isAbsolute, normalize, resolve } from "path";
 import { resolveDatabasePath } from "./database-paths";
 import {
   estimateTurnDetailBytes,
@@ -1216,6 +1217,109 @@ export function getFileObservations(sessionId: string): FileObservationRow[] {
     .all({ $sid: sessionId }) as FileObservationRow[];
 }
 
+/** One session that wrote or edited a given file, with the display fields the UI needs. */
+export type FileSessionRef = {
+  sessionId: string;
+  /** Most recent write/edit of this file within the session. */
+  lastTouchedAt: number;
+  /** Event seq of that most recent touch. */
+  lastSeq: number;
+  editCount: number;
+  writeCount: number;
+  title: string | null;
+  lastPrompt: string | null;
+  preview: string;
+  model: string | null;
+  profile: string | null;
+  provider: string | null;
+  status: string;
+  cwd: string | null;
+  userProfile: string | null;
+};
+
+/**
+ * Sessions that wrote or edited `filePath`, most recently touched first.
+ *
+ * Reads file_observations rather than reconstructing touches from the events
+ * table: it is already exactly the write/edit set, and it is four orders of
+ * magnitude cheaper (measured 1.9ms vs 7.9s of full events scan).
+ *
+ * observeDeclaredFileTools stores the provider's raw path with no normalization
+ * (session-manager.ts), so a provider that emits relative paths lands relative.
+ * Candidates are therefore matched by basename in SQL and re-resolved against
+ * each session's cwd here before being accepted.
+ */
+export function getSessionsForFile(filePath: string, limit = 3): FileSessionRef[] {
+  const rawTarget = filePath.trim();
+  if (!rawTarget) return [];
+  // UI paths (FileBrowser joins with `/`) and provider tool paths often disagree
+  // on separators; normalize once so exact-match and samePath agree on Windows.
+  const target = normalize(rawTarget);
+  const base = basename(target);
+  if (!base) return [];
+
+  // LIKE wildcards are literal characters in a filename; escape them.
+  const suffix = `%${base.replace(/[\\%_]/g, (c) => `\\${c}`)}`;
+  const rows = db.prepare(`
+    SELECT fo.session_id, fo.path, fo.operation, fo.created_at, fo.seq,
+           s.title, s.last_prompt, s.preview, s.model, s.profile, s.provider, s.status, s.cwd, s.user_profile
+    FROM file_observations fo
+    JOIN sessions s ON fo.session_id = s.id
+    WHERE fo.path = $exact OR fo.path LIKE $suffix ESCAPE '\\'
+    ORDER BY fo.created_at DESC, fo.id DESC
+  `).all({ $exact: target, $suffix: suffix }) as Array<{
+    session_id: string; path: string; operation: string; created_at: number; seq: number;
+    title: string | null; last_prompt: string | null; preview: string; model: string | null;
+    profile: string | null; provider: string | null; status: string; cwd: string | null;
+    user_profile: string | null;
+  }>;
+
+  const pathsEqual = (a: string, b: string): boolean => {
+    const na = normalize(a);
+    const nb = normalize(b);
+    return process.platform === "win32"
+      ? na.toLowerCase() === nb.toLowerCase()
+      : na === nb;
+  };
+
+  const samePath = (candidate: string, cwd: string | null): boolean => {
+    const abs = isAbsolute(candidate) ? candidate : cwd ? resolve(cwd, candidate) : null;
+    if (!abs) return false;
+    return pathsEqual(abs, target);
+  };
+
+  const bySession = new Map<string, FileSessionRef>();
+  for (const row of rows) {
+    if (!samePath(row.path, row.cwd)) continue;
+    let ref = bySession.get(row.session_id);
+    if (!ref) {
+      ref = {
+        sessionId: row.session_id,
+        lastTouchedAt: row.created_at,
+        lastSeq: row.seq,
+        editCount: 0,
+        writeCount: 0,
+        title: row.title,
+        lastPrompt: row.last_prompt,
+        preview: row.preview,
+        model: row.model,
+        profile: row.profile,
+        provider: row.provider,
+        status: row.status,
+        cwd: row.cwd,
+        userProfile: row.user_profile,
+      };
+      bySession.set(row.session_id, ref);
+    }
+    // Rows arrive newest-first, so the first one seen is already the latest.
+    if (row.operation === "write") ref.writeCount++; else ref.editCount++;
+  }
+
+  return [...bySession.values()]
+    .sort((a, b) => b.lastTouchedAt - a.lastTouchedAt)
+    .slice(0, Math.max(1, limit));
+}
+
 export function insertMessage(opts: {
   sessionId: string;
   seq?: number;
@@ -1288,6 +1392,8 @@ const DETAIL_DEFER_BYTES = 32_768;
 type SessionHistoryPageOptions = {
   limit?: number;
   beforeSeq?: number;
+  /** Wall-clock paging boundary; preferred over beforeSeq when seq may collide. */
+  beforeCreatedAt?: number;
   includeDetails?: boolean;
   preserveEventSequence?: boolean;
 };
@@ -1371,52 +1477,69 @@ function getSessionMessagesFromEvents(
   fallbackModel = "",
 ): SessionTurnsPage {
   const limit = options.limit;
+  // Wall-clock order, not seq: a resumed ActiveSession that restarts at seq 0
+  // collides with older events, and ORDER BY seq alone interleaves whole turns.
+  const eventOrder = `ORDER BY created_at ASC, id ASC`;
   if (!limit) {
     const events = db.prepare(
-      `SELECT seq, type, subtype, data, created_at FROM events
+      `SELECT id, seq, type, subtype, data, created_at FROM events
        WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
-       ORDER BY seq ASC`
-    ).all({ $sid: sessionId }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
+       ${eventOrder}`
+    ).all({ $sid: sessionId }) as { id: number; seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
     return { turns: reconstructSessionTurns(events, fallbackModel), hasMore: false };
   }
 
   // Event-only legacy/interrupted sessions can contain tens of thousands of
   // rows. Start at a recent user-prompt boundary so a cold open never needs to
   // parse the whole transcript just to paint the newest messages.
+  //
+  // Cut off by created_at (and only fall back to seq for older clients) so a
+  // reused seq cannot pull the window back to the first turn of the session.
   const promptLimit = Math.max(1, Math.ceil(limit / 2));
+  let beforeCreatedAt: number | null = options.beforeCreatedAt ?? null;
+  if (beforeCreatedAt == null && options.beforeSeq != null) {
+    // Best-effort: earliest wall-clock among rows with that seq. Unique-seq
+    // sessions get a precise boundary; collided seqs degrade to "no older".
+    const boundary = db.prepare(`
+      SELECT MIN(created_at) AS created_at FROM events
+      WHERE session_id = $sid AND seq = $seq
+    `).get({ $sid: sessionId, $seq: options.beforeSeq }) as { created_at: number | null } | null;
+    beforeCreatedAt = boundary?.created_at ?? null;
+  }
+
   const cutoff = db.prepare(`
-    SELECT MIN(seq) AS seq FROM (
-      SELECT seq FROM events
+    SELECT MIN(created_at) AS created_at FROM (
+      SELECT created_at FROM events
       WHERE session_id = $sid
         AND type = 'user' AND subtype = 'prompt'
-        AND ($before_seq IS NULL OR seq < $before_seq)
-      ORDER BY seq DESC
+        AND ($before_created_at IS NULL OR created_at < $before_created_at)
+      ORDER BY created_at DESC
       LIMIT $prompt_limit
     )
   `).get({
     $sid: sessionId,
-    $before_seq: options.beforeSeq ?? null,
+    $before_created_at: beforeCreatedAt,
     $prompt_limit: promptLimit,
-  }) as { seq: number | null } | null;
+  }) as { created_at: number | null } | null;
 
-  if (!cutoff?.seq) return { turns: [], hasMore: false };
+  if (!cutoff?.created_at) return { turns: [], hasMore: false };
   const events = db.prepare(
-    `SELECT seq, type, subtype, data, created_at FROM events
+    `SELECT id, seq, type, subtype, data, created_at FROM events
      WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
-       AND seq >= $cutoff
-       AND ($before_seq IS NULL OR seq < $before_seq)
-     ORDER BY seq ASC`
+       AND created_at >= $cutoff
+       AND ($before_created_at IS NULL OR created_at < $before_created_at)
+     ${eventOrder}`
   ).all({
     $sid: sessionId,
-    $cutoff: cutoff.seq,
-    $before_seq: options.beforeSeq ?? null,
-  }) as { seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
+    $cutoff: cutoff.created_at,
+    $before_created_at: beforeCreatedAt,
+  }) as { id: number; seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
 
   const older = db.prepare(`
     SELECT 1 AS found FROM events
-    WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt' AND seq < $cutoff
+    WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt' AND created_at < $cutoff
     LIMIT 1
-  `).get({ $sid: sessionId, $cutoff: cutoff.seq }) as { found: number } | null;
+  `).get({ $sid: sessionId, $cutoff: cutoff.created_at }) as { found: number } | null;
   return { turns: reconstructSessionTurns(events, fallbackModel), hasMore: !!older };
 }
 
