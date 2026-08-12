@@ -19,6 +19,20 @@ export type QueuedMessage = {
  *  now, falling back to the queue where that is not supported. */
 export type DeliverMode = "queue" | "steer";
 
+/**
+ * Extra send-time decisions that only apply when this message is the one that
+ * creates the session. An options bag rather than more positional arguments:
+ * the three ChatInput call sites already disagree about the existing ones.
+ */
+export type SendOpts = {
+  /**
+   * Agent-profile move bindings the user removed from the composer's pending
+   * attachments before sending. Ignored once the session exists, since the
+   * profile's inline moves have already gathered by then.
+   */
+  skipProfileMoves?: string[];
+};
+
 type SessionContextValue = {
   activeSession: Session | null;
   serverSessions: SessionInfo[];
@@ -28,7 +42,7 @@ type SessionContextValue = {
   sessionProjects: SessionProjectSummary[];
   sessionIndexConnection: SessionIndexConnectionState;
   handleInputChange: (text: string) => void;
-  send: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode) => Promise<void>;
+  send: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode, opts?: SendOpts) => Promise<void>;
   stop: () => Promise<void>;
   stopTask: (taskId: string) => Promise<void>;
   newSession: (profileOverride?: string) => Promise<string | null>;

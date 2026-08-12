@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { PreviewManifest } from "../../../sdk/index";
-import { HTML_PREVIEW_SANDBOX } from "../htmlSandbox";
 import { modus } from "../modusClient";
+import { SandboxedHtmlFrame } from "./SandboxedHtmlFrame";
 import { FileContentViewer } from "./FileContentViewer";
 
 type Props = {
@@ -126,11 +126,10 @@ export function PreviewRenderer({
             an opaque origin stops the frame reading the app's storage, not its
             own location. With srcDoc there is no URL and no credential to take.
           */
-          <iframe
+          <SandboxedHtmlFrame
             className="preview-frame"
-            srcDoc={text ?? ""}
+            html={text ?? ""}
             title={manifest.name}
-            sandbox={HTML_PREVIEW_SANDBOX}
           />
         )}
       </div>

@@ -264,6 +264,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
             {session ? (
               <ChatView
                 messages={session.messages ?? []}
+                sessionId={sessionId}
                 provider={session.provider ?? session.agentConfig?.provider}
                 streaming={isActive ?? false}
                 streamFeed={session.streamFeed}

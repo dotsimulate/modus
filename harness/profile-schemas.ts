@@ -168,6 +168,9 @@ const UserInterfaceConfigSchema = z.object({
   chat: z.object({
     fontScale: z.number().min(75).max(175).optional(),
     chatWidth: z.number().min(500).max(1600).optional(),
+    scrollIndicator: z.enum(["scroll", "spine", "ruler"]).optional(),
+    // Deprecated by scrollIndicator. Still accepted so an older profile round
+    // trips instead of being stripped on the next save.
     spineEnabled: z.boolean().optional(),
   }).optional(),
   conversation: z.object({
@@ -260,6 +263,7 @@ export const ProfileSchema = z.object({
   moves: z.array(z.object({
     name: z.string(),
     inputs: z.record(z.string(), z.unknown()).optional(),
+    ask: z.boolean().optional(),
   })).optional(),
   skills: z.array(z.string()).optional(),
 });

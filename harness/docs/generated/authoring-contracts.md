@@ -1,7 +1,7 @@
 ---
 title: Authoring Contracts (generated)
 audience: dev
-covers: harness/harness-context.ts harness/move-types.ts
+covers: harness/harness-context.ts harness/move-types.ts harness/ui/src/move-tool-view.ts
 ---
 
 <!-- GENERATED FILE — do not edit. Run `bun run docs:generate` from harness/. Drift fails docs-generated.test.ts. -->
@@ -258,6 +258,64 @@ export type MoveApiHandler = (
   ctx: MoveApiContext,
   data: Record<string, unknown>,
 ) => Promise<{ ok: boolean; message?: string; error?: string } & Record<string, unknown>>;
+```
+
+### `MoveToolViewDeclaration` — the `toolView` field in move.json
+
+`harness/move-types.ts`
+
+```ts
+/** Declared in move.json — replaces this move's modus_submit tool-call rendering */
+export interface MoveToolViewDeclaration {
+  /** Filename in the move directory (e.g. "tool-view.tsx") */
+  component: string;
+  /** Restrict takeover to these API op names. Omit to claim every op. */
+  ops?: string[];
+  /** Replace the entire tool row (default) or only its expanded body. */
+  takeover?: "block" | "body";
+  /** Module caching strategy. "instance" currently shares "module" semantics in the transcript. */
+  cache?: "instance" | "module" | "none";
+}
+```
+
+### `MoveToolViewProps` — passed to a move's transcript tool-view component
+
+`harness/ui/src/move-tool-view.ts`
+
+```ts
+/** Props passed to a move's declared tool-view component. */
+export type MoveToolViewProps = {
+  moveName: string;
+  instanceId: string;
+  apiToken: string;
+  sessionId: string;
+  op: string;
+  input: Record<string, unknown>;
+  result?: MoveApiClientResult;
+  /**
+   * Whether `result` is trustworthy yet.
+   *
+   * `result` being undefined is ambiguous on its own — the call may still be
+   * running, or the turn's details may have been deferred for transport and not
+   * loaded back. Views that guessed rendered a hard error for what was really a
+   * loading state. The substrate knows the difference, so it says which.
+   *
+   * The op arguments are in `input`, which is part of the tool call itself and
+   * survives every transport; prefer it over `result` for anything needed to
+   * paint before the call completes.
+   */
+  resultState: "pending" | "ready";
+  /** Reserved for the immutable per-call record contract planned for v2. */
+  record?: unknown;
+  artifacts?: SessionArtifact[];
+  status: ToolCall["status"];
+  isLatest: boolean;
+  expanded: boolean;
+  setExpanded: (expanded: boolean) => void;
+  callOp: (op: string, data?: Record<string, unknown>) => Promise<MoveApiClientResult>;
+  submitMessage: (prompt: string) => Promise<void>;
+  subscribe?: (listener: (event: { type: string; payload?: Record<string, unknown> }) => void) => () => void;
+};
 ```
 
 ### `MoveCapabilities` — the capability gates a move declares

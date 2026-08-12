@@ -28,7 +28,7 @@ import {
   subscribeSessionIndex,
   type SessionIndexConnectionState,
 } from "../sessionIndexSync";
-import { SessionContext, type QueuedMessage, type DeliverMode } from "./SessionContext";
+import { SessionContext, type QueuedMessage, type DeliverMode, type SendOpts } from "./SessionContext";
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
@@ -363,7 +363,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   // ── Send message ──
 
-  const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver: DeliverMode = "queue") => {
+  const send = useCallback(async (sendAttachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver: DeliverMode = "queue", sendOpts?: SendOpts) => {
     const prompt = (textOverride ?? getInputValue()).trim();
     if (!prompt && sendAttachments.length === 0) return;
 
@@ -444,6 +444,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       try {
         const opts = buildSessionOpts(prompt, queuedProfile, seedState as any);
         if (apiAtts) opts.attachments = apiAtts;
+        // A move attached in the composer has to ride the create call: this
+        // message is the session's first, so there is no sendMessage to carry
+        // it. Without this the binding was silently dropped for new chats.
+        if (moves?.length) opts.moves = moves;
+        // Profile bindings the user removed after seeing what they would inject.
+        if (sendOpts?.skipProfileMoves?.length) opts.skipProfileMoves = sendOpts.skipProfileMoves;
         const { sessionId: realId } = await modus.createSession(opts);
 
         rekeySession(tempId, realId);

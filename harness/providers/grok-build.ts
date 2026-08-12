@@ -260,14 +260,86 @@ function thinkingEvent(text: string) {
   return { type: "assistant", message: { role: "assistant", content: [{ type: "thinking", thinking: text }] } };
 }
 
+/**
+ * Collapse Grok's meta-MCP `use_tool` into the Claude-shaped tool call the rest
+ * of Modus expects (`modus_submit` + top-level token/data). Without this, move
+ * tool-views never claim the row and live-html / chess / etc. never paint.
+ */
+export function normalizeGrokToolCall(toolCall: any): { name: string; input: Record<string, unknown> } {
+  const name = toolNameFromCall(toolCall);
+  const input = asObject(toolCall.rawInput ?? toolCall.raw_input ?? toolCall.input);
+  if (name === "use_tool" || name === "UseTool") {
+    const toolName = typeof input.tool_name === "string" ? input.tool_name : "";
+    const nested = asObject(input.tool_input);
+    if (toolName.includes("modus_submit") && (typeof nested.token === "string" || nested.data != null)) {
+      return { name: "modus_submit", input: nested };
+    }
+  }
+  return { name, input };
+}
+
+function isByte(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 255;
+}
+
+function bytesToString(bytes: number[]): string {
+  try {
+    return new TextDecoder().decode(Uint8Array.from(bytes));
+  } catch {
+    return bytes.map((b) => String.fromCharCode(b)).join("");
+  }
+}
+
+/** Peel Grok ACP / MCP result envelopes into plain tool text. */
+export function normalizeGrokToolOutput(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        return normalizeGrokToolOutput(JSON.parse(trimmed));
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }
+  if (Array.isArray(value) && value.length > 0 && value.every(isByte)) {
+    return bytesToString(value as number[]);
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.OkayOutput === "string") return obj.OkayOutput;
+    if (typeof obj.ErrorOutput === "string") return obj.ErrorOutput;
+    if (typeof obj.output_for_prompt === "string") return obj.output_for_prompt;
+    if (typeof obj.output === "string") return obj.output;
+    if (Array.isArray(obj.output) && (obj.output as unknown[]).length > 0 && (obj.output as unknown[]).every(isByte)) {
+      return bytesToString(obj.output as number[]);
+    }
+    if (obj.output && typeof obj.output === "object" && !Array.isArray(obj.output)) {
+      const nested = obj.output as Record<string, unknown>;
+      if (typeof nested.OkayOutput === "string") return nested.OkayOutput;
+      if (typeof nested.ErrorOutput === "string") return nested.ErrorOutput;
+      if (typeof nested.output_for_prompt === "string") return nested.output_for_prompt;
+    }
+    const fileContent = obj.FileContent;
+    if (fileContent && typeof fileContent === "object" && !Array.isArray(fileContent)) {
+      const content = (fileContent as Record<string, unknown>).content;
+      if (typeof content === "string") return content;
+    }
+  }
+  return stringify(value);
+}
+
 function emitToolStart(ctx: TurnContext, state: GrokState, toolCall: any): ToolState {
   const id = String(toolCall.toolCallId ?? toolCall.tool_call_id ?? `grok-tool-${Date.now()}`);
   const existing = state.tools.get(id);
   if (existing) return existing;
+  const normalized = normalizeGrokToolCall(toolCall);
   const tool: ToolState = {
     id,
-    name: toolNameFromCall(toolCall),
-    input: asObject(toolCall.rawInput ?? toolCall.raw_input ?? toolCall.input),
+    name: normalized.name,
+    input: normalized.input,
     resultEmitted: false,
   };
   state.tools.set(id, tool);
@@ -280,10 +352,11 @@ function emitToolStart(ctx: TurnContext, state: GrokState, toolCall: any): ToolS
 
 function outputFromTool(update: any): string {
   const raw = update.rawOutput ?? update.raw_output;
-  if (raw != null) return stringify(raw);
+  if (raw != null) return normalizeGrokToolOutput(raw);
   const content = Array.isArray(update.content) ? update.content : [];
   const parts = content.map((entry: any) => entry?.content?.text ?? entry?.text ?? entry?.content).filter(Boolean);
-  return parts.length ? parts.map(stringify).join("\n") : stringify(update.status ?? "tool call completed");
+  if (parts.length) return parts.map((part: unknown) => normalizeGrokToolOutput(part)).join("\n");
+  return stringify(update.status ?? "tool call completed");
 }
 
 function handleUpdate(ctx: TurnContext, state: GrokState, params: any): void {
@@ -614,28 +687,56 @@ async function runTurn(
   }
 }
 
-export function createGrokBuildProvider(options?: { command?: GrokCommand }): SessionProvider {
+/**
+ * A missing CLI is usually a stale PATH rather than a missing install: an
+ * installer appends its directory to the persisted user PATH, which a running
+ * Modus does not see until it restarts. Naming that, and the override that
+ * skips the search entirely, is what makes the message actionable.
+ */
+export const GROK_BUILD_CLI_MISSING =
+  "Grok Build CLI (`grok`) was not found. Install it and sign in with `grok login`, "
+  + "then restart Modus so it picks up the new PATH — or set MODUS_GROK_CLI to the executable's full path.";
+
+/**
+ * Fail the turn before it starts, the way every other provider does.
+ *
+ * `broadcastEvent` is deliberate: the session manager promotes `type: "error"`
+ * to a persisted system message, so the explanation is exactly as durable as
+ * the error status beside it. A `result`/`error` pair reaches live subscribers
+ * only, and a pre-flight failure has none yet — the client is still opening the
+ * stream for the session it just created.
+ */
+function markGrokBuildUnavailable(ctx: TurnContext, reason: string): void {
+  const { session } = ctx;
+  console.error(`[grok-build] ${reason}`);
+  session.status = "error";
+  session.error = reason;
+  updateSessionStatus(session.sessionId, "error");
+  ctx.broadcastEvent({ type: "error", error: reason });
+  ctx.emitEvent({ type: "done" });
+}
+
+export function createGrokBuildProvider(options?: {
+  command?: GrokCommand;
+  /** Test seam: exercise the not-found branch without depending on the host's PATH. */
+  resolveCommand?: () => GrokCommand | null;
+}): SessionProvider {
   return {
     capabilities: GROK_BUILD_CAPABILITIES,
 
     startTurn(ctx) {
-      const command = options?.command ?? resolveGrokBuildCommand();
+      const command = options?.command ?? (options?.resolveCommand ?? resolveGrokBuildCommand)();
       if (!command) {
-        ctx.session.status = "error";
-        ctx.session.error = "Grok Build CLI was not found. Install it, then run `grok login` or set XAI_API_KEY.";
-        updateSessionStatus(ctx.session.sessionId, "error");
-        ctx.emitEvent({ type: "result", subtype: "error", error: ctx.session.error, total_cost_usd: 0 });
-        ctx.emitEvent({ type: "done" });
+        markGrokBuildUnavailable(ctx, GROK_BUILD_CLI_MISSING);
         return;
       }
       const existing = ctx.opts.sessionId ? getSession(ctx.opts.sessionId) : null;
       const resume = !!ctx.opts.sessionId && !!existing && (existing.message_count > 0 || getMaxSeq(ctx.opts.sessionId) > 0);
       if (resume && !ctx.session.providerSessionId) {
-        ctx.session.status = "error";
-        ctx.session.error = "This Modus session has no stored Grok Build session ID, so it cannot be resumed without losing context.";
-        updateSessionStatus(ctx.session.sessionId, "error");
-        ctx.emitEvent({ type: "result", subtype: "error", error: ctx.session.error, total_cost_usd: 0 });
-        ctx.emitEvent({ type: "done" });
+        markGrokBuildUnavailable(
+          ctx,
+          "This Modus session has no stored Grok Build session ID, so it cannot be resumed without losing context.",
+        );
         return;
       }
       const state: GrokState = {

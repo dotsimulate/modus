@@ -83,7 +83,7 @@ import {
   getSessionTags, getSessionByTag, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
   getProviderUsageAnalytics, getDeepAnalytics,
-  getSessionMessage, getSessionMessages, getSessionMessageHistory, getSessionArtifact, getFileObservations, listAllCheckpoints,
+  getSessionMessage, getSessionMessages, getSessionMessageHistory, getSessionArtifact, getFileObservations, getSessionsForFile, listAllCheckpoints,
 } from "./db";
 import { planCheckpointMaintenance } from "./checkpoint-maintenance";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
@@ -1448,6 +1448,8 @@ app.post("/api/sessions", async (c) => {
     providerControls: body.providerControls,
     loadProjectSettings: body.loadProjectSettings,
     sessionId: body.sessionId, // for resume
+    moves: body.moves,
+    skipProfileMoves: body.skipProfileMoves,
   };
 
   // Use startSessionWithMoves — handles profile move bindings automatically.
@@ -4200,9 +4202,10 @@ app.get("/api/activity/summary", (c) => {
 
 // ── Moves ──
 
-import { listMoves, getMove, activateMove, attachMove, activateAttachedMove, detachMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, getActiveWidgetForSession, rekeyMoveRegistrySession, rekeyMoveByToken, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
+import { listMoves, getMove, activateMove, attachMove, activateAttachedMove, detachMove, getMoveRuns, getToken, getActiveTokensForSession, handleMoveApiSubmit, resolveMoveLocation, resolveMoveToolViewToken, getActiveWidgetForSession, rekeyMoveRegistrySession, rekeyMoveByToken, deactivateAmbientMove, getActiveAmbientMoves } from "./move-runner";
 import { getMoveRunsBySession, getMoveRunById, getRecentMoveRuns } from "./move-db";
 import { isMoveOpParseError, parseMoveOpFormData, parseMoveOpJson } from "./move-op-request";
+import { resolveDeclaredMoveComponent } from "./move-component";
 import { handleModusMcpRequest } from "./modus-mcp";
 
 // List available moves for a CWD
@@ -4240,6 +4243,15 @@ app.get("/api/skills/:name", (c) => {
   const text = buildSkillPayload(skill);
   if (text === null) return c.json({ error: "skill could not be read" }, 404);
   return c.json({ name: skill.name, description: skill.description, dir: skill.dir, origin: skill.origin, text });
+});
+
+// Resolve the move-owned transcript view for a reusable move API token. This
+// static route must precede /api/moves/:name or "resolve-token" is consumed as
+// a move name by the router.
+app.get("/api/moves/resolve-token", async (c) => {
+  const token = new URL(c.req.url).searchParams.get("token");
+  if (!token) return c.json({ error: "token required" }, 400);
+  return c.json(await resolveMoveToolViewToken(token) ?? null);
 });
 
 // Get a specific move definition
@@ -4434,16 +4446,19 @@ const widgetCache = new Map<string, { mtime: number; js: string }>();
 
 app.get("/api/moves/:name/widget", async (c) => {
   const name = c.req.param("name");
-  const cwd = new URL(c.req.url).searchParams.get("cwd");
+  const params = new URL(c.req.url).searchParams;
+  const cwd = params.get("cwd");
   if (!cwd) return c.json({ error: "cwd required" }, 400);
 
   const move = getMove(name, cwd);
-  if (!move?.widget?.component) return c.json({ error: "move has no widget" }, 404);
+  if (!move) return c.json({ error: "move not found" }, 404);
+  const component = resolveDeclaredMoveComponent(move, params.get("component"));
+  if (!component) return c.json({ error: "move component not declared" }, 404);
 
   const location = resolveMoveLocation(name, cwd);
   if (!location) return c.json({ error: "move not found" }, 404);
 
-  const srcPath = join(location.dir, move.widget.component);
+  const srcPath = join(location.dir, component);
   try {
     const { statSync } = await import("fs");
     const mtime = statSync(srcPath).mtimeMs;
@@ -4669,6 +4684,18 @@ app.get("/api/trace/touches", (c) => {
     sessionId: q.sessionId || undefined,
   });
   return c.json({ touches, summary: touchSummary(touches) });
+});
+
+// Sessions that wrote or edited one file, newest first. Backs the code editor's
+// file-history context menu. Reads file_observations, not the events table —
+// see getSessionsForFile for why.
+app.get("/api/trace/file-sessions", (c) => {
+  const path = c.req.query("path");
+  if (!path) return c.json({ error: "path is required" }, 400);
+  const rawLimit = c.req.query("limit");
+  const limit = rawLimit ? parseInt(rawLimit, 10) : 3;
+  if (rawLimit && (isNaN(limit) || limit < 1)) return c.json({ error: "invalid limit" }, 400);
+  return c.json({ sessions: getSessionsForFile(path, Math.min(limit, 25)) });
 });
 
 // ── Web Positions (spatial layout for session web view) ──

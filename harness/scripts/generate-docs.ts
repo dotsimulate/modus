@@ -133,6 +133,8 @@ const CONTEXTS: SurfaceEntry[] = [
 
 const SUPPORTING: SurfaceEntry[] = [
   { name: "MoveApiHandler", file: "move-types.ts", when: "the handler signature" },
+  { name: "MoveToolViewDeclaration", file: "move-types.ts", when: "the `toolView` field in move.json" },
+  { name: "MoveToolViewProps", file: "ui/src/move-tool-view.ts", when: "passed to a move's transcript tool-view component" },
   { name: "MoveCapabilities", file: "move-types.ts", when: "the capability gates a move declares" },
   { name: "MoveStateAPI", file: "move-types.ts", when: "`ctx.state`" },
   { name: "MoveDB", file: "move-types.ts", when: "`ctx.db`" },

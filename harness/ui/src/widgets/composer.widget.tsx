@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useSessionState, ensureSubscribed, getSessionState, setSessionState, setSessionNextProfile, setSessionNextAgentConfig } from "../sessionStore";
 import { useInputValue, setInputValue, setActiveInputSession } from "../inputStore";
-import { useSession, type DeliverMode } from "../providers/SessionContext";
+import { useSession, type DeliverMode, type SendOpts } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import { ChatInput } from "../components/ChatInput";
@@ -115,7 +115,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
   // ── Send / stop ──
 
   const handleSend = useCallback(
-    (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode) => {
+    (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode, sendOpts?: SendOpts) => {
       if (!sessionId) return;
       const prompt = (textOverride ?? input).trim();
       if (!prompt && attachments.length === 0) return;
@@ -126,7 +126,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
       // that dance and drops profile/config overrides on empty sessions.
       if (activeSession?.id === sessionId) {
         setInputValue("");
-        void sessionSend(attachments, prompt, moves, deliver).catch((err) => {
+        void sessionSend(attachments, prompt, moves, deliver, sendOpts).catch((err) => {
           console.error("[composer-widget] sessionSend failed:", err);
         });
         return;
@@ -250,6 +250,8 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
         sessionId={sessionId}
         projectCwd={projectCwd}
         userProfile={activeUserProfile ?? undefined}
+        agentProfile={profileName}
+        sessionHasMessages={(session?.messages.length ?? 0) > 0}
         provider={liveProvider}
         pageContext={pageContext}
         autoFocus={!!sessionId}

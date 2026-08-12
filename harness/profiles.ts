@@ -265,6 +265,15 @@ export type ProfileMoveBinding = {
   name: string;
   /** Inputs to pass to the move's gather() */
   inputs?: Record<string, unknown>;
+  /**
+   * Ask the user for this move's inputs when the session opens instead of
+   * running it at session start. The move's form docks above the composer,
+   * seeded from `inputs` above — so a binding can prefill some fields and ask
+   * for the rest — and the move activates when the user submits it. Dismissing
+   * the form skips the move for that session. Ignored when the move declares no
+   * inputs, since there would be nothing to ask.
+   */
+  ask?: boolean;
 };
 
 export type ResolvedProfilePrompt = {
@@ -348,10 +357,21 @@ export type UserProfileUiConfig = {
 
 export type ToolCallDisplayMode = "expanded" | "collapsed" | "hidden";
 
+/**
+ * How the chat indexes its own scroll.
+ *   scroll — the native scrollbar, nothing else
+ *   spine  — sparse per-message tick index
+ *   ruler  — turn-indexed: prose and tool lanes left of the axis, your own
+ *            turns as accent rungs on the right, turn numbers on hover
+ */
+export type ChatScrollIndicator = "scroll" | "spine" | "ruler";
+
 export type UserInterfaceConfig = {
   chat?: {
     fontScale?: number;
     chatWidth?: number;
+    scrollIndicator?: ChatScrollIndicator;
+    /** @deprecated superseded by scrollIndicator; still read so older profiles migrate. */
     spineEnabled?: boolean;
   };
   conversation?: {

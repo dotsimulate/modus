@@ -27,16 +27,19 @@ const SessionSharedSchema = z.object({
   mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 });
 
+const MoveBindingSchema = z.object({
+  name: z.string().min(1),
+  inputs: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const CreateSessionRequestSchema = SessionSharedSchema.extend({
   prompt: z.string().min(1),
   attachments: z.array(AttachmentSchema).optional(),
   maxTurns: z.number().int().positive().optional(),
   sessionId: z.string().optional(),
-});
-
-const MoveBindingSchema = z.object({
-  name: z.string().min(1),
-  inputs: z.record(z.string(), z.unknown()).optional(),
+  moves: z.array(MoveBindingSchema).optional(),
+  /** Profile move bindings the user removed in the composer before sending. */
+  skipProfileMoves: z.array(z.string()).optional(),
 });
 
 export const SendMessageRequestSchema = SessionSharedSchema.extend({

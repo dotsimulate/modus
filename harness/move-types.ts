@@ -93,6 +93,9 @@ export interface MoveConfig {
   // ── Widget (move-local UI component) ──
   widget?: MoveWidgetDeclaration;
 
+  // ── Tool view (move-local transcript component) ──
+  toolView?: MoveToolViewDeclaration;
+
   // ── Page (move-owned full page in the nav) ──
   page?: MovePageDeclaration;
 
@@ -537,6 +540,18 @@ export interface MoveWidgetDeclaration {
    *     Component state resets but no import flash.
    *   - "none": always re-import the module. For development/iteration.
    */
+  cache?: "instance" | "module" | "none";
+}
+
+/** Declared in move.json — replaces this move's modus_submit tool-call rendering */
+export interface MoveToolViewDeclaration {
+  /** Filename in the move directory (e.g. "tool-view.tsx") */
+  component: string;
+  /** Restrict takeover to these API op names. Omit to claim every op. */
+  ops?: string[];
+  /** Replace the entire tool row (default) or only its expanded body. */
+  takeover?: "block" | "body";
+  /** Module caching strategy. "instance" currently shares "module" semantics in the transcript. */
   cache?: "instance" | "module" | "none";
 }
 

@@ -6,7 +6,7 @@
  */
 
 import type { ReactNode } from "react";
-import { HTML_PREVIEW_SANDBOX } from "../htmlSandbox";
+import { SandboxedHtmlFrame } from "./SandboxedHtmlFrame";
 
 function basename(p: string): string {
   const parts = p.replace(/\\/g, "/").split("/");
@@ -35,10 +35,9 @@ export function HtmlPreview({ filePath, content, nameActions, actions }: Props) 
           {actions && <div className="fcv-actions">{actions}</div>}
         </div>
       </div>
-      <iframe
+      <SandboxedHtmlFrame
         className="right-panel-iframe"
-        srcDoc={content}
-        sandbox={HTML_PREVIEW_SANDBOX}
+        html={content}
         title="HTML Preview"
       />
     </div>

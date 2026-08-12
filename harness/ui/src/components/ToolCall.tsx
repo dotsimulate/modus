@@ -1,9 +1,30 @@
-import { memo, useState, useEffect, useCallback } from "react";
-import type { ToolCall as ToolCallType, Message } from "../../../sdk/index";
+import { Component, memo, useState, useEffect, useCallback, type ComponentType, type ReactNode } from "react";
+import type { ToolCall as ToolCallType, Message, SessionArtifact } from "../../../sdk/index";
 import { EditHunk } from "./FileChanges";
 import { useFileViewer } from "../providers/FileViewerContext";
 import { AttachmentImage } from "./AttachmentImage";
 import { ImageLightbox } from "./ImageLightbox";
+import { modus, tokenParam } from "../modusClient";
+import { backendUrl } from "../backendTarget";
+import { onUiEvent } from "../sessionStore";
+import { parseMoveApiResultText } from "../../../move-api-result";
+import {
+  moveApiInput,
+  moveApiOp,
+  moveApiToken,
+  moveToolViewCssUrl,
+  moveToolViewModuleUrl,
+  resolveMoveToolView,
+  type MoveApiClientResult,
+  type MoveToolViewProps,
+  type MoveToolViewResolution,
+} from "../move-tool-view";
+import {
+  evictMoveComponent,
+  getCachedMoveComponent,
+  loadMoveComponent,
+  loadMoveComponentCSS,
+} from "./move-component-loader";
 
 type Props = {
   tool: ToolCallType;
@@ -12,7 +33,32 @@ type Props = {
   showGitEvents?: boolean;
   cwd?: string | null;
   onStopTask?: (taskId: string) => void;
+  sessionId?: string | null;
+  latestMoveToolCallIds?: ReadonlyMap<string, string>;
+  artifacts?: SessionArtifact[];
 };
+
+class MoveToolViewErrorBoundary extends Component<{
+  fallback: ReactNode;
+  resetKey: string;
+  children: ReactNode;
+}, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidUpdate(previous: Readonly<{ resetKey: string }>) {
+    if (this.state.failed && previous.resetKey !== this.props.resetKey) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 function displayToolName(name: string): string {
   if (name === "CommandExecution") return "command execution";
@@ -434,10 +480,105 @@ function EditDiffDetail({ tool }: { tool: ToolCallType }) {
   );
 }
 
-export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, anchorId, onStopTask }: Props) {
+export const ToolCallView = memo(function ToolCallView({
+  tool,
+  defaultExpanded,
+  anchorId,
+  onStopTask,
+  sessionId,
+  latestMoveToolCallIds,
+  artifacts,
+}: Props) {
   const { openFile } = useFileViewer();
   const [expanded, setExpanded] = useState(defaultExpanded ?? (tool.name === "TodoWrite"));
+  const [toolViewResolution, setToolViewResolution] = useState<MoveToolViewResolution | null>(null);
+  const [ToolViewComponent, setToolViewComponent] = useState<ComponentType<MoveToolViewProps> | null>(null);
+  // A claimed row that falls back to the native rendering is indistinguishable
+  // from an unclaimed one, and a packaged desktop has no console to check. Keep
+  // the reason so the row can say why instead of silently degrading.
+  const [toolViewError, setToolViewError] = useState<string | null>(null);
   const isTodo = tool.name === "TodoWrite";
+  const apiToken = moveApiToken(tool);
+  const op = moveApiOp(tool);
+
+  // Depend on the presence of transcript context, not the map identity —
+  // `latestMoveToolCallIds` is rebuilt on every message change, so using it as a
+  // dependency re-ran this effect on each stream delta for no gain.
+  const hasTranscriptContext = !!sessionId && !!latestMoveToolCallIds;
+
+  useEffect(() => {
+    let active = true;
+    if (!apiToken || !hasTranscriptContext) {
+      setToolViewResolution(null);
+      return () => { active = false; };
+    }
+    void resolveMoveToolView(apiToken).then((resolution) => {
+      if (active) setToolViewResolution(resolution);
+    });
+    return () => { active = false; };
+  }, [apiToken, hasTranscriptContext]);
+
+  const opIsClaimed = !!toolViewResolution
+    && !!op
+    && (!toolViewResolution.toolView.ops || toolViewResolution.toolView.ops.includes(op));
+  const toolViewModuleUrl = opIsClaimed && toolViewResolution
+    ? moveToolViewModuleUrl(toolViewResolution)
+    : null;
+
+  useEffect(() => {
+    let active = true;
+    if (!toolViewModuleUrl || !toolViewResolution) {
+      setToolViewComponent(null);
+      return () => { active = false; };
+    }
+
+    if (toolViewResolution.toolView.cache === "none") {
+      evictMoveComponent(toolViewModuleUrl);
+    }
+    const cached = getCachedMoveComponent<MoveToolViewProps>(toolViewModuleUrl);
+    if (cached) {
+      setToolViewComponent(() => cached);
+      return () => { active = false; };
+    }
+
+    setToolViewComponent(null);
+    setToolViewError(null);
+    void loadMoveComponentCSS(moveToolViewCssUrl(toolViewResolution), toolViewResolution.moveName);
+    void loadMoveComponent<MoveToolViewProps>(toolViewModuleUrl, toolViewResolution.moveName)
+      .then((component) => {
+        if (active) setToolViewComponent(() => component);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        setToolViewComponent(null);
+        setToolViewError(reason instanceof Error ? reason.message : "component failed to load");
+      });
+    return () => { active = false; };
+  }, [toolViewModuleUrl, toolViewResolution]);
+
+  const callOp = useCallback(async (
+    nextOp: string,
+    data?: Record<string, unknown>,
+  ): Promise<MoveApiClientResult> => {
+    if (!toolViewResolution || !apiToken) throw new Error("Move tool view is not connected");
+    return modus.callMoveOp(toolViewResolution.moveName, apiToken, nextOp, data);
+  }, [apiToken, toolViewResolution]);
+
+  const submitMessage = useCallback(async (prompt: string) => {
+    if (!sessionId) throw new Error("Move tool view has no session");
+    await modus.sendMessage(sessionId, prompt);
+  }, [sessionId]);
+
+  const subscribe = useCallback((listener: (event: { type: string; payload?: Record<string, unknown> }) => void) => {
+    if (!sessionId || !apiToken || !toolViewResolution) return () => {};
+    return onUiEvent("move-widget-event", (eventSessionId, event) => {
+      if (eventSessionId !== sessionId) return;
+      if (event.instanceId !== toolViewResolution.instanceId) return;
+      if (event.apiToken !== apiToken) return;
+      if (!event.event || typeof event.event.type !== "string") return;
+      listener(event.event as { type: string; payload?: Record<string, unknown> });
+    });
+  }, [apiToken, sessionId, toolViewResolution]);
 
   const canCancel = tool.status === "running" && tool.taskId && onStopTask;
   const handleCancel = useCallback((e: React.MouseEvent) => {
@@ -457,8 +598,79 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
   const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
   const readPath = isRead ? ((tool.input.file_path as string | undefined) ?? (tool.input.path as string | undefined)) : undefined;
   const readLines = readRange(tool.input);
+  // Only a claimed row consumes this. Parsing unconditionally ran a scan over
+  // every Read/Bash/Edit result in the transcript on every render, and the
+  // transcript re-renders per stream delta.
+  const parsedResult = ToolViewComponent && tool.result !== undefined
+    ? parseMoveApiResultText(tool.result, tool.status !== "error")
+    : undefined;
+  const resolvedArtifacts = artifacts?.map((artifact) => {
+    const url = backendUrl(artifact.url);
+    const token = tokenParam();
+    return {
+      ...artifact,
+      url: token ? `${url}${url.includes("?") ? "&" : "?"}${token}` : url,
+    };
+  });
+  const authoredView = ToolViewComponent && toolViewResolution && apiToken && op && sessionId && latestMoveToolCallIds
+    ? (
+        <ToolViewComponent
+          moveName={toolViewResolution.moveName}
+          instanceId={toolViewResolution.instanceId}
+          apiToken={apiToken}
+          sessionId={sessionId}
+          op={op}
+          input={moveApiInput(tool)}
+          result={parsedResult}
+          resultState={tool.result === undefined ? "pending" : "ready"}
+          artifacts={resolvedArtifacts}
+          status={tool.status}
+          isLatest={latestMoveToolCallIds.get(apiToken) === tool.id}
+          expanded={expanded}
+          setExpanded={setExpanded}
+          callOp={callOp}
+          submitMessage={submitMessage}
+          subscribe={subscribe}
+        />
+      )
+    : null;
 
-  return (
+  const defaultDetail = isAgent ? (
+    <div className="subagent-detail">
+      <div className="subagent-gutter" onClick={() => setExpanded(false)} title="collapse">
+        <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 5L4 2.5L6.5 5" stroke="currentColor" strokeWidth="1" fill="none" strokeLinecap="round"/></svg>
+      </div>
+      <div className="subagent-content">
+        {tool.subMessages!.map((msg, i) => (
+          <SubAgentMessage key={i} msg={msg} />
+        ))}
+        {tool.subSummary && (
+          <div className="subagent-summary">{tool.subSummary}</div>
+        )}
+      </div>
+    </div>
+  ) : isTodo && todos?.length ? (
+    <div className="tool-call-detail">
+      <TodoList todos={todos} />
+    </div>
+  ) : isEdit ? (
+    <EditDiffDetail tool={tool} />
+  ) : isRead && tool.result ? (
+    <div className="tool-call-detail tool-call-detail--read">
+      <ReadOutput result={tool.result} offset={tool.input.offset as number | undefined} />
+    </div>
+  ) : (
+    <div className="tool-call-detail">
+      <ToolInputArgs input={tool.input} />
+      <ToolResultImages tool={tool} />
+      <div className="tool-output-box">
+        <div className="tool-output-label">output</div>
+        <ToolOutputText tool={tool} />
+      </div>
+    </div>
+  );
+
+  const renderRow = (detail: ReactNode) => (
     <div
       className={`tool-call ${tool.status} ${isAgent ? "tool-call--agent" : ""}`}
       data-tool-id={tool.id}
@@ -510,43 +722,47 @@ export const ToolCallView = memo(function ToolCallView({ tool, defaultExpanded, 
 
       <div className={`panel-collapse ${expanded ? "panel-collapse--open" : ""}`}>
         <div className="panel-collapse-clip">
-          {isAgent ? (
-            <div className="subagent-detail">
-              <div className="subagent-gutter" onClick={() => setExpanded(false)} title="collapse">
-                <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 5L4 2.5L6.5 5" stroke="currentColor" strokeWidth="1" fill="none" strokeLinecap="round"/></svg>
-              </div>
-              <div className="subagent-content">
-                {tool.subMessages!.map((msg, i) => (
-                  <SubAgentMessage key={i} msg={msg} />
-                ))}
-                {tool.subSummary && (
-                  <div className="subagent-summary">{tool.subSummary}</div>
-                )}
-              </div>
-            </div>
-          ) : isTodo && todos?.length ? (
-            <div className="tool-call-detail">
-              <TodoList todos={todos} />
-            </div>
-          ) : isEdit ? (
-            <EditDiffDetail tool={tool} />
-          ) : isRead && tool.result ? (
-            <div className="tool-call-detail tool-call-detail--read">
-              <ReadOutput result={tool.result} offset={tool.input.offset as number | undefined} />
-            </div>
-          ) : (
-            <div className="tool-call-detail">
-              <ToolInputArgs input={tool.input} />
-              <ToolResultImages tool={tool} />
-              <div className="tool-output-box">
-                <div className="tool-output-label">output</div>
-                <ToolOutputText tool={tool} />
-              </div>
-            </div>
-          )}
+          {detail}
         </div>
       </div>
     </div>
+  );
+
+  const defaultRow = renderRow(defaultDetail);
+  if (!authoredView || !toolViewResolution) {
+    if (!toolViewError) return defaultRow;
+    return (
+      <>
+        {defaultRow}
+        <div
+          className="tool-call-note"
+          style={{ padding: "4px 9px 6px", color: "var(--text-dim)", fontSize: 11 }}
+        >
+          tool view unavailable — {toolViewError}
+        </div>
+      </>
+    );
+  }
+
+  const resetKey = `${apiToken}:${op}:${toolViewModuleUrl}`;
+  if ((toolViewResolution.toolView.takeover ?? "block") === "body") {
+    return renderRow(
+      <MoveToolViewErrorBoundary fallback={defaultDetail} resetKey={resetKey}>
+        {authoredView}
+      </MoveToolViewErrorBoundary>,
+    );
+  }
+
+  return (
+    <MoveToolViewErrorBoundary fallback={defaultRow} resetKey={resetKey}>
+      <div
+        className={`move-tool-view move-tool-view--block ${tool.status}`}
+        data-tool-id={tool.id}
+        data-tool-anchor={anchorId}
+      >
+        {authoredView}
+      </div>
+    </MoveToolViewErrorBoundary>
   );
 });
 

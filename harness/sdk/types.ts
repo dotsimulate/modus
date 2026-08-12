@@ -440,6 +440,13 @@ export type CreateSessionOpts = {
   loadProjectSettings?: boolean;
   /** If provided, reuse this ID instead of generating one. Fails if already in use. */
   sessionId?: string;
+  /** Moves to activate on the first message, alongside the profile's own. */
+  moves?: MoveBinding[];
+  /**
+   * Names of the agent profile's own move bindings to leave out of this start.
+   * Absent runs them all — this only ever removes, never adds.
+   */
+  skipProfileMoves?: string[];
 };
 
 /** Options for sending a follow-up message to an existing session. */
@@ -717,6 +724,18 @@ export type ProfileUi = {
  * An agent profile defining HOW an agent behaves: its system prompt, model, tools, and UI treatment.
  * Loaded from `profiles/agents/*.json` or `.modus/profiles/agents/*.json`.
  */
+/**
+ * Move binding on an agent profile. Mirrors `ProfileMoveBinding` in
+ * `harness/profiles.ts` — the harness type is the source of truth; this copy
+ * exists so browser clients can see a profile's bindings at all.
+ */
+export type ProfileMoveBinding = {
+  name: string;
+  inputs?: Record<string, unknown>;
+  /** Ask the user for inputs when the session opens rather than at session start. */
+  ask?: boolean;
+};
+
 export type Profile = {
   /** Collision-free reference passed to session APIs (for example plugin:my-plugin/reviewer). */
   name: string;
@@ -744,6 +763,8 @@ export type Profile = {
   ui?: ProfileUi;
   /** Suggested working directories shown in the UI profile picker. */
   cwdSuggestions?: string[];
+  /** Moves that auto-activate when a session starts with this profile. */
+  moves?: ProfileMoveBinding[];
   /**
    * Where this profile was loaded from.
    *   - "project": `<cwd>/.modus/profiles/agents/<name>.json` (scoped to this project)
@@ -996,10 +1017,15 @@ export type UserProfileUiConfig = {
 
 export type ToolCallDisplayMode = "expanded" | "collapsed" | "hidden";
 
+/** How the chat indexes its own scroll. See harness/profiles.ts. */
+export type ChatScrollIndicator = "scroll" | "spine" | "ruler";
+
 export type UserInterfaceConfig = {
   chat?: {
     fontScale?: number;
     chatWidth?: number;
+    scrollIndicator?: ChatScrollIndicator;
+    /** @deprecated superseded by scrollIndicator; still read so older profiles migrate. */
     spineEnabled?: boolean;
   };
   conversation?: {
@@ -1307,6 +1333,14 @@ export type SkillContent = SkillListItem & {
   text: string;
 };
 
+/** A move-owned React component that claims the move's modus_submit rows. */
+export type MoveToolViewInfo = {
+  component: string;
+  ops?: string[];
+  takeover?: "block" | "body";
+  cache?: "instance" | "module" | "none";
+};
+
 export type MoveListItem = {
   name: string;
   label: string;
@@ -1323,6 +1357,8 @@ export type MoveListItem = {
   tags?: string[];
   /** Widget config if this move has a UI component. */
   widget?: { mountOnAttach?: boolean };
+  /** Transcript component for this move's reusable API calls. */
+  toolView?: MoveToolViewInfo;
   page?: MovePageInfo;
 };
 
@@ -2058,6 +2094,33 @@ export type TouchRecord = {
   /** How reliably the file reference was identified: "explicit" (tool input), "derived" (parsed from output), "heuristic" (pattern match). */
   confidence: "explicit" | "derived" | "heuristic";
   toolName: string;
+};
+
+/**
+ * One session that wrote or edited a given file. Sourced from the
+ * `file_observations` table, so it covers write/edit only — not reads.
+ */
+export type FileSessionRef = {
+  sessionId: string;
+  /** Epoch ms of the most recent write/edit of this file within the session. */
+  lastTouchedAt: number;
+  /** Event seq of that most recent touch. */
+  lastSeq: number;
+  editCount: number;
+  writeCount: number;
+  title: string | null;
+  lastPrompt: string | null;
+  preview: string;
+  model: string | null;
+  profile: string | null;
+  provider: string | null;
+  status: string;
+  cwd: string | null;
+  userProfile: string | null;
+};
+
+export type FileSessionsResponse = {
+  sessions: FileSessionRef[];
 };
 
 /** Aggregate summary of file touches across sessions. */
