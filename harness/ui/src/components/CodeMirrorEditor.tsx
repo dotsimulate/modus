@@ -5,7 +5,7 @@
  * This is a content renderer — it knows nothing about tabs, files, or panels.
  */
 
-import { useRef, useEffect } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -20,11 +20,14 @@ export type CodeMirrorContextInfo = {
   path: string;
 };
 
+export type CodeMirrorEditorHandle = {
+  save: () => void;
+  getContent: () => string;
+};
+
 // ── Component ──
 
-export function CodeMirrorEditor({
-  content, path, revealLine, revealEndLine, revealToken, onSave, onDirty, onEditorContextMenu,
-}: {
+export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, {
   content: string;
   path: string;
   revealLine?: number;
@@ -33,7 +36,9 @@ export function CodeMirrorEditor({
   onSave: (content: string) => void;
   onDirty: (dirty: boolean) => void;
   onEditorContextMenu?: (e: React.MouseEvent, info: CodeMirrorContextInfo) => void;
-}) {
+}>(function CodeMirrorEditor({
+  content, path, revealLine, revealEndLine, revealToken, onSave, onDirty, onEditorContextMenu,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onSaveRef = useRef(onSave);
@@ -42,6 +47,16 @@ export function CodeMirrorEditor({
   onSaveRef.current = onSave;
   onDirtyRef.current = onDirty;
   onCtxRef.current = onEditorContextMenu;
+
+  useImperativeHandle(ref, () => ({
+    save() {
+      const view = viewRef.current;
+      if (view) onSaveRef.current(view.state.doc.toString());
+    },
+    getContent() {
+      return viewRef.current?.state.doc.toString() ?? content;
+    },
+  }), [content]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -110,4 +125,4 @@ export function CodeMirrorEditor({
   };
 
   return <div ref={containerRef} className="cm-editor-container" onContextMenu={handleContextMenu} />;
-}
+});

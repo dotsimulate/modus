@@ -16,6 +16,31 @@
   align-items: center;
 }
 
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
+  .cw-tab {
+    min-height: 40px;
+  }
+  .cw-tab-close {
+    min-width: 36px;
+    height: 40px;
+    justify-content: center;
+    opacity: 0.72;
+  }
+  .right-panel-header-btn {
+    min-width: 36px;
+    min-height: 36px;
+    justify-content: center;
+  }
+
+  .cw-create-btn {
+    width: auto;
+    padding-inline: 9px;
+    gap: 5px;
+    color: var(--text-dim);
+    border-color: var(--border);
+  }
+}
+
 /* ── Mobile Nav — hidden on desktop ── */
 .mobile-nav { display: none; }
 .mobile-nav-overlay { display: none; }
@@ -199,6 +224,24 @@
   .lp-tab-label {
     padding: 6px 4px;
   }
+  .cw-tab {
+    min-height: 40px;
+  }
+  .cw-tab-label {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .cw-tab-close {
+    min-width: 36px;
+    height: 40px;
+    justify-content: center;
+    opacity: 0.72;
+  }
+  .right-panel-header-btn {
+    min-width: 36px;
+    min-height: 36px;
+    justify-content: center;
+  }
 
   /* ── Config bar — tighter padding on mobile ── */
   .config-bar-header {
@@ -307,4 +350,3 @@
     padding: 10px 12px;
   }
 }
-

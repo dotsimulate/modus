@@ -52,6 +52,11 @@
   flex-shrink: 0;
 }
 
+/* The select is the widest control in the popover, so it takes the space
+   the range rows give to their trailing value readout. */
+.chat-settings-row--select .chat-settings-label { width: 52px; }
+.chat-settings-row--select .csel { flex: 1; min-width: 0; }
+
 .chat-settings-value {
   font-family: var(--font-mono);
   font-size: calc(10px * var(--font-scale, 1));

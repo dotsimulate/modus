@@ -244,6 +244,24 @@
   background: var(--bg-hover);
 }
 
+.chat-file-viewer-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.chat-file-viewer-btn:disabled:hover {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.cw-save-btn.active {
+  color: var(--accent);
+}
+
+.cw-mobile-action-label {
+  display: none;
+}
+
 .chat-file-viewer-btn {
   border: none;
   background: transparent;
@@ -269,12 +287,47 @@
   background: var(--bg-hover);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
   .fcv-head {
     padding: 9px 12px 8px;
   }
 
   .fcv-count {
     display: none;
+  }
+
+  .fcv-meta {
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+
+  .fcv-head-side {
+    gap: 4px;
+  }
+
+  .chat-file-viewer-btn:not(.chat-file-viewer-btn--inline) {
+    width: 36px;
+    height: 36px;
+  }
+
+  .cw-edit-btn,
+  .cw-save-btn,
+  .cw-file-more-btn {
+    width: auto !important;
+    min-width: 52px;
+    padding: 0 9px;
+    gap: 5px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  .cw-save-btn.active {
+    border-color: var(--accent);
+  }
+
+  .cw-mobile-action-label {
+    display: inline;
+    font-family: var(--font-mono);
+    font-size: calc(10px * var(--font-scale, 1));
   }
 }

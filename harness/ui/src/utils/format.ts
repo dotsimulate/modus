@@ -37,6 +37,67 @@ export function timeAgo(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+/**
+ * The fields any session-shaped record needs to produce a display label.
+ * Structural so both SessionInfo and FileSessionRef can be labelled the same way.
+ */
+export type SessionLabelFields = {
+  title?: string | null;
+  last_prompt?: string | null;
+  preview?: string | null;
+};
+
+/** A complete move block: opener, body, matching closer. */
+const MOVE_BLOCK = /<!--\s*move:([\w.-]+)\s*-->[\s\S]*?<!--\s*\/move:\1\s*-->/g;
+/** An opener with no closer — everything after it is preamble. */
+const MOVE_OPENER = /^\s*<!--\s*move:([\w.-]+)\s*-->/;
+
+/**
+ * Strips move-injected preamble out of a session label.
+ *
+ * `sessions.last_prompt` and `sessions.preview` are stored truncated to 80
+ * characters, so for a session launched inside a move the entire stored value is
+ * the move's injected header and the user's own text is not present at all.
+ * Roughly 44% of sessions are in this state. Rendering the raw value shows
+ * "<!-- move:modus-brain --> You are inside the..." as the title, and for moves
+ * that inject a token it puts that token in the label. Naming the move is both
+ * more useful and less leaky than showing the fragment.
+ */
+function stripMovePreamble(text: string): string {
+  const withoutBlocks = text.replace(MOVE_BLOCK, " ").trim();
+  if (withoutBlocks) {
+    const truncated = withoutBlocks.match(MOVE_OPENER);
+    return truncated ? `${truncated[1]} move` : withoutBlocks;
+  }
+  const opener = text.match(/<!--\s*move:([\w.-]+)\s*-->/);
+  return opener ? `${opener[1]} move` : "";
+}
+
+/**
+ * Label for a session row. `preview` is the last fallback on purpose: for a
+ * session started inside a move it holds the injected move preamble rather than
+ * anything the user typed, so title and last_prompt both come first. A
+ * user-set title is authoritative and is never rewritten.
+ */
+export function sessionDisplayText(s: SessionLabelFields): string {
+  if (s.title) return s.title;
+  return stripMovePreamble(s.last_prompt || s.preview || "");
+}
+
+export function isEmptySession(s: SessionLabelFields): boolean {
+  return !s.title && !s.last_prompt && !s.preview;
+}
+
+export function compactModelName(model: string): string {
+  // Strip date suffixes like -20251101
+  let m = model.replace(/-\d{8}$/, "");
+  // Common shorthands
+  if (m.startsWith("claude-")) m = m.replace("claude-", "");
+  if (m.startsWith("gpt-")) return m;
+  if (m.startsWith("gemini-")) m = m.replace("gemini-", "");
+  return m;
+}
+
 export function planLabel(sub: string): string {
   switch (sub) {
     case "max": return "Max";

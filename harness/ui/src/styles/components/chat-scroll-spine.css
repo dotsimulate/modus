@@ -25,13 +25,15 @@
   min-width: 0;
 }
 
-/* The native scrollbar is only hidden when the spine is on (it
-   replaces it); when the user disables the spine via chat settings,
-   the native scrollbar comes back. */
-.chat-scroll-row[data-spine="on"] > .chat-messages {
+/* The native scrollbar is only hidden when an indicator replaces it.
+   With the "scroll" indicator selected in chat settings the native
+   scrollbar comes back and nothing else is drawn. */
+.chat-scroll-row[data-indicator="spine"] > .chat-messages,
+.chat-scroll-row[data-indicator="ruler"] > .chat-messages {
   scrollbar-width: none; /* Firefox */
 }
-.chat-scroll-row[data-spine="on"] > .chat-messages::-webkit-scrollbar {
+.chat-scroll-row[data-indicator="spine"] > .chat-messages::-webkit-scrollbar,
+.chat-scroll-row[data-indicator="ruler"] > .chat-messages::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
@@ -132,5 +134,120 @@
   opacity: 0.45;
   pointer-events: none;
   transform: translateY(-0.5px);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RULER
+   Three lanes about the same conceptual center axis, and nothing drawn
+   on the axis itself — left of the line is what the agent did, right of
+   it is what you said:
+
+       -12 .. -6      -5 .. -1     axis     +2 .. +10
+       ├── prose ──┤  ├─ tools ─┤    │      ├── your turn ──┤
+
+   Same 24px the spine already occupies. Turn numbers are drawn further
+   left again, floating over the chat's empty right margin only while
+   the pointer is on the spine, so the ladder costs no width.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Prose weight — one hairline per assistant bubble. */
+.chat-scroll-prose {
+  position: absolute;
+  right: calc(50% + 6px);
+  height: 1px;
+  background: var(--accent, #ffffff);
+  opacity: 0.24;
+  pointer-events: none;
+  transform: translateY(-0.5px);
+}
+.chat-scroll-prose.is-visible { opacity: 0.62; }
+.chat-scroll-prose--thinking { opacity: 0.15; }
+.chat-scroll-prose--thinking.is-visible { opacity: 0.42; }
+.chat-scroll-prose--commit { background: var(--tool-commit, #5090ff); opacity: 0.3; }
+.chat-scroll-prose--commit.is-visible { opacity: 0.7; }
+.chat-scroll-prose--system { opacity: 0.12; }
+
+/* Tool run — inboard, so it reads as the agent's but not as prose.
+   Length carries the call count; a collapsed run has almost no height. */
+.chat-scroll-tool {
+  position: absolute;
+  right: calc(50% + 1px);
+  height: 1px;
+  background: var(--accent, #ffffff);
+  opacity: 0.3;
+  pointer-events: none;
+  transform: translateY(-0.5px);
+}
+.chat-scroll-tool.is-visible { opacity: 0.68; }
+
+/* The run's true vertical extent. Invisible when the run is collapsed,
+   which is the normal case; visible when it is genuinely tall. */
+.chat-scroll-toolrun {
+  position: absolute;
+  right: calc(50% + 2px);
+  width: 1px;
+  background: var(--accent, #ffffff);
+  opacity: 0.12;
+  pointer-events: none;
+}
+.chat-scroll-toolrun.is-visible { opacity: 0.3; }
+
+/* Your turn. The landmark, and the only thing right of the axis. */
+.chat-scroll-rung {
+  position: absolute;
+  left: calc(50% + 2px);
+  width: 8px;
+  height: 1px;
+  background: var(--warning, #e89b50);
+  opacity: 0.6;
+  pointer-events: none;
+  transform: translateY(-0.5px);
+  transition: opacity 90ms linear, width 90ms linear;
+}
+.chat-scroll-rung.is-visible { opacity: 1; }
+.chat-scroll-rung.is-current { opacity: 1; width: 10px; }
+
+/* Density adaptation. Once turns crowd, a mark that keeps full weight
+   fills the column solid; weight is given back, then the minor turns
+   drop to a whisper so the ruler stays a ruler. They remain clickable —
+   the axis resolves by position, not by what is drawn. */
+.chat-scroll-spine[data-density="2"] .chat-scroll-rung { width: 7px; opacity: 0.5; }
+.chat-scroll-spine[data-density="3"] .chat-scroll-rung { width: 6px; opacity: 0.42; }
+.chat-scroll-spine[data-density="2"] .chat-scroll-rung:not(.is-major):not(.is-current),
+.chat-scroll-spine[data-density="3"] .chat-scroll-rung:not(.is-major):not(.is-current) {
+  width: 3px;
+  opacity: 0.16;
+}
+.chat-scroll-spine[data-density="2"] .chat-scroll-rung.is-major,
+.chat-scroll-spine[data-density="3"] .chat-scroll-rung.is-major { width: 8px; opacity: 0.62; }
+.chat-scroll-spine[data-density="2"] .chat-scroll-rung.is-current,
+.chat-scroll-spine[data-density="3"] .chat-scroll-rung.is-current { width: 10px; opacity: 1; }
+
+/* Turn number. Floats left over the chat margin; never affects layout. */
+.chat-scroll-rung-no {
+  position: absolute;
+  right: calc(50% + 4px);
+  font-family: var(--font-mono, monospace);
+  font-size: calc(8px * var(--font-scale, 1));
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--accent, #ffffff);
+  opacity: 0.4;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(-3.5px);
+  /* the chat scrolls underneath, so the glyph needs its own ground */
+  text-shadow: 0 0 3px var(--bg, #000), 0 0 3px var(--bg, #000);
+}
+.chat-scroll-rung-no.is-current { opacity: 0.75; color: var(--warning, #e89b50); }
+.chat-scroll-rung-no.is-near { opacity: 0.85; }
+
+/* A coarse pointer has no hover, so the ruler's numbers would never
+   appear and the marks are hard to hit. Give the whole thing more room
+   and keep the current turn labelled. */
+@media (pointer: coarse) {
+  .chat-scroll-spine--ruler { width: 30px; }
+  .chat-scroll-spine--ruler .chat-scroll-rung { width: 10px; }
+  .chat-scroll-spine--ruler .chat-scroll-rung.is-current { width: 12px; }
 }
 

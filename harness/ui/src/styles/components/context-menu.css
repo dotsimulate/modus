@@ -1,5 +1,9 @@
 /* ── Context Menu ── */
 
+.ctx-menu-backdrop {
+  display: none;
+}
+
 .ctx-menu {
   position: fixed;
   z-index: 9999;
@@ -25,6 +29,9 @@
   position: relative;
 }
 .ctx-menu-submenu:hover > .ctx-menu--sub {
+  display: block;
+}
+.ctx-menu-submenu--open > .ctx-menu--sub {
   display: block;
 }
 
@@ -66,10 +73,71 @@
   color: var(--text);
 }
 
+.ctx-menu-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .ctx-menu-item-label {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── Rich rows (label + detail line + trailing meta + status dot) ── */
+
+.ctx-menu-item--rich {
+  align-items: flex-start;
+  padding: 6px 12px;
+}
+
+.ctx-menu-item-detail {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctx-menu-item-meta {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding-left: 10px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+}
+
+/* Status dots reuse the shared .dash-dot classes; this only aligns them to the
+   first line of a two-line row. */
+.ctx-menu-item .dash-dot {
+  margin-top: 4px;
+}
+
+/* A rich submenu holds session titles — give it room the 280px default lacks. */
+.ctx-menu--sub {
+  max-width: 340px;
+}
+
+/* Non-interactive note rows: loading / empty / error inside a submenu. */
+.ctx-menu-note {
+  padding: 6px 12px;
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ctx-menu-dots span {
+  animation: ctx-menu-dot 1.2s infinite;
+}
+.ctx-menu-dots span:nth-child(2) { animation-delay: 0.2s; }
+.ctx-menu-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes ctx-menu-dot {
+  0%, 60%, 100% { opacity: 0.25; }
+  30%           { opacity: 1; }
 }
 
 .ctx-menu-item-arrow {
@@ -119,4 +187,71 @@
 }
 .ctx-menu-input-row button:hover {
   background: var(--bg-active, var(--bg-hover));
+}
+
+/* Touch clients get the same command tree as desktop, presented as a sheet.
+   Explicit buttons open it; right-click remains the desktop path. */
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
+  .ctx-menu-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    background: rgba(0, 0, 0, 0.42);
+  }
+
+  .ctx-menu--root {
+    left: 8px !important;
+    right: 8px !important;
+    top: auto !important;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: min(78dvh, 620px);
+    overflow-y: auto;
+    padding: 6px 0;
+    border-radius: 10px;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
+  }
+
+  .ctx-menu-item {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: calc(14px * var(--font-scale, 1));
+  }
+
+  .ctx-menu-item--rich {
+    min-height: 52px;
+  }
+
+  .ctx-menu-item-icon {
+    width: 18px;
+  }
+
+  .ctx-menu-submenu:hover > .ctx-menu--sub {
+    display: none;
+  }
+
+  .ctx-menu-submenu > .ctx-menu--sub {
+    position: static;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    min-width: 0;
+    max-width: none;
+    margin: 0 8px 6px 18px;
+    border-radius: 6px;
+    box-shadow: none;
+    background: var(--bg);
+  }
+
+  .ctx-menu-submenu.ctx-menu-submenu--open > .ctx-menu--sub {
+    display: block;
+  }
+
+  .ctx-menu-submenu--open > .ctx-menu-item .ctx-menu-item-arrow {
+    transform: rotate(90deg);
+  }
 }

@@ -33,6 +33,8 @@ type Props = {
   onRequestViewHandled?: () => void;
   onWidgetClose?: (apiToken: string, moveName: string) => void;
   onSendToAgent?: (text: string) => void;
+  /** Navigate to a session. Widgets in this panel receive it as onSelectSession. */
+  onSelectSession?: (id: string) => void;
   sessionId?: string | null;
 };
 
@@ -114,6 +116,7 @@ export function RightPanel({
   onRequestViewHandled,
   onWidgetClose,
   onSendToAgent: _onSendToAgent,
+  onSelectSession,
   sessionId,
 }: Props) {
   void tree;
@@ -223,7 +226,7 @@ export function RightPanel({
             widgetId={widgetId}
             active={active}
             onNavigate={() => {}}
-            onSelectSession={() => {}}
+            onSelectSession={onSelectSession ?? (() => {})}
           />
         ),
       };
