@@ -82,4 +82,36 @@ describe("incomplete semantic history recovery", () => {
       ["assistant", "answer"],
     ]);
   });
+
+  test("keeps turns intact when seq numbers collide across wall-clock time", () => {
+    // Grok-build resume used to restart ActiveSession at seq 0, so later turns
+    // reused seq 1, 2, 3…. Ordering by seq alone interleaves those turns.
+    const turns = reconstructSessionTurns([
+      { seq: 1, type: "user", subtype: "prompt", data: JSON.stringify({ subtype: "prompt", message: { content: "early" } }), created_at: 1000, id: 1 },
+      { seq: 2, type: "assistant", subtype: null, data: JSON.stringify({ message: { content: [{ type: "text", text: "early answer" }] } }), created_at: 1001, id: 2 },
+      { seq: 3, type: "result", subtype: "success", data: JSON.stringify({ result: "early answer" }), created_at: 1002, id: 3 },
+      // Later turn reuses seq 1–3
+      { seq: 1, type: "user", subtype: "prompt", data: JSON.stringify({ subtype: "prompt", message: { content: "<!-- move:live-html --> later" } }), created_at: 5000, id: 10 },
+      { seq: 2, type: "assistant", subtype: null, data: JSON.stringify({ message: { content: [{ type: "text", text: "opening html" }] } }), created_at: 5001, id: 11 },
+      { seq: 2, type: "assistant", subtype: null, data: JSON.stringify({ message: { content: [{ type: "tool_use", id: "t1", name: "modus_submit", input: { token: "mapi-html-1", data: { op: "show" } } }] } }), created_at: 5002, id: 12 },
+      { seq: 3, type: "result", subtype: "success", data: JSON.stringify({ result: "opening html" }), created_at: 5003, id: 13 },
+      // Deliberately out of seq order in the array (as a seq-only query would return)
+      { seq: 1, type: "user", subtype: "prompt", data: JSON.stringify({ subtype: "prompt", message: { content: "middle" } }), created_at: 2000, id: 4 },
+      { seq: 2, type: "assistant", subtype: null, data: JSON.stringify({ message: { content: [{ type: "text", text: "middle answer" }] } }), created_at: 2001, id: 5 },
+      { seq: 3, type: "result", subtype: "success", data: JSON.stringify({ result: "middle answer" }), created_at: 2002, id: 6 },
+    ]);
+
+    expect(turns.map((turn) => [turn.role, turn.text])).toEqual([
+      ["user", "early"],
+      ["assistant", "early answer"],
+      ["user", "middle"],
+      ["assistant", "middle answer"],
+      ["user", "<!-- move:live-html --> later"],
+      ["assistant", "opening html"],
+    ]);
+    expect(turns[5]!.toolCalls).toEqual([{
+      name: "modus_submit",
+      input: { token: "mapi-html-1", data: { op: "show" } },
+    }]);
+  });
 });

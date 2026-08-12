@@ -1,6 +1,6 @@
 ---
 title: Provider System
-lastUpdated: 2026-07-30
+lastUpdated: 2026-08-09
 lastCommit: a9adf68
 covers: harness/providers/ harness/modus-plugins.ts harness/templates/providers/ harness/session-manager.ts harness/skill-attachment.ts
 ---
@@ -334,6 +334,37 @@ A definition that names `apiKeyName` but has no such secret reports
 is not an error. The built-in `openai-compat` and Ollama definitions set that
 flag, so they keep working unauthenticated against a local endpoint; OpenRouter
 leaves it at the default and requires its named key.
+
+### CLI resolution
+
+`providers/resolve-cli.ts` locates every provider CLI, for both health checks and
+session spawn. `PATH` is authoritative and always tried first; everything else is
+a fallback consulted only when it comes up empty, and none of it overrides a
+binary `PATH` already found.
+
+The fallbacks exist because a launched app inherits the environment of whatever
+started it, which is a snapshot taken before the user's most recent CLI install:
+
+- **Linux/macOS** — a packaged desktop app gets the session manager's `PATH`
+  (roughly `/usr/local/bin:/usr/bin`), so user-owned prefixes are probed
+  directly: `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, `~/.claude/local`,
+  `/opt/homebrew/bin`.
+- **Windows** — the process `PATH` is Explorer's copy, which Explorer rebuilds
+  only at sign-in. A directory an installer appended to the *persisted* user
+  `PATH` is therefore invisible to an already-running Modus until the next
+  reboot, even though every newly opened terminal finds it. The persisted user
+  and machine values are read back from the registry (`HKCU\Environment` and the
+  `Session Manager\Environment` machine key) and used as a fallback `PATH`,
+  cached for the process lifetime. The Grok Build CLI installs to
+  `%USERPROFILE%\.grok\bin` and is the common case.
+
+A provider that cannot find its CLI fails the turn before it starts and reports
+the reason as a persisted system message, so the explanation survives a reload
+rather than living only on whichever stream happened to be open. Setting the
+provider's explicit path override (`MODUS_GROK_CLI`, `CLAUDE_PATH`) skips the
+search entirely.
+
+**Source**: `providers/resolve-cli.ts`.
 
 ## MCP Server Composition
 

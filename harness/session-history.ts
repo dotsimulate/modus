@@ -8,7 +8,27 @@ export type SessionHistoryEventRow = {
   subtype: string | null;
   data: string;
   created_at: number;
+  /** Optional row id for stable wall-clock ordering when seq collides. */
+  id?: number;
 };
+
+/**
+ * Chronological order for reconstruction.
+ *
+ * `seq` is the normal key, but providers that restart an ActiveSession at
+ * `seq: 0` (without seeding from getMaxSeq) write colliding seq numbers.
+ * Wall-clock + row id keeps turns intact when that happens.
+ */
+export function compareSessionHistoryEvents(
+  a: SessionHistoryEventRow,
+  b: SessionHistoryEventRow,
+): number {
+  if (a.created_at !== b.created_at) return a.created_at - b.created_at;
+  const aId = a.id ?? 0;
+  const bId = b.id ?? 0;
+  if (aId !== bId) return aId - bId;
+  return a.seq - b.seq;
+}
 
 /**
  * A turn is only worth deferring if its payload is actually large.
@@ -108,7 +128,13 @@ export function reconstructSessionTurns(
     uuid?: string;
   } | null = null;
 
-  for (const evt of events) {
+  // Callers should already order by created_at; sort defensively so a
+  // seq-only query cannot scramble multi-turn sessions with reused seqs.
+  const ordered = events.length > 1
+    ? [...events].sort(compareSessionHistoryEvents)
+    : events;
+
+  for (const evt of ordered) {
     let d: any;
     try { d = JSON.parse(evt.data); } catch { continue; }
 
