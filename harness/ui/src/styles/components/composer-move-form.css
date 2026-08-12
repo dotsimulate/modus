@@ -1,0 +1,272 @@
+/**
+ * ComposerMoveForm — a move's inputs, docked at full composer width.
+ *
+ * Sits in the same stack as the skill chips and the attached-move strip, so it
+ * reads as part of the composer rather than as a popover over it. Collapsing
+ * uses grid-template-rows 0fr/1fr: the body stays mounted, so field state and
+ * focus survive and there is nothing to re-mount on expand.
+ */
+
+.composer-move-form {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+/* Gradient wash for the "still needs input" state — never a thick left border. */
+.composer-move-form--incomplete::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(232, 155, 80, 0.07), transparent 45%);
+}
+
+/* ── Header ── */
+
+.composer-move-form-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+.composer-move-form-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.composer-move-form-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+}
+.composer-move-form-dot--ready {
+  background: var(--dot-running);
+}
+
+.composer-move-form-kind {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.composer-move-form-label {
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-move-form-toggle:hover .composer-move-form-label {
+  color: var(--text);
+}
+
+/* The "you need to fill this out" signal: inline, quiet, names the fields. */
+.composer-move-form-missing {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--warning);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.composer-move-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.composer-move-form-submit {
+  background: none;
+  border: 1px solid var(--success);
+  border-radius: 3px;
+  padding: 3px 12px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--success);
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+.composer-move-form-submit:disabled {
+  opacity: 0.3;
+  cursor: default;
+  border-color: var(--border-active);
+  color: var(--text-dim);
+}
+
+.composer-move-form-dismiss {
+  background: none;
+  border: none;
+  padding: 3px 2px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.composer-move-form-dismiss:hover {
+  color: var(--text);
+}
+
+/* ── Body ── */
+
+.composer-move-form-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.16s ease;
+}
+.composer-move-form--collapsed .composer-move-form-body {
+  grid-template-rows: 0fr;
+}
+
+.composer-move-form-body-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.composer-move-form-desc {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.4;
+  padding: 0 8px 6px;
+}
+
+/* The whole point of the surface: real columns instead of a 360px stack. */
+.composer-move-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 2px 10px;
+  padding: 0 8px 8px;
+}
+
+/* Anything with room to write in gets the full width. */
+.composer-move-form-grid .moves-input-field:has(textarea) {
+  grid-column: 1 / -1;
+}
+
+.composer-move-form-grid .moves-input-field {
+  margin-bottom: 4px;
+  min-width: 0;
+}
+
+.composer-move-form-grid .moves-input-textarea {
+  min-height: 56px;
+}
+
+/* ── Profile injection chips ──
+   What the selected agent profile is about to prepend to the first message.
+   Quieter than .ambient-chip (that move is running; this one has not gone yet)
+   but louder than .skill-chip, because the user did not choose it — the
+   profile did, and it is about to spend their tokens. */
+
+.profile-move-injections {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
+.profile-move-injections-label {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.profile-move-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 22%, var(--border));
+  border-radius: 12px;
+  padding: 2px 8px 2px 6px;
+  line-height: 1;
+  transition: opacity 0.12s ease;
+}
+
+.profile-move-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+}
+
+/* Struck through rather than removed: the binding is still on the profile, and
+   putting it back has to stay one click away. */
+.profile-move-chip--skipped {
+  opacity: 0.45;
+  text-decoration: line-through;
+  background: none;
+  border-color: var(--border);
+}
+.profile-move-chip--skipped .profile-move-chip-dot {
+  background: var(--text-muted);
+}
+
+.profile-move-chip-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: calc(13px * var(--font-scale, 1));
+  padding: 0 0 0 2px;
+  line-height: 1;
+  opacity: 0.5;
+  text-decoration: none;
+}
+.profile-move-chip-toggle:hover {
+  opacity: 1;
+  color: var(--text);
+}
+
+/* ── Mobile: one column, larger touch targets ── */
+
+@media (max-width: 640px) {
+  .composer-move-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .composer-move-form-header {
+    flex-wrap: wrap;
+  }
+  .composer-move-form-missing {
+    flex-basis: 100%;
+  }
+  .composer-move-form-grid .moves-input-control {
+    padding: 6px 8px;
+    font-size: calc(12px * var(--font-scale, 1));
+  }
+  .composer-move-form-submit,
+  .composer-move-form-dismiss {
+    padding: 6px 12px;
+  }
+}

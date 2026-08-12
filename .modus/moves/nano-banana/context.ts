@@ -146,7 +146,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     // Use op data count if freeform or explicitly passed, otherwise use activation count
     const count = Math.max(1, Number(data.count ?? state.count ?? 1));
 
-    const results: string[] = [];
+    const results: Array<{ path: string; mime: string; name: string }> = [];
     const errors: string[] = [];
 
     for (let i = 0; i < count; i++) {
@@ -162,7 +162,7 @@ export const handlers: Record<string, MoveApiHandler> = {
       const filepath = join(OUTPUTS_DIR, filename);
 
       writeFileSync(filepath, Buffer.from(result.imageData, "base64"));
-      results.push(filepath);
+      results.push({ path: filepath, mime: result.mimeType, name: filename });
     }
 
     if (results.length === 0) {
@@ -171,11 +171,27 @@ export const handlers: Record<string, MoveApiHandler> = {
 
     const msg = [
       `Generated ${results.length} image(s):`,
-      ...results.map((f) => `  - ${f}`),
+      ...results.map((file) => `  - ${file.path}`),
       ...(errors.length > 0 ? [`\nErrors (${errors.length}): ${errors.join("; ")}`] : []),
     ].join("\n");
 
-    return { ok: true, message: msg };
+    const lastAssistantSeq = ctx.db.getSessionMessages(ctx.sessionId)
+      .findLast((turn) => turn.role === "assistant")?.seq;
+    const artifactIds = results.map((file) => ctx.insertArtifact({
+      sessionId: ctx.sessionId,
+      name: file.name,
+      mime: file.mime,
+      path: file.path,
+      seq: lastAssistantSeq,
+      metadata: { moveName: ctx.moveName, op: "generate", prompt },
+    }));
+
+    return {
+      ok: true,
+      message: msg,
+      paths: results.map((file) => file.path),
+      artifactIds,
+    };
   },
 
   list: async () => {

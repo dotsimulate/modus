@@ -1,8 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useId } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback, useId } from "react";
 import type { SessionStatus, Attachment, MoveListItem, AmbientMoveInfo, AttachMoveResult, MoveBinding, ActivateMoveResult } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { PromptPicker } from "./PromptPicker";
 import { AttachedMove, AttachedWidgetContent } from "./QueuedMessage";
+import { ComposerMoveForm } from "./ComposerMoveForm";
+import type { ComposerMoveFormSource } from "./ComposerMoveForm";
+import { pendingProfileAsks, pendingProfileInjections } from "../composer-move-forms";
+import type { PendingAsk } from "../composer-move-forms";
 import { PasteBlock } from "./PasteBlock";
 import type { ComposerAttachResult } from "./MoveWidget";
 import { activateComposer, registerComposer, useComposerActions, useComposerToggles } from "../client-extensions";
@@ -11,7 +15,7 @@ import { dispatchUiIntent, moveActivationResultToIntent, moveAttachResultToInten
 import type { PageContextHandle } from "../widgets/types";
 import { wrapSkillContext } from "../move-context";
 import { useProfiles } from "../providers/ProfileContext";
-import type { DeliverMode } from "../providers/SessionContext";
+import type { DeliverMode, SendOpts } from "../providers/SessionContext";
 
 /** In-memory history of sent messages — survives re-renders, cleared on page reload */
 const sentHistory: string[] = [];
@@ -57,7 +61,7 @@ function serializePastes(pastes: StagedPaste[]): string {
 type Props = {
   value: string;
   onChange: (value: string) => void;
-  onSend: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode) => void;
+  onSend: (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode, opts?: SendOpts) => void;
   onStop: () => void;
   sessionStatus: SessionStatus | null;
   disabled: boolean;
@@ -65,6 +69,14 @@ type Props = {
   sessionId?: string;
   projectCwd?: string;
   userProfile?: string;
+  /** Agent profile driving this session — the source of its move bindings. */
+  agentProfile?: string;
+  /**
+   * Whether this conversation already has a turn in it. Profile moves inject
+   * into the message that starts the session, so the pending-attachment chips
+   * are only truthful while this is false.
+   */
+  sessionHasMessages?: boolean;
   provider?: string;
   onMoveActivated?: (result: ActivateMoveResult) => void;
   /** Called when a mountOnAttach move is attached — widget should be mounted immediately */
@@ -135,7 +147,7 @@ function ComposerActionIcon({ icon }: { icon?: "mic" | "mic-handsfree" }) {
 
 export function ChatInput({
   value, onChange, onSend, onStop,
-  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, provider, onMoveActivated, onMoveAttached, onMoveDetached, pageContext, autoFocus = false,
+  sessionStatus, disabled, placeholder, sessionId, projectCwd, userProfile, agentProfile, sessionHasMessages = false, provider, onMoveActivated, onMoveAttached, onMoveDetached, pageContext, autoFocus = false,
 }: Props) {
   const autoId = useId();
   const composerId = sessionId ? `composer:${sessionId}` : autoId;
@@ -155,7 +167,7 @@ export function ChatInput({
   // Whether this provider can deliver a message into a turn already running.
   // Declared by the backend rather than guessed, so the affordance only appears
   // where it does something (see providers/provider-names.ts).
-  const { providerCapabilities } = useProfiles();
+  const { providerCapabilities, activeUP, activeUserProfile, profiles } = useProfiles();
   const canSteer = !!provider && providerCapabilities[provider]?.messageDelivery === "steer";
   const canInterject = isActive && canSteer;
 
@@ -224,6 +236,16 @@ export function ChatInput({
 
   // Ambient (persistent) moves
   const [ambientMoves, setAmbientMoves] = useState<AmbientMoveInfo[]>([]);
+
+  /**
+   * A move whose inputs are being filled in, docked above the composer. The
+   * picker hands moves here rather than rendering a form in its 360px popover.
+   */
+  const [formMove, setFormMove] = useState<{
+    move: MoveListItem;
+    source: ComposerMoveFormSource;
+    initialValues?: Record<string, unknown>;
+  } | null>(null);
 
   const dispatchMoveAttach = useCallback((result: AttachMoveResult, targetSessionId?: string) => {
     const intent = moveAttachResultToIntent(result, targetSessionId ?? sessionId ?? "");
@@ -310,6 +332,138 @@ export function ChatInput({
       modus.listAmbientMoves(sessionId).then(setAmbientMoves).catch(() => {});
     }
   }, [origOnMoveActivated, dispatchMoveActivation, sessionId]);
+
+  /**
+   * The single place a chosen move + its inputs become real. Both the picker
+   * (for input-less moves) and the docked form land here, so the three
+   * destinations — persistent activation, widget mount, plain attachment —
+   * cannot drift apart between the two entry points.
+   */
+  const commitMove = useCallback(async (move: MoveListItem, inputs: Record<string, unknown>) => {
+    if (move.persistent) {
+      if (!projectCwd) return;
+      const body = { moveName: move.name, inputs, cwd: projectCwd, userProfile };
+      try {
+        const result = sessionId
+          ? await modus.activateMove(sessionId, body)
+          : await modus.activateProjectMove({ ...body, forceNewSession: true });
+        handleMoveActivated(result);
+      } catch (err) {
+        console.error("[ChatInput] activate failed:", err);
+      }
+      return;
+    }
+    if (move.widget?.mountOnAttach && projectCwd) {
+      // Widget-first: the widget IS the interface, so there is no chip to keep.
+      try {
+        const result = await modus.attachMove({
+          moveName: move.name, inputs, cwd: projectCwd, sessionId, userProfile,
+        });
+        onMoveAttached?.(result);
+        dispatchMoveAttach(result, sessionId);
+        window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
+      } catch (err) {
+        console.error("[ChatInput] attach failed:", err);
+      }
+      return;
+    }
+    setAttachedMove({ item: move, inputs });
+  }, [projectCwd, sessionId, userProfile, handleMoveActivated, onMoveAttached, dispatchMoveAttach]);
+
+  /**
+   * Move bindings on this session's agent profile that declared `ask: true`.
+   * The harness skips these at session start, so the form below is the only
+   * thing that runs them. Resolved (submitted or skipped) entries are tracked
+   * per session so a form does not come back after the user dealt with it.
+   */
+  const [profileAsks, setProfileAsks] = useState<PendingAsk[]>([]);
+  const [resolvedAsks, setResolvedAsks] = useState<Set<string>>(new Set());
+
+  /**
+   * The profile's inline moves, which will gather pre-spawn and be prepended to
+   * the first message. Shown as pending attachments so the user can see what
+   * the selected profile is about to inject before they send, and drop any of
+   * it. Only meaningful until that first message exists.
+   */
+  const [profileInjections, setProfileInjections] = useState<MoveListItem[]>([]);
+  const [skippedInjections, setSkippedInjections] = useState<Set<string>>(new Set());
+
+  const askScope = `${sessionId ?? "new"}:${agentProfile ?? ""}`;
+  useEffect(() => {
+    setResolvedAsks(new Set());
+    setSkippedInjections(new Set());
+  }, [askScope]);
+
+  useEffect(() => {
+    const bindings = profiles.find((p) => p.name === agentProfile)?.moves ?? [];
+    if (!bindings.length || !projectCwd) {
+      setProfileAsks([]);
+      setProfileInjections([]);
+      return;
+    }
+    let cancelled = false;
+    modus.listMoves(projectCwd).then((available) => {
+      if (cancelled) return;
+      setProfileAsks(pendingProfileAsks(bindings, available));
+      setProfileInjections(pendingProfileInjections(bindings, available));
+    }).catch(() => {
+      if (cancelled) return;
+      setProfileAsks([]);
+      setProfileInjections([]);
+    });
+    return () => { cancelled = true; };
+  }, [agentProfile, profiles, projectCwd]);
+
+  /**
+   * Profile injections only apply to the message that starts the session. Once
+   * the conversation has a turn in it they have already fired, and
+   * `skipPreviouslyInjectedForSession` stops them firing again — so showing
+   * them past that point would claim something untrue.
+   */
+  const visibleInjections = useMemo(
+    () => (sessionHasMessages ? [] : profileInjections),
+    [profileInjections, sessionHasMessages],
+  );
+
+  const skipProfileMovesRef = useRef<string[]>([]);
+  skipProfileMovesRef.current = visibleInjections.length
+    ? [...skippedInjections]
+    : [];
+
+  /** Send-time opts. Self-clearing: once the session has a turn, there is
+   *  nothing left to skip, so this goes back to undefined on its own. */
+  const currentSendOpts = useCallback((): SendOpts | undefined => (
+    skipProfileMovesRef.current.length
+      ? { skipProfileMoves: [...skipProfileMovesRef.current] }
+      : undefined
+  ), []);
+
+  /**
+   * One form at a time: a picker form the user just opened outranks a profile
+   * ask, and stacking several would bury the composer under its own chrome.
+   */
+  const activeForm = useMemo(() => {
+    if (formMove) return formMove;
+    const next = profileAsks.find((ask) => !resolvedAsks.has(ask.move.name));
+    return next
+      ? { move: next.move, source: "profile" as ComposerMoveFormSource, initialValues: next.initialValues }
+      : null;
+  }, [formMove, profileAsks, resolvedAsks]);
+
+  const closeActiveForm = useCallback(() => {
+    if (formMove) { setFormMove(null); return; }
+    if (activeForm) {
+      setResolvedAsks((prev) => new Set(prev).add(activeForm.move.name));
+    }
+  }, [activeForm, formMove]);
+
+  /** Agent profile names offered to a move's `{{agentProfiles}}` picker. */
+  const formProfileNames = useMemo(() => {
+    const names = activeUP?.agentProfiles?.length
+      ? activeUP.agentProfiles
+      : profiles.map((profile) => profile.name);
+    return ["Current profile", ...names];
+  }, [activeUP?.agentProfiles, profiles]);
 
   useEffect(() => {
     valueRef.current = value;
@@ -531,7 +685,7 @@ export function ChatInput({
             historyIndex.current = -1;
             draft.current = "";
           }
-          onSend(attachments, sendText || " ", [moveBinding], deliver);
+          onSend(attachments, sendText || " ", [moveBinding], deliver, currentSendOpts());
           setAttachments([]);
           setPastes([]);
           setStagedSkills([]);
@@ -561,7 +715,7 @@ export function ChatInput({
               }
               historyIndex.current = -1;
               draft.current = "";
-              onSend(attachments, combined, undefined, deliver);
+              onSend(attachments, combined, undefined, deliver, currentSendOpts());
               setAttachments([]);
               setPastes([]);
               setStagedSkills([]);
@@ -581,7 +735,7 @@ export function ChatInput({
         historyIndex.current = -1;
         draft.current = "";
       }
-      onSend(attachments, finalText, undefined, deliver);
+      onSend(attachments, finalText, undefined, deliver, currentSendOpts());
       setAttachments([]);
       setPastes([]);
       setStagedSkills([]);
@@ -784,6 +938,66 @@ export function ChatInput({
         </div>
       )}
 
+      {visibleInjections.length > 0 && (
+        <div className="profile-move-injections">
+          <span className="profile-move-injections-label">
+            {agentProfile} attaches
+          </span>
+          {visibleInjections.map((move) => {
+            const skipped = skippedInjections.has(move.name);
+            return (
+              <span
+                key={move.name}
+                className={`profile-move-chip${skipped ? " profile-move-chip--skipped" : ""}`}
+                title={
+                  skipped
+                    ? `${move.name} will not run — click + to put it back`
+                    : `${move.description || move.name} — gathered and prepended to your first message`
+                }
+              >
+                <span className="profile-move-chip-dot" />
+                {move.label}
+                <button
+                  className="profile-move-chip-toggle"
+                  onClick={() => setSkippedInjections((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(move.name)) next.delete(move.name);
+                    else next.add(move.name);
+                    return next;
+                  })}
+                  title={skipped ? `Attach ${move.label} again` : `Do not attach ${move.label}`}
+                >
+                  {skipped ? "+" : "×"}
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {activeForm && (
+        <ComposerMoveForm
+          key={`${activeForm.source}:${activeForm.move.name}`}
+          move={activeForm.move}
+          source={activeForm.source}
+          initialValues={activeForm.initialValues}
+          profileNames={formProfileNames}
+          projectCwd={projectCwd}
+          userProfile={userProfile ?? activeUserProfile ?? undefined}
+          allowedProjectPaths={activeUP?.projects}
+          submitLabel={activeForm.move.persistent ? "activate" : "attach"}
+          onSubmit={(move, inputs) => {
+            closeActiveForm();
+            void commitMove(move, inputs);
+            ref.current?.focus();
+          }}
+          onDismiss={() => {
+            closeActiveForm();
+            ref.current?.focus();
+          }}
+        />
+      )}
+
       {attachedMove && (
         <AttachedMove
           move={attachedMove.item}
@@ -912,28 +1126,9 @@ export function ChatInput({
                     : [...prev, { id: crypto.randomUUID(), name, text }],
                 );
               }}
-              onMoveAttach={async (move, inputs) => {
-                if (move.widget?.mountOnAttach && projectCwd) {
-                  // Widget-first: don't store in attachedMove — widget IS the interface.
-                  // Call attach API to create registration + mount widget immediately.
-                  try {
-                    const result = await modus.attachMove({
-                      moveName: move.name,
-                      inputs,
-                      cwd: projectCwd,
-                      sessionId,
-                      userProfile,
-                    });
-                    onMoveAttached?.(result);
-                    dispatchMoveAttach(result, sessionId);
-                    window.dispatchEvent(new CustomEvent("modus:widgets-changed"));
-                  } catch (err) {
-                    console.error("[ChatInput] attach failed:", err);
-                  }
-                } else {
-                  // Normal flow: store as attached move chip
-                  setAttachedMove({ item: move, inputs });
-                }
+              onMoveAttach={(move, inputs) => { void commitMove(move, inputs); }}
+              onMoveForm={(move) => {
+                setFormMove({ move, source: "picker" });
               }}
               onOpenChange={(isOpen) => {
                 setPickerOpen(isOpen);

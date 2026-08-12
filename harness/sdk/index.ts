@@ -59,6 +59,7 @@ export type {
   McpServerConfig,
   ProfileUi,
   Profile,
+  ProfileMoveBinding,
   GlobalConfig,
   TextToSpeechProviderId,
   TextToSpeechAudioFormat,
@@ -80,6 +81,7 @@ export type {
   // User profiles
   UserProfileUiConfig,
   ToolCallDisplayMode,
+  ChatScrollIndicator,
   UserInterfaceConfig,
   UserProfileState,
   UserProfile,
@@ -100,6 +102,7 @@ export type {
   MoveInputVisibilityRule,
   MovePageInfo,
   MoveListItem,
+  MoveToolViewInfo,
   SkillListItem,
   SkillContent,
   MoveWidgetInfo,

@@ -1,14 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { HTML_PREVIEW_SANDBOX, isOriginIsolatedSandbox } from "./src/htmlSandbox";
 
-// The renderers that frame HTML. Scanned as source because this package has no
-// DOM test environment, so a rendered frame cannot be inspected.
-const HTML_FRAME_SOURCES = [
-  "src/components/PreviewRenderer.tsx",
-  "src/components/HtmlPreview.tsx",
-];
+// One component owns every script-enabled frame. Scanned as source because this
+// package has no DOM test environment, so a rendered frame cannot be inspected.
+const FRAME_OWNER = "src/components/SandboxedHtmlFrame.tsx";
+const HTML_FRAME_SOURCES = [FRAME_OWNER];
+
+function uiSourceFiles(): string[] {
+  return readdirSync(join(import.meta.dir, "src"), { recursive: true, encoding: "utf8" })
+    .filter((entry) => entry.endsWith(".tsx") || entry.endsWith(".ts"))
+    .map((entry) => join("src", entry));
+}
 
 function iframesIn(relativePath: string): string[] {
   const source = readFileSync(join(import.meta.dir, relativePath), "utf8");
@@ -61,7 +65,20 @@ describe("html preview frames carry no credential", () => {
     }
     // Fail if the scan matched nothing — a renamed constant or reformatted JSX
     // would otherwise make this test silently vacuous.
-    expect(checked).toBe(2);
+    expect(checked).toBe(1);
+  });
+
+  // The comment above records that these renderers "have already drifted once".
+  // They drifted because each call site built its own frame. Now that one
+  // component owns the policy, pin that: a second script-enabled frame anywhere
+  // in the UI is the drift starting again.
+  test("only the owning component applies the script-enabled sandbox", () => {
+    const offenders = uiSourceFiles().filter((path) => {
+      if (path.replace(/\\/g, "/") === FRAME_OWNER) return false;
+      const source = readFileSync(join(import.meta.dir, path), "utf8");
+      return /sandbox=\{\s*HTML_PREVIEW_SANDBOX\s*\}/.test(source);
+    });
+    expect(offenders).toEqual([]);
   });
 
   test("no html renderer hardcodes the sandbox escape", () => {

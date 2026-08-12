@@ -49,6 +49,16 @@ function statusFromChess(chess: Chess): ChessState["status"] {
   return "active";
 }
 
+function toolViewResult(state: ChessState, lastMove?: string) {
+  return {
+    fen: state.fen,
+    moves: state.moves,
+    gameStatus: state.status,
+    userColor: state.userColor,
+    ...(lastMove ? { lastMove } : {}),
+  };
+}
+
 // ── gather() ──
 
 export async function gather(ctx: MoveContext): Promise<string> {
@@ -153,17 +163,17 @@ export const handlers: Record<string, MoveApiHandler> = {
     if (state.status !== "active") {
       const reason = gameOverReason(chess);
       if (ctx.caller === "user") ctx.notify(`User played ${result.san}. ${reason}`);
-      return { ok: true, message: reason };
+      return { ok: true, message: reason, ...toolViewResult(state, result.san) };
     }
 
     // Notify the other side
     if (ctx.caller === "user") {
       ctx.notify(`User played ${result.san}. Your turn.`);
-      return { ok: true, message: "Move accepted" };
+      return { ok: true, message: "Move accepted", ...toolViewResult(state, result.san) };
     }
 
     // Agent played — user sees it through widget polling/state
-    return { ok: true, message: "Move accepted" };
+    return { ok: true, message: "Move accepted", ...toolViewResult(state, result.san) };
   },
 
   board: async (ctx: MoveApiContext) => {

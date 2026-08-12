@@ -74,6 +74,8 @@ import type {
   ProjectInfo,
   TouchesResponse,
   TouchQuery,
+  FileSessionRef,
+  FileSessionsResponse,
   TerminalInfo,
   CreateTerminalOpts,
   ProcessSnapshot,
@@ -608,7 +610,7 @@ export class ModusClient {
     const d = await r.json().catch(() => ({ error: "move activation failed" })); if (!r.ok) throw new Error(d.error ?? "move activation failed"); return d;
   }
   /** Calls a named operation on an active move instance. */
-  async callMoveOp(moveName: string, apiToken: string, op: string, data?: Record<string, unknown>): Promise<{ ok: boolean; message?: string; error?: string }> {
+  async callMoveOp(moveName: string, apiToken: string, op: string, data?: Record<string, unknown>): Promise<{ ok: boolean; message?: string; error?: string } & Record<string, unknown>> {
     return (await this.fetch(`/api/moves/${moveName}/op`, { method: "POST", body: JSON.stringify({ apiToken, op, ...data }) })).json();
   }
   /** Returns all active move widgets for a session. Returns empty array on error. */
@@ -951,6 +953,13 @@ export class ModusClient {
     if (query.to != null) p.set("to", String(query.to)); if (query.ops?.length) p.set("ops", query.ops.join(","));
     if (query.confidence?.length) p.set("confidence", query.confidence.join(",")); if (query.sessionId) p.set("sessionId", query.sessionId);
     const r = await this.fetch(`/api/trace/touches?${p}`); if (!r.ok) throw new Error(`trace fetch failed: ${r.status}`); return r.json();
+  }
+  /** Sessions that wrote or edited one file, most recently touched first. Write/edit only — not reads. */
+  async fetchFileSessions(path: string, limit = 3): Promise<FileSessionRef[]> {
+    const p = new URLSearchParams({ path, limit: String(limit) });
+    const r = await this.fetch(`/api/trace/file-sessions?${p}`);
+    if (!r.ok) throw new Error(`file sessions fetch failed: ${r.status}`);
+    return ((await r.json()) as FileSessionsResponse).sessions;
   }
 
   // ── Process Registry ──

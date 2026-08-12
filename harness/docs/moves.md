@@ -22,6 +22,7 @@ Each move directory contains:
 move.json    — MoveConfig (required)
 context.ts   — MoveModule: gather?(), onSubmit?(), handlers?, listInstances?() (optional)
 widget.tsx   — React component (optional, for api moves with a widget)
+tool-view.tsx — React component (optional, claims this API move's transcript rows)
 package.json — move-local dependencies (optional, see below)
 skills/      — move-bundled skills, each `<name>/SKILL.md` (optional)
 ```
@@ -100,6 +101,60 @@ state as of when you hit send. And skills a move attaches mid-session are
 recorded but may not reach the agent by tool until restart, because the
 provider's MCP endpoint URL is fixed at spawn.
 
+### Seeing what a profile is about to attach
+
+An agent profile's inline (non-persistent) move bindings gather **pre-spawn** and
+are prepended to the session's first message. That injection is invisible at the
+moment it matters — the user picks a profile, types, and sends, without ever
+seeing how many tokens the profile is about to add on their behalf.
+
+The composer therefore lists them as pending attachments *before* the first
+message, labelled `<profile> attaches`, with a `×` on each. Removing one sends
+its name in `skipProfileMoves` on `POST /api/sessions`, and
+`startSessionWithMoves` filters it out of both activation phases. The field only
+ever removes; absent means "run them all", so no existing caller changes.
+
+The chips disappear once the conversation has a turn in it. Profile inline moves
+fire exactly once per logical session — `skipPreviouslyInjectedForSession` stops
+a resume or branch re-injecting them — so showing them afterwards would claim
+something untrue. Persistent bindings are not listed here: they activate
+post-spawn as ambient moves and already have their own chips with a working
+deactivate.
+
+`POST /api/sessions` also accepts `moves` now, so a move attached in the composer
+survives being the message that creates the session. Previously that binding was
+dropped, because only `sendMessage` and `steer` carried bindings and neither runs
+on a session's first message.
+
+### Asking the user for inputs (`ask` on a profile binding)
+
+An agent profile's `moves: [{ name, inputs?, ask? }]` normally runs at session
+start with whatever `inputs` the profile author wrote. `ask: true` defers that:
+
+```json
+{ "moves": [{ "name": "briefing", "ask": true, "inputs": { "depth": "short" } }] }
+```
+
+`startSessionWithMoves` filters `ask` bindings out of both activation phases, so
+the move does not gather at spawn. Instead the UI docks the move's input form
+above the chat composer when the session opens, seeded from the binding's
+`inputs` — a binding can prefill some fields and ask for the rest. Submitting the
+form activates the move against the live session (the same path the `/` picker
+uses); dismissing it skips the move for that session.
+
+Two behaviors follow from constraints elsewhere and are deliberate:
+
+- **The move's bundled skills still resolve at spawn.** A provider is handed its
+  skill scope before it starts and cannot be given a new one afterward, so
+  deferring the skills too would leave the move unrunnable for the whole
+  session — see the limit noted just above.
+- **`ask` on a move that declares no `inputs` is ignored.** There is nothing to
+  ask for, and an empty form would be a dead end.
+
+Inputs marked `required` gate the form's submit button; the composer names the
+outstanding fields inline. Requiredness is per-input and honours `visibleWhen`,
+so a hidden field is never required.
+
 ## Submit vs API Contract
 
 **Submit moves**: one-shot. `gather()` returns the prompt, agent calls `modus_submit(token, data)`
@@ -157,6 +212,7 @@ an API token and instance id.
 - `session.afterSubmit` — "continue", "end", or "switch:profileName"
 - `api` — API contract declaration (see below)
 - `widget` — widget declaration (see below)
+- `toolView` — transcript tool-view declaration (see below)
 - `page` — registers a move-owned full page in the nav
 - `capabilities` — runtime capability declaration for shell/session/action/notify/file access
 - `trust` — `"builtin" | "reviewed" | "experimental"`
@@ -274,6 +330,50 @@ are returned by `GET /api/sessions/:id/moves/widget` as `{ widget, apiToken, ins
 let the user configure state through frontend op calls, then run gather and send the message
 through `/api/moves/:name/activate-attached`.
 
+## Transcript Tool View (`toolView` field)
+
+An API move can claim the transcript rows produced by its own `modus_submit`
+calls with the same authored-React mechanism used by widgets:
+
+```json
+{
+  "toolView": {
+    "component": "tool-view.tsx",
+    "ops": ["move"],
+    "takeover": "block",
+    "cache": "module"
+  }
+}
+```
+
+`ops` omitted claims every op. `takeover: "block"` (the default) replaces the
+whole tool row, including its collapsed appearance; `"body"` preserves the
+harness status/name/duration header and replaces only the expandable detail.
+The component filename is resolved only from `move.json`. The component-serving
+route rejects any requested filename that is not the move's declared `widget`
+or `toolView` component.
+
+The component receives `MoveToolViewProps` from
+`harness/ui/src/move-tool-view.ts`: move/instance/session identity, the op and
+handler input, the parsed handler result, artifacts attached to the turn,
+running/completed/error status, `isLatest`, expansion state, and the same
+`callOp`, `submitMessage`, and event subscription powers as a panel widget.
+Use `isLatest` to make historical game/control rows read-only. Render useful
+history from `input`, `result`, and `artifacts`; a live handler is an optional
+enhancement, not a persistence mechanism.
+
+The handler result remains model-facing text. Extra return keys are recovered
+from the fenced JSON block written by `formatMoveApiResultText` and passed to the
+component as `result`; rendered React is a separate, app-only surface. Move API
+registrations rehydrate on demand, so `callOp` can work from an old transcript
+while its retained registration exists. If the token cannot resolve, the move
+was deleted, the component fails to load or render, or the op is not claimed,
+the native tool row renders instead.
+
+Move API calls are never folded into the transcript's collapsed core-tool runs.
+Heavy deferred turns keep the existing behavior: their tool rows appear after
+the user loads turn details, then resolve through this same path.
+
 ## Page Declaration (`page` field)
 
 ```json
@@ -378,7 +478,9 @@ tool entrypoint; `modus-mcp.ts` discriminates by token prefix.
 - `POST /api/moves/:name/activate-attached` — widget-first phase 2
 - `POST /api/moves/:name/detach` — remove an attached widget/API registration
 - `GET /api/moves/:name/widget?cwd=...` — transpiled widget module
+- `GET /api/moves/:name/widget?cwd=...&component=...` — declared widget or tool-view module
 - `GET /api/moves/:name/widget.css?cwd=...` — optional widget CSS
+- `GET /api/moves/resolve-token?token=...` — resolve a retained API token's tool-view declaration
 - `POST /api/moves/:name/op` — frontend API op call (`caller: "user"`)
 
 **Source**: `move-runner.ts`, `move-types.ts`, `modus-mcp.ts`.

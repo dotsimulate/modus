@@ -2,12 +2,13 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { addEvent, upsertSession } from "./db";
+import { addEvent, getEvents, getSessionMessage, upsertSession } from "./db";
 import {
   activateMoveBindings,
   gatherMoveOnce,
   handleMoveApiSubmit,
   rekeyMoveByToken,
+  resolveMoveToolViewToken,
 } from "./move-runner";
 
 const projectRoot = mkdtempSync(join(tmpdir(), "modus-profile-move-"));
@@ -23,7 +24,12 @@ writeFileSync(join(fixtureMoveDir, "move.json"), JSON.stringify({
     tokenPrefix: "profile-fixture",
     ops: {
       ping: { description: "Return pong." },
+      artifact: { description: "Attach an artifact." },
     },
+  },
+  toolView: {
+    component: "tool-view.tsx",
+    ops: ["ping"],
   },
 }));
 writeFileSync(join(fixtureMoveDir, "context.ts"), [
@@ -32,6 +38,10 @@ writeFileSync(join(fixtureMoveDir, "context.ts"), [
   "}",
   "export const handlers = {",
   "  ping: async () => ({ ok: true, message: 'pong' }),",
+  "  artifact: async (ctx: any, data: any) => ({",
+  "    ok: true,",
+  "    artifactId: ctx.insertArtifact({ sessionId: ctx.sessionId, seq: data.seq, name: 'fixture.txt', mime: 'text/plain', path: ctx.cwd }),",
+  "  }),",
   "};",
 ].join("\n"));
 
@@ -127,6 +137,13 @@ describe("profile move lifecycle", () => {
 
     const token = gathered!.apiToken!;
     expect(readRegistry()[token]).toMatchObject({ persistState: false });
+    expect(await resolveMoveToolViewToken(token)).toMatchObject({
+      moveName: fixtureMoveName,
+      cwd: projectRoot,
+      sessionId: "",
+      toolView: { component: "tool-view.tsx", ops: ["ping"] },
+    });
+    expect((await resolveMoveToolViewToken(token))!.instanceId).toBe(token.split("-").at(-1)!);
   });
 
   test("recovers a token whose registration exists only on disk", async () => {
@@ -150,6 +167,62 @@ describe("profile move lifecycle", () => {
     const result = await handleMoveApiSubmit(token, { op: "ping" });
     expect(result.ok).toBe(true);
     expect(result.message).toBe("pong");
+    expect(await resolveMoveToolViewToken(token)).toMatchObject({
+      moveName: fixtureMoveName,
+      instanceId: "diskonly",
+      sessionId,
+      toolView: { component: "tool-view.tsx" },
+    });
+  });
+
+  test("handler artifacts attach to the live turn and durable history", async () => {
+    const sessionId = `artifact-${crypto.randomUUID()}`;
+    upsertSession({
+      id: sessionId,
+      preview: "artifact fixture",
+      messageCount: 0,
+      costUsd: 0,
+      cwd: projectRoot,
+    });
+    addEvent(sessionId, 5, "assistant", "message", JSON.stringify({
+      message: { content: [{ type: "text", text: "artifact turn" }] },
+    }));
+    const gathered = await gatherMoveOnce(fixtureMoveName, sessionId, projectRoot, undefined, {});
+
+    const result = await handleMoveApiSubmit(gathered!.apiToken!, { op: "artifact", seq: 5 });
+    expect(result.ok).toBe(true);
+    expect(typeof result.artifactId).toBe("number");
+    expect(getSessionMessage(sessionId, 5)?.artifacts).toEqual([
+      expect.objectContaining({ id: result.artifactId, name: "fixture.txt", seq: 5 }),
+    ]);
+    expect(getEvents(sessionId).some((event) =>
+      event.type === "system" && event.subtype === "artifact_attached"
+    )).toBe(true);
+  });
+
+  test("drops to fallback when a registered move has been deleted", async () => {
+    const moveName = `deleted-tool-view-${crypto.randomUUID()}`;
+    const moveDir = join(projectRoot, ".modus", "moves", moveName);
+    mkdirSync(moveDir, { recursive: true });
+    writeFileSync(join(moveDir, "move.json"), JSON.stringify({
+      name: moveName,
+      label: "Deleted tool view",
+      description: "Deleted tool view fixture",
+      api: { ops: { ping: { description: "Return pong." } } },
+      toolView: { component: "tool-view.tsx" },
+    }));
+    writeFileSync(join(moveDir, "context.ts"), [
+      "export async function gather() { return 'deleted tool view'; }",
+      "export const handlers = { ping: async () => ({ ok: true }) };",
+      "",
+    ].join("\n"));
+
+    const gathered = await gatherMoveOnce(moveName, "", projectRoot, undefined, {});
+    const token = gathered!.apiToken!;
+    expect(await resolveMoveToolViewToken(token)).toBeDefined();
+
+    rmSync(join(moveDir, "move.json"));
+    expect(await resolveMoveToolViewToken(token)).toBeUndefined();
   });
 
   test("reports an unregistered token as a lifecycle failure, not an expiry", async () => {

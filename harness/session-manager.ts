@@ -562,6 +562,14 @@ export type StartSessionOpts = {
   permissionPolicy?: "bypass" | "ask" | { default: "approve" | "ask"; autoApprove?: string[]; requireApproval?: string[] };
   /** Per-request moves to activate on the first message (merged with profile moves) */
   moves?: { name: string; inputs?: Record<string, unknown> }[];
+  /**
+   * Names of the agent profile's own move bindings to leave out of this start.
+   * A profile's inline moves gather pre-spawn and are prepended to the first
+   * message, so the composer shows them as pending attachments before the user
+   * sends; removing one there sends its name here. Absent means "run them all",
+   * so this changes nothing for any caller that does not set it.
+   */
+  skipProfileMoves?: string[];
   /** Session-level MCP servers — merged with (and override) profile MCP servers at session creation */
   mcpServers?: Record<string, unknown>;
   /** Set when skills are attached: identifies this session's skill scope to the
@@ -1064,6 +1072,11 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       : profileDef?.additionalDirectories,
   ) ?? [];
 
+  // Resume (and any re-open of an existing id) must continue past the durable
+  // high-water mark. Starting at 0 reuses seq numbers; event-history reconstruct
+  // then interleaves whole turns (seen on grok-build after process/session restarts).
+  const seqHighWater = isResume ? getMaxSeq(tempId) : 0;
+
   const session: ActiveSession = {
     sessionId: tempId,
     tempId,
@@ -1072,7 +1085,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
     profile: opts.profile,
     provider: providerName,
     model: opts.model ?? profileDef?.model ?? userProf?.model,
-    seq: 0,
+    seq: seqHighWater,
     startedAt: Date.now(),
     lastEventAt: Date.now(),
     costUsd: 0,
@@ -1243,9 +1256,21 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   _timing("enter");
   const baseCwd = resolveSessionCwd(opts.cwd);
   const profileDef = opts.profile ? getProfile(opts.profile, baseCwd) : undefined;
-  const profileMoves = profileDef?.moves ?? [];
+  const declaredProfileMoves = profileDef?.moves ?? [];
+  // Two reasons a profile binding does not run at session start:
+  //   - `ask`: it waits for the user to fill its form in the composer.
+  //   - `skipProfileMoves`: the user removed it from the composer's pending
+  //     attachments before sending, having seen what it was about to inject.
+  // Skills still resolve below for both: a provider is handed its skill scope
+  // before it spawns and cannot be given one after, so deferring that too would
+  // leave the move unrunnable all session.
+  const skipped = new Set(opts.skipProfileMoves ?? []);
+  const profileMoves = declaredProfileMoves.filter(
+    (binding) => !binding.ask && !skipped.has(binding.name),
+  );
   const requestMoves = opts.moves ?? [];
   const allMoves = [...profileMoves, ...requestMoves];
+  const skillSourceMoves = [...declaredProfileMoves, ...requestMoves];
   const existingLogicalSession = opts.sessionId ? getSession(opts.sessionId) : null;
   // A pending branch is a new logical conversation even though its copied
   // history contains the parent's move markers.
@@ -1263,7 +1288,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   // provider assigns one, the same ordering the inline move API tokens use.
   const attached = collectSkills(resolvedCwd, {
     names: profileDef?.skills,
-    moves: allMoves.length ? getMoveSkillSources()(allMoves, resolvedCwd) : [],
+    moves: skillSourceMoves.length ? getMoveSkillSources()(skillSourceMoves, resolvedCwd) : [],
   });
   for (const miss of attached.missing) {
     console.warn(`[skills] ${miss.requestedBy} attached "${miss.name}", which resolves to nothing under ${resolvedCwd}`);

@@ -63,5 +63,11 @@
     "icon": "image",
     "autoOpen": true
   },
+  "toolView": {
+    "component": "tool-view.tsx",
+    "ops": ["generate"],
+    "takeover": "block",
+    "cache": "module"
+  },
   "tags": ["image", "generation", "nano-banana"]
 }

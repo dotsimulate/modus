@@ -47,7 +47,7 @@ model), `submit { required, retryOnInvalid, maxAttempts }`, `session
 `prompt` (fallback if no gather), `agentProfile` (branch/background),
 `gatherTimeoutMs` (default 10s), `prepareTimeoutMs` (default 120s),
 `capabilities`, `trust`, `hidden` (tag spawned sessions "internal"), `api`,
-`widget`, `page`, `enabled`, `tags`.
+`widget`, `toolView`, `page`, `enabled`, `tags`.
 
 **context.ts hooks** (`MoveModule`):
 - `prepare(ctx)` — heavy setup before gather (launch a program, wait for an MCP).
@@ -87,6 +87,13 @@ generated from the declarations and cannot drift from them.
 **Widget** (`widget` in move.json): `component` (e.g. "widget.tsx"), `label`,
 `icon`, `autoOpen`, `mountOnAttach` (mount before any message; requires `api`),
 `cache: instance|module|none`. Renders as a right-panel tab or embeds in pages.
+
+**Transcript tool view** (`toolView` in move.json, API moves): `component`,
+optional `ops[]`, `takeover: block|body` (default `block`), and
+`cache: instance|module|none`. It claims this move's own `modus_submit` rows and
+receives durable input/result/artifacts plus live status, `isLatest`, the real
+session id, `callOp`, and `submitMessage`. Missing/deleted/broken views fall back
+to the native tool row.
 
 **Page** (`page` in move.json): `id`, `title`, `nav` (default true), `layout`
 (full page tree — same schema as `.modus/pages/*.json`), `layouts.mobile`,
@@ -137,10 +144,26 @@ Fields: `prompt` (supports `{{templateVars}}`), `description`, `provider`,
 `providerControls` (per-provider tuning), `env`, `plugins`, `sandbox`,
 `contextWindow`, `maxOutputTokens`, `compaction`, `maxBudgetUsd`,
 `cwdSuggestions`, `ui` (label, placeholder, showThinking, **`panelWidgets`** —
-preconfigure right-panel widgets for sessions), and **`moves: [{name,
-inputs?}]`** — auto-activated at session start (`startSessionWithMoves`):
+preconfigure right-panel widgets for sessions), and **`moves: [{name, inputs?,
+ask?}]`** — auto-activated at session start (`startSessionWithMoves`):
 inline moves gather pre-spawn and prepend the prompt; persistent moves activate
 post-spawn. **A profile + a persistent move = a standing Modus-aware agent.**
+
+A profile's **inline** bindings are shown in the composer as pending attachments
+before the first message (`<profile> attaches`), each removable — removal sends
+`skipProfileMoves: ["name"]` on `POST /api/sessions`, which only ever subtracts.
+They vanish once the session has a turn, since inline profile moves fire exactly
+once. `POST /api/sessions` also takes `moves` now, so a composer-attached move
+survives being the message that creates the session.
+
+`ask: true` defers a binding instead: the harness skips it at session start and
+the move's input form docks above the composer when the chat opens, seeded from
+`inputs` (so a binding can prefill some fields and ask for the rest). The move
+activates when the user submits the form; dismissing it skips the move for that
+session. The move's bundled skills still resolve at spawn either way, since a
+provider cannot be handed a new skill scope after it starts. `ask` on a move
+that declares no `inputs` is ignored — there is nothing to ask for.
+
 Also `skills: ["name"]` — see below.
 
 ## Skills — `.modus/skills/<name>/SKILL.md`
@@ -228,9 +251,10 @@ only — `promote` is gated by `sessionSpawn`, since spawning is what it does.
 
 ## Gotchas — what does NOT exist (do not assume)
 
-- **No inline in-conversation widgets.** Move widgets render as right-panel
-  tabs or pages only. The transcript is text/markdown plus built-in blocks
-  (file-change cards, tool calls).
+- **No arbitrary inline message widgets.** Move widgets render as right-panel
+  tabs or pages. An API move may claim only the transcript tool rows produced by
+  its own `modus_submit` token through `toolView`; ordinary message bodies stay
+  text/markdown plus built-in blocks.
 - `widget.panel: "right"` is schema-present but unread — placement is
   hard-coded to the right panel.
 - **Installed skills are not available skills.** A profile, move, or action must

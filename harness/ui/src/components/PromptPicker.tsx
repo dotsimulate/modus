@@ -49,6 +49,13 @@ type Props = {
   onAutoSend?: (text: string, settings?: PromptSettings) => void;
   onMoveActivated?: (result: ActivateMoveResult) => void;
   onMoveAttach?: (move: MoveListItem, inputs: Record<string, unknown>) => void;
+  /**
+   * Hand a move with inputs off to the composer's docked form instead of
+   * rendering it inline. This popover is sized for a list (360px, anchored to
+   * the "/" button), so a multi-input form is squeezed into a corner. When the
+   * host offers a form surface, selecting such a move closes the picker.
+   */
+  onMoveForm?: (move: MoveListItem) => void;
   /** Stage a Modus skill on the composer. Falls back to raw injection when absent. */
   onSkillAttach?: (name: string, text: string) => void;
   /** "up" (default, chat input) or "down" (dashboard) */
@@ -67,7 +74,7 @@ type Props = {
 };
 
 export function PromptPicker({
-  onInject, onAutoSend, onMoveActivated, onMoveAttach, onSkillAttach, direction = "up", tags,
+  onInject, onAutoSend, onMoveActivated, onMoveAttach, onMoveForm, onSkillAttach, direction = "up", tags,
   sessionId, projectCwd, userProfile, provider, forceOpen, onOpenChange,
 }: Props) {
   const { activeUP, activeUserProfile, profiles, providerCapabilities } = useProfiles();
@@ -226,6 +233,17 @@ export function PromptPicker({
   }, []);
 
   const handleMoveSelect = useCallback((move: MoveListItem) => {
+    // A move with inputs belongs in the composer's docked form, which has the
+    // width to lay them out. Moves with no inputs have nothing to fill in, so
+    // they stay here and go straight to the confirm/activate row.
+    if (onMoveForm && (move.inputs?.length ?? 0) > 0) {
+      setOpenAndNotify(false);
+      setSelected(null);
+      setSearch("");
+      setError("");
+      onMoveForm(move);
+      return;
+    }
     setSelected({ kind: "move", item: move });
     const defaults: Record<string, string> = {};
     for (const input of move.inputs ?? []) {
@@ -236,7 +254,7 @@ export function PromptPicker({
     setError("");
     setSearch("");
     setTokenEstimate(null);
-  }, []);
+  }, [onMoveForm, setOpenAndNotify]);
 
   const handleSkillSelect = useCallback(async (skill: SkillItem) => {
     setOpenAndNotify(false);

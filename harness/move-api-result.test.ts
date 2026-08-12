@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatMoveApiResultText } from "./move-api-result";
+import { formatMoveApiResultText, parseMoveApiResultText } from "./move-api-result";
 
 describe("formatMoveApiResultText", () => {
   test("plain ok with no message and no extras renders OK", () => {
@@ -44,5 +44,64 @@ describe("formatMoveApiResultText", () => {
 
   test("undefined-valued keys are not serialized", () => {
     expect(formatMoveApiResultText({ ok: true, message: "m", usage: undefined })).toBe("m");
+  });
+});
+
+describe("parseMoveApiResultText", () => {
+  test("round-trips a successful result with prose and structured extras", () => {
+    const original = {
+      ok: true,
+      message: "generated",
+      paths: ["a.png", "b.png"],
+      usage: { totalTokens: 42 },
+    };
+    const text = formatMoveApiResultText(original);
+    expect(parseMoveApiResultText(text, true)).toEqual(original);
+    expect(formatMoveApiResultText(parseMoveApiResultText(text, true))).toBe(text);
+  });
+
+  test("keeps formatter fallbacks canonical when there are no extras", () => {
+    expect(parseMoveApiResultText("OK", true)).toEqual({ ok: true });
+    expect(parseMoveApiResultText("Unknown error", false)).toEqual({ ok: false });
+  });
+
+  test("round-trips an error result with detail keys", () => {
+    const original = { ok: false, error: "boom", attemptedUrl: "http://x" };
+    const text = formatMoveApiResultText(original);
+    expect(parseMoveApiResultText(text, false)).toEqual(original);
+    expect(formatMoveApiResultText(parseMoveApiResultText(text, false))).toBe(text);
+  });
+
+  test("treats a malformed trailing JSON fence as prose", () => {
+    const text = "result\n```json\n{nope}\n```";
+    expect(parseMoveApiResultText(text, true)).toEqual({ ok: true, message: text });
+  });
+
+  test("peels a Grok MCP OkayOutput envelope before parsing the move-api body", () => {
+    const body = formatMoveApiResultText({
+      ok: true,
+      message: "Opening TODO\\live-html-smokes\\smoke.html",
+      path: "D:\\TOOLSHELF\\modus\\TODO\\live-html-smokes\\smoke.html",
+    });
+    const envelope = JSON.stringify({
+      type: "MCP",
+      tool_name: "modus_submit",
+      server_name: "modus",
+      output: { OkayOutput: body },
+    });
+    expect(parseMoveApiResultText(envelope, true)).toEqual({
+      ok: true,
+      message: "Opening TODO\\live-html-smokes\\smoke.html",
+      path: "D:\\TOOLSHELF\\modus\\TODO\\live-html-smokes\\smoke.html",
+    });
+  });
+
+  test("decodes a byte-array shell payload to text", () => {
+    const text = "hello\nworld";
+    const bytes = [...Buffer.from(text)];
+    expect(parseMoveApiResultText(JSON.stringify({ type: "Bash", output: bytes }), true)).toEqual({
+      ok: true,
+      message: text,
+    });
   });
 });

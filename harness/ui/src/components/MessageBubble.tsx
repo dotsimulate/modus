@@ -18,6 +18,7 @@ import { addPrompt } from "../promptCache";
 import { isCodexProvider } from "../tools";
 import { parseMessageText, userAuthoredMessageText, type MessageTextPart } from "../move-context";
 import { MoveContextDisclosure } from "./MoveContextDisclosure";
+import { partitionToolRun } from "../move-tool-view";
 
 /**
  * Absolute URL for a session artifact.
@@ -88,6 +89,8 @@ type Props = {
   onStopTask?: (taskId: string) => void;
   onLoadDetails?: () => void | Promise<void>;
   children?: ReactNode;
+  sessionId?: string | null;
+  latestMoveToolCallIds?: ReadonlyMap<string, string>;
 };
 
 function formatTokensPerSecond(meta: Message["meta"], provider?: string): string | null {
@@ -321,7 +324,7 @@ function MessageTextBlock({
 }
 
 
-export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, toolCallDisplay = "collapsed", showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, onLoadDetails, children }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, toolCallDisplay = "collapsed", showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, onLoadDetails, children, sessionId, latestMoveToolCallIds }: Props) {
   void onBranch;
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -368,7 +371,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
   const groupRuns = toolCallDisplay === "collapsed" && !isStreaming;
 
   const renderToolRun = (tools: ToolCall[], keyPrefix: string) => (
-    <div className="message-tools">
+    <div className="message-tools" key={keyPrefix}>
       {tools.map((tc, index) => (
         <ToolCallView
           key={`${keyPrefix}:${index}:${tc.id}`}
@@ -378,9 +381,28 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
           showGitEvents={showGitEvents}
           cwd={cwd}
           onStopTask={onStopTask}
+          sessionId={sessionId}
+          latestMoveToolCallIds={latestMoveToolCallIds}
+          artifacts={msg.artifacts}
         />
       ))}
     </div>
+  );
+
+  const renderGroupedToolRun = (tools: ToolCall[], keyPrefix: string) => (
+    partitionToolRun(tools).map((partition, index) => {
+      const partitionKey = `${keyPrefix}:partition:${index}`;
+      const rows = renderToolRun(partition.tools, partitionKey);
+      return !partition.moveApi && partition.tools.length >= TOOL_RUN_GROUP_MIN ? (
+        <ToolCallGroup
+          key={partitionKey}
+          count={partition.tools.length}
+          toolNames={tallyToolNames(partition.tools)}
+        >
+          {rows}
+        </ToolCallGroup>
+      ) : rows;
+    })
   );
 
   // Track streaming → meta transition for resolve animation
@@ -436,15 +458,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             if (segment.kind === "tools") {
               if (!showToolCalls) return null;
               const rows = renderToolRun(segment.tools, segment.key);
-              return groupRuns && segment.tools.length >= TOOL_RUN_GROUP_MIN ? (
-                <ToolCallGroup
-                  key={segment.key}
-                  count={segment.tools.length}
-                  toolNames={tallyToolNames(segment.tools)}
-                >
-                  {rows}
-                </ToolCallGroup>
-              ) : rows;
+              return groupRuns ? renderGroupedToolRun(segment.tools, segment.key) : rows;
             }
             const visibleToolCount = showToolCalls ? segment.count : 0;
             return onLoadDetails && (showThinking && segment.hasThinking || visibleToolCount > 0) ? (
@@ -492,14 +506,9 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             />
           )}
           {showToolCalls && msg.toolCalls && msg.toolCalls.length > 0 && (
-            groupRuns && msg.toolCalls.length >= TOOL_RUN_GROUP_MIN ? (
-              <ToolCallGroup
-                count={msg.toolCalls.length}
-                toolNames={tallyToolNames(msg.toolCalls)}
-              >
-                {renderToolRun(msg.toolCalls, `${msg.id}:flat`)}
-              </ToolCallGroup>
-            ) : renderToolRun(msg.toolCalls, `${msg.id}:flat`)
+            groupRuns
+              ? renderGroupedToolRun(msg.toolCalls, `${msg.id}:flat`)
+              : renderToolRun(msg.toolCalls, `${msg.id}:flat`)
           )}
         </>
       )}

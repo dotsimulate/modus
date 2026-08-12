@@ -53,5 +53,11 @@
     "autoOpen": true,
     "mountOnAttach": true
   },
+  "toolView": {
+    "component": "tool-view.tsx",
+    "ops": ["move"],
+    "takeover": "block",
+    "cache": "module"
+  },
   "tags": ["game", "chess"]
 }

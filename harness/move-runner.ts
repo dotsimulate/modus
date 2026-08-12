@@ -29,16 +29,17 @@ import type {
   MoveApiHandler, MoveApiContext, MoveApiRegistration, MoveStateAPI,
   AmbientMoveRegistration, MoveAssistantTurnContext,
   MoveCapabilities,
+  MoveToolViewDeclaration,
 } from "./move-types";
 import { CURRENT_PROFILE_SENTINEL } from "./move-types";
 import {
   type StartSessionOpts,
-  broadcastUiEvent, getActiveSession, interactWithSession, startSession, stopSession, watchSessionExchanges,
+  attachArtifactToSession, broadcastUiEvent, getActiveSession, interactWithSession, startSession, stopSession, watchSessionExchanges,
 } from "./session-manager";
 import {
   listSessions as dbListSessions, listSessionsForProjects as dbListSessionsForProjects,
   getSession as dbGetSession,
-  searchSessions as dbSearchSessions, getSessionMessages, insertSessionArtifact,
+  searchSessions as dbSearchSessions, getSessionMessages,
   listSessionCwds, sessionHasMoveContext,
   type TurnContent,
 } from "./db";
@@ -634,7 +635,7 @@ export async function handleMoveApiSubmit(
     store: <T = unknown>() => instanceStore.get(reg.instanceId) as T | undefined,
     setStore: (value: unknown) => { instanceStore.set(reg.instanceId, value); },
     insertArtifact: (opts) => {
-      return insertSessionArtifact({
+      return attachArtifactToSession({
         sessionId: opts.sessionId,
         seq: opts.seq ?? 0,
         name: opts.name,
@@ -642,7 +643,7 @@ export async function handleMoveApiSubmit(
         path: opts.path,
         previewText: opts.previewText,
         metadata: opts.metadata,
-      });
+      }).id;
     },
     notify: (message: string, emit?: { type: string; [key: string]: unknown }) => {
       if (caller === "user") {
@@ -2435,6 +2436,29 @@ async function recoverMoveApiRegistration(token: string): Promise<MoveApiRegistr
     console.error(`[move-runner] on-demand rehydration failed for ${token}:`, err);
   }
   return moveApiRegistry.get(token);
+}
+
+export type MoveToolViewResolution = {
+  moveName: string;
+  cwd: string;
+  instanceId: string;
+  sessionId: string;
+  toolView: MoveToolViewDeclaration;
+};
+
+/** Resolve a reusable move API token to its declared transcript component. */
+export async function resolveMoveToolViewToken(token: string): Promise<MoveToolViewResolution | undefined> {
+  const reg = moveApiRegistry.get(token) ?? await recoverMoveApiRegistration(token);
+  if (!reg) return undefined;
+  const toolView = getMove(reg.moveName, reg.cwd)?.toolView;
+  if (!toolView?.component) return undefined;
+  return {
+    moveName: reg.moveName,
+    cwd: reg.cwd,
+    instanceId: reg.instanceId,
+    sessionId: reg.sessionId,
+    toolView,
+  };
 }
 
 // Run rehydration on module load (harness boot)

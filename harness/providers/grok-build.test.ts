@@ -48,6 +48,77 @@ describe("Grok Build ACP provider", () => {
     expect(ownsGrokClientGeneration(replacementClient, replacementAbort, oldClient, oldAbort)).toBe(false);
   });
 
+  test("normalizes use_tool modus_submit into a Claude-shaped tool call", async () => {
+    const { normalizeGrokToolCall } = await import("./grok-build");
+    expect(normalizeGrokToolCall({
+      toolCallId: "c1",
+      name: "use_tool",
+      rawInput: {
+        tool_name: "modus__modus_submit",
+        tool_input: { token: "mapi-html-1", data: '{"op":"show","path":"a.html"}' },
+      },
+    })).toEqual({
+      name: "modus_submit",
+      input: { token: "mapi-html-1", data: '{"op":"show","path":"a.html"}' },
+    });
+    expect(normalizeGrokToolCall({
+      toolCallId: "c2",
+      name: "read_file",
+      rawInput: { target_file: "x.ts" },
+    })).toEqual({
+      name: "read_file",
+      input: { target_file: "x.ts" },
+    });
+  });
+
+  test("peels MCP OkayOutput and byte-array Bash envelopes from tool results", async () => {
+    const { normalizeGrokToolOutput } = await import("./grok-build");
+    expect(normalizeGrokToolOutput({
+      type: "MCP",
+      tool_name: "modus_submit",
+      output: { OkayOutput: "Opening a.html\n```json\n{\n  \"path\": \"a.html\"\n}\n```" },
+    })).toBe("Opening a.html\n```json\n{\n  \"path\": \"a.html\"\n}\n```");
+    expect(normalizeGrokToolOutput({
+      type: "Bash",
+      output: [104, 105, 10],
+    })).toBe("hi\n");
+  });
+
+  test("reports a missing CLI as a durable error rather than a live-only result", async () => {
+    const { createGrokBuildProvider, GROK_BUILD_CLI_MISSING } = await import("./grok-build");
+    const provider = createGrokBuildProvider({ resolveCommand: () => null });
+    const emitted: any[] = [];
+    const broadcast: any[] = [];
+    const session: any = {
+      sessionId: "modus-grok-missing-cli",
+      status: "starting",
+      error: null,
+      abortController: new AbortController(),
+    };
+    const ctx: any = {
+      session,
+      opts: {},
+      profile: undefined,
+      emitEvent(event: any) { emitted.push(event); },
+      broadcastEvent(event: any) { broadcast.push(event); },
+    };
+
+    provider.startTurn(ctx);
+
+    // `type: "error"` is the shape the session manager promotes to a persisted
+    // system message; a `result`/`error` pair would reach live subscribers only,
+    // and a pre-flight failure has none yet.
+    expect(broadcast).toEqual([{ type: "error", error: GROK_BUILD_CLI_MISSING }]);
+    expect(emitted.some((event) => event.type === "result")).toBe(false);
+    expect(emitted.at(-1)).toEqual({ type: "done" });
+    expect(session.status).toBe("error");
+    expect(session.error).toBe(GROK_BUILD_CLI_MISSING);
+    // The remedy for the common cause — a PATH the running app has not picked
+    // up yet — has to be in the text, since this string is the whole diagnosis.
+    expect(GROK_BUILD_CLI_MISSING).toContain("restart Modus");
+    expect(GROK_BUILD_CLI_MISSING).toContain("MODUS_GROK_CLI");
+  });
+
   test("is registered and discovers models through ACP initialization", async () => {
     const fixture = join(import.meta.dir, "fixtures", "fake-grok-acp.ts");
     const command = { executable: process.execPath, prefixArgs: [fixture] };
