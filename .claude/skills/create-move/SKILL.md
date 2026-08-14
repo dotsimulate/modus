@@ -563,6 +563,12 @@ interface MoveModule {
   `ctx.notify("msg", { type: "event-name", ...payload })` to broadcast the typed
   payload to the widget instead.
 - **Caller**: `ctx.caller` is `"agent"` or `"user"`. Default-deny for sensitive ops.
+- **Testing**: build contexts with `createTestMoveApiContext` / `createTestMoveContext`
+  from `harness/move-test-context.ts` — never `{ cwd } as MoveApiContext`. State,
+  store, secrets, plugin settings and db are in-memory; `emit`/`notify`/
+  `sendMessage` calls are recorded; anything that would reach a live harness
+  (`createSession`, `activateMove`, `model.*`, `ctx.run`, ...) throws unless you
+  override it. See the Testing a move section of `harness/docs/moves.md`.
 - **Inputs**: Declared in move.json `inputs[]`, read via `ctx.inputs` in gather().
 - **DB**: `ctx.db` in gather() gives project-scoped session queries and move history.
   `listSessions()` and `searchSessions()` are scoped to the project CWD.

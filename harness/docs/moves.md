@@ -1,7 +1,7 @@
 ---
 title: Moves
 lastUpdated: 2026-08-14
-covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/move-op-request.ts harness/move-api-result.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
+covers: harness/move-runner.ts harness/move-types.ts harness/move-activation-failure.ts harness/move-test-context.ts harness/move-file-input.ts harness/move-file-accept.ts harness/harness-context.ts harness/move-op-request.ts harness/move-api-result.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
 ---
 
 # Moves
@@ -188,9 +188,12 @@ an API token and instance id.
 
 ## MoveConfig Key Fields
 
-- `inputs[]` — form fields shown to user before activation (text, textarea, select, toggle, number)
+- `inputs[]` — form fields shown to user before activation (text, textarea, select, toggle,
+  number, file)
   - A select can source its options dynamically: `optionsSource: { "type": "agentProfiles" }`
     (also `projects`, `sessions`), or the template form `options: "{{agentProfiles}}"`.
+  - A `file` input opens a server-side file picker and delivers an **absolute path**
+    (see File inputs below).
   - **Profile pickers prepend a "Current profile" sentinel option.** The runner translates
     it to the activating session's agent profile before `gather()` runs
     (`resolveAgentProfileInputs`), so a profile-picker input normally delivers a real
@@ -219,6 +222,49 @@ an API token and instance id.
 - `skills` — installed skills to attach while this move is active (see below)
 - `enabled` — set `false` to park the move on disk without deleting it (see below)
 - `origin` — `"harness"` or `"project"` (set automatically, not written to move.json)
+
+## File inputs (`type: "file"`)
+
+A `file` input lets the user pick a file for the move to read:
+
+```json
+{
+  "name": "image",
+  "label": "Reference image",
+  "type": "file",
+  "required": true,
+  "file": { "accept": [".png", ".jpg", ".webp"] }
+}
+```
+
+The value delivered to `gather()`/handlers is an **absolute path on the machine
+running the harness**, already resolved. `FilePicker` browses the *server's*
+filesystem, not the browser's — there is no `<input type="file">` and no upload,
+because move code runs on the server and opens the path it is given. One
+consequence worth designing around: on a phone or a remote browser the user is
+picking files on the harness host, not on their own device.
+
+`file` policy fields:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `accept` | any | Extension allowlist, e.g. `[".png"]`. Case-insensitive; a leading dot is optional. |
+| `allowOutsideProject` | `false` | Permit a file outside the activating project root. |
+
+**The picker is not the boundary.** Every activation entry point takes `inputs`
+straight from a caller — the SDK, a page embed, a client extension,
+`POST /api/moves/activate` — so `harness/move-file-input.ts` re-validates at
+activation and the activation fails with a stated reason if the value does not
+satisfy the policy. Rejections are `empty`, `outside-project`,
+`extension-not-allowed`, `missing`, and `not-a-file`.
+
+Containment is checked against the file's **real path**, so a symlink inside the
+project that points outside it does not pass. An unselected optional file input
+is delivered as absent rather than an empty string, so cancelling the picker is
+not an error.
+
+The renderer lives in `MoveInputFields`, so the composer form, the `/` prompt
+picker, and the moves widget all inherit one implementation.
 
 ## Parking a move (`enabled: false`)
 
@@ -482,9 +528,12 @@ Two traps that make an edit look like it did not land:
 - **A page-embedded widget will not re-attach on navigation.** `MoveWidgetEmbed`
   caches its attachment at module scope keyed by `(moveName, cwd, widgetId)`, so
   leaving the page and coming back reuses the old registration. Reload the window.
-- **A move whose `context.ts` fails to import keeps working with no visible
-  error** — the loader logs and returns null. If an edit introduces a syntax
-  error, the symptom is "my change did nothing", not a failure.
+- **A move whose `context.ts` fails to import is reported into the session.**
+  The loader still logs and returns null, and the rest of the attached moves
+  still run, but the session now receives a system message naming the move and
+  the reason (see Activation failures below). Before that existed, the symptom
+  of a syntax error was "my change did nothing", with no failure anywhere the
+  user could see.
 - **Only `context.ts` itself is evicted.** Imports below it can remain in Bun's
   module cache, so an edit to a sibling helper may require a harness restart.
 
@@ -506,6 +555,98 @@ Two traps that make an edit look like it did not land:
 - `instanceId` — instance identifier (only when move has `api` declaration)
 - `store()/setStore()` — process-scoped per-instance memory for API moves
 - `state` — state API for API moves
+
+## Activation failures
+
+Attaching a move is not a promise that it ran. A move can be missing, fail to
+import, throw inside `gather()`, or gather nothing at all — and in every case the
+chip attaches normally and the turn proceeds, so the user's only signal used to
+be an agent that ignored the context it was promised. Packaged builds have no
+devtools, so the console line nobody reads was the entire surface.
+
+`activateMoveBindings` now returns a `failures[]` alongside its context, and the
+session persists a system message naming each one. One move failing never
+prevents the others from running.
+
+Reasons are a closed set (`harness/move-activation-failure.ts`), so callers
+branch on `reason` rather than matching text:
+
+| Reason | Meaning |
+|--------|---------|
+| `not-found` | No move by that name resolves for this project. |
+| `load-failed` | `context.ts` exists but threw on import — syntax error, missing dependency, or an unbridged harness import in a packaged build. |
+| `gather-failed` | `gather()` threw. |
+| `gather-empty` | `gather()` produced nothing: no `gather()` export, it returned `null`, or it timed out. |
+| `activation-failed` | A persistent move failed to activate. |
+
+`load-failed` and `gather-empty` both arrive at the loader as `null` and are
+deliberately kept apart: one is a broken move, the other is a move that
+legitimately injects nothing this turn.
+
+The `detail` is **sanitized before it is persisted**. It originates in authored
+move code and lands in a transcript that may be exported or shared, so stack
+traces are dropped to their first line, absolute paths are reduced to their final
+segment (`.../context.ts`), and the text is length-capped. Do not put a secret in
+an error message and expect it to be redacted — only paths are.
+
+## Testing a move
+
+`MoveContext` and `MoveApiContext` are assembled by move-runner from a live
+harness — a database, a session, a capability gate, a token registry. None of
+that exists in a unit test, so `harness/move-test-context.ts` builds both
+offline:
+
+```ts
+import { createTestMoveApiContext, createTestMoveContext } from "../../harness/move-test-context";
+import { handlers, gather } from "./context";
+
+// An op handler
+const { ctx, emitted, currentState } = createTestMoveApiContext({
+  cwd: tempProjectDir,
+  moveName: "chess",
+  state: { fen: "start" },
+});
+const result = await handlers.play(ctx, { square: "e4" });
+expect(result.ok).toBe(true);
+expect(emitted.map((e) => e.type)).toEqual(["board"]);
+expect(currentState()).toMatchObject({ fen: "e4" });
+
+// gather()
+const { ctx: gatherCtx, meta } = createTestMoveContext({
+  cwd: tempProjectDir,
+  inputs: { topic: "release" },
+  session: { lastAssistantText: "prior answer", seq: 4 },
+});
+expect(await gather(gatherCtx)).toContain("release");
+```
+
+Both factories return `{ ctx, ...recorders }`. `state`, `store`, `secrets`,
+`pluginSettings` and `db` are backed by plain in-memory values, and every
+outbound call is recorded: `emitted`, `notified`, `sentMessages`, `artifacts`,
+`meta`, `commands`.
+
+Two behaviors are deliberate and worth knowing before you fight them:
+
+- **Anything that would reach a live harness throws**, naming the member —
+  `createSession`, `triggerAction`, `activateMove`, `wake`, `channels.send`,
+  `model.*`, `harness.*`, and `ctx.run`. A move that spawns a session or shells
+  out during a test has found a path it did not mean to exercise. Supply the
+  behavior through `overrides` (or `run`) to decide what the call returns.
+- **Read-only database queries return empty results instead of throwing**,
+  because "no sessions yet" is a real state every move must already handle.
+
+Do not hand-build a context or write `{ cwd } as MoveApiContext`. The cast
+compiles while hiding every member the handler actually touches, and it fails at
+runtime as `undefined is not a function`. The factories are typed as the real
+interfaces with no cast, so a new context member breaks them at compile time
+rather than leaving authored tests behind.
+
+**Type imports in a project-authored move do not resolve yet.** The shipped
+examples use `import type { MoveContext } from "../../../harness/move-types"`,
+which only resolves inside a Modus checkout — a real project has no `harness/`
+directory, and installed builds do not stage `move-types.ts`. The import is
+erased at runtime so the move still runs; only the editor and `tsc` are affected.
+Distributing declarations to project authors is open work.
 
 ## modus_submit
 

@@ -97,6 +97,7 @@ export type {
   ActionExecution,
   // Moves
   MoveInput,
+  MoveInputFilePolicy,
   MoveInputOption,
   MoveInputOptionsSource,
   MoveInputVisibilityRule,

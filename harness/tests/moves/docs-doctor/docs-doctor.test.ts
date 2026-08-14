@@ -9,12 +9,15 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { MoveApiContext } from "../../../move-types";
+import { createTestMoveApiContext } from "../../../move-test-context";
 import { handlers } from "../../../moves/docs-doctor/context";
 
 let cwd: string;
 
 function ctx(): MoveApiContext {
-  return { cwd } as MoveApiContext;
+  // The maintained test context rather than a `{ cwd } as MoveApiContext` cast:
+  // a cast compiles while hiding every member the handler actually touches.
+  return createTestMoveApiContext({ cwd, moveName: "docs-doctor" }).ctx;
 }
 
 beforeAll(() => {

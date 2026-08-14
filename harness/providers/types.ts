@@ -125,10 +125,21 @@ export type TurnContext = {
   opts: StartSessionOpts;
   profile: Profile | undefined;
 
-  /** Persist event to DB + broadcast to SSE subscribers */
+  /**
+   * Persist event to DB + broadcast to SSE subscribers.
+   *
+   * `stream_event` is the exception: it is always live-only, because the
+   * assistant turn it streams is materialized separately.
+   */
   emitEvent(event: any): void;
 
-  /** Broadcast to SSE subscribers only (no DB persist) */
+  /**
+   * Broadcast to SSE subscribers without persisting.
+   *
+   * `error` is the exception: it is always persisted, so a terminal or
+   * pre-flight failure survives reload even though it was broadcast. Use this
+   * for provider failures — see `harness/event-persistence.ts`.
+   */
   broadcastEvent(event: any): void;
 
   /** Re-key the session in the active sessions map (called when SDK provides real ID) */

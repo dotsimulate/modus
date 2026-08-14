@@ -70,3 +70,20 @@ export function folderLabel(path: string): string {
   const segments = path.split(/[/\\]+/).filter(Boolean);
   return segments[segments.length - 1] ?? path;
 }
+
+/**
+ * Containing directory of a path, for reopening a file picker where the current
+ * value lives.
+ *
+ * Separator-agnostic for the same reason as `folderLabel`, and it preserves the
+ * separator style it was given so the result still reads as a server path. A
+ * path with no separator has no known parent, so it returns "" rather than
+ * inventing one.
+ */
+export function parentDir(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (index < 0) return "";
+  // Keep the separator on a root ("/x" -> "/", "D:\x" -> "D:\").
+  return index === 0 ? trimmed.slice(0, 1) : trimmed.slice(0, index);
+}

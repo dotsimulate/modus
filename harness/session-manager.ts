@@ -47,6 +47,8 @@ import { resolve as resolvePath, dirname as pathDirname, join as pathJoin } from
 import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from "fs";
 import { APP_PATHS } from "./app-paths";
 import { providerErrorDisplayText } from "./provider-error";
+import { isAlwaysDurableEvent, isLiveOnlyEvent } from "./event-persistence";
+import { formatMoveActivationFailures, type MoveActivationFailure } from "./move-activation-failure";
 
 // ── SSE flow log ──
 // Append-only diagnostic log of every subscriber lifecycle event and broadcast.
@@ -444,12 +446,10 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     },
 
     broadcastEvent(event: any) {
-      // A terminal error has to outlive whichever socket happened to be open.
-      // Every provider reaches for broadcastEvent for this (36 call sites
-      // across 7 files, none using emitEvent), so promoting the one event type
-      // that is durable by nature here — rather than editing 36 call sites —
-      // is what keeps a future provider from reintroducing the silent failure.
-      if (event?.type === "error") {
+      // Persistence is decided by event type, not by which method was called;
+      // see event-persistence.ts for why `error` is promoted here rather than
+      // at each of the provider call sites that emit it.
+      if (isAlwaysDurableEvent(event)) {
         persistAndBroadcastEvent(session, event);
         return;
       }
@@ -912,10 +912,13 @@ function persistAndBroadcastEvent(session: ActiveSession, event: any) {
   const _pbt0 = performance.now();
   session.seq++;
   session.lastEventAt = Date.now();
-  if (event.type !== "stream_event") flushLiveBroadcast(session);
+  const liveOnly = isLiveOnlyEvent(event);
+  // Flush any coalesced deltas first so a durable event cannot overtake the
+  // stream it follows.
+  if (!liveOnly) flushLiveBroadcast(session);
   updateLiveStreamSnapshot(session, event);
   persistSemanticMessage(session, event);
-  if (event.type === "stream_event") {
+  if (liveOnly) {
     sseLog("LIVE-ONLY", session.sessionId,
       `seq=${session.seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} subs=${session.subscribers.size}`);
     if (isCoalescibleLiveDelta(event)) scheduleLiveBroadcast(session);
@@ -1366,7 +1369,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
           agentProfile: opts.profile,
         },
       )
-    : { inlineContext: null, apiTokens: [], activatedPersistent: [] };
+    : { inlineContext: null, apiTokens: [], activatedPersistent: [], failures: [] };
   const requestPhase1 = requestMoves.length
     ? await activateMoveBindings(
         requestMoves,
@@ -1375,12 +1378,13 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
         opts.userProfile,
         { persistentOnly: false, logPrefix: "request", agentProfile: opts.profile },
       )
-    : { inlineContext: null, apiTokens: [], activatedPersistent: [] };
+    : { inlineContext: null, apiTokens: [], activatedPersistent: [], failures: [] };
   const phase1 = {
     inlineContext: [profilePhase1.inlineContext, requestPhase1.inlineContext]
       .filter((value): value is string => !!value)
       .join("\n\n") || null,
     apiTokens: [...profilePhase1.apiTokens, ...requestPhase1.apiTokens],
+    failures: [...profilePhase1.failures, ...requestPhase1.failures],
   };
 
   // Prepend inline move context to the prompt
@@ -1413,7 +1417,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   }
 
   // Phase 2: activate persistent moves on the real session
-  await activateMoveBindings(
+  const phase2 = await activateMoveBindings(
     allMoves,
     session.sessionId,
     resolvedCwd,
@@ -1421,7 +1425,31 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
     { persistentOnly: true, logPrefix: `profile:${opts.profile ?? "none"}+request`, agentProfile: opts.profile },
   );
 
+  // A move that failed to load injected nothing, but its chip attached normally
+  // and the agent starts the turn as if it had. Phase 1 runs before the session
+  // exists, so both phases are reported here, once the transcript can hold it.
+  reportMoveActivationFailures(session, [...phase1.failures, ...phase2.failures]);
+
   return session;
+}
+
+/**
+ * Persist a system message naming the moves that produced nothing.
+ *
+ * Without this the failure is console-only, and a packaged build has no
+ * devtools — so the user's entire signal is a move that attached and did
+ * nothing. Emitted as `type: "error"` because that is the one event shape the
+ * reload path materializes without a preceding assistant turn; it does not
+ * change session status, which providers own.
+ */
+function reportMoveActivationFailures(session: ActiveSession, failures: MoveActivationFailure[]) {
+  if (failures.length === 0) return;
+  persistAndBroadcastEvent(session, {
+    type: "error",
+    error: formatMoveActivationFailures(failures),
+    source: "move-activation",
+    failures,
+  });
 }
 
 export async function interactWithSession(opts: InteractSessionOpts): Promise<InteractSessionResult> {

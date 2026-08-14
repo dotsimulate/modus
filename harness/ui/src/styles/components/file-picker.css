@@ -1,0 +1,178 @@
+/**
+ * FilePicker and the `file` move input.
+ *
+ * Deliberately the same visual language as .folder-picker (session-setup.css):
+ * a compact mono list on a raised surface. The differences are the ones that
+ * carry meaning — a file row can be *selected* rather than only navigated, so it
+ * has a selected state and the confirm button is disabled until there is one.
+ *
+ * Every font-size is scaled by --font-scale, and any rule declaring a fixed
+ * height is sized to fit its text at the maximum scale (see fontScale.test.ts).
+ */
+
+.file-picker {
+  border: 1px solid var(--border-active);
+  border-radius: 4px;
+  background: var(--bg-raised);
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.file-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.file-picker-title {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.file-picker-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: calc(14px * var(--font-scale, 1));
+  padding: 0;
+  line-height: 1;
+}
+.file-picker-close:hover { color: var(--text); }
+
+.file-picker-pathbar { border-bottom: 1px solid var(--border); }
+.file-picker-input {
+  width: 100%;
+  padding: 5px 10px;
+  background: var(--bg-surface);
+  border: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  outline: none;
+}
+.file-picker-input:focus { background: var(--bg-hover); }
+
+.file-picker-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.file-picker-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 4px 10px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  cursor: pointer;
+  transition: background 0.1s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-picker-item:hover { background: var(--bg-hover); }
+.file-picker-parent { color: var(--text-dim); }
+/* Directories only navigate, so they read as secondary to the files. */
+.file-picker-dir { color: var(--text-dim); }
+.file-picker-file { color: var(--text); }
+.file-picker-item--selected,
+.file-picker-item--selected:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.file-picker-loading,
+.file-picker-error,
+.file-picker-empty,
+.file-picker-filternote {
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  color: var(--text-muted);
+}
+.file-picker-error { color: var(--error); }
+.file-picker-filternote {
+  border-top: 1px solid var(--border);
+  padding: 5px 10px;
+}
+
+.file-picker-select {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s ease;
+}
+.file-picker-select:hover:not(:disabled) { background: var(--bg-hover); }
+.file-picker-select:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* ── The `file` move input row ── */
+
+.move-file-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.move-file-input-trigger {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 5px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale, 1));
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+.move-file-input-trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-active);
+}
+.move-file-input-clear {
+  flex: 0 0 auto;
+  padding: 0 8px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--font-scale, 1));
+  line-height: 1;
+  cursor: pointer;
+}
+.move-file-input-clear:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+}
+
+/* The picker opens in flow rather than as an overlay: these forms already sit
+   inside popovers and a nested absolute layer clipped against them. */
+.move-file-input-picker { margin-top: 4px; }
+
+.prompt-picker-file {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
