@@ -3,8 +3,9 @@ import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import { setInputValue, getInputValue } from "../inputStore";
 import type {
-  Session, SessionInfo, SessionProjectSummary, Attachment, ApiAttachment, MoveBinding, RewindPreview,
+  Session, SessionInfo, SessionProjectSummary, Attachment, MoveBinding, RewindPreview,
 } from "../../../sdk/index";
+import { toApiAttachments } from "../api-attachments";
 import { createInitialState } from "../eventReducer";
 import {
   agentConfigToOverrides,
@@ -329,22 +330,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // from the previous render, so it saves the OLD session's draft).
     saveDraftForCurrent();
 
-    // Evict old inactive sessions from the store to free memory
+    // Park old inactive sessions and cap the warm transcript cache.
     evictInactiveSessions(id);
 
-    // Snapshot-then-subscribe in a single race-free call.
-    await ensureSubscribed(id, {
-      profile: sessionProfile,
-      activeStatus: info?.status as Session["status"] | undefined,
-      onDone: refreshSessions,
-      forceHistoryRefresh: true,
-    });
+    // History and the draft are independent. Starting both together removes a
+    // full request round trip from remote/Tailnet navigation.
+    const [draft] = await Promise.all([
+      modus.getDraft(id).catch(() => ""),
+      ensureSubscribed(id, {
+        profile: sessionProfile,
+        activeStatus: info?.status as Session["status"] | undefined,
+        onDone: refreshSessions,
+        forceHistoryRefresh: true,
+      }),
+    ]);
 
     // NOTE: do NOT write selectedProfile here. selectedProfile is the sidebar's
     // seed for the next new session (Domain B) and must not be contaminated by
     // which session the user navigates to (Domain A).
 
-    const draft = await modus.getDraft(id).catch(() => "");
     if (isStaleSelection()) return;
     setInputValue(draft);
 
@@ -376,9 +380,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     if (activeSessionId) modus.saveDraft(activeSessionId, "").catch(() => {});
 
-    const apiAtts: ApiAttachment[] | undefined = sendAttachments.length > 0
-      ? sendAttachments.map((a) => ({ type: a.type, mediaType: a.mediaType, data: a.data, name: a.name }))
-      : undefined;
+    const apiAtts = toApiAttachments(sendAttachments);
 
     let currentState = activeSessionId ? getSessionState(activeSessionId) : null;
     const activeServerSession = activeSessionId

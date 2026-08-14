@@ -1,19 +1,26 @@
 /**
- * Memory Guard — prevents OOM system crashes from unbounded agent processes.
+ * Memory Guard — keeps agent processes from exhausting system memory.
  *
- * Incident context (2026-04-12): Three Claude Code CLI node.exe processes consumed
- * ~45 GB RAM collectively, exhausted Windows virtual memory, crashed dwm.exe, and
- * caused cascading failures that destroyed files across multiple directories.
+ * An agent runtime that grows without bound takes the whole machine with it:
+ * once the OS runs out of physical memory and paging space, unrelated services
+ * are terminated mid-write. Three limits defend against that, and they apply at
+ * different moments:
  *
- * This module provides:
- * - V8 heap caps via NODE_OPTIONS injection on spawned processes
- * - Concurrent session limits with system memory pressure checks
- * - Periodic memory watchdog with warnings and optional spawn blocking
+ * - Spawn time: `canSpawnSession()` refuses a new session past the concurrency
+ *   cap or above the system pressure threshold.
+ * - Process lifetime: `getMemoryLimitedEnv()` caps the V8 heap of spawned
+ *   processes that run on Node. See its own note for the important limit.
+ * - Idle lifetime: the session reaper reclaims sessions whose provider CLI has
+ *   grown past `MG_MAX_HEAP_MB`, or any large idle session while the system is
+ *   under pressure. `resolveReapLimits()` below configures it.
+ *
+ * The watchdog only reports; it never kills.
  */
 
 import { execFileSync } from "child_process";
 import { freemem, totalmem, platform } from "os";
 import { readFileSync } from "fs";
+import { DEFAULT_REAP_LIMITS, type ReapLimits } from "./session-reap-policy";
 
 // ── Accurate available memory ──
 // Linux counts filesystem cache as "used", so os.availableMemory() (MemFree) severely
@@ -58,7 +65,14 @@ function availableMemory(): number {
 
 // ── Configuration (overridable via env) ──
 
-/** Max V8 heap per spawned agent process (MB). Crashes the process instead of eating the OS. */
+/**
+ * Memory ceiling for a single agent runtime (MB).
+ *
+ * Enforced two ways because one of them does not cover every provider:
+ * `getMemoryLimitedEnv()` turns it into a V8 heap cap for CLIs that run on
+ * Node, and the session reaper reclaims any idle session whose provider CLI has
+ * grown past it, which is the only enforcement a natively compiled CLI gets.
+ */
 const MAX_HEAP_MB = Number(process.env.MG_MAX_HEAP_MB ?? 4096);
 
 /** Max concurrent agent sessions. N × MAX_HEAP_MB = worst-case RAM. */
@@ -77,12 +91,52 @@ const BLOCK_ON_PRESSURE = (process.env.MG_BLOCK_ON_PRESSURE ?? (platform() === "
 /** Watchdog check interval (ms). */
 const WATCHDOG_INTERVAL_MS = Number(process.env.MG_WATCHDOG_INTERVAL_MS ?? 30_000);
 
+// ── Idle reclamation ──
+
+/** Smallest session tree worth reclaiming while the system is under pressure (MB). */
+const REAP_PRESSURE_FLOOR_MB = Number(process.env.MG_REAP_PRESSURE_FLOOR_MB ?? 512);
+
+/** Idle time a session must reach before pressure may reclaim it (ms). */
+const REAP_PRESSURE_GRACE_MS = Number(process.env.MG_REAP_PRESSURE_GRACE_MS ?? DEFAULT_REAP_LIMITS.pressureGraceMs);
+
+/** Idle time after which a session is reclaimed whatever it costs (ms). */
+const REAP_IDLE_BACKSTOP_MS = Number(process.env.MG_REAP_IDLE_BACKSTOP_MS ?? DEFAULT_REAP_LIMITS.idleBackstopMs);
+
+/** Configuration for the session reaper's idle rules. */
+export function resolveReapLimits(): ReapLimits {
+  return {
+    cliRssLimitBytes: MAX_HEAP_MB * 1024 * 1024,
+    pressureRssFloorBytes: REAP_PRESSURE_FLOOR_MB * 1024 * 1024,
+    pressureGraceMs: REAP_PRESSURE_GRACE_MS,
+    idleBackstopMs: REAP_IDLE_BACKSTOP_MS,
+  };
+}
+
+/**
+ * Whether system memory usage has crossed the pressure threshold.
+ *
+ * Follows the same platform rule as spawn blocking: where the OS reports
+ * memory through a model too noisy to gate on, this stays false rather than
+ * letting jitter reclaim live sessions.
+ */
+export function isUnderMemoryPressure(): boolean {
+  if (!BLOCK_ON_PRESSURE) return false;
+  const total = totalmem();
+  return (total - availableMemory()) / total >= PRESSURE_THRESHOLD;
+}
+
 // ── Env injection ──
 
 /**
  * Returns a copy of `env` with `--max-old-space-size` injected into NODE_OPTIONS.
  * Preserves any existing NODE_OPTIONS values. Works with both
  * `Record<string, string>` and `Record<string, string | undefined>` env shapes.
+ *
+ * This only binds a CLI that runs on Node. A natively compiled provider CLI
+ * ignores NODE_OPTIONS entirely — verified against `claude` 2.1.215, which
+ * starts successfully with a deliberately invalid flag in NODE_OPTIONS where
+ * Node would refuse to start. Those providers are bounded by the reaper's
+ * `cliRssLimitBytes` rule instead.
  */
 export function getMemoryLimitedEnv<T extends Record<string, string | undefined>>(env: T): T {
   const existing = env.NODE_OPTIONS ?? "";

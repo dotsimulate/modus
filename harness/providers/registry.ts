@@ -26,6 +26,7 @@ import { probeGrokBuildAuth, resolveGrokBuildCommand } from "./grok-build-runtim
 import { createOpenCodeProvider } from "./opencode";
 import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
 import { createPiAgentProvider } from "./pi-agent";
+import { PROVIDER_CLI_NAMES } from "./provider-cli-names";
 import { getProviderDefinition } from "./provider-definitions";
 import { resolveProviderAlias } from "./provider-definition";
 import {
@@ -141,15 +142,9 @@ export type ProviderHealthInfo = {
   checks: ProviderHealthCheck[];
 };
 
-const PROVIDER_PREREQS: Record<string, { cli?: string; envAny?: string[] }> = {
-  "claude-code": { cli: "claude" },
-  "claude-code-pty": { cli: "claude" },
-  "codex": { cli: "codex" },
-  "cursor": { cli: "cursor-agent" },
-  "antigravity": { cli: "agy" },
-  "grok-build": { cli: "grok" },
-  "opencode": { cli: "opencode" },
-};
+const PROVIDER_PREREQS: Record<string, { cli?: string; envAny?: string[] }> = Object.fromEntries(
+  Object.entries(PROVIDER_CLI_NAMES).map(([provider, cli]) => [provider, { cli }]),
+);
 
 async function pingLocal(
   url: string,

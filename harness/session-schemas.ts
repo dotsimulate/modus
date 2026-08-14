@@ -4,10 +4,19 @@ import { McpServerConfigSchema } from "./profile-schemas";
 const EffortSchema = z.enum(["off", "low", "medium", "high", "xhigh", "max"]);
 const ToolStateSchema = z.enum(["inherit", "on", "off"]);
 
+export const IMAGE_ATTACHMENT_MEDIA_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+] as const;
+
+const BASE64_DATA = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
 const AttachmentSchema = z.object({
   type: z.literal("image"),
-  mediaType: z.string(),
-  data: z.string(),
+  mediaType: z.enum(IMAGE_ATTACHMENT_MEDIA_TYPES),
+  data: z.string().min(1).regex(BASE64_DATA, "data must be standard padded base64 without a data URL prefix"),
   name: z.string().optional(),
 });
 

@@ -57,7 +57,7 @@ export type InteractOptions = {
   subscribe?: boolean;
   /** If sessionId is given but doesn't exist, create it. */
   createIfMissing?: boolean;
-  attachments?: Attachment[];
+  attachments?: ApiAttachment[];
 };
 
 /** A base64-encoded image attachment sent with a prompt. */
@@ -122,7 +122,7 @@ export type SubTask = {
 /** Wire-format attachment for the REST API (identical shape to Attachment but used in API payloads). */
 export type ApiAttachment = {
   type: "image";
-  mediaType: string;
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
   data: string;
   name?: string;
 };
@@ -463,7 +463,7 @@ export type SendMessageOpts = {
   cwd?: string;
   tools?: string[];
   disallowedTools?: string[];
-  attachments?: Attachment[];
+  attachments?: ApiAttachment[];
 };
 
 /**
@@ -487,7 +487,7 @@ export type TurnContent = {
   seq: number;
   text: string;
   thinking?: string;
-  toolCalls?: { name: string; input: Record<string, unknown>; result?: string }[];
+  toolCalls?: { id?: string; name: string; input: Record<string, unknown>; result?: string; status?: "completed" | "error" }[];
   /** Provider content blocks in their original chronological order. */
   contentBlocks?: TurnContentBlock[];
   uuid?: string;
@@ -508,7 +508,7 @@ export type TurnContent = {
 export type TurnContentBlock =
   | { type: "text"; text?: string; textStart?: number; textEnd?: number }
   | { type: "thinking"; thinking: string }
-  | { type: "tool_call"; toolCall: { id?: string; name: string; input: Record<string, unknown>; result?: string } }
+  | { type: "tool_call"; toolCall: { id?: string; name: string; input: Record<string, unknown>; result?: string; status?: "completed" | "error" } }
   | {
       type: "deferred";
       hasThinking: boolean;
@@ -532,6 +532,10 @@ export type SessionHistorySnapshot = {
   hasMoreHistory?: boolean;
   /** Lowest durable sequence included in this page. */
   oldestSeq?: number | null;
+  /** Oldest wall-clock position included in this page, used when provider sequences collide. */
+  oldestCreatedAt?: number | null;
+  /** User prompts preceding this page, so turn numbering can start where the page does. */
+  olderTurnCount?: number;
   lastSeq: number;
   createdAt: number;
 };
@@ -1388,6 +1392,8 @@ export type ActivateMoveResult = {
   /** Short-lived token (10min TTL) the agent passes to modus_submit to complete this move. */
   token: string;
   mode: "inline" | "branch" | "background" | "persistent";
+  /** True when the caller must send `prompt`; activating an inline move does not dispatch it. */
+  requiresDispatch: boolean;
   persistent?: boolean;
   /** For branch/background modes, the ID of the spawned session. */
   spawnedSessionId?: string;
@@ -1896,53 +1902,31 @@ export type DeepAnalytics = {
 // ── Client Extensions ──
 
 /**
- * Schema for a single setting exposed by a client extension.
- *
- * `textarea` and `secret-name` exist because the sibling primitives already had
- * them and extensions did not inherit either: move inputs support `textarea`,
- * and `PluginSettingDefinition` supports `secret-name`. A multi-line setting (a
- * vocabulary list, a phrase map) is unusable in a single-line input, and a
- * setting that names a Modus secret should say so rather than looking like free
- * text — extension settings are served by `GET /api/client-extensions`, so the
- * distinction between "names a secret" and "holds a secret" is load-bearing.
+ * The shapes an author declares for a client-extension or plugin setting live in
+ * `settings-schema.ts` and are re-exported here, so what the SDK publishes and
+ * what backend discovery reads are the same declaration rather than two copies
+ * that agreed on the day they were written.
  */
-export type ExtensionSettingSchema = {
-  type: "string" | "textarea" | "number" | "boolean" | "select" | "secret-name";
-  label: string;
-  description?: string;
-  default?: string | number | boolean;
-  options?: Array<{ value: string; label: string }>;
-  /** Rows for a `textarea` field. Default 4. */
-  rows?: number;
-  /** Where the value is stored. "user" (default) is per user profile, so it may
-   *  differ between a desktop and a phone — right for local hardware, wrong for
-   *  anything the harness itself consumes. "global" is stored once for the
-   *  machine and resolved without the user-profile layer, so every client agrees
-   *  on it. */
-  scope?: "user" | "global";
-};
+/** Filesystem mutation results are declared beside their server-side
+ *  classification so the two halves of the contract stay in step. */
+export type { FileMutationErrorCode, FileMutationResult } from "../file-mutation-errors";
 
-export type PluginSettingDefinition = {
-  key: string;
-  type: "string" | "number" | "toggle" | "select" | "project-list" | "secret-name";
-  label?: string;
-  description?: string;
-  default?: unknown;
-  scope?: "user" | "project" | "global";
-  options?: Array<{ value: string; label: string }>;
-};
+export type {
+  ExtensionMeta,
+  ExtensionSettingSchema,
+  ExtensionSettingScope,
+  ExtensionSettingType,
+  NumericSettingConstraints,
+  PluginSettingDefinition,
+  PluginSettingScope,
+} from "../settings-schema";
+
+import type { ExtensionMeta, PluginSettingDefinition } from "../settings-schema";
 
 export type PluginSettingsSnapshot = {
   pluginId: string;
   settings: PluginSettingDefinition[];
   values: Record<string, unknown>;
-};
-
-/** Metadata declared by a client extension module (name, description, configurable settings). */
-export type ExtensionMeta = {
-  name?: string;
-  description?: string;
-  settings?: Record<string, ExtensionSettingSchema>;
 };
 
 /** A user-registered Modus plugin root. Plugins can mount .modus resources without becoming the active project. */

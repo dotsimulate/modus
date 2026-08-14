@@ -1,8 +1,8 @@
 ---
 title: Client Extensions
-lastUpdated: 2026-07-30
-lastCommit: f60b2ac
-covers: harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/whisper-credential.ts harness/whisper-endpoint.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx harness/ui/src/widgets/extensions.widget.tsx .modus/ui/extensions/
+lastUpdated: 2026-08-14
+lastCommit: a1e724a
+covers: harness/settings-schema.ts harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/whisper-credential.ts harness/whisper-endpoint.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx harness/ui/src/widgets/extensions.widget.tsx .modus/ui/extensions/
 ---
 
 # Client Extensions
@@ -207,16 +207,25 @@ when it is disabled the manifest-declared field is rendered instead.
 ### Declared Setting Types
 
 `.extension.json` settings declare a `type` (`ExtensionSettingSchema` in
-`sdk/types.ts`):
+`harness/settings-schema.ts`, re-exported by `sdk/types.ts` and by
+`harness/client-extensions.ts` — one declaration, three places to import it
+from):
 
 | `type` | Rendered as | Notes |
 |---|---|---|
 | `string` | single-line text | also the fallback for an unknown type |
 | `textarea` | multi-line text, `rows` (default 4) | for one-value-per-line lists; does not soft-wrap, so a long line reads as one entry |
-| `number` | number input | empty clears to `null` |
+| `number` | number input, honoring `min`/`max`/`step` | empty clears to `null` |
 | `boolean` | checkbox | |
 | `select` | dropdown from `options[]` | static only; see Live Setting Options above |
 | `secret-name` | single-line text | names a Modus secret; see below |
+
+`min` and `max` are inclusive and are enforced on the write path as well as in
+the form: the input attributes only constrain the rendered control, and any
+client can `PATCH` whatever it likes, so `PATCH /api/client-extensions/:id`
+rejects an out-of-range number with a 400. `step` is advisory — it sets the
+stepper's granularity and is never used to reject a value the user typed
+deliberately.
 
 `secret-name` is not a password field, on purpose. The value is the *name* of a
 secret, not the secret — extension settings are stored in the user profile UI

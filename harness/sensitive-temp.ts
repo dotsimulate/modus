@@ -2,7 +2,13 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 
-const PREFIX = "modus-sensitive-";
+/**
+ * Directory-name prefix for process-private launch material. Also serves as a
+ * Modus-owned marker on a provider's command line, which is how a stranded
+ * provider process is told apart from one the user started themselves.
+ */
+export const SENSITIVE_TEMP_PREFIX = "modus-sensitive-";
+const PREFIX = SENSITIVE_TEMP_PREFIX;
 const OWNER_MARKER = ".modus-owner";
 
 /** Create a random process-private directory for short-lived credential material. */

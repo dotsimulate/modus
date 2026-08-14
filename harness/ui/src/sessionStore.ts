@@ -30,8 +30,13 @@ type SessionEntry = {
   historyError?: string;
   historyHasMore?: boolean;
   historyOldestSeq?: number | null;
+  historyOldestCreatedAt?: number | null;
+  /** User prompts older than the oldest loaded page — turn numbering starts here. */
+  historyOlderTurnCount?: number;
   historyLoadingOlder?: boolean;
   historyOlderError?: string;
+  /** Monotonic access order used to cap the settled-session transcript cache. */
+  lastAccess: number;
   /** Per-session revision — useSessionState only re-renders when this changes */
   revision: number;
 };
@@ -42,6 +47,12 @@ export type SessionHistoryLoadState = {
   hasMore: boolean;
   loadingOlder: boolean;
   olderError?: string;
+  /**
+   * User prompts that exist before the oldest loaded turn. Anything numbering
+   * turns needs it, because a paginated transcript would otherwise count from 1
+   * over whatever happens to be loaded.
+   */
+  olderTurnCount: number;
 };
 
 /**
@@ -49,8 +60,8 @@ export type SessionHistoryLoadState = {
  *
  * Read from the local settings copy rather than a React context because the
  * fetch happens outside the tree, and that copy is already the pre-mount source
- * of truth for interface settings. Turning the setting off asks for the whole
- * transcript up front, which is a reasonable trade on a local-first app.
+ * of truth for interface settings. Turning the setting off asks for complete
+ * detail payloads for each fetched history page.
  */
 function historyDetailMode(): "full" | "summary" {
   return readLocalInterfaceSettings().conversation.deferHeavyDetails ? "summary" : "full";
@@ -60,6 +71,9 @@ const HISTORY_FETCH_TIMEOUT_MS = 30_000;
 // Six-ish user/assistant exchanges is enough to paint useful context quickly;
 // older pages stay one click away. Tool-heavy turns can be hundreds of KB each.
 const HISTORY_PAGE_SIZE = 12;
+// Cached pages make back-and-forth navigation immediate without letting a long
+// browsing session retain every transcript (and its expanded tool details).
+const INACTIVE_SESSION_CACHE_SIZE = 8;
 
 type Subscription = {
   unsub: () => void;
@@ -70,6 +84,7 @@ type Subscription = {
 const sessions = new Map<string, SessionEntry>();
 const subscriptions = new Map<string, Subscription>();
 const listeners = new Set<() => void>();
+let sessionAccess = 0;
 
 // Snapshot reference — changes on every mutation to trigger React re-renders
 let snapshot = 0;
@@ -104,8 +119,11 @@ export function setSessionState(id: string, state: ReducerState, profile?: strin
     historyError: existing?.historyError,
     historyHasMore: existing?.historyHasMore,
     historyOldestSeq: existing?.historyOldestSeq,
+    historyOldestCreatedAt: existing?.historyOldestCreatedAt,
+    historyOlderTurnCount: existing?.historyOlderTurnCount,
     historyLoadingOlder: existing?.historyLoadingOlder,
     historyOlderError: existing?.historyOlderError,
+    lastAccess: ++sessionAccess,
     revision: (existing?.revision ?? 0) + 1,
   });
   notify();
@@ -126,7 +144,7 @@ function messageFromTurn(sessionId: string, turn: TurnContent): ReducerState["me
         id: toolCall.id ?? `${sessionId}:${turn.seq}:ordered-tool:${index}`,
         name: toolCall.name,
         input: toolCall.input,
-        status: "completed" as const,
+        status: toolCall.status ?? "completed" as const,
         ...(toolCall.result != null ? { result: toolCall.result } : {}),
         startedAt: turn.timestamp,
       },
@@ -148,10 +166,10 @@ function messageFromTurn(sessionId: string, turn: TurnContent): ReducerState["me
     ...(turn.deferredHasThinking ? { deferredHasThinking: true } : {}),
     ...(turn.toolCalls ? {
       toolCalls: turn.toolCalls.map((toolCall, index) => ({
-        id: `${sessionId}:${turn.seq}:tool:${index}`,
+        id: toolCall.id ?? `${sessionId}:${turn.seq}:tool:${index}`,
         name: toolCall.name,
         input: toolCall.input,
-        status: "completed" as const,
+        status: toolCall.status ?? "completed" as const,
         ...(toolCall.result ? { result: toolCall.result } : {}),
         startedAt: turn.timestamp,
       })),
@@ -183,6 +201,8 @@ export function hydrateSessionHistorySnapshot(snapshotData: SessionHistorySnapsh
   if (entry) {
     entry.historyHasMore = !!snapshotData.hasMoreHistory;
     entry.historyOldestSeq = snapshotData.oldestSeq ?? null;
+    entry.historyOldestCreatedAt = snapshotData.oldestCreatedAt ?? null;
+    entry.historyOlderTurnCount = snapshotData.olderTurnCount ?? 0;
     entry.historyLoadingOlder = false;
     entry.historyOlderError = undefined;
   }
@@ -221,7 +241,7 @@ function markHistoryReadyFromEvents(entry: SessionEntry) {
 }
 
 export function getSessionHistoryLoadState(sessionId: string | null): SessionHistoryLoadState {
-  if (!sessionId) return { status: "idle", hasMore: false, loadingOlder: false };
+  if (!sessionId) return { status: "idle", hasMore: false, loadingOlder: false, olderTurnCount: 0 };
   const entry = sessions.get(sessionId);
   return {
     status: entry?.historyStatus ?? "idle",
@@ -229,6 +249,7 @@ export function getSessionHistoryLoadState(sessionId: string | null): SessionHis
     hasMore: !!entry?.historyHasMore,
     loadingOlder: !!entry?.historyLoadingOlder,
     ...(entry?.historyOlderError ? { olderError: entry.historyOlderError } : {}),
+    olderTurnCount: entry?.historyOlderTurnCount ?? 0,
   };
 }
 
@@ -242,7 +263,17 @@ export async function loadOlderSessionHistory(sessionId: string): Promise<void> 
         ? message.seq
         : min
     ), null);
-  if (!beforeSeq) return;
+  // Wall clock is the server's preferred boundary and seq only its fallback, so
+  // either one alone is enough to page. Requiring a seq left transcripts whose
+  // turns carry none — a provider that restarted its numbering, a page of
+  // system messages — showing the loader and doing nothing when it was pressed.
+  const beforeCreatedAt = entry.historyOldestCreatedAt
+    ?? entry.state.messages.reduce<number | null>((min, message) => (
+      typeof message.timestamp === "number" && message.timestamp > 0 && (min === null || message.timestamp < min)
+        ? message.timestamp
+        : min
+    ), null);
+  if (!beforeSeq && !beforeCreatedAt) return;
 
   entry.historyLoadingOlder = true;
   entry.historyOlderError = undefined;
@@ -251,7 +282,8 @@ export async function loadOlderSessionHistory(sessionId: string): Promise<void> 
   try {
     const snapshotData = await modus.getSessionHistorySnapshot(sessionId, {
       limit: HISTORY_PAGE_SIZE,
-      beforeSeq,
+      beforeSeq: beforeSeq ?? undefined,
+      beforeCreatedAt: beforeCreatedAt ?? undefined,
       details: historyDetailMode(),
     });
     const current = sessions.get(sessionId);
@@ -265,6 +297,10 @@ export async function loadOlderSessionHistory(sessionId: string): Promise<void> 
     current.state.messages = [...older, ...current.state.messages];
     current.historyHasMore = !!snapshotData.hasMoreHistory;
     current.historyOldestSeq = snapshotData.oldestSeq ?? beforeSeq;
+    current.historyOldestCreatedAt = snapshotData.oldestCreatedAt ?? beforeCreatedAt ?? null;
+    // Taken from the page's own cutoff, never derived from the message array —
+    // deriving it would shift by the size of every page already prepended.
+    current.historyOlderTurnCount = snapshotData.olderTurnCount ?? 0;
     current.historyLoadingOlder = false;
     current.historyOlderError = undefined;
     current.revision++;
@@ -556,7 +592,7 @@ export function subscribeSession(
   // Ensure store entry exists
   if (!sessions.has(sessionId)) {
     const state = createInitialState(sessionId);
-    sessions.set(sessionId, { state, profile, revision: 1 });
+    sessions.set(sessionId, { state, profile, lastAccess: ++sessionAccess, revision: 1 });
     notify();
   } else if (profile) {
     const entry = sessions.get(sessionId)!;
@@ -715,9 +751,9 @@ async function fetchHistorySnapshotWithTimeout(sessionId: string): Promise<Sessi
   try {
     return await modus.getSessionHistorySnapshot(sessionId, {
       signal: controller.signal,
-      // Text and user prompts are lightweight and must remain complete and
-      // chronologically intelligible. Only thinking/tool bodies are deferred.
-      limit: "all",
+      // Fetch the newest useful context first. Older semantic turns are
+      // available through loadOlderSessionHistory instead of blocking paint.
+      limit: HISTORY_PAGE_SIZE,
       details: historyDetailMode(),
     });
   } finally {
@@ -802,6 +838,7 @@ function ensureSubscribedInternal(
         sessions.set(sessionId, {
           state: createInitialState(sessionId),
           profile: opts.profile,
+          lastAccess: ++sessionAccess,
           revision: 1,
           historyStatus: "idle",
         });
@@ -821,11 +858,9 @@ function ensureSubscribedInternal(
 
       let afterSeq = existing?.lastSeq ?? 0;
 
-      // Always refetch snapshot when the session isn't mid-flight. Cached
-      // store state gets stale the moment we unsubscribe — if events
-      // arrived while we were detached, subscribing from our old lastSeq
-      // lets the UI render stale messages before SSE catch-up lands.
-      // The snapshot is authoritative; let it overwrite.
+      // Always refetch snapshots when the session isn't mid-flight. A bounded
+      // cached page may paint immediately, but it gets stale once unsubscribed.
+      // The snapshot revalidates it before SSE resumes at the current cursor.
       //
       // Cold active sessions also fetch the snapshot first. That restores
       // completed history after a hard refresh while live SSE rebuilds the
@@ -906,15 +941,32 @@ export function isSubscribed(sessionId: string): boolean {
   return subscriptions.has(sessionId);
 }
 
-/** Evict all inactive sessions from the store, keeping the active one and any running sessions */
+/**
+ * Park inactive sessions and cap the settled transcript cache.
+ *
+ * Settled entries are unsubscribed so a revisit must revalidate them, but the
+ * most recently accessed transcripts are kept whole and remain available for
+ * synchronous first paint.
+ */
 export function evictInactiveSessions(keepId: string) {
+  const keepEntry = sessions.get(keepId);
+  if (keepEntry) keepEntry.lastAccess = ++sessionAccess;
+
+  const settled: Array<[string, SessionEntry]> = [];
   let changed = false;
   for (const [id, entry] of sessions) {
-    if (id === keepId) continue;
-    if (id.startsWith("pending-")) continue;
+    if (id === keepId || id.startsWith("pending-")) continue;
     const status = entry.state.status;
-    if (status === "running" || status === "starting" || status === "interrupting") continue;
+    if (status === "running" || status === "starting" || status === "interrupting" || status === "paused") continue;
     unsubscribeSession(id);
+    settled.push([id, entry]);
+  }
+
+  // A retained transcript keeps every page the user loaded. Trimming it back to
+  // one page discarded work they had asked for and made returning to a session
+  // worse than opening it cold; the cache cap below is what bounds memory.
+  settled.sort((left, right) => right[1].lastAccess - left[1].lastAccess);
+  for (const [id] of settled.slice(INACTIVE_SESSION_CACHE_SIZE)) {
     sessions.delete(id);
     changed = true;
   }

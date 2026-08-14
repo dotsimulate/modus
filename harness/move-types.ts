@@ -320,7 +320,7 @@ export interface HarnessBridge {
     inputs?: Record<string, unknown>;
     sessionId?: string;
     modeOverride?: "inline" | "branch" | "background";
-  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
+  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; prompt?: string; requiresDispatch: boolean; moveRunId: number }>;
   /** Watch a session's assistant turns. Returns an unsubscribe function. */
   watchSessionTurns: (sessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>) => () => void;
   /**
@@ -472,6 +472,8 @@ export interface ActivateMoveOpts {
 export interface ActivateMoveResult {
   token: string;
   mode: "inline" | "branch" | "background" | "persistent";
+  /** True when the caller must send `prompt`; activation itself never sends an inline prompt. */
+  requiresDispatch: boolean;
   persistent?: boolean;                // true for ambient gather moves
   spawnedSessionId?: string;           // for branch/background
   prompt?: string;                     // for inline: rendered text to merge into user message
@@ -607,10 +609,15 @@ export interface MoveApiContext {
   secrets: MoveSecrets;
   /** Manifest-declared settings for the plugin that supplied this move. */
   pluginSettings: HarnessContext["pluginSettings"];
+  /** Broadcast an event immediately to this move instance's mounted widget/tool view. */
+  emit: (event: { type: string; [key: string]: unknown }) => void;
   /**
-   * Push a message into the agent's session.
-   * Pass an optional typed payload to emit a structured signal the agent can branch on.
-   * With a payload, the agent receives: `[modus:{type}] {json}\n{message}`
+   * Notify the side opposite the caller.
+   *
+   * Agent (`modus_submit`) calls inject `message` into the session. With `emit`,
+   * the injected text is `[modus:{type}] {json}\n{message}`. User/widget calls
+   * never inject `message` back into the agent; they broadcast `emit` as a
+   * `move-widget-event`, and do nothing visible when `emit` is omitted.
    */
   notify: (message: string, emit?: { type: string; [key: string]: unknown }) => void;
   /** Send a message to any existing session in this project. */
@@ -637,7 +644,7 @@ export interface MoveApiContext {
     inputs?: Record<string, unknown>;
     sessionId?: string;
     modeOverride?: "inline" | "branch" | "background";
-  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
+  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; prompt?: string; requiresDispatch: boolean; moveRunId: number }>;
   /** Watch a session's assistant turns. Returns an unsubscribe function. */
   watchSessionTurns: (sessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>) => () => void;
   /** Wake a session (id or tag) now, or on a schedule (at/every/onEvent). Fans out to a tagged team. */

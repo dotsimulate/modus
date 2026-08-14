@@ -15,7 +15,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { createInterface } from "readline";
 import { join, isAbsolute } from "path";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
-import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
+import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, getSessionMessages, updateSessionStatus, type TurnContent } from "../db";
 import { getMemoryLimitedEnv } from "../memory-guard";
 import { APP_PATHS } from "../app-paths";
@@ -396,7 +396,7 @@ export function createCursorProvider(): SessionProvider {
       session.abortController = new AbortController();
       state.abortController = session.abortController;
       session.initialContent = content;
-      session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+      session.preview = contentPreview(content);
       session.status = "running";
       session.turnStartedAt = Date.now();
 
@@ -857,7 +857,7 @@ async function runTurn(
     if (session.pendingDispatch.length > 0) {
       const next = session.pendingDispatch.shift()!.content;
       session.initialContent = next;
-      session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
+      session.preview = contentPreview(next);
       session.abortController = new AbortController();
       state.abortController = session.abortController;
       session.status = "running";
@@ -890,7 +890,7 @@ async function runTurn(
       if (session.pendingDispatch.length > 0) {
         const next = session.pendingDispatch.shift()!.content;
         session.initialContent = next;
-        session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
+        session.preview = contentPreview(next);
         session.abortController = new AbortController();
         state.abortController = session.abortController;
         session.status = "running";

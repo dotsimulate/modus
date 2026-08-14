@@ -24,8 +24,17 @@ import {
   insertFileObservation,
 } from "./db";
 import type { SessionOutcome } from "./action-types";
+import { userMessagePreviewText } from "./message-context";
 import { logActivity } from "./activity";
-import { canSpawnSession } from "./memory-guard";
+import { canSpawnSession, getMemoryStatus, isUnderMemoryPressure, resolveReapLimits } from "./memory-guard";
+import { measureProcessTree, sampleProcessTable, type ProcessTable } from "./process-memory";
+import {
+  formatIdleSurvey,
+  planIdleReaps,
+  shouldAnnounceReclaim,
+  type IdleSessionSample,
+} from "./session-reap-policy";
+import { providerCliName } from "./providers/provider-cli-names";
 import {
   captureCheckpoint,
   checkpointById,
@@ -35,21 +44,47 @@ import {
 } from "./checkpoints";
 import type { RewindPreview, RewindResult } from "./checkpoints";
 import { resolve as resolvePath, dirname as pathDirname, join as pathJoin } from "path";
-import { appendFileSync, mkdirSync } from "fs";
+import { appendFileSync, mkdirSync, renameSync, rmSync, statSync } from "fs";
 import { APP_PATHS } from "./app-paths";
 import { providerErrorDisplayText } from "./provider-error";
 
 // ── SSE flow log ──
 // Append-only diagnostic log of every subscriber lifecycle event and broadcast.
 // Gitignored, no secrets (only ID prefixes, event types, sizes, counts).
-// Tail with: Get-Content harness/.modus/sse-flow.log -Wait
+// Lives in the resolved logs directory, which differs between a source run and
+// a packaged one — read APP_PATHS.logsDir rather than assuming a path.
 const SSE_LOG = pathJoin(APP_PATHS.logsDir, "sse-flow.log");
+const SSE_LOG_PREVIOUS = `${SSE_LOG}.1`;
+/** Size at which the log rolls over. One previous generation is kept. */
+const SSE_LOG_MAX_BYTES = 64 * 1024 * 1024;
+/** Bytes written between size checks, so a stat does not ride every broadcast. */
+const SSE_LOG_CHECK_BYTES = 4 * 1024 * 1024;
 try { mkdirSync(pathDirname(SSE_LOG), { recursive: true }); } catch {}
+
+// Start due for a check: an existing log may already be over the cap from a
+// build that had no rotation at all.
+let sseLogBytesSinceCheck = SSE_LOG_CHECK_BYTES;
+
+function rollSseLogIfLarge(): void {
+  sseLogBytesSinceCheck = 0;
+  try {
+    if (statSync(SSE_LOG).size < SSE_LOG_MAX_BYTES) return;
+    // Windows refuses a rename onto an existing file, so clear the previous
+    // generation first. Losing it is the intended cost of rolling over.
+    rmSync(SSE_LOG_PREVIOUS, { force: true });
+    renameSync(SSE_LOG, SSE_LOG_PREVIOUS);
+  } catch { /* diagnostics must never break a broadcast */ }
+}
+
 function sseLog(event: string, sid: string | undefined, detail: string): void {
   const ts = new Date().toLocaleTimeString("en-US", { hour12: false, fractionalSecondDigits: 3 });
   const sidShort = sid ? sid.slice(0, 12) : "------------";
   const line = `${ts} [${sidShort}] ${event}: ${detail}\n`;
-  try { appendFileSync(SSE_LOG, line); } catch { /* ignore */ }
+  try {
+    sseLogBytesSinceCheck += line.length;
+    if (sseLogBytesSinceCheck >= SSE_LOG_CHECK_BYTES) rollSseLogIfLarge();
+    appendFileSync(SSE_LOG, line);
+  } catch { /* ignore */ }
 }
 
 // Lazy imports to avoid circular deps
@@ -308,12 +343,13 @@ export function buildContent(prompt: string, attachments?: ImageAttachment[]): M
 }
 
 export function contentPreview(content: MessageContent, maxLen = 80): string {
-  if (typeof content === "string") return content.slice(0, maxLen);
-  const textBlock = (content as any[]).find((b: any) => b.type === "text");
-  const text = textBlock?.text ?? "";
-  const imgCount = (content as any[]).filter((b: any) => b.type === "image").length;
+  const blocks = typeof content === "string" ? [] : (content as any[]);
+  const text = typeof content === "string"
+    ? content
+    : (blocks.find((b: any) => b.type === "text")?.text ?? "");
+  const imgCount = blocks.filter((b: any) => b.type === "image").length;
   const prefix = imgCount > 0 ? `[${imgCount} image${imgCount > 1 ? "s" : ""}] ` : "";
-  return (prefix + text).slice(0, maxLen);
+  return (prefix + userMessagePreviewText(text)).slice(0, maxLen);
 }
 
 // ── Active Sessions Map ──
@@ -764,11 +800,9 @@ function persistSemanticMessage(session: ActiveSession, event: any) {
     flushPendingAssistantTurn(session, event);
   }
 
-  // A provider failure was the one outcome the transcript lost. The status went
-  // to the database while the explanation went to live subscribers only, so a
-  // reloaded session showed a failed turn with no reason and the session list
-  // showed red with nothing behind it. Persist it as a system message so the
-  // explanation is exactly as durable as the status beside it.
+  // Persist the explanation alongside the status. A failure status is durable,
+  // so an error delivered only to live subscribers leaves a reloaded session
+  // showing a failed turn with no stated reason.
   if (event.type === "error") {
     const text = providerErrorDisplayText(event);
     insertMessage({
@@ -2278,12 +2312,19 @@ export function emitGlobalSessionEvent(event: GlobalSessionEvent) {
 }
 
 // ── Session Reaper ──
-// Removes finished sessions from the in-memory activeSessions map so they
-// don't accumulate forever between harness restarts. DB rows are unaffected.
+//
+// Drops sessions from the in-memory activeSessions map so they don't
+// accumulate across a long uptime. DB rows are unaffected — reclaiming a
+// session ends its provider process, not its history.
+//
+// Reclaiming an idle session kills the provider CLI and everything below it,
+// including background work the agent left running, so the idle rules live in
+// session-reap-policy.ts and are driven by what a session actually costs
+// rather than by how long it has been quiet. Terminal and stuck states below
+// have nothing left to protect and stay on simple timers.
 
 const REAP_INTERVAL_MS = 60_000;          // check every 60s
 const REAP_TERMINAL_AFTER_MS = 60_000;    // done/error: reap after 1 min
-const REAP_IDLE_AFTER_MS = 10 * 60_000;   // idle: reap after 10 min (regardless of subscribers)
 const REAP_STARTING_AFTER_MS = 3 * 60_000; // starting: reap after 3 min (stuck spawn)
 const REAP_INTERRUPTING_AFTER_MS = 5 * 60_000; // interrupting: provider teardown got stuck
 const INTERRUPT_FORCE_IDLE_AFTER_MS = 30_000; // stop button: give provider teardown a short grace window
@@ -2344,60 +2385,156 @@ export function forceClearActiveSession(
   return true;
 }
 
+/**
+ * Measure what each idle session costs, so the policy decides from memory
+ * rather than from elapsed time.
+ *
+ * A session that registered no OS pids cannot be measured — that is reported as
+ * unknown, never as zero, so an unmeasurable session is not mistaken for a free
+ * one. The process table is sampled once for the whole sweep.
+ */
+function sampleIdleSessions(sessions: ActiveSession[], now: number): IdleSessionSample[] {
+  const table: ProcessTable = sessions.length > 0 ? sampleProcessTable(now) : new Map();
+  const measurable = table.size > 0;
+
+  return sessions.map((session) => {
+    const idleMs = now - session.lastEventAt;
+    if (!measurable || session.osPids.size === 0) {
+      return { sessionId: session.sessionId, idleMs, cliRssBytes: null, treeRssBytes: null };
+    }
+    const cli = providerCliName(session.provider);
+    const footprint = measureProcessTree(table, session.osPids, cli ? [cli] : []);
+    return {
+      sessionId: session.sessionId,
+      idleMs,
+      cliRssBytes: footprint.matchedBytes,
+      treeRssBytes: footprint.totalBytes,
+    };
+  });
+}
+
+/**
+ * End a session's provider process and drop it from the active map.
+ *
+ * The reason reaches the user three ways because each survives a different
+ * thing: a persisted system message survives reload, a status broadcast updates
+ * a session list that is not watching this session, and closing the subscribers
+ * stops an open transcript from rendering a session that will never emit again.
+ */
+function reclaimSession(sessionId: string, reason: string, now: number): void {
+  const session = activeSessions.get(sessionId);
+  if (!session) return;
+
+  const idleSeconds = Math.round((now - session.lastEventAt) / 1000);
+  const previousStatus = session.status;
+  activeSessions.delete(sessionId);
+
+  flushPendingAssistantTurn(session, { type: "done", reason });
+  const announce = shouldAnnounceReclaim(previousStatus);
+  if (announce) {
+    session.seq++;
+    const event = {
+      type: "system",
+      subtype: "reclaimed",
+      reason,
+      previousStatus,
+      message: `Session process reclaimed: ${reason}. Sending a message starts a new process; ` +
+        `anything running in the background did not survive.`,
+    };
+    addEvent(sessionId, session.seq, event.type, event.subtype, JSON.stringify(event));
+    insertMessage({
+      sessionId,
+      seq: session.seq,
+      role: "system",
+      content: event.message,
+      createdAt: Date.now(),
+    });
+    syncSessionMessageCount(sessionId);
+    broadcastEventToSession(session, event, session.seq);
+  }
+
+  if (previousStatus !== "done" && previousStatus !== "error") {
+    session.status = "done";
+    updateSessionStatus(sessionId, "done");
+  }
+  emitGlobalSessionEvent({
+    type: "session:status",
+    sessionId,
+    status: session.status,
+    costUsd: session.costUsd,
+    preview: session.preview,
+  });
+
+  try { session._provider.dispose?.(session)?.catch(() => {}); } catch { /* best effort */ }
+
+  // Release the transcript stream. Without this the HTTP response stays open on
+  // its keepalive and the UI keeps presenting a session that has already ended.
+  for (const sub of session.subscribers) {
+    try { sub.close(); } catch { /* the stream may already be gone */ }
+  }
+  session.subscribers.clear();
+
+  sseLog("SESSION-REAPED", sessionId,
+    `status=${previousStatus} age=${idleSeconds}s announced=${announce ? "yes" : "no"} `
+    + `reason=${reason} totalActive=${activeSessions.size}`);
+}
+
 function reapStaleSessions(): void {
   const now = Date.now();
-  const toReap: string[] = [];
+  const toReap: Array<{ id: string; reason: string }> = [];
+  const idleSessions: ActiveSession[] = [];
 
   for (const [id, session] of activeSessions) {
     const age = now - session.lastEventAt;
 
     if (session.status === "done" || session.status === "error") {
       if (age >= REAP_TERMINAL_AFTER_MS && session.subscribers.size === 0) {
-        toReap.push(id);
+        toReap.push({ id, reason: `${session.status} session settled` });
       }
     } else if (session.status === "idle") {
-      // Reap idle sessions regardless of subscribers. Claude Code CLI leaks memory
-      // at ~100 MB/min even when idle (upstream bug: anthropics/claude-code#33494).
-      // SSE subscribers will get a close event and the UI can handle reconnection.
-      // Keeping idle sessions alive just to preserve an SSE pipe is not worth the
-      // risk of another OOM system crash.
-      if (age >= REAP_IDLE_AFTER_MS) {
-        toReap.push(id);
-      }
+      idleSessions.push(session);
     } else if (session.status === "starting") {
       // Stuck in starting state — provider failed to spawn or connect.
       // These zombies hold a slot in activeSessions but do nothing.
       if (age >= REAP_STARTING_AFTER_MS) {
-        toReap.push(id);
+        toReap.push({ id, reason: "provider never finished starting" });
       }
     } else if (session.status === "interrupting") {
       if (age >= REAP_INTERRUPTING_AFTER_MS) {
-        session.status = "done";
-        updateSessionStatus(session.sessionId, "done");
-        emitGlobalSessionEvent({
-          type: "session:status",
-          sessionId: session.sessionId,
-          status: "done",
-          costUsd: session.costUsd,
-          preview: session.preview,
-        });
-        toReap.push(id);
+        toReap.push({ id, reason: "provider teardown did not finish" });
       }
     }
   }
 
-  for (const id of toReap) {
-    const session = activeSessions.get(id);
-    if (!session) continue;
-    flushPendingAssistantTurn(session, { type: "done", reason: "session reaped" });
-    try { session._provider.dispose?.(session)?.catch(() => {}); } catch { /* best effort */ }
-    sseLog("SESSION-REAPED", id,
-      `status=${session.status} age=${Math.round((now - session.lastEventAt) / 1000)}s totalActive=${activeSessions.size - 1}`);
-    activeSessions.delete(id);
+  if (idleSessions.length > 0) {
+    const samples = sampleIdleSessions(idleSessions, now);
+    const ctx = { underPressure: isUnderMemoryPressure() };
+    const limits = resolveReapLimits();
+    // Recorded every sweep, not only when something is reclaimed: a policy that
+    // never fires because it is measuring nothing looks exactly like one that
+    // never fires because nothing crossed a limit. System usage rides along
+    // because the watchdog only speaks above 75%, leaving no record of how
+    // close pressure ever came.
+    sseLog("REAP-SURVEY", undefined,
+      `${formatIdleSurvey(samples, ctx, limits)} sysMem=${getMemoryStatus().usagePercent}%`);
+    // Name the sessions that could not be measured, since which provider failed
+    // to register a pid is the next question and cannot be recovered later.
+    const unmeasured = samples.filter((s) => s.cliRssBytes === null || s.treeRssBytes === null);
+    for (const sample of unmeasured.slice(0, 8)) {
+      const session = activeSessions.get(sample.sessionId);
+      sseLog("REAP-UNMEASURED", sample.sessionId,
+        `provider=${session?.provider ?? "?"} cli=${providerCliName(session?.provider ?? "") ?? "none"} `
+        + `osPids=${session?.osPids.size ?? 0} idle=${Math.round(sample.idleMs / 1000)}s`);
+    }
+    for (const entry of planIdleReaps(samples, ctx, limits)) {
+      toReap.push({ id: entry.sessionId, reason: entry.reason });
+    }
   }
 
+  for (const { id, reason } of toReap) reclaimSession(id, reason, now);
+
   if (toReap.length > 0) {
-    console.log(`[session-reaper] reaped ${toReap.length} stale session(s), ${activeSessions.size} remain`);
+    console.log(`[session-reaper] reclaimed ${toReap.length} session(s), ${activeSessions.size} remain`);
   }
 }
 
@@ -2405,6 +2542,18 @@ let reapTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startSessionReaper(): void {
   if (reapTimer) return;
+  // Probe the process table once at startup. Whether the platform tooling works
+  // inside a packaged backend is otherwise only observable after a session has
+  // been idle long enough to be surveyed, and it is the first thing to rule out
+  // when the memory rules never fire.
+  try {
+    const table = sampleProcessTable();
+    sseLog("REAP-PROBE", undefined, table.size > 0
+      ? `process table readable, rows=${table.size}`
+      : "process table UNREADABLE — memory rules cannot fire, only the idle backstop");
+  } catch (err) {
+    sseLog("REAP-PROBE", undefined, `process table sample threw: ${err}`);
+  }
   reapTimer = setInterval(reapStaleSessions, REAP_INTERVAL_MS);
 }
 

@@ -18,6 +18,7 @@ import { ConfigBar } from "../components/ConfigBar";
 import { createEmptyAgentConfig, isAgentConfigEqual, type AgentConfigState } from "../components/AgentConfig";
 import { nextMsgId } from "../../../sdk/index";
 import type { Attachment, MoveBinding } from "../../../sdk/index";
+import { toApiAttachments } from "../api-attachments";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
@@ -138,9 +139,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
       setInputValue("");
 
       const sendAttachments = attachments.length > 0 ? attachments : undefined;
-      const apiAtts = attachments.length > 0
-        ? attachments.map((a) => ({ type: a.type, mediaType: a.mediaType, data: a.data, name: a.name }))
-        : undefined;
+      const apiAtts = toApiAttachments(attachments);
 
       // Interjections take the steer route. No optimistic insert here: on a
       // successful steer the backend broadcasts the user message itself, so

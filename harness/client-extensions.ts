@@ -3,46 +3,22 @@ import { basename, extname, join, resolve } from "path";
 import { APP_PATHS } from "./app-paths";
 import { getResolvedClientExtensionsConfig } from "./profiles";
 import { getPluginClientExtensionsDir, listEnabledModusPlugins } from "./modus-plugins";
+import { extensionSettingScope, type ExtensionMeta, type ExtensionSettingSchema } from "./settings-schema";
 
 const PROJECT_EXTENSIONS_DIR = ".modus/ui/extensions";
 const BUILTIN_EXTENSIONS_DIR = join(APP_PATHS.resourcesDir, "ui/extensions");
 const EXTENSION_EXTENSIONS = new Set([".js", ".mjs"]);
 
-export type ExtensionSettingType = "string" | "number" | "boolean" | "select";
-
-/** Where an extension setting is stored and resolved.
- *
- *  "user" values describe the client doing the talking — local hardware, a
- *  per-device preference — so they belong to that client's user profile and are
- *  allowed to differ between a desktop and a phone.
- *
- *  "global" values are consumed by the harness itself. They must be identical
- *  for every client, so they are stored machine-wide and resolved without the
- *  user-profile layer. Storing one per profile means a client that never opened
- *  the settings form silently resolves nothing — which is how a missing whisper
- *  endpoint surfaced as an unexplained 502 on every phone. */
-export type ExtensionSettingScope = "user" | "global";
-
-export type ExtensionSettingSchema = {
-  type: ExtensionSettingType;
-  label: string;
-  description?: string;
-  default?: string | number | boolean;
-  options?: Array<{ value: string; label: string }>;
-  /** Defaults to "user". */
-  scope?: ExtensionSettingScope;
-};
-
-/** Mirrors plugin-settings.ts: an undeclared scope is per user profile. */
-export function extensionSettingScope(def: ExtensionSettingSchema): ExtensionSettingScope {
-  return def.scope === "global" ? "global" : "user";
-}
-
-export type ExtensionMeta = {
-  name?: string;
-  description?: string;
-  settings?: Record<string, ExtensionSettingSchema>;
-};
+// Declared once in settings-schema.ts so backend discovery, the SDK's authoring
+// types, and the settings renderer cannot drift apart. Re-exported here because
+// this module is where callers already look for them.
+export {
+  extensionSettingScope,
+  type ExtensionMeta,
+  type ExtensionSettingSchema,
+  type ExtensionSettingScope,
+  type ExtensionSettingType,
+} from "./settings-schema";
 
 export type ClientExtensionSource = "builtin" | "plugin" | "global" | "project";
 

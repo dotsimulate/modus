@@ -69,6 +69,40 @@ Exposed via `GET /api/sessions/:id/messages-content` (optional `?seq=<n>` for a 
 
 **Usage analytics**: `getProviderUsageAnalytics({ userProfile?, days? })` in `db.ts` returns token/cost breakdowns by provider, model, and day over a configurable window (default 30 days, max 120). Shape: `{ windowDays, totals, providers[], models[], daily[] }` — each bucket has sessions, turns, inputTokens, outputTokens, totalTokens, cost.
 
+**Deep analytics**: `GET /api/analytics/deep` and SDK
+`getDeepAnalytics({ start, end, bucketMs?, userProfile?, cwd?, provider? })`
+return totals, time buckets, provider/model/profile/project breakdowns,
+hour-of-day rows, per-session metrics, and file-touch trace summaries. The
+default range is 48 hours; bucket widths snap to 5/15/30 minutes or 1/2/6/12/24
+hours with at most 512 buckets. Archived/internal sessions are excluded. `cwd`
+matches a path prefix, while `provider` is exact. See [MO SDK Guide](./sdk/guide.md#analytics-and-activity)
+for the paging-independent response and filter contract.
+
+**Trace queries**: `GET /api/trace/touches` (`queryTouches` in `trace.ts`) and
+`GET /api/trace/file-sessions` (`getSessionsForFile` in `db.ts`) both scan
+rather than seek, and **neither applies its `limit` in SQL** — the limit bounds
+the response, not the work. Cost each call against that before putting one
+behind a per-file UI affordance:
+
+- `touches` selects `events` where `type = 'assistant' AND data LIKE
+  '%tool_use%'`. A leading-wildcard `LIKE` over the largest column in the
+  database cannot use an index, so every assistant event is fetched and every
+  match is `JSON.parse`d in JS. `limit` short-circuits the parse loop after the
+  rows are already materialized. The narrowing filters are `sessionId`, `from`,
+  `to`, `userProfile`, and `cwd` (prefix match on `sessions.cwd`) — pass at
+  least one; an unfiltered call is proportional to the whole event history.
+- `file-sessions` matches `fo.path = $exact OR fo.path LIKE '%<basename>'`. The
+  only index on `file_observations` is `(session_id, seq, id)`, so the basename
+  branch is a full table scan joined to `sessions`, and it is scanned once per
+  call. Cost scales with how many rows share the basename, so common names
+  (`index.ts`, `types.ts`) are the worst case. Dedup to one row per session and
+  the `limit` slice both happen in JS afterward; the route caps `limit` at 25
+  and defaults to 3.
+
+Payload shape follows the same asymmetry: `touches` also returns
+`touchSummary(touches)` computed over the full matched set, so the response
+grows with matches even when `limit` is small.
+
 **Search scoping**: `searchSessions(query, limit, scope?)` accepts `scope.agentProfiles` and `scope.userProfileName` in addition to `scope.cwdPrefixes`.
 
 **Managed by**: `session-manager.ts` (lifecycle, routing), `db.ts` (persistence).

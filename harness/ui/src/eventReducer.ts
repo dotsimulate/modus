@@ -326,6 +326,19 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
       messages: [...s.messages, { id: nextMsgId(), role: "system", content: "interrupted" }],
     };
   }
+  if (m.subtype === "reclaimed") {
+    // The provider process is gone, so the turn cannot resume. Settle the
+    // status rather than leaving the transcript on a state that will never
+    // change again.
+    const content = typeof m.message === "string" && m.message.trim()
+      ? m.message.trim()
+      : "Session process reclaimed.";
+    return {
+      ...s,
+      status: "done",
+      messages: [...s.messages, { id: nextMsgId(), role: "system", content, timestamp: ts }],
+    };
+  }
   if (m.subtype === "switch") {
     return {
       ...s,

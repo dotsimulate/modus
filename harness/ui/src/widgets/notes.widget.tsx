@@ -199,9 +199,9 @@ export default function NotesWidget({ config, widgetId, active = true }: WidgetP
     const currentSave = ++saveSeqRef.current;
     setSaveState("saving");
     setSaveError("");
-    const ok = await modus.writeFile(path, content);
-    if (currentSave !== saveSeqRef.current) return ok;
-    if (ok) {
+    const saved = await modus.writeFile(path, content);
+    if (currentSave !== saveSeqRef.current) return saved.ok;
+    if (saved.ok) {
       setSavedDraft(content);
       setSaveState("saved");
       setSaveError("");
@@ -213,7 +213,7 @@ export default function NotesWidget({ config, widgetId, active = true }: WidgetP
       return true;
     }
     setSaveState("error");
-    setSaveError("Could not save note.");
+    setSaveError(saved.error ?? "Could not save note.");
     return false;
   }
 
@@ -235,7 +235,9 @@ export default function NotesWidget({ config, widgetId, active = true }: WidgetP
       } catch (error) {
         if (!config.createFolderIfMissing) throw error;
         const created = await modus.createDirectory(targetFolder);
-        if (!created) throw error;
+        // A collision means someone else created it between the failed browse
+        // and now, which is the outcome this branch wanted anyway.
+        if (!created.ok && created.code !== "collision") throw new Error(created.error ?? String(error));
         result = await modus.browse(targetFolder, { includeFiles: true });
       }
 
@@ -353,9 +355,9 @@ export default function NotesWidget({ config, widgetId, active = true }: WidgetP
     await flushCurrentDraft();
     const path = buildNewNotePath(folderPath);
     const created = await modus.createFile(path, "");
-    if (!created) {
+    if (!created.ok) {
       setSaveState("error");
-      setSaveError("Could not create note.");
+      setSaveError(created.error ?? "Could not create note.");
       return;
     }
     setSelectedPath(path);

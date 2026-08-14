@@ -1,6 +1,6 @@
 ---
 title: Actions
-lastUpdated: 2026-07-26
+lastUpdated: 2026-08-14
 covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts harness/skill-attachment.ts
 ---
 
@@ -170,3 +170,51 @@ with normal session fallbacks.
 - `GET /api/actions/:name/preferences` — read UI preferences
 - `POST /api/actions/:name/tags` / `DELETE /api/actions/:name/tags/:tag` — mutate freeform tags
 - `POST /api/actions/reload` — reload actions from disk
+
+## Parking an action (`enabled: false`)
+
+`enabled` is **required** in `action.json` (`ActionConfig.enabled: boolean`).
+An action that does not say `true` does not run — the opposite of a move, where
+`enabled` is optional and absent means on. An action fires on its own, so
+silence has to mean off.
+
+Setting `enabled: false` parks the action on disk. It is still discovered,
+still listed in the actions UI, and its run history is kept; what stops is
+firing:
+
+| Path | With `enabled: false` |
+|---|---|
+| interval scheduling | `nextRunAt` is `null`; never scheduled |
+| watch triggers | skipped in the watch sweep |
+| session / action triggers | skipped |
+| `POST /api/actions/:name/hook` (webhook) | `{ ok: false, error: "action is disabled" }` |
+| idle executions showing "RUNNING" | closed when the action is disabled |
+| explicit manual trigger (`triggerAction`) | **still runs** — see below |
+
+Toggling through `PATCH /api/actions/:name` is not in-memory only: it writes
+`enabled` back into `action.json` (`writeActionConfig`), so a toggle from the UI
+survives a restart and shows up as a file edit in version control.
+
+An explicit manual trigger is not gated on `enabled`. `triggerAction` checks the
+trigger type and the concurrency limit but not the flag, so pressing run on a
+parked `manual` or `interval` action fires it. Read `enabled` as governing
+*automatic* firing rather than as a lock.
+
+Re-enabling resets exhaustion (`maxRuns`/`maxCycles`) and, for an interval
+trigger, schedules the next run one full interval out rather than immediately —
+so re-enabling never causes a catch-up burst.
+
+## Reload semantics
+
+Action discovery is snapshot-based. Creating/removing an action directory or
+editing `action.json` does not update the in-memory scheduler until harness
+startup or `POST /api/actions/reload`. Reload scans built-in, project, and
+enabled-plugin roots; it adds new actions, refreshes config for existing ones,
+and removes missing actions only when they have no active execution. An active
+execution keeps running, but its state receives the refreshed config.
+
+`context.ts` has a different lifetime: each run imports it with a fresh
+timestamp query (`?t=<now>`), so edits are read when the next run starts and do
+not require the discovery reload. As with moves, an installed desktop's
+built-ins come from its staged resource snapshot; editing another source
+checkout requires rebuilding/reinstalling that snapshot.

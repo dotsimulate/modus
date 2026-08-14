@@ -558,8 +558,10 @@ interface MoveModule {
 - **Submit tokens**: `ctx.token` for one-shot submit. 10min TTL.
 - **State**: `ctx.state` is NOT available in gather(). Handlers get
   `ctx.state.get<T>()` / `.set(value)` / `.delete()`.
-- **Notify**: `ctx.notify(message)` pushes a message into the agent session.
-  Typed: `ctx.notify("msg", { type: "event-name", ...payload })`.
+- **Notify**: for agent-called ops, `ctx.notify(message)` pushes into the agent
+  session. For user/widget-called ops it does not inject; provide
+  `ctx.notify("msg", { type: "event-name", ...payload })` to broadcast the typed
+  payload to the widget instead.
 - **Caller**: `ctx.caller` is `"agent"` or `"user"`. Default-deny for sensitive ops.
 - **Inputs**: Declared in move.json `inputs[]`, read via `ctx.inputs` in gather().
 - **DB**: `ctx.db` in gather() gives project-scoped session queries and move history.

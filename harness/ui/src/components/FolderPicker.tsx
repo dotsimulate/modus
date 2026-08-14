@@ -72,11 +72,11 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
     setCreateBusy(true);
     setCreateError(null);
     try {
-      const ok = await modus.createDirectory(target);
-      if (!ok) {
-        // createDirectory collapses every failure into false, so the reason
-        // (permissions, read-only volume) is not recoverable here.
-        setCreateError("could not create folder");
+      const created = await modus.createDirectory(target);
+      if (!created.ok) {
+        setCreateError(created.code === "collision"
+          ? "a folder with that name already exists"
+          : created.error ?? "could not create folder");
         return;
       }
       cancelCreate();

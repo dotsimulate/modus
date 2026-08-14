@@ -57,9 +57,9 @@ export const handlers: Record<string, MoveApiHandler> = {
 
     await ctx.state.set({ score: 1, history: ["first"] });
 
-    // Notify agent (pushes message into session)
+    // Agent callers: push a message into the session
     ctx.notify("Something happened");
-    // With structured payload: agent sees [modus:event-type] {...}\nmessage
+    // Agent callers with a payload see [modus:event-type] {...}\nmessage
     ctx.notify("Event occurred", { type: "game-event", detail: "..." });
 
     return { ok: true, message: "Success" };
@@ -77,8 +77,11 @@ export const handlers: Record<string, MoveApiHandler> = {
 // Only user can reset
 if (ctx.caller === "agent") return { ok: false, error: "Only user can reset" };
 
-// Notify the other side on state changes
-if (ctx.caller === "user") ctx.notify("User made a move");
+// User/widget callers need a typed payload; the message is audit context and
+// is not injected into the agent.
+if (ctx.caller === "user") {
+  ctx.notify("User made a move", { type: "state-changed" });
+}
 ```
 
 **Budget and access control pattern** (proven in fal-image):

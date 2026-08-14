@@ -163,6 +163,7 @@ export function reconstructSessionTurns(
             toolCall.result = typeof block.content === "string"
               ? block.content
               : JSON.stringify(block.content ?? "");
+            toolCall.status = block.is_error ? "error" : "completed";
           }
         }
       }
@@ -259,7 +260,7 @@ function materializeAssistantTurn(
   };
   if (current.thinking) turn.thinking = current.thinking;
   if (current.toolCalls.size > 0) {
-    turn.toolCalls = [...current.toolCalls.values()].map(({ id: _id, ...toolCall }) => toolCall);
+    turn.toolCalls = [...current.toolCalls.values()];
   }
   if (current.contentBlocks.length > 0) turn.contentBlocks = current.contentBlocks;
   return turn;

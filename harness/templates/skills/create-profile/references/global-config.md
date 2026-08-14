@@ -39,6 +39,60 @@ session regardless of which agent or user profile is active.
       "maxOutputTokens": 2048
     }
   }
+  // Client extensions, machine-wide.
+  // "settings" here holds every extension setting declared scope:"global" —
+  // values the harness itself consumes, which must be identical for every
+  // client. A scope:"user" setting lives in the user profile instead, so it may
+  // legitimately differ between a desktop and a phone.
+  "clientExtensions": {
+    "paths": ["/home/user/modus-extensions"],
+    "enabled": ["modus-listen"],
+    "disabled": [],
+    "settings": {
+      "modus-listen": { "whisperUrl": "http://whisper-box:8080/v1/audio/transcriptions" }
+    }
+  },
+
+  // Machine-wide values for plugin settings declared scope:"global",
+  // keyed by plugin id
+  "pluginSettings": {
+    "modus-speak": { "endpoint": "http://localhost:8880" }
+  },
+
+  // Outbound notification channels, keyed by channel name.
+  // "method" and "headers" are supported and are merged over a default
+  // Content-Type. Values are literal — there is no ${VAR} expansion and no
+  // secrets indirection here, so a bearer token written here sits in plaintext.
+  "notificationChannels": {
+    "ops-webhook": {
+      "type": "webhook",
+      "url": "https://hooks.example.com/modus",
+      "method": "POST",
+      "headers": { "X-Source": "modus" }
+    }
+  },
+
+  // Text-to-speech routing
+  "textToSpeech": {
+    "enabled": true,
+    "defaultProvider": "kokoro",     // kokoro | zonos2 | neutts | elevenlabs
+    "defaultVoice": "af_sky",
+    "defaultFormat": "wav",          // wav | mp3 | pcm
+    "voiceAliases": { "narrator": "af_sky" },
+    "providers": {
+      "kokoro": {
+        "enabled": true,
+        "baseUrl": "http://localhost:8880",
+        "model": "kokoro",
+        "apiKeyEnv": "KOKORO_API_KEY",   // names an env var; never the key itself
+        "outputFormat": "wav",
+        "stability": 0.5,
+        "similarityBoost": 0.75,
+        "style": 0.0
+      }
+      // zonos2, neutts, and elevenlabs take the same fields
+    }
+  }
 }
 ```
 

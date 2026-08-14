@@ -1023,7 +1023,7 @@ export function createGeminiCliProvider(): SessionProvider {
       session.abortController = new AbortController();
       state.abortController = session.abortController;
       session.initialContent = content;
-      session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+      session.preview = contentPreview(content);
       session.status = "running";
       session.turnStartedAt = Date.now();
       updateSessionStatus(session.sessionId, "running");

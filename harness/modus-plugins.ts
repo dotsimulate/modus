@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "path";
 import { homedir } from "os";
 import { homePluginsJsonPath } from "./modus-home";
 import { APP_PATHS } from "./app-paths";
+import type { PluginSettingDefinition } from "./settings-schema";
 
 const MODUS_DIR = ".modus";
 const PLUGIN_MANIFEST = "plugin.json";
@@ -16,17 +17,10 @@ export type ModusPluginRegistration = {
   settings?: Record<string, unknown>;
 };
 
-export type PluginSettingScope = "user" | "project" | "global";
-
-export type PluginSettingDefinition = {
-  key: string;
-  type: "string" | "number" | "toggle" | "select" | "project-list" | "secret-name";
-  label?: string;
-  description?: string;
-  default?: unknown;
-  scope?: PluginSettingScope;
-  options?: Array<{ value: string; label: string }>;
-};
+// Declared once in settings-schema.ts alongside the client-extension shapes, so
+// the manifest contract an author writes and the types the SDK publishes cannot
+// drift apart. Re-exported here because this module owns plugin manifests.
+export { type PluginSettingDefinition, type PluginSettingScope } from "./settings-schema";
 
 export type ModusPluginManifest = {
   id?: string;

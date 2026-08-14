@@ -105,6 +105,7 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
         hasOlderMessages={historyLoad.hasMore}
         loadingOlderMessages={historyLoad.loadingOlder}
         olderMessagesError={historyLoad.olderError}
+        olderTurnCount={historyLoad.olderTurnCount}
         onLoadOlderMessages={loadOlderHistory}
         onLoadMessageDetails={loadMessageDetails}
         onBranch={handleBranch}

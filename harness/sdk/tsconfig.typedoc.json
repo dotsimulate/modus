@@ -6,5 +6,5 @@
     "skipLibCheck": true
   },
   "include": ["./*.ts"],
-  "exclude": ["./test-sdk.ts", "./cli.ts"]
+  "exclude": ["./cli.ts"]
 }

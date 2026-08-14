@@ -19,6 +19,7 @@ import { useSessionComposer } from "../hooks/useSessionComposer";
 import type { MoveBinding, Attachment } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
+import { toApiAttachments } from "../api-attachments";
 import { ensureSubscribed, getSessionState, setSessionState, getSessionProfile } from "../sessionStore";
 
 type Props = {
@@ -154,12 +155,7 @@ export function WebComposer({ sessionId, x, y, onClose, onSent, onMove }: Props)
       await modus.sendMessage(
         sessionId,
         prompt,
-        attachments.length > 0 ? attachments.map(a => ({
-          type: a.type,
-          mediaType: a.mediaType,
-          data: a.data,
-          name: a.name,
-        })) : undefined,
+        toApiAttachments(attachments),
         {
           profile: composer.activeProfileName || undefined,
           cwd: composer.projectCwd,

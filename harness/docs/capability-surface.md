@@ -71,8 +71,9 @@ state). On activation the runner registers handlers, mints a reusable
 `activateMove({moveName, inputs, sessionId, modeOverride})`,
 `watchSessionTurns(sessionId, cb)`, `wake(target, content, when?)`,
 `channels.send(channel, {text, data})`, `insertArtifact(...)`,
-`notify(message, emit?)` — pushes into the agent's session; with `emit` the
-agent receives a typed signal line `[modus:{type}] {json}` it can branch on.
+`notify(message, emit?)` — agent callers inject into the session (with a typed
+`[modus:...]` prefix when `emit` is supplied); user/widget callers inject
+nothing and only broadcast a supplied `emit` payload as `move-widget-event`.
 Plus `state` (get/set/delete), `store`/`setStore` (process-scoped), `db`
 (read-only sessions/messages/search), `secrets` (resolve/isSet), `caller`
 ("agent" | "user").

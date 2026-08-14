@@ -95,7 +95,8 @@ function classifyServeConfig(): "none" | "modus" | "foreign" {
   const key443 = Object.keys(web).find((k) => k.endsWith(":443"));
   if (!key443) return "none"; // no :443 rule → safe to create ours
 
-  // Funnel (public internet) on :443 was set deliberately by someone else.
+  // Funnel exposes the endpoint to the public internet, which modus never
+  // configures — so this rule belongs to another tool and must not be touched.
   if (cfg.AllowFunnel?.[key443]) return "foreign";
 
   const handlers = web[key443]?.Handlers ?? {};

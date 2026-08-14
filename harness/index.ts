@@ -52,6 +52,8 @@ import { getAboutInfo } from "./about";
 import {
   listClientExtensions, getClientExtensionById, resolveExtensionSettings, extensionSettingScope,
 } from "./client-extensions";
+import { settingNumberError } from "./settings-schema";
+import { fileMutationFailure } from "./file-mutation-errors";
 import {
   listModusPlugins, patchModusPlugin, registerModusPlugin, unregisterModusPlugin,
 } from "./modus-plugins";
@@ -1740,18 +1742,12 @@ function streamSessionSSE(c: any, sessionId: string, afterSeq = 0) {
           const dt = Date.now() - t0;
           if (dt > 50) console.log(`[sse] slow write: ${event} took ${dt}ms (session=${sessionId})`);
           if (event === "done") {
-            // Provider emitted "done" — but the session may still receive a
-            // follow-up turn (queued message, action retry, mission cycle)
-            // that re-activates the same session. Do NOT close the stream
-            // immediately. Start a 5s grace window. If any real event arrives
-            // before it expires, the clearTimeout at the top of this method
-            // cancels it and we keep streaming. If nothing arrives, the
-            // stream closes naturally.
-            //
-            // Previously this branch called resolve() unconditionally, which
-            // tore down the SSE stream after the first turn and dropped every
-            // subsequent broadcast (subs=0) until the user reloaded the page.
-            // That was the "session looks green/blinking but no events" bug.
+            // "done" ends a turn, not necessarily the session: a queued
+            // message, action retry or mission cycle can re-activate the same
+            // session moments later. Closing here would drop every following
+            // broadcast until the client reconnected, so the stream is held
+            // open for a grace window instead. Any real event arriving first
+            // cancels it via the clearTimeout above and streaming continues.
             graceTimer = setTimeout(() => { resolve(); }, 5_000);
           }
         },
@@ -2032,6 +2028,10 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
   const beforeSeq = Number.isFinite(requestedBeforeSeq) && requestedBeforeSeq > 0
     ? Math.floor(requestedBeforeSeq)
     : undefined;
+  const requestedBeforeCreatedAt = Number(c.req.query("beforeCreatedAt"));
+  const beforeCreatedAt = Number.isFinite(requestedBeforeCreatedAt) && requestedBeforeCreatedAt > 0
+    ? Math.floor(requestedBeforeCreatedAt)
+    : undefined;
   const row = getSession(id);
   const active = getActiveSession(id);
   if (!row && !active) return c.json({ error: "session not found" }, 404);
@@ -2055,6 +2055,7 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
   const history = getSessionMessageHistory(id, {
     limit,
     beforeSeq,
+    beforeCreatedAt,
     includeDetails: c.req.query("details") !== "summary",
     preserveEventSequence: true,
   });
@@ -2071,6 +2072,8 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
     recoveredFromEvents: history.recoveredFromEvents,
     hasMoreHistory: history.hasMore,
     oldestSeq: history.oldestSeq,
+    oldestCreatedAt: history.oldestCreatedAt,
+    olderTurnCount: history.olderTurnCount,
     lastSeq: active?.seq ?? getMaxSeq(id),
     createdAt: row?.created_at ?? active?.startedAt ?? Date.now(),
   });
@@ -2694,11 +2697,18 @@ app.put("/api/file-write", async (c) => {
   const authError = requireConfiguredFileApiAuth(c);
   if (authError) return authError;
   const { path: rawPath, content } = await c.req.json<{ path: string; content: string }>();
-  if (!rawPath || typeof content !== "string") return c.json({ error: "path and content required" }, 400);
+  if (!rawPath || typeof content !== "string") {
+    return c.json({ error: "path and content required", code: "rejected" }, 400);
+  }
   const { resolve } = await import("path");
   const { writeFile } = await import("fs/promises");
   const target = resolve(rawPath);
-  await writeFile(target, content, "utf-8");
+  try {
+    await writeFile(target, content, "utf-8");
+  } catch (err) {
+    const failure = fileMutationFailure(err, target);
+    return c.json({ error: failure.error, code: failure.code }, failure.status);
+  }
   return c.json({ ok: true, path: target });
 });
 
@@ -2706,13 +2716,18 @@ app.post("/api/file-create", async (c) => {
   const authError = requireConfiguredFileApiAuth(c);
   if (authError) return authError;
   const { path: rawPath, content } = await c.req.json<{ path: string; content?: string }>();
-  if (!rawPath) return c.json({ error: "path required" }, 400);
+  if (!rawPath) return c.json({ error: "path required", code: "rejected" }, 400);
   const { resolve, dirname } = await import("path");
   const { writeFile, mkdir, stat } = await import("fs/promises");
   const target = resolve(rawPath);
-  try { await stat(target); return c.json({ error: "already exists" }, 409); } catch { /* ok */ }
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, content ?? "", "utf-8");
+  try { await stat(target); return c.json({ error: "already exists", code: "collision" }, 409); } catch { /* ok */ }
+  try {
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content ?? "", "utf-8");
+  } catch (err) {
+    const failure = fileMutationFailure(err, target);
+    return c.json({ error: failure.error, code: failure.code }, failure.status);
+  }
   return c.json({ ok: true, path: target });
 });
 
@@ -2720,12 +2735,17 @@ app.post("/api/dir-create", async (c) => {
   const authError = requireConfiguredFileApiAuth(c);
   if (authError) return authError;
   const { path: rawPath } = await c.req.json<{ path: string }>();
-  if (!rawPath) return c.json({ error: "path required" }, 400);
+  if (!rawPath) return c.json({ error: "path required", code: "rejected" }, 400);
   const { resolve } = await import("path");
   const { mkdir, stat } = await import("fs/promises");
   const target = resolve(rawPath);
-  try { await stat(target); return c.json({ error: "already exists" }, 409); } catch { /* ok */ }
-  await mkdir(target, { recursive: true });
+  try { await stat(target); return c.json({ error: "already exists", code: "collision" }, 409); } catch { /* ok */ }
+  try {
+    await mkdir(target, { recursive: true });
+  } catch (err) {
+    const failure = fileMutationFailure(err, target);
+    return c.json({ error: failure.error, code: failure.code }, failure.status);
+  }
   return c.json({ ok: true, path: target });
 });
 
@@ -3492,6 +3512,13 @@ app.patch("/api/client-extensions/:id", async (c) => {
     const globalSettings: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(body.settings)) {
       const def = schema[key];
+      // The renderer's min/max attributes only constrain the form. Any client can
+      // PATCH whatever it likes, and a global-scoped value lands machine-wide for
+      // every other client, so the declared bounds are enforced here too.
+      if (def?.type === "number" && value !== null && value !== undefined) {
+        const error = settingNumberError(key, value, def);
+        if (error) return c.json({ error }, 400);
+      }
       if (def && extensionSettingScope(def) === "global") globalSettings[key] = value;
       else userSettings[key] = value;
     }

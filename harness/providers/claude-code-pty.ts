@@ -23,7 +23,7 @@ import { createInterface, type Interface as ReadlineInterface } from "readline";
 import { join, dirname, isAbsolute } from "path";
 import { existsSync } from "fs";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
-import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
+import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getObservedProviderSessionIds, getSession, updateProviderSessionId, updateSessionStatus } from "../db";
 import { logActivity } from "../activity";
 import { registerExternalTerminal, updateTerminalSession } from "../terminal-manager";
@@ -646,6 +646,13 @@ function attachPtyExitHandler(
   processTempDir: string | null,
 ): void {
   const { session } = ctx;
+  // Publish the root pid so the process registry can show and sweep this tree,
+  // and so the session reaper can measure what the provider is holding. On
+  // Windows this may be the command wrapper rather than the CLI itself; both
+  // the taskkill and the memory walk descend from it.
+  const rootPid = lease.process.pid;
+  if (rootPid) session.osPids.add(rootPid);
+
   lease.process.on("exit", (code) => {
     if (!state.processOwner.isCurrent(lease)) return;
     console.log(`[claude-code-pty] ${prefix} process exited (code=${code}) for ${session.sessionId}`);
@@ -664,6 +671,7 @@ function attachPtyExitHandler(
   state.processOwner.releaseOnClose(lease, lease.process, () => {
     // A generation remains owned until close, not merely exit. Command wrappers
     // can exit while descendants still hold stdout/stderr and remain alive.
+    if (rootPid) session.osPids.delete(rootPid);
     cleanupSensitiveTempDir(state, processTempDir);
     if (state.forceKillTimer) {
       clearTimeout(state.forceKillTimer);
@@ -739,7 +747,7 @@ function restartPtyTurn(ctx: TurnContext, state: PtyState, content: MessageConte
   }
 
   session.initialContent = content;
-  session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+  session.preview = contentPreview(content);
   session.status = "running";
   session.turnStartedAt = Date.now();
   session.abortController = new AbortController();
@@ -1001,7 +1009,7 @@ async function drainEvents(
           }
           const next = session.pendingDispatch.shift()!.content;
           session.initialContent = next;
-          session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
+          session.preview = contentPreview(next);
           session.status = "running";
           session.turnStartedAt = Date.now();
 
@@ -1253,7 +1261,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
 
       // Process is alive and idle — pipe message directly to stdin
       session.initialContent = content;
-      session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+      session.preview = contentPreview(content);
       session.status = "running";
       session.turnStartedAt = Date.now();
       session.abortController = new AbortController();
