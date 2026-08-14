@@ -40,6 +40,7 @@ import {
   listEnabledModusPlugins,
   type ModusPlugin,
 } from "./modus-plugins";
+import { legacyProviderMcpBearer, sessionMcpPath } from "./session-mcp-credential";
 
 const AGENTS_DIR = homeAgentsDir();
 const USERS_DIR = homeUsersDir();
@@ -412,13 +413,13 @@ export type GlobalConfig = {
  * Single source of truth for the URL and auth headers: session-level overrides
  * build on this rather than reconstructing it.
  */
-export function buildModusMcpServer(scopeKey?: string): McpServerConfig {
+export function buildModusMcpServer(scopeKey?: string, sessionCredential?: string): McpServerConfig {
   const port = Number(process.env.HARNESS_PORT ?? 3777);
-  const token = process.env.HARNESS_TOKEN;
+  const token = sessionCredential ?? legacyProviderMcpBearer();
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
   return {
     type: "http",
-    url: `http://127.0.0.1:${port}/api/mcp/modus${scopeKey ? `/${scopeKey}` : ""}`,
+    url: `http://127.0.0.1:${port}${sessionMcpPath(scopeKey)}`,
     ...(headers ? { headers } : {}),
   };
 }

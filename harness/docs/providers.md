@@ -1,6 +1,6 @@
 ---
 title: Provider System
-lastUpdated: 2026-08-09
+lastUpdated: 2026-08-14
 lastCommit: a9adf68
 covers: harness/providers/ harness/modus-plugins.ts harness/templates/providers/ harness/session-manager.ts harness/skill-attachment.ts
 ---
@@ -392,6 +392,7 @@ MCP servers are merged from multiple sources when a session starts:
 2. Base `_global.json` mcpServers
 3. Project `.modus/_global.json` mcpServers (additive)
 4. Agent profile `mcpServers` field
+5. Session `mcpServers` (merged last, including the built-in Modus override)
 
 Environment variables injected into MCP servers:
 - `AGENT_PROFILE` — active agent profile name
@@ -399,12 +400,28 @@ Environment variables injected into MCP servers:
 
 Provider-specific wiring differs: Claude uses SDK/CLI MCP config, Cursor writes a temporary `.cursor/mcp.json`, Codex passes MCP config through its CLI wrapper, Antigravity uses its validated Modus plugin and turn-scoped MCP fan-in bridge, Grok Build receives the merged servers in ACP `session/new`/`session/load`, and PI providers use `mcp-bridge.ts`.
 
+The built-in `modus` entry carries a random in-memory credential minted before
+the provider spawns. It authorizes only that entry's exact
+`/api/mcp/modus[/<skill-scope>]` route, is bound to the provider's final Modus
+session ID after initialization/rekey, and is revoked when the session is
+disposed, reaped, or the backend shuts down. Resume starts a new provider
+generation and therefore mints a fresh credential; credentials are never
+persisted. Presenting one to an operator route is rejected even when the
+harness otherwise runs without a PIN.
+
+`MODUS_PROVIDER_MCP_LEGACY_BEARER=1` is a compatibility escape hatch: when a
+`HARNESS_TOKEN` is configured, it restores the old behavior of putting that
+full operator bearer in provider MCP config. It is off by default and should be
+used only while migrating a caller that incorrectly depends on provider-wide
+operator authority.
+
 ### Child credential boundary
 
 Every provider CLI is spawned from a filtered environment built by
 `providers/child-env.ts`. OS, `PATH`, locale, proxy, and provider runtime
 variables are preserved; Modus credentials (`HARNESS_TOKEN`, `HARNESS_PIN`,
-`HARNESS_SECRETS_FILE`, `HARNESS_TLS_KEY`, `MODUS_PIN`, `MODUS_TOKEN`) are not
+`HARNESS_SECRETS_FILE`, `HARNESS_TLS_KEY`, `MODUS_PIN`, `MODUS_TOKEN`,
+`MODUS_SESSION_MCP_TOKEN`) are not
 inherited. Without this, every shell command an agent runs — and every MCP stdio
 server and subagent beneath it — inherits full Modus API authority regardless of
 the provider's own permission model.
@@ -419,6 +436,10 @@ Modus secrets instead. Set `MODUS_PROVIDER_ENV_PASSTHROUGH=1` to opt out
 
 Credential-bearing files are written to process-private storage:
 
+- **Claude Code SDK and PTY** write MCP config under a random
+  `modus-sensitive-` directory and pass only its path in `--mcp-config`; the
+  directory is removed on failed launch and provider disposal. The SDK path
+  does not serialize MCP headers into argv.
 - **Cursor** has no flag for an alternative MCP config path, so it still writes
   `<project>/.cursor/mcp.json` while a turn runs. That write goes through a
   durable journal in the runtime directory (`providers/cursor-mcp-config.ts`),

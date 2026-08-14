@@ -186,8 +186,10 @@ natively. Everyone else gets two tools on a session-scoped MCP endpoint
 - `skills_load {name}` → full `SKILL.md` + its directory, for reading
   `references/*` with ordinary file tools
 
-Both are token-less reads. **Neither tool is registered when nothing is
-attached** — sessions without skills keep the plain single-tool surface. Because
+The endpoint carries the same exact-route, per-provider-session MCP credential
+as the plain surface; it does not accept the supervisor bearer by default.
+**Neither tool is registered when nothing is attached** — sessions without
+skills keep the plain single-tool surface. Because
 the URL is fixed at spawn, skills attached mid-session may not reach the agent
 by tool until restart.
 

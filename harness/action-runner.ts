@@ -29,6 +29,11 @@ import { buildModusMcpServer, getAllUserProfiles, getProfile, getUserProfile, re
 import { bindSessionSkillScope, collectSkills, createSkillScope } from "./skill-attachment";
 import { acceptsInjectedSkillPaths } from "./providers/provider-names";
 import {
+  bindSessionMcpCredential,
+  mintSessionMcpCredential,
+  revokeSessionMcpCredential,
+} from "./session-mcp-credential";
+import {
   interactWithSession, startSession, getActiveSession, switchProfile,
   attachArtifactToSession, watchSession, deliverToSession, type ActiveSession,
 } from "./session-manager";
@@ -623,6 +628,13 @@ async function monitorSession(
   });
 }
 
+async function waitForProviderInit(session: ActiveSession, timeoutMs = 15_000): Promise<void> {
+  const startedAt = Date.now();
+  while (session.status === "starting" && Date.now() - startedAt < timeoutMs) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+}
+
 // ── Transient Error Detection ──
 
 const TRANSIENT_PATTERNS = [
@@ -1003,37 +1015,40 @@ async function fireAction(
       const skillScopeKey = createSkillScope(attachedSkills.skills);
       // PI loads the attached files natively; only the other providers need the
       // scoped endpoint that carries the skill tools.
-      const scopedMcp = skillScopeKey && !acceptsInjectedSkillPaths(cfg.provider ?? actionProfile?.provider ?? "")
-        ? { modus: buildModusMcpServer(skillScopeKey) }
-        : undefined;
-
-      const session = startSession({
-        prompt,
-        profile: initialProfile,
-        provider: cfg.provider,
-        maxTurns: cfg.maxTurns,
-        model: cfg.model,
-        effort: cfg.effort,
-        cwd: cfg.cwd,
-        tools: cfg.tools,
-        disallowedTools: cfg.disallowedTools,
-        providerControls: cfg.providerControls,
-        loadProjectSettings: cfg.loadProjectSettings,
-        actionName: name,
-        userProfile: effectiveUserProfile,
-        ...(skillScopeKey ? { skillScopeKey } : {}),
-        ...(scopedMcp ? { mcpServers: scopedMcp } : {}),
-      });
-
-      // Wait for provider init so session.sessionId reflects the post-rekey backend ID
-      const idStart = Date.now();
-      while (
-        session.status === "starting"
-        && Date.now() - idStart < 15_000
-      ) {
-        await new Promise(r => setTimeout(r, 200));
+      const userProfile = effectiveUserProfile ? getUserProfile(effectiveUserProfile) : undefined;
+      const providerName = cfg.provider ?? actionProfile?.provider ?? userProfile?.provider ?? "claude-code";
+      const mcpScopeKey = acceptsInjectedSkillPaths(providerName) ? undefined : (skillScopeKey ?? undefined);
+      const sessionMcpCredential = mintSessionMcpCredential(mcpScopeKey);
+      let session: ActiveSession;
+      try {
+        session = startSession({
+          prompt,
+          profile: initialProfile,
+          provider: cfg.provider,
+          maxTurns: cfg.maxTurns,
+          model: cfg.model,
+          effort: cfg.effort,
+          cwd: cfg.cwd,
+          tools: cfg.tools,
+          disallowedTools: cfg.disallowedTools,
+          providerControls: cfg.providerControls,
+          loadProjectSettings: cfg.loadProjectSettings,
+          actionName: name,
+          userProfile: effectiveUserProfile,
+          ...(skillScopeKey ? { skillScopeKey } : {}),
+          mcpServers: {
+            modus: buildModusMcpServer(mcpScopeKey, sessionMcpCredential ?? undefined),
+          },
+        });
+      } catch (error) {
+        if (sessionMcpCredential) revokeSessionMcpCredential(sessionMcpCredential);
+        throw error;
       }
 
+      // Wait for provider init so session.sessionId reflects the post-rekey backend ID
+      await waitForProviderInit(session);
+
+      if (sessionMcpCredential) bindSessionMcpCredential(session.sessionId, sessionMcpCredential);
       if (skillScopeKey) bindSessionSkillScope(session.sessionId, skillScopeKey);
 
       exec.currentSessionId = session.sessionId;

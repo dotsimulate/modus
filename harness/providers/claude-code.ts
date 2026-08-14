@@ -24,6 +24,11 @@ import { getMemoryLimitedEnv } from "../memory-guard";
 import { claudeNativeHistoryExists, selectProviderResumeTarget, type ResumeTargetSelection } from "../provider-session-identity";
 import { APP_PATHS } from "../app-paths";
 import { attachPipeErrorHandler, pipeErrorCode } from "../pipe-errors";
+import {
+  createSensitiveTempDirectory,
+  removeSensitiveTempDirectory,
+  writeSensitiveTempFile,
+} from "../sensitive-temp";
 
 // Dedicated message-flow log — gitignored, append-only, easy to tail
 const MSG_LOG = join(APP_PATHS.logsDir, "msg-flow.log");
@@ -91,6 +96,8 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
 type ClaudeCodeState = {
   queryObj: ReturnType<typeof sdkQuery> | null;
   sdkOptions: any;
+  /** Private directory holding the CLI-readable MCP config for this provider generation. */
+  sensitiveTempDir: string | null;
   input: InputChannel;
   skipNextPromptPersist?: boolean;
   thinkingStartedAt?: number;
@@ -396,6 +403,45 @@ function resolveEnvVars(
   return resolved;
 }
 
+type SensitiveMcpConfig = { directory: string; path: string };
+
+function writeSensitiveMcpConfig(
+  servers: Record<string, McpServerConfig>,
+): SensitiveMcpConfig | null {
+  if (Object.keys(servers).length === 0) return null;
+  const directory = createSensitiveTempDirectory();
+  try {
+    const path = writeSensitiveTempFile(
+      directory,
+      "mcp.json",
+      JSON.stringify({ mcpServers: servers }),
+    );
+    return { directory, path };
+  } catch (error) {
+    try { removeSensitiveTempDirectory(directory); } catch { /* best effort */ }
+    throw error;
+  }
+}
+
+function sdkExtraArgsWithMcpConfig(
+  current: Record<string, string | null> | undefined,
+  path: string | undefined,
+): Record<string, string | null> | undefined {
+  const next = { ...(current ?? {}) };
+  delete next["mcp-config"];
+  if (path) next["mcp-config"] = path;
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function cleanupSensitiveMcpConfig(directory: string | null): void {
+  if (!directory) return;
+  try {
+    removeSensitiveTempDirectory(directory);
+  } catch {
+    console.warn("[claude-code] could not remove private MCP configuration directory");
+  }
+}
+
 // ── Project CWD MCP Discovery ──
 
 /**
@@ -696,6 +742,8 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       } : {};
 
       _timing("pre-sdk-options");
+      const resolvedMcp = hasMcp ? resolveEnvVars(mergedMcp) : {};
+      const sensitiveMcpConfig = writeSensitiveMcpConfig(resolvedMcp);
       const claudeEnv = {
         ...providerChildEnv(),
         ...(profileDef?.env ?? {}),
@@ -747,7 +795,10 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
             }],
           },
         }),
-        mcpServers: hasMcp ? resolveEnvVars(mergedMcp) : undefined,
+        // Passing mcpServers asks the SDK to serialize the full config into
+        // argv. Point the CLI at a process-private file instead.
+        mcpServers: undefined,
+        extraArgs: sdkExtraArgsWithMcpConfig(undefined, sensitiveMcpConfig?.path),
         stderr: (data: string) => {
           const line = data.trim().slice(0, 2000);
           // Filter Gemini CLI core spam (experiment IDs, flags, .geminiignore warnings)
@@ -778,7 +829,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
       // Log resolved MCP configs for debugging startup failures (especially on Windows)
       if (hasMcp) {
-        const mcpSummary = Object.entries(resolveEnvVars(mergedMcp)).map(([name, cfg]: [string, any]) => {
+        const mcpSummary = Object.entries(resolvedMcp).map(([name, cfg]: [string, any]) => {
           if (cfg.type === "http" || cfg.url) return `${name}(http→${cfg.url})`;
           return `${name}(${cfg.command} ${(cfg.args ?? []).join(" ")})`;
         });
@@ -791,6 +842,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       const state: ClaudeCodeState = {
         queryObj: null,
         sdkOptions,
+        sensitiveTempDir: sensitiveMcpConfig?.directory ?? null,
         input: channel,
         stderrBuf: "",
         resumeTarget,
@@ -805,7 +857,15 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       _timing("pre-sdk-query");
       const spawnedAt = Date.now();
       console.log(`[claude-code] SPAWN ${session.tempId} at ${new Date(spawnedAt).toLocaleTimeString()}`);
-      const q = sdkQuery({ prompt: generator, options: { ...sdkOptions, ...forkOpts, abortController } });
+      let q: ReturnType<typeof sdkQuery>;
+      try {
+        q = sdkQuery({ prompt: generator, options: { ...sdkOptions, ...forkOpts, abortController } });
+      } catch (error) {
+        cleanupSensitiveMcpConfig(state.sensitiveTempDir);
+        state.sensitiveTempDir = null;
+        session._providerState = null;
+        throw error;
+      }
       _timing("post-sdk-query");
       state.queryObj = q;
       (state as any).spawnedAt = spawnedAt;
@@ -1078,7 +1138,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
     updateConfig(session: ActiveSession, config: Record<string, any>) {
       const state = getState(session);
       if (!state) return;
-      const hasMcp = !!state.sdkOptions.mcpServers;
+      const hasMcp = !!state.sensitiveTempDir;
 
       if (config.model !== undefined) {
         state.sdkOptions.model = config.model || undefined;
@@ -1131,6 +1191,8 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       // on Windows, and a disposed session has no later opportunity to reap
       // them — this is the last point at which the pids are still known.
       try { await killAllSpawnedAsync(session, state); } catch { /* best effort */ }
+      cleanupSensitiveMcpConfig(state.sensitiveTempDir);
+      state.sensitiveTempDir = null;
       session._providerState = null;
     },
 
@@ -1174,7 +1236,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       }
 
       const hasMcpNew = Object.keys(mergedMcp).length > 0;
-      state.sdkOptions.mcpServers = hasMcpNew ? resolveEnvVars(mergedMcp) : undefined;
+      const nextMcpConfig = writeSensitiveMcpConfig(hasMcpNew ? resolveEnvVars(mergedMcp) : {});
       console.log(`[claude-code] switchProfile MCP re-merge: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
 
       // Update SDK options for next resume
@@ -1226,6 +1288,14 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       try { state.queryObj?.close(); } catch { /* ignore cleanup errors */ }
       state.queryObj = null;
       state.input.close();
+      const previousSensitiveTempDir = state.sensitiveTempDir;
+      state.sensitiveTempDir = nextMcpConfig?.directory ?? null;
+      state.sdkOptions.mcpServers = undefined;
+      state.sdkOptions.extraArgs = sdkExtraArgsWithMcpConfig(
+        state.sdkOptions.extraArgs,
+        nextMcpConfig?.path,
+      );
+      cleanupSensitiveMcpConfig(previousSensitiveTempDir);
     },
   };
 }
