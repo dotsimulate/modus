@@ -12,6 +12,7 @@ const HOST_ENV = {
   HARNESS_TLS_KEY: "/home/dot/.modus/tls.key",
   MODUS_PIN: "1234",
   MODUS_TOKEN: "sdk-canary",
+  MODUS_SESSION_MCP_TOKEN: "session-mcp-canary",
   HARNESS_PORT: "3777",
   ANTHROPIC_API_KEY: "provider-key",
   UNDEFINED_VALUE: undefined,
@@ -20,11 +21,12 @@ const HOST_ENV = {
 describe("provider child environment policy", () => {
   test("removes every Modus credential from the inherited environment", () => {
     const env = providerChildEnv(HOST_ENV);
-    for (const name of ["HARNESS_TOKEN", "HARNESS_PIN", "HARNESS_SECRETS_FILE", "HARNESS_TLS_KEY", "MODUS_PIN", "MODUS_TOKEN"]) {
+    for (const name of ["HARNESS_TOKEN", "HARNESS_PIN", "HARNESS_SECRETS_FILE", "HARNESS_TLS_KEY", "MODUS_PIN", "MODUS_TOKEN", "MODUS_SESSION_MCP_TOKEN"]) {
       expect(env[name]).toBeUndefined();
     }
     expect(Object.values(env)).not.toContain("supervisor-canary");
     expect(Object.values(env)).not.toContain("sdk-canary");
+    expect(Object.values(env)).not.toContain("session-mcp-canary");
   });
 
   test("preserves OS, PATH, locale, proxy and provider variables", () => {

@@ -20,6 +20,7 @@ const STRIPPED_CREDENTIALS = [
   "HARNESS_TLS_KEY",
   "MODUS_PIN",
   "MODUS_TOKEN",
+  "MODUS_SESSION_MCP_TOKEN",
 ] as const;
 
 /**

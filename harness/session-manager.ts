@@ -147,6 +147,14 @@ function getMoveSkillSources() {
 }
 import { buildModusMcpServer, getProfile, getUserData, getUserProfile } from "./profiles";
 import { bindSessionSkillScope, collectSkills, createSkillScope } from "./skill-attachment";
+import {
+  bindSessionMcpCredential,
+  mintSessionMcpCredential,
+  rekeySessionMcpCredentials,
+  revokeSessionMcpCredential,
+  revokeSessionMcpCredentials,
+  validateSessionMcpCredential,
+} from "./session-mcp-credential";
 import { acceptsInjectedSkillPaths } from "./providers/provider-names";
 import { getProvider } from "./providers/registry";
 import type { SessionProvider, TurnContext } from "./providers/types";
@@ -475,6 +483,7 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
       session.sessionId = newId;
       activeSessions.set(newId, session);
       if (oldId !== newId) {
+        rekeySessionMcpCredentials(oldId, newId);
         renameSession(oldId, newId);
       }
       sseLog("REKEY", newId,
@@ -662,6 +671,25 @@ function normalizeAdditionalDirectories(
     normalized.push(resolved);
   }
   return normalized;
+}
+
+function configuredSessionMcpCredential(opts: StartSessionOpts): string | null {
+  const modus = opts.mcpServers?.modus as {
+    url?: string;
+    headers?: Record<string, string>;
+  } | undefined;
+  const authorization = modus?.headers?.Authorization;
+  if (!authorization?.startsWith("Bearer ") || !modus?.url) return null;
+  const token = authorization.slice(7);
+  try {
+    return validateSessionMcpCredential(token, new URL(modus.url).pathname) ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+function providerMcpScope(providerName: string, skillScopeKey?: string | null): string | undefined {
+  return acceptsInjectedSkillPaths(providerName) ? undefined : (skillScopeKey ?? undefined);
 }
 
 function configEventPayload(config: {
@@ -1071,6 +1099,23 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   const resolvedProviderControls = opts.providerControls ?? profileDef?.providerControls;
   const provider = getProvider(providerName);
 
+  // Older internal callers still invoke startSession() directly. The two
+  // primary orchestration paths prepare this credential before entering, but
+  // keep a defensive fallback here so no provider session silently falls back
+  // to the token-less built-in entry from getGlobalConfig().
+  let internallyMintedMcpCredential: string | null = null;
+  if (!configuredSessionMcpCredential(opts)) {
+    const scopeKey = providerMcpScope(providerName, opts.skillScopeKey);
+    internallyMintedMcpCredential = mintSessionMcpCredential(scopeKey);
+    opts = {
+      ...opts,
+      mcpServers: {
+        ...(opts.mcpServers ?? {}),
+        modus: buildModusMcpServer(scopeKey, internallyMintedMcpCredential ?? undefined),
+      },
+    };
+  }
+
   // Resolve system prompt template vars
   let systemPrompt = profileDef?.prompt;
   if (systemPrompt) {
@@ -1169,6 +1214,9 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
   };
 
   activeSessions.set(tempId, session);
+  if (internallyMintedMcpCredential) {
+    bindSessionMcpCredential(tempId, internallyMintedMcpCredential);
+  }
   sseLog("SESSION-REGISTERED", tempId,
     `provider=${session.provider} profile=${session.profile ?? "-"} resume=${isResume} totalActive=${activeSessions.size}`);
 
@@ -1334,51 +1382,70 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   // PI is handed the attached SKILL.md files directly, so it loads them the way
   // it loads its own — registering the skill tools too would serve the same
   // text through a second path. Every other provider gets the scoped endpoint.
-  const nativeSkillDelivery = acceptsInjectedSkillPaths(opts.provider ?? profileDef?.provider ?? "");
-  const skillOpts: StartSessionOpts = skillScopeKey
-    ? {
-        ...opts,
-        skillScopeKey,
-        ...(nativeSkillDelivery
-          ? {}
-          : { mcpServers: { ...(opts.mcpServers ?? {}), modus: buildModusMcpServer(skillScopeKey) } }),
-      }
-    : opts;
+  const userProf = opts.userProfile ? getUserProfile(opts.userProfile) : undefined;
+  const providerName = opts.provider ?? profileDef?.provider ?? userProf?.provider ?? "claude-code";
+  const mcpScopeKey = providerMcpScope(providerName, skillScopeKey);
+  const sessionMcpCredential = mintSessionMcpCredential(mcpScopeKey);
+  const skillOpts: StartSessionOpts = {
+    ...opts,
+    ...(skillScopeKey ? { skillScopeKey } : {}),
+    mcpServers: {
+      ...(opts.mcpServers ?? {}),
+      modus: buildModusMcpServer(mcpScopeKey, sessionMcpCredential ?? undefined),
+    },
+  };
+
+  const startPreparedSession = (prepared: StartSessionOpts): ActiveSession => {
+    try {
+      return startSession(prepared);
+    } catch (error) {
+      if (sessionMcpCredential) revokeSessionMcpCredential(sessionMcpCredential);
+      throw error;
+    }
+  };
 
   // No moves declared → fast path, just start normally
   if (!allMoves.length) {
-    const session = startSession(skillOpts);
+    const session = startPreparedSession(skillOpts);
     await waitForProviderInit(session);
+    if (sessionMcpCredential) bindSessionMcpCredential(session.sessionId, sessionMcpCredential);
     if (skillScopeKey) bindSessionSkillScope(session.sessionId, skillScopeKey);
     return session;
   }
 
   // Phase 1: gather inline (non-persistent) moves before session starts
   const activateMoveBindings = getActivateMoveBindings();
-  const profilePhase1 = profileMoves.length
-    ? await activateMoveBindings(
-        profileMoves,
-        "", // no provider session ID yet
-        resolvedCwd,
-        opts.userProfile,
-        {
-          persistentOnly: false,
-          logPrefix: `profile:${opts.profile}`,
-          skipPreviouslyInjectedForSession: existingLogicalSessionId,
-          persistInlineApiRegistrations: true,
-          agentProfile: opts.profile,
-        },
-      )
-    : { inlineContext: null, apiTokens: [], activatedPersistent: [], failures: [] };
-  const requestPhase1 = requestMoves.length
-    ? await activateMoveBindings(
-        requestMoves,
-        "",
-        resolvedCwd,
-        opts.userProfile,
-        { persistentOnly: false, logPrefix: "request", agentProfile: opts.profile },
-      )
-    : { inlineContext: null, apiTokens: [], activatedPersistent: [], failures: [] };
+  let profilePhase1: Awaited<ReturnType<typeof activateMoveBindings>>;
+  let requestPhase1: Awaited<ReturnType<typeof activateMoveBindings>>;
+  try {
+    profilePhase1 = profileMoves.length
+      ? await activateMoveBindings(
+          profileMoves,
+          "", // no provider session ID yet
+          resolvedCwd,
+          opts.userProfile,
+          {
+            persistentOnly: false,
+            logPrefix: `profile:${opts.profile}`,
+            skipPreviouslyInjectedForSession: existingLogicalSessionId,
+            persistInlineApiRegistrations: true,
+            agentProfile: opts.profile,
+          },
+        )
+      : { inlineContext: null, apiTokens: [], activatedPersistent: [], failures: [] };
+    requestPhase1 = requestMoves.length
+      ? await activateMoveBindings(
+          requestMoves,
+          "",
+          resolvedCwd,
+          opts.userProfile,
+          { persistentOnly: false, logPrefix: "request", agentProfile: opts.profile },
+        )
+      : { inlineContext: null, apiTokens: [], activatedPersistent: [], failures: [] };
+  } catch (error) {
+    if (sessionMcpCredential) revokeSessionMcpCredential(sessionMcpCredential);
+    throw error;
+  }
   const phase1 = {
     inlineContext: [profilePhase1.inlineContext, requestPhase1.inlineContext]
       .filter((value): value is string => !!value)
@@ -1400,7 +1467,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
 
   _timing("pre-startSession");
   // Start the session with the augmented prompt
-  const session = startSession({ ...skillOpts, prompt });
+  const session = startPreparedSession({ ...skillOpts, prompt });
 
   _timing("post-startSession");
   // Wait for provider init (rekey happens during init — session.sessionId becomes the
@@ -1408,6 +1475,7 @@ export async function startSessionWithMoves(opts: StartSessionOpts): Promise<Act
   // its first init event.  Timeout prevents blocking forever on provider failure.
   await waitForProviderInit(session);
 
+  if (sessionMcpCredential) bindSessionMcpCredential(session.sessionId, sessionMcpCredential);
   if (skillScopeKey) bindSessionSkillScope(session.sessionId, skillScopeKey);
 
   // Rekey inline API move registrations to the real session ID
@@ -2406,6 +2474,7 @@ export function forceClearActiveSession(
     try { session._provider.abort(session); } catch { /* best effort */ }
     try { session._provider.dispose?.(session)?.catch(() => {}); } catch { /* best effort */ }
   } finally {
+    revokeSessionMcpCredentials(sessionId);
     activeSessions.delete(sessionId);
     sseLog("SESSION-FORCE-CLEARED", sessionId, `${reason} status=${status}`);
   }
@@ -2455,6 +2524,7 @@ function reclaimSession(sessionId: string, reason: string, now: number): void {
 
   const idleSeconds = Math.round((now - session.lastEventAt) / 1000);
   const previousStatus = session.status;
+  revokeSessionMcpCredentials(sessionId);
   activeSessions.delete(sessionId);
 
   flushPendingAssistantTurn(session, { type: "done", reason });
@@ -2629,6 +2699,7 @@ export function shutdownAll(): Promise<void> {
       const disposal = session._provider.dispose?.(session);
       if (disposal) disposals.push(disposal.catch(() => {}));
     } catch { /* best effort */ }
+    revokeSessionMcpCredentials(id);
     sseLog("SESSION-UNREGISTERED", id, `subsAtRemoval=${session.subscribers.size} totalActive=${activeSessions.size - 1}`);
     activeSessions.delete(id);
   }

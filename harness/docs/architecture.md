@@ -181,8 +181,10 @@ Key route groups:
 - `/api/browse` — Server-side folder browser
 - `/health` — Watchdog endpoint
 
-Auth: browser clients use PIN verification. Agent sessions use Bearer token
-(`HARNESS_TOKEN`).
+Auth: browser clients use PIN verification. Operator clients use the
+`HARNESS_TOKEN` bearer. Provider sessions receive a separate in-memory bearer
+that is valid only for their exact built-in Modus MCP route and is revoked with
+the provider session.
 
 ## Writable roots and databases
 

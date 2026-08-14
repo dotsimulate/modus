@@ -25,6 +25,7 @@ import { APP_PATHS } from "./app-paths";
 import { initHarnessBridge } from "./harness-bridge";
 import { cursorMcpConfigStore } from "./providers/cursor-mcp-config";
 import { pruneAbandonedSensitiveTempDirectories } from "./sensitive-temp";
+import { isSessionMcpCredential, validateSessionMcpCredential } from "./session-mcp-credential";
 import { BACKEND_IDENTITY } from "./backend-identity";
 import { configuredRootsForCwd } from "./preview-roots";
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "fs";
@@ -742,6 +743,13 @@ app.post("/api/auth/disable-pin", async (c) => {
 // Token auth — skip if no HARNESS_TOKEN is set
 // Also allows PIN-derived session tokens
 app.use("/api/*", async (c, next) => {
+  const bearer = bearerToken(c);
+  if (isSessionMcpCredential(bearer)) {
+    return validateSessionMcpCredential(bearer, c.req.path)
+      ? next()
+      : c.json({ error: "unauthorized" }, 401);
+  }
+
   // Auth endpoints are always open
   if (c.req.path.startsWith("/api/auth/")) return next();
 
