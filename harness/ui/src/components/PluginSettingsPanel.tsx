@@ -96,6 +96,9 @@ function PluginSettingField({
       <input
         className="exw-setting-input"
         type={setting.type === "number" ? "number" : "text"}
+        min={setting.type === "number" ? setting.min : undefined}
+        max={setting.type === "number" ? setting.max : undefined}
+        step={setting.type === "number" ? setting.step : undefined}
         value={value == null ? "" : String(value)}
         disabled={disabled}
         placeholder={setting.type === "secret-name" ? "Modus secret name" : undefined}

@@ -105,12 +105,56 @@ profile's ID used everywhere in the system.
     "keepRecentTokens": 20000    // recent context preserved during compaction
   },
 
+  // ── Working Directory ──
+
+  // Pin this profile to a directory. Omit to use the session's own cwd.
+  "cwd": "/home/user/project",
+
+  // Extra directories the agent may read/write outside cwd
+  "additionalDirectories": ["/home/user/shared-lib"],
+
   // ── CWD Suggestions ──
 
   // Auto-populates cwd + additionalDirectories when this profile is selected.
   // First entry → cwd, remaining entries → additionalDirectories.
   // Cleared when switching to a profile without this field.
   "cwdSuggestions": ["/home/user/project", "/home/user/project/subdir"],
+
+  // ── Attached Moves ──
+
+  // Moves activated automatically whenever this profile starts a session.
+  // "inputs" pre-fills the move's form; "ask" true prompts the user for them
+  // instead of using the pre-filled values silently.
+  "moves": [
+    { "name": "modus-brain" },
+    { "name": "council", "inputs": { "rounds": 2 }, "ask": true }
+  ],
+
+  // ── Attached Skills ──
+
+  // Installed skill names to attach while this profile is active. A name that
+  // resolves to nothing is warned about and skipped — installed is not the same
+  // as available, and nothing reaches the agent until something attaches it.
+  "skills": ["pdf-forms", "release-notes"],
+
+  // ── Provider Controls ──
+
+  // Per-provider knobs that have no cross-provider equivalent. Unknown keys are
+  // preserved rather than rejected, so a newer provider's controls still round-trip.
+  "providerControls": {
+    "claude":      { "permissionMode": "default" },  // | acceptEdits | plan | dontAsk
+    "codex":       { "sandboxMode": "workspace-write", "webSearchMode": "cached", "serviceTier": "standard" },
+    "antigravity": { "mode": "accept-edits", "sandbox": true, "printTimeout": "5m" },
+    "grokBuild":   { "mode": "default", "sandbox": "workspace", "noMemory": false,
+                     "noSubagents": false, "disableWebSearch": false }
+  },
+
+  // ── Local Plugins ──
+
+  // Provider plugins loaded from disk for this profile.
+  "plugins": [
+    { "type": "local", "path": "/home/user/my-plugin" }
+  ],
 
   // ── Session Environment ──
 
@@ -153,7 +197,9 @@ profile's ID used everywhere in the system.
     "showToolCalls": true,             // Show tool call details
     "showGitEvents": true,             // Show git events
     "emptyTitle": "dev-agent",         // Title in empty session
-    "emptySubtitle": "opus / full tools / self-learning"  // Subtitle
+    "emptySubtitle": "opus / full tools / self-learning",  // Subtitle
+    "panelWidgets": ["notes", "files"] // Right-panel widgets; keys come from
+                                       // harness/ui/src/widgets/registry.ts
   }
 }
 ```

@@ -1,7 +1,7 @@
 ---
 title: Plugins
-lastUpdated: 2026-07-30
-covers: harness/modus-plugins.ts harness/plugin-settings.ts harness/profiles.ts harness/modus-home.ts harness/index.ts harness/move-runner.ts harness/action-runner.ts harness/pages.ts harness/client-extensions.ts harness/skills.ts harness/providers/provider-definitions.ts
+lastUpdated: 2026-08-14
+covers: harness/settings-schema.ts harness/modus-plugins.ts harness/plugin-settings.ts harness/profiles.ts harness/modus-home.ts harness/index.ts harness/move-runner.ts harness/action-runner.ts harness/pages.ts harness/client-extensions.ts harness/skills.ts harness/providers/provider-definitions.ts
 ---
 
 # Plugins
@@ -112,7 +112,15 @@ a warning on the automation run, and continues with session fallback defaults.
 ## Settings
 
 Manifest field types are `string`, `number`, `toggle`, `select`,
-`project-list`, and `secret-name`. Scope defaults to `user`.
+`project-list`, and `secret-name`. Scope defaults to `user`. The definition
+shape is `PluginSettingDefinition` in `harness/settings-schema.ts`, the same
+module the client-extension setting shape lives in.
+
+A `number` field may declare `min`, `max`, and `step`. `min`/`max` are inclusive
+and are enforced when the value is written, not just rendered — `PATCH
+/api/plugins/:id/settings` rejects an out-of-range value the same way it rejects
+a non-number. `step` sets the stepper's granularity in the form and never
+rejects a value.
 
 | Scope | Storage |
 |---|---|
@@ -126,6 +134,57 @@ Moves, actions, and plugin API handlers read resolved settings through
 `ctx.pluginSettings.get(key)` and `ctx.pluginSettings.all()`.
 
 Settings appear in the plugins widget and in the Plugins tab of user settings.
+
+## Diagnostics and self-test
+
+A plugin that reaches an external endpoint, loads a browser API, or depends on a
+credential should ship a way for the user to ask "is this actually working?".
+The harness has no diagnostics primitive, so this is an authoring convention
+rather than an enforced contract — but the pieces it composes are real, and a
+plugin that skips it leaves a packaged user with no signal at all, since release
+builds have no devtools and `console.*` output goes nowhere they can see.
+
+**Shape.** Expose diagnostics as ops on one of the plugin's moves and render
+them from a move-owned page (`page` in `move.json`). A move reached only from a
+page still needs `widget.mountOnAttach: true` and an `api` declaration, because
+`attachMove` is the only thing that mints an API token and it hard-requires
+both. Split the ops by who performs the check:
+
+| Op | Runs in | Answers |
+|---|---|---|
+| `probe` | the browser | is the API present, is this a secure context, did the worklet/module load, what did the device actually negotiate |
+| `selftest` | the handler, i.e. the harness host | does the endpoint answer, does the credential work, is the resolved config what the user thinks it is |
+
+The split matters because the two runtimes disagree in ways that produce
+identical-looking failures. The harness dials an endpoint from its own host, so
+a loopback URL means the *backend's* loopback; the browser is a different origin
+with different permissions. A check that runs in the wrong half will pass while
+the real path is broken.
+
+**Result shape.** A handler's return value reaches the caller verbatim —
+`handleMoveApiSubmit` returns it unchanged and the route serializes it with
+`c.json(result, result.ok ? 200 : 400)` — so a failing check arrives as HTTP 400
+with the body intact. Return `{ ok, checks: [{ name, ok, detail, elapsedMs? }] }`
+rather than a bare boolean: the point of a diagnostic is which step failed and
+what it saw. Report the *resolved* value the plugin will actually use, not the
+one the form holds.
+
+**Redaction.** A diagnostic exists to be pasted into a bug report, so treat
+everything it returns as public:
+
+- Report a credential with `ctx.secrets.isSet(name)`, which answers configured
+  or not without reading the value. Never call `ctx.secrets.resolve` to echo,
+  prefix, or length-check a secret.
+- Name the *setting* that supplies the credential (a `secret-name` value is an
+  identifier and is safe), never the material it resolves to.
+- Report an endpoint as scheme + host + path. Strip query strings and userinfo;
+  an API key in a URL is the common way one leaks into a diagnostic.
+- Echo an upstream error's status and reason, not its whole body — an
+  authenticating proxy routinely reflects headers back.
+
+**Ordering.** Run a probe *after* the authorization decision, never before. A
+diagnostic request added at the top of a handler turns a "refuses and sends
+nothing" guarantee into an unauthenticated request to the host you just refused.
 
 ## HTTP API
 

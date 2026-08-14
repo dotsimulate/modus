@@ -129,6 +129,9 @@ function SettingInput({
         <input
           className="exw-setting-input"
           type="number"
+          min={schema.min}
+          max={schema.max}
+          step={schema.step}
           value={value != null ? String(value) : ""}
           onChange={(e) => onChange(name, e.target.value ? Number(e.target.value) : null)}
         />

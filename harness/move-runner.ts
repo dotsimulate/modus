@@ -19,7 +19,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
-import { join, resolve } from "path";
+import { isAbsolute, join, relative, resolve } from "path";
 import { APP_PATHS } from "./app-paths";
 import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
@@ -619,6 +619,17 @@ export async function handleMoveApiSubmit(
   };
   const hctx = buildHarnessContext(handlerSelf);
 
+  const emitWidgetEvent = (event: { type: string; [key: string]: unknown }) => {
+    broadcastUiEvent(reg.sessionId, {
+      type: "ui",
+      action: "move-widget-event",
+      moveName: reg.moveName,
+      instanceId: reg.instanceId,
+      apiToken: token,
+      event,
+    });
+  };
+
   const ctx: MoveApiContext = {
     instanceId: reg.instanceId,
     sessionId: reg.sessionId,
@@ -634,6 +645,7 @@ export async function handleMoveApiSubmit(
     pluginSettings: hctx.pluginSettings,
     store: <T = unknown>() => instanceStore.get(reg.instanceId) as T | undefined,
     setStore: (value: unknown) => { instanceStore.set(reg.instanceId, value); },
+    emit: emitWidgetEvent,
     insertArtifact: (opts) => {
       return attachArtifactToSession({
         sessionId: opts.sessionId,
@@ -647,16 +659,7 @@ export async function handleMoveApiSubmit(
     },
     notify: (message: string, emit?: { type: string; [key: string]: unknown }) => {
       if (caller === "user") {
-        if (emit) {
-          broadcastUiEvent(reg.sessionId, {
-            type: "ui",
-            action: "move-widget-event",
-            moveName: reg.moveName,
-            instanceId: reg.instanceId,
-            apiToken: token,
-            event: emit,
-          });
-        }
+        if (emit) emitWidgetEvent(emit);
         logActivity({
           eventType: "move_handler_notify",
           sessionId: reg.sessionId || undefined,
@@ -1255,30 +1258,55 @@ async function ensureMoveDeps(dir: string): Promise<void> {
   }
 }
 
+/** One in-flight import per context file. Evicting an ESM module while Bun is
+ * still instantiating it produces "Requested module is not instantiated yet". */
+const moveModuleLoads = new Map<string, Promise<MoveModule | null>>();
+
 /** Load move module (context.ts) if it exists */
 async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | null> {
   const location = resolveMoveLocation(name, cwd);
   if (!location) return null;
   const modulePath = join(location.dir, "context.ts");
   if (!existsSync(modulePath)) return null;
-  await ensureMoveDeps(location.dir);
-  try {
-    // Bust module cache so move code changes take effect on re-activation
-    const resolved = require.resolve(modulePath);
-    delete require.cache[resolved];
-    const mod = await import(modulePath);
-    // Ensure context.ts reloads on subsequent calls for hot-reloads
-    if (mod?.gather || mod?.onSubmit || mod?.onAssistantTurn) {
-      const futureResolved = require.resolve(modulePath);
-      if (futureResolved !== resolved) {
-        delete require.cache[futureResolved];
-        delete require.cache[resolved];
+  const inFlight = moveModuleLoads.get(modulePath);
+  if (inFlight) return inFlight;
+
+  const pending = (async (): Promise<MoveModule | null> => {
+    await ensureMoveDeps(location.dir);
+    try {
+      // Move-authored sibling modules are part of the hot-reload unit. Keep
+      // node_modules cached: dependency packages are installed/pinned separately
+      // and evicting them makes an ordinary handler edit unnecessarily expensive.
+      for (const cachePath of Object.keys(require.cache)) {
+        const localPath = relative(location.dir, cachePath);
+        if (!localPath || localPath.startsWith("..") || isAbsolute(localPath)) continue;
+        if (localPath.split(/[\\/]/).includes("node_modules")) continue;
+        delete require.cache[cachePath];
       }
+
+      // Bust the entry module too so move code changes take effect on re-activation.
+      const resolved = require.resolve(modulePath);
+      delete require.cache[resolved];
+      const mod = await import(modulePath);
+      // Ensure context.ts reloads on subsequent calls for hot-reloads
+      if (mod?.gather || mod?.onSubmit || mod?.onAssistantTurn) {
+        const futureResolved = require.resolve(modulePath);
+        if (futureResolved !== resolved) {
+          delete require.cache[futureResolved];
+          delete require.cache[resolved];
+        }
+      }
+      return mod as MoveModule;
+    } catch (err) {
+      console.error(`[move-runner] Failed to load context.ts for move "${name}":`, err);
+      return null;
     }
-    return mod as MoveModule;
-  } catch (err) {
-    console.error(`[move-runner] Failed to load context.ts for move "${name}":`, err);
-    return null;
+  })();
+  moveModuleLoads.set(modulePath, pending);
+  try {
+    return await pending;
+  } finally {
+    if (moveModuleLoads.get(modulePath) === pending) moveModuleLoads.delete(modulePath);
   }
 }
 
@@ -1657,6 +1685,11 @@ export async function attachMove(opts: AttachMoveOpts): Promise<AttachMoveResult
 
   const config = getMove(moveName, cwd);
   if (!config) return { error: `Move not found: ${moveName}` };
+  // Attach mints a live API token, so it has to honour the same off switch
+  // activateMove does. Without this a page embed or client extension could keep
+  // driving a move the user had switched off, and it would never appear in a
+  // picker to explain why.
+  if (config.enabled === false) return { error: `Move is disabled: ${moveName}` };
   if (!config.widget?.mountOnAttach) return { error: "Move does not support mountOnAttach" };
   if (!config.api) return { error: "mountOnAttach requires an api declaration" };
 
@@ -1928,6 +1961,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     return {
       token: apiToken ?? "",
       mode: "persistent" as any,
+      requiresDispatch: false,
       persistent: true,
       moveRunId,
     };
@@ -2086,7 +2120,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
   // Execute based on mode
   if (mode === "inline") {
     // Return rendered prompt for client to merge into the current user message
-    return { token, mode, moveRunId, prompt, apiToken, instanceId, widget };
+    return { token, mode, requiresDispatch: true, moveRunId, prompt, apiToken, instanceId, widget };
   }
 
   if (mode === "branch" || mode === "background") {
@@ -2127,6 +2161,7 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     return {
       token,
       mode,
+      requiresDispatch: false,
       spawnedSessionId: spawned.sessionId,
       moveRunId,
       apiToken,
@@ -2374,6 +2409,10 @@ async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<
 
       const config = getMove(name, cwd);
       if (!config?.api) continue;
+      // This loop reads the moves directory rather than listMoves(), so it does
+      // not inherit that filter — a disabled move's persisted tokens would
+      // otherwise come back live at every boot and stay callable forever.
+      if (config.enabled === false) continue;
 
       const mod = await loadMoveModule(name, cwd);
       if (!mod?.handlers) {

@@ -160,6 +160,9 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
   // ── Create file/folder ──
   const [creating, setCreating] = useState<{ kind: "file" | "dir"; dir: string } | null>(null);
   const [createName, setCreateName] = useState("");
+  // The inline input is dismissed on submit, so a failure has nowhere to render
+  // unless it survives the dismissal. Cleared when the next create starts.
+  const [createError, setCreateError] = useState<{ dir: string; message: string } | null>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
 
   const startCreate = useCallback((kind: "file" | "dir", dir = rootPath ?? "") => {
@@ -310,14 +313,20 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
 
   const handleCreate = useCallback(async () => {
     if (!creating || !createName.trim()) { setCreating(null); return; }
+    setCreateError(null);
     const target = `${creating.dir}/${createName.trim()}`;
-    const ok = creating.kind === "file"
+    const created = creating.kind === "file"
       ? await modus.createFile(target)
       : await modus.createDirectory(target);
     setCreating(null);
-    if (ok) {
+    if (created.ok) {
       refreshDir(creating.dir);
       if (creating.kind === "file") onFileSelect?.(target);
+    } else {
+      // A collision is the ordinary case here — the user typed a name that is
+      // already taken — and refreshing shows them the existing entry.
+      if (created.code === "collision") refreshDir(creating.dir);
+      setCreateError({ dir: creating.dir, message: created.error ?? `could not create ${creating.kind}` });
     }
   }, [creating, createName, onFileSelect, refreshDir]);
 
@@ -474,6 +483,15 @@ export const FileBrowser = forwardRef<FileBrowserHandle, FileBrowserProps>(funct
                   onBlur={handleCreate}
                   placeholder={creating.kind === "file" ? "filename" : "folder name"}
                 />
+              </div>
+            )}
+            {createError && createError.dir === dirPath && (
+              <div
+                className="file-browser-create-error"
+                style={{ paddingLeft: childDepth * INDENT + 8 }}
+                onClick={() => setCreateError(null)}
+              >
+                {createError.message}
               </div>
             )}
           </div>

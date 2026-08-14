@@ -134,6 +134,8 @@ export type {
   GitShowResult,
   // Files
   BrowseResult,
+  FileMutationErrorCode,
+  FileMutationResult,
   FileSearchHit,
   FileSearchResponse,
   PreviewKind,

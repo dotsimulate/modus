@@ -11,6 +11,7 @@ import { useEffect, useCallback, useEffectEvent, useRef, useState } from "react"
 import type { Attachment, MoveBinding } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
+import { toApiAttachments } from "../api-attachments";
 import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, getSessionState, setSessionState, loadOlderSessionHistory, loadSessionMessageDetails } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
 import { useSession } from "../providers/SessionContext";
@@ -19,6 +20,11 @@ import { ChatView } from "./ChatView";
 import { resolveInterfaceSettings } from "../interface-settings";
 import { ChatInput } from "./ChatInput";
 import { PermissionOverlay } from "./PermissionOverlay";
+import {
+  createSessionWindowQueuedMessage,
+  queuedSessionWindowMessageArgs,
+  type SessionWindowQueuedMessage,
+} from "../session-window-queue";
 
 type Props = {
   sessionId: string | null;
@@ -38,7 +44,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   const conversation = resolveInterfaceSettings(activeUP?.interface).conversation;
   const { branchFromSessionMessage } = useSession();
   const [input, setInput] = useState("");
-  const [queuedMessage, setQueuedMessage] = useState<{ text: string; attachments: Attachment[] } | null>(null);
+  const [queuedMessage, setQueuedMessage] = useState<SessionWindowQueuedMessage | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftReadyRef = useRef(false);
 
@@ -129,7 +135,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     if (!prompt && attachments.length === 0) return;
 
     if (isActive) {
-      setQueuedMessage({ text: prompt, attachments });
+      setQueuedMessage(createSessionWindowQueuedMessage(prompt, attachments, moves));
       return;
     }
 
@@ -156,12 +162,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
       await modus.sendMessage(
         sessionId,
         prompt,
-        attachments.length > 0 ? attachments.map((att) => ({
-          type: att.type,
-          mediaType: att.mediaType,
-          data: att.data,
-          name: att.name,
-        })) : undefined,
+        toApiAttachments(attachments),
         {
           profile: session?.profile ?? undefined,
           cwd: current.cwd,
@@ -203,17 +204,16 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
     await sendPrompt(prompt, attachments, moves);
   }
 
-  const flushQueuedMessage = useEffectEvent((text: string, attachments: Attachment[]) => {
+  const flushQueuedMessage = useEffectEvent((message: SessionWindowQueuedMessage) => {
     setQueuedMessage(null);
-    void sendPrompt(text, attachments);
+    void sendPrompt(...queuedSessionWindowMessageArgs(message));
   });
 
   useEffect(() => {
     if (!queuedMessage || !sessionId) return;
     if (session?.status === "running" || session?.status === "starting" || session?.status === "interrupting") return;
-    const { text, attachments } = queuedMessage;
     setTimeout(() => {
-      flushQueuedMessage(text, attachments);
+      flushQueuedMessage(queuedMessage);
     }, 0);
   }, [queuedMessage, session?.status, sessionId]);
 
@@ -280,6 +280,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
                 hasOlderMessages={historyLoad.hasMore}
                 loadingOlderMessages={historyLoad.loadingOlder}
                 olderMessagesError={historyLoad.olderError}
+                olderTurnCount={historyLoad.olderTurnCount}
                 onLoadOlderMessages={loadOlderHistory}
                 onLoadMessageDetails={loadMessageDetails}
                 onBranch={handleBranch}

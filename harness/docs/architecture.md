@@ -2,7 +2,7 @@
 title: MO Architecture
 lastUpdated: 2026-07-26
 lastCommit: bae0487
-covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
+covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
 
 # MO Architecture
@@ -184,14 +184,38 @@ Key route groups:
 Auth: browser clients use PIN verification. Agent sessions use Bearer token
 (`HARNESS_TOKEN`).
 
-## Database
+## Writable roots and databases
 
-Two SQLite databases:
-- `harness.db` — sessions, events, search index (FTS5), move runs, action runs
-- `activity.db` — audit trail (session starts, profile switches, errors, etc.)
+`MODUS_HOME` defaults to `~/.modus` and remains the root for user-authored
+configuration: profiles, plugin/project registries, skills, checkpoints, and
+workspace history. `MODUS_INSTANCE=<name>` does **not** duplicate that config.
+It isolates the default writable runtime roots under `<MODUS_HOME>/<name>/`:
 
-Sessions are never deleted, only archived via tags. Events are append-only
-with optional pruning of streaming deltas.
+- `data/` — SQLite databases
+- `logs/` — backend and desktop logs
+- `runtime/` — ready/supervisor records and other live coordination files
+- `cache/` — disposable runtime cache
+
+The system temp root is also namespaced as `<temp>/modus/<name>` (or
+`default`). `default` and an unset value both use the un-nested default roots.
+Instance names accept only letters, numbers, dots, underscores, and hyphens.
+`MODUS_DATA_DIR`, `MODUS_LOGS_DIR`, `MODUS_RUNTIME_DIR`, and `MODUS_CACHE_DIR`
+override their individual resolved roots after instance selection.
+
+The primary `data/` directory contains three SQLite databases:
+
+- `harness.db` — sessions, durable events, semantic messages, FTS search,
+  moves, actions, missions, artifacts, wakes, and trace rows
+- `activity.db` — high-volume audit/resource activity with an independent
+  retention lifecycle
+- `terminal.db` — terminal metadata; PTY output itself is streamed, not stored
+
+Workspace history additionally owns one `index.sqlite` inside each shadow
+history root under `<MODUS_HOME>/history/`. Those indexes follow the shared
+user history root, not the instance `data/` root.
+
+Sessions are archived via tags rather than normally deleted. Durable event rows
+are append-only except for explicit maintenance such as streaming-delta pruning.
 
 ## Frontend
 

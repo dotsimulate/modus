@@ -10,6 +10,10 @@ export type MoveToolViewResolution = {
   toolView: MoveToolViewInfo;
 };
 
+export type MoveToolViewResolutionResult =
+  | { resolution: MoveToolViewResolution; error: null }
+  | { resolution: null; error: string };
+
 export type MoveApiClientResult = {
   ok: boolean;
   message?: string;
@@ -66,7 +70,7 @@ export type ToolRunPartition = {
  */
 const NEGATIVE_RESOLUTION_TTL_MS = 15_000;
 
-const resolutionCache = new Map<string, Promise<MoveToolViewResolution | null>>();
+const resolutionCache = new Map<string, Promise<MoveToolViewResolutionResult>>();
 const negativeResolvedAt = new Map<string, number>();
 
 /**
@@ -199,15 +203,24 @@ async function fetchResolution(token: string): Promise<MoveToolViewResolution | 
     backendUrl(`/api/moves/resolve-token?token=${encodeURIComponent(token)}`),
     { headers: authHeaders() },
   );
-  if (!response.ok) return null;
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const body = await response.json() as { error?: unknown; message?: unknown };
+      const candidate = body.error ?? body.message;
+      if (typeof candidate === "string") detail = candidate;
+    } catch {}
+    throw new Error(detail || `token resolution returned HTTP ${response.status}`);
+  }
   const value: unknown = await response.json();
-  return isResolution(value) ? value : null;
+  if (!isResolution(value)) throw new Error("token resolution returned an invalid tool-view declaration");
+  return value;
 }
 
 export function resolveMoveToolView(
   token: string,
   load: (token: string) => Promise<MoveToolViewResolution | null> = fetchResolution,
-): Promise<MoveToolViewResolution | null> {
+): Promise<MoveToolViewResolutionResult> {
   const cached = resolutionCache.get(token);
   if (cached) {
     const failedAt = negativeResolvedAt.get(token);
@@ -216,10 +229,17 @@ export function resolveMoveToolView(
     resolutionCache.delete(token);
     negativeResolvedAt.delete(token);
   }
-  const pending = load(token).catch(() => null);
+  const pending = load(token)
+    .then((resolution): MoveToolViewResolutionResult => resolution
+      ? { resolution, error: null }
+      : { resolution: null, error: "token did not resolve to a declared tool view" })
+    .catch((reason: unknown): MoveToolViewResolutionResult => ({
+      resolution: null,
+      error: reason instanceof Error ? reason.message : "token resolution failed",
+    }));
   resolutionCache.set(token, pending);
-  void pending.then((resolution) => {
-    if (!resolution) negativeResolvedAt.set(token, Date.now());
+  void pending.then((result) => {
+    if (!result.resolution) negativeResolvedAt.set(token, Date.now());
   });
   return pending;
 }

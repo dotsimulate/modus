@@ -8,6 +8,7 @@ import {
   type SessionHistoryEventRow,
 } from "./session-history";
 import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
+import { buildProjectCwdScope } from "./project-cwd-scope";
 
 const DB_PATH = resolveDatabasePath("harness.db");
 const db = new Database(DB_PATH);
@@ -402,6 +403,7 @@ export type TurnToolCall = {
   name: string;
   input: Record<string, unknown>;
   result?: string;
+  status?: "completed" | "error";
 };
 
 export type TurnContentBlock =
@@ -830,12 +832,12 @@ export function listSessionsByAction(actionName: string, limit = 50): SessionRow
   ).all({ $action: actionName, $limit: limit }) as SessionRow[];
 }
 
-/** List sessions filtered to specific project CWD prefixes */
+/** List sessions whose CWD is a project root or one of its descendants. */
 export function listSessionsForProjects(cwdPrefixes: string[], limit = 50): SessionRow[] {
   if (cwdPrefixes.length === 0) return listSessions(limit);
-  const conditions = cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
-  const sql = `SELECT * FROM sessions WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%' AND (${conditions}) ORDER BY last_message_at DESC LIMIT ?`;
-  const params = [...cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"), limit];
+  const scope = buildProjectCwdScope("cwd", cwdPrefixes);
+  const sql = `SELECT * FROM sessions WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%' AND (${scope.sql}) ORDER BY last_message_at DESC LIMIT ?`;
+  const params = [...scope.params, limit];
   return db.prepare(sql).all(...params) as SessionRow[];
 }
 
@@ -853,9 +855,9 @@ export function listSessionsScoped(
   }
 
   if (opts.cwdPrefixes && opts.cwdPrefixes.length > 0) {
-    const cwdConds = opts.cwdPrefixes.map(() => "cwd LIKE ?").join(" OR ");
-    conditions.push(`(${cwdConds})`);
-    params.push(...opts.cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"));
+    const scope = buildProjectCwdScope("cwd", opts.cwdPrefixes);
+    conditions.push(`(${scope.sql})`);
+    params.push(...scope.params);
   }
 
   if (opts.agentProfiles && opts.agentProfiles.length > 0) {
@@ -1382,10 +1384,8 @@ function parseToolCalls(raw: string | null): TurnContent["toolCalls"] | undefine
  * Turns whose thinking + tool payload exceeds this ship as a placeholder the
  * client expands on demand. Chosen so an ordinary coding turn — a handful of
  * file reads and edits — travels whole, while a turn carrying megabytes of tool
- * output does not. The initial history load is unbounded (`limit: "all"`), so
- * this is the only thing standing between a long session and its entire tool
- * transcript; it is a per-turn decision on purpose, so the same turn always
- * renders the same way regardless of what else is on the page.
+ * output does not. It remains a per-turn decision so the same turn renders the
+ * same way whether it arrived in the initial page or an older page.
  */
 const DETAIL_DEFER_BYTES = 32_768;
 
@@ -1401,6 +1401,18 @@ type SessionHistoryPageOptions = {
 type SessionTurnsPage = {
   turns: TurnContent[];
   hasMore: boolean;
+  /**
+   * User prompts that exist before this page's cutoff. A paginated transcript
+   * has no way to know where its oldest loaded turn sits in the conversation,
+   * so anything numbering turns (the chat ruler) reads 1..N over whatever
+   * happens to be loaded without it.
+   *
+   * Counted from the page boundary rather than the returned turns so a client
+   * that prepends pages keeps a stable number. One divergence is accepted: a
+   * prompt event carrying no text materializes no user turn, so it is counted
+   * here and not rendered.
+   */
+  olderTurnCount: number;
 };
 
 /**
@@ -1447,27 +1459,46 @@ function getSessionMessagesFromMessageTable(
   const limit = options.limit;
   if (!limit) {
     const rows = stmts.getMessages.all({ $session_id: sessionId }) as MessageRow[];
-    return { turns: messageRowsToTurns(rows), hasMore: false };
+    return { turns: messageRowsToTurns(rows), hasMore: false, olderTurnCount: 0 };
   }
 
   const rows = db.prepare(`
     SELECT * FROM (
       SELECT * FROM messages
       WHERE session_id = $session_id
-        AND ($before_seq IS NULL OR COALESCE(seq, 0) < $before_seq)
-      ORDER BY COALESCE(seq, 0) DESC, created_at DESC, id DESC
+        AND ($before_created_at IS NULL OR created_at < $before_created_at)
+        AND ($before_created_at IS NOT NULL OR $before_seq IS NULL OR COALESCE(seq, 0) < $before_seq)
+      ORDER BY created_at DESC, id DESC
       LIMIT $fetch_limit
     )
-    ORDER BY COALESCE(seq, 0) ASC, created_at ASC, id ASC
+    ORDER BY created_at ASC, id ASC
   `).all({
     $session_id: sessionId,
     $before_seq: options.beforeSeq ?? null,
+    $before_created_at: options.beforeCreatedAt ?? null,
     $fetch_limit: limit + 1,
   }) as MessageRow[];
   const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(rows.length - limit) : rows;
+  // Same wall-clock tuple the page was selected with, so a provider sequence
+  // reset cannot move old messages ahead of a resumed turn.
+  const first = page[0];
+  const olderTurnCount = first
+    ? ((db.prepare(`
+        SELECT COUNT(*) AS count FROM messages
+        WHERE session_id = $session_id
+          AND role = 'user'
+          AND (created_at, id) < ($created_at, $id)
+      `).get({
+        $session_id: sessionId,
+        $created_at: first.created_at,
+        $id: first.id,
+      }) as { count: number } | null)?.count ?? 0)
+    : 0;
   return {
-    turns: messageRowsToTurns(hasMore ? rows.slice(rows.length - limit) : rows),
+    turns: messageRowsToTurns(page),
     hasMore,
+    olderTurnCount,
   };
 }
 
@@ -1486,7 +1517,7 @@ function getSessionMessagesFromEvents(
        WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
        ${eventOrder}`
     ).all({ $sid: sessionId }) as { id: number; seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
-    return { turns: reconstructSessionTurns(events, fallbackModel), hasMore: false };
+    return { turns: reconstructSessionTurns(events, fallbackModel), hasMore: false, olderTurnCount: 0 };
   }
 
   // Event-only legacy/interrupted sessions can contain tens of thousands of
@@ -1522,7 +1553,7 @@ function getSessionMessagesFromEvents(
     $prompt_limit: promptLimit,
   }) as { created_at: number | null } | null;
 
-  if (!cutoff?.created_at) return { turns: [], hasMore: false };
+  if (!cutoff?.created_at) return { turns: [], hasMore: false, olderTurnCount: 0 };
   const events = db.prepare(
     `SELECT id, seq, type, subtype, data, created_at FROM events
      WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
@@ -1535,12 +1566,18 @@ function getSessionMessagesFromEvents(
     $before_created_at: beforeCreatedAt,
   }) as { id: number; seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
 
+  // One count answers both questions: whether an older page exists, and how far
+  // into the conversation this page starts.
   const older = db.prepare(`
-    SELECT 1 AS found FROM events
+    SELECT COUNT(*) AS count FROM events
     WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt' AND created_at < $cutoff
-    LIMIT 1
-  `).get({ $sid: sessionId, $cutoff: cutoff.created_at }) as { found: number } | null;
-  return { turns: reconstructSessionTurns(events, fallbackModel), hasMore: !!older };
+  `).get({ $sid: sessionId, $cutoff: cutoff.created_at }) as { count: number } | null;
+  const olderTurnCount = older?.count ?? 0;
+  return {
+    turns: reconstructSessionTurns(events, fallbackModel),
+    hasMore: olderTurnCount > 0,
+    olderTurnCount,
+  };
 }
 
 /**
@@ -1990,6 +2027,10 @@ export type SessionMessageHistory = {
   recoveredFromEvents: boolean;
   hasMore: boolean;
   oldestSeq: number | null;
+  /** Oldest wall-clock position in this page; stable across reused provider seq values. */
+  oldestCreatedAt: number | null;
+  /** User prompts preceding this page — what turn numbering has to start from. */
+  olderTurnCount: number;
 };
 
 function attachArtifactsToTurn(sessionId: string, turn: TurnContent, alternateSeq?: number): TurnContent {
@@ -2180,6 +2221,10 @@ export function getSessionMessageHistory(
     oldestSeq: messages.reduce<number | null>((min, turn) => (
       turn.seq > 0 && (min === null || turn.seq < min) ? turn.seq : min
     ), null),
+    oldestCreatedAt: messages.reduce<number | null>((min, turn) => (
+      turn.timestamp > 0 && (min === null || turn.timestamp < min) ? turn.timestamp : min
+    ), null),
+    olderTurnCount: page.olderTurnCount,
   };
 }
 
@@ -2325,9 +2370,9 @@ export function searchSessions(
   }
 
   if (scope?.cwdPrefixes && scope.cwdPrefixes.length > 0) {
-    const cwdConds = scope.cwdPrefixes.map(() => "s.cwd LIKE ?").join(" OR ");
-    matchConditions.push(`(${cwdConds})`);
-    matchParams.push(...scope.cwdPrefixes.map((p) => p.replace(/%/g, "\\%") + "%"));
+    const cwdScope = buildProjectCwdScope("s.cwd", scope.cwdPrefixes);
+    matchConditions.push(`(${cwdScope.sql})`);
+    matchParams.push(...cwdScope.params);
   }
 
   if (scope?.agentProfiles && scope.agentProfiles.length > 0) {

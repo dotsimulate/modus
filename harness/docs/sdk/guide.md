@@ -1,7 +1,7 @@
 ---
 title: MO SDK Guide
 audience: dev
-covers: harness/sdk/*.ts
+covers: harness/sdk/*.ts harness/file-mutation-errors.ts
 ---
 
 # MO SDK Guide
@@ -38,6 +38,29 @@ console.log(text);
 
 Three lines: construct, prompt, read. The `prompt()` convenience method handles session
 creation, SSE streaming, and text extraction internally.
+
+### Finding the managed desktop backend
+
+The desktop does not listen on port 3777. It starts the harness with
+`HARNESS_PORT=0`, so the OS assigns a new loopback port on each launch. An
+external client should resolve its base URL at call time:
+
+1. Use an explicitly configured URL (the bundled CLI names this override
+   `MODUS_URL`).
+2. For a locally managed desktop, read
+   `<MODUS_HOME>/runtime/desktop-supervisor.json` and use its `apiBase` (or
+   construct the same loopback URL from `port`). With `MODUS_INSTANCE=<name>`,
+   the record is under `<MODUS_HOME>/<name>/runtime/`.
+3. Use `http://localhost:3777` only for a source/CLI harness that was started on
+   the default fixed port.
+
+Re-read the supervisor file rather than caching it. The desktop writes it by
+temporary-file rename and deletes it on shutdown; absence means no managed
+desktop backend is currently published. `apiBase` is loopback-only and the
+record does not grant authentication. A remote client still needs the selected
+backend's reachable HTTPS/Tailscale origin and normal PIN/browser-token flow.
+The supervisor file is an internal discovery record, so external clients should
+depend only on `apiBase`/`port`, not its other fields.
 
 ---
 
@@ -89,6 +112,36 @@ const client = new ModusClient({
 Sessions are the core unit of work. A session wraps a single agent conversation with
 a full event log.
 
+### History hydration and paging
+
+The frontend's canonical path is `ensureSubscribed`: it resolves persisted
+history before opening/resuming SSE so snapshot rows are not replayed as live
+duplicates. A cold or settled session requests the newest 12 messages from
+`GET /api/sessions/:id/history-snapshot`; a retained settled transcript paints
+synchronously but is revalidated before SSE resumes. Cold active sessions also
+fetch a snapshot, then subscribe from the newest materialized message so any
+in-flight events after that boundary replay live.
+
+The snapshot endpoint accepts:
+
+- `limit=1..100` (default 40), or `limit=all`
+- `beforeCreatedAt=<epoch-ms>` — preferred paging boundary
+- `beforeSeq=<positive integer>` — compatibility fallback when no wall-clock
+  cursor is supplied
+- `details=full|summary` — summary mode defers large thinking/tool payloads
+
+Responses carry `hasMoreHistory`, `oldestCreatedAt`, `oldestSeq`, and
+`olderTurnCount`. Older pages send both available cursors, prepend de-duplicated
+messages without changing the live SSE cursor, and use the returned
+`olderTurnCount` to keep turn numbering stable. Wall-clock order is authoritative
+because a resumed provider may reuse sequence numbers. A deferred turn is
+expanded separately through the single-message content endpoint.
+
+Switching away unsubscribes settled sessions but retains the eight most recently
+used transcripts, including any older pages the user explicitly loaded. Older
+settled entries are evicted whole. Running, starting, interrupting, and paused
+sessions are not eligible for that settled cache eviction.
+
 ### Create and interact
 
 ```typescript
@@ -103,6 +156,70 @@ const result = await client.interact({
 
 // Continue an existing session
 await client.sendMessage(result.sessionId, "Also update the tests");
+```
+
+### Image attachments (SDK and raw REST)
+
+Both `POST /api/sessions/interact` and `POST /api/sessions/:id/messages` accept
+the same `attachments` array. Each entry is a base64 image with this exact wire
+shape:
+
+```typescript
+type ApiAttachment = {
+  type: "image";
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  data: string; // standard padded base64 only; no data:image/...;base64, prefix
+  name?: string;
+};
+```
+
+The request validator rejects other MIME types, empty or malformed base64, and
+data-URL prefixes. A text `prompt` is still required even when an image is
+attached. In the SDK:
+
+```typescript
+await client.sendMessage(sessionId, {
+  prompt: "Describe this image",
+  attachments: [{
+    type: "image",
+    mediaType: "image/png",
+    data: pngBytes.toString("base64"),
+    name: "diagram.png",
+  }],
+});
+```
+
+Raw REST clients send the identical JSON. Set `subscribe: false` on `interact`
+when a JSON response is wanted; its default response is an SSE stream.
+
+```bash
+curl -X POST "$MODUS_URL/api/sessions/interact" \
+  -H "Authorization: Bearer $MODUS_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "prompt": "Describe this image",
+    "profile": "dev",
+    "subscribe": false,
+    "attachments": [{
+      "type": "image",
+      "mediaType": "image/png",
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "name": "pixel.png"
+    }]
+  }'
+
+curl -X POST "$MODUS_URL/api/sessions/$SESSION_ID/messages" \
+  -H "Authorization: Bearer $MODUS_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{
+    "prompt": "Now compare this image",
+    "attachments": [{
+      "type": "image",
+      "mediaType": "image/jpeg",
+      "data": "/9j/4AAQSkZJRgABAQ==",
+      "name": "comparison.jpg"
+    }]
+  }'
 ```
 
 ### Create without starting
@@ -282,11 +399,27 @@ const result = await client.activateMove(sessionId, {
 // result.token — API token for move ops (10-minute TTL)
 // result.moveRunId — tracks this activation
 
-// Project-level activation (creates a new session)
+// Inline activation gathers but does not send. Dispatch the returned prompt
+// as a second, explicit step (optionally merged with the user's own text).
+if (result.requiresDispatch) {
+  await client.sendMessage(sessionId, {
+    prompt: [result.prompt, "Use concise output"].filter(Boolean).join("\n\n"),
+  });
+}
+
+// Project-level activation has no parent session. An inline result still needs
+// a target; choose branch/background when it should run immediately.
 const result2 = await client.activateProjectMove({
   moveName: "chess",
   inputs: {},
   cwd: "/home/user/my-project",
+  modeOverride: "branch",
+});
+
+// launchMove() returns the complete ActivateMoveResult; it does not drop the
+// prompt, widget, API-token, or dispatch fields.
+const launched = await client.launchMove("chess", "/home/user/my-project", {
+  modeOverride: "branch",
 });
 
 // Call a named operation on an active move
@@ -388,15 +521,47 @@ The SDK provides server-side file operations (these run on the harness host):
 
 ```typescript
 const content = await client.readFile("/home/user/project/README.md");
-await client.writeFile("/home/user/project/config.json", JSON.stringify(cfg));
-await client.createFile("/home/user/project/new-file.ts", "export {}");
-await client.createDirectory("/home/user/project/new-dir");
 
 const listing = await client.browse("/home/user/project", {
   includeHidden: false,
   includeFiles: true,
 });
 ```
+
+### Mutations return a status, not a boolean
+
+`writeFile`, `createFile`, and `createDirectory` return a `FileMutationResult`.
+**Inspect `.ok`** — the object is truthy on failure too, so treating the return
+value itself as a boolean silently succeeds forever:
+
+```typescript
+const created = await client.createDirectory("/home/user/project/new-dir");
+if (!created.ok) {
+  if (created.code === "collision") { /* the name is taken */ }
+  else if (created.code === "denied") { /* fix permissions */ }
+  else if (created.code === "read-only") { /* choose another volume */ }
+  console.error(created.error);   // written for a person to read
+}
+```
+
+`code` is a `FileMutationErrorCode`:
+
+| `code` | Meaning | Status |
+|---|---|---|
+| `collision` | the path already exists; `createFile`/`createDirectory` never overwrite | 409 |
+| `denied` | the OS refused — `EACCES`/`EPERM` | 403 |
+| `read-only` | the filesystem is mounted read-only — `EROFS` | 403 |
+| `missing-parent` | a parent directory does not exist — `ENOENT` | 404 |
+| `not-a-directory` | a path component exists but is not a directory — `ENOTDIR` | 409 |
+| `no-space` | the volume is full — `ENOSPC` | 507 |
+| `rejected` | the request was malformed (no path, no content) | 400 |
+| `unauthorized` | the file API auth gate refused the caller | 401/403 |
+| `failed` | anything else; `error` still carries the underlying message | 500 |
+
+Classification reads the OS `errno`, never the message text — messages are
+localized and differ between Windows and POSIX. On success, `path` is the
+absolute path the server resolved, which is not necessarily the string that was
+passed in.
 
 ---
 
@@ -420,6 +585,20 @@ const deep = await client.getDeepAnalytics({
 const activity = await client.getActivity({ limit: 50 });
 const summary = await client.getActivitySummary({ hours: 24 });
 ```
+
+`getDeepAnalytics({ start, end, bucketMs?, userProfile?, cwd?, provider? })`
+backs `GET /api/analytics/deep`. The default range is the previous 48 hours and
+the default bucket is one hour. Bucket widths snap to the nearest supported
+value (5, 15, or 30 minutes; 1, 2, 6, 12, or 24 hours) and the response is capped
+at 512 buckets. `cwd` is a path-prefix filter; `userProfile` includes matching
+sessions plus legacy rows with no user profile; `provider` matches the stored
+provider exactly. Sessions tagged `archived` or `internal` are excluded.
+
+The response includes `range`, aggregate `totals`, time `buckets`, breakdowns
+`byProvider`/`byModel`/`byProfile`/`byProject`, local-hour distribution
+`byHour`, per-session rows, and file-touch `trace` data (`summary` and
+`topFiles`). Token/cost/duration values come from durable result events; file
+touches come from the trace store and are folded into the same time buckets.
 
 ---
 

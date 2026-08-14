@@ -58,6 +58,12 @@ type Props = {
   items: ChatSpineItem[];
   /** Which index to draw. "scroll" never mounts this component at all. */
   mode: ChatScrollIndicatorMode;
+  /**
+   * Turns that exist before the first loaded item. `items` is only the pages the
+   * client has fetched, so without this the ruler restarts the conversation at 1
+   * every time it is paginated.
+   */
+  turnOffset?: number;
   /** The chat scroll element — spine reads scrollTop / clientHeight to brighten visible ticks. */
   scrollEl: HTMLElement | null;
   /**
@@ -145,6 +151,7 @@ function classify(item: ChatSpineItem): { role: Role; side: "left" | "right" } {
 export function ChatScrollSpine({
   items,
   mode,
+  turnOffset = 0,
   scrollEl,
   measureItem,
   measuredLayoutRef,
@@ -182,7 +189,8 @@ export function ChatScrollSpine({
     const estStart = new Map<string, number>();
     const estHeight = new Map<string, number>();
     let acc = 0;
-    let turn = 0;
+    // Numbering continues the conversation rather than the loaded window.
+    let turn = turnOffset;
     const ticks: Tick[] = items.map((item, i) => {
       const h = heights[i];
       const m = measures[i];
@@ -210,7 +218,7 @@ export function ChatScrollSpine({
       };
     });
     return { ticks, turns: ticks.filter((t) => t.role === "user"), estStart, estHeight, total };
-  }, [items, measureItem]);
+  }, [items, measureItem, turnOffset]);
 
   const { ticks, turns, estStart, estHeight, total: estTotal } = layout;
 

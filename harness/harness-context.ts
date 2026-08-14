@@ -188,7 +188,7 @@ export interface HarnessMoves {
     inputs?: Record<string, unknown>;
     sessionId?: string;
     modeOverride?: "inline" | "branch" | "background";
-  }): Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
+  }): Promise<{ token: string; mode: string; spawnedSessionId?: string; prompt?: string; requiresDispatch: boolean; moveRunId: number }>;
   list(): MoveConfig[];
 }
 
@@ -427,7 +427,14 @@ function createMoves(self: HarnessSelf, eng: HarnessEngines): HarnessMoves {
         summary: `${self.kind}:${self.name} activated move "${opts.moveName}" (${result.mode})`,
         metadata: { kind: self.kind, name: self.name, targetMove: opts.moveName, mode: result.mode },
       });
-      return { token: result.token, mode: result.mode, spawnedSessionId: result.spawnedSessionId, moveRunId: result.moveRunId };
+      return {
+        token: result.token,
+        mode: result.mode,
+        spawnedSessionId: result.spawnedSessionId,
+        prompt: result.prompt,
+        requiresDispatch: result.requiresDispatch,
+        moveRunId: result.moveRunId,
+      };
     },
     list() {
       return eng.listMoves(self.cwd);

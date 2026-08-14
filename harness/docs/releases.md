@@ -1,0 +1,170 @@
+---
+title: Release, Signing, and Packaging
+audience: dev
+lastUpdated: 2026-08-14
+covers: desktop/stage-managed-backend.ts desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.windows.conf.json desktop/src-tauri/tauri.signing.conf.json desktop/src-tauri/src/updates.rs desktop/package.json .github/workflows/ci.yml
+---
+
+# Release, Signing, and Packaging
+
+How a Modus desktop build is produced, signed, and qualified. The policy that
+governs which builds may be published lives in `RELEASES.md` at the repository
+root; the day-to-day build recipe and lifecycle detail live in
+`desktop/README.md`; Windows signing has its own step-by-step in
+`desktop/docs/windows-signing.md`. This document is the map, and it is the piece
+that was missing from the agent-facing corpus — searching it for "installer",
+"notarization", or "updater" used to return nothing.
+
+Nothing here contains account identifiers, certificate values, or endpoints.
+Every credential is supplied through the environment at build time and none is
+committed, which is what makes the procedure publishable at all. If publishing a
+step would leak something, the design is wrong rather than the documentation.
+
+## Build commands
+
+All from `desktop/`:
+
+| Command | Produces |
+|---|---|
+| `npm run stage:backend` | staged resources only — the fastest way to prove a staging change |
+| `npm run build` | `tauri build --no-bundle` — a runnable executable plus adjacent sidecar and resources |
+| `npm run build:bundle` | the above plus the platform package |
+| `npm run build:signed` | `build:bundle` merged with `src-tauri/tauri.signing.conf.json` |
+
+Staging runs automatically as Tauri's `beforeBuildCommand`, so `stage:backend`
+is not a required separate step before a build — it exists so staging can be
+exercised on its own.
+
+**Check the artifact, not the exit code.** A pipeline that ends in `| tail`
+reports the pipeline's status, not the build's, and a failed Tauri build has
+been read as a success that way. Redirect to a log, check the exit code
+explicitly, and confirm the artifact's size and mtime actually moved.
+
+## What gets staged
+
+`stage-managed-backend.ts` production-builds the UI, bundles the Bun server, and
+copies the authored resource tree. Two consequences that produce failures no
+test can see:
+
+- **An installed build is a frozen snapshot.** Nothing in `harness/` reaches it
+  without a rebuild. The one exception is client-extension `.js`, which is
+  served from disk per request and therefore hot-swaps in place.
+- **Bundling inlines JavaScript and leaves native artifacts behind.** Any
+  dependency with a native binary is a staging risk: the JS compiles in and the
+  `.dll`/`.so`/`.dylib` is silently absent at runtime. That class of failure is
+  invisible to the build, the typechecks, and the suite, and is reached only by
+  using the feature.
+
+`targetTriple()` resolves all six Windows/macOS/Linux x64 and arm64 triples and
+gates the executable suffix, so staging itself is portable; it prefers
+`TAURI_ENV_TARGET_TRIPLE` when Tauri supplies it.
+
+## Platform targets
+
+`bundle.targets` is **not** in `tauri.conf.json` — it is
+`["nsis"]` in `tauri.windows.conf.json`, which Tauri merges only on Windows.
+That separation is what makes a `.dmg` or an AppImage possible at all; a
+`targets` key in the shared config would pin every platform to NSIS.
+
+`bundle.macOS` is absent entirely: there is no `signingIdentity`,
+`hardenedRuntime`, `entitlements`, `minimumSystemVersion`, or `dmg` block. A
+macOS package is first contact, not a regression when it misbehaves.
+
+**Both CI jobs are `windows-latest`** (`.github/workflows/ci.yml`), so no Linux
+or macOS build has ever run in automation. Treat any non-Windows build result
+accordingly.
+
+## Signing
+
+Signing is **opt-in and additive**. `build:bundle` is unchanged and produces an
+unsigned package; `build:signed` merges `tauri.signing.conf.json`, which sets
+only `bundle.windows.signCommand` to invoke `sign-windows.cmd` with Tauri's
+`%1` binary-path placeholder.
+
+`signCommand` accepts a string or a `{cmd, args[]}` object. Use the object form
+whenever a path may contain whitespace — the string form is split naively on
+spaces. Read field names from the shipped
+`desktop/node_modules/@tauri-apps/cli/config.schema.json` rather than from
+memory.
+
+`sign-windows.cmd` reads six environment variables and commits none of them:
+
+| Variable | Supplies |
+|---|---|
+| `MODUS_SIGN_ENDPOINT` | the signing service region endpoint |
+| `MODUS_SIGN_ACCOUNT` | the signing account name |
+| `MODUS_SIGN_CERT_PROFILE` | the certificate profile name |
+| `AZURE_TENANT_ID` | service-principal tenant |
+| `AZURE_CLIENT_ID` | service-principal client |
+| `AZURE_CLIENT_SECRET` | service-principal secret |
+
+It refuses to run when any is missing, so a half-configured environment fails
+loudly instead of emitting an unsigned artifact that looks signed.
+
+`bundle.publisher` is set and **must match the certificate subject**; a mismatch
+surfaces as a wrong or untrusted name in the UAC prompt. Verify bundle metadata
+by grepping the *generated* `target/release/nsis/x64/installer.nsi` — that file
+is the real check, not the source config.
+
+macOS notarization has no scaffolding in this repository. Note that a locally
+built macOS app does not need a Developer ID to run: ad-hoc signing satisfies
+the arm64 signature requirement, and Gatekeeper gates binaries carrying the
+quarantine attribute, which the OS attaches on download. Distribution needs
+notarization; local first-contact evidence does not.
+
+## Updater
+
+**The updater's real switch is compile-time.** `plugins.updater.pubkey` and
+`plugins.updater.endpoints` in `tauri.conf.json` are present but empty and are
+not what enables it. `updates.rs` reads `option_env!("MODUS_UPDATER_ENDPOINT")`
+and `option_env!("MODUS_UPDATER_PUBKEY")` at build time and:
+
+- returns "no updater configured" when **both** are empty;
+- **errors** when only one is set — they must be configured together;
+- rejects a non-HTTPS endpoint outright.
+
+`bundle.createUpdaterArtifacts` is absent and therefore defaults to `false`, so
+**no `.sig` or update artifact is emitted even with both variables compiled in.**
+Installer signing and updater signing are two different signatures with two
+different keys; having one does not give you the other.
+
+Update checks are opt-in and at most daily unless the user picks *Check now*.
+Release urgency changes presentation only — download and installation always
+require confirmation.
+
+## Qualification
+
+A green suite proves the tree is coherent; it proves nothing about the package.
+Run the isolated lifecycle smokes from `desktop/`, which use a temporary
+`MODUS_HOME`, never bind the default port, and leave a running instance alone:
+
+```powershell
+.\tests\packaged-lifecycle-smoke.ps1 -Scenario managed
+.\tests\packaged-lifecycle-smoke.ps1 -Scenario remote
+.\tests\packaged-lifecycle-smoke.ps1 -Scenario close-hide
+.\tests\packaged-lifecycle-smoke.ps1 -Scenario job-close
+.\tests\packaged-lifecycle-smoke.ps1 -Scenario tailscale
+```
+
+`job-close` is a Windows Job Object concept with no POSIX analogue, and there is
+no `sh` equivalent of this script, so **macOS and Linux qualification is
+currently manual.** A package for either platform must be built and
+process-group-tested on that platform.
+
+### Proving a build actually shipped a change
+
+Exit code zero does not prove the change is in the artifact. Compare string
+markers between the staged bundle and the currently installed one:
+
+- Pick a marker that reaches the bundle you are grepping. Minified UI
+  identifiers do not survive, and a project-local move is loaded from disk and
+  is not in the server bundle at all — both give a false negative.
+- **A removed literal or a genuinely novel identifier is the only strong
+  signal.** A flag string can already appear in a vendored SDK, so a 1→2 count
+  is weak evidence; a 1→0 removal is decisive.
+- Always confirm a marker from the *previous* build still reads non-zero in the
+  installed artifact, or you have only proven you grepped the wrong path.
+
+Record the package's SHA-256 with each build, per `RELEASES.md`. Package
+filenames are version-derived, so consecutive builds overwrite each other —
+rename the existing artifact before rebuilding, or the rollback is gone.

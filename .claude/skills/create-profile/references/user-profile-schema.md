@@ -62,11 +62,81 @@ UI and session management to a specific person or project context.
   // Show project paths from ALL user profiles in CWD picker (default: false)
   "showAllProjectPaths": false,
 
-  // Which actions this user can see (optional)
-  // Omit or ["*"] = see all actions
-  "actions": ["*"]
+  // ── Session Defaults ──
+
+  // Default agent profile selected for a new session under this user
+  "defaultAgentProfile": "dev-agent",
+
+  // Default model and effort for new sessions. An agent profile's own value
+  // overrides these; a session override beats both.
+  "model": "claude-opus-4-8",
+  "effort": "high",
+
+  // ── Plugin Profile Visibility ──
+
+  // Plugin-supplied agent profiles to hide from this user's pickers.
+  // Qualified keys, e.g. "plugin:<id>/<name>".
+  "hiddenPluginProfiles": ["plugin:modus-speak/narrator"],
+
+  // ── Client Extensions ──
+
+  // Per-user extension enablement and settings. Extra discovery roots go in
+  // "paths"; "settings" is keyed by extension id. Only scope:"user" settings
+  // land here — a scope:"global" setting is stored machine-wide in _global.json
+  // instead, so every client resolves the same value.
+  "clientExtensions": {
+    "paths": ["/home/alex/modus-extensions"],
+    "enabled": ["modus-listen"],
+    "disabled": ["whisper-transcribe"],
+    "settings": { "modus-listen": { "micDevice": "Yeti Stereo Microphone" } }
+  },
+
+  // ── Layout ──
+
+  // Dashboard widget/page layout entries. These are layout objects, not bare
+  // widget names — the app writes them; hand-authoring is rarely what you want.
+  // See UserProfileSchema in harness/profile-schemas.ts for the element shape.
+  "dashboard": { "widgets": [], "pages": [] },
+
+  // Left panel takes plain widget keys, from harness/ui/src/widgets/registry.ts
+  "leftPanel": { "widgets": ["files"] },
+
+  // Interface preferences for this user
+  "interface": {
+    "chat": {
+      "fontScale": 100,               // percent; 100 = default
+      "chatWidth": 800,
+      "scrollIndicator": "ruler",     // "scroll" | "spine" | "ruler"
+      "spineEnabled": true
+    },
+    "conversation": {
+      "showThinking": true,
+      "showMeta": true,
+      "toolCalls": "collapsed",       // "expanded" | "collapsed" | "hidden"
+      "showGitEvents": true,
+      "showFileChanges": true,
+      "deferHeavyDetails": false
+    },
+    "configBar": { "items": ["provider", "model"] },
+    "motion": "system"                // "system" | "reduced" — a string, not an object
+  },
+
+  // ── Computer ──
+
+  // Label for the machine this profile is used from
+  "computer": "studio-desktop",
+
+  // ── Editor ──
+
+  // Preferred external editor for "open in editor"
+  "editor": "code"
 }
 ```
+
+> `actions` is **not** a user-profile field. Zod object schemas here are
+> non-strict, so an unknown key validates and is then ignored — writing
+> `"actions": ["*"]` looks accepted and does nothing. Action visibility is
+> resolved from the action side, not from the user profile.
 
 ## Relationship to Agent Profiles
 
@@ -156,7 +226,7 @@ State files are created automatically on first use.
   "displayName": "ops",
   "projects": ["/srv", "/etc/services"],
   "agentProfiles": ["ops-agent", "monitoring"],
-  "actions": ["health-check", "log-rotate", "backup-verify"],
+  "defaultAgentProfile": "ops-agent",
   "memory": {
     "scope": "profile",
     "inheritGlobal": true

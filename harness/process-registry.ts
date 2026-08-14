@@ -7,7 +7,8 @@
  *   - move-runner:      active move tokens per session
  *   - terminal-manager: managed terminals/shells
  *
- * Every entry includes a kill path. No more ghost processes.
+ * Every entry carries the OS pids behind it and can be terminated, so a
+ * process the harness started is always reachable from the UI.
  */
 
 import { forceClearActiveSession, getAllActiveSessions, getActiveSession, type ActiveSession } from "./session-manager";
@@ -17,6 +18,10 @@ import {
   listMissionRunSummaries,
 } from "./mission-runner";
 import { getActiveTokensForSession } from "./move-runner";
+import {
+  PROVIDER_ORPHAN_IMAGE_NAMES,
+  isHarnessOwnedProviderCommand,
+} from "./provider-process-identity";
 import { spawnSync } from "node:child_process";
 
 // ── Types ──
@@ -236,10 +241,9 @@ export function killProcess(sessionId: string): { ok: boolean; error?: string } 
   } catch (err) {
     return { ok: false, error: `Failed to abort ${sessionId}: ${err}` };
   }
-  // 2. Belt-and-braces: even if the provider's abort missed something, taskkill
-  //    every PID this session has on record. SDK close() is unreliable on Windows
-  //    (cmd.exe → claude → node tree survives on MCP HTTP keepalives), so the
-  //    registry is the authoritative kill path.
+  // 2. Terminate every pid still on record, whatever abort() reported. A
+  //    provider close can return while its process tree survives on open MCP
+  //    keepalives, so this pass is the authoritative one.
   const survivors = Array.from(session.osPids);
   for (const pid of survivors) {
     try {
@@ -258,7 +262,6 @@ export function killProcess(sessionId: string): { ok: boolean; error?: string } 
 type OsProcessRow = {
   pid?: number;
   ppid?: number;
-  name?: string;
   commandLine?: string;
 };
 
@@ -268,11 +271,12 @@ function listOrphanClaudeProcesses(): ProcessInfo[] {
   // Use wmic via cmd.exe instead of PowerShell — PowerShell depends on .NET
   // which can be broken by system crashes. wmic is a native Win32 binary.
   const currentPort = Number(process.env.HARNESS_PORT ?? 3777);
+  const nameFilter = PROVIDER_ORPHAN_IMAGE_NAMES.map((name) => `name='${name}'`).join(" or ");
   const result = spawnSync(
     "cmd.exe",
     [
       "/c",
-      "wmic process where \"name='node.exe'\" get ProcessId,ParentProcessId,CommandLine /format:csv",
+      `wmic process where "${nameFilter}" get ProcessId,ParentProcessId,CommandLine /format:csv`,
     ],
     { encoding: "utf8", windowsHide: true, timeout: 5000 },
   );
@@ -292,22 +296,13 @@ function listOrphanClaudeProcesses(): ProcessInfo[] {
     const ppid = Number(parts[parts.length - 2]);
     const commandLine = parts.slice(1, parts.length - 2).join(",");
     if (!pid) continue;
-    rows.push({ pid, ppid, name: "node.exe", commandLine });
+    rows.push({ pid, ppid, commandLine });
   }
   const knownSessionIds = new Set(getAllActiveSessions().map((session) => session.sessionId));
 
   return rows
     .filter((row) => row.pid && row.commandLine)
-    .filter((row) => {
-      const commandLine = row.commandLine ?? "";
-      // Either it's a Claude Code SDK CLI process, OR its command line shows
-      // it's connected to the Modus MCP endpoint on this harness's port.
-      // No binary-name-only matches — those caused false positives before.
-      if (commandLine.includes("@anthropic-ai/claude-code/cli.js")
-        || commandLine.includes("@anthropic-ai\\claude-code\\cli.js")) return true;
-      if (commandLine.includes(`127.0.0.1:${currentPort}/api/mcp/modus`)) return true;
-      return false;
-    })
+    .filter((row) => isHarnessOwnedProviderCommand(row.commandLine ?? "", currentPort))
     .filter((row) => !Array.from(knownSessionIds).some((sessionId) => (row.commandLine ?? "").includes(sessionId)))
     .map((row) => ({
       id: `os:${row.pid}`,

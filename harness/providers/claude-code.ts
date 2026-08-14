@@ -7,7 +7,7 @@
 
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import type { SessionProvider, TurnContext } from "./types";
-import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
+import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getUserData, type McpServerConfig, type PermissionPolicy } from "../profiles";
 import {
   getMaxSeq,
@@ -147,22 +147,20 @@ function killPidTreeAsync(pid: number): Promise<void> {
   });
 }
 
-// PID-tree enumeration via PowerShell was removed — `taskkill /T /F /PID <root>`
-// already kills the entire descendant tree natively. Spawning PowerShell on
-// every session start/abort caused 70MB+ ghost processes to accumulate by the
-// dozen on Windows, which itself starved new spawns.
-
 /**
- * Force-kill EVERY spawned subprocess this session has ever produced and
- * not yet confirmed dead. We track all PIDs in `session.osPids` because a
- * single session may spawn multiple cmd.exe → claude → node trees over its
- * lifetime (cold start, resume after interrupt, restart after error). Any
- * one of them can be ghosted by the SDK closing only its iterator without
- * actually killing the child — those ghosts then keep hammering MCP tools
- * via open keepalives to /api/mcp/modus.
+ * Force-kill every subprocess this session has produced and not confirmed dead.
  *
- * Call this on every non-graceful termination path (abort, drain-exit while
- * status != idle, post-drain restart, error). Never trust query.close().
+ * Root pids are tracked in `session.osPids` because one session can own several
+ * cmd.exe → claude trees over its lifetime (cold start, resume after interrupt,
+ * restart after error). Killing a root is enough for each of them: `taskkill /T`
+ * terminates the descendant tree natively, so nothing here enumerates children.
+ * Do not reintroduce per-child PID polling — it spawns a process per sweep and
+ * starves the spawns it is meant to protect.
+ *
+ * The SDK's own close() can return having closed only its iterator, leaving a
+ * child alive and still calling MCP tools over its keepalive, so every
+ * non-graceful termination path routes here: abort, drain-exit while the status
+ * is not idle, post-drain restart, error, and dispose.
  */
 const inFlightKills = new WeakMap<ActiveSession, Promise<void>>();
 
@@ -174,10 +172,8 @@ function killAllSpawnedAsync(session: ActiveSession, state: ClaudeCodeState | nu
   }
   const run = (async () => {
     const t0 = Date.now();
-    // Just taskkill /T /F the root we know about. Windows handles the descendant
-    // tree natively. We previously also tracked grandchild PIDs via PowerShell,
-    // but that polling approach generated 70MB ghost processes faster than they
-    // exited and starved new spawns.
+    // Killing the known root is sufficient: the platform terminates the whole
+    // descendant tree with it.
     const rootPid = state?.spawnedPid;
     if (rootPid) {
       session.osPids.add(rootPid);
@@ -864,7 +860,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       // calling sendMessage, which would cause us to queue instead of reusing.
       if (state.drainActive && !state.interrupting && session.status !== "running") {
         session.initialContent = content;
-        session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+        session.preview = contentPreview(content);
         session.status = "running";
         session.turnStartedAt = Date.now();
         state.skipNextPromptPersist = true;
@@ -904,7 +900,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       const { generator, channel } = createInputChannel();
       state.input = channel;
       session.initialContent = content;
-      session.preview = typeof content === "string" ? content.slice(0, 80) : "[content]";
+      session.preview = contentPreview(content);
       channel.push(content);
 
       const resumeSelection = resolveClaudeResumeTarget(session.sessionId);
@@ -1128,8 +1124,13 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       if (!state) return;
       try { state.input.close(); } catch { /* ignore cleanup errors */ }
       try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
-      // close() kills the SDK subprocess and MCP transports — without this, child processes leak
+      // Ask the SDK to close its subprocess and MCP transports first, so a
+      // process that can exit cleanly does.
       try { state.queryObj?.close(); } catch { /* ignore cleanup errors */ }
+      // Then take the authoritative path. close() alone leaves surviving trees
+      // on Windows, and a disposed session has no later opportunity to reap
+      // them — this is the last point at which the pids are still known.
+      try { await killAllSpawnedAsync(session, state); } catch { /* best effort */ }
       session._providerState = null;
     },
 
@@ -1422,7 +1423,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           state.input.push(next);
           session.status = "running";
           session.turnStartedAt = Date.now();
-          session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
+          session.preview = contentPreview(next);
         }
       }
 
@@ -1608,7 +1609,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       // Drain exited — subprocess is dead, cold start unavoidable
       const next = session.pendingDispatch.shift()!.content;
       session.initialContent = next;
-      session.preview = typeof next === "string" ? next.slice(0, 80) : "[content]";
+      session.preview = contentPreview(next);
       session.status = "running";
       session.turnStartedAt = Date.now();
       state.skipNextPromptPersist = true;

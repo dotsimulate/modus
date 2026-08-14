@@ -510,10 +510,14 @@ export const ToolCallView = memo(function ToolCallView({
     let active = true;
     if (!apiToken || !hasTranscriptContext) {
       setToolViewResolution(null);
+      setToolViewError(null);
       return () => { active = false; };
     }
-    void resolveMoveToolView(apiToken).then((resolution) => {
-      if (active) setToolViewResolution(resolution);
+    setToolViewError(null);
+    void resolveMoveToolView(apiToken).then((result) => {
+      if (!active) return;
+      setToolViewResolution(result.resolution);
+      setToolViewError(result.error);
     });
     return () => { active = false; };
   }, [apiToken, hasTranscriptContext]);

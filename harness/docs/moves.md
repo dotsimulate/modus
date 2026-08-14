@@ -1,6 +1,6 @@
 ---
 title: Moves
-lastUpdated: 2026-07-31
+lastUpdated: 2026-08-14
 covers: harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/move-op-request.ts harness/move-api-result.ts harness/bridged-modules.ts harness/harness-bridge.ts harness/skills.ts harness/skill-attachment.ts
 ---
 
@@ -77,7 +77,7 @@ the transpiler and need no entry.
 
 | Mode | Behavior |
 |------|----------|
-| `inline` | Returns rendered prompt to client; client merges into user message |
+| `inline` | Returns rendered prompt with `requiresDispatch: true`; activation does not send it, so the client merges it into a user message and dispatches that message explicitly |
 | `branch` | Spawns a new sibling session |
 | `background` | Fire-and-forget, persisted status for later recall |
 | `persistent` | Ambient gather-only move; re-runs `gather()` on every user turn until deactivated |
@@ -217,7 +217,41 @@ an API token and instance id.
 - `capabilities` — runtime capability declaration for shell/session/action/notify/file access
 - `trust` — `"builtin" | "reviewed" | "experimental"`
 - `skills` — installed skills to attach while this move is active (see below)
+- `enabled` — set `false` to park the move on disk without deleting it (see below)
 - `origin` — `"harness"` or `"project"` (set automatically, not written to move.json)
+
+## Parking a move (`enabled: false`)
+
+`enabled` is optional and **defaults to on**: a move.json with no `enabled` key
+runs. Writing `enabled: false` parks the move where it is, so a draft or a
+retired move can stay on disk, in version control, and in front of the author
+without being reachable.
+
+Disabled means disabled everywhere a move can be entered:
+
+| Entry point | With `enabled: false` |
+|---|---|
+| `listMoves()` — pickers, `generated/move-ops`, profile `moves` resolution | not listed |
+| `activateMove()` — chat attachment, action bindings, SDK | `Move is disabled: <name>` |
+| `attachMove()` — page embeds, client extensions, widget-first attach | `Move is disabled: <name>` |
+| API-token rehydration at boot | skipped; previously issued `mapi-` tokens do not come back |
+| `getMove(name, cwd)` | still returns the config — reading the file is not running it |
+
+Because rehydration skips it, a token minted before the move was disabled stops
+resolving after the next harness restart. Within a running harness an
+already-registered token keeps working until then; disabling is a
+next-restart-complete operation, not a kill switch for live registrations.
+
+Parking is safe on disk in a way deleting is not: the move's
+`state/_registry.json` and any `api.state` are left untouched, so re-enabling
+restores the move with its persisted state rather than a blank one. Renaming the
+directory instead of setting the flag would break exactly that, since
+registrations are keyed by move name.
+
+**The default is the opposite of an action's.** `MoveConfig.enabled` is optional
+and absent means on; `ActionConfig.enabled` is required and an action must
+declare `true` to run. A move is invoked by a person, so silence means available;
+an action runs on its own, so silence means off.
 
 ## Skills (`skills` field and `skills/` directory)
 
@@ -285,8 +319,23 @@ that never appeared in that boot scan is still recoverable. A token that cannot 
 recovered reports a lifecycle failure naming the recovery step; it is never described
 as expired, because API tokens have no TTL.
 
-`ctx.notify(message, emit?)` pushes a message into the agent's session (session-inject — NOT
-a channel). Optional `emit` injects a typed signal prefix: `[modus:{type}] {json}\n{message}`.
+`ctx.emit(event)` immediately broadcasts a `move-widget-event` to this move instance's
+mounted widget or tool view, regardless of whether the op was called by an agent or a
+user. Call it after a handler changes state when the UI should refresh immediately;
+for example, `ctx.emit({ type: "state-changed" })`. It does not send a message to the
+agent.
+
+`ctx.notify(message, emit?)` is caller-dependent:
+
+- From an **agent** call (`modus_submit`), it injects `message` into the agent's
+  session. Optional `emit` prefixes the injected text with
+  `[modus:{type}] {json}` so the agent can branch on a typed signal.
+- From a **user/widget** call, it never injects `message` back into the agent.
+  When `emit` is present it broadcasts that payload to the widget as a
+  `move-widget-event`; without `emit` it has no user-visible delivery.
+
+This is session/widget signaling, not channel egress. Use
+`ctx.channels.send(channel, { text, data? })` for Discord/Slack/file channels.
 
 **Orchestration parity**: `MoveApiContext` also exposes the same engine operations
 `gather()`/`onSubmit()` had, sourced from the Harness Context — `createSession`,
@@ -408,12 +457,19 @@ instance state, and an `emit()` helper that broadcasts `move-widget-event` UI ev
 ## Reload Semantics (editing `context.ts` while developing)
 
 The edit-reload loop differs by export, and the difference is the single most
-confusing thing about authoring an API move. **You do not need to restart the
-harness.**
+confusing thing about authoring an API move. The rules below apply to files in
+the running harness's resolved move directory.
+
+For a source checkout, built-ins resolve from that checkout's `harness/moves/`.
+For an installed desktop build, built-ins resolve from the staged resource
+snapshot packaged with that installation. Editing a separate source checkout
+cannot affect the installed process: rebuild/reinstall (or run the harness from
+that checkout) first. Project moves and plugin moves still resolve from their
+own live directories.
 
 | Export | When your edit takes effect |
 |---|---|
-| `gather()`, `onSubmit()`, `prepare()`, `onAssistantTurn()`, `listInstances()` | **Next activation.** `loadMoveModule()` deletes the `require.cache` entry before `await import()`, so each activation re-reads the file from disk. |
+| `gather()`, `onSubmit()`, `prepare()`, `onAssistantTurn()`, `listInstances()` | **Next activation.** `loadMoveModule()` evicts cached move-authored modules under the resolved move directory before `await import()`, so edits to `context.ts` and its local sibling imports are re-read. Move-local `node_modules` stays cached. |
 | `handlers` (API ops) | **Next registration, not next call.** `registerMoveApi()` captures the `handlers` object into the in-memory registry, and op dispatch reads `reg.handlers[op]` from that snapshot. Editing the file changes nothing for an already-registered instance. |
 
 To pick up a handler edit: **detach and re-attach the move.**
@@ -429,6 +485,8 @@ Two traps that make an edit look like it did not land:
 - **A move whose `context.ts` fails to import keeps working with no visible
   error** — the loader logs and returns null. If an edit introduces a syntax
   error, the symptom is "my change did nothing", not a failure.
+- **Only `context.ts` itself is evicted.** Imports below it can remain in Bun's
+  module cache, so an edit to a sibling helper may require a harness restart.
 
 ## MoveContext (passed to gather/onSubmit)
 

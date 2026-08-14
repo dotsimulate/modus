@@ -121,16 +121,18 @@ export function FileViewerProvider({ children }: { children: ReactNode }) {
   const saveFile = useCallback(async (path: string, content: string): Promise<boolean> => {
     setSaving(true);
     setSaveError(null);
-    const ok = await modus.writeFile(path, content);
+    const saved = await modus.writeFile(path, content);
     setSaving(false);
-    if (ok) {
+    if (saved.ok) {
       setTabs((prev) => prev.map((t) =>
         t.path === path ? { ...t, dirty: false, content } : t
       ));
     } else {
-      setSaveError("save failed");
+      // "save failed" gave the user nothing to act on. A read-only volume and a
+      // permission problem need different responses from them.
+      setSaveError(saved.error ?? "save failed");
     }
-    return ok;
+    return saved.ok;
   }, []);
 
   const hydrate = useCallback((hydratedTabs: Array<{ path: string; pinned: boolean; editing?: boolean; dirty?: boolean; content?: string | null }>, hydratedActivePath: string | null) => {

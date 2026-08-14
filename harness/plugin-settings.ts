@@ -13,6 +13,7 @@ import {
   type PluginSettingDefinition,
   type PluginSettingScope,
 } from "./modus-plugins";
+import { settingNumberError } from "./settings-schema";
 import {
   getStoredGlobalConfig,
   getUserProfileUiConfig,
@@ -49,11 +50,11 @@ function assertSettingValue(setting: PluginSettingDefinition, value: unknown): v
         throw new Error(`${setting.key} must be a secret name, not a secret value`);
       }
       return;
-    case "number":
-      if (typeof value !== "number" || !Number.isFinite(value)) {
-        throw new Error(`${setting.key} must be a finite number`);
-      }
+    case "number": {
+      const error = settingNumberError(setting.key, value, setting);
+      if (error) throw new Error(error);
       return;
+    }
     case "toggle":
       if (typeof value !== "boolean") throw new Error(`${setting.key} must be a boolean`);
       return;

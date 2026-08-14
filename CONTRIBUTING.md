@@ -33,6 +33,9 @@ The backend is under `harness/`, the React frontend is under
 [the architecture guide](harness/docs/architecture.md) and follow its links to
 the subsystem being changed.
 
+Harness tests live under `harness/tests/`, grouped by subsystem. Run `bun test`
+from `harness/` so discovery matches CI and does not collect staged desktop copies.
+
 ## Dependency installs
 
 The committed lockfiles are release inputs. Do not refresh them incidentally.

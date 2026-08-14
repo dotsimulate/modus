@@ -30,6 +30,7 @@ An absent member is a hard boundary: reaching for it is a type error in TypeScri
 | `cwd` | yes | yes | — |
 | `date` | opt | — | — |
 | `db` | yes | yes | yes |
+| `emit` | — | yes | — |
 | `harness` | yes | — | — |
 | `inputs` | yes | — | — |
 | `insertArtifact` | — | yes | — |
@@ -66,7 +67,7 @@ Not reachable from an API op handler: `apiToken`, `date`, `harness`, `inputs`, `
 
 ### Only on `MoveApiContext`
 
-Not reachable from `gather()`/`onSubmit()`: `activateMove`, `caller`, `channels`, `createSession`, `insertArtifact`, `model`, `notify`, `sendMessage`, `triggerAction`, `wake`, `watchSessionTurns`.
+Not reachable from `gather()`/`onSubmit()`: `activateMove`, `caller`, `channels`, `createSession`, `emit`, `insertArtifact`, `model`, `notify`, `sendMessage`, `triggerAction`, `wake`, `watchSessionTurns`.
 
 ## Contexts
 
@@ -147,10 +148,15 @@ export interface MoveApiContext {
   secrets: MoveSecrets;
   /** Manifest-declared settings for the plugin that supplied this move. */
   pluginSettings: HarnessContext["pluginSettings"];
+  /** Broadcast an event immediately to this move instance's mounted widget/tool view. */
+  emit: (event: { type: string; [key: string]: unknown }) => void;
   /**
-   * Push a message into the agent's session.
-   * Pass an optional typed payload to emit a structured signal the agent can branch on.
-   * With a payload, the agent receives: `[modus:{type}] {json}\n{message}`
+   * Notify the side opposite the caller.
+   *
+   * Agent (`modus_submit`) calls inject `message` into the session. With `emit`,
+   * the injected text is `[modus:{type}] {json}\n{message}`. User/widget calls
+   * never inject `message` back into the agent; they broadcast `emit` as a
+   * `move-widget-event`, and do nothing visible when `emit` is omitted.
    */
   notify: (message: string, emit?: { type: string; [key: string]: unknown }) => void;
   /** Send a message to any existing session in this project. */
@@ -177,7 +183,7 @@ export interface MoveApiContext {
     inputs?: Record<string, unknown>;
     sessionId?: string;
     modeOverride?: "inline" | "branch" | "background";
-  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
+  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; prompt?: string; requiresDispatch: boolean; moveRunId: number }>;
   /** Watch a session's assistant turns. Returns an unsubscribe function. */
   watchSessionTurns: (sessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>) => () => void;
   /** Wake a session (id or tag) now, or on a schedule (at/every/onEvent). Fans out to a tagged team. */
@@ -420,7 +426,7 @@ export interface HarnessBridge {
     inputs?: Record<string, unknown>;
     sessionId?: string;
     modeOverride?: "inline" | "branch" | "background";
-  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
+  }) => Promise<{ token: string; mode: string; spawnedSessionId?: string; prompt?: string; requiresDispatch: boolean; moveRunId: number }>;
   /** Watch a session's assistant turns. Returns an unsubscribe function. */
   watchSessionTurns: (sessionId: string, onTurn: (turn: TurnContent) => void | Promise<void>) => () => void;
   /**
@@ -495,7 +501,7 @@ export interface HarnessMoves {
     inputs?: Record<string, unknown>;
     sessionId?: string;
     modeOverride?: "inline" | "branch" | "background";
-  }): Promise<{ token: string; mode: string; spawnedSessionId?: string; moveRunId: number }>;
+  }): Promise<{ token: string; mode: string; spawnedSessionId?: string; prompt?: string; requiresDispatch: boolean; moveRunId: number }>;
   list(): MoveConfig[];
 }
 ```

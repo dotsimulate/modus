@@ -18,6 +18,12 @@ type DisplayItem =
   | { kind: "message"; key: string; message: Message; index: number }
   | { kind: "commit"; key: string; commit: GitCommit };
 
+/**
+ * Distance from the top at which the next history page is requested. Far enough
+ * up that the page usually lands before the user reaches the actual top.
+ */
+const AUTO_LOAD_OLDER_PX = 240;
+
 function readScrollIndicator(): ChatScrollIndicator {
   return readLocalInterfaceSettings().chat.scrollIndicator;
 }
@@ -94,11 +100,13 @@ type Props = {
   hasOlderMessages?: boolean;
   loadingOlderMessages?: boolean;
   olderMessagesError?: string;
+  /** User prompts before the oldest loaded turn, so the spine numbers turns for real. */
+  olderTurnCount?: number;
   onLoadOlderMessages?: () => void | Promise<void>;
   onLoadMessageDetails?: (seq: number) => void | Promise<void>;
 };
 
-export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, toolCallDisplay = "collapsed", showGitEvents = true, showFileChanges = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits, hasOlderMessages = false, loadingOlderMessages = false, olderMessagesError, onLoadOlderMessages, onLoadMessageDetails }: Props) {
+export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, toolCallDisplay = "collapsed", showGitEvents = true, showFileChanges = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits, hasOlderMessages = false, loadingOlderMessages = false, olderMessagesError, olderTurnCount = 0, onLoadOlderMessages, onLoadMessageDetails }: Props) {
   const resolvedToolCallDisplay: ToolCallDisplayMode = showToolCalls ? toolCallDisplay : "hidden";
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
@@ -313,6 +321,42 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       });
     }
   }, [onLoadOlderMessages, virtualItems]);
+
+  // Reaching the top of a transcript is the ordinary way to ask for more of it,
+  // so scrolling there loads the next page. The re-anchor in
+  // handleLoadOlderMessages puts the previous top message back under the
+  // viewport, which both keeps the reading position and moves the scroll offset
+  // far enough down that arriving content cannot immediately re-trigger this.
+  const autoLoadedFromKey = useRef<string | null>(null);
+  useEffect(() => { autoLoadedFromKey.current = null; }, [sessionId]);
+
+  // A live ref rather than useEffectEvent, and that is load-bearing: React only
+  // commits an updated Effect Event implementation for plain function
+  // components. ForwardRef and SimpleMemoComponent fibers fall through
+  // react-dom's commitBeforeMutationEffects switch untouched, so an effect
+  // event declared in this memo()-wrapped component keeps its first-render
+  // closure forever — one where hasOlderMessages is still false because history
+  // has not landed yet. That is why scrolling to the top did nothing.
+  // Same idiom the virtualizer uses to keep its imperative controls current.
+  const autoLoadOlderRef = useRef<() => void>(() => {});
+  autoLoadOlderRef.current = () => {
+    if (!onLoadOlderMessages || !hasOlderMessages || loadingOlderMessages || olderMessagesError) return;
+    const firstKey = virtualItems[0]?.key;
+    // A page that yields nothing new leaves the same message on top. Not
+    // retrying until that changes is what keeps the top from looping.
+    if (!firstKey || autoLoadedFromKey.current === firstKey) return;
+    autoLoadedFromKey.current = firstKey;
+    void handleLoadOlderMessages();
+  };
+
+  useEffect(() => {
+    if (!scrollEl) return;
+    const onScroll = () => {
+      if (scrollEl.scrollTop <= AUTO_LOAD_OLDER_PX) autoLoadOlderRef.current();
+    };
+    scrollEl.addEventListener("scroll", onScroll, { passive: true });
+    return () => scrollEl.removeEventListener("scroll", onScroll);
+  }, [scrollEl]);
 
   const spineItems = useMemo<ChatSpineItem[]>(
     () =>
@@ -581,6 +625,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
           <ChatScrollSpine
             items={spineItems}
             mode={scrollIndicator}
+            turnOffset={olderTurnCount}
             scrollEl={scrollEl}
             measureItem={measureSpineItem}
             measuredLayoutRef={measuredLayoutRef}

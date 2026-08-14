@@ -1,3 +1,4 @@
+import { readFileMutationResponse, type FileMutationResult } from "../file-mutation-errors";
 import type {
   ModusClientOptions,
   InteractOptions,
@@ -331,10 +332,11 @@ export class ModusClient {
     }
   }
   /** Gets a semantic history snapshot for ordinary session hydration. */
-  async getSessionHistorySnapshot(id: string, opts?: { signal?: AbortSignal; limit?: number | "all"; beforeSeq?: number; details?: "full" | "summary" }): Promise<SessionHistorySnapshot> {
+  async getSessionHistorySnapshot(id: string, opts?: { signal?: AbortSignal; limit?: number | "all"; beforeSeq?: number; beforeCreatedAt?: number; details?: "full" | "summary" }): Promise<SessionHistorySnapshot> {
     const params = new URLSearchParams();
     if (opts?.limit != null) params.set("limit", String(opts.limit));
     if (opts?.beforeSeq != null) params.set("beforeSeq", String(opts.beforeSeq));
+    if (opts?.beforeCreatedAt != null) params.set("beforeCreatedAt", String(opts.beforeCreatedAt));
     if (opts?.details) params.set("details", opts.details);
     const q = params.toString();
     return (await this.fetch(`/api/sessions/${id}/history-snapshot${q ? `?${q}` : ""}`, { signal: opts?.signal })).json();
@@ -644,20 +646,28 @@ export class ModusClient {
    * - If `sessionId` is provided: calls `activateMove()` on that session
    * - Otherwise: calls `activateProjectMove()` to create a new session
    *
-   * Returns a normalized result with the token, session ID, and activation mode.
+   * Returns the complete activation result. For inline moves, activation only
+   * gathers the prompt: `requiresDispatch` is true and the caller must send
+   * `prompt` to its target session.
    */
   async launchMove(moveName: string, cwd: string, opts?: {
     sessionId?: string;
     inputs?: Record<string, unknown>;
     userProfile?: string;
-  }): Promise<{ token: string; spawnedSessionId?: string; mode: ActivateMoveResult["mode"]; moveRunId: number }> {
+    modeOverride?: "inline" | "branch" | "background";
+    forceNewSession?: boolean;
+  }): Promise<ActivateMoveResult> {
     const inputs = opts?.inputs ?? {};
     if (opts?.sessionId) {
-      const result = await this.activateMove(opts.sessionId, { moveName, inputs, cwd, userProfile: opts.userProfile });
-      return { token: result.token, spawnedSessionId: result.spawnedSessionId, mode: result.mode, moveRunId: result.moveRunId };
+      return this.activateMove(opts.sessionId, {
+        moveName, inputs, cwd, userProfile: opts.userProfile,
+        modeOverride: opts.modeOverride, forceNewSession: opts.forceNewSession,
+      });
     }
-    const result = await this.activateProjectMove({ moveName, inputs, cwd, userProfile: opts?.userProfile });
-    return { token: result.token, spawnedSessionId: result.spawnedSessionId, mode: result.mode, moveRunId: result.moveRunId };
+    return this.activateProjectMove({
+      moveName, inputs, cwd, userProfile: opts?.userProfile,
+      modeOverride: opts?.modeOverride, forceNewSession: opts?.forceNewSession,
+    });
   }
 
   /** Lists ambient (always-active, context-injecting) moves on a session. Returns empty array on error. */
@@ -755,12 +765,22 @@ export class ModusClient {
   // ── Files ──
   /** Reads file content. Returns null on error. */
   async readFile(path: string): Promise<string | null> { const r = await this.fetch(`/api/file-read?path=${encodeURIComponent(path)}`); if (!r.ok) return null; const d = await r.json(); return d.content ?? null; }
-  /** Writes content to a file. Returns success boolean. */
-  async writeFile(path: string, content: string): Promise<boolean> { return (await this.fetch("/api/file-write", { method: "PUT", body: JSON.stringify({ path, content }) })).ok; }
-  /** Creates a new file with optional content. Returns success boolean. */
-  async createFile(path: string, content?: string): Promise<boolean> { return (await this.fetch("/api/file-create", { method: "POST", body: JSON.stringify({ path, content }) })).ok; }
-  /** Creates a directory. Returns success boolean. */
-  async createDirectory(path: string): Promise<boolean> { return (await this.fetch("/api/dir-create", { method: "POST", body: JSON.stringify({ path }) })).ok; }
+  /** Writes content to a file, overwriting it. Inspect `.ok` — the result object
+   *  is truthy either way, and `.code` says whether the path was denied,
+   *  read-only, or something else. */
+  async writeFile(path: string, content: string): Promise<FileMutationResult> {
+    return toFileMutationResult(await this.fetch("/api/file-write", { method: "PUT", body: JSON.stringify({ path, content }) }));
+  }
+  /** Creates a new file with optional content. Fails with `code: "collision"`
+   *  rather than overwriting an existing path. Inspect `.ok`. */
+  async createFile(path: string, content?: string): Promise<FileMutationResult> {
+    return toFileMutationResult(await this.fetch("/api/file-create", { method: "POST", body: JSON.stringify({ path, content }) }));
+  }
+  /** Creates a directory. Fails with `code: "collision"` when the path already
+   *  exists. Inspect `.ok`. */
+  async createDirectory(path: string): Promise<FileMutationResult> {
+    return toFileMutationResult(await this.fetch("/api/dir-create", { method: "POST", body: JSON.stringify({ path }) }));
+  }
   /** Lists directory contents with optional hidden files and file inclusion. */
   async browse(path?: string, opts?: { includeHidden?: boolean; includeFiles?: boolean }): Promise<BrowseResult> {
     const p = new URLSearchParams(); if (path) p.set("path", path); if (opts?.includeHidden) p.set("includeHidden", "1"); if (opts?.includeFiles) p.set("includeFiles", "1");
@@ -945,7 +965,13 @@ export class ModusClient {
   async listProjects(): Promise<ProjectInfo[]> { return (await this.fetch("/api/projects")).json(); }
 
   // ── Trace ──
-  /** Queries the file-touch trace log (what files agents touched, when, with what confidence). */
+  /** Queries the file-touch trace log (what files agents touched, when, with what confidence).
+   *
+   *  **`limit` bounds the response, not the work.** The scan is a leading-wildcard
+   *  `LIKE` over the events table with a JSON parse per match, so an unfiltered
+   *  call costs the whole event history. Pass `sessionId`, `from`/`to`,
+   *  `userProfile`, or `cwd` to narrow it. See the Trace queries note in
+   *  `docs/primitives.md`. */
   async fetchTouches(query: TouchQuery = {}): Promise<TouchesResponse> {
     const p = new URLSearchParams();
     if (query.limit != null) p.set("limit", String(query.limit)); if (query.userProfile) p.set("userProfile", query.userProfile);
@@ -954,7 +980,13 @@ export class ModusClient {
     if (query.confidence?.length) p.set("confidence", query.confidence.join(",")); if (query.sessionId) p.set("sessionId", query.sessionId);
     const r = await this.fetch(`/api/trace/touches?${p}`); if (!r.ok) throw new Error(`trace fetch failed: ${r.status}`); return r.json();
   }
-  /** Sessions that wrote or edited one file, most recently touched first. Write/edit only — not reads. */
+  /** Sessions that wrote or edited one file, most recently touched first. Write/edit only — not reads.
+   *
+   *  Matches on basename with a leading-wildcard `LIKE`, which no index covers,
+   *  so each call scans `file_observations` in full and costs more for a common
+   *  filename than a rare one. `limit` is applied after dedup in JS and is
+   *  capped at 25 server-side. Debounce it rather than calling it per keystroke
+   *  or per tab render. */
   async fetchFileSessions(path: string, limit = 3): Promise<FileSessionRef[]> {
     const p = new URLSearchParams({ path, limit: String(limit) });
     const r = await this.fetch(`/api/trace/file-sessions?${p}`);
@@ -1075,6 +1107,14 @@ export class ModusClient {
     }
     return res;
   }
+}
+
+/** Read a filesystem-mutation response. A body that is not JSON at all (a proxy
+ *  error page, a truncated response) still yields a usable failure rather than
+ *  throwing out of the SDK method. */
+async function toFileMutationResult(response: Response): Promise<FileMutationResult> {
+  const body = await response.json().catch(() => null);
+  return readFileMutationResponse(response.status, body);
 }
 
 // ── SSE Parser ──

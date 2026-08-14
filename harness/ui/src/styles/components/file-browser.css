@@ -237,6 +237,18 @@
   text-align: center;
 }
 
+/* Why a create failed, rendered where the input was. Click dismisses it. */
+.file-browser-create-error {
+  padding-top: 2px;
+  padding-bottom: 4px;
+  padding-right: 8px;
+  font-size: calc(10px * var(--font-scale, 1));
+  line-height: 1.4;
+  color: var(--error);
+  cursor: pointer;
+  word-break: break-word;
+}
+
 /* ── Compact mode ── */
 
 .file-browser--compact .fb-list {
