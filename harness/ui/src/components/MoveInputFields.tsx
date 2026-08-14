@@ -5,7 +5,9 @@ import type {
 } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { basename, timeAgo } from "../utils/format";
+import { parentDir } from "../folderPath";
 import { CustomSelect } from "./CustomSelect";
+import { FilePicker } from "./FilePicker";
 
 type Values = Record<string, string>;
 type Variant = "prompt-picker" | "moves-widget";
@@ -301,6 +303,93 @@ export function useMoveInputResolver(args: {
   return { resolveInputOptions, dynamicLoading: data.loading };
 }
 
+/**
+ * A `file` input: a read-only value row plus a picker.
+ *
+ * The path is shown by basename with the full path as the title, because a move
+ * form is narrow and the tail is the part that identifies the file. Clearing is
+ * always available — an optional file input that cannot be un-chosen is a trap.
+ */
+function MoveFileInputField({
+  input,
+  label,
+  value,
+  variant,
+  projectCwd,
+  onChange,
+}: {
+  input: MoveInput;
+  label: string;
+  value: string;
+  variant: Variant;
+  projectCwd?: string;
+  onChange: (value: string) => void;
+}) {
+  const [picking, setPicking] = useState(false);
+  const accept = input.file?.accept;
+  // Default to the project so the common case opens where the files are, and so
+  // the server-side containment rule is not immediately violated by the start
+  // directory the user sees.
+  const startPath = value ? parentDir(value) : projectCwd;
+
+  const row = (
+    <div className="move-file-input-row">
+      <button
+        type="button"
+        className="move-file-input-trigger"
+        onClick={() => setPicking(true)}
+        title={value || undefined}
+      >
+        {value ? basename(value) : (input.placeholder ?? "choose file...")}
+      </button>
+      {value && (
+        <button
+          type="button"
+          className="move-file-input-clear"
+          onClick={() => onChange("")}
+          title="clear"
+          aria-label={`clear ${label}`}
+        >
+          &times;
+        </button>
+      )}
+    </div>
+  );
+
+  const picker = picking && (
+    <div className="move-file-input-picker">
+      <FilePicker
+        initialPath={startPath}
+        accept={accept}
+        title={`select ${label}`}
+        onSelect={(path) => { onChange(path); setPicking(false); }}
+        onCancel={() => setPicking(false)}
+      />
+    </div>
+  );
+
+  if (variant === "prompt-picker") {
+    return (
+      <div className="prompt-picker-file">
+        <span className="prompt-picker-select-label">{label}</span>
+        {row}
+        {picker}
+      </div>
+    );
+  }
+
+  return (
+    <div className="moves-input-field">
+      <label className="moves-input-label">
+        {label}
+        {input.required && <span className="moves-input-required">*</span>}
+      </label>
+      {row}
+      {picker}
+    </div>
+  );
+}
+
 export function MoveInputFields({
   inputs,
   values,
@@ -413,6 +502,20 @@ export function MoveInputFields({
                 <span>{toggleLabel}</span>
               </label>
             </div>
+          );
+        }
+
+        if (input.type === "file") {
+          return (
+            <MoveFileInputField
+              key={input.name}
+              input={input}
+              label={label}
+              value={currentValue}
+              variant={variant}
+              projectCwd={projectCwd}
+              onChange={(value) => onChange(input.name, value)}
+            />
           );
         }
 

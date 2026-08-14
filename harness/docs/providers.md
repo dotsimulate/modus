@@ -34,11 +34,29 @@ Passed to providers by session-manager. Contains:
 - `opts` — original StartSessionOpts
 - `profile` — resolved agent profile (or undefined)
 - `emitEvent()` — persist + broadcast
-- `broadcastEvent()` — broadcast only (no DB)
+- `broadcastEvent()` — broadcast without persisting
 - `rekeySession()` — replace temp session ID with real one
 - `setProviderSessionId()` — persist a provider-native conversation/thread ID without replacing the Modus ID
 - `notifyConfigChange(patch)` — provider-initiated config change; updates `_configOverrides` and emits `config_updated` to subscribers
 - `updateSessionDb()` — update session row
+
+## Event persistence
+
+Which of the two emit methods a provider calls is a request, not the decision.
+Two event types override it, and `harness/event-persistence.ts` is the single
+source for both:
+
+| Event type | Persistence | Why |
+|------------|-------------|-----|
+| `stream_event` | always live-only | Token-level stream; deltas are coalesced before broadcast and the assistant turn is materialized separately, so persisting it would store the turn twice. |
+| `error` | always durable | A terminal error must outlive whichever socket happened to be open, and a pre-flight failure is emitted before any assistant turn exists, so nothing else records it. |
+| everything else | as requested | `emitEvent()` persists, `broadcastEvent()` does not. |
+
+The practical consequence for provider authors: report a launch or pre-flight
+failure with `ctx.broadcastEvent({ type: "error", error })`. Do **not** reach for
+`ctx.emitEvent({ type: "result", subtype: "error" })` — a `result` event with no
+assistant turn in flight is dropped during history reconstruction
+(`session-history.ts`), so the failure is visible live and gone after reload.
 
 ## Registered Providers
 

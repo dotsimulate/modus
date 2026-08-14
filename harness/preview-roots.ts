@@ -1,6 +1,7 @@
 import { resolve } from "path";
 
-function isWithinRoot(filePath: string, root: string): boolean {
+/** True when `filePath` is `root` itself or sits beneath it, case-folded on Windows. */
+export function isWithinRoot(filePath: string, root: string): boolean {
   const target = resolve(filePath);
   const base = resolve(root);
   if (process.platform === "win32") {

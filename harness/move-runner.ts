@@ -18,7 +18,7 @@
  * Execution records are persisted to DB for recall.
  */
 
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync, statSync, realpathSync } from "fs";
 import { isAbsolute, join, relative, resolve } from "path";
 import { APP_PATHS } from "./app-paths";
 import type {
@@ -53,6 +53,16 @@ import { getPluginMovesDir, listEnabledModusPlugins } from "./modus-plugins";
 import { buildHarnessContext, type HarnessSelf } from "./harness-context";
 import { resolveProfileKey } from "./profiles";
 import type { MoveSkillSource } from "./skill-attachment";
+import {
+  describeMoveActivationFailure,
+  sanitizeFailureDetail,
+  type MoveActivationFailure,
+} from "./move-activation-failure";
+import {
+  formatFileInputFailures,
+  validateMoveFileInputs,
+  type FileStat,
+} from "./move-file-input";
 
 // ── Constants ──
 
@@ -1097,6 +1107,47 @@ export function resolveAgentProfileInputs(
   return translated ?? inputs;
 }
 
+/**
+ * Probe the filesystem for a candidate file input, resolving symlinks so a link
+ * inside the project cannot be used to reach a file outside it.
+ */
+function statFileForPolicy(path: string): FileStat {
+  try {
+    const info = statSync(path);
+    let realPath: string | undefined;
+    try { realPath = realpathSync(path); } catch { realPath = undefined; }
+    return { exists: true, isFile: info.isFile(), realPath };
+  } catch {
+    return { exists: false, isFile: false };
+  }
+}
+
+/**
+ * Enforce a move's declared `file` input policy.
+ *
+ * The picker already constrains what a user can choose, but every activation
+ * entry point also accepts `inputs` straight from a caller — the SDK, a page
+ * embed, a client extension — so the value is re-checked here, where it is
+ * about to be handed to move code.
+ */
+function applyFileInputPolicy(
+  config: MoveConfig,
+  inputs: Record<string, unknown>,
+  cwd: string,
+): { values: Record<string, unknown>; error?: string } {
+  const declared = config.inputs?.some((input) => input.type === "file");
+  if (!declared) return { values: inputs };
+
+  const { values, failures } = validateMoveFileInputs(config.inputs, inputs, {
+    projectRoot: cwd,
+    statFile: statFileForPolicy,
+  });
+  if (failures.length > 0) {
+    return { values, error: `Invalid file input — ${formatFileInputFailures(failures)}` };
+  }
+  return { values };
+}
+
 export type MoveBindingResult = {
   /** Text to prepend to the initial prompt (from inline/non-persistent gathers) */
   inlineContext: string | null;
@@ -1104,6 +1155,12 @@ export type MoveBindingResult = {
   apiTokens: string[];
   /** Persistent moves that were activated (for logging) */
   activatedPersistent: string[];
+  /**
+   * Moves the user attached that produced nothing, classified and sanitized.
+   * Callers own the surfacing: activation continues for the remaining moves, but
+   * a failure here is invisible to the user unless someone reports it.
+   */
+  failures: MoveActivationFailure[];
 };
 
 /**
@@ -1134,16 +1191,23 @@ export async function activateMoveBindings(
   },
 ): Promise<MoveBindingResult> {
   const prefix = opts?.logPrefix ?? "move-bindings";
-  const result: MoveBindingResult = { inlineContext: null, apiTokens: [], activatedPersistent: [] };
+  const result: MoveBindingResult = { inlineContext: null, apiTokens: [], activatedPersistent: [], failures: [] };
   const inlineParts: string[] = [];
 
   for (const spec of moves) {
     const moveCfg = getMove(spec.name, cwd);
     if (!moveCfg) {
       console.warn(`[${prefix}] move "${spec.name}" not found, skipping`);
+      result.failures.push(describeMoveActivationFailure(spec.name, "not-found"));
       continue;
     }
-    const specInputs = resolveAgentProfileInputs(moveCfg, spec.inputs ?? {}, opts?.agentProfile);
+    const filePolicy = applyFileInputPolicy(moveCfg, resolveAgentProfileInputs(moveCfg, spec.inputs ?? {}, opts?.agentProfile), cwd);
+    if (filePolicy.error) {
+      console.warn(`[${prefix}] move "${spec.name}" rejected: ${filePolicy.error}`);
+      result.failures.push({ moveName: spec.name, reason: "activation-failed", detail: filePolicy.error });
+      continue;
+    }
+    const specInputs = filePolicy.values;
 
     if (moveCfg.persistent) {
       // Persistent moves need a real session ID
@@ -1162,6 +1226,7 @@ export async function activateMoveBindings(
         console.log(`[${prefix}] persistent move "${spec.name}" activated on ${sessionId}`);
       } catch (err) {
         console.error(`[${prefix}] persistent move activation failed for "${spec.name}":`, err);
+        result.failures.push(describeMoveActivationFailure(spec.name, "activation-failed", err));
       }
     } else {
       // Non-persistent: one-shot gather
@@ -1192,9 +1257,17 @@ export async function activateMoveBindings(
           if (gathered.apiToken) result.apiTokens.push(gathered.apiToken);
         } else {
           console.warn(`[${prefix}] move "${spec.name}" gather returned null — module missing gather() or gather timed out`);
+          // An import failure and an absent gather() both arrive here as null,
+          // and they need different explanations: one is a broken move, the
+          // other is a move that simply injects nothing.
+          const loadError = getMoveLoadError(spec.name, cwd);
+          result.failures.push(loadError
+            ? { moveName: spec.name, reason: "load-failed", detail: loadError }
+            : describeMoveActivationFailure(spec.name, "gather-empty"));
         }
       } catch (err) {
         console.error(`[${prefix}] move gather failed for "${spec.name}":`, err);
+        result.failures.push(describeMoveActivationFailure(spec.name, "gather-failed", err));
       }
     }
   }
@@ -1262,6 +1335,27 @@ async function ensureMoveDeps(dir: string): Promise<void> {
  * still instantiating it produces "Requested module is not instantiated yet". */
 const moveModuleLoads = new Map<string, Promise<MoveModule | null>>();
 
+/**
+ * Why the last import of a move's context.ts failed, keyed by module path.
+ *
+ * `loadMoveModule` returns null for two very different situations — "this move
+ * has no context.ts" and "context.ts exists and threw on import" — and the
+ * caller cannot tell them apart. Callers that need to report a failure read this
+ * instead of re-deriving it. Cleared on a successful load so a fixed move stops
+ * reporting a stale reason.
+ */
+const moveModuleLoadErrors = new Map<string, string>();
+
+/**
+ * The sanitized reason a move's context.ts last failed to import, or null when
+ * the module is absent or loaded cleanly.
+ */
+export function getMoveLoadError(name: string, cwd: string): string | null {
+  const location = resolveMoveLocation(name, cwd);
+  if (!location) return null;
+  return moveModuleLoadErrors.get(join(location.dir, "context.ts")) ?? null;
+}
+
 /** Load move module (context.ts) if it exists */
 async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | null> {
   const location = resolveMoveLocation(name, cwd);
@@ -1296,9 +1390,11 @@ async function loadMoveModule(name: string, cwd: string): Promise<MoveModule | n
           delete require.cache[resolved];
         }
       }
+      moveModuleLoadErrors.delete(modulePath);
       return mod as MoveModule;
     } catch (err) {
       console.error(`[move-runner] Failed to load context.ts for move "${name}":`, err);
+      moveModuleLoadErrors.set(modulePath, sanitizeFailureDetail(err));
       return null;
     }
   })();
@@ -1906,7 +2002,10 @@ export async function activateMove(opts: ActivateMoveOpts): Promise<ActivateMove
     ?? (sourceSessionId
       ? getActiveSession(sourceSessionId)?.profile ?? dbGetSession(sourceSessionId)?.profile ?? undefined
       : undefined);
-  const inputs = resolveAgentProfileInputs(config, opts.inputs ?? {}, currentProfile);
+  const resolvedInputs = resolveAgentProfileInputs(config, opts.inputs ?? {}, currentProfile);
+  const filePolicy = applyFileInputPolicy(config, resolvedInputs, cwd);
+  if (filePolicy.error) return { error: filePolicy.error };
+  const inputs = filePolicy.values;
 
   // ── Persistent (ambient) activation ──
   if (config.persistent) {

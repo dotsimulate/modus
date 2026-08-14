@@ -1280,13 +1280,35 @@ export type MoveInputVisibilityRule = {
   notEmpty?: boolean;
 };
 
+/**
+ * Path policy for a `file` input.
+ *
+ * Enforced server-side at activation, not just in the picker: every activation
+ * entry point accepts `inputs` from a caller, so a client that posts a path
+ * directly is re-checked against this.
+ */
+export type MoveInputFilePolicy = {
+  /**
+   * Accepted file extensions, e.g. `[".png", ".jpg"]`. Matched
+   * case-insensitively; a leading dot is optional. Omit to accept any file.
+   */
+  accept?: string[];
+  /**
+   * Allow selecting a file outside the project directory. Default `false` — the
+   * file must resolve inside the activating project root.
+   */
+  allowOutsideProject?: boolean;
+};
+
 export type MoveInput = {
   name: string;
   label?: string;
-  type: "text" | "textarea" | "select" | "toggle" | "number";
+  type: "text" | "textarea" | "select" | "toggle" | "number" | "file";
   /** For "select" type: array of options, or a template string like "{{agentProfiles}}". */
   options?: Array<string | MoveInputOption> | string;
   optionsSource?: MoveInputOptionsSource;
+  /** For "file" type: extension allowlist and project containment policy. */
+  file?: MoveInputFilePolicy;
   visibleWhen?: MoveInputVisibilityRule;
   required?: boolean;
   default?: unknown;

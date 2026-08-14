@@ -200,12 +200,35 @@ export interface MoveInputVisibilityRule {
   notEmpty?: boolean;
 }
 
+/**
+ * Path policy for a `file` input.
+ *
+ * The value a file input produces is an absolute host path that move code will
+ * open, so the policy is enforced server-side at activation
+ * (`harness/move-file-input.ts`) and not merely in the picker: a page embed or
+ * SDK caller can post any string it likes.
+ */
+export interface MoveInputFilePolicy {
+  /**
+   * Accepted file extensions, e.g. `[".png", ".jpg"]`. Matched case-insensitively;
+   * a leading dot is optional. Omit to accept any file.
+   */
+  accept?: string[];
+  /**
+   * Allow selecting a file outside the project directory. Default `false` —
+   * the file must resolve inside the activating project root.
+   */
+  allowOutsideProject?: boolean;
+}
+
 export interface MoveInput {
   name: string;
   label?: string;
-  type: "text" | "textarea" | "select" | "toggle" | "number";
+  type: "text" | "textarea" | "select" | "toggle" | "number" | "file";
   options?: Array<string | MoveInputOption> | string;   // literal array or template var ref "{{agentProfiles}}"
   optionsSource?: MoveInputOptionsSource;
+  /** Only for `type: "file"`. */
+  file?: MoveInputFilePolicy;
   visibleWhen?: MoveInputVisibilityRule;
   required?: boolean;
   default?: unknown;
