@@ -35,6 +35,19 @@ Staging runs automatically as Tauri's `beforeBuildCommand`, so `stage:backend`
 is not a required separate step before a build — it exists so staging can be
 exercised on its own.
 
+For core UI work, use the source-development loop instead of rebuilding an
+installer after every edit:
+
+- `bun run dev` from `harness/` starts the browser-oriented development harness;
+  `bun run watch:dev` adds source watching.
+- `bun run dev` from `harness/ui/` starts Vite's UI development server;
+  `bun run preview` serves the most recent production UI build.
+
+These commands exercise the checkout, not the installed desktop application.
+An installed build remains the frozen staged snapshot described below; source
+edits do not hot-reload into it, and no production debug path loads UI code from
+the checkout.
+
 **Check the artifact, not the exit code.** A pipeline that ends in `| tail`
 reports the pipeline's status, not the build's, and a failed Tauri build has
 been read as a success that way. Redirect to a log, check the exit code
