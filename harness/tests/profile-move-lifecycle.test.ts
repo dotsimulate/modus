@@ -1,8 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import { addEvent, getEvents, getSessionMessage, upsertSession } from "../db";
+import { moveRegistryPath } from "../move-runtime-root";
 import {
   activateMoveBindings,
   gatherMoveOnce,
@@ -45,14 +46,7 @@ writeFileSync(join(fixtureMoveDir, "context.ts"), [
   "};",
 ].join("\n"));
 
-const registryPath = join(
-  projectRoot,
-  ".modus",
-  "moves",
-  fixtureMoveName,
-  "state",
-  "_registry.json",
-);
+const registryPath = moveRegistryPath(projectRoot, fixtureMoveName);
 
 function readRegistry(): Record<string, Record<string, unknown>> {
   try {
@@ -64,7 +58,7 @@ function readRegistry(): Record<string, Record<string, unknown>> {
 
 /** Merge a row in without clobbering rows written by earlier tests. */
 function seedRegistryRow(token: string, row: Record<string, unknown>): void {
-  mkdirSync(join(projectRoot, ".modus", "moves", fixtureMoveName, "state"), { recursive: true });
+  mkdirSync(dirname(registryPath), { recursive: true });
   writeFileSync(registryPath, JSON.stringify({ ...readRegistry(), [token]: row }, null, 2));
 }
 
@@ -173,6 +167,50 @@ describe("profile move lifecycle", () => {
       sessionId,
       toolView: { component: "tool-view.tsx" },
     });
+  });
+
+  // Tokens issued before the runtime root existed are baked into transcripts.
+  // Reads fall back to the legacy in-move registry so they keep answering.
+  test("recovers a token whose registration exists only in the legacy move directory", async () => {
+    const moveName = "legacy-registry-fixture";
+    const moveDir = join(projectRoot, ".modus", "moves", moveName);
+    mkdirSync(moveDir, { recursive: true });
+    writeFileSync(join(moveDir, "move.json"), JSON.stringify({
+      name: moveName,
+      label: "Legacy registry fixture",
+      api: { tokenPrefix: "legacy-fixture", ops: { ping: { description: "Return pong." } } },
+    }));
+    writeFileSync(join(moveDir, "context.ts"), [
+      "export async function gather() { return 'legacy registry fixture'; }",
+      "export const handlers = { ping: async () => ({ ok: true, message: 'pong' }) };",
+      "",
+    ].join("\n"));
+
+    const sessionId = `legacy-registry-${crypto.randomUUID()}`;
+    upsertSession({
+      id: sessionId,
+      preview: "legacy registry recovery",
+      messageCount: 0,
+      costUsd: 0,
+      cwd: projectRoot,
+    });
+
+    const token = "mapi-legacy-fixture-legacyonly";
+    const legacyPath = join(moveDir, "state", "_registry.json");
+    mkdirSync(dirname(legacyPath), { recursive: true });
+    writeFileSync(legacyPath, JSON.stringify({
+      [token]: {
+        instanceId: "legacyonly",
+        sessionId,
+        cwd: projectRoot,
+        createdAt: Date.now(),
+        persistState: false,
+      },
+    }, null, 2));
+
+    const result = await handleMoveApiSubmit(token, { op: "ping" });
+    expect(result.ok).toBe(true);
+    expect(result.message).toBe("pong");
   });
 
   test("handler artifacts attach to the live turn and durable history", async () => {

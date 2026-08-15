@@ -339,7 +339,7 @@ export async function gather(ctx: MoveContext): Promise<string> {
 async function getState(ctx: MoveContext): Promise<TrackerState> {
   try {
     const raw = await ctx.run(
-      `cat .modus/moves/tracker/state/${ctx.instanceId}.json 2>/dev/null`
+      `cat .modus/runtime/moves/tracker/state/${ctx.instanceId}.json 2>/dev/null`
     );
     return JSON.parse(raw);
   } catch { return empty; }

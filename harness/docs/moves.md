@@ -288,8 +288,8 @@ resolving after the next harness restart. Within a running harness an
 already-registered token keeps working until then; disabling is a
 next-restart-complete operation, not a kill switch for live registrations.
 
-Parking is safe on disk in a way deleting is not: the move's
-`state/_registry.json` and any `api.state` are left untouched, so re-enabling
+Parking is safe on disk in a way deleting is not: the move's registrations and
+any `api.state` are left untouched under the project runtime root, so re-enabling
 restores the move with its persisted state rather than a blank one. Renaming the
 directory instead of setting the flag would break exactly that, since
 registrations are keyed by move name.
@@ -334,7 +334,7 @@ URL is fixed at spawn. See [Skills](./skills.md).
 
 - `tokenPrefix` — token becomes `mapi-{prefix}-{instanceId}` (default: move name)
 - `ops` — declares what ops exist; unknown ops are rejected
-- `state.persist` — write handler *state* to `.modus/moves/<name>/state/` for restart survival
+- `state.persist` — write handler *state* to the project runtime root for restart survival
 
 Declaring `ops` is enough to persist the *registration* — you do not need
 `state.persist` for that. The two are independent on purpose: a stateless move's
@@ -353,11 +353,30 @@ so `{ ok: true, ms: 2832, usage: {...} }` reaches the agent instead of collapsin
 a bare "OK".
 
 `ctx.state.get/set/delete` is the state API. Typed interface; shape is your contract.
-If `api.state.persist` is true, state files live in `.modus/moves/<name>/state/<instanceId>.json`.
-`_registry.json` in that same directory stores token-to-instance bindings for restart
-rehydration, and is written for every API move regardless of `state.persist`. It is
-pruned on write: registrations older than 30 days, or beyond the newest 200 per move,
-are dropped.
+
+### The project runtime root
+
+Everything a move writes at *runtime* lives under `<cwd>/.modus/runtime/`, never
+inside the authored move directory:
+
+- `.modus/runtime/moves/<name>/registry.json` — token-to-instance bindings for
+  restart rehydration, written for every API move regardless of `state.persist`.
+  Pruned on write: registrations older than 30 days, or beyond the newest 200 per
+  move, are dropped.
+- `.modus/runtime/moves/<name>/state/<instanceId>.json` — handler state, when
+  `api.state.persist` is true.
+- `.modus/runtime/moves/index.json` — which moves hold registrations, so boot
+  does not have to stat every move directory.
+
+A move directory is something you publish; a token, a session ID and an absolute
+machine path are not. Keeping runtime state out of it means containment is the
+one `.modus/*` ignore rule every project already has, rather than a per-move
+`.gitignore` line somebody has to remember to add.
+
+Registrations and state written before this layout existed are still **read** from
+the old `.modus/moves/<name>/state/` location, so tokens already baked into a
+transcript keep working. Nothing is written back there, and nothing is migrated
+automatically — a read must not rewrite a directory that may be read-only.
 
 Rehydration runs at boot over every project root in session history, and again for a
 single token when an unknown one is submitted — so a registration written by a process
@@ -388,6 +407,18 @@ This is session/widget signaling, not channel egress. Use
 `triggerAction`, `activateMove`, `watchSessionTurns`, `wake(target, content, when?)`, and
 `channels.send(channel, { text, data? })` for channel egress (Discord/Slack/file). See
 [Harness Context](./harness-context.md) and [Notify & Channels](./notify.md).
+
+`ctx.shell.run(cmd)` is the handler's shell, the same capability `gather()` gets as
+`ctx.run` — gated by `capabilities.shell` and written to the activity log. It is
+spelled `shell.run` rather than `run` because that is the Harness Context's name
+for it, and a handler already reaches every other engine operation by that name.
+
+Handlers had no shell at all for a long time, and the result was worse than the
+restriction intended: an author who needed to run a command imported
+`child_process` directly, which skips the capability declaration and the audit
+entry. If a move should not shell out, declare `capabilities.shell: false` and
+`trust: "reviewed"` — that combination throws. Note the tiers differ:
+`experimental`, the default for a project move, only logs the denial.
 
 `listInstances(states)` export in context.ts customizes instance labels for the resume UI.
 
@@ -629,9 +660,10 @@ Two behaviors are deliberate and worth knowing before you fight them:
 
 - **Anything that would reach a live harness throws**, naming the member —
   `createSession`, `triggerAction`, `activateMove`, `wake`, `channels.send`,
-  `model.*`, `harness.*`, and `ctx.run`. A move that spawns a session or shells
-  out during a test has found a path it did not mean to exercise. Supply the
-  behavior through `overrides` (or `run`) to decide what the call returns.
+  `model.*`, `harness.*`, `ctx.run` and `ctx.shell.run`. A move that spawns a
+  session or shells out during a test has found a path it did not mean to
+  exercise. Supply the behavior through `overrides` (or `run`) to decide what the
+  call returns.
 - **Read-only database queries return empty results instead of throwing**,
   because "no sessions yet" is a real state every move must already handle.
 

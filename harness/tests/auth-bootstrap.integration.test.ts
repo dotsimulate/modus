@@ -1,6 +1,6 @@
 import { resolve as resolveTestSourceDir } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -116,8 +116,14 @@ describe("isolated browser authentication bootstrap", () => {
       body: "{}",
     });
     expect(queryCredentialOnMutation.status).toBe(401);
-    const scopedResourceQuery = await fetch(`${baseUrl}/api/file/raw?token=${encodeURIComponent(token)}`);
-    expect(scopedResourceQuery.status).toBe(400);
+    // Raw file reads are no longer in that class at all: the route can read any
+    // path on the machine, so a URL for it carries a path-bound ticket instead
+    // of a credential that would authorize the whole API.
+    const rawFileQueryCredential = await fetch(`${baseUrl}/api/file/raw?token=${encodeURIComponent(token)}`);
+    expect(rawFileQueryCredential.status).toBe(401);
+
+    const scopedResourceQuery = await fetch(`${baseUrl}/api/preview/file/nonexistent?token=${encodeURIComponent(token)}`);
+    expect(scopedResourceQuery.status).not.toBe(401);
 
     // The supervisor bearer must never authenticate from a query string, even on
     // the resource routes that do accept a bounded browser-session token. A URL
@@ -139,6 +145,58 @@ describe("isolated browser authentication bootstrap", () => {
     }
   });
 
+  // The affordance the query credential used to provide: a URL an <img>, a new
+  // tab, or a share sheet can use. It must work, and it must carry no authority
+  // beyond the one file it names.
+  test("a raw-file ticket authorizes exactly one file and nothing else", async () => {
+    const readable = join(isolatedRoot, "ticketed.txt");
+    const secret = join(isolatedRoot, "not-ticketed.txt");
+    writeFileSync(readable, "ticketed contents");
+    writeFileSync(secret, "should stay unreadable");
+
+    // Minting requires the real credential on a header.
+    const anonymousMint = await fetch(`${baseUrl}/api/file/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: readable }),
+    });
+    expect(anonymousMint.status).toBe(401);
+
+    const mint = await fetch(`${baseUrl}/api/file/ticket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${agentToken}` },
+      body: JSON.stringify({ path: readable }),
+    });
+    expect(mint.status).toBe(200);
+    const { ticket } = await mint.json() as { ticket: string };
+    expect(ticket).toBeTruthy();
+
+    const served = await fetch(
+      `${baseUrl}/api/file/raw?path=${encodeURIComponent(readable)}&ticket=${encodeURIComponent(ticket)}`,
+    );
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe("ticketed contents");
+
+    // Same ticket, different file: the whole point.
+    const elsewhere = await fetch(
+      `${baseUrl}/api/file/raw?path=${encodeURIComponent(secret)}&ticket=${encodeURIComponent(ticket)}`,
+    );
+    expect(elsewhere.status).toBe(401);
+
+    // And a ticket is not a general credential.
+    const generalApi = await fetch(`${baseUrl}/api/sessions?ticket=${encodeURIComponent(ticket)}`);
+    expect(generalApi.status).toBe(401);
+    const asBearer = await fetch(`${baseUrl}/api/sessions`, {
+      headers: { Authorization: `Bearer ${ticket}` },
+    });
+    expect(asBearer.status).toBe(401);
+
+    const forged = await fetch(
+      `${baseUrl}/api/file/raw?path=${encodeURIComponent(readable)}&ticket=ft-forged`,
+    );
+    expect(forged.status).toBe(401);
+  });
+
   test("a header-authenticated operator can exchange its bearer for a bounded session token", async () => {
     const exchange = await fetch(`${baseUrl}/api/auth/exchange`, {
       method: "POST",
@@ -150,8 +208,8 @@ describe("isolated browser authentication bootstrap", () => {
     expect(minted).not.toBe(agentToken);
 
     // The minted token is what may ride in a resource URL.
-    const usable = await fetch(`${baseUrl}/api/file/raw?token=${encodeURIComponent(minted)}`);
-    expect(usable.status).toBe(400);
+    const usable = await fetch(`${baseUrl}/api/preview/file/nonexistent?token=${encodeURIComponent(minted)}`);
+    expect(usable.status).not.toBe(401);
 
     // Exchange itself refuses an unauthenticated caller and a query credential.
     const unauthenticated = await fetch(`${baseUrl}/api/auth/exchange`, { method: "POST" });

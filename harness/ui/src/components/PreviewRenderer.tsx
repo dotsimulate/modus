@@ -120,8 +120,9 @@ export function PreviewRenderer({
             blocks them, because an HTML page that draws itself with JavaScript
             is the common case. But a frame that runs scripts can always read its
             own document URL, and manifest.urls.raw carries the operator bearer
-            token in its query string (previewUrl -> tokenParam; /api/file/raw is
-            in allowsQueryCredential). Pointing src at it would therefore hand
+            token in its query string (previewUrl -> tokenParam;
+            /api/preview/file/:id is in allowsQueryCredential). Pointing src at
+            it would therefore hand
             that token to the previewed file, which could beacon it anywhere —
             an opaque origin stops the frame reading the app's storage, not its
             own location. With srcDoc there is no URL and no credential to take.
