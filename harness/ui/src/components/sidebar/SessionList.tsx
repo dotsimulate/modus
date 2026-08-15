@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { SessionInfo } from "../../../../sdk/index";
 import { modus } from "../../modusClient";
+import { sessionActivityAt as activityAt } from "../../sessionActivity";
 import { SessionItem } from "./SessionItem";
 
 type GroupMode = "time" | "agent";
@@ -34,8 +35,8 @@ function groupSessionsByAgent(list: SessionInfo[]) {
   return Array.from(map.entries())
     .map(([label, items]) => ({ label, items }))
     .sort((a, b) => {
-      const aMax = Math.max(...a.items.map((s) => s.updated_at));
-      const bMax = Math.max(...b.items.map((s) => s.updated_at));
+      const aMax = Math.max(...a.items.map(activityAt));
+      const bMax = Math.max(...b.items.map(activityAt));
       return bMax - aMax;
     });
 }
@@ -48,7 +49,7 @@ function groupSessionsByTime(list: SessionInfo[]) {
   const older: SessionInfo[] = [];
 
   for (const s of list) {
-    const age = now - s.updated_at;
+    const age = now - activityAt(s);
     if (age < 86_400_000) today.push(s);
     else if (age < 172_800_000) yesterday.push(s);
     else if (age < 604_800_000) thisWeek.push(s);

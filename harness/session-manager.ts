@@ -2547,7 +2547,10 @@ function reclaimSession(sessionId: string, reason: string, now: number): void {
       content: event.message,
       createdAt: Date.now(),
     });
-    syncSessionMessageCount(sessionId);
+    // The notice is written by the harness, not by the conversation, so it must
+    // not re-order the session list. A user who left a chat idle for two days
+    // finds it back at the top otherwise, looking like something replied.
+    syncSessionMessageCount(sessionId, { touchActivity: false });
     broadcastEventToSession(session, event, session.seq);
   }
 
