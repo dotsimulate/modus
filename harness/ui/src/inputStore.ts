@@ -35,6 +35,19 @@ export function setInputValue(v: string) {
   notify();
 }
 
+/**
+ * Whether a draft just fetched from the server may be written into the composer.
+ *
+ * Only into an empty one. The fetch races the user: selecting a session paints
+ * the composer immediately, and on a cold, long, or remote session the draft and
+ * history requests can take seconds to land. Anything already in the composer by
+ * then is either what the user has just typed or an in-memory draft that survived
+ * the switch, and both are newer than the server's copy.
+ */
+export function shouldApplyFetchedDraft(currentValue: string): boolean {
+  return currentValue.length === 0;
+}
+
 export function setActiveInputSession(id: string | null) {
   if (id === activeSessionId) return;
   activeSessionId = id;

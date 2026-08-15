@@ -116,18 +116,33 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setActiveUserProfile(name);
   }, []);
 
-  const hydrateProfilesWithUi = useCallback(async (items: Profile[], cwd?: string): Promise<Profile[]> => {
-    const uiByName = Object.fromEntries(await Promise.all(items.map(async (profile) => {
-      try {
-        return [profile.name, await modus.getProfileUiConfig(profile.name, cwd)] as const;
-      } catch {
-        return [profile.name, profile.ui ?? {}] as const;
-      }
-    }))) as Record<string, ProfileUi>;
-    return items.map((profile) => {
-      const ui = uiByName[profile.name];
-      return ui && Object.keys(ui).length > 0 ? { ...profile, ui } : profile;
-    });
+  /**
+   * Fetch agent profiles with their UI config resolved server-side.
+   *
+   * This used to list profiles and then request `getProfileUiConfig` once per
+   * profile — 1+N round trips, re-run on every project-root change, which is what
+   * made themes and profile-driven UI settle seconds after everything else. The
+   * server resolves all of it from local config in one pass.
+   */
+  const listProfilesWithUi = useCallback(async (cwd?: string): Promise<Profile[]> => {
+    try {
+      return await modus.listProfiles(cwd, { includeUi: true });
+    } catch {
+      // Older backend, or the batch call failed: fall back to the per-profile
+      // path so a remote client pointed at a stale harness still works.
+      const items = await modus.listProfiles(cwd);
+      const uiByName = Object.fromEntries(await Promise.all(items.map(async (profile) => {
+        try {
+          return [profile.name, await modus.getProfileUiConfig(profile.name, cwd)] as const;
+        } catch {
+          return [profile.name, profile.ui ?? {}] as const;
+        }
+      }))) as Record<string, ProfileUi>;
+      return items.map((profile) => {
+        const ui = uiByName[profile.name];
+        return ui && Object.keys(ui).length > 0 ? { ...profile, ui } : profile;
+      });
+    }
   }, []);
 
   const hydrateUserProfilesWithUi = useCallback(async (items: UserProfile[]): Promise<UserProfile[]> => {
@@ -154,18 +169,26 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  /** Same batching as {@link listProfilesWithUi}; client extensions ride in this payload. */
+  const listUserProfilesWithUi = useCallback(async (): Promise<UserProfile[]> => {
+    try {
+      return await modus.listUserProfiles({ includeUi: true });
+    } catch {
+      return hydrateUserProfilesWithUi(await modus.listUserProfiles());
+    }
+  }, [hydrateUserProfilesWithUi]);
+
   // Refresh agent profiles from server — always scoped to project root
   const refreshProfiles = useCallback(async () => {
     const cwd = projectRoot || setupState.cwd.trim() || undefined;
-    const p = await hydrateProfilesWithUi(await modus.listProfiles(cwd), cwd);
-    setProfiles(p);
-  }, [hydrateProfilesWithUi, projectRoot, setupState.cwd]);
+    setProfiles(await listProfilesWithUi(cwd));
+  }, [listProfilesWithUi, projectRoot, setupState.cwd]);
 
   // Refresh user profiles from server
   const refreshUserProfiles = useCallback(async () => {
-    const ups = await hydrateUserProfilesWithUi(await modus.listUserProfiles());
+    const ups = await listUserProfilesWithUi();
     setUserProfiles(ups);
-  }, [hydrateUserProfilesWithUi]);
+  }, [listUserProfilesWithUi]);
 
   // Debounced UI state save
   const saveUiState = useCallback((patch: Partial<UserProfileState>) => {
@@ -212,7 +235,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const loadInitial = async () => {
       try {
         const [up, prov, caps] = await Promise.all([
-          modus.listUserProfiles().then(hydrateUserProfilesWithUi),
+          listUserProfilesWithUi(),
           modus.listProviders(),
           modus.getProviderCapabilities(),
         ]);
@@ -239,12 +262,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Fetch profiles with resolved CWD for project-local merging
-        const p = await hydrateProfilesWithUi(await modus.listProfiles(initialCwd || undefined), initialCwd || undefined);
-        setProfiles(p);
+        setProfiles(await listProfilesWithUi(initialCwd || undefined));
       } catch { /* silent — health check will catch */ }
     };
     loadInitial();
-  }, [activeUserProfile, hydrateProfilesWithUi, hydrateUserProfilesWithUi]);
+  }, [activeUserProfile, listProfilesWithUi, listUserProfilesWithUi]);
 
   useEffect(() => {
     applyInterfaceSettings(resolveInterfaceSettings(activeUP?.interface));
@@ -258,11 +280,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const cwd = projectRoot || setupState.cwd.trim();
     if (cwd === prevProjectRootRef.current) return;
     prevProjectRootRef.current = cwd;
-    modus.listProfiles(cwd || undefined)
-      .then((items) => hydrateProfilesWithUi(items, cwd || undefined))
+    listProfilesWithUi(cwd || undefined)
       .then(setProfiles)
       .catch(() => {});
-  }, [hydrateProfilesWithUi, projectRoot, setupState.cwd]);
+  }, [listProfilesWithUi, projectRoot, setupState.cwd]);
 
   // Apply project theme — always from project root, not a profile subfolder
   useEffect(() => {
@@ -274,7 +295,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setSelectedProfile("");
     Promise.all([
-      modus.listUserProfiles().then(hydrateUserProfilesWithUi),
+      listUserProfilesWithUi(),
       activeUserProfile
         ? modus.getUserProfileState(activeUserProfile)
         : Promise.resolve({} as UserProfileState),
@@ -287,7 +308,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         setSetupState((prev) => ({ ...prev, cwd }));
       }
     }).catch(() => {});
-  }, [activeUserProfile, hydrateUserProfilesWithUi]);
+  }, [activeUserProfile, listUserProfilesWithUi]);
 
   useEffect(() => {
     if (!visibleProfiles.length) {

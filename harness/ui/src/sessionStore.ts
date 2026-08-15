@@ -762,6 +762,36 @@ async function fetchHistorySnapshotWithTimeout(sessionId: string): Promise<Sessi
 }
 
 /**
+ * Refresh a settled session's transcript behind an already-live subscription.
+ *
+ * The snapshot cannot simply be skipped for a warm cached session: while we were
+ * detached its turns may have been materialized and its events pruned
+ * (`pruneSessionEvents`), and SSE catch-up from an old cursor cannot replay
+ * events that no longer exist. So the fetch still happens — it just no longer
+ * sits between the user's click and the live stream.
+ *
+ * Applies only when the snapshot is strictly ahead of what is already on screen.
+ * The blocking path accepts an equal message count because it may be starting
+ * from nothing; here an equal count means nothing changed, and re-hydrating would
+ * discard older pages the user had already loaded.
+ */
+async function revalidateSettledHistory(sessionId: string, profile?: string): Promise<void> {
+  try {
+    const snap = await fetchHistorySnapshotWithTimeout(sessionId);
+    const latest = getSessionState(sessionId);
+    if (!latest) return;
+    const isMeaningful = snap.messages.length > 0 || snap.lastSeq > 0;
+    const isAhead = snap.lastSeq > latest.lastSeq || snap.messages.length > latest.messages.length;
+    if (isMeaningful && isAhead) hydrateSessionHistorySnapshot(snap, profile);
+    else setHistoryLoadState(sessionId, "ready");
+  } catch {
+    // The cached transcript stays on screen and the live subscription is already
+    // running, so a failed revalidation is not worth an error state here.
+    setHistoryLoadState(sessionId, "ready");
+  }
+}
+
+/**
  * Ensure a session has an active SSE subscription, fetching a history
  * snapshot first when necessary so the reducer never replays events that
  * the snapshot has already materialized.
@@ -865,6 +895,20 @@ function ensureSubscribedInternal(
       // Cold active sessions also fetch the snapshot first. That restores
       // completed history after a hard refresh while live SSE rebuilds the
       // current in-flight turn on top of the snapshot cursor.
+      // A settled session we still hold a warm transcript for is the case the
+      // transcript cache exists to serve: subscribe from the cached cursor now
+      // and revalidate behind it, rather than making every switch wait on a
+      // round trip before SSE can resume. The snapshot still lands — it just no
+      // longer sits between the click and the live stream. Cold entries, active
+      // sessions, and forced refreshes keep the blocking path, because they have
+      // nothing on screen to keep or a mid-flight turn to reconstruct.
+      if (!needsForcedHistory && !isActive && hasWarmState) {
+        void revalidateSettledHistory(sessionId, opts.profile);
+        if (subscriptions.has(sessionId)) return;
+        subscribeSession(sessionId, afterSeq, opts.profile, opts.onDone);
+        return;
+      }
+
       if (needsForcedHistory || !isActive || !hasWarmState) {
         setHistoryLoadState(sessionId, "loading");
         try {
