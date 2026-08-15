@@ -79,6 +79,8 @@ export interface TestContextOptions {
 export interface TestMoveApiContextOptions extends TestContextOptions {
   /** Who is calling the op. Handlers branch on this to decide what to inject. */
   caller?: "agent" | "user";
+  /** Results for `ctx.shell.run`. Unstubbed commands throw, as in `createTestMoveContext`. */
+  run?: (cmd: string) => Promise<string>;
   /**
    * Replace any member of the produced context — use this for the orchestration
    * members that throw by default, or to assert on a specific call.
@@ -107,6 +109,8 @@ export interface TestMoveApiContextHandle {
   sentMessages: RecordedMessage[];
   /** Artifacts registered through `ctx.insertArtifact`, oldest first. */
   artifacts: Array<Parameters<MoveApiContext["insertArtifact"]>[0]>;
+  /** Commands passed to `ctx.shell.run`, oldest first. */
+  commands: string[];
   /** Current in-memory instance state. */
   currentState(): unknown;
   /** Current in-memory process-scoped store value. */
@@ -138,6 +142,7 @@ export function createTestMoveApiContext(options: TestMoveApiContextOptions = {}
   const notified: RecordedNotify[] = [];
   const sentMessages: RecordedMessage[] = [];
   const artifacts: Array<Parameters<MoveApiContext["insertArtifact"]>[0]> = [];
+  const commands: string[] = [];
   const state = memoryState(options.state);
   const store = memoryStore(options.store);
   const moveName = options.moveName ?? "test-move";
@@ -159,6 +164,7 @@ export function createTestMoveApiContext(options: TestMoveApiContextOptions = {}
     // Orchestration. These reach a live harness in production, so a test that
     // hits one has either found a code path it did not mean to exercise or needs
     // to say what the call should return.
+    shell: { run: testShellRun(moveName, options.run, "shell.run", "createTestMoveApiContext") },
     createSession: unavailableAsync(moveName, "createSession"),
     triggerAction: unavailableAsync(moveName, "triggerAction"),
     activateMove: unavailableAsync(moveName, "activateMove"),
@@ -174,12 +180,22 @@ export function createTestMoveApiContext(options: TestMoveApiContextOptions = {}
     ...options.overrides,
   };
 
+  // Record every command, including ones an override's shell handles.
+  const declaredShell = ctx.shell;
+  ctx.shell = {
+    run: async (cmd) => {
+      commands.push(cmd);
+      return declaredShell.run(cmd);
+    },
+  };
+
   return {
     ctx,
     emitted,
     notified,
     sentMessages,
     artifacts,
+    commands,
     currentState: state.current,
     currentStore: () => store.get(),
   };
@@ -215,12 +231,7 @@ export function createTestMoveContext(options: TestMoveContextOptions = {}): Tes
     userProfile: options.userProfile,
     inputs: options.inputs ?? {},
     db: testMoveDb(options.db),
-    run: options.run ?? (async (cmd) => {
-      throw new Error(
-        `move "${moveName}" called ctx.run(${JSON.stringify(cmd)}) in a test context. ` +
-          `Shell execution is not stubbed by default — pass \`run\` to createTestMoveContext to decide what it returns.`,
-      );
-    }),
+    run: testShellRun(moveName, options.run, "run", "createTestMoveContext"),
     harness: testHarnessBridge(moveName),
     pluginSettings: testPluginSettings(options.pluginSettings),
     secrets: testSecrets(options.secrets),
@@ -266,6 +277,29 @@ function memoryStore(initial: unknown) {
   return {
     get: <T = unknown>() => value as T | undefined,
     set: (next: unknown) => { value = next; },
+  };
+}
+
+/**
+ * Shell execution for a test context — `ctx.run` on a `MoveContext`,
+ * `ctx.shell.run` on a `MoveApiContext`.
+ *
+ * An unstubbed command throws rather than returning an empty string. Shell is
+ * the member most likely to have real side effects, so inventing output would
+ * let a handler pass a test that never exercised the branch it claims to.
+ */
+function testShellRun(
+  moveName: string,
+  run: ((cmd: string) => Promise<string>) | undefined,
+  member: string,
+  factory: string,
+): (cmd: string) => Promise<string> {
+  if (run) return run;
+  return async (cmd) => {
+    throw new Error(
+      `move "${moveName}" called ctx.${member}(${JSON.stringify(cmd)}) in a test context. ` +
+        `Shell execution is not stubbed by default — pass \`run\` to ${factory} to decide what it returns.`,
+    );
   };
 }
 

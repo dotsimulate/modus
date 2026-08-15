@@ -19,7 +19,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, unlinkSync, statSync, realpathSync } from "fs";
-import { isAbsolute, join, relative, resolve } from "path";
+import { dirname, isAbsolute, join, relative, resolve } from "path";
 import { APP_PATHS } from "./app-paths";
 import type {
   MoveConfig, MoveModule, MoveContext, MoveToken,
@@ -63,6 +63,15 @@ import {
   validateMoveFileInputs,
   type FileStat,
 } from "./move-file-input";
+import {
+  legacyMoveRegistryPath,
+  legacyMoveStatePath,
+  listRuntimeMoveNames,
+  moveRegistryPath,
+  moveStatePath,
+  readablePath,
+  updateMoveRuntimeIndex,
+} from "./move-runtime-root";
 
 // ── Constants ──
 
@@ -345,9 +354,12 @@ type PersistedMoveRegistration = {
   persistState?: boolean;
 };
 
-/** Read the _registry.json for a move's state directory */
+/**
+ * Read a move's persisted API registrations from the project runtime root,
+ * falling back to the legacy in-move location for tokens issued before it.
+ */
 function readMoveRegistry(cwd: string, moveName: string): Record<string, PersistedMoveRegistration> {
-  const path = join(cwd, ".modus/moves", moveName, "state", "_registry.json");
+  const path = readablePath(moveRegistryPath(cwd, moveName), legacyMoveRegistryPath(cwd, moveName));
   try {
     return JSON.parse(readFileSync(path, "utf-8"));
   } catch {
@@ -377,12 +389,17 @@ function pruneMoveRegistry(
   return Object.fromEntries(kept);
 }
 
-/** Write the _registry.json for a move's state directory */
+/**
+ * Write a move's persisted API registrations. Always to the runtime root — the
+ * legacy path is read-only from here on, so a published move directory can never
+ * regain a token file.
+ */
 function writeMoveRegistry(cwd: string, moveName: string, registry: Record<string, unknown>): void {
-  const dir = join(cwd, ".modus/moves", moveName, "state");
-  mkdirSync(dir, { recursive: true });
+  const path = moveRegistryPath(cwd, moveName);
+  mkdirSync(dirname(path), { recursive: true });
   const pruned = pruneMoveRegistry(registry as Record<string, PersistedMoveRegistration>);
-  writeFileSync(join(dir, "_registry.json"), JSON.stringify(pruned, null, 2));
+  writeFileSync(path, JSON.stringify(pruned, null, 2));
+  updateMoveRuntimeIndex(cwd, moveName, Object.keys(pruned).length > 0);
 }
 
 /** Remove a token's persisted registration so it cannot be rehydrated later. */
@@ -458,7 +475,10 @@ export function buildStateApi(instanceId: string, moveName: string, cwd: string,
   return {
     async get<T = unknown>(): Promise<T | undefined> {
       if (persist) {
-        const path = join(cwd, ".modus/moves", moveName, "state", `${instanceId}.json`);
+        const path = readablePath(
+          moveStatePath(cwd, moveName, instanceId),
+          legacyMoveStatePath(cwd, moveName, instanceId),
+        );
         try {
           const raw = readFileSync(path, "utf-8");
           return JSON.parse(raw) as T;
@@ -471,17 +491,24 @@ export function buildStateApi(instanceId: string, moveName: string, cwd: string,
     async set(value: unknown): Promise<void> {
       moveApiState.set(instanceId, value);
       if (persist) {
-        const dir = join(cwd, ".modus/moves", moveName, "state");
-        mkdirSync(dir, { recursive: true });
-        writeFileSync(join(dir, `${instanceId}.json`), JSON.stringify(value, null, 2));
+        const path = moveStatePath(cwd, moveName, instanceId);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, JSON.stringify(value, null, 2));
       }
     },
     async delete(): Promise<void> {
       moveApiState.delete(instanceId);
       if (persist) {
-        try {
-          unlinkSync(join(cwd, ".modus/moves", moveName, "state", `${instanceId}.json`));
-        } catch { /* already gone */ }
+        // Both locations: an instance created before the runtime root existed
+        // still has a legacy file, and deleting state must actually delete it.
+        for (const path of [
+          moveStatePath(cwd, moveName, instanceId),
+          legacyMoveStatePath(cwd, moveName, instanceId),
+        ]) {
+          try {
+            unlinkSync(path);
+          } catch { /* already gone */ }
+        }
         // Remove from registry
         const registry = readMoveRegistry(cwd, moveName);
         for (const [tok, entry] of Object.entries(registry)) {
@@ -718,6 +745,7 @@ export async function handleMoveApiSubmit(
     },
 
     // ── Orchestration parity (Harness Context-backed) ──
+    shell: hctx.shell,
     createSession: (opts) => hctx.sessions.create(opts),
     triggerAction: (actionName) => hctx.actions.trigger(actionName),
     activateMove: (opts) => hctx.moves.activate(opts),
@@ -2489,17 +2517,11 @@ async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<
   let rehydrated = 0;
 
   for (const cwd of scopes) {
-    const movesRoot = join(cwd, MODUS_MOVES_DIR);
-    if (!existsSync(movesRoot)) continue;
-
-    let names: string[];
-    try {
-      names = readdirSync(movesRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name);
-    } catch {
-      continue;
-    }
+    // The runtime index names the moves that actually hold registrations, so a
+    // project with a large `.modus/moves` tree is not stat'd move by move at
+    // boot. Legacy directories are still listed until their files are gone.
+    const names = listRuntimeMoveNames(cwd);
+    if (names.length === 0) continue;
 
     for (const name of names) {
       const registry = readMoveRegistry(cwd, name);
@@ -2515,7 +2537,7 @@ async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<
 
       const mod = await loadMoveModule(name, cwd);
       if (!mod?.handlers) {
-        console.warn(`[move-runner] rehydrate: ${name} has _registry.json but no handlers in context.ts`);
+        console.warn(`[move-runner] rehydrate: ${name} has persisted API registrations but no handlers in context.ts`);
         continue;
       }
 
@@ -2538,7 +2560,10 @@ async function rehydrateMoveApiRegistry(opts?: { onlyToken?: string }): Promise<
         });
 
         if (persistState) {
-          const statePath = join(entryCwd, MODUS_MOVES_DIR, name, "state", `${entry.instanceId}.json`);
+          const statePath = readablePath(
+            moveStatePath(entryCwd, name, entry.instanceId),
+            legacyMoveStatePath(entryCwd, name, entry.instanceId),
+          );
           try {
             const raw = readFileSync(statePath, "utf-8");
             moveApiState.set(entry.instanceId, JSON.parse(raw));

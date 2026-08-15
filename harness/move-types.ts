@@ -646,10 +646,19 @@ export interface MoveApiContext {
   /** Send a message to any existing session in this project. */
   sendMessage: (sessionId: string, message: string) => Promise<void>;
 
-  // ── Orchestration (sourced from the Harness Context). Not full parity with
-  //    MoveContext: there is no `run`/shell here, so an api-only move cannot
-  //    shell out through the capability-gated path. See
+  // ── Orchestration (sourced from the Harness Context). See
   //    docs/generated/authoring-contracts.md for the per-surface member list. ──
+
+  /**
+   * Shell execution, gated by `capabilities.shell` exactly as it is for
+   * `MoveContext.run` and every other Harness Context caller.
+   *
+   * Handlers had no shell for a long time, and the effect was the opposite of
+   * containment: an author who needed to run a command imported `child_process`
+   * instead, which bypasses the capability gate and the audit log entirely. A
+   * gated path that is declared and logged is the safer of the two.
+   */
+  shell: { run(cmd: string): Promise<string> };
 
   /** Spawn a new session. */
   createSession: (opts: {

@@ -1,7 +1,6 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import type { ToolCall } from "../../../sdk/index";
-import { API_BASE, tokenParam } from "../modusClient";
-import { shareableBackendUrl } from "../backendTarget";
+import { ticketedRawFileUrl, ticketedShareableFileUrl } from "../rawFileUrl";
 import { useFileViewer } from "../providers/FileViewerContext";
 
 export type FileEdit = {
@@ -226,25 +225,6 @@ function isBrowserPreviewable(filePath: string): boolean {
   return !!ext && BROWSER_EXTS.has(ext);
 }
 
-function rawFileUrl(filePath: string): string {
-  const tp = tokenParam();
-  const sep = tp ? "&" : "";
-  return `${API_BASE}/api/file/raw?path=${encodeURIComponent(filePath)}${sep}${tp}`;
-}
-
-/**
- * The same raw-file URL, absolute, so it survives leaving this document.
- *
- * The token stays in the query because `/api/file/raw` is one of the routes in
- * `allowsQueryCredential` — a header cannot be attached to a link someone pastes
- * into another browser, which is exactly what this is for.
- */
-function shareableFileUrl(filePath: string): string {
-  const tp = tokenParam();
-  const sep = tp ? "&" : "";
-  return shareableBackendUrl(`/api/file/raw?path=${encodeURIComponent(filePath)}${sep}${tp}`);
-}
-
 /**
  * Hand a link to the platform, preferring the native share sheet.
  *
@@ -295,14 +275,43 @@ export function FileCard({
   const previewable = isBrowserPreviewable(filePath);
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
 
-  const handlePreview = (e: React.MouseEvent) => {
+  // An <img> cannot send an Authorization header, so its src needs a ticket —
+  // minted only once the row is actually expanded, so a long file list does not
+  // mint one per image nobody looked at.
+  const [imageUrl, setImageUrl] = useState("");
+  const showImage = expanded && isImage(filePath);
+  useEffect(() => {
+    if (!showImage) return;
+    let cancelled = false;
+    void ticketedRawFileUrl(filePath).then((url) => {
+      if (!cancelled) setImageUrl(url);
+    });
+    return () => { cancelled = true; };
+  }, [showImage, filePath]);
+
+  const handlePreview = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    window.open(rawFileUrl(filePath), "_blank");
+    // Open the tab synchronously, before awaiting the ticket. A `window.open`
+    // after an await has lost the user gesture and is blocked as a popup.
+    const opened = window.open("", "_blank");
+    const url = await ticketedRawFileUrl(filePath);
+    if (!url) {
+      opened?.close();
+      return;
+    }
+    if (opened) opened.location.href = url;
+    else window.open(url, "_blank");
   };
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const result = await shareLink(shareableFileUrl(filePath), name);
+    const url = await ticketedShareableFileUrl(filePath);
+    if (!url) {
+      setShareState("failed");
+      setTimeout(() => setShareState("idle"), 2000);
+      return;
+    }
+    const result = await shareLink(url, name);
     setShareState(result);
     // Confirm on the button itself. There are no devtools in the packaged
     // desktop and no console at all on a phone, so an unconfirmed clipboard
@@ -365,9 +374,9 @@ export function FileCard({
       </div>
       {expanded && (
         <div className="fc-file-body">
-          {isImage(filePath) && (
+          {showImage && imageUrl && (
             <div className={`fc-image-preview${filePath.toLowerCase().endsWith(".svg") ? " fc-image-preview--svg" : ""}`}>
-              <img src={rawFileUrl(filePath)} alt={name} />
+              <img src={imageUrl} alt={name} />
             </div>
           )}
           <table className="diff-table">

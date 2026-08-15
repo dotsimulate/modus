@@ -186,6 +186,21 @@ Auth: browser clients use PIN verification. Operator clients use the
 that is valid only for their exact built-in Modus MCP route and is revoked with
 the provider session.
 
+Credentials normally travel on the `Authorization` header. A small set of GET
+routes additionally accept a **bounded browser-session** token in the query
+string (`allowsQueryCredential` in `index.ts`), because `<img>`, `<audio>` and
+`EventSource` cannot set headers. The `HARNESS_TOKEN` supervisor bearer is never
+accepted there — it authorizes everything and cannot be revoked without a
+restart.
+
+`GET /api/file/raw` is deliberately **not** in that set. It reads any path on the
+machine, so a URL for it must not carry a credential good for the rest of the
+API. It takes a **ticket** instead: `POST /api/file/ticket` is
+header-authenticated and returns a random, in-memory value bound to one resolved
+path and valid for `FILE_TICKET_TTL_MS` (`file-ticket.ts`). A ticket is not a
+bearer — it authorizes that one file read and nothing else, and it is reusable
+within its window because a browser legitimately re-requests the same image.
+
 ## Writable roots and databases
 
 `MODUS_HOME` defaults to `~/.modus` and remains the root for user-authored

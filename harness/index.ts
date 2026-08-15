@@ -26,6 +26,7 @@ import { initHarnessBridge } from "./harness-bridge";
 import { cursorMcpConfigStore } from "./providers/cursor-mcp-config";
 import { pruneAbandonedSensitiveTempDirectories } from "./sensitive-temp";
 import { isSessionMcpCredential, validateSessionMcpCredential } from "./session-mcp-credential";
+import { FILE_TICKET_TTL_MS, mintFileTicket, validateFileTicket } from "./file-ticket";
 import { BACKEND_IDENTITY } from "./backend-identity";
 import { configuredRootsForCwd } from "./preview-roots";
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "fs";
@@ -509,7 +510,9 @@ function allowsQueryCredential(c: any): boolean {
   return path === "/api/events/sessions"
     || path === "/api/events/fs"
     || path === "/api/events/multi"
-    || path === "/api/file/raw"
+    // `/api/file/raw` is deliberately NOT here. It reads any path on the machine,
+    // so a shareable URL for it must not carry a whole-API credential — it takes
+    // a path-bound ticket instead (see file-ticket.ts).
     || /^\/api\/preview\/file\/[^/]+$/.test(path)
     || /^\/api\/git\/raw\//.test(path)
     || /^\/api\/sessions\/[^/]+\/artifacts\/[^/]+$/.test(path)
@@ -761,8 +764,23 @@ app.use("/api/*", async (c, next) => {
 
   if (operatorKind(c, allowsQueryCredential(c))) return next();
 
+  // A path-bound file ticket authorizes one raw-file read and nothing else. It
+  // is checked last, so it can never widen an otherwise-authorized request.
+  if (validFileTicketRequest(c)) return next();
+
   return c.json({ error: "unauthorized" }, 401);
 });
+
+/** True when this is a `/api/file/raw` read carrying a live ticket for that exact file. */
+function validFileTicketRequest(c: any): boolean {
+  if (c.req.path !== "/api/file/raw") return false;
+  if (c.req.method !== "GET" && c.req.method !== "HEAD") return false;
+  const params = new URL(c.req.url).searchParams;
+  const ticket = params.get("ticket") ?? "";
+  const filePath = params.get("path") ?? "";
+  if (!ticket || !filePath) return false;
+  return validateFileTicket(ticket, filePath);
+}
 
 function requireConfiguredFileApiAuth(c: any): Response | null {
   if (AUTH_TOKEN || getPin()) return null;
@@ -4012,6 +4030,27 @@ const MIME_MAP: Record<string, string> = {
   ".txt": "text/plain",
   ".mp4": "video/mp4", ".webm": "video/webm", ".ogg": "video/ogg",
 };
+
+/**
+ * Mint a ticket for a raw-file URL that cannot carry a header — an `<img>` src,
+ * an open-in-a-new-tab link, a link handed to the share sheet.
+ *
+ * Header-authenticated, so the ticket never grants more than the caller had, and
+ * bound to this one path for a few minutes.
+ */
+app.post("/api/file/ticket", async (c) => {
+  const authError = requireConfiguredFileApiAuth(c);
+  if (authError) return authError;
+  const body = await c.req.json().catch(() => ({}));
+  const filePath = typeof body?.path === "string" ? body.path : "";
+  if (!filePath) return c.json({ error: "path required" }, 400);
+
+  const abs = resolve(filePath);
+  if (!(await Bun.file(abs).exists())) return c.json({ error: "not found" }, 404);
+
+  const ticket = mintFileTicket(abs);
+  return c.json({ ticket, expiresAt: Date.now() + FILE_TICKET_TTL_MS });
+});
 
 app.get("/api/file/raw", async (c) => {
   const authError = requireConfiguredFileApiAuth(c);

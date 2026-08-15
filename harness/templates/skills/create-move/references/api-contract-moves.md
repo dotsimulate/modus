@@ -122,7 +122,8 @@ and read/write files under `ctx.cwd` with `fs` for anything else.
 
 - Each activation creates a new instance with a unique `instanceId`
 - Token format: `mapi-{tokenPrefix}-{instanceId}`
-- Persisted state: `.modus/moves/<name>/state/{instanceId}.json`
+- Persisted state: `.modus/runtime/moves/<name>/state/{instanceId}.json` — the
+  project runtime root, kept out of the publishable move directory
 - Instances can be resumed across sessions
 - Customize resume picker with `listInstances`:
 
