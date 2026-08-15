@@ -1352,13 +1352,26 @@ export function insertMessage(opts: {
   });
 }
 
-/** Reconcile denormalized session count after abnormal-turn materialization. */
-export function syncSessionMessageCount(sessionId: string): number {
+/**
+ * Reconcile denormalized session count after abnormal-turn materialization.
+ *
+ * `last_message_at` is the session-list ordering key, so it means "when did this
+ * conversation last move", not "when was this row last written". Pass
+ * `touchActivity: false` for a message the harness wrote about a session rather
+ * than one produced by the conversation — a reclamation notice must not push a
+ * days-old session back to the top of the list.
+ */
+export function syncSessionMessageCount(
+  sessionId: string,
+  opts?: { touchActivity?: boolean },
+): number {
   const row = db.prepare(`SELECT COUNT(*) AS count FROM messages WHERE session_id = $sid`)
     .get({ $sid: sessionId }) as { count: number };
   const count = row.count ?? 0;
-  db.prepare(`UPDATE sessions SET message_count = $count, last_message_at = $now, updated_at = $now WHERE id = $sid`)
-    .run({ $sid: sessionId, $count: count, $now: Date.now() });
+  const sql = opts?.touchActivity === false
+    ? `UPDATE sessions SET message_count = $count, updated_at = $now WHERE id = $sid`
+    : `UPDATE sessions SET message_count = $count, last_message_at = $now, updated_at = $now WHERE id = $sid`;
+  db.prepare(sql).run({ $sid: sessionId, $count: count, $now: Date.now() });
   return count;
 }
 
