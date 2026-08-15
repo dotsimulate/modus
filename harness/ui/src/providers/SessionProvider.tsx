@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
-import { setInputValue, getInputValue } from "../inputStore";
+import { setInputValue, getInputValue, shouldApplyFetchedDraft } from "../inputStore";
 import type {
   Session, SessionInfo, SessionProjectSummary, Attachment, MoveBinding, RewindPreview,
 } from "../../../sdk/index";
@@ -290,7 +290,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setActiveSessionId(id);
       evictInactiveSessions(id);
       await refreshSessions();
-      setInputValue("");
+      // Deliberately no setInputValue("") here. The composer is keyed to the
+      // active session and a brand-new id has no stored draft, so it already
+      // paints empty. Clearing after an awaited refresh instead wiped whatever
+      // the user had typed into the new chat while the list request was in
+      // flight — seconds of typing, erased with no explanation.
       setQueuedMessage(null);
       return id;
     } catch {
@@ -333,24 +337,28 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // Park old inactive sessions and cap the warm transcript cache.
     evictInactiveSessions(id);
 
-    // History and the draft are independent. Starting both together removes a
-    // full request round trip from remote/Tailnet navigation.
-    const [draft] = await Promise.all([
-      modus.getDraft(id).catch(() => ""),
-      ensureSubscribed(id, {
-        profile: sessionProfile,
-        activeStatus: info?.status as Session["status"] | undefined,
-        onDone: refreshSessions,
-        forceHistoryRefresh: true,
-      }),
-    ]);
+    // History and the draft are independent, so start both together — but do not
+    // wait for history before applying the draft. History is a transcript fetch
+    // that can take seconds on a cold, long, or remote session; the composer
+    // paints immediately and the user starts typing into it. Awaiting both here
+    // is what erased a half-written message several seconds after it was typed.
+    const draftPromise = modus.getDraft(id).catch(() => "");
+    const historyPromise = ensureSubscribed(id, {
+      profile: sessionProfile,
+      activeStatus: info?.status as Session["status"] | undefined,
+      onDone: refreshSessions,
+      forceHistoryRefresh: true,
+    });
 
     // NOTE: do NOT write selectedProfile here. selectedProfile is the sidebar's
     // seed for the next new session (Domain B) and must not be contaminated by
     // which session the user navigates to (Domain A).
 
+    const draft = await draftPromise;
+    if (!isStaleSelection() && shouldApplyFetchedDraft(getInputValue())) setInputValue(draft);
+
+    await historyPromise;
     if (isStaleSelection()) return;
-    setInputValue(draft);
 
     setQueuedMessage(null);
   }, [allServerSessions, saveDraftForCurrent, refreshSessions]);

@@ -494,7 +494,8 @@ export class ModusClient {
 
   // ── Profiles ──
   /** Lists agent profiles, optionally scoped to a project directory. */
-  async listProfiles(cwd?: string): Promise<Profile[]> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; return (await this.fetch(`/api/profiles${q}`)).json(); }
+  /** Pass `includeUi` to resolve each profile's UI config in the same response instead of one request per profile. */
+  async listProfiles(cwd?: string, opts?: { includeUi?: boolean }): Promise<Profile[]> { const params = new URLSearchParams(); if (cwd) params.set("cwd", cwd); if (opts?.includeUi) params.set("ui", "1"); const q = params.toString(); return (await this.fetch(`/api/profiles${q ? `?${q}` : ""}`)).json(); }
   /** Returns a single agent profile by name. Throws on not found. */
   async getProfile(name: string, cwd?: string): Promise<Profile> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; return (await this.fetchOrThrow(`/api/profiles/${encodeURIComponent(name)}${q}`)).json(); }
   /** Returns the UI configuration for an agent profile. */
@@ -559,7 +560,8 @@ export class ModusClient {
 
   // ── User Profiles ──
   /** Lists all user profiles. */
-  async listUserProfiles(): Promise<UserProfile[]> { return (await this.fetch("/api/user-profiles")).json(); }
+  /** Pass `includeUi` to resolve each profile's UI config (including clientExtensions) in the same response. */
+  async listUserProfiles(opts?: { includeUi?: boolean }): Promise<UserProfile[]> { return (await this.fetch(`/api/user-profiles${opts?.includeUi ? "?ui=1" : ""}`)).json(); }
   /** Returns a single user profile. Throws if not found. */
   async getUserProfile(name: string): Promise<UserProfile> { const r = await this.fetch(`/api/user-profiles/${encodeURIComponent(name)}`); if (!r.ok) throw new Error(`User profile not found: ${name}`); return r.json(); }
   /** Returns UI config for a user profile. */

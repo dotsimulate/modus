@@ -892,11 +892,17 @@ app.post("/api/admin/restart", async (c) => {
 
 app.get("/api/profiles", (c) => {
   const cwd = c.req.query("cwd");
+  // `ui=1` resolves each profile's UI config inline. The client needs it for
+  // every profile it lists, and fetching it per profile turned one navigation
+  // into 1+N round trips — the cost is a local config read, not I/O worth a
+  // separate request each.
+  const withUi = c.req.query("ui") === "1";
   const all = getAllProfiles(cwd);
   const list = Object.entries(all).map(([name, p]) => ({
     ...p,
     name,
     tools: p.tools ?? "all",
+    ...(withUi ? { ui: getProfileUiConfig(name, cwd) ?? p.ui ?? {} } : {}),
   }));
   return c.json(list);
 });
@@ -1071,8 +1077,16 @@ app.delete("/api/profiles/:name", (c) => {
 // ── User Profiles ──
 
 app.get("/api/user-profiles", (c) => {
+  // See /api/profiles: `ui=1` folds in the UI config the client would otherwise
+  // request once per profile. Client extensions live in this payload, so the
+  // extension surface could not resolve until that whole fan-out completed.
+  const withUi = c.req.query("ui") === "1";
   const all = getAllUserProfiles();
-  const list = Object.entries(all).map(([name, p]) => ({ name, ...p }));
+  const list = Object.entries(all).map(([name, p]) => ({
+    name,
+    ...p,
+    ...(withUi ? getUserProfileUiConfig(name) ?? {} : {}),
+  }));
   return c.json(list);
 });
 
