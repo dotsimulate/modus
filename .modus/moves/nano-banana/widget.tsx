@@ -117,11 +117,20 @@ export default function NanaBananaWidget({ callOp }: MoveWidgetProps) {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [refresh]);
 
+  // `/api/file-serve` reads any absolute path, so the harness does not accept a
+  // `?token=` credential for it and every image 401s. `/api/preview/file/<id>`
+  // is the equivalent that does: it is scoped to the configured project roots
+  // and takes the path as a base64url id.
+  const previewId = (absPath: string) => {
+    let binary = "";
+    for (const byte of new TextEncoder().encode(absPath)) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+
   const imgSrc = (absPath: string) => {
     const token = localStorage.getItem("harness_token") || "";
-    const params = new URLSearchParams({ path: absPath });
-    if (token) params.set("token", token);
-    return `/api/file-serve?${params.toString()}`;
+    const query = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `/api/preview/file/${previewId(absPath)}${query}`;
   };
 
   return (

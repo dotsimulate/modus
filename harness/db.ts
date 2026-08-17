@@ -1363,15 +1363,19 @@ export function insertMessage(opts: {
  */
 export function syncSessionMessageCount(
   sessionId: string,
-  opts?: { touchActivity?: boolean },
+  opts?: { touchActivity?: boolean; activityAt?: number },
 ): number {
   const row = db.prepare(`SELECT COUNT(*) AS count FROM messages WHERE session_id = $sid`)
     .get({ $sid: sessionId }) as { count: number };
   const count = row.count ?? 0;
-  const sql = opts?.touchActivity === false
-    ? `UPDATE sessions SET message_count = $count, updated_at = $now WHERE id = $sid`
-    : `UPDATE sessions SET message_count = $count, last_message_at = $now, updated_at = $now WHERE id = $sid`;
-  db.prepare(sql).run({ $sid: sessionId, $count: count, $now: Date.now() });
+  const now = Date.now();
+  if (opts?.touchActivity === false) {
+    db.prepare(`UPDATE sessions SET message_count = $count, updated_at = $now WHERE id = $sid`)
+      .run({ $sid: sessionId, $count: count, $now: now });
+  } else {
+    db.prepare(`UPDATE sessions SET message_count = $count, last_message_at = $activity_at, updated_at = $now WHERE id = $sid`)
+      .run({ $sid: sessionId, $count: count, $now: now, $activity_at: opts?.activityAt ?? now });
+  }
   return count;
 }
 
@@ -2244,6 +2248,220 @@ export function getSessionMessageHistory(
 /** Reconstruct structured message content for callers that only need turns. */
 export function getSessionMessages(sessionId: string): TurnContent[] {
   return getSessionMessageHistory(sessionId, { preserveEventSequence: true }).messages;
+}
+
+// ── Turn Index ──
+
+/**
+ * One turn, with no bodies.
+ *
+ * A surface that navigates by turn — an index, a ticker, a card deck — needs to
+ * know every turn exists before it can offer to show one. History only ever
+ * arrives a page at a time, so such a surface would otherwise be limited to
+ * whatever happened to be loaded, and would grow new entries as the user paged
+ * backwards rather than showing the shape of the conversation up front.
+ *
+ * Everything here is a size hint for drawing marks. None of it is content, and
+ * a client must fetch the turn itself to render one.
+ */
+export type SessionTurnIndexEntry = {
+  /** 1-based position in the whole conversation. */
+  number: number;
+  /**
+   * Seq to address this turn by. `getSessionMessage` resolves any seq that
+   * falls inside a turn back to the turn, so this does not have to be the exact
+   * seq the turn was materialized at — which matters because an interrupted
+   * turn is materialized before its own `result` arrives.
+   */
+  seq: number;
+  /** When the turn opened. */
+  timestamp: number;
+  /**
+   * Relative size of the prompt, for index marks. Characters of prompt text on
+   * the `messages` source; event payload bytes on `events`. Never a content
+   * promise, and not comparable across sources.
+   */
+  promptWeight: number;
+  /** Characters of assistant prose in the response. `messages` source only. */
+  textWeight?: number;
+  /** Tool calls in the response. `messages` source only. */
+  toolCount?: number;
+};
+
+export type SessionTurnIndex = {
+  turns: SessionTurnIndexEntry[];
+  /**
+   * Which history source produced this, mirroring `getSessionMessageHistory`'s
+   * own choice so an index entry always addresses a turn that can be fetched.
+   *
+   * `messages` carries prose weight and tool counts, read straight from
+   * columns. `events` carries boundaries only: counting tools there means
+   * parsing every assistant payload, which is the cost this endpoint exists to
+   * avoid. A client renders whichever it is given.
+   */
+  source: "messages" | "events";
+  /** Turns older than the returned window, when the index was capped. */
+  olderTurnCount: number;
+};
+
+/** Newest turns retained by a single index read. Entries are tiny, but a
+ *  pathological session should still not return an unbounded array. */
+const TURN_INDEX_DEFAULT_LIMIT = 2000;
+
+type TurnIndexRow = {
+  seq: number;
+  role: string;
+  created_at: number;
+  text_length: number;
+  tool_count: number;
+};
+
+/**
+ * Turn headers from the `messages` table.
+ *
+ * `LENGTH()` and `json_array_length()` are evaluated by SQLite, so a turn
+ * carrying megabytes of tool results contributes its count without that payload
+ * ever crossing into JS. `json_valid` guards the count because `tool_calls_json`
+ * is written by several provider adapters and a malformed value must degrade to
+ * zero rather than throw for the whole session.
+ */
+function turnIndexFromMessageTable(sessionId: string): SessionTurnIndexEntry[] {
+  const rows = db.prepare(`
+    SELECT
+      COALESCE(seq, 0) AS seq,
+      role,
+      created_at,
+      COALESCE(LENGTH(content), 0) AS text_length,
+      CASE
+        WHEN tool_calls_json IS NOT NULL AND json_valid(tool_calls_json)
+        THEN json_array_length(tool_calls_json)
+        ELSE 0
+      END AS tool_count
+    FROM messages
+    WHERE session_id = $sid
+    ORDER BY created_at ASC, id ASC
+  `).all({ $sid: sessionId }) as TurnIndexRow[];
+
+  const turns: SessionTurnIndexEntry[] = [];
+  let current: SessionTurnIndexEntry | null = null;
+
+  for (const row of rows) {
+    if (row.role === "user") {
+      current = {
+        number: turns.length + 1,
+        seq: row.seq,
+        timestamp: row.created_at,
+        promptWeight: row.text_length,
+        textWeight: 0,
+        toolCount: 0,
+      };
+      turns.push(current);
+      continue;
+    }
+    if (!current) {
+      // Assistant output with no prompt above it — a resumed session, or an
+      // agent that spoke first. Still a turn, or it is unreachable from an index.
+      current = {
+        number: turns.length + 1,
+        seq: row.seq,
+        timestamp: row.created_at,
+        promptWeight: 0,
+        textWeight: 0,
+        toolCount: 0,
+      };
+      turns.push(current);
+    }
+    if (row.role === "assistant") {
+      current.textWeight = (current.textWeight ?? 0) + row.text_length;
+      current.toolCount = (current.toolCount ?? 0) + row.tool_count;
+    }
+  }
+
+  return turns;
+}
+
+/**
+ * Turn boundaries from durable events.
+ *
+ * Only the two event kinds that bound a turn are read — a user prompt opens
+ * one, a `result` closes one — so this stays on the indexed columns and never
+ * touches an assistant payload. That is also why it reports no tool count:
+ * every tool call lives inside a `data` blob that would have to be parsed.
+ */
+function turnIndexFromEvents(sessionId: string): SessionTurnIndexEntry[] {
+  const rows = db.prepare(`
+    SELECT seq, type, created_at, COALESCE(LENGTH(data), 0) AS data_length
+    FROM events
+    WHERE session_id = $sid
+      AND ((type = 'user' AND subtype = 'prompt') OR type = 'result')
+    ORDER BY created_at ASC, id ASC
+  `).all({ $sid: sessionId }) as { seq: number; type: string; created_at: number; data_length: number }[];
+
+  const turns: SessionTurnIndexEntry[] = [];
+  let open = false;
+
+  for (const row of rows) {
+    if (row.type === "user") {
+      turns.push({
+        number: turns.length + 1,
+        seq: row.seq,
+        timestamp: row.created_at,
+        promptWeight: row.data_length,
+      });
+      open = true;
+      continue;
+    }
+    // A result with no prompt above it still marks a turn worth addressing.
+    if (!open) {
+      turns.push({
+        number: turns.length + 1,
+        seq: row.seq,
+        timestamp: row.created_at,
+        promptWeight: 0,
+      });
+    }
+    open = false;
+  }
+
+  return turns;
+}
+
+/**
+ * Every turn in a session, without bodies.
+ *
+ * Source selection mirrors `getSessionMessageHistory` exactly, including its
+ * fallback when the preferred source turns out to be empty. It has to: an index
+ * entry that addresses a turn the history layer would not produce is a dead
+ * link in whatever navigates by it.
+ */
+export function getSessionTurnIndex(
+  sessionId: string,
+  options: { limit?: number } = {},
+): SessionTurnIndex {
+  const rawAssistant = db.prepare(
+    `SELECT COALESCE(MAX(seq), 0) AS max_seq FROM events WHERE session_id = $sid AND type = 'assistant'`
+  ).get({ $sid: sessionId }) as { max_seq: number };
+  const semanticAssistant = db.prepare(
+    `SELECT COALESCE(MAX(seq), 0) AS max_seq FROM messages WHERE session_id = $sid AND role = 'assistant'`
+  ).get({ $sid: sessionId }) as { max_seq: number };
+  const semanticCount = db.prepare(
+    `SELECT COUNT(*) AS count FROM messages WHERE session_id = $sid`
+  ).get({ $sid: sessionId }) as { count: number };
+
+  const preferEvents = semanticCount.count === 0
+    || (rawAssistant.max_seq ?? 0) > (semanticAssistant.max_seq ?? 0);
+
+  const eventTurns = preferEvents ? turnIndexFromEvents(sessionId) : null;
+  const useEvents = !!eventTurns && eventTurns.length > 0;
+  const all = useEvents ? eventTurns! : turnIndexFromMessageTable(sessionId);
+
+  const limit = Math.max(1, options.limit ?? TURN_INDEX_DEFAULT_LIMIT);
+  const olderTurnCount = Math.max(0, all.length - limit);
+  // Numbers are assigned before the window is taken, so a truncated index still
+  // names its turns by their real position in the conversation.
+  const turns = olderTurnCount > 0 ? all.slice(olderTurnCount) : all;
+
+  return { turns, source: useEvents ? "events" : "messages", olderTurnCount };
 }
 
 // ── Full-Text Search (FTS5 v2) ──

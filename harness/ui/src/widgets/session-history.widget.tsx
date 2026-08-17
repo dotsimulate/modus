@@ -3,6 +3,7 @@ import { modus } from "../modusClient";
 import { useSession } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { getSessionState } from "../sessionStore";
+import { sessionActivityAt as activityAt } from "../sessionActivity";
 import { useWidgetUiState } from "./ui-state";
 import { ProfilePanel } from "../components/sidebar/ProfilePanel";
 import {
@@ -103,17 +104,18 @@ function groupByTimeline(sessions: SessionInfo[]): TimelineGroup[] {
   const order: string[] = [];
 
   for (const s of sessions) {
-    const age = now - s.updated_at;
+    const at = activityAt(s);
+    const age = now - at;
     let label: string;
     if (age < 86_400_000) label = "today";
     else if (age < 172_800_000) label = "yesterday";
     else if (age < 604_800_000) {
-      label = new Date(s.updated_at).toLocaleDateString("en", { weekday: "long" }).toLowerCase();
+      label = new Date(at).toLocaleDateString("en", { weekday: "long" }).toLowerCase();
     } else if (age < 2_592_000_000) {
       const weeksAgo = Math.floor(age / 604_800_000);
       label = weeksAgo === 1 ? "last week" : `${weeksAgo} weeks ago`;
     } else {
-      label = new Date(s.updated_at).toLocaleDateString("en", { month: "long", year: "numeric" }).toLowerCase();
+      label = new Date(at).toLocaleDateString("en", { month: "long", year: "numeric" }).toLowerCase();
     }
     if (!buckets[label]) { buckets[label] = []; order.push(label); }
     buckets[label].push(s);
@@ -131,8 +133,8 @@ function groupByAgent(sessions: SessionInfo[]): TimelineGroup[] {
   }
   return Array.from(map.entries())
     .sort((a, b) => {
-      const aMax = Math.max(...a[1].map(s => s.updated_at));
-      const bMax = Math.max(...b[1].map(s => s.updated_at));
+      const aMax = Math.max(...a[1].map(activityAt));
+      const bMax = Math.max(...b[1].map(activityAt));
       return bMax - aMax;
     })
     .map(([label, sessions]) => ({ key: `agent:${label}`, label, sessions }));
@@ -166,7 +168,7 @@ function groupByProject(sessions: SessionInfo[]): TimelineGroup[] {
     .map(([projectId, group]) => {
       const ordered = [...group.sessions].sort((a, b) => {
         const activity = Number(isActiveStatus(b.status)) - Number(isActiveStatus(a.status));
-        return activity || b.updated_at - a.updated_at;
+        return activity || activityAt(b) - activityAt(a);
       });
       return {
         key: `project:${projectId}`,
@@ -176,7 +178,7 @@ function groupByProject(sessions: SessionInfo[]): TimelineGroup[] {
       };
     })
     .sort((a, b) => (b.activeCount ?? 0) - (a.activeCount ?? 0)
-      || Math.max(...b.sessions.map((session) => session.updated_at)) - Math.max(...a.sessions.map((session) => session.updated_at)));
+      || Math.max(...b.sessions.map(activityAt)) - Math.max(...a.sessions.map(activityAt)));
 }
 
 export default function SessionHistoryWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<SessionHistoryConfig>) {
@@ -292,7 +294,7 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
       case "created": arr.sort((a, b) => b.created_at - a.created_at); break;
       case "cost": arr.sort((a, b) => (b.total_cost_usd ?? 0) - (a.total_cost_usd ?? 0)); break;
       case "messages": arr.sort((a, b) => b.message_count - a.message_count); break;
-      default: arr.sort((a, b) => b.updated_at - a.updated_at);
+      default: arr.sort((a, b) => activityAt(b) - activityAt(a));
     }
     return arr;
   }, [filtered, sortKey]);
@@ -757,7 +759,7 @@ function SessionRow({ session: s, selected, hovered, liveInfo, onHover, onSelect
         <div className="sh-row-meta-right">
           {s.message_count > 0 && <span className="sh-tag">{s.message_count}</span>}
           {cost && <span className="sh-tag">{cost}</span>}
-          <span className="sh-tag sh-tag--time">{relativeTime(s.updated_at)}</span>
+          <span className="sh-tag sh-tag--time">{relativeTime(activityAt(s))}</span>
         </div>
       </div>
 

@@ -96,21 +96,57 @@ export type WidgetProps<C extends WidgetBase = WidgetBase> = {
   pageContext?: PageContextHandle;
 };
 
-/** What a widget registration entry looks like */
-export type WidgetDef = {
+/** One configurable key on a widget, for the generated catalog and the linter. */
+export type WidgetConfigKey = {
+  /** Key name as written in page JSON, e.g. "blocks". */
+  name: string;
+  /** Human-readable type, e.g. `("prompt"|"text")[]` or `number`. */
   type: string;
-  component: ComponentType<WidgetProps<any>>;
-  /** Compact variant for dense dashboards / small panels */
-  miniComponent?: ComponentType<WidgetProps<any>>;
+  /** What setting it does. One line. */
+  description: string;
+};
+
+/**
+ * Everything about a widget except the React component.
+ *
+ * Split out of `WidgetDef` so it can be imported without pulling in fifty
+ * component trees — the page linter, the docs generator, and their tests all
+ * need this metadata and none of them can afford React, CodeMirror, or xterm
+ * at module scope.
+ */
+export type WidgetMeta = {
+  type: string;
+  /**
+   * What this widget is, in one or two sentences, aimed at somebody deciding
+   * whether to put it on a page. Absent means nobody has written one yet —
+   * the generated catalog reports that rather than inventing a description.
+   */
+  description?: string;
+  /** Config keys beyond `WidgetBase`, for page authors. */
+  config?: WidgetConfigKey[];
   zones?: WidgetZone[];
   /** Minimum height in px when rendered in list mode */
   minHeight?: number;
-  /** Maximum height in px when rendered in list mode */
+  /**
+   * Maximum height in px when rendered in list mode.
+   *
+   * Also the only declared bound on how large a widget can get, so the page
+   * linter reads it as "safe to place in a split child sized `auto`" — an
+   * `auto` child is `flex: 0 0 auto` with `min-height: auto`, which cannot
+   * shrink and will claim its content's full extent forever.
+   */
   maxHeight?: number;
   /** Preferred default height in px for list mode */
   preferredHeight?: number;
   /** Default UI intents supported by this widget type. */
   handles?: Array<UiIntentType | UiIntentCapability>;
+};
+
+/** What a widget registration entry looks like */
+export type WidgetDef = WidgetMeta & {
+  component: ComponentType<WidgetProps<any>>;
+  /** Compact variant for dense dashboards / small panels */
+  miniComponent?: ComponentType<WidgetProps<any>>;
 };
 
 export type DashboardWidgetBlock = {

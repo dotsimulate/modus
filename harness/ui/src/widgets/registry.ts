@@ -1,16 +1,23 @@
 /**
- * Widget registry — explicit registration of all built-in widgets.
+ * Widget registry — binds React components onto the metadata in `catalog.ts`.
  *
- * Each widget file exports only its React component as default.
- * Metadata (type, zones, height constraints) is declared here.
+ * Each widget file exports only its React component as default. Everything
+ * else about a widget — description, config keys, zones, height constraints,
+ * intents — lives in `catalog.ts`, which imports no components and can
+ * therefore be read by the page linter and the docs generator without pulling
+ * React into a test process.
  *
  * To add a new widget:
  *   1. Create widgets/my-thing.widget.tsx exporting a component as default
- *   2. Import it here and add an entry to WIDGET_DEFS
+ *   2. Add a WIDGET_META entry in catalog.ts
+ *   3. Import the component here and add it to WIDGET_COMPONENTS
+ *
+ * `widgetCatalog.test.ts` fails if steps 2 and 3 disagree.
  */
 
 import type { ComponentType } from "react";
 import type { WidgetDef, WidgetProps, WidgetBase, DashboardConfig } from "./types";
+import { WIDGET_META } from "./catalog";
 
 // ── Widget component imports ──
 
@@ -52,6 +59,8 @@ import SessionInfoWidget from "./session-info.widget";
 import SessionListWidget from "./session-list.widget";
 import SessionSidebarWidget from "./session-sidebar.widget";
 import SessionStreamsWidget from "./session-streams.widget";
+import SessionTurnWidget from "./session-turn.widget";
+import SessionTurnsWidget from "./session-turns.widget";
 import SessionWebWidget from "./session-web.widget";
 import SessionTerminalWidget from "./session-terminal.widget";
 import SessionsWidget from "./sessions.widget";
@@ -60,316 +69,69 @@ import TerminalsWidget from "./terminals.widget";
 import TraceViewerWidget from "./trace-viewer.widget";
 import TtsSettingsWidget from "./tts-settings.widget";
 
-// ── Registry ──
+// ── Component bindings ──
 
-export const WIDGET_DEFS: Record<string, WidgetDef> = {
-  "about": {
-    type: "about",
-    component: AboutWidget,
-    zones: ["dashboard", "left-panel", "right-panel"],
-    minHeight: 200,
-    preferredHeight: 460,
-  },
-  "action-card": {
-    type: "action-card",
-    component: ActionCardWidget,
-    minHeight: 80,
-    preferredHeight: 150,
-    maxHeight: 200,
-  },
-  "account": {
-    type: "account",
-    component: AccountWidget,
-    minHeight: 100,
-    preferredHeight: 220,
-    maxHeight: 280,
-  },
-  "actions-manager": {
-    type: "actions-manager",
-    component: ActionsManagerWidget,
-    minHeight: 200,
-    preferredHeight: 500,
-    handles: ["open-terminal"],
-  },
-  "agent-activity": {
-    type: "agent-activity",
-    component: AgentActivityWidget,
-    zones: ["left-panel", "right-panel"],
-    minHeight: 100,
-    preferredHeight: 250,
-  },
-  "claude-pricing": {
-    type: "claude-pricing",
-    component: ClaudePricingWidget,
-    minHeight: 100,
-    preferredHeight: 220,
-  },
-  "code-editor": {
-    type: "code-editor",
-    component: CodeEditorWidget,
-    zones: ["left-panel", "right-panel"],
-    minHeight: 200,
-    preferredHeight: 400,
-    handles: [
-      { type: "open-file", hooks: ["open", "focus", "expand"] },
-      { type: "focus-widget", hooks: ["focus"] },
-    ],
-  },
-  "composer": {
-    type: "composer",
-    component: ComposerWidget,
-    minHeight: 60,
-    preferredHeight: 120,
-    maxHeight: 200,
-  },
-  "config-bar": {
-    type: "config-bar",
-    component: ConfigBarWidget,
-    minHeight: 30,
-    preferredHeight: 40,
-    maxHeight: 300,
-  },
-  "config-inspector": {
-    type: "config-inspector",
-    component: ConfigInspectorWidget,
-    minHeight: 60,
-    preferredHeight: 160,
-    maxHeight: 240,
-  },
-  "deep-analytics": {
-    type: "deep-analytics",
-    component: DeepAnalyticsWidget,
-    minHeight: 140,
-    preferredHeight: 280,
-  },
-  "docs": {
-    type: "docs",
-    component: DocsWidget,
-    zones: ["dashboard", "left-panel", "right-panel"],
-    minHeight: 240,
-    preferredHeight: 560,
-  },
-  "default-agent": {
-    type: "default-agent",
-    component: DefaultAgentWidget,
-    minHeight: 60,
-    preferredHeight: 160,
-    maxHeight: 220,
-  },
-  "extensions": {
-    type: "extensions",
-    component: ExtensionsWidget,
-    minHeight: 100,
-    preferredHeight: 220,
-  },
-  "inbox": {
-    type: "inbox",
-    component: InboxWidget,
-    minHeight: 150,
-    preferredHeight: 400,
-  },
-  "mission-graph": {
-    type: "mission-graph",
-    component: MissionGraphWidget,
-    minHeight: 300,
-    preferredHeight: 600,
-  },
-  "missions": {
-    type: "missions",
-    component: MissionsWidget,
-    minHeight: 200,
-    preferredHeight: 500,
-  },
-  "moves": {
-    type: "moves",
-    component: MovesWidget,
-    minHeight: 100,
-    preferredHeight: 220,
-    handles: ["open-move", "close-move"],
-  },
-  "new-session": {
-    type: "new-session",
-    component: NewSessionWidget,
-    minHeight: 200,
-    preferredHeight: 400,
-  },
-  "notes": {
-    type: "notes",
-    component: NotesWidget,
-    zones: ["left-panel", "right-panel", "dashboard"],
-    minHeight: 220,
-    preferredHeight: 560,
-  },
-  "pages-browser": {
-    type: "pages-browser",
-    component: PagesBrowserWidget,
-    zones: ["dashboard", "left-panel", "right-panel"],
-    minHeight: 160,
-    preferredHeight: 400,
-  },
-  "persistent-terminal": {
-    type: "persistent-terminal",
-    component: PersistentTerminalWidget,
-    zones: ["left-panel", "right-panel", "dashboard"],
-    minHeight: 150,
-    preferredHeight: 300,
-  },
-  "processes": {
-    type: "processes",
-    component: ProcessesWidget,
-    minHeight: 100,
-    preferredHeight: 220,
-  },
-  "profile-card": {
-    type: "profile-card",
-    component: ProfileCardWidget,
-    minHeight: 80,
-    preferredHeight: 180,
-    maxHeight: 240,
-  },
-  "profiles-manager": {
-    type: "profiles-manager",
-    component: ProfilesManagerWidget,
-    minHeight: 200,
-    preferredHeight: 500,
-  },
-  "project-theme": {
-    type: "project-theme",
-    component: ProjectThemeWidget,
-    minHeight: 120,
-    preferredHeight: 220,
-  },
-  "provider-status": {
-    type: "provider-status",
-    component: ProviderStatusWidget,
-    minHeight: 80,
-    preferredHeight: 180,
-    maxHeight: 240,
-  },
-  "provider-usage": {
-    type: "provider-usage",
-    component: ProviderUsageWidget,
-    minHeight: 100,
-    preferredHeight: 220,
-  },
-  "hints-launcher": {
-    type: "hints-launcher",
-    component: HintsLauncherWidget,
-    zones: ["dashboard", "left-panel", "right-panel"],
-    minHeight: 180,
-    preferredHeight: 360,
-  },
-  "session-chat": {
-    type: "session-chat",
-    component: SessionChatWidget,
-    minHeight: 200,
-    preferredHeight: 500,
-  },
-  "session-control": {
-    type: "session-control",
-    component: SessionControlWidget,
-    minHeight: 80,
-    preferredHeight: 150,
-    maxHeight: 220,
-  },
-  "session-edits": {
-    type: "session-edits",
-    component: SessionEditsWidget,
-    zones: ["left-panel", "right-panel"],
-    minHeight: 100,
-    preferredHeight: 250,
-  },
-  "session-history": {
-    type: "session-history",
-    component: SessionHistoryWidget,
-    minHeight: 200,
-    preferredHeight: 400,
-  },
-  "session-info": {
-    type: "session-info",
-    component: SessionInfoWidget,
-    minHeight: 60,
-    preferredHeight: 180,
-    maxHeight: 260,
-  },
-  "session-list": {
-    type: "session-list",
-    component: SessionListWidget,
-    minHeight: 160,
-    preferredHeight: 320,
-    handles: [
-      { type: "select-session", hooks: ["activate"] },
-    ],
-  },
-  "session-sidebar": {
-    type: "session-sidebar",
-    component: SessionSidebarWidget,
-    minHeight: 150,
-    preferredHeight: 300,
-  },
-  "artifact-shelf": {
-    type: "artifact-shelf",
-    component: ArtifactShelfWidget,
-    zones: ["dashboard", "left-panel", "right-panel"],
-    minHeight: 260,
-    preferredHeight: 620,
-  },
-  "session-streams": {
-    type: "session-streams",
-    component: SessionStreamsWidget,
-    zones: ["left-panel", "right-panel", "dashboard"],
-    minHeight: 220,
-    preferredHeight: 420,
-  },
-  "session-web": {
-    type: "session-web",
-    component: SessionWebWidget,
-    minHeight: 300,
-    preferredHeight: 600,
-  },
-  "session-terminal": {
-    type: "session-terminal",
-    component: SessionTerminalWidget,
-    zones: ["left-panel", "right-panel"],
-    minHeight: 150,
-    preferredHeight: 300,
-    handles: [
-      { type: "open-terminal", hooks: ["open", "focus", "expand"] },
-      { type: "focus-widget", hooks: ["focus"] },
-    ],
-  },
-  "sessions": {
-    type: "sessions",
-    component: SessionsWidget,
-    minHeight: 120,
-    preferredHeight: 220,
-  },
-  "stats": {
-    type: "stats",
-    component: StatsWidget,
-    minHeight: 100,
-    preferredHeight: 220,
-  },
-  "terminals": {
-    type: "terminals",
-    component: TerminalsWidget,
-    minHeight: 120,
-    preferredHeight: 240,
-  },
-  "trace-viewer": {
-    type: "trace-viewer",
-    component: TraceViewerWidget,
-    minHeight: 300,
-    preferredHeight: 600,
-  },
-  "tts-settings": {
-    type: "tts-settings",
-    component: TtsSettingsWidget,
-    zones: ["dashboard", "left-panel", "right-panel"],
-    minHeight: 180,
-    preferredHeight: 420,
-  },
+export const WIDGET_COMPONENTS: Record<string, ComponentType<WidgetProps<any>>> = {
+  "about": AboutWidget,
+  "action-card": ActionCardWidget,
+  "account": AccountWidget,
+  "actions-manager": ActionsManagerWidget,
+  "agent-activity": AgentActivityWidget,
+  "artifact-shelf": ArtifactShelfWidget,
+  "claude-pricing": ClaudePricingWidget,
+  "code-editor": CodeEditorWidget,
+  "composer": ComposerWidget,
+  "config-bar": ConfigBarWidget,
+  "config-inspector": ConfigInspectorWidget,
+  "deep-analytics": DeepAnalyticsWidget,
+  "docs": DocsWidget,
+  "default-agent": DefaultAgentWidget,
+  "extensions": ExtensionsWidget,
+  "inbox": InboxWidget,
+  "mission-graph": MissionGraphWidget,
+  "missions": MissionsWidget,
+  "moves": MovesWidget,
+  "new-session": NewSessionWidget,
+  "notes": NotesWidget,
+  "pages-browser": PagesBrowserWidget,
+  "persistent-terminal": PersistentTerminalWidget,
+  "processes": ProcessesWidget,
+  "profile-card": ProfileCardWidget,
+  "profiles-manager": ProfilesManagerWidget,
+  "project-theme": ProjectThemeWidget,
+  "provider-status": ProviderStatusWidget,
+  "provider-usage": ProviderUsageWidget,
+  "hints-launcher": HintsLauncherWidget,
+  "session-chat": SessionChatWidget,
+  "session-control": SessionControlWidget,
+  "session-edits": SessionEditsWidget,
+  "session-history": SessionHistoryWidget,
+  "session-info": SessionInfoWidget,
+  "session-list": SessionListWidget,
+  "session-sidebar": SessionSidebarWidget,
+  "session-streams": SessionStreamsWidget,
+  "session-turn": SessionTurnWidget,
+  "session-turns": SessionTurnsWidget,
+  "session-web": SessionWebWidget,
+  "session-terminal": SessionTerminalWidget,
+  "sessions": SessionsWidget,
+  "stats": StatsWidget,
+  "terminals": TerminalsWidget,
+  "trace-viewer": TraceViewerWidget,
+  "tts-settings": TtsSettingsWidget,
 };
+
+// ── Registry ──
+//
+// Built from the catalog so metadata has exactly one home. A catalog entry
+// with no component is skipped rather than registered broken — an undefined
+// `component` would crash at render, far from the mistake that caused it.
+
+export const WIDGET_DEFS: Record<string, WidgetDef> = Object.fromEntries(
+  Object.entries(WIDGET_META)
+    .filter(([type]) => WIDGET_COMPONENTS[type])
+    .map(([type, meta]) => [type, { ...meta, component: WIDGET_COMPONENTS[type] }]),
+);
 
 // ── Derived maps ──
 

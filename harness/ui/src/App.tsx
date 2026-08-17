@@ -681,6 +681,7 @@ function AppContent({ router }: { router: HashRouter }) {
               onSelectSession={handleViewSession}
               onActivateSession={handleActivateSession}
               hashSessionId={hashSessionId}
+              pageId={chatStudioPage.id}
             />
         )}
 
@@ -754,6 +755,7 @@ function AppContent({ router }: { router: HashRouter }) {
                     onSelectSession={handleViewSession}
                     onActivateSession={handleActivateSession}
                     hashSessionId={isActive ? hashSessionId : null}
+                    pageId={page.id}
                   />
                 </div>
               );

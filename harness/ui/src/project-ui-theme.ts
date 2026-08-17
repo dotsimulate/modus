@@ -1,5 +1,6 @@
 import type { ProjectUiState } from "../../sdk/index";
 import { modus } from "./modusClient";
+import { reportClientTiming } from "./client-timing";
 
 const THEME_STYLE_ID = "modus-project-theme";
 const FONT_STYLE_ID = "modus-project-font";
@@ -23,7 +24,10 @@ export function applyProjectUiState(state: ProjectUiState | null) {
   upsertStyle(FONT_STYLE_ID, state?.activeFont?.css);
 }
 
-export async function loadAndApplyProjectUiState(cwd?: string): Promise<ProjectUiState | null> {
+export async function loadAndApplyProjectUiState(
+  cwd?: string,
+  source: "profile-project" | "session-settled" = "profile-project",
+): Promise<ProjectUiState | null> {
   const currentVersion = ++loadVersion;
   if (!cwd) {
     if (currentVersion === loadVersion) applyProjectUiState(null);
@@ -31,7 +35,9 @@ export async function loadAndApplyProjectUiState(cwd?: string): Promise<ProjectU
   }
 
   try {
+    const t0 = performance.now();
     const state = await modus.getProjectUiState(cwd);
+    reportClientTiming("projectUiTheme", performance.now() - t0, { stale: currentVersion !== loadVersion, source, cwd });
     if (currentVersion === loadVersion) applyProjectUiState(state);
     return state;
   } catch {

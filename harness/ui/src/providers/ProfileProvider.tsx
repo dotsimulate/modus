@@ -105,6 +105,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     () => activeProjectRoot(activeUP?.projects, setupState.cwd),
     [activeUP?.projects, setupState.cwd],
   );
+  const themeCwd = projectRoot || setupState.cwd.trim() || undefined;
 
   // Switch user profile
   const switchUserProfile = useCallback((name: string | null) => {
@@ -287,9 +288,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   // Apply project theme — always from project root, not a profile subfolder
   useEffect(() => {
-    const cwd = projectRoot || setupState.cwd.trim();
-    loadAndApplyProjectUiState(cwd || undefined);
-  }, [projectRoot, setupState.cwd]);
+    loadAndApplyProjectUiState(themeCwd, "profile-project");
+  }, [themeCwd]);
 
   // Reload when user profile changes
   useEffect(() => {

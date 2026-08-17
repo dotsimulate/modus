@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   getSession,
   insertMessage,
@@ -53,6 +55,37 @@ test("an ordinary turn still moves the session up the list", async () => {
   syncSessionMessageCount(id);
 
   expect(getSession(id)!.last_message_at).toBeGreaterThan(before);
+});
+
+test("delayed assistant materialization preserves the turn activity time", async () => {
+  const { id, before } = await makeAgedSession("buffered assistant turn");
+  const activityAt = before + 1;
+
+  insertMessage({
+    sessionId: id,
+    seq: 1,
+    role: "assistant",
+    content: "reply buffered before reap",
+    createdAt: activityAt,
+  });
+  await Bun.sleep(5);
+  syncSessionMessageCount(id, { activityAt });
+
+  const after = getSession(id)!;
+  expect(after.last_message_at).toBe(activityAt);
+  expect(after.updated_at).toBeGreaterThan(activityAt);
+  expect(after.last_message_at).toBeLessThan(Date.now());
+});
+
+test("reap flush wires the pending turn timestamp through persistence", () => {
+  const source = readFileSync(join(import.meta.dir, "..", "session-manager.ts"), "utf8");
+  const start = source.indexOf("function flushPendingAssistantTurn");
+  const end = source.indexOf("function persistSemanticMessage", start);
+  const body = source.slice(start, end);
+
+  expect(body).toContain("createdAt: turn.timestamp");
+  expect(body).toContain("syncSessionMessageCount(session.sessionId, { activityAt: turn.timestamp })");
+  expect(body).not.toContain("createdAt: Date.now()");
 });
 
 test("renaming a session does not move it up the list", async () => {

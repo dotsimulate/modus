@@ -540,6 +540,41 @@ export type SessionHistorySnapshot = {
   createdAt: number;
 };
 
+/**
+ * One turn with no bodies, for surfaces that navigate by turn.
+ *
+ * History arrives a page at a time, so anything offering to jump to an
+ * arbitrary turn needs the shape of the conversation before it has the content.
+ * Every measure here is a size hint for drawing an index mark — none of it is
+ * content, and none of it is comparable across `source` values.
+ */
+export type SessionTurnIndexEntry = {
+  /** 1-based position in the whole conversation. */
+  number: number;
+  /** Seq to address this turn by; any seq inside a turn resolves back to it. */
+  seq: number;
+  /** When the turn opened. */
+  timestamp: number;
+  /** Relative prompt size: prompt characters on `messages`, payload bytes on `events`. */
+  promptWeight: number;
+  /** Characters of assistant prose. `messages` source only. */
+  textWeight?: number;
+  /** Tool calls in the response. `messages` source only. */
+  toolCount?: number;
+};
+
+export type SessionTurnIndex = {
+  turns: SessionTurnIndexEntry[];
+  /**
+   * Which history source produced this. `messages` carries prose weight and
+   * tool counts; `events` carries boundaries only, because counting tools there
+   * would mean parsing every payload this endpoint exists to avoid reading.
+   */
+  source: "messages" | "events";
+  /** Turns older than the returned window, when the index was capped. */
+  olderTurnCount: number;
+};
+
 // ── Events ──
 
 /** A single server-sent event from a session's event stream (untyped, kept for backward compat). */

@@ -35,6 +35,10 @@
   ],
   "exclude": [
     "./ui",
+    // This CLI consumes browser-owned pure helpers. Those helpers are checked
+    // by the UI config; importing them here would also merge the UI's React DOM
+    // globals into Bun's fetch/stream globals for every backend module.
+    "./scripts/lint-pages.ts",
     "./node_modules"
   ]
 }

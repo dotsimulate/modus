@@ -1,24 +1,22 @@
 import { memo, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { ThinkingBlock } from "./ThinkingBlock";
-import type { Message, MessageContentBlock, ToolCall, ToolCallDisplayMode } from "../../../sdk/index";
+import type { Message, ToolCall, ToolCallDisplayMode } from "../../../sdk/index";
 import { mimeToPreviewKind } from "../../../sdk/index";
 import { tokenParam } from "../modusClient";
 import { backendUrl } from "../backendTarget";
 import { ToolCallView } from "./ToolCall";
 import { ToolCallGroup, TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
-import { Markdown } from "./Markdown";
 import { ImageLightbox } from "./ImageLightbox";
 import { AttachmentImage } from "./AttachmentImage";
 import { StreamingCursor } from "./StreamingCursor";
-import { formatContextPercent, formatProviderTokenUsage } from "./providerStats";
+import { metaParts } from "./providerStats";
+import { MessageText } from "./MessageText";
 import { CopyMessageButton } from "./CopyMessageButton";
 import { AudioArtifact } from "./AudioArtifact";
 import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { addPrompt } from "../promptCache";
-import { isCodexProvider } from "../tools";
-import { parseMessageText, userAuthoredMessageText, type MessageTextPart } from "../move-context";
-import { MoveContextDisclosure } from "./MoveContextDisclosure";
 import { partitionToolRun } from "../move-tool-view";
+import { segmentContentBlocks, tallyToolNames } from "../turn-segments";
 
 /**
  * Absolute URL for a session artifact.
@@ -92,101 +90,6 @@ type Props = {
   sessionId?: string | null;
   latestMoveToolCallIds?: ReadonlyMap<string, string>;
 };
-
-function formatTokensPerSecond(meta: Message["meta"], provider?: string): string | null {
-  if (isCodexProvider(provider)) return null;
-  if (!meta?.outputTokens || !meta.duration || meta.duration <= 0) return null;
-  const rate = meta.outputTokens / (meta.duration / 1000);
-  if (!Number.isFinite(rate) || rate <= 0) return null;
-  return `${rate >= 10 ? rate.toFixed(0) : rate.toFixed(1)} tok/s`;
-}
-
-/** When the turn landed, and how long it took. Either half can be missing. */
-function formatMetaWhen(msg: Message): string | null {
-  const elapsed = msg.meta?.duration != null ? `${(msg.meta.duration / 1000).toFixed(1)}s` : null;
-  const clock = msg.timestamp
-    ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-    : null;
-  if (clock && elapsed) return `${clock} (${elapsed})`;
-  return clock ?? elapsed;
-}
-
-/**
- * Consecutive tool calls belong together, so they are rendered as one run
- * rather than N independent rows. Walking the blocks into segments first keeps
- * that grouping out of the render, and gives deferred placeholders the same
- * shape as loaded runs.
- */
-type RenderSegment =
-  | { kind: "text"; key: string; text: string }
-  | { kind: "thinking"; key: string; thinking: string }
-  | { kind: "tools"; key: string; tools: ToolCall[] }
-  | { kind: "deferred"; key: string; hasThinking: boolean; count: number; toolNames: Record<string, number> };
-
-function segmentContentBlocks(msgId: string, blocks: MessageContentBlock[]): RenderSegment[] {
-  const segments: RenderSegment[] = [];
-  let run: ToolCall[] = [];
-  const flushRun = (index: number) => {
-    if (run.length === 0) return;
-    segments.push({ kind: "tools", key: `${msgId}:run:${index}`, tools: run });
-    run = [];
-  };
-
-  blocks.forEach((block, index) => {
-    if (block.type === "tool_call") {
-      run.push(block.toolCall);
-      return;
-    }
-    flushRun(index);
-    if (block.type === "text") {
-      if (block.text) segments.push({ kind: "text", key: `${msgId}:text:${index}`, text: block.text });
-    } else if (block.type === "thinking") {
-      segments.push({ kind: "thinking", key: `${msgId}:thinking:${index}`, thinking: block.thinking });
-    } else {
-      segments.push({
-        kind: "deferred",
-        key: `${msgId}:deferred:${index}`,
-        hasThinking: block.hasThinking,
-        count: block.toolCallCount,
-        toolNames: block.toolNames ?? {},
-      });
-    }
-  });
-  flushRun(blocks.length);
-  return segments;
-}
-
-/** Tally a loaded run so its header reads the same as a deferred one's. */
-function tallyToolNames(tools: ToolCall[]): Record<string, number> {
-  const names: Record<string, number> = {};
-  for (const tool of tools) names[tool.name] = (names[tool.name] ?? 0) + 1;
-  return names;
-}
-
-type MetaPart = { key: string; className?: string; text: string };
-
-/**
- * One list of stats, rendered twice: as the text the resolve animation reveals,
- * and as the settled row of spans. Building them separately let the two drift,
- * so the animation used to finish on text the row then replaced.
- */
-function metaParts(msg: Message, provider?: string): MetaPart[] {
-  const meta = msg.meta;
-  if (!meta) return [];
-  const parts: MetaPart[] = [];
-  if (meta.model) parts.push({ key: "model", text: meta.model });
-  if (meta.cost != null) parts.push({ key: "cost", text: `$${meta.cost.toFixed(4)}` });
-  if (meta.turns != null) parts.push({ key: "turns", text: `${meta.turns} turns` });
-  const usage = formatProviderTokenUsage(provider, meta.inputTokens, meta.outputTokens);
-  if (usage) parts.push({ key: "tokens", className: "meta-tokens", text: usage });
-  const tokensPerSecond = formatTokensPerSecond(meta, provider);
-  if (tokensPerSecond) parts.push({ key: "rate", className: "meta-tokens", text: tokensPerSecond });
-  const ctx = formatContextPercent(meta);
-  if (ctx) parts.push({ key: "ctx", className: "meta-context", text: `${ctx} ctx` });
-  const when = formatMetaWhen(msg);
-  if (when) parts.push({ key: "when", className: "meta-duration", text: when });
-  return parts;
-}
 
 function renderArtifact(
   artifact: NonNullable<Message["artifacts"]>[number],
@@ -273,56 +176,6 @@ function renderArtifact(
     </a>
   );
 }
-
-function MessageTextBlock({
-  messageId,
-  role,
-  text,
-  isNew,
-  onContextMenu,
-}: {
-  messageId: string;
-  role: Message["role"];
-  text: string;
-  isNew: boolean;
-  onContextMenu: (event: React.MouseEvent) => void;
-}) {
-  const parts = role === "user" ? parseMessageText(text) : [];
-  const injectedContexts = parts.filter(
-    (part): part is Exclude<MessageTextPart, { type: "text" }> => part.type !== "text",
-  );
-  const visibleText = injectedContexts.length ? userAuthoredMessageText(text) : text;
-
-  return (
-    <>
-      {visibleText && (
-        <div
-          className={`message-content${isNew ? " message-content--new" : ""}`}
-          onContextMenu={onContextMenu}
-        >
-          <Markdown content={visibleText} />
-        </div>
-      )}
-      {injectedContexts.length > 0 && (
-        <div className="move-context-list">
-          {injectedContexts.map((context, index) => {
-            const isSkill = context.type === "skill_context";
-            const name = isSkill ? context.skillName : context.moveName;
-            return (
-              <MoveContextDisclosure
-                key={`${messageId}:${context.type}:${name}:${index}`}
-                moveName={name}
-                content={context.content}
-                kind={isSkill ? "skill" : "move"}
-              />
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
-}
-
 
 export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew = false, isStreaming, hideRole = false, showThinking = true, showMeta = true, toolCallDisplay = "collapsed", showGitEvents = true, cwd, lastTodoId, streamFeed, onBranch, onStopTask, onLoadDetails, children, sessionId, latestMoveToolCallIds }: Props) {
   void onBranch;
@@ -434,7 +287,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
           {segmentContentBlocks(msg.id, msg.contentBlocks).map((segment) => {
             if (segment.kind === "text") {
               return (
-                <MessageTextBlock
+                <MessageText
                   key={segment.key}
                   messageId={segment.key}
                   role={msg.role}
@@ -497,7 +350,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
             />
           )}
           {msg.content && (
-            <MessageTextBlock
+            <MessageText
               messageId={msg.id}
               role={msg.role}
               text={msg.content}

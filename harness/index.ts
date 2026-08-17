@@ -27,6 +27,8 @@ import { cursorMcpConfigStore } from "./providers/cursor-mcp-config";
 import { pruneAbandonedSensitiveTempDirectories } from "./sensitive-temp";
 import { isSessionMcpCredential, validateSessionMcpCredential } from "./session-mcp-credential";
 import { FILE_TICKET_TTL_MS, mintFileTicket, validateFileTicket } from "./file-ticket";
+import { moveAssetETag, moveAssetHeaders, moveAssetNotModified } from "./move-asset-cache";
+import { formatClientTimingLog, parseClientTimingPayload } from "./client-timing";
 import { BACKEND_IDENTITY } from "./backend-identity";
 import { configuredRootsForCwd } from "./preview-roots";
 import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from "fs";
@@ -87,7 +89,7 @@ import {
   getSessionTags, getSessionByTag, updateSessionTags, addSessionTag, removeSessionTag, parseTags,
   pruneSessionEvents, pruneAllSessionEvents, storageStats, getSessionStats, getPeriodCosts,
   getProviderUsageAnalytics, getDeepAnalytics,
-  getSessionMessage, getSessionMessages, getSessionMessageHistory, getSessionArtifact, getFileObservations, getSessionsForFile, listAllCheckpoints,
+  getSessionMessage, getSessionMessages, getSessionMessageHistory, getSessionTurnIndex, getSessionArtifact, getFileObservations, getSessionsForFile, listAllCheckpoints,
 } from "./db";
 import { planCheckpointMaintenance } from "./checkpoint-maintenance";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
@@ -802,6 +804,16 @@ app.get("/health", (c) => {
   });
 });
 
+// Release Tauri has no DevTools, so renderer timings would otherwise be
+// invisible on the surface we ship. Keep this authenticated, structured, and
+// bounded; arbitrary client text must never become a log-injection primitive.
+app.post("/api/client-timing", async (c) => {
+  const payload = parseClientTimingPayload(await c.req.json().catch(() => null));
+  if (!payload) return c.json({ error: "invalid client timing payload" }, 400);
+  console.log(formatClientTimingLog(payload));
+  return c.body(null, 204);
+});
+
 // ── Process Registry ──
 
 // Unified view of every managed process (sessions, mission workers, terminals)
@@ -1400,7 +1412,11 @@ app.get("/api/sessions/index", (c) => {
         || session.status === "interrupting"
         || session.status === "paused"
       )).length,
-      last_activity_at: rows.length > 0 ? Math.max(...rows.map((session) => session.updated_at)) : null,
+      // Conversation time, matching the session list's own ordering key — a row
+      // write (rename, pin, reap notice) must not report project activity.
+      last_activity_at: rows.length > 0
+        ? Math.max(...rows.map((session) => session.last_message_at || session.created_at || session.updated_at))
+        : null,
     };
   });
   return c.json({ generated_at: Date.now(), projects, sessions });
@@ -2053,6 +2069,18 @@ app.get("/api/sessions/:id/messages-content", (c) => {
     return c.json(msg);
   }
   return c.json(getSessionMessages(id));
+});
+
+// Every turn in a session with no bodies — what a turn-navigating surface needs
+// to know the shape of a conversation without paging the whole transcript in.
+app.get("/api/sessions/:id/turns", (c) => {
+  const id = c.req.param("id");
+  if (!getSession(id) && !getActiveSession(id)) return c.json({ error: "session not found" }, 404);
+  const requestedLimit = Number(c.req.query("limit"));
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(5000, Math.floor(requestedLimit))
+    : undefined;
+  return c.json(getSessionTurnIndex(id, limit != null ? { limit } : {}));
 });
 
 app.get("/api/sessions/:id/history-snapshot", (c) => {
@@ -3467,6 +3495,52 @@ app.patch("/api/plugins/:id/settings", async (c) => {
   }
 });
 
+// ── Page inspection ──
+//
+// A page can only be judged by looking at it, and looking at it has meant a
+// human with the app open. This is the readback channel for the browser-side
+// page inspector: the client measures a rendered page and posts the result
+// here, and whoever is authoring the page reads it back.
+//
+// Deliberately in-memory and last-only. It is a debugging surface, not a
+// record — persisting layout measurements would keep stale geometry around
+// long after the page that produced it changed.
+
+type StoredPageInspectReport = { receivedAt: number; report: unknown };
+const pageInspectReports = new Map<string, StoredPageInspectReport>();
+const PAGE_INSPECT_MAX_PAGES = 20;
+
+app.post("/api/page-inspect", async (c) => {
+  const body = await c.req.json().catch(() => null) as { pageId?: unknown } | null;
+  if (!body || typeof body !== "object") {
+    return c.json({ error: "expected a page inspection report" }, 400);
+  }
+  const pageId = typeof body.pageId === "string" && body.pageId ? body.pageId : "unknown";
+  // Oldest-out rather than unbounded: a long session flipping between pages
+  // should not accumulate reports nobody will read.
+  if (!pageInspectReports.has(pageId) && pageInspectReports.size >= PAGE_INSPECT_MAX_PAGES) {
+    const oldest = pageInspectReports.keys().next().value;
+    if (oldest) pageInspectReports.delete(oldest);
+  }
+  pageInspectReports.set(pageId, { receivedAt: Date.now(), report: body });
+  return c.json({ ok: true, pageId });
+});
+
+app.get("/api/page-inspect", (c) => {
+  const pageId = c.req.query("pageId");
+  if (pageId) {
+    const stored = pageInspectReports.get(pageId);
+    if (!stored) return c.json({ error: `no inspection report for page "${pageId}"` }, 404);
+    return c.json(stored);
+  }
+  return c.json({
+    pages: [...pageInspectReports.entries()].map(([id, stored]) => ({
+      pageId: id,
+      receivedAt: stored.receivedAt,
+    })),
+  });
+});
+
 // ── Client Extensions ──
 
 app.get("/api/client-extensions", (c) => {
@@ -4551,9 +4625,19 @@ app.get("/api/moves/:name/widget", async (c) => {
     const { statSync } = await import("fs");
     const mtime = statSync(srcPath).mtimeMs;
 
+    // moduleUrl carries no version or hash, so without a validator a browser is
+    // free to reuse a widget bundle forever and never sees an authored edit. That
+    // stranded a phone on a stale widget while the desktop had refetched, which
+    // reads as "the fix works here but not there". no-cache means revalidate, not
+    // do-not-store: the 304 below keeps the common case cheap.
+    const etag = moveAssetETag(mtime);
+    if (moveAssetNotModified(c.req.header("If-None-Match"), etag)) {
+      return new Response(null, { status: 304, headers: moveAssetHeaders("application/javascript", etag) });
+    }
+
     const cached = widgetCache.get(srcPath);
     if (cached && cached.mtime === mtime) {
-      return new Response(cached.js, { headers: { "Content-Type": "application/javascript" } });
+      return new Response(cached.js, { headers: moveAssetHeaders("application/javascript", etag) });
     }
 
     const result = await Bun.build({
@@ -4573,7 +4657,7 @@ app.get("/api/moves/:name/widget", async (c) => {
 
     const js = await result.outputs[0]!.text();
     widgetCache.set(srcPath, { mtime, js });
-    return new Response(js, { headers: { "Content-Type": "application/javascript" } });
+    return new Response(js, { headers: moveAssetHeaders("application/javascript", etag) });
   } catch (err) {
     return c.json({ error: `widget load failed: ${err}` }, 500);
   }
@@ -4590,9 +4674,13 @@ app.get("/api/moves/:name/widget.css", async (c) => {
 
   const cssPath = join(location.dir, "widget.css");
   try {
-    const { readFileSync } = await import("fs");
+    const { readFileSync, statSync } = await import("fs");
+    const etag = moveAssetETag(statSync(cssPath).mtimeMs);
+    if (moveAssetNotModified(c.req.header("If-None-Match"), etag)) {
+      return new Response(null, { status: 304, headers: moveAssetHeaders("text/css", etag) });
+    }
     const css = readFileSync(cssPath, "utf-8");
-    return new Response(css, { headers: { "Content-Type": "text/css" } });
+    return new Response(css, { headers: moveAssetHeaders("text/css", etag) });
   } catch {
     return new Response("", { status: 404 });
   }

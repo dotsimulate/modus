@@ -162,7 +162,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       && (next === "idle" || next === "error")
     ) {
       refreshSessions();
-      loadAndApplyProjectUiState(projectRoot || undefined);
+      loadAndApplyProjectUiState(projectRoot || undefined, "session-settled");
     }
     prevActiveStatusRef.current = next;
   }, [activeSession?.status, projectRoot, refreshSessions]);

@@ -3,6 +3,7 @@ import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { useSession } from "../providers/SessionContext";
 import { getSessionState } from "../sessionStore";
+import { sessionActivityAt as activityAt } from "../sessionActivity";
 import { useWidgetPollingValue } from "./widget-data";
 import { useWidgetUiState } from "./ui-state";
 import type { WidgetBase, WidgetProps } from "./types";
@@ -188,7 +189,7 @@ function filterSessions(sessions: SessionInfo[], query: string): SessionInfo[] {
 }
 
 function sortSessions(sessions: SessionInfo[]): SessionInfo[] {
-  return [...sessions].sort((a, b) => b.updated_at - a.updated_at);
+  return [...sessions].sort((a, b) => activityAt(b) - activityAt(a));
 }
 
 export default function SessionStreamsWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<SessionStreamsConfig>) {
@@ -695,7 +696,7 @@ function StreamSessionRow({
         <div className="ssw-row-title">{displayTitle(session)}</div>
         <div className="ssw-row-meta">
           {session.profile && <span>{session.profile}</span>}
-          <span>{relativeTime(session.updated_at)}</span>
+          <span>{relativeTime(activityAt(session))}</span>
           {session.message_count > 0 && <span>{session.message_count}</span>}
         </div>
         <div className={`ssw-row-live-wrap${liveText ? " active" : ""}`}>

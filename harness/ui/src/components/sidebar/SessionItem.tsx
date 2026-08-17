@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { SessionInfo } from "../../../../sdk/index";
 import { modus } from "../../modusClient";
 import { useSessionState } from "../../sessionStore";
+import { sessionActivityAt as activityAt } from "../../sessionActivity";
 import { formatSidebarProviderStat, getLatestAssistantUsage } from "../providerStats";
 import { compactModelName, isEmptySession, sessionDisplayText, timeAgo } from "../../utils/format";
 
@@ -114,7 +115,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
             {compactUsageText && <span>{compactUsageText}</span>}
           </span>
           <span className="session-meta-right">
-            <span>{timeAgo(s.updated_at)}</span>
+            <span>{timeAgo(activityAt(s))}</span>
             {onTogglePin && (
               <button
                 className={`session-pin-btn${isPinned ? " session-pin-btn--pinned" : ""}`}
