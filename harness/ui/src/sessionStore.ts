@@ -14,6 +14,7 @@ import {
 } from "./multiEventStream";
 import { nextMsgId, type Session, type SessionHistorySnapshot, type TurnContent } from "../../sdk/index";
 import { readLocalInterfaceSettings } from "./interface-settings";
+import { reportClientTiming } from "./client-timing";
 
 // ── Store State ──
 
@@ -487,7 +488,7 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
   entry.revision++;
   notify(); // single React re-render for the entire batch
   const _aebMs = performance.now() - _aebT0;
-  if (_aebMs > 10) console.log(`[CLIENT-TIMING] applyEventBatch ${events.length} events ${_aebMs.toFixed(1)}ms session=${id.slice(0,8)}`);
+  if (_aebMs > 10) reportClientTiming("applyEventBatch", _aebMs, { count: events.length, session: id.slice(0, 8) });
 }
 
 /** Update state for a session via a reducer event */
@@ -972,7 +973,7 @@ function ensureSubscribedInternal(
       subscribeSession(sessionId, afterSeq, opts.profile, opts.onDone);
     } finally {
       if (pendingEnsure.get(sessionId) === slot) pendingEnsure.delete(sessionId);
-      console.log(`[CLIENT-TIMING] ensureSubscribed ${sessionId.slice(0,8)} ${(performance.now() - _ensT0).toFixed(1)}ms`);
+      reportClientTiming("ensureSubscribed", performance.now() - _ensT0, { session: sessionId.slice(0, 8) });
     }
   })();
 

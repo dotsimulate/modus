@@ -4,7 +4,8 @@ import { selectVisibleProjectSessions } from "../../ui/src/sessionHistoryVisibil
 const NOW = 1_800_000_000_000;
 
 function session(id: string, ageHours: number, status = "done") {
-  return { id, status, updated_at: NOW - ageHours * 60 * 60 * 1000 };
+  const at = NOW - ageHours * 60 * 60 * 1000;
+  return { id, status, last_message_at: at, created_at: at, updated_at: at };
 }
 
 describe("project session visibility", () => {
@@ -28,6 +29,16 @@ describe("project session visibility", () => {
       now: NOW,
       selectedId: "selected-old",
     }).map((item) => item.id)).toEqual(["recent", "selected-old"]);
+  });
+
+  test("does not make an old conversation recent when reap touches its row", () => {
+    const recent = session("recent", 1);
+    const reaped = { ...session("reaped-old", 200), updated_at: NOW - 5 * 60_000 };
+    expect(selectVisibleProjectSessions([recent, reaped], {
+      window: "12h",
+      now: NOW,
+      recentLimit: 8,
+    }).map((item) => item.id)).toEqual(["recent"]);
   });
 
   test("reveals older sessions incrementally", () => {

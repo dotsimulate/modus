@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
 import { Markdown } from "./Markdown";
@@ -8,6 +8,7 @@ import { WIDGETS, WidgetChromeContext } from "../widgets";
 import type { DashboardBlock, DashboardModule, LayoutNode, WidgetBase, WidgetSize } from "../widgets";
 import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
 import { PanelTreeRenderer } from "./PanelTreeRenderer";
+import { PageInspectProbe } from "./PageInspectProbe";
 import {
   PageStateBusContext,
   PageUrlProvider,
@@ -316,6 +317,7 @@ export function PageView({
   onSelectSession,
   onActivateSession,
   hashSessionId,
+  pageId,
 }: {
   blocks?: DashboardBlock[];
   layout?: PageLayoutInput;
@@ -327,9 +329,12 @@ export function PageView({
   onActivateSession?: (id: string) => void;
   /** Current hash session id — enables scope nodes with bindUrlSession to deep-link */
   hashSessionId?: string | null;
+  /** Page id, used only to label measurements from the page inspector. */
+  pageId?: string;
 }) {
   const { activeCwd } = useProfiles();
   const isMobile = useMediaQuery("(max-width: 640px)");
+  const inspectRef = useRef<HTMLDivElement>(null);
   const selectedLayout = isMobile && layouts?.mobile ? layouts.mobile : layout;
   const normalizedLayout = selectedLayout ? normalizePageLayoutNode(selectedLayout) : undefined;
   // Stable ref — only create bus once per mount
@@ -345,6 +350,7 @@ export function PageView({
         <PageUrlProvider hashSessionId={hashSessionId ?? null}>
           <div className="dashboard" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
             <div
+              ref={inspectRef}
               style={{
                 flex: 1,
                 minHeight: 0,
@@ -360,6 +366,11 @@ export function PageView({
                 onActivateSession={onActivateSession}
               />
             </div>
+            <PageInspectProbe
+              containerRef={inspectRef}
+              pageId={pageId ?? "unknown"}
+              {...(isMobile && layouts?.mobile ? { layoutName: "mobile" } : {})}
+            />
           </div>
         </PageUrlProvider>
       </PageStateBusContext.Provider>

@@ -188,6 +188,32 @@ const composerToggles = new Map<string, ComposerToggleRegistration>();
 /** Live setting options, keyed `${extensionId}:${settingName}`. */
 const settingOptions = new Map<string, SettingOptionsConfig>();
 const loadedExtensions: LoadedExtension[] = [];
+let loadedManifestKey: string | null = null;
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b));
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function extensionManifestKey(items: ClientExtensionManifestItem[]): string {
+  return stableJson(items.filter((item) => item.enabled).map((item) => ({
+    id: item.id,
+    // Project extensions can resolve to a different file at the same route, so
+    // their cwd-bearing URL is part of identity. Built-in/global/plugin modules
+    // are the same file across projects; only their resolved settings matter.
+    moduleUrl: item.source === "project" ? item.moduleUrl : item.moduleUrl.replace(/\?.*$/, ""),
+    source: item.source,
+    pluginId: item.pluginId,
+    pluginPath: item.pluginPath,
+    fileName: item.fileName,
+    settingsValues: item.settingsValues,
+  })));
+}
 let listenerAttached = false;
 const composerControlListeners = new Set<() => void>();
 let composerControlSnapshot = 0;
@@ -544,31 +570,60 @@ export async function unloadClientExtensions(): Promise<void> {
   composerActions.clear();
   composerToggles.clear();
   settingOptions.clear();
+  loadedManifestKey = null;
   notifyComposerControls();
 }
 
-export async function loadClientExtensions(items: ClientExtensionManifestItem[]): Promise<void> {
+type ClientExtensionOnLoad = (api: ClientExtensionApi) => void | (() => void) | Promise<void | (() => void)>;
+
+/** Test seam: fetch and evaluate one extension module, returning its onLoad. */
+export type ClientExtensionModuleLoader = (
+  item: ClientExtensionManifestItem,
+) => Promise<ClientExtensionOnLoad | null>;
+
+const evaluateExtensionModule: ClientExtensionModuleLoader = async (item) => {
+  const moduleUrl = item.moduleUrl.startsWith("http://") || item.moduleUrl.startsWith("https://")
+    ? item.moduleUrl
+    : `${API_BASE}${item.moduleUrl}`;
+  // Fetch through the authenticated client boundary, then evaluate from a
+  // same-window blob. This keeps remote backend script origins out of the
+  // Tauri CSP while still allowing trusted, backend-configured extensions.
+  const response = await fetch(moduleUrl, { headers: authHeaders() });
+  if (!response.ok) throw new Error(`Client extension fetch failed: ${response.status}`);
+  const blobUrl = URL.createObjectURL(new Blob([await response.text()], { type: "application/javascript" }));
+  let mod: Record<string, unknown>;
+  try {
+    mod = await import(/* @vite-ignore */ blobUrl) as Record<string, unknown>;
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+  const definition = toDefinition(mod);
+  if (!definition) return null;
+  return (typeof definition === "function" ? definition : definition.onLoad) ?? null;
+};
+
+export async function loadClientExtensions(
+  items: ClientExtensionManifestItem[],
+  opts?: { isCancelled?: () => boolean; moduleLoader?: ClientExtensionModuleLoader },
+): Promise<void> {
+  const manifestKey = extensionManifestKey(items);
+  if (manifestKey === loadedManifestKey) return;
+  // Evaluate the incoming set BEFORE unloading the current one. A refresh
+  // fires on every step of a project or user-profile settle, and unloading
+  // first left the composer without its extensions (mic, shortcuts) for the
+  // whole fetch+import pipeline instead of one registration swap. A failed or
+  // cancelled refresh must leave the current set untouched.
+  const loader = opts?.moduleLoader ?? evaluateExtensionModule;
+  const evaluated = await Promise.all(
+    items.filter((item) => item.enabled).map(async (item) => ({
+      item,
+      onLoad: await loader(item),
+    })),
+  );
+  if (opts?.isCancelled?.()) return;
   await unloadClientExtensions();
-  for (const item of items) {
-    if (!item.enabled) continue;
-    const moduleUrl = item.moduleUrl.startsWith("http://") || item.moduleUrl.startsWith("https://")
-      ? item.moduleUrl
-      : `${API_BASE}${item.moduleUrl}`;
-    // Fetch through the authenticated client boundary, then evaluate from a
-    // same-window blob. This keeps remote backend script origins out of the
-    // Tauri CSP while still allowing trusted, backend-configured extensions.
-    const response = await fetch(moduleUrl, { headers: authHeaders() });
-    if (!response.ok) throw new Error(`Client extension fetch failed: ${response.status}`);
-    const blobUrl = URL.createObjectURL(new Blob([await response.text()], { type: "application/javascript" }));
-    let mod: Record<string, unknown>;
-    try {
-      mod = await import(/* @vite-ignore */ blobUrl) as Record<string, unknown>;
-    } finally {
-      URL.revokeObjectURL(blobUrl);
-    }
-    const definition = toDefinition(mod);
-    if (!definition) continue;
-    const onLoad = typeof definition === "function" ? definition : definition.onLoad;
+  for (const { item, onLoad } of evaluated) {
+    if (opts?.isCancelled?.()) return;
     if (!onLoad) continue;
     const cleanup = await onLoad(createApi(item.id, item.settingsValues));
     loadedExtensions.push({
@@ -576,4 +631,5 @@ export async function loadClientExtensions(items: ClientExtensionManifestItem[])
       cleanup: typeof cleanup === "function" ? cleanup : undefined,
     });
   }
+  loadedManifestKey = manifestKey;
 }

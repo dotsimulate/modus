@@ -1,9 +1,10 @@
+import { sessionActivityAt, type SessionActivityFields } from "./sessionActivity";
+
 export type ProjectWindow = "12h" | "24h" | "7d" | "all";
 
-export type ProjectSessionLike = {
+export type ProjectSessionLike = SessionActivityFields & {
   id: string;
   status: string;
-  updated_at: number;
 };
 
 const WINDOW_MS: Record<Exclude<ProjectWindow, "all">, number> = {
@@ -39,7 +40,7 @@ export function selectVisibleProjectSessions<T extends ProjectSessionLike>(
       visibleIds.add(session.id);
       continue;
     }
-    if (session.updated_at >= cutoff && recentInactive < recentLimit) {
+    if (sessionActivityAt(session) >= cutoff && recentInactive < recentLimit) {
       visibleIds.add(session.id);
       recentInactive++;
     }

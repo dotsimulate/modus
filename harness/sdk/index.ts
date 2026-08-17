@@ -33,6 +33,8 @@ export type {
   TurnMeta,
   TurnContentBlock,
   SessionHistorySnapshot,
+  SessionTurnIndex,
+  SessionTurnIndexEntry,
   BranchPreview,
   BranchResult,
   RewindPreview,

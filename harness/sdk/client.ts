@@ -14,6 +14,7 @@ import type {
   MoveBinding,
   TurnContent,
   SessionHistorySnapshot,
+  SessionTurnIndex,
   TypedSSEEvent,
   EventStreamHandle,
   EventStreamCallbacks,
@@ -340,6 +341,12 @@ export class ModusClient {
     if (opts?.details) params.set("details", opts.details);
     const q = params.toString();
     return (await this.fetch(`/api/sessions/${id}/history-snapshot${q ? `?${q}` : ""}`, { signal: opts?.signal })).json();
+  }
+  /** Lists every turn in a session with no bodies — for surfaces that navigate
+   *  by turn and need the shape of the conversation before its content. */
+  async getSessionTurnIndex(id: string, opts?: { signal?: AbortSignal; limit?: number }): Promise<SessionTurnIndex> {
+    const q = opts?.limit != null ? `?limit=${opts.limit}` : "";
+    return (await this.fetch(`/api/sessions/${id}/turns${q}`, { signal: opts?.signal })).json();
   }
   /** Soft-deletes (archives) a session. */
   async archiveSession(id: string): Promise<void> { await this.fetch(`/api/sessions/${id}`, { method: "DELETE" }); }

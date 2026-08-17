@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
+import { sessionActivityAt as activityAt } from "../sessionActivity";
 import type {
   MissionListItem,
   MissionRunSummary,
@@ -232,7 +233,7 @@ function SessionsPanel({
   onSelectSession: (id: string) => void;
 }) {
   if (sessions.length === 0) return <div className="mission-detail-empty">no sessions spawned</div>;
-  const sorted = [...sessions].sort((a, b) => b.updated_at - a.updated_at);
+  const sorted = [...sessions].sort((a, b) => activityAt(b) - activityAt(a));
   return (
     <div className="mission-sessions-list">
       {sorted.map(s => (
@@ -248,7 +249,7 @@ function SessionsPanel({
           </span>
           {s.profile && <span className="mission-session-profile">{s.profile}</span>}
           <span className="mission-session-msgs">{s.message_count}m</span>
-          <span className="mission-session-time">{timeAgo(s.updated_at)}</span>
+          <span className="mission-session-time">{timeAgo(activityAt(s))}</span>
         </button>
       ))}
     </div>

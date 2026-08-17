@@ -763,9 +763,12 @@ function flushPendingAssistantTurn(session: ActiveSession, terminalEvent: any = 
     durationMs: typeof terminalEvent.harness_duration_ms === "number" ? terminalEvent.harness_duration_ms : undefined,
     model: session.model,
     turns: typeof terminalEvent.num_turns === "number" ? terminalEvent.num_turns : undefined,
-    createdAt: Date.now(),
+    // A provider can disappear long after its last partial assistant event.
+    // Materializing that buffered content during reap must preserve when the
+    // conversation actually moved instead of making reap time look like a reply.
+    createdAt: turn.timestamp,
   });
-  syncSessionMessageCount(session.sessionId);
+  syncSessionMessageCount(session.sessionId, { activityAt: turn.timestamp });
   session.pendingAssistantTurn = null;
   return true;
 }

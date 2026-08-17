@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { sessionActivityAt } from "../../ui/src/sessionActivity";
 
 const DAY = 86_400_000;
@@ -51,4 +53,26 @@ describe("sidebar grouping contract", () => {
     // The defect this pins: bucketing on updated_at put it in "today".
     expect(bucket(now - (s.updated_at ?? 0))).toBe("today");
   });
+});
+
+describe("session-list surfaces order by conversation time", () => {
+  // The original fix swept only the sidebar SessionList; the rename affordance
+  // lives in the session-history widget, which kept bucketing and sorting on
+  // row-write time — so renaming a chat still moved it to "now". Every surface
+  // that lists sessions must read sessionActivityAt, never the raw column.
+  const surfaces = [
+    "components/sidebar/SessionList.tsx",
+    "components/sidebar/SessionItem.tsx",
+    "widgets/session-history.widget.tsx",
+    "widgets/session-streams.widget.tsx",
+    "widgets/missions.widget.tsx",
+    "sessionHistoryVisibility.ts",
+  ];
+
+  for (const surface of surfaces) {
+    it(`${surface} does not touch the row-write timestamp`, () => {
+      const body = readFileSync(join(import.meta.dir, "../../ui/src", surface), "utf8");
+      expect(body).not.toContain(".updated_at");
+    });
+  }
 });
