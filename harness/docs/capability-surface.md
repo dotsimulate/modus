@@ -1,6 +1,6 @@
 ---
 title: Capability Surface (condensed)
-lastUpdated: 2026-07-26
+lastUpdated: 2026-08-17
 covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts
 audience: agent
 ---
@@ -66,7 +66,8 @@ state). On activation the runner registers handlers, mints a reusable
 `ctx.apiToken`. The agent calls ops repeatedly via
 `modus_submit(token, { op, ...data })`.
 
-**Handler powers** (`MoveApiContext`) — orchestration, but not shell:
+**Handler powers** (`MoveApiContext`) — Harness Context orchestration, including
+`shell.run(cmd)` (gated by `capabilities.shell`) and `model` one-shots:
 `createSession`, `sendMessage(sessionId, msg)`, `triggerAction(name)`,
 `activateMove({moveName, inputs, sessionId, modeOverride})`,
 `watchSessionTurns(sessionId, cb)`, `wake(target, content, when?)`,
@@ -75,13 +76,13 @@ state). On activation the runner registers handlers, mints a reusable
 `[modus:...]` prefix when `emit` is supplied); user/widget callers inject
 nothing and only broadcast a supplied `emit` payload as `move-widget-event`.
 Plus `state` (get/set/delete), `store`/`setStore` (process-scoped), `db`
-(read-only sessions/messages/search), `secrets` (resolve/isSet), `caller`
-("agent" | "user").
+(read-only sessions/messages/search), `secrets` (resolve/isSet),
+`pluginSettings`, `emit`, and `caller` (`"agent" | "user"`).
 
-Handlers are **not** a superset of `gather()`/`onSubmit()`. `run` and `harness`
-exist only on `MoveContext`, so an api-only move cannot shell out through the
-gated path — and `capabilities.shell` currently gates a method its handlers
-cannot call. For the exact per-surface member list see
+Handlers are **not** a superset of `gather()`/`onSubmit()`. `MoveContext` exposes
+the convenience `run(cmd)` and the full `harness` object; handlers instead expose
+the gated path as `shell.run(cmd)` plus their own orchestration members. For the
+exact per-surface member list see
 [`generated/authoring-contracts`](./generated/authoring-contracts.md), which is
 generated from the declarations and cannot drift from them.
 
