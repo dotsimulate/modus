@@ -61,7 +61,7 @@ import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBi
 import { createTerminal as createTerminalPty, killTerminal as killTerminalPty, writeTerminal as writeTerminalPty } from "./terminal-manager";
 import { getPluginActionsDir, listEnabledModusPlugins, type ModusPlugin } from "./modus-plugins";
 import { buildHarnessContext } from "./harness-context";
-import { isProjectAutomationAllowed } from "./vault-policy";
+import { isPluginAllowed, isProjectAutomationAllowed } from "./vault-policy";
 
 // ── Constants ──
 
@@ -190,11 +190,22 @@ function actionAllowedByUserProfile(state: ActionState, userProfileName?: string
   return profile.actions.includes(state.config.name);
 }
 
+function actionAllowedByVaultPolicy(state: ActionState): boolean {
+  if (state.origin === "project") {
+    return !!state.projectCwd && isProjectAutomationAllowed(state.projectCwd);
+  }
+  if (state.origin === "plugin") {
+    return !!state.pluginId && isPluginAllowed(state.pluginId);
+  }
+  return true;
+}
+
 function visibleActionStates(opts: ActionResolveOpts = {}): ActionState[] {
   const states = Array.from(actionStates.values())
     .filter((state) => stateVisibleToUserProfile(state, opts.userProfile))
     .filter((state) => stateMatchesCwd(state, opts.cwd))
-    .filter((state) => actionAllowedByUserProfile(state, opts.userProfile));
+    .filter((state) => actionAllowedByUserProfile(state, opts.userProfile))
+    .filter(actionAllowedByVaultPolicy);
 
   const projectNames = new Set(states
     .filter((state) => state.origin === "project")
@@ -220,7 +231,8 @@ function resolveActionState(name: string, opts: ActionResolveOpts = {}): ActionS
     .filter((state) => state.config.name === name)
     .filter((state) => stateVisibleToUserProfile(state, opts.userProfile))
     .filter((state) => stateMatchesCwd(state, opts.cwd))
-    .filter((state) => actionAllowedByUserProfile(state, opts.userProfile));
+    .filter((state) => actionAllowedByUserProfile(state, opts.userProfile))
+    .filter(actionAllowedByVaultPolicy);
 
   const projectCandidates = candidates.filter((state) => state.origin === "project");
   if (projectCandidates.length > 0) {
@@ -750,6 +762,10 @@ async function fireAction(
   overrides?: ActionResolveOpts,
 ): Promise<void> {
   const name = state.config.name;
+  if (!actionAllowedByVaultPolicy(state)) {
+    console.log(`[actions] "${name}" is disabled by Vault policy — dropping ${triggerInfo.type} trigger`);
+    return;
+  }
   if (chainDepth >= MAX_CHAIN_DEPTH) {
     console.error(`[actions] Chain depth limit (${MAX_CHAIN_DEPTH}) reached — refusing to fire "${name}"`);
     return;
@@ -1391,6 +1407,7 @@ function tick(): void {
   for (const state of actionStates.values()) {
     const name = state.config.name;
     if (!state.config.enabled) continue;
+    if (!actionAllowedByVaultPolicy(state)) continue;
     if (state.config.trigger.type !== "interval") continue;
 
     const trigger = state.config.trigger;
@@ -1532,6 +1549,7 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
   if (!state) return { ok: false, error: webhookActions.length > 0 ? "invalid token" : "unknown action" };
   if (state.config.trigger.type !== "webhook") return { ok: false, error: "action is not webhook-triggered" };
   if (!state.config.enabled) return { ok: false, error: "action is disabled" };
+  if (!actionAllowedByVaultPolicy(state)) return { ok: false, error: "action is disabled by Vault policy" };
 
   // ── Session routing: if sessionKey is configured, try to continue an existing session ──
   const sessionKey = state.config.trigger.sessionKey;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "path";
-import { isValidInstanceName, resolveAppPaths } from "../app-paths";
+import { isValidInstanceName, normalizeInstanceName, resolveAppPaths } from "../app-paths";
 
 describe("app path contract", () => {
   test("places writable production state under the Modus home", () => {
@@ -26,6 +26,17 @@ describe("app path contract", () => {
     expect(paths.dataDir).toBe(resolve("D:/state/modus/dev/data"));
     expect(paths.runtimeDir).toBe(resolve("D:/state/modus/dev/runtime"));
     expect(paths.resourcesDir).toBe(resolve("D:/app/resources"));
+  });
+
+  test("canonicalizes instance identity to lowercase before deriving paths", () => {
+    const paths = resolveAppPaths({
+      env: { MODUS_HOME: "D:/state/modus", MODUS_INSTANCE: " Private " },
+      sourceResourcesDir: "D:/app/resources",
+    });
+    expect(normalizeInstanceName(" Private ")).toBe("private");
+    expect(paths.instance).toBe("private");
+    expect(paths.writableRoot).toBe(resolve("D:/state/modus/private"));
+    expect(resolveAppPaths({ env: { MODUS_INSTANCE: " DEFAULT " } }).instance).toBeNull();
   });
 
   // The `\\?\` extended-length prefix is Windows-only path semantics; on POSIX

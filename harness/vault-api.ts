@@ -2,12 +2,13 @@
  * without starting a backend or binding a port. */
 
 import { join } from "path";
-import { APP_PATHS, isValidInstanceName, type AppPaths } from "./app-paths";
+import { APP_PATHS, normalizeInstanceName, type AppPaths } from "./app-paths";
 import {
   createVault,
   getVault,
   listVaults,
-  registerVault,
+  updateVault,
+  VaultAlreadyExistsError,
   type VaultRegistryEntry,
 } from "./vault-registry";
 import {
@@ -70,17 +71,22 @@ export function createVaultForApi(
   if (!isObject(value)) return invalid(400, "body must be an object");
   const input = value as VaultCreateInput;
   if (typeof input.slug !== "string" || !input.slug) return invalid(400, "slug is required");
-  if (!isValidInstanceName(input.slug) || input.slug === "default") {
+  const slug = normalizeInstanceName(input.slug);
+  if (!slug || slug === "default") {
     return invalid(400, `Invalid or reserved Vault slug "${input.slug}"`);
   }
   if (input.name !== undefined && typeof input.name !== "string") {
     return invalid(400, "name must be a string");
   }
-  if (getVault(input.slug, paths)) return invalid(409, `Vault "${input.slug}" already exists`);
-  return {
-    ok: true,
-    value: createVault(input.slug, input.name as string | undefined, paths, now),
-  };
+  try {
+    return {
+      ok: true,
+      value: createVault(slug, input.name as string | undefined, paths, now),
+    };
+  } catch (error) {
+    if (error instanceof VaultAlreadyExistsError) return invalid(409, error.message);
+    throw error;
+  }
 }
 
 export function updateVaultForApi(
@@ -88,7 +94,8 @@ export function updateVaultForApi(
   value: unknown,
   paths: VaultApiPaths = APP_PATHS,
 ): VaultApiResult<VaultRegistryEntry> {
-  if (!isValidInstanceName(slug) || slug === "default") {
+  const normalized = normalizeInstanceName(slug);
+  if (!normalized || normalized === "default") {
     return invalid(400, `Invalid or reserved Vault slug "${slug}"`);
   }
   if (!isObject(value)) return invalid(400, "body must be an object");
@@ -99,28 +106,26 @@ export function updateVaultForApi(
   if (input.autostart !== undefined && typeof input.autostart !== "boolean") {
     return invalid(400, "autostart must be a boolean");
   }
-  const existing = getVault(slug, paths);
-  if (!existing) return invalid(404, `Vault "${slug}" not found`);
-  return {
-    ok: true,
-    value: registerVault({
-      ...existing,
-      ...(input.name !== undefined ? { name: input.name as string } : {}),
-      ...(input.autostart !== undefined ? { autostart: input.autostart as boolean } : {}),
-    }, paths),
-  };
+  const updated = updateVault(normalized, {
+    ...(input.name !== undefined ? { name: input.name as string } : {}),
+    ...(input.autostart !== undefined ? { autostart: input.autostart as boolean } : {}),
+  }, paths);
+  return updated
+    ? { ok: true, value: updated }
+    : invalid(404, `Vault "${normalized}" not found`);
 }
 
 function policyScope(slug: string, paths: VaultApiPaths): VaultApiResult<VaultPolicyPaths> {
-  if (slug === "default") {
+  const normalized = normalizeInstanceName(slug);
+  if (normalized === "default") {
     return { ok: true, value: { writableRoot: paths.modusHome, instance: null } };
   }
-  if (!isValidInstanceName(slug) || !getVault(slug, paths)) {
+  if (!normalized || !getVault(normalized, paths)) {
     return invalid(404, `Vault "${slug}" not found`);
   }
   return {
     ok: true,
-    value: { writableRoot: join(paths.modusHome, slug), instance: slug },
+    value: { writableRoot: join(paths.modusHome, normalized), instance: normalized },
   };
 }
 

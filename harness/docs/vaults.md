@@ -1,7 +1,7 @@
 ---
 title: Vaults
 lastUpdated: 2026-08-17
-covers: harness/app-paths.ts harness/modus-home.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/harness-context.ts harness/modus-plugins.ts harness/action-runner.ts harness/notify.ts harness/sdk/client.ts harness/sdk/types.ts
+covers: harness/app-paths.ts harness/modus-home.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/harness-context.ts harness/modus-plugins.ts harness/action-runner.ts harness/notify.ts harness/sdk/client.ts harness/sdk/types.ts desktop/src-tauri/src/backend.rs
 audience: dev
 ---
 
@@ -17,6 +17,10 @@ session.
 `MODUS_INSTANCE=<slug>` selects a named Vault. An unset value and the reserved
 value `default` both select the implicit default Vault. Slugs may contain only
 letters, numbers, dots, underscores, and hyphens; `.` and `..` are rejected.
+Identity is canonical lowercase before any path, registry, CLI-state, API, or
+desktop-supervisor derivation. `Private`, `PRIVATE`, and `private` therefore
+name the same Vault, while display casing belongs in the optional registry
+`name`. The reserved `default` name is also case-insensitive.
 
 `AppPaths.writableRoot` is `MODUS_HOME` for the default Vault and
 `<MODUS_HOME>/<slug>` for a named Vault. These paths are Vault-scoped:
@@ -64,6 +68,12 @@ logged rather than failing backend import. Registry removal is an internal
 metadata operation only; it never removes a Vault directory or its data. No
 public deletion API or deletion semantics exist yet.
 
+Registry mutations serialize across backend and CLI processes through
+`vaults.json.lock`. A bounded stale-lock recovery prevents a crashed writer
+from parking the registry permanently, and each completed mutation publishes a
+same-directory temporary file with an atomic rename. Lock-free readers therefore
+see the complete old or new registry, never an in-place partial write.
+
 Creating through `POST /api/vaults` registers the row and writes an explicit
 deny-all policy. Starting an unregistered slug through the CLI registers it
 with `autostart: false`; if no policy file exists, the named-Vault fallback is
@@ -99,6 +109,10 @@ Policy resolution is deliberately asymmetric:
 The policy is enforced at shared chokepoints. `plugins` filters enabled plugin
 discovery and execution lookup without hiding machine registration management.
 `projectAutomation` filters project action directories before discovery.
+Loaded project and plugin actions are also filtered from runtime lookup and
+rechecked at the common dispatch boundary, so an allow-to-deny edit blocks the
+next manual, interval, webhook, chain, or session trigger without a reload.
+Policy revocation does not terminate an action run that has already begun.
 `channels` gates name resolution used by direct sends and both action
 notification paths. This version has no per-Vault provider or credential rule.
 
@@ -116,6 +130,8 @@ The backend exposes:
 
 The TypeScript SDK mirrors these as `listVaults`, `createVault`, `updateVault`,
 `getVaultPolicy`, and `setVaultPolicy`.
+Slug inputs on these routes are case-insensitive and responses carry the
+canonical lowercase identity.
 
 ## CLI
 

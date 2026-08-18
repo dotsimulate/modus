@@ -27,7 +27,7 @@ export function resolveDatabasePath(
   const dataDir = testDataDir ?? paths.dataDir;
   const databasePath = join(dataDir, filename);
 
-  if (!testDataDir && !env.MODUS_DATA_DIR?.trim() && !env.MODUS_INSTANCE?.trim()) {
+  if (!testDataDir && !env.MODUS_DATA_DIR?.trim() && paths.instance === null) {
     const legacyPath = join(paths.resourcesDir, filename);
     if (legacyPath !== databasePath && existsSync(legacyPath) && !existsSync(databasePath)) {
       throw new Error(

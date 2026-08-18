@@ -778,12 +778,33 @@ fn writable_root(app: &AppHandle) -> Result<PathBuf, String> {
             .map_err(|error| error.to_string())?
             .join(".modus"),
     );
-    let instance = env::var("MODUS_INSTANCE").unwrap_or_default();
-    if !instance.is_empty() && instance != "default" {
-        Ok(home.join(instance))
-    } else {
-        Ok(home)
+    let instance = match env::var("MODUS_INSTANCE") {
+        Ok(value) => Some(value),
+        Err(env::VarError::NotPresent) => None,
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err("MODUS_INSTANCE must be valid Unicode".into())
+        }
+    };
+    Ok(match normalize_vault_slug(instance.as_deref())? {
+        Some(slug) => home.join(slug),
+        None => home,
+    })
+}
+
+fn normalize_vault_slug(value: Option<&str>) -> Result<Option<String>, String> {
+    let value = value.unwrap_or_default().trim();
+    if value.is_empty() || value.eq_ignore_ascii_case("default") {
+        return Ok(None);
     }
+    if value == "."
+        || value == ".."
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
+    {
+        return Err("MODUS_INSTANCE must be a single name containing only letters, numbers, dots, underscores, and hyphens".into());
+    }
+    Ok(Some(value.to_ascii_lowercase()))
 }
 
 fn resolve_bun(app: &AppHandle) -> Result<PathBuf, String> {
@@ -922,7 +943,7 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 
 #[cfg(test)]
 mod tests {
-    use super::validated_remote_url;
+    use super::{normalize_vault_slug, validated_remote_url};
 
     #[cfg(windows)]
     use std::{fs, path::PathBuf, thread, time::Duration};
@@ -963,6 +984,23 @@ mod tests {
         assert!(validated_remote_url(Some("https://machine.ts.net?target=other")).is_err());
         assert!(validated_remote_url(Some("https://machine.ts.net/#fragment")).is_err());
         assert!(validated_remote_url(Some("https://")).is_err());
+    }
+
+    #[test]
+    fn vault_slug_validation_matches_the_backend_path_contract() {
+        assert_eq!(normalize_vault_slug(None).unwrap(), None);
+        assert_eq!(normalize_vault_slug(Some(" default ")).unwrap(), None);
+        assert_eq!(normalize_vault_slug(Some("DEFAULT")).unwrap(), None);
+        assert_eq!(
+            normalize_vault_slug(Some(" Private-1.FOO_bar ")).unwrap(),
+            Some("private-1.foo_bar".into())
+        );
+        for invalid in [".", "..", "../escape", "two words", "private/child"] {
+            assert!(
+                normalize_vault_slug(Some(invalid)).is_err(),
+                "accepted {invalid}"
+            );
+        }
     }
 
     #[cfg(windows)]
