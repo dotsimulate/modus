@@ -1980,7 +1980,7 @@ export type {
 
 import type { ExtensionMeta, PluginSettingDefinition } from "../settings-schema";
 
-export type { VaultPolicy, VaultPolicyRule } from "../vault-policy";
+export type { VaultPolicy, VaultPolicyRule } from "../vault-types";
 
 export type NamedVault = {
   slug: string;

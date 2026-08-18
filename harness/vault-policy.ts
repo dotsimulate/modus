@@ -4,16 +4,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { APP_PATHS, type AppPaths } from "./app-paths";
+import type { VaultPolicy, VaultPolicyRule } from "./vault-types";
 
-export type VaultPolicyRule =
-  | { mode: "allow-all" }
-  | { mode: "deny"; allow: string[] };
-
-export type VaultPolicy = {
-  plugins: VaultPolicyRule;
-  projectAutomation: VaultPolicyRule;
-  channels: VaultPolicyRule;
-};
+export type { VaultPolicy, VaultPolicyRule } from "./vault-types";
 
 export type VaultPolicyPaths = Pick<AppPaths, "writableRoot" | "instance">;
 
