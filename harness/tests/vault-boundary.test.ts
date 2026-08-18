@@ -14,6 +14,10 @@ type BoundaryResult = {
   delivered: boolean;
   completionDelivered: boolean;
   eventDelivered: boolean;
+  revokedActions: string[];
+  revokedProjectTrigger: boolean | null;
+  revokedPluginTrigger: boolean | null;
+  revokedSessionExecutions: number | null;
 };
 
 function write(path: string, value: unknown): void {
@@ -35,6 +39,13 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
     plugins: [{ id: "fixture-plugin", path: plugin, enabled: true }],
   });
   write(join(plugin, ".modus", "plugin.json"), { id: "fixture-plugin", name: "Fixture" });
+  write(join(plugin, ".modus", "actions", "plugin-action", "action.json"), {
+    name: "plugin-action",
+    enabled: false,
+    agentProfile: "modus-dev",
+    trigger: { type: "manual" },
+    maxRuns: 1,
+  });
   write(join(home, "profiles", "users", "operator.json"), {
     displayName: "Operator",
     projects: [project],
@@ -54,6 +65,18 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
     trigger: { type: "manual" },
     maxRuns: 1,
   });
+  write(join(project, ".modus", "actions", "session-action", "action.json"), {
+    name: "session-action",
+    enabled: true,
+    agentProfile: "modus-dev",
+    trigger: { type: "session", on: "archived" },
+    maxRuns: 1,
+  });
+  write(join(project, ".modus", "actions", "session-action", "context.ts"), `
+    export async function gather() {
+      return { prompt: "fixture" };
+    }
+  `);
   if (instance === "allowed") {
     write(join(home, "private", "vault.json"), {
       plugins: { mode: "deny", allow: ["fixture-plugin"] },
@@ -68,7 +91,7 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
     const actionsUrl = pathToFileURL(join(harnessDir, "action-runner.ts")).href;
     const notifyUrl = pathToFileURL(join(harnessDir, "notify.ts")).href;
     const script = `
-      const { existsSync } = await import("fs");
+      const { existsSync, writeFileSync } = await import("fs");
       const plugins = await import(${JSON.stringify(pluginsUrl)});
       const actions = await import(${JSON.stringify(actionsUrl)});
       const notify = await import(${JSON.stringify(notifyUrl)});
@@ -78,6 +101,7 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
       const registeredPluginLookup = !!plugins.getModusPlugin("fixture-plugin", { includeDisabled: true });
       actions.initActions();
       const actionNames = actions.getActions().map((action) => action.name);
+      const sessionActionState = actions.getActionState("session-action");
       const channel = await notify.sendToNamedChannel("sink", { text: "private" });
       await notify.sendNotifications(
         [{ channel: "completion", on: "success" }],
@@ -89,6 +113,27 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
         "exhausted",
         { actionName: "project-action", profile: "modus-dev" },
       );
+      let revokedActions = [];
+      let revokedProjectTrigger = null;
+      let revokedPluginTrigger = null;
+      let revokedSessionExecutions = null;
+      if (${JSON.stringify(instance)} === "allowed") {
+        writeFileSync(${JSON.stringify(join(home, "private", "vault.json"))}, JSON.stringify({
+          plugins: { mode: "deny", allow: [] },
+          projectAutomation: { mode: "deny", allow: [] },
+          channels: { mode: "deny", allow: [] },
+        }));
+        revokedActions = actions.getActions().map((action) => action.name);
+        revokedProjectTrigger = await actions.triggerAction("project-action");
+        revokedPluginTrigger = await actions.triggerAction("plugin-action");
+        actions.onSessionEvent("archived", {
+          id: "session-fixture",
+          tags: [],
+          preview: "fixture",
+          messageCount: 1,
+        });
+        revokedSessionExecutions = sessionActionState.activeExecutions.size;
+      }
       actions.stopActions();
       console.log("RESULT:" + JSON.stringify({
         registeredPlugins,
@@ -100,6 +145,10 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
         delivered: existsSync(${JSON.stringify(deliveryPath)}),
         completionDelivered: existsSync(${JSON.stringify(completionPath)}),
         eventDelivered: existsSync(${JSON.stringify(eventPath)}),
+        revokedActions,
+        revokedProjectTrigger,
+        revokedPluginTrigger,
+        revokedSessionExecutions,
       }));
       process.exit(0);
     `;
@@ -140,6 +189,8 @@ describe("Vault execution and egress boundaries", () => {
     expect(result.enabledPlugins).not.toContain("fixture-plugin");
     expect(result.resolvedPlugin).toBe(false);
     expect(result.actions).not.toContain("project-action");
+    expect(result.actions).not.toContain("plugin-action");
+    expect(result.actions).not.toContain("session-action");
     expect(result.channel).toEqual({ ok: false, error: 'Channel "sink" is disabled by Vault policy' });
     expect(result.delivered).toBe(false);
     expect(result.completionDelivered).toBe(false);
@@ -151,6 +202,8 @@ describe("Vault execution and egress boundaries", () => {
     expect(result.enabledPlugins).toContain("fixture-plugin");
     expect(result.resolvedPlugin).toBe(true);
     expect(result.actions).toContain("project-action");
+    expect(result.actions).toContain("plugin-action");
+    expect(result.actions).toContain("session-action");
     expect(result.channel).toEqual({ ok: true });
     expect(result.delivered).toBe(true);
     expect(result.completionDelivered).toBe(true);
@@ -162,9 +215,16 @@ describe("Vault execution and egress boundaries", () => {
     expect(result.enabledPlugins).toContain("fixture-plugin");
     expect(result.resolvedPlugin).toBe(true);
     expect(result.actions).toContain("project-action");
+    expect(result.actions).toContain("plugin-action");
+    expect(result.actions).toContain("session-action");
     expect(result.channel).toEqual({ ok: true });
     expect(result.delivered).toBe(true);
     expect(result.completionDelivered).toBe(true);
     expect(result.eventDelivered).toBe(true);
+    expect(result.revokedActions).not.toContain("project-action");
+    expect(result.revokedActions).not.toContain("plugin-action");
+    expect(result.revokedProjectTrigger).toBe(false);
+    expect(result.revokedPluginTrigger).toBe(false);
+    expect(result.revokedSessionExecutions).toBe(0);
   });
 });

@@ -44,15 +44,22 @@ export function isValidInstanceName(value: string): boolean {
   return value !== "." && value !== ".." && /^[A-Za-z0-9._-]+$/.test(value);
 }
 
+/** Canonical Vault identity. Display casing belongs in the registry `name`. */
+export function normalizeInstanceName(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed && isValidInstanceName(trimmed) ? trimmed.toLowerCase() : null;
+}
+
 export function resolveAppPaths(options: ResolveAppPathsOptions = {}): AppPaths {
   const env = options.env ?? process.env;
   const homeDir = options.homeDir ?? homedir();
   const sourceResourcesDir = options.sourceResourcesDir ?? import.meta.dir;
   const instanceValue = env.MODUS_INSTANCE?.trim() || "";
-  if (instanceValue && !isValidInstanceName(instanceValue)) {
+  const normalizedInstance = instanceValue ? normalizeInstanceName(instanceValue) : null;
+  if (instanceValue && !normalizedInstance) {
     throw new Error("MODUS_INSTANCE must be a single name containing only letters, numbers, dots, underscores, and hyphens");
   }
-  const instance = instanceValue && instanceValue !== "default" ? instanceValue : null;
+  const instance = normalizedInstance && normalizedInstance !== "default" ? normalizedInstance : null;
   const modusHome = configuredPath(env.MODUS_HOME, join(homeDir, ".modus"));
   const writableRoot = instance ? join(modusHome, instance) : modusHome;
 

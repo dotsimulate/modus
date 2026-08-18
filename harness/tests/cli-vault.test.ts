@@ -6,12 +6,14 @@ describe("resolveCliVault", () => {
   test("defaults to the implicit Vault and normalizes the reserved default name", () => {
     expect(resolveCliVault([])).toBeNull();
     expect(resolveCliVault(["--instance", "default"])).toBeNull();
+    expect(resolveCliVault(["--instance", "DEFAULT"])).toBeNull();
     expect(resolveCliVault([], " default ")).toBeNull();
   });
 
   test("prefers a validated flag over the environment", () => {
     expect(resolveCliVault(["--instance", "private"], "work")).toBe("private");
     expect(resolveCliVault(["--instance=private"])).toBe("private");
+    expect(resolveCliVault(["--instance", "Private"])).toBe("private");
   });
 
   test("rejects missing and invalid instance names", () => {

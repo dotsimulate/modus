@@ -73,6 +73,23 @@ describe("Vault API operations", () => {
     });
   });
 
+  test("canonicalizes slug casing across create, update, and policy routes", () => {
+    const paths = testPaths();
+    expect(createVaultForApi({ slug: "Private", name: "Private" }, paths, 100)).toEqual({
+      ok: true,
+      value: { slug: "private", name: "Private", createdAt: 100 },
+    });
+    expect(updateVaultForApi("PRIVATE", { autostart: true }, paths)).toEqual({
+      ok: true,
+      value: { slug: "private", name: "Private", createdAt: 100, autostart: true },
+    });
+    expect(setVaultPolicyForApi("PrIvAtE", ALLOW_ALL_POLICY, paths)).toEqual({
+      ok: true,
+      value: ALLOW_ALL_POLICY,
+    });
+    expect(getVaultPolicyForApi("PRIVATE", paths)).toEqual({ ok: true, value: ALLOW_ALL_POLICY });
+  });
+
   test("patches only the mutable registry fields", () => {
     const paths = testPaths();
     createVaultForApi({ slug: "private" }, paths, 100);

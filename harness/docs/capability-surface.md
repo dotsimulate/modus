@@ -215,11 +215,15 @@ An unset `MODUS_INSTANCE` (or `default`) uses the implicit default Vault;
 `MODUS_INSTANCE=<slug>` scopes writable data, logs, runtime, cache, workspace
 history, checkpoints, and the policy file under `~/.modus/<slug>/`. Profiles,
 skills, and machine plugin/project/Vault registries remain shared.
+Slugs use letters, numbers, dots, underscores, and hyphens and canonicalize to
+lowercase; display casing belongs in the registry `name`.
 
 Named Vaults fail closed when `vault.json` is absent or invalid. Its `plugins`,
 `projectAutomation`, and `channels` rules each use `allow-all` or deny plus an
 allow list. New API-created Vaults get explicit deny-all. The default Vault
 preserves existing behavior when its policy is absent. Full contract: `vaults`.
+Project and plugin action dispatch rechecks the policy, so revocation applies
+without an action reload.
 
 ## Pages — `.modus/pages/*.json`, `harness/pages/*.json`, or declared by moves/actions/missions
 

@@ -1,5 +1,5 @@
 import { join } from "path";
-import { isValidInstanceName } from "./app-paths";
+import { normalizeInstanceName } from "./app-paths";
 
 export type VaultStateFiles = {
   pidFile: string;
@@ -27,9 +27,10 @@ export function resolveCliVault(args: string[], environmentValue?: string): stri
     throw new Error("--instance requires a Vault slug");
   }
   const value = (flag.present ? flag.value : environmentValue)?.trim() ?? "";
-  if (!value || value === "default") return null;
-  if (!isValidInstanceName(value)) throw new Error(`Invalid Vault slug "${value}"`);
-  return value;
+  if (!value) return null;
+  const normalized = normalizeInstanceName(value);
+  if (!normalized) throw new Error(`Invalid Vault slug "${value}"`);
+  return normalized === "default" ? null : normalized;
 }
 
 /** CLI process state is one PID/port pair per Vault. */

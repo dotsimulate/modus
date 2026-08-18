@@ -218,7 +218,9 @@ configuration: profiles, plugin/project/Vault registries, and skills.
 
 The system temp root is also namespaced as `<temp>/modus/<name>` (or
 `default`). `default` and an unset value both use the un-nested default roots.
-Instance names accept only letters, numbers, dots, underscores, and hyphens.
+Instance names accept only letters, numbers, dots, underscores, and hyphens;
+they are canonicalized to lowercase before any TypeScript or desktop-shell path
+is derived. Display casing belongs in the Vault registry `name`.
 `MODUS_DATA_DIR`, `MODUS_LOGS_DIR`, `MODUS_RUNTIME_DIR`, and `MODUS_CACHE_DIR`
 override their individual resolved roots after instance selection.
 See [Vaults](./vaults.md) for registry, policy, API, and CLI semantics.

@@ -200,6 +200,12 @@ trigger type and the concurrency limit but not the flag, so pressing run on a
 parked `manual` or `interval` action fires it. Read `enabled` as governing
 *automatic* firing rather than as a lock.
 
+Vault policy remains an independent execution boundary. A denied project or
+plugin action is hidden from runtime lookup, and every dispatch rechecks policy;
+an explicit manual trigger does not bypass it. An allow-to-deny policy edit
+blocks the next interval, webhook, chain, session, or manual trigger without an
+action reload, but does not terminate a run that already began.
+
 Re-enabling resets exhaustion (`maxRuns`/`maxCycles`) and, for an interval
 trigger, schedules the next run one full interval out rather than immediately —
 so re-enabling never causes a catch-up burst.
