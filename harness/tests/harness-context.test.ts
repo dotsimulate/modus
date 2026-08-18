@@ -6,6 +6,7 @@
  */
 import { beforeEach, describe, expect, test } from "bun:test";
 import { buildHarnessContextWith, type HarnessSelf, type HarnessEngines } from "../harness-context";
+import { APP_PATHS } from "../app-paths";
 
 const calls = {
   spawned: [] as any[],
@@ -109,6 +110,7 @@ describe("composition", () => {
     }
     expect(typeof c.log).toBe("function");
     expect(c.self.name).toBe("test-move");
+    expect(c.vault).toEqual({ slug: APP_PATHS.instance });
   });
 });
 

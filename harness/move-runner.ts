@@ -671,6 +671,7 @@ export async function handleMoveApiSubmit(
     instanceId: reg.instanceId,
     sessionId: reg.sessionId,
     moveName: reg.moveName,
+    vault: hctx.vault,
     cwd: reg.cwd,
     caller,
     state: stateApi,
@@ -1638,6 +1639,7 @@ function buildHarnessBridge(moveName: string, sourceSessionId: string, cwd: stri
   };
   const ctx = buildHarnessContext(self);
   return {
+    vault: ctx.vault,
     createSession: (opts) => ctx.sessions.create(opts),
     sendMessage: (targetSessionId, content) => ctx.sessions.send(targetSessionId, content),
     triggerAction: (actionName) => ctx.actions.trigger(actionName),

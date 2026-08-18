@@ -64,6 +64,8 @@ export interface TestContextOptions {
   moveName?: string;
   sessionId?: string;
   instanceId?: string;
+  /** Vault identity visible to the move. Defaults to the implicit default Vault. */
+  vault?: HarnessContext["vault"];
   /** Initial instance state. `ctx.state` reads and writes this in memory. */
   state?: unknown;
   /** Initial process-scoped store value. */
@@ -151,6 +153,7 @@ export function createTestMoveApiContext(options: TestMoveApiContextOptions = {}
     instanceId: options.instanceId ?? "test-instance",
     sessionId: options.sessionId ?? "test-session",
     moveName,
+    vault: options.vault ?? { slug: null },
     cwd: options.cwd ?? process.cwd(),
     caller: options.caller ?? "agent",
     state: state.api,
@@ -232,7 +235,7 @@ export function createTestMoveContext(options: TestMoveContextOptions = {}): Tes
     inputs: options.inputs ?? {},
     db: testMoveDb(options.db),
     run: testShellRun(moveName, options.run, "run", "createTestMoveContext"),
-    harness: testHarnessBridge(moveName),
+    harness: testHarnessBridge(moveName, options.vault),
     pluginSettings: testPluginSettings(options.pluginSettings),
     secrets: testSecrets(options.secrets),
     meta: (key, value) => { meta[key] = value; },
@@ -330,8 +333,9 @@ function testMoveDb(db: Partial<MoveDB> | undefined): MoveDB {
   };
 }
 
-function testHarnessBridge(moveName: string): HarnessBridge {
+function testHarnessBridge(moveName: string, vault: HarnessContext["vault"] = { slug: null }): HarnessBridge {
   return {
+    vault,
     createSession: unavailableAsync(moveName, "harness.createSession"),
     sendMessage: unavailableAsync(moveName, "harness.sendMessage"),
     triggerAction: unavailableAsync(moveName, "harness.triggerAction"),

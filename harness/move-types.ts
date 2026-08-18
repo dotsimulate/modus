@@ -323,6 +323,8 @@ export interface MoveSecrets {
 // ── Harness Bridge (server-side operations available to onSubmit) ──
 
 export interface HarnessBridge {
+  /** Process identity boundary. Null is the implicit default Vault. */
+  vault: HarnessContext["vault"];
   createSession: (opts: {
     profile: string;
     prompt: string;
@@ -620,6 +622,8 @@ export interface MoveApiContext {
   instanceId: string;
   sessionId: string;
   moveName: string;
+  /** Process identity boundary. Distinct from the move's `instanceId`. */
+  vault: HarnessContext["vault"];
   /** Project working directory from the move registration */
   cwd: string;
   /** Who initiated this call — agent via modus_submit or user via widget */
