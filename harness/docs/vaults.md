@@ -1,7 +1,7 @@
 ---
 title: Vaults
 lastUpdated: 2026-08-17
-covers: harness/app-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/harness-context.ts harness/modus-plugins.ts harness/action-runner.ts harness/notify.ts harness/sdk/client.ts harness/sdk/types.ts
+covers: harness/app-paths.ts harness/modus-home.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/harness-context.ts harness/modus-plugins.ts harness/action-runner.ts harness/notify.ts harness/sdk/client.ts harness/sdk/types.ts
 audience: dev
 ---
 

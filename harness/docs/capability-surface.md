@@ -1,7 +1,7 @@
 ---
 title: Capability Surface (condensed)
 lastUpdated: 2026-08-17
-covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts harness/app-paths.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts
+covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts harness/app-paths.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts
 audience: agent
 ---
 
