@@ -12,6 +12,7 @@
  *   profiles/prompt-cache.json — provider prompt cache
  *   plugins.json              — user-registered Modus plugin roots
  *   projects.json             — registry of known projects on this machine
+ *   vaults.json               — registry of named Vaults on this machine
  *   [<instance>/]history/     — Vault-scoped workspace-history shadow repos
  *   [<instance>/]checkpoints/ — Vault-scoped managed checkpoints
  *
@@ -77,6 +78,10 @@ export function homeProjectsJsonPath(): string {
 
 export function homePluginsJsonPath(): string {
   return join(MODUS_HOME, "plugins.json");
+}
+
+export function homeVaultsJsonPath(modusHome = MODUS_HOME): string {
+  return join(modusHome, "vaults.json");
 }
 
 export function homeHistoryDir(): string {
