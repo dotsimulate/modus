@@ -7,6 +7,7 @@ export type AppPathEnvironment = Record<string, string | undefined>;
 export type AppPaths = {
   resourcesDir: string;
   modusHome: string;
+  writableRoot: string;
   dataDir: string;
   logsDir: string;
   runtimeDir: string;
@@ -39,13 +40,17 @@ function configuredPath(value: string | undefined, fallback: string): string {
   return stripExtendedLengthPrefix(resolve(value?.trim() || fallback));
 }
 
+export function isValidInstanceName(value: string): boolean {
+  return value !== "." && value !== ".." && /^[A-Za-z0-9._-]+$/.test(value);
+}
+
 export function resolveAppPaths(options: ResolveAppPathsOptions = {}): AppPaths {
   const env = options.env ?? process.env;
   const homeDir = options.homeDir ?? homedir();
   const sourceResourcesDir = options.sourceResourcesDir ?? import.meta.dir;
   const instanceValue = env.MODUS_INSTANCE?.trim() || "";
-  if (instanceValue && !/^[A-Za-z0-9._-]+$/.test(instanceValue)) {
-    throw new Error("MODUS_INSTANCE may contain only letters, numbers, dots, underscores, and hyphens");
+  if (instanceValue && !isValidInstanceName(instanceValue)) {
+    throw new Error("MODUS_INSTANCE must be a single name containing only letters, numbers, dots, underscores, and hyphens");
   }
   const instance = instanceValue && instanceValue !== "default" ? instanceValue : null;
   const modusHome = configuredPath(env.MODUS_HOME, join(homeDir, ".modus"));
@@ -54,6 +59,7 @@ export function resolveAppPaths(options: ResolveAppPathsOptions = {}): AppPaths 
   return {
     resourcesDir: configuredPath(env.MODUS_RESOURCES_DIR, sourceResourcesDir),
     modusHome,
+    writableRoot,
     dataDir: configuredPath(env.MODUS_DATA_DIR, join(writableRoot, "data")),
     logsDir: configuredPath(env.MODUS_LOGS_DIR, join(writableRoot, "logs")),
     runtimeDir: configuredPath(env.MODUS_RUNTIME_DIR, join(writableRoot, "runtime")),
@@ -66,7 +72,7 @@ export function resolveAppPaths(options: ResolveAppPathsOptions = {}): AppPaths 
 export const APP_PATHS = resolveAppPaths();
 
 export function ensureWritableAppPaths(paths: AppPaths = APP_PATHS): void {
-  for (const dir of [paths.modusHome, paths.dataDir, paths.logsDir, paths.runtimeDir, paths.cacheDir, paths.tempDir]) {
+  for (const dir of [paths.modusHome, paths.writableRoot, paths.dataDir, paths.logsDir, paths.runtimeDir, paths.cacheDir, paths.tempDir]) {
     mkdirSync(dir, { recursive: true });
   }
 }
