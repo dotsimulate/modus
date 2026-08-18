@@ -39,7 +39,14 @@ import {
   tailscaleServeOnArgs,
 } from "./tailscale-serve";
 import { formatTokenForBanner } from "./token-display";
-import { resolveCliVault, vaultEnvironment, vaultStateFiles, type VaultStateFiles } from "./cli-vault";
+import { resolveAppPaths } from "./app-paths";
+import {
+  resolveCliVault,
+  vaultDaemonLogFile,
+  vaultEnvironment,
+  vaultStateFiles,
+  type VaultStateFiles,
+} from "./cli-vault";
 import { ensureVaultRegistered } from "./vault-registry";
 
 // ── Tailscale Serve ──
@@ -705,10 +712,12 @@ async function cmdStart(args: string[]): Promise<void> {
     HARNESS_PORT: String(usePort),
     HARNESS_TOKEN: token,
   }, vault);
+  const daemonLogFile = vaultDaemonLogFile(LOG_FILE, resolveAppPaths({ env }).logsDir, vault);
 
   if (daemon) {
     // ── Daemon mode ──
-    const logFd = openSync(LOG_FILE, "a");
+    mkdirSync(dirname(daemonLogFile), { recursive: true });
+    const logFd = openSync(daemonLogFile, "a");
     const proc = spawn([BUN, "run", CLI_PATH, "__daemon-supervise"], {
       cwd: HARNESS_DIR,
       stdout: logFd,
@@ -747,7 +756,7 @@ async function cmdStart(args: string[]): Promise<void> {
       console.log(`  remote access off — enable with: modus remote on`);
     }
     console.log(`  token: ${formatTokenForBanner(token, tokenSource, revealToken)}`);
-    console.log(`  logs:  modus logs`);
+    console.log(`  logs:  modus logs${vault ? ` --instance ${vault}` : ""}`);
 
     const cwdParam = process.env.AGENT_CWD
       ? `?cwd=${encodeURIComponent(process.env.AGENT_CWD)}`
@@ -1211,15 +1220,18 @@ async function cmdDev(args: string[]): Promise<void> {
 
 async function cmdLogs(args: string[]): Promise<void> {
   const follow = hasFlag(args, "-f", "--follow");
-  const logPath = join(HARNESS_DIR, "watchdog.log");
+  const vault = selectedVault(args);
+  const env = vaultEnvironment(process.env, vault);
+  const daemonLogFile = vaultDaemonLogFile(LOG_FILE, resolveAppPaths({ env }).logsDir, vault);
+  const watchdogLogFile = join(HARNESS_DIR, "watchdog.log");
 
-  if (!existsSync(logPath) && !existsSync(LOG_FILE)) {
+  if (!existsSync(daemonLogFile) && (vault || !existsSync(watchdogLogFile))) {
     console.log("No log files found.");
     return;
   }
 
-  // Prefer harness.log (daemon mode), fall back to watchdog.log
-  const target = existsSync(LOG_FILE) ? LOG_FILE : logPath;
+  // Named Vaults have no watchdog mode. Default keeps the legacy fallback.
+  const target = existsSync(daemonLogFile) ? daemonLogFile : watchdogLogFile;
 
   if (process.platform === "win32") {
     // Windows: no tail command, read file directly
@@ -1345,6 +1357,7 @@ Commands:
     --watch      Use watchdog with file watching
   logs          Show server logs
     -f           Follow (live tail)
+    --instance   Read a named Vault's daemon log
   update        Pull latest, re-setup, restart if needed
   maintenance   Storage maintenance
     storage --dry-run  Inspect legacy database migration into ~/.modus/data

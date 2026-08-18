@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "path";
-import { resolveCliVault, vaultEnvironment, vaultStateFiles } from "../cli-vault";
+import { resolveCliVault, vaultDaemonLogFile, vaultEnvironment, vaultStateFiles } from "../cli-vault";
 
 describe("resolveCliVault", () => {
   test("defaults to the implicit Vault and normalizes the reserved default name", () => {
@@ -45,5 +45,14 @@ describe("vaultEnvironment", () => {
     });
     expect(vaultEnvironment(parent, null)).toEqual({ KEEP: "yes" });
     expect(parent.MODUS_INSTANCE).toBe("inherited");
+  });
+});
+
+describe("vaultDaemonLogFile", () => {
+  test("preserves the legacy default log and scopes named daemon output", () => {
+    expect(vaultDaemonLogFile("harness/harness.log", "home/private/logs", null))
+      .toBe("harness/harness.log");
+    expect(vaultDaemonLogFile("harness/harness.log", "home/private/logs", "private"))
+      .toBe(join("home/private/logs", "harness.log"));
   });
 });
