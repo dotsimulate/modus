@@ -61,6 +61,7 @@ import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBi
 import { createTerminal as createTerminalPty, killTerminal as killTerminalPty, writeTerminal as writeTerminalPty } from "./terminal-manager";
 import { getPluginActionsDir, listEnabledModusPlugins, type ModusPlugin } from "./modus-plugins";
 import { buildHarnessContext } from "./harness-context";
+import { isProjectAutomationAllowed } from "./vault-policy";
 
 // ── Constants ──
 
@@ -408,6 +409,7 @@ function discoverProjectActionDirs(): AuthoredActionDir[] {
   for (const up of Object.values(userProfiles)) {
     for (const proj of up.projects ?? []) {
       const projectCwd = normalizeCwd(proj);
+      if (!isProjectAutomationAllowed(projectCwd)) continue;
       if (seen.has(projectCwd)) continue;
       seen.add(projectCwd);
       const dir = join(projectCwd, MODUS_ACTIONS);

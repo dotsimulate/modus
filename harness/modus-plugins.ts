@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "path";
 import { homedir } from "os";
 import { homePluginsJsonPath } from "./modus-home";
 import { APP_PATHS } from "./app-paths";
+import { isPluginAllowed } from "./vault-policy";
 import type { PluginSettingDefinition } from "./settings-schema";
 
 const MODUS_DIR = ".modus";
@@ -169,7 +170,9 @@ export function listModusPlugins(): ModusPlugin[] {
 
 /** Enabled user-registered plugins. The built-in core tier has dedicated loaders. */
 export function listEnabledModusPlugins(): ModusPlugin[] {
-  return listPluginRegistrations().map(toPlugin).filter((plugin) => plugin.enabled);
+  return listPluginRegistrations()
+    .map(toPlugin)
+    .filter((plugin) => plugin.enabled && isPluginAllowed(plugin.id));
 }
 
 export function getModusPlugin(id: string, opts: { includeDisabled?: boolean } = {}): ModusPlugin | null {
@@ -178,7 +181,7 @@ export function getModusPlugin(id: string, opts: { includeDisabled?: boolean } =
   const plugin = listPluginRegistrations()
     .map(toPlugin)
     .find((entry) => entry.id === normalizedId);
-  if (!plugin || (!opts.includeDisabled && !plugin.enabled)) return null;
+  if (!plugin || (!opts.includeDisabled && (!plugin.enabled || !isPluginAllowed(plugin.id)))) return null;
   return plugin;
 }
 

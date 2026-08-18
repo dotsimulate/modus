@@ -12,6 +12,7 @@ import { appendFileSync, mkdirSync } from "fs";
 import { dirname } from "path";
 import { getGlobalConfig, type NotificationChannel } from "./profiles";
 import type { NotifySpec, RunResult } from "./action-types";
+import { isChannelAllowed } from "./vault-policy";
 
 // ── Template Rendering ──
 
@@ -110,6 +111,22 @@ export async function sendToChannel(
   }
 }
 
+export type ChannelResolution =
+  | { ok: true; channel: NotificationChannel }
+  | { ok: false; error: string };
+
+/** Resolve the authored channel name only after the current Vault permits it. */
+export function resolveChannel(channelName: string, cwd?: string): ChannelResolution {
+  if (!isChannelAllowed(channelName)) {
+    return { ok: false, error: `Channel "${channelName}" is disabled by Vault policy` };
+  }
+  const channel = getGlobalConfig(cwd).notificationChannels?.[channelName];
+  if (!channel) {
+    return { ok: false, error: `Channel "${channelName}" not found in _global.json` };
+  }
+  return { ok: true, channel };
+}
+
 // ── Public API ──
 
 /**
@@ -121,9 +138,6 @@ export async function sendNotifications(
   result: RunResult,
   context: { actionName: string; runNumber: number; profile: string },
 ): Promise<void> {
-  const channels = getGlobalConfig().notificationChannels;
-  if (!channels) return;
-
   const notifyCtx: NotifyContext = {
     action: context.actionName,
     run: context.runNumber,
@@ -138,15 +152,15 @@ export async function sendNotifications(
     const conditions = Array.isArray(spec.on) ? spec.on : [spec.on];
     if (!conditions.includes(result.status as any)) continue;
 
-    const channel = channels[spec.channel];
-    if (!channel) {
-      console.error(`[notify] Channel "${spec.channel}" not found in _global.json`);
+    const resolution = resolveChannel(spec.channel);
+    if (!resolution.ok) {
+      console.error(`[notify] ${resolution.error}`);
       continue;
     }
 
     const message = renderTemplate(spec.message ?? DEFAULT_MESSAGE, notifyCtx);
 
-    const res = await sendToChannel(channel, { text: message, data: { ...notifyCtx } });
+    const res = await sendToChannel(resolution.channel, { text: message, data: { ...notifyCtx } });
     if (res.ok) {
       console.log(`[notify] Sent to "${spec.channel}" for "${context.actionName}" run #${context.runNumber}`);
     } else {
@@ -164,9 +178,6 @@ export async function sendActionNotification(
   status: string,
   context: { actionName: string; profile: string },
 ): Promise<void> {
-  const channels = getGlobalConfig().notificationChannels;
-  if (!channels) return;
-
   const notifyCtx: NotifyContext = {
     action: context.actionName,
     run: 0,
@@ -181,12 +192,15 @@ export async function sendActionNotification(
     const conditions = Array.isArray(spec.on) ? spec.on : [spec.on];
     if (!conditions.includes(status as any)) continue;
 
-    const channel = channels[spec.channel];
-    if (!channel) continue;
+    const resolution = resolveChannel(spec.channel);
+    if (!resolution.ok) {
+      console.error(`[notify] ${resolution.error}`);
+      continue;
+    }
 
     const message = renderTemplate(spec.message ?? DEFAULT_MESSAGE, notifyCtx);
 
-    const res = await sendToChannel(channel, { text: message, data: { ...notifyCtx } });
+    const res = await sendToChannel(resolution.channel, { text: message, data: { ...notifyCtx } });
     if (res.ok) {
       console.log(`[notify] Sent "${status}" to "${spec.channel}" for "${context.actionName}"`);
     } else {
@@ -206,10 +220,7 @@ export async function sendToNamedChannel(
   payload: { text: string; data?: Record<string, unknown> },
   cwd?: string,
 ): Promise<{ ok: boolean; error?: string }> {
-  const channels = getGlobalConfig(cwd).notificationChannels;
-  const channel = channels?.[channelName];
-  if (!channel) {
-    return { ok: false, error: `Channel "${channelName}" not found in _global.json` };
-  }
-  return sendToChannel(channel, payload);
+  const resolution = resolveChannel(channelName, cwd);
+  if (!resolution.ok) return resolution;
+  return sendToChannel(resolution.channel, payload);
 }
