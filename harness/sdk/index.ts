@@ -171,6 +171,11 @@ export type {
   PluginSettingDefinition,
   PluginSettingsSnapshot,
   ModusPlugin,
+  NamedVault,
+  VaultListItem,
+  VaultListResponse,
+  VaultPolicy,
+  VaultPolicyRule,
   ClientExtensionManifestItem,
   // Memory
   MemoryItem,
