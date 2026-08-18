@@ -112,21 +112,28 @@ describe("createTestMoveApiContext", () => {
 
     const explicit = createTestMoveApiContext({
       cwd: "/project", moveName: "chess", sessionId: "s-1", instanceId: "i-1", caller: "user",
+      vault: { slug: "private" },
     });
     expect(explicit.ctx.cwd).toBe("/project");
     expect(explicit.ctx.sessionId).toBe("s-1");
     expect(explicit.ctx.instanceId).toBe("i-1");
     expect(explicit.ctx.caller).toBe("user");
+    expect(explicit.ctx.vault).toEqual({ slug: "private" });
   });
 });
 
 describe("createTestMoveContext", () => {
   test("gather-time fields and form inputs are present", () => {
-    const { ctx } = createTestMoveContext({ inputs: { topic: "release" }, userProfile: "dot" });
+    const { ctx } = createTestMoveContext({
+      inputs: { topic: "release" },
+      userProfile: "dot",
+      vault: { slug: "private" },
+    });
     expect(ctx.inputs).toEqual({ topic: "release" });
     expect(ctx.userProfile).toBe("dot");
     expect(ctx.session.exchangeCount).toBe(0);
     expect(ctx.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(ctx.harness.vault).toEqual({ slug: "private" });
   });
 
   test("session fields merge over the defaults", () => {

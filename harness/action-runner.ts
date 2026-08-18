@@ -860,6 +860,7 @@ async function fireAction(
       });
       const ctx: ActionContext = {
         actionName: name,
+        vault: actionHctx.vault,
         executionId: exec.id,
         runNumber,
         cycleNumber: exec.cycleNumber,

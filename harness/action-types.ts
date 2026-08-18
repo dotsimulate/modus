@@ -205,6 +205,8 @@ export type TriggerInfo = {
 /** Context object passed to gather(), verify(), and afterRun() */
 export interface ActionContext {
   actionName: string;
+  /** Process identity boundary. Null is the implicit default Vault. */
+  vault: HarnessContext["vault"];
   executionId: number;                 // which execution this run belongs to
   runNumber: number;
   cycleNumber: number;

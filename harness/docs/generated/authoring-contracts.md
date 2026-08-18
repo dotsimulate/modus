@@ -58,6 +58,7 @@ An absent member is a hard boundary: reaching for it is a type error in TypeScri
 | `token` | opt | — | — |
 | `triggerAction` | — | yes | — |
 | `userProfile` | yes | — | — |
+| `vault` | — | yes | yes |
 | `wake` | — | yes | — |
 | `watchSessionTurns` | — | yes | — |
 
@@ -67,7 +68,7 @@ Not reachable from an API op handler: `apiToken`, `date`, `harness`, `inputs`, `
 
 ### Only on `MoveApiContext`
 
-Not reachable from `gather()`/`onSubmit()`: `activateMove`, `caller`, `channels`, `createSession`, `emit`, `insertArtifact`, `model`, `notify`, `sendMessage`, `shell`, `triggerAction`, `wake`, `watchSessionTurns`.
+Not reachable from `gather()`/`onSubmit()`: `activateMove`, `caller`, `channels`, `createSession`, `emit`, `insertArtifact`, `model`, `notify`, `sendMessage`, `shell`, `triggerAction`, `vault`, `wake`, `watchSessionTurns`.
 
 ## Contexts
 
@@ -136,6 +137,8 @@ export interface MoveApiContext {
   instanceId: string;
   sessionId: string;
   moveName: string;
+  /** Process identity boundary. Distinct from the move's `instanceId`. */
+  vault: HarnessContext["vault"];
   /** Project working directory from the move registration */
   cwd: string;
   /** Who initiated this call — agent via modus_submit or user via widget */
@@ -234,6 +237,8 @@ export interface MoveApiContext {
 /** The unified context passed to all server-side extension code. */
 export interface HarnessContext {
   self: HarnessSelf;
+  /** Process identity boundary. Null is the implicit default Vault. */
+  vault: { slug: string | null };
   sessions: HarnessSessions;
   channels: HarnessChannels;
   moves: HarnessMoves;
@@ -415,6 +420,8 @@ export interface MoveSecrets {
 
 ```ts
 export interface HarnessBridge {
+  /** Process identity boundary. Null is the implicit default Vault. */
+  vault: HarnessContext["vault"];
   createSession: (opts: {
     profile: string;
     prompt: string;

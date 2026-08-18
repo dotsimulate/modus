@@ -22,6 +22,7 @@
  */
 
 // Leaf utilities imported for the live engine bundle (none import the three engines).
+import { APP_PATHS } from "./app-paths";
 import { logActivity } from "./activity";
 import { resolveSecret, isSecretSet } from "./secrets";
 import { sendToNamedChannel } from "./notify";
@@ -264,6 +265,8 @@ export interface HarnessTerminalApi {
 /** The unified context passed to all server-side extension code. */
 export interface HarnessContext {
   self: HarnessSelf;
+  /** Process identity boundary. Null is the implicit default Vault. */
+  vault: { slug: string | null };
   sessions: HarnessSessions;
   channels: HarnessChannels;
   moves: HarnessMoves;
@@ -653,6 +656,7 @@ export function buildHarnessContextWith(self: HarnessSelf, eng: HarnessEngines):
 
   return {
     self,
+    vault: { slug: APP_PATHS.instance },
     sessions,
     channels: createChannels(self, gate, eng),
     moves: createMoves(self, eng),

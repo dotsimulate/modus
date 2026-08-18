@@ -177,6 +177,7 @@ describe("type shapes", () => {
   test("ActionContext has verify/retry fields and executionId", () => {
     const ctx: import("../../action-types").ActionContext = {
       actionName: "test",
+      vault: { slug: null },
       executionId: 42,
       runNumber: 1,
       cycleNumber: 1,
