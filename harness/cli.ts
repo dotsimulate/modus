@@ -39,6 +39,8 @@ import {
   tailscaleServeOnArgs,
 } from "./tailscale-serve";
 import { formatTokenForBanner } from "./token-display";
+import { resolveCliVault, vaultEnvironment, vaultStateFiles, type VaultStateFiles } from "./cli-vault";
+import { ensureVaultRegistered } from "./vault-registry";
 
 // ── Tailscale Serve ──
 //
@@ -271,8 +273,7 @@ const CONFIG_DIR = join(
   ".config", "agent-dev-zone",
 );
 const TOKEN_FILE = join(CONFIG_DIR, "harness-token");
-const PID_FILE = join(CONFIG_DIR, "harness.pid");
-const PORT_FILE = join(CONFIG_DIR, "harness.port");
+const DEFAULT_STATE_FILES = vaultStateFiles(CONFIG_DIR, null);
 const REMOTE_FILE = join(CONFIG_DIR, "remote");
 const TAILSCALE_OWNERSHIP_FILE = join(CONFIG_DIR, "tailscale-serve-owner.json");
 const LOG_FILE = join(HARNESS_DIR, "harness.log");
@@ -414,31 +415,31 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-function readPidFile(): number | null {
+function readPidFile(files: VaultStateFiles = DEFAULT_STATE_FILES): number | null {
   try {
-    const raw = readFileSync(PID_FILE, "utf-8").trim();
+    const raw = readFileSync(files.pidFile, "utf-8").trim();
     const pid = parseInt(raw, 10);
     return isNaN(pid) ? null : pid;
   } catch { return null; }
 }
 
-function readPortFile(): number | null {
+function readPortFile(files: VaultStateFiles = DEFAULT_STATE_FILES): number | null {
   try {
-    const raw = readFileSync(PORT_FILE, "utf-8").trim();
+    const raw = readFileSync(files.portFile, "utf-8").trim();
     const port = parseInt(raw, 10);
     return isNaN(port) ? null : port;
   } catch { return null; }
 }
 
-function writeStateFiles(pid: number, port: number): void {
+function writeStateFiles(pid: number, port: number, files: VaultStateFiles = DEFAULT_STATE_FILES): void {
   mkdirSync(CONFIG_DIR, { recursive: true });
-  writeFileSync(PID_FILE, String(pid), "utf-8");
-  writeFileSync(PORT_FILE, String(port), "utf-8");
+  writeFileSync(files.pidFile, String(pid), "utf-8");
+  writeFileSync(files.portFile, String(port), "utf-8");
 }
 
-function cleanStateFiles(): void {
-  try { unlinkSync(PID_FILE); } catch { /* already gone */ }
-  try { unlinkSync(PORT_FILE); } catch { /* already gone */ }
+function cleanStateFiles(files: VaultStateFiles = DEFAULT_STATE_FILES): void {
+  try { unlinkSync(files.pidFile); } catch { /* already gone */ }
+  try { unlinkSync(files.portFile); } catch { /* already gone */ }
 }
 
 function openBrowser(url: string): void {
@@ -563,6 +564,15 @@ function getPositionalArgs(args: string[], flagsWithValues: string[] = []): stri
   return positional;
 }
 
+function selectedVault(args: string[]): string | null {
+  try {
+    return resolveCliVault(args, process.env.MODUS_INSTANCE);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
 // ── Commands ──
 
 async function cmdDaemonSupervise(): Promise<void> {
@@ -585,23 +595,31 @@ async function cmdDaemonSupervise(): Promise<void> {
   process.on("SIGINT", stopChild);
   process.on("SIGTERM", stopChild);
   const code = await child.exited;
-  clearTailscaleServe();
+  if (!process.env.MODUS_INSTANCE?.trim()) clearTailscaleServe();
   process.exit(code ?? 1);
 }
 
 async function cmdStart(args: string[]): Promise<void> {
   const daemon = hasFlag(args, "-d", "--daemon");
+  const vault = selectedVault(args);
+  const stateFiles = vaultStateFiles(CONFIG_DIR, vault);
+  if (vault && hasFlag(args, "--remote")) {
+    console.error("Tailnet exposure for named Vaults is not available yet. Start locally without --remote.");
+    process.exit(1);
+  }
+
+  if (vault) ensureVaultRegistered(vault);
 
   // Check if already running
-  const existingPid = readPidFile();
+  const existingPid = readPidFile(stateFiles);
   if (existingPid && isPidAlive(existingPid)) {
-    const port = readPortFile() ?? BASE_PORT;
+    const port = readPortFile(stateFiles) ?? BASE_PORT;
     console.log(`Modus is already running (pid ${existingPid}, port ${port})`);
     console.log(`  http://localhost:${port}`);
     return;
   }
   // Stale PID file — clean it
-  if (existingPid) cleanStateFiles();
+  if (existingPid) cleanStateFiles(stateFiles);
 
   // Install UI deps if needed, then build
   if (uiDepsStale()) {
@@ -620,19 +638,22 @@ async function cmdStart(args: string[]): Promise<void> {
   let usePort = BASE_PORT;
   if (!(await canBindPort(BASE_PORT))) {
     const alive = await waitForHealth(BASE_PORT, 2_000).catch(() => false);
-    if (alive) {
+    const configuredPort = Boolean(process.env.HARNESS_PORT?.trim());
+    if (alive && (!vault || configuredPort)) {
       console.error(`Port ${BASE_PORT} is in use by a running modus instance. Stop it first or set HARNESS_PORT.`);
       process.exit(1);
     }
-    // Ghost socket — scan for a free port nearby (same strategy as watchdog.ts)
-    console.log(`Port ${BASE_PORT} has orphaned TCP state from a dead process.`);
+    // Named Vaults and ghost sockets share the nearby free-port scan.
+    if (alive) console.log(`Port ${BASE_PORT} is used by another Modus Vault.`);
+    else console.log(`Port ${BASE_PORT} has orphaned TCP state from a dead process.`);
     let found = false;
     for (let offset = 1; offset < PORT_SCAN_RANGE; offset++) {
       const candidate = BASE_PORT + offset;
       if (await canBindPort(candidate)) {
         usePort = candidate;
         found = true;
-        console.log(`Rotating to port ${usePort} (will return to ${BASE_PORT} when ghost clears).`);
+        if (vault) console.log(`Using port ${usePort} for Vault ${vault}.`);
+        else console.log(`Rotating to port ${usePort} (will return to ${BASE_PORT} when ghost clears).`);
         break;
       }
     }
@@ -645,7 +666,7 @@ async function cmdStart(args: string[]): Promise<void> {
   // Migrate legacy source-tree databases before the backend imports any DB
   // module. The migration copies, integrity-checks, and retains each source as
   // a backup; it never merges two independently existing databases.
-  if (!process.env.MODUS_DATA_DIR?.trim() && !process.env.MODUS_INSTANCE?.trim()) {
+  if (!process.env.MODUS_DATA_DIR?.trim() && !vault) {
     const { applyStorageMigration, planStorageMigration } = await import("./storage-migration");
     const storagePlan = planStorageMigration();
     if (storagePlan.conflicts > 0) {
@@ -673,17 +694,17 @@ async function cmdStart(args: string[]): Promise<void> {
   // Token
   const { token, source: tokenSource } = loadToken();
   const revealToken = hasFlag(args, "--show-token");
-  const remote = remoteEnabled(args);
-  if (!remote) clearTailscaleServe();
+  const remote = vault ? false : remoteEnabled(args);
+  if (!vault && !remote) clearTailscaleServe();
 
   // Clear nested-session guard
   delete process.env.CLAUDECODE;
 
-  const env = {
+  const env = vaultEnvironment({
     ...process.env,
     HARNESS_PORT: String(usePort),
     HARNESS_TOKEN: token,
-  };
+  }, vault);
 
   if (daemon) {
     // ── Daemon mode ──
@@ -699,15 +720,15 @@ async function cmdStart(args: string[]): Promise<void> {
 
     // Detach: unref so CLI can exit while child runs
     proc.unref();
-    writeStateFiles(proc.pid, usePort);
+    writeStateFiles(proc.pid, usePort, stateFiles);
 
     console.log("Starting modus daemon...");
     const healthy = await waitForHealth(usePort);
     if (!healthy) {
       console.error("Server did not become healthy within 15s. Check logs: modus logs");
       killPid(proc.pid);
-      clearTailscaleServe();
-      cleanStateFiles();
+      if (!vault) clearTailscaleServe();
+      cleanStateFiles(stateFiles);
       process.exit(1);
     }
 
@@ -722,7 +743,7 @@ async function cmdStart(args: string[]): Promise<void> {
     if (ts?.remoteUrl && !ts.error && !ts.skipped && !pinConfigured()) {
       console.log(`  note: no browser PIN is set — anyone on your tailnet can open modus`);
     }
-    if (!remote && tailscaleInstalled()) {
+    if (!vault && !remote && tailscaleInstalled()) {
       console.log(`  remote access off — enable with: modus remote on`);
     }
     console.log(`  token: ${formatTokenForBanner(token, tokenSource, revealToken)}`);
@@ -748,7 +769,7 @@ async function cmdStart(args: string[]): Promise<void> {
     detached: process.platform !== "win32",
   });
 
-  writeStateFiles(proc.pid, usePort);
+  writeStateFiles(proc.pid, usePort, stateFiles);
 
   let stopping = false;
   let remoteActive = false;
@@ -757,7 +778,7 @@ async function cmdStart(args: string[]): Promise<void> {
     stopping = true;
     console.log("\nShutting down...");
 
-    if (remoteActive) clearTailscaleServe();
+    if (!vault && remoteActive) clearTailscaleServe();
 
     const acked = await requestGracefulShutdown(usePort);
     if (acked) {
@@ -772,7 +793,7 @@ async function cmdStart(args: string[]): Promise<void> {
       await killTreeAndWait(proc);
     }
 
-    cleanStateFiles();
+    cleanStateFiles(stateFiles);
   }
 
   process.on("SIGINT", () => { shutdown(); });
@@ -821,7 +842,7 @@ async function cmdStart(args: string[]): Promise<void> {
     if (remoteActive && !pinConfigured()) {
       console.log(`  note    no browser PIN is set — anyone on your tailnet can open modus`);
     }
-    if (!remote && tailscaleInstalled()) {
+    if (!vault && !remote && tailscaleInstalled()) {
       console.log(`  remote  off — enable with: modus remote on`);
     }
     console.log(`  token   ${formatTokenForBanner(token, tokenSource, revealToken)}`);
@@ -834,7 +855,8 @@ async function cmdStart(args: string[]): Promise<void> {
     openBrowser(`http://localhost:${usePort}${cwdParam}`);
   } else {
     console.warn(`Modus process started, but port ${usePort} is not bound and /health did not respond within 60s.`);
-    console.warn("Leaving the child process alone; use `modus status` or Ctrl+C to inspect/stop it.");
+    const statusCommand = vault ? `modus status --instance ${vault}` : "modus status";
+    console.warn(`Leaving the child process alone; use \`${statusCommand}\` or Ctrl+C to inspect/stop it.`);
   }
 
   // Wait for process to exit
@@ -842,26 +864,28 @@ async function cmdStart(args: string[]): Promise<void> {
   if (!stopping) {
     // Process exited on its own (crash or clean exit)
     const code = proc.exitCode ?? 1;
-    clearTailscaleServe();
-    cleanStateFiles();
+    if (!vault) clearTailscaleServe();
+    cleanStateFiles(stateFiles);
     if (code !== 0) {
       console.error(`\nServer exited with code ${code}`);
     }
     process.exit(code);
   }
 
-  cleanStateFiles();
+  cleanStateFiles(stateFiles);
   process.exit(0);
 }
 
-async function cmdStop(_args: string[]): Promise<void> {
-  const pid = readPidFile();
-  const port = readPortFile() ?? BASE_PORT;
+async function cmdStop(args: string[]): Promise<void> {
+  const vault = selectedVault(args);
+  const stateFiles = vaultStateFiles(CONFIG_DIR, vault);
+  const pid = readPidFile(stateFiles);
+  const port = readPortFile(stateFiles) ?? BASE_PORT;
 
   if (!pid || !isPidAlive(pid)) {
     console.log("Modus is not running.");
-    cleanStateFiles();
-    if (clearTailscaleServe()) console.log("Removed stale tailscale serve rule.");
+    cleanStateFiles(stateFiles);
+    if (!vault && clearTailscaleServe()) console.log("Removed stale tailscale serve rule.");
     return;
   }
 
@@ -894,8 +918,8 @@ async function cmdStop(_args: string[]): Promise<void> {
     }
   }
 
-  cleanStateFiles();
-  if (clearTailscaleServe()) console.log("Removed tailscale serve rule.");
+  cleanStateFiles(stateFiles);
+  if (!vault && clearTailscaleServe()) console.log("Removed tailscale serve rule.");
   console.log("Stopped.");
 }
 
@@ -946,18 +970,21 @@ async function cmdRemote(args: string[]): Promise<void> {
   else console.log("  tailscale serve: no active rule");
 }
 
-async function cmdStatus(_args: string[]): Promise<void> {
-  const pid = readPidFile();
-  const port = readPortFile() ?? BASE_PORT;
+async function cmdStatus(args: string[]): Promise<void> {
+  const vault = selectedVault(args);
+  const stateFiles = vaultStateFiles(CONFIG_DIR, vault);
+  const pid = readPidFile(stateFiles);
+  const port = readPortFile(stateFiles) ?? BASE_PORT;
   const { version, channel } = loadVersion();
 
   if (!pid || !isPidAlive(pid)) {
     console.log("Modus is not running.");
-    if (pid) cleanStateFiles();
+    if (pid) cleanStateFiles(stateFiles);
     return;
   }
 
   console.log(`Modus is running (pid ${pid})`);
+  console.log(`  vault    ${vault ?? "default"}`);
   console.log(`  version  ${version} (${channel})`);
   console.log(`  port     ${port}`);
 
@@ -1299,11 +1326,13 @@ Usage: modus <command> [options]
 Commands:
   start         Start the server (foreground, ctrl+c to stop)
     -d           Run as background daemon
+    --instance <slug>
+                 Start a named Vault ("default" selects the implicit Vault)
     --remote     Expose on your tailnet for this run (see: modus remote)
     --no-remote  Skip tailnet exposure for this run
     --show-token Print the harness token in the banner (it is masked by default)
-  stop          Stop a running daemon
-  status        Show server status
+  stop          Stop a running daemon (--instance <slug> for a named Vault)
+  status        Show server status (--instance <slug> for a named Vault)
   remote        Show remote access status
     on|off       Persistently expose modus on your tailnet via tailscale serve
   init [path]   Initialize a .modus/ project structure
