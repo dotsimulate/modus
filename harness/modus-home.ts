@@ -12,7 +12,8 @@
  *   profiles/prompt-cache.json — provider prompt cache
  *   plugins.json              — user-registered Modus plugin roots
  *   projects.json             — registry of known projects on this machine
- *   history/                  — workspace-history shadow repos
+ *   [<instance>/]history/     — Vault-scoped workspace-history shadow repos
+ *   [<instance>/]checkpoints/ — Vault-scoped managed checkpoints
  *
  * Shipped templates live in harness/templates/profiles/ (repo-tracked, read-only
  * at runtime). rehydrateHome() seeds missing ~/.modus/ files from both the
@@ -79,7 +80,7 @@ export function homePluginsJsonPath(): string {
 }
 
 export function homeHistoryDir(): string {
-  return join(MODUS_HOME, "history");
+  return join(APP_PATHS.writableRoot, "history");
 }
 
 /** User-global skills, addressable from every project. Authored, not runtime state. */
@@ -88,7 +89,7 @@ export function homeSkillsDir(): string {
 }
 
 export function homeCheckpointsDir(): string {
-  return join(MODUS_HOME, "checkpoints");
+  return join(APP_PATHS.writableRoot, "checkpoints");
 }
 
 // ── Shipped templates (repo-tracked, read-only at runtime) ──
