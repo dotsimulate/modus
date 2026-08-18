@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join, resolve } from "path";
-import { resolveAppPaths } from "../app-paths";
+import { isValidInstanceName, resolveAppPaths } from "../app-paths";
 
 describe("app path contract", () => {
   test("places writable production state under the Modus home", () => {
@@ -11,6 +11,7 @@ describe("app path contract", () => {
       systemTempDir: "C:/Temp",
     });
     expect(paths.modusHome).toBe(resolve("C:/Users/tester/.modus"));
+    expect(paths.writableRoot).toBe(paths.modusHome);
     expect(paths.dataDir).toBe(join(paths.modusHome, "data"));
     expect(paths.logsDir).toBe(join(paths.modusHome, "logs"));
     expect(paths.resourcesDir).toBe(resolve("D:/modus/harness"));
@@ -21,6 +22,7 @@ describe("app path contract", () => {
       env: { MODUS_HOME: "D:/state/modus", MODUS_INSTANCE: "dev" },
       sourceResourcesDir: "D:/app/resources",
     });
+    expect(paths.writableRoot).toBe(resolve("D:/state/modus/dev"));
     expect(paths.dataDir).toBe(resolve("D:/state/modus/dev/data"));
     expect(paths.runtimeDir).toBe(resolve("D:/state/modus/dev/runtime"));
     expect(paths.resourcesDir).toBe(resolve("D:/app/resources"));
@@ -39,7 +41,19 @@ describe("app path contract", () => {
     },
   );
 
-  test("rejects an instance name that could escape its root", () => {
+  test("exposes the reusable instance-name contract", () => {
+    expect(isValidInstanceName("dev-1.foo_bar")).toBe(true);
+    expect(isValidInstanceName("default")).toBe(true);
+    expect(isValidInstanceName("")).toBe(false);
+    expect(isValidInstanceName("../other")).toBe(false);
+    expect(isValidInstanceName("two words")).toBe(false);
+    expect(isValidInstanceName(".")).toBe(false);
+    expect(isValidInstanceName("..")).toBe(false);
+  });
+
+  test("rejects an instance name that could escape or collapse its root", () => {
     expect(() => resolveAppPaths({ env: { MODUS_INSTANCE: "../other" } })).toThrow();
+    expect(() => resolveAppPaths({ env: { MODUS_INSTANCE: "." } })).toThrow();
+    expect(() => resolveAppPaths({ env: { MODUS_INSTANCE: ".." } })).toThrow();
   });
 });
