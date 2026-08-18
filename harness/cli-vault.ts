@@ -51,3 +51,12 @@ export function vaultEnvironment(
   else delete env.MODUS_INSTANCE;
   return env;
 }
+
+/** Keep the legacy default daemon log while preventing named-Vault log mixing. */
+export function vaultDaemonLogFile(
+  defaultLogFile: string,
+  vaultLogsDir: string,
+  vault: string | null,
+): string {
+  return vault ? join(vaultLogsDir, "harness.log") : defaultLogFile;
+}
