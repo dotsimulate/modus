@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import {
   createVault,
+  ensureVaultRegistered,
   getVault,
   listVaults,
   registerVault,
@@ -72,6 +73,23 @@ describe("Vault registry", () => {
     expect(touchVault("private", 250, paths)?.lastOpenedAt).toBe(250);
     expect(touchVault("missing", 300, paths)).toBeNull();
     expect(listVaults(paths)).toHaveLength(1);
+  });
+
+  test("ensures a CLI-started Vault without replacing an existing row", () => {
+    const paths = testPaths();
+    expect(ensureVaultRegistered("headless", paths, 100)).toEqual({
+      slug: "headless",
+      createdAt: 100,
+      autostart: false,
+    });
+
+    registerVault({ slug: "headless", name: "Headless", createdAt: 100, autostart: true }, paths);
+    expect(ensureVaultRegistered("headless", paths, 200)).toEqual({
+      slug: "headless",
+      name: "Headless",
+      createdAt: 100,
+      autostart: true,
+    });
   });
 
   test("creation registers first and writes an explicit deny-all policy", () => {

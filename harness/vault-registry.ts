@@ -131,6 +131,17 @@ export function removeVault(slug: string, paths: VaultRegistryPaths = APP_PATHS)
   return true;
 }
 
+/** Register a named Vault discovered through a headless CLI start. */
+export function ensureVaultRegistered(
+  slug: string,
+  paths: VaultRegistryPaths = APP_PATHS,
+  now = Date.now(),
+): VaultRegistryEntry {
+  const existing = getVault(slug, paths);
+  if (existing) return existing;
+  return registerVault({ slug, createdAt: now, autostart: false }, paths);
+}
+
 export function createVault(
   slug: string,
   name?: string,
