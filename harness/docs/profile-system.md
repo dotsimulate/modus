@@ -1,8 +1,8 @@
 ---
 title: Profile System
-lastUpdated: 2026-07-30
+lastUpdated: 2026-08-17
 lastCommit: a9adf68
-covers: harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/templates/profiles/ harness/skills.ts
+covers: harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/templates/profiles/ harness/skills.ts harness/app-paths.ts
 ---
 
 # Profile System
@@ -12,6 +12,10 @@ under `~/.modus/profiles/`. Project-local profiles live under
 `<project>/.modus/profiles/agents/`, and plugin profiles live under
 `<plugin>/.modus/profiles/agents/`. Same-named profiles coexist under qualified
 runtime identities instead of shadowing one another.
+
+The entire profile tree, including `profiles/state/`, is machine-shared across
+Vaults. A Vault scopes backend data and capability enablement; it does not copy
+or select a separate profile catalog. See [Vaults](./vaults.md).
 
 ## Directory Structure
 
