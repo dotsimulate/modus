@@ -1,8 +1,8 @@
 ---
 title: Config Resolution
-lastUpdated: 2026-07-26
+lastUpdated: 2026-08-17
 lastCommit: a9adf68
-covers: harness/profiles.ts harness/profile-schemas.ts harness/session-manager.ts harness/providers/pi-agent.ts
+covers: harness/profiles.ts harness/profile-schemas.ts harness/session-manager.ts harness/providers/pi-agent.ts harness/vault-policy.ts harness/modus-plugins.ts
 ---
 
 # Config Resolution
@@ -22,6 +22,10 @@ profile JSON  →  _global.json providerDefaults  →  TypeScript fallback
 agent might want a smaller context window to force earlier compaction. A coding agent
 might want compaction disabled entirely.
 
+User-home profiles and global config are shared across Vaults. Vault selection
+changes runtime storage and capability enablement, not this authored resolution
+chain; see [Vaults](./vaults.md).
+
 **Provider Defaults** (`~/.modus/profiles/_global.json` and project
 `<cwd>/.modus/_global.json` → `providerDefaults.<provider>`):
 Per-provider overrides. If your llama-server runs `-c 65536`, set it once here and
@@ -37,7 +41,10 @@ built-in → user-home _global.json → enabled plugin _global.json files
 ```
 
 Later layers win per key. Plugin registration order determines ordering between
-enabled plugins.
+enabled plugins. The machine plugin registry is shared, but each Vault's
+`plugins` policy filters which registered plugins are enabled before their
+configuration contributes to this merge. A new named Vault therefore receives
+no plugin configuration until its policy allows the plugin ID.
 
 **TypeScript fallback** (in `pi-agent.ts`): Ships with sane defaults. 128000 context
 (or API-provided for openrouter), 8192 max output, compaction enabled with

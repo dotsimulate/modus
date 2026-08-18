@@ -1,7 +1,7 @@
 ---
 title: Capability Surface (condensed)
 lastUpdated: 2026-08-17
-covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts
+covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts harness/app-paths.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts
 audience: agent
 ---
 
@@ -78,6 +78,8 @@ nothing and only broadcast a supplied `emit` payload as `move-widget-event`.
 Plus `state` (get/set/delete), `store`/`setStore` (process-scoped), `db`
 (read-only sessions/messages/search), `secrets` (resolve/isSet),
 `pluginSettings`, `emit`, and `caller` (`"agent" | "user"`).
+`vault.slug` identifies the process-level Vault (`null` for the implicit
+default); it is distinct from the move's `instanceId`.
 
 Handlers are **not** a superset of `gather()`/`onSubmit()`. `MoveContext` exposes
 the convenience `run(cmd)` and the full `harness` object; handlers instead expose
@@ -133,7 +135,7 @@ spawned session** — this is how automated sessions get ambient context or
 widgets), `page` (action-owned nav page), `artifacts[]` (declared outputs,
 auto-verified), `inputs` (static, reaches ctx), session overrides (provider,
 model, effort, cwd, tools), `capabilities` + `trust` (same gating as moves).
-`ActionContext` includes `sessions`/`channels`/`model` (Harness Context), `db`,
+`ActionContext` includes `vault`, `sessions`/`channels`/`model` (Harness Context), `db`,
 `createTerminal()` (managed PTY visible in the UI), artifact helpers, `log`.
 
 ## Agent profiles — `~/.modus/profiles/agents/*.json` (project override in `.modus/profiles/agents/`)
@@ -207,6 +209,18 @@ A workspace scope ("my folders"), not an identity: `displayName`, `projects[]`,
 layouts), `interface` (chat/conversation display), `clientExtensions`,
 `computer`, `editor`. A user profile can reshape the entire UI shell.
 
+## Vaults — process-level data and capability boundaries
+
+An unset `MODUS_INSTANCE` (or `default`) uses the implicit default Vault;
+`MODUS_INSTANCE=<slug>` scopes writable data, logs, runtime, cache, workspace
+history, checkpoints, and the policy file under `~/.modus/<slug>/`. Profiles,
+skills, and machine plugin/project/Vault registries remain shared.
+
+Named Vaults fail closed when `vault.json` is absent or invalid. Its `plugins`,
+`projectAutomation`, and `channels` rules each use `allow-all` or deny plus an
+allow list. New API-created Vaults get explicit deny-all. The default Vault
+preserves existing behavior when its policy is absent. Full contract: `vaults`.
+
 ## Pages — `.modus/pages/*.json`, `harness/pages/*.json`, or declared by moves/actions/missions
 
 `{ id, title, nav?, fullscreen?, padding?, context?, layout, layouts?.mobile }`.
@@ -218,6 +232,7 @@ Layout tree: `grid` (columns, templateColumns/Rows) / `panel` (list|tabs) /
 
 ## Harness Context (server-side extension code)
 
+`ctx.vault.slug` (process identity; `null` for implicit default),
 `ctx.sessions` (create, send, wake, watchTurns, tag/untag, get, list),
 `ctx.channels.send`, `ctx.moves` (activate, list), `ctx.actions.trigger`,
 `ctx.model` (complete, promote, recent), `ctx.state`, `ctx.db`, `ctx.secrets`,
@@ -275,6 +290,7 @@ only — `promote` is gated by `sessionSpawn`, since spawning is what it does.
 
 - Project-planted config: `<project>/.modus/{moves,actions,pages,profiles,missions}/`
 - User-global: `~/.modus/profiles/{agents,users}/`, `~/.modus/profiles/_global.json`
+- Vault-scoped runtime: `~/.modus/<slug>/{data,logs,runtime,cache,history,checkpoints}/`
 - Built-ins: `harness/{moves,actions,pages,prompts}/` (packaged into the desktop app)
 - Docs API: `GET /api/docs` (index), `GET /api/docs/<id>`, `POST /api/docs/search`
   (`{queries: string[]}` — batch). Generated audit doc: `generated/move-ops`.

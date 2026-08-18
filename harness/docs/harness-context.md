@@ -1,6 +1,6 @@
 ---
 title: Harness Context
-lastUpdated: 2026-07-30
+lastUpdated: 2026-08-17
 covers: harness/harness-context.ts harness/wake-scheduler.ts harness/move-runner.ts harness/action-runner.ts harness/modus-mcp.ts harness/model-oneshot.ts harness/providers/pi-model.ts harness/providers/claude-cli-oneshot.ts
 ---
 
@@ -18,6 +18,7 @@ Context unifies them: one namespaced capability object, one safety model.
 
 ```ts
 ctx.self        // identity + gating inputs, including pluginId for plugin-origin code
+ctx.vault       // process identity: { slug: string | null }
 ctx.sessions    // create, send, wake, watchTurns, tag, untag, get, list
 ctx.channels    // send(channel, { text, data? })  → the egress primitive (see notify.md)
 ctx.moves       // activate, list
@@ -37,6 +38,12 @@ It is **not a god object**. Each namespace is built by its own small factory
 (`createSessions`, `createChannels`, …) and is independently unit-testable. The composer
 (`buildHarnessContextWith`) only wires modules together; it implements no engine operation
 itself.
+
+`ctx.vault.slug` is the backend's process-level Vault identity. It is `null`
+for the implicit default Vault and the named slug otherwise. It also reaches
+`MoveApiContext.vault`, `MoveContext.harness.vault`, and `ActionContext.vault`.
+This is deliberately not named `instanceId`: that existing field identifies a
+move API instance inside the Vault. See [Vaults](./vaults.md).
 
 ## Gating
 

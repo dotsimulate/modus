@@ -1,8 +1,8 @@
 ---
 title: MO Architecture
-lastUpdated: 2026-07-26
+lastUpdated: 2026-08-17
 lastCommit: bae0487
-covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
+covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
 
 # MO Architecture
@@ -203,21 +203,25 @@ within its window because a browser legitimately re-requests the same image.
 
 ## Writable roots and databases
 
-`MODUS_HOME` defaults to `~/.modus` and remains the root for user-authored
-configuration: profiles, plugin/project registries, skills, checkpoints, and
-workspace history. `MODUS_INSTANCE=<name>` does **not** duplicate that config.
-It isolates the default writable runtime roots under `<MODUS_HOME>/<name>/`:
+`MODUS_HOME` defaults to `~/.modus` and remains the root for shared authored
+configuration: profiles, plugin/project/Vault registries, and skills.
+`MODUS_INSTANCE=<name>` selects a named Vault and isolates writable roots under
+`<MODUS_HOME>/<name>/`:
 
+- `vault.json` — per-Vault execution and egress policy
 - `data/` — SQLite databases
 - `logs/` — backend and desktop logs
 - `runtime/` — ready/supervisor records and other live coordination files
 - `cache/` — disposable runtime cache
+- `history/` — workspace-history shadow repositories and indexes
+- `checkpoints/` — managed checkpoints
 
 The system temp root is also namespaced as `<temp>/modus/<name>` (or
 `default`). `default` and an unset value both use the un-nested default roots.
 Instance names accept only letters, numbers, dots, underscores, and hyphens.
 `MODUS_DATA_DIR`, `MODUS_LOGS_DIR`, `MODUS_RUNTIME_DIR`, and `MODUS_CACHE_DIR`
 override their individual resolved roots after instance selection.
+See [Vaults](./vaults.md) for registry, policy, API, and CLI semantics.
 
 The primary `data/` directory contains three SQLite databases:
 
@@ -228,8 +232,8 @@ The primary `data/` directory contains three SQLite databases:
 - `terminal.db` — terminal metadata; PTY output itself is streamed, not stored
 
 Workspace history additionally owns one `index.sqlite` inside each shadow
-history root under `<MODUS_HOME>/history/`. Those indexes follow the shared
-user history root, not the instance `data/` root.
+history root under `<writableRoot>/history/`. The history and checkpoint roots
+follow Vault selection rather than the `data/` override.
 
 Sessions are archived via tags rather than normally deleted. Durable event rows
 are append-only except for explicit maintenance such as streaming-delta pruning.
