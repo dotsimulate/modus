@@ -67,6 +67,9 @@ import type {
   PromptCache,
   ModusPlugin,
   PluginSettingsSnapshot,
+  NamedVault,
+  VaultListResponse,
+  VaultPolicy,
   ClientExtensionManifestItem,
   ProjectUiState,
   ProjectUiAssetInfo,
@@ -936,6 +939,39 @@ export class ModusClient {
     return (await this.fetchOrThrow(`/api/plugins/${encodeURIComponent(id)}/settings${q ? `?${q}` : ""}`, {
       method: "PATCH",
       body: JSON.stringify({ values }),
+    })).json();
+  }
+
+  // ── Vaults ──
+  /** Lists the implicit default Vault and every named Vault registered on this machine. */
+  async listVaults(): Promise<VaultListResponse> {
+    return (await this.fetchOrThrow("/api/vaults")).json();
+  }
+  /** Creates a named Vault with an explicit deny-all policy. */
+  async createVault(slug: string, name?: string): Promise<NamedVault> {
+    return (await this.fetchOrThrow("/api/vaults", {
+      method: "POST",
+      body: JSON.stringify({ slug, ...(name !== undefined ? { name } : {}) }),
+    })).json();
+  }
+  /** Updates presentation or autostart metadata for a named Vault. */
+  async updateVault(slug: string, patch: { name?: string; autostart?: boolean }): Promise<NamedVault> {
+    return (await this.fetchOrThrow(`/api/vaults/${encodeURIComponent(slug)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    })).json();
+  }
+  /** Reads policy for a named Vault, or the implicit default when slug is null. */
+  async getVaultPolicy(slug: string | null): Promise<VaultPolicy> {
+    const target = encodeURIComponent(slug ?? "default");
+    return (await this.fetchOrThrow(`/api/vaults/${target}/policy`)).json();
+  }
+  /** Replaces the complete policy for a named or implicit default Vault. */
+  async setVaultPolicy(slug: string | null, policy: VaultPolicy): Promise<VaultPolicy> {
+    const target = encodeURIComponent(slug ?? "default");
+    return (await this.fetchOrThrow(`/api/vaults/${target}/policy`, {
+      method: "PUT",
+      body: JSON.stringify(policy),
     })).json();
   }
 

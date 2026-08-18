@@ -1,0 +1,147 @@
+/** Pure Vault API operations, separated from HTTP so their validation is testable
+ * without starting a backend or binding a port. */
+
+import { join } from "path";
+import { APP_PATHS, isValidInstanceName, type AppPaths } from "./app-paths";
+import {
+  createVault,
+  getVault,
+  listVaults,
+  registerVault,
+  type VaultRegistryEntry,
+} from "./vault-registry";
+import {
+  getVaultPolicy,
+  parseVaultPolicy,
+  writeVaultPolicy,
+  type VaultPolicy,
+  type VaultPolicyPaths,
+} from "./vault-policy";
+
+export type VaultApiPaths = Pick<AppPaths, "modusHome" | "instance">;
+
+export type VaultListItem = {
+  slug: string | null;
+  name?: string;
+  createdAt?: number;
+  autostart?: boolean;
+  lastOpenedAt?: number;
+};
+
+export type VaultListResponse = {
+  current: string | null;
+  vaults: VaultListItem[];
+};
+
+export type VaultCreateInput = {
+  slug?: unknown;
+  name?: unknown;
+};
+
+export type VaultUpdateInput = {
+  name?: unknown;
+  autostart?: unknown;
+};
+
+export type VaultApiResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; status: 400 | 404 | 409; error: string };
+
+function invalid<T>(status: 400 | 404 | 409, error: string): VaultApiResult<T> {
+  return { ok: false, status, error };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+export function listVaultsForApi(paths: VaultApiPaths = APP_PATHS): VaultListResponse {
+  return {
+    current: paths.instance,
+    vaults: [{ slug: null }, ...listVaults(paths)],
+  };
+}
+
+export function createVaultForApi(
+  value: unknown,
+  paths: VaultApiPaths = APP_PATHS,
+  now = Date.now(),
+): VaultApiResult<VaultRegistryEntry> {
+  if (!isObject(value)) return invalid(400, "body must be an object");
+  const input = value as VaultCreateInput;
+  if (typeof input.slug !== "string" || !input.slug) return invalid(400, "slug is required");
+  if (!isValidInstanceName(input.slug) || input.slug === "default") {
+    return invalid(400, `Invalid or reserved Vault slug "${input.slug}"`);
+  }
+  if (input.name !== undefined && typeof input.name !== "string") {
+    return invalid(400, "name must be a string");
+  }
+  if (getVault(input.slug, paths)) return invalid(409, `Vault "${input.slug}" already exists`);
+  return {
+    ok: true,
+    value: createVault(input.slug, input.name as string | undefined, paths, now),
+  };
+}
+
+export function updateVaultForApi(
+  slug: string,
+  value: unknown,
+  paths: VaultApiPaths = APP_PATHS,
+): VaultApiResult<VaultRegistryEntry> {
+  if (!isValidInstanceName(slug) || slug === "default") {
+    return invalid(400, `Invalid or reserved Vault slug "${slug}"`);
+  }
+  if (!isObject(value)) return invalid(400, "body must be an object");
+  const input = value as VaultUpdateInput;
+  if (input.name !== undefined && typeof input.name !== "string") {
+    return invalid(400, "name must be a string");
+  }
+  if (input.autostart !== undefined && typeof input.autostart !== "boolean") {
+    return invalid(400, "autostart must be a boolean");
+  }
+  const existing = getVault(slug, paths);
+  if (!existing) return invalid(404, `Vault "${slug}" not found`);
+  return {
+    ok: true,
+    value: registerVault({
+      ...existing,
+      ...(input.name !== undefined ? { name: input.name as string } : {}),
+      ...(input.autostart !== undefined ? { autostart: input.autostart as boolean } : {}),
+    }, paths),
+  };
+}
+
+function policyScope(slug: string, paths: VaultApiPaths): VaultApiResult<VaultPolicyPaths> {
+  if (slug === "default") {
+    return { ok: true, value: { writableRoot: paths.modusHome, instance: null } };
+  }
+  if (!isValidInstanceName(slug) || !getVault(slug, paths)) {
+    return invalid(404, `Vault "${slug}" not found`);
+  }
+  return {
+    ok: true,
+    value: { writableRoot: join(paths.modusHome, slug), instance: slug },
+  };
+}
+
+export function getVaultPolicyForApi(
+  slug: string,
+  paths: VaultApiPaths = APP_PATHS,
+): VaultApiResult<VaultPolicy> {
+  const scope = policyScope(slug, paths);
+  if (!scope.ok) return scope;
+  return { ok: true, value: getVaultPolicy(scope.value) };
+}
+
+export function setVaultPolicyForApi(
+  slug: string,
+  value: unknown,
+  paths: VaultApiPaths = APP_PATHS,
+): VaultApiResult<VaultPolicy> {
+  const scope = policyScope(slug, paths);
+  if (!scope.ok) return scope;
+  const policy = parseVaultPolicy(value);
+  if (!policy) return invalid(400, "Invalid Vault policy");
+  writeVaultPolicy(policy, scope.value);
+  return { ok: true, value: policy };
+}

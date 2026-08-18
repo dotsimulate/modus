@@ -90,6 +90,12 @@ function parsePolicy(value: unknown, missing: VaultPolicy, requireEveryKey = fal
   return parsed;
 }
 
+/** Strict policy parser for API writes. Unknown keys are forward-compatible,
+ * but every current boundary must be present and valid. */
+export function parseVaultPolicy(value: unknown): VaultPolicy | null {
+  return parsePolicy(value, DENY_ALL_POLICY, true);
+}
+
 function policyPath(paths: VaultPolicyPaths): string {
   return join(paths.writableRoot, "vault.json");
 }
@@ -122,7 +128,7 @@ export function isChannelAllowed(name: string, paths: VaultPolicyPaths = APP_PAT
 }
 
 export function writeVaultPolicy(policy: VaultPolicy, paths: VaultPolicyPaths = APP_PATHS): void {
-  const parsed = parsePolicy(policy, DENY_ALL_POLICY, true);
+  const parsed = parseVaultPolicy(policy);
   if (!parsed) throw new Error("Invalid Vault policy");
   mkdirSync(paths.writableRoot, { recursive: true });
   writeFileSync(policyPath(paths), `${JSON.stringify(parsed, null, 2)}\n`, "utf8");

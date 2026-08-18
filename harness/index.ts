@@ -61,6 +61,13 @@ import { fileMutationFailure } from "./file-mutation-errors";
 import {
   listModusPlugins, patchModusPlugin, registerModusPlugin, unregisterModusPlugin,
 } from "./modus-plugins";
+import {
+  createVaultForApi,
+  getVaultPolicyForApi,
+  listVaultsForApi,
+  setVaultPolicyForApi,
+  updateVaultForApi,
+} from "./vault-api";
 import { getInstalledSkill, listInstalledSkills, listPluginSkills, buildSkillPayload } from "./skills";
 import {
   getPluginSettings,
@@ -3421,6 +3428,38 @@ app.patch("/api/ui/fonts/:id", async (c) => {
   } catch (err: any) {
     return c.json({ error: err.message }, 400);
   }
+});
+
+// ── Vaults ──
+
+app.get("/api/vaults", (c) => c.json(listVaultsForApi()));
+
+app.post("/api/vaults", async (c) => {
+  const result = createVaultForApi(await c.req.json().catch(() => null));
+  return result.ok
+    ? c.json(result.value)
+    : c.json({ error: result.error }, result.status);
+});
+
+app.patch("/api/vaults/:slug", async (c) => {
+  const result = updateVaultForApi(c.req.param("slug"), await c.req.json().catch(() => null));
+  return result.ok
+    ? c.json(result.value)
+    : c.json({ error: result.error }, result.status);
+});
+
+app.get("/api/vaults/:slug/policy", (c) => {
+  const result = getVaultPolicyForApi(c.req.param("slug"));
+  return result.ok
+    ? c.json(result.value)
+    : c.json({ error: result.error }, result.status);
+});
+
+app.put("/api/vaults/:slug/policy", async (c) => {
+  const result = setVaultPolicyForApi(c.req.param("slug"), await c.req.json().catch(() => null));
+  return result.ok
+    ? c.json(result.value)
+    : c.json({ error: result.error }, result.status);
 });
 
 // ── Modus Plugins ──

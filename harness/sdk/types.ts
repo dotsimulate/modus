@@ -1980,6 +1980,30 @@ export type {
 
 import type { ExtensionMeta, PluginSettingDefinition } from "../settings-schema";
 
+export type { VaultPolicy, VaultPolicyRule } from "../vault-policy";
+
+export type NamedVault = {
+  slug: string;
+  name?: string;
+  createdAt: number;
+  autostart?: boolean;
+  lastOpenedAt?: number;
+};
+
+export type VaultListItem = {
+  /** Null is the implicit default Vault, which has no registry row. */
+  slug: string | null;
+  name?: string;
+  createdAt?: number;
+  autostart?: boolean;
+  lastOpenedAt?: number;
+};
+
+export type VaultListResponse = {
+  current: string | null;
+  vaults: VaultListItem[];
+};
+
 export type PluginSettingsSnapshot = {
   pluginId: string;
   settings: PluginSettingDefinition[];
