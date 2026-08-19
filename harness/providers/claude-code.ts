@@ -38,7 +38,7 @@ function msgLog(sid: string, event: string, detail: string) {
   const line = `${ts} [${sid}] ${event}: ${detail}\n`;
   try { appendFileSync(MSG_LOG, line); } catch {}
 }
-import { resolveSecret } from "../secrets";
+import { getSecretsInfo, resolveSecret } from "../secrets";
 import type { ProviderCapabilities } from "./types";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 import { providerChildEnv } from "./child-env";
@@ -389,7 +389,7 @@ function resolveEnvVars(
             resolvedEnv[key] = envVal;
           } else {
             console.warn(`[mcp] Missing secret: ${val} for MCP server "${name}"`);
-            console.warn(`[mcp] Add ${val.slice(1)} to ~/.config/harness/secrets.env`);
+            console.warn(`[mcp] Add ${val.slice(1)} to ${getSecretsInfo().path}`);
           }
         } else {
           resolvedEnv[key] = val;

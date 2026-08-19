@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join, resolve as resolvePath } from "path";
 import { pathToFileURL } from "url";
@@ -18,6 +18,8 @@ type BoundaryResult = {
   revokedProjectTrigger: boolean | null;
   revokedPluginTrigger: boolean | null;
   revokedSessionExecutions: number | null;
+  mainPluginVisible: boolean;
+  mainConfigUnchanged: boolean;
 };
 
 function write(path: string, value: unknown): void {
@@ -28,6 +30,8 @@ function write(path: string, value: unknown): void {
 async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): Promise<BoundaryResult> {
   const root = mkdtempSync(join(tmpdir(), "modus-vault-boundary-"));
   const home = join(root, "home");
+  const vaultHome = join(root, "chosen-vault");
+  const selectedHome = instance === "default" ? home : vaultHome;
   const resources = join(root, "resources");
   const plugin = join(root, "plugin");
   const project = join(root, "project");
@@ -35,9 +39,16 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
   const completionPath = join(root, "completion.jsonl");
   const eventPath = join(root, "event.jsonl");
 
-  write(join(home, "plugins.json"), {
+  write(join(selectedHome, "plugins.json"), {
     plugins: [{ id: "fixture-plugin", path: plugin, enabled: true }],
   });
+  if (instance !== "default") {
+    const mainPlugin = join(root, "main-only-plugin");
+    write(join(home, "plugins.json"), {
+      plugins: [{ id: "main-only-plugin", path: mainPlugin, enabled: true }],
+    });
+    write(join(mainPlugin, ".modus", "plugin.json"), { id: "main-only-plugin", name: "Main only" });
+  }
   write(join(plugin, ".modus", "plugin.json"), { id: "fixture-plugin", name: "Fixture" });
   write(join(plugin, ".modus", "actions", "plugin-action", "action.json"), {
     name: "plugin-action",
@@ -46,11 +57,11 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
     trigger: { type: "manual" },
     maxRuns: 1,
   });
-  write(join(home, "profiles", "users", "operator.json"), {
+  write(join(selectedHome, "profiles", "users", "operator.json"), {
     displayName: "Operator",
     projects: [project],
   });
-  write(join(home, "profiles", "_global.json"), {
+  write(join(selectedHome, "profiles", "_global.json"), {
     mcpServers: {},
     notificationChannels: {
       sink: { type: "file", path: deliveryPath },
@@ -78,7 +89,7 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
     }
   `);
   if (instance === "allowed") {
-    write(join(home, "private", "vault.json"), {
+    write(join(selectedHome, "vault.json"), {
       plugins: { mode: "deny", allow: ["fixture-plugin"] },
       projectAutomation: { mode: "deny", allow: [project] },
       channels: { mode: "deny", allow: ["sink", "completion", "event"] },
@@ -99,6 +110,7 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
       const enabledPlugins = plugins.listEnabledModusPlugins().map((plugin) => plugin.id);
       const resolvedPlugin = !!plugins.getModusPlugin("fixture-plugin");
       const registeredPluginLookup = !!plugins.getModusPlugin("fixture-plugin", { includeDisabled: true });
+      const mainPluginVisible = !!plugins.getModusPlugin("main-only-plugin", { includeDisabled: true });
       actions.initActions();
       const actionNames = actions.getActions().map((action) => action.name);
       const sessionActionState = actions.getActionState("session-action");
@@ -118,7 +130,7 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
       let revokedPluginTrigger = null;
       let revokedSessionExecutions = null;
       if (${JSON.stringify(instance)} === "allowed") {
-        writeFileSync(${JSON.stringify(join(home, "private", "vault.json"))}, JSON.stringify({
+        writeFileSync(${JSON.stringify(join(selectedHome, "vault.json"))}, JSON.stringify({
           plugins: { mode: "deny", allow: [] },
           projectAutomation: { mode: "deny", allow: [] },
           channels: { mode: "deny", allow: [] },
@@ -149,6 +161,7 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
         revokedProjectTrigger,
         revokedPluginTrigger,
         revokedSessionExecutions,
+        mainPluginVisible,
       }));
       process.exit(0);
     `;
@@ -157,12 +170,13 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
         ...process.env,
         MODUS_HOME: home,
         MODUS_INSTANCE: instance === "default" ? "" : "private",
+        MODUS_VAULT_ROOT: instance === "default" ? "" : vaultHome,
         MODUS_RESOURCES_DIR: resources,
-        MODUS_DATA_DIR: join(root, "data"),
-        MODUS_LOGS_DIR: join(root, "logs"),
-        MODUS_RUNTIME_DIR: join(root, "runtime"),
-        MODUS_CACHE_DIR: join(root, "cache"),
-        HARNESS_SECRETS_FILE: join(root, "secrets.env"),
+        MODUS_DATA_DIR: join(selectedHome, "data"),
+        MODUS_LOGS_DIR: join(selectedHome, "logs"),
+        MODUS_RUNTIME_DIR: join(selectedHome, "runtime"),
+        MODUS_CACHE_DIR: join(selectedHome, "cache"),
+        HARNESS_SECRETS_FILE: join(selectedHome, "secrets.env"),
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -175,16 +189,26 @@ async function runBoundaryScenario(instance: "default" | "denied" | "allowed"): 
     expect(exitCode, stderr).toBe(0);
     const result = stdout.split(/\r?\n/).find((line) => line.startsWith("RESULT:"));
     expect(result, stdout).toBeDefined();
-    return JSON.parse(result!.slice("RESULT:".length)) as BoundaryResult;
+    const parsed = JSON.parse(result!.slice("RESULT:".length)) as Omit<BoundaryResult, "mainConfigUnchanged">;
+    const expectedMain = instance === "default"
+      ? { plugins: [{ id: "fixture-plugin", path: plugin, enabled: true }] }
+      : { plugins: [{ id: "main-only-plugin", path: join(root, "main-only-plugin"), enabled: true }] };
+    return {
+      ...parsed,
+      mainConfigUnchanged: readFileSync(join(home, "plugins.json"), "utf8")
+        === `${JSON.stringify(expectedMain, null, 2)}\n`,
+    };
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 }
 
 describe("Vault execution and egress boundaries", () => {
-  test("a named Vault with no policy cannot execute shared capabilities", async () => {
+  test("a named Vault with no policy cannot execute its registered capabilities", async () => {
     const result = await runBoundaryScenario("denied");
     expect(result.registeredPlugins).toContain("fixture-plugin");
+    expect(result.mainPluginVisible).toBe(false);
+    expect(result.mainConfigUnchanged).toBe(true);
     expect(result.registeredPluginLookup).toBe(true);
     expect(result.enabledPlugins).not.toContain("fixture-plugin");
     expect(result.resolvedPlugin).toBe(false);
@@ -195,11 +219,13 @@ describe("Vault execution and egress boundaries", () => {
     expect(result.delivered).toBe(false);
     expect(result.completionDelivered).toBe(false);
     expect(result.eventDelivered).toBe(false);
-  });
+  }, 15_000);
 
-  test("the default Vault preserves existing shared capability behavior", async () => {
+  test("Main preserves its existing capability behavior", async () => {
     const result = await runBoundaryScenario("default");
     expect(result.enabledPlugins).toContain("fixture-plugin");
+    expect(result.mainPluginVisible).toBe(false);
+    expect(result.mainConfigUnchanged).toBe(true);
     expect(result.resolvedPlugin).toBe(true);
     expect(result.actions).toContain("project-action");
     expect(result.actions).toContain("plugin-action");
@@ -208,11 +234,13 @@ describe("Vault execution and egress boundaries", () => {
     expect(result.delivered).toBe(true);
     expect(result.completionDelivered).toBe(true);
     expect(result.eventDelivered).toBe(true);
-  });
+  }, 15_000);
 
   test("an explicit named policy enables only its selected capabilities", async () => {
     const result = await runBoundaryScenario("allowed");
     expect(result.enabledPlugins).toContain("fixture-plugin");
+    expect(result.mainPluginVisible).toBe(false);
+    expect(result.mainConfigUnchanged).toBe(true);
     expect(result.resolvedPlugin).toBe(true);
     expect(result.actions).toContain("project-action");
     expect(result.actions).toContain("plugin-action");
@@ -226,5 +254,5 @@ describe("Vault execution and egress boundaries", () => {
     expect(result.revokedProjectTrigger).toBe(false);
     expect(result.revokedPluginTrigger).toBe(false);
     expect(result.revokedSessionExecutions).toBe(0);
-  });
+  }, 15_000);
 });

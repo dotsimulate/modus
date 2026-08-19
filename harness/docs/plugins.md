@@ -1,16 +1,18 @@
 ---
 title: Plugins
-lastUpdated: 2026-08-14
+lastUpdated: 2026-08-19
 covers: harness/settings-schema.ts harness/modus-plugins.ts harness/plugin-settings.ts harness/profiles.ts harness/modus-home.ts harness/index.ts harness/move-runner.ts harness/action-runner.ts harness/pages.ts harness/client-extensions.ts harness/skills.ts harness/providers/provider-definitions.ts
 ---
 
 # Plugins
 
-A plugin is a directory containing `.modus/`, registered machine-wide. When
-enabled, its profiles, moves, actions, pages, provider definitions, global config, and client
-extensions merge into every project. Plugin registration is user-scoped and
-lives in `~/.modus/plugins.json`; plugin content remains at its source path and
-is never copied into a project.
+A plugin is a directory containing `.modus/`, registered in the current Vault.
+When enabled, its profiles, moves, actions, pages, provider definitions, global
+config, and client extensions merge into every project registered in that
+Vault. Registration lives in `<current-home>/plugins.json`, where
+`<current-home>` is Main's Modus home or a named Vault's registered folder.
+Plugin content remains at its external source path and is never copied into a
+project. Named Vaults do not inherit Main's plugin registrations.
 
 ## Registration
 
@@ -25,7 +27,7 @@ is never copied into a project.
 - `path` is the plugin root. `~` expands and the path resolves absolute.
 - `id` normalizes to lowercase kebab-case and is unique.
 - `enabled` defaults to true; disabled plugins are skipped.
-- `settings` is machine-wide storage for manifest fields scoped `global`.
+- `settings` is Vault-local storage for manifest fields scoped `global`.
 
 Registration requires the path and its `.modus/` directory to exist.
 
@@ -72,9 +74,9 @@ manifest identity values. Plugin content supports merge semantics only.
 | Moves | `.modus/moves/<name>/` | Project → plugin → built-in |
 | Actions | `.modus/actions/<name>/` | Project → plugin → built-in; plugin actions default to the plugin root and carry `origin: "plugin"` |
 | Pages | `.modus/pages/<name>.json` | Manifest-listed pages scan between project and built-in pages |
-| Provider definitions | `.modus/providers/<name>.json` | User-home definitions win plugin collisions; built-in names and aliases cannot be shadowed |
-| Skills | `.modus/skills/<name>/SKILL.md` | Project → user home → plugin; shipping one is not the same as attaching it |
-| Global config | `.modus/_global.json` | Merges after user-home config and before project config |
+| Provider definitions | `.modus/providers/<name>.json` | Current-Vault definitions win plugin collisions; built-in names and aliases cannot be shadowed |
+| Skills | `.modus/skills/<name>/SKILL.md` | Project → current Vault → plugin; shipping one is not the same as attaching it |
+| Global config | `.modus/_global.json` | Merges after current-Vault config and before project config |
 | Client extensions | `.modus/ui/extensions/` | Uses client-extension discovery and precedence |
 
 Plugin moves may ship a `package.json`; dependencies install into the move
@@ -126,7 +128,7 @@ rejects a value.
 |---|---|
 | `user` | User-profile UI client-extension settings key `plugin:<id>` |
 | `project` | `<cwd>/.modus/_global.json` under `pluginSettings.<id>` |
-| `global` | Plugin registration in `~/.modus/plugins.json` |
+| `global` | Plugin registration in `<current-home>/plugins.json` |
 
 `project-list` values must exist in the Modus project registry.
 `secret-name` stores only a Modus secret identifier, never secret material.

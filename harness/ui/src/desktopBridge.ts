@@ -1,3 +1,5 @@
+import type { NamedVault, VaultListResponse, VaultPolicy } from "../../sdk/types";
+
 export type DesktopBootstrapMode = "managed-local" | "external-local" | "remote";
 
 export type DesktopTailscaleStatus = {
@@ -35,6 +37,15 @@ export type DesktopUpdateCheck = {
   currentVersion: string;
   notes?: string | null;
   date?: string | null;
+};
+
+export type DesktopVaultRootMode = "initialize" | "register";
+
+export type DesktopVaultRegistrationRequest = {
+  slug: string;
+  root: string;
+  name?: string;
+  mode: DesktopVaultRootMode;
 };
 
 /**
@@ -100,6 +111,37 @@ export async function getDesktopVaultStatus(slug: string | null): Promise<Deskto
   return invokeDesktop<DesktopVaultStatus>("desktop_vault_status", {
     request: { slug },
   });
+}
+
+export async function listDesktopVaults(): Promise<VaultListResponse> {
+  return invokeDesktop<VaultListResponse>("desktop_list_vaults");
+}
+
+export async function createDesktopVault(
+  request: DesktopVaultRegistrationRequest,
+): Promise<NamedVault> {
+  return invokeDesktop<NamedVault>("desktop_create_vault", { request });
+}
+
+export async function repairDesktopVault(
+  request: DesktopVaultRegistrationRequest,
+): Promise<NamedVault> {
+  return invokeDesktop<NamedVault>("desktop_repair_vault", { request });
+}
+
+export async function updateDesktopVault(
+  slug: string,
+  patch: { name?: string; autostart?: boolean },
+): Promise<NamedVault> {
+  return invokeDesktop<NamedVault>("desktop_update_vault", { slug, patch });
+}
+
+export async function getDesktopVaultPolicy(slug: string | null): Promise<VaultPolicy> {
+  return invokeDesktop<VaultPolicy>("desktop_vault_policy", { request: { slug } });
+}
+
+export async function chooseDesktopVaultFolder(): Promise<string | null> {
+  return invokeDesktop<string | null>("desktop_choose_vault_folder");
 }
 
 /**

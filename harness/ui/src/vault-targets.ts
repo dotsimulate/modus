@@ -76,3 +76,42 @@ export function vaultPolicyReceipt(policy: VaultPolicyLike): string {
   }
   return "Custom policy: review the Vault policy before relying on its restrictions.";
 }
+
+export type VaultFolderMode = "initialize" | "register";
+
+export type VaultRegistrationState = {
+  ready: boolean;
+  slug: string | null;
+  action: string;
+  error?: string;
+};
+
+export function vaultRegistrationState(input: {
+  name: string;
+  slug: string;
+  root: string;
+  mode: VaultFolderMode;
+  repair?: boolean;
+}): VaultRegistrationState {
+  const slug = normalizeVaultSlug(input.slug);
+  const action = input.repair
+    ? "repair registration, start, and enter"
+    : input.mode === "register"
+      ? "register, start, and enter"
+      : "create, start, and enter";
+  if (!input.repair && !input.name.trim()) {
+    return { ready: false, slug, action, error: "Enter a Vault name." };
+  }
+  if (!slug) {
+    return {
+      ready: false,
+      slug: null,
+      action,
+      error: "Use lowercase letters, numbers, dots, underscores, or hyphens; default is reserved.",
+    };
+  }
+  if (!input.root.trim()) {
+    return { ready: false, slug, action, error: "Choose a local folder for this Vault." };
+  }
+  return { ready: true, slug, action };
+}

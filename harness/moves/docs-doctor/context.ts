@@ -31,17 +31,17 @@ const SCHEMAS: Record<SchemaName, { schema: unknown; label: string; where: strin
   "agent-profile": {
     schema: ProfileSchema,
     label: "ProfileSchema",
-    where: "~/.modus/profiles/agents/*.json and <project>/.modus/profiles/agents/*.json",
+    where: "<current-home>/profiles/agents/*.json and <project>/.modus/profiles/agents/*.json",
   },
   "user-profile": {
     schema: UserProfileSchema,
     label: "UserProfileSchema",
-    where: "~/.modus/profiles/users/*.json",
+    where: "<current-home>/profiles/users/*.json",
   },
   "global-config": {
     schema: GlobalConfigSchema,
     label: "GlobalConfigSchema",
-    where: "~/.modus/profiles/_global.json and <project>/.modus/_global.json",
+    where: "<current-home>/profiles/_global.json and <project>/.modus/_global.json",
   },
 };
 

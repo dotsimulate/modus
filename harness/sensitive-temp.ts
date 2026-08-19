@@ -1,6 +1,6 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { tmpdir } from "node:os";
+import { APP_PATHS } from "./app-paths";
 
 /**
  * Directory-name prefix for process-private launch material. Also serves as a
@@ -13,7 +13,8 @@ const OWNER_MARKER = ".modus-owner";
 
 /** Create a random process-private directory for short-lived credential material. */
 export function createSensitiveTempDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), PREFIX));
+  mkdirSync(APP_PATHS.tempDir, { recursive: true });
+  const directory = mkdtempSync(join(APP_PATHS.tempDir, PREFIX));
   chmodSync(directory, 0o700);
   // Record the owning process so a later run can distinguish a directory
   // abandoned by a crash from one a concurrent Modus instance is still using.
@@ -53,7 +54,7 @@ function isProcessAlive(pid: number): boolean {
  * credential directory mid-turn is worse than leaving it.
  */
 export function pruneAbandonedSensitiveTempDirectories(): number {
-  const root = resolve(tmpdir());
+  const root = resolve(APP_PATHS.tempDir);
   let removed = 0;
   let entries: string[];
   try {
@@ -86,7 +87,7 @@ export function writeSensitiveTempFile(directory: string, name: string, content:
 /** Remove only a directory created by createSensitiveTempDirectory. */
 export function removeSensitiveTempDirectory(directory: string): void {
   const resolvedDirectory = resolve(directory);
-  const resolvedTemp = resolve(tmpdir());
+  const resolvedTemp = resolve(APP_PATHS.tempDir);
   if (dirname(resolvedDirectory) !== resolvedTemp || !basename(resolvedDirectory).startsWith(PREFIX)) {
     throw new Error(`refusing to remove unrecognized sensitive temporary directory: ${directory}`);
   }

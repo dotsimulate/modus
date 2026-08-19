@@ -1,13 +1,13 @@
 # Profiles — moved
 
-User-owned profile state no longer lives in this directory. It was relocated
-to `~/.modus/profiles/` so the repo (and any compiled distribution of the
-harness) stays read-only at runtime, and personal data never gets committed.
+User-owned profile state no longer lives in this directory. Main stores it in
+`~/.modus/profiles/`; a named Vault stores it in `<registered-root>/profiles/`.
+This keeps the repo and compiled distribution read-only at runtime.
 
 ## Where things live now
 
 ```
-~/.modus/
+<current-home>/
 ├── profiles/
 │   ├── agents/             ← agent profile definitions
 │   ├── users/              ← user profile definitions
@@ -25,10 +25,11 @@ Project-local overrides still live under `<project>/.modus/` unchanged.
 ## Shipped templates
 
 Default agent templates ship in `harness/templates/profiles/agents/`. On first
-boot, `rehydrateHome()` seeds any missing entries in `~/.modus/profiles/`
-from those templates — user data is never overwritten.
+boot, `rehydrateHome()` seeds missing entries in `<current-home>/profiles/`
+from those templates. Only Main performs the one-time migration from this
+legacy directory; a named Vault never imports it. Existing data is not overwritten.
 
 ## Canonical docs
 
 See `harness/docs/profile-system.md` for the full profile schema reference and
-`harness/modus-home.ts` for the single source of truth on `~/.modus/` paths.
+`harness/modus-home.ts` for the single source of truth on current-home paths.

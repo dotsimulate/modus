@@ -4,7 +4,7 @@
  * Storage follows the existing ownership boundaries:
  *   user    → user-profile UI client-extension settings
  *   project → <cwd>/.modus/_global.json
- *   global  → ~/.modus/plugins.json registration
+ *   Vault   → <current-home>/plugins.json registration
  */
 
 import {

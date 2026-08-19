@@ -1,7 +1,7 @@
 /**
  * Prompt cache — client-side store, synced with the Bun server.
  *
- * The server owns the canonical JSON file at ~/.modus/profiles/prompt-cache.json.
+ * The server owns the canonical JSON file at <current-home>/profiles/prompt-cache.json.
  * This module caches it in memory, supports subscriptions for UI updates, and
  * pushes changes back to the server as whole-file PUTs.
  */

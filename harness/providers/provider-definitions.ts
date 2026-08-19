@@ -1,7 +1,7 @@
 /**
- * User-global and plugin provider-definition discovery.
+ * Current-Vault and plugin provider-definition discovery.
  *
- * Built-ins win over disk, user definitions win over plugins, and malformed
+ * Built-ins win over disk, Vault definitions win over plugins, and malformed
  * siblings never suppress valid definitions. The module stays free of profiles,
  * secrets, the provider registry, and the database so profile validation can
  * import it safely.

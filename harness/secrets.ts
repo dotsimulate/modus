@@ -2,7 +2,7 @@
  * Secrets loader — isolates API keys from the project tree.
  *
  * Resolution order for each $VAR_NAME reference:
- *   1. Secrets file (default: ~/.config/harness/secrets.env)
+ *   1. Secrets file (Main's legacy config path, or <VAULT_ROOT>/secrets.env)
  *   2. Process environment (process.env)
  *   3. Skip with warning
  *
@@ -17,9 +17,12 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, appendFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
+import { APP_PATHS } from "./app-paths";
 
 const DEFAULT_DIR = join(homedir(), ".config", "agent-dev-zone");
-const DEFAULT_PATH = join(DEFAULT_DIR, "secrets.env");
+const DEFAULT_PATH = APP_PATHS.instance
+  ? join(APP_PATHS.modusHome, "secrets.env")
+  : join(DEFAULT_DIR, "secrets.env");
 
 let secretsStore: Record<string, string> = {};
 let loadedFrom: string | null = null;

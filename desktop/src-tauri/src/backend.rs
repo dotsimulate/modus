@@ -20,6 +20,10 @@ use uuid::Uuid;
 
 use crate::job::ProcessJob;
 use crate::tailscale::{DesktopTailscaleStatus, TailscaleManager};
+use crate::vaults::{
+    normalize_vault_slug, VaultListResponse, VaultPolicy, VaultRegistrationRequest, VaultRegistry,
+    VaultRegistryEntry, VaultUpdateRequest,
+};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
 const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(8);
@@ -156,6 +160,7 @@ struct BackendPaths {
     bun: PathBuf,
     server: PathBuf,
     resources: PathBuf,
+    root: PathBuf,
     runtime: PathBuf,
     logs: PathBuf,
 }
@@ -222,6 +227,7 @@ impl<T> SupervisorMap<T> {
 pub struct BackendSupervisor {
     app: AppHandle,
     tailscale: Arc<TailscaleManager>,
+    registry: VaultRegistry,
     vaults: SupervisorMap<VaultBackendSupervisor>,
     initial_vault: Option<String>,
 }
@@ -240,9 +246,14 @@ impl BackendSupervisor {
     pub fn new(app: &AppHandle) -> Result<Self, String> {
         let initial_vault = current_vault_slug()?;
         let tailscale = Arc::new(TailscaleManager::resolve(app)?);
+        let registry = VaultRegistry::new(modus_home(app)?)?;
+        if let Some(slug) = initial_vault.as_deref() {
+            registry.resolve(slug)?;
+        }
         Ok(Self {
             app: app.clone(),
             tailscale,
+            registry,
             vaults: SupervisorMap::default(),
             initial_vault,
         })
@@ -251,10 +262,15 @@ impl BackendSupervisor {
     fn vault(&self, slug: Option<String>) -> Result<Arc<VaultBackendSupervisor>, String> {
         let key = vault_key(slug.as_deref());
         let is_default = slug.is_none();
+        let root = match slug.as_deref() {
+            Some(slug) => self.registry.resolve(slug)?,
+            None => self.registry.main_home().to_path_buf(),
+        };
         let (vault, created) = self.vaults.get_or_try_insert_with(key, || {
             VaultBackendSupervisor::new(
                 &self.app,
                 slug,
+                root,
                 is_default.then(|| Arc::clone(&self.tailscale)),
                 self.initial_vault.as_deref(),
             )
@@ -291,11 +307,11 @@ impl BackendSupervisor {
             Some(vault) => vault.is_running()?,
             None => false,
         };
-        let database_path = writable_root(&self.app, slug.as_deref())?
-            .join("data")
-            .join("harness.db")
-            .display()
-            .to_string();
+        let root = match slug.as_deref() {
+            Some(slug) => self.registry.resolve(slug)?,
+            None => self.registry.main_home().to_path_buf(),
+        };
+        let database_path = root.join("data").join("harness.db").display().to_string();
         Ok(DesktopVaultStatus {
             slug,
             running,
@@ -334,6 +350,36 @@ impl BackendSupervisor {
         self.vault(None)?.set_tailscale_enabled(enabled)
     }
 
+    pub fn list_vaults(&self) -> Result<VaultListResponse, String> {
+        self.registry.list(self.initial_vault.clone())
+    }
+
+    pub fn create_vault(
+        &self,
+        request: VaultRegistrationRequest,
+    ) -> Result<VaultRegistryEntry, String> {
+        self.registry.create(request)
+    }
+
+    pub fn repair_vault(
+        &self,
+        request: VaultRegistrationRequest,
+    ) -> Result<VaultRegistryEntry, String> {
+        self.registry.repair(request)
+    }
+
+    pub fn update_vault(
+        &self,
+        slug: &str,
+        request: VaultUpdateRequest,
+    ) -> Result<VaultRegistryEntry, String> {
+        self.registry.update(slug, request)
+    }
+
+    pub fn vault_policy(&self, slug: Option<&str>) -> Result<VaultPolicy, String> {
+        self.registry.policy(slug)
+    }
+
     pub fn clear_runtime_state(&self) {
         if let Ok(vaults) = self.vaults.values() {
             for vault in vaults {
@@ -343,7 +389,14 @@ impl BackendSupervisor {
     }
 
     pub fn start_monitor(&self, _app: AppHandle) {
-        for slug in read_autostart_vaults(&self.app) {
+        let autostart = match self.registry.autostart() {
+            Ok(entries) => entries,
+            Err(error) => {
+                eprintln!("[desktop] could not read Vault autostart registry: {error}");
+                Vec::new()
+            }
+        };
+        for (slug, _) in autostart {
             match self.vault(Some(slug.clone())) {
                 Ok(vault) => {
                     vault.desired_managed.store(true, Ordering::SeqCst);
@@ -366,10 +419,11 @@ impl VaultBackendSupervisor {
     fn new(
         app: &AppHandle,
         slug: Option<String>,
+        root: PathBuf,
         tailscale: Option<Arc<TailscaleManager>>,
         initial_vault: Option<&str>,
     ) -> Result<Self, String> {
-        let paths = BackendPaths::resolve(app, slug.as_deref(), initial_vault)?;
+        let paths = BackendPaths::resolve(app, slug.as_deref(), root, initial_vault)?;
         fs::create_dir_all(&paths.runtime)
             .map_err(display_error("create desktop runtime directory"))?;
         fs::create_dir_all(&paths.logs).map_err(display_error("create desktop logs directory"))?;
@@ -818,6 +872,7 @@ impl VaultBackendSupervisor {
         command.arg(&self.paths.server);
         command
             .current_dir(&self.paths.resources)
+            .env_remove("MODUS_VAULT_ROOT")
             .env("HARNESS_HOST", "127.0.0.1")
             .env("HARNESS_PORT", "0")
             .env("HARNESS_TOKEN", &token)
@@ -834,11 +889,7 @@ impl VaultBackendSupervisor {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if let Some(slug) = self.slug.as_deref() {
-            command.env("MODUS_INSTANCE", slug);
-        } else {
-            command.env_remove("MODUS_INSTANCE");
-        }
+        configure_vault_environment(&mut command, self.slug.as_deref(), &self.paths);
 
         #[cfg(windows)]
         {
@@ -999,6 +1050,22 @@ impl VaultBackendSupervisor {
     }
 }
 
+fn configure_vault_environment(command: &mut Command, slug: Option<&str>, paths: &BackendPaths) {
+    if let Some(slug) = slug {
+        command
+            .env_remove("MODUS_DATA_DIR")
+            .env_remove("MODUS_CACHE_DIR")
+            .env("MODUS_INSTANCE", slug)
+            .env("MODUS_VAULT_ROOT", &paths.root)
+            .env("MODUS_HOME", &paths.root)
+            .env("HARNESS_SECRETS_FILE", paths.root.join("secrets.env"));
+    } else {
+        command
+            .env_remove("MODUS_INSTANCE")
+            .env_remove("MODUS_VAULT_ROOT");
+    }
+}
+
 impl Drop for VaultBackendSupervisor {
     fn drop(&mut self) {
         if let Ok(owned) = self.owned.get_mut() {
@@ -1014,6 +1081,7 @@ impl BackendPaths {
     fn resolve(
         app: &AppHandle,
         slug: Option<&str>,
+        writable_root: PathBuf,
         initial_vault: Option<&str>,
     ) -> Result<Self, String> {
         let resource_root = env::var_os("MODUS_DESKTOP_RESOURCES_DIR")
@@ -1028,13 +1096,13 @@ impl BackendPaths {
             .map(PathBuf::from)
             .unwrap_or_else(|| resource_root.join("server.js"));
         let bun = resolve_bun(app)?;
-        let writable_root = writable_root(app, slug)?;
         let selected_at_launch = slug == initial_vault;
-        let runtime = selected_at_launch
+        let inherited_runtime = slug.is_none() && selected_at_launch;
+        let runtime = inherited_runtime
             .then(|| env::var_os("MODUS_RUNTIME_DIR").map(PathBuf::from))
             .flatten()
             .unwrap_or_else(|| writable_root.join("runtime"));
-        let logs = selected_at_launch
+        let logs = inherited_runtime
             .then(|| env::var_os("MODUS_LOGS_DIR").map(PathBuf::from))
             .flatten()
             .unwrap_or_else(|| writable_root.join("logs"));
@@ -1042,6 +1110,7 @@ impl BackendPaths {
             bun,
             server,
             resources: resource_root,
+            root: writable_root,
             runtime,
             logs,
         })
@@ -1061,14 +1130,6 @@ impl BackendPaths {
     }
 }
 
-fn writable_root(app: &AppHandle, slug: Option<&str>) -> Result<PathBuf, String> {
-    let home = modus_home(app)?;
-    Ok(match slug {
-        Some(slug) => home.join(slug),
-        None => home,
-    })
-}
-
 fn modus_home(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(env::var_os("MODUS_HOME").map(PathBuf::from).unwrap_or(
         app.path()
@@ -1076,55 +1137,6 @@ fn modus_home(app: &AppHandle) -> Result<PathBuf, String> {
             .map_err(|error| error.to_string())?
             .join(".modus"),
     ))
-}
-
-fn read_autostart_vaults(app: &AppHandle) -> Vec<String> {
-    let Ok(home) = modus_home(app) else {
-        return Vec::new();
-    };
-    let path = home.join("vaults.json");
-    let Ok(bytes) = fs::read(&path) else {
-        return Vec::new();
-    };
-    match autostart_vaults_from_json(&bytes) {
-        Ok(slugs) => slugs,
-        Err(error) => {
-            eprintln!(
-                "[desktop] could not read Vault autostart registry {}: {error}",
-                path.display()
-            );
-            Vec::new()
-        }
-    }
-}
-
-fn autostart_vaults_from_json(bytes: &[u8]) -> Result<Vec<String>, String> {
-    let value: serde_json::Value =
-        serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
-    let entries = value
-        .get("vaults")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| "registry must contain a vaults array".to_string())?;
-    let mut slugs = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for entry in entries {
-        let object = entry
-            .as_object()
-            .ok_or_else(|| "registry contains a non-object Vault entry".to_string())?;
-        let raw_slug = object
-            .get("slug")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| "registry Vault entry is missing a slug".to_string())?;
-        let slug = normalize_vault_slug(Some(raw_slug))?
-            .ok_or_else(|| "registry cannot contain the default Vault".to_string())?;
-        if !seen.insert(slug.clone()) {
-            return Err(format!("registry contains duplicate Vault {slug}"));
-        }
-        if object.get("autostart").and_then(serde_json::Value::as_bool) == Some(true) {
-            slugs.push(slug);
-        }
-    }
-    Ok(slugs)
 }
 
 fn current_vault_slug() -> Result<Option<String>, String> {
@@ -1137,22 +1149,6 @@ fn current_vault_slug() -> Result<Option<String>, String> {
 
 fn vault_key(slug: Option<&str>) -> String {
     slug.unwrap_or("default").to_string()
-}
-
-fn normalize_vault_slug(value: Option<&str>) -> Result<Option<String>, String> {
-    let value = value.unwrap_or_default().trim();
-    if value.is_empty() || value.eq_ignore_ascii_case("default") {
-        return Ok(None);
-    }
-    if value == "."
-        || value == ".."
-        || !value.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
-        })
-    {
-        return Err("MODUS_INSTANCE must be a single name containing only letters, numbers, dots, underscores, and hyphens".into());
-    }
-    Ok(Some(value.to_ascii_lowercase()))
 }
 
 fn resolve_bun(app: &AppHandle) -> Result<PathBuf, String> {
@@ -1355,14 +1351,16 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 mod tests {
     use std::{
         collections::VecDeque,
+        process::Command,
         sync::{Arc, Mutex},
         time::{Duration, Instant},
     };
 
     use super::{
-        autostart_vaults_from_json, normalize_vault_slug, request_local_with_transport_retry,
-        startup_error_with_stderr, validated_remote_url, SupervisorMap,
+        configure_vault_environment, request_local_with_transport_retry, startup_error_with_stderr,
+        validated_remote_url, BackendPaths, SupervisorMap,
     };
+    use crate::vaults::normalize_vault_slug;
 
     #[cfg(windows)]
     use std::{fs, path::PathBuf, thread};
@@ -1423,6 +1421,54 @@ mod tests {
     }
 
     #[test]
+    fn named_backend_environment_uses_the_registered_root_and_clears_global_storage() {
+        let root = std::env::temp_dir().join(format!(
+            "modus-arbitrary-vault-root-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let paths = BackendPaths {
+            bun: root.join("bun"),
+            server: root.join("server.js"),
+            resources: root.join("resources"),
+            root: root.clone(),
+            runtime: root.join("runtime"),
+            logs: root.join("logs"),
+        };
+        let mut command = Command::new("backend-fixture");
+        command
+            .env("MODUS_DATA_DIR", "main-data")
+            .env("MODUS_CACHE_DIR", "main-cache")
+            .env("MODUS_RUNTIME_DIR", &paths.runtime)
+            .env("MODUS_LOGS_DIR", &paths.logs);
+        configure_vault_environment(&mut command, Some("private"), &paths);
+        let value = |name: &str| {
+            command
+                .get_envs()
+                .find(|(key, _)| *key == name)
+                .and_then(|(_, value)| value)
+                .map(|value| value.to_string_lossy().into_owned())
+        };
+
+        assert_eq!(value("MODUS_INSTANCE").as_deref(), Some("private"));
+        assert_eq!(value("MODUS_VAULT_ROOT"), Some(root.display().to_string()));
+        assert_eq!(value("MODUS_HOME"), Some(root.display().to_string()));
+        assert_eq!(
+            value("HARNESS_SECRETS_FILE"),
+            Some(root.join("secrets.env").display().to_string())
+        );
+        assert_eq!(
+            value("MODUS_RUNTIME_DIR"),
+            Some(paths.runtime.display().to_string())
+        );
+        assert_eq!(
+            value("MODUS_LOGS_DIR"),
+            Some(paths.logs.display().to_string())
+        );
+        assert_eq!(value("MODUS_DATA_DIR"), None);
+        assert_eq!(value("MODUS_CACHE_DIR"), None);
+    }
+
+    #[test]
     fn supervisor_map_is_lazy_and_reuses_one_slot_per_canonical_key() {
         let map = SupervisorMap::<String>::default();
         assert_eq!(map.len(), 0, "lazy map must not pre-create a backend");
@@ -1440,26 +1486,6 @@ mod tests {
         assert_eq!(map.len(), 1);
         assert_eq!(second.as_str(), "first");
         assert!(Arc::ptr_eq(&second, &map.get("private").unwrap().unwrap()));
-    }
-
-    #[test]
-    fn autostart_registry_selects_only_valid_enabled_named_vaults() {
-        let slugs = autostart_vaults_from_json(
-            br#"{"vaults":[
-              {"slug":"Private","createdAt":1,"autostart":true},
-              {"slug":"cold","createdAt":2,"autostart":false},
-              {"slug":"plain","createdAt":3}
-            ]}"#,
-        )
-        .unwrap();
-        assert_eq!(slugs, vec!["private"]);
-        assert!(autostart_vaults_from_json(
-            br#"{"vaults":[{"slug":"Private","createdAt":1},{"slug":"private","createdAt":2}]}"#
-        )
-        .is_err());
-        assert!(
-            autostart_vaults_from_json(br#"{"vaults":[{"slug":"..","createdAt":1}]}"#).is_err()
-        );
     }
 
     #[test]

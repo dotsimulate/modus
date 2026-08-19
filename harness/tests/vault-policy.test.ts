@@ -23,7 +23,11 @@ function testPaths(instance?: string): AppPaths {
   const root = mkdtempSync(join(tmpdir(), "modus-vault-policy-"));
   roots.push(root);
   return resolveAppPaths({
-    env: { MODUS_HOME: join(root, "home"), MODUS_INSTANCE: instance },
+    env: {
+      MODUS_HOME: join(root, "home"),
+      MODUS_INSTANCE: instance,
+      ...(instance ? { MODUS_VAULT_ROOT: join(root, "chosen-vault") } : {}),
+    },
     systemTempDir: join(root, "temp"),
   });
 }

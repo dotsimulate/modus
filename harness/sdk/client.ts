@@ -947,11 +947,28 @@ export class ModusClient {
   async listVaults(): Promise<VaultListResponse> {
     return (await this.fetchOrThrow("/api/vaults")).json();
   }
-  /** Creates a named Vault with an explicit deny-all policy. */
-  async createVault(slug: string, name?: string): Promise<NamedVault> {
+  /** Initializes an empty folder or registers an existing marked folder as a named Vault. */
+  async createVault(
+    slug: string,
+    root: string,
+    mode: "initialize" | "register",
+    name?: string,
+  ): Promise<NamedVault> {
     return (await this.fetchOrThrow("/api/vaults", {
       method: "POST",
-      body: JSON.stringify({ slug, ...(name !== undefined ? { name } : {}) }),
+      body: JSON.stringify({ slug, root, mode, ...(name !== undefined ? { name } : {}) }),
+    })).json();
+  }
+  /** Repairs a legacy slug-only row by attaching a compliant outside-Main folder. */
+  async repairVault(
+    slug: string,
+    root: string,
+    mode: "initialize" | "register",
+    name?: string,
+  ): Promise<NamedVault> {
+    return (await this.fetchOrThrow(`/api/vaults/${encodeURIComponent(slug)}/repair`, {
+      method: "POST",
+      body: JSON.stringify({ root, mode, ...(name !== undefined ? { name } : {}) }),
     })).json();
   }
   /** Updates presentation or autostart metadata for a named Vault. */

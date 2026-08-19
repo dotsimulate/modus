@@ -6,6 +6,12 @@ export type VaultStateFiles = {
   portFile: string;
 };
 
+function requireVaultRoot(vault: string | null, vaultRoot?: string): string | null {
+  if (!vault) return null;
+  if (!vaultRoot) throw new Error(`Vault "${vault}" is missing its registered folder root`);
+  return vaultRoot;
+}
+
 function flagInstance(args: string[]): { present: boolean; value?: string } {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
@@ -34,30 +40,53 @@ export function resolveCliVault(args: string[], environmentValue?: string): stri
 }
 
 /** CLI process state is one PID/port pair per Vault. */
-export function vaultStateFiles(configDir: string, vault: string | null): VaultStateFiles {
-  const qualifier = vault ? `.${vault}` : "";
+export function vaultStateFiles(
+  configDir: string,
+  vault: string | null,
+  vaultRoot?: string,
+): VaultStateFiles {
+  const runtimeDir = vault ? join(requireVaultRoot(vault, vaultRoot)!, "runtime") : configDir;
   return {
-    pidFile: join(configDir, `harness${qualifier}.pid`),
-    portFile: join(configDir, `harness${qualifier}.port`),
+    pidFile: join(runtimeDir, "harness.pid"),
+    portFile: join(runtimeDir, "harness.port"),
   };
+}
+
+/** Authentication material follows the process state into the selected Vault. */
+export function vaultTokenFile(configDir: string, vault: string | null, vaultRoot?: string): string {
+  const runtimeDir = vault ? join(requireVaultRoot(vault, vaultRoot)!, "runtime") : configDir;
+  return join(runtimeDir, "harness-token");
 }
 
 /** Build a child environment whose Vault cannot drift from the CLI selection. */
 export function vaultEnvironment(
   parent: Record<string, string | undefined>,
   vault: string | null,
+  vaultRoot?: string,
 ): Record<string, string | undefined> {
   const env = { ...parent };
-  if (vault) env.MODUS_INSTANCE = vault;
-  else delete env.MODUS_INSTANCE;
+  if (vault) {
+    const root = requireVaultRoot(vault, vaultRoot)!;
+    env.MODUS_INSTANCE = vault;
+    env.MODUS_VAULT_ROOT = root;
+    env.MODUS_HOME = root;
+    env.HARNESS_SECRETS_FILE = join(root, "secrets.env");
+    delete env.MODUS_DATA_DIR;
+    delete env.MODUS_LOGS_DIR;
+    delete env.MODUS_RUNTIME_DIR;
+    delete env.MODUS_CACHE_DIR;
+  } else {
+    delete env.MODUS_INSTANCE;
+    delete env.MODUS_VAULT_ROOT;
+  }
   return env;
 }
 
-/** Keep the legacy default daemon log while preventing named-Vault log mixing. */
+/** Keep the legacy default daemon log while putting named logs under their roots. */
 export function vaultDaemonLogFile(
   defaultLogFile: string,
-  vaultLogsDir: string,
   vault: string | null,
+  vaultRoot?: string,
 ): string {
-  return vault ? join(vaultLogsDir, "harness.log") : defaultLogFile;
+  return vault ? join(requireVaultRoot(vault, vaultRoot)!, "logs", "harness.log") : defaultLogFile;
 }

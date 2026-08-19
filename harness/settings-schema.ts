@@ -44,7 +44,7 @@ export type ExtensionSettingType =
  *  allowed to differ between a desktop and a phone.
  *
  *  "global" values are consumed by the harness itself. They must be identical
- *  for every client, so they are stored machine-wide and resolved without the
+ *  for every client attached to this Vault, so they are stored Vault-wide and resolved without the
  *  user-profile layer. Storing one per profile means a client that never opened
  *  the settings form silently resolves nothing — which is how a missing whisper
  *  endpoint surfaced as an unexplained 502 on every phone. */

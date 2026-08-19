@@ -1,10 +1,10 @@
 /**
- * First-boot rehydration of ~/.modus/ from the repo.
+ * First-boot rehydration of the current Vault home from packaged resources.
  *
- * Runs once at boot. Copies pre-existing user data from the now-legacy
- * harness/profiles/ tree into ~/.modus/profiles/, then seeds any missing
- * files from harness/templates/profiles/. Never overwrites — user data
- * always wins over both legacy and templates.
+ * Runs once at boot. Main copies pre-existing user data from the now-legacy
+ * harness/profiles/ tree, then every Vault seeds missing shipped templates from
+ * harness/templates/profiles/. A named Vault never imports legacy authored data.
+ * Existing Vault data is never overwritten.
  *
  * After the repo-side harness/profiles/ dirs are removed (Phase 3 of the
  * modus-home relocation), the legacy copy is a silent no-op; only the
@@ -24,7 +24,7 @@ import {
 
 // Legacy (pre-modus-home) paths inside the repo. These become unread after
 // Phase 2 of the relocation; rehydrateHome() is the one-way bridge that
-// copies their contents to ~/.modus/profiles/ before the repo dirs are
+// copies their contents to Main's profiles directory before the repo dirs are
 // removed in Phase 3.
 const LEGACY_PROFILES_DIR = join(APP_PATHS.resourcesDir, "profiles");
 const LEGACY_AGENTS_DIR = join(LEGACY_PROFILES_DIR, "agents");
@@ -79,18 +79,21 @@ export function rehydrateHome(): RehydrationReport {
   const templateHits: string[] = [];
   const skips: string[] = [];
 
-  // 1) Legacy user data → ~/.modus/profiles/
-  copyJsonDir(LEGACY_AGENTS_DIR, homeAgentsDir(), legacyHits, skips);
-  copyJsonDir(LEGACY_USERS_DIR, homeUsersDir(), legacyHits, skips);
-  copyJsonDir(LEGACY_UI_AGENTS_DIR, homeUiAgentsDir(), legacyHits, skips);
-  copyJsonDir(LEGACY_UI_USERS_DIR, homeUiUsersDir(), legacyHits, skips);
-  copyJsonDir(LEGACY_STATE_DIR, homeStateDir(), legacyHits, skips);
+  // 1) Main-only one-way migration from the checkout's legacy authored data.
+  // Named Vaults start independent and may receive only shipped templates.
+  if (!APP_PATHS.instance) {
+    copyJsonDir(LEGACY_AGENTS_DIR, homeAgentsDir(), legacyHits, skips);
+    copyJsonDir(LEGACY_USERS_DIR, homeUsersDir(), legacyHits, skips);
+    copyJsonDir(LEGACY_UI_AGENTS_DIR, homeUiAgentsDir(), legacyHits, skips);
+    copyJsonDir(LEGACY_UI_USERS_DIR, homeUiUsersDir(), legacyHits, skips);
+    copyJsonDir(LEGACY_STATE_DIR, homeStateDir(), legacyHits, skips);
 
-  copyFileIfMissing(LEGACY_GLOBAL, homeGlobalPath(), legacyHits, skips);
-  copyFileIfMissing(LEGACY_USERS_JSON, homeUsersJsonPath(), legacyHits, skips);
-  copyFileIfMissing(LEGACY_PROMPT_CACHE, homePromptCachePath(), legacyHits, skips);
-  // _projects.json → projects.json (registry, not config).
-  copyFileIfMissing(LEGACY_PROJECTS_JSON, homeProjectsJsonPath(), legacyHits, skips);
+    copyFileIfMissing(LEGACY_GLOBAL, homeGlobalPath(), legacyHits, skips);
+    copyFileIfMissing(LEGACY_USERS_JSON, homeUsersJsonPath(), legacyHits, skips);
+    copyFileIfMissing(LEGACY_PROMPT_CACHE, homePromptCachePath(), legacyHits, skips);
+    // _projects.json → projects.json (registry, not config).
+    copyFileIfMissing(LEGACY_PROJECTS_JSON, homeProjectsJsonPath(), legacyHits, skips);
+  }
 
   // 2) Template seeds → fill anything still missing.
   copyJsonDir(templatesAgentsDir(), homeAgentsDir(), templateHits, skips);

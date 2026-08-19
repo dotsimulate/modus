@@ -21,20 +21,22 @@ Modus profiles are JSON files that configure AI agent behavior across three laye
 
 ## Path Resolution — CRITICAL
 
-- User-global agent profiles: `~/.modus/profiles/agents/<name>.json`
+- Vault-global agent profiles: `<current-home>/profiles/agents/<name>.json`
 - Project-local agent profiles: `<project>/.modus/profiles/agents/<name>.json`
-- User profiles: `~/.modus/profiles/users/<name>.json`
-- User-global config: `~/.modus/profiles/_global.json`
+- User profiles: `<current-home>/profiles/users/<name>.json`
+- Vault-global config: `<current-home>/profiles/_global.json`
 - Project-local config: `<project>/.modus/_global.json`
 
-Choose user-global scope for configuration that should follow the person across
-projects. Choose project-local scope for configuration owned by one project. Never
-write a person's profile or configuration into the Modus source checkout or templates.
+`<current-home>` is the active Vault's home: Main's Modus home or a named
+Vault's registered folder. Choose Vault-global scope for configuration shared
+across that Vault's projects. Choose project-local scope for configuration
+owned by one project. Never write a person's profile or configuration into the
+Modus source checkout, Main from a named Vault, or templates.
 
 ## Workflow
 
 1. Determine what the user needs (see decision tree)
-2. Decide whether the requested agent/config is user-global or project-local
+2. Decide whether the requested agent/config is Vault-global or project-local
 3. Gather requirements through focused questions
 4. Read the relevant reference file for schema details
 5. Generate valid JSON
@@ -44,21 +46,21 @@ write a person's profile or configuration into the Modus source checkout or temp
 
 **"I want a new agent / assistant / bot"**
   Read [references/agent-profile-schema.md](references/agent-profile-schema.md).
-  Create `~/.modus/profiles/agents/<name>.json` for a reusable user-global agent,
+  Create `<current-home>/profiles/agents/<name>.json` for a reusable Vault-global agent,
   or `<project>/.modus/profiles/agents/<name>.json` for a project override.
 
 **"I want to organize my projects / set up my account"**
   Read [references/user-profile-schema.md](references/user-profile-schema.md).
-  Create `~/.modus/profiles/users/<name>.json`.
+  Create `<current-home>/profiles/users/<name>.json`.
 
 **"I want to set defaults for all agents" / "configure my local LLM"**
   Read [references/global-config.md](references/global-config.md).
-  Update `~/.modus/profiles/_global.json` for user-global defaults or
+  Update `<current-home>/profiles/_global.json` for Vault-global defaults or
   `<project>/.modus/_global.json` for project-local overrides.
 
 **"Set up everything for a new use case"** (full stack)
-  Create the user profile and reusable agent profile under `~/.modus/profiles/`,
-  plus user-global or project-local config if needed.
+  Create the user profile and reusable agent profile under `<current-home>/profiles/`,
+  plus Vault-global or project-local config if needed.
   Create the agent profile first (it defines the behavior), then the user profile
   (which references the agent profile by name).
 

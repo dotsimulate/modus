@@ -95,7 +95,7 @@ context would overflow the orchestrator or specialized tools are needed.
 
 Profile resolution order:
 1. Project-local: `<cwd>/.modus/profiles/agents/<profile>.json`
-2. User-home: `~/.modus/profiles/agents/<profile>.json`
+2. Current Vault: `<current-home>/profiles/agents/<profile>.json`
 
 ### Steps
 

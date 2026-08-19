@@ -3,7 +3,7 @@
  * in the chat and "save to prompt cache"; the composer ghost-autocompletes
  * against these entries.
  *
- * Stored at ~/.modus/profiles/prompt-cache.json alongside the rest of the
+ * Stored at <current-home>/profiles/prompt-cache.json alongside the rest of the
  * user-scoped state (see harness/modus-home.ts).
  */
 

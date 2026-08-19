@@ -7,11 +7,13 @@ import {
   removeSensitiveTempDirectory,
   writeSensitiveTempFile,
 } from "../sensitive-temp";
+import { APP_PATHS, isPathWithinRoot } from "../app-paths";
 
 describe("sensitive temporary files", () => {
   test("creates private material and removes the complete directory", () => {
     const directory = createSensitiveTempDirectory();
     try {
+      expect(isPathWithinRoot(APP_PATHS.tempDir, directory)).toBe(true);
       const path = writeSensitiveTempFile(directory, "credential.json", '{"token":"canary"}');
       expect(existsSync(path)).toBe(true);
       if (process.platform !== "win32") {
