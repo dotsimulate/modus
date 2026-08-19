@@ -41,6 +41,9 @@ Its release evidence should include:
 
 - clean install plus running-process upgrade, downgrade, rollback, uninstall,
   reinstall, and user-data preservation results;
+- a fresh-shell check that the installer-owned `modus` command resolves ahead
+  of any source-checkout shim, runs without a checkout or global Bun, and leaves
+  unrelated user-PATH entries untouched through upgrade and uninstall;
 - packaged provider, authored-content, remote-client, crash, and lifecycle
   checks on clean operating-system users or virtual machines;
 - inspection for credentials, profiles, databases, logs, source maps, private

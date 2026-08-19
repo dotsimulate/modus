@@ -22,6 +22,7 @@ import { join } from "node:path";
  */
 const ENTRYPOINTS = [
   "index.ts",
+  "cli.ts",
   "svg-render-worker.ts",
   join("providers", "antigravity-hook.ts"),
   join("providers", "antigravity-mcp-bridge.ts"),

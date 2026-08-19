@@ -1,0 +1,18 @@
+[package]
+name = "modus-cli-launcher"
+version = "0.1.0"
+description = "Installed console launcher for the Modus CLI"
+authors = ["Modus contributors"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[[bin]]
+name = "modus"
+path = "src/main.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_Registry",
+  "Win32_UI_WindowsAndMessaging",
+] }

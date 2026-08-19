@@ -6,6 +6,10 @@
 > its structured readiness record, verifies its private credential, and binds
 > the bundled UI to that exact backend. No manually started CLI daemon is
 > required for local desktop use.
+> The NSIS package still installs the public `modus` console command for
+> headless operation, project initialization, maintenance, and named Vaults.
+> Desktop and CLI launch the same packaged backend; they own separate process
+> lifecycles rather than separate products.
 > When Tailnet access is enabled, the same launch also publishes that exact
 > managed backend at the machine's stable Tailscale HTTPS URL.
 
@@ -182,9 +186,9 @@ future signed bridge release must be installed manually after qualification.
 
 ## Build
 
-The staging command production-builds the UI, bundles the Bun server, copies
-the authored resources, and places a target-triple-named Bun sidecar where
-Tauri expects it:
+The staging command production-builds the UI, bundles the Bun server and CLI,
+builds the native console launcher, copies the authored resources, and places
+target-triple-named Bun and `modus` sidecars where Tauri expects them:
 
 ```powershell
 cd desktop
@@ -214,6 +218,20 @@ temporary `MODUS_HOME`, never port 3778, and leave any existing daemon alone:
 .\tests\packaged-lifecycle-smoke.ps1 -Scenario job-close
 .\tests\packaged-lifecycle-smoke.ps1 -Scenario tailscale
 ```
+
+The packaged CLI smoke does not start a backend or bind a port. It verifies the
+native launcher, bundled CLI, version/help surface, installed/source command
+boundary, project initialization, and named-Vault status under an isolated
+home:
+
+```powershell
+.\tests\packaged-cli-smoke.ps1
+```
+
+Installer qualification must additionally start a fresh shell with no
+source-checkout Bun link ahead of Modus, verify that `Get-Command modus`
+resolves to the NSIS install directory, and verify that uninstall removes only
+that exact user-PATH entry.
 
 A macOS or Linux package must be built and process-group-tested on that
 platform; the Windows Job Object implementation is intentionally

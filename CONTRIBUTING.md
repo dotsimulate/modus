@@ -70,6 +70,9 @@ cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --check
 cargo clippy --manifest-path desktop/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked
 cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked
+cargo fmt --manifest-path desktop/cli-launcher/Cargo.toml --check
+cargo clippy --manifest-path desktop/cli-launcher/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path desktop/cli-launcher/Cargo.toml --locked
 ```
 
 Run the publication-boundary check before requesting review:
