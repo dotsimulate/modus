@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     env,
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader, Read, Write},
@@ -28,6 +28,8 @@ const BACKEND_LAUNCHER_FLAG: &str = "--modus-backend-launcher";
 #[cfg(windows)]
 const BACKEND_LAUNCHER_TIMEOUT: Duration = Duration::from_secs(45);
 const BACKEND_STABLE_RESET: Duration = Duration::from_secs(60);
+const STDERR_TAIL_LINES: usize = 12;
+const STDERR_TAIL_CHARS: usize = 2_000;
 const BACKEND_RESTART_BACKOFF: [Duration; 3] = [
     Duration::from_millis(250),
     Duration::from_secs(1),
@@ -695,6 +697,7 @@ impl VaultBackendSupervisor {
     }
 
     fn ensure_managed(&self) -> Result<BootstrapResponse, String> {
+        let startup_deadline = Instant::now() + STARTUP_TIMEOUT;
         let mut owned = self
             .owned
             .lock()
@@ -810,21 +813,22 @@ impl VaultBackendSupervisor {
         }
 
         let log_path = self.paths.logs.join("desktop-backend.log");
+        let stderr_tail = Arc::new(Mutex::new(VecDeque::new()));
         if let Some(stdout) = child.stdout.take() {
-            spawn_log_drain(stdout, log_path.clone(), "stdout");
+            spawn_log_drain(stdout, log_path.clone(), "stdout", None);
         }
         if let Some(stderr) = child.stderr.take() {
-            spawn_log_drain(stderr, log_path, "stderr");
+            spawn_log_drain(stderr, log_path, "stderr", Some(Arc::clone(&stderr_tail)));
         }
 
-        let ready = match wait_for_ready(&mut child, &ready_path) {
+        let ready = match wait_for_ready(&mut child, &ready_path, startup_deadline) {
             Ok(ready) => ready,
             Err(error) => {
                 let _ = job.terminate(1);
                 let _ = child.wait();
                 let _ = fs::remove_file(&ready_path);
                 let _ = fs::remove_file(&gate_path);
-                return Err(error);
+                return Err(startup_error_with_stderr(error, &stderr_tail));
             }
         };
         let _ = fs::remove_file(&ready_path);
@@ -857,20 +861,24 @@ impl VaultBackendSupervisor {
                 return Err(format!("verify backend Job Object membership: {error}"));
             }
         }
-        let health_status = request_local(ready.port, "GET", "/health", None);
+        let health_status = request_local_with_transport_retry(startup_deadline, || {
+            request_local(ready.port, "GET", "/health", None)
+        });
         if !matches!(health_status, Ok(200)) {
             let _ = job.terminate(1);
             let _ = child.wait();
-            return Err(format!(
-                "managed backend failed its health verification: {health_status:?}"
+            return Err(startup_error_with_stderr(
+                format!("managed backend failed its health verification: {health_status:?}"),
+                &stderr_tail,
             ));
         }
         let auth_status = request_local(ready.port, "GET", "/api/auth/check", Some(&token));
         if !matches!(auth_status, Ok(200)) {
             let _ = job.terminate(1);
             let _ = child.wait();
-            return Err(format!(
-                "managed backend rejected the supervisor token: {auth_status:?}"
+            return Err(startup_error_with_stderr(
+                format!("managed backend rejected the supervisor token: {auth_status:?}"),
+                &stderr_tail,
             ));
         }
 
@@ -1118,8 +1126,11 @@ fn resolve_bun(app: &AppHandle) -> Result<PathBuf, String> {
     Err("packaged Bun sidecar was not found beside the desktop executable".into())
 }
 
-fn wait_for_ready(child: &mut Child, ready_path: &Path) -> Result<ReadyRecord, String> {
-    let deadline = Instant::now() + STARTUP_TIMEOUT;
+fn wait_for_ready(
+    child: &mut Child,
+    ready_path: &Path,
+    deadline: Instant,
+) -> Result<ReadyRecord, String> {
     let mut last_parse_error = None;
     while Instant::now() < deadline {
         if let Some(status) = child
@@ -1190,15 +1201,74 @@ fn request_local(port: u16, method: &str, path: &str, token: Option<&str>) -> Re
     Ok(status)
 }
 
-fn spawn_log_drain(reader: impl Read + Send + 'static, path: PathBuf, stream_name: &'static str) {
+fn request_local_with_transport_retry(
+    deadline: Instant,
+    mut request: impl FnMut() -> Result<u16, String>,
+) -> Result<u16, String> {
+    let mut attempts = 0usize;
+    loop {
+        attempts += 1;
+        match request() {
+            Ok(status) => return Ok(status),
+            Err(error) if Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(100));
+                if Instant::now() >= deadline {
+                    return Err(format!(
+                        "{error} (after {attempts} transport attempts within the startup budget)"
+                    ));
+                }
+            }
+            Err(error) => {
+                return Err(format!(
+                    "{error} (after {attempts} transport attempts within the startup budget)"
+                ));
+            }
+        }
+    }
+}
+
+fn spawn_log_drain(
+    reader: impl Read + Send + 'static,
+    path: PathBuf,
+    stream_name: &'static str,
+    captured: Option<Arc<Mutex<VecDeque<String>>>>,
+) {
     thread::spawn(move || {
         let reader = BufReader::new(reader);
         for line in reader.lines().map_while(Result::ok) {
+            if let Some(captured) = captured.as_ref() {
+                if let Ok(mut lines) = captured.lock() {
+                    lines.push_back(line.clone());
+                    while lines.len() > STDERR_TAIL_LINES {
+                        lines.pop_front();
+                    }
+                }
+            }
             if let Ok(mut file) = append_log(&path) {
                 let _ = writeln!(file, "[{stream_name}] {line}");
             }
         }
     });
+}
+
+fn startup_error_with_stderr(error: String, captured: &Arc<Mutex<VecDeque<String>>>) -> String {
+    let excerpt = captured
+        .lock()
+        .ok()
+        .map(|lines| lines.iter().cloned().collect::<Vec<_>>().join("\n"))
+        .unwrap_or_default();
+    if excerpt.is_empty() {
+        return error;
+    }
+    let excerpt = if excerpt.chars().count() > STDERR_TAIL_CHARS {
+        excerpt
+            .chars()
+            .skip(excerpt.chars().count() - STDERR_TAIL_CHARS)
+            .collect::<String>()
+    } else {
+        excerpt
+    };
+    format!("{error}\nRecent backend stderr:\n{excerpt}")
 }
 
 fn append_log(path: &Path) -> std::io::Result<File> {
@@ -1228,14 +1298,19 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{
+        collections::VecDeque,
+        sync::{Arc, Mutex},
+        time::{Duration, Instant},
+    };
 
     use super::{
-        autostart_vaults_from_json, normalize_vault_slug, validated_remote_url, SupervisorMap,
+        autostart_vaults_from_json, normalize_vault_slug, request_local_with_transport_retry,
+        startup_error_with_stderr, validated_remote_url, SupervisorMap,
     };
 
     #[cfg(windows)]
-    use std::{fs, path::PathBuf, thread, time::Duration};
+    use std::{fs, path::PathBuf, thread};
 
     #[cfg(windows)]
     use super::run_backend_launcher;
@@ -1327,6 +1402,43 @@ mod tests {
         assert!(
             autostart_vaults_from_json(br#"{"vaults":[{"slug":"..","createdAt":1}]}"#).is_err()
         );
+    }
+
+    #[test]
+    fn health_verification_retries_transport_errors_only() {
+        let mut transport_calls = 0;
+        let recovered =
+            request_local_with_transport_retry(Instant::now() + Duration::from_secs(1), || {
+                transport_calls += 1;
+                if transport_calls < 3 {
+                    Err("connect to managed backend: 10060".into())
+                } else {
+                    Ok(200)
+                }
+            });
+        assert_eq!(recovered.unwrap(), 200);
+        assert_eq!(transport_calls, 3);
+
+        let mut http_calls = 0;
+        let rejected =
+            request_local_with_transport_retry(Instant::now() + Duration::from_secs(1), || {
+                http_calls += 1;
+                Ok(401)
+            });
+        assert_eq!(rejected.unwrap(), 401);
+        assert_eq!(http_calls, 1, "a real HTTP rejection must not be retried");
+    }
+
+    #[test]
+    fn startup_errors_include_the_bounded_stderr_tail() {
+        let captured = Arc::new(Mutex::new(VecDeque::from([
+            "first diagnostic".to_string(),
+            "SQLITE_READONLY in pruneSessionEvents".to_string(),
+        ])));
+        let message =
+            startup_error_with_stderr("packaged backend exited before readiness".into(), &captured);
+        assert!(message.contains("Recent backend stderr"));
+        assert!(message.contains("SQLITE_READONLY in pruneSessionEvents"));
     }
 
     #[cfg(windows)]
