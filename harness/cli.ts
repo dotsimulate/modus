@@ -45,9 +45,10 @@ import {
   vaultDaemonLogFile,
   vaultEnvironment,
   vaultStateFiles,
+  vaultTokenFile,
   type VaultStateFiles,
 } from "./cli-vault";
-import { ensureVaultRegistered } from "./vault-registry";
+import { requireRegisteredVault } from "./vault-registry";
 
 // ── Tailscale Serve ──
 //
@@ -280,16 +281,23 @@ const SERVER_ENTRY = resolve(
     || join(HARNESS_DIR, PACKAGED_CLI ? "server.js" : "index.ts"),
 );
 
+const MAIN_APP_PATHS = resolveAppPaths({
+  env: {
+    ...process.env,
+    MODUS_INSTANCE: undefined,
+    MODUS_VAULT_ROOT: undefined,
+  },
+});
+
 const CONFIG_DIR = join(
   process.env.USERPROFILE ?? process.env.HOME ?? "",
   ".config", "agent-dev-zone",
 );
-const TOKEN_FILE = join(CONFIG_DIR, "harness-token");
 const DEFAULT_STATE_FILES = vaultStateFiles(CONFIG_DIR, null);
 const REMOTE_FILE = join(CONFIG_DIR, "remote");
 const TAILSCALE_OWNERSHIP_FILE = join(CONFIG_DIR, "tailscale-serve-owner.json");
 const LOG_FILE = PACKAGED_CLI
-  ? join(resolveAppPaths().logsDir, "harness.log")
+  ? join(MAIN_APP_PATHS.logsDir, "harness.log")
   : join(HARNESS_DIR, "harness.log");
 const UI_DEPS_STAMP = join(UI_DIR, ".modus-deps.stamp");
 
@@ -308,22 +316,22 @@ function loadVersion(): { version: string; channel: string } {
   }
 }
 
-function loadToken(): { token: string; source: string } {
+function loadToken(tokenFile: string): { token: string; source: string } {
   // env > disk > generate
   if (process.env.HARNESS_TOKEN) {
     return { token: process.env.HARNESS_TOKEN, source: "env" };
   }
   try {
-    if (existsSync(TOKEN_FILE)) {
-      const token = readFileSync(TOKEN_FILE, "utf-8").trim();
+    if (existsSync(tokenFile)) {
+      const token = readFileSync(tokenFile, "utf-8").trim();
       if (token) return { token, source: "persisted" };
     }
   } catch { /* fall through */ }
 
   const token = randomBytes(16).toString("hex");
   try {
-    mkdirSync(CONFIG_DIR, { recursive: true });
-    writeFileSync(TOKEN_FILE, token, "utf-8");
+    mkdirSync(dirname(tokenFile), { recursive: true });
+    writeFileSync(tokenFile, token, "utf-8");
     return { token, source: "persisted" };
   } catch {
     return { token, source: "generated" };
@@ -446,7 +454,7 @@ function readPortFile(files: VaultStateFiles = DEFAULT_STATE_FILES): number | nu
 }
 
 function writeStateFiles(pid: number, port: number, files: VaultStateFiles = DEFAULT_STATE_FILES): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
+  mkdirSync(dirname(files.pidFile), { recursive: true });
   writeFileSync(files.pidFile, String(pid), "utf-8");
   writeFileSync(files.portFile, String(port), "utf-8");
 }
@@ -477,6 +485,7 @@ function cleanStateFiles(files: VaultStateFiles = DEFAULT_STATE_FILES): void {
 }
 
 function openBrowser(url: string): void {
+  if (process.env.MODUS_CLI_NO_OPEN_BROWSER === "1") return;
   const cmd = process.platform === "darwin" ? "open"
     : process.platform === "win32" ? "start"
     : "xdg-open";
@@ -607,6 +616,16 @@ function selectedVault(args: string[]): string | null {
   }
 }
 
+function selectedVaultRoot(vault: string | null): string | null {
+  if (!vault) return null;
+  try {
+    return requireRegisteredVault(vault, { modusHome: MAIN_APP_PATHS.modusHome }).root;
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
 // ── Commands ──
 
 async function cmdDaemonSupervise(): Promise<void> {
@@ -637,13 +656,12 @@ async function cmdDaemonSupervise(): Promise<void> {
 async function cmdStart(args: string[]): Promise<void> {
   const daemon = hasFlag(args, "-d", "--daemon");
   const vault = selectedVault(args);
-  const stateFiles = vaultStateFiles(CONFIG_DIR, vault);
+  const vaultRoot = selectedVaultRoot(vault);
+  const stateFiles = vaultStateFiles(CONFIG_DIR, vault, vaultRoot ?? undefined);
   if (vault && hasFlag(args, "--remote")) {
     console.error("Tailnet exposure for named Vaults is not available yet. Start locally without --remote.");
     process.exit(1);
   }
-
-  if (vault) ensureVaultRegistered(vault);
 
   // Check if already running
   const existingPid = readPidFile(stateFiles);
@@ -738,7 +756,9 @@ async function cmdStart(args: string[]): Promise<void> {
   }
 
   // Token
-  const { token, source: tokenSource } = loadToken();
+  const { token, source: tokenSource } = loadToken(
+    vaultTokenFile(CONFIG_DIR, vault, vaultRoot ?? undefined),
+  );
   const revealToken = hasFlag(args, "--show-token");
   const remote = vault ? false : remoteEnabled(args);
   if (!vault && !remote) clearTailscaleServe();
@@ -750,8 +770,8 @@ async function cmdStart(args: string[]): Promise<void> {
     ...process.env,
     HARNESS_PORT: String(usePort),
     HARNESS_TOKEN: token,
-  }, vault);
-  const daemonLogFile = vaultDaemonLogFile(LOG_FILE, resolveAppPaths({ env }).logsDir, vault);
+  }, vault, vaultRoot ?? undefined);
+  const daemonLogFile = vaultDaemonLogFile(LOG_FILE, vault, vaultRoot ?? undefined);
 
   if (daemon) {
     // ── Daemon mode ──
@@ -926,7 +946,8 @@ async function cmdStart(args: string[]): Promise<void> {
 
 async function cmdStop(args: string[]): Promise<void> {
   const vault = selectedVault(args);
-  const stateFiles = vaultStateFiles(CONFIG_DIR, vault);
+  const vaultRoot = selectedVaultRoot(vault);
+  const stateFiles = vaultStateFiles(CONFIG_DIR, vault, vaultRoot ?? undefined);
   const pid = readPidFile(stateFiles);
   const port = readPortFile(stateFiles) ?? BASE_PORT;
 
@@ -1020,7 +1041,8 @@ async function cmdRemote(args: string[]): Promise<void> {
 
 async function cmdStatus(args: string[]): Promise<void> {
   const vault = selectedVault(args);
-  const stateFiles = vaultStateFiles(CONFIG_DIR, vault);
+  const vaultRoot = selectedVaultRoot(vault);
+  const stateFiles = vaultStateFiles(CONFIG_DIR, vault, vaultRoot ?? undefined);
   const pid = readPidFile(stateFiles);
   const port = readPortFile(stateFiles) ?? BASE_PORT;
   const { version, channel } = loadVersion();
@@ -1033,6 +1055,7 @@ async function cmdStatus(args: string[]): Promise<void> {
 
   console.log(`Modus is running (pid ${pid})`);
   console.log(`  vault    ${vault ?? "default"}`);
+  if (vaultRoot) console.log(`  root     ${vaultRoot}`);
   console.log(`  version  ${version} (${channel})`);
   console.log(`  port     ${port}`);
 
@@ -1069,6 +1092,10 @@ async function cmdMaintenance(args: string[]): Promise<void> {
     process.exit(1);
   }
   if (subject === "storage") {
+    if (selectedVault(args)) {
+      console.error("Storage migration is Main-only; remove --instance and run it from Main.");
+      process.exit(1);
+    }
     const { applyStorageMigration, planStorageMigration } = await import("./storage-migration");
     const plan = planStorageMigration();
     if (dryRun) {
@@ -1262,8 +1289,8 @@ async function cmdDev(args: string[]): Promise<void> {
 async function cmdLogs(args: string[]): Promise<void> {
   const follow = hasFlag(args, "-f", "--follow");
   const vault = selectedVault(args);
-  const env = vaultEnvironment(process.env, vault);
-  const daemonLogFile = vaultDaemonLogFile(LOG_FILE, resolveAppPaths({ env }).logsDir, vault);
+  const vaultRoot = selectedVaultRoot(vault);
+  const daemonLogFile = vaultDaemonLogFile(LOG_FILE, vault, vaultRoot ?? undefined);
   const watchdogLogFile = join(HARNESS_DIR, "watchdog.log");
 
   if (!existsSync(daemonLogFile) && (vault || !existsSync(watchdogLogFile))) {
@@ -1381,7 +1408,8 @@ Commands:
   start         Start the server (foreground, ctrl+c to stop)
     -d           Run as background daemon
     --instance <slug>
-                 Start a named Vault ("default" selects the implicit Vault)
+                 Start an already registered folder-rooted Vault
+                 ("default" selects Main; register/repair folders in Desktop)
     --remote     Expose on your tailnet for this run (see: modus remote)
     --no-remote  Skip tailnet exposure for this run
     --show-token Print the harness token in the banner (it is masked by default)
@@ -1402,7 +1430,7 @@ Commands:
     --instance   Read a named Vault's daemon log
   update        Pull latest, re-setup, restart if needed (source checkout only)
   maintenance   Storage maintenance
-    storage --dry-run  Inspect legacy database migration into ~/.modus/data
+    storage --dry-run  Inspect legacy database migration into Main's data directory
     storage --apply --plan-id <id>  Apply that exact copy-and-verify plan
     checkpoints --dry-run  Print a non-destructive retention/GC plan
     checkpoints --apply --plan-id <id>  Apply that exact reviewed plan

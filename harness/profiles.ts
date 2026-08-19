@@ -1,14 +1,14 @@
 /**
- * Profile loader — reads JSON files from ~/.modus/profiles/ subfolders.
+ * Profile loader — reads JSON files from the current Vault's profiles/ tree.
  *
- * User-home layout (see harness/modus-home.ts for the single source of truth):
- *   ~/.modus/profiles/agents/         — agent profile definitions
- *   ~/.modus/profiles/users/          — user profile definitions
- *   ~/.modus/profiles/state/          — runtime UI state (app-managed)
- *   ~/.modus/profiles/ui/{agents,users}/ — interface-specific UI sidecars
- *   ~/.modus/profiles/_global.json    — shared MCP servers + provider defaults
- *   ~/.modus/profiles/_users.json     — template var defaults
- *   ~/.modus/projects.json            — registry of known projects
+ * Vault-home layout (see harness/modus-home.ts for the single source of truth):
+ *   <current-home>/profiles/agents/         — agent profile definitions
+ *   <current-home>/profiles/users/          — user profile definitions
+ *   <current-home>/profiles/state/          — runtime UI state (app-managed)
+ *   <current-home>/profiles/ui/{agents,users}/ — interface-specific UI sidecars
+ *   <current-home>/profiles/_global.json    — MCP servers + provider defaults
+ *   <current-home>/profiles/_users.json     — template var defaults
+ *   <current-home>/projects.json            — registry of known projects
  *
  * Project-local overrides — any project directory can contain:
  *   .modus/profiles/agents/  — extra agent profiles (override base by name)
@@ -19,7 +19,7 @@
  * over base profiles of the same name. Listing functions merge both sources.
  *
  * Shipped agent templates live in harness/templates/profiles/ and seed the
- * user home on first boot via rehydrateHome(). The repo itself is read-only
+ * current Vault home on first boot via rehydrateHome(). The repo itself is read-only
  * at runtime; no harness code writes inside harness/profiles/.
  */
 
@@ -225,7 +225,7 @@ export type Profile = {
    *  API moves get tokens created and injected into session context. */
   moves?: ProfileMoveBinding[];
   /** Skills to attach for the whole session, by name. Resolved from
-   *  `<project>/.modus/skills/`, `~/.modus/skills/`, and enabled plugins.
+   *  `<project>/.modus/skills/`, `<current-home>/skills/`, and enabled plugins.
    *  Names that resolve to nothing are skipped with a warning, never fatal. */
   skills?: string[];
   /** UI presentation hints — read by frontend, optional with sensible defaults */
@@ -245,7 +245,7 @@ export type Profile = {
    * Where this profile was loaded from — set by getAllProfiles() at read time,
    * never written to disk.
    *   - "project": `<cwd>/.modus/profiles/agents/<name>.json`
-   *   - "user":    `~/.modus/profiles/agents/<name>.json`
+   *   - "user":    `<current-home>/profiles/agents/<name>.json`
    * Project-origin profiles always appear in the UI regardless of the active
    * user profile's `agentProfiles` whitelist.
    */
@@ -430,7 +430,7 @@ function getBuiltInMcpServers(): Record<string, McpServerConfig> {
 
 // ── User Profiles ──
 // Scoped views of the harness — each profile filters projects, agent profiles, memory.
-// Config lives in ~/.modus/profiles/users/. Runtime state lives in ~/.modus/profiles/state/.
+// Config lives in <current-home>/profiles/users/. Runtime state is in profiles/state/.
 
 export type UserProfileState = {
   sidebarGroupMode?: "time" | "agent";
@@ -1139,7 +1139,7 @@ export function patchUserProfileUiConfig(name: string, patch: Partial<UserProfil
 }
 
 // ── User Profile State CRUD ──
-// Runtime UI state — lives in ~/.modus/profiles/state/, app-managed.
+// Runtime UI state — lives in <current-home>/profiles/state/, app-managed.
 
 export function getUserProfileState(name: string): UserProfileState {
   return readJson<UserProfileState>(join(STATE_DIR, `${name}.json`)) ?? {};
@@ -1166,7 +1166,7 @@ export function getTemplateVars(userProfileName?: string): Record<string, string
 }
 
 // ── User Data ──
-// Stored at ~/.modus/profiles/_users.json. Flat key-value object for user info
+// Stored at <current-home>/profiles/_users.json. Flat key-value object for user info
 // + template vars. Keys are available as {{key}} in profile prompts.
 
 const USERS_FILE = homeUsersJsonPath();
@@ -1197,7 +1197,7 @@ export function getUserName(): string | null {
 }
 
 // ── Project Registry ──
-// Stored at ~/.modus/projects.json. Maps project IDs to names + paths.
+// Stored at <current-home>/projects.json. Maps project IDs to names + paths.
 // Each project's .modus/_project.json carries just the ID — portable across moves.
 
 const PROJECTS_FILE = homeProjectsJsonPath();

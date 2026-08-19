@@ -3,6 +3,7 @@ import { ModusClient, ModusError } from "./client";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { resolveAppPaths } from "../app-paths";
 
 const DEFAULT_URL = process.env.MODUS_URL ?? "http://localhost:3777";
 const DEFAULT_TOKEN = process.env.MODUS_TOKEN ?? "";
@@ -12,7 +13,9 @@ function loadPin(): string {
   if (DEFAULT_PIN) return DEFAULT_PIN;
   // Read from secrets file (same source as the server)
   const secretsPath = process.env.HARNESS_SECRETS_FILE
-    ?? join(homedir(), ".config", "agent-dev-zone", "secrets.env");
+    ?? (process.env.MODUS_INSTANCE?.trim()
+      ? join(resolveAppPaths().modusHome, "secrets.env")
+      : join(homedir(), ".config", "agent-dev-zone", "secrets.env"));
   if (existsSync(secretsPath)) {
     const content = readFileSync(secretsPath, "utf-8");
     for (const line of content.split("\n")) {

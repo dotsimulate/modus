@@ -1,8 +1,8 @@
 ---
 title: Release, Signing, and Packaging
 audience: dev
-lastUpdated: 2026-08-14
-covers: desktop/stage-managed-backend.ts desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.windows.conf.json desktop/src-tauri/tauri.signing.conf.json desktop/src-tauri/src/updates.rs desktop/package.json .github/workflows/ci.yml
+lastUpdated: 2026-08-19
+covers: desktop/stage-managed-backend.ts desktop/tests/packaged-lifecycle-smoke.ps1 desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.windows.conf.json desktop/src-tauri/tauri.signing.conf.json desktop/src-tauri/src/updates.rs desktop/package.json .github/workflows/ci.yml
 ---
 
 # Release, Signing, and Packaging
@@ -157,7 +157,14 @@ Run the isolated lifecycle smokes from `desktop/`, which use a temporary
 .\tests\packaged-lifecycle-smoke.ps1 -Scenario close-hide
 .\tests\packaged-lifecycle-smoke.ps1 -Scenario job-close
 .\tests\packaged-lifecycle-smoke.ps1 -Scenario tailscale
+.\tests\packaged-lifecycle-smoke.ps1 -Scenario two-vault
 ```
+
+`two-vault` keeps Main in its isolated home, registers two unrelated named
+folders outside that home, validates both markers, starts both through
+autostart, and proves profile/secrets/database/runtime canaries do not cross
+between either folder or Main. This smoke must not reconstruct a root from a
+slug.
 
 `job-close` is a Windows Job Object concept with no POSIX analogue, and there is
 no `sh` equivalent of this script, so **macOS and Linux qualification is

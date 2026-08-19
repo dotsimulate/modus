@@ -1,7 +1,7 @@
 # Agent Profile Schema
 
-Reusable user-global agent profiles live at
-`~/.modus/profiles/agents/<name>.json`. Project-local profiles and overrides live at
+Reusable Vault-global agent profiles live at
+`<current-home>/profiles/agents/<name>.json`. Project-local profiles and overrides live at
 `<project>/.modus/profiles/agents/<name>.json`. The filename (without `.json`) is the
 profile's ID used everywhere in the system.
 

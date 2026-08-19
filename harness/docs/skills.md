@@ -1,6 +1,6 @@
 ---
 title: Skills
-lastUpdated: 2026-07-26
+lastUpdated: 2026-08-19
 covers: harness/skills.ts harness/skill-attachment.ts harness/modus-mcp.ts harness/providers/provider-names.ts
 audience: user
 ---
@@ -30,12 +30,15 @@ something, you want a move. If you need knowledge that travels, you want a skill
 
 ```
 <project>/.modus/skills/<name>/SKILL.md     project-scoped
-~/.modus/skills/<name>/SKILL.md             every project on this machine
-<plugin>/.modus/skills/<name>/SKILL.md      shipped by a plugin
+<current-home>/skills/<name>/SKILL.md       every project registered in this Vault
+<plugin>/.modus/skills/<name>/SKILL.md      shipped by a plugin registered in this Vault
 <move>/skills/<name>/SKILL.md               bundled inside a move
 ```
 
-On a name collision the most specific wins: project, then user, then plugin.
+`<current-home>` is Main's Modus home for Main or a named Vault's registered
+folder. User skills are Vault-local and do not fall back to Main.
+
+On a name collision the most specific wins: project, then Vault user, then plugin.
 Shadowed copies are reported in the backend log. Nothing is ever copied — files
 are read where they live.
 

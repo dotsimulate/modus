@@ -1,6 +1,6 @@
 ---
 title: Core Primitives
-lastUpdated: 2026-07-07
+lastUpdated: 2026-08-19
 lastCommit: a9adf68
 covers: harness/db.ts harness/session-manager.ts harness/index.ts
 ---
@@ -9,6 +9,9 @@ covers: harness/db.ts harness/session-manager.ts harness/index.ts
 
 Five primitives compose to form the MO system. This doc covers what each one
 is, where it lives, and how they connect.
+
+`<current-home>` means Main's Modus home for Main or a named Vault's registered
+folder. Vault-owned profiles and state never fall back to Main.
 
 ## Sessions
 
@@ -109,8 +112,8 @@ grows with matches even when `limit` is small.
 
 ## Agent Profiles
 
-Define HOW an agent behaves. JSON files in `~/.modus/profiles/agents/`
-(user-home) or `.modus/profiles/agents/` (project-local override).
+Define HOW an agent behaves. JSON files in `<current-home>/profiles/agents/`
+(Vault-owned) or `.modus/profiles/agents/` (project-local override).
 
 **Key fields**: prompt, description, provider, model, tools, disallowedTools,
 maxTurns, effort, permissionPolicy, mcpServers, promptMode, loadProjectSettings,
@@ -124,7 +127,7 @@ prompt. `"custom"` replaces it entirely.
 
 **Resolution**: project-local profiles override base profiles of the same name.
 `getProfile(name, cwd)` checks `.modus/profiles/agents/` first, falls back to
-`~/.modus/profiles/agents/`.
+`<current-home>/profiles/agents/`.
 
 **Source**: `profiles.ts`, `profile-schemas.ts`.
 
@@ -139,14 +142,14 @@ agent names), defaultAgentProfile, provider, model, effort, templateVars, memory
 **Scoping**: user profile filters which agent profiles appear in the UI, which
 project paths are available in the CWD picker, and which actions are visible.
 
-**State**: separate from config. `~/.modus/profiles/state/<name>.json` stores runtime UI
+**State**: separate from config. `<current-home>/profiles/state/<name>.json` stores runtime UI
 state (last selected profile, window positions, etc.). Gitignored.
 
 **Not the same as agent profiles**: user profiles control the view/scope. Agent
 profiles control agent behavior. They compose — a user profile selects which
 agent profiles are available and provides template vars that agent prompts use.
 
-**Source**: `profiles.ts`, `~/.modus/profiles/users/*.json`.
+**Source**: `profiles.ts`, `<current-home>/profiles/users/*.json`.
 
 ## Actions
 

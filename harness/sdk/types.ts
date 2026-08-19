@@ -807,7 +807,7 @@ export type Profile = {
   /**
    * Where this profile was loaded from.
    *   - "project": `<cwd>/.modus/profiles/agents/<name>.json` (scoped to this project)
-   *   - "user":    `~/.modus/profiles/agents/<name>.json` (user-home, shared across projects)
+   *   - "user":    `<current-home>/profiles/agents/<name>.json` (Vault-local, shared across its projects)
    * Project-origin profiles always appear in the UI regardless of the active
    * user profile's `agentProfiles` whitelist — they're scoped to this project
    * by definition, so hiding them would be confusing.
@@ -1980,29 +1980,13 @@ export type {
 
 import type { ExtensionMeta, PluginSettingDefinition } from "../settings-schema";
 
-export type { VaultPolicy, VaultPolicyRule } from "../vault-types";
-
-export type NamedVault = {
-  slug: string;
-  name?: string;
-  createdAt: number;
-  autostart?: boolean;
-  lastOpenedAt?: number;
-};
-
-export type VaultListItem = {
-  /** Null is the implicit default Vault, which has no registry row. */
-  slug: string | null;
-  name?: string;
-  createdAt?: number;
-  autostart?: boolean;
-  lastOpenedAt?: number;
-};
-
-export type VaultListResponse = {
-  current: string | null;
-  vaults: VaultListItem[];
-};
+export type {
+  NamedVault,
+  VaultListItem,
+  VaultListResponse,
+  VaultPolicy,
+  VaultPolicyRule,
+} from "../vault-types";
 
 export type PluginSettingsSnapshot = {
   pluginId: string;

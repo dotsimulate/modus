@@ -1,6 +1,6 @@
 ---
 title: Client Extensions
-lastUpdated: 2026-08-14
+lastUpdated: 2026-08-19
 lastCommit: a1e724a
 covers: harness/settings-schema.ts harness/client-extensions.ts harness/index.ts harness/profiles.ts harness/profile-schemas.ts harness/whisper-credential.ts harness/whisper-endpoint.ts harness/ui/src/client-extensions.ts harness/ui/src/components/ClientExtensionsBoot.tsx harness/ui/src/components/ChatInput.tsx harness/ui/src/widgets/extensions.widget.tsx .modus/ui/extensions/
 ---
@@ -11,6 +11,9 @@ Client extensions are trusted browser-side modules loaded from disk at runtime.
 They let the harness, a registered Modus plugin, a configured extension root,
 or a project add keyboard shortcuts, composer controls, and authenticated
 UI-side behavior without modifying the core frontend bundle.
+
+`<current-home>` below means Main's Modus home for Main or the registered folder
+root for a named Vault. Extension settings and plugin registrations are Vault-local.
 
 The current system is intentionally small:
 - discovery and serving are handled by the harness backend
@@ -30,7 +33,7 @@ backends may load the operator's local extensions.
 ## Directory Structure
 
 ```
-~/.modus/
+<current-home>/
   plugins.json                 User registry of trusted Modus plugin roots
 
 some-plugin/
@@ -57,8 +60,8 @@ harness/
 Extension roots come from four layers:
 
 1. built-in harness extensions from `harness/ui/extensions`
-2. configured global extension roots from `~/.modus/profiles/_global.json`, `<cwd>/.modus/_global.json`, and user profile UI config
-3. enabled plugins from `~/.modus/plugins.json`, mounted from `<plugin>/.modus/ui/extensions`
+2. configured Vault extension roots from `<current-home>/profiles/_global.json`, `<cwd>/.modus/_global.json`, and user profile UI config
+3. enabled plugins from `<current-home>/plugins.json`, mounted from `<plugin>/.modus/ui/extensions`
 4. project-local extensions from `<cwd>/.modus/ui/extensions`
 
 The config shape is:
@@ -86,7 +89,7 @@ Rules:
 Path resolution:
 - absolute paths stay absolute
 - `~/...` expands to the user home directory
-- relative paths in `~/.modus/profiles/_global.json` resolve from `~/.modus/profiles/`
+- relative paths in `<current-home>/profiles/_global.json` resolve from `<current-home>/profiles/`
 - relative paths in `.modus/_global.json` resolve from `.modus/`
 
 Normalized IDs come from the filename stem:
@@ -246,7 +249,7 @@ settings use:
 | `scope` | Stored in | Use for |
 |---|---|---|
 | `user` (default) | the caller's user profile UI config | values that describe the client doing the talking |
-| `global` | `~/.modus/_global.json` under `clientExtensions.settings` | values the harness itself consumes |
+| `global` | `<current-home>/profiles/_global.json` under `clientExtensions.settings` | values the current Vault consumes |
 
 This distinction is load-bearing, not cosmetic. Client-extension settings
 resolve per user profile, and a phone seeds its own profile from `localStorage`,

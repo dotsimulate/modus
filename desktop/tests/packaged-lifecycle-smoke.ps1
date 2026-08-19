@@ -61,26 +61,48 @@ $env:MODUS_CONFIG_DIR = $config
 $testSecrets = Join-Path $config 'secrets.env'
 [System.IO.File]::WriteAllText($testSecrets, "HARNESS_PIN=packaged-smoke-pin`n", [System.Text.UTF8Encoding]::new($false))
 $env:HARNESS_SECRETS_FILE = $testSecrets
-$env:MODUS_INSTANCE = "packaged-$Scenario"
+Remove-Item Env:MODUS_INSTANCE -ErrorAction SilentlyContinue
+Remove-Item Env:MODUS_VAULT_ROOT -ErrorAction SilentlyContinue
 $env:MODUS_RUNTIME_DIR = $runtime
 $env:MODUS_LOGS_DIR = $logs
 $env:MODUS_DESKTOP_SMOKE_ALLOW_PARALLEL = '1'
+$env:MODUS_DESKTOP_SMOKE_ID = "packaged-$Scenario"
 $env:MODUS_DESKTOP_SMOKE_QUIT_MS = if ($Scenario -eq 'job-close') {
   ''
 } elseif ($Scenario -eq 'close-hide' -or $Scenario -eq 'tailscale') {
   '10000'
 } else {
-  if ($Scenario -eq 'two-vault') { '12000' } else { '7000' }
+  if ($Scenario -eq 'two-vault') { '20000' } else { '7000' }
 }
 if ($Scenario -eq 'two-vault') {
-  $secondarySlug = 'packaged-two-vault-auto'
+  $secondarySlug = 'packaged-two-vault-alpha'
+  $tertiarySlug = 'packaged-two-vault-beta'
+  $secondaryRoot = Join-Path $smokeRoot 'vault-folders\alpha-arbitrary-root'
+  $tertiaryRoot = Join-Path $smokeRoot 'portable\beta-arbitrary-root'
+  New-Item -ItemType Directory -Path $secondaryRoot, $tertiaryRoot -Force | Out-Null
+  $denyAllPolicy = @{
+    plugins = @{ mode = 'deny'; allow = @() }
+    projectAutomation = @{ mode = 'deny'; allow = @() }
+    channels = @{ mode = 'deny'; allow = @() }
+  } | ConvertTo-Json -Depth 4
+  foreach ($vault in @(
+    @{ Slug = $secondarySlug; Root = $secondaryRoot; Secret = 'alpha-secret'; Profile = 'alpha-canary' },
+    @{ Slug = $tertiarySlug; Root = $tertiaryRoot; Secret = 'beta-secret'; Profile = 'beta-canary' }
+  )) {
+    $manifest = @{ version = 1; slug = $vault.Slug; createdAt = 1 } | ConvertTo-Json
+    [System.IO.File]::WriteAllText((Join-Path $vault.Root 'vault-manifest.json'), $manifest, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText((Join-Path $vault.Root 'vault.json'), $denyAllPolicy, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText((Join-Path $vault.Root 'secrets.env'), "BOUNDARY_SECRET=$($vault.Secret)`n", [System.Text.UTF8Encoding]::new($false))
+    $profileDir = Join-Path $vault.Root 'profiles\agents'
+    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $profileDir "$($vault.Profile).json"), '{"prompt":"named Vault canary"}', [System.Text.UTF8Encoding]::new($false))
+  }
+  [System.IO.File]::WriteAllText((Join-Path $modusTestHome 'main-root-canary.txt'), 'Main must remain isolated', [System.Text.UTF8Encoding]::new($false))
   $registry = @{
-    vaults = @(@{
-      slug = $secondarySlug
-      name = 'Autostart smoke Vault'
-      createdAt = 1
-      autostart = $true
-    })
+    vaults = @(
+      @{ slug = $secondarySlug; name = 'Alpha smoke Vault'; root = $secondaryRoot; createdAt = 1; autostart = $true },
+      @{ slug = $tertiarySlug; name = 'Beta smoke Vault'; root = $tertiaryRoot; createdAt = 1; autostart = $true }
+    )
   } | ConvertTo-Json -Depth 4
   [System.IO.File]::WriteAllText((Join-Path $modusTestHome 'vaults.json'), $registry, [System.Text.UTF8Encoding]::new($false))
 }
@@ -126,6 +148,7 @@ if ($Scenario -eq 'remote') {
 $desktop = $null
 $state = $null
 $secondaryState = $null
+$tertiaryState = $null
 $closeHidden = $null
 $brainBridgeVerified = $null
 $claudeOpus5Listed = $null
@@ -163,7 +186,8 @@ try {
   }
 
   if ($Scenario -eq 'two-vault') {
-    $secondaryStatePath = Join-Path $modusTestHome "$secondarySlug\runtime\desktop-supervisor.json"
+    $secondaryStatePath = Join-Path $secondaryRoot 'runtime\desktop-supervisor.json'
+    $tertiaryStatePath = Join-Path $tertiaryRoot 'runtime\desktop-supervisor.json'
     $secondaryDeadline = [DateTime]::UtcNow.AddSeconds(45)
     while ([DateTime]::UtcNow -lt $secondaryDeadline -and !$desktop.HasExited) {
       if (Test-Path -LiteralPath $secondaryStatePath) {
@@ -177,14 +201,54 @@ try {
           # Each Vault publishes its own record atomically.
         }
       }
+      if (Test-Path -LiteralPath $tertiaryStatePath) {
+        try {
+          $candidateTertiary = Get-Content -Raw -LiteralPath $tertiaryStatePath | ConvertFrom-Json
+          if ($candidateTertiary.mode -eq 'managed-local' -and $candidateTertiary.port -gt 0) {
+            $tertiaryState = $candidateTertiary
+          }
+        } catch {
+          # Each Vault publishes its own record atomically.
+        }
+      }
+      if ($secondaryState -and $tertiaryState) { break }
       Start-Sleep -Milliseconds 100
       $desktop.Refresh()
     }
-    if (!$secondaryState) { throw 'Autostart Vault did not publish its scoped supervisor record' }
-    if ([int]$secondaryState.port -eq [int]$state.port) { throw 'Two Vaults shared one backend port' }
-    if ([int]$secondaryState.backendPid -eq [int]$state.backendPid) { throw 'Two Vaults shared one backend process' }
+    if (!$secondaryState -or !$tertiaryState) { throw 'Both autostart Vaults must publish root-scoped supervisor records' }
+    $smokePorts = @([int]$state.port, [int]$secondaryState.port, [int]$tertiaryState.port) | Select-Object -Unique
+    $smokePids = @([int]$state.backendPid, [int]$secondaryState.backendPid, [int]$tertiaryState.backendPid) | Select-Object -Unique
+    if ($smokePorts.Count -ne 3) { throw 'Main and the two named Vaults did not receive distinct ports' }
+    if ($smokePids.Count -ne 3) { throw 'Main and the two named Vaults did not receive distinct backend processes' }
     $secondaryHealth = Invoke-RestMethod -Uri ("http://127.0.0.1:$($secondaryState.port)/health") -TimeoutSec 5
     if ($secondaryHealth.status -ne 'ok') { throw 'Autostart Vault health failed' }
+    $tertiaryHealth = Invoke-RestMethod -Uri ("http://127.0.0.1:$($tertiaryState.port)/health") -TimeoutSec 5
+    if ($tertiaryHealth.status -ne 'ok') { throw 'Second autostart Vault health failed' }
+    if (!(Test-Path -LiteralPath (Join-Path $secondaryRoot 'data\harness.db')) -or
+        !(Test-Path -LiteralPath (Join-Path $tertiaryRoot 'data\harness.db'))) {
+      throw 'Named Vault databases were not created beneath both registered roots'
+    }
+    if (!(Test-Path -LiteralPath (Join-Path $secondaryRoot 'profiles\agents\alpha-canary.json')) -or
+        !(Test-Path -LiteralPath (Join-Path $tertiaryRoot 'profiles\agents\beta-canary.json'))) {
+      throw 'Named Vault profile canaries did not remain in their registered roots'
+    }
+    if ((Test-Path -LiteralPath (Join-Path $secondaryRoot 'profiles\agents\beta-canary.json')) -or
+        (Test-Path -LiteralPath (Join-Path $tertiaryRoot 'profiles\agents\alpha-canary.json')) -or
+        (Test-Path -LiteralPath (Join-Path $modusTestHome 'profiles\agents\alpha-canary.json')) -or
+        (Test-Path -LiteralPath (Join-Path $modusTestHome 'profiles\agents\beta-canary.json'))) {
+      throw 'Profile state crossed a named Vault or Main boundary'
+    }
+    if ((Test-Path -LiteralPath (Join-Path $modusTestHome $secondarySlug)) -or
+        (Test-Path -LiteralPath (Join-Path $modusTestHome $tertiarySlug))) {
+      throw 'A slug-derived named Vault folder appeared beneath Main'
+    }
+    if ((Get-Content -Raw -LiteralPath (Join-Path $modusTestHome 'main-root-canary.txt')) -ne 'Main must remain isolated') {
+      throw 'Named Vault startup modified the Main root canary'
+    }
+    if ((Get-Content -Raw -LiteralPath (Join-Path $secondaryRoot 'secrets.env')) -ne "BOUNDARY_SECRET=alpha-secret`n" -or
+        (Get-Content -Raw -LiteralPath (Join-Path $tertiaryRoot 'secrets.env')) -ne "BOUNDARY_SECRET=beta-secret`n") {
+      throw 'Named Vault startup rewrote or shared its secrets file'
+    }
   }
 
   if ($Scenario -eq 'remote') {
@@ -373,6 +437,9 @@ public static class ModusWindowSmoke {
     if ($secondaryState -and (Get-Process -Id ([int]$secondaryState.backendPid) -ErrorAction SilentlyContinue)) {
       throw 'Explicit Quit left the autostart Vault backend running'
     }
+    if ($tertiaryState -and (Get-Process -Id ([int]$tertiaryState.backendPid) -ErrorAction SilentlyContinue)) {
+      throw 'Explicit Quit left the second autostart Vault backend running'
+    }
   }
 
   if ($state.port) {
@@ -384,6 +451,11 @@ public static class ModusWindowSmoke {
     $secondaryListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, [int]$secondaryState.port)
     $secondaryListener.Start()
     $secondaryListener.Stop()
+  }
+  if ($tertiaryState.port) {
+    $tertiaryListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, [int]$tertiaryState.port)
+    $tertiaryListener.Start()
+    $tertiaryListener.Stop()
   }
   if ($Scenario -eq 'tailscale') {
     $afterServe = Get-Content -Raw -LiteralPath $env:MODUS_FAKE_TAILSCALE_STATE | ConvertFrom-Json
@@ -418,8 +490,10 @@ public static class ModusWindowSmoke {
     DesktopPid = $desktop.Id
     BackendPid = $state.backendPid
     SecondaryBackendPid = $secondaryState.backendPid
+    TertiaryBackendPid = $tertiaryState.backendPid
     Port = $state.port
     SecondaryPort = $secondaryState.port
+    TertiaryPort = $tertiaryState.port
     UiConnected = $state.uiConnected
     CloseHidden = $closeHidden
     TailscaleState = $state.tailscale.state

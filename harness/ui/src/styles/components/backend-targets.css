@@ -65,19 +65,27 @@
 .backend-vault-list { display: flex; flex-direction: column; gap: 6px; }
 .backend-vault-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); }
 .backend-vault-row.active { border-color: var(--border-active); background: var(--bg-surface); }
+.backend-vault-row.invalid { border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }
 .backend-vault-select { min-width: 0; padding: 9px 10px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
 .backend-vault-select:disabled { cursor: wait; }
 .backend-vault-state { color: var(--text-muted); font-size: calc(8px * var(--font-scale, 1)); letter-spacing: .05em; text-transform: uppercase; }
+.backend-vault-state.warning { color: var(--warning); }
 .backend-vault-autostart { display: flex; align-items: center; gap: 5px; padding: 0 10px; color: var(--text-muted); font-size: calc(8px * var(--font-scale, 1)); white-space: nowrap; }
 .backend-vault-autostart input { accent-color: var(--accent); }
+.backend-vault-repair { align-self: center; margin-right: 9px; padding: 5px 8px; border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border)); border-radius: 4px; background: var(--bg-surface); color: var(--warning); font: 8px var(--font-mono); cursor: pointer; }
 .backend-vault-details { grid-column: 1 / -1; padding: 0 10px 8px; color: var(--text-muted); font-size: calc(8px * var(--font-scale, 1)); line-height: 1.55; }
 .backend-vault-details summary { width: max-content; cursor: pointer; color: var(--text-dim); }
 .backend-vault-details > div { margin-top: 5px; }
 .backend-vault-path { padding: 6px 8px; overflow-wrap: anywhere; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-raised); color: var(--accent); user-select: text; }
 .backend-vault-create { display: flex; flex-direction: column; gap: 8px; padding: 15px 20px 18px; border-top: 1px solid var(--border); }
+.backend-vault-create-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.backend-vault-create-heading > button { border: 0; background: transparent; color: var(--text-muted); font: 8px var(--font-mono); cursor: pointer; }
+.backend-vault-create-heading > button:hover { color: var(--text); }
 .backend-vault-create label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; color: var(--text-dim); font-size: calc(9px * var(--font-scale, 1)); }
-.backend-vault-create input { min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; outline: none; background: var(--bg); color: var(--text); font: 10px var(--font-mono); }
-.backend-vault-create input:focus { border-color: var(--border-focus); }
+.backend-vault-create input, .backend-vault-create select { min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; outline: none; background: var(--bg); color: var(--text); font: 10px var(--font-mono); }
+.backend-vault-create input:focus, .backend-vault-create select:focus { border-color: var(--border-focus); }
+.backend-vault-folder-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.backend-vault-folder-control button { padding: 6px 9px; border: 1px solid var(--border-active); border-radius: 4px; background: var(--bg-surface); color: var(--text); font: 8px var(--font-mono); cursor: pointer; }
 .backend-vault-receipt { padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border)); border-radius: 4px; color: var(--text-dim); font-size: calc(8px * var(--font-scale, 1)); line-height: 1.5; }
 .backend-vault-receipt.invalid { color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--border)); }
 .backend-vault-opening { position: fixed; inset: 0; z-index: 10040; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(9px); color: var(--text); font: 11px var(--font-mono); }

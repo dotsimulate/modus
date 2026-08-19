@@ -1,6 +1,6 @@
 # User Profile Schema
 
-User profiles live at `~/.modus/profiles/users/<name>.json`. They scope the
+User profiles live at `<current-home>/profiles/users/<name>.json`. They scope the
 UI and session management to a specific person or project context.
 
 ## Complete Schema
@@ -82,7 +82,7 @@ UI and session management to a specific person or project context.
 
   // Per-user extension enablement and settings. Extra discovery roots go in
   // "paths"; "settings" is keyed by extension id. Only scope:"user" settings
-  // land here — a scope:"global" setting is stored machine-wide in _global.json
+  // land here — a scope:"global" setting is stored Vault-wide in _global.json
   // instead, so every client resolves the same value.
   "clientExtensions": {
     "paths": ["/home/alex/modus-extensions"],
@@ -146,7 +146,7 @@ User profiles and agent profiles are separate systems:
 |--------|-------------|---------------|
 | Controls | Who uses the system, what they see | How the agent behaves |
 | Scope | Projects, sessions, memories | Model, tools, prompt, permissions |
-| Location | `~/.modus/profiles/users/` | user-global `~/.modus/profiles/agents/` or project-local `<project>/.modus/profiles/agents/` |
+| Location | `<current-home>/profiles/users/` | Vault-global `<current-home>/profiles/agents/` or project-local `<project>/.modus/profiles/agents/` |
 | Selection | Login screen / profile switcher | Sidebar dropdown |
 
 **Connection:** User profile's `agentProfiles` array lists which agent profiles
@@ -154,7 +154,7 @@ this user can see. The user selects one of these to start a session.
 
 ## Shared User Data (`_users.json`)
 
-Located at `~/.modus/profiles/_users.json`. Flat key-value defaults for template variables:
+Located at `<current-home>/profiles/_users.json`. Flat key-value defaults for template variables:
 
 ```json
 {
@@ -169,7 +169,7 @@ User profile `templateVars` override these per-profile. If no user profile is ac
 
 ## Runtime State (auto-managed)
 
-Runtime UI state is stored separately at `~/.modus/profiles/state/<name>.json`. This is
+Runtime UI state is stored separately at `<current-home>/profiles/state/<name>.json`. This is
 app-managed and should never be hand-edited:
 
 ```jsonc

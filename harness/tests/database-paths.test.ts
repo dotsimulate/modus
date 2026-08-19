@@ -20,13 +20,14 @@ describe("resolveDatabasePath", () => {
     expect(normalize(path).startsWith(normalize(resolveTestSourceDir(import.meta.dir, "..")))).toBe(false);
   });
 
-  test("uses the instance-scoped user data directory in production", () => {
-    const root = join(tmpdir(), "modus-path-test", "home");
+  test("uses the explicitly selected Vault root in production", () => {
+    const root = join(tmpdir(), "modus-path-test", "chosen-vault");
     const resources = join(tmpdir(), "modus-path-test", "empty-resources");
     expect(resolveDatabasePath("terminal.db", {
-      MODUS_HOME: root,
+      MODUS_HOME: join(tmpdir(), "modus-path-test", "main-home"),
       MODUS_INSTANCE: "dev",
-    }, { sourceResourcesDir: resources })).toBe(join(resolve(root), "dev", "data", "terminal.db"));
+      MODUS_VAULT_ROOT: root,
+    }, { sourceResourcesDir: resources })).toBe(join(resolve(root), "data", "terminal.db"));
   });
 
   test("refuses to create a blank user database while a legacy database awaits migration", () => {

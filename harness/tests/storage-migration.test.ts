@@ -5,6 +5,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   applyStorageMigration,
+  defaultStorageMigrationLocations,
   planStorageMigration,
   type StorageMigrationLocations,
 } from "../storage-migration";
@@ -45,6 +46,14 @@ function sizes(path: string): { db: number; wal: number } {
 }
 
 describe("legacy database migration", () => {
+  test("default planning is Main-only", () => {
+    expect(() => defaultStorageMigrationLocations({
+      instance: "private",
+      resourcesDir: "D:/resources",
+      dataDir: "D:/vault/data",
+    })).toThrow("Main-only");
+  });
+
   test("copies, verifies, and records legacy databases while retaining the source", () => {
     const paths = locations("apply");
     createDatabase(join(paths.legacyDir, "harness.db"), "session-history");

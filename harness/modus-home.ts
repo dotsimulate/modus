@@ -1,7 +1,8 @@
 /**
- * ~/.modus/ path resolution — single source of truth for user-home state.
+ * Current Vault home resolution — single source of truth for owned state.
  *
- * All user-owned runtime state lives in ~/.modus/:
+ * Main uses its configured Modus home. A named process uses its registered
+ * folder root and never falls back to Main. Within that current home:
  *   profiles/agents/          — user's agent profiles
  *   profiles/users/           — user's user profiles
  *   profiles/ui/agents/       — agent UI sidecars
@@ -11,15 +12,15 @@
  *   profiles/_users.json      — template var defaults
  *   profiles/prompt-cache.json — provider prompt cache
  *   plugins.json              — user-registered Modus plugin roots
- *   projects.json             — registry of known projects on this machine
- *   vaults.json               — registry of named Vaults on this machine
- *   [<instance>/]history/     — Vault-scoped workspace-history shadow repos
- *   [<instance>/]checkpoints/ — Vault-scoped managed checkpoints
+ *   projects.json             — current Vault's external project references
+ *   vaults.json               — Main-only registry of named folder pointers
+ *   history/                  — workspace-history shadow repos
+ *   checkpoints/              — managed checkpoints
  *
  * Shipped templates live in harness/templates/profiles/ (repo-tracked, read-only
- * at runtime). rehydrateHome() seeds missing ~/.modus/ files from both the
- * now-legacy harness/profiles/ tree and harness/templates/profiles/ on first
- * boot; user data is never overwritten.
+ * at runtime). rehydrateHome() seeds shipped templates into every Vault. Only
+ * Main migrates the now-legacy harness/profiles/ tree; named Vaults never do.
+ * Existing data is never overwritten.
  */
 
 import { existsSync, mkdirSync } from "fs";
@@ -28,7 +29,7 @@ import { APP_PATHS } from "./app-paths";
 
 export const MODUS_HOME = APP_PATHS.modusHome;
 
-// ── ~/.modus/profiles ──
+// ── <current-home>/profiles ──
 
 export function homeProfilesDir(): string {
   return join(MODUS_HOME, "profiles");
@@ -70,7 +71,7 @@ export function homePromptCachePath(): string {
   return join(homeProfilesDir(), "prompt-cache.json");
 }
 
-// ── ~/.modus/ (above profiles) ──
+// ── <current-home>/ (above profiles) ──
 
 export function homeProjectsJsonPath(): string {
   return join(MODUS_HOME, "projects.json");
@@ -88,7 +89,7 @@ export function homeHistoryDir(): string {
   return join(APP_PATHS.writableRoot, "history");
 }
 
-/** User-global skills, addressable from every project. Authored, not runtime state. */
+/** Vault-global skills, addressable from every registered project. Authored, not runtime state. */
 export function homeSkillsDir(): string {
   return join(MODUS_HOME, "skills");
 }
@@ -112,7 +113,7 @@ export function templatesUsersDir(): string {
 
 // ── Layout ──
 
-/** Create every ~/.modus/ subdirectory. Idempotent. No data migration. */
+/** Create every current-home subdirectory. Idempotent. No data migration. */
 export function ensureHomeLayout(): void {
   const dirs = [
     MODUS_HOME,

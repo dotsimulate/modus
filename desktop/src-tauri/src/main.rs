@@ -5,6 +5,7 @@ mod deep_link;
 mod job;
 mod tailscale;
 mod updates;
+mod vaults;
 
 use std::{
     env,
@@ -26,6 +27,10 @@ use tauri::{
     AppHandle, Manager, State, WindowEvent,
 };
 use updates::{desktop_check_for_update, desktop_install_pending_update, PendingUpdate};
+use vaults::{
+    VaultListResponse, VaultPolicy, VaultRegistrationRequest, VaultRegistryEntry,
+    VaultUpdateRequest,
+};
 
 static QUITTING: AtomicBool = AtomicBool::new(false);
 static SMOKE_QUIT_SCHEDULED: AtomicBool = AtomicBool::new(false);
@@ -98,6 +103,82 @@ async fn desktop_vault_status(
     tauri::async_runtime::spawn_blocking(move || supervisor.vault_status(request.slug.as_deref()))
         .await
         .map_err(|error| format!("desktop Vault status task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_list_vaults(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+) -> Result<VaultListResponse, String> {
+    let supervisor = Arc::clone(supervisor.inner());
+    tauri::async_runtime::spawn_blocking(move || supervisor.list_vaults())
+        .await
+        .map_err(|error| format!("desktop Vault list task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_create_vault(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+    request: VaultRegistrationRequest,
+) -> Result<VaultRegistryEntry, String> {
+    let supervisor = Arc::clone(supervisor.inner());
+    tauri::async_runtime::spawn_blocking(move || supervisor.create_vault(request))
+        .await
+        .map_err(|error| format!("desktop Vault create task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_repair_vault(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+    request: VaultRegistrationRequest,
+) -> Result<VaultRegistryEntry, String> {
+    let supervisor = Arc::clone(supervisor.inner());
+    tauri::async_runtime::spawn_blocking(move || supervisor.repair_vault(request))
+        .await
+        .map_err(|error| format!("desktop Vault repair task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_update_vault(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+    slug: String,
+    patch: VaultUpdateRequest,
+) -> Result<VaultRegistryEntry, String> {
+    let supervisor = Arc::clone(supervisor.inner());
+    tauri::async_runtime::spawn_blocking(move || supervisor.update_vault(&slug, patch))
+        .await
+        .map_err(|error| format!("desktop Vault update task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_vault_policy(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+    request: VaultRequest,
+) -> Result<VaultPolicy, String> {
+    let supervisor = Arc::clone(supervisor.inner());
+    tauri::async_runtime::spawn_blocking(move || supervisor.vault_policy(request.slug.as_deref()))
+        .await
+        .map_err(|error| format!("desktop Vault policy task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_choose_vault_folder(app: AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let Some(selection) = app
+            .dialog()
+            .file()
+            .set_title("Choose a Modus Vault folder")
+            .blocking_pick_folder()
+        else {
+            return Ok(None);
+        };
+        let path = selection
+            .into_path()
+            .map_err(|error| format!("selected Vault folder is not a local path: {error}"))?;
+        Ok(Some(path.display().to_string()))
+    })
+    .await
+    .map_err(|error| format!("desktop Vault folder picker task failed: {error}"))?
 }
 
 /// Claim a `modus://` link that arrived before the webview was listening.
@@ -175,7 +256,8 @@ fn schedule_smoke_quit(app: &AppHandle) {
 
 fn allow_parallel_smoke_instance() -> bool {
     env::var("MODUS_DESKTOP_SMOKE_ALLOW_PARALLEL").as_deref() == Ok("1")
-        && env::var("MODUS_INSTANCE").is_ok_and(|instance| instance.starts_with("packaged-"))
+        && env::var("MODUS_DESKTOP_SMOKE_ID")
+            .is_ok_and(|instance| instance.starts_with("packaged-"))
 }
 
 fn main() {
@@ -193,6 +275,7 @@ fn main() {
     }
     builder = builder
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(PendingUpdate::default())
         .manage(PendingDeepLink::default());
@@ -202,6 +285,12 @@ fn main() {
             desktop_ui_connected,
             desktop_open_vault,
             desktop_vault_status,
+            desktop_list_vaults,
+            desktop_create_vault,
+            desktop_repair_vault,
+            desktop_update_vault,
+            desktop_vault_policy,
+            desktop_choose_vault_folder,
             desktop_take_pending_deep_link,
             desktop_tailscale_status,
             desktop_set_tailscale_enabled,

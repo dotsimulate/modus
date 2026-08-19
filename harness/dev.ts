@@ -10,6 +10,7 @@ import { randomBytes } from "crypto";
 import { networkInterfaces, hostname } from "os";
 import { resolve, dirname, join } from "path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { APP_PATHS } from "./app-paths";
 
 const BUN = process.execPath;
 const SCRIPT_DIR = dirname(Bun.fileURLToPath(import.meta.url));
@@ -17,7 +18,9 @@ const PORT = process.env.HARNESS_PORT || "3777";
 const VITE_PORT = "5180";
 
 // Persistent token: env > disk > generate new
-const TOKEN_DIR = join(process.env.USERPROFILE ?? process.env.HOME ?? "", ".config", "agent-dev-zone");
+const TOKEN_DIR = APP_PATHS.instance
+  ? APP_PATHS.runtimeDir
+  : join(process.env.USERPROFILE ?? process.env.HOME ?? "", ".config", "agent-dev-zone");
 const TOKEN_FILE = join(TOKEN_DIR, "harness-token");
 let TOKEN = process.env.HARNESS_TOKEN ?? "";
 let tokenSource = "env";

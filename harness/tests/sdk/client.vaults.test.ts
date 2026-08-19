@@ -14,6 +14,7 @@ describe("ModusClient Vault API", () => {
     const responses: unknown[] = [
       { current: null, vaults: [{ slug: null }] },
       { slug: "private space", name: "Private", createdAt: 100 },
+      { slug: "private space", name: "Private", createdAt: 100 },
       { slug: "private space", name: "Renamed", createdAt: 100, autostart: true },
       DENY_ALL_POLICY,
       ALLOW_ALL_POLICY,
@@ -29,7 +30,10 @@ describe("ModusClient Vault API", () => {
 
     const client = new ModusClient({ url: "https://modus.example" });
     expect(await client.listVaults()).toEqual({ current: null, vaults: [{ slug: null }] });
-    expect(await client.createVault("private space", "Private")).toMatchObject({ name: "Private" });
+    expect(await client.createVault("private space", "D:/Vaults/Private", "initialize", "Private"))
+      .toMatchObject({ name: "Private" });
+    expect(await client.repairVault("private space", "D:/Vaults/Private", "register"))
+      .toMatchObject({ name: "Private" });
     expect(await client.updateVault("private space", { name: "Renamed", autostart: true })).toMatchObject({ autostart: true });
     expect(await client.getVaultPolicy(null)).toEqual(DENY_ALL_POLICY);
     expect(await client.setVaultPolicy("private space", ALLOW_ALL_POLICY)).toEqual(ALLOW_ALL_POLICY);
@@ -39,7 +43,12 @@ describe("ModusClient Vault API", () => {
       {
         url: "https://modus.example/api/vaults",
         method: "POST",
-        body: { slug: "private space", name: "Private" },
+        body: { slug: "private space", root: "D:/Vaults/Private", mode: "initialize", name: "Private" },
+      },
+      {
+        url: "https://modus.example/api/vaults/private%20space/repair",
+        method: "POST",
+        body: { root: "D:/Vaults/Private", mode: "register" },
       },
       {
         url: "https://modus.example/api/vaults/private%20space",

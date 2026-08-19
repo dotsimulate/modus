@@ -1,6 +1,7 @@
 ---
 title: MO SDK Guide
 audience: dev
+lastUpdated: 2026-08-19
 covers: harness/sdk/*.ts harness/file-mutation-errors.ts
 ---
 
@@ -49,8 +50,9 @@ external client should resolve its base URL at call time:
    `MODUS_URL`).
 2. For a locally managed desktop, read
    `<MODUS_HOME>/runtime/desktop-supervisor.json` and use its `apiBase` (or
-   construct the same loopback URL from `port`). With `MODUS_INSTANCE=<name>`,
-   the record is under `<MODUS_HOME>/<name>/runtime/`.
+   construct the same loopback URL from `port`). For a named Vault, resolve its
+   absolute `root` from Main's `vaults.json`; the record is under
+   `<registered-root>/runtime/`. Never derive this path from the slug.
 3. Use `http://localhost:3777` only for a source/CLI harness that was started on
    the default fixed port.
 

@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "fs";
 import { dirname, join, resolve } from "path";
-import { APP_PATHS } from "./app-paths";
+import { APP_PATHS, type AppPaths } from "./app-paths";
 
 export const STORAGE_DATABASE_FILES = ["harness.db", "activity.db", "terminal.db"] as const;
 export type StorageDatabaseFile = typeof STORAGE_DATABASE_FILES[number];
@@ -60,11 +60,16 @@ export type StorageMigrationRecord = {
   }>;
 };
 
-export function defaultStorageMigrationLocations(): StorageMigrationLocations {
+export function defaultStorageMigrationLocations(
+  paths: Pick<AppPaths, "instance" | "resourcesDir" | "dataDir"> = APP_PATHS,
+): StorageMigrationLocations {
+  if (paths.instance) {
+    throw new Error("Legacy storage migration is Main-only and cannot run inside a named Vault");
+  }
   return {
-    legacyDir: APP_PATHS.resourcesDir,
-    dataDir: APP_PATHS.dataDir,
-    recordPath: join(APP_PATHS.dataDir, "migrations", "storage-v1.json"),
+    legacyDir: paths.resourcesDir,
+    dataDir: paths.dataDir,
+    recordPath: join(paths.dataDir, "migrations", "storage-v1.json"),
   };
 }
 

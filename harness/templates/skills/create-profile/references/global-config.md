@@ -2,7 +2,7 @@
 
 ## `_global.json`
 
-User-global defaults live at `~/.modus/profiles/_global.json`. Project-local overrides
+Vault-global defaults live at `<current-home>/profiles/_global.json`. Project-local overrides
 live at `<project>/.modus/_global.json`. The resolved configuration is merged into every
 session regardless of which agent or user profile is active.
 
@@ -39,7 +39,7 @@ session regardless of which agent or user profile is active.
       "maxOutputTokens": 2048
     }
   }
-  // Client extensions, machine-wide.
+  // Client extensions, current-Vault-wide.
   // "settings" here holds every extension setting declared scope:"global" —
   // values the harness itself consumes, which must be identical for every
   // client. A scope:"user" setting lives in the user profile instead, so it may

@@ -1,6 +1,6 @@
 import { mkdirSync } from "fs";
 import { homedir, tmpdir } from "os";
-import { join, resolve } from "path";
+import { isAbsolute, join, posix, resolve, win32 } from "path";
 
 export type AppPathEnvironment = Record<string, string | undefined>;
 
@@ -40,6 +40,47 @@ function configuredPath(value: string | undefined, fallback: string): string {
   return stripExtendedLengthPrefix(resolve(value?.trim() || fallback));
 }
 
+export type PathFlavor = "win32" | "posix";
+
+/** True when `candidate` is the root itself or a descendant, using explicit platform semantics. */
+export function isPathWithinRoot(
+  root: string,
+  candidate: string,
+  flavor: PathFlavor = process.platform === "win32" ? "win32" : "posix",
+): boolean {
+  const api = flavor === "win32" ? win32 : posix;
+  const normalizedRoot = api.resolve(root);
+  const normalizedCandidate = api.resolve(candidate);
+  const offset = api.relative(normalizedRoot, normalizedCandidate);
+  return offset === "" || (!offset.startsWith(`..${api.sep}`) && offset !== ".." && !api.isAbsolute(offset));
+}
+
+function isSamePath(
+  left: string,
+  right: string,
+  flavor: PathFlavor = process.platform === "win32" ? "win32" : "posix",
+): boolean {
+  const api = flavor === "win32" ? win32 : posix;
+  const normalizedLeft = api.resolve(left);
+  const normalizedRight = api.resolve(right);
+  return flavor === "win32"
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+function configuredNamedPath(
+  envName: string,
+  value: string | undefined,
+  fallback: string,
+  vaultRoot: string,
+): string {
+  const configured = configuredPath(value, fallback);
+  if (isSamePath(vaultRoot, configured) || !isPathWithinRoot(vaultRoot, configured)) {
+    throw new Error(`${envName} must resolve inside MODUS_VAULT_ROOT for a named Vault`);
+  }
+  return configured;
+}
+
 export function isValidInstanceName(value: string): boolean {
   return value !== "." && value !== ".." && /^[A-Za-z0-9._-]+$/.test(value);
 }
@@ -60,18 +101,42 @@ export function resolveAppPaths(options: ResolveAppPathsOptions = {}): AppPaths 
     throw new Error("MODUS_INSTANCE must be a single name containing only letters, numbers, dots, underscores, and hyphens");
   }
   const instance = normalizedInstance && normalizedInstance !== "default" ? normalizedInstance : null;
-  const modusHome = configuredPath(env.MODUS_HOME, join(homeDir, ".modus"));
-  const writableRoot = instance ? join(modusHome, instance) : modusHome;
+  const namedRootValue = env.MODUS_VAULT_ROOT?.trim() || "";
+  if (instance && !namedRootValue) {
+    throw new Error("MODUS_VAULT_ROOT is required when MODUS_INSTANCE selects a named Vault");
+  }
+  if (instance && !isAbsolute(stripExtendedLengthPrefix(namedRootValue))) {
+    throw new Error("MODUS_VAULT_ROOT must be an absolute path for a named Vault");
+  }
+  const defaultModusHome = configuredPath(env.MODUS_HOME, join(homeDir, ".modus"));
+  const writableRoot = instance
+    ? configuredPath(namedRootValue, namedRootValue)
+    : defaultModusHome;
+  const modusHome = writableRoot;
+  const dataDir = instance
+    ? configuredNamedPath("MODUS_DATA_DIR", env.MODUS_DATA_DIR, join(writableRoot, "data"), writableRoot)
+    : configuredPath(env.MODUS_DATA_DIR, join(writableRoot, "data"));
+  const logsDir = instance
+    ? configuredNamedPath("MODUS_LOGS_DIR", env.MODUS_LOGS_DIR, join(writableRoot, "logs"), writableRoot)
+    : configuredPath(env.MODUS_LOGS_DIR, join(writableRoot, "logs"));
+  const runtimeDir = instance
+    ? configuredNamedPath("MODUS_RUNTIME_DIR", env.MODUS_RUNTIME_DIR, join(writableRoot, "runtime"), writableRoot)
+    : configuredPath(env.MODUS_RUNTIME_DIR, join(writableRoot, "runtime"));
+  const cacheDir = instance
+    ? configuredNamedPath("MODUS_CACHE_DIR", env.MODUS_CACHE_DIR, join(writableRoot, "cache"), writableRoot)
+    : configuredPath(env.MODUS_CACHE_DIR, join(writableRoot, "cache"));
 
   return {
     resourcesDir: configuredPath(env.MODUS_RESOURCES_DIR, sourceResourcesDir),
     modusHome,
     writableRoot,
-    dataDir: configuredPath(env.MODUS_DATA_DIR, join(writableRoot, "data")),
-    logsDir: configuredPath(env.MODUS_LOGS_DIR, join(writableRoot, "logs")),
-    runtimeDir: configuredPath(env.MODUS_RUNTIME_DIR, join(writableRoot, "runtime")),
-    cacheDir: configuredPath(env.MODUS_CACHE_DIR, join(writableRoot, "cache")),
-    tempDir: join(options.systemTempDir ?? tmpdir(), "modus", instance ?? "default"),
+    dataDir,
+    logsDir,
+    runtimeDir,
+    cacheDir,
+    tempDir: instance
+      ? join(writableRoot, "tmp")
+      : join(options.systemTempDir ?? tmpdir(), "modus", "default"),
     instance,
   };
 }

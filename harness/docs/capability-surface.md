@@ -1,6 +1,6 @@
 ---
 title: Capability Surface (condensed)
-lastUpdated: 2026-08-17
+lastUpdated: 2026-08-19
 covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts harness/app-paths.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts
 audience: agent
 ---
@@ -12,6 +12,10 @@ Compiled from the type contracts (`move-types.ts`, `action-types.ts`,
 `profile-schemas.ts`) and the Harness Context. Field names here are exact.
 For narrative docs see `primitives.md`, `moves.md`, `actions.md`, `pages.md`,
 `harness-context.md`.
+
+Path notation: `<current-home>` means Main's Modus home when running Main and
+the registered folder root when running a named Vault. Vault-owned "user"
+configuration is local to that home; it is not shared with Main or siblings.
 
 ## The system in one paragraph
 
@@ -138,7 +142,7 @@ model, effort, cwd, tools), `capabilities` + `trust` (same gating as moves).
 `ActionContext` includes `vault`, `sessions`/`channels`/`model` (Harness Context), `db`,
 `createTerminal()` (managed PTY visible in the UI), artifact helpers, `log`.
 
-## Agent profiles — `~/.modus/profiles/agents/*.json` (project override in `.modus/profiles/agents/`)
+## Agent profiles — `<current-home>/profiles/agents/*.json` (project override in `.modus/profiles/agents/`)
 
 Fields: `prompt` (supports `{{templateVars}}`), `description`, `provider`,
 `model`, `effort`, `maxTurns`, `cwd`, `additionalDirectories`, `tools`,
@@ -173,7 +177,7 @@ Also `skills: ["name"]` — see below.
 ## Skills — `.modus/skills/<name>/SKILL.md`
 
 Packaged text, standard `SKILL.md` + front-matter (`name`, `description`), so
-files stay portable out of Modus. Resolved project → user (`~/.modus/skills/`)
+files stay portable out of Modus. Resolved project → Vault (`<current-home>/skills/`)
 → plugin, most specific wins. Moves may also bundle skills at `<move>/skills/`.
 
 **Attachment is required.** `skills: [...]` on an agent profile, `move.json`, or
@@ -199,7 +203,7 @@ by tool until restart.
 Modus never scans, copies into, or overrides `.claude/skills/` or `.pi/skills/`.
 Full contract: `skills`.
 
-## User profiles — `~/.modus/profiles/users/*.json`
+## User profiles — `<current-home>/profiles/users/*.json`
 
 A workspace scope ("my folders"), not an identity: `displayName`, `projects[]`,
 `agentProfiles[]` (visible agents), `defaultAgentProfile`, `provider`/`model`/
@@ -211,14 +215,18 @@ layouts), `interface` (chat/conversation display), `clientExtensions`,
 
 ## Vaults — process-level data and capability boundaries
 
-An unset `MODUS_INSTANCE` (or `default`) uses the implicit default Vault;
-`MODUS_INSTANCE=<slug>` scopes writable data, logs, runtime, cache, workspace
-history, checkpoints, and the policy file under `~/.modus/<slug>/`. Profiles,
-skills, and machine plugin/project/Vault registries remain shared.
-Slugs use letters, numbers, dots, underscores, and hyphens and canonicalize to
-lowercase; display casing belongs in the registry `name`.
+An unset `MODUS_INSTANCE` (or `default`) uses Main. A named process requires
+`MODUS_INSTANCE=<slug>` plus an absolute `MODUS_VAULT_ROOT` selected through
+Main's pointer registry. The slug is identity only and never derives a path.
+Profiles, global settings, project/plugin registries, provider definitions,
+skills, secrets, databases, logs, runtime, history, checkpoints, and feedback
+all resolve below that folder; none fall back to Main. Slugs use letters,
+numbers, dots, underscores, and hyphens and canonicalize to lowercase; display
+casing belongs in the registry `name`.
 
-Named Vaults fail closed when `vault.json` is absent or invalid. Its `plugins`,
+New Vaults initialize only empty folders with a `vault-manifest.json` marker and
+deny-all policy; existing folders must already carry a matching marker. Named
+Vaults fail closed when `vault.json` is absent or invalid. Its `plugins`,
 `projectAutomation`, and `channels` rules each use `allow-all` or deny plus an
 allow list. New API-created Vaults get explicit deny-all. The default Vault
 preserves existing behavior when its policy is absent. Full contract: `vaults`.
@@ -293,8 +301,9 @@ only — `promote` is gated by `sessionSpawn`, since spawning is what it does.
 ## Where things live
 
 - Project-planted config: `<project>/.modus/{moves,actions,pages,profiles,missions}/`
-- User-global: `~/.modus/profiles/{agents,users}/`, `~/.modus/profiles/_global.json`
-- Vault-scoped runtime: `~/.modus/<slug>/{data,logs,runtime,cache,history,checkpoints}/`
+- Vault-owned: `<current-home>/{profiles,providers,skills,data,logs,runtime,cache,history,checkpoints}/`
+- Vault registries/settings: `<current-home>/{projects.json,plugins.json,secrets.env}`
+- Main control plane only: `<MAIN_MODUS_HOME>/vaults.json`
 - Built-ins: `harness/{moves,actions,pages,prompts}/` (packaged into the desktop app)
 - Docs API: `GET /api/docs` (index), `GET /api/docs/<id>`, `POST /api/docs/search`
   (`{queries: string[]}` — batch). Generated audit doc: `generated/move-ops`.

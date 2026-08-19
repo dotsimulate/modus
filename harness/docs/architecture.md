@@ -1,6 +1,6 @@
 ---
 title: MO Architecture
-lastUpdated: 2026-08-17
+lastUpdated: 2026-08-19
 lastCommit: bae0487
 covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
@@ -16,6 +16,9 @@ This document is the entry point. It covers structure, how things connect,
 and links to detailed docs for each subsystem. Read source code for exact
 schemas and implementation — these docs describe shape and relationships,
 not exhaustive field lists.
+
+In path examples, `<current-home>` is Main's Modus home for Main or the selected
+registered folder for a named Vault. Vault-owned config never falls back to Main.
 
 ## Repo Structure
 
@@ -65,7 +68,7 @@ modus/
     git.ts                 # Git operations for session context
     plugin.json            # Built-in modus-core manifest over resources in place
     templates/profiles/    # Built-in merged profiles + home rehydration source
-    ~/.modus/profiles/     # User-owned profile config/state (see profiles doc)
+    <current-home>/profiles/ # Vault-owned profile config/state (see profiles doc)
       _global.json         # Shared MCP servers + provider defaults
       _users.json          # Template variable defaults
       agents/              # Agent profile JSONs
@@ -101,8 +104,8 @@ MO has five primitives. They compose but don't overlap.
 | Primitive | What it defines | Lives in |
 |-----------|----------------|----------|
 | **Session** | A single agent conversation with full event log | `harness.db` |
-| **Agent Profile** | HOW an agent behaves: model, tools, prompt, permissions | `~/.modus/profiles/agents/*.json` or `.modus/profiles/agents/*.json` |
-| **User Profile** | WHO is using the system: project scope, visible agents, memory isolation | `~/.modus/profiles/users/*.json` |
+| **Agent Profile** | HOW an agent behaves: model, tools, prompt, permissions | `<current-home>/profiles/agents/*.json` or `.modus/profiles/agents/*.json` |
+| **User Profile** | WHO is using the system: project scope, visible agents, memory isolation | `<current-home>/profiles/users/*.json` |
 | **Action** | WHEN automation runs: triggers, context gathering, verify, side effects | `.modus/actions/<name>/` |
 | **Move** | WHAT the user wants done now: structured submission with token-gated validation | `.modus/moves/<name>/` |
 
@@ -137,7 +140,7 @@ Providers are execution backends. Session-manager delegates to them via the
 
 Registered providers: `claude-code`, `claude-code-pty`, `codex`, `cursor`,
 `grok-build`, `opencode`, `openai-compat`, `ollama`, `openrouter`,
-plus user-global and plugin declarative PI providers. `litellm` remains an
+plus current-Vault and plugin declarative PI providers. `litellm` remains an
 accepted compatibility alias of `openai-compat`. `antigravity` and `gemini-cli`
 are hidden: reachable when a profile names one, absent from every listing (see
 `providers.md` § Hidden providers).
@@ -203,11 +206,15 @@ within its window because a browser legitimately re-requests the same image.
 
 ## Writable roots and databases
 
-`MODUS_HOME` defaults to `~/.modus` and remains the root for shared authored
-configuration: profiles, plugin/project/Vault registries, and skills.
-`MODUS_INSTANCE=<name>` selects a named Vault and isolates writable roots under
-`<MODUS_HOME>/<name>/`:
+`MODUS_HOME` defaults to `~/.modus` for Main. Main owns its complete home and
+`vaults.json`, whose named rows point at independent folders. A named backend
+requires both `MODUS_INSTANCE=<slug>` and an absolute `MODUS_VAULT_ROOT` from a
+trusted launcher. For that process `modusHome` and `writableRoot` are exactly
+the registered folder; the slug never derives or appends a path. The root contains:
 
+- `vault-manifest.json` - versioned folder identity marker
+- `profiles/`, `projects.json`, `plugins.json`, `providers/`, `skills/` - named authored config
+- `secrets.env` - named secrets and optional browser PIN
 - `vault.json` — per-Vault execution and egress policy
 - `data/` — SQLite databases
 - `logs/` — backend and desktop logs
@@ -216,13 +223,16 @@ configuration: profiles, plugin/project/Vault registries, and skills.
 - `history/` — workspace-history shadow repositories and indexes
 - `checkpoints/` — managed checkpoints
 
-The system temp root is also namespaced as `<temp>/modus/<name>` (or
-`default`). `default` and an unset value both use the un-nested default roots.
+The named temp root is `<MODUS_VAULT_ROOT>/tmp`. `default` and an unset value
+select Main and preserve its existing roots.
 Instance names accept only letters, numbers, dots, underscores, and hyphens;
-they are canonicalized to lowercase before any TypeScript or desktop-shell path
-is derived. Display casing belongs in the Vault registry `name`.
+they are canonicalized to lowercase for identity. Display casing belongs in the
+Vault registry `name`.
 `MODUS_DATA_DIR`, `MODUS_LOGS_DIR`, `MODUS_RUNTIME_DIR`, and `MODUS_CACHE_DIR`
-override their individual resolved roots after instance selection.
+may override named subdirectories only when they remain strict descendants of
+the registered root. Desktop and CLI launchers remove inherited global values.
+Named profiles, projects, plugins, skills, secrets, databases, runtime state,
+history, checkpoints, and Modus Brain feedback never fall back to Main.
 See [Vaults](./vaults.md) for registry, policy, API, and CLI semantics.
 
 The primary `data/` directory contains three SQLite databases:
@@ -300,5 +310,5 @@ button re-centers the view on the newest session.
 - [Panels](./panels.md) — side-panel architecture, widget registry, and persisted panel trees
 - [Project UI](./project-ui.md) — theme/font system in .modus/ui/
 - [Client Extensions](./client-extensions.md) — browser-side extension discovery and runtime API
-- [Plugins](./plugins.md) — machine-wide registered `.modus/` bundles
+- [Plugins](./plugins.md) — Vault-registered external `.modus/` bundles
 - [PI Agent](./pi-agent-system.md) — the multi-provider lightweight agent

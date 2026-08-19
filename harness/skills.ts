@@ -8,7 +8,7 @@
  *
  * Installed locations, most specific first:
  *   <project>/.modus/skills/<name>/SKILL.md
- *   ~/.modus/skills/<name>/SKILL.md
+ *   <current-home>/skills/<name>/SKILL.md
  *   <plugin>/.modus/skills/<name>/SKILL.md
  *
  * Move-bundled skills live at `<move>/skills/<name>/SKILL.md` and are not

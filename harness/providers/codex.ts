@@ -22,7 +22,7 @@ import {
 } from "../profiles";
 import { dirname, extname, isAbsolute, join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
-import { homedir, tmpdir } from "os";
+import { homedir } from "os";
 import { CODEX_BUILTIN_TOOLS, CODEX_TOOL_GROUPS } from "./tool-catalog";
 import { APP_PATHS } from "../app-paths";
 import { providerChildEnv } from "./child-env";
@@ -331,7 +331,7 @@ function imageExtension(mediaType: string | undefined): string {
 function materializeCodexImages(content: MessageContent, sessionId: string): string[] {
   if (typeof content === "string") return [];
   const paths: string[] = [];
-  const dir = join(tmpdir(), "modus-codex-images", sessionId.replace(/[^A-Za-z0-9_.-]/g, "_"));
+  const dir = join(APP_PATHS.tempDir, "modus-codex-images", sessionId.replace(/[^A-Za-z0-9_.-]/g, "_"));
   mkdirSync(dir, { recursive: true });
   let index = 0;
   for (const block of content as any[]) {

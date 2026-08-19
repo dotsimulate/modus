@@ -12,7 +12,7 @@ import {
 } from "fs";
 import { spawnSync } from "child_process";
 import { basename, dirname, join, resolve } from "path";
-import { tmpdir } from "os";
+import { APP_PATHS } from "./app-paths";
 
 export const PORTABLE_MOVE_EXCLUDE_FILE_PATTERNS = [
   /^_registry\.json$/,
@@ -194,7 +194,8 @@ export function exportPortableMoves(projectDir: string, outPath?: string): Expor
   }
 
   const outputPath = resolve(outPath ?? defaultExportPath(resolvedProjectDir));
-  const stageRoot = mkdtempSync(join(tmpdir(), "modus-moves-export-"));
+  mkdirSync(APP_PATHS.tempDir, { recursive: true });
+  const stageRoot = mkdtempSync(join(APP_PATHS.tempDir, "modus-moves-export-"));
 
   try {
     const staged = stagePortableMovesExport(stageRoot, resolvedProjectDir);

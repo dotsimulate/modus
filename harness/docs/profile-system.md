@@ -1,26 +1,28 @@
 ---
 title: Profile System
-lastUpdated: 2026-08-17
+lastUpdated: 2026-08-19
 lastCommit: a9adf68
 covers: harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/templates/profiles/ harness/skills.ts harness/app-paths.ts
 ---
 
 # Profile System
 
-Profiles are the harness config layer. User-owned config and runtime state live
-under `~/.modus/profiles/`. Project-local profiles live under
+Profiles are the harness config layer. Vault-owned config and runtime state live
+under `<current-home>/profiles/`, where `<current-home>` is Main's Modus home or
+a named Vault's registered folder. Project-local profiles live under
 `<project>/.modus/profiles/agents/`, and plugin profiles live under
 `<plugin>/.modus/profiles/agents/`. Same-named profiles coexist under qualified
 runtime identities instead of shadowing one another.
 
-The entire profile tree, including `profiles/state/`, is machine-shared across
-Vaults. A Vault scopes backend data and capability enablement; it does not copy
-or select a separate profile catalog. See [Vaults](./vaults.md).
+The entire profile tree, including `profiles/state/`, is Vault-local. A named
+backend never reads Main's profile tree. Fresh roots may receive independent
+copies of shipped templates, but they do not inherit Main-authored profiles,
+global settings, prompt cache, or UI state. See [Vaults](./vaults.md).
 
 ## Directory Structure
 
 ```
-~/.modus/profiles/
+<current-home>/profiles/
   _global.json          Shared config: MCP servers, provider defaults
   _users.json           Template variable defaults (name, stack, etc.)
   agents/               Agent profile definitions
@@ -67,7 +69,7 @@ Plugin profiles may use `${pluginDir}` in `cwd`, `additionalDirectories`, and
 `cwdSuggestions`. The plugin root is automatically appended to
 `additionalDirectories`.
 
-## Agent Profiles (`~/.modus/profiles/agents/*.json`)
+## Agent Profiles (`<current-home>/profiles/agents/*.json`)
 
 Define how an agent behaves. Every field except `prompt` and `description` is optional.
 
@@ -97,7 +99,7 @@ Define how an agent behaves. Every field except `prompt` and `description` is op
 **`provider`**: Execution backend. The built-ins are `"claude-code"`,
 `"claude-code-pty"`, `"codex"`, `"cursor"`,
 `"grok-build"`, `"opencode"`, `"openai-compat"`, `"ollama"`, and
-`"openrouter"`. User-global and plugin declarative providers extend this set at
+`"openrouter"`. Current-Vault and plugin declarative providers extend this set at
 runtime. Legacy `"litellm"` remains accepted as an alias of
 `"openai-compat"`. `"antigravity"` and `"gemini-cli"` are also valid here but do
 not appear in any picker — see `providers.md` § Hidden providers.
@@ -105,8 +107,8 @@ not appear in any picker — see `providers.md` § Hidden providers.
 **`cwd`**: Pins the profile to a fixed working directory. Any agent profile may
 set it, not just plugin profiles — it is a plain optional string
 (`profile-schemas.ts`). A session started from this profile opens in that
-directory regardless of which project is active, so a user-global profile in
-`~/.modus/profiles/agents/` can always target one checkout. Omit it and the
+directory regardless of which project is active, so a Vault-owned profile in
+`<current-home>/profiles/agents/` can always target one checkout. Omit it and the
 session uses the active project's directory, which is what most profiles want.
 Plugin profiles may additionally use `${pluginDir}` here; see Identity and
 Resolution above.
@@ -151,13 +153,13 @@ their corresponding Grok features. Launch-affecting changes apply on the next
 turn by restarting the ACP child and loading the same Grok session.
 
 **`skills`**: `string[]` of installed skill names to attach for the whole
-session. Resolved from `<project>/.modus/skills/`, `~/.modus/skills/`, and
+session. Resolved from `<project>/.modus/skills/`, `<current-home>/skills/`, and
 enabled plugins, most specific first. Installing a skill does not make it
 available — this field (or a move/action) is what makes it reachable. Names that
 resolve to nothing are logged and skipped, never fatal. Skills bundled inside a
 move listed in `moves` come along transitively. See [Skills](./skills.md).
 
-## User Profiles (`~/.modus/profiles/users/*.json`)
+## User Profiles (`<current-home>/profiles/users/*.json`)
 
 Scoped views of the harness. Filter which projects and agent profiles a user sees.
 
@@ -184,7 +186,7 @@ agent prompts. Use for user name, preferred stack, editor, etc.
 **`clientExtensions`**: Per-user `paths/enabled/disabled` config merged with global and
 project layers. See `docs/client-extensions.md`.
 
-**`agentProfiles`**: Which user-home agent profiles appear in the UI sidebar.
+**`agentProfiles`**: Which current-Vault agent profiles appear in the UI sidebar.
 Project profiles always appear. Manifest-integrated plugin profiles appear
 unless their qualified key is in `hiddenPluginProfiles`.
 
@@ -243,7 +245,7 @@ readout rather than showing an estimate.
 - `{ kind: "module", module: "memory" | "actions" | "git" }` — embeds a built-in module
 - `{ kind: "text", markdown: string }` — static markdown
 
-## Global Config (`~/.modus/profiles/_global.json`)
+## Global Config (`<current-home>/profiles/_global.json`)
 
 Three purposes:
 
@@ -267,7 +269,7 @@ Flat key-value defaults. User profiles can override per-user.
 
 Referenced in agent prompts as `{{name}}`, `{{stack}}`, etc.
 
-## Runtime State (`~/.modus/profiles/state/`)
+## Runtime State (`<current-home>/profiles/state/`)
 
 Stores transient UI state per user profile — sidebar collapse state, last
 selected agent, last CWD, last session ID. Managed by the app, not edited by

@@ -1,87 +1,110 @@
 ---
 title: Vaults
 lastUpdated: 2026-08-19
-covers: harness/app-paths.ts harness/modus-home.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/harness-context.ts harness/modus-plugins.ts harness/action-runner.ts harness/notify.ts harness/sdk/client.ts harness/sdk/types.ts harness/ui/src/components/DesktopVaultManager.tsx harness/ui/src/vault-targets.ts desktop/src-tauri/src/backend.rs
+covers: harness/app-paths.ts harness/modus-home.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/secrets.ts harness/storage-migration.ts harness/sdk/client.ts harness/sdk/types.ts harness/ui/src/components/DesktopVaultManager.tsx harness/ui/src/desktopBridge.ts desktop/src-tauri/src/backend.rs desktop/src-tauri/src/main.rs desktop/src-tauri/src/vaults.rs
 audience: dev
 ---
 
 # Vaults
 
-A Vault is the process-level data and capability boundary for one Modus backend.
-It isolates durable runtime data while keeping machine-authored configuration
-available for reuse. A Vault is not a user profile, project, move instance, or
-session.
+A named Vault is an independently chosen local folder and the process-level
+data/configuration boundary for one Modus backend. Main owns its own existing
+Modus home plus a registry of pointers to named folders. A Vault is not a user
+profile, project, move instance, session, encrypted container, or OS sandbox.
 
-## Identity and paths
+## Identity and root handoff
 
-`MODUS_INSTANCE=<slug>` selects a named Vault. An unset value and the reserved
-value `default` both select the implicit default Vault. Slugs may contain only
-letters, numbers, dots, underscores, and hyphens; `.` and `..` are rejected.
-Identity is canonical lowercase before any path, registry, CLI-state, API, or
-desktop-supervisor derivation. `Private`, `PRIVATE`, and `private` therefore
-name the same Vault, while display casing belongs in the optional registry
-`name`. The reserved `default` name is also case-insensitive.
+`MODUS_INSTANCE=<slug>` is process identity. An unset value and the reserved
+value `default` select Main. Slugs use letters, numbers, dots, underscores, and
+hyphens; `.` and `..` are rejected. They canonicalize to lowercase, while the
+optional registry `name` carries display casing.
 
-`AppPaths.writableRoot` is `MODUS_HOME` for the default Vault and
-`<MODUS_HOME>/<slug>` for a named Vault. These paths are Vault-scoped:
+A slug never determines a filesystem location. A trusted launcher must pass an
+absolute `MODUS_VAULT_ROOT` for a named process. Starting a named process without
+it is an error. For that process:
 
-```
-<writableRoot>/
-  vault.json       execution and egress policy
-  data/            harness, activity, terminal, alert, and identity databases
-  logs/            backend and desktop logs
-  runtime/         ready and supervisor records
-  cache/           disposable runtime cache
-  history/         workspace-history shadow repositories and indexes
-  checkpoints/     managed checkpoints
+```text
+APP_PATHS.modusHome == APP_PATHS.writableRoot == MODUS_VAULT_ROOT
 ```
 
-The system temp root is also scoped as `<temp>/modus/<slug-or-default>`.
+Main's `MODUS_HOME` is not a fallback. The desktop and CLI also set
+`MODUS_HOME` to the registered root in the named child environment. Global
 `MODUS_DATA_DIR`, `MODUS_LOGS_DIR`, `MODUS_RUNTIME_DIR`, and `MODUS_CACHE_DIR`
-override those four resolved roots after Vault selection; they do not relocate
-`vault.json`, history, or checkpoints.
+values are removed by the launchers; a direct named process may supply an
+override only when its resolved target is a strict descendant of the root.
 
-Machine-authored configuration remains shared under `MODUS_HOME`: profiles,
-skills, `plugins.json`, `projects.json`, and `vaults.json`. Plugin registration
-is therefore shared, while plugin execution is filtered by each Vault's policy.
-The default secrets file is also shared and lives outside `MODUS_HOME` at
-`~/.config/agent-dev-zone/secrets.env` unless `HARNESS_SECRETS_FILE` overrides
-it. Vaults are not a credential-isolation boundary.
+All Modus-managed named material lives below the chosen folder:
 
-## Registry
+```text
+<VAULT_ROOT>/
+  vault-manifest.json         versioned folder identity marker
+  vault.json                  execution and egress policy
+  profiles/                   agents, users, global config, UI state, prompt cache
+  projects.json               this Vault's external project references
+  plugins.json                this Vault's external plugin references
+  providers/                  this Vault's declarative providers
+  skills/                     this Vault's user skills
+  secrets.env                 secrets and optional browser PIN
+  data/                       SQLite databases and backend identity
+  logs/                       backend/provider logs
+  runtime/                    readiness, PID/port/token, supervisor state
+  cache/                      disposable cache
+  tmp/                        named-process temporary files
+  history/                    workspace-history shadows and indexes
+  checkpoints/                managed checkpoints
+  modus-feedback.jsonl        Modus Brain feedback
+```
 
-`<MODUS_HOME>/vaults.json` contains named Vault metadata:
+Provider executables and their native authentication, explicitly registered
+project folders, plugin folders, packaged read-only resources, and environment
+variables deliberately supplied by the user remain external capabilities. That
+does not permit a named process to read Main's profiles, projects, plugins,
+skills, settings, secrets, databases, or runtime state.
+
+A new root may independently receive shipped built-in profile templates during
+rehydration. It never copies Main-authored configuration, and its project and
+plugin registries start empty.
+
+## Main registry and folder marker
+
+Only Main owns `<MAIN_MODUS_HOME>/vaults.json`:
 
 ```ts
 type VaultRegistryEntry = {
   slug: string;
   name?: string;
+  root: string;          // canonical absolute folder pointer
   createdAt: number;
   autostart?: boolean;
   lastOpenedAt?: number;
 };
 ```
 
-The implicit default Vault has no registry row and is represented by
-`{ slug: null }` in API listings. A malformed registry is treated as empty and
-logged rather than failing backend import. Registry removal is an internal
-metadata operation only; it never removes a Vault directory or its data. No
-public deletion API or deletion semantics exist yet.
+The root must be outside Main's Modus home. Two slugs cannot point at the same
+canonical folder. The implicit Main Vault has no row and appears as
+`{ slug: null, name: "Main", root: <MAIN_MODUS_HOME> }` in Main listings.
 
-Registry mutations serialize across backend and CLI processes through
-`vaults.json.lock`. A bounded stale-lock recovery prevents a crashed writer
-from parking the registry permanently, and each completed mutation publishes a
-same-directory temporary file with an atomic rename. Lock-free readers therefore
-see the complete old or new registry, never an in-place partial write.
+Creating with mode `initialize` accepts only an empty folder, then writes a
+versioned `vault-manifest.json` and deny-all `vault.json`. Mode `register`
+accepts an existing folder only when its marker is valid and names the same
+slug; it preserves the folder contents. A non-empty unmarked folder is refused.
+Unregistering removes only the pointer row and never deletes the folder.
 
-Creating through `POST /api/vaults` registers the row and writes an explicit
-deny-all policy. Starting an unregistered slug through the CLI registers it
-with `autostart: false`; if no policy file exists, the named-Vault fallback is
-still deny-all.
+Registry mutation uses the cross-language `vaults.json.lock` protocol and a
+same-directory temporary file followed by atomic replacement. Rust and
+TypeScript canonicalize and validate the same schema.
+
+### Legacy slug-only rows
+
+An old row without `root` remains visible as `requiresRepair: true`, with
+autostart disabled. It is never mapped to `<MAIN_MODUS_HOME>/<slug>`, started,
+or silently migrated. The old folder is untouched. The user must choose a new
+empty folder to initialize or an existing marked folder to register. Importing
+old contents is a separate operation and is not implied by repair.
 
 ## Fail-closed policy
 
-`<writableRoot>/vault.json` has three independently replaceable rules:
+`<VAULT_ROOT>/vault.json` has three independently replaceable rules:
 
 ```json
 {
@@ -91,118 +114,101 @@ still deny-all.
 }
 ```
 
-A rule is either `{ "mode": "allow-all" }` or
-`{ "mode": "deny", "allow": [...] }`. Plugin values are registered plugin
-IDs, project-automation values are normalized absolute working directories,
-and channel values are configured channel names.
+A rule is `{ "mode": "allow-all" }` or
+`{ "mode": "deny", "allow": [...] }`. Plugin entries are IDs, project entries
+are normalized absolute folders referenced by this Vault, and channel entries
+are names from this Vault's global config.
 
-Policy resolution is deliberately asymmetric:
+- Main without a policy preserves compatibility with allow-all.
+- A named Vault without a policy is deny-all.
+- An unreadable, malformed, or invalid policy is deny-all.
+- Missing named-policy keys deny that capability; missing Main keys use Main's
+  compatibility fallback.
+- Reads are uncached, so revocation applies at the next enforcement check.
 
-- A missing default-Vault file preserves compatibility with allow-all.
-- A missing named-Vault file is deny-all.
-- An unreadable, malformed, or invalid file is deny-all for every Vault.
-- A missing key in a partial named policy is deny for that key; a partial
-  default policy uses the default-Vault allow fallback.
-- Unknown keys are ignored for forward compatibility.
-- Policy reads are uncached, so an authored edit applies on the next check.
+Policy gates plugin execution, project automation, and notification channels.
+It does not terminate a run already in progress. Storage separation is broader
+than this policy: named profiles, provider definitions, registries, and secrets
+are root-local even though there is no per-provider allow-list rule.
 
-The policy is enforced at shared chokepoints. `plugins` filters enabled plugin
-discovery and execution lookup without hiding machine registration management.
-`projectAutomation` filters project action directories before discovery.
-Loaded project and plugin actions are also filtered from runtime lookup and
-rechecked at the common dispatch boundary, so an allow-to-deny edit blocks the
-next manual, interval, webhook, chain, or session trigger without a reload.
-Policy revocation does not terminate an action run that has already begun.
-`channels` gates name resolution used by direct sends and both action
-notification paths. This version has no per-Vault provider or credential rule.
+## Desktop control plane
+
+The desktop process owns named Vault list/create/register/repair/update/status
+operations against Main's registry. The installed frontend calls narrow Tauri
+commands through `desktopBridge.ts`; it does not send lifecycle operations to
+whichever backend is currently viewed.
+
+The form uses the native OS folder chooser, displays the absolute selection,
+keeps the derived slug editable as identity, and requires an explicit choice:
+
+- **Initialize an empty folder** creates the marker and deny-all policy.
+- **Register an existing marked Vault** validates the marker without overwrite.
+
+Legacy rows cannot open or autostart and show a folder-repair action. Opening a
+valid stopped Vault starts its backend lazily. Closing the last window leaves
+desktop-owned backends alive in the tray; full Quit stops them through the job
+boundary. Named Vaults have no Tailscale Serve control; Main remains the sole
+serve owner.
+
+A named backend is data plane only. Its `/api/vaults` control-plane routes
+return 403 and do not open Main's registry. Main's backend may keep the same
+routes for non-desktop Main clients.
 
 ## API and SDK
 
-The backend exposes:
+Main exposes:
 
-- `GET /api/vaults` — current slug plus implicit default and registered rows.
-- `POST /api/vaults` — create `{ slug, name? }` with deny-all policy.
+- `GET /api/vaults` — Main plus registered rows.
+- `POST /api/vaults` — `{ slug, root, mode, name? }`.
+- `POST /api/vaults/:slug/repair` — `{ root, mode, name? }` for a legacy row.
 - `PATCH /api/vaults/:slug` — update `name` and/or `autostart`.
-- `GET /api/vaults/:slug/policy` — read policy; use slug `default` for the
-  implicit Vault.
-- `PUT /api/vaults/:slug/policy` — replace the complete policy. All three
-  current keys are required; partial API writes are rejected.
+- `GET|PUT /api/vaults/:slug/policy` — read or replace the complete policy;
+  slug `default` addresses Main.
 
-The TypeScript SDK mirrors these as `listVaults`, `createVault`, `updateVault`,
-`getVaultPolicy`, and `setVaultPolicy`.
-Slug inputs on these routes are case-insensitive and responses carry the
-canonical lowercase identity.
+The SDK mirrors these as `listVaults`,
+`createVault(slug, root, mode, name?)`, `repairVault`, `updateVault`,
+`getVaultPolicy`, and `setVaultPolicy`. Desktop lifecycle code uses the Tauri
+bridge instead of these active-backend methods.
 
 ## CLI
 
-Start, inspect, and stop a named headless backend with:
+The named CLI commands resolve an existing Main registry row:
 
 ```text
 modus start --instance private
 modus start -d --instance private
 modus status --instance private
 modus stop --instance private
+modus logs --instance private
 ```
 
-`--instance default` targets the unchanged default filenames and data roots.
-Named CLI state uses
-`~/.config/agent-dev-zone/harness.<slug>.pid` and `.port`; the default keeps
-`harness.pid` and `harness.port`. When `HARNESS_PORT` is unset and the base port
-is occupied by another Modus backend, a named start scans the existing nearby
-port range and records the selected port in its scoped file.
-Named daemon stdout is written to `<writableRoot>/logs/harness.log`; read it
-with `modus logs --instance <slug>`. The implicit default keeps its existing
-CLI log location.
+Unknown, legacy-invalid, missing-marker, and mismatched-marker Vaults fail with
+an instruction to register or repair them. CLI start never creates a registry
+row. Named state is root-local:
 
-Named CLI Vaults are local-only in this version. `--remote` is rejected for a
-named Vault, and named start/stop lifecycles never replace or clear the default
-Vault's single Tailscale serve rule.
+```text
+<VAULT_ROOT>/runtime/harness.pid
+<VAULT_ROOT>/runtime/harness.port
+<VAULT_ROOT>/runtime/harness-token
+<VAULT_ROOT>/secrets.env
+<VAULT_ROOT>/logs/harness.log
+```
 
-## Desktop lifecycle and switching
-
-The desktop presents the implicit default Vault as **Main**. To create or switch
-Vaults in an installed app, click the **Vault · Main** identity badge in the
-bottom status bar. This opens the existing **Modus backend** selector, whose
-**Local Vaults** section lists Main and every registered named Vault. The list
-distinguishes the Vault being viewed, backends currently running under the
-desktop supervisor, and named Vaults configured to autostart.
-
-Under **Create restricted Vault**, enter a human-readable name, review or edit
-the derived canonical slug, then choose **create, start, and enter**. Opening a
-stopped Vault starts its backend lazily; `autostart: true` starts it when the
-desktop launches. Closing the last window keeps desktop-owned backends alive in
-the tray, while full Quit stops all of them through the process job boundary.
-
-Creating a named Vault in the desktop derives an editable canonical slug, writes
-the explicit deny-all policy, starts the new backend, and switches the current
-window into it. The selector shows the actual policy receipt and the absolute,
-deterministic `data/harness.db` path in local details. This path is not secret,
-encrypted, or a custom storage choice. There is deliberately no deletion or
-partial policy editor in this surface.
-
-Each Vault remembers the last hash-route visited in the current window. A switch
-restores that location when available and otherwise opens the Vault's home. The
-target identity travels in the window URL through `modusVault` plus the existing
-`modusTarget*` parameters. The preferred target and per-Vault location are also
-remembered as client preferences. Named Vaults have no Tailscale Serve control. Main remains
-the desktop's only serve owner.
+Main retains its existing global CLI files and Tailscale behavior. Named starts
+remain local-only and reject `--remote`. Legacy database migration is Main-only.
 
 ## Authoring identity
 
-Server-side extension code can inspect `ctx.vault.slug`; it is `null` for the
-implicit default and the named slug otherwise. The same identity reaches
+Server-side extensions inspect `ctx.vault.slug`; it is `null` for Main and the
+canonical slug for a named process. The same identity reaches
 `MoveApiContext.vault`, `MoveContext.harness.vault`, and `ActionContext.vault`.
-Do not confuse it with a move's `instanceId`, which identifies one API move
-instance inside a Vault.
+It is not a move's `instanceId`.
 
 ## Not delivered yet
 
 - Independent desktop windows for viewing multiple Vaults at once.
-- Vault-aware deep links, remote Vault routing, or multi-Vault Tailscale presentation.
-- Alert-policy routing across Vaults.
-- Vault deletion, export, or hard-delete semantics.
-- Per-Vault provider and credential policy.
+- Vault-aware deep links or multi-Vault remote/Tailscale presentation.
+- Vault deletion, export, content import, or hard-delete semantics.
+- Per-provider capability policy.
 
-The registry, policy APIs, and delivered switch-in-place desktop lifecycle are
-foundation for these remaining surfaces; they do not imply the items above are
-already available.
+These missing surfaces do not weaken the delivered folder ownership boundary.

@@ -1,6 +1,6 @@
 ---
 title: Missions
-lastUpdated: 2026-07-07
+lastUpdated: 2026-08-19
 covers: harness/mission-runner.ts harness/mission-types.ts harness/mission-db.ts harness/modus-mcp.ts
 ---
 
@@ -9,6 +9,9 @@ covers: harness/mission-runner.ts harness/mission-types.ts harness/mission-db.ts
 Missions are the project-level orchestration primitive. They coordinate
 multi-agent workflows over time — multiple steps, multiple roles, gate
 validation, and traceable transfers between agents.
+
+`<current-home>` means Main's Modus home for Main or the registered folder of
+the named Vault running the mission.
 
 ```
 Prompts    → single-turn guidance
@@ -167,7 +170,7 @@ the user's profile home or the project's `.modus/profiles/agents/`. Profile
 resolution order:
 
 1. Project-local: `<cwd>/.modus/profiles/agents/<name>.json`
-2. User-home: `~/.modus/profiles/agents/<name>.json`
+2. Current Vault: `<current-home>/profiles/agents/<name>.json`
 
 The `orchestrator` role is special — the runner spawns the orchestrator
 session first and injects the full mission context as the session prompt.
@@ -493,12 +496,12 @@ my-project/
 ```
 
 The profiles referenced in `mission.json` roles can be:
-- **User-home** (in `~/.modus/profiles/agents/`) — shared across projects
+- **Vault-owned** (in `<current-home>/profiles/agents/`) — shared across projects registered in that Vault
 - **Project-local** (in `<project>/.modus/profiles/agents/`) — scoped to this project
 
-For most missions, user-home profiles are sufficient. Create
+For most missions, Vault-owned profiles are sufficient. Create
 project-local profiles only when the mission needs specialized behavior
-not covered by user-home profiles.
+not covered by Vault-owned profiles.
 
 ### GitOps Convention
 

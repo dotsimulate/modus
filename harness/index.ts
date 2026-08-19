@@ -7,15 +7,14 @@ import { probeClaudeAccount } from "./claude-account";
 import { rehydrateHome } from "./modus-home-rehydrate";
 loadSecrets();
 
-// Ensure ~/.modus/ exists and seed it from legacy harness/profiles/ + templates
-// on first boot. Idempotent; never overwrites user data. Must run before any
-// profile read, so it lives at the very top of boot.
+// Ensure the current Vault home exists. Main may migrate the checkout's legacy
+// profiles; named Vaults seed shipped templates only. Must run before profile reads.
 {
   const report = rehydrateHome();
   const total = report.copiedFromLegacy.length + report.copiedFromTemplates.length;
   if (total > 0) {
     console.log(
-      `[modus-home] rehydrated ~/.modus/ — ${report.copiedFromLegacy.length} from legacy, ${report.copiedFromTemplates.length} from templates`,
+      `[modus-home] rehydrated current Vault home — ${report.copiedFromLegacy.length} from legacy, ${report.copiedFromTemplates.length} from templates`,
     );
   }
 }
@@ -65,6 +64,7 @@ import {
   createVaultForApi,
   getVaultPolicyForApi,
   listVaultsForApi,
+  repairVaultForApi,
   setVaultPolicyForApi,
   updateVaultForApi,
 } from "./vault-api";
@@ -3432,7 +3432,9 @@ app.patch("/api/ui/fonts/:id", async (c) => {
 
 // ── Vaults ──
 
-app.get("/api/vaults", (c) => c.json(listVaultsForApi()));
+app.get("/api/vaults", (c) => APP_PATHS.instance
+  ? c.json({ error: "Vault registry control is available only from Main" }, 403)
+  : c.json(listVaultsForApi()));
 
 app.post("/api/vaults", async (c) => {
   const result = createVaultForApi(await c.req.json().catch(() => null));
@@ -3443,6 +3445,13 @@ app.post("/api/vaults", async (c) => {
 
 app.patch("/api/vaults/:slug", async (c) => {
   const result = updateVaultForApi(c.req.param("slug"), await c.req.json().catch(() => null));
+  return result.ok
+    ? c.json(result.value)
+    : c.json({ error: result.error }, result.status);
+});
+
+app.post("/api/vaults/:slug/repair", async (c) => {
+  const result = repairVaultForApi(c.req.param("slug"), await c.req.json().catch(() => null));
   return result.ok
     ? c.json(result.value)
     : c.json({ error: result.error }, result.status);
@@ -3658,7 +3667,7 @@ app.patch("/api/client-extensions/:id", async (c) => {
   if (body.settings) {
     // Split by declared scope. A global-scoped value is one the harness itself
     // consumes, so writing it into a single user profile would leave every
-    // other client resolving nothing — it goes machine-wide instead.
+    // other client resolving nothing — it goes current-Vault-wide instead.
     const schema = getClientExtensionById(id, { cwd: c.req.query("cwd"), userProfile: userProfileName })
       ?.meta.settings ?? {};
     const userSettings: Record<string, unknown> = {};
@@ -3666,7 +3675,7 @@ app.patch("/api/client-extensions/:id", async (c) => {
     for (const [key, value] of Object.entries(body.settings)) {
       const def = schema[key];
       // The renderer's min/max attributes only constrain the form. Any client can
-      // PATCH whatever it likes, and a global-scoped value lands machine-wide for
+      // PATCH whatever it likes, and a global-scoped value lands Vault-wide for
       // every other client, so the declared bounds are enforced here too.
       if (def?.type === "number" && value !== null && value !== undefined) {
         const error = settingNumberError(key, value, def);
