@@ -160,13 +160,18 @@ Vault's single Tailscale serve rule.
 
 ## Desktop lifecycle and switching
 
-The desktop presents the implicit default Vault as **Main** and lists registered
-named Vaults in the existing backend selector. The list distinguishes the Vault
-being viewed, backends currently running under the desktop supervisor, and
-named Vaults configured to autostart. Opening a stopped Vault starts its backend
-lazily; `autostart: true` starts it when the desktop launches. Closing the last
-window keeps desktop-owned backends alive in the tray, while full Quit stops all
-of them through the process job boundary.
+The desktop presents the implicit default Vault as **Main**. To create or switch
+Vaults in an installed app, click the **Vault · Main** identity badge in the
+bottom status bar. This opens the existing **Modus backend** selector, whose
+**Local Vaults** section lists Main and every registered named Vault. The list
+distinguishes the Vault being viewed, backends currently running under the
+desktop supervisor, and named Vaults configured to autostart.
+
+Under **Create restricted Vault**, enter a human-readable name, review or edit
+the derived canonical slug, then choose **create, start, and enter**. Opening a
+stopped Vault starts its backend lazily; `autostart: true` starts it when the
+desktop launches. Closing the last window keeps desktop-owned backends alive in
+the tray, while full Quit stops all of them through the process job boundary.
 
 Creating a named Vault in the desktop derives an editable canonical slug, writes
 the explicit deny-all policy, starts the new backend, and switches the current
@@ -198,5 +203,6 @@ instance inside a Vault.
 - Vault deletion, export, or hard-delete semantics.
 - Per-Vault provider and credential policy.
 
-The registry and policy APIs are foundation for those surfaces; their presence
-does not imply the desktop functionality already exists.
+The registry, policy APIs, and delivered switch-in-place desktop lifecycle are
+foundation for these remaining surfaces; they do not imply the items above are
+already available.
