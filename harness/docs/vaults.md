@@ -1,7 +1,7 @@
 ---
 title: Vaults
-lastUpdated: 2026-08-17
-covers: harness/app-paths.ts harness/modus-home.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/harness-context.ts harness/modus-plugins.ts harness/action-runner.ts harness/notify.ts harness/sdk/client.ts harness/sdk/types.ts desktop/src-tauri/src/backend.rs
+lastUpdated: 2026-08-19
+covers: harness/app-paths.ts harness/modus-home.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/harness-context.ts harness/modus-plugins.ts harness/action-runner.ts harness/notify.ts harness/sdk/client.ts harness/sdk/types.ts harness/ui/src/components/DesktopVaultManager.tsx harness/ui/src/vault-targets.ts desktop/src-tauri/src/backend.rs
 audience: dev
 ---
 
@@ -158,6 +158,30 @@ Named CLI Vaults are local-only in this version. `--remote` is rejected for a
 named Vault, and named start/stop lifecycles never replace or clear the default
 Vault's single Tailscale serve rule.
 
+## Desktop lifecycle and switching
+
+The desktop presents the implicit default Vault as **Main** and lists registered
+named Vaults in the existing backend selector. The list distinguishes the Vault
+being viewed, backends currently running under the desktop supervisor, and
+named Vaults configured to autostart. Opening a stopped Vault starts its backend
+lazily; `autostart: true` starts it when the desktop launches. Closing the last
+window keeps desktop-owned backends alive in the tray, while full Quit stops all
+of them through the process job boundary.
+
+Creating a named Vault in the desktop derives an editable canonical slug, writes
+the explicit deny-all policy, starts the new backend, and switches the current
+window into it. The selector shows the actual policy receipt and the absolute,
+deterministic `data/harness.db` path in local details. This path is not secret,
+encrypted, or a custom storage choice. There is deliberately no deletion or
+partial policy editor in this surface.
+
+Each Vault remembers the last hash-route visited in the current window. A switch
+restores that location when available and otherwise opens the Vault's home. The
+target identity travels in the window URL through `modusVault` plus the existing
+`modusTarget*` parameters. The preferred target and per-Vault location are also
+remembered as client preferences. Named Vaults have no Tailscale Serve control. Main remains
+the desktop's only serve owner.
+
 ## Authoring identity
 
 Server-side extension code can inspect `ctx.vault.slug`; it is `null` for the
@@ -168,9 +192,8 @@ instance inside a Vault.
 
 ## Not delivered yet
 
-- Concurrent per-Vault desktop supervision, lazy start, and autostart handling.
-- A desktop Vault switcher or Vault identity badge.
-- Vault-aware deep links, remote routing, or multi-Vault Tailscale presentation.
+- Independent desktop windows for viewing multiple Vaults at once.
+- Vault-aware deep links, remote Vault routing, or multi-Vault Tailscale presentation.
 - Alert-policy routing across Vaults.
 - Vault deletion, export, or hard-delete semantics.
 - Per-Vault provider and credential policy.

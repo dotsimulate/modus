@@ -59,6 +59,30 @@
 .backend-target-subtitle { display: block; margin-top: 4px; overflow: hidden; color: var(--text-muted); font-size: calc(8px * var(--font-scale, 1)); text-overflow: ellipsis; white-space: nowrap; }
 .backend-target-remove { padding: 10px; }
 .backend-target-working { position: absolute; right: 12px; color: var(--accent); font-size: calc(8px * var(--font-scale, 1)); }
+.backend-vaults { padding: 15px 20px 12px; border-top: 1px solid var(--border); }
+.backend-vaults-intro { padding: 0 0 10px; }
+.backend-vault-loading { padding: 8px 0; color: var(--text-muted); font-size: calc(9px * var(--font-scale, 1)); }
+.backend-vault-list { display: flex; flex-direction: column; gap: 6px; }
+.backend-vault-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); }
+.backend-vault-row.active { border-color: var(--border-active); background: var(--bg-surface); }
+.backend-vault-select { min-width: 0; padding: 9px 10px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.backend-vault-select:disabled { cursor: wait; }
+.backend-vault-state { color: var(--text-muted); font-size: calc(8px * var(--font-scale, 1)); letter-spacing: .05em; text-transform: uppercase; }
+.backend-vault-autostart { display: flex; align-items: center; gap: 5px; padding: 0 10px; color: var(--text-muted); font-size: calc(8px * var(--font-scale, 1)); white-space: nowrap; }
+.backend-vault-autostart input { accent-color: var(--accent); }
+.backend-vault-details { grid-column: 1 / -1; padding: 0 10px 8px; color: var(--text-muted); font-size: calc(8px * var(--font-scale, 1)); line-height: 1.55; }
+.backend-vault-details summary { width: max-content; cursor: pointer; color: var(--text-dim); }
+.backend-vault-details > div { margin-top: 5px; }
+.backend-vault-path { padding: 6px 8px; overflow-wrap: anywhere; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-raised); color: var(--accent); user-select: text; }
+.backend-vault-create { display: flex; flex-direction: column; gap: 8px; padding: 15px 20px 18px; border-top: 1px solid var(--border); }
+.backend-vault-create label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; color: var(--text-dim); font-size: calc(9px * var(--font-scale, 1)); }
+.backend-vault-create input { min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 4px; outline: none; background: var(--bg); color: var(--text); font: 10px var(--font-mono); }
+.backend-vault-create input:focus { border-color: var(--border-focus); }
+.backend-vault-receipt { padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border)); border-radius: 4px; color: var(--text-dim); font-size: calc(8px * var(--font-scale, 1)); line-height: 1.5; }
+.backend-vault-receipt.invalid { color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--border)); }
+.backend-vault-opening { position: fixed; inset: 0; z-index: 10040; display: grid; place-items: center; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(9px); color: var(--text); font: 11px var(--font-mono); }
+.backend-vault-opening > div { display: grid; grid-template-columns: auto auto; align-items: center; gap: 8px; padding: 18px 22px; border: 1px solid var(--border-active); border-radius: 7px; background: var(--bg-raised); box-shadow: 0 18px 70px color-mix(in srgb, #000 45%, transparent); }
+.backend-vault-opening strong { grid-column: 2; color: var(--accent); font-weight: 500; }
 .backend-target-add { display: flex; flex-direction: column; gap: 8px; padding: 15px 20px 18px; border-top: 1px solid var(--border); }
 .backend-target-section-label { margin-bottom: 2px; color: var(--text-muted); font-size: calc(8px * var(--font-scale, 1)); font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
 .backend-target-add label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; color: var(--text-dim); font-size: calc(9px * var(--font-scale, 1)); }
@@ -93,5 +117,8 @@
 
 @media (max-width: 600px) {
   .backend-target-add label { grid-template-columns: 1fr; gap: 4px; }
+  .backend-vault-create label { grid-template-columns: 1fr; gap: 4px; }
+  .backend-vault-row { grid-template-columns: 1fr; }
+  .backend-vault-autostart { padding: 0 10px 8px; }
   .backend-target-hint { padding-left: 0; }
 }

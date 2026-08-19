@@ -22,6 +22,12 @@ export type DesktopBootstrapResponse = {
   tailscale?: DesktopTailscaleStatus;
 };
 
+export type DesktopVaultStatus = {
+  slug: string | null;
+  running: boolean;
+  databasePath: string;
+};
+
 export type DesktopUpdateCheck = {
   configured: boolean;
   available: boolean;
@@ -77,9 +83,22 @@ async function invokeDesktop<T>(command: string, args?: Record<string, unknown>)
 export async function bootstrapDesktop(
   mode: DesktopBootstrapMode,
   url?: string,
+  vault?: string,
 ): Promise<DesktopBootstrapResponse> {
   return invokeDesktop<DesktopBootstrapResponse>("desktop_bootstrap", {
-    request: { mode, ...(url ? { url } : {}) },
+    request: { mode, ...(url ? { url } : {}), ...(vault ? { vault } : {}) },
+  });
+}
+
+export async function openDesktopVault(slug: string | null): Promise<DesktopBootstrapResponse> {
+  return invokeDesktop<DesktopBootstrapResponse>("desktop_open_vault", {
+    request: { slug },
+  });
+}
+
+export async function getDesktopVaultStatus(slug: string | null): Promise<DesktopVaultStatus> {
+  return invokeDesktop<DesktopVaultStatus>("desktop_vault_status", {
+    request: { slug },
   });
 }
 

@@ -22,6 +22,7 @@ export function resolveBackendTarget(options: ResolveBackendTargetOptions = {}):
       ? "external-local"
       : "browser";
   const explicitId = params.get("modusTargetId")?.trim();
+  const vaultSlug = normalizeVaultSlugParam(params.get("modusVault"));
   const identity = apiBase || options.pageOrigin || "same-origin";
 
   return {
@@ -29,7 +30,13 @@ export function resolveBackendTarget(options: ResolveBackendTargetOptions = {}):
     label: params.get("modusTargetLabel")?.trim() || (apiBase ? new URL(apiBase).host : "This browser"),
     mode,
     apiBase,
+    ...(mode === "managed-local" ? { vaultSlug } : {}),
   };
+}
+
+function normalizeVaultSlugParam(value: string | null): string | null {
+  const slug = value?.trim().toLowerCase() ?? "";
+  return slug && /^[a-z0-9._-]+$/.test(slug) && slug !== "default" ? slug : null;
 }
 
 export const BACKEND_TARGET = resolveBackendTarget({

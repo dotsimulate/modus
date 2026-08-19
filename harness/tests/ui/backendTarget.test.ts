@@ -46,16 +46,29 @@ describe("desktop backend target", () => {
 
   test("rebinds an eagerly evaluated production target after the desktop handshake", () => {
     const target = configureBackendTarget({
-      search: "?modusTarget=http%3A%2F%2F127.0.0.1%3A62240&modusTargetId=local&modusTargetMode=managed-local&modusTargetLabel=Local+Modus",
+      search: "?modusTarget=http%3A%2F%2F127.0.0.1%3A62240&modusTargetId=local&modusTargetMode=managed-local&modusTargetLabel=Main",
       pageOrigin: "http://tauri.localhost",
     });
 
     expect(target).toBe(BACKEND_TARGET);
     expect(BACKEND_TARGET).toEqual({
       id: "local",
-      label: "Local Modus",
+      label: "Main",
       mode: "managed-local",
       apiBase: "http://127.0.0.1:62240",
+      vaultSlug: null,
+    });
+  });
+
+  test("resolves a named managed Vault from the window URL", () => {
+    expect(resolveBackendTarget({
+      search: "?modusTarget=http%3A%2F%2F127.0.0.1%3A62241&modusTargetId=vault%3Aprivate&modusTargetMode=managed-local&modusTargetLabel=Private&modusVault=private",
+    })).toEqual({
+      id: "vault:private",
+      label: "Private",
+      mode: "managed-local",
+      apiBase: "http://127.0.0.1:62241",
+      vaultSlug: "private",
     });
   });
 
@@ -106,5 +119,24 @@ describe("desktop backend target", () => {
     expect(backendIdentityChanged("", "replacement")).toBe(false);
     expect(backendIdentityChanged(undefined, "one")).toBe(false);
     expect(backendIdentityChanged(undefined, undefined)).toBe(false);
+  });
+
+  test("persists a named Vault target and emits its desktop bootstrap identity", () => {
+    const storage = new MemoryStorage();
+    rememberBackendConnected({
+      id: "vault:private",
+      label: "Private",
+      mode: "managed-local",
+      vaultSlug: "private",
+    }, storage);
+
+    expect(getActiveBackendTarget(storage)).toMatchObject({
+      id: "vault:private",
+      vaultSlug: "private",
+    });
+    const params = targetSearchParams(getActiveBackendTarget(storage));
+    expect(params.get("modusTargetMode")).toBe("managed-local");
+    expect(params.get("modusVault")).toBe("private");
+    expect(params.get("modusTargetId")).toBe("vault:private");
   });
 });

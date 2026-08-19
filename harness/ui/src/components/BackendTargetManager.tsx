@@ -19,6 +19,9 @@ import {
   saveRemoteBackendTarget,
   type SavedBackendTarget,
 } from "../backend-targets";
+import { DesktopVaultManager } from "./DesktopVaultManager";
+import { modus } from "../modusClient";
+import { vaultDisplayName } from "../vault-targets";
 
 function targetSubtitle(target: SavedBackendTarget): string {
   if (target.id === "local") return "Managed by the desktop · OS-assigned private port";
@@ -40,6 +43,10 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
 
   const currentId = BACKEND_TARGET.id;
   const managedLocal = nativeDesktop && BACKEND_TARGET.mode === "managed-local";
+  const managedMain = managedLocal && !BACKEND_TARGET.vaultSlug;
+  const visibleTargets = managedLocal
+    ? targets.filter((target) => target.mode !== "managed-local")
+    : targets;
 
   useEffect(() => {
     if (!managedLocal) return;
@@ -121,7 +128,7 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
       </div>
 
       <div className="backend-target-list">
-        {targets.map((target) => {
+        {visibleTargets.map((target) => {
           const active = target.id === currentId;
           return (
             <div className={`backend-target-row${active ? " active" : ""}`} key={target.id}>
@@ -140,6 +147,8 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
           );
         })}
       </div>
+
+      {managedLocal && <DesktopVaultManager onError={setError} />}
 
       <div className="backend-target-add">
         <div className="backend-target-section-label">Add remote backend</div>
@@ -163,11 +172,11 @@ function BackendTargetPanel({ onClose, embedded = false }: { onClose?: () => voi
         </button>
       </div>
 
-      {managedLocal && (
+      {managedMain && (
         <div className="backend-target-tailnet">
           <div className="backend-target-tailnet-heading">
             <div>
-              <div className="backend-target-section-label">Phone and browser access</div>
+              <div className="backend-target-section-label">Phone and browser access · Main only</div>
               <div className="backend-target-tailnet-title">Tailscale Serve</div>
             </div>
             <span className={`backend-target-tailnet-state ${tailscale?.state ?? "loading"}`}>
@@ -236,7 +245,27 @@ export function BackendTargetDialog({ onClose }: { onClose: () => void }) {
 
 export function BackendTargetControl({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [identity, setIdentity] = useState(() => (
+    BACKEND_TARGET.mode === "managed-local"
+      ? `Vault · ${vaultDisplayName(BACKEND_TARGET.vaultSlug ?? null, BACKEND_TARGET.label)}`
+      : BACKEND_TARGET.label
+  ));
   const enabled = useMemo(() => isDesktopClient(), []);
+  useEffect(() => {
+    if (BACKEND_TARGET.mode !== "managed-local") return;
+    let cancelled = false;
+    void modus.listVaults().then((response) => {
+      if (cancelled) return;
+      const current = response.vaults.find((vault) => vault.slug === (BACKEND_TARGET.vaultSlug ?? null));
+      setIdentity(`Vault · ${vaultDisplayName(
+        current?.slug ?? BACKEND_TARGET.vaultSlug ?? null,
+        current?.name ?? BACKEND_TARGET.label,
+      )}`);
+    }).catch(() => {
+      // The target panel exposes connection errors; the identity badge stays useful offline.
+    });
+    return () => { cancelled = true; };
+  }, []);
   if (!enabled) return null;
   return (
     <>
@@ -244,10 +273,10 @@ export function BackendTargetControl({ compact = false }: { compact?: boolean })
         type="button"
         className={`backend-target-control${compact ? " compact" : ""}`}
         onClick={() => setOpen(true)}
-        title={`${BACKEND_TARGET.label} · ${BACKEND_TARGET.apiBase}`}
+        title={`${identity} · ${BACKEND_TARGET.apiBase}`}
       >
         <span className="backend-target-control-dot" />
-        <span>{BACKEND_TARGET.label}</span>
+        <span>{identity}</span>
       </button>
       {open && <BackendTargetDialog onClose={() => setOpen(false)} />}
     </>
