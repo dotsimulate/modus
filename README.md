@@ -74,6 +74,12 @@ For a fresh Mac user profile, use the full [macOS setup guide](harness/docs/maco
 This installs dependencies, builds the UI, and registers `modus` as a global command.
 After setup, `modus` works from any directory.
 
+These commands describe a source-checkout installation. A locally built or future
+qualified Windows NSIS package installs both Modus Desktop and its own `modus`
+console command; that command runs the same CLI and backend from packaged files,
+without a checkout or globally installed Bun. Repository maintenance commands
+(`setup`, `dev`, and `update`) remain source-checkout-only.
+
 ### 2. Open a project
 
 ```bash

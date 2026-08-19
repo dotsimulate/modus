@@ -274,6 +274,11 @@ const UI_SRC_DIR = join(UI_DIR, "src");
 const UI_DIST_DIR = join(UI_DIR, "dist");
 const BUN = process.execPath;
 const CLI_PATH = Bun.fileURLToPath(import.meta.url);
+const PACKAGED_CLI = process.env.MODUS_PACKAGED_CLI === "1";
+const SERVER_ENTRY = resolve(
+  process.env.MODUS_CLI_SERVER?.trim()
+    || join(HARNESS_DIR, PACKAGED_CLI ? "server.js" : "index.ts"),
+);
 
 const CONFIG_DIR = join(
   process.env.USERPROFILE ?? process.env.HOME ?? "",
@@ -283,7 +288,9 @@ const TOKEN_FILE = join(CONFIG_DIR, "harness-token");
 const DEFAULT_STATE_FILES = vaultStateFiles(CONFIG_DIR, null);
 const REMOTE_FILE = join(CONFIG_DIR, "remote");
 const TAILSCALE_OWNERSHIP_FILE = join(CONFIG_DIR, "tailscale-serve-owner.json");
-const LOG_FILE = join(HARNESS_DIR, "harness.log");
+const LOG_FILE = PACKAGED_CLI
+  ? join(resolveAppPaths().logsDir, "harness.log")
+  : join(HARNESS_DIR, "harness.log");
 const UI_DEPS_STAMP = join(UI_DIR, ".modus-deps.stamp");
 
 const BASE_PORT = Number(process.env.HARNESS_PORT ?? 3777);
@@ -444,6 +451,26 @@ function writeStateFiles(pid: number, port: number, files: VaultStateFiles = DEF
   writeFileSync(files.portFile, String(port), "utf-8");
 }
 
+function requireSourceCheckout(command: string): void {
+  if (!PACKAGED_CLI) return;
+  console.error(
+    `modus ${command} is a source-checkout command and is not available in the installed package.`,
+  );
+  if (command === "update") {
+    console.error("Update the installed application through Modus Desktop or a newer installer.");
+  }
+  process.exit(1);
+}
+
+function assertServerEntry(): void {
+  if (existsSync(SERVER_ENTRY)) return;
+  console.error(`Modus backend entry is missing: ${SERVER_ENTRY}`);
+  console.error(PACKAGED_CLI
+    ? "Repair or reinstall Modus."
+    : "Run `modus setup` from the source checkout.");
+  process.exit(1);
+}
+
 function cleanStateFiles(files: VaultStateFiles = DEFAULT_STATE_FILES): void {
   try { unlinkSync(files.pidFile); } catch { /* already gone */ }
   try { unlinkSync(files.portFile); } catch { /* already gone */ }
@@ -586,7 +613,8 @@ async function cmdDaemonSupervise(): Promise<void> {
   // Deliberately NOT detached: this supervisor is itself a group leader (spawned
   // detached by cmdStart), and keeping the backend and its providers inside that same
   // group is what lets `modus stop` reap the whole daemon with one group signal.
-  const child = spawn([BUN, "run", "index.ts"], {
+  assertServerEntry();
+  const child = spawn([BUN, "run", SERVER_ENTRY], {
     cwd: HARNESS_DIR,
     stdout: "inherit",
     stderr: "inherit",
@@ -628,17 +656,28 @@ async function cmdStart(args: string[]): Promise<void> {
   // Stale PID file — clean it
   if (existingPid) cleanStateFiles(stateFiles);
 
-  // Install UI deps if needed, then build
-  if (uiDepsStale()) {
-    if (!installUiDeps()) {
+  // A source checkout owns its dependency/build lifecycle. The installed CLI
+  // runs the immutable UI and backend staged by the installer.
+  if (PACKAGED_CLI) {
+    if (!existsSync(UI_DIST_DIR)) {
+      console.error(`Packaged Modus UI is missing: ${UI_DIST_DIR}`);
+      console.error("Repair or reinstall Modus.");
       process.exit(1);
     }
-  }
-  if (uiBuildStale()) {
-    if (!buildUi()) {
-      process.exit(1);
+  } else {
+    if (uiDepsStale()) {
+      if (!installUiDeps()) {
+        process.exit(1);
+      }
+    }
+    if (uiBuildStale()) {
+      if (!buildUi()) {
+        process.exit(1);
+      }
     }
   }
+
+  assertServerEntry();
 
   // Check port — if something is listening, try a health check to distinguish
   // a live modus instance from orphaned TCP state left by a dead process.
@@ -770,7 +809,7 @@ async function cmdStart(args: string[]): Promise<void> {
   // reap the provider CLIs beneath it. Ctrl-C then reaches only this CLI, which is
   // what we want: shutdown() below drives the graceful HTTP path and force-kills the
   // group as a fallback. Windows is left alone — taskkill /T already walks the tree.
-  const proc = spawn([BUN, "run", "index.ts"], {
+  const proc = spawn([BUN, "run", SERVER_ENTRY], {
     cwd: HARNESS_DIR,
     stdout: "inherit",
     stderr: "inherit",
@@ -1132,6 +1171,7 @@ async function cmdOpen(args: string[]): Promise<void> {
 }
 
 function cmdSetup(_args: string[]): void {
+  requireSourceCheckout("setup");
   console.log("Setting up Modus...\n");
 
   // 1. Root deps (bun-pty for the Windows terminal PTY — resolves from the
@@ -1194,6 +1234,7 @@ function cmdSetup(_args: string[]): void {
 }
 
 async function cmdDev(args: string[]): Promise<void> {
+  requireSourceCheckout("dev");
   // Dev mode: delegate to existing dev.ts or watchdog depending on flags
   if (hasFlag(args, "--watch", "-w")) {
     // Watchdog mode with file watching
@@ -1256,6 +1297,7 @@ async function cmdLogs(args: string[]): Promise<void> {
 }
 
 async function cmdUpdate(_args: string[]): Promise<void> {
+  requireSourceCheckout("update");
   console.log("Updating Modus...\n");
 
   // Check if running
@@ -1352,13 +1394,13 @@ Commands:
   moves export [path]
                 Create a zip of direct move files only, excluding nested folders and runtime/private artifacts
     --out PATH  Write the zip to a specific path
-  setup         Install dependencies and build UI
-  dev           Dev mode (harness + vite + file watchers)
+  setup         Install dependencies and build UI (source checkout only)
+  dev           Dev mode (source checkout only)
     --watch      Use watchdog with file watching
   logs          Show server logs
     -f           Follow (live tail)
     --instance   Read a named Vault's daemon log
-  update        Pull latest, re-setup, restart if needed
+  update        Pull latest, re-setup, restart if needed (source checkout only)
   maintenance   Storage maintenance
     storage --dry-run  Inspect legacy database migration into ~/.modus/data
     storage --apply --plan-id <id>  Apply that exact copy-and-verify plan

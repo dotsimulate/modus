@@ -604,7 +604,10 @@ function createShell(self: HarnessSelf, gate: Gate, eng: HarnessEngines): { run(
   return {
     async run(cmd) {
       gate("shell", `cmd: ${cmd.slice(0, 80)}`);
-      const proc = Bun.spawn(["sh", "-c", cmd], { cwd: self.cwd, stdout: "pipe", stderr: "pipe" });
+      const shell = process.platform === "win32"
+        ? [process.env.COMSPEC || "cmd.exe", "/d", "/s", "/c", cmd]
+        : ["sh", "-c", cmd];
+      const proc = Bun.spawn(shell, { cwd: self.cwd, stdout: "pipe", stderr: "pipe" });
       const out = await new Response(proc.stdout).text();
       eng.logActivity({
         eventType: "harness_shell",

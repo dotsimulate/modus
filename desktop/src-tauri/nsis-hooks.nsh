@@ -13,6 +13,14 @@
 ;   * Tauri's Install section runs SetOutPath BEFORE inserting this hook, so
 ;     rewriting $INSTDIR alone would send File commands to the old directory
 ;     while CreateDirectory used the new one. Re-point the output path here.
+;
+; The installer also owns the public `modus` console command. Keep its install
+; directory as one exact user-PATH entry: prepend it so a stale source-checkout
+; Bun link cannot shadow the installed product, and remove only that exact
+; entry on uninstall. Do not manipulate PATH with NSIS strings: Tauri's NSIS
+; build has NSIS_MAX_STRLEN=1024 and would truncate longer user PATH values.
+; The native launcher uses dynamically-sized Win32 registry buffers instead.
+
 !macro NSIS_HOOK_PREINSTALL
   ${StrCase} $R0 "$INSTDIR" "L"
 
@@ -26,5 +34,21 @@
   ${OrIf} $R3 == 0
     StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     SetOutPath $INSTDIR
+  ${EndIf}
+!macroend
+
+!macro NSIS_HOOK_POSTINSTALL
+  ExecWait '"$INSTDIR\modus.exe" --modus-installer-add-user-path' $R0
+  ${If} $R0 != 0
+    MessageBox MB_ICONSTOP "Modus could not safely add its console command to your user PATH. The installation will stop without rewriting PATH."
+    Abort
+  ${EndIf}
+!macroend
+
+!macro NSIS_HOOK_PREUNINSTALL
+  ExecWait '"$INSTDIR\modus.exe" --modus-installer-remove-user-path' $R0
+  ${If} $R0 != 0
+    MessageBox MB_ICONSTOP "Modus could not safely remove its console command from your user PATH. No files were removed; retry the uninstall."
+    Abort
   ${EndIf}
 !macroend

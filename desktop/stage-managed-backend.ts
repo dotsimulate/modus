@@ -16,6 +16,8 @@ const tauriDir = join(desktopDir, "src-tauri");
 const stageDir = join(tauriDir, "resources", "modus");
 const binariesDir = join(tauriDir, "binaries");
 const targetDir = join(tauriDir, "target");
+const cliLauncherDir = join(desktopDir, "cli-launcher");
+const cliLauncherTargetDir = join(targetDir, "cli-launcher");
 
 function assertGeneratedPath(target: string, expectedParent: string): void {
   const resolvedTarget = resolve(target);
@@ -25,9 +27,10 @@ function assertGeneratedPath(target: string, expectedParent: string): void {
   }
 }
 
-function run(command: string[], cwd: string): void {
+function run(command: string[], cwd: string, env?: Record<string, string | undefined>): void {
   const result = Bun.spawnSync(command, {
     cwd,
+    env: env ? { ...process.env, ...env } : process.env,
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
@@ -125,7 +128,33 @@ function targetTriple(): string {
   throw new Error(`Unsupported desktop target ${process.platform}/${process.arch}`);
 }
 
+function stageCliLauncher(triple: string, devMode: boolean): string {
+  assertGeneratedPath(cliLauncherTargetDir, targetDir);
+  const profile = devMode ? "debug" : "release";
+  const suffix = process.platform === "win32" ? ".exe" : "";
+  const command = [
+    "cargo",
+    "build",
+    "--manifest-path",
+    join(cliLauncherDir, "Cargo.toml"),
+    "--locked",
+    "--target",
+    triple,
+  ];
+  if (!devMode) command.push("--release");
+  run(command, cliLauncherDir, { CARGO_TARGET_DIR: cliLauncherTargetDir });
+
+  const source = join(cliLauncherTargetDir, triple, profile, `modus${suffix}`);
+  if (!existsSync(source)) {
+    throw new Error(`Modus CLI launcher build did not produce ${source}`);
+  }
+  const destination = join(binariesDir, `modus-${triple}${suffix}`);
+  copyFileSync(source, destination);
+  return destination;
+}
+
 async function stage(): Promise<void> {
+  const devMode = process.argv.includes("--dev");
   assertGeneratedPath(stageDir, tauriDir);
   assertGeneratedPath(binariesDir, tauriDir);
   for (const profile of ["debug", "release"]) {
@@ -143,6 +172,7 @@ async function stage(): Promise<void> {
   run(["bun", "run", "build"], join(harnessDir, "ui"));
 
   await bundle(join(harnessDir, "index.ts"), join(stageDir, "server.js"));
+  await bundle(join(harnessDir, "cli.ts"), join(stageDir, "cli.js"));
   await bundle(join(harnessDir, "svg-render-worker.ts"), join(stageDir, "svg-render-worker.js"));
   await bundle(join(harnessDir, "providers", "antigravity-hook.ts"), join(stageDir, "providers", "antigravity-hook.js"));
   await bundle(join(harnessDir, "providers", "antigravity-mcp-bridge.ts"), join(stageDir, "providers", "antigravity-mcp-bridge.js"));
@@ -195,16 +225,17 @@ async function stage(): Promise<void> {
 
   const bunSource = process.env.MODUS_DESKTOP_BUN_SOURCE?.trim() || Bun.which("bun");
   if (!bunSource) throw new Error("Could not locate the Bun runtime for desktop packaging");
+  const triple = targetTriple();
   const suffix = process.platform === "win32" ? ".exe" : "";
-  const bunDestination = join(binariesDir, `bun-${targetTriple()}${suffix}`);
+  const bunDestination = join(binariesDir, `bun-${triple}${suffix}`);
   copyFileSync(bunSource, bunDestination);
+  const cliDestination = stageCliLauncher(triple, devMode);
 
   // Native addons ship per-libc variants (e.g. resvgjs.linux-x64-{gnu,musl}-*.node).
   // Bun.build copies every variant it can see, but only the one matching this
   // build's target libc is ever loaded. Prune the mismatched variant: a stray
   // musl binary breaks linuxdeploy (unresolvable libc.musl-*.so) on a glibc host
   // and is wrong-ABI weight in any package.
-  const triple = targetTriple();
   const dropLibc = triple.includes("-musl") ? "gnu" : triple.includes("-gnu") ? "musl" : null;
   if (dropLibc) {
     for (const file of new Bun.Glob(`**/*-${dropLibc}-*.node`).scanSync({ cwd: stageDir, onlyFiles: true })) {
@@ -217,7 +248,10 @@ async function stage(): Promise<void> {
 
   const stagedBytes = [...new Bun.Glob("**/*").scanSync({ cwd: stageDir, onlyFiles: true })]
     .reduce((total, file) => total + Bun.file(join(stageDir, file)).size, 0);
-  console.log(`[desktop] staged managed backend (${(stagedBytes / 1024 / 1024).toFixed(1)} MiB) and ${basename(bunDestination)}`);
+  console.log(
+    `[desktop] staged managed backend + CLI (${(stagedBytes / 1024 / 1024).toFixed(1)} MiB), `
+      + `${basename(bunDestination)}, and ${basename(cliDestination)}`,
+  );
 }
 
 await stage();

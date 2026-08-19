@@ -54,7 +54,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/bun"],
+    "externalBin": ["binaries/bun", "binaries/modus"],
     "resources": {
       "resources/modus/": "modus/"
     },
