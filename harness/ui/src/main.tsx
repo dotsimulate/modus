@@ -105,6 +105,7 @@ import {
   inspectBackendTarget,
   isDesktopClient,
   LOCAL_BACKEND_TARGET,
+  managedVaultBackendTarget,
   probeBackendTarget,
   rememberBackendConnected,
   targetSearchParams,
@@ -151,16 +152,20 @@ async function bootstrap() {
   if (nativeDesktop) {
     const preferred = getActiveBackendTarget()
     const queryMode = params.get('modusTargetMode')
-    const requestedMode: DesktopBootstrapMode = params.get('modusDiscover') === 'external' || queryMode === 'external-local'
-      ? 'external-local'
-      : preferred.mode === 'remote' || queryMode === 'remote'
-        ? 'remote'
-        : 'managed-local'
+    let requestedMode: DesktopBootstrapMode = preferred.mode === 'remote' ? 'remote' : 'managed-local'
+    if (params.get('modusDiscover') === 'external' || queryMode === 'external-local') {
+      requestedMode = 'external-local'
+    } else if (queryMode === 'remote' || queryMode === 'managed-local') {
+      requestedMode = queryMode
+    }
     const requestedUrl = requestedMode === 'remote'
       ? (preferred.mode === 'remote' ? preferred.url : params.get('modusTarget') ?? undefined)
       : undefined
+    const requestedVault = requestedMode === 'managed-local'
+      ? params.get('modusVault') ?? preferred.vaultSlug ?? undefined
+      : undefined
     try {
-      const response = await bootstrapDesktop(requestedMode, requestedUrl)
+      const response = await bootstrapDesktop(requestedMode, requestedUrl, requestedVault)
       if (response.mode === 'managed-local') {
         await bindManagedDesktopTarget(response)
         managedDesktop = response
@@ -169,16 +174,20 @@ async function bootstrap() {
         params.set('modusTargetId', response.targetId)
         params.set('modusTargetMode', 'managed-local')
         params.set('modusTargetLabel', response.label)
+        if (requestedVault) params.set('modusVault', requestedVault)
+        else params.delete('modusVault')
       } else if (response.mode === 'remote') {
         params.delete('modusDiscover')
         params.set('modusTarget', response.apiBase)
         params.set('modusTargetId', preferred.mode === 'remote' ? preferred.id : response.targetId)
         params.set('modusTargetMode', 'remote')
         params.set('modusTargetLabel', preferred.mode === 'remote' ? preferred.label : response.label)
+        params.delete('modusVault')
       } else {
         params.delete('modusTarget')
         params.set('modusDiscover', 'external')
         params.set('modusTargetMode', 'external-local')
+        params.delete('modusVault')
       }
       history.replaceState(null, '', `${location.pathname}?${params.toString()}${location.hash}`)
     } catch (cause) {
@@ -221,14 +230,24 @@ async function bootstrap() {
       await renderConnectionError(root, `Backend identity changed for ${preferred.label}. Forget and add it again only if that replacement was intentional.`)
       return
     }
+    const targetMode = params.get('modusTargetMode')
     const connected: SavedBackendTarget = id === 'local'
       ? LOCAL_BACKEND_TARGET
       : id === 'external-local'
         ? EXTERNAL_LOCAL_BACKEND_TARGET
+        : targetMode === 'managed-local' && params.get('modusVault')
+          ? {
+            ...managedVaultBackendTarget(
+              params.get('modusVault')!,
+              params.get('modusTargetLabel') || params.get('modusVault')!,
+            ),
+            url: apiBase,
+            ...(probe.backendId ? { backendId: probe.backendId } : {}),
+          }
         : {
           id,
           label: params.get('modusTargetLabel') || new URL(apiBase).host,
-          mode: params.get('modusTargetMode') === 'remote' ? 'remote' : 'external-local',
+          mode: targetMode === 'remote' ? 'remote' : 'external-local',
           url: apiBase,
           ...(probe.backendId ? { backendId: probe.backendId } : {}),
           ...(preferred.id === id ? { lastConnectedAt: preferred.lastConnectedAt } : {}),

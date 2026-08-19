@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use backend::{BackendSupervisor, BootstrapRequest, BootstrapResponse};
+use backend::{BackendSupervisor, BootstrapRequest, BootstrapResponse, DesktopVaultStatus};
 use deep_link::{DeepLinkTarget, PendingDeepLink};
 use serde::Deserialize;
 use tailscale::DesktopTailscaleStatus;
@@ -87,6 +87,17 @@ async fn desktop_open_vault(
     tauri::async_runtime::spawn_blocking(move || supervisor.ensure_vault(request.slug.as_deref()))
         .await
         .map_err(|error| format!("desktop Vault startup task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_vault_status(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+    request: VaultRequest,
+) -> Result<DesktopVaultStatus, String> {
+    let supervisor = Arc::clone(supervisor.inner());
+    tauri::async_runtime::spawn_blocking(move || supervisor.vault_status(request.slug.as_deref()))
+        .await
+        .map_err(|error| format!("desktop Vault status task failed: {error}"))?
 }
 
 /// Claim a `modus://` link that arrived before the webview was listening.
@@ -190,6 +201,7 @@ fn main() {
             desktop_bootstrap,
             desktop_ui_connected,
             desktop_open_vault,
+            desktop_vault_status,
             desktop_take_pending_deep_link,
             desktop_tailscale_status,
             desktop_set_tailscale_enabled,

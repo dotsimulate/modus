@@ -8,7 +8,7 @@ use std::{
     process::{Child, Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, TryLockError,
     },
     thread,
     time::{Duration, Instant},
@@ -119,6 +119,14 @@ pub struct BootstrapResponse {
     pub tailscale: Option<DesktopTailscaleStatus>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopVaultStatus {
+    pub slug: Option<String>,
+    pub running: bool,
+    pub database_path: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ReadyRecord {
@@ -195,6 +203,13 @@ impl<T> SupervisorMap<T> {
             .map_err(|_| "backend supervisor map lock poisoned".to_string())
     }
 
+    fn get(&self, key: &str) -> Result<Option<Arc<T>>, String> {
+        self.entries
+            .lock()
+            .map(|entries| entries.get(key).cloned())
+            .map_err(|_| "backend supervisor map lock poisoned".to_string())
+    }
+
     #[cfg(test)]
     fn len(&self) -> usize {
         self.entries
@@ -268,6 +283,24 @@ impl BackendSupervisor {
         vault.desired_managed.store(true, Ordering::SeqCst);
         vault.restart_budget_reset.store(true, Ordering::SeqCst);
         vault.ensure_managed()
+    }
+
+    pub fn vault_status(&self, slug: Option<&str>) -> Result<DesktopVaultStatus, String> {
+        let slug = normalize_vault_slug(slug)?;
+        let running = match self.vaults.get(&vault_key(slug.as_deref()))? {
+            Some(vault) => vault.is_running()?,
+            None => false,
+        };
+        let database_path = writable_root(&self.app, slug.as_deref())?
+            .join("data")
+            .join("harness.db")
+            .display()
+            .to_string();
+        Ok(DesktopVaultStatus {
+            slug,
+            running,
+            database_path,
+        })
     }
 
     pub fn mark_ui_connected(&self, instance_id: &str, port: u16) -> Result<(), String> {
@@ -409,6 +442,28 @@ impl VaultBackendSupervisor {
             backend.response.instance_id.as_deref() == Some(instance_id)
                 && backend.response.port == Some(port)
         }))
+    }
+
+    fn is_running(&self) -> Result<bool, String> {
+        let mut owned = match self.owned.try_lock() {
+            Ok(owned) => owned,
+            Err(TryLockError::WouldBlock) => {
+                // A start/stop owns this per-Vault lock. Status inspection must
+                // not wait behind the full startup budget just to render the list.
+                return Ok(true);
+            }
+            Err(TryLockError::Poisoned(_)) => {
+                return Err("backend supervisor lock poisoned".to_string());
+            }
+        };
+        match owned.as_mut() {
+            Some(backend) => backend
+                .child
+                .try_wait()
+                .map(|status| status.is_none())
+                .map_err(display_error("inspect managed backend status")),
+            None => Ok(false),
+        }
     }
 
     fn display_name(&self) -> &str {
@@ -1371,6 +1426,8 @@ mod tests {
     fn supervisor_map_is_lazy_and_reuses_one_slot_per_canonical_key() {
         let map = SupervisorMap::<String>::default();
         assert_eq!(map.len(), 0, "lazy map must not pre-create a backend");
+        assert!(map.get("private").unwrap().is_none());
+        assert_eq!(map.len(), 0, "status lookup must stay non-creating");
         let (first, created) = map
             .get_or_try_insert_with("private".into(), || Ok("first".into()))
             .unwrap();
@@ -1382,6 +1439,7 @@ mod tests {
         assert!(Arc::ptr_eq(&first, &second));
         assert_eq!(map.len(), 1);
         assert_eq!(second.as_str(), "first");
+        assert!(Arc::ptr_eq(&second, &map.get("private").unwrap().unwrap()));
     }
 
     #[test]

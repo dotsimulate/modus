@@ -1,3 +1,9 @@
+import {
+  locationForVaultSwitch,
+  normalizeVaultSlug,
+  vaultTargetId,
+} from "./vault-targets";
+
 export type BackendTargetMode = "managed-local" | "external-local" | "remote" | "browser";
 
 export type BackendTarget = {
@@ -5,6 +11,7 @@ export type BackendTarget = {
   label: string;
   mode: BackendTargetMode;
   apiBase: string;
+  vaultSlug?: string | null;
 };
 
 export type SavedBackendTarget = {
@@ -14,6 +21,7 @@ export type SavedBackendTarget = {
   url?: string;
   lastConnectedAt?: string;
   backendId?: string;
+  vaultSlug?: string | null;
 };
 
 export type BackendProbe = {
@@ -34,8 +42,9 @@ const ACTIVE_TARGET_KEY = "modus:active-backend-target:v1";
 
 export const LOCAL_BACKEND_TARGET: SavedBackendTarget = {
   id: "local",
-  label: "Local Modus",
+  label: "Main",
   mode: "managed-local",
+  vaultSlug: null,
 };
 
 export const EXTERNAL_LOCAL_BACKEND_TARGET: SavedBackendTarget = {
@@ -73,6 +82,16 @@ function sanitizeSavedTarget(value: unknown): SavedBackendTarget | null {
   const record = value as Record<string, unknown>;
   if (record.id === "local") return { ...LOCAL_BACKEND_TARGET };
   if (record.id === "external-local") return { ...EXTERNAL_LOCAL_BACKEND_TARGET };
+  if (record.mode === "managed-local" && typeof record.vaultSlug === "string") {
+    const vaultSlug = normalizeVaultSlug(record.vaultSlug);
+    if (!vaultSlug) return null;
+    return {
+      id: vaultTargetId(vaultSlug),
+      label: typeof record.label === "string" && record.label.trim() ? record.label.trim() : vaultSlug,
+      mode: "managed-local",
+      vaultSlug,
+    };
+  }
   if (record.mode !== "remote" || typeof record.url !== "string") return null;
   try {
     const url = normalizeRemoteBackendUrl(record.url);
@@ -98,15 +117,17 @@ export function loadBackendTargets(storage: Pick<Storage, "getItem"> = localStor
   } catch {
     // A malformed client preference must not strand startup.
   }
-  const remote = stored
+  const saved = stored
     .map(sanitizeSavedTarget)
-    .filter((target): target is SavedBackendTarget => !!target && target.mode === "remote");
-  const deduped = new Map(remote.map((target) => [target.id, target]));
+    .filter((target): target is SavedBackendTarget => !!target && target.id !== "local" && target.id !== "external-local");
+  const deduped = new Map(saved.map((target) => [target.id, target]));
   return [LOCAL_BACKEND_TARGET, EXTERNAL_LOCAL_BACKEND_TARGET, ...deduped.values()];
 }
 
 function persistBackendTargets(targets: SavedBackendTarget[], storage: Pick<Storage, "setItem"> = localStorage): void {
-  storage.setItem(TARGETS_KEY, JSON.stringify(targets.filter((target) => target.mode === "remote")));
+  storage.setItem(TARGETS_KEY, JSON.stringify(targets.filter((target) => (
+    target.mode === "remote" || (target.mode === "managed-local" && !!target.vaultSlug)
+  ))));
 }
 
 export function getActiveBackendTarget(storage: Pick<Storage, "getItem"> = localStorage): SavedBackendTarget {
@@ -132,10 +153,24 @@ export function saveRemoteBackendTarget(
   persistBackendTargets([
     LOCAL_BACKEND_TARGET,
     EXTERNAL_LOCAL_BACKEND_TARGET,
-    ...targets.filter((candidate) => candidate.mode === "remote" && candidate.id !== target.id),
+    ...targets.filter((candidate) => (
+      candidate.id !== target.id
+      && (candidate.mode === "remote" || (candidate.mode === "managed-local" && !!candidate.vaultSlug))
+    )),
     { ...existing, ...target },
   ], storage);
   return { ...existing, ...target };
+}
+
+export function managedVaultBackendTarget(slug: string, label: string): SavedBackendTarget {
+  const vaultSlug = normalizeVaultSlug(slug);
+  if (!vaultSlug) throw new Error(`Invalid or reserved Vault slug "${slug}"`);
+  return {
+    id: vaultTargetId(vaultSlug),
+    label: label.trim() || vaultSlug,
+    mode: "managed-local",
+    vaultSlug,
+  };
 }
 
 export function rememberBackendConnected(
@@ -148,7 +183,10 @@ export function rememberBackendConnected(
   persistBackendTargets([
     LOCAL_BACKEND_TARGET,
     EXTERNAL_LOCAL_BACKEND_TARGET,
-    ...targets.filter((candidate) => candidate.mode === "remote" && candidate.id !== target.id),
+    ...targets.filter((candidate) => (
+      candidate.id !== target.id
+      && (candidate.mode === "remote" || (candidate.mode === "managed-local" && !!candidate.vaultSlug))
+    )),
     { ...target, lastConnectedAt: new Date().toISOString() },
   ], storage);
 }
@@ -164,11 +202,17 @@ export function removeBackendTarget(
 
 export function targetSearchParams(target: SavedBackendTarget, currentSearch = ""): URLSearchParams {
   const params = new URLSearchParams(currentSearch);
-  for (const name of ["modusDiscover", "modusTarget", "modusTargetId", "modusTargetMode", "modusTargetLabel", "cwd"]) {
+  for (const name of ["modusDiscover", "modusTarget", "modusTargetId", "modusTargetMode", "modusTargetLabel", "modusVault", "cwd"]) {
     params.delete(name);
   }
   if (target.id === "local") {
     params.set("modusDiscover", "local");
+  } else if (target.mode === "managed-local" && target.vaultSlug) {
+    if (target.url) params.set("modusTarget", target.url);
+    params.set("modusTargetId", target.id);
+    params.set("modusTargetMode", "managed-local");
+    params.set("modusTargetLabel", target.label);
+    params.set("modusVault", target.vaultSlug);
   } else if (target.id === "external-local") {
     params.set("modusDiscover", "external");
   } else {
@@ -184,7 +228,12 @@ export function activateBackendTarget(target: SavedBackendTarget): void {
   localStorage.setItem(ACTIVE_TARGET_KEY, target.id);
   const params = targetSearchParams(target, window.location.search);
   const query = params.toString();
-  window.location.assign(`${window.location.pathname}${query ? `?${query}` : ""}`);
+  const hash = locationForVaultSwitch(currentTargetId(), target.id, window.location.hash);
+  window.location.assign(`${window.location.pathname}${query ? `?${query}` : ""}${hash}`);
+}
+
+function currentTargetId(): string {
+  return new URLSearchParams(window.location.search).get("modusTargetId") || "local";
 }
 
 export function isDesktopClient(search = window.location.search, origin = window.location.origin): boolean {
