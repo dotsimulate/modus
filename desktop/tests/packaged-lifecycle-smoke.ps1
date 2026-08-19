@@ -1,6 +1,6 @@
 param(
   [string]$Executable = (Join-Path $PSScriptRoot '..\src-tauri\target\release\modus-desktop.exe'),
-  [ValidateSet('managed', 'remote', 'close-hide', 'job-close', 'tailscale')]
+  [ValidateSet('managed', 'remote', 'close-hide', 'job-close', 'tailscale', 'two-vault')]
   [string]$Scenario = 'managed'
 )
 
@@ -70,7 +70,19 @@ $env:MODUS_DESKTOP_SMOKE_QUIT_MS = if ($Scenario -eq 'job-close') {
 } elseif ($Scenario -eq 'close-hide' -or $Scenario -eq 'tailscale') {
   '10000'
 } else {
-  '7000'
+  if ($Scenario -eq 'two-vault') { '12000' } else { '7000' }
+}
+if ($Scenario -eq 'two-vault') {
+  $secondarySlug = 'packaged-two-vault-auto'
+  $registry = @{
+    vaults = @(@{
+      slug = $secondarySlug
+      name = 'Autostart smoke Vault'
+      createdAt = 1
+      autostart = $true
+    })
+  } | ConvertTo-Json -Depth 4
+  [System.IO.File]::WriteAllText((Join-Path $modusTestHome 'vaults.json'), $registry, [System.Text.UTF8Encoding]::new($false))
 }
 if ($Scenario -eq 'tailscale') {
   [System.IO.File]::WriteAllText((Join-Path $config 'remote'), "tailscale`n", [System.Text.UTF8Encoding]::new($false))
@@ -104,12 +116,16 @@ if ($Scenario -eq 'remote') {
   $env:MODUS_DESKTOP_MODE = 'remote'
   $env:MODUS_DESKTOP_TARGET_URL = 'https://modus-packaged-smoke.invalid'
 } else {
-  Remove-Item Env:MODUS_DESKTOP_MODE -ErrorAction SilentlyContinue
+  # The WebView profile is shared with the installed app, so its saved backend
+  # preference is not an isolated test input. Pin lifecycle scenarios to the
+  # managed path instead of inheriting a user's localStorage choice.
+  $env:MODUS_DESKTOP_MODE = 'managed-local'
   Remove-Item Env:MODUS_DESKTOP_TARGET_URL -ErrorAction SilentlyContinue
 }
 
 $desktop = $null
 $state = $null
+$secondaryState = $null
 $closeHidden = $null
 $brainBridgeVerified = $null
 $claudeOpus5Listed = $null
@@ -139,7 +155,36 @@ try {
     $candidateDetails = if ($candidate) { $candidate | ConvertTo-Json -Depth 8 -Compress } else { 'no supervisor state' }
     $backendLogPath = Join-Path $logs 'desktop-backend.log'
     $backendDetails = if (Test-Path -LiteralPath $backendLogPath) { Get-Content -Raw -LiteralPath $backendLogPath } else { 'no backend log' }
-    throw "Desktop did not reach $Scenario readiness. State: $candidateDetails Backend: $backendDetails"
+    $scopedArtifacts = @(Get-ChildItem -LiteralPath $smokeRoot -Recurse -File -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty FullName)
+    $desktop.Refresh()
+    $desktopState = if ($desktop.HasExited) { "exited with $($desktop.ExitCode)" } else { 'still running' }
+    throw "Desktop did not reach $Scenario readiness ($desktopState). State: $candidateDetails Backend: $backendDetails Scoped artifacts: $($scopedArtifacts -join ', ')"
+  }
+
+  if ($Scenario -eq 'two-vault') {
+    $secondaryStatePath = Join-Path $modusTestHome "$secondarySlug\runtime\desktop-supervisor.json"
+    $secondaryDeadline = [DateTime]::UtcNow.AddSeconds(45)
+    while ([DateTime]::UtcNow -lt $secondaryDeadline -and !$desktop.HasExited) {
+      if (Test-Path -LiteralPath $secondaryStatePath) {
+        try {
+          $candidateSecondary = Get-Content -Raw -LiteralPath $secondaryStatePath | ConvertFrom-Json
+          if ($candidateSecondary.mode -eq 'managed-local' -and $candidateSecondary.port -gt 0) {
+            $secondaryState = $candidateSecondary
+            break
+          }
+        } catch {
+          # Each Vault publishes its own record atomically.
+        }
+      }
+      Start-Sleep -Milliseconds 100
+      $desktop.Refresh()
+    }
+    if (!$secondaryState) { throw 'Autostart Vault did not publish its scoped supervisor record' }
+    if ([int]$secondaryState.port -eq [int]$state.port) { throw 'Two Vaults shared one backend port' }
+    if ([int]$secondaryState.backendPid -eq [int]$state.backendPid) { throw 'Two Vaults shared one backend process' }
+    $secondaryHealth = Invoke-RestMethod -Uri ("http://127.0.0.1:$($secondaryState.port)/health") -TimeoutSec 5
+    if ($secondaryHealth.status -ne 'ok') { throw 'Autostart Vault health failed' }
   }
 
   if ($Scenario -eq 'remote') {
@@ -233,14 +278,17 @@ try {
       throw "Managed backend created a visible top-level window: $($backendVisibleWindows -join ', ')"
     }
 
-    $templateProfile = Join-Path $modusTestHome 'profiles\agents\modus-dev.json'
-    if (!(Test-Path -LiteralPath $templateProfile -PathType Leaf)) {
-      throw 'Packaged backend did not seed the tracked default profile into the isolated Modus home'
+    $stagedProfiles = Join-Path (Split-Path -Parent $Executable) 'modus\templates\profiles\agents'
+    $expectedProfileNames = @(Get-ChildItem -LiteralPath $stagedProfiles -File | Select-Object -ExpandProperty Name | Sort-Object)
+    $seededProfiles = Join-Path $modusTestHome 'profiles\agents'
+    $actualProfileNames = @(Get-ChildItem -LiteralPath $seededProfiles -File | Select-Object -ExpandProperty Name | Sort-Object)
+    if (($expectedProfileNames -join ',') -ne ($actualProfileNames -join ',')) {
+      throw "Packaged backend profile seed mismatch: expected=$($expectedProfileNames -join ',') actual=$($actualProfileNames -join ',')"
     }
     $profileRoot = Join-Path $modusTestHome 'profiles'
     $unexpectedProfiles = @(
       Get-ChildItem -LiteralPath $profileRoot -Recurse -File |
-        Where-Object { $_.FullName -ne $templateProfile }
+        Where-Object { $_.DirectoryName -ne $seededProfiles -or $_.Name -notin $expectedProfileNames }
     )
     if ($unexpectedProfiles.Count -gt 0) {
       throw "Packaged backend leaked legacy checkout profile data: $($unexpectedProfiles.FullName -join ', ')"
@@ -322,12 +370,20 @@ public static class ModusWindowSmoke {
     if ($state.backendPid -and (Get-Process -Id ([int]$state.backendPid) -ErrorAction SilentlyContinue)) {
       throw 'Explicit Quit left the managed backend running'
     }
+    if ($secondaryState -and (Get-Process -Id ([int]$secondaryState.backendPid) -ErrorAction SilentlyContinue)) {
+      throw 'Explicit Quit left the autostart Vault backend running'
+    }
   }
 
   if ($state.port) {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, [int]$state.port)
     $listener.Start()
     $listener.Stop()
+  }
+  if ($secondaryState.port) {
+    $secondaryListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, [int]$secondaryState.port)
+    $secondaryListener.Start()
+    $secondaryListener.Stop()
   }
   if ($Scenario -eq 'tailscale') {
     $afterServe = Get-Content -Raw -LiteralPath $env:MODUS_FAKE_TAILSCALE_STATE | ConvertFrom-Json
@@ -361,7 +417,9 @@ public static class ModusWindowSmoke {
     Mode = $state.mode
     DesktopPid = $desktop.Id
     BackendPid = $state.backendPid
+    SecondaryBackendPid = $secondaryState.backendPid
     Port = $state.port
+    SecondaryPort = $secondaryState.port
     UiConnected = $state.uiConnected
     CloseHidden = $closeHidden
     TailscaleState = $state.tailscale.state

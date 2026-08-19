@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     env,
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader, Read, Write},
@@ -97,6 +98,7 @@ fn run_backend_launcher(gate: &Path, bun: &Path, server: &Path) -> i32 {
 pub struct BootstrapRequest {
     pub mode: String,
     pub url: Option<String>,
+    pub vault: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -154,9 +156,63 @@ struct OwnedBackend {
     response: BootstrapResponse,
 }
 
+struct SupervisorMap<T> {
+    entries: Mutex<HashMap<String, Arc<T>>>,
+}
+
+impl<T> Default for SupervisorMap<T> {
+    fn default() -> Self {
+        Self {
+            entries: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl<T> SupervisorMap<T> {
+    fn get_or_try_insert_with(
+        &self,
+        key: String,
+        create: impl FnOnce() -> Result<T, String>,
+    ) -> Result<(Arc<T>, bool), String> {
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| "backend supervisor map lock poisoned".to_string())?;
+        if let Some(existing) = entries.get(&key) {
+            return Ok((Arc::clone(existing), false));
+        }
+        let value = Arc::new(create()?);
+        entries.insert(key, Arc::clone(&value));
+        Ok((value, true))
+    }
+
+    fn values(&self) -> Result<Vec<Arc<T>>, String> {
+        self.entries
+            .lock()
+            .map(|entries| entries.values().cloned().collect())
+            .map_err(|_| "backend supervisor map lock poisoned".to_string())
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries
+            .lock()
+            .map(|entries| entries.len())
+            .unwrap_or(0)
+    }
+}
+
 pub struct BackendSupervisor {
+    app: AppHandle,
+    tailscale: Arc<TailscaleManager>,
+    vaults: SupervisorMap<VaultBackendSupervisor>,
+    initial_vault: Option<String>,
+}
+
+struct VaultBackendSupervisor {
+    slug: Option<String>,
     paths: BackendPaths,
-    tailscale: TailscaleManager,
+    tailscale: Option<Arc<TailscaleManager>>,
     owned: Mutex<Option<OwnedBackend>>,
     runtime_state: PathBuf,
     desired_managed: AtomicBool,
@@ -165,13 +221,126 @@ pub struct BackendSupervisor {
 
 impl BackendSupervisor {
     pub fn new(app: &AppHandle) -> Result<Self, String> {
-        let paths = BackendPaths::resolve(app)?;
-        let tailscale = TailscaleManager::resolve(app)?;
+        let initial_vault = current_vault_slug()?;
+        let tailscale = Arc::new(TailscaleManager::resolve(app)?);
+        Ok(Self {
+            app: app.clone(),
+            tailscale,
+            vaults: SupervisorMap::default(),
+            initial_vault,
+        })
+    }
+
+    fn vault(&self, slug: Option<String>) -> Result<Arc<VaultBackendSupervisor>, String> {
+        let key = vault_key(slug.as_deref());
+        let is_default = slug.is_none();
+        let (vault, created) = self.vaults.get_or_try_insert_with(key, || {
+            VaultBackendSupervisor::new(
+                &self.app,
+                slug,
+                is_default.then(|| Arc::clone(&self.tailscale)),
+                self.initial_vault.as_deref(),
+            )
+        })?;
+        if created {
+            vault.start_monitor(self.app.clone());
+        }
+        Ok(vault)
+    }
+
+    fn requested_vault(&self, value: Option<&str>) -> Result<Option<String>, String> {
+        match value {
+            Some(value) => normalize_vault_slug(Some(value)),
+            None => Ok(self.initial_vault.clone()),
+        }
+    }
+
+    pub fn bootstrap(&self, request: BootstrapRequest) -> Result<BootstrapResponse, String> {
+        let slug = self.requested_vault(request.vault.as_deref())?;
+        self.vault(slug)?.bootstrap(request)
+    }
+
+    pub fn ensure_vault(&self, slug: Option<&str>) -> Result<BootstrapResponse, String> {
+        let slug = normalize_vault_slug(slug)?;
+        let vault = self.vault(slug)?;
+        vault.desired_managed.store(true, Ordering::SeqCst);
+        vault.restart_budget_reset.store(true, Ordering::SeqCst);
+        vault.ensure_managed()
+    }
+
+    pub fn mark_ui_connected(&self, instance_id: &str, port: u16) -> Result<(), String> {
+        for vault in self.vaults.values()? {
+            if vault.matches(instance_id, port)? {
+                return vault.mark_ui_connected(instance_id, port);
+            }
+        }
+        Err("the UI reported a backend other than a managed instance".into())
+    }
+
+    pub fn stop_owned(&self) -> Result<(), String> {
+        let mut errors = Vec::new();
+        for vault in self.vaults.values()? {
+            if let Err(error) = vault.stop_owned() {
+                errors.push(format!("{}: {error}", vault.display_name()));
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+
+    pub fn tailscale_status(&self) -> Result<DesktopTailscaleStatus, String> {
+        self.vault(None)?.tailscale_status()
+    }
+
+    pub fn set_tailscale_enabled(&self, enabled: bool) -> Result<DesktopTailscaleStatus, String> {
+        self.vault(None)?.set_tailscale_enabled(enabled)
+    }
+
+    pub fn clear_runtime_state(&self) {
+        if let Ok(vaults) = self.vaults.values() {
+            for vault in vaults {
+                vault.clear_runtime_state();
+            }
+        }
+    }
+
+    pub fn start_monitor(&self, _app: AppHandle) {
+        for slug in read_autostart_vaults(&self.app) {
+            match self.vault(Some(slug.clone())) {
+                Ok(vault) => {
+                    vault.desired_managed.store(true, Ordering::SeqCst);
+                    vault.restart_budget_reset.store(true, Ordering::SeqCst);
+                    thread::spawn(move || {
+                        if let Err(error) = vault.ensure_managed() {
+                            eprintln!("[desktop] autostart Vault {slug} failed: {error}");
+                        }
+                    });
+                }
+                Err(error) => {
+                    eprintln!("[desktop] could not prepare autostart Vault {slug}: {error}")
+                }
+            }
+        }
+    }
+}
+
+impl VaultBackendSupervisor {
+    fn new(
+        app: &AppHandle,
+        slug: Option<String>,
+        tailscale: Option<Arc<TailscaleManager>>,
+        initial_vault: Option<&str>,
+    ) -> Result<Self, String> {
+        let paths = BackendPaths::resolve(app, slug.as_deref(), initial_vault)?;
         fs::create_dir_all(&paths.runtime)
             .map_err(display_error("create desktop runtime directory"))?;
         fs::create_dir_all(&paths.logs).map_err(display_error("create desktop logs directory"))?;
         let runtime_state = paths.runtime.join("desktop-supervisor.json");
         Ok(Self {
+            slug,
             paths,
             tailscale,
             owned: Mutex::new(None),
@@ -181,7 +350,7 @@ impl BackendSupervisor {
         })
     }
 
-    pub fn bootstrap(&self, request: BootstrapRequest) -> Result<BootstrapResponse, String> {
+    fn bootstrap(&self, request: BootstrapRequest) -> Result<BootstrapResponse, String> {
         match request.mode.as_str() {
             "remote" => {
                 self.desired_managed.store(false, Ordering::SeqCst);
@@ -229,7 +398,22 @@ impl BackendSupervisor {
         }
     }
 
-    pub fn mark_ui_connected(&self, instance_id: &str, port: u16) -> Result<(), String> {
+    fn matches(&self, instance_id: &str, port: u16) -> Result<bool, String> {
+        let owned = self
+            .owned
+            .lock()
+            .map_err(|_| "backend supervisor lock poisoned".to_string())?;
+        Ok(owned.as_ref().is_some_and(|backend| {
+            backend.response.instance_id.as_deref() == Some(instance_id)
+                && backend.response.port == Some(port)
+        }))
+    }
+
+    fn display_name(&self) -> &str {
+        self.slug.as_deref().unwrap_or("Main")
+    }
+
+    fn mark_ui_connected(&self, instance_id: &str, port: u16) -> Result<(), String> {
         let owned = self
             .owned
             .lock()
@@ -245,7 +429,7 @@ impl BackendSupervisor {
         self.write_runtime_record(&backend.response, true)
     }
 
-    pub fn stop_owned(&self) -> Result<(), String> {
+    fn stop_owned(&self) -> Result<(), String> {
         self.desired_managed.store(false, Ordering::SeqCst);
         let mut owned = self
             .owned
@@ -260,7 +444,10 @@ impl BackendSupervisor {
             .port
             .expect("managed backend response has a port");
         let instance_id = backend.response.instance_id.as_deref().unwrap_or_default();
-        let route_error = self.tailscale.release(port, instance_id).err();
+        let route_error = self
+            .tailscale
+            .as_ref()
+            .and_then(|tailscale| tailscale.release(port, instance_id).err());
         let token = backend.response.token.as_deref().unwrap_or_default();
         let _ = request_local(port, "POST", "/api/internal/shutdown", Some(token));
 
@@ -319,7 +506,11 @@ impl BackendSupervisor {
         Ok(())
     }
 
-    pub fn tailscale_status(&self) -> Result<DesktopTailscaleStatus, String> {
+    fn tailscale_status(&self) -> Result<DesktopTailscaleStatus, String> {
+        let tailscale = self
+            .tailscale
+            .as_ref()
+            .ok_or_else(|| "only Main can own Tailnet access".to_string())?;
         let owned = self
             .owned
             .lock()
@@ -327,10 +518,14 @@ impl BackendSupervisor {
         Ok(owned
             .as_ref()
             .and_then(|backend| backend.response.tailscale.clone())
-            .unwrap_or_else(|| self.tailscale.configured_status()))
+            .unwrap_or_else(|| tailscale.configured_status()))
     }
 
-    pub fn set_tailscale_enabled(&self, enabled: bool) -> Result<DesktopTailscaleStatus, String> {
+    fn set_tailscale_enabled(&self, enabled: bool) -> Result<DesktopTailscaleStatus, String> {
+        let tailscale = self
+            .tailscale
+            .as_ref()
+            .ok_or_else(|| "only Main can own Tailnet access".to_string())?;
         let mut owned = self
             .owned
             .lock()
@@ -342,10 +537,10 @@ impl BackendSupervisor {
                     .port
                     .expect("managed backend response has a port");
                 let instance_id = backend.response.instance_id.as_deref().unwrap_or_default();
-                self.tailscale.release(port, instance_id)?;
+                tailscale.release(port, instance_id)?;
             }
-            self.tailscale.set_enabled(false)?;
-            let status = self.tailscale.configured_status();
+            tailscale.set_enabled(false)?;
+            let status = tailscale.configured_status();
             if let Some(backend) = owned.as_mut() {
                 backend.response.tailscale = Some(status.clone());
                 self.write_runtime_record(&backend.response, true)?;
@@ -353,28 +548,28 @@ impl BackendSupervisor {
             return Ok(status);
         }
 
-        self.tailscale.set_enabled(true)?;
+        tailscale.set_enabled(true)?;
         let status = if let Some(backend) = owned.as_mut() {
             let port = backend
                 .response
                 .port
                 .expect("managed backend response has a port");
             let instance_id = backend.response.instance_id.as_deref().unwrap_or_default();
-            let status = self.tailscale.reconcile(port, instance_id);
+            let status = tailscale.reconcile(port, instance_id);
             backend.response.tailscale = Some(status.clone());
             self.write_runtime_record(&backend.response, true)?;
             status
         } else {
-            self.tailscale.configured_status()
+            tailscale.configured_status()
         };
         Ok(status)
     }
 
-    pub fn clear_runtime_state(&self) {
+    fn clear_runtime_state(&self) {
         let _ = fs::remove_file(&self.runtime_state);
     }
 
-    pub fn start_monitor(self: &Arc<Self>, app: AppHandle) {
+    fn start_monitor(self: &Arc<Self>, app: AppHandle) {
         let supervisor = Arc::downgrade(self);
         thread::spawn(move || {
             let mut restart_attempts = 0usize;
@@ -431,8 +626,12 @@ impl BackendSupervisor {
                     stable_since = None;
                     let port = backend.response.port.unwrap_or_default();
                     let instance_id = backend.response.instance_id.as_deref().unwrap_or_default();
-                    if let Err(error) = supervisor.tailscale.release(port, instance_id) {
-                        eprintln!("[desktop] Tailnet cleanup after backend crash failed: {error}");
+                    if let Some(tailscale) = supervisor.tailscale.as_ref() {
+                        if let Err(error) = tailscale.release(port, instance_id) {
+                            eprintln!(
+                                "[desktop] Tailnet cleanup after backend crash failed: {error}"
+                            );
+                        }
                     }
                     let _ = backend.job.terminate(1);
                     let _ = backend.child.wait();
@@ -507,14 +706,19 @@ impl BackendSupervisor {
                     .port
                     .expect("managed backend response has a port");
                 let instance_id = existing.response.instance_id.as_deref().unwrap_or_default();
-                existing.response.tailscale = Some(self.tailscale.reconcile(port, instance_id));
+                existing.response.tailscale = self
+                    .tailscale
+                    .as_ref()
+                    .map(|tailscale| tailscale.reconcile(port, instance_id));
                 return Ok(existing.response.clone());
             }
             if let Some(mut stale) = owned.take() {
                 let port = stale.response.port.unwrap_or_default();
                 let instance_id = stale.response.instance_id.as_deref().unwrap_or_default();
-                if let Err(error) = self.tailscale.release(port, instance_id) {
-                    eprintln!("[desktop] stale Tailnet route cleanup failed: {error}");
+                if let Some(tailscale) = self.tailscale.as_ref() {
+                    if let Err(error) = tailscale.release(port, instance_id) {
+                        eprintln!("[desktop] stale Tailnet route cleanup failed: {error}");
+                    }
                 }
                 let _ = stale.job.terminate(1);
                 let _ = stale.child.wait();
@@ -572,6 +776,11 @@ impl BackendSupervisor {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(slug) = self.slug.as_deref() {
+            command.env("MODUS_INSTANCE", slug);
+        } else {
+            command.env_remove("MODUS_INSTANCE");
+        }
 
         #[cfg(windows)]
         {
@@ -665,18 +874,29 @@ impl BackendSupervisor {
             ));
         }
 
-        let tailscale = self.tailscale.reconcile(ready.port, &ready.instance_id);
+        let tailscale = self
+            .tailscale
+            .as_ref()
+            .map(|tailscale| tailscale.reconcile(ready.port, &ready.instance_id));
         let response = BootstrapResponse {
             mode: "managed-local".into(),
             api_base: format!("http://127.0.0.1:{}", ready.port),
-            target_id: "local".into(),
-            label: format!("Local Modus · {}", ready.port),
+            target_id: self
+                .slug
+                .as_ref()
+                .map(|slug| format!("vault:{slug}"))
+                .unwrap_or_else(|| "local".into()),
+            label: self
+                .slug
+                .as_ref()
+                .map(|slug| format!("{slug} · {}", ready.port))
+                .unwrap_or_else(|| format!("Main · {}", ready.port)),
             token: Some(token),
             instance_id: Some(ready.instance_id),
             version: ready.version,
             backend_pid: Some(ready.pid),
             port: Some(ready.port),
-            tailscale: Some(tailscale),
+            tailscale,
         };
         self.write_runtime_record(&response, false)?;
         *owned = Some(OwnedBackend {
@@ -716,7 +936,7 @@ impl BackendSupervisor {
     }
 }
 
-impl Drop for BackendSupervisor {
+impl Drop for VaultBackendSupervisor {
     fn drop(&mut self) {
         if let Ok(owned) = self.owned.get_mut() {
             if let Some(backend) = owned.as_ref() {
@@ -728,7 +948,11 @@ impl Drop for BackendSupervisor {
 }
 
 impl BackendPaths {
-    fn resolve(app: &AppHandle) -> Result<Self, String> {
+    fn resolve(
+        app: &AppHandle,
+        slug: Option<&str>,
+        initial_vault: Option<&str>,
+    ) -> Result<Self, String> {
         let resource_root = env::var_os("MODUS_DESKTOP_RESOURCES_DIR")
             .map(PathBuf::from)
             .unwrap_or(
@@ -741,12 +965,15 @@ impl BackendPaths {
             .map(PathBuf::from)
             .unwrap_or_else(|| resource_root.join("server.js"));
         let bun = resolve_bun(app)?;
-        let writable_root = writable_root(app)?;
-        let runtime = env::var_os("MODUS_RUNTIME_DIR")
-            .map(PathBuf::from)
+        let writable_root = writable_root(app, slug)?;
+        let selected_at_launch = slug == initial_vault;
+        let runtime = selected_at_launch
+            .then(|| env::var_os("MODUS_RUNTIME_DIR").map(PathBuf::from))
+            .flatten()
             .unwrap_or_else(|| writable_root.join("runtime"));
-        let logs = env::var_os("MODUS_LOGS_DIR")
-            .map(PathBuf::from)
+        let logs = selected_at_launch
+            .then(|| env::var_os("MODUS_LOGS_DIR").map(PathBuf::from))
+            .flatten()
             .unwrap_or_else(|| writable_root.join("logs"));
         Ok(Self {
             bun,
@@ -771,24 +998,82 @@ impl BackendPaths {
     }
 }
 
-fn writable_root(app: &AppHandle) -> Result<PathBuf, String> {
-    let home = env::var_os("MODUS_HOME").map(PathBuf::from).unwrap_or(
+fn writable_root(app: &AppHandle, slug: Option<&str>) -> Result<PathBuf, String> {
+    let home = modus_home(app)?;
+    Ok(match slug {
+        Some(slug) => home.join(slug),
+        None => home,
+    })
+}
+
+fn modus_home(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(env::var_os("MODUS_HOME").map(PathBuf::from).unwrap_or(
         app.path()
             .home_dir()
             .map_err(|error| error.to_string())?
             .join(".modus"),
-    );
-    let instance = match env::var("MODUS_INSTANCE") {
-        Ok(value) => Some(value),
-        Err(env::VarError::NotPresent) => None,
-        Err(env::VarError::NotUnicode(_)) => {
-            return Err("MODUS_INSTANCE must be valid Unicode".into())
-        }
+    ))
+}
+
+fn read_autostart_vaults(app: &AppHandle) -> Vec<String> {
+    let Ok(home) = modus_home(app) else {
+        return Vec::new();
     };
-    Ok(match normalize_vault_slug(instance.as_deref())? {
-        Some(slug) => home.join(slug),
-        None => home,
-    })
+    let path = home.join("vaults.json");
+    let Ok(bytes) = fs::read(&path) else {
+        return Vec::new();
+    };
+    match autostart_vaults_from_json(&bytes) {
+        Ok(slugs) => slugs,
+        Err(error) => {
+            eprintln!(
+                "[desktop] could not read Vault autostart registry {}: {error}",
+                path.display()
+            );
+            Vec::new()
+        }
+    }
+}
+
+fn autostart_vaults_from_json(bytes: &[u8]) -> Result<Vec<String>, String> {
+    let value: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+    let entries = value
+        .get("vaults")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "registry must contain a vaults array".to_string())?;
+    let mut slugs = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for entry in entries {
+        let object = entry
+            .as_object()
+            .ok_or_else(|| "registry contains a non-object Vault entry".to_string())?;
+        let raw_slug = object
+            .get("slug")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| "registry Vault entry is missing a slug".to_string())?;
+        let slug = normalize_vault_slug(Some(raw_slug))?
+            .ok_or_else(|| "registry cannot contain the default Vault".to_string())?;
+        if !seen.insert(slug.clone()) {
+            return Err(format!("registry contains duplicate Vault {slug}"));
+        }
+        if object.get("autostart").and_then(serde_json::Value::as_bool) == Some(true) {
+            slugs.push(slug);
+        }
+    }
+    Ok(slugs)
+}
+
+fn current_vault_slug() -> Result<Option<String>, String> {
+    match env::var("MODUS_INSTANCE") {
+        Ok(value) => normalize_vault_slug(Some(&value)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => Err("MODUS_INSTANCE must be valid Unicode".into()),
+    }
+}
+
+fn vault_key(slug: Option<&str>) -> String {
+    slug.unwrap_or("default").to_string()
 }
 
 fn normalize_vault_slug(value: Option<&str>) -> Result<Option<String>, String> {
@@ -943,7 +1228,11 @@ fn display_error(context: &'static str) -> impl FnOnce(std::io::Error) -> String
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_vault_slug, validated_remote_url};
+    use std::sync::Arc;
+
+    use super::{
+        autostart_vaults_from_json, normalize_vault_slug, validated_remote_url, SupervisorMap,
+    };
 
     #[cfg(windows)]
     use std::{fs, path::PathBuf, thread, time::Duration};
@@ -1001,6 +1290,43 @@ mod tests {
                 "accepted {invalid}"
             );
         }
+    }
+
+    #[test]
+    fn supervisor_map_is_lazy_and_reuses_one_slot_per_canonical_key() {
+        let map = SupervisorMap::<String>::default();
+        assert_eq!(map.len(), 0, "lazy map must not pre-create a backend");
+        let (first, created) = map
+            .get_or_try_insert_with("private".into(), || Ok("first".into()))
+            .unwrap();
+        assert!(created);
+        let (second, created) = map
+            .get_or_try_insert_with("private".into(), || Ok("second".into()))
+            .unwrap();
+        assert!(!created);
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(map.len(), 1);
+        assert_eq!(second.as_str(), "first");
+    }
+
+    #[test]
+    fn autostart_registry_selects_only_valid_enabled_named_vaults() {
+        let slugs = autostart_vaults_from_json(
+            br#"{"vaults":[
+              {"slug":"Private","createdAt":1,"autostart":true},
+              {"slug":"cold","createdAt":2,"autostart":false},
+              {"slug":"plain","createdAt":3}
+            ]}"#,
+        )
+        .unwrap();
+        assert_eq!(slugs, vec!["private"]);
+        assert!(autostart_vaults_from_json(
+            br#"{"vaults":[{"slug":"Private","createdAt":1},{"slug":"private","createdAt":2}]}"#
+        )
+        .is_err());
+        assert!(
+            autostart_vaults_from_json(br#"{"vaults":[{"slug":"..","createdAt":1}]}"#).is_err()
+        );
     }
 
     #[cfg(windows)]
