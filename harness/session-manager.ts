@@ -307,7 +307,9 @@ export type ActiveSession = {
   _provider: SessionProvider;
   /** Provider-specific state (opaque to session-manager) */
   _providerState: unknown;
-  /** Live config overrides set by the user via ConfigBar */
+  /** Options that must survive when a provider rebuilds its next-turn client.
+   *  Most are live ConfigBar overrides; MCP and skill scope are immutable
+   *  session capabilities whose credentials must not disappear after turn one. */
   _configOverrides: {
     provider?: string;
     effort?: string;
@@ -318,6 +320,8 @@ export type ActiveSession = {
     providerControls?: Record<string, unknown>;
     loadProjectSettings?: boolean;
     additionalDirectories?: string[];
+    mcpServers?: Record<string, unknown>;
+    skillScopeKey?: string;
   };
 };
 
@@ -443,6 +447,12 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
   // session CWD — which may be a profile-scoped subfolder (e.g. td_navigator/).
   const profileLookupCwd = session.projectRoot ?? opts.cwd ?? session.cwd;
   const profile = opts.profile ? getProfile(opts.profile, profileLookupCwd) : undefined;
+  // Providers keep this context in async drains and process-close handlers. A
+  // reap removes the session before disposing the provider, so a late callback
+  // must not persist an error/status at reap time and make an old conversation
+  // look newly active. Object identity also rejects a stale callback after the
+  // same durable session id has been resumed into a new ActiveSession object.
+  const isCurrentProviderSession = () => activeSessions.get(session.sessionId) === session;
 
   return {
     session,
@@ -450,10 +460,12 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     profile,
 
     emitEvent(event: any) {
+      if (!isCurrentProviderSession()) return;
       persistAndBroadcastEvent(session, event);
     },
 
     broadcastEvent(event: any) {
+      if (!isCurrentProviderSession()) return;
       // Persistence is decided by event type, not by which method was called;
       // see event-persistence.ts for why `error` is promoted here rather than
       // at each of the provider call sites that emit it.
@@ -474,10 +486,12 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     },
 
     notifyConfigChange(patch: Record<string, unknown>) {
+      if (!isCurrentProviderSession()) return;
       updateSessionConfig(session.sessionId, patch);
     },
 
     rekeySession(newId: string) {
+      if (!isCurrentProviderSession()) return;
       const oldId = session.sessionId;
       activeSessions.delete(oldId);
       session.sessionId = newId;
@@ -491,11 +505,13 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
     },
 
     setProviderSessionId(providerSessionId: string) {
+      if (!isCurrentProviderSession()) return;
       session.providerSessionId = providerSessionId;
       updateProviderSessionId(session.sessionId, providerSessionId);
     },
 
     updateSessionDb(updates) {
+      if (!isCurrentProviderSession()) return;
       const completing = updates.status === "idle" || updates.status === "done";
       const terminal = completing || updates.status === "error";
       const persistedMessageCount = updates.messageCount ?? (
@@ -1210,6 +1226,8 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       toolStates: opts.toolStates,
       providerControls: opts.providerControls,
       loadProjectSettings: opts.loadProjectSettings,
+      mcpServers: opts.mcpServers,
+      skillScopeKey: opts.skillScopeKey,
       additionalDirectories: opts.additionalDirectories !== undefined
         ? (normalizeAdditionalDirectories(resolvedCwd, opts.additionalDirectories) ?? [])
         : undefined,

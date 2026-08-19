@@ -15,6 +15,7 @@ import {
 const profilesSource = readFileSync(join(import.meta.dir, "..", "profiles.ts"), "utf8");
 const sessionManagerSource = readFileSync(join(import.meta.dir, "..", "session-manager.ts"), "utf8");
 const actionRunnerSource = readFileSync(join(import.meta.dir, "..", "action-runner.ts"), "utf8");
+const codexSource = readFileSync(join(import.meta.dir, "..", "providers", "codex.ts"), "utf8");
 
 function functionBody(source: string, name: string): string {
   const start = source.indexOf(`function ${name}`);
@@ -106,5 +107,23 @@ describe("session-scoped Modus MCP credentials", () => {
       expect(executableSource.indexOf("mintSessionMcpCredential")).toBeLessThan(executableSource.indexOf("startSession("));
       expect(executableSource.indexOf("bindSessionMcpCredential")).toBeGreaterThan(executableSource.indexOf("waitForProviderInit"));
     }
+  });
+
+  test("follow-up provider contexts retain the scoped MCP endpoint and skill scope", () => {
+    const start = functionBody(sessionManagerSource, "startSession");
+    expect(start).toContain("mcpServers: opts.mcpServers");
+    expect(start).toContain("skillScopeKey: opts.skillScopeKey");
+
+    // Ordinary follow-up, steering, and queued-resume paths all rebuild a
+    // TurnContext from the retained object.
+    expect(sessionManagerSource.match(/\.\.\.session\._configOverrides/g)).toHaveLength(3);
+  });
+
+  test("Codex makes an authenticated built-in Modus MCP failure fatal", () => {
+    const start = codexSource.indexOf("function buildRemoteCodexMcpServer");
+    const end = codexSource.indexOf("\n/**", start);
+    const remoteBuilder = codexSource.slice(start, end);
+    expect(remoteBuilder).toContain('name === "modus"');
+    expect(remoteBuilder).toContain("serverConfig.required = true");
   });
 });

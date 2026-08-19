@@ -141,6 +141,17 @@ db.run(`CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, 
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(archived, last_message_at DESC)`);
 db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_cwd ON sessions(cwd, archived, last_message_at DESC)`);
 
+// Older builds refreshed last_message_at while appending a reap notice (and a
+// late provider callback could do the same). Repair those already-persisted
+// ordering keys now that both write paths are fixed. This is deliberately
+// idempotent and leaves updated_at alone: startup maintenance is not activity.
+try {
+  const repaired = repairReapedSessionActivity();
+  if (repaired > 0) console.log(`[sessions] repaired ${repaired} reap-time activity timestamp(s)`);
+} catch (error) {
+  console.warn(`[sessions] could not repair reap-time activity timestamps: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 // ── Session Artifacts (media/files attached to a specific session turn) ──
 db.run(`
   CREATE TABLE IF NOT EXISTS session_artifacts (
@@ -1377,6 +1388,47 @@ export function syncSessionMessageCount(
       .run({ $sid: sessionId, $count: count, $now: now, $activity_at: opts?.activityAt ?? now });
   }
   return count;
+}
+
+/**
+ * Repair session ordering timestamps written by the pre-2026-08-18 reap path.
+ *
+ * A candidate must have a durable reclaim event and a last_message_at inside
+ * that event's one-minute teardown window, newer than every real user or
+ * assistant message. That narrow shape distinguishes the historical write bug
+ * from a conversation that legitimately resumed after an earlier reclaim.
+ */
+export function repairReapedSessionActivity(): number {
+  const candidates = db.prepare(`
+    WITH latest_reap AS (
+      SELECT session_id, MAX(created_at) AS reclaimed_at
+      FROM events
+      WHERE type = 'system' AND subtype = 'reclaimed'
+      GROUP BY session_id
+    ), conversation AS (
+      SELECT session_id, MAX(created_at) AS activity_at
+      FROM messages
+      WHERE role IN ('user', 'assistant')
+      GROUP BY session_id
+    )
+    SELECT
+      s.id,
+      COALESCE(conversation.activity_at, s.created_at) AS activity_at
+    FROM sessions s
+    JOIN latest_reap ON latest_reap.session_id = s.id
+    LEFT JOIN conversation ON conversation.session_id = s.id
+    WHERE s.last_message_at > COALESCE(conversation.activity_at, s.created_at)
+      AND s.last_message_at >= latest_reap.reclaimed_at - 60000
+      AND s.last_message_at <= latest_reap.reclaimed_at + 60000
+  `).all() as Array<{ id: string; activity_at: number }>;
+  if (candidates.length === 0) return 0;
+
+  const update = db.prepare(`UPDATE sessions SET last_message_at = $activity_at WHERE id = $id`);
+  const apply = db.transaction((rows: Array<{ id: string; activity_at: number }>) => {
+    for (const row of rows) update.run({ $id: row.id, $activity_at: row.activity_at });
+  });
+  apply(candidates);
+  return candidates.length;
 }
 
 function parseToolCalls(raw: string | null): TurnContent["toolCalls"] | undefined {

@@ -425,6 +425,11 @@ function buildRemoteCodexMcpServer(
   const authHeader = Object.entries(config.headers ?? {}).find(
     ([key, value]) => key.toLowerCase() === "authorization" && /^Bearer\s+/i.test(value),
   );
+  // The built-in bridge is a core Modus capability, not an optional external
+  // integration. If its scoped credential or endpoint is ever lost on a
+  // follow-up/resume, fail the Codex turn visibly instead of silently removing
+  // modus_submit from the tool roster.
+  if (name === "modus" && authHeader) serverConfig.required = true;
   if (authHeader) {
     const envName = codexBearerEnvName(name);
     env[envName] = authHeader[1].replace(/^Bearer\s+/i, "");
