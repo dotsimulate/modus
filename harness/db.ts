@@ -9,6 +9,7 @@ import {
 } from "./session-history";
 import { hasTurnStats, turnMetaFromResultEvent, type TurnMeta } from "./turn-meta";
 import { buildProjectCwdScope } from "./project-cwd-scope";
+import { runStartupMaintenanceTasks } from "./startup-maintenance";
 
 const DB_PATH = resolveDatabasePath("harness.db");
 const db = new Database(DB_PATH);
@@ -3788,57 +3789,69 @@ export function getDeepAnalytics(
 const runStartupMaintenance = process.env.NODE_ENV !== "test"
   && process.env.MODUS_SKIP_STARTUP_MAINTENANCE !== "1";
 if (runStartupMaintenance) {
-try {
-  // Inject a terminal `system/interrupted` event for any orphaned session whose
-  // event log doesn't already end in a terminal event. Without this, the UI
-  // subscribes, sees an in-progress assistant turn with no closer, and freezes
-  // waiting on SSE for a stream that will never come ("poisoned" sessions).
-  const orphanedSessions = db.query<{ id: string }, []>(
-    `SELECT id FROM sessions WHERE status IN ('running', 'starting', 'interrupting', 'idle', 'paused')`
-  ).all();
-  let injected = 0;
-  for (const { id } of orphanedSessions) {
-    const last = db.query<{ type: string; subtype: string | null; seq: number }, [string]>(
-      `SELECT type, subtype, seq FROM events WHERE session_id = ? ORDER BY seq DESC LIMIT 1`
-    ).get(id);
-    if (!last) continue;
-    const isTerminal =
-      last.type === "result" ||
-      last.type === "error" ||
-      (last.type === "system" && last.subtype === "interrupted");
-    if (isTerminal) continue;
-    const nextSeq = last.seq + 1;
-    const payload = JSON.stringify({
-      type: "system",
-      subtype: "interrupted",
-      reason: "harness restarted while session was active",
-    });
-    db.run(
-      `INSERT INTO events (session_id, seq, type, subtype, data, created_at) VALUES (?, ?, 'system', 'interrupted', ?, ?)`,
-      [id, nextSeq, payload, Date.now()]
-    );
-    injected++;
-  }
-  if (injected > 0) {
-    console.log(`[db] Injected synthetic interrupted event for ${injected} orphaned session(s)`);
-  }
-  db.run(`UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'interrupting', 'idle', 'error')`);
-  // Mark orphaned action runs as error (harness crashed mid-run)
-  const staleRuns = db.run(`UPDATE action_runs SET status = 'error', error = 'harness crashed during run', completed_at = ${Date.now()} WHERE status = 'running'`);
-  if (staleRuns.changes > 0) {
-    console.log(`[db] Cleaned up ${staleRuns.changes} orphaned action run(s) from previous crash`);
-  }
-  // Mark orphaned executions as done (harness crashed mid-execution)
-  const staleExecs = db.run(`UPDATE action_executions SET status = 'done', completed_at = ${Date.now()} WHERE status = 'running'`);
-  if (staleExecs.changes > 0) {
-    console.log(`[db] Cleaned up ${staleExecs.changes} orphaned execution(s) from previous crash`);
-  }
-} catch (e) {
-  console.warn(`[db] Startup cleanup skipped (db may be locked by another process): ${e}`);
+  runStartupMaintenanceTasks([
+    {
+      label: "cleanup",
+      run: () => {
+        // Inject a terminal `system/interrupted` event for any orphaned session whose
+        // event log doesn't already end in a terminal event. Without this, the UI
+        // subscribes, sees an in-progress assistant turn with no closer, and freezes
+        // waiting on SSE for a stream that will never come ("poisoned" sessions).
+        const orphanedSessions = db.query<{ id: string }, []>(
+          `SELECT id FROM sessions WHERE status IN ('running', 'starting', 'interrupting', 'idle', 'paused')`,
+        ).all();
+        let injected = 0;
+        for (const { id } of orphanedSessions) {
+          const last = db.query<{ type: string; subtype: string | null; seq: number }, [string]>(
+            `SELECT type, subtype, seq FROM events WHERE session_id = ? ORDER BY seq DESC LIMIT 1`,
+          ).get(id);
+          if (!last) continue;
+          const isTerminal =
+            last.type === "result" ||
+            last.type === "error" ||
+            (last.type === "system" && last.subtype === "interrupted");
+          if (isTerminal) continue;
+          const nextSeq = last.seq + 1;
+          const payload = JSON.stringify({
+            type: "system",
+            subtype: "interrupted",
+            reason: "harness restarted while session was active",
+          });
+          db.run(
+            `INSERT INTO events (session_id, seq, type, subtype, data, created_at) VALUES (?, ?, 'system', 'interrupted', ?, ?)`,
+            [id, nextSeq, payload, Date.now()],
+          );
+          injected++;
+        }
+        if (injected > 0) {
+          console.log(`[db] Injected synthetic interrupted event for ${injected} orphaned session(s)`);
+        }
+        db.run(
+          `UPDATE sessions SET status = 'done' WHERE status IN ('running', 'starting', 'interrupting', 'idle', 'error')`,
+        );
+        // Mark orphaned action runs as error (harness crashed mid-run)
+        const staleRuns = db.run(
+          `UPDATE action_runs SET status = 'error', error = 'harness crashed during run', completed_at = ${Date.now()} WHERE status = 'running'`,
+        );
+        if (staleRuns.changes > 0) {
+          console.log(`[db] Cleaned up ${staleRuns.changes} orphaned action run(s) from previous crash`);
+        }
+        // Mark orphaned executions as done (harness crashed mid-execution)
+        const staleExecs = db.run(
+          `UPDATE action_executions SET status = 'done', completed_at = ${Date.now()} WHERE status = 'running'`,
+        );
+        if (staleExecs.changes > 0) {
+          console.log(`[db] Cleaned up ${staleExecs.changes} orphaned execution(s) from previous crash`);
+        }
+      },
+    },
+    {
+      label: "event pruning",
+      run: () => {
+        pruneAllSessionEvents();
+      },
+    },
+  ]);
 }
-}
-
-// Prune stream events from all unpruned completed sessions
-if (runStartupMaintenance) pruneAllSessionEvents();
 
 export { db };
