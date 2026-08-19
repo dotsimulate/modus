@@ -37,6 +37,12 @@ struct UiConnectedRequest {
     port: u16,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultRequest {
+    slug: Option<String>,
+}
+
 #[tauri::command]
 async fn desktop_bootstrap(
     app: AppHandle,
@@ -70,6 +76,17 @@ async fn desktop_ui_connected(
     })
     .await
     .map_err(|error| format!("desktop UI acknowledgement task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_open_vault(
+    supervisor: State<'_, Arc<BackendSupervisor>>,
+    request: VaultRequest,
+) -> Result<BootstrapResponse, String> {
+    let supervisor = Arc::clone(supervisor.inner());
+    tauri::async_runtime::spawn_blocking(move || supervisor.ensure_vault(request.slug.as_deref()))
+        .await
+        .map_err(|error| format!("desktop Vault startup task failed: {error}"))?
 }
 
 /// Claim a `modus://` link that arrived before the webview was listening.
@@ -172,6 +189,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             desktop_bootstrap,
             desktop_ui_connected,
+            desktop_open_vault,
             desktop_take_pending_deep_link,
             desktop_tailscale_status,
             desktop_set_tailscale_enabled,
