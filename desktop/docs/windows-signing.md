@@ -78,9 +78,15 @@ $env:AZURE_CLIENT_ID         = "<application-client-id>"
 $env:AZURE_CLIENT_SECRET     = "<client-secret-value>"
 ```
 
-To persist for the current user, use
-`[Environment]::SetEnvironmentVariable("NAME", "value", "User")` and open a new terminal. In CI,
-supply them as masked secrets.
+**Set these in the build shell only, and let them die with it.** Do not persist them with
+`[Environment]::SetEnvironmentVariable("NAME", "value", "User")`. Modus spawns provider CLIs as
+child processes that inherit the environment, and the credential filter in
+`harness/providers/child-env.ts` strips only Modus' own credentials (`HARNESS_TOKEN`,
+`HARNESS_PIN`, `MODUS_SESSION_MCP_TOKEN`, and similar). Nothing removes `AZURE_*`, so a
+user-scoped `AZURE_CLIENT_SECRET` is handed to every agent subprocess Modus starts, for as long
+as it is set. A session-scoped variable is gone when the terminal closes.
+
+In CI, supply them as masked secrets scoped to the signing job.
 
 **These belong only in the environment.** There is deliberately no `.env` file for them — the
 wrapper reads the environment precisely so no value has to be written somewhere it could be
@@ -104,7 +110,7 @@ artifact to a descriptive name first if it is needed as a rollback:
 
 ```powershell
 cd src-tauri\target\release\bundle\nsis
-copy Modus_0.1.0_x64-setup.exe Modus_0.1.0_x64-setup-<what-it-predates>-<date>.exe
+copy Modus_0.2.0_x64-setup.exe Modus_0.2.0_x64-setup-<what-it-predates>-<date>.exe
 ```
 
 ---
@@ -112,7 +118,7 @@ copy Modus_0.1.0_x64-setup.exe Modus_0.1.0_x64-setup-<what-it-predates>-<date>.e
 ## Verifying
 
 ```powershell
-Get-AuthenticodeSignature .\src-tauri\target\release\bundle\nsis\Modus_0.1.0_x64-setup.exe |
+Get-AuthenticodeSignature .\src-tauri\target\release\bundle\nsis\Modus_0.2.0_x64-setup.exe |
   Format-List Status, StatusMessage, SignerCertificate
 ```
 
