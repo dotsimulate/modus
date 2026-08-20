@@ -73,14 +73,18 @@ beforeAll(async () => {
   const record = JSON.parse(readFileSync(credentialPath, "utf8")) as CredentialRecord;
   baseUrl = `http://127.0.0.1:${ready.port}`;
   credential = record.credential;
-});
+  // waitForFile defaults to a 20s deadline, but Bun's default hook budget is
+  // 5s — so the deadline was unreachable and the hook died mid-wait on a slow
+  // runner. The budget must exceed the deadline it guards.
+}, 30_000);
 
 afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
   if (backend) await backend.exited;
   rmSync(isolatedRoot, { recursive: true, force: true });
   if (childPid !== null) rmSync(join(tmpdir(), "modus-tests", String(childPid)), { recursive: true, force: true });
-});
+  // Kill, await exit, and unlink a tree can outrun the 5s default under load.
+}, 15_000);
 
 async function initialize(path = "/api/mcp/modus/integration-scope") {
   return fetch(`${baseUrl}${path}`, {

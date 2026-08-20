@@ -47,14 +47,20 @@ beforeAll(async () => {
   if (!existsSync(readinessPath)) throw new Error("local auth-admin backend did not become ready");
   const ready = JSON.parse(readFileSync(readinessPath, "utf8")) as ReadinessRecord;
   baseUrl = `http://127.0.0.1:${ready.port}`;
-});
+  // Bun's default hook budget is 5s, which is shorter than the readiness wait
+  // above — so that deadline could never be reached and the hook was killed
+  // mid-wait whenever a cold CI runner took longer than five seconds to boot
+  // the backend. The explicit budget has to exceed the deadline it guards.
+}, 30_000);
 
 afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
   if (backend) await backend.exited;
   rmSync(isolatedRoot, { recursive: true, force: true });
   if (backend?.pid) rmSync(join(tmpdir(), "modus-tests", String(backend.pid)), { recursive: true, force: true });
-});
+  // Killing the backend, awaiting its exit, and removing the isolated tree can
+  // also outrun the 5s default on a loaded runner.
+}, 15_000);
 
 describe("tokenless local PIN recovery boundary", () => {
   test("permits the loopback host but rejects a forwarded Tailnet caller", async () => {

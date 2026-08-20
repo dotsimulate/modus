@@ -68,7 +68,10 @@ beforeAll(async () => {
   expect(ready.pid).toBe(childPid);
   expect(ready.port).toBeGreaterThan(0);
   baseUrl = `http://127.0.0.1:${ready.port}`;
-});
+  // waitForReadiness defaults to a 20s deadline, but Bun's default hook budget
+  // is 5s — so the deadline was unreachable and the hook died mid-wait on any
+  // runner slower than five seconds. The budget must exceed the deadline.
+}, 30_000);
 
 afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
@@ -77,7 +80,9 @@ afterAll(async () => {
   if (childPid !== null) {
     rmSync(join(tmpdir(), "modus-tests", String(childPid)), { recursive: true, force: true });
   }
-});
+  // Teardown spawns no work of its own but still kills, awaits, and unlinks a
+  // tree; that can outrun the 5s default on a loaded runner.
+}, 15_000);
 
 describe("isolated browser authentication bootstrap", () => {
   test("status is public, advertises token protection, and does not require a URL token", async () => {
