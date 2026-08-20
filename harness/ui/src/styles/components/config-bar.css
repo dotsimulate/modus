@@ -133,6 +133,21 @@
   padding: 8px 32px 12px;
   background: var(--bg);
 }
+/* Bound the tool list inside the composer's config panel.
+   Both collapse wrappers animate with grid-template-rows 0fr -> 1fr, so an open
+   panel is content-sized with no ceiling. A provider reporting 134 tools grew
+   the panel past the viewport and pushed the "- tools" toggle — the only way to
+   close it — off screen, with nothing scrollable. Bounding the groups list
+   keeps the toggle reachable and lets the tools scroll.
+   Deliberately scoped to .config-bar-panel and applied to the groups list
+   rather than the collapse wrappers: those are overflow:visible when open so
+   SearchDropdown menus can escape the panel, and making them scroll would trap
+   the dropdowns instead. */
+.config-bar-panel .tool-grid-groups {
+  max-height: 44dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 /* ── Copy metadata button ── */
 .config-bar-copy-meta {
   background: none;
