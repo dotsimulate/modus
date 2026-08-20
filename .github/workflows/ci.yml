@@ -95,16 +95,26 @@ jobs:
       - name: Create non-packaging Tauri fixtures
         shell: pwsh
         run: |
-          $sidecarFixture = "desktop/src-tauri/binaries/bun-x86_64-pc-windows-msvc.exe"
+          # One fixture per bundle.externalBin entry in tauri.conf.json. The
+          # build script fails on any declared sidecar that is missing, so a new
+          # externalBin needs a matching name here.
+          $sidecarFixtures = @(
+            "desktop/src-tauri/binaries/bun-x86_64-pc-windows-msvc.exe",
+            "desktop/src-tauri/binaries/modus-x86_64-pc-windows-msvc.exe"
+          )
           $resourceFixture = "desktop/src-tauri/resources/modus"
-          if (Test-Path -LiteralPath $sidecarFixture) {
-            throw "Refusing to replace an existing sidecar at $sidecarFixture"
+          foreach ($sidecarFixture in $sidecarFixtures) {
+            if (Test-Path -LiteralPath $sidecarFixture) {
+              throw "Refusing to replace an existing sidecar at $sidecarFixture"
+            }
           }
           if (Test-Path -LiteralPath $resourceFixture) {
             throw "Refusing to replace existing resources at $resourceFixture"
           }
-          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $sidecarFixture) | Out-Null
-          New-Item -ItemType File -Path $sidecarFixture | Out-Null
+          foreach ($sidecarFixture in $sidecarFixtures) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $sidecarFixture) | Out-Null
+            New-Item -ItemType File -Path $sidecarFixture | Out-Null
+          }
           New-Item -ItemType Directory -Path $resourceFixture | Out-Null
       - name: Format check
         run: cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --check
