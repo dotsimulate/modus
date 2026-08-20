@@ -49,6 +49,7 @@ import {
   type VaultStateFiles,
 } from "./cli-vault";
 import { requireRegisteredVault } from "./vault-registry";
+import { uiDepsAreStale } from "./ui-deps-policy";
 
 // ── Tailscale Serve ──
 //
@@ -528,20 +529,31 @@ function uiBuildStale(): boolean {
   return srcTime > distTime;
 }
 
+/**
+ * Opt out of the start path's automatic dependency install and UI build.
+ *
+ * `modus start` provisions the UI so a source checkout just works. That is
+ * wrong for an integration test that spawns the real CLI to exercise daemon
+ * lifecycle: with no `ui/dist` present the start path runs a full production
+ * vite build inside the test's command budget, so a Vault test ends up timing
+ * out on the frontend bundler rather than on anything it means to assert.
+ * Read through a function so it cannot be frozen at import.
+ */
+function skipUiProvision(): boolean {
+  return process.env.MODUS_SKIP_UI_PROVISION === "1";
+}
+
 function uiDepsStale(): boolean {
   const pkgJson = join(UI_DIR, "package.json");
   const lockFile = join(UI_DIR, "bun.lock");
   const nmDir = join(UI_DIR, "node_modules");
-  if (!existsSync(nmDir)) return true;
   try {
-    const stampTime = existsSync(UI_DEPS_STAMP) ? statSync(UI_DEPS_STAMP).mtimeMs : 0;
-    const pkgTime = existsSync(pkgJson) ? statSync(pkgJson).mtimeMs : 0;
-    const lockTime = existsSync(lockFile) ? statSync(lockFile).mtimeMs : 0;
-    if (stampTime === 0) {
-      writeFileSync(UI_DEPS_STAMP, new Date().toISOString(), "utf-8");
-      return false;
-    }
-    return Math.max(pkgTime, lockTime) > stampTime;
+    return uiDepsAreStale({
+      nodeModulesPresent: existsSync(nmDir),
+      stampTime: existsSync(UI_DEPS_STAMP) ? statSync(UI_DEPS_STAMP).mtimeMs : 0,
+      packageTime: existsSync(pkgJson) ? statSync(pkgJson).mtimeMs : 0,
+      lockTime: existsSync(lockFile) ? statSync(lockFile).mtimeMs : 0,
+    });
   } catch { return true; }
 }
 
@@ -569,6 +581,7 @@ function buildUi(): boolean {
   });
   if (result.exitCode !== 0) {
     console.error("UI build failed.");
+    console.error("If you recently pulled, run `modus setup` to reinstall dependencies and rebuild.");
     return false;
   }
   console.log("UI build complete.");
@@ -682,7 +695,7 @@ async function cmdStart(args: string[]): Promise<void> {
       console.error("Repair or reinstall Modus.");
       process.exit(1);
     }
-  } else {
+  } else if (!skipUiProvision()) {
     if (uiDepsStale()) {
       if (!installUiDeps()) {
         process.exit(1);

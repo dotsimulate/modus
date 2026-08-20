@@ -127,6 +127,11 @@ describe("named Vault CLI lifecycle", () => {
       HOME: userHome,
       MODUS_CLI_NO_OPEN_BROWSER: "1",
       MODUS_HOME: mainHome,
+      // This test asserts Vault daemon lifecycle, not frontend provisioning.
+      // Without this the start path finds no ui/dist and runs a full production
+      // vite build inside runCli's 30s budget, which is what made this time out
+      // in CI where the UI is built after the test step.
+      MODUS_SKIP_UI_PROVISION: "1",
       NODE_ENV: "production",
       USERPROFILE: userHome,
     }).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
