@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { View } from "../views";
 import type { MoveWidgetInfo, TerminalInfo } from "../../../sdk/index";
 import { WIDGET_DEFS, WIDGETS, dispatchUiIntent, panelHandlesIntent, panelHandlesUiIntent, widgetHandlesUiIntent, type LayoutLeaf, type LayoutNode, type UiIntent, type WidgetBase } from "../widgets";
@@ -10,6 +10,7 @@ import { MoveWidget, evictWidgetModule } from "./MoveWidget";
 import { modus } from "../modusClient";
 import { useFileViewer } from "../providers/FileViewerContext";
 import { TerminalView } from "./TerminalView";
+import { WidgetErrorBoundary } from "./WidgetErrorBoundary";
 
 type Props = {
   node: LayoutNode;
@@ -18,50 +19,6 @@ type Props = {
   onActivateSession?: (id: string) => void;
   empty?: ReactNode;
 };
-
-class PanelWidgetErrorBoundary extends Component<
-  { label: string; children: ReactNode },
-  { error: Error | null; autoRetried: boolean; autoRetrying: boolean }
-> {
-  private retryTimer: ReturnType<typeof window.setTimeout> | null = null;
-
-  constructor(props: { label: string; children: ReactNode }) {
-    super(props);
-    this.state = { error: null, autoRetried: false, autoRetrying: false };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
-
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error(`[modus] panel widget crashed: ${this.props.label}`, error);
-    if (info.componentStack) console.error("[modus] panel widget stack:", info.componentStack);
-    if (!this.state.autoRetried) {
-      this.setState({ autoRetried: true, autoRetrying: true });
-      this.retryTimer = window.setTimeout(() => {
-        this.retryTimer = null;
-        this.setState({ error: null, autoRetrying: false });
-      }, 250);
-    }
-  }
-
-  componentWillUnmount() {
-    if (this.retryTimer) window.clearTimeout(this.retryTimer);
-  }
-
-  render() {
-    if (!this.state.error) return this.props.children;
-    return (
-      <div className="panel-empty" style={{ padding: 12, whiteSpace: "normal", wordBreak: "break-word" }}>
-        {this.props.label} crashed{this.state.autoRetrying ? ". Retrying..." : "."}
-        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button className="sched-clear-btn" onClick={() => this.setState({ error: null, autoRetrying: false })}>retry</button>
-        </div>
-      </div>
-    );
-  }
-}
 
 function getLeafId(leaf: LayoutLeaf, index: number): string {
   return leaf.id?.trim() || leaf.widget.id?.trim() || `${leaf.widget.type}-${index + 1}`;
@@ -131,7 +88,7 @@ function LeafWidget({
   if (!Comp) return <div className="panel-empty">unknown widget: {leaf.widget.type}</div>;
 
   return (
-    <PanelWidgetErrorBoundary label={leaf.widget.title ?? leaf.widget.type}>
+    <WidgetErrorBoundary label={leaf.widget.title ?? leaf.widget.type} logLabel="panel widget">
       <Comp
         config={leaf.widget}
         widgetId={widgetId}
@@ -140,7 +97,7 @@ function LeafWidget({
         onSelectSession={onSelectSession}
         pageContext={pageContext}
       />
-    </PanelWidgetErrorBoundary>
+    </WidgetErrorBoundary>
   );
 }
 
@@ -1446,7 +1403,7 @@ function EditablePanelWidget({
   if (!Component) return null;
 
   return (
-    <PanelWidgetErrorBoundary label={widget.title ?? widget.type}>
+    <WidgetErrorBoundary label={widget.title ?? widget.type} logLabel="panel widget">
       <Component
         config={widget}
         widgetId={widgetId}
@@ -1455,6 +1412,6 @@ function EditablePanelWidget({
         onSelectSession={onSelectSession}
         pageContext={pageContext}
       />
-    </PanelWidgetErrorBoundary>
+    </WidgetErrorBoundary>
   );
 }

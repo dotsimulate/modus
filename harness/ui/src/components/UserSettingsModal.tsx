@@ -416,7 +416,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
               <div className="us-section-title">chat</div>
               <div className="us-row-hint us-row-hint--full">defaults for this device across all projects</div>
               {projectChatOverrideEnabled(userProfile.interface) && (
-                <div className="us-row-hint us-row-hint--full">this project currently overrides these four display settings</div>
+                <div className="us-row-hint us-row-hint--full">this project currently overrides these five chat settings</div>
               )}
               <div className="us-row">
                 <span className="us-row-label">text scale</span>
@@ -468,6 +468,14 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                   })}
                 />
               </div>
+              <InterfaceToggle
+                label="scroll through turns"
+                value={interfaceSettings.chat.scrollThroughTurns}
+                onChange={(value) => updateInterfaceSettings({
+                  ...interfaceSettings,
+                  chat: { ...interfaceSettings.chat, scrollThroughTurns: value },
+                })}
+              />
 
               <div className="us-section-title us-section-title--spaced">conversation</div>
               <InterfaceToggle

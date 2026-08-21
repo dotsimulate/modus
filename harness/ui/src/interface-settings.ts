@@ -37,6 +37,7 @@ export type ResolvedInterfaceSettings = {
     chatWidth: number;
     scrollIndicator: ChatScrollIndicator;
     presentation: ChatPresentation;
+    scrollThroughTurns: boolean;
   };
   conversation: {
     showThinking: boolean;
@@ -71,6 +72,7 @@ export const PROJECT_CHAT_OVERRIDE_KEYS = [
   "chatWidth",
   "scrollIndicator",
   "presentation",
+  "scrollThroughTurns",
 ] as const satisfies readonly (keyof ResolvedInterfaceSettings["chat"])[];
 
 export const DEFAULT_INTERFACE_SETTINGS: ResolvedInterfaceSettings = {
@@ -79,6 +81,7 @@ export const DEFAULT_INTERFACE_SETTINGS: ResolvedInterfaceSettings = {
     chatWidth: 840,
     scrollIndicator: "spine",
     presentation: "conversation",
+    scrollThroughTurns: false,
   },
   conversation: {
     showThinking: true,
@@ -147,6 +150,7 @@ export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): R
       chatWidth: finiteRange(config?.chat?.chatWidth, DEFAULT_INTERFACE_SETTINGS.chat.chatWidth, 500, 1600),
       scrollIndicator: resolveScrollIndicator(config?.chat),
       presentation: resolvePresentation(config?.chat?.presentation, DEFAULT_INTERFACE_SETTINGS.chat.presentation),
+      scrollThroughTurns: config?.chat?.scrollThroughTurns === true,
     },
     conversation: {
       showThinking: config?.conversation?.showThinking ?? DEFAULT_INTERFACE_SETTINGS.conversation.showThinking,
@@ -223,6 +227,7 @@ export function projectChatOverrideConfig(
     chatWidth: settings.chat.chatWidth,
     scrollIndicator: settings.chat.scrollIndicator,
     presentation: settings.chat.presentation,
+    scrollThroughTurns: settings.chat.scrollThroughTurns,
   };
 }
 
@@ -244,6 +249,9 @@ export function resolveEffectiveInterfaceSettings(
         ? chat.scrollIndicator
         : deviceDefaults.chat.scrollIndicator,
       presentation: resolvePresentation(chat?.presentation, deviceDefaults.chat.presentation),
+      scrollThroughTurns: typeof chat?.scrollThroughTurns === "boolean"
+        ? chat.scrollThroughTurns
+        : deviceDefaults.chat.scrollThroughTurns,
     },
   };
 }

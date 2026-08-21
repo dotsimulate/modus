@@ -1,7 +1,9 @@
 import { Markdown } from "./Markdown";
 import { MoveContextDisclosure } from "./MoveContextDisclosure";
 import { parseMessageText, userAuthoredMessageText, type MessageTextPart } from "../move-context";
+import { parsePastedContent } from "../pasted-content";
 import type { Message } from "../../../sdk/index";
+import { PasteBlock } from "./PasteBlock";
 
 /**
  * One block of message text, with anything the harness injected into it folded
@@ -21,12 +23,14 @@ export function MessageText({
   role,
   text,
   isNew = false,
+  revealText = false,
   onContextMenu,
 }: {
   messageId: string;
   role: Message["role"];
   text: string;
   isNew?: boolean;
+  revealText?: boolean;
   onContextMenu?: (event: React.MouseEvent) => void;
 }) {
   const parts = role === "user" ? parseMessageText(text) : [];
@@ -34,6 +38,7 @@ export function MessageText({
     (part): part is Exclude<MessageTextPart, { type: "text" }> => part.type !== "text",
   );
   const visibleText = injectedContexts.length ? userAuthoredMessageText(text) : text;
+  const visibleParts = role === "user" ? parsePastedContent(visibleText) : [];
 
   return (
     <>
@@ -42,7 +47,11 @@ export function MessageText({
           className={`message-content${isNew ? " message-content--new" : ""}`}
           onContextMenu={onContextMenu}
         >
-          <Markdown content={visibleText} />
+          {visibleParts.length > 0
+            ? visibleParts.map((part, index) => part.type === "paste"
+                ? <PasteBlock key={`paste:${index}`} text={part.text} />
+                : <Markdown key={`text:${index}`} content={part.text} revealText={revealText} />)
+            : <Markdown content={visibleText} revealText={revealText} />}
         </div>
       )}
       {injectedContexts.length > 0 && (

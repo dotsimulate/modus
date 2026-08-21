@@ -372,6 +372,7 @@ export type UserInterfaceConfig = {
     chatWidth?: number;
     scrollIndicator?: ChatScrollIndicator;
     presentation?: ChatPresentation;
+    scrollThroughTurns?: boolean;
     /** When true, this user profile overrides the device's chat display defaults. */
     projectOverride?: boolean;
     /** @deprecated superseded by scrollIndicator; still read so older profiles migrate. */

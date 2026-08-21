@@ -6,6 +6,7 @@ import {
   moveApiInput,
   moveApiOp,
   moveApiToken,
+  parseMoveToolViewResolution,
   partitionToolRun,
   resolveMoveToolView,
   type MoveToolViewResolution,
@@ -169,11 +170,18 @@ describe("move tool-view resolution cache", () => {
     expect(value).toEqual({ resolution: null, error: "offline" });
   });
 
-  test("names a declaration miss instead of silently returning null", async () => {
+  test("leaves an API move without a tool view on the native tool row", async () => {
     expect(await resolveMoveToolView("mapi-deleted-1", async () => null)).toEqual({
       resolution: null,
-      error: "token did not resolve to a declared tool view",
+      error: null,
     });
+  });
+
+  test("accepts the resolver's null response but rejects malformed declarations", () => {
+    expect(parseMoveToolViewResolution(null)).toBeNull();
+    expect(() => parseMoveToolViewResolution({ moveName: "brain" })).toThrow(
+      "token resolution returned an invalid tool-view declaration",
+    );
   });
 
   test("retries a failed lookup once the negative window expires", async () => {

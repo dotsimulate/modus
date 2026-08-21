@@ -10,9 +10,10 @@
  * surface, and one instance declaring all three is the same turn as a single
  * column on a phone. The arrangement is data, not another branch in here.
  *
- * Which turn is shown comes from the page context key `turnSeq`, published by
- * `session-turns`. With no ticker on the page the newest turn is shown, which is
- * the right default for a surface that is only ever pointed at the live session.
+ * Which turn is shown comes from the page context key `turnSeq`. The compact
+ * navigator here and the optional `session-turns` rail both publish that same
+ * key. With no selection the newest turn is shown, which is the right default
+ * for a surface that is only ever pointed at the live session.
  *
  * Segments always render in provider order. A turn that thought, called tools,
  * wrote a paragraph, then called more tools reads in that order in every
@@ -35,8 +36,28 @@ import { AttachmentImage } from "../components/AttachmentImage";
 import { ImageLightbox } from "../components/ImageLightbox";
 import { metaParts } from "../components/providerStats";
 import { partitionToolRun, buildLatestMoveToolCallIds } from "../move-tool-view";
+import { modus } from "../modusClient";
+import { useProfiles } from "../providers/ProfileContext";
+import { useInterfaceSettings } from "../useInterfaceSettings";
+import {
+  applyInterfaceSettings,
+  projectChatOverrideConfig,
+  projectChatOverrideEnabled,
+  readDeviceInterfaceSettings,
+  writeDeviceInterfaceSettings,
+} from "../interface-settings";
+import {
+  accumulateTurnScrollThrough,
+  buildTurnNavigationEntries,
+  canConsumeDirectionalScroll,
+  describeTurnActivity,
+  isNearTurnBottom,
+  resolveTurnNavigation,
+  shouldAutoScrollTurn,
+  type TurnScrollThroughProgress,
+} from "../turn-card-state";
 import { buildTurns, findTurnBySeq, segmentMessage, tallyToolNames, type ChatTurn } from "../turn-segments";
-import type { Message, ToolCall } from "../../../sdk/index";
+import type { Message, SessionTurnIndexEntry, ToolCall } from "../../../sdk/index";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
@@ -70,8 +91,71 @@ function formatWhen(timestamp?: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function normalizedWheelDelta(event: React.WheelEvent<HTMLDivElement>): number {
+  if (event.deltaMode === 1) return event.deltaY * 16;
+  if (event.deltaMode === 2) return event.deltaY * event.currentTarget.clientHeight;
+  return event.deltaY;
+}
+
+function nestedScrollSurfaceCanConsume(
+  target: EventTarget | null,
+  boundary: HTMLElement,
+  deltaY: number,
+): boolean {
+  let element = target instanceof Element ? target : null;
+  while (element && element !== boundary) {
+    if (element instanceof HTMLElement) {
+      const overflowY = window.getComputedStyle(element).overflowY;
+      if (/^(auto|scroll|overlay)$/.test(overflowY)
+        && canConsumeDirectionalScroll(element, deltaY)) return true;
+    }
+    element = element.parentElement;
+  }
+  return false;
+}
+
+function RevealedTurnText({ messageId, role, text, revealOnMount, onReveal }: {
+  messageId: string;
+  role: Message["role"];
+  text: string;
+  revealOnMount: boolean;
+  onReveal: () => void;
+}) {
+  const [enteredAsNew] = useState(revealOnMount);
+  const previousTextRef = useRef(text);
+
+  useEffect(() => {
+    const changed = previousTextRef.current !== text;
+    previousTextRef.current = text;
+    if (enteredAsNew || changed) onReveal();
+  }, [text, enteredAsNew, onReveal]);
+
+  return (
+    <div className={`session-turn-revealed-text${enteredAsNew ? " session-turn-revealed-text--new" : ""}`}>
+      <MessageText
+        messageId={messageId}
+        role={role}
+        text={text}
+        revealText={enteredAsNew}
+      />
+    </div>
+  );
+}
+
 export default function SessionTurnWidget({ config, pageContext }: WidgetProps<SessionTurnConfig>) {
+  const { activeUserProfile, activeUP, refreshUserProfiles } = useProfiles();
+  const interfaceSettings = useInterfaceSettings(activeUP?.interface);
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followLiveRef = useRef(true);
+  const scrolledTurnRef = useRef<string | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const scrollThroughLockedRef = useRef(false);
+  const scrollThroughLandingRef = useRef<"top" | "bottom" | null>(null);
+  const scrollThroughLastWheelRef = useRef(0);
+  const scrollThroughProgressRef = useRef<TurnScrollThroughProgress>({ direction: null, distance: 0 });
+  const [viewedTurnKey, setViewedTurnKey] = useState<string | null>(null);
+  const scrollThrough = interfaceSettings.chat.scrollThroughTurns;
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
   const selectedSession = pageContext?.get("selectedSession") as string | undefined;
   const sessionId = contextSessionId ?? selectedSession ?? config.sessionId ?? null;
@@ -88,6 +172,34 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
   const session = useSessionState(sessionId);
   const historyLoad = useSessionHistoryLoadState(sessionId);
   const messages = useMemo(() => session?.messages ?? [], [session?.messages]);
+
+  const [indexedTurns, setIndexedTurns] = useState<{
+    sessionId: string;
+    entries: SessionTurnIndexEntry[];
+  } | null>(null);
+  const messageCount = messages.length;
+  useEffect(() => {
+    if (!sessionId) return;
+    let active = true;
+    const controller = new AbortController();
+    modus.getSessionTurnIndex(sessionId, { signal: controller.signal })
+      .then((result) => {
+        if (active) setIndexedTurns({ sessionId, entries: result.turns });
+      })
+      .catch(() => {
+        // Loaded turns are a complete fallback for the compact navigator. An
+        // index failure only means it cannot jump to history not fetched yet.
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [sessionId, messageCount]);
+
+  const turnIndex = useMemo(
+    () => indexedTurns?.sessionId === sessionId ? indexedTurns.entries : [],
+    [indexedTurns, sessionId],
+  );
 
   const turns = useMemo(
     () => buildTurns(messages, historyLoad.olderTurnCount),
@@ -125,6 +237,177 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
   const isLiveTurn = !!turn && turns[turns.length - 1]?.key === turn.key;
   const sessionRunning = session?.status === "running" || session?.status === "starting";
   const streaming = isLiveTurn && !!sessionRunning;
+  const animateNewText = isLiveTurn && viewedTurnKey === turn?.key;
+
+  const navigationEntries = useMemo(
+    () => buildTurnNavigationEntries(turnIndex, turns),
+    [turnIndex, turns],
+  );
+  const navigation = useMemo(
+    () => resolveTurnNavigation(navigationEntries, turn),
+    [navigationEntries, turn],
+  );
+  const activity = useMemo(
+    () => blocks.has("text")
+      ? describeTurnActivity(turn, streaming ? session?.status : undefined)
+      : null,
+    [blocks, turn, streaming, session?.status],
+  );
+
+  // Existing blocks are established before a turn is marked viewed. Switching
+  // turns therefore paints complete text; only blocks/appendages arriving on a
+  // later render of the already-viewed live turn get the typed reveal.
+  useEffect(() => {
+    const turnKey = turn?.key ?? null;
+    const frame = requestAnimationFrame(() => setViewedTurnKey(turnKey));
+    return () => cancelAnimationFrame(frame);
+  }, [turn?.key]);
+
+  useEffect(() => {
+    scrollThroughProgressRef.current = { direction: null, distance: 0 };
+    scrollThroughLastWheelRef.current = 0;
+    // A crossing locks only the turn it started on. Once the selected turn has
+    // actually rendered, continued wheel momentum may earn another crossing.
+    scrollThroughLockedRef.current = false;
+  }, [turn?.key]);
+
+  const requestLatestFollow = useCallback(() => {
+    if (!isLiveTurn || !followLiveRef.current || scrollFrameRef.current != null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const element = scrollRef.current;
+      if (!element || !shouldAutoScrollTurn(
+        isLiveTurn,
+        followLiveRef.current,
+        element.clientHeight,
+        element.scrollHeight,
+      )) return;
+      element.scrollTop = element.scrollHeight;
+    });
+  }, [isLiveTurn]);
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current != null) cancelAnimationFrame(scrollFrameRef.current);
+  }, []);
+
+  // A newly selected completed turn starts at its prompt; selecting the live
+  // edge starts at the latest response. From there live growth follows only
+  // while the reader remains near the bottom, so manually scrolling upward is
+  // respected rather than fought on every token.
+  useEffect(() => {
+    const turnKey = turn?.key ?? null;
+    if (scrolledTurnRef.current === turnKey) return;
+    if (!turnKey) return;
+    scrolledTurnRef.current = turnKey;
+    const landing = scrollThroughLandingRef.current;
+    scrollThroughLandingRef.current = null;
+    followLiveRef.current = landing !== "top";
+    const frame = requestAnimationFrame(() => {
+      const element = scrollRef.current;
+      if (!element) return;
+      element.scrollTop = landing === "bottom"
+        ? element.scrollHeight
+        : landing === "top"
+          ? 0
+          : streaming
+            ? element.scrollHeight
+            : 0;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [turn?.key, streaming]);
+
+  useEffect(() => {
+    if (streaming) requestLatestFollow();
+  }, [turn, activity, streaming, requestLatestFollow]);
+
+  const handleScroll = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    followLiveRef.current = isNearTurnBottom(
+      element.scrollTop,
+      element.clientHeight,
+      element.scrollHeight,
+    );
+  }, []);
+
+  const selectTurn = useCallback((seq: number | null) => {
+    pageContext?.set("turnSeq", seq);
+  }, [pageContext]);
+
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!scrollThrough || !pageContext || !navigation) return;
+
+    const deltaY = normalizedWheelDelta(event);
+    if (nestedScrollSurfaceCanConsume(event.target, event.currentTarget, deltaY)) {
+      scrollThroughProgressRef.current = { direction: null, distance: 0 };
+      scrollThroughLastWheelRef.current = 0;
+      return;
+    }
+
+    const now = performance.now();
+    if (scrollThroughLockedRef.current) return;
+
+    if (now - scrollThroughLastWheelRef.current > 220) {
+      scrollThroughProgressRef.current = { direction: null, distance: 0 };
+    }
+    scrollThroughLastWheelRef.current = now;
+
+    const element = event.currentTarget;
+    const result = accumulateTurnScrollThrough(
+      scrollThroughProgressRef.current,
+      deltaY,
+      {
+        atTop: element.scrollTop <= 1,
+        atBottom: element.scrollHeight - element.scrollTop - element.clientHeight <= 1,
+        canPrevious: navigation.previousSeq != null,
+        canNext: navigation.nextSeq != null,
+      },
+    );
+    scrollThroughProgressRef.current = result.progress;
+    if (!result.consumed) return;
+    if (!result.navigate) return;
+
+    scrollThroughLockedRef.current = true;
+    if (result.navigate === "previous") {
+      if (navigation.previousSeq != null) {
+        scrollThroughLandingRef.current = "bottom";
+        selectTurn(navigation.previousSeq);
+      }
+      return;
+    }
+    if (navigation.nextSeq != null) {
+      scrollThroughLandingRef.current = "top";
+      selectTurn(navigation.nextIsLatest ? null : navigation.nextSeq);
+    }
+  }, [navigation, pageContext, scrollThrough, selectTurn]);
+
+  const toggleScrollThrough = useCallback(() => {
+    scrollThroughProgressRef.current = { direction: null, distance: 0 };
+    scrollThroughLockedRef.current = false;
+    const next = {
+      ...interfaceSettings,
+      chat: { ...interfaceSettings.chat, scrollThroughTurns: !scrollThrough },
+    };
+    applyInterfaceSettings(next);
+
+    if (projectChatOverrideEnabled(activeUP?.interface) && activeUserProfile) {
+      void modus.patchUserProfileUiConfig(activeUserProfile, {
+        interface: {
+          chat: {
+            ...(activeUP?.interface?.chat ?? {}),
+            ...projectChatOverrideConfig(next),
+          },
+        },
+      }).then(refreshUserProfiles).catch(() => {});
+      return;
+    }
+
+    const defaults = readDeviceInterfaceSettings();
+    writeDeviceInterfaceSettings({
+      ...defaults,
+      chat: { ...defaults.chat, scrollThroughTurns: !scrollThrough },
+    });
+  }, [activeUP?.interface, activeUserProfile, interfaceSettings, refreshUserProfiles, scrollThrough]);
 
   const latestMoveToolCallIds = useMemo(
     () => buildLatestMoveToolCallIds(messages),
@@ -176,7 +459,16 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
     segmentMessage(msg).map((segment) => {
       if (segment.kind === "text") {
         return blocks.has("text")
-          ? <MessageText key={segment.key} messageId={segment.key} role={msg.role} text={segment.text} />
+          ? (
+            <RevealedTurnText
+              key={segment.key}
+              messageId={segment.key}
+              role={msg.role}
+              text={segment.text}
+              revealOnMount={animateNewText}
+              onReveal={requestLatestFollow}
+            />
+          )
           : null;
       }
       if (segment.kind === "thinking") {
@@ -193,12 +485,36 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
           : null;
       }
       if (segment.kind === "tools") {
-        return blocks.has("tools") ? <div key={segment.key}>{renderToolRun(segment.tools, segment.key)}</div> : null;
+        if (blocks.has("tools")) return <div key={segment.key}>{renderToolRun(segment.tools, segment.key)}</div>;
+        if (!blocks.has("text") || segment.tools.length === 0) return null;
+        const active = streaming && segment.tools.some((tool) => tool.status === "running");
+        return (
+          <div
+            key={segment.key}
+            className={`session-turn-tool-break${active ? " session-turn-tool-break--active" : ""}`}
+            role="separator"
+            aria-label={`${segment.tools.length} tool ${segment.tools.length === 1 ? "call" : "calls"}`}
+          >
+            <span className="session-turn-tool-break-dots" aria-hidden="true"><i /><i /><i /></span>
+          </div>
+        );
       }
       // Deferred: the payload is still on the server. It stands in for both
       // thinking and tools, so it appears if either projection wants it.
       const wantsTools = blocks.has("tools") && segment.count > 0;
       const wantsThinking = blocks.has("thinking") && segment.hasThinking;
+      if (!wantsTools && !wantsThinking && blocks.has("text") && segment.count > 0) {
+        return (
+          <div
+            key={segment.key}
+            className="session-turn-tool-break"
+            role="separator"
+            aria-label={`${segment.count} tool ${segment.count === 1 ? "call" : "calls"}`}
+          >
+            <span className="session-turn-tool-break-dots" aria-hidden="true"><i /><i /><i /></span>
+          </div>
+        );
+      }
       if (!wantsTools && !wantsThinking) return null;
       return (
         <ToolCallGroup
@@ -213,7 +529,7 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
         />
       );
     })
-  ), [blocks, streaming, renderToolRun, loadDetails]);
+  ), [blocks, streaming, animateNewText, requestLatestFollow, renderToolRun, loadDetails]);
 
   if (!sessionId) return <WidgetEmptyState>no session selected</WidgetEmptyState>;
   if (!session) return <WidgetEmptyState>loading session…</WidgetEmptyState>;
@@ -234,55 +550,146 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
     : undefined;
 
   return (
-    <div className={`session-turn${streaming ? " session-turn--live" : ""}`} data-turn={turn.number}>
-      {config.header !== false && (
-        <div className="session-turn-head">
-          <span className="session-turn-no">{String(turn.number).padStart(2, "0")}</span>
-          {streaming && <span className="session-turn-live">live</span>}
-          <span className="session-turn-when">
-            {formatWhen(turn.prompt?.timestamp ?? turn.body[0]?.timestamp)}
-          </span>
-        </div>
-      )}
+    <div
+      ref={scrollRef}
+      className={`session-turn${streaming ? " session-turn--live" : ""}${scrollThrough ? " session-turn--scroll-through" : ""}`}
+      data-turn={turn.number}
+      onScroll={handleScroll}
+      onWheel={handleWheel}
+    >
+      <div className="session-turn-shell">
+        <div key={turn.key} className="session-turn-center">
+          {config.header !== false && (
+            <div className="session-turn-head">
+              <span className="session-turn-no">{String(turn.number).padStart(2, "0")}</span>
+              {streaming && <span className="session-turn-live">live</span>}
+              <span className="session-turn-when">
+                {formatWhen(turn.prompt?.timestamp ?? turn.body[0]?.timestamp)}
+              </span>
+            </div>
+          )}
 
-      {blocks.has("prompt") && turn.prompt && (
-        <div className="session-turn-prompt" style={promptStyle}>
-          <MessageText
-            messageId={turn.prompt.id}
-            role="user"
-            text={turn.prompt.content}
-          />
-          {turn.prompt.attachments && turn.prompt.attachments.length > 0 && (
-            <div className="message-images">
-              {turn.prompt.attachments.map((attachment, index) => (
-                <AttachmentImage
-                  key={index}
-                  mediaType={attachment.mediaType}
-                  data={attachment.data}
-                  alt={attachment.name ?? "attachment"}
-                  onOpen={(src, alt) => setLightbox({ src, alt })}
-                />
+          {blocks.has("prompt") && turn.prompt && (
+            <div className="session-turn-prompt" style={promptStyle}>
+              <MessageText
+                messageId={turn.prompt.id}
+                role="user"
+                text={turn.prompt.content}
+              />
+              {turn.prompt.attachments && turn.prompt.attachments.length > 0 && (
+                <div className="message-images">
+                  {turn.prompt.attachments.map((attachment, index) => (
+                    <AttachmentImage
+                      key={index}
+                      mediaType={attachment.mediaType}
+                      data={attachment.data}
+                      alt={attachment.name ?? "attachment"}
+                      onOpen={(src, alt) => setLightbox({ src, alt })}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="session-turn-body">
+            {turn.body.map((msg) => (
+              msg.role === "system"
+                ? <div key={msg.id} className="system-divider"><span>{msg.content}</span></div>
+                : <div key={msg.id} className="session-turn-message">{renderBody(msg)}</div>
+            ))}
+            {activity && (
+              <div
+                className={`session-turn-activity session-turn-activity--${activity.phase}`}
+                role="status"
+                aria-live="polite"
+              >
+                <span className="session-turn-activity-signal" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span className="session-turn-activity-label">{activity.label}</span>
+                {activity.detail && <span className="session-turn-activity-detail">{activity.detail}</span>}
+                {activity.activeCount && activity.activeCount > 1 && (
+                  <span className="session-turn-activity-count">+{activity.activeCount - 1}</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {stats.length > 0 && (
+            <div className="session-turn-meta message-meta">
+              {stats.map((part, index) => (
+                <span key={`${part.key}:${index}`} className={part.className}>{part.text}</span>
               ))}
             </div>
           )}
         </div>
-      )}
 
-      <div className="session-turn-body">
-        {turn.body.map((msg) => (
-          msg.role === "system"
-            ? <div key={msg.id} className="system-divider"><span>{msg.content}</span></div>
-            : <div key={msg.id} className="session-turn-message">{renderBody(msg)}</div>
-        ))}
+        {pageContext && navigation && navigationEntries.length > 1 && (
+          <nav className="session-turn-nav" aria-label="Turn navigation">
+            <button
+              type="button"
+              className={`session-turn-nav-scroll${scrollThrough ? " is-enabled" : ""}`}
+              aria-label={scrollThrough ? "Disable scroll through" : "Enable scroll through"}
+              aria-pressed={scrollThrough}
+              title={scrollThrough ? "disable scroll through" : "enable scroll through"}
+              onClick={toggleScrollThrough}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m5 6 3-3 3 3M5 10l3 3 3-3" />
+              </svg>
+            </button>
+            <div className="session-turn-nav-track">
+              <button
+                type="button"
+                className="session-turn-nav-button"
+                aria-label="Previous turn"
+                title="Previous turn"
+                disabled={navigation.previousSeq == null}
+                onClick={() => navigation.previousSeq != null && selectTurn(navigation.previousSeq)}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="m4 10 4-4 4 4" />
+                </svg>
+              </button>
+              <span className="session-turn-nav-position" aria-label={`Turn ${navigation.current} of ${navigation.total}`}>
+                <span>{navigation.current}</span>
+                <span className="session-turn-nav-divider" />
+                <span>{navigation.total}</span>
+              </span>
+              <button
+                type="button"
+                className="session-turn-nav-button"
+                aria-label="Next turn"
+                title="Next turn"
+                disabled={navigation.nextSeq == null}
+                onClick={() => {
+                  if (navigation.nextSeq == null) return;
+                  selectTurn(navigation.nextIsLatest ? null : navigation.nextSeq);
+                }}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="m4 6 4 4 4-4" />
+                </svg>
+              </button>
+            </div>
+            <button
+              type="button"
+              className={`session-turn-nav-latest${sessionRunning ? " session-turn-nav-latest--live" : ""}`}
+              aria-label={sessionRunning ? "Go to active turn" : "Go to latest turn"}
+              title={sessionRunning ? "Go to active turn" : "Go to latest turn"}
+              disabled={navigation.nextSeq == null}
+              onClick={() => selectTurn(null)}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m4 5 4 4 4-4M4 12h8" />
+              </svg>
+            </button>
+          </nav>
+        )}
       </div>
-
-      {stats.length > 0 && (
-        <div className="session-turn-meta message-meta">
-          {stats.map((part, index) => (
-            <span key={`${part.key}:${index}`} className={part.className}>{part.text}</span>
-          ))}
-        </div>
-      )}
 
       {lightbox && (
         <ImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={() => setLightbox(null)} />
