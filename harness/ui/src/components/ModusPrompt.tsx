@@ -4,7 +4,7 @@
  * Tabs: "create agent" / "customize modus" / "create mission"
  * Each prompt tab: prompt picker (downward) + textarea + run button.
  * The "pages" tab renders the pages-browser widget inline instead.
- * Recent modus-dev sessions listed below.
+ * Recent modus-helper sessions listed below.
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -53,7 +53,7 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
     if (phase !== "running" || !activeSession) return;
     if (activeSession.status === "idle") {
       Promise.all([refreshProfiles(), refreshUserProfiles()]).catch(() => {});
-      modus.listSessions({ profile: "modus-dev", limit: 5, userProfile: activeUserProfile ?? undefined })
+      modus.listSessions({ profile: "modus-helper", limit: 5, userProfile: activeUserProfile ?? undefined })
         .then(setRecentSessions).catch(() => {});
       setPhase("done");
       setPrompt("");
@@ -63,13 +63,13 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
     }
   }, [phase, activeSession?.status]);
 
-  // Fetch recent modus-dev sessions
+  // Fetch recent modus-helper sessions
   useEffect(() => {
     let active = true;
-    modus.listSessions({ profile: "modus-dev", limit: 5, userProfile: activeUserProfile ?? undefined })
+    modus.listSessions({ profile: "modus-helper", limit: 5, userProfile: activeUserProfile ?? undefined })
       .then(s => { if (active) setRecentSessions(s); }).catch(() => {});
     const interval = setInterval(() => {
-      modus.listSessions({ profile: "modus-dev", limit: 5, userProfile: activeUserProfile ?? undefined })
+      modus.listSessions({ profile: "modus-helper", limit: 5, userProfile: activeUserProfile ?? undefined })
         .then(s => { if (active) setRecentSessions(s); }).catch(() => {});
     }, 10000);
     return () => { active = false; clearInterval(interval); };
@@ -104,31 +104,29 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
     setSessionId(null);
 
     try {
-      if (tab === "mission") {
+      if (tab === "mission" || tab === "create") {
         if (!cwd) throw new Error("project cwd missing");
         const sid = await modus.createEmptySession({
-          profile: "modus-dev",
+          profile: "modus-helper",
           userProfile: activeUserProfile ?? undefined,
           cwd,
         });
         const result = await modus.activateMove(sid, {
-          moveName: "create-mission",
+          moveName: tab === "mission" ? "create-mission" : "create-profile",
           inputs: {},
           cwd,
           userProfile: activeUserProfile ?? undefined,
         });
         const movePrompt = result.prompt?.trim();
-        if (!movePrompt) throw new Error("create-mission move did not return a prompt");
+        if (!movePrompt) throw new Error(`${tab === "mission" ? "create-mission" : "create-profile"} move did not return a prompt`);
         await modus.sendMessage(sid, `${movePrompt}\n\n${text}`);
         setSessionId(sid);
       } else {
         // Render the appropriate prompt template to inject context
         let renderedPrompt = text;
         try {
-          const promptName = tab === "create" ? "setup-agents" : "configure";
-          const vars = tab === "create"
-            ? { inputs: { text, description: text, archetype: "custom" }, project, projectCwd: cwd }
-            : { inputs: { text, mode: "edit", agents: "yes" }, project, projectCwd: cwd };
+          const promptName = "configure";
+          const vars = { inputs: { text, mode: "edit", agents: "yes" }, project, projectCwd: cwd };
           const result = await modus.renderPrompt(promptName, vars);
           renderedPrompt = result.rendered;
         } catch {
@@ -136,7 +134,7 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
         }
         const { sessionId: sid } = await modus.createSession({
           prompt: renderedPrompt,
-          profile: "modus-dev",
+          profile: "modus-helper",
           userProfile: activeUserProfile ?? undefined,
           cwd,
         });
@@ -294,7 +292,7 @@ export function ModusPrompt({ onSelectSession, isNewProject }: Props) {
             >
               <span className={`modus-prompt-session-dot ${s.status === "running" ? "modus-prompt-session-dot--active" : ""}`} />
               <span className="modus-prompt-session-text">
-                {s.last_prompt || s.preview || "modus-dev session"}
+                {s.last_prompt || s.preview || "modus-helper session"}
               </span>
               <span className="modus-prompt-session-time">{timeAgo(s.last_message_at)}</span>
             </button>

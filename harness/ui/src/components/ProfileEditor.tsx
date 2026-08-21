@@ -4,7 +4,10 @@ import type { Profile, McpServerConfig, ProviderModel } from "../../../sdk/index
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
+import { PermissionPolicyControl } from "./PermissionPolicyControl";
 import { providerDisplayLabel, providerToolFamily, type ToolStates } from "../tools";
+import { buildProfileSavePayload, unmanagedProfileFields } from "../profile-form-fields";
+import { useFileViewer } from "../providers/FileViewerContext";
 
 type Props = {
   profiles: Profile[];
@@ -57,9 +60,44 @@ function McpServersEditor({
   const update = (name: string, field: string, value: string) => {
     const cfg = { ...servers[name] } as any;
     if (field === "command") cfg.command = value;
-    else if (field === "args") cfg.args = value.split(",").map((s: string) => s.trim()).filter(Boolean);
     else if (field === "url") cfg.url = value;
     onChange({ ...servers, [name]: cfg });
+  };
+
+  /**
+   * Args are edited one row per element.
+   *
+   * They used to be one comma-joined text field, which could not represent an arg containing a
+   * comma or surrounding whitespace — and worse, was a lossy controlled input: typing the comma
+   * that starts the next arg produced ["-u", ""], which `filter(Boolean)` dropped, so the
+   * character was erased under the cursor. Typing a second argument was impossible. A row per
+   * arg removes the delimiter instead of escaping it.
+   */
+  const setArgs = (name: string, args: string[]) => {
+    onChange({ ...servers, [name]: { ...(servers[name] as any), args } });
+  };
+
+  const updateArg = (name: string, index: number, value: string) => {
+    const args = [...(((servers[name] as any).args ?? []) as string[])];
+    args[index] = value;
+    setArgs(name, args);
+  };
+
+  const removeArg = (name: string, index: number) => {
+    setArgs(name, (((servers[name] as any).args ?? []) as string[]).filter((_, i) => i !== index));
+  };
+
+  // Empty rather than a placeholder value: an arg nobody typed should not be sent.
+  const addArg = (name: string) => {
+    setArgs(name, [...(((servers[name] as any).args ?? []) as string[]), ""]);
+  };
+
+  const moveArg = (name: string, index: number, delta: number) => {
+    const args = [...(((servers[name] as any).args ?? []) as string[])];
+    const target = index + delta;
+    if (target < 0 || target >= args.length) return;
+    [args[index], args[target]] = [args[target], args[index]];
+    setArgs(name, args);
   };
 
   const updateEnv = (name: string, envKey: string, envVal: string, oldKey?: string) => {
@@ -135,14 +173,42 @@ function McpServersEditor({
                     placeholder="npx"
                   />
                 </label>
-                <label>
-                  <span>args</span>
-                  <input
-                    value={(cfg.args ?? []).join(", ")}
-                    onChange={(e) => update(name, "args", e.target.value)}
-                    placeholder="-y, tavily-mcp"
-                  />
-                </label>
+                <div className="mcp-args-section">
+                  <span className="mcp-args-label">args</span>
+                  {(cfg.args ?? []).map((arg, i) => (
+                    <div key={i} className="mcp-args-row">
+                      <span className="mcp-args-index">{i}</span>
+                      <input
+                        className="mcp-args-val"
+                        value={arg}
+                        onChange={(e) => updateArg(name, i, e.target.value)}
+                        placeholder="--port"
+                        spellCheck={false}
+                      />
+                      <button
+                        className="mcp-args-move"
+                        onClick={() => moveArg(name, i, -1)}
+                        disabled={i === 0}
+                        title="Move up"
+                        aria-label={`move argument ${i} earlier`}
+                      >&uarr;</button>
+                      <button
+                        className="mcp-args-move"
+                        onClick={() => moveArg(name, i, 1)}
+                        disabled={i === (cfg.args ?? []).length - 1}
+                        title="Move down"
+                        aria-label={`move argument ${i} later`}
+                      >&darr;</button>
+                      <button
+                        className="mcp-args-remove"
+                        onClick={() => removeArg(name, i)}
+                        title="Remove"
+                        aria-label={`remove argument ${i}`}
+                      >&times;</button>
+                    </div>
+                  ))}
+                  <button className="mcp-args-add" onClick={() => addArg(name)}>+ arg</button>
+                </div>
                 <div className="mcp-env-section">
                   <span className="mcp-env-label">env</span>
                   {Object.entries((cfg as any).env ?? {}).map(([k, v]) => {
@@ -216,14 +282,17 @@ function ProfileForm({
   onDelete,
   onCancel,
   isNew,
+  profilePath,
 }: {
   profile: Profile;
   onSave: (p: Omit<Profile, "name"> & { name?: string }) => Promise<void>;
   onDelete?: () => void;
   onCancel: () => void;
   isNew?: boolean;
+  profilePath?: string;
 }) {
   const { availableProviders, providerCapabilities } = useProfiles();
+  const { openFile } = useFileViewer();
   const [name, setName] = useState(profile.name);
   const [description, setDescription] = useState(profile.description);
   const [prompt, setPrompt] = useState(profile.prompt);
@@ -238,10 +307,29 @@ function ProfileForm({
     for (const t of profile.tools) s[t] = "on";
     return s;
   });
+  /**
+   * Whether the profile pins its tool surface, kept separate from the grid selection.
+   *
+   * The grid alone cannot distinguish "inherit every tool" from "grant no tools" — both are zero
+   * selections — so this form used to treat an empty grid as "all" and silently granted a
+   * locked-down agent everything. An empty array is a real value the SDK documents as
+   * "disable all built-in tools", so the two states need separate storage.
+   */
+  const [toolsPinned, setToolsPinned] = useState(Array.isArray(profile.tools));
   const [loadProjectSettings, setLoadProjectSettings] = useState(profile.loadProjectSettings ?? true);
   const [mcpServers, setMcpServers] = useState<Record<string, McpServerConfig>>(
     profile.mcpServers ?? {},
   );
+  const [mcpConfig, setMcpConfig] = useState(profile.mcpConfig ?? "");
+  const [permissionPolicy, setPermissionPolicy] = useState(profile.permissionPolicy);
+  /**
+   * Fields this form has no input for, frozen at mount alongside the other initializers.
+   *
+   * Saving replaces the whole profile file, so these have to ride along or they are deleted —
+   * see `profile-form-fields.ts`. Frozen rather than read at save time so a background profile
+   * refresh cannot splice a different profile's fields into this edit.
+   */
+  const [passthrough] = useState(() => unmanagedProfileFields(profile));
   const [saving, setSaving] = useState(false);
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -251,9 +339,12 @@ function ProfileForm({
     ? [provider, ...availableProviders]
     : availableProviders;
 
-  const enabledToolCount = Object.values(toolStates).filter((s) => s === "on").length;
-  const toolsAll = enabledToolCount === 0;
-  const toolSummary = toolsAll ? "all" : enabledToolCount === 0 ? "all" : `${enabledToolCount} selected`;
+  const enabledTools = Object.entries(toolStates).filter(([, s]) => s === "on").map(([t]) => t);
+  const toolSummary = !toolsPinned
+    ? "all"
+    : enabledTools.length === 0
+      ? "none — no built-in tools"
+      : `${enabledTools.length} selected`;
 
   useEffect(() => {
     const providerChanged = previousProviderRef.current !== provider;
@@ -282,14 +373,20 @@ function ProfileForm({
     setSaving(true);
     setSaveError("");
     try {
-      const data: any = { description, prompt, promptMode, loadProjectSettings };
-      if (provider) data.provider = provider;
-      if (model) data.model = model;
-      if (effort) data.effort = effort;
-      if (maxTurns) data.maxTurns = Number(maxTurns);
-      const onTools = Object.entries(toolStates).filter(([, s]) => s === "on").map(([t]) => t);
-      if (onTools.length > 0) data.tools = onTools;
-      if (Object.keys(mcpServers).length > 0) data.mcpServers = mcpServers;
+      const data: any = buildProfileSavePayload(passthrough, {
+        description,
+        prompt,
+        promptMode,
+        loadProjectSettings,
+        provider,
+        model,
+        effort,
+        maxTurns,
+        tools: toolsPinned ? enabledTools : null,
+        mcpServers,
+        mcpConfig,
+        permissionPolicy,
+      });
       if (isNew) data.name = name;
       await onSave(data);
     } catch (err: any) {
@@ -394,14 +491,41 @@ function ProfileForm({
 
       {/* Tools */}
       <div className="pf-group">
+        <span className="pf-group-label">permissions</span>
+        <PermissionPolicyControl
+          value={permissionPolicy}
+          onChange={setPermissionPolicy}
+          provider={provider || "claude-code"}
+          builtInGroups={providerCapabilities[provider || "claude-code"]?.builtInToolGroups}
+        />
+      </div>
+
+      {/* Tools */}
+      <div className="pf-group">
         <div className="pf-group-head">
           <span className="pf-group-label">tools</span>
-          <span className="pf-group-meta">{toolSummary}</span>
+          <div className="pf-tools-mode">
+            <button
+              className={`pf-tools-mode-btn${!toolsPinned ? " pf-tools-mode-btn--on" : ""}`}
+              onClick={() => setToolsPinned(false)}
+              title="Inherit every built-in tool the provider offers"
+            >all</button>
+            <button
+              className={`pf-tools-mode-btn${toolsPinned ? " pf-tools-mode-btn--on" : ""}`}
+              onClick={() => setToolsPinned(true)}
+              title="Pin an explicit tool surface — selecting none grants no built-in tools"
+            >custom</button>
+          </div>
+          <span className={`pf-group-meta${toolsPinned && enabledTools.length === 0 ? " pf-group-meta--warn" : ""}`}>
+            {toolSummary}
+          </span>
         </div>
         <ToolGrid
           mode="baseline"
           states={toolStates}
-          onChange={setToolStates}
+          // Touching the grid is what "custom" means; the selection is kept when
+          // switching back to "all" so the toggle is not destructive.
+          onChange={(next) => { setToolStates(next); setToolsPinned(true); }}
           compact
           provider={provider}
           builtInGroups={providerCapabilities[provider]?.builtInToolGroups}
@@ -411,6 +535,10 @@ function ProfileForm({
       {/* MCP */}
       <div className="pf-group">
         <span className="pf-group-label">mcp servers</span>
+        <label className="pf-field">
+          <span>config file</span>
+          <input value={mcpConfig} onChange={(event) => setMcpConfig(event.target.value)} placeholder="./path/to/mcp.json" />
+        </label>
         <McpServersEditor servers={mcpServers} onChange={setMcpServers} />
       </div>
 
@@ -418,6 +546,12 @@ function ProfileForm({
       <div className="pf-footer">
         {saveError && <span className="pf-error">{saveError}</span>}
         <span className="pf-spacer" />
+        {profilePath && (
+          <>
+            <button className="apc-action" onClick={() => openFile(profilePath, { source: "ui-event" })}>open file</button>
+            <button className="apc-action" onClick={() => openFile(profilePath, { edit: true, source: "ui-event" })}>edit JSON</button>
+          </>
+        )}
         <button className="apc-action" onClick={onCancel}>cancel</button>
         {onDelete && (
           <button className="apc-action pf-btn-delete" onClick={onDelete}>delete</button>
@@ -450,6 +584,21 @@ export function ProfileEditor({
   const isOpen = mode !== "closed";
   const isNew = mode === "new";
   const selected = preloadedProfile ?? profiles.find((p) => p.name === initialProfile) ?? null;
+  const [profilePath, setProfilePath] = useState<string | undefined>(preloadedProfile?.path);
+
+  useEffect(() => {
+    if (isNew || !initialProfile) {
+      setProfilePath(undefined);
+      return;
+    }
+    let cancelled = false;
+    void modus.getProfile(initialProfile, profileCwd).then((resolved) => {
+      if (!cancelled) setProfilePath(resolved.path);
+    }).catch(() => {
+      if (!cancelled) setProfilePath(undefined);
+    });
+    return () => { cancelled = true; };
+  }, [initialProfile, isNew, profileCwd]);
 
   const formProfile: Profile = isNew
     ? (selected ?? { name: "", description: "", prompt: "", tools: "all" as const })
@@ -492,6 +641,7 @@ export function ProfileEditor({
             onDelete={!isNew && selected ? handleDelete : undefined}
             onCancel={() => onCancel?.()}
             isNew={isNew}
+            profilePath={profilePath}
           />
         ) : (
           <div className="profile-empty">profile not found</div>

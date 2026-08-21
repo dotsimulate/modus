@@ -519,8 +519,21 @@ function readAgentConfig(config: any): AgentConfigState | null {
     provider: typeof config.provider === "string" ? config.provider : "",
     effort: typeof config.effort === "string" ? config.effort : "",
     maxTurns: config.maxTurns != null ? String(config.maxTurns) : "",
+    permissionPolicy: readPermissionPolicy(config.permissionPolicy),
     providerControls: readProviderControls(config.providerControls),
   };
+}
+
+function readPermissionPolicy(policy: any): AgentConfigState["permissionPolicy"] {
+  if (policy === "bypass" || policy === "auto-edit" || policy === "ask") return policy;
+  if (policy && typeof policy === "object" && (policy.default === "approve" || policy.default === "ask")) {
+    return {
+      default: policy.default,
+      ...(Array.isArray(policy.autoApprove) ? { autoApprove: policy.autoApprove.filter((v: unknown) => typeof v === "string") } : {}),
+      ...(Array.isArray(policy.requireApproval) ? { requireApproval: policy.requireApproval.filter((v: unknown) => typeof v === "string") } : {}),
+    };
+  }
+  return undefined;
 }
 
 function readToolStates(toolStates: any): AgentConfigState["toolStates"] {
@@ -560,8 +573,10 @@ function readProviderControls(providerControls: any): AgentConfigState["provider
     if (
       claude.permissionMode === "default"
       || claude.permissionMode === "acceptEdits"
+      || claude.permissionMode === "bypassPermissions"
       || claude.permissionMode === "plan"
       || claude.permissionMode === "dontAsk"
+      || claude.permissionMode === "auto"
     ) {
       next.claude.permissionMode = claude.permissionMode;
     }

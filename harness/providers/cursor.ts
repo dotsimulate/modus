@@ -25,6 +25,7 @@ import {
   getGlobalConfig, getProfile, resolveProfilePrompt,
   type McpServerConfig, type Profile,
 } from "../profiles";
+import { resolveMcpServers } from "../mcp-config";
 import { cursorAgentSpawnArgv0, resolveCursorAgentExecutable } from "./cursor-resolve-bin";
 import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe-errors";
 import { hasExited, terminateProcessTree, waitForClose } from "./process-tree";
@@ -260,13 +261,12 @@ function writeCursorMcpConfig(
   workspaceDir: string,
 ): { mcpPath: string; journalPath: string } | null {
   const { opts, profile } = ctx;
-  const globalConfig = getGlobalConfig(ctx.session.cwd);
-
-  const mergedMcp: Record<string, McpServerConfig> = {
-    ...(globalConfig.mcpServers ?? {}),
-    ...(profile?.mcpServers ?? {}),
-    ...(opts.mcpServers as Record<string, any> ?? {}),
-  };
+  const mergedMcp = resolveMcpServers({
+    cwd: ctx.session.projectRoot ?? ctx.session.cwd,
+    profileName: opts.profile,
+    profile,
+    sessionServers: opts.mcpServers,
+  }).servers;
   if (Object.keys(mergedMcp).length === 0) return null;
 
   // Resolve relative --directory args to absolute

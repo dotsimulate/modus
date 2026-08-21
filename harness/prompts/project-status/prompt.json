@@ -1,7 +1,7 @@
 {
   "label": "project status",
   "description": "Quick status report — git state, structure, and MO config",
-  "profile": "modus-dev",
+  "profile": "modus-helper",
   "icon": "activity",
   "inputs": [
     { "name": "depth", "type": "select", "placeholder": "depth", "options": ["glance", "full"], "default": "glance" },

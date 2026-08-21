@@ -11,6 +11,8 @@ import {
   type McpServerConfig,
   type PermissionPolicy,
 } from "../profiles";
+import { permissionPolicyNeedsApproval } from "../permission-policy";
+import { resolveMcpServers } from "../mcp-config";
 import { resolveSecret } from "../secrets";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
@@ -153,12 +155,12 @@ function resolveMcpConfig(serverName: string, config: McpServerConfig): McpServe
 }
 
 function mergedMcpServers(ctx: TurnContext): Record<string, McpServerConfig> {
-  const global = getGlobalConfig(ctx.session.projectRoot ?? ctx.session.cwd);
-  const merged = {
-    ...(global.mcpServers ?? {}),
-    ...(ctx.profile?.mcpServers ?? {}),
-    ...((ctx.opts.mcpServers ?? {}) as Record<string, McpServerConfig>),
-  };
+  const merged = resolveMcpServers({
+    cwd: ctx.session.projectRoot ?? ctx.session.cwd,
+    profileName: ctx.opts.profile,
+    profile: ctx.profile,
+    sessionServers: ctx.opts.mcpServers,
+  }).servers;
   return Object.fromEntries(Object.entries(merged).map(([name, config]) => [name, resolveMcpConfig(name, config)]));
 }
 
@@ -206,12 +208,10 @@ function toolResultEvent(tool: ObservedTool, error?: string) {
   };
 }
 
-function needsApproval(policy: PermissionPolicy, toolName: string): boolean {
-  if (policy === "bypass") return false;
-  if (policy === "ask") return true;
-  if (policy.requireApproval?.includes(toolName)) return true;
-  if (policy.autoApprove?.includes(toolName)) return false;
-  return policy.default === "ask";
+const ANTIGRAVITY_SHELL_TOOLS = new Set(["run_command"]);
+
+export function needsApproval(policy: PermissionPolicy, toolName: string): boolean {
+  return permissionPolicyNeedsApproval(policy, toolName, ANTIGRAVITY_SHELL_TOOLS);
 }
 
 function writePermissionResponse(

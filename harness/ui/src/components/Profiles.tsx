@@ -58,6 +58,54 @@ function ActiveSessionsPopover({
   );
 }
 
+function GlobalConfigEditor({ cwd, onClose }: { cwd?: string; onClose: () => void }) {
+  const [text, setText] = useState("{}");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void modus.getGlobalConfig(cwd, { stored: true }).then((config) => {
+      if (!cancelled) setText(JSON.stringify(config, null, 2));
+    }).catch((reason) => {
+      if (!cancelled) setError(String(reason));
+    });
+    return () => { cancelled = true; };
+  }, [cwd]);
+  const save = async () => {
+    setError("");
+    setSaving(true);
+    try {
+      const parsed = JSON.parse(text);
+      await modus.saveGlobalConfig(parsed, cwd);
+      onClose();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="profile-editor">
+      <div className="profile-editor-header">
+        <span className="apc-name">global config</span>
+        <span className="apc-actions-spacer" />
+        <button className="apc-action" onClick={onClose}>close</button>
+      </div>
+      <div className="profile-editor-body">
+        <div className="pf">
+          <p className="pf-group-meta">Edits this scope's _global.json. Project config overrides Vault config.</p>
+          <textarea className="pf-prompt pf-json-editor" value={text} onChange={(event) => setText(event.target.value)} rows={28} spellCheck={false} />
+          <div className="pf-footer">
+            {error && <span className="pf-error">{error}</span>}
+            <span className="pf-spacer" />
+            <button className="apc-action apc-action--primary" onClick={save} disabled={saving}>{saving ? "saving..." : "save"}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const editIcon = (
   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M8.5 1.5l2 2L4 10H2v-2z" />
@@ -76,7 +124,7 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
   const { newSession } = useSession();
   const profileCwd = activeCwd;
   const [activeSessions, setActiveSessions] = useState<ActiveSessionInfo[]>([]);
-  const [editorMode, setEditorMode] = useState<"closed" | "new" | "edit">("closed");
+  const [editorMode, setEditorMode] = useState<"closed" | "new" | "edit" | "global">("closed");
   const [editingProfile, setEditingProfile] = useState<string | null>(null);
   const [duplicateProfileData, setDuplicateProfileData] = useState<Profile | null>(null);
   const [hoveredBadge, setHoveredBadge] = useState<string | null>(null);
@@ -155,14 +203,14 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
   if (isEditing) {
     return (
       <div className="dashboard profiles-view">
-        <ProfileEditor
+        {editorMode === "global" ? <GlobalConfigEditor cwd={profileCwd} onClose={finishEditor} /> : <ProfileEditor
           profiles={contextProfiles}
           onProfilesChange={finishEditor}
           mode={editorMode}
           initialProfile={editingProfile}
           preloadedProfile={duplicateProfileData}
           onCancel={closeEditor}
-        />
+        />}
       </div>
     );
   }
@@ -175,6 +223,7 @@ export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
             <span className="dash-section-title">agents</span>
             <span className="dash-section-count">{displayProfiles.length}</span>
             <button className="dash-new-btn" onClick={openNew}>new</button>
+            <button className="dash-new-btn" onClick={() => setEditorMode("global")}>global config</button>
           </div>
           <div className="agent-profile-grid">
             {displayProfiles.map((p) => {

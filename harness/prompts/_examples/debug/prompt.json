@@ -1,7 +1,7 @@
 {
   "label": "debug",
   "description": "Paste an error — auto-pulls recent diff and git context",
-  "profile": "modus-dev",
+  "profile": "modus-helper",
   "icon": "alert-triangle",
   "inputs": [
     { "name": "scope", "type": "select", "placeholder": "scope", "options": ["auto", "frontend", "backend", "infra"], "default": "auto" },

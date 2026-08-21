@@ -8,7 +8,7 @@ import {
 import { SearchDropdown } from "./SearchDropdown";
 import { profileOptions } from "../profile-options";
 import { ChatSettings } from "./ChatSettings";
-import { getAllTools, getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGeminiProvider, isGrokBuildProvider, isToolEnabled } from "../tools";
+import { getAllTools, getToolGroups, isAntigravityProvider, isCodexProvider, isGeminiProvider, isGrokBuildProvider, isToolEnabled } from "../tools";
 import { useProfiles } from "../providers/ProfileContext";
 import type { Profile, SessionStatus, Message } from "../../../sdk/index";
 import { modus } from "../modusClient";
@@ -244,8 +244,9 @@ export function ConfigBar({
   const editorProfileName = pendingProfileName || profileName;
   const overrideCount =
     pendingCount;
-  const claudePermissionMode = agentConfig.providerControls?.claude?.permissionMode;
-  const showPermissionMode = isClaudeCodeProvider(effectiveProvider) && !!claudePermissionMode && claudePermissionMode !== "default";
+  const permissionMode = typeof agentConfig.permissionPolicy === "string"
+    ? agentConfig.permissionPolicy
+    : agentConfig.permissionPolicy ? "per-tool" : null;
   const toolSummary = isCodexProvider(effectiveProvider)
     ? (codexControls.sandboxMode ?? "sandbox:auto")
     : isAntigravityProvider(effectiveProvider)
@@ -348,8 +349,8 @@ export function ConfigBar({
   }
   // Not selectable: this only appears in a non-default permission mode, which is
   // a safety signal rather than a readout to switch off.
-  if (showPermissionMode) {
-    strip.push({ key: "permission", node: <span className="config-bar-permission">{claudePermissionMode}</span> });
+  if (permissionMode) {
+    strip.push({ key: "permission", node: <span className="config-bar-permission">{permissionMode}</span> });
   }
 
   return (

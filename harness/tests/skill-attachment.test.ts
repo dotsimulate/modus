@@ -85,7 +85,7 @@ describe("collectSkills", () => {
           missing: out.missing,
         }));
       `);
-      // The shipped modus-dev.json ships exactly these two names; a machine
+      // Legacy profiles may still request exactly these two names; a machine
       // without them must still start a session.
       expect(result.names).toEqual(["real"]);
       expect(result.missing).toEqual([

@@ -25,6 +25,7 @@ import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getProfile, type ProviderDefaults } from "../profiles";
+import { resolveMcpServers } from "../mcp-config";
 import { getScopedSkills } from "../skill-attachment";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import { startMcpServers, stopMcpServers, type McpConnection } from "./mcp-bridge";
@@ -748,19 +749,18 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
         });
         await resourceLoader.reload();
 
-        const globalConfig = getGlobalConfig(session.cwd);
-
         let mcpConnections: McpConnection[] = [];
         let mcpTools: import("@mariozechner/pi-coding-agent").ToolDefinition[] = [];
         if (noTools) {
           console.log(`[pi-agent] providerControls.pi.noTools enabled; skipping built-in and MCP tools`);
         } else {
           // MCP tools: merge global + project-local + profile
-          const mergedMcp = {
-            ...(globalConfig.mcpServers ?? {}),
-            ...(profile?.mcpServers ?? {}),
-            ...(opts.mcpServers as Record<string, any> ?? {}),
-          };
+          const mergedMcp = resolveMcpServers({
+            cwd: session.projectRoot ?? session.cwd,
+            profileName: opts.profile,
+            profile,
+            sessionServers: opts.mcpServers,
+          }).servers;
           console.log(`[pi-agent] MCP servers to connect: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
 
           if (Object.keys(mergedMcp).length > 0) {

@@ -31,6 +31,7 @@ function supportedLegacyAuthType(): AuthType | null {
   return null;
 }
 import { getSession, updateSessionStatus } from "../db";
+import { resolveMcpServers } from "../mcp-config";
 import { getGlobalConfig, resolveProfilePrompt, type McpServerConfig, type PermissionPolicy, type Profile } from "../profiles";
 import { resolveSecret } from "../secrets";
 import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
@@ -161,12 +162,12 @@ function toGeminiMcpServer(serverName: string, server: McpServerConfig): MCPServ
 }
 
 function buildGeminiMcpServers(ctx: TurnContext, profileDef: Profile | undefined): Record<string, MCPServerConfig> | undefined {
-  const globalConfig = getGlobalConfig(ctx.session.cwd);
-  const mergedMcp = {
-    ...(globalConfig.mcpServers ?? {}),
-    ...(profileDef?.mcpServers ?? {}),
-    ...(ctx.opts.mcpServers as Record<string, any> ?? {}),
-  };
+  const mergedMcp = resolveMcpServers({
+    cwd: ctx.session.projectRoot ?? ctx.session.cwd,
+    profileName: ctx.opts.profile,
+    profile: profileDef,
+    sessionServers: ctx.opts.mcpServers,
+  }).servers;
 
   if (Object.keys(mergedMcp).length === 0) return undefined;
 
@@ -175,9 +176,10 @@ function buildGeminiMcpServers(ctx: TurnContext, profileDef: Profile | undefined
   );
 }
 
-function approvalModeForPolicy(policy: PermissionPolicy | undefined): ApprovalMode {
+export function approvalModeForPolicy(policy: PermissionPolicy | undefined): ApprovalMode {
   if (!policy || policy === "bypass") return ApprovalMode.YOLO;
   if (policy === "ask") return ApprovalMode.DEFAULT;
+  if (policy === "auto-edit") return ApprovalMode.AUTO_EDIT;
   return policy.default === "approve" ? ApprovalMode.AUTO_EDIT : ApprovalMode.DEFAULT;
 }
 

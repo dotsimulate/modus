@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServerConfigSchema } from "./profile-schemas";
+import { McpServerConfigSchema, PermissionPolicySchema } from "./profile-schemas";
 
 const EffortSchema = z.enum(["off", "low", "medium", "high", "xhigh", "max"]);
 const ToolStateSchema = z.enum(["inherit", "on", "off"]);
@@ -32,6 +32,7 @@ const SessionSharedSchema = z.object({
   tools: z.array(z.string()).optional(),
   disallowedTools: z.array(z.string()).optional(),
   providerControls: z.record(z.string(), z.unknown()).optional(),
+  permissionPolicy: PermissionPolicySchema.optional(),
   loadProjectSettings: z.boolean().optional(),
   mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 });
@@ -73,4 +74,5 @@ export const InteractRequestSchema = SessionSharedSchema.extend({
 
 export const UpdateSessionConfigRequestSchema = SessionSharedSchema.extend({
   maxTurns: z.number().int().positive().nullable().optional(),
+  permissionPolicy: PermissionPolicySchema.nullable().optional(),
 });

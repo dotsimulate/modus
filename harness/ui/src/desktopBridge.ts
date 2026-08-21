@@ -144,6 +144,30 @@ export async function chooseDesktopVaultFolder(): Promise<string | null> {
   return invokeDesktop<string | null>("desktop_choose_vault_folder");
 }
 
+export type DesktopPickRequest = {
+  title?: string;
+  /** Directory the dialog opens in. Ignored by Rust unless it exists. */
+  initialPath?: string;
+  /** Extension allowlist for file picks, e.g. [".png", ".jpg"]. */
+  accept?: string[];
+};
+
+/**
+ * Open the OS folder dialog. Resolves to null when the user dismisses it.
+ *
+ * This picks a path on the *client's* filesystem, which the harness backend can
+ * only open when the two share a machine. Callers must gate on
+ * `nativePickerAvailable()` rather than on `isTauriRuntime()` alone.
+ */
+export async function pickDesktopFolder(request: DesktopPickRequest = {}): Promise<string | null> {
+  return invokeDesktop<string | null>("desktop_pick_folder", { request });
+}
+
+/** Open the OS file dialog. Resolves to null when the user dismisses it. */
+export async function pickDesktopFile(request: DesktopPickRequest = {}): Promise<string | null> {
+  return invokeDesktop<string | null>("desktop_pick_file", { request });
+}
+
 /**
  * Prove the supervisor-provided credential, then store a bounded session token.
  *

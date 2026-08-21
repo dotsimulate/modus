@@ -41,6 +41,12 @@ import {
   type ModusPlugin,
 } from "./modus-plugins";
 import { legacyProviderMcpBearer, sessionMcpPath } from "./session-mcp-credential";
+import {
+  normalizePermissionPolicy,
+  type PermissionPolicy,
+} from "./permission-policy";
+
+export type { PermissionPolicy } from "./permission-policy";
 
 const AGENTS_DIR = homeAgentsDir();
 const USERS_DIR = homeUsersDir();
@@ -77,15 +83,6 @@ export type McpServerConfig =
  * - "ask"     — every tool call requires user approval via UI
  * - object    — mixed: per-tool auto-approve or require-approval rules
  */
-export type PermissionPolicy =
-  | "bypass"
-  | "ask"
-  | {
-      default: "approve" | "ask";
-      autoApprove?: string[];
-      requireApproval?: string[];
-    };
-
 /**
  * Named exclusion rules that expand to glob patterns at session start.
  * - "no-parent-walk"  — exclude all CLAUDE.md files above the session CWD
@@ -150,6 +147,7 @@ export type Profile = {
   promptMode?: "custom" | "append";
   /** MCP server configurations for this profile */
   mcpServers?: Record<string, McpServerConfig>;
+  mcpConfig?: string;
   /** Permission policy — controls tool execution gating. Defaults to "bypass". */
   permissionPolicy?: PermissionPolicy;
   /** Provider-specific runtime controls, e.g. Codex speed/search/sandbox settings. */
@@ -160,7 +158,7 @@ export type Profile = {
       serviceTier?: "standard" | "fast" | "priority";
     };
     claude?: {
-      permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk";
+      permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk" | "auto";
     };
     antigravity?: {
       mode?: "accept-edits" | "plan";
@@ -393,6 +391,8 @@ export type UserInterfaceConfig = {
 
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
+  mcpConfig?: string;
+  permissionNotificationChannels?: string[];
   providerDefaults?: Record<string, ProviderDefaults>;
   notificationChannels?: Record<string, NotificationChannel>;
   clientExtensions?: ClientExtensionsConfig;
@@ -664,6 +664,12 @@ type ProfileSource =
   | { origin: "project"; name: string; cwd: string }
   | { origin: "plugin"; name: string; plugin: ModusPlugin };
 
+function profileSourcePath(source: ProfileSource): string {
+  if (source.origin === "user") return join(AGENTS_DIR, `${source.name}.json`);
+  if (source.origin === "project") return join(projectAgentsDir(source.cwd), `${source.name}.json`);
+  return join(getPluginProfilesDir(source.plugin), `${source.name}.json`);
+}
+
 function isSafeProfileName(name: string): boolean {
   return !!name && name !== "." && name !== ".." && !/[\\/:\0]/.test(name);
 }
@@ -726,13 +732,23 @@ function expandPluginToken(value: string, pluginPath: string): string {
   return value.replace(/\$\{pluginDir\}/g, pluginPath);
 }
 
+const reportedLegacyPermissionProfiles = new Set<string>();
+
 function decorateProfile(profile: Profile, source: ProfileSource): Profile {
   const key = source.origin === "plugin"
     ? qualifiedProfileKey("plugin", source.name, source.plugin.id)
     : qualifiedProfileKey(source.origin, source.name);
+  const normalized = normalizePermissionPolicy(profile.permissionPolicy as PermissionPolicy | undefined);
+  if (normalized.normalizedLegacyAllow && !reportedLegacyPermissionProfiles.has(key)) {
+    reportedLegacyPermissionProfiles.add(key);
+    console.warn(`[profiles] ${key} uses deprecated permissionPolicy.default "allow"; treating it as "approve" without rewriting the file.`);
+  }
+  const resolvedProfile = normalized.normalizedLegacyAllow
+    ? { ...profile, permissionPolicy: normalized.policy }
+    : profile;
   if (source.origin !== "plugin") {
     return {
-      ...profile,
+      ...resolvedProfile,
       key,
       displayName: source.name,
       origin: source.origin,
@@ -740,17 +756,17 @@ function decorateProfile(profile: Profile, source: ProfileSource): Profile {
   }
 
   const pluginPath = source.plugin.path;
-  const additionalDirectories = (profile.additionalDirectories ?? [])
+  const additionalDirectories = (resolvedProfile.additionalDirectories ?? [])
     .map((entry) => expandPluginToken(entry, pluginPath));
   if (!additionalDirectories.some((entry) => resolve(entry) === resolve(pluginPath))) {
     additionalDirectories.push(pluginPath);
   }
   return {
-    ...profile,
-    ...(profile.cwd ? { cwd: expandPluginToken(profile.cwd, pluginPath) } : {}),
+    ...resolvedProfile,
+    ...(resolvedProfile.cwd ? { cwd: expandPluginToken(resolvedProfile.cwd, pluginPath) } : {}),
     additionalDirectories,
-    ...(profile.cwdSuggestions
-      ? { cwdSuggestions: profile.cwdSuggestions.map((entry) => expandPluginToken(entry, pluginPath)) }
+    ...(resolvedProfile.cwdSuggestions
+      ? { cwdSuggestions: resolvedProfile.cwdSuggestions.map((entry) => expandPluginToken(entry, pluginPath)) }
       : {}),
     key,
     displayName: source.name,
@@ -817,6 +833,15 @@ export function getProfileConfig(
 ): Profile | undefined {
   const resolved = resolveProfileSource(name, cwd, context);
   return resolved ? decorateProfile(resolved.profile, resolved.source) : undefined;
+}
+
+export function getProfileConfigPath(
+  name: string,
+  cwd?: string,
+  context: ProfileResolutionContext = {},
+): string | undefined {
+  const resolved = resolveProfileSource(name, cwd, context);
+  return resolved ? profileSourcePath(resolved.source) : undefined;
 }
 
 export function resolveProfileKey(
@@ -990,6 +1015,20 @@ function mergeGlobalConfig(base: GlobalConfig, override: GlobalConfig): GlobalCo
 /** Read one writable global-config file without composing other tiers. */
 export function getStoredGlobalConfig(cwd?: string): GlobalConfig {
   return readJson<GlobalConfig>(cwd ? projectGlobalPath(cwd) : homeGlobalPath()) ?? {};
+}
+
+export function getGlobalConfigLayers(cwd?: string): Array<{ path?: string; config: GlobalConfig }> {
+  const layers: Array<{ path?: string; config: GlobalConfig }> = [
+    { config: { mcpServers: getBuiltInMcpServers() } },
+    { path: homeGlobalPath(), config: getStoredGlobalConfig() },
+  ];
+  for (const plugin of listEnabledModusPlugins()) {
+    const filePath = getPluginGlobalConfigPath(plugin);
+    const config = readJson<GlobalConfig>(filePath);
+    if (config) layers.push({ path: filePath, config });
+  }
+  if (cwd) layers.push({ path: projectGlobalPath(cwd), config: getStoredGlobalConfig(cwd) });
+  return layers;
 }
 
 /** Compose built-in → user base → enabled plugins → project. */

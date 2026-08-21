@@ -403,6 +403,7 @@ export type StoredSessionConfig = {
   disallowedTools?: string[];
   toolStates?: Record<string, string>;
   providerControls?: Record<string, unknown>;
+  permissionPolicy?: import("./permission-policy").PermissionPolicy;
   cwd?: string;
   additionalDirectories?: string[];
   loadProjectSettings?: boolean;
@@ -1070,6 +1071,12 @@ export function getStoredSessionConfig(sessionId: string): StoredSessionConfig |
       disallowedTools: Array.isArray(config.disallowedTools) ? config.disallowedTools : undefined,
       toolStates: config.toolStates && typeof config.toolStates === "object" ? config.toolStates : undefined,
       providerControls: config.providerControls && typeof config.providerControls === "object" ? config.providerControls : undefined,
+      permissionPolicy: config.permissionPolicy === "bypass"
+        || config.permissionPolicy === "auto-edit"
+        || config.permissionPolicy === "ask"
+        || (config.permissionPolicy && typeof config.permissionPolicy === "object")
+          ? config.permissionPolicy
+          : undefined,
       cwd: parsed.cwd || undefined,
       additionalDirectories: Array.isArray(parsed.additionalDirectories)
         ? parsed.additionalDirectories

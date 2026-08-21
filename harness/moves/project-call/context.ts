@@ -50,7 +50,7 @@ function newCallId(): string {
 
 function resolveProfile(value: string, fallbackProfile?: string): string {
   if (value && value !== "Current profile") return value;
-  return fallbackProfile ?? "modus-dev";
+  return fallbackProfile ?? "modus-helper";
 }
 
 function normalizePath(value: string): string {

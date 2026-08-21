@@ -35,13 +35,16 @@ export const McpServerConfigSchema = z.union([McpStdioSchema, McpSseSchema, McpH
 // ── Permission Policy ──
 
 const PermissionPolicyObjectSchema = z.object({
-  default: z.enum(["approve", "ask"]),
+  // "allow" was emitted by early hand-authored profiles. Resolution normalizes
+  // it to "approve" without rewriting the source file.
+  default: z.enum(["approve", "ask", "allow"]),
   autoApprove: z.array(z.string()).optional(),
   requireApproval: z.array(z.string()).optional(),
 });
 
-const PermissionPolicySchema = z.union([
+export const PermissionPolicySchema = z.union([
   z.literal("bypass"),
+  z.literal("auto-edit"),
   z.literal("ask"),
   PermissionPolicyObjectSchema,
 ]);
@@ -203,7 +206,7 @@ const ProviderControlsSchema = z.object({
     serviceTier: z.enum(["standard", "fast", "priority"]).optional(),
   }).optional(),
   claude: z.object({
-    permissionMode: z.enum(["default", "acceptEdits", "plan", "dontAsk"]).optional(),
+    permissionMode: z.enum(["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "auto"]).optional(),
   }).optional(),
   antigravity: z.object({
     mode: z.enum(["accept-edits", "plan"]).optional(),
@@ -236,6 +239,7 @@ export const ProfileSchema = z.object({
   claudeMdExcludes: ClaudeMdExcludesSchema.optional(),
   promptMode: z.enum(["custom", "append"]).optional(),
   mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
+  mcpConfig: z.string().min(1).optional(),
   permissionPolicy: PermissionPolicySchema.optional(),
   providerControls: ProviderControlsSchema.optional(),
   ui: ProfileUiSchema.optional(),
@@ -322,6 +326,8 @@ export const UserProfileCoreSchema = UserProfileSchema.omit({
 
 export const GlobalConfigSchema = z.object({
   mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
+  mcpConfig: z.string().min(1).optional(),
+  permissionNotificationChannels: z.array(z.string().min(1)).optional(),
   providerDefaults: z.record(z.string(), ProviderDefaultsSchema).optional(),
   notificationChannels: z.record(z.string(), z.union([
     z.object({

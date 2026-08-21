@@ -7,7 +7,7 @@ import { modus } from "../modusClient";
 import { basename, timeAgo } from "../utils/format";
 import { parentDir } from "../folderPath";
 import { CustomSelect } from "./CustomSelect";
-import { FilePicker } from "./FilePicker";
+import { useFileChooser } from "../hooks/usePathChooser";
 
 type Values = Record<string, string>;
 type Variant = "prompt-picker" | "moves-widget";
@@ -325,7 +325,7 @@ function MoveFileInputField({
   projectCwd?: string;
   onChange: (value: string) => void;
 }) {
-  const [picking, setPicking] = useState(false);
+  const chooser = useFileChooser();
   const accept = input.file?.accept;
   // Default to the project so the common case opens where the files are, and so
   // the server-side containment rule is not immediately violated by the start
@@ -337,7 +337,13 @@ function MoveFileInputField({
       <button
         type="button"
         className="move-file-input-trigger"
-        onClick={() => setPicking(true)}
+        onClick={() => chooser.open({
+          title: `select ${label}`,
+          initialPath: startPath,
+          accept,
+          onSelect: onChange,
+        })}
+        disabled={chooser.busy}
         title={value || undefined}
       >
         {value ? basename(value) : (input.placeholder ?? "choose file...")}
@@ -356,16 +362,9 @@ function MoveFileInputField({
     </div>
   );
 
-  const picker = picking && (
-    <div className="move-file-input-picker">
-      <FilePicker
-        initialPath={startPath}
-        accept={accept}
-        title={`select ${label}`}
-        onSelect={(path) => { onChange(path); setPicking(false); }}
-        onCancel={() => setPicking(false)}
-      />
-    </div>
+  // Null when the OS dialog handled it — see `usePathChooser`.
+  const picker = chooser.inline && (
+    <div className="move-file-input-picker">{chooser.inline}</div>
   );
 
   if (variant === "prompt-picker") {

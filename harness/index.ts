@@ -35,7 +35,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   getAllProfiles, getProfile, listProfileNames,
-  getProfileConfig, getProfileUiConfig, saveProfile, saveProfileUiConfig, patchProfileUiConfig, deleteProfile, getGlobalConfig, saveGlobalConfig, getStoredGlobalConfig,
+  getProfileConfig, getProfileConfigPath, getProfileUiConfig, saveProfile, saveProfileUiConfig, patchProfileUiConfig, deleteProfile, getGlobalConfig, saveGlobalConfig, getStoredGlobalConfig,
   setUserName, getUserName,
   getUserProfile, getUserProfileConfig, getUserProfileUiConfig, listUserProfileNames, getAllUserProfiles,
   saveUserProfile, saveUserProfileUiConfig, patchUserProfileUiConfig, deleteUserProfile,
@@ -99,6 +99,7 @@ import {
   getSessionMessage, getSessionMessages, getSessionMessageHistory, getSessionTurnIndex, getSessionArtifact, getFileObservations, getSessionsForFile, listAllCheckpoints,
 } from "./db";
 import { planCheckpointMaintenance } from "./checkpoint-maintenance";
+import { resolveMcpServers } from "./mcp-config";
 import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { onSessionEvent } from "./action-runner";
 import {
@@ -928,7 +929,7 @@ app.get("/api/profiles", (c) => {
 
 app.get("/api/profiles/_global", (c) => {
   const cwd = c.req.query("cwd");
-  return c.json(getGlobalConfig(cwd));
+  return c.json(c.req.query("stored") === "1" ? getStoredGlobalConfig(cwd) : getGlobalConfig(cwd));
 });
 
 app.put("/api/profiles/_global", async (c) => {
@@ -1037,7 +1038,29 @@ app.get("/api/profiles/:name", (c) => {
   const cwd = c.req.query("cwd");
   const profile = getProfile(name, cwd);
   if (!profile) return c.json({ error: "profile not found" }, 404);
-  return c.json({ ...profile, name });
+  return c.json({ ...profile, name, path: getProfileConfigPath(name, cwd) });
+});
+
+app.get("/api/profiles/:name/resolved-config", (c) => {
+  const name = c.req.param("name");
+  const sessionId = c.req.query("sessionId");
+  const active = sessionId ? getActiveSession(sessionId) : undefined;
+  const cwd = active?.projectRoot ?? c.req.query("cwd");
+  const profile = getProfile(name, cwd);
+  if (!profile) return c.json({ error: "profile not found" }, 404);
+  const mcp = resolveMcpServers({
+    cwd,
+    profileName: name,
+    profile,
+    sessionServers: active?._configOverrides.mcpServers,
+  });
+  const sessionPolicy = active?._configOverrides.permissionPolicy;
+  return c.json({
+    mcpServers: mcp.servers,
+    mcpOrigins: mcp.origins,
+    permissionPolicy: sessionPolicy ?? profile.permissionPolicy ?? "bypass",
+    permissionOrigin: sessionPolicy ? "session" : profile.permissionPolicy ? "profile" : "default",
+  });
 });
 
 app.put("/api/profiles/:name", async (c) => {
@@ -1397,6 +1420,7 @@ function enrichSessionRows(rows: ReturnType<typeof listSessions>, projects = con
       last_event_at: active?.lastEventAt ?? null,
       last_input_tokens: null,
       last_output_tokens: null,
+      pending_permission_count: active?.pendingPermissions.size ?? 0,
     };
   });
 }
@@ -1511,7 +1535,9 @@ app.post("/api/sessions", async (c) => {
     tools: body.tools,
     disallowedTools: body.disallowedTools,
     providerControls: body.providerControls,
+    permissionPolicy: body.permissionPolicy,
     loadProjectSettings: body.loadProjectSettings,
+    mcpServers: body.mcpServers,
     sessionId: body.sessionId, // for resume
     moves: body.moves,
     skipProfileMoves: body.skipProfileMoves,
@@ -1540,7 +1566,8 @@ app.post("/api/sessions/interact", async (c) => {
   const createIfMissing = body.createIfMissing !== false;
   const resolvedCwd = body.cwd ?? process.env.AGENT_CWD ?? process.cwd();
   // Map permissionMode to internal permissionPolicy (undefined = use profile default)
-  const permissionPolicy = body.permissionMode === "bypass" ? "bypass" as const : undefined;
+  const permissionPolicy = body.permissionPolicy
+    ?? (body.permissionMode === "bypass" ? "bypass" as const : undefined);
 
   // Validate profile if provided
   if (body.profile && !getProfile(body.profile, resolvedCwd)) {
@@ -2118,6 +2145,7 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
     provider: storedConfig?.provider ?? row?.provider ?? active?.provider ?? "",
     effort: storedConfig?.effort ?? "",
     maxTurns: typeof storedConfig?.maxTurns === "number" ? String(storedConfig.maxTurns) : "",
+    permissionPolicy: active?._configOverrides.permissionPolicy ?? storedConfig?.permissionPolicy,
     providerControls: storedConfig?.providerControls ?? {},
   };
 

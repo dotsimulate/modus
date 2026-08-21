@@ -5,7 +5,7 @@
   "about": "ABOUT.md",
   "integration": {
     "agentProfiles": [
-      "modus-dev",
+      "modus-helper",
       "modus-docs-auditor"
     ],
     "pageNav": "auto"

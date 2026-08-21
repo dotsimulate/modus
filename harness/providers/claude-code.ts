@@ -9,6 +9,8 @@ import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import type { SessionProvider, TurnContext } from "./types";
 import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getUserData, type McpServerConfig, type PermissionPolicy } from "../profiles";
+import { permissionPolicyNeedsApproval } from "../permission-policy";
+import { resolveMcpServers } from "../mcp-config";
 import {
   getMaxSeq,
   getObservedProviderSessionIds,
@@ -96,6 +98,8 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
 type ClaudeCodeState = {
   queryObj: ReturnType<typeof sdkQuery> | null;
   sdkOptions: any;
+  permissionHooks?: any;
+  profilePermissionPolicy?: PermissionPolicy;
   /** Private directory holding the CLI-readable MCP config for this provider generation. */
   sensitiveTempDir: string | null;
   input: InputChannel;
@@ -229,8 +233,8 @@ function resolveClaudeResumeTarget(sessionId?: string): ResumeTargetSelection {
   return selection;
 }
 
-type ClaudePermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk";
-const VALID_PERMISSION_MODES = new Set<ClaudePermissionMode>(["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"]);
+type ClaudePermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk" | "auto";
+const VALID_PERMISSION_MODES = new Set<ClaudePermissionMode>(["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk", "auto"]);
 
 function readClaudePermissionMode(providerControls: unknown): ClaudePermissionMode {
   if (!providerControls || typeof providerControls !== "object") return "default";
@@ -241,6 +245,18 @@ function readClaudePermissionMode(providerControls: unknown): ClaudePermissionMo
     return mode as ClaudePermissionMode;
   }
   return "default";
+}
+
+const CLAUDE_SHELL_TOOLS = new Set(["bash", "powershell"]);
+
+export function claudePermissionModeForPolicy(
+  policy: PermissionPolicy | undefined,
+  providerControls?: unknown,
+): ClaudePermissionMode {
+  if (!policy || policy === "bypass") return "bypassPermissions";
+  if (policy === "auto-edit") return "acceptEdits";
+  if (policy === "ask") return "default";
+  return readClaudePermissionMode(providerControls);
 }
 
 function spawnClaudeProcess(options: {
@@ -444,26 +460,6 @@ function cleanupSensitiveMcpConfig(directory: string | null): void {
 
 // ── Project CWD MCP Discovery ──
 
-/**
- * Read MCP server configs from a project's .claude/mcp.json (same file
- * Claude Code CLI discovers when launched from that directory).
- */
-function readProjectMcpServers(cwd: string | undefined): Record<string, McpServerConfig> {
-  if (!cwd) return {};
-  const mcpJsonPath = join(cwd, ".claude", "mcp.json");
-  try {
-    if (!existsSync(mcpJsonPath)) return {};
-    const raw = JSON.parse(require("fs").readFileSync(mcpJsonPath, "utf-8"));
-    const servers = raw?.mcpServers ?? {};
-    if (typeof servers !== "object" || Array.isArray(servers)) return {};
-    console.log(`[claude-code] Discovered project MCP servers at ${mcpJsonPath}: ${Object.keys(servers).join(", ")}`);
-    return servers as Record<string, McpServerConfig>;
-  } catch (err) {
-    console.warn(`[claude-code] Failed to read ${mcpJsonPath}:`, err);
-    return {};
-  }
-}
-
 // ── Provider Implementation ──
 
 type ClaudeCodeProviderDependencies = {
@@ -512,35 +508,14 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       }
 
       _timing("pre-mcp-merge");
-      // Merge MCP servers: project CWD .claude/mcp.json + global + profile
-      // Priority: profile > global > project CWD (project CWD is lowest, gets overridden)
-      // Use project root (where .modus/ lives), not session.cwd (may be a profile subfolder)
+      // The shared resolver owns discovery, precedence, and path anchoring for every provider.
       const projectRoot = session.projectRoot ?? opts.cwd ?? session.cwd;
-      const globalConfig = getGlobalConfig(projectRoot);
-      const sessionCwdMcp = readProjectMcpServers(projectRoot ?? process.cwd());
-      console.log(`[claude-code] MCP merge: projectRoot=${projectRoot} sessionCwd=${session.cwd} projectMcp=${JSON.stringify(Object.keys(sessionCwdMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profileDef?.mcpServers ?? {}))} sessionMcp=${JSON.stringify(Object.keys(opts.mcpServers ?? {}))}`);
-      const mergedMcp = {
-        ...sessionCwdMcp,
-        ...(globalConfig.mcpServers ?? {}),
-        ...(profileDef?.mcpServers ?? {}),
-        ...(opts.mcpServers as Record<string, any> ?? {}),
-      };
-
-      // Resolve relative --directory args to absolute
-      // Project CWD servers: resolve relative to session CWD
-      // Harness servers (global/profile): resolve relative to harness root
-      const harnessRoot = APP_PATHS.resourcesDir;
-      const projectCwdNames = new Set(Object.keys(sessionCwdMcp));
-      for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
-        const args = server.args as string[] | undefined;
-        if (!args) continue;
-        const dirIdx = args.indexOf("--directory");
-        const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
-        if (dirVal && !isAbsolute(dirVal)) {
-          const anchor = projectCwdNames.has(name) ? (opts.cwd ?? session.cwd ?? process.cwd()) : harnessRoot;
-          args[dirIdx + 1] = join(anchor, dirVal);
-        }
-      }
+      const mergedMcp = resolveMcpServers({
+        cwd: projectRoot,
+        profileName: opts.profile,
+        profile: profileDef,
+        sessionServers: opts.mcpServers,
+      }).servers;
 
       const hasMcp = Object.keys(mergedMcp).length > 0;
 
@@ -557,8 +532,10 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
       // ── Permission Policy ──
       // Session-level override (from interact endpoint) takes precedence over profile
-      const policy: PermissionPolicy = ctx.opts.permissionPolicy ?? profileDef?.permissionPolicy ?? "bypass";
-      const isBypass = policy === "bypass";
+      const currentPolicy = (): PermissionPolicy => session._configOverrides.permissionPolicy
+        ?? profileDef?.permissionPolicy
+        ?? "bypass";
+      const policy = currentPolicy();
 
       const preToolUseHook = async (hookInput: any, toolUseID: string | undefined) => {
         const toolName: string = hookInput.tool_name;
@@ -573,21 +550,14 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
             hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
           };
         }
-        if (isBypass) {
+        if (currentPolicy() === "bypass") {
           return {
             continue: true,
             hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
           };
         }
 
-        let needsApproval = false;
-        if (policy === "ask") {
-          needsApproval = true;
-        } else if (typeof policy === "object") {
-          if (policy.requireApproval?.includes(toolName)) needsApproval = true;
-          else if (policy.autoApprove?.includes(toolName)) needsApproval = false;
-          else needsApproval = policy.default === "ask";
-        }
+        let needsApproval = permissionPolicyNeedsApproval(currentPolicy(), toolName, CLAUDE_SHELL_TOOLS);
 
         if (needsApproval && session.sessionApprovals.has(toolName)) {
           needsApproval = false;
@@ -706,7 +676,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         }
 
         // In bypass mode, allow all other tools without permission checks.
-        if (isBypass) {
+        if (currentPolicy() === "bypass") {
           return { behavior: "allow" as const, updatedInput: toolInput };
         }
 
@@ -778,7 +748,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         // When harness policy is bypass, use bypassPermissions and skip hooks entirely.
         // On Windows, the hook IPC stream between SDK and CLI is unreliable —
         // every tool call triggers a round-trip that can fail with "Stream closed".
-        permissionMode: isBypass ? "bypassPermissions" : readClaudePermissionMode(opts.providerControls),
+        permissionMode: claudePermissionModeForPolicy(policy, opts.providerControls),
         maxBudgetUsd: profileDef?.maxBudgetUsd,
         env: claudeEnv,
         plugins: profileDef?.plugins,
@@ -787,7 +757,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         // bypass mode. Non-AskUserQuestion tools short-circuit immediately in
         // bypass mode so there's no performance cost.
         canUseTool,
-        ...(isBypass ? {} : {
+        ...(policy === "bypass" ? {} : {
           hooks: {
             PreToolUse: [{
               hooks: [preToolUseHook],
@@ -842,6 +812,10 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       const state: ClaudeCodeState = {
         queryObj: null,
         sdkOptions,
+        permissionHooks: {
+          PreToolUse: [{ hooks: [preToolUseHook], timeout: 300 }],
+        },
+        profilePermissionPolicy: profileDef?.permissionPolicy,
         sensitiveTempDir: sensitiveMcpConfig?.directory ?? null,
         input: channel,
         stderrBuf: "",
@@ -1159,6 +1133,11 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       if (config.providerControls !== undefined) {
         state.sdkOptions.permissionMode = readClaudePermissionMode(config.providerControls);
       }
+      if (config.permissionPolicy !== undefined) {
+        const policy = session._configOverrides.permissionPolicy ?? state.profilePermissionPolicy ?? "bypass";
+        state.sdkOptions.permissionMode = claudePermissionModeForPolicy(policy, config.providerControls);
+        state.sdkOptions.hooks = policy === "bypass" ? undefined : state.permissionHooks;
+      }
 
       if (config.tools !== undefined && config.tools.length > 0 && hasMcp) {
         const blocked = ALL_BUILTIN.filter((t: string) => !config.tools.includes(t));
@@ -1212,28 +1191,12 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       }
 
       // Re-merge MCP servers for the new profile
-      const globalConfig = getGlobalConfig(session.cwd);
-      const sessionCwdMcp = readProjectMcpServers(ctx.opts.cwd ?? session.cwd ?? process.cwd());
-      const mergedMcp = {
-        ...sessionCwdMcp,
-        ...(globalConfig.mcpServers ?? {}),
-        ...(profileDef?.mcpServers ?? {}),
-        ...(ctx.opts.mcpServers as Record<string, any> ?? {}),
-      };
-
-      // Resolve relative --directory args to absolute
-      const harnessRoot = APP_PATHS.resourcesDir;
-      const projectCwdNames = new Set(Object.keys(sessionCwdMcp));
-      for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
-        const args = server.args as string[] | undefined;
-        if (!args) continue;
-        const dirIdx = args.indexOf("--directory");
-        const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
-        if (dirVal && !isAbsolute(dirVal)) {
-          const anchor = projectCwdNames.has(name) ? (ctx.opts.cwd ?? session.cwd ?? process.cwd()) : harnessRoot;
-          args[dirIdx + 1] = join(anchor, dirVal);
-        }
-      }
+      const mergedMcp = resolveMcpServers({
+        cwd: session.projectRoot ?? ctx.opts.cwd ?? session.cwd,
+        profileName: ctx.opts.profile,
+        profile: profileDef,
+        sessionServers: ctx.opts.mcpServers,
+      }).servers;
 
       const hasMcpNew = Object.keys(mergedMcp).length > 0;
       const nextMcpConfig = writeSensitiveMcpConfig(hasMcpNew ? resolveEnvVars(mergedMcp) : {});
@@ -1279,7 +1242,12 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
           state.sdkOptions.disallowedTools = blocked.length > 0 ? blocked : undefined;
           state.sdkOptions.tools = undefined;
         } else {
-          state.sdkOptions.tools = Array.isArray(rawTools) && rawTools.length > 0 ? rawTools : undefined;
+          // An empty `tools` array is not "unset" — the SDK documents it as "disable all
+          // built-in tools". Collapsing it to undefined here restored the full default tool
+          // set, so a profile pinned to no tools silently regained everything the first time
+          // its config was re-applied mid-session. `disallowedTools` has no such meaning for
+          // the empty case, so it still collapses.
+          state.sdkOptions.tools = Array.isArray(rawTools) ? rawTools : undefined;
           state.sdkOptions.disallowedTools = Array.isArray(rawDisallowed) && rawDisallowed.length > 0 ? rawDisallowed : undefined;
         }
       }

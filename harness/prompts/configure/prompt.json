@@ -1,7 +1,7 @@
 {
   "label": "configure",
   "description": "Edit profiles, actions, providers, or permissions",
-  "profile": "modus-dev",
+  "profile": "modus-helper",
   "icon": "settings",
   "inputs": [
     { "name": "mode", "type": "select", "placeholder": "mode", "options": ["create", "edit", "review"], "default": "edit" },

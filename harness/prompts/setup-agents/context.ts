@@ -19,7 +19,7 @@ export async function gather(ctx: PromptGatherContext): Promise<string> {
   if (text) parts.push(text);
 
   const archetypeRef = archetype === "custom" ? "" : ` based on the ${archetype} archetype`;
-  parts.push("", `Survey the project first. Create profiles in .modus/profiles/agents/<name>.json${archetypeRef}. Use /create-profile skill for schemas. Only create what was asked for. Set reasonable maxTurns and permissions.`);
+  parts.push("", `Create profiles in .modus/profiles/agents/<name>.json${archetypeRef}. Use the create-profile move for the live schema. Only create what was asked for. Set reasonable maxTurns and permissions.`);
 
   return parts.join("\n");
 }

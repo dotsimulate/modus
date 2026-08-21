@@ -19,6 +19,7 @@ import type {
   EventStreamHandle,
   EventStreamCallbacks,
   Profile,
+  ResolvedProfileConfig,
   ProfileUi,
   GlobalConfig,
   TextToSpeechConfig,
@@ -508,6 +509,7 @@ export class ModusClient {
   async listProfiles(cwd?: string, opts?: { includeUi?: boolean }): Promise<Profile[]> { const params = new URLSearchParams(); if (cwd) params.set("cwd", cwd); if (opts?.includeUi) params.set("ui", "1"); const q = params.toString(); return (await this.fetch(`/api/profiles${q ? `?${q}` : ""}`)).json(); }
   /** Returns a single agent profile by name. Throws on not found. */
   async getProfile(name: string, cwd?: string): Promise<Profile> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; return (await this.fetchOrThrow(`/api/profiles/${encodeURIComponent(name)}${q}`)).json(); }
+  async getResolvedProfileConfig(name: string, opts?: { cwd?: string; sessionId?: string }): Promise<ResolvedProfileConfig> { const params = new URLSearchParams(); if (opts?.cwd) params.set("cwd", opts.cwd); if (opts?.sessionId) params.set("sessionId", opts.sessionId); const q = params.toString(); return (await this.fetchOrThrow(`/api/profiles/${encodeURIComponent(name)}/resolved-config${q ? `?${q}` : ""}`)).json(); }
   /** Returns the UI configuration for an agent profile. */
   async getProfileUiConfig(name: string, cwd?: string): Promise<ProfileUi> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; const r = await this.fetch(`/api/profiles/${encodeURIComponent(name)}/ui-config${q}`); if (!r.ok) throw new Error(`Profile UI config not found: ${name}`); return r.json(); }
   /** Creates or fully replaces an agent profile. */
@@ -517,7 +519,7 @@ export class ModusClient {
   /** Deletes an agent profile. */
   async deleteProfile(name: string, cwd?: string): Promise<void> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; await this.fetch(`/api/profiles/${encodeURIComponent(name)}${q}`, { method: "DELETE" }); }
   /** Returns the global config (_global.json), optionally merged with project-level config when cwd is provided. */
-  async getGlobalConfig(cwd?: string): Promise<GlobalConfig> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; return (await this.fetch(`/api/profiles/_global${q}`)).json(); }
+  async getGlobalConfig(cwd?: string, opts?: { stored?: boolean }): Promise<GlobalConfig> { const params = new URLSearchParams(); if (cwd) params.set("cwd", cwd); if (opts?.stored) params.set("stored", "1"); const q = params.toString(); return (await this.fetch(`/api/profiles/_global${q ? `?${q}` : ""}`)).json(); }
   /** Saves the global config. */
   async saveGlobalConfig(config: GlobalConfig, cwd?: string): Promise<void> { const q = cwd ? `?cwd=${encodeURIComponent(cwd)}` : ""; const r = await this.fetch(`/api/profiles/_global${q}`, { method: "PUT", body: JSON.stringify(config) }); if (!r.ok) { const b = await r.text().catch(() => ""); throw new Error(b || "Failed to save global config"); } }
   /** Checks which environment variable names have values set in the secrets store. */

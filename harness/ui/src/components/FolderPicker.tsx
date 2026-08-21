@@ -8,11 +8,17 @@
  *
  * Navigates the harness server's filesystem. Click folders to descend,
  * ".." to go up. "Select" picks the current directory as the cwd.
+ *
+ * On a local desktop backend the OS dialog replaces this entirely — see
+ * `usePathChooser`. This renders for a remote backend and for browser clients,
+ * where the folders being chosen are genuinely not on the user's machine, so
+ * the header names the host they belong to.
  */
 
 import { useState, useEffect, useRef } from "react";
 import { modus } from "../modusClient";
 import { folderLabel, joinBrowsePath, validateFolderName } from "../folderPath";
+import { browsedHost } from "../native-picker";
 import type { BrowseResult } from "../../../sdk/index";
 
 type Props = {
@@ -31,6 +37,7 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
   const [createError, setCreateError] = useState<string | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
   const newNameRef = useRef<HTMLInputElement>(null);
+  const host = browsedHost();
 
   const navigate = (path?: string) => {
     setLoading(true);
@@ -125,6 +132,7 @@ export function FolderPicker({ onSelect, onCancel, initialPath }: Props) {
     <div className="folder-picker">
       <div className="folder-picker-header">
         <span className="folder-picker-title">select folder</span>
+        {host && <span className="folder-picker-host" title={`browsing the filesystem on ${host}`}>{host}</span>}
         <button className="folder-picker-close" onClick={onCancel}>&times;</button>
       </div>
 

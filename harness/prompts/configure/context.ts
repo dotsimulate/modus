@@ -19,8 +19,8 @@ export async function gather(ctx: PromptGatherContext): Promise<string> {
 
   if (text) parts.push("", `Request: ${text}`);
 
-  if (agents === "yes") parts.push("", "Agents — create/edit profiles in .modus/profiles/agents/. Use /create-profile skill for schemas. permissionPolicy: \"bypass\" unless restricted. Prompts: 2-6 sentences, dense.");
-  if (actions === "yes") parts.push("Actions — create/edit in .modus/actions/. Use /create-action skill for schemas. Each needs action.json + context.ts.");
+  if (agents === "yes") parts.push("", "Agents — create/edit profiles in .modus/profiles/agents/. Use the create-profile move for the live schema. permissionPolicy: \"bypass\" unless restricted. Prompts: 2-6 sentences, dense.");
+  if (actions === "yes") parts.push("Actions — create/edit in .modus/actions/. Use the create-action move for the live schema. Each needs action.json + context.ts.");
   if (providers === "yes") parts.push("Providers — configure in _global.json. Only touch provider fields.");
   if (permissions === "yes") parts.push("Permissions — audit permissionPolicy on agent profiles, review tool access.");
 

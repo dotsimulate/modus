@@ -238,11 +238,18 @@ A `file` input lets the user pick a file for the move to read:
 ```
 
 The value delivered to `gather()`/handlers is an **absolute path on the machine
-running the harness**, already resolved. `FilePicker` browses the *server's*
-filesystem, not the browser's — there is no `<input type="file">` and no upload,
-because move code runs on the server and opens the path it is given. One
-consequence worth designing around: on a phone or a remote browser the user is
-picking files on the harness host, not on their own device.
+running the harness**, already resolved. There is no `<input type="file">` and no
+upload, because move code runs on the server and opens the path it is given.
+
+Which picker the user sees follows from that. On the desktop app driving a local
+backend the two filesystems are the same tree, so `useFileChooser`
+(`ui/src/hooks/usePathChooser.tsx`) opens the **OS file dialog** and re-resolves
+the result through `/api/browse` so the stored path is the server's own form.
+Everywhere else — a remote backend, a phone, any plain browser — it falls back to
+`FilePicker`, which browses the *server's* filesystem over `/api/browse` and names
+the host in its header. One consequence worth designing around: on a phone or a
+remote browser the user is picking files on the harness host, not on their own
+device. `nativePickerApplies` (`ui/src/native-picker.ts`) is the whole rule.
 
 `file` policy fields:
 

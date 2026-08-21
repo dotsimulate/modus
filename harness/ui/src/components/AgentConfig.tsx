@@ -12,6 +12,7 @@ import type { ProviderModel, AgentConfigState } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { SearchDropdown } from "./SearchDropdown";
 import { ToolGrid } from "./ToolGrid";
+import { PermissionPolicyControl } from "./PermissionPolicyControl";
 import { useProfiles } from "../providers/ProfileContext";
 import { getToolGroups, isAntigravityProvider, isClaudeCodeProvider, isCodexProvider, isGrokBuildProvider, mcpToolGroups, providerDisplayLabel, providerToolFamily, toSdkToolConfig, type ToolStates } from "../tools";
 
@@ -35,6 +36,7 @@ export type SessionConfigPatch = {
   disallowedTools?: string[];
   toolStates?: ToolStates;
   providerControls?: AgentConfigState["providerControls"];
+  permissionPolicy?: AgentConfigState["permissionPolicy"];
 };
 
 export type SessionConfigUpdate = {
@@ -46,6 +48,7 @@ export type SessionConfigUpdate = {
   disallowedTools: string[];
   toolStates: ToolStates;
   providerControls: AgentConfigState["providerControls"];
+  permissionPolicy: AgentConfigState["permissionPolicy"] | null;
 };
 
 type Props = {
@@ -168,16 +171,6 @@ export function AgentConfig({
     });
   };
 
-  const claudeControls = config.providerControls?.claude ?? {};
-  const updateClaudeControls = (patch: NonNullable<NonNullable<AgentConfigState["providerControls"]>["claude"]>) => {
-    update({
-      providerControls: {
-        ...(config.providerControls ?? {}),
-        claude: { ...claudeControls, ...patch },
-      },
-    });
-  };
-
   const antigravityControls = config.providerControls?.antigravity ?? {};
   const updateAntigravityControls = (patch: NonNullable<NonNullable<AgentConfigState["providerControls"]>["antigravity"]>) => {
     update({
@@ -269,6 +262,17 @@ export function AgentConfig({
         </label>
       </div>
 
+      <div className="agent-config-permissions">
+        <span className="agent-config-section-label">permissions</span>
+        <PermissionPolicyControl
+          value={config.permissionPolicy}
+          onChange={(permissionPolicy) => update({ permissionPolicy })}
+          provider={effectiveProvider}
+          builtInGroups={builtInGroups}
+          compact={compact}
+        />
+      </div>
+
       {/* Provider-specific runtime controls */}
       {isCodexProvider(effectiveProvider) ? (
         <div className="agent-config-row">
@@ -320,30 +324,6 @@ export function AgentConfig({
               searchPlaceholder="search speed..."
               onChange={(serviceTier) => updateCodexControls({
                 serviceTier: serviceTier as NonNullable<NonNullable<AgentConfigState["providerControls"]>["codex"]>["serviceTier"],
-              })}
-            />
-          </label>
-        </div>
-      ) : null}
-
-      {/* Claude-specific runtime controls */}
-      {isClaudeCodeProvider(effectiveProvider) ? (
-        <div className="agent-config-row">
-          <label className="agent-config-field">
-            <span>permissions</span>
-            <SearchDropdown
-              className={dropdownClassName}
-              value={claudeControls.permissionMode ?? ""}
-              options={[
-                { value: "default" },
-                { value: "acceptEdits" },
-                { value: "plan" },
-                { value: "dontAsk" },
-              ]}
-              placeholder="profile default"
-              searchPlaceholder="search permission mode..."
-              onChange={(permissionMode) => updateClaudeControls({
-                permissionMode: permissionMode as NonNullable<NonNullable<AgentConfigState["providerControls"]>["claude"]>["permissionMode"],
               })}
             />
           </label>
@@ -489,6 +469,7 @@ export function createEmptyAgentConfig(): AgentConfigState {
     effort: "",
     maxTurns: "",
     providerControls: {},
+    permissionPolicy: undefined,
   };
 }
 
@@ -529,6 +510,7 @@ export function isAgentConfigEqual(left: AgentConfigState, right: AgentConfigSta
     && left.provider === right.provider
     && left.effort === right.effort
     && left.maxTurns === right.maxTurns
+    && JSON.stringify(left.permissionPolicy) === JSON.stringify(right.permissionPolicy)
     && equalStringRecord(left.toolStates, right.toolStates)
     && equalProviderControls(left.providerControls, right.providerControls)
   );
@@ -540,6 +522,7 @@ export function countAgentConfigDifferences(left: AgentConfigState, right: Agent
   if (left.provider !== right.provider) count++;
   if (left.effort !== right.effort) count++;
   if (left.maxTurns !== right.maxTurns) count++;
+  if (JSON.stringify(left.permissionPolicy) !== JSON.stringify(right.permissionPolicy)) count++;
   if (!equalStringRecord(left.toolStates, right.toolStates)) count++;
   if (!equalProviderControls(left.providerControls, right.providerControls)) count++;
   return count;
@@ -559,6 +542,7 @@ export function agentConfigToOverrides(
     ...(config.effort.trim() ? { effort: config.effort } : {}),
     toolStates: config.toolStates,
     providerControls: config.providerControls,
+    permissionPolicy: config.permissionPolicy,
   };
 }
 
@@ -577,5 +561,6 @@ export function agentConfigToUpdatePayload(
     disallowedTools: "disallowedTools" in toolConfig ? (toolConfig.disallowedTools ?? []) : [],
     toolStates: config.toolStates,
     providerControls: config.providerControls ?? {},
+    permissionPolicy: config.permissionPolicy ?? null,
   };
 }

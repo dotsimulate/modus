@@ -107,12 +107,24 @@
   border-bottom: 1px solid var(--border);
 }
 .folder-picker-title {
+  flex: 1;
   font-family: var(--font-mono);
   font-size: calc(9px * var(--font-scale, 1));
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
+}
+/* Whose filesystem this is listing — only rendered when it is not the user's. */
+.folder-picker-host {
+  max-width: 45%;
+  margin-right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
 }
 .folder-picker-close {
   background: none;
@@ -304,6 +316,18 @@
   gap: 8px;
 }
 .agent-config--compact { gap: 6px; }
+.agent-config-permissions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.agent-config-section-label {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
 .agent-config-row {
   display: flex;
   gap: 8px;

@@ -32,7 +32,9 @@ import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe
 import {
   getGlobalConfig, getUserData,
   type McpServerConfig,
+  type PermissionPolicy,
 } from "../profiles";
+import { resolveMcpServers } from "../mcp-config";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 import { claudeNativeHistoryExists, selectProviderResumeTarget, type ResumeTargetSelection } from "../provider-session-identity";
 import {
@@ -197,6 +199,13 @@ function resolvePermissionMode(providerControls: unknown): string {
   return "default";
 }
 
+function resolvePortablePermissionMode(policy: PermissionPolicy | undefined, providerControls: unknown): string {
+  if (!policy || policy === "bypass") return "bypassPermissions";
+  if (policy === "auto-edit") return "acceptEdits";
+  if (policy === "ask") return "default";
+  return resolvePermissionMode(providerControls);
+}
+
 /**
  * Resolve the set of built-in tools to disable for this turn.
  * Mirrors the SDK provider: a tool allowlist (opts/profile `tools`) is converted
@@ -218,45 +227,17 @@ function resolveDisallowedTools(ctx: TurnContext): string[] {
 
 // ── MCP Config Resolution (reuses claude-code pattern) ──
 
-function readProjectMcpServers(projectRoot: string): Record<string, McpServerConfig> {
-  const mcpPath = join(projectRoot, ".claude", "mcp.json");
-  if (!existsSync(mcpPath)) return {};
-  try {
-    const raw = JSON.parse(require("fs").readFileSync(mcpPath, "utf-8"));
-    return raw?.mcpServers ?? {};
-  } catch {
-    return {};
-  }
-}
-
 function buildMcpArgs(ctx: TurnContext, privateTempDir: () => string): string[] {
   const { session, opts, profile: profileDef } = ctx;
   const projectRoot = session.projectRoot ?? opts.cwd ?? session.cwd ?? process.cwd();
-  const globalConfig = getGlobalConfig(projectRoot);
-  const sessionCwdMcp = readProjectMcpServers(projectRoot);
-
-  const mergedMcp: Record<string, any> = {
-    ...sessionCwdMcp,
-    ...(globalConfig.mcpServers ?? {}),
-    ...(profileDef?.mcpServers ?? {}),
-    ...(opts.mcpServers as Record<string, any> ?? {}),
-  };
+  const mergedMcp: Record<string, any> = resolveMcpServers({
+    cwd: projectRoot,
+    profileName: opts.profile,
+    profile: profileDef,
+    sessionServers: opts.mcpServers,
+  }).servers;
 
   if (Object.keys(mergedMcp).length === 0) return [];
-
-  // Resolve relative --directory args
-  const harnessRoot = dirname(dirname(import.meta.url.replace("file://", "")));
-  const projectCwdNames = new Set(Object.keys(sessionCwdMcp));
-  for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
-    const args = server.args as string[] | undefined;
-    if (!args) continue;
-    const dirIdx = args.indexOf("--directory");
-    const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
-    if (dirVal && !isAbsolute(dirVal)) {
-      const anchor = projectCwdNames.has(name) ? (opts.cwd ?? session.cwd ?? process.cwd()) : harnessRoot;
-      args[dirIdx + 1] = join(anchor, dirVal);
-    }
-  }
 
   // Build --mcp-servers JSON arg
   const mcpEntries: Record<string, any> = {};
@@ -331,7 +312,7 @@ function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
   if (maxTurns) args.push("--max-turns", String(maxTurns));
 
   // Permission mode — PTY has no interactive approval, so default to bypass
-  const permMode = resolvePermissionMode(opts.providerControls);
+  const permMode = resolvePortablePermissionMode(opts.permissionPolicy ?? profileDef?.permissionPolicy, opts.providerControls);
   if (permMode === "acceptEdits") {
     args.push("--allowedTools", "Edit,Write,MultiEdit,NotebookEdit");
   } else {

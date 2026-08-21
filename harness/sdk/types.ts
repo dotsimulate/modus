@@ -53,6 +53,7 @@ export type InteractOptions = {
   loadProjectSettings?: boolean;
   /** Whether to bypass or interactively handle tool permission requests. */
   permissionMode?: "bypass" | "interactive";
+  permissionPolicy?: PermissionPolicy;
   /** If true, opens an SSE stream for real-time events on this session. */
   subscribe?: boolean;
   /** If sessionId is given but doesn't exist, create it. */
@@ -208,6 +209,16 @@ export type PermissionResponse = {
   scope?: "once" | "session";
 };
 
+export type PermissionPolicy =
+  | "bypass"
+  | "auto-edit"
+  | "ask"
+  | {
+      default: "approve" | "ask";
+      autoApprove?: string[];
+      requireApproval?: string[];
+    };
+
 // ── Session Status ──
 
 export type SessionStatus = "starting" | "running" | "interrupting" | "idle" | "paused" | "done" | "error";
@@ -219,6 +230,7 @@ export type AgentConfigState = {
   provider: string;
   effort: string;
   maxTurns: string;
+  permissionPolicy?: PermissionPolicy;
   /** Provider-specific control knobs, keyed by provider family. */
   providerControls?: {
     codex?: {
@@ -227,7 +239,7 @@ export type AgentConfigState = {
       serviceTier?: "standard" | "fast" | "priority";
     };
     claude?: {
-      permissionMode?: "default" | "acceptEdits" | "plan" | "dontAsk";
+      permissionMode?: "default" | "acceptEdits" | "bypassPermissions" | "plan" | "dontAsk" | "auto";
     };
     antigravity?: {
       mode?: "accept-edits" | "plan";
@@ -333,6 +345,7 @@ export type SessionInfo = {
   tags: string;
   last_input_tokens?: number | null;
   last_output_tokens?: number | null;
+  pending_permission_count?: number;
 };
 
 /** Live session info for currently active (in-memory) sessions. */
@@ -437,6 +450,8 @@ export type CreateSessionOpts = {
   tools?: string[];
   disallowedTools?: string[];
   providerControls?: AgentConfigState["providerControls"];
+  permissionPolicy?: PermissionPolicy;
+  mcpServers?: Record<string, McpServerConfig>;
   loadProjectSettings?: boolean;
   /** If provided, reuse this ID instead of generating one. Fails if already in use. */
   sessionId?: string;
@@ -797,6 +812,8 @@ export type Profile = {
   disallowedTools?: string[];
   loadProjectSettings?: boolean;
   mcpServers?: Record<string, McpServerConfig>;
+  mcpConfig?: string;
+  permissionPolicy?: PermissionPolicy;
   /** Provider-specific runtime controls, e.g. Codex speed/search/sandbox settings. */
   providerControls?: AgentConfigState["providerControls"];
   ui?: ProfileUi;
@@ -816,6 +833,14 @@ export type Profile = {
   pluginId?: string;
   pluginName?: string;
   pluginPath?: string;
+  path?: string;
+};
+
+export type ResolvedProfileConfig = {
+  mcpServers: Record<string, McpServerConfig>;
+  mcpOrigins: Record<string, string>;
+  permissionPolicy: PermissionPolicy;
+  permissionOrigin: "session" | "profile" | "default";
 };
 
 /** Global configuration shared across all profiles (MCP servers, client extensions). */
@@ -844,6 +869,8 @@ export type TextToSpeechConfig = {
 
 export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>;
+  mcpConfig?: string;
+  permissionNotificationChannels?: string[];
   providerDefaults?: Record<string, unknown>;
   notificationChannels?: Record<string, unknown>;
   pluginSettings?: Record<string, Record<string, unknown>>;

@@ -1,7 +1,7 @@
 {
   "label": "explore project",
   "description": "Survey the project structure and report findings without modifying anything",
-  "profile": "modus-dev",
+  "profile": "modus-helper",
   "icon": "search",
   "inputs": [
     { "name": "depth", "type": "select", "placeholder": "depth", "options": ["quick", "thorough", "audit"], "default": "quick" },

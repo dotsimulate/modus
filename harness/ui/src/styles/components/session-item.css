@@ -120,6 +120,11 @@
   text-overflow: ellipsis;
   min-width: 0;
 }
+
+.session-permission-tag {
+  color: var(--warning, var(--accent));
+  font-weight: 600;
+}
 .session-project-tag {
   color: var(--text-dim);
   letter-spacing: 0.02em;

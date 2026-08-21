@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { modus } from "../../modusClient";
 import type { UserProfile, Profile } from "../../../../sdk/index";
-import { FolderPicker } from "../FolderPicker";
+import { useFolderChooser } from "../../hooks/usePathChooser";
 
 type Props = {
   onClose: () => void;
@@ -20,7 +20,7 @@ export function CreateProfileModal({ onClose, onCreated, agentProfiles }: Props)
   const [slugEdited, setSlugEdited] = useState(false);
   const [projects, setProjects] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const folder = useFolderChooser();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -114,20 +114,17 @@ export function CreateProfileModal({ onClose, onCreated, agentProfiles }: Props)
                 <button className="create-profile-path-remove" onClick={() => removeProject(p)}>x</button>
               </div>
             ))}
-            {showFolderPicker ? (
-              <div className="create-profile-folder-picker">
-                <FolderPicker
-                  onSelect={(path) => {
-                    if (!projects.includes(path)) setProjects((prev) => [...prev, path]);
-                    setShowFolderPicker(false);
-                  }}
-                  onCancel={() => setShowFolderPicker(false)}
-                />
-              </div>
+            {folder.inline ? (
+              <div className="create-profile-folder-picker">{folder.inline}</div>
             ) : (
               <button
                 className="create-profile-add-path"
-                onClick={() => setShowFolderPicker(true)}
+                disabled={folder.busy}
+                onClick={() => folder.open({
+                  title: "Add a project folder",
+                  initialPath: projects.at(-1),
+                  onSelect: (path) => setProjects((prev) => prev.includes(path) ? prev : [...prev, path]),
+                })}
               >
                 + add path
               </button>
