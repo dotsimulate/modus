@@ -12,6 +12,7 @@ export type MoveToolViewResolution = {
 
 export type MoveToolViewResolutionResult =
   | { resolution: MoveToolViewResolution; error: null }
+  | { resolution: null; error: null }
   | { resolution: null; error: string };
 
 export type MoveApiClientResult = {
@@ -123,8 +124,9 @@ export function moveApiPayload(tool: ToolCall): Record<string, unknown> {
   const raw = source.data;
   let payload: Record<string, unknown>;
   if (raw === undefined || raw === null) {
-    const { token: _token, data: _data, ...rest } = source;
-    payload = rest;
+    payload = { ...source };
+    delete payload.token;
+    delete payload.data;
   } else if (typeof raw === "string") {
     payload = parseObject(raw);
   } else if (typeof raw === "object" && !Array.isArray(raw)) {
@@ -198,6 +200,12 @@ function isResolution(value: unknown): value is MoveToolViewResolution {
     && typeof candidate.toolView.component === "string";
 }
 
+export function parseMoveToolViewResolution(value: unknown): MoveToolViewResolution | null {
+  if (value === null) return null;
+  if (!isResolution(value)) throw new Error("token resolution returned an invalid tool-view declaration");
+  return value;
+}
+
 async function fetchResolution(token: string): Promise<MoveToolViewResolution | null> {
   const response = await fetch(
     backendUrl(`/api/moves/resolve-token?token=${encodeURIComponent(token)}`),
@@ -209,12 +217,13 @@ async function fetchResolution(token: string): Promise<MoveToolViewResolution | 
       const body = await response.json() as { error?: unknown; message?: unknown };
       const candidate = body.error ?? body.message;
       if (typeof candidate === "string") detail = candidate;
-    } catch {}
+    } catch {
+      detail = "";
+    }
     throw new Error(detail || `token resolution returned HTTP ${response.status}`);
   }
   const value: unknown = await response.json();
-  if (!isResolution(value)) throw new Error("token resolution returned an invalid tool-view declaration");
-  return value;
+  return parseMoveToolViewResolution(value);
 }
 
 export function resolveMoveToolView(
@@ -232,7 +241,7 @@ export function resolveMoveToolView(
   const pending = load(token)
     .then((resolution): MoveToolViewResolutionResult => resolution
       ? { resolution, error: null }
-      : { resolution: null, error: "token did not resolve to a declared tool view" })
+      : { resolution: null, error: null })
     .catch((reason: unknown): MoveToolViewResolutionResult => ({
       resolution: null,
       error: reason instanceof Error ? reason.message : "token resolution failed",

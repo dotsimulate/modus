@@ -14,6 +14,7 @@ describe("interface settings scope", () => {
       chatWidth: 920,
       scrollIndicator: "ruler",
       presentation: "conversation",
+      scrollThroughTurns: true,
     },
     conversation: { showThinking: false, toolCalls: "hidden" },
     motion: "reduced",
@@ -35,6 +36,7 @@ describe("interface settings scope", () => {
         chatWidth: 700,
         scrollIndicator: "scroll",
         presentation: "turns",
+        scrollThroughTurns: false,
       },
       conversation: { showThinking: true, toolCalls: "expanded" },
       motion: "system",
@@ -45,6 +47,7 @@ describe("interface settings scope", () => {
       chatWidth: 700,
       scrollIndicator: "scroll",
       presentation: "turns",
+      scrollThroughTurns: false,
     });
     expect(effective.conversation).toEqual(deviceDefaults.conversation);
     expect(effective.motion).toBe("reduced");
@@ -61,13 +64,14 @@ describe("interface settings scope", () => {
     });
   });
 
-  test("the project payload and eligibility catalog contain the same four fields", () => {
+  test("the project payload and eligibility catalog contain the same five fields", () => {
     const config = projectChatOverrideConfig(deviceDefaults);
     expect(PROJECT_CHAT_OVERRIDE_KEYS).toEqual([
       "fontScale",
       "chatWidth",
       "scrollIndicator",
       "presentation",
+      "scrollThroughTurns",
     ]);
     expect(Object.keys(config).sort()).toEqual([
       ...PROJECT_CHAT_OVERRIDE_KEYS,
@@ -78,7 +82,7 @@ describe("interface settings scope", () => {
   test("the profile UI schema accepts the explicit project presentation override", () => {
     expect(UserProfileUiConfigSchema.safeParse({
       interface: {
-        chat: { projectOverride: true, presentation: "turns" },
+        chat: { projectOverride: true, presentation: "turns", scrollThroughTurns: true },
       },
     }).success).toBe(true);
   });

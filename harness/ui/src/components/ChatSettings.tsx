@@ -128,7 +128,8 @@ export function ChatSettings() {
     settings.chat.fontScale === DEFAULT_INTERFACE_SETTINGS.chat.fontScale &&
     settings.chat.chatWidth === DEFAULT_INTERFACE_SETTINGS.chat.chatWidth &&
     settings.chat.scrollIndicator === DEFAULT_INTERFACE_SETTINGS.chat.scrollIndicator &&
-    settings.chat.presentation === DEFAULT_INTERFACE_SETTINGS.chat.presentation;
+    settings.chat.presentation === DEFAULT_INTERFACE_SETTINGS.chat.presentation &&
+    settings.chat.scrollThroughTurns === DEFAULT_INTERFACE_SETTINGS.chat.scrollThroughTurns;
 
   return (
     <div className="chat-settings" ref={ref}>

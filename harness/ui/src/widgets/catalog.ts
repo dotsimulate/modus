@@ -314,7 +314,7 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
   "session-turn": {
     type: "session-turn",
     description:
-      "One turn of a conversation as a configurable projection — which parts of the turn to draw, with position left entirely to the page layout. Reads `turnSeq` from page context; with no ticker on the page it tracks the newest turn. Segments always render in provider order; filtering omits, never reorders.",
+      "One turn of a conversation as a centered, configurable projection. Reads `turnSeq` from page context, includes a compact previous/next navigator when context is available, and tracks the newest turn by default. While that turn is active, a lightweight status line summarizes thinking, writing, or the latest tool action without duplicating the full activity view. Segments always render in provider order; filtering omits, never reorders.",
     config: [
       { name: "blocks", type: '("prompt"|"thinking"|"text"|"tools"|"meta")[]', description: "Which parts to draw. Default: all." },
       { name: "promptMaxHeight", type: "number", description: "Height at which the prompt scrolls instead of growing." },

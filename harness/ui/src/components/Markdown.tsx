@@ -2,7 +2,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import hljs from "highlight.js/lib/core";
 import type { LanguageFn } from "highlight.js";
-import { isValidElement, memo, useCallback, useEffect, useId, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from "react";
+import { isValidElement, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from "react";
 import { useFileViewer } from "../providers/FileViewerContext";
 import {
   MERMAID_RENDER_TIMEOUT_MS,
@@ -18,6 +18,7 @@ import { isTauriRuntime, openDesktopExternalUrl, openDesktopPath, revealDesktopP
 import { nativePickerApplies } from "../native-picker";
 import { useContextMenu } from "./ContextMenu";
 import { PasteBlock } from "./PasteBlock";
+import { rehypeWordReveal } from "../markdown-reveal";
 
 // Register languages — core set for dev/AI chat
 import javascript from "highlight.js/lib/languages/javascript";
@@ -224,7 +225,9 @@ function extractText(node: unknown): string {
   return "";
 }
 
-type MarkdownComponents = Components & Record<"pasted", ComponentType<{ children?: ReactNode }>>;
+type MarkdownComponents = Components
+  & Record<"pasted", ComponentType<{ children?: ReactNode }>>
+  & Record<"reveal", ComponentType<{ children?: ReactNode; delay?: number }>>;
 
 const markdownComponents: MarkdownComponents = {
   // Web links open a new tab rather than replacing the app. In a browser that
@@ -242,6 +245,13 @@ const markdownComponents: MarkdownComponents = {
   pasted({ children }: { children?: ReactNode }) {
     const text = extractText(children).replace(/^\n+/, "").replace(/\n+$/, "");
     return <PasteBlock text={text} />;
+  },
+  reveal({ children, delay }: { children?: ReactNode; delay?: number }) {
+    return (
+      <span className="markdown-word-reveal" style={{ animationDelay: `${Number(delay) || 0}ms` }}>
+        {children}
+      </span>
+    );
   },
   pre({ children }: { children?: ReactNode }) {
     const child = children as ReactElement<{ className?: string; children?: ReactNode }>;
@@ -273,12 +283,22 @@ const markdownComponents: MarkdownComponents = {
   },
 };
 
-export const Markdown = memo(function Markdown({ content }: { content: string }) {
+export const Markdown = memo(function Markdown({
+  content,
+  revealText = false,
+}: {
+  content: string;
+  revealText?: boolean;
+}) {
   const { openFile } = useFileViewer();
   const { open: openContextMenu, portal: contextMenuPortal } = useContextMenu();
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bounded = limitMarkdownContent(content);
+  const rehypePlugins = useMemo(
+    () => revealText ? [...markdownRehypePlugins, rehypeWordReveal] : markdownRehypePlugins,
+    [revealText],
+  );
 
   useEffect(() => () => {
     if (linkErrorTimer.current) clearTimeout(linkErrorTimer.current);
@@ -356,7 +376,7 @@ export const Markdown = memo(function Markdown({ content }: { content: string })
 
   return (
     <div onClick={handleClick} onContextMenu={handleContextMenu}>
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={markdownRehypePlugins} components={markdownComponents}>
+      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
         {bounded.content}
       </ReactMarkdown>
       {linkError && <div className="markdown-link-error" role="status">{linkError}</div>}
