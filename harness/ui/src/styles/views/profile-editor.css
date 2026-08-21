@@ -88,6 +88,35 @@
   letter-spacing: 0;
   text-transform: none;
 }
+/* "none" is a legitimate choice but a consequential one, so it reads as a state
+   rather than a count. Colour only — a badge here would outweigh the label. */
+.pf-group-meta--warn { color: var(--accent, #e89b50); }
+
+/* All-vs-custom for the tool surface. The grid alone cannot distinguish "inherit
+   everything" from "grant nothing", since both are zero selections. */
+.pf-tools-mode {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 8px;
+}
+.pf-tools-mode-btn {
+  padding: 2px 7px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.pf-tools-mode-btn:hover { color: var(--text-dim); border-color: var(--border-active); }
+.pf-tools-mode-btn--on {
+  color: var(--text);
+  border-color: var(--border-active);
+  background: var(--bg-surface);
+}
 
 /* ── Rows ── */
 .pf-row {
@@ -167,6 +196,12 @@
   resize: vertical;
   outline: none;
   transition: border-color 0.12s ease;
+}
+
+.pf-json-editor {
+  min-height: 420px;
+  font-family: var(--font-mono);
+  white-space: pre;
 }
 
 .pf-prompt:focus {
@@ -288,6 +323,38 @@
 .pf-btn-delete:hover {
   color: var(--error);
   border-color: var(--error-dim);
+}
+
+.permission-policy {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.permission-policy-modes {
+  align-self: flex-start;
+  flex-wrap: wrap;
+}
+
+.permission-policy-help,
+.permission-policy-warning {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+}
+
+.permission-policy-warning {
+  color: var(--warning, var(--accent));
+}
+
+.permission-policy-advanced {
+  align-self: flex-start;
+}
+
+.permission-policy-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* ── Responsive ── */

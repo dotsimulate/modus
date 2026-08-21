@@ -42,7 +42,13 @@ type BaselineProps = BaseProps & {
   profileTools?: undefined;
 };
 
-type Props = OverrideProps | BaselineProps;
+type PermissionProps = BaseProps & {
+  mode: "permission";
+  states: ToolStates;
+  profileTools?: undefined;
+};
+
+type Props = OverrideProps | BaselineProps | PermissionProps;
 
 function nextOverrideState(current: ToolState): ToolState {
   if (current === "inherit") return "on";
@@ -99,9 +105,11 @@ export function ToolGrid(props: Props) {
     ? Object.values(states).filter((s) => s === "on").length
     : allTools.filter((t) => isToolEnabled(t, states[t] ?? "inherit", profileTools)).length;
 
-  const totalLabel = mode === "baseline"
-    ? `${enabledCount || "all"} tools`
-    : `${enabledCount}/${allTools.length} tools`;
+  const totalLabel = mode === "permission"
+    ? `${overrideCount} exception${overrideCount === 1 ? "" : "s"}`
+    : mode === "baseline"
+      ? `${enabledCount || "all"} tools`
+      : `${enabledCount}/${allTools.length} tools`;
 
   const resetLabel = mode === "baseline" ? "clear" : "reset";
 
@@ -134,6 +142,9 @@ export function ToolGrid(props: Props) {
                 if (mode === "baseline") {
                   enabled = overrideCount === 0 || state === "on";
                   isOverride = state === "on";
+                } else if (mode === "permission") {
+                  enabled = state !== "off";
+                  isOverride = state !== "inherit";
                 } else {
                   enabled = isToolEnabled(tool, state, profileTools);
                   isOverride = state !== "inherit";
@@ -151,9 +162,11 @@ export function ToolGrid(props: Props) {
                       .filter(Boolean)
                       .join(" ")}
                     onClick={() => toggle(tool)}
-                    title={mode === "baseline"
-                      ? `${tool}: ${enabled ? "included" : "excluded"}`
-                      : `${tool}: ${state}${isOverride ? " (override)" : ""}`
+                    title={mode === "permission"
+                      ? `${tool}: ${state === "on" ? "auto-approve" : state === "off" ? "ask" : "inherit mode"}`
+                      : mode === "baseline"
+                        ? `${tool}: ${enabled ? "included" : "excluded"}`
+                        : `${tool}: ${state}${isOverride ? " (override)" : ""}`
                     }
                   >
                     {isOverride && <span className="tool-pill-dot" />}

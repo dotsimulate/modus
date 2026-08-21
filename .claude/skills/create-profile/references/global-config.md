@@ -10,6 +10,8 @@ session regardless of which agent or user profile is active.
 {
   // MCP servers available to ALL sessions
   // Agent profile MCP servers override these by key name
+  // Relative paths resolve from this _global.json file.
+  "mcpConfig": "./shared-mcp.json",
   "mcpServers": {
     "agent-memory": {
       "command": "uv",
@@ -64,6 +66,7 @@ session regardless of which agent or user profile is active.
   // "method" and "headers" are supported and are merged over a default
   // Content-Type. Values are literal — there is no ${VAR} expansion and no
   // secrets indirection here, so a bearer token written here sits in plaintext.
+  "permissionNotificationChannels": ["ops-webhook"],
   "notificationChannels": {
     "ops-webhook": {
       "type": "webhook",

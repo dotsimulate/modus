@@ -9,6 +9,7 @@ mod vaults;
 
 use std::{
     env,
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -160,25 +161,109 @@ async fn desktop_vault_policy(
         .map_err(|error| format!("desktop Vault policy task failed: {error}"))?
 }
 
-#[tauri::command]
-async fn desktop_choose_vault_folder(app: AppHandle) -> Result<Option<String>, String> {
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PickRequest {
+    title: Option<String>,
+    /// Directory the dialog opens in. Ignored unless it exists.
+    initial_path: Option<String>,
+    /// Extension allowlist for file picks, e.g. `[".png", ".jpg"]`.
+    #[serde(default)]
+    accept: Vec<String>,
+}
+
+/// A directory the dialog can actually open in.
+///
+/// The suggestion originates in a text field the user can type anything into,
+/// and `set_directory` with a path that does not exist leaves the dialog
+/// pointing at an arbitrary default, so it is dropped unless it resolves.
+fn existing_directory(raw: Option<&str>) -> Option<PathBuf> {
+    let trimmed = raw.map(str::trim).filter(|value| !value.is_empty())?;
+    let path = PathBuf::from(trimmed);
+    path.is_dir().then_some(path)
+}
+
+/// Run the OS folder dialog off the async runtime and return the chosen path.
+///
+/// `blocking_pick_folder` parks the calling thread until the user answers, so
+/// the whole call moves onto a blocking worker.
+async fn pick_folder(
+    app: AppHandle,
+    title: String,
+    initial_path: Option<String>,
+) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         use tauri_plugin_dialog::DialogExt;
-        let Some(selection) = app
-            .dialog()
-            .file()
-            .set_title("Choose a Modus Vault folder")
-            .blocking_pick_folder()
-        else {
+        let mut builder = app.dialog().file().set_title(title);
+        if let Some(directory) = existing_directory(initial_path.as_deref()) {
+            builder = builder.set_directory(directory);
+        }
+        let Some(selection) = builder.blocking_pick_folder() else {
             return Ok(None);
         };
         let path = selection
             .into_path()
-            .map_err(|error| format!("selected Vault folder is not a local path: {error}"))?;
+            .map_err(|error| format!("selected folder is not a local path: {error}"))?;
         Ok(Some(path.display().to_string()))
     })
     .await
-    .map_err(|error| format!("desktop Vault folder picker task failed: {error}"))?
+    .map_err(|error| format!("desktop folder picker task failed: {error}"))?
+}
+
+#[tauri::command]
+async fn desktop_choose_vault_folder(app: AppHandle) -> Result<Option<String>, String> {
+    pick_folder(app, "Choose a Modus Vault folder".to_string(), None).await
+}
+
+/// Native folder dialog for the harness UI's path fields.
+///
+/// Only correct when the webview and the harness backend share a filesystem;
+/// the UI decides that (`nativePickerAvailable`) and keeps its server-side
+/// browser for every other backend target.
+#[tauri::command]
+async fn desktop_pick_folder(
+    app: AppHandle,
+    request: PickRequest,
+) -> Result<Option<String>, String> {
+    let title = request.title.unwrap_or_else(|| "Select a folder".to_string());
+    pick_folder(app, title, request.initial_path).await
+}
+
+/// Native file dialog, filtered by the caller's extension allowlist.
+///
+/// The filter is a convenience only — a move's declared file policy is still
+/// re-enforced server-side at activation.
+#[tauri::command]
+async fn desktop_pick_file(
+    app: AppHandle,
+    request: PickRequest,
+) -> Result<Option<String>, String> {
+    let title = request.title.unwrap_or_else(|| "Select a file".to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let mut builder = app.dialog().file().set_title(title);
+        if let Some(directory) = existing_directory(request.initial_path.as_deref()) {
+            builder = builder.set_directory(directory);
+        }
+        let extensions: Vec<&str> = request
+            .accept
+            .iter()
+            .map(|value| value.trim().trim_start_matches('.'))
+            .filter(|value| !value.is_empty())
+            .collect();
+        if !extensions.is_empty() {
+            builder = builder.add_filter("Allowed files", &extensions);
+        }
+        let Some(selection) = builder.blocking_pick_file() else {
+            return Ok(None);
+        };
+        let path = selection
+            .into_path()
+            .map_err(|error| format!("selected file is not a local path: {error}"))?;
+        Ok(Some(path.display().to_string()))
+    })
+    .await
+    .map_err(|error| format!("desktop file picker task failed: {error}"))?
 }
 
 /// Claim a `modus://` link that arrived before the webview was listening.
@@ -291,6 +376,8 @@ fn main() {
             desktop_update_vault,
             desktop_vault_policy,
             desktop_choose_vault_folder,
+            desktop_pick_folder,
+            desktop_pick_file,
             desktop_take_pending_deep_link,
             desktop_tailscale_status,
             desktop_set_tailscale_enabled,

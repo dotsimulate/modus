@@ -47,6 +47,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
   const isPinned = (tags ?? []).includes("pinned");
   const agentProfile = liveSession?.profile ?? s.profile;
   const compactModel = model ? compactModelName(model) : null;
+  const pendingPermissionCount = liveSession?.pendingPermissions?.length ?? s.pending_permission_count ?? 0;
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -107,6 +108,9 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
           <span className="session-meta-left">
             {agentProfile && <span className="session-profile-tag">{agentProfile}</span>}
             {compactModel && <span className="session-model-tag">{compactModel}</span>}
+            {pendingPermissionCount > 0 && (
+              <span className="session-permission-tag" title="Waiting for tool approval">approval</span>
+            )}
           </span>
         </div>
         <div className="session-meta-row">

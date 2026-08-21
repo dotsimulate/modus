@@ -11,7 +11,7 @@ import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import { LAUNCH_CWD } from "../launchParams";
 import { backendStorageKey } from "../backendTarget";
-import { FolderPicker } from "./FolderPicker";
+import { useFolderChooser } from "../hooks/usePathChooser";
 
 type Props = {
   onComplete: () => void;
@@ -28,14 +28,17 @@ export function ProjectSetup({ onComplete }: Props) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
-  // Path browser
-  const [showBrowser, setShowBrowser] = useState(false);
+  const folder = useFolderChooser();
 
   const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
   const openBrowser = useCallback(() => {
-    setShowBrowser(true);
-  }, []);
+    folder.open({
+      title: "Choose the project folder",
+      initialPath: projectPath || undefined,
+      onSelect: setProjectPath,
+    });
+  }, [folder.open, projectPath]);
 
   const createProject = useCallback(async () => {
     if (!slug || !projectPath.trim()) return;
@@ -44,8 +47,8 @@ export function ProjectSetup({ onComplete }: Props) {
       await modus.saveUserProfile(slug, {
         displayName: projectName,
         projects: [projectPath.trim()],
-        agentProfiles: ["modus-dev"],
-        defaultAgentProfile: "modus-dev",
+        agentProfiles: ["modus-helper"],
+        defaultAgentProfile: "modus-helper",
       });
       await modus.initProject(projectPath.trim(), projectName);
       sessionStorage.removeItem(backendStorageKey("modus:launch-cwd"));
@@ -98,24 +101,13 @@ export function ProjectSetup({ onComplete }: Props) {
             placeholder="/home/user/project"
             onKeyDown={(e) => e.key === "Enter" && createProject()}
           />
-          <button className="setup-browse-btn" onClick={openBrowser}>
+          <button className="setup-browse-btn" onClick={openBrowser} disabled={folder.busy}>
             browse
           </button>
         </div>
       </label>
 
-      {showBrowser && (
-        <div className="setup-browser">
-          <FolderPicker
-            initialPath={projectPath || undefined}
-            onSelect={(path) => {
-              setProjectPath(path);
-              setShowBrowser(false);
-            }}
-            onCancel={() => setShowBrowser(false)}
-          />
-        </div>
-      )}
+      {folder.inline && <div className="setup-browser">{folder.inline}</div>}
 
       <div className="setup-actions">
         <button

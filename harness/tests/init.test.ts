@@ -12,7 +12,7 @@ describe("project initialization", () => {
     const resources = join(root, "resources");
     const modusHome = join(root, "home");
     mkdirSync(target, { recursive: true });
-    const profileTemplate = join(resources, "templates", "profiles", "agents", "modus-dev.json");
+    const profileTemplate = join(resources, "templates", "profiles", "agents", "modus-helper.json");
     const skillTemplate = join(resources, "templates", "skills", "create-profile", "SKILL.md");
     mkdirSync(dirname(profileTemplate), { recursive: true });
     mkdirSync(dirname(skillTemplate), { recursive: true });
@@ -52,7 +52,7 @@ describe("project initialization", () => {
       expect(existsSync(join(target, ".modus", "moves"))).toBe(true);
       expect(existsSync(join(target, ".modus", "pages"))).toBe(true);
       expect(existsSync(join(target, ".modus", "ui", "extensions"))).toBe(true);
-      expect(existsSync(join(target, ".modus", "profiles", "agents", "modus-dev.json"))).toBe(false);
+      expect(existsSync(join(target, ".modus", "profiles", "agents", "modus-helper.json"))).toBe(false);
       expect(existsSync(join(target, ".claude", "skills", "create-profile", "SKILL.md"))).toBe(false);
       const globalConfig = JSON.parse(readFileSync(join(target, ".modus", "_global.json"), "utf-8"));
       expect(globalConfig).toEqual({ mcpServers: {}, notificationChannels: {} });

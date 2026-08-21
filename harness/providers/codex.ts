@@ -20,6 +20,7 @@ import {
   getGlobalConfig, getProfile, resolveProfilePrompt,
   type McpServerConfig, type PermissionPolicy, type Profile,
 } from "../profiles";
+import { resolveMcpServers } from "../mcp-config";
 import { dirname, extname, isAbsolute, join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { homedir } from "os";
@@ -446,26 +447,6 @@ function buildRemoteCodexMcpServer(
   return serverConfig;
 }
 
-/**
- * Read MCP server configs from a project's .claude/mcp.json, matching the
- * Claude Code provider's project-local discovery path.
- */
-function readProjectMcpServers(cwd: string | undefined): Record<string, McpServerConfig> {
-  if (!cwd) return {};
-  const mcpJsonPath = join(cwd, ".claude", "mcp.json");
-  try {
-    if (!existsSync(mcpJsonPath)) return {};
-    const raw = JSON.parse(readFileSync(mcpJsonPath, "utf-8"));
-    const servers = raw?.mcpServers ?? {};
-    if (!servers || typeof servers !== "object" || Array.isArray(servers)) return {};
-    console.log(`[codex] Discovered project MCP servers at ${mcpJsonPath}: ${Object.keys(servers).join(", ")}`);
-    return servers as Record<string, McpServerConfig>;
-  } catch (err) {
-    console.warn(`[codex] Failed to read ${mcpJsonPath}:`, err);
-    return {};
-  }
-}
-
 // ── Codex Rules File (.rules) ──
 
 /**
@@ -517,7 +498,7 @@ function cleanupCodexRulesFile(filePath: string | undefined): void {
  *
  * codexSandboxMode on the profile overrides the derived sandboxMode.
  */
-function mapPermissionPolicy(
+export function mapPermissionPolicy(
   policy: PermissionPolicy | undefined,
   codexSandboxMode?: "read-only" | "workspace-write" | "danger-full-access",
 ): {
@@ -530,6 +511,9 @@ function mapPermissionPolicy(
   if (!policy || policy === "bypass") {
     approvalPolicy = "never";
     sandboxMode = "danger-full-access";
+  } else if (policy === "auto-edit") {
+    approvalPolicy = "never";
+    sandboxMode = "workspace-write";
   } else if (policy === "ask") {
     console.warn(
       "[codex] permissionPolicy \"ask\" cannot be honored — Codex exec mode auto-rejects " +
@@ -660,31 +644,13 @@ function codexDisableFeatures(): string[] {
 function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?: Record<string, string> } {
   const { opts, profile } = ctx;
   const projectRoot = ctx.session.projectRoot ?? opts.cwd ?? ctx.session.cwd;
-  const globalConfig = getGlobalConfig(projectRoot);
-  const projectMcp = readProjectMcpServers(projectRoot ?? process.cwd());
-  const mergedMcp = {
-    ...projectMcp,
-    ...(globalConfig.mcpServers ?? {}),
-    ...(profile?.mcpServers ?? {}),
-    ...(opts.mcpServers as Record<string, any> ?? {}),
-  };
+  const mergedMcp = resolveMcpServers({
+    cwd: projectRoot,
+    profileName: opts.profile,
+    profile,
+    sessionServers: opts.mcpServers,
+  }).servers;
   if (Object.keys(mergedMcp).length === 0) return {};
-
-  console.log(`[codex] MCP merge: projectRoot=${projectRoot} sessionCwd=${ctx.session.cwd} projectMcp=${JSON.stringify(Object.keys(projectMcp))} globalMcp=${JSON.stringify(Object.keys(globalConfig.mcpServers ?? {}))} profileMcp=${JSON.stringify(Object.keys(profile?.mcpServers ?? {}))} sessionMcp=${JSON.stringify(Object.keys(opts.mcpServers ?? {}))}`);
-
-  // Resolve relative --directory args to absolute (same as claude-code provider)
-  const harnessRoot = APP_PATHS.resourcesDir;
-  const projectMcpNames = new Set(Object.keys(projectMcp));
-  for (const [name, server] of Object.entries(mergedMcp) as [string, any][]) {
-    const args = server.args as string[] | undefined;
-    if (!args) continue;
-    const dirIdx = args.indexOf("--directory");
-    const dirVal = dirIdx >= 0 ? args[dirIdx + 1] : undefined;
-    if (dirVal && !isAbsolute(dirVal)) {
-      const anchor = projectMcpNames.has(name) ? (opts.cwd ?? ctx.session.cwd ?? process.cwd()) : harnessRoot;
-      args[dirIdx + 1] = join(anchor, dirVal);
-    }
-  }
 
   const mcpServers: CodexConfigObject = {};
   const extraEnv: Record<string, string> = {};

@@ -326,9 +326,18 @@ Provider-specific normalization:
 - Other providers accept the resolved effort only if their implementation uses it.
 - **grok-build**: effort is applied at ACP process startup and included in prompt metadata for compatible Grok versions.
 
-## Claude Permission Mode
+## Permissions
 
-The Claude providers read `opts.providerControls.claude.permissionMode` to set permission mode. Valid values: `"default"`, `"acceptEdits"`, `"plan"`, `"dontAsk"`. The SDK provider can update this through its `updateConfig` path; the PTY provider applies config changes on the next turn or process restart.
+`permissionPolicy` is the portable gate shown in both profile and session
+configuration. Its ladder is inherit, `"bypass"`, `"auto-edit"`, and `"ask"`;
+the object form remains supported for per-tool exceptions. Provider-specific
+degradation is shown in the authoring UI.
+
+`providerControls.claude.permissionMode` remains a JSON-only compatibility
+control. Valid values are `"default"`, `"acceptEdits"`,
+`"bypassPermissions"`, `"plan"`, `"dontAsk"`, and `"auto"`. The portable
+policy wins for its string modes; an object policy can still use the native
+control.
 
 When the agent calls the `ExitPlanMode` tool, the provider automatically resets `permissionMode` to `"default"` and notifies session-manager via `notifyConfigChange`, so the config_updated event reflects the cleared state.
 
@@ -386,13 +395,21 @@ search entirely.
 
 ## MCP Server Composition
 
-MCP servers are merged from multiple sources when a session starts:
+MCP servers are merged identically for every provider. Later entries override
+same-named servers from earlier entries:
 
-1. Built-in `modus` server (always present, HTTP transport to harness)
-2. Base `_global.json` mcpServers
-3. Project `.modus/_global.json` mcpServers (additive)
-4. Agent profile `mcpServers` field
-5. Session `mcpServers` (merged last, including the built-in Modus override)
+1. Project `.claude/mcp.json` (compatibility path)
+2. Project `.mcp.json`
+3. Project `.modus/mcp.json`
+4. Built-in `modus` server
+5. Each global layer, in base â†’ plugin â†’ project order: its optional
+   `mcpConfig` file, then its inline `mcpServers`
+6. The profile's optional `mcpConfig` file, then inline `mcpServers`
+7. Session `mcpServers`
+
+Relative `mcpConfig` paths resolve from the file that declares them. Relative
+`--directory` arguments in stdio server configs resolve from the MCP file or
+profile/global file that owns the entry.
 
 Environment variables injected into MCP servers:
 - `AGENT_PROFILE` — active agent profile name

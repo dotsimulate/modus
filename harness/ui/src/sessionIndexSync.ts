@@ -19,6 +19,7 @@ type LifecycleEvent = {
   seq?: number;
   lastText?: string | null;
   lastEventAt?: number;
+  pendingCount?: number;
 };
 
 type SyncMessage =
@@ -104,6 +105,9 @@ function patchSession(session: SessionInfo, event: LifecycleEvent, at: number): 
       last_event_at: at,
     };
   }
+  if (event.type === "session:permission") {
+    return { ...session, pending_permission_count: event.pendingCount ?? 0 };
+  }
   return session;
 }
 
@@ -122,7 +126,7 @@ function applyPatch(event: LifecycleEvent, at: number, broadcast: boolean): bool
 async function handleLifecycle(event: LifecycleEvent) {
   const at = Date.now();
   updateState({ status: "connected", lastEventAt: at });
-  if ((event.type === "session:activity" || event.type === "session:status") && applyPatch(event, at, true)) {
+  if ((event.type === "session:activity" || event.type === "session:status" || event.type === "session:permission") && applyPatch(event, at, true)) {
     return;
   }
   // Creation, archive, rekey, and an unknown status target change membership

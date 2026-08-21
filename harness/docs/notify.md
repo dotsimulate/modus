@@ -26,6 +26,11 @@ egress**.
 All three coexist. Egress (2) and status-notify (1) share the same channel config and the
 same egress primitive under the hood; session-inject (3) is unrelated.
 
+Pending tool approvals also use channel egress. Set
+`permissionNotificationChannels` in `_global.json` to a list of named sinks;
+each new `permission_request` is sent to those channels with its session,
+profile, and tool name. Approval requests never auto-expire.
+
 ## Channels
 
 A channel is a **named sink that accepts content**, defined in `_global.json` under

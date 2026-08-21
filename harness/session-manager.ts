@@ -49,6 +49,8 @@ import { APP_PATHS } from "./app-paths";
 import { providerErrorDisplayText } from "./provider-error";
 import { isAlwaysDurableEvent, isLiveOnlyEvent } from "./event-persistence";
 import { formatMoveActivationFailures, type MoveActivationFailure } from "./move-activation-failure";
+import { sendPermissionNotifications } from "./notify";
+import { pendingPermissionCount } from "./permission-policy";
 
 // ── SSE flow log ──
 // Append-only diagnostic log of every subscriber lifecycle event and broadcast.
@@ -145,7 +147,7 @@ function getMoveSkillSources() {
   }
   return _getMoveSkillSources!;
 }
-import { buildModusMcpServer, getProfile, getUserData, getUserProfile } from "./profiles";
+import { buildModusMcpServer, getProfile, getUserData, getUserProfile, type PermissionPolicy } from "./profiles";
 import { bindSessionSkillScope, collectSkills, createSkillScope } from "./skill-attachment";
 import {
   bindSessionMcpCredential,
@@ -318,6 +320,7 @@ export type ActiveSession = {
     disallowedTools?: string[];
     toolStates?: Record<string, string>;
     providerControls?: Record<string, unknown>;
+    permissionPolicy?: PermissionPolicy;
     loadProjectSettings?: boolean;
     additionalDirectories?: string[];
     mcpServers?: Record<string, unknown>;
@@ -461,7 +464,31 @@ function createTurnContext(session: ActiveSession, opts: StartSessionOpts): Turn
 
     emitEvent(event: any) {
       if (!isCurrentProviderSession()) return;
-      persistAndBroadcastEvent(session, event);
+      const resolvedEvent = event?.subtype === "init"
+        ? { ...event, config: { ...(event.config ?? {}), permissionPolicy: opts.permissionPolicy } }
+        : event;
+      persistAndBroadcastEvent(session, resolvedEvent);
+      if (event?.subtype === "permission_request") {
+        const alreadyPending = typeof event.requestId === "string" && session.pendingPermissions.has(event.requestId);
+        emitGlobalSessionEvent({
+          type: "session:permission",
+          sessionId: session.sessionId,
+          pendingCount: pendingPermissionCount(session.pendingPermissions.size, "permission_request", alreadyPending),
+        });
+        void sendPermissionNotifications({
+          sessionId: session.sessionId,
+          profile: session.profile,
+          toolName: String(event.toolName ?? "a tool"),
+          cwd: session.projectRoot ?? session.cwd,
+        });
+      } else if (event?.subtype === "permission_resolved") {
+        const stillPending = typeof event.requestId === "string" && session.pendingPermissions.has(event.requestId);
+        emitGlobalSessionEvent({
+          type: "session:permission",
+          sessionId: session.sessionId,
+          pendingCount: pendingPermissionCount(session.pendingPermissions.size, "permission_resolved", stillPending),
+        });
+      }
     },
 
     broadcastEvent(event: any) {
@@ -620,7 +647,7 @@ export type StartSessionOpts = {
   /** For branched sessions: SDK message UUID to resume at */
   branchMessageUUID?: string;
   /** Per-session permission policy override — takes precedence over profile permissionPolicy */
-  permissionPolicy?: "bypass" | "ask" | { default: "approve" | "ask"; autoApprove?: string[]; requireApproval?: string[] };
+  permissionPolicy?: PermissionPolicy;
   /** Per-request moves to activate on the first message (merged with profile moves) */
   moves?: { name: string; inputs?: Record<string, unknown> }[];
   /**
@@ -715,6 +742,7 @@ function configEventPayload(config: {
   maxTurns?: number | null;
   toolStates?: Record<string, string>;
   providerControls?: Record<string, unknown>;
+  permissionPolicy?: PermissionPolicy | null;
   cwd?: string;
   loadProjectSettings?: boolean;
 }) {
@@ -725,6 +753,7 @@ function configEventPayload(config: {
     maxTurns: config.maxTurns,
     toolStates: config.toolStates ?? {},
     providerControls: config.providerControls ?? {},
+    permissionPolicy: config.permissionPolicy ?? undefined,
   };
 }
 
@@ -1225,6 +1254,7 @@ export function startSession(opts: StartSessionOpts): ActiveSession {
       disallowedTools: opts.disallowedTools,
       toolStates: opts.toolStates,
       providerControls: opts.providerControls,
+      permissionPolicy: opts.permissionPolicy,
       loadProjectSettings: opts.loadProjectSettings,
       mcpServers: opts.mcpServers,
       skillScopeKey: opts.skillScopeKey,
@@ -1989,6 +2019,7 @@ export function stopSession(sessionId: string): boolean {
     pending.resolve({ behavior: "deny", message: "Session interrupted" });
     session.pendingPermissions.delete(id);
   }
+  emitGlobalSessionEvent({ type: "session:permission", sessionId: session.sessionId, pendingCount: 0 });
 
   // Interrupting a session should also discard queued next-turn messages.
   session.pendingDispatch = [];
@@ -2136,6 +2167,7 @@ export function updateSessionConfig(
     disallowedTools?: string[];
     toolStates?: Record<string, string>;
     providerControls?: Record<string, unknown>;
+    permissionPolicy?: PermissionPolicy | null;
     cwd?: string;
     loadProjectSettings?: boolean;
     additionalDirectories?: string[];
@@ -2187,6 +2219,7 @@ export function updateSessionConfig(
   if (config.disallowedTools !== undefined) session._configOverrides.disallowedTools = normalizedDisallowedTools;
   if (config.toolStates !== undefined) session._configOverrides.toolStates = config.toolStates;
   if (config.providerControls !== undefined) session._configOverrides.providerControls = normalizedProviderControls;
+  if (config.permissionPolicy !== undefined) session._configOverrides.permissionPolicy = config.permissionPolicy ?? undefined;
   if (config.loadProjectSettings !== undefined) session._configOverrides.loadProjectSettings = config.loadProjectSettings;
   if (session.status === "idle") {
     session._provider.updateConfig?.(session, {
@@ -2251,6 +2284,7 @@ export async function switchProfile(
       pending.resolve({ behavior: "deny", message: "Profile switch" });
       session.pendingPermissions.delete(id);
     }
+    emitGlobalSessionEvent({ type: "session:permission", sessionId: session.sessionId, pendingCount: 0 });
     session.status = "idle";
     updateSessionStatus(session.sessionId, "idle");
     oldProvider.abort(session);
@@ -2316,6 +2350,7 @@ export async function switchProfile(
   session._configOverrides.disallowedTools = undefined;
   session._configOverrides.toolStates = undefined;
   session._configOverrides.providerControls = undefined;
+  session._configOverrides.permissionPolicy = undefined;
   session.additionalDirectories = nextAdditionalDirectories;
   session.abortController = new AbortController();
   session.pendingDispatch = [];
@@ -2403,7 +2438,8 @@ export type GlobalSessionEvent =
   | { type: "session:created"; sessionId: string; status: SessionStatus; profile?: string; userProfile?: string; preview?: string }
   | { type: "session:status"; sessionId: string; status: SessionStatus; costUsd?: number; preview?: string }
   | { type: "session:activity"; sessionId: string; status: SessionStatus; seq: number; lastText: string | null; lastEventAt: number; costUsd?: number }
-  | { type: "session:archived"; sessionId: string };
+  | { type: "session:archived"; sessionId: string }
+  | { type: "session:permission"; sessionId: string; pendingCount: number };
 
 type GlobalSSEWriter = {
   write(data: string): Promise<void>;
@@ -2465,6 +2501,7 @@ export function forceClearActiveSession(
       pending.resolve({ behavior: "deny", message: reason });
     }
     session.pendingPermissions.clear();
+    emitGlobalSessionEvent({ type: "session:permission", sessionId: session.sessionId, pendingCount: 0 });
     session.pendingDispatch = [];
     endFollowupDispatch(session);
 

@@ -181,7 +181,7 @@ Key route groups:
 - `/api/ui/*` — Theme/font registry, activation
 - `/api/providers/*` — Provider listing, model discovery
 - `/api/projects/*` — Project registry
-- `/api/browse` — Server-side folder browser
+- `/api/browse` — Server-side folder browser (also canonicalizes an OS-dialog pick)
 - `/health` — Watchdog endpoint
 
 Auth: browser clients use PIN verification. Operator clients use the

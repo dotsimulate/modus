@@ -1,7 +1,7 @@
 {
   "label": "set up agents",
   "description": "Create agent profiles tailored to this project",
-  "profile": "modus-dev",
+  "profile": "modus-helper",
   "icon": "users",
   "inputs": [
     { "name": "archetype", "type": "select", "placeholder": "start from", "options": ["custom", "reviewer", "runner", "monitor", "researcher", "writer"], "default": "custom" },

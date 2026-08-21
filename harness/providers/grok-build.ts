@@ -12,6 +12,8 @@ import {
   type McpServerConfig,
   type PermissionPolicy,
 } from "../profiles";
+import { permissionPolicyNeedsApproval } from "../permission-policy";
+import { resolveMcpServers } from "../mcp-config";
 import type { SessionProvider, TurnContext } from "./types";
 import { GrokAcpClient, type JsonRpcId } from "./grok-build-acp";
 import { GROK_BUILD_CAPABILITIES, GROK_BUILD_TOOL_GROUPS } from "./grok-build-capabilities";
@@ -129,7 +131,9 @@ function normalizedSet(values: Iterable<string>): Set<string> {
   return new Set(Array.from(values, (value) => value.toLowerCase()));
 }
 
-function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "deny" {
+const GROK_SHELL_TOOLS = new Set(["run_terminal_cmd"]);
+
+export function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "deny" {
   const lower = toolName.toLowerCase();
   const configuredTools = ctx.session._configOverrides.tools ?? ctx.opts.tools ?? ctx.profile?.tools;
   if (configuredTools?.length && !normalizedSet(configuredTools).has(lower)) return "deny";
@@ -144,11 +148,7 @@ function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "de
   if (ctx.session.sessionApprovals.has(toolName)) return "allow";
 
   const policy: PermissionPolicy = ctx.opts.permissionPolicy ?? ctx.profile?.permissionPolicy ?? "bypass";
-  if (policy === "bypass") return "allow";
-  if (policy === "ask") return "ask";
-  if (normalizedSet(policy.requireApproval ?? []).has(lower)) return "ask";
-  if (normalizedSet(policy.autoApprove ?? []).has(lower)) return "allow";
-  return policy.default === "approve" ? "allow" : "ask";
+  return permissionPolicyNeedsApproval(policy, toolName, GROK_SHELL_TOOLS) ? "ask" : "allow";
 }
 
 function pickPermissionOption(options: any[], decision: "allow" | "deny", persistent: boolean): any | undefined {
@@ -194,11 +194,12 @@ function resolvedMcpEntries(
 
 function mcpServers(ctx: TurnContext): any[] {
   const cwd = ctx.session.cwd ?? ctx.opts.cwd;
-  const merged: Record<string, McpServerConfig> = {
-    ...(getGlobalConfig(cwd).mcpServers ?? {}),
-    ...(ctx.profile?.mcpServers ?? {}),
-    ...(ctx.opts.mcpServers as Record<string, McpServerConfig> | undefined ?? {}),
-  };
+  const merged = resolveMcpServers({
+    cwd: ctx.session.projectRoot ?? cwd,
+    profileName: ctx.opts.profile,
+    profile: ctx.profile,
+    sessionServers: ctx.opts.mcpServers,
+  }).servers;
   return Object.entries(merged).map(([name, config]) => {
     if (config.type === "http" || config.type === "sse") {
       return {

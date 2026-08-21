@@ -75,9 +75,9 @@ function mapEffortToVariant(effort?: string): string | undefined {
   return undefined;
 }
 
-function shouldSkipPermissions(policy: PermissionPolicy | undefined): boolean {
+export function shouldSkipPermissions(policy: PermissionPolicy | undefined): boolean {
   if (!policy || policy === "bypass") return true;
-  if (policy === "ask") return false;
+  if (policy === "ask" || policy === "auto-edit") return false;
   return policy.default === "approve";
 }
 

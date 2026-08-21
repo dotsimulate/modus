@@ -224,3 +224,24 @@ export async function sendToNamedChannel(
   if (!resolution.ok) return resolution;
   return sendToChannel(resolution.channel, payload);
 }
+
+export async function sendPermissionNotifications(context: {
+  sessionId: string;
+  profile?: string;
+  toolName: string;
+  cwd?: string;
+}): Promise<void> {
+  const channels = getGlobalConfig(context.cwd).permissionNotificationChannels ?? [];
+  for (const channelName of channels) {
+    const result = await sendToNamedChannel(channelName, {
+      text: `${context.profile ?? "Agent"} is waiting for approval to use ${context.toolName}.`,
+      data: {
+        kind: "permission_request",
+        sessionId: context.sessionId,
+        profile: context.profile ?? null,
+        toolName: context.toolName,
+      },
+    }, context.cwd);
+    if (!result.ok) console.error(`[notify] Permission alert to "${channelName}" failed: ${result.error}`);
+  }
+}

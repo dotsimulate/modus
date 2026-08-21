@@ -76,6 +76,18 @@ try {
     throw "Packaged modus init failed: $($initResult.Output)"
   }
 
+  # Named Vault CLI operations require a folder-rooted registry entry. Keep the
+  # smoke independent of the desktop UI by authoring the same two persisted
+  # records the registry creates, entirely under this isolated temp root.
+  $vaultRoot = Join-Path $smokeRoot 'private-vault'
+  $createdAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  New-Item -ItemType Directory -Path $env:MODUS_HOME, $vaultRoot -Force | Out-Null
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  $manifest = @{ version = 1; slug = 'private'; createdAt = $createdAt } | ConvertTo-Json
+  [System.IO.File]::WriteAllText((Join-Path $vaultRoot 'vault-manifest.json'), $manifest, $utf8NoBom)
+  $registry = @{ vaults = @(@{ slug = 'private'; name = 'Private'; root = $vaultRoot; createdAt = $createdAt }) } | ConvertTo-Json -Depth 4
+  [System.IO.File]::WriteAllText((Join-Path $env:MODUS_HOME 'vaults.json'), $registry, $utf8NoBom)
+
   $statusResult = Invoke-PackagedCli @('status', '--instance', 'private')
   if ($statusResult.ExitCode -ne 0 -or $statusResult.Output -notmatch 'Modus is not running') {
     throw "Packaged Vault status failed: $($statusResult.Output)"

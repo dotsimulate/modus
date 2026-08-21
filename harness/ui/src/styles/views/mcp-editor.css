@@ -100,6 +100,79 @@
 .mcp-fields label > input:focus {
   border-color: var(--border-active);
 }
+/* Args are a list, not a delimited string — one row per argv element, so a value
+   containing a comma or a space needs no escaping. Indented to the same rule as
+   `.mcp-env-section` so command / args / env read as one stack. */
+.mcp-args-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 66px;
+}
+.mcp-args-label {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.mcp-args-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+/* argv position is semantic, so it is shown rather than left to be counted. */
+.mcp-args-index {
+  width: 14px;
+  flex-shrink: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  color: var(--text-muted);
+}
+.mcp-args-val {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  outline: none;
+}
+.mcp-args-val:focus { border-color: var(--border-active); }
+.mcp-args-move,
+.mcp-args-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--font-scale, 1));
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.mcp-args-move:hover { color: var(--text-dim); }
+.mcp-args-remove:hover { color: var(--error); }
+.mcp-args-move:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.mcp-args-add {
+  padding: 3px 8px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+  cursor: pointer;
+  align-self: flex-start;
+}
+.mcp-args-add:hover { border-color: var(--border-active); color: var(--text-dim); }
+
 .mcp-env-section {
   display: flex;
   flex-direction: column;

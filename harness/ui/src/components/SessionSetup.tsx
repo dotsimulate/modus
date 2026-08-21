@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from "react";
 import { AgentConfig, type AgentConfigState } from "./AgentConfig";
-import { FolderPicker } from "./FolderPicker";
+import { useFolderChooser } from "../hooks/usePathChooser";
 import { getRecentPaths, addRecentPath } from "../recentPaths";
 import { modus } from "../modusClient";
 import type { InitStatus } from "../../../sdk/index";
@@ -60,8 +60,7 @@ export function SessionSetup({
   showLoadProjectSettings = true,
 }: Props) {
   void showLoadProjectSettings;
-  const [browseOpen, setBrowseOpen] = useState(false);
-  const [extraBrowseIdx, setExtraBrowseIdx] = useState<number | null>(null);
+  const folder = useFolderChooser();
   const [initStatus, setInitStatus] = useState<InitStatus | null>(null);
   const [initLoading, setInitLoading] = useState(false);
   void initStatus;
@@ -110,8 +109,22 @@ export function SessionSetup({
   const removeExtraDir = (idx: number) => {
     const next = config.additionalDirectories.filter((_, i) => i !== idx);
     update({ additionalDirectories: next });
-    if (extraBrowseIdx === idx) setExtraBrowseIdx(null);
+    // An open picker is bound to a row index, and removing any row can shift the
+    // one it would write to. Closing is cheaper than tracking the reindex.
+    folder.close();
   };
+
+  const browseCwd = () => folder.open({
+    title: "Choose the working directory",
+    initialPath: config.cwd || undefined,
+    onSelect: (path) => { update({ cwd: path }); addRecentPath(path); },
+  });
+
+  const browseExtraDir = (idx: number) => folder.open({
+    title: "Choose an additional workspace root",
+    initialPath: config.additionalDirectories[idx] || config.cwd || undefined,
+    onSelect: (path) => { updateExtraDir(idx, path); addRecentPath(path); },
+  });
 
   const folderIcon = (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -131,7 +144,7 @@ export function SessionSetup({
               value={config.cwd}
               onChange={(e) => {
                 if (e.target.value === "__browse__") {
-                  setBrowseOpen(true);
+                  browseCwd();
                   // Reset select to current value so it doesn't stick on "browse..."
                   e.target.value = config.cwd;
                 } else {
@@ -159,7 +172,8 @@ export function SessionSetup({
             </select>
             <button
               className="cwd-browse-btn"
-              onClick={() => { setExtraBrowseIdx(null); setBrowseOpen(true); }}
+              onClick={browseCwd}
+              disabled={folder.busy}
               title="Browse folders"
             >
               {folderIcon}
@@ -186,7 +200,8 @@ export function SessionSetup({
             />
             <button
               className="cwd-browse-btn"
-              onClick={() => { setBrowseOpen(false); setExtraBrowseIdx(idx); }}
+              onClick={() => browseExtraDir(idx)}
+              disabled={folder.busy}
               title="Browse folders"
             >
               {folderIcon}
@@ -201,31 +216,9 @@ export function SessionSetup({
           </div>
         ))}
 
-        {/* Folder picker for cwd — floats over content */}
-        {browseOpen && (
-          <FolderPicker
-            initialPath={config.cwd || undefined}
-            onSelect={(path) => {
-              update({ cwd: path });
-              addRecentPath(path);
-              setBrowseOpen(false);
-            }}
-            onCancel={() => setBrowseOpen(false)}
-          />
-        )}
-
-        {/* Folder picker for an extra directory */}
-        {extraBrowseIdx !== null && (
-          <FolderPicker
-            initialPath={config.additionalDirectories[extraBrowseIdx] || config.cwd || undefined}
-            onSelect={(path) => {
-              updateExtraDir(extraBrowseIdx, path);
-              addRecentPath(path);
-              setExtraBrowseIdx(null);
-            }}
-            onCancel={() => setExtraBrowseIdx(null)}
-          />
-        )}
+        {/* In-app browser for cwd or an extra root — floats over content.
+            Null when the OS dialog handled it; only one can be open at a time. */}
+        {folder.inline}
       </div>
 
       {/* Agent config (tools + effort + turns) */}

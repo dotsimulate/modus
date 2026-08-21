@@ -139,8 +139,18 @@ Tool names differ between providers — see `docs/pi-agent-system.md` § Tool Na
 
 **`compaction`**: Override compaction thresholds per-agent. See `docs/config-resolution.md`.
 
-**`permissionPolicy`**: `"bypass"` (no checks), `"ask"` (approve every tool call),
-or an object with `autoApprove`/`requireApproval` lists for granular control.
+**`permissionPolicy`**: omit to inherit (the compatibility default is `"bypass"`),
+`"bypass"` to never ask, `"auto-edit"` to allow edits while asking for shell,
+`"ask"` to approve every tool call, or an object with
+`autoApprove`/`requireApproval` lists for granular control. Claude Code,
+Antigravity, and Grok Build honor the per-tool lists; Codex, Gemini CLI, and
+OpenCode flatten them to the object's default. The legacy object spelling
+`default: "allow"` is read as `"approve"` and reported once, without rewriting
+the profile.
+
+**`mcpConfig`**: Path to an external MCP JSON file, resolved relative to the
+profile file. The file uses the same `{ "mcpServers": { ... } }` shape as
+`_global.json` and can be shared by multiple profiles.
 
 **`providerControls.antigravity`**: Optional documented Antigravity headless
 flags: `{ "mode": "accept-edits" | "plan", "sandbox": boolean,

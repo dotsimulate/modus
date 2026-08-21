@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { modus } from "../modusClient";
 import { acceptsFileName } from "../../../move-file-accept";
 import { folderLabel } from "../folderPath";
+import { browsedHost } from "../native-picker";
 import type { BrowseResult } from "../../../sdk/index";
 
 type Props = {
@@ -39,6 +40,7 @@ export function FilePicker({ onSelect, onCancel, initialPath, accept, title }: P
   const [pathInput, setPathInput] = useState(initialPath ?? "");
   const [selected, setSelected] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const host = browsedHost();
 
   const navigate = (path?: string) => {
     setLoading(true);
@@ -82,6 +84,7 @@ export function FilePicker({ onSelect, onCancel, initialPath, accept, title }: P
     <div className="file-picker">
       <div className="file-picker-header">
         <span className="file-picker-title">{title ?? "select file"}</span>
+        {host && <span className="file-picker-host" title={`browsing the filesystem on ${host}`}>{host}</span>}
         <button className="file-picker-close" onClick={onCancel}>&times;</button>
       </div>
 

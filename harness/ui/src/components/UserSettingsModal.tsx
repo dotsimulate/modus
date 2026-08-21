@@ -7,7 +7,7 @@ import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
 import { profileOptions } from "../profile-options";
 import { PluginSettingsPanel } from "./PluginSettingsPanel";
-import { FolderPicker } from "./FolderPicker";
+import { useFolderChooser } from "../hooks/usePathChooser";
 import { CustomSelect } from "./CustomSelect";
 import { ProjectAppearanceSettings } from "./ProjectAppearanceSettings";
 import {
@@ -88,7 +88,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [editor, setEditor] = useState(userProfile.editor ?? "");
   const [projectPaths, setProjectPaths] = useState<string[]>(userProfile.projects ?? []);
   const [hiddenPluginProfiles, setHiddenPluginProfiles] = useState<string[]>(userProfile.hiddenPluginProfiles ?? []);
-  const [showProjectPicker, setShowProjectPicker] = useState(false);
+  const projectFolder = useFolderChooser();
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
   const [interfaceSettings, setInterfaceSettings] = useState<ResolvedInterfaceSettings>(
     () => resolveInterfaceSettings(userProfile.interface),
@@ -638,19 +638,18 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                       >×</button>
                     </div>
                   ))}
-                  {showProjectPicker ? (
-                    <div className="create-profile-folder-picker">
-                      <FolderPicker
-                        initialPath={projectPaths.at(-1)}
-                        onSelect={(path) => {
-                          setProjectPaths((current) => current.includes(path) ? current : [...current, path]);
-                          setShowProjectPicker(false);
-                        }}
-                        onCancel={() => setShowProjectPicker(false)}
-                      />
-                    </div>
+                  {projectFolder.inline ? (
+                    <div className="create-profile-folder-picker">{projectFolder.inline}</div>
                   ) : (
-                    <button className="create-profile-add-path" onClick={() => setShowProjectPicker(true)}>
+                    <button
+                      className="create-profile-add-path"
+                      disabled={projectFolder.busy}
+                      onClick={() => projectFolder.open({
+                        title: "Add a project folder",
+                        initialPath: projectPaths.at(-1),
+                        onSelect: (path) => setProjectPaths((current) => current.includes(path) ? current : [...current, path]),
+                      })}
+                    >
                       + add folder
                     </button>
                   )}

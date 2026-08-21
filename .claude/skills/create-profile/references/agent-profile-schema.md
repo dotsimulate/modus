@@ -69,6 +69,9 @@ profile's ID used everywhere in the system.
   // ── MCP Servers ──
   // Merged with _global.json servers. Profile servers override global by key.
 
+  // Optional external MCP JSON, resolved relative to this profile file.
+  "mcpConfig": "./shared-mcp.json",
+
   "mcpServers": {
     "server-name": {
       "type": "stdio",            // "stdio" (default) | "sse" | "http"
