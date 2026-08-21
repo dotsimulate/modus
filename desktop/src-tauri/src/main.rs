@@ -3,6 +3,7 @@
 mod backend;
 mod deep_link;
 mod job;
+mod opener;
 mod tailscale;
 mod updates;
 mod vaults;
@@ -225,7 +226,9 @@ async fn desktop_pick_folder(
     app: AppHandle,
     request: PickRequest,
 ) -> Result<Option<String>, String> {
-    let title = request.title.unwrap_or_else(|| "Select a folder".to_string());
+    let title = request
+        .title
+        .unwrap_or_else(|| "Select a folder".to_string());
     pick_folder(app, title, request.initial_path).await
 }
 
@@ -234,10 +237,7 @@ async fn desktop_pick_folder(
 /// The filter is a convenience only — a move's declared file policy is still
 /// re-enforced server-side at activation.
 #[tauri::command]
-async fn desktop_pick_file(
-    app: AppHandle,
-    request: PickRequest,
-) -> Result<Option<String>, String> {
+async fn desktop_pick_file(app: AppHandle, request: PickRequest) -> Result<Option<String>, String> {
     let title = request.title.unwrap_or_else(|| "Select a file".to_string());
     tauri::async_runtime::spawn_blocking(move || {
         use tauri_plugin_dialog::DialogExt;
@@ -264,6 +264,39 @@ async fn desktop_pick_file(
     })
     .await
     .map_err(|error| format!("desktop file picker task failed: {error}"))?
+}
+
+/// Open a link from rendered content in the system browser.
+///
+/// Without this the webview navigates itself to the target and the app is gone
+/// from the window. Validation lives in [`opener`]; see its module docs for why
+/// the scheme allowlist is not a formality.
+#[tauri::command]
+async fn desktop_open_external_url(url: String) -> Result<(), String> {
+    run_opener(move || opener::open_external_url(&url), "url opener").await
+}
+
+/// Show a path in the OS file manager, selected in its containing folder.
+#[tauri::command]
+async fn desktop_reveal_path(path: String) -> Result<(), String> {
+    run_opener(move || opener::reveal_local_path(&path), "path reveal").await
+}
+
+/// Hand a path to its default program — for a directory, the file manager.
+#[tauri::command]
+async fn desktop_open_path(path: String) -> Result<(), String> {
+    run_opener(move || opener::open_local_path(&path), "path opener").await
+}
+
+/// Shell handoff blocks (COM on Windows, a spawned launcher elsewhere), so it
+/// runs off the async runtime like the native dialogs above.
+async fn run_opener<F>(work: F, label: &str) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| format!("desktop {label} task failed: {error}"))?
 }
 
 /// Claim a `modus://` link that arrived before the webview was listening.
@@ -378,6 +411,9 @@ fn main() {
             desktop_choose_vault_folder,
             desktop_pick_folder,
             desktop_pick_file,
+            desktop_open_external_url,
+            desktop_reveal_path,
+            desktop_open_path,
             desktop_take_pending_deep_link,
             desktop_tailscale_status,
             desktop_set_tailscale_enabled,
