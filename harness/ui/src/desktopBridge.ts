@@ -169,6 +169,31 @@ export async function pickDesktopFile(request: DesktopPickRequest = {}): Promise
 }
 
 /**
+ * Open a URL in the system browser instead of navigating this webview.
+ *
+ * Rust refuses any scheme outside `http`/`https`; callers should classify with
+ * `classifyLinkTarget` first so a refusal is a bug rather than routine.
+ */
+export async function openDesktopExternalUrl(url: string): Promise<void> {
+  await invokeDesktop<void>("desktop_open_external_url", { url });
+}
+
+/**
+ * Show a path selected in the OS file manager.
+ *
+ * Acts on the *client's* filesystem, so gate on `nativePickerApplies` — a
+ * desktop window driving a remote backend must not offer this.
+ */
+export async function revealDesktopPath(path: string): Promise<void> {
+  await invokeDesktop<void>("desktop_reveal_path", { path });
+}
+
+/** Hand a path to its default program. Same filesystem caveat as reveal. */
+export async function openDesktopPath(path: string): Promise<void> {
+  await invokeDesktop<void>("desktop_open_path", { path });
+}
+
+/**
  * Prove the supervisor-provided credential, then store a bounded session token.
  *
  * The stored credential is what the UI later splices into media and EventSource

@@ -499,6 +499,37 @@ Pages that declare their own `code-editor` widget (like `chat-studio`, `workspac
 handle file-open internally and the app-level router explicitly skips them
 (`if (currentView === "chat" || getCustomPageId(currentView)) return;`).
 
+### Links in rendered messages
+
+A link in an assistant message is classified by `classifyLinkTarget`
+(`ui/src/markdown-links.ts`) from the **authored** `href` attribute, never from
+`HTMLAnchorElement.href`. The resolved form is relative to the document, and the
+desktop webview's document is served from `tauri.localhost`, so an authored
+`/C:/build/app.exe` resolves to `http://tauri.localhost/C:/build/app.exe` — not a
+path, and not a shareable URL.
+
+Three outcomes:
+
+- **Local paths** (drive-letter, UNC, POSIX absolute, or relative) open through
+  `openFile()`, so they land in the same file viewer as every other file route
+  above. Both `path#L12[-L18]` and `path:12` are read as line references.
+- **Web targets** (`http`/`https`, plus bare `www.`, `localhost`, and IP forms)
+  open outside the app: the system browser in the desktop shell, a new tab in a
+  browser. The desktop shell must not navigate itself to a link — nothing in the
+  window offers a way back.
+- **Everything else** — `mailto:`, `tel:`, `file:`, `javascript:`, custom schemes
+  — is unclaimed. Modus adds no menu and does not intercept the click.
+
+Right-clicking a claimed link opens a target-specific menu that takes precedence
+over the message's selection menu. Copy actions copy the authored path or the
+normalized URL. The OS actions (reveal, open with default app) are shown only
+when the client is a desktop window driving a **local** backend
+(`nativePickerApplies`) and the path is absolute — otherwise the path names a
+file on the harness host, or resolves against the desktop process's own
+directory. `desktop/src-tauri/src/opener.rs` re-enforces both rules and refuses
+any URL scheme outside `http`/`https`, so the boundary does not depend on the
+frontend classifying correctly.
+
 ### UI state persistence
 
 Widget UI state (collapse, group-mode, etc.) is persisted to `localStorage` via

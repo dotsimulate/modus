@@ -2,7 +2,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import hljs from "highlight.js/lib/core";
 import type { LanguageFn } from "highlight.js";
-import { isValidElement, memo, useEffect, useId, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from "react";
+import { isValidElement, memo, useCallback, useEffect, useId, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from "react";
 import { useFileViewer } from "../providers/FileViewerContext";
 import {
   MERMAID_RENDER_TIMEOUT_MS,
@@ -12,6 +12,11 @@ import {
   mermaidSecurityConfig,
   sanitizeMermaidSvg,
 } from "../markdown-security";
+import { buildLinkMenuItems, classifyLinkTarget, type LinkMenuActions } from "../markdown-links";
+import { BACKEND_TARGET } from "../backendTarget";
+import { isTauriRuntime, openDesktopExternalUrl, openDesktopPath, revealDesktopPath } from "../desktopBridge";
+import { nativePickerApplies } from "../native-picker";
+import { useContextMenu } from "./ContextMenu";
 import { PasteBlock } from "./PasteBlock";
 
 // Register languages — core set for dev/AI chat
@@ -211,17 +216,6 @@ function CopyButton({ text }: { text: string }) {
 
 const remarkPlugins = [remarkGfm];
 
-function isLocalFilePath(href: string): boolean {
-  if (!href) return false;
-  // Absolute unix paths, home-dir paths, or relative paths without a protocol
-  if (/^https?:\/\//i.test(href)) return false;
-  if (/^mailto:/i.test(href)) return false;
-  if (href.startsWith("/") || href.startsWith("~/")) return true;
-  // Looks like a file path (contains a slash or extension, no protocol)
-  if (!href.includes("://") && (href.includes("/") || /\.\w{1,6}$/.test(href))) return true;
-  return false;
-}
-
 function extractText(node: unknown): string {
   if (node == null) return "";
   if (typeof node === "string") return node;
@@ -233,6 +227,18 @@ function extractText(node: unknown): string {
 type MarkdownComponents = Components & Record<"pasted", ComponentType<{ children?: ReactNode }>>;
 
 const markdownComponents: MarkdownComponents = {
+  // Web links open a new tab rather than replacing the app. In a browser that
+  // is what `target` does; in the desktop shell `handleClick` intercepts first
+  // and routes to the system browser, because a Tauri webview would otherwise
+  // navigate itself away from Modus with no way back.
+  a({ href, title, children }: { href?: string; title?: string; children?: ReactNode }) {
+    const isWeb = classifyLinkTarget(href ?? "").kind === "web";
+    return isWeb ? (
+      <a href={href} title={title} target="_blank" rel="noreferrer noopener">{children}</a>
+    ) : (
+      <a href={href} title={title}>{children}</a>
+    );
+  },
   pasted({ children }: { children?: ReactNode }) {
     const text = extractText(children).replace(/^\n+/, "").replace(/\n+$/, "");
     return <PasteBlock text={text} />;
@@ -269,39 +275,92 @@ const markdownComponents: MarkdownComponents = {
 
 export const Markdown = memo(function Markdown({ content }: { content: string }) {
   const { openFile } = useFileViewer();
+  const { open: openContextMenu, portal: contextMenuPortal } = useContextMenu();
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const linkErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bounded = limitMarkdownContent(content);
 
-  function parseLineFragment(href: string): { path: string; line?: number; endLine?: number } {
-    const [path, fragment] = href.split("#", 2);
-    const match = fragment?.match(/^L(\d+)(?:-L?(\d+))?$/i);
-    if (!match) return { path };
-    return {
-      path,
-      line: Number(match[1]),
-      endLine: match[2] ? Number(match[2]) : undefined,
-    };
+  useEffect(() => () => {
+    if (linkErrorTimer.current) clearTimeout(linkErrorTimer.current);
+  }, []);
+
+  // The packaged desktop has no devtools, so a failed handoff has to say so on
+  // screen or it is indistinguishable from a menu item that does nothing.
+  const reportLinkFailure = useCallback((what: string) => (error: unknown) => {
+    const detail = error instanceof Error ? error.message : String(error);
+    setLinkError(`${what}: ${detail}`);
+    if (linkErrorTimer.current) clearTimeout(linkErrorTimer.current);
+    linkErrorTimer.current = setTimeout(() => setLinkError(null), 5000);
+  }, []);
+
+  const openInEditor = useCallback((path: string, line?: number, endLine?: number) => {
+    openFile(path, { line, endLine, highlight: line !== undefined, source: "markdown" });
+  }, [openFile]);
+
+  const openExternal = useCallback((url: string) => {
+    if (isTauriRuntime()) {
+      void openDesktopExternalUrl(url).catch(reportLinkFailure("Could not open link"));
+      return;
+    }
+    window.open(url, "_blank", "noreferrer");
+  }, [reportLinkFailure]);
+
+  const linkActions: LinkMenuActions = {
+    openInEditor,
+    revealPath: (path) => void revealDesktopPath(path).catch(reportLinkFailure("Could not reveal path")),
+    openPath: (path) => void openDesktopPath(path).catch(reportLinkFailure("Could not open path")),
+    openExternal,
+    copy: (text) => void navigator.clipboard.writeText(text).catch(reportLinkFailure("Could not copy")),
+  };
+
+  /**
+   * Classify from the attribute, never from `link.href` — the resolved form is
+   * what turns a local path into `http://tauri.localhost/C:/...`.
+   */
+  function targetOf(e: React.MouseEvent) {
+    const link = (e.target as HTMLElement).closest("a");
+    const href = link?.getAttribute("href");
+    return href ? classifyLinkTarget(href) : null;
   }
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
-    const link = (e.target as HTMLElement).closest("a");
-    if (!link) return;
-    const href = link.getAttribute("href");
-    if (!href || !isLocalFilePath(href)) return;
-    e.preventDefault();
-    const fileTarget = parseLineFragment(href);
-    openFile(fileTarget.path, {
-      line: fileTarget.line,
-      endLine: fileTarget.endLine,
-      highlight: fileTarget.line !== undefined,
-      source: "markdown",
-    });
+    const target = targetOf(e);
+    if (!target) return;
+    if (target.kind === "local") {
+      e.preventDefault();
+      openInEditor(target.path, target.line, target.endLine);
+      return;
+    }
+    // In a browser the anchor's own `target="_blank"` is already correct; only
+    // the desktop shell needs the navigation taken away from it.
+    if (target.kind === "web" && isTauriRuntime()) {
+      e.preventDefault();
+      openExternal(target.url);
+    }
+  }
+
+  function handleContextMenu(e: React.MouseEvent<HTMLDivElement>) {
+    const target = targetOf(e);
+    if (!target) return;
+    const items = buildLinkMenuItems(target, {
+      // Revealing acts on this machine's filesystem, so it is only meaningful
+      // when the linked path is the same one the backend wrote.
+      nativeFileActions: nativePickerApplies(isTauriRuntime(), BACKEND_TARGET.mode),
+      userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+    }, linkActions);
+    // Declining leaves the event to bubble, so the message-level selection menu
+    // still opens for a right-click that happened to land on an unclaimed link.
+    if (items.length === 0) return;
+    openContextMenu(e, items);
   }
 
   return (
-    <div onClick={handleClick}>
+    <div onClick={handleClick} onContextMenu={handleContextMenu}>
       <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={markdownRehypePlugins} components={markdownComponents}>
         {bounded.content}
       </ReactMarkdown>
+      {linkError && <div className="markdown-link-error" role="status">{linkError}</div>}
+      {contextMenuPortal}
     </div>
   );
 });
