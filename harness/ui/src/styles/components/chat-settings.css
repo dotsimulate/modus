@@ -120,11 +120,40 @@
 .chat-settings-toggle:not(.on) {
   justify-content: flex-start;
 }
+.chat-settings-toggle:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
 .chat-settings-toggle-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   background: var(--bg);
+}
+
+.chat-settings-scope {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.chat-settings-scope .chat-settings-row {
+  justify-content: space-between;
+}
+
+.chat-settings-scope-label,
+.chat-settings-scope-hint {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  letter-spacing: 0.04em;
+}
+
+.chat-settings-scope-label {
+  color: var(--text-dim);
+}
+
+.chat-settings-scope-hint {
+  color: var(--text-muted);
+  margin-top: 4px;
 }
 
 .chat-settings-reset {

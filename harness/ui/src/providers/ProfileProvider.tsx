@@ -8,7 +8,7 @@ import { createDefaultSetupState, type SessionSetupState } from "../components/S
 import { agentConfigToOverrides } from "../components/AgentConfig";
 import { addRecentPath } from "../recentPaths";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
-import { applyInterfaceSettings, resolveInterfaceSettings } from "../interface-settings";
+import { applyInterfaceSettings, resolveEffectiveInterfaceSettings } from "../interface-settings";
 import { ProfileContext } from "./ProfileContext";
 import { backendStorageKey } from "../backendTarget";
 
@@ -270,7 +270,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   }, [activeUserProfile, listProfilesWithUi, listUserProfilesWithUi]);
 
   useEffect(() => {
-    applyInterfaceSettings(resolveInterfaceSettings(activeUP?.interface));
+    applyInterfaceSettings(resolveEffectiveInterfaceSettings(activeUP?.interface));
   }, [activeUP?.interface]);
 
   // Reload profiles when project root changes (project-local profiles may differ).

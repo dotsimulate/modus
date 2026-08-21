@@ -364,12 +364,16 @@ export type ToolCallDisplayMode = "expanded" | "collapsed" | "hidden";
  *            turns as accent rungs on the right, turn numbers on hover
  */
 export type ChatScrollIndicator = "scroll" | "spine" | "ruler";
+export type ChatPresentation = "conversation" | "turns";
 
 export type UserInterfaceConfig = {
   chat?: {
     fontScale?: number;
     chatWidth?: number;
     scrollIndicator?: ChatScrollIndicator;
+    presentation?: ChatPresentation;
+    /** When true, this user profile overrides the device's chat display defaults. */
+    projectOverride?: boolean;
     /** @deprecated superseded by scrollIndicator; still read so older profiles migrate. */
     spineEnabled?: boolean;
   };
@@ -607,6 +611,9 @@ function mergeUserProfileUi(
             : undefined,
           conversation: (base?.interface?.conversation || override?.interface?.conversation)
             ? { ...(base?.interface?.conversation ?? {}), ...(override?.interface?.conversation ?? {}) }
+            : undefined,
+          configBar: (base?.interface?.configBar || override?.interface?.configBar)
+            ? { ...(base?.interface?.configBar ?? {}), ...(override?.interface?.configBar ?? {}) }
             : undefined,
           motion: override?.interface?.motion ?? base?.interface?.motion,
         }

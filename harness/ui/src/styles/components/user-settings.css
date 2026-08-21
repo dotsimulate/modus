@@ -119,6 +119,11 @@
   margin-top: -4px;
 }
 
+.us-row-hint--full {
+  padding-left: 0;
+  margin-top: -2px;
+}
+
 .us-range-control {
   display: grid;
   grid-template-columns: 1fr 58px;

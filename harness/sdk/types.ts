@@ -1090,12 +1090,16 @@ export type ToolCallDisplayMode = "expanded" | "collapsed" | "hidden";
 
 /** How the chat indexes its own scroll. See harness/profiles.ts. */
 export type ChatScrollIndicator = "scroll" | "spine" | "ruler";
+export type ChatPresentation = "conversation" | "turns";
 
 export type UserInterfaceConfig = {
   chat?: {
     fontScale?: number;
     chatWidth?: number;
     scrollIndicator?: ChatScrollIndicator;
+    presentation?: ChatPresentation;
+    /** When true, this user profile overrides the device's chat display defaults. */
+    projectOverride?: boolean;
     /** @deprecated superseded by scrollIndicator; still read so older profiles migrate. */
     spineEnabled?: boolean;
   };
