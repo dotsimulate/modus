@@ -86,6 +86,7 @@ export type {
   UserProfileUiConfig,
   ToolCallDisplayMode,
   ChatScrollIndicator,
+  ChatPresentation,
   UserInterfaceConfig,
   UserProfileState,
   UserProfile,

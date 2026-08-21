@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { modus } from "../modusClient";
-import type { ChatScrollIndicator, ModusPlugin, ProviderModel, UserInterfaceConfig, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
+import type { ChatPresentation, ChatScrollIndicator, ModusPlugin, ProviderModel, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
@@ -12,11 +12,15 @@ import { CustomSelect } from "./CustomSelect";
 import { ProjectAppearanceSettings } from "./ProjectAppearanceSettings";
 import {
   applyInterfaceSettings,
+  CHAT_PRESENTATIONS,
   CHAT_SCROLL_INDICATORS,
   CONFIG_BAR_ITEMS,
   DEFAULT_INTERFACE_SETTINGS,
+  projectChatOverrideEnabled,
+  readDeviceInterfaceSettings,
   resetClientInterfaceState,
-  resolveInterfaceSettings,
+  resolveEffectiveInterfaceSettings,
+  writeDeviceInterfaceSettings,
   type ConfigBarItemId,
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
@@ -91,7 +95,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const projectFolder = useFolderChooser();
   const [providerModels, setProviderModels] = useState<ProviderModel[]>([]);
   const [interfaceSettings, setInterfaceSettings] = useState<ResolvedInterfaceSettings>(
-    () => resolveInterfaceSettings(userProfile.interface),
+    readDeviceInterfaceSettings,
   );
   const [pageNavMode, setPageNavMode] = useState(userProfile.pageNav?.mode ?? "auto");
   const [resetLayout, setResetLayout] = useState(false);
@@ -126,7 +130,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     setEditor(userProfile.editor ?? "");
     setProjectPaths(userProfile.projects ?? []);
     setHiddenPluginProfiles(userProfile.hiddenPluginProfiles ?? []);
-    const nextInterface = resolveInterfaceSettings(userProfile.interface);
+    const nextInterface = readDeviceInterfaceSettings();
     setInterfaceSettings(nextInterface);
     setPageNavMode(userProfile.pageNav?.mode ?? "auto");
     setResetLayout(false);
@@ -134,7 +138,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
   const updateInterfaceSettings = (next: ResolvedInterfaceSettings) => {
     setInterfaceSettings(next);
-    applyInterfaceSettings(next);
+    applyInterfaceSettings(resolveEffectiveInterfaceSettings(userProfile.interface, next));
   };
 
   useEffect(() => {
@@ -223,9 +227,6 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
       if (JSON.stringify(normalizedProjects) !== JSON.stringify(userProfile.projects ?? [])) {
         patch.projects = normalizedProjects;
       }
-      if (JSON.stringify(interfaceSettings) !== JSON.stringify(resolveInterfaceSettings(userProfile.interface))) {
-        patch.interface = interfaceSettings as UserInterfaceConfig;
-      }
       if (pageNavMode !== (userProfile.pageNav?.mode ?? "auto") || resetLayout) {
         patch.pageNav = resetLayout
           ? { mode: pageNavMode, enabled: [], disabled: [], pinned: [], order: [], labels: {} }
@@ -236,7 +237,12 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
         patch.leftPanel = {};
       }
       if (Object.keys(patch).length > 0) await onSave(patch);
+      writeDeviceInterfaceSettings(interfaceSettings);
       if (resetLayout) resetClientInterfaceState();
+      applyInterfaceSettings(resolveEffectiveInterfaceSettings(
+        userProfile.interface,
+        readDeviceInterfaceSettings(),
+      ));
       onClose();
     } catch (e) {
       setError(String(e));
@@ -289,7 +295,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
-      applyInterfaceSettings(resolveInterfaceSettings(userProfile.interface));
+      applyInterfaceSettings(resolveEffectiveInterfaceSettings(userProfile.interface));
       onClose();
     }
   };
@@ -304,7 +310,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
         {/* Header */}
         <div className="create-profile-header">
           <span className="create-profile-title">settings</span>
-          <button className="create-profile-close" onClick={() => { applyInterfaceSettings(resolveInterfaceSettings(userProfile.interface)); onClose(); }}>&times;</button>
+          <button className="create-profile-close" onClick={() => { applyInterfaceSettings(resolveEffectiveInterfaceSettings(userProfile.interface)); onClose(); }}>&times;</button>
         </div>
 
         {/* Tabs */}
@@ -408,6 +414,10 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
           {tab === "interface" && (
             <div className="us-section us-section--interface">
               <div className="us-section-title">chat</div>
+              <div className="us-row-hint us-row-hint--full">defaults for this device across all projects</div>
+              {projectChatOverrideEnabled(userProfile.interface) && (
+                <div className="us-row-hint us-row-hint--full">this project currently overrides these four display settings</div>
+              )}
               <div className="us-row">
                 <span className="us-row-label">text scale</span>
                 <div className="us-range-control">
@@ -437,13 +447,24 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
                 </div>
               </div>
               <div className="us-row">
-                <span className="us-row-label">scrollbar · all chats</span>
+                <span className="us-row-label">scrollbar</span>
                 <CustomSelect
                   options={CHAT_SCROLL_INDICATORS.map((o) => ({ ...o }))}
                   value={interfaceSettings.chat.scrollIndicator}
                   onChange={(value) => updateInterfaceSettings({
                     ...interfaceSettings,
                     chat: { ...interfaceSettings.chat, scrollIndicator: value as ChatScrollIndicator },
+                  })}
+                />
+              </div>
+              <div className="us-row">
+                <span className="us-row-label">view</span>
+                <CustomSelect
+                  options={CHAT_PRESENTATIONS.map((o) => ({ ...o }))}
+                  value={interfaceSettings.chat.presentation}
+                  onChange={(value) => updateInterfaceSettings({
+                    ...interfaceSettings,
+                    chat: { ...interfaceSettings.chat, presentation: value as ChatPresentation },
                   })}
                 />
               </div>
@@ -870,7 +891,7 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
 
         {/* Footer — only show save on editable tabs */}
         <div className="create-profile-footer">
-          <button className="create-profile-cancel" onClick={() => { applyInterfaceSettings(resolveInterfaceSettings(userProfile.interface)); onClose(); }}>cancel</button>
+          <button className="create-profile-cancel" onClick={() => { applyInterfaceSettings(resolveEffectiveInterfaceSettings(userProfile.interface)); onClose(); }}>cancel</button>
           {isEditing && (
             <button className="create-profile-save" onClick={handleSave} disabled={saving}>
               {saving ? "saving..." : "save"}

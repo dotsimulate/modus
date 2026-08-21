@@ -172,6 +172,8 @@ const UserInterfaceConfigSchema = z.object({
     fontScale: z.number().min(75).max(175).optional(),
     chatWidth: z.number().min(500).max(1600).optional(),
     scrollIndicator: z.enum(["scroll", "spine", "ruler"]).optional(),
+    presentation: z.enum(["conversation", "turns"]).optional(),
+    projectOverride: z.boolean().optional(),
     // Deprecated by scrollIndicator. Still accepted so an older profile round
     // trips instead of being stripped on the next save.
     spineEnabled: z.boolean().optional(),

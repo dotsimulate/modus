@@ -2,30 +2,39 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { CustomSelect } from "./CustomSelect";
-import type { ChatScrollIndicator } from "../../../sdk/index";
+import type { ChatPresentation, ChatScrollIndicator } from "../../../sdk/index";
 import {
   applyInterfaceSettings,
+  CHAT_PRESENTATIONS,
   CHAT_SCROLL_INDICATORS,
   DEFAULT_INTERFACE_SETTINGS,
-  readLocalInterfaceSettings,
-  resolveInterfaceSettings,
+  projectChatOverrideConfig,
+  projectChatOverrideEnabled,
+  readDeviceInterfaceSettings,
+  resolveEffectiveInterfaceSettings,
+  writeDeviceInterfaceSettings,
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
 
 const SCROLL_INDICATOR_OPTIONS = CHAT_SCROLL_INDICATORS.map((o) => ({ ...o }));
+const PRESENTATION_OPTIONS = CHAT_PRESENTATIONS.map((o) => ({ ...o }));
 
 export function ChatSettings() {
   const { activeUserProfile, activeUP, refreshUserProfiles } = useProfiles();
   const [open, setOpen] = useState(false);
-  const [settings, setSettings] = useState<ResolvedInterfaceSettings>(readLocalInterfaceSettings);
+  const [settings, setSettings] = useState<ResolvedInterfaceSettings>(
+    () => resolveEffectiveInterfaceSettings(activeUP?.interface),
+  );
+  const [projectOnly, setProjectOnly] = useState(() => projectChatOverrideEnabled(activeUP?.interface));
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pos, setPos] = useState<{ bottom: number; right: number } | null>(null);
 
   useEffect(() => {
-    const next = resolveInterfaceSettings(activeUP?.interface);
+    const next = resolveEffectiveInterfaceSettings(activeUP?.interface);
     setSettings(next);
+    setProjectOnly(projectChatOverrideEnabled(activeUP?.interface));
     applyInterfaceSettings(next);
   }, [activeUP?.interface]);
 
@@ -37,17 +46,51 @@ export function ChatSettings() {
     setSettings((prev) => {
       const next = { ...prev, chat: { ...prev.chat, ...patch } };
       applyInterfaceSettings(next);
-      if (activeUserProfile) {
+      if (projectOnly && activeUserProfile) {
         if (saveTimer.current) clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(() => {
-          modus.patchUserProfileUiConfig(activeUserProfile, { interface: next })
+          modus.patchUserProfileUiConfig(activeUserProfile, {
+            interface: {
+              chat: {
+                ...(activeUP?.interface?.chat ?? {}),
+                ...projectChatOverrideConfig(next),
+              },
+            },
+          })
             .then(refreshUserProfiles)
             .catch(() => {});
         }, 300);
+      } else {
+        writeDeviceInterfaceSettings(next);
       }
       return next;
     });
-  }, [activeUserProfile, refreshUserProfiles]);
+  }, [activeUP?.interface?.chat, activeUserProfile, projectOnly, refreshUserProfiles]);
+
+  const toggleProjectOnly = useCallback(() => {
+    if (!activeUserProfile) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    const nextProjectOnly = !projectOnly;
+    setProjectOnly(nextProjectOnly);
+
+    if (nextProjectOnly) {
+      const chat = {
+        ...(activeUP?.interface?.chat ?? {}),
+        ...projectChatOverrideConfig(settings),
+      };
+      void modus.patchUserProfileUiConfig(activeUserProfile, { interface: { chat } })
+        .then(refreshUserProfiles)
+        .catch(() => {});
+      return;
+    }
+
+    const deviceDefaults = readDeviceInterfaceSettings();
+    setSettings(deviceDefaults);
+    applyInterfaceSettings(deviceDefaults);
+    void modus.patchUserProfileUiConfig(activeUserProfile, {
+      interface: { chat: { projectOverride: false } },
+    }).then(refreshUserProfiles).catch(() => {});
+  }, [activeUP?.interface?.chat, activeUserProfile, projectOnly, refreshUserProfiles, settings]);
 
   const toggle = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -84,7 +127,8 @@ export function ChatSettings() {
   const isDefault =
     settings.chat.fontScale === DEFAULT_INTERFACE_SETTINGS.chat.fontScale &&
     settings.chat.chatWidth === DEFAULT_INTERFACE_SETTINGS.chat.chatWidth &&
-    settings.chat.scrollIndicator === DEFAULT_INTERFACE_SETTINGS.chat.scrollIndicator;
+    settings.chat.scrollIndicator === DEFAULT_INTERFACE_SETTINGS.chat.scrollIndicator &&
+    settings.chat.presentation === DEFAULT_INTERFACE_SETTINGS.chat.presentation;
 
   return (
     <div className="chat-settings" ref={ref}>
@@ -92,7 +136,7 @@ export function ChatSettings() {
         ref={btnRef}
         className={`chat-settings-btn${open ? " active" : ""}`}
         onClick={toggle}
-        title="Chat display settings for all chats"
+        title="Chat display settings"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
           <line x1="1" y1="4" x2="15" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
@@ -126,12 +170,37 @@ export function ChatSettings() {
             <span className="chat-settings-value">{settings.chat.chatWidth}</span>
           </div>
           <div className="chat-settings-row chat-settings-row--select">
-            <span className="chat-settings-label">scrollbar · all chats</span>
+            <span className="chat-settings-label">scrollbar</span>
             <CustomSelect
               options={SCROLL_INDICATOR_OPTIONS}
               value={settings.chat.scrollIndicator}
               onChange={(value) => update({ scrollIndicator: value as ChatScrollIndicator })}
             />
+          </div>
+          <div className="chat-settings-row chat-settings-row--select">
+            <span className="chat-settings-label">view</span>
+            <CustomSelect
+              options={PRESENTATION_OPTIONS}
+              value={settings.chat.presentation}
+              onChange={(value) => update({ presentation: value as ChatPresentation })}
+            />
+          </div>
+          <div className="chat-settings-scope">
+            <div className="chat-settings-row">
+              <span className="chat-settings-scope-label">this project</span>
+              <button
+                type="button"
+                className={`chat-settings-toggle${projectOnly ? " on" : ""}`}
+                aria-pressed={projectOnly}
+                disabled={!activeUserProfile}
+                onClick={toggleProjectOnly}
+              >
+                <span className="chat-settings-toggle-dot" />
+              </button>
+            </div>
+            <div className="chat-settings-scope-hint">
+              {projectOnly ? "overrides this device's defaults" : "this device · all projects"}
+            </div>
           </div>
           {!isDefault && (
             <button className="chat-settings-reset" onClick={() => update(DEFAULT_INTERFACE_SETTINGS.chat)}>reset</button>

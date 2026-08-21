@@ -2,26 +2,24 @@ import { useEffect, useState } from "react";
 import type { UserInterfaceConfig } from "../../sdk/index";
 import {
   INTERFACE_SETTINGS_EVENT,
-  resolveInterfaceSettings,
+  resolveEffectiveInterfaceSettings,
   type ResolvedInterfaceSettings,
 } from "./interface-settings";
 
 /**
  * Resolved interface settings that follow live edits.
  *
- * Both settings surfaces debounce their write to the user profile, so a
- * component reading only `activeUP.interface` lags a toggle by the save round
- * trip. The change event fires immediately; the profile value is what survives
- * a reload or a project switch. Reading both keeps a toggle instant without
- * letting the local copy outlive the profile it came from.
+ * Device defaults change immediately, while an enabled project override is
+ * persisted to the user-profile UI sidecar. Reading the event and the profile
+ * keeps both paths live without treating the profile as the default owner.
  */
 export function useInterfaceSettings(
   config?: UserInterfaceConfig | null,
 ): ResolvedInterfaceSettings {
-  const [settings, setSettings] = useState(() => resolveInterfaceSettings(config));
+  const [settings, setSettings] = useState(() => resolveEffectiveInterfaceSettings(config));
 
   useEffect(() => {
-    setSettings(resolveInterfaceSettings(config));
+    setSettings(resolveEffectiveInterfaceSettings(config));
   }, [config]);
 
   useEffect(() => {

@@ -1,4 +1,5 @@
-import type { ChatScrollIndicator, UserInterfaceConfig } from "../../sdk/index";
+import type { ChatPresentation, ChatScrollIndicator, UserInterfaceConfig } from "../../sdk/index";
+import { backendStorageKey } from "./backendTarget";
 
 /**
  * Everything the session config bar can show, in the order it appears.
@@ -35,6 +36,7 @@ export type ResolvedInterfaceSettings = {
     fontScale: number;
     chatWidth: number;
     scrollIndicator: ChatScrollIndicator;
+    presentation: ChatPresentation;
   };
   conversation: {
     showThinking: boolean;
@@ -56,13 +58,27 @@ export type ResolvedInterfaceSettings = {
 };
 
 export const INTERFACE_SETTINGS_STORAGE_KEY = "mo-chat-settings";
+export const DEVICE_INTERFACE_SETTINGS_STORAGE_KEY = "mo-interface-defaults";
 export const INTERFACE_SETTINGS_EVENT = "mo-interface-settings-change";
+
+/**
+ * Display fields that may be promoted from the device default into one project.
+ * Keeping the list here makes adding a future eligible field an explicit,
+ * reviewable choice rather than making every interface preference project-owned.
+ */
+export const PROJECT_CHAT_OVERRIDE_KEYS = [
+  "fontScale",
+  "chatWidth",
+  "scrollIndicator",
+  "presentation",
+] as const satisfies readonly (keyof ResolvedInterfaceSettings["chat"])[];
 
 export const DEFAULT_INTERFACE_SETTINGS: ResolvedInterfaceSettings = {
   chat: {
     fontScale: 100,
     chatWidth: 840,
     scrollIndicator: "spine",
+    presentation: "conversation",
   },
   conversation: {
     showThinking: true,
@@ -102,6 +118,11 @@ export const CHAT_SCROLL_INDICATORS = [
   { value: "ruler", label: "ruler" },
 ] as const;
 
+export const CHAT_PRESENTATIONS = [
+  { value: "conversation", label: "conversation" },
+  { value: "turns", label: "turns" },
+] as const;
+
 /**
  * `spineEnabled` was a boolean before there were three indicators. An explicit
  * `scrollIndicator` always wins; otherwise a stored `spineEnabled: false`
@@ -114,6 +135,10 @@ function resolveScrollIndicator(chat?: UserInterfaceConfig["chat"]): ChatScrollI
   return DEFAULT_INTERFACE_SETTINGS.chat.scrollIndicator;
 }
 
+function resolvePresentation(value: unknown, fallback: ChatPresentation): ChatPresentation {
+  return value === "conversation" || value === "turns" ? value : fallback;
+}
+
 export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): ResolvedInterfaceSettings {
   const toolCalls = config?.conversation?.toolCalls;
   return {
@@ -121,6 +146,7 @@ export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): R
       fontScale: finiteRange(config?.chat?.fontScale, DEFAULT_INTERFACE_SETTINGS.chat.fontScale, 75, 175),
       chatWidth: finiteRange(config?.chat?.chatWidth, DEFAULT_INTERFACE_SETTINGS.chat.chatWidth, 500, 1600),
       scrollIndicator: resolveScrollIndicator(config?.chat),
+      presentation: resolvePresentation(config?.chat?.presentation, DEFAULT_INTERFACE_SETTINGS.chat.presentation),
     },
     conversation: {
       showThinking: config?.conversation?.showThinking ?? DEFAULT_INTERFACE_SETTINGS.conversation.showThinking,
@@ -137,23 +163,39 @@ export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): R
   };
 }
 
-export function readLocalInterfaceSettings(): ResolvedInterfaceSettings {
+function parseInterfaceSettings(raw: string): ResolvedInterfaceSettings {
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  // Migrate the old flat chat-only shape while accepting the current shape.
+  const config: UserInterfaceConfig = "chat" in parsed || "conversation" in parsed
+    ? parsed as UserInterfaceConfig
+    : {
+        chat: {
+          fontScale: parsed.fontScale as number | undefined,
+          chatWidth: parsed.chatWidth as number | undefined,
+          scrollIndicator: parsed.scrollIndicator as ChatScrollIndicator | undefined,
+          spineEnabled: parsed.spineEnabled as boolean | undefined,
+        },
+      };
+  return resolveInterfaceSettings(config);
+}
+
+/** Device-owned defaults, isolated from other backend/Vault targets. */
+export function readDeviceInterfaceSettings(): ResolvedInterfaceSettings {
   try {
-    const raw = localStorage.getItem(INTERFACE_SETTINGS_STORAGE_KEY);
+    const storageKey = backendStorageKey(DEVICE_INTERFACE_SETTINGS_STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey)
+      ?? localStorage.getItem(backendStorageKey(INTERFACE_SETTINGS_STORAGE_KEY))
+      ?? (backendStorageKey(INTERFACE_SETTINGS_STORAGE_KEY) !== INTERFACE_SETTINGS_STORAGE_KEY
+        ? localStorage.getItem(INTERFACE_SETTINGS_STORAGE_KEY)
+        : null);
     if (raw) {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      // Migrate the old flat chat-only shape while accepting the new shape.
-      const config: UserInterfaceConfig = "chat" in parsed || "conversation" in parsed
-        ? parsed as UserInterfaceConfig
-        : {
-            chat: {
-              fontScale: parsed.fontScale as number | undefined,
-              chatWidth: parsed.chatWidth as number | undefined,
-              scrollIndicator: parsed.scrollIndicator as ChatScrollIndicator | undefined,
-              spineEnabled: parsed.spineEnabled as boolean | undefined,
-            },
-          };
-      return resolveInterfaceSettings(config);
+      const settings = parseInterfaceSettings(raw);
+      // Snapshot the legacy cache before an active project override can replace
+      // it, so the migration preserves what the user last saw as their default.
+      if (!localStorage.getItem(storageKey)) {
+        localStorage.setItem(storageKey, JSON.stringify(settings));
+      }
+      return settings;
     }
   } catch {
     // A malformed client cache must never prevent the UI from starting.
@@ -161,18 +203,75 @@ export function readLocalInterfaceSettings(): ResolvedInterfaceSettings {
   return resolveInterfaceSettings();
 }
 
+export function writeDeviceInterfaceSettings(settings: ResolvedInterfaceSettings): void {
+  localStorage.setItem(
+    backendStorageKey(DEVICE_INTERFACE_SETTINGS_STORAGE_KEY),
+    JSON.stringify(settings),
+  );
+}
+
+export function projectChatOverrideEnabled(config?: UserInterfaceConfig | null): boolean {
+  return config?.chat?.projectOverride === true;
+}
+
+export function projectChatOverrideConfig(
+  settings: ResolvedInterfaceSettings,
+): NonNullable<UserInterfaceConfig["chat"]> {
+  return {
+    projectOverride: true,
+    fontScale: settings.chat.fontScale,
+    chatWidth: settings.chat.chatWidth,
+    scrollIndicator: settings.chat.scrollIndicator,
+    presentation: settings.chat.presentation,
+  };
+}
+
+/** Apply the explicit project display override over this device's defaults. */
+export function resolveEffectiveInterfaceSettings(
+  projectConfig?: UserInterfaceConfig | null,
+  deviceDefaults: ResolvedInterfaceSettings = readDeviceInterfaceSettings(),
+): ResolvedInterfaceSettings {
+  if (!projectChatOverrideEnabled(projectConfig)) return deviceDefaults;
+  const chat = projectConfig?.chat;
+  return {
+    ...deviceDefaults,
+    chat: {
+      fontScale: finiteRange(chat?.fontScale, deviceDefaults.chat.fontScale, 75, 175),
+      chatWidth: finiteRange(chat?.chatWidth, deviceDefaults.chat.chatWidth, 500, 1600),
+      scrollIndicator: chat?.scrollIndicator === "scroll"
+        || chat?.scrollIndicator === "spine"
+        || chat?.scrollIndicator === "ruler"
+        ? chat.scrollIndicator
+        : deviceDefaults.chat.scrollIndicator,
+      presentation: resolvePresentation(chat?.presentation, deviceDefaults.chat.presentation),
+    },
+  };
+}
+
+/** Last effective value for non-React consumers such as session history loading. */
+export function readLocalInterfaceSettings(): ResolvedInterfaceSettings {
+  try {
+    const raw = localStorage.getItem(backendStorageKey(INTERFACE_SETTINGS_STORAGE_KEY));
+    if (raw) return parseInterfaceSettings(raw);
+  } catch {
+    // Fall through to device defaults.
+  }
+  return readDeviceInterfaceSettings();
+}
+
 export function applyInterfaceSettings(settings: ResolvedInterfaceSettings): void {
   const root = document.documentElement;
   root.style.setProperty("--chat-max-width", `${settings.chat.chatWidth}px`);
   root.style.setProperty("--font-scale", `${settings.chat.fontScale / 100}`);
   root.dataset.reducedMotion = settings.motion === "reduced" ? "true" : "false";
-  localStorage.setItem(INTERFACE_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  localStorage.setItem(backendStorageKey(INTERFACE_SETTINGS_STORAGE_KEY), JSON.stringify(settings));
   window.dispatchEvent(new CustomEvent(INTERFACE_SETTINGS_EVENT, { detail: settings }));
 }
 
 export function resetClientInterfaceState(): void {
   const exactKeys = new Set([
-    INTERFACE_SETTINGS_STORAGE_KEY,
+    backendStorageKey(INTERFACE_SETTINGS_STORAGE_KEY),
+    backendStorageKey(DEVICE_INTERFACE_SETTINGS_STORAGE_KEY),
     "ap:expanded",
     "ap:pinned",
     "ap:pos2",
@@ -188,8 +287,10 @@ export function resetClientInterfaceState(): void {
       localStorage.removeItem(key);
     }
   }
-  applyInterfaceSettings(resolveInterfaceSettings());
+  const defaults = resolveInterfaceSettings();
+  writeDeviceInterfaceSettings(defaults);
+  applyInterfaceSettings(defaults);
 }
 
 // Preserve the old eager behavior so chat sizing is correct before React mounts.
-if (typeof document !== "undefined") applyInterfaceSettings(readLocalInterfaceSettings());
+if (typeof document !== "undefined") applyInterfaceSettings(readDeviceInterfaceSettings());

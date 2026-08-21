@@ -8,7 +8,7 @@
  * Includes the PermissionOverlay for tool permission prompts.
  */
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useMemo } from "react";
 import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, loadOlderSessionHistory, loadSessionMessageDetails } from "../sessionStore";
 import { modus } from "../modusClient";
 import { ChatView } from "../components/ChatView";
@@ -17,14 +17,16 @@ import { useSession } from "../providers/SessionContext";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 import { useProfiles } from "../providers/ProfileContext";
-import { resolveInterfaceSettings } from "../interface-settings";
+import { useInterfaceSettings } from "../useInterfaceSettings";
+import SessionTurnWidget, { type TurnBlockKind } from "./session-turn.widget";
 
 type SessionChatConfig = WidgetBase & {
   type: "session-chat";
   sessionId?: string;
 };
 
-export default function SessionChatWidget({ config, pageContext }: WidgetProps<SessionChatConfig>) {
+export default function SessionChatWidget(props: WidgetProps<SessionChatConfig>) {
+  const { config, pageContext } = props;
   const { branchFromSessionMessage, activeSession, queuedMessage, cancelQueued } = useSession();
   const { activeUP, profiles } = useProfiles();
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
@@ -66,6 +68,20 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
     await branchFromSessionMessage(sessionId, seq, prefill, restoreCode, providerMessageId);
   }, [branchFromSessionMessage, sessionId]);
 
+  const profileUi = profiles.find((profile) => profile.name === session?.profile)?.ui;
+  const interfaceSettings = useInterfaceSettings(activeUP?.interface);
+  const conversation = interfaceSettings.conversation;
+  const showThinking = profileUi?.showThinking ?? conversation.showThinking;
+  const showMeta = profileUi?.showMeta ?? conversation.showMeta;
+  const toolCallDisplay = profileUi?.showToolCalls === false ? "hidden" : conversation.toolCalls;
+  const turnBlocks = useMemo(() => {
+    const blocks: TurnBlockKind[] = ["prompt", "text"];
+    if (showThinking) blocks.push("thinking");
+    if (toolCallDisplay !== "hidden") blocks.push("tools");
+    if (showMeta) blocks.push("meta");
+    return blocks;
+  }, [showMeta, showThinking, toolCallDisplay]);
+
   if (!sessionId) {
     return <WidgetEmptyState>no session selected</WidgetEmptyState>;
   }
@@ -81,37 +97,46 @@ export default function SessionChatWidget({ config, pageContext }: WidgetProps<S
   // gets it — otherwise a second chat pane would show someone else's pending
   // message and offer to cancel it.
   const pendingSend = activeSession?.id === sessionId ? queuedMessage : null;
-  const profileUi = profiles.find((profile) => profile.name === session.profile)?.ui;
-  const interfaceSettings = resolveInterfaceSettings(activeUP?.interface);
-  const conversation = interfaceSettings.conversation;
 
   return (
     <div className="session-chat-widget" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden", position: "relative" }}>
-      <ChatView
-        messages={session.messages ?? []}
-        sessionId={sessionId}
-        provider={session.provider ?? session.agentConfig?.provider}
-        streaming={isActive}
-        streamFeed={session.streamFeed}
-        showThinking={profileUi?.showThinking ?? conversation.showThinking}
-        showMeta={profileUi?.showMeta ?? conversation.showMeta}
-        toolCallDisplay={profileUi?.showToolCalls === false ? "hidden" : conversation.toolCalls}
-        showGitEvents={profileUi?.showGitEvents ?? conversation.showGitEvents}
-        showFileChanges={conversation.showFileChanges}
-        emptyTitle={historyLoad.status === "loading" ? "loading messages…" : historyLoad.status === "error" ? "messages unavailable" : "no messages"}
-        emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
-        emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}
-        onEmptyAction={historyLoad.status === "error" ? retryHistory : undefined}
-        hasOlderMessages={historyLoad.hasMore}
-        loadingOlderMessages={historyLoad.loadingOlder}
-        olderMessagesError={historyLoad.olderError}
-        olderTurnCount={historyLoad.olderTurnCount}
-        onLoadOlderMessages={loadOlderHistory}
-        onLoadMessageDetails={loadMessageDetails}
-        onBranch={handleBranch}
-        queuedMessage={pendingSend}
-        onCancelQueued={cancelQueued}
-      />
+      {interfaceSettings.chat.presentation === "turns" ? (
+        <SessionTurnWidget
+          {...props}
+          config={{
+            type: "session-turn",
+            id: `${config.id ?? props.widgetId}:turns`,
+            sessionId,
+            blocks: turnBlocks,
+          }}
+        />
+      ) : (
+        <ChatView
+          messages={session.messages ?? []}
+          sessionId={sessionId}
+          provider={session.provider ?? session.agentConfig?.provider}
+          streaming={isActive}
+          streamFeed={session.streamFeed}
+          showThinking={showThinking}
+          showMeta={showMeta}
+          toolCallDisplay={toolCallDisplay}
+          showGitEvents={profileUi?.showGitEvents ?? conversation.showGitEvents}
+          showFileChanges={conversation.showFileChanges}
+          emptyTitle={historyLoad.status === "loading" ? "loading messages…" : historyLoad.status === "error" ? "messages unavailable" : "no messages"}
+          emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
+          emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}
+          onEmptyAction={historyLoad.status === "error" ? retryHistory : undefined}
+          hasOlderMessages={historyLoad.hasMore}
+          loadingOlderMessages={historyLoad.loadingOlder}
+          olderMessagesError={historyLoad.olderError}
+          olderTurnCount={historyLoad.olderTurnCount}
+          onLoadOlderMessages={loadOlderHistory}
+          onLoadMessageDetails={loadMessageDetails}
+          onBranch={handleBranch}
+          queuedMessage={pendingSend}
+          onCancelQueued={cancelQueued}
+        />
+      )}
       {permissions.length > 0 && (
         <PermissionOverlay
           permissions={permissions}

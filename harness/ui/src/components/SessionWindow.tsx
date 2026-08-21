@@ -17,7 +17,7 @@ import { useProfiles } from "../providers/ProfileContext";
 import { useSession } from "../providers/SessionContext";
 import { FloatingWindow } from "./FloatingWindow";
 import { ChatView } from "./ChatView";
-import { resolveInterfaceSettings } from "../interface-settings";
+import { useInterfaceSettings } from "../useInterfaceSettings";
 import { ChatInput } from "./ChatInput";
 import { PermissionOverlay } from "./PermissionOverlay";
 import {
@@ -41,7 +41,7 @@ function statusLabel(status: string): string {
 
 export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   const { activeUP, projectRoot } = useProfiles();
-  const conversation = resolveInterfaceSettings(activeUP?.interface).conversation;
+  const conversation = useInterfaceSettings(activeUP?.interface).conversation;
   const { branchFromSessionMessage } = useSession();
   const [input, setInput] = useState("");
   const [queuedMessage, setQueuedMessage] = useState<SessionWindowQueuedMessage | null>(null);
