@@ -67,11 +67,11 @@ test("event-reconstructed history carries each turn's stats", () => {
   addEvent(sessionId, 1, "user", "prompt", JSON.stringify({
     subtype: "prompt",
     message: { content: [{ type: "text", text: "go" }] },
-  }));
+  }), 1_000);
   addEvent(sessionId, 2, "assistant", "message", JSON.stringify({
     message: { content: [{ type: "text", text: "done" }] },
-  }));
-  addEvent(sessionId, 3, "result", "success", JSON.stringify(claudeResult));
+  }), 2_000);
+  addEvent(sessionId, 3, "result", "success", JSON.stringify(claudeResult), 9_000);
 
   const history = getSessionMessageHistory(sessionId);
   const assistant = history.messages.find((turn) => turn.role === "assistant");
@@ -82,6 +82,8 @@ test("event-reconstructed history carries each turn's stats", () => {
     contextWindow: 1_000_000,
     contextTokensUsed: 250_000,
   });
+  expect(history.messages.find((turn) => turn.role === "user")?.timestamp).toBe(1_000);
+  expect(assistant?.timestamp).toBe(9_000);
 });
 
 test("materialized history merges result-event tokens over the stored message columns", () => {
@@ -94,7 +96,7 @@ test("materialized history merges result-event tokens over the stored message co
     costUsd: 0,
   });
 
-  insertMessage({ sessionId, seq: 1, role: "user", content: "go" });
+  insertMessage({ sessionId, seq: 1, role: "user", content: "go", createdAt: 1_000 });
   insertMessage({
     sessionId,
     seq: 3,
@@ -104,10 +106,11 @@ test("materialized history merges result-event tokens over the stored message co
     durationMs: 12_400,
     model: "claude-opus-5",
     turns: 3,
+    createdAt: 2_000,
   });
   // Only the durable event carries token and context figures — the messages
   // table has no columns for them.
-  addEvent(sessionId, 3, "result", "success", JSON.stringify(claudeResult));
+  addEvent(sessionId, 3, "result", "success", JSON.stringify(claudeResult), 9_000);
 
   const assistant = getSessionMessageHistory(sessionId).messages
     .find((turn) => turn.role === "assistant");
@@ -121,6 +124,7 @@ test("materialized history merges result-event tokens over the stored message co
     contextWindow: 1_000_000,
     contextTokensUsed: 250_000,
   });
+  expect(assistant?.timestamp).toBe(9_000);
 });
 
 test("an interrupted turn materialized before its result still gets the result's stats", () => {

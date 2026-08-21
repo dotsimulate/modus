@@ -183,6 +183,9 @@ export function reconstructSessionTurns(
       } else if (!current.uuid && typeof d.uuid === "string") {
         current.uuid = d.uuid;
       }
+      // If the turn never receives a terminal event, its visible timestamp is
+      // the last assistant content/tool event that actually landed.
+      current.timestamp = evt.created_at;
       const content = d.message?.content;
       if (typeof content === "string" && content) {
         current.text += content;
@@ -209,7 +212,12 @@ export function reconstructSessionTurns(
 
     if (evt.type === "result" && current) {
       const meta = turnMetaFromResultEvent(d, fallbackModel);
-      turns.push(materializeAssistantTurn(current, evt.seq, hasTurnStats(meta) ? meta : undefined));
+      turns.push(materializeAssistantTurn(
+        current,
+        evt.seq,
+        hasTurnStats(meta) ? meta : undefined,
+        evt.created_at,
+      ));
       current = null;
     }
 
@@ -219,7 +227,7 @@ export function reconstructSessionTurns(
     // reducer showed a reason and the reloaded transcript did not.
     if (evt.type === "error") {
       if (current) {
-        turns.push(materializeAssistantTurn(current, current.seq));
+        turns.push(materializeAssistantTurn(current, current.seq, undefined, evt.created_at));
         current = null;
       }
       turns.push({
@@ -249,12 +257,13 @@ function materializeAssistantTurn(
   },
   seq: number,
   meta?: TurnMeta,
+  timestamp = current.timestamp,
 ): TurnContent {
   const turn: TurnContent = {
     role: "assistant",
     seq,
     text: current.text,
-    timestamp: current.timestamp,
+    timestamp,
     ...(current.uuid ? { uuid: current.uuid } : {}),
     ...(meta ? { meta } : {}),
   };

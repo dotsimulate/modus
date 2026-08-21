@@ -170,6 +170,7 @@ export type Message = {
   artifacts?: SessionArtifact[];
   /** Position in the session's event stream. */
   seq?: number;
+  /** Prompt time for user messages; terminal-result time for completed assistant messages. */
   timestamp?: number;
   /** Cost, token usage, and model info for this turn. Only present on assistant messages. */
   meta?: TurnMeta;
@@ -517,6 +518,10 @@ export type TurnContent = {
   deferredToolCallCount?: number;
   /** Whether the omitted payload included thinking. Sent, never inferred. */
   deferredHasThinking?: boolean;
+  /**
+   * Prompt persistence time for a user turn; terminal-result persistence time
+   * for a completed assistant turn; last assistant event when incomplete.
+   */
   timestamp: number;
 };
 
