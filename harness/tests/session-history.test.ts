@@ -31,6 +31,7 @@ describe("incomplete semantic history recovery", () => {
     expect(turns).toHaveLength(2);
     expect(turns[0]).toMatchObject({ role: "user", seq: 1, text: "do the work" });
     expect(turns[1]).toMatchObject({ role: "assistant", seq: 2, text: "working\nfinished" });
+    expect(turns[1]!.timestamp).toBe(1_005);
     expect(turns[1]!.toolCalls).toEqual([{
       id: "tool-1",
       name: "CommandExecution",
@@ -84,6 +85,8 @@ describe("incomplete semantic history recovery", () => {
       ["user", "second"],
       ["assistant", "answer"],
     ]);
+    expect(turns[1]!.timestamp).toBe(1_002);
+    expect(turns[3]!.timestamp).toBe(1_005);
   });
 
   test("keeps turns intact when seq numbers collide across wall-clock time", () => {

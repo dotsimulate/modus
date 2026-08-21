@@ -120,15 +120,27 @@ test("delayed assistant materialization preserves the turn activity time", async
   expect(after.last_message_at).toBeLessThan(Date.now());
 });
 
-test("reap flush wires the pending turn timestamp through persistence", () => {
+test("pending-turn flush uses completion time normally and last activity during reap", () => {
   const source = readFileSync(join(import.meta.dir, "..", "session-manager.ts"), "utf8");
   const start = source.indexOf("function flushPendingAssistantTurn");
   const end = source.indexOf("function persistSemanticMessage", start);
   const body = source.slice(start, end);
 
-  expect(body).toContain("createdAt: turn.timestamp");
-  expect(body).toContain("syncSessionMessageCount(session.sessionId, { activityAt: turn.timestamp })");
+  expect(body).toContain("const materializedAt = completedAt ?? turn.timestamp");
+  expect(body).toContain("createdAt: materializedAt");
+  expect(body).toContain("syncSessionMessageCount(session.sessionId, { activityAt: materializedAt })");
   expect(body).not.toContain("createdAt: Date.now()");
+});
+
+test("a provider event shares one receipt time across semantic and raw persistence", () => {
+  const source = readFileSync(join(import.meta.dir, "..", "session-manager.ts"), "utf8");
+  const start = source.indexOf("function persistAndBroadcastEvent");
+  const end = source.indexOf("function broadcastEventToSession", start);
+  const body = source.slice(start, end);
+
+  expect(body).toContain("const receivedAt = Date.now()");
+  expect(body).toContain("persistSemanticMessage(session, event, receivedAt)");
+  expect(body).toContain("JSON.stringify(event),\n    receivedAt,");
 });
 
 function methodBody(source: string, name: string): string {

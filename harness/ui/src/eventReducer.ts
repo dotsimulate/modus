@@ -94,7 +94,7 @@ export function reduceEvent(state: ReducerState, event: any, seq: number): Reduc
     case "tool_use_summary":
       return reduceToolUseSummary(s, m);
     case "result":
-      return reduceResult(s, m);
+      return reduceResult(s, m, ts);
     case "rate_limit_event":
       return reduceProviderWait(s, "Claude is retrying after a rate limit.", ts);
     case "error":
@@ -1116,7 +1116,7 @@ function resultTargetIndex(msgs: Message[]): number {
   return -1;
 }
 
-function reduceResult(s: ReducerState, m: any): ReducerState {
+function reduceResult(s: ReducerState, m: any, ts: number): ReducerState {
   const msgs = [...s.messages];
   const target = resultTargetIndex(msgs);
 
@@ -1142,6 +1142,10 @@ function reduceResult(s: ReducerState, m: any): ReducerState {
 
     msgs[target] = {
       ...last,
+      // The settled metadata row says when the reply landed, not when its first
+      // token appeared. Replayed events carry the result row's persisted _ts;
+      // live events use the instant the browser received the result.
+      timestamp: ts,
       seq: s.lastSeq, // result event seq — used as branch point
       // Persist backend-measured thinking duration (survives refresh)
       ...(m.thinking_duration_ms != null && { thinkingDuration: m.thinking_duration_ms }),

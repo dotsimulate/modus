@@ -773,14 +773,14 @@ function extractPlainText(content: MessageContent | undefined): string {
   return text;
 }
 
-function getOrCreatePendingAssistantTurn(session: ActiveSession): PendingAssistantTurn {
+function getOrCreatePendingAssistantTurn(session: ActiveSession, receivedAt: number): PendingAssistantTurn {
   if (!session.pendingAssistantTurn) {
     session.pendingAssistantTurn = {
       seq: session.seq,
       text: "",
       thinking: "",
       toolCalls: new Map(),
-      timestamp: Date.now(),
+      timestamp: receivedAt,
     };
   }
   return session.pendingAssistantTurn;
@@ -788,7 +788,11 @@ function getOrCreatePendingAssistantTurn(session: ActiveSession): PendingAssista
 
 /** Materialize whatever durable assistant content has arrived so abnormal
  * provider termination cannot leave a permanently user-only semantic history. */
-function flushPendingAssistantTurn(session: ActiveSession, terminalEvent: any = {}): boolean {
+function flushPendingAssistantTurn(
+  session: ActiveSession,
+  terminalEvent: any = {},
+  completedAt?: number,
+): boolean {
   const turn = session.pendingAssistantTurn;
   if (!turn) return false;
   const content = turn.text || (typeof terminalEvent.result === "string" ? terminalEvent.result : "");
@@ -796,6 +800,7 @@ function flushPendingAssistantTurn(session: ActiveSession, terminalEvent: any = 
     session.pendingAssistantTurn = null;
     return false;
   }
+  const materializedAt = completedAt ?? turn.timestamp;
   insertMessage({
     sessionId: session.sessionId,
     seq: session.seq,
@@ -808,17 +813,18 @@ function flushPendingAssistantTurn(session: ActiveSession, terminalEvent: any = 
     durationMs: typeof terminalEvent.harness_duration_ms === "number" ? terminalEvent.harness_duration_ms : undefined,
     model: session.model,
     turns: typeof terminalEvent.num_turns === "number" ? terminalEvent.num_turns : undefined,
-    // A provider can disappear long after its last partial assistant event.
-    // Materializing that buffered content during reap must preserve when the
-    // conversation actually moved instead of making reap time look like a reply.
-    createdAt: turn.timestamp,
+    // A normal result uses its receipt time: that is when the final reply
+    // landed. A provider can also disappear long after its last partial event;
+    // those abnormal flushes omit completedAt and preserve the last real
+    // assistant event instead of making reap time look like a reply.
+    createdAt: materializedAt,
   });
-  syncSessionMessageCount(session.sessionId, { activityAt: turn.timestamp });
+  syncSessionMessageCount(session.sessionId, { activityAt: materializedAt });
   session.pendingAssistantTurn = null;
   return true;
 }
 
-function persistSemanticMessage(session: ActiveSession, event: any) {
+function persistSemanticMessage(session: ActiveSession, event: any, receivedAt: number) {
   if (event.type === "user" && (event.subtype === "prompt" || event.message?.role === "user")) {
     const text = extractPlainText(event.message?.content);
     if (!text) return;
@@ -829,14 +835,17 @@ function persistSemanticMessage(session: ActiveSession, event: any) {
       role: "user",
       content: text,
       uuid: typeof event.uuid === "string" ? event.uuid : undefined,
-      createdAt: Date.now(),
+      createdAt: receivedAt,
     });
     return;
   }
 
   if (event.type === "assistant") {
-    const turn = getOrCreatePendingAssistantTurn(session);
+    const turn = getOrCreatePendingAssistantTurn(session, receivedAt);
     turn.seq = session.seq;
+    // Incomplete turns display the time of their last actual assistant event.
+    // Completed turns are overwritten with the terminal event below.
+    turn.timestamp = receivedAt;
     if (!turn.uuid && typeof event.uuid === "string") turn.uuid = event.uuid;
     const content = event.message?.content;
     if (!Array.isArray(content)) return;
@@ -873,7 +882,7 @@ function persistSemanticMessage(session: ActiveSession, event: any) {
 
   if (event.type === "result" || event.type === "error" || event.type === "done"
     || (event.type === "system" && event.subtype === "interrupted")) {
-    flushPendingAssistantTurn(session, event);
+    flushPendingAssistantTurn(session, event, receivedAt);
   }
 
   // Persist the explanation alongside the status. A failure status is durable,
@@ -886,7 +895,7 @@ function persistSemanticMessage(session: ActiveSession, event: any) {
       seq: session.seq,
       role: "system",
       content: text,
-      createdAt: Date.now(),
+      createdAt: receivedAt,
     });
     syncSessionMessageCount(session.sessionId);
   }
@@ -986,14 +995,15 @@ function isCoalescibleLiveDelta(event: any): boolean {
 
 function persistAndBroadcastEvent(session: ActiveSession, event: any) {
   const _pbt0 = performance.now();
+  const receivedAt = Date.now();
   session.seq++;
-  session.lastEventAt = Date.now();
+  session.lastEventAt = receivedAt;
   const liveOnly = isLiveOnlyEvent(event);
   // Flush any coalesced deltas first so a durable event cannot overtake the
   // stream it follows.
   if (!liveOnly) flushLiveBroadcast(session);
   updateLiveStreamSnapshot(session, event);
-  persistSemanticMessage(session, event);
+  persistSemanticMessage(session, event, receivedAt);
   if (liveOnly) {
     sseLog("LIVE-ONLY", session.sessionId,
       `seq=${session.seq} type=${event.type}${event.subtype ? "/" + event.subtype : ""} subs=${session.subscribers.size}`);
@@ -1007,6 +1017,7 @@ function persistAndBroadcastEvent(session: ActiveSession, event: any) {
     event.type,
     event.subtype ?? null,
     JSON.stringify(event),
+    receivedAt,
   );
   observeDeclaredFileTools(session, event);
   sseLog("PERSIST", session.sessionId,

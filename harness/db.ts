@@ -453,6 +453,11 @@ export type TurnContent = {
   deferredToolCallCount?: number;
   /** Whether the omitted payload included thinking. Sent, never inferred. */
   deferredHasThinking?: boolean;
+  /**
+   * When this visible message landed: prompt persistence for a user turn,
+   * terminal-result persistence for a completed assistant turn, or the last
+   * assistant event for an incomplete turn.
+   */
   timestamp: number;
 };
 
@@ -1030,7 +1035,14 @@ export function removeSessionTag(id: string, tag: string) {
 
 // ── Event Functions ──
 
-export function addEvent(sessionId: string, seq: number, type: string, subtype: string | null, data: string) {
+export function addEvent(
+  sessionId: string,
+  seq: number,
+  type: string,
+  subtype: string | null,
+  data: string,
+  createdAt = Date.now(),
+) {
   const t0 = performance.now();
   stmts.addEvent.run({
     $session_id: sessionId,
@@ -1038,7 +1050,7 @@ export function addEvent(sessionId: string, seq: number, type: string, subtype: 
     $type: type,
     $subtype: subtype,
     $data: data,
-    $created_at: Date.now(),
+    $created_at: createdAt,
   });
   const t1 = performance.now();
   indexEvent(sessionId, type, data);
@@ -1678,10 +1690,10 @@ function attachResultEventMeta(
   if (assistants.length === 0) return turns;
 
   const rows = db.prepare(
-    `SELECT seq, data FROM events
+    `SELECT seq, data, created_at FROM events
      WHERE session_id = $sid AND type = 'result' AND seq >= $min
      ORDER BY seq ASC`
-  ).all({ $sid: sessionId, $min: turns[assistants[0]!]!.seq }) as { seq: number; data: string }[];
+  ).all({ $sid: sessionId, $min: turns[assistants[0]!]!.seq }) as { seq: number; data: string; created_at: number }[];
   if (rows.length === 0) return turns;
 
   const next = [...turns];
@@ -1693,14 +1705,26 @@ function attachResultEventMeta(
       cursor++;
     }
     if (target < 0) continue;
-    let parsed: unknown;
-    try { parsed = JSON.parse(row.data); } catch { continue; }
-    const meta = turnMetaFromResultEvent(parsed, fallbackModel);
-    if (!hasTurnStats(meta)) continue;
-    const reported = Object.fromEntries(
-      Object.entries(meta).filter(([, value]) => value !== undefined),
-    ) as TurnMeta;
-    next[target] = { ...next[target]!, meta: { ...next[target]!.meta, ...reported } };
+    let reported: TurnMeta | undefined;
+    try {
+      const meta = turnMetaFromResultEvent(JSON.parse(row.data), fallbackModel);
+      if (hasTurnStats(meta)) {
+        reported = Object.fromEntries(
+          Object.entries(meta).filter(([, value]) => value !== undefined),
+        ) as TurnMeta;
+      }
+    } catch {
+      // The row time still closes the visible turn even if legacy result JSON
+      // is malformed; only the optional usage metadata is unavailable.
+    }
+    next[target] = {
+      ...next[target]!,
+      // Older semantic rows were stamped when assistant output started. The
+      // durable result row is the authoritative time the completed turn landed,
+      // so reading it repairs existing transcripts without rewriting user data.
+      timestamp: row.created_at,
+      ...(reported ? { meta: { ...next[target]!.meta, ...reported } } : {}),
+    };
   }
   return next;
 }

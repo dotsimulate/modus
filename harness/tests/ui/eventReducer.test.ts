@@ -268,6 +268,19 @@ describe("eventReducer turn stats", () => {
     expect(state.messages.at(-1)?.role).toBe("system");
   });
 
+  test("settles the assistant timestamp when the terminal result arrives", () => {
+    let state = createInitialState("ses-timing");
+    state = reduceEvent(state, {
+      type: "assistant",
+      _ts: 2_000,
+      message: { content: [{ type: "text", text: "done" }] },
+    }, 1);
+    expect(state.messages.at(-1)?.timestamp).toBe(2_000);
+
+    state = reduceEvent(state, { ...result, _ts: 9_000 }, 2);
+    expect(state.messages.at(-1)?.timestamp).toBe(9_000);
+  });
+
   test("does not reach back past the user prompt of a turn that produced nothing", () => {
     let state = createInitialState("ses-test");
     state.messages.push({ id: "a1", role: "assistant", content: "answered", timestamp: 1 });
