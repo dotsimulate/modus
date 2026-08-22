@@ -8,6 +8,7 @@ import {
 } from "react";
 import { estimateMessageHeight, clearMeasureCache } from "./textMeasure";
 import { calculateScrollTarget } from "../scroll-navigation";
+import { recordVirtualHeight } from "../virtual-message-measurement";
 
 export type VirtualItem<T> = {
   data: T;
@@ -67,6 +68,7 @@ type Props<T> = {
    * that already re-render for some other reason (scroll, resize).
    */
   layoutRef?: React.MutableRefObject<VirtualLayoutSnapshot | null>;
+  scrollSessionId?: string | null;
 };
 
 const BOTTOM_THRESHOLD = 120;
@@ -86,6 +88,7 @@ export function VirtualMessageList<T>({
   onScrollElement,
   controlsRef,
   layoutRef,
+  scrollSessionId,
 }: Props<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -94,6 +97,7 @@ export function VirtualMessageList<T>({
   const widthRef = useRef(0);
   const heightMapRef = useRef(new Map<string, number>());
   const measuredSetRef = useRef(new Set<string>());
+  const measurementFrameRef = useRef<number | null>(null);
   const [heightVersion, setHeightVersion] = useState(0);
 
   const [scrollTop, setScrollTop] = useState(0);
@@ -149,6 +153,9 @@ export function VirtualMessageList<T>({
     }
     return offset;
   };
+
+  const beforeHeight = getOffsetForIndex(startIndex);
+  const afterHeight = Math.max(0, totalHeight - getOffsetForIndex(endIndex + 1));
 
   const invalidateAllHeights = useCallback(() => {
     heightMapRef.current.clear();
@@ -342,41 +349,65 @@ export function VirtualMessageList<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, heightVersion, layoutRef]);
 
-  const reportMeasured = useCallback((key: string, height: number) => {
-    const existing = heightMapRef.current.get(key);
-    if (measuredSetRef.current.has(key) && existing === height) return;
-    if (existing != null && Math.abs(height - existing) < 5) return;
-    heightMapRef.current.set(key, height);
-    measuredSetRef.current.add(key);
-    setHeightVersion(n => n + 1);
+  useEffect(() => () => {
+    if (measurementFrameRef.current !== null) {
+      cancelAnimationFrame(measurementFrameRef.current);
+    }
   }, []);
+
+  // Font scale and visibility toggles change the estimator without changing
+  // item keys. Cached estimates must not survive that geometry change.
+  useLayoutEffect(() => {
+    const frame = requestAnimationFrame(invalidateAllHeights);
+    return () => cancelAnimationFrame(frame);
+  }, [estimateHeight, invalidateAllHeights]);
+
+  const scheduleMeasurementRender = useCallback(() => {
+    if (measurementFrameRef.current !== null) return;
+    measurementFrameRef.current = requestAnimationFrame(() => {
+      measurementFrameRef.current = null;
+      setHeightVersion(n => n + 1);
+    });
+  }, []);
+
+  const reportMeasured = useCallback((key: string, height: number) => {
+    const update = recordVirtualHeight(
+      heightMapRef.current,
+      measuredSetRef.current,
+      key,
+      height,
+    );
+    if (!update.changed) return;
+    scheduleMeasurementRender();
+  }, [scheduleMeasurementRender]);
 
   return (
     <div
       ref={scrollRef}
       className={className}
+      data-chat-session-id={scrollSessionId ?? undefined}
       style={{ overflow: "auto", position: "relative", height: "100%" }}
       onScroll={handleScroll}
     >
       <div
         ref={contentRef}
         className={innerClassName}
-        style={{ height: totalHeight, position: "relative" }}
+        style={{ position: "relative" }}
       >
+        {beforeHeight > 0 && <div aria-hidden="true" style={{ height: beforeHeight }} />}
         {items.slice(startIndex, endIndex + 1).map((item, i) => {
           const index = startIndex + i;
-          const top = getOffsetForIndex(index);
           return (
             <MeasuredItem
               key={item.key}
               itemKey={item.key}
-              top={top}
               onMeasured={reportMeasured}
             >
               {renderItem(item.data, index)}
             </MeasuredItem>
           );
         })}
+        {afterHeight > 0 && <div aria-hidden="true" style={{ height: afterHeight }} />}
       </div>
       {footer}
     </div>
@@ -385,18 +416,16 @@ export function VirtualMessageList<T>({
 
 function MeasuredItem({
   itemKey,
-  top,
   onMeasured,
   children,
 }: {
   itemKey: string;
-  top: number;
   onMeasured: (key: string, height: number) => void;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
@@ -408,7 +437,7 @@ function MeasuredItem({
   }, [itemKey, onMeasured]);
 
   return (
-    <div ref={ref} style={{ position: "absolute", top, left: 0, right: 0 }}>
+    <div ref={ref} style={{ display: "flow-root" }}>
       {children}
     </div>
   );

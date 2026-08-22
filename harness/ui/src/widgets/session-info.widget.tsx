@@ -6,7 +6,8 @@
  */
 
 import { useState, useEffect } from "react";
-import { useSession } from "../providers/SessionContext";
+import { useActiveSessionId, useSessionIndex } from "../providers/SessionContext";
+import { useSessionState } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, fmtNum } from "../utils/format";
 import { WidgetEmptyState } from "./widget-components";
@@ -40,7 +41,9 @@ function Row({ label, value }: { label: string; value: string }) {
 // ── Component ──
 
 export default function SessionInfoWidget() {
-  const { activeSession, serverSessions } = useSession();
+  const activeSessionId = useActiveSessionId();
+  const activeSession = useSessionState(activeSessionId);
+  const { serverSessions } = useSessionIndex();
   const { profiles, activeUP, selectedProfile } = useProfiles();
   const [now, setNow] = useState(Date.now());
 

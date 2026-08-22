@@ -3,8 +3,6 @@ import type { PageContextHandle, ScopeBinding, ScopeEvent, UiIntentObserver, UiI
 
 // ── Page-scoped shared state bus ──
 
-const emptyBusSnapshot: Record<string, unknown> = {};
-
 type EventHandler<T extends UiIntentType = UiIntentType> = (event: UiIntentOf<T>) => void;
 type StoredEventHandler = (event: ScopeEvent) => void;
 
@@ -62,6 +60,9 @@ export function createPageStateBus(initial: Record<string, unknown>): PageStateB
 }
 
 export const PageStateBusContext = createContext<PageStateBus | null>(null);
+const emptyPageState: Record<string, unknown> = {};
+const subscribeToNothing = (_callback: () => void) => () => {};
+const getEmptyPageState = () => emptyPageState;
 
 // ── Page URL context ──
 
@@ -98,21 +99,21 @@ export function ScopeUrlSessionBinder() {
     if (!bus) return;
     const current = bus.get("sessionId") as string | null | undefined;
     const next = hashSessionId ?? null;
-    if (current !== next) bus.set("sessionId", next);
+    // Prime before publishing so the synchronous outbound subscription below
+    // knows this change came from the URL and does not echo it back to App.
     lastPushed.current = next;
+    if (current !== next) bus.set("sessionId", next);
   }, [bus, hashSessionId]);
 
-  const busState = useSyncExternalStore<Record<string, unknown>>(
-    bus ? bus.subscribe : () => () => {},
-    bus ? bus.getSnapshot : () => emptyBusSnapshot,
-  );
   useEffect(() => {
     if (!bus) return;
-    const sid = busState.sessionId as string | null | undefined;
-    if (sid === lastPushed.current) return;
-    lastPushed.current = sid ?? null;
-    if (sid && bus.onSelectSession) bus.onSelectSession(sid);
-  }, [bus, busState.sessionId]);
+    return bus.subscribe(() => {
+      const sid = bus.get("sessionId") as string | null | undefined;
+      if (sid === lastPushed.current) return;
+      lastPushed.current = sid ?? null;
+      if (sid && bus.onSelectSession) bus.onSelectSession(sid);
+    });
+  }, [bus]);
 
   return null;
 }
@@ -135,11 +136,12 @@ export function useLeafVisible(
   hideWhen?: Record<string, unknown>,
 ): boolean {
   const bus = useContext(PageStateBusContext);
+  const tracksVisibility = !!showWhen || !!hideWhen;
   useSyncExternalStore(
-    bus ? bus.subscribe : () => () => {},
-    bus ? bus.getSnapshot : () => ({}),
+    tracksVisibility && bus ? bus.subscribe : subscribeToNothing,
+    tracksVisibility && bus ? bus.getSnapshot : getEmptyPageState,
   );
-  if (!bus) return true;
+  if (!tracksVisibility || !bus) return true;
   if (showWhen) {
     for (const [key, expected] of Object.entries(showWhen)) {
       const actual = bus.get(key);

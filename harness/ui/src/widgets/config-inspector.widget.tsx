@@ -12,7 +12,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { useSession } from "../providers/SessionContext";
+import { useActiveSessionId, useSessionIndex } from "../providers/SessionContext";
+import { useSessionState } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
 import { WidgetEmptyState } from "./widget-components";
 import { modus } from "../modusClient";
@@ -52,7 +53,9 @@ function toolsSummary(tools?: string[] | "all", availableTools?: string[]): stri
 // ── Component ──
 
 export default function ConfigInspectorWidget() {
-  const { activeSession, serverSessions } = useSession();
+  const activeSessionId = useActiveSessionId();
+  const activeSession = useSessionState(activeSessionId);
+  const { serverSessions } = useSessionIndex();
   const { profiles, activeUP, selectedProfile } = useProfiles();
   const [resolved, setResolved] = useState<ResolvedProfileConfig | null>(null);
 

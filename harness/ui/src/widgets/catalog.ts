@@ -314,7 +314,7 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
   "session-turn": {
     type: "session-turn",
     description:
-      "One turn of a conversation as a centered, configurable projection. Reads `turnSeq` from page context, includes a compact previous/next navigator when context is available, and tracks the newest turn by default. While that turn is active, a lightweight status line summarizes thinking, writing, or the latest tool action without duplicating the full activity view. Segments always render in provider order; filtering omits, never reorders.",
+      "One turn of a conversation as a centered, configurable projection. Reads canonical `turnNumber` from page context (with legacy `turnSeq` fallback), includes a compact previous/next navigator when context is available, and tracks the newest turn by default. While that turn is active, a lightweight status line summarizes thinking, writing, or the latest tool action without duplicating the full activity view. Segments always render in provider order; filtering omits, never reorders.",
     config: [
       { name: "blocks", type: '("prompt"|"thinking"|"text"|"tools"|"meta")[]', description: "Which parts to draw. Default: all." },
       { name: "promptMaxHeight", type: "number", description: "Height at which the prompt scrolls instead of growing." },
@@ -328,7 +328,7 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
   "session-turns": {
     type: "session-turns",
     description:
-      "The turn index for a conversation, merging the server-side turn index with loaded messages so it shows the whole session's shape rather than only what is loaded. Publishes `turnSeq`, which `session-turn` reads — that one key is the entire coupling.",
+      "The turn index for a conversation, merging the server-side turn index with loaded messages so it shows the whole session's shape rather than only what is loaded. Publishes canonical `turnNumber` plus a legacy `turnSeq` compatibility hint for `session-turn`.",
     config: [
       { name: "orientation", type: '"vertical" | "horizontal"', description: "A rail down the side, or a strip across." },
       { name: "labels", type: "boolean", description: "Show the prompt's first line beside each mark. Labels are up to 80 characters, so a labelled rail needs a bounded width." },

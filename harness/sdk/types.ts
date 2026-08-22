@@ -554,6 +554,8 @@ export type SessionHistorySnapshot = {
   oldestSeq?: number | null;
   /** Oldest wall-clock position included in this page, used when provider sequences collide. */
   oldestCreatedAt?: number | null;
+  /** Row id paired with oldestCreatedAt so rows persisted in the same millisecond remain pageable. */
+  oldestId?: number | null;
   /** User prompts preceding this page, so turn numbering can start where the page does. */
   olderTurnCount?: number;
   lastSeq: number;

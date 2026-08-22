@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Component, type ReactNode } from "react";
+import { Activity, useState, useEffect, useCallback, useRef, Component, type ReactNode } from "react";
 import type { MoveListItem } from "../../sdk/index";
 import { API_BASE, authHeaders, modus } from "./modusClient";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
@@ -7,7 +7,7 @@ import { useAuth } from "./providers/AuthContext";
 import { ProfileProvider } from "./providers/ProfileProvider";
 import { useProfiles } from "./providers/ProfileContext";
 import { SessionProvider } from "./providers/SessionProvider";
-import { useSession } from "./providers/SessionContext";
+import { useActiveSessionId, useSessionActions, useSessionIndex } from "./providers/SessionContext";
 import { getSessionState } from "./sessionStore";
 import { useHashRouter } from "./hooks/useHashRouter";
 import { useDesktopDeepLink } from "./hooks/useDesktopDeepLink";
@@ -173,11 +173,9 @@ function AppContent({ router }: { router: HashRouter }) {
     setupState,
     uiState, saveUiState, switchUserProfile, refreshUserProfiles,
   } = useProfiles();
-  const {
-    activeSession, serverSessions, allServerSessions, sessionsLoaded,
-    handleInputChange,
-    newSession, selectSession,
-  } = useSession();
+  const activeSessionId = useActiveSessionId();
+  const { serverSessions, allServerSessions, sessionsLoaded } = useSessionIndex();
+  const { handleInputChange, newSession, selectSession } = useSessionActions();
   const { prefs: pageNavPrefs, canSave: canSavePageNavPrefs, savePrefs: savePageNavPrefs } = usePageNavPrefs();
 
   // Panel state — owned by LayoutProvider
@@ -259,7 +257,7 @@ function AppContent({ router }: { router: HashRouter }) {
 
   // Restore active move widgets on session switch / page load
   useEffect(() => {
-    const id = activeSession?.id;
+    const id = activeSessionId;
     if (!id || id.startsWith("pending-")) { setActiveMoveWidgets([]); return; }
     // Skip backend fetch if widget was just set by onMoveActivated — the backend
     // registry may not have the rekeyed session ID yet. Just update the sessionId.
@@ -287,11 +285,11 @@ function AppContent({ router }: { router: HashRouter }) {
       }
       setActiveMoveWidgets(widgets.map(w => ({ ...w, sessionId: id })));
     }).catch(() => setActiveMoveWidgets([]));
-  }, [activeSession?.id]);
+  }, [activeSessionId]);
 
   // Listen for widget-change signals from move widgets (e.g. move-launcher activating another move)
   useEffect(() => {
-    const id = activeSession?.id;
+    const id = activeSessionId;
     if (!id || id.startsWith("pending-")) return;
     const handler = () => {
       modus.getActiveWidgets(id).then((widgets) => {
@@ -317,7 +315,7 @@ function AppContent({ router }: { router: HashRouter }) {
     };
     window.addEventListener("modus:widgets-changed", handler);
     return () => window.removeEventListener("modus:widgets-changed", handler);
-  }, [activeSession?.id]);
+  }, [activeSessionId]);
 
   // Sync editor pref from active user profile into localStorage
   useEffect(() => {
@@ -328,7 +326,17 @@ function AppContent({ router }: { router: HashRouter }) {
 
   // Health check
   useEffect(() => {
-    const check = () => modus.healthCheck().then(() => setHarnessUp(true)).catch(() => setHarnessUp(false));
+    const healthUrl = new URL(`${API_BASE}/health`, window.location.href);
+    const check = () => {
+      // Older managed backends returned a valid 200 without CORS headers. The
+      // shell only needs liveness here, so an opaque cross-origin response is
+      // sufficient and avoids turning a healthy old backend into a console
+      // error. Updated backends also expose /health through the origin boundary.
+      const request = healthUrl.origin === window.location.origin
+        ? modus.healthCheck()
+        : fetch(healthUrl, { mode: "no-cors" });
+      void request.then(() => setHarnessUp(true)).catch(() => setHarnessUp(false));
+    };
     check();
     const interval = setInterval(check, 15000);
     return () => clearInterval(interval);
@@ -346,7 +354,7 @@ function AppContent({ router }: { router: HashRouter }) {
 
   // Wrap session actions with sidebar close
   const restorableLastSessionId = uiState.lastSessionId
-    && (serverSessions.some((s) => s.id === uiState.lastSessionId) || activeSession?.id === uiState.lastSessionId)
+    && (serverSessions.some((s) => s.id === uiState.lastSessionId) || activeSessionId === uiState.lastSessionId)
     ? uiState.lastSessionId
     : null;
   const handleNewSession = useCallback(async () => {
@@ -404,14 +412,14 @@ function AppContent({ router }: { router: HashRouter }) {
       return;
     }
     // If we have a session to restore, go straight to it (works even if already on chat)
-    const sessionToRestore = restorableLastSessionId ?? activeSession?.id;
+    const sessionToRestore = restorableLastSessionId ?? activeSessionId;
     if (sessionToRestore) {
       selectSession(sessionToRestore);
       navigateToSession(sessionToRestore, activeUserProfile);
     } else {
       navigate("chat");
     }
-  }, [activeSession?.id, activeUserProfile, navigate, navigateToSession, restorableLastSessionId, selectSession]);
+  }, [activeSessionId, activeUserProfile, navigate, navigateToSession, restorableLastSessionId, selectSession]);
 
   // Peek: pop a floating SessionWindow for any session ID
   const handlePeekSession = useCallback((id: string) => {
@@ -434,7 +442,10 @@ function AppContent({ router }: { router: HashRouter }) {
   // marker to the current cwd cannot go stale that way.
   const [pagesDiscoveredFor, setPagesDiscoveredFor] = useState<string | null>(null);
   const [mountedCustomPageIds, setMountedCustomPageIds] = useState<string[]>([]);
-  const projectCwd = projectRoot ?? activeSession?.cwd ?? serverSessions.find(s => s.id === activeSession?.id)?.cwd ?? setupState.cwd;
+  const projectCwd = projectRoot
+    ?? (activeSessionId ? getSessionState(activeSessionId)?.cwd : undefined)
+    ?? serverSessions.find(s => s.id === activeSessionId)?.cwd
+    ?? setupState.cwd;
   // Both page sources are fetched together so they can never describe different
   // projects, and a superseded run is dropped rather than overwriting a newer one.
   useEffect(() => {
@@ -512,14 +523,14 @@ function AppContent({ router }: { router: HashRouter }) {
 
   useEffect(() => {
     if (!activeUserProfile) return;
-    if (!activeSession?.id || activeSession.id.startsWith("pending-")) return;
-    if (uiState.lastSessionId === activeSession.id) return;
-    saveUiState({ lastSessionId: activeSession.id });
-  }, [activeSession?.id, activeUserProfile, saveUiState, uiState.lastSessionId]);
+    if (!activeSessionId || activeSessionId.startsWith("pending-")) return;
+    if (uiState.lastSessionId === activeSessionId) return;
+    saveUiState({ lastSessionId: activeSessionId });
+  }, [activeSessionId, activeUserProfile, saveUiState, uiState.lastSessionId]);
 
   useEffect(() => {
     if (view !== "chat" || !hashSessionId) return;
-    if (activeSession?.id === hashSessionId) return;
+    if (activeSessionId === hashSessionId) return;
     selectSession(hashSessionId);
   }, [hashSessionId, selectSession, view]); // activeSession intentionally omitted to avoid hash/session ping-pong
 
@@ -613,7 +624,7 @@ function AppContent({ router }: { router: HashRouter }) {
         )}
         <button className="top-nav-new-session" onClick={handleNewSession} title="New session">+</button>
         <div className="top-nav-spacer" />
-        {view === "chat" && activeSession?.id && !activeSession.id.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSession.id) && (
+        {view === "chat" && activeSessionId && !activeSessionId.startsWith("pending-") && serverSessions.length > 0 && !serverSessions.some((s) => s.id === activeSessionId) && (
           <span className="chat-header-archived">archived</span>
         )}
           <StatusBar
@@ -726,14 +737,13 @@ function AppContent({ router }: { router: HashRouter }) {
               moveWidgets={activeMoveWidgets}
               initialBrowserPath={rightPanelBrowserPath}
               onBrowserPathChange={setRightPanelBrowserPath}
-              messages={activeSession?.messages}
               requestView={requestRightPanelView}
               onRequestViewHandled={() => setRequestRightPanelView(null)}
               onWidgetClose={(apiToken, moveName) => {
                 setActiveMoveWidgets(prev => prev.filter(w => w.apiToken !== apiToken));
                 modus.detachMove(moveName, apiToken).catch(() => {});
               }}
-              sessionId={activeSession?.id}
+              sessionId={activeSessionId}
               onSelectSession={handleViewSession}
               onSendToAgent={(text) => { const current = getInputValue(); handleInputChange(current ? `${current}\n${text}` : text); }}
             />
@@ -744,7 +754,8 @@ function AppContent({ router }: { router: HashRouter }) {
             .map((page) => {
               const isActive = activeCustomPage?.id === page.id;
               return (
-                <div key={page.id} style={{ display: isActive ? "contents" : "none" }}>
+                <Activity key={page.id} mode={isActive ? "visible" : "hidden"} name={`page:${page.id}`}>
+                  <div style={{ display: "contents" }}>
                   <PageView
                     blocks={page.blocks}
                     layout={page.layout as any}
@@ -757,7 +768,8 @@ function AppContent({ router }: { router: HashRouter }) {
                     hashSessionId={isActive ? hashSessionId : null}
                     pageId={page.id}
                   />
-                </div>
+                  </div>
+                </Activity>
               );
             })}
       </div>

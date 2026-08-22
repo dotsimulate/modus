@@ -3,7 +3,7 @@ import { modus } from "../modusClient";
 import type { ActiveSessionInfo, Profile } from "../../../sdk/index";
 import type { View } from "../views";
 import { useProfiles } from "../providers/ProfileContext";
-import { useSession } from "../providers/SessionContext";
+import { useSessionActions } from "../providers/SessionContext";
 import { SessionsPanel } from "./SessionsPanel";
 import { ProfileEditor } from "./ProfileEditor";
 import { profileOptionLabel } from "../profile-options";
@@ -121,7 +121,7 @@ const duplicateIcon = (
 
 export function Profiles({ onSelectSession, onNavigate, onNewSession }: Props) {
   const { visibleProfiles, profiles: contextProfiles, selectProfile, activeUserProfile, activeCwd, refreshProfiles, refreshUserProfiles } = useProfiles();
-  const { newSession } = useSession();
+  const { newSession } = useSessionActions();
   const profileCwd = activeCwd;
   const [activeSessions, setActiveSessions] = useState<ActiveSessionInfo[]>([]);
   const [editorMode, setEditorMode] = useState<"closed" | "new" | "edit" | "global">("closed");

@@ -115,6 +115,23 @@ test("indexes turns from durable events when nothing is materialized", () => {
   expect(index.turns[0]!.promptWeight).toBeGreaterThan(0);
 });
 
+test("durable events keep resumed turns when provider sequences repeat", () => {
+  const sessionId = newSession("reused-seq");
+  seedEventTurn(sessionId, 1, "old one");
+  seedEventTurn(sessionId, 4, "old two");
+  seedEventTurn(sessionId, 1, "new one");
+  seedEventTurn(sessionId, 4, "new two");
+  // A partial semantic projection must not win merely because its maximum seq
+  // equals the resumed provider's maximum seq.
+  insertMessage({ sessionId, seq: 1, role: "user", content: "new one prompt" });
+  insertMessage({ sessionId, seq: 2, role: "assistant", content: "new one answer" });
+
+  const index = getSessionTurnIndex(sessionId);
+  expect(index.source).toBe("events");
+  expect(index.turns.map((turn) => turn.number)).toEqual([1, 2, 3, 4]);
+  expect(index.turns.map((turn) => turn.seq)).toEqual([1, 4, 1, 4]);
+});
+
 test("every indexed seq resolves to a real turn", () => {
   const sessionId = newSession("resolvable");
   seedEventTurn(sessionId, 1, "alpha");

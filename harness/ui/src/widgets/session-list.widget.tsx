@@ -9,10 +9,8 @@
 
 import { useCallback } from "react";
 import { modus } from "../modusClient";
-import { useInputValue } from "../inputStore";
-import { useSession } from "../providers/SessionContext";
+import { useActiveSessionId, useSessionActions, useSessionIndex } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
-import { getSessionState } from "../sessionStore";
 import { SessionList } from "../components/sidebar/SessionList";
 import type { WidgetBase, WidgetProps } from "./types";
 import { useWidgetUiState } from "./ui-state";
@@ -25,8 +23,9 @@ type SessionListConfig = WidgetBase & {
 
 export default function SessionListWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<SessionListConfig>) {
   const { activeUserProfile, uiState, saveUiState } = useProfiles();
-  const { activeSession, serverSessions, archiveSession, refreshSessions, newSession } = useSession();
-  const input = useInputValue();
+  const activeSessionId = useActiveSessionId();
+  const { serverSessions } = useSessionIndex();
+  const { archiveSession, refreshSessions, newSession } = useSessionActions();
 
   const [groupMode, setGroupMode] = useWidgetUiState<"time" | "agent">(
     { userProfile: activeUserProfile },
@@ -39,12 +38,6 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
     setGroupMode(mode);
     saveUiState({ sidebarGroupMode: mode });
   }, [setGroupMode, saveUiState]);
-
-  // Merge live status from sessionStore
-  const sessions = serverSessions.map((s) => {
-    const storeState = getSessionState(s.id);
-    return storeState ? { ...s, status: storeState.status ?? s.status } : s;
-  });
 
   const handleTogglePin = useCallback(async (id: string) => {
     const session = serverSessions.find(s => s.id === id);
@@ -71,6 +64,21 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
     }
   }, [config.focusTabOnSelect, newSession, onSelectSession, pageContext]);
 
+  const handleSelectSession = useCallback((id: string) => {
+    if (pageContext) {
+      pageContext.emit({ type: "select-session", sessionId: id });
+      if (config.focusTabOnSelect) {
+        pageContext.emit({ type: "focus-tab", tabId: config.focusTabOnSelect });
+      }
+    } else {
+      onSelectSession(id);
+    }
+  }, [config.focusTabOnSelect, onSelectSession, pageContext]);
+
+  const handleCollapsedGroupsChange = useCallback((groups: string[]) => {
+    saveUiState({ sidebarCollapsedGroups: groups });
+  }, [saveUiState]);
+
   return (
     <div className="session-list-widget">
       <div className="session-list-widget-modes">
@@ -90,23 +98,13 @@ export default function SessionListWidget({ config, widgetId, onSelectSession, p
       </div>
       <div className="session-list-widget-scroll">
         <SessionList
-          sessions={sessions}
-          activeSessionId={(pageContext?.get("sessionId") as string | undefined) ?? activeSession?.id ?? null}
+          sessions={serverSessions}
+          activeSessionId={(pageContext?.get("sessionId") as string | undefined) ?? activeSessionId}
           groupMode={groupMode}
-          onSelectSession={(id) => {
-            if (pageContext) {
-              pageContext.emit({ type: "select-session", sessionId: id });
-              if (config.focusTabOnSelect) {
-                pageContext.emit({ type: "focus-tab", tabId: config.focusTabOnSelect });
-              }
-            } else {
-              onSelectSession(id);
-            }
-          }}
+          onSelectSession={handleSelectSession}
           onArchiveSession={archiveSession}
-          activeInput={input}
           initialCollapsedGroups={uiState.sidebarCollapsedGroups}
-          onCollapsedGroupsChange={(groups) => saveUiState({ sidebarCollapsedGroups: groups })}
+          onCollapsedGroupsChange={handleCollapsedGroupsChange}
           onTogglePin={handleTogglePin}
         />
       </div>

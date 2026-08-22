@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ProcessInfo, ProcessSnapshot } from "../../../sdk/index";
 import { modus } from "../modusClient";
-import { useSession } from "../providers/SessionContext";
+import { useActiveSessionId } from "../providers/SessionContext";
 import type { WidgetBase, WidgetProps } from "./types";
 import { useWidgetChrome } from "./chrome";
 import { useWidgetPollingValue } from "./widget-data";
@@ -44,7 +44,7 @@ function timeAgo(ts: number): string {
 }
 
 export default function ProcessesWidget({ config, onSelectSession, pageContext }: WidgetProps<ProcessesConfig>) {
-  const { activeSession } = useSession();
+  const activeSessionId = useActiveSessionId();
   const { setHeaderSuffix } = useWidgetChrome();
   const [killingId, setKillingId] = useState<string | null>(null);
 
@@ -103,7 +103,7 @@ export default function ProcessesWidget({ config, onSelectSession, pageContext }
         </div>
       )}
       {value.processes.map((proc: ProcessInfo) => {
-        const isMe = proc.id === activeSession?.id;
+        const isMe = proc.id === activeSessionId;
         return (
           <div key={proc.id} className={`proc-row ${isMe ? "proc-row--me" : ""}`}>
             <div className="proc-row-main">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type WheelEvent } from "react";
+import { Activity, useEffect, useRef, useState, type ReactNode, type WheelEvent } from "react";
 import { WidgetChromeContext } from "../widgets";
 import { useWidgetUiState } from "../widgets/ui-state";
 import { useProfiles } from "../providers/ProfileContext";
@@ -173,17 +173,21 @@ export function PanelSurface({
 
   const content = items.length > 0 ? (
     mode === "tabs" ? (
-      items.map((item) => (
-        <div
-          key={item.id}
-          className="panel-surface-item-body panel-surface-item-body--tabs"
-          style={{ display: activeItemId === item.id ? "flex" : "none" }}
-        >
-          <WidgetChromeContext.Provider value={{ setHeaderSuffix: () => {} }}>
-            {item.render(activeItemId === item.id)}
-          </WidgetChromeContext.Provider>
-        </div>
-      ))
+      items.map((item) => {
+        const active = activeItemId === item.id;
+        return (
+          <Activity key={item.id} mode={active ? "visible" : "hidden"} name={`panel-tab:${item.id}`}>
+            <div
+              className="panel-surface-item-body panel-surface-item-body--tabs"
+              style={{ display: active ? "flex" : "none" }}
+            >
+              <WidgetChromeContext.Provider value={{ setHeaderSuffix: () => {} }}>
+                {item.render(active)}
+              </WidgetChromeContext.Provider>
+            </div>
+          </Activity>
+        );
+      })
     ) : (
       items.map((item) => <CollapsibleSurfaceItem key={item.id} item={item} />)
     )

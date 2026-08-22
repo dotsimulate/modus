@@ -5,14 +5,16 @@ import { UserMeta } from "./UserMeta";
 import { FileChanges, extractFileEdits } from "./FileChanges";
 import { QueuedMessage } from "./QueuedMessage";
 import { VirtualMessageList, type VirtualItem, type VirtualListControls, type VirtualLayoutSnapshot } from "./VirtualMessageList";
-import { estimateMessageHeight, TOOL_CALL_COLLAPSED_HEIGHT } from "./textMeasure";
+import { estimateMessageHeight, estimateSystemMessageHeight, TOOL_CALL_COLLAPSED_HEIGHT } from "./textMeasure";
 import { ChatScrollSpine, type ChatSpineItem, type ChatSpineMeasure } from "./ChatScrollSpine";
 import { modus } from "../modusClient";
 import type { Message, ToolCall, ToolCallDisplayMode, ChatScrollIndicator, CommitAttribution, GitCommit } from "../../../sdk/index";
 import type { QueuedMessage as QueuedMessageType } from "../providers/SessionContext";
 import { navigateToGitRoute } from "../git-route";
 import { INTERFACE_SETTINGS_EVENT, readLocalInterfaceSettings } from "../interface-settings";
-import { buildLatestMoveToolCallIds } from "../move-tool-view";
+import { buildLatestMoveToolCallIds, partitionToolRun } from "../move-tool-view";
+import { buildTurns, segmentContentBlocks } from "../turn-segments";
+import { TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
 
 type DisplayItem =
   | { kind: "message"; key: string; message: Message; index: number }
@@ -23,6 +25,38 @@ type DisplayItem =
  * up that the page usually lands before the user reaches the actual top.
  */
 const AUTO_LOAD_OLDER_PX = 240;
+
+type ChatScrollAnchor = { key: string; within: number };
+const chatScrollAnchors = new Map<string, ChatScrollAnchor>();
+
+function rememberChatScrollAnchor(
+  sessionId: string,
+  element: HTMLElement,
+  layout: VirtualLayoutSnapshot | null,
+): ChatScrollAnchor | null {
+  if (!layout || layout.offsets.size === 0) return null;
+  let anchor: ChatScrollAnchor | null = null;
+  for (const [key, offset] of layout.offsets) {
+    const height = layout.heights.get(key) ?? 0;
+    if (offset + height > element.scrollTop) {
+      anchor = { key, within: Math.max(0, element.scrollTop - offset) };
+      break;
+    }
+  }
+  if (!anchor) {
+    const last = [...layout.offsets.keys()].at(-1);
+    if (last) anchor = { key: last, within: layout.heights.get(last) ?? 0 };
+  }
+  if (!anchor) return null;
+  chatScrollAnchors.delete(sessionId);
+  chatScrollAnchors.set(sessionId, anchor);
+  while (chatScrollAnchors.size > 30) {
+    const oldest = chatScrollAnchors.keys().next().value;
+    if (typeof oldest !== "string") break;
+    chatScrollAnchors.delete(oldest);
+  }
+  return anchor;
+}
 
 function readScrollIndicator(): ChatScrollIndicator {
   return readLocalInterfaceSettings().chat.scrollIndicator;
@@ -53,18 +87,39 @@ function countToolCalls(tcs?: ToolCall[]): number {
   return tcs.length;
 }
 
-/**
- * The tool-row share of a message's estimated height. Kept identical to
- * what estimateMessageHeight adds for the same count so the spine and the
- * virtualizer lay out against the same numbers.
- *
- * Known wrong, and deliberately left alone here: MessageBubble collapses a
- * run of TOOL_RUN_GROUP_MIN or more into one ~28px header, so a 100-call
- * run is ~114x shorter on screen than this says. Correcting it changes the
- * virtualizer's spacers for every session, which is a separate change.
- */
+/** The tool-row share used by both the spine and transcript estimator. */
 function estimateToolRowsHeight(count: number): number {
   return count * TOOL_CALL_COLLAPSED_HEIGHT;
+}
+
+function collapsedToolRows(tools: ToolCall[]): number {
+  return partitionToolRun(tools).reduce((rows, partition) => (
+    rows + (!partition.moveApi && partition.tools.length >= TOOL_RUN_GROUP_MIN
+      ? 1
+      : partition.tools.length)
+  ), 0);
+}
+
+/** Match MessageBubble's settled grouping so offscreen tool-heavy turns do not
+ * reserve thousands of pixels of ghost space before they are measured. */
+function estimatedVisibleToolRows(
+  message: Message,
+  display: ToolCallDisplayMode,
+  isStreaming: boolean,
+): number {
+  if (display === "hidden") return 0;
+  if (message.contentBlocks?.length) {
+    return segmentContentBlocks(message.id, message.contentBlocks).reduce((rows, segment) => {
+      if (segment.kind === "deferred") return rows + 1;
+      if (segment.kind !== "tools") return rows;
+      return rows + (display === "collapsed" && !isStreaming
+        ? collapsedToolRows(segment.tools)
+        : segment.tools.length);
+    }, 0);
+  }
+  if (message.detailsDeferred) return 1;
+  const tools = message.toolCalls ?? [];
+  return display === "collapsed" && !isStreaming ? collapsedToolRows(tools) : tools.length;
 }
 
 function countImages(msg: Message): number {
@@ -104,9 +159,13 @@ type Props = {
   olderTurnCount?: number;
   onLoadOlderMessages?: () => void | Promise<void>;
   onLoadMessageDetails?: (seq: number) => void | Promise<void>;
+  /** Decimal interface font scale (1 = 100%). */
+  fontScale?: number;
+  /** Canonical turn selected by the card projection, when this chat shares its page context. */
+  focusTurnNumber?: number | null;
 };
 
-export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, toolCallDisplay = "collapsed", showGitEvents = true, showFileChanges = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits, hasOlderMessages = false, loadingOlderMessages = false, olderMessagesError, olderTurnCount = 0, onLoadOlderMessages, onLoadMessageDetails }: Props) {
+export const ChatView = memo(function ChatView({ messages, sessionId, sessionTags, provider, profileName, model, streaming, streamFeed, showThinking = true, showMeta = true, showToolCalls = true, toolCallDisplay = "collapsed", showGitEvents = true, showFileChanges = true, cwd, emptyTitle, emptySubtitle, emptyActionLabel, onEmptyAction, queuedMessage, onCancelQueued, onSessionTagsChange, onBranch, onStopTask, onOpenSessionEdits, hasOlderMessages = false, loadingOlderMessages = false, olderMessagesError, olderTurnCount = 0, onLoadOlderMessages, onLoadMessageDetails, fontScale = 1, focusTurnNumber = null }: Props) {
   const resolvedToolCallDisplay: ToolCallDisplayMode = showToolCalls ? toolCallDisplay : "hidden";
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
@@ -311,6 +370,72 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     [displayItems],
   );
 
+  const focusTurnKey = useMemo(() => {
+    if (focusTurnNumber == null) return null;
+    const selected = buildTurns(messages, olderTurnCount)
+      .find((turn) => turn.number === focusTurnNumber);
+    return selected?.prompt?.id ?? selected?.body[0]?.id ?? null;
+  }, [focusTurnNumber, messages, olderTurnCount]);
+
+  // Conversation and card projections unmount each other. Preserve an item
+  // anchor rather than a raw pixel so late measurements and prepended history
+  // do not turn a mode switch into a jump to an unrelated place.
+  const focusTurnNumberRef = useRef(focusTurnNumber);
+  focusTurnNumberRef.current = focusTurnNumber;
+  useEffect(() => {
+    if (!scrollEl || !sessionId) return;
+    const save = () => { rememberChatScrollAnchor(sessionId, scrollEl, measuredLayoutRef.current); };
+    scrollEl.addEventListener("scroll", save, { passive: true });
+    const saved = chatScrollAnchors.get(sessionId);
+    let firstFrame = 0;
+    let secondFrame = 0;
+    if (saved && focusTurnNumberRef.current == null) {
+      firstFrame = requestAnimationFrame(() => {
+        secondFrame = requestAnimationFrame(() => {
+          listControlsRef.current?.scrollToKey(saved.key, {
+            behavior: "auto",
+            offset: 0,
+            within: saved.within,
+          });
+        });
+      });
+    }
+    return () => {
+      save();
+      scrollEl.removeEventListener("scroll", save);
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [scrollEl, sessionId]);
+
+  const focusedRequestRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sessionId || focusTurnNumber == null) {
+      focusedRequestRef.current = null;
+      return;
+    }
+    if (!focusTurnKey) {
+      if (hasOlderMessages && !loadingOlderMessages && onLoadOlderMessages) {
+        const request = `${sessionId}:${focusTurnNumber}:${olderTurnCount}`;
+        if (focusedRequestRef.current !== request) {
+          focusedRequestRef.current = request;
+          void onLoadOlderMessages();
+        }
+      }
+      return;
+    }
+    const request = `${sessionId}:${focusTurnNumber}:${focusTurnKey}`;
+    if (focusedRequestRef.current === request) return;
+    focusedRequestRef.current = request;
+    const frame = requestAnimationFrame(() => {
+      listControlsRef.current?.scrollToKey(focusTurnKey, { behavior: "auto", offset: 12 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    focusTurnKey, focusTurnNumber, hasOlderMessages, loadingOlderMessages,
+    onLoadOlderMessages, olderTurnCount, sessionId,
+  ]);
+
   const handleLoadOlderMessages = useCallback(async () => {
     if (!onLoadOlderMessages) return;
     const anchorKey = virtualItems[0]?.key;
@@ -389,18 +514,22 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
         return { total: 48, prose: 48, tools: 0, toolCount: 0 };
       }
       const msg = item.message;
-      const toolCount = resolvedToolCallDisplay !== "hidden" ? countToolCalls(msg.toolCalls) : 0;
+      const itemStreaming = streaming && msg.id === lastMessage?.id && msg.role === "assistant";
+      const toolCount = resolvedToolCallDisplay !== "hidden"
+        ? countToolCalls(msg.toolCalls) || msg.deferredToolCallCount || 0
+        : 0;
       const prose = estimateMessageHeight(msg.content, width, {
+        fontScale,
         hasRole: false,
         hasMeta: showMeta && !!msg.meta,
         toolCallCount: 0,
         imageCount: countImages(msg),
         hasThinking: showThinking && !!msg.thinking,
       }).totalHeight;
-      const tools = estimateToolRowsHeight(toolCount);
+      const tools = estimateToolRowsHeight(estimatedVisibleToolRows(msg, resolvedToolCallDisplay, itemStreaming));
       return { total: prose + tools, prose, tools, toolCount };
     },
-    [scrollWidth, showMeta, resolvedToolCallDisplay, showThinking],
+    [scrollWidth, showMeta, resolvedToolCallDisplay, showThinking, fontScale, streaming, lastMessage?.id],
   );
 
   const scrollToSpineItem = useCallback((key: string, within: number) => {
@@ -411,21 +540,23 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
     (item: DisplayItem, containerWidth: number): number => {
       if (item.kind === "commit") return 48;
       const msg = item.message;
-      if (msg.role === "system") return 40;
+      if (msg.role === "system") return estimateSystemMessageHeight(msg.content, containerWidth, fontScale);
+      const itemStreaming = streaming && item.index === messages.length - 1 && msg.role === "assistant";
       const estimate = estimateMessageHeight(msg.content, containerWidth, {
+        fontScale,
         hasRole: false,
         hasMeta: showMeta && !!msg.meta,
-        toolCallCount: resolvedToolCallDisplay !== "hidden" ? countToolCalls(msg.toolCalls) : 0,
+        toolCallCount: estimatedVisibleToolRows(msg, resolvedToolCallDisplay, itemStreaming),
         imageCount: countImages(msg),
         hasThinking: showThinking && !!msg.thinking,
       });
       return estimate.totalHeight;
     },
-    [showMeta, resolvedToolCallDisplay, showThinking],
+    [showMeta, resolvedToolCallDisplay, showThinking, fontScale, streaming, messages.length],
   );
 
   const renderItem = useCallback(
-    (item: DisplayItem, _virtualIndex: number) => {
+    (item: DisplayItem) => {
       if (item.kind === "commit") {
         return (
           <div className="message message--git" data-role="git">
@@ -620,6 +751,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
           onScrollElement={setScrollEl}
           controlsRef={listControlsRef}
           layoutRef={measuredLayoutRef}
+          scrollSessionId={sessionId}
         />
         {scrollIndicator !== "scroll" && (
           <ChatScrollSpine

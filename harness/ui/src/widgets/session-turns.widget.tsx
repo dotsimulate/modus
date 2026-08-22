@@ -3,9 +3,9 @@
  *
  * Config: { "type": "session-turns", "id": "ticker", "orientation": "vertical" }
  *
- * Publishes the page context key `turnSeq`, which `session-turn` reads. That
- * one key is the whole coupling: a page can put this rail anywhere, or leave it
- * out entirely and let the card track live.
+ * Publishes canonical page context key `turnNumber` plus the legacy `turnSeq`
+ * hint older authored pages expect. A page can put this rail anywhere, or
+ * leave it out entirely and let the card track live.
  *
  * Two sources are merged. The server's turn index covers the *whole* session
  * without bodies, because history only ever arrives a page at a time and a rail
@@ -89,8 +89,12 @@ export default function SessionTurnsWidget({ config, pageContext }: WidgetProps<
   const sessionId = contextSessionId ?? selectedSession ?? config.sessionId ?? null;
   const orientation = config.orientation === "horizontal" ? "horizontal" : "vertical";
 
+  const turnSessionId = pageContext?.get("turnSessionId");
+  const selectionMatchesSession = typeof turnSessionId !== "string" || turnSessionId === sessionId;
+  const rawTurnNumber = pageContext?.get("turnNumber");
+  const selectedNumber = selectionMatchesSession && typeof rawTurnNumber === "number" ? rawTurnNumber : null;
   const rawTurnSeq = pageContext?.get("turnSeq");
-  const selectedSeq = typeof rawTurnSeq === "number" ? rawTurnSeq : null;
+  const selectedSeq = selectionMatchesSession && selectedNumber == null && typeof rawTurnSeq === "number" ? rawTurnSeq : null;
 
   useEffect(() => {
     if (sessionId) void ensureSubscribed(sessionId);
@@ -171,33 +175,41 @@ export default function SessionTurnsWidget({ config, pageContext }: WidgetProps<
     [marks],
   );
 
-  const select = useCallback((seq: number) => {
-    pageContext?.set("turnSeq", seq);
-  }, [pageContext]);
+  const select = useCallback((mark: Pick<TurnMark, "number" | "seq">) => {
+    pageContext?.set("turnSessionId", sessionId);
+    pageContext?.set("turnNumber", mark.number);
+    pageContext?.set("turnSeq", mark.seq);
+  }, [pageContext, sessionId]);
 
   // ── Follow at the live edge ──
   // Tracked as "was the selection the newest turn last time we looked", because
   // by the time a new turn exists the selection is no longer the newest one and
   // the question can no longer be asked of the current state.
   const wasAtLiveEdge = useRef(true);
-  const lastLiveSeq = useRef<number | null>(null);
+  const lastLiveNumber = useRef<number | null>(null);
   useEffect(() => {
     if (!liveMark) return;
-    const isNewTurn = lastLiveSeq.current !== null && lastLiveSeq.current !== liveMark.seq;
+    const isNewTurn = lastLiveNumber.current !== null && lastLiveNumber.current !== liveMark.number;
     if (!isNewTurn) {
-      lastLiveSeq.current = liveMark.seq;
+      lastLiveNumber.current = liveMark.number;
       return;
     }
-    if (wasAtLiveEdge.current) select(liveMark.seq);
-    lastLiveSeq.current = liveMark.seq;
+    if (wasAtLiveEdge.current) select(liveMark);
+    lastLiveNumber.current = liveMark.number;
   }, [liveMark, select]);
 
   useEffect(() => {
     // An unset selection means the card is already tracking live on its own.
-    wasAtLiveEdge.current = selectedSeq == null || selectedSeq === liveMark?.seq;
-  }, [selectedSeq, liveMark?.seq]);
+    wasAtLiveEdge.current = (selectedNumber == null && selectedSeq == null)
+      || selectedNumber === liveMark?.number
+      || (selectedNumber == null && selectedSeq === liveMark?.seq);
+  }, [selectedNumber, selectedSeq, liveMark?.number, liveMark?.seq]);
 
-  const behindLiveEdge = selectedSeq != null && liveMark != null && selectedSeq !== liveMark.seq;
+  const behindLiveEdge = liveMark != null && (
+    selectedNumber != null
+      ? selectedNumber !== liveMark.number
+      : selectedSeq != null && selectedSeq !== liveMark.seq
+  );
   const sessionRunning = session?.status === "running" || session?.status === "starting";
 
   if (!sessionId) return <WidgetEmptyState>no session selected</WidgetEmptyState>;
@@ -215,7 +227,7 @@ export default function SessionTurnsWidget({ config, pageContext }: WidgetProps<
           <button
             type="button"
             className={`session-turns-jump${sessionRunning ? " is-running" : ""}`}
-            onClick={() => liveMark && select(liveMark.seq)}
+            onClick={() => liveMark && select(liveMark)}
           >
             {sessionRunning ? "live" : "latest"}
           </button>
@@ -224,9 +236,11 @@ export default function SessionTurnsWidget({ config, pageContext }: WidgetProps<
 
       <div className="session-turns-rail">
         {marks.map((mark) => {
-          const isSelected = selectedSeq != null
-            ? mark.seq === selectedSeq
-            : mark.number === liveMark?.number;
+          const isSelected = selectedNumber != null
+            ? mark.number === selectedNumber
+            : selectedSeq != null
+              ? mark.seq === selectedSeq
+              : mark.number === liveMark?.number;
           const isLive = mark.number === liveMark?.number && !!sessionRunning;
           return (
             <button
@@ -238,7 +252,7 @@ export default function SessionTurnsWidget({ config, pageContext }: WidgetProps<
                 + (isLive ? " is-live" : "")
                 + (mark.loaded ? "" : " is-unloaded")
               }
-              onClick={() => select(mark.seq)}
+              onClick={() => select(mark)}
               title={mark.label ?? `turn ${mark.number}`}
             >
               <span className="session-turns-no">{String(mark.number).padStart(2, "0")}</span>

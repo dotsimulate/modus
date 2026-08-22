@@ -1,15 +1,15 @@
 import { expect, test } from "bun:test";
 import { addEvent, getSessionMessageHistory, insertMessage, upsertSession } from "../db";
 
-function seedSimpleTurn(sessionId: string, baseSeq: number, label: string) {
+function seedSimpleTurn(sessionId: string, baseSeq: number, label: string, createdAt?: number) {
   addEvent(sessionId, baseSeq, "user", "prompt", JSON.stringify({
     subtype: "prompt",
     message: { content: [{ type: "text", text: `${label} prompt` }] },
-  }));
+  }), createdAt);
   addEvent(sessionId, baseSeq + 1, "assistant", "message", JSON.stringify({
     message: { content: [{ type: "text", text: `${label} answer` }] },
-  }));
-  addEvent(sessionId, baseSeq + 2, "result", "success", JSON.stringify({ subtype: "success" }));
+  }), createdAt);
+  addEvent(sessionId, baseSeq + 2, "result", "success", JSON.stringify({ subtype: "success" }), createdAt);
 }
 
 test("history pages through a provider sequence reset by wall-clock cursor", async () => {
@@ -161,4 +161,65 @@ test("materialized history reports how many turns precede each page", () => {
   ]);
   expect(older.hasMore).toBe(false);
   expect(older.olderTurnCount).toBe(0);
+});
+
+test("event history does not skip turns persisted in the same millisecond", () => {
+  const sessionId = `history-same-ms-events-${crypto.randomUUID()}`;
+  upsertSession({ id: sessionId, preview: "event cursor", messageCount: 0, costUsd: 0 });
+  const createdAt = Date.now() - 10_000;
+  for (let turn = 1; turn <= 4; turn++) {
+    seedSimpleTurn(sessionId, turn * 3, `turn ${turn}`, createdAt);
+  }
+
+  const recent = getSessionMessageHistory(sessionId, { limit: 4, preserveEventSequence: true });
+  expect(recent.messages.map((turn) => turn.text)).toEqual([
+    "turn 3 prompt",
+    "turn 3 answer",
+    "turn 4 prompt",
+    "turn 4 answer",
+  ]);
+  expect(recent.oldestId).not.toBeNull();
+
+  const older = getSessionMessageHistory(sessionId, {
+    limit: 4,
+    beforeCreatedAt: recent.oldestCreatedAt ?? undefined,
+    beforeId: recent.oldestId ?? undefined,
+    preserveEventSequence: true,
+  });
+  expect(older.messages.map((turn) => turn.text)).toEqual([
+    "turn 1 prompt",
+    "turn 1 answer",
+    "turn 2 prompt",
+    "turn 2 answer",
+  ]);
+  expect(older.hasMore).toBe(false);
+});
+
+test("materialized history does not skip messages persisted in the same millisecond", () => {
+  const sessionId = `history-same-ms-rows-${crypto.randomUUID()}`;
+  upsertSession({ id: sessionId, preview: "message cursor", messageCount: 0, costUsd: 0 });
+  const createdAt = Date.now() - 10_000;
+  for (let turn = 1; turn <= 4; turn++) {
+    insertMessage({ sessionId, seq: turn * 2 - 1, role: "user", content: `turn ${turn} prompt`, createdAt });
+    insertMessage({ sessionId, seq: turn * 2, role: "assistant", content: `turn ${turn} answer`, createdAt });
+  }
+
+  const recent = getSessionMessageHistory(sessionId, { limit: 4 });
+  expect(recent.oldestId).not.toBeNull();
+  const older = getSessionMessageHistory(sessionId, {
+    limit: 4,
+    beforeCreatedAt: recent.oldestCreatedAt ?? undefined,
+    beforeId: recent.oldestId ?? undefined,
+  });
+  expect([...recent.messages, ...older.messages].map((turn) => turn.text).sort()).toEqual([
+    "turn 1 answer",
+    "turn 1 prompt",
+    "turn 2 answer",
+    "turn 2 prompt",
+    "turn 3 answer",
+    "turn 3 prompt",
+    "turn 4 answer",
+    "turn 4 prompt",
+  ]);
+  expect(older.hasMore).toBe(false);
 });

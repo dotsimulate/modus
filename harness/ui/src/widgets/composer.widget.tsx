@@ -7,10 +7,16 @@
  * ConfigBar above ChatInput so a single widget covers the full compose area.
  */
 
-import { useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, type ComponentProps } from "react";
 import { useSessionState, ensureSubscribed, getSessionState, setSessionState, setSessionNextProfile, setSessionNextAgentConfig } from "../sessionStore";
 import { useInputValue, setInputValue, setActiveInputSession } from "../inputStore";
-import { useSession, type DeliverMode, type SendOpts } from "../providers/SessionContext";
+import {
+  useActiveSessionId,
+  useSessionActions,
+  useSessionIndex,
+  type DeliverMode,
+  type SendOpts,
+} from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { modus } from "../modusClient";
 import { ChatInput } from "../components/ChatInput";
@@ -30,14 +36,24 @@ type ComposerConfig = WidgetBase & {
   persistOpen?: boolean;
 };
 
+type ComposerInputProps = Omit<ComponentProps<typeof ChatInput>, "value" | "onChange">;
+
+/** Keep draft updates below the config bar so a keystroke only renders the input. */
+const ComposerInput = memo(function ComposerInput(props: ComposerInputProps) {
+  const input = useInputValue();
+  return <ChatInput {...props} value={input} onChange={setInputValue} />;
+});
+
 export default function ComposerWidget({ config, pageContext }: WidgetProps<ComposerConfig>) {
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
-  const { activeSession, serverSessions, refreshSessions, send: sessionSend } = useSession();
+  const activeSessionId = useActiveSessionId();
+  const { serverSessions } = useSessionIndex();
+  const { refreshSessions, send: sessionSend } = useSessionActions();
   // Fallback chain: page scope → widget config → global active session.
   // Without the active-session fallback, pages that render a composer without a
   // URL-hash session binder leave sessionId=null, which routes moves through
   // activateProjectMove() and drops source-session context (profile, user).
-  const sessionId = contextSessionId ?? config.sessionId ?? activeSession?.id ?? null;
+  const sessionId = contextSessionId ?? config.sessionId ?? activeSessionId;
 
   useEffect(() => {
     if (sessionId) void ensureSubscribed(sessionId);
@@ -50,7 +66,6 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
   const session = useSessionState(sessionId);
   const { projectRoot, activeUserProfile, profiles, visibleProfiles, availableProviders, activeUP } = useProfiles();
 
-  const input = useInputValue();
   const projectCwd = session?.cwd ?? projectRoot;
 
   // ── Config bar state ──
@@ -118,14 +133,14 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
   const handleSend = useCallback(
     (attachments: Attachment[], textOverride?: string, moves?: MoveBinding[], deliver?: DeliverMode, sendOpts?: SendOpts) => {
       if (!sessionId) return;
-      const prompt = (textOverride ?? input).trim();
+      const prompt = (textOverride ?? "").trim();
       if (!prompt && attachments.length === 0) return;
 
       // When composer drives the active session, delegate to SessionProvider.send
       // so pending nextProfile / nextAgentConfig are applied (switchProfile +
       // updateConfig) before sendMessage. Direct modus.sendMessage bypasses
       // that dance and drops profile/config overrides on empty sessions.
-      if (activeSession?.id === sessionId) {
+      if (activeSessionId === sessionId) {
         setInputValue("");
         void sessionSend(attachments, prompt, moves, deliver, sendOpts).catch((err) => {
           console.error("[composer-widget] sessionSend failed:", err);
@@ -183,7 +198,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
         console.error("[composer-widget] sendMessage failed:", err);
       });
     },
-    [sessionId, input, activeSession?.id, sessionSend],
+    [sessionId, activeSessionId, sessionSend],
   );
 
   const handleStop = useCallback(() => {
@@ -238,9 +253,7 @@ export default function ComposerWidget({ config, pageContext }: WidgetProps<Comp
         cwd={session?.cwd}
         persistOpen={config.persistOpen}
       />
-      <ChatInput
-        value={input}
-        onChange={setInputValue}
+      <ComposerInput
         onSend={handleSend}
         onStop={handleStop}
         sessionStatus={session?.status ?? null}

@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { memo, useState, useCallback, useMemo } from "react";
 import type { SessionInfo } from "../../../../sdk/index";
 import { modus } from "../../modusClient";
+import { getInputValue, getInputValueForSession, useInputValue } from "../../inputStore";
 import { sessionActivityAt as activityAt } from "../../sessionActivity";
 import { SessionItem } from "./SessionItem";
 
@@ -12,7 +13,6 @@ type Props = {
   groupMode: GroupMode;
   onSelectSession: (id: string) => void;
   onArchiveSession: (id: string) => void;
-  activeInput?: string;
   projectPaths?: string[];
   initialCollapsedGroups?: string[];
   onCollapsedGroupsChange?: (groups: string[]) => void;
@@ -64,9 +64,9 @@ function groupSessionsByTime(list: SessionInfo[]) {
   ].filter((g) => g.items.length > 0);
 }
 
-export function SessionList({
+export const SessionList = memo(function SessionList({
   sessions, activeSessionId, groupMode,
-  onSelectSession, onArchiveSession, activeInput,
+  onSelectSession, onArchiveSession,
   projectPaths: _projectPaths, initialCollapsedGroups, onCollapsedGroupsChange,
   onTogglePin,
 }: Props) {
@@ -75,18 +75,6 @@ export function SessionList({
     () => new Set(initialCollapsedGroups ?? []),
   );
 
-  // Cache draft input per session so it's visible after navigating away
-  const draftCache = useRef<Map<string, string>>(new Map());
-  useEffect(() => {
-    if (activeSessionId && activeInput !== undefined) {
-      if (activeInput.trim()) {
-        draftCache.current.set(activeSessionId, activeInput);
-      } else {
-        draftCache.current.delete(activeSessionId);
-      }
-    }
-  }, [activeSessionId, activeInput]);
-
   const handleSelectSession = useCallback((id: string) => {
     if (activeSessionId && id !== activeSessionId) {
       const current = sessions.find((s) => s.id === activeSessionId);
@@ -94,7 +82,7 @@ export function SessionList({
         current &&
         current.message_count === 0 &&
         !current.title && !current.last_prompt && !current.preview &&
-        !(activeInput?.trim()) &&
+        !getInputValue().trim() &&
         (current.status === "idle" || current.status === "done")
       ) {
         modus.archiveSession(activeSessionId).catch(() => {});
@@ -103,7 +91,7 @@ export function SessionList({
       }
     }
     onSelectSession(id);
-  }, [activeSessionId, sessions, onSelectSession, onArchiveSession]);
+  }, [activeSessionId, sessions, onSelectSession]);
 
   const handleToggleGroup = useCallback((label: string) => {
     setCollapsedGroups((prev) => {
@@ -115,12 +103,23 @@ export function SessionList({
     });
   }, [onCollapsedGroupsChange]);
 
-  const pinnedSessions = sessions.filter(s => parseTagList(s.tags).includes("pinned"));
-  const unpinnedSessions = sessions.filter(s => !parseTagList(s.tags).includes("pinned"));
-
-  const groups = groupMode === "agent"
-    ? groupSessionsByAgent(unpinnedSessions)
-    : groupSessionsByTime(unpinnedSessions);
+  const sessionTags = useMemo(
+    () => new Map(sessions.map((session) => [session.id, parseTagList(session.tags)])),
+    [sessions],
+  );
+  const { pinnedSessions, groups } = useMemo(() => {
+    const pinned: SessionInfo[] = [];
+    const unpinned: SessionInfo[] = [];
+    for (const session of sessions) {
+      (sessionTags.get(session.id)?.includes("pinned") ? pinned : unpinned).push(session);
+    }
+    return {
+      pinnedSessions: pinned,
+      groups: groupMode === "agent"
+        ? groupSessionsByAgent(unpinned)
+        : groupSessionsByTime(unpinned),
+    };
+  }, [groupMode, sessionTags, sessions]);
 
   return (
     <>
@@ -130,17 +129,8 @@ export function SessionList({
             <span>pinned</span>
             <span className="section-count">{pinnedSessions.length}</span>
           </div>
-          {pinnedSessions.map((s) => (
-            <SessionItem
-              key={s.id}
-              session={s}
-              active={s.id === activeSessionId}
-              onSelect={handleSelectSession}
-              onArchive={onArchiveSession}
-              draftInput={s.id === activeSessionId ? activeInput : draftCache.current.get(s.id)}
-              tags={parseTagList(s.tags)}
-              onTogglePin={onTogglePin ? () => onTogglePin(s.id) : undefined}
-            />
+          {pinnedSessions.map((s) => renderSessionItem(
+            s, activeSessionId, handleSelectSession, onArchiveSession, sessionTags.get(s.id) ?? [], onTogglePin,
           ))}
         </div>
       )}
@@ -162,17 +152,8 @@ export function SessionList({
             </div>
             <div className={`section-collapse ${isGroupCollapsed ? "" : "section-collapse--open"}`}>
               <div className="section-collapse-clip">
-                {group.items.map((s) => (
-                  <SessionItem
-                    key={s.id}
-                    session={s}
-                    active={s.id === activeSessionId}
-                    onSelect={handleSelectSession}
-                    onArchive={onArchiveSession}
-                    draftInput={s.id === activeSessionId ? activeInput : draftCache.current.get(s.id)}
-                    tags={parseTagList(s.tags)}
-                    onTogglePin={onTogglePin ? () => onTogglePin(s.id) : undefined}
-                  />
+                {group.items.map((s) => renderSessionItem(
+                  s, activeSessionId, handleSelectSession, onArchiveSession, sessionTags.get(s.id) ?? [], onTogglePin,
                 ))}
               </div>
             </div>
@@ -181,4 +162,42 @@ export function SessionList({
       })}
     </>
   );
+});
+
+type ActiveSessionItemProps = {
+  session: SessionInfo;
+  onSelect: (id: string) => void;
+  onArchive: (id: string) => void;
+  tags: string[];
+  onTogglePin?: () => void;
+};
+
+function ActiveSessionItem(props: ActiveSessionItemProps) {
+  const draftInput = useInputValue();
+  return <SessionItem {...props} active draftInput={draftInput} />;
+}
+
+function renderSessionItem(
+  session: SessionInfo,
+  activeSessionId: string | null,
+  onSelect: (id: string) => void,
+  onArchive: (id: string) => void,
+  tags: string[],
+  onTogglePin?: (id: string) => void,
+) {
+  const common = {
+    session,
+    onSelect,
+    onArchive,
+    tags,
+    onTogglePin: onTogglePin ? () => onTogglePin(session.id) : undefined,
+  };
+  return session.id === activeSessionId
+    ? <ActiveSessionItem key={session.id} {...common} />
+    : <SessionItem
+        key={session.id}
+        {...common}
+        active={false}
+        draftInput={getInputValueForSession(session.id)}
+      />;
 }

@@ -1483,6 +1483,8 @@ type SessionHistoryPageOptions = {
   beforeSeq?: number;
   /** Wall-clock paging boundary; preferred over beforeSeq when seq may collide. */
   beforeCreatedAt?: number;
+  /** Row id paired with beforeCreatedAt so equal-millisecond rows cannot be skipped. */
+  beforeId?: number;
   includeDetails?: boolean;
   preserveEventSequence?: boolean;
 };
@@ -1490,6 +1492,8 @@ type SessionHistoryPageOptions = {
 type SessionTurnsPage = {
   turns: TurnContent[];
   hasMore: boolean;
+  oldestCreatedAt: number | null;
+  oldestId: number | null;
   /**
    * User prompts that exist before this page's cutoff. A paginated transcript
    * has no way to know where its oldest loaded turn sits in the conversation,
@@ -1548,14 +1552,24 @@ function getSessionMessagesFromMessageTable(
   const limit = options.limit;
   if (!limit) {
     const rows = stmts.getMessages.all({ $session_id: sessionId }) as MessageRow[];
-    return { turns: messageRowsToTurns(rows), hasMore: false, olderTurnCount: 0 };
+    return {
+      turns: messageRowsToTurns(rows),
+      hasMore: false,
+      oldestCreatedAt: rows[0]?.created_at ?? null,
+      oldestId: rows[0]?.id ?? null,
+      olderTurnCount: 0,
+    };
   }
 
   const rows = db.prepare(`
     SELECT * FROM (
       SELECT * FROM messages
       WHERE session_id = $session_id
-        AND ($before_created_at IS NULL OR created_at < $before_created_at)
+        AND (
+          $before_created_at IS NULL
+          OR created_at < $before_created_at
+          OR (created_at = $before_created_at AND $before_id IS NOT NULL AND id < $before_id)
+        )
         AND ($before_created_at IS NOT NULL OR $before_seq IS NULL OR COALESCE(seq, 0) < $before_seq)
       ORDER BY created_at DESC, id DESC
       LIMIT $fetch_limit
@@ -1565,6 +1579,7 @@ function getSessionMessagesFromMessageTable(
     $session_id: sessionId,
     $before_seq: options.beforeSeq ?? null,
     $before_created_at: options.beforeCreatedAt ?? null,
+    $before_id: options.beforeId ?? null,
     $fetch_limit: limit + 1,
   }) as MessageRow[];
   const hasMore = rows.length > limit;
@@ -1587,6 +1602,8 @@ function getSessionMessagesFromMessageTable(
   return {
     turns: messageRowsToTurns(page),
     hasMore,
+    oldestCreatedAt: first?.created_at ?? null,
+    oldestId: first?.id ?? null,
     olderTurnCount,
   };
 }
@@ -1606,7 +1623,13 @@ function getSessionMessagesFromEvents(
        WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
        ${eventOrder}`
     ).all({ $sid: sessionId }) as { id: number; seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
-    return { turns: reconstructSessionTurns(events, fallbackModel), hasMore: false, olderTurnCount: 0 };
+    return {
+      turns: reconstructSessionTurns(events, fallbackModel),
+      hasMore: false,
+      oldestCreatedAt: events[0]?.created_at ?? null,
+      oldestId: events[0]?.id ?? null,
+      olderTurnCount: 0,
+    };
   }
 
   // Event-only legacy/interrupted sessions can contain tens of thousands of
@@ -1617,54 +1640,79 @@ function getSessionMessagesFromEvents(
   // reused seq cannot pull the window back to the first turn of the session.
   const promptLimit = Math.max(1, Math.ceil(limit / 2));
   let beforeCreatedAt: number | null = options.beforeCreatedAt ?? null;
+  let beforeId: number | null = options.beforeId ?? null;
   if (beforeCreatedAt == null && options.beforeSeq != null) {
     // Best-effort: earliest wall-clock among rows with that seq. Unique-seq
     // sessions get a precise boundary; collided seqs degrade to "no older".
     const boundary = db.prepare(`
-      SELECT MIN(created_at) AS created_at FROM events
+      SELECT created_at, id FROM events
       WHERE session_id = $sid AND seq = $seq
-    `).get({ $sid: sessionId, $seq: options.beforeSeq }) as { created_at: number | null } | null;
+      ORDER BY created_at ASC, id ASC LIMIT 1
+    `).get({ $sid: sessionId, $seq: options.beforeSeq }) as { created_at: number; id: number } | null;
     beforeCreatedAt = boundary?.created_at ?? null;
+    beforeId = boundary?.id ?? null;
   }
 
   const cutoff = db.prepare(`
-    SELECT MIN(created_at) AS created_at FROM (
-      SELECT created_at FROM events
+    SELECT created_at, id FROM (
+      SELECT created_at, id FROM events
       WHERE session_id = $sid
         AND type = 'user' AND subtype = 'prompt'
-        AND ($before_created_at IS NULL OR created_at < $before_created_at)
-      ORDER BY created_at DESC
+        AND (
+          $before_created_at IS NULL
+          OR created_at < $before_created_at
+          OR (created_at = $before_created_at AND $before_id IS NOT NULL AND id < $before_id)
+        )
+      ORDER BY created_at DESC, id DESC
       LIMIT $prompt_limit
     )
+    ORDER BY created_at ASC, id ASC
+    LIMIT 1
   `).get({
     $sid: sessionId,
     $before_created_at: beforeCreatedAt,
+    $before_id: beforeId,
     $prompt_limit: promptLimit,
-  }) as { created_at: number | null } | null;
+  }) as { created_at: number; id: number } | null;
 
-  if (!cutoff?.created_at) return { turns: [], hasMore: false, olderTurnCount: 0 };
+  if (!cutoff) {
+    return { turns: [], hasMore: false, oldestCreatedAt: null, oldestId: null, olderTurnCount: 0 };
+  }
   const events = db.prepare(
     `SELECT id, seq, type, subtype, data, created_at FROM events
      WHERE session_id = $sid AND type IN ('user', 'assistant', 'result')
-       AND created_at >= $cutoff
-       AND ($before_created_at IS NULL OR created_at < $before_created_at)
+       AND (created_at > $cutoff_created_at OR (created_at = $cutoff_created_at AND id >= $cutoff_id))
+       AND (
+         $before_created_at IS NULL
+         OR created_at < $before_created_at
+         OR (created_at = $before_created_at AND $before_id IS NOT NULL AND id < $before_id)
+       )
      ${eventOrder}`
   ).all({
     $sid: sessionId,
-    $cutoff: cutoff.created_at,
+    $cutoff_created_at: cutoff.created_at,
+    $cutoff_id: cutoff.id,
     $before_created_at: beforeCreatedAt,
+    $before_id: beforeId,
   }) as { id: number; seq: number; type: string; subtype: string | null; data: string; created_at: number }[];
 
   // One count answers both questions: whether an older page exists, and how far
   // into the conversation this page starts.
   const older = db.prepare(`
     SELECT COUNT(*) AS count FROM events
-    WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt' AND created_at < $cutoff
-  `).get({ $sid: sessionId, $cutoff: cutoff.created_at }) as { count: number } | null;
+    WHERE session_id = $sid AND type = 'user' AND subtype = 'prompt'
+      AND (created_at < $cutoff_created_at OR (created_at = $cutoff_created_at AND id < $cutoff_id))
+  `).get({
+    $sid: sessionId,
+    $cutoff_created_at: cutoff.created_at,
+    $cutoff_id: cutoff.id,
+  }) as { count: number } | null;
   const olderTurnCount = older?.count ?? 0;
   return {
     turns: reconstructSessionTurns(events, fallbackModel),
     hasMore: olderTurnCount > 0,
+    oldestCreatedAt: events[0]?.created_at ?? null,
+    oldestId: events[0]?.id ?? null,
     olderTurnCount,
   };
 }
@@ -2130,6 +2178,8 @@ export type SessionMessageHistory = {
   oldestSeq: number | null;
   /** Oldest wall-clock position in this page; stable across reused provider seq values. */
   oldestCreatedAt: number | null;
+  /** Database row paired with oldestCreatedAt to disambiguate equal timestamps. */
+  oldestId: number | null;
   /** User prompts preceding this page — what turn numbering has to start from. */
   olderTurnCount: number;
 };
@@ -2322,9 +2372,8 @@ export function getSessionMessageHistory(
     oldestSeq: messages.reduce<number | null>((min, turn) => (
       turn.seq > 0 && (min === null || turn.seq < min) ? turn.seq : min
     ), null),
-    oldestCreatedAt: messages.reduce<number | null>((min, turn) => (
-      turn.timestamp > 0 && (min === null || turn.timestamp < min) ? turn.timestamp : min
-    ), null),
+    oldestCreatedAt: page.oldestCreatedAt,
+    oldestId: page.oldestId,
     olderTurnCount: page.olderTurnCount,
   };
 }
@@ -2513,31 +2562,18 @@ function turnIndexFromEvents(sessionId: string): SessionTurnIndexEntry[] {
 /**
  * Every turn in a session, without bodies.
  *
- * Source selection mirrors `getSessionMessageHistory` exactly, including its
- * fallback when the preferred source turns out to be empty. It has to: an index
- * entry that addresses a turn the history layer would not produce is a dead
- * link in whatever navigates by it.
+ * The history route requests preserved event order, so durable event turns are
+ * canonical whenever they exist. Falling back to semantic rows only for an
+ * event-empty legacy session prevents resumed providers with reused seq values
+ * from making the rail silently omit later turns.
  */
 export function getSessionTurnIndex(
   sessionId: string,
   options: { limit?: number } = {},
 ): SessionTurnIndex {
-  const rawAssistant = db.prepare(
-    `SELECT COALESCE(MAX(seq), 0) AS max_seq FROM events WHERE session_id = $sid AND type = 'assistant'`
-  ).get({ $sid: sessionId }) as { max_seq: number };
-  const semanticAssistant = db.prepare(
-    `SELECT COALESCE(MAX(seq), 0) AS max_seq FROM messages WHERE session_id = $sid AND role = 'assistant'`
-  ).get({ $sid: sessionId }) as { max_seq: number };
-  const semanticCount = db.prepare(
-    `SELECT COUNT(*) AS count FROM messages WHERE session_id = $sid`
-  ).get({ $sid: sessionId }) as { count: number };
-
-  const preferEvents = semanticCount.count === 0
-    || (rawAssistant.max_seq ?? 0) > (semanticAssistant.max_seq ?? 0);
-
-  const eventTurns = preferEvents ? turnIndexFromEvents(sessionId) : null;
-  const useEvents = !!eventTurns && eventTurns.length > 0;
-  const all = useEvents ? eventTurns! : turnIndexFromMessageTable(sessionId);
+  const eventTurns = turnIndexFromEvents(sessionId);
+  const useEvents = eventTurns.length > 0;
+  const all = useEvents ? eventTurns : turnIndexFromMessageTable(sessionId);
 
   const limit = Math.max(1, options.limit ?? TURN_INDEX_DEFAULT_LIMIT);
   const olderTurnCount = Math.max(0, all.length - limit);

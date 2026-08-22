@@ -10,7 +10,7 @@
 
 import { useEffect, useCallback, useMemo } from "react";
 import { useSessionState, ensureSubscribed } from "../sessionStore";
-import { useSession } from "../providers/SessionContext";
+import { useSessionActions, useSessionIndex } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { ConfigBar } from "../components/ConfigBar";
 import { createEmptyAgentConfig } from "../components/AgentConfig";
@@ -34,7 +34,8 @@ export default function ConfigBarWidget({ config, pageContext }: WidgetProps<Con
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
-  const { updateActiveSessionConfig, updateActiveSessionProfile, serverSessions, refreshSessions } = useSession();
+  const { serverSessions } = useSessionIndex();
+  const { updateActiveSessionConfig, updateActiveSessionProfile, refreshSessions } = useSessionActions();
   const { profiles, visibleProfiles, availableProviders, activeUP } = useProfiles();
 
   const sessionInfo = useMemo(

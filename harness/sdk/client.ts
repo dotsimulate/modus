@@ -337,11 +337,12 @@ export class ModusClient {
     }
   }
   /** Gets a semantic history snapshot for ordinary session hydration. */
-  async getSessionHistorySnapshot(id: string, opts?: { signal?: AbortSignal; limit?: number | "all"; beforeSeq?: number; beforeCreatedAt?: number; details?: "full" | "summary" }): Promise<SessionHistorySnapshot> {
+  async getSessionHistorySnapshot(id: string, opts?: { signal?: AbortSignal; limit?: number | "all"; beforeSeq?: number; beforeCreatedAt?: number; beforeId?: number; details?: "full" | "summary" }): Promise<SessionHistorySnapshot> {
     const params = new URLSearchParams();
     if (opts?.limit != null) params.set("limit", String(opts.limit));
     if (opts?.beforeSeq != null) params.set("beforeSeq", String(opts.beforeSeq));
     if (opts?.beforeCreatedAt != null) params.set("beforeCreatedAt", String(opts.beforeCreatedAt));
+    if (opts?.beforeId != null) params.set("beforeId", String(opts.beforeId));
     if (opts?.details) params.set("details", opts.details);
     const q = params.toString();
     return (await this.fetch(`/api/sessions/${id}/history-snapshot${q ? `?${q}` : ""}`, { signal: opts?.signal })).json();

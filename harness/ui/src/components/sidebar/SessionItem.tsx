@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { memo, useState, useRef, useEffect } from "react";
 import type { SessionInfo } from "../../../../sdk/index";
 import { modus } from "../../modusClient";
 import { useSessionState } from "../../sessionStore";
@@ -25,7 +25,7 @@ function statusDotClass(status: string): string {
 
 const displayText = sessionDisplayText;
 
-export function SessionItem({ session: s, active, onSelect, onArchive, draftInput, tags, onTogglePin }: Props) {
+export const SessionItem = memo(function SessionItem({ session: s, active, onSelect, onArchive, draftInput, tags, onTogglePin }: Props) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,6 +48,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
   const agentProfile = liveSession?.profile ?? s.profile;
   const compactModel = model ? compactModelName(model) : null;
   const pendingPermissionCount = liveSession?.pendingPermissions?.length ?? s.pending_permission_count ?? 0;
+  const status = liveSession?.status ?? s.status;
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -77,7 +78,7 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
       onClick={() => !editing && onSelect(s.id)}
     >
       <div className="session-item-preview">
-        <span className={`dash-dot ${isEmptySession(s) && draftInput?.trim() ? "dash-dot--draft" : statusDotClass(s.status)}`} />
+        <span className={`dash-dot ${isEmptySession(s) && draftInput?.trim() ? "dash-dot--draft" : statusDotClass(status)}`} />
         {editing ? (
           <input
             ref={inputRef}
@@ -151,4 +152,4 @@ export function SessionItem({ session: s, active, onSelect, onArchive, draftInpu
       </div>
     </div>
   );
-}
+});

@@ -14,7 +14,7 @@ import { nextMsgId } from "../../../sdk/index";
 import { toApiAttachments } from "../api-attachments";
 import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, getSessionState, setSessionState, loadOlderSessionHistory, loadSessionMessageDetails } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
-import { useSession } from "../providers/SessionContext";
+import { useSessionActions } from "../providers/SessionContext";
 import { FloatingWindow } from "./FloatingWindow";
 import { ChatView } from "./ChatView";
 import { useInterfaceSettings } from "../useInterfaceSettings";
@@ -41,8 +41,9 @@ function statusLabel(status: string): string {
 
 export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
   const { activeUP, projectRoot } = useProfiles();
-  const conversation = useInterfaceSettings(activeUP?.interface).conversation;
-  const { branchFromSessionMessage } = useSession();
+  const interfaceSettings = useInterfaceSettings(activeUP?.interface);
+  const conversation = interfaceSettings.conversation;
+  const { branchFromSessionMessage } = useSessionActions();
   const [input, setInput] = useState("");
   const [queuedMessage, setQueuedMessage] = useState<SessionWindowQueuedMessage | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -263,6 +264,7 @@ export function SessionWindow({ sessionId, onClose, onNavigate }: Props) {
           <div className="session-window-body">
             {session ? (
               <ChatView
+                fontScale={interfaceSettings.chat.fontScale / 100}
                 messages={session.messages ?? []}
                 sessionId={sessionId}
                 provider={session.provider ?? session.agentConfig?.provider}

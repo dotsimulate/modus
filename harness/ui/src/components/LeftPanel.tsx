@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { Activity, type ReactNode } from "react";
 import { WIDGET_DEFS, WIDGETS, type LayoutNode, type WidgetBase } from "../widgets";
 import { WidgetPicker } from "./WidgetPicker";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
@@ -66,18 +66,20 @@ export function LeftPanel({ open, width, onOpen: _onOpen, onClose: _onClose, mod
       className={`left-panel${open ? " open" : ""}`}
       style={open ? { width, minWidth: width } : undefined}
     >
-      <PanelSurface
-        mode={mode}
-        items={items}
-        picker={picker}
-        empty={children || <div className="panel-empty">no widgets pinned</div>}
-        surfaceClassName="left-panel-content"
-        tabsClassName="lp-tabs"
-        tabClassName="lp-tab"
-        tabActiveClassName="lp-tab--active"
-        tabLabelClassName="lp-tab-label"
-        tabCloseClassName="lp-tab-close"
-      />
+      <Activity mode={open ? "visible" : "hidden"} name="left-panel">
+        <PanelSurface
+          mode={mode}
+          items={items}
+          picker={picker}
+          empty={children || <div className="panel-empty">no widgets pinned</div>}
+          surfaceClassName="left-panel-content"
+          tabsClassName="lp-tabs"
+          tabClassName="lp-tab"
+          tabActiveClassName="lp-tab--active"
+          tabLabelClassName="lp-tab-label"
+          tabCloseClassName="lp-tab-close"
+        />
+      </Activity>
     </div>
   );
 }

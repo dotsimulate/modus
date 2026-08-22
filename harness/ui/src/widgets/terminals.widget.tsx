@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TerminalInfo } from "../../../sdk/index";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
-import { useSession } from "../providers/SessionContext";
+import { useActiveSessionId } from "../providers/SessionContext";
 import { timeAgo, basename } from "../utils/format";
 import type { WidgetBase, WidgetProps } from "./types";
 import { useWidgetChrome } from "./chrome";
@@ -69,13 +69,13 @@ function buildSessionHref(sessionId: string, userProfile: string | null): string
 }
 
 export default function TerminalsWidget({ config, onSelectSession, pageContext }: WidgetProps<TerminalsConfig>) {
-  const { activeSession } = useSession();
+  const activeSessionId = useActiveSessionId();
   const { activeUserProfile } = useProfiles();
   const { setHeaderSuffix } = useWidgetChrome();
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   const mode = config.mode ?? "all";
   const limit = config.limit ?? 8;
-  const sessionId = mode === "session" ? activeSession?.id ?? null : null;
+  const sessionId = mode === "session" ? activeSessionId : null;
 
   const load = useCallback(async () => {
     const rows = sessionId
@@ -116,7 +116,7 @@ export default function TerminalsWidget({ config, onSelectSession, pageContext }
     }
   }, []);
 
-  if (mode === "session" && !activeSession) {
+  if (mode === "session" && !activeSessionId) {
     return <WidgetEmptyState>no active session</WidgetEmptyState>;
   }
   if (loading) {
@@ -131,7 +131,7 @@ export default function TerminalsWidget({ config, onSelectSession, pageContext }
       {terminals.map((terminal) => {
         const owner = describeOwner(terminal);
         const cwdLabel = basename(terminal.cwd);
-        const canJump = !!terminal.sessionId && terminal.sessionId !== activeSession?.id;
+        const canJump = !!terminal.sessionId && terminal.sessionId !== activeSessionId;
         const sessionHref = terminal.sessionId ? buildSessionHref(terminal.sessionId, activeUserProfile) : null;
         return (
           <div key={terminal.id} className="tmw-row">
@@ -153,7 +153,7 @@ export default function TerminalsWidget({ config, onSelectSession, pageContext }
               </div>
               <div className="tmw-row-meta">
                 <span>{describeOrigin(terminal)}</span>
-                <span>{describeLinkage(terminal, activeSession?.id)}</span>
+                <span>{describeLinkage(terminal, activeSessionId)}</span>
                 <span>{describeControl(terminal)}</span>
               </div>
               {cwdLabel && <div className="tmw-cwd" title={terminal.cwd ?? undefined}>{cwdLabel}</div>}
