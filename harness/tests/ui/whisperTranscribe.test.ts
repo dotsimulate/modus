@@ -354,6 +354,7 @@ function createApiStub(transcript: string, respond?: () => unknown) {
   const fallbackDrafts: string[] = [];
   const uploads: FormData[] = [];
   let action: any = null;
+  let currentComposer: ReturnType<typeof createComposerStub>["handle"] | null = null;
   const api = {
     getSettings: () => ({}),
     registerComposerAction(config: any) {
@@ -366,24 +367,34 @@ function createApiStub(transcript: string, respond?: () => unknown) {
       if (init?.body) uploads.push(init.body);
       return respond ? respond() : { ok: true, status: 200, text: async () => JSON.stringify({ text: transcript }) };
     },
-    // The global fallbacks resolve to whichever composer registered last, which
-    // is precisely what a chunk must never be routed through.
-    getComposer: () => ({ draft: "" }),
-    setDraft: (text: string) => { fallbackDrafts.push(text); },
-    focusComposer() {},
-    submitComposer() {},
+    getComposer: () => currentComposer?.getSnapshot() ?? null,
+    setDraft: (text: string) => {
+      if (currentComposer) currentComposer.setDraft(text);
+      else fallbackDrafts.push(text);
+    },
+    focusComposer: () => currentComposer?.focus(),
+    submitComposer: (text?: string) => currentComposer?.submit(text),
   };
-  return { api, fallbackDrafts, uploads, getAction: () => action };
+  return {
+    api,
+    fallbackDrafts,
+    uploads,
+    getAction: () => action,
+    setCurrentComposer: (composer: ReturnType<typeof createComposerStub>["handle"] | null) => {
+      currentComposer = composer;
+    },
+  };
 }
 
 function createComposerStub() {
   const drafts: string[] = [];
+  let draft = "";
   return {
     drafts,
     handle: {
-      getSnapshot: () => ({ draft: "", sessionId: "ses-1", cwd: "/p", userProfile: "u" }),
+      getSnapshot: () => ({ draft, sessionId: "ses-1", cwd: "/p", userProfile: "u" }),
       focus() {},
-      setDraft: (text: string) => { drafts.push(text); },
+      setDraft: (text: string) => { draft = text; drafts.push(text); },
       insertText() {},
       setGhostText() {},
       submit() {},
@@ -404,10 +415,11 @@ describe("whisper-transcribe composer routing", () => {
 
   test("delivers a transcript to the composer that started the recording", async () => {
     audio = installAudioStubs();
-    const { api, fallbackDrafts, getAction } = createApiStub("hello from the bound composer");
+    const { api, fallbackDrafts, getAction, setCurrentComposer } = createApiStub("hello from the bound composer");
     dispose = whisperTranscribeExtension(api as any) as () => void;
 
     const clicked = createComposerStub();
+    setCurrentComposer(clicked.handle);
     await getAction().onClick({ composer: clicked.handle });
     audio.speak();
     await getAction().onClick({ composer: clicked.handle });
@@ -419,17 +431,40 @@ describe("whisper-transcribe composer routing", () => {
     expect(fallbackDrafts).toEqual([]);
   });
 
-  test("keeps routing to the original composer after the recording is torn down", async () => {
+  test("follows the active chat when the session changes during recording", async () => {
     audio = installAudioStubs();
-    const { api, fallbackDrafts, getAction } = createApiStub("second take");
+    const { api, fallbackDrafts, getAction, setCurrentComposer } = createApiStub("spoken in the next chat");
     dispose = whisperTranscribeExtension(api as any) as () => void;
 
     const first = createComposerStub();
+    const second = createComposerStub();
+    setCurrentComposer(first.handle);
+    await getAction().onClick({ composer: first.handle });
+    audio.speak();
+
+    // Session navigation replaces the main ChatInput. The stop action is now
+    // rendered by the destination composer while the same recording continues.
+    setCurrentComposer(second.handle);
+    await getAction().onClick({ composer: second.handle });
+
+    expect(first.drafts).toEqual([]);
+    expect(second.drafts).toEqual(["spoken in the next chat"]);
+    expect(fallbackDrafts).toEqual([]);
+  });
+
+  test("keeps routing to the original composer after the recording is torn down", async () => {
+    audio = installAudioStubs();
+    const { api, fallbackDrafts, getAction, setCurrentComposer } = createApiStub("second take");
+    dispose = whisperTranscribeExtension(api as any) as () => void;
+
+    const first = createComposerStub();
+    setCurrentComposer(first.handle);
     await getAction().onClick({ composer: first.handle });
     audio.speak();
     await getAction().onClick({ composer: first.handle });
 
     const second = createComposerStub();
+    setCurrentComposer(second.handle);
     await getAction().onClick({ composer: second.handle });
     audio.speak();
     await getAction().onClick({ composer: second.handle });

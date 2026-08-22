@@ -1,4 +1,3 @@
-console.log("[Whisper] Loading extension... version 2.12");
 const SHORTCUT = "Ctrl+Shift+~";
 const BUFFER_SIZE = 4096;
 export const RMS_THRESHOLD = 0.015;
@@ -675,11 +674,10 @@ function isDesktop() {
 export default function whisperTranscribeExtension(api) {
   const settings = api.getSettings();
   let recording = null;
-  // The composer whose mic button started this recording. Chunks flush from a
-  // timer, long after the click, and api.setDraft() resolves to whichever
-  // composer registered last — so transcripts would land in an unrelated
-  // session. Hold the handle for the life of the recording instead. It is a
-  // live proxy, so it survives remounts.
+  // Fallback for the brief interval where no composer is active. Dictation is
+  // app-level: completed chunks prefer the currently active composer so an
+  // ongoing recording follows deliberate chat navigation instead of writing
+  // through a disconnected composer:<old-session> proxy and dropping text.
   let activeComposer = null;
   let pendingUploads = 0;
   let disposed = false;
@@ -802,10 +800,28 @@ export default function whisperTranscribeExtension(api) {
     intendedDraft = null;
   }
 
+  function currentComposerSnapshot(fallbackComposer) {
+    return api.getComposer() ?? fallbackComposer?.getSnapshot?.() ?? null;
+  }
+
+  function setCurrentDraft(fallbackComposer, text) {
+    if (api.getComposer()) api.setDraft(text);
+    else fallbackComposer?.setDraft(text);
+  }
+
+  function focusCurrentComposer(fallbackComposer) {
+    if (api.getComposer()) api.focusComposer();
+    else fallbackComposer?.focus();
+  }
+
+  function submitCurrentComposer(fallbackComposer, text) {
+    if (api.getComposer()) api.submitComposer(text);
+    else fallbackComposer?.submit(text);
+  }
+
   function flushTyping(composer) {
     if (intendedDraft !== null) {
-      if (composer) composer.setDraft(intendedDraft);
-      else api.setDraft(intendedDraft);
+      setCurrentDraft(composer, intendedDraft);
     }
     cancelTyping();
   }
@@ -827,8 +843,7 @@ export default function whisperTranscribeExtension(api) {
       built += tokens[i];
       i++;
       const partial = base + built;
-      if (composer) composer.setDraft(partial);
-      else api.setDraft(partial);
+      setCurrentDraft(composer, partial);
       if (i < tokens.length) {
         typingTimer = setTimeout(tick, DELAY);
       } else {
@@ -857,26 +872,23 @@ export default function whisperTranscribeExtension(api) {
         return;
       }
       if (trigger.command === "clear_all") {
-        const currentDraftForClear = intendedDraft ?? (composer ? composer.getSnapshot().draft : api.getComposer()?.draft ?? "");
+        const currentDraftForClear = intendedDraft ?? currentComposerSnapshot(composer)?.draft ?? "";
         clearedBuffer = currentDraftForClear;
-        if (composer) composer.setDraft("");
-        else api.setDraft("");
+        setCurrentDraft(composer, "");
         lastAddedChunks = [];
         return;
       }
       if (trigger.command === "recall_swap") {
-        const currentDraftForSwap = intendedDraft ?? (composer ? composer.getSnapshot().draft : api.getComposer()?.draft ?? "");
+        const currentDraftForSwap = intendedDraft ?? currentComposerSnapshot(composer)?.draft ?? "";
         const restored = clearedBuffer;
         clearedBuffer = currentDraftForSwap;
-        if (composer) composer.setDraft(restored);
-        else api.setDraft(restored);
+        setCurrentDraft(composer, restored);
         return;
       }
       if (trigger.command === "clear_last") {
         const last = lastAddedChunks.pop();
         if (last) {
-          if (composer) composer.setDraft(last.draftBeforeAction);
-          else api.setDraft(last.draftBeforeAction);
+          setCurrentDraft(composer, last.draftBeforeAction);
         }
         return;
       }
@@ -884,22 +896,16 @@ export default function whisperTranscribeExtension(api) {
 
     if (isGated) return;
 
-    const currentDraft = intendedDraft ?? (composer ? composer.getSnapshot().draft : api.getComposer()?.draft ?? "");
+    const currentDraft = intendedDraft ?? currentComposerSnapshot(composer)?.draft ?? "";
     if (isAvoidPhrase(text)) return;
 
     const snapshotBefore = currentDraft;
 
     const submit = (nextDraft) => {
       flushTyping(composer);
-      if (composer) {
-        composer.setDraft(nextDraft);
-        composer.focus();
-        composer.submit(nextDraft);
-        return;
-      }
-      api.setDraft(nextDraft);
-      api.focusComposer();
-      api.submitComposer(nextDraft);
+      setCurrentDraft(composer, nextDraft);
+      focusCurrentComposer(composer);
+      submitCurrentComposer(composer, nextDraft);
     };
 
     const spacer = currentDraft && !/\s$/.test(currentDraft) ? " " : "";
@@ -916,15 +922,10 @@ export default function whisperTranscribeExtension(api) {
     if (lastAddedChunks.length > 20) lastAddedChunks.shift();
 
     if (isDesktop()) {
-      typeInto(composer, currentDraft, addition, nextDraft, () => composer?.focus() || api.focusComposer());
+      typeInto(composer, currentDraft, addition, nextDraft, () => focusCurrentComposer(composer));
     } else {
-      if (composer) {
-        composer.setDraft(nextDraft);
-        composer.focus();
-      } else {
-        api.setDraft(nextDraft);
-        api.focusComposer();
-      }
+      setCurrentDraft(composer, nextDraft);
+      focusCurrentComposer(composer);
     }
   }
 
@@ -942,7 +943,7 @@ export default function whisperTranscribeExtension(api) {
     // The API key is never held here — the harness resolves whisperSecretName
     // from its own secret store, so it needs to know which settings scope to
     // read.
-    const snapshot = composer ? composer.getSnapshot() : api.getComposer();
+    const snapshot = currentComposerSnapshot(composer);
     const query = new URLSearchParams();
     if (snapshot?.cwd) query.set("cwd", snapshot.cwd);
     if (snapshot?.userProfile) query.set("userProfile", snapshot.userProfile);
