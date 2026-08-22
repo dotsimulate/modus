@@ -45,6 +45,7 @@ import type { ProviderCapabilities } from "./types";
 import { CLAUDE_CODE_BUILTIN_TOOLS, CLAUDE_CODE_TOOL_GROUPS } from "./tool-catalog";
 import { providerChildEnv } from "./child-env";
 import { cliExists, resolveCli } from "./resolve-cli";
+import { logProviderDiagnostic as providerLog } from "./provider-diagnostics";
 
 // On Windows we deliberately use the .cmd shim because that's the only thing the
 // Claude Code installer puts on PATH. The cmd.exe -> node.exe tree it creates is
@@ -145,7 +146,7 @@ function killPidTreeAsync(pid: number): Promise<void> {
       try {
         const child = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
         const done = () => {
-          console.log(`[claude-code] taskkill pid=${pid} took=${Date.now() - t0}ms`);
+          providerLog(`[claude-code] taskkill pid=${pid} took=${Date.now() - t0}ms`);
           resolve();
         };
         child.on("close", done);
@@ -178,7 +179,7 @@ const inFlightKills = new WeakMap<ActiveSession, Promise<void>>();
 function killAllSpawnedAsync(session: ActiveSession, state: ClaudeCodeState | null): Promise<void> {
   const existing = inFlightKills.get(session);
   if (existing) {
-    console.log(`[claude-code] killAllSpawned coalesced session=${session.sessionId}`);
+    providerLog(`[claude-code] killAllSpawned coalesced session=${session.sessionId}`);
     return existing;
   }
   const run = (async () => {
@@ -199,7 +200,7 @@ function killAllSpawnedAsync(session: ActiveSession, state: ClaudeCodeState | nu
       session.osPids.delete(pid);
     }));
     if (state) state.spawnedPid = undefined;
-    console.log(`[claude-code] killAllSpawned session=${session.sessionId} took=${Date.now() - t0}ms`);
+    providerLog(`[claude-code] killAllSpawned session=${session.sessionId} took=${Date.now() - t0}ms`);
   })().finally(() => {
     inFlightKills.delete(session);
   });
@@ -477,7 +478,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       const { session, opts, profile: profileDef } = ctx;
       const _t0 = performance.now();
       const _sid = session.tempId?.slice(0, 12) ?? "?";
-      const _timing = (step: string) => console.log(`[claude-code-timing] step=${step} dt=${(performance.now() - _t0).toFixed(0)}ms sid=${_sid}`);
+      const _timing = (step: string) => providerLog(`[claude-code-timing] step=${step} dt=${(performance.now() - _t0).toFixed(0)}ms sid=${_sid}`);
 
       // Pre-check: ensure claude binary is available
       _timing("which-check");
@@ -702,7 +703,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         return;
       }
       session.providerSessionId = resumeTarget ?? null;
-      console.log(`[claude-code] startTurn isBranch=${isBranch} resume=${resumeTarget} resumeSource=${resumeSelection.source} sessionId=${opts.sessionId} branchParent=${opts.branchParentId} branchMsgUUID=${opts.branchMessageUUID}`);
+      providerLog(`[claude-code] startTurn isBranch=${isBranch} resume=${resumeTarget} resumeSource=${resumeSelection.source} sessionId=${opts.sessionId} branchParent=${opts.branchParentId} branchMsgUUID=${opts.branchMessageUUID}`);
 
       // Fork options are one-shot — only used for the initial query(), never stored
       const forkOpts = isBranch ? {
@@ -803,7 +804,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
           if (cfg.type === "http" || cfg.url) return `${name}(http→${cfg.url})`;
           return `${name}(${cfg.command} ${(cfg.args ?? []).join(" ")})`;
         });
-        console.log(`[claude-code] MCP servers for ${session.tempId}: ${mcpSummary.join(", ")}`);
+        providerLog(`[claude-code] MCP servers for ${session.tempId}: ${mcpSummary.join(", ")}`);
       }
 
       const abortController = session.abortController;
@@ -830,7 +831,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       // Start the SDK query
       _timing("pre-sdk-query");
       const spawnedAt = Date.now();
-      console.log(`[claude-code] SPAWN ${session.tempId} at ${new Date(spawnedAt).toLocaleTimeString()}`);
+      providerLog(`[claude-code] SPAWN ${session.tempId} at ${new Date(spawnedAt).toLocaleTimeString()}`);
       let q: ReturnType<typeof sdkQuery>;
       try {
         q = sdkQuery({ prompt: generator, options: { ...sdkOptions, ...forkOpts, abortController } });
@@ -901,7 +902,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         updateSessionStatus(session.sessionId, "running");
         state.input.push(content);
         msgLog(sid, "REUSE", "pushed to live subprocess via input channel");
-        console.log(`[claude-code] REUSE subprocess for ${session.sessionId} (drainActive, no cold start)`);
+        providerLog(`[claude-code] REUSE subprocess for ${session.sessionId} (drainActive, no cold start)`);
         return;
       }
 
@@ -912,14 +913,14 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       if (state.interrupting && state.drainActive && state.queryObj) {
         session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         msgLog(sid, "DEFER-UNTIL-EXIT", "queued follow-up until interrupted subprocess drain exits");
-        console.log(`[claude-code] deferring follow-up until interrupted subprocess exits for ${session.sessionId}`);
+        providerLog(`[claude-code] deferring follow-up until interrupted subprocess exits for ${session.sessionId}`);
         return;
       }
 
       if (session.status === "running" || (session.status === "starting" && state.drainActive)) {
         session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         msgLog(sid, "QUEUED", `status=${session.status} — message stuck until result event or drain exit`);
-        console.log(`[claude-code] queued message for ${session.sessionId} (status=${session.status})`);
+        providerLog(`[claude-code] queued message for ${session.sessionId} (status=${session.status})`);
         return;
       }
 
@@ -959,7 +960,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       };
       const spawnedAt = Date.now();
       msgLog(sid, "COLD-START", "spawning new subprocess with --resume");
-      console.log(`[claude-code] SPAWN (resume) modus=${session.sessionId} provider=${resumeSelection.target} source=${resumeSelection.source} at ${new Date(spawnedAt).toLocaleTimeString()}`);
+      providerLog(`[claude-code] SPAWN (resume) modus=${session.sessionId} provider=${resumeSelection.target} source=${resumeSelection.source} at ${new Date(spawnedAt).toLocaleTimeString()}`);
       const newQ = sdkQuery({ prompt: generator, options: sdkOpts });
       state.queryObj = newQ;
       state.spawnedAt = spawnedAt;
@@ -1000,7 +1001,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
     abort(session: ActiveSession) {
       const tAbort = Date.now();
-      console.log(`[claude-code] abort() enter session=${session.sessionId}`);
+      providerLog(`[claude-code] abort() enter session=${session.sessionId}`);
       const state = getState(session);
       if (state) state.interrupting = true;
 
@@ -1008,23 +1009,23 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       const finishAbort = (label: string) => {
         const tStep1 = Date.now();
         try { state?.input.close(); } catch { /* ignore cleanup errors */ }
-        console.log(`[claude-code] abort() ${label} input.close took=${Date.now() - tStep1}ms`);
+        providerLog(`[claude-code] abort() ${label} input.close took=${Date.now() - tStep1}ms`);
         const tStep2 = Date.now();
         try { session.abortController.abort(); } catch { /* AbortError from inflight operations */ }
-        console.log(`[claude-code] abort() ${label} abortController.abort took=${Date.now() - tStep2}ms`);
+        providerLog(`[claude-code] abort() ${label} abortController.abort took=${Date.now() - tStep2}ms`);
         const tStep3 = Date.now();
         // SDK close() is the documented forceful termination path. On Windows,
         // still do not trust it alone: the cmd.exe -> claude/node tree can
         // survive on MCP keepalives, so the PID-tree kill below remains required.
         try { queryObj?.close(); } catch { /* ignore cleanup errors */ }
-        console.log(`[claude-code] abort() ${label} queryObj.close took=${Date.now() - tStep3}ms`);
+        providerLog(`[claude-code] abort() ${label} queryObj.close took=${Date.now() - tStep3}ms`);
         if (state && state.queryObj === queryObj) state.queryObj = null;
 
         const tDispatch = Date.now();
         setImmediate(() => {
-          console.log(`[claude-code] abort() ${label} killAllSpawned scheduled session=${session.sessionId} schedDelay=${Date.now() - tDispatch}ms`);
+          providerLog(`[claude-code] abort() ${label} killAllSpawned scheduled session=${session.sessionId} schedDelay=${Date.now() - tDispatch}ms`);
           killAllSpawnedAsync(session, state)
-            .then(() => console.log(`[claude-code] abort() ${label} kill complete session=${session.sessionId} totalElapsed=${Date.now() - tAbort}ms`))
+            .then(() => providerLog(`[claude-code] abort() ${label} kill complete session=${session.sessionId} totalElapsed=${Date.now() - tAbort}ms`))
             .catch((e) => console.error(`[claude-code] killAllSpawnedAsync error session=${session.sessionId}`, e));
         });
       };
@@ -1046,7 +1047,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
             if (finished) return;
             finished = true;
             clearTimeout(fallback);
-            console.log(`[claude-code] abort() queryObj.interrupt resolved session=${session.sessionId}`);
+            providerLog(`[claude-code] abort() queryObj.interrupt resolved session=${session.sessionId}`);
             finishAbort("interrupt");
           })
           .catch((err) => {
@@ -1059,7 +1060,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       } else {
         finishAbort("no-interrupt");
       }
-      console.log(`[claude-code] abort() returned (sync part) session=${session.sessionId} took=${Date.now() - tAbort}ms`);
+      providerLog(`[claude-code] abort() returned (sync part) session=${session.sessionId} took=${Date.now() - tAbort}ms`);
     },
 
     stopTask(session: ActiveSession, taskId: string): boolean {
@@ -1200,7 +1201,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
       const hasMcpNew = Object.keys(mergedMcp).length > 0;
       const nextMcpConfig = writeSensitiveMcpConfig(hasMcpNew ? resolveEnvVars(mergedMcp) : {});
-      console.log(`[claude-code] switchProfile MCP re-merge: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
+      providerLog(`[claude-code] switchProfile MCP re-merge: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
 
       // Update SDK options for next resume
       state.sdkOptions.systemPrompt = systemPrompt;
@@ -1289,7 +1290,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       session.lastEventAt = Date.now();
       eventCount++;
       if (eventCount === 1) {
-        console.log(`[claude-code] FIRST EVENT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (type=${m.type} sub=${m.subtype ?? ""})`);
+        providerLog(`[claude-code] FIRST EVENT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (type=${m.type} sub=${m.subtype ?? ""})`);
       }
 
       // Track thinking duration
@@ -1315,7 +1316,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       // rekeySession renames the row if SDK provides a different ID.
       if (m.type === "system" && m.subtype === "init" && m.session_id && !initSeen) {
         initSeen = true;
-        console.log(`[claude-code] INIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events so far)`);
+        providerLog(`[claude-code] INIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events so far)`);
         const realId = m.session_id;
         if (!state.isBranch && state.resumeTarget && realId !== state.resumeTarget) {
           const reason = `Claude Code refused resume target ${state.resumeTarget} and returned ${realId}; refusing to continue without the original context`;
@@ -1372,7 +1373,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           m.subtype = "interrupted";
           m.interrupted = true;
         }
-        console.log(`[claude-code] RESULT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events total)`);
+        providerLog(`[claude-code] RESULT for ${session.sessionId} after ${Date.now() - spawnedAt}ms (${eventCount} events total)`);
         m.harness_duration_ms = Date.now() - session.turnStartedAt;
         if (state.thinkingDurationMs) {
           m.thinking_duration_ms = state.thinkingDurationMs;
@@ -1405,7 +1406,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
           }
         }
         const ctxWindow = m.modelUsage ? (Object.values(m.modelUsage as Record<string, any>)[0] as any)?.contextWindow : null;
-        console.log(`[claude-code] CONTEXT: tokens_used=${m.context_tokens_used ?? "none"} window=${ctxWindow ?? "none"}`);
+        providerLog(`[claude-code] CONTEXT: tokens_used=${m.context_tokens_used ?? "none"} window=${ctxWindow ?? "none"}`);
 
         session.costUsd += m.total_cost_usd ?? 0;
         session.numTurns += m.num_turns ?? 0;
@@ -1505,7 +1506,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
       }
       ctx.emitEvent(m);
     }
-    console.log(`[claude-code] DRAIN EXIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms, status=${session.status}, events=${eventCount}`);
+    providerLog(`[claude-code] DRAIN EXIT for ${session.sessionId} after ${Date.now() - spawnedAt}ms, status=${session.status}, events=${eventCount}`);
 
     if (!resultSeen && session.status === "interrupting") {
       const interruptedResult = {
@@ -1565,7 +1566,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     const wasAlreadyIdle = session.status === "idle";
     const wasAlreadyError = session.status === "error" || !!session.error;
     if (isAbort || wasAlreadyIdle || wasAlreadyError) {
-      console.log(`[claude-code] aborted ${session.sessionId}`);
+      providerLog(`[claude-code] aborted ${session.sessionId}`);
       try { state.input.close(); } catch { /* ignore */ }
       try { state.queryObj?.close(); } catch { /* ignore */ }
       state.queryObj = null;
@@ -1642,7 +1643,7 @@ async function drainEvents(ctx: TurnContext, state: ClaudeCodeState, q: AsyncIte
     }
 
     if (session.pendingDispatch.length > 0) {
-      console.log(`[claude-code] ${session.pendingDispatch.length} pending after drain exit, restarting ${session.sessionId}`);
+      providerLog(`[claude-code] ${session.pendingDispatch.length} pending after drain exit, restarting ${session.sessionId}`);
 
       // Drain exited — subprocess is dead, cold start unavoidable
       const next = session.pendingDispatch.shift()!.content;

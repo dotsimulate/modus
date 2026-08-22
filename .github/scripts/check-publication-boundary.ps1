@@ -62,7 +62,7 @@ foreach ($path in $tracked) {
     }
 }
 
-foreach ($requiredLock in @("bun.lock", "harness/bun.lock", "harness/ui/bun.lock", "desktop/package-lock.json", "desktop/src-tauri/Cargo.lock")) {
+foreach ($requiredLock in @("bun.lock", "harness/bun.lock", "harness/ui/bun.lock", "desktop/bun.lock", "desktop/src-tauri/Cargo.lock", "desktop/cli-launcher/Cargo.lock")) {
     if (-not (Test-Path -LiteralPath $requiredLock -PathType Leaf)) {
         $violations.Add("missing dependency lock: $requiredLock")
     }

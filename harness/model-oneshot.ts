@@ -313,7 +313,7 @@ let liveCompleter: OneShotCompleter | null = null;
  */
 async function getLiveCompleter(): Promise<OneShotCompleter> {
   if (liveCompleter) return liveCompleter;
-  const { completeSimple } = await import("@mariozechner/pi-ai");
+  const { completeSimple } = await import("@earendil-works/pi-ai");
   liveCompleter = ((model, context, options) =>
     completeSimple(model as any, context as any, options as any)) as OneShotCompleter;
   return liveCompleter;

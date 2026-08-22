@@ -1,6 +1,12 @@
 {
   "name": "modus-root",
   "private": true,
+  "packageManager": "bun@1.3.12",
+  "scripts": {
+    "setup": "bun run harness/cli.ts setup",
+    "dev": "bun run harness/cli.ts dev",
+    "dev:browser": "bun run harness/cli.ts dev --browser"
+  },
   "dependencies": {
     "bun-pty": "^0.4.8"
   }

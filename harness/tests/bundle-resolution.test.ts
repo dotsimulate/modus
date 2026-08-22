@@ -11,7 +11,7 @@ import { join } from "node:path";
  * runs perfectly in dev while making the installer unbuildable.
  *
  * That is exactly what happened: `model-oneshot.ts` required
- * `@mariozechner/pi-ai`, whose exports map declares only an "import"
+ * `@earendil-works/pi-ai`, whose exports map declares only an "import"
  * condition, and the desktop build broke for a day with no other signal. CI
  * cannot catch it either — it builds the Rust crate against non-packaging
  * fixtures and never runs the real staging step.

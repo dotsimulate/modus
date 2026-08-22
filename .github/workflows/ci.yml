@@ -1,6 +1,17 @@
 name: CI
 
+# Source-tree gate, not release qualification. Packaging, signing, installer
+# launch, upgrade/rollback, and platform qualification remain separate
+# (RELEASES.md).
+#
+# Private solo phase: pushes to main are a post-push alarm. They cannot stop
+# the commit from landing. pull_request and workflow_dispatch run the full job
+# set. The production UI build and desktop Rust job are skipped on main pushes
+# whose trees they do not cover; .github/ changes fail toward running extras.
+
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -12,8 +23,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: Classify changed paths
+    runs-on: windows-latest
+    timeout-minutes: 10
+    outputs:
+      ui_build: ${{ steps.classify.outputs.ui_build }}
+      rust: ${{ steps.classify.outputs.rust }}
+      reason: ${{ steps.classify.outputs.reason }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Fetch push base for path diff
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        continue-on-error: true
+        run: git fetch --no-tags --prune --depth=1 origin ${{ github.event.before }}
+      - name: Classify
+        id: classify
+        shell: pwsh
+        env:
+          CI_EVENT_NAME: ${{ github.event_name }}
+          CI_BEFORE_SHA: ${{ github.event.before }}
+          CI_SHA: ${{ github.sha }}
+        run: ./.github/scripts/classify-ci-paths.ps1
+
   bun-and-ui:
     name: Bun tests, typechecks, and UI build
+    needs: classify
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -47,6 +83,20 @@ jobs:
       - name: Install UI dependencies
         working-directory: harness/ui
         run: bun install --frozen-lockfile
+      - name: Install desktop tooling dependencies
+        working-directory: desktop
+        run: bun install --frozen-lockfile
+      - name: Audit root dependencies
+        run: bun audit
+      - name: Audit harness dependencies
+        working-directory: harness
+        run: bun audit
+      - name: Audit UI dependencies
+        working-directory: harness/ui
+        run: bun audit
+      - name: Audit desktop tooling dependencies
+        working-directory: desktop
+        run: bun audit
       - name: Enforce publication boundary
         shell: pwsh
         run: ./.github/scripts/check-publication-boundary.ps1
@@ -60,11 +110,14 @@ jobs:
       - name: Typecheck UI build tooling
         run: bun x tsc -p harness/ui/tsconfig.node.json --noEmit
       - name: Build production UI
+        if: needs.classify.outputs.ui_build == 'true'
         working-directory: harness/ui
         run: bun run build
 
   rust:
     name: Rust format, lint, test, and build
+    needs: classify
+    if: needs.classify.outputs.rust == 'true'
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -124,3 +177,11 @@ jobs:
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked
       - name: Build
         run: cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked
+      - name: Format check (cli-launcher)
+        run: cargo fmt --manifest-path desktop/cli-launcher/Cargo.toml --check
+      - name: Clippy (cli-launcher)
+        run: cargo clippy --manifest-path desktop/cli-launcher/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Test (cli-launcher)
+        run: cargo test --manifest-path desktop/cli-launcher/Cargo.toml --locked
+      - name: Build (cli-launcher)
+        run: cargo build --manifest-path desktop/cli-launcher/Cargo.toml --locked

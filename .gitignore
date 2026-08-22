@@ -10,10 +10,11 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# Bun's root, harness, and UI text lockfiles are cross-platform release inputs.
+# Bun's package text lockfiles are cross-platform release inputs.
 # Keep move-local/generated locks ignored unless a move explicitly owns one.
 bun.lock
 !/bun.lock
+!/desktop/bun.lock
 !/harness/bun.lock
 !/harness/ui/bun.lock
 uv.lock
@@ -31,6 +32,7 @@ build/
 target/
 desktop/src-tauri/gen/schemas/
 *.tgz
+*.tsbuildinfo
 
 # Environment / secrets
 .env

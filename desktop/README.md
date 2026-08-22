@@ -184,6 +184,25 @@ signature public key are compile-time release inputs and are absent from
 ordinary builds. The withdrawn unsigned `v0.1.0` build has no updater, so a
 future signed bridge release must be installed manually after qualification.
 
+## Development
+
+Run the complete native development stack with one command:
+
+```powershell
+modus dev
+```
+
+This requires Bun plus the Rust/Cargo toolchain. `modus setup` installs the
+root, harness, UI, and desktop JavaScript dependencies from a source checkout.
+`bun run dev` from the repository root is the checkout-bound fallback.
+
+Tauri's `beforeDevCommand` runs `stage-managed-backend.ts --dev`. That stages
+the managed backend and CLI, starts Vite on the configured development URL, and
+then opens the standalone application. React and CSS changes hot-reload in the
+window. Restart the command after backend source changes so the managed bundle
+is staged again. No separately started browser harness and no installer are
+part of this loop.
+
 ## Build
 
 The staging command production-builds the UI, bundles the Bun server and CLI,
@@ -192,20 +211,20 @@ target-triple-named Bun and `modus` sidecars where Tauri expects them:
 
 ```powershell
 cd desktop
-npm ci
-npm run stage:backend
+bun install --frozen-lockfile
+bun run stage:backend
 ```
 
 Build the release executable plus its adjacent sidecar/resources:
 
 ```powershell
-npm run build
+bun run build
 ```
 
 Build the actual per-user NSIS package:
 
 ```powershell
-npm run build:bundle
+bun run build:bundle
 ```
 
 Run isolated lifecycle smokes against the release/package layout. These use a

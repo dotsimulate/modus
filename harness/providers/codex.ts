@@ -27,6 +27,7 @@ import { homedir } from "os";
 import { CODEX_BUILTIN_TOOLS, CODEX_TOOL_GROUPS } from "./tool-catalog";
 import { APP_PATHS } from "../app-paths";
 import { providerChildEnv } from "./child-env";
+import { logProviderDiagnostic } from "./provider-diagnostics";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -462,7 +463,7 @@ function writeCodexRulesFile(rules: string[], sessionId: string): string | undef
     mkdirSync(rulesDir, { recursive: true });
     const filePath = join(rulesDir, `harness-${sessionId}.rules`);
     writeFileSync(filePath, rules.join("\n") + "\n", "utf8");
-    console.log(`[codex] wrote rules file: ${filePath} (${rules.length} rules)`);
+    logProviderDiagnostic(`[codex] wrote rules file: ${filePath} (${rules.length} rules)`);
     return filePath;
   } catch (err) {
     console.warn(`[codex] Failed to write rules file for session ${sessionId}:`, err);
@@ -1117,15 +1118,15 @@ async function runTurn(
   let thread: Thread;
   if (state.threadId && isResume) {
     // Resume existing thread
-    console.log(`[codex] resuming thread ${state.threadId} for ${session.sessionId}`);
+    logProviderDiagnostic(`[codex] resuming thread ${state.threadId} for ${session.sessionId}`);
     thread = state.codex.resumeThread(state.threadId, state.threadOptions);
   } else if (state.thread && isResume) {
     // Reuse thread object (same process, multi-turn)
-    console.log(`[codex] reusing thread object for ${session.sessionId}`);
+    logProviderDiagnostic(`[codex] reusing thread object for ${session.sessionId}`);
     thread = state.thread;
   } else {
     // Fresh thread
-    console.log(`[codex] starting fresh thread for ${session.sessionId} (threadId=${state.threadId}, isResume=${isResume})`);
+    logProviderDiagnostic(`[codex] starting fresh thread for ${session.sessionId} (threadId=${state.threadId}, isResume=${isResume})`);
     thread = state.codex.startThread(state.threadOptions);
   }
   state.thread = thread;
@@ -1490,7 +1491,7 @@ async function runTurn(
       ctx.emitEvent({ type: "done" });
       return;
     } else if (isAbort) {
-      console.log(`[codex] aborted ${session.sessionId}`);
+      logProviderDiagnostic(`[codex] aborted ${session.sessionId}`);
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
       session.abortController = new AbortController();

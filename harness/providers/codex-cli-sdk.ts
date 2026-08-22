@@ -7,6 +7,7 @@ import readline from "readline";
 import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe-errors";
 import { providerChildEnv } from "./child-env";
 import { resolveCli } from "./resolve-cli";
+import { logProviderDiagnostic } from "./provider-diagnostics";
 
 type SpawnFn = typeof spawn;
 
@@ -163,7 +164,7 @@ function supportsFeatureFlags(executable: string): boolean {
     const output = new TextDecoder().decode(probe.stdout);
     supported = codexVersionSupportsFeatureFlags(output) ?? true;
     if (!supported) {
-      console.log(`[codex] ${output.trim() || executable} predates feature flags; skipping --enable/--disable`);
+      logProviderDiagnostic(`[codex] ${output.trim() || executable} predates feature flags; skipping --enable/--disable`);
     }
   } catch {
     supported = true;
