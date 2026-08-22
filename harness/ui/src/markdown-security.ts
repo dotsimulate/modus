@@ -15,12 +15,23 @@ export const mermaidSecurityConfig = {
   htmlLabels: false,
 };
 
+// rehype-sanitize sees `D:/...` as protocol `D` and removes the href before
+// React Markdown's later URL transform can classify it as a local path. Permit
+// one-letter candidates through this first layer; markdownUrlTransform still
+// rejects anything that is not actually `[A-Za-z]:[/\\]...`, and keeps every
+// other scheme behind React Markdown's default sanitizer.
+const windowsDriveProtocolCandidates = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"];
+
 export const markdownSanitizeSchema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames ?? []), "pasted"],
   attributes: {
     ...defaultSchema.attributes,
     pasted: [],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    href: [...(defaultSchema.protocols?.href ?? []), ...windowsDriveProtocolCandidates],
   },
 };
 

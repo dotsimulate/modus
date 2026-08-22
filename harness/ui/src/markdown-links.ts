@@ -23,6 +23,7 @@
  */
 
 import type { ContextMenuItem } from "./components/ContextMenu";
+import { defaultUrlTransform } from "react-markdown";
 
 /** `C:\src` / `C:/src` — also the reason a scheme test cannot run first. */
 const WINDOWS_DRIVE = /^[A-Za-z]:[\\/]/;
@@ -125,6 +126,72 @@ export function classifyLinkTarget(rawHref: string): MarkdownLinkTarget {
   if (/\.[A-Za-z0-9]{1,8}$/.test(path)) return localTarget(href);
 
   return { kind: "unsupported" };
+}
+
+/**
+ * After rehype-sanitize admits a one-letter drive candidate, React Markdown's
+ * own URL transform would still treat it as an unsafe URI scheme. Preserve
+ * only destinations proven to be local paths; everything else, including image
+ * sources and unsupported schemes, stays behind the library's sanitizer.
+ */
+export function markdownUrlTransform(value: string, key: string): string {
+  if (key === "href" && classifyLinkTarget(value).kind === "local") return value;
+  return defaultUrlTransform(value);
+}
+
+function resolveRelativePath(sourceFile: string, relativePath: string): string {
+  const source = sourceFile.replace(/\\/g, "/");
+  const relative = relativePath.replace(/\\/g, "/");
+  const sourceSlash = source.lastIndexOf("/");
+  const combined = `${sourceSlash >= 0 ? source.slice(0, sourceSlash + 1) : ""}${relative}`;
+
+  let prefix = "";
+  let body = combined;
+  const drive = combined.match(/^[A-Za-z]:\//)?.[0];
+  const unc = combined.match(/^\/\/[^/]+\/[^/]+\/?/)?.[0];
+  if (drive) {
+    prefix = drive;
+    body = combined.slice(drive.length);
+  } else if (unc) {
+    prefix = unc.endsWith("/") ? unc : `${unc}/`;
+    body = combined.slice(unc.length);
+  } else if (combined.startsWith("/")) {
+    prefix = "/";
+    body = combined.slice(1);
+  }
+
+  const parts: string[] = [];
+  for (const part of body.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      if (parts.length > 0 && parts[parts.length - 1] !== "..") parts.pop();
+      else if (!prefix) parts.push(part);
+      continue;
+    }
+    parts.push(part);
+  }
+  return `${prefix}${parts.join("/")}`;
+}
+
+/**
+ * Classify a rendered link and, for a Markdown file preview, resolve relative
+ * paths against that file rather than the active session CWD. Chat messages do
+ * not provide a source file and retain the normal CWD-relative behavior.
+ */
+export function resolveMarkdownLinkTarget(
+  rawHref: string,
+  sourceFile?: string,
+): MarkdownLinkTarget {
+  const target = classifyLinkTarget(rawHref);
+  if (
+    target.kind !== "local"
+    || target.absolute
+    || !sourceFile
+    || target.path.startsWith("~/")
+  ) return target;
+
+  const path = resolveRelativePath(sourceFile, target.path);
+  return { ...target, path, absolute: isAbsolutePath(path) };
 }
 
 function localTarget(href: string): MarkdownLinkTarget {

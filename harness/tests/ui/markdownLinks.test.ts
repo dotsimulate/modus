@@ -4,6 +4,8 @@ import {
   classifyLinkTarget,
   fileManagerName,
   isAbsolutePath,
+  markdownUrlTransform,
+  resolveMarkdownLinkTarget,
   splitLocalPath,
   type LinkMenuActions,
   type LinkMenuCapabilities,
@@ -95,6 +97,62 @@ describe("classifyLinkTarget", () => {
     expect(classifyLinkTarget("   ")).toEqual({ kind: "unsupported" });
     expect(classifyLinkTarget("#section-two")).toEqual({ kind: "unsupported" });
     expect(classifyLinkTarget("plainword")).toEqual({ kind: "unsupported" });
+  });
+});
+
+describe("markdownUrlTransform", () => {
+  it("preserves Windows hrefs that react-markdown otherwise erases", () => {
+    expect(markdownUrlTransform("D:/TOOLSHELF/modus/README.md", "href")).toBe(
+      "D:/TOOLSHELF/modus/README.md",
+    );
+    expect(markdownUrlTransform("C:\\src\\main.ts", "href")).toBe("C:\\src\\main.ts");
+  });
+
+  it("keeps unsupported schemes and image sources behind the default sanitizer", () => {
+    expect(markdownUrlTransform("javascript:alert(1)", "href")).toBe("");
+    expect(markdownUrlTransform("D:/secrets/image.png", "src")).toBe("");
+  });
+
+  it("leaves ordinary web and relative links unchanged", () => {
+    expect(markdownUrlTransform("https://example.com/docs", "href")).toBe("https://example.com/docs");
+    expect(markdownUrlTransform("docs/guide.md", "href")).toBe("docs/guide.md");
+  });
+});
+
+describe("Markdown file-relative links", () => {
+  it("resolves bare and dot-relative links beside the displayed Windows file", () => {
+    expect(resolveMarkdownLinkTarget("SUPPORT.md", "D:/TOOLSHELF/modus/README.md")).toMatchObject({
+      kind: "local",
+      path: "D:/TOOLSHELF/modus/SUPPORT.md",
+      absolute: true,
+    });
+    expect(resolveMarkdownLinkTarget("./moves.md", "D:\\TOOLSHELF\\modus\\harness\\docs\\pages.md")).toMatchObject({
+      path: "D:/TOOLSHELF/modus/harness/docs/moves.md",
+    });
+  });
+
+  it("normalizes parent traversal for absolute and checkout-relative source files", () => {
+    expect(resolveMarkdownLinkTarget("../README.md", "/srv/modus/docs/guide.md")).toMatchObject({
+      path: "/srv/modus/README.md",
+      absolute: true,
+    });
+    expect(resolveMarkdownLinkTarget("../README.md", "harness/docs/guide.md")).toMatchObject({
+      path: "harness/README.md",
+      absolute: false,
+    });
+  });
+
+  it("does not rewrite absolute, home-relative, or web targets", () => {
+    expect(resolveMarkdownLinkTarget("C:/other/file.md", "D:/repo/README.md")).toMatchObject({
+      path: "C:/other/file.md",
+    });
+    expect(resolveMarkdownLinkTarget("~/notes.md", "D:/repo/README.md")).toMatchObject({
+      path: "~/notes.md",
+    });
+    expect(resolveMarkdownLinkTarget("https://example.com", "D:/repo/README.md")).toEqual({
+      kind: "web",
+      url: "https://example.com",
+    });
   });
 });
 

@@ -281,6 +281,31 @@ describe("eventReducer turn stats", () => {
     expect(state.messages.at(-1)?.timestamp).toBe(9_000);
   });
 
+  test("preserves visible response boundaries in the full-turn clipboard text", () => {
+    let state = createInitialState("ses-copy");
+    state = reduceEvent(state, {
+      type: "assistant",
+      message: { content: [{ type: "text", text: "I checked the repository." }] },
+    }, 1);
+    state = reduceEvent(state, {
+      type: "assistant",
+      message: { content: [{ type: "text", text: "The documentation is consistent." }] },
+    }, 2);
+    state = reduceEvent(state, {
+      type: "assistant",
+      message: { content: [{ type: "text", text: "Done." }] },
+    }, 3);
+    state = reduceEvent(state, result, 4);
+
+    expect(state.messages.at(-1)?.turnCopy?.text).toBe(
+      "I checked the repository.\n\nThe documentation is consistent.\n\nDone.",
+    );
+    // Rendering still uses the provider-compatible flat field.
+    expect(state.messages.at(-1)?.content).toBe(
+      "I checked the repository.The documentation is consistent.Done.",
+    );
+  });
+
   test("does not reach back past the user prompt of a turn that produced nothing", () => {
     let state = createInitialState("ses-test");
     state.messages.push({ id: "a1", role: "assistant", content: "answered", timestamp: 1 });

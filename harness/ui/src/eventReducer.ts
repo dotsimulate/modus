@@ -13,6 +13,7 @@ import { nextMsgId } from "../../sdk/index";
 import { turnMetaFromResultEvent } from "../../turn-meta";
 import { providerErrorDisplayText } from "../../provider-error";
 import { userAuthoredMessageText } from "./move-context";
+import { copyTextFromBlocks } from "./message-copy";
 
 export type ReducerState = {
   sessionId: string;
@@ -1131,8 +1132,10 @@ function reduceResult(s: ReducerState, m: any, ts: number): ReducerState {
       const msg = msgs[i];
       if (msg.role === "user") break;
       if (msg.role === "assistant" && !msg.meta) {
-        if (msg.content) turnText = msg.content + (turnText ? "\n\n" + turnText : "");
-        if (msg.thinking) turnThinking = msg.thinking + (turnThinking ? "\n\n" + turnThinking : "");
+        const copyText = copyTextFromBlocks(msg.contentBlocks, "text") ?? msg.content;
+        const copyThinking = copyTextFromBlocks(msg.contentBlocks, "thinking") ?? msg.thinking;
+        if (copyText) turnText = copyText + (turnText ? "\n\n" + turnText : "");
+        if (copyThinking) turnThinking = copyThinking + (turnThinking ? "\n\n" + turnThinking : "");
         if (msg.toolCalls?.length) turnToolCalls.unshift(...msg.toolCalls);
       }
     }
