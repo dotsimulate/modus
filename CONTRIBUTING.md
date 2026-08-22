@@ -17,15 +17,10 @@ migration consequences explicitly.
 ## Development setup
 
 Install [Bun](https://bun.sh/) and at least one provider CLI if the change needs
-provider integration testing. Then use the platform setup command from the
-[README](README.md):
+provider integration testing. Then run the repository setup command:
 
 ```bash
-./modus.sh setup
-```
-
-```powershell
-.\modus.bat setup
+bun run setup
 ```
 
 The backend is under `harness/`, the React frontend is under
@@ -45,8 +40,21 @@ For a verification-only install, use:
 bun install --frozen-lockfile
 bun install --cwd harness --frozen-lockfile
 bun install --cwd harness/ui --frozen-lockfile
-npm --prefix desktop ci
+bun install --cwd desktop --frozen-lockfile
 ```
+
+The repository uses Bun lockfiles for every JavaScript package. Do not introduce
+a second package-manager lockfile for the same manifest.
+
+Run the native development product from the repository root:
+
+```bash
+modus dev
+```
+
+`bun run dev` is the checkout-bound fallback. Both launch Tauri, stage its managed
+backend, and start Vite in one command lifecycle. The explicit browser-only escape
+hatch is `modus dev --browser`.
 
 If a dependency change intentionally updates a lockfile, explain why in the
 pull request and include relevant audit results.
@@ -73,6 +81,7 @@ cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked
 cargo fmt --manifest-path desktop/cli-launcher/Cargo.toml --check
 cargo clippy --manifest-path desktop/cli-launcher/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path desktop/cli-launcher/Cargo.toml --locked
+cargo build --manifest-path desktop/cli-launcher/Cargo.toml --locked
 ```
 
 Run the publication-boundary check before requesting review:
@@ -90,6 +99,23 @@ fake-Tailscale packaged smoke harness.
 The UI currently has known historical lint debt, so lint is not yet a required
 baseline gate. New or modified code should nevertheless avoid introducing new
 lint failures; a clean enforced baseline remains release-readiness work.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` is a source-tree gate, not release qualification.
+Packaging, signing, installer launch, upgrade/rollback, and platform
+qualification remain separate; see [RELEASES.md](RELEASES.md).
+
+On `main` pushes, CI is a post-push alarm: it cannot stop the commit from
+landing. Pull requests and `workflow_dispatch` run the full job set. Push
+alarms always run the publication-boundary check, harness tests, and harness
+and UI typechecks. They skip the production UI build and the desktop Rust job
+when those trees are untouched. Changes under `.github/` fail toward running
+the extra checks.
+
+Trigger a full clean-runner source qualification from Actions with
+`workflow_dispatch`. The workflow is secret-free and uses read-only
+`GITHUB_TOKEN` permissions.
 
 ## Trust and security expectations
 

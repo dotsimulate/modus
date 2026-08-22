@@ -1,8 +1,8 @@
 ---
 title: Release, Signing, and Packaging
 audience: dev
-lastUpdated: 2026-08-19
-covers: desktop/stage-managed-backend.ts desktop/tests/packaged-lifecycle-smoke.ps1 desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.windows.conf.json desktop/src-tauri/tauri.signing.conf.json desktop/src-tauri/src/updates.rs desktop/package.json .github/workflows/ci.yml
+lastUpdated: 2026-08-21
+covers: desktop/stage-managed-backend.ts desktop/tests/packaged-lifecycle-smoke.ps1 desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.windows.conf.json desktop/src-tauri/tauri.signing.conf.json desktop/src-tauri/src/updates.rs desktop/package.json .github/workflows/ci.yml .github/scripts/classify-ci-paths.ps1 desktop/cli-launcher/Cargo.toml
 ---
 
 # Release, Signing, and Packaging
@@ -26,10 +26,10 @@ All from `desktop/`:
 
 | Command | Produces |
 |---|---|
-| `npm run stage:backend` | staged resources only — the fastest way to prove a staging change |
-| `npm run build` | `tauri build --no-bundle` — a runnable executable plus adjacent sidecar and resources |
-| `npm run build:bundle` | the above plus the platform package |
-| `npm run build:signed` | `build:bundle` merged with `src-tauri/tauri.signing.conf.json` |
+| `bun run stage:backend` | staged resources only — the fastest way to prove a staging change |
+| `bun run build` | `tauri build --no-bundle` — a runnable executable plus adjacent sidecar and resources |
+| `bun run build:bundle` | the above plus the platform package |
+| `bun run build:signed` | `build:bundle` merged with `src-tauri/tauri.signing.conf.json` |
 
 Staging runs automatically as Tauri's `beforeBuildCommand`, so `stage:backend`
 is not a required separate step before a build — it exists so staging can be
@@ -38,15 +38,22 @@ exercised on its own.
 For core UI work, use the source-development loop instead of rebuilding an
 installer after every edit:
 
-- `bun run dev` from `harness/` starts the browser-oriented development harness;
-  `bun run watch:dev` adds source watching.
-- `bun run dev` from `harness/ui/` starts Vite's UI development server;
-  `bun run preview` serves the most recent production UI build.
+- `modus dev` from the checkout (or root `bun run dev`) starts the
+  standalone Tauri app. Its `beforeDevCommand` stages the managed backend and
+  starts Vite, so the native window, backend, and frontend share one command
+  lifecycle. Frontend changes hot-reload; backend changes require a restart to
+  restage the bundle.
+- `modus dev --browser` keeps the browser-oriented harness available for work
+  that explicitly does not need the native shell. It is local-only and never
+  changes Tailscale Serve state.
+- `bun run preview` from `harness/ui/` serves the most recent production UI
+  build; it is not the normal product-development surface.
 
-These commands exercise the checkout, not the installed desktop application.
-An installed build remains the frozen staged snapshot described below; source
-edits do not hot-reload into it, and no production debug path loads UI code from
-the checkout.
+Development commands exercise the checkout. If the installed console launcher
+wins command resolution, it delegates `dev`, `setup`, and `update` back to a
+recognized checkout at or above the current directory. An installed application
+remains the frozen staged snapshot described below; source edits do not hot-reload
+into it.
 
 **Check the artifact, not the exit code.** A pipeline that ends in `| tail`
 reports the pipeline's status, not the build's, and a failed Tauri build has
@@ -83,9 +90,21 @@ That separation is what makes a `.dmg` or an AppImage possible at all; a
 `hardenedRuntime`, `entitlements`, `minimumSystemVersion`, or `dmg` block. A
 macOS package is first contact, not a regression when it misbehaves.
 
-**Both CI jobs are `windows-latest`** (`.github/workflows/ci.yml`), so no Linux
-or macOS build has ever run in automation. Treat any non-Windows build result
-accordingly.
+The source CI workflow (`.github/workflows/ci.yml`) is a tree-coherence gate,
+not package qualification. A green run does not authorize an installer.
+Triggers:
+
+- `push` to `main` — post-push alarm. It cannot stop the commit from landing.
+  Publication-boundary, harness tests, and harness/UI typechecks always run.
+  The production UI build and the desktop Rust job (src-tauri plus
+  `desktop/cli-launcher`) run only when their inputs change. Changes under
+  `.github/` fail toward running those extras.
+- `pull_request` and `workflow_dispatch` — full job set. Use
+  `workflow_dispatch` for a clean-runner source qualification.
+
+**Verification jobs are `windows-latest`**, so no Linux or macOS build has ever
+run in automation. Treat any non-Windows build result accordingly. The workflow
+declares `contents: read` and references no secrets.
 
 ## Signing
 

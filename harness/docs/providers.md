@@ -468,6 +468,13 @@ Credential-bearing files are written to process-private storage:
   a dead process are pruned at startup; directories owned by a live process are
   left alone.
 
+### Provider diagnostics
+
+Provider lifecycle and timing chatter is off by default. Set
+`MODUS_PROVIDER_DIAGNOSTICS=1` before starting the harness to emit it while
+investigating provider startup, resume, MCP registration, or process teardown.
+Actionable provider warnings and errors remain enabled without this flag.
+
 **Source**: `providers/claude-code.ts` (MCP merge), `providers/cursor.ts`
 (MCP via .cursor/mcp.json), `providers/codex.ts` (MCP via config object),
 `providers/antigravity.ts`, `providers/antigravity-plugin.ts`,

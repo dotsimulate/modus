@@ -3,9 +3,9 @@
 Unsigned Windows installers trigger a SmartScreen warning and show "Unknown publisher" in the
 UAC prompt. This document describes how signing is wired into the Modus desktop build.
 
-Signing is **opt-in**. `npm run build:bundle` is unchanged and produces an unsigned installer
+Signing is **opt-in**. `bun run build:bundle` is unchanged and produces an unsigned installer
 with no credentials present, so contributors and CI can build without any signing setup.
-`npm run build:signed` merges `src-tauri/tauri.signing.conf.json`, which routes every artifact
+`bun run build:signed` merges `src-tauri/tauri.signing.conf.json`, which routes every artifact
 through `src-tauri/sign-windows.cmd`.
 
 No account-specific value is committed. The wrapper reads everything from the environment, so
@@ -98,7 +98,7 @@ committed.
 
 ```powershell
 cd desktop
-npm run build:signed
+bun run build:signed
 ```
 
 The wrapper refuses to run when any variable is unset or `trusted-signing-cli` is not on PATH.

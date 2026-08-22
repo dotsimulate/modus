@@ -46,7 +46,7 @@ import {
   ProviderProcessOwner,
   type ProviderProcessLease,
 } from "./provider-process-owner";
-import { redactProviderDiagnostic } from "./provider-diagnostics";
+import { logProviderDiagnostic, redactProviderDiagnostic } from "./provider-diagnostics";
 import { providerChildEnv } from "./child-env";
 import { cliExists, resolveCli } from "./resolve-cli";
 
@@ -249,7 +249,7 @@ function buildMcpArgs(ctx: TurnContext, privateTempDir: () => string): string[] 
       const args = (config as any).args as string[] | undefined;
       if ((config as any).command === "npx" && args?.[0] === "mcp-remote" && args[1]?.startsWith("http")) {
         mcpEntries[name] = { type: "http", url: args[1] };
-        console.log("[claude-code-pty] converted an mcp-remote server to native HTTP");
+        logProviderDiagnostic("[claude-code-pty] converted an mcp-remote server to native HTTP");
       } else {
         mcpEntries[name] = {
           command: (config as any).command,
@@ -268,7 +268,7 @@ function buildMcpArgs(ctx: TurnContext, privateTempDir: () => string): string[] 
 
   if (Object.keys(mcpEntries).length === 0) return [];
   const mcpJson = JSON.stringify({ mcpServers: mcpEntries });
-  console.log(`[claude-code-pty] configured ${Object.keys(mcpEntries).length} MCP server(s)`);
+  logProviderDiagnostic(`[claude-code-pty] configured ${Object.keys(mcpEntries).length} MCP server(s)`);
   // Write to temp file instead of passing inline JSON as CLI arg.
   // On Windows, inline JSON gets mangled by cmd.exe shell escaping.
   const mcpFile = writeSensitiveTempFile(privateTempDir(), "mcp.json", mcpJson);
@@ -395,7 +395,7 @@ function spawnClaude(state: PtyState, sessionId?: string): {
   if (state.processOwner.current()) {
     throw new Error("refusing to spawn a replacement Claude PTY before the prior process closed");
   }
-  console.log(`[claude-code-pty] spawning provider with ${state.spawnArgs.length} arguments`);
+  logProviderDiagnostic(`[claude-code-pty] spawning provider with ${state.spawnArgs.length} arguments`);
 
   let proc: ChildProcess;
   try {
@@ -452,7 +452,7 @@ function spawnClaude(state: PtyState, sessionId?: string): {
   proc.stdout?.on("data", (chunk: Buffer) => {
     stdoutChunks++;
     if (stdoutChunks <= 3) {
-      console.log(`[claude-code-pty] stdout chunk #${stdoutChunks} (${chunk.length} bytes)`);
+      logProviderDiagnostic(`[claude-code-pty] stdout chunk #${stdoutChunks} (${chunk.length} bytes)`);
     }
     if (state.terminal) state.terminal.pushData(new Uint8Array(chunk));
   });
@@ -607,7 +607,7 @@ function requestPtyRestart(ctx: TurnContext, state: PtyState, content?: MessageC
 
   state.restartPending = true;
   state.needsRestart = true;
-  console.log(`[claude-code-pty] closing process generation ${lease.generation} before config restart`);
+  logProviderDiagnostic(`[claude-code-pty] closing process generation ${lease.generation} before config restart`);
   terminatePtyProcessTree(lease, false);
 
   if (state.forceKillTimer) clearTimeout(state.forceKillTimer);
@@ -636,7 +636,7 @@ function attachPtyExitHandler(
 
   lease.process.on("exit", (code) => {
     if (!state.processOwner.isCurrent(lease)) return;
-    console.log(`[claude-code-pty] ${prefix} process exited (code=${code}) for ${session.sessionId}`);
+    logProviderDiagnostic(`[claude-code-pty] ${prefix} process exited (code=${code}) for ${session.sessionId}`);
     state.needsRestart = true;
     state.processExitCode = code;
     if (session.status === "running" && !state.interrupting && !state.restartPending && !state.disposed) {
@@ -695,7 +695,7 @@ function attachPtyExitHandler(
 
 function restartPtyTurn(ctx: TurnContext, state: PtyState, content: MessageContent): void {
   const { session } = ctx;
-  console.log(`[claude-code-pty] restarting PTY turn for ${session.sessionId} using --resume`);
+  logProviderDiagnostic(`[claude-code-pty] restarting PTY turn for ${session.sessionId} using --resume`);
   if (!state.sessionId || !claudeNativeHistoryExists(state.sessionId)) {
     const reason = `Claude Code PTY native history ${state.sessionId ?? "(unknown)"} is missing; refusing to start a context-free replacement`;
     console.error(`[claude-code-pty] ${reason} modus=${session.sessionId}`);
@@ -756,7 +756,7 @@ async function drainEvents(
   if (!state.processOwner.isCurrent(lease)) return;
 
   state.draining = true;
-  console.log(`[claude-code-pty] drain loop starting for ${session.sessionId}, generation=${lease.generation}`);
+  logProviderDiagnostic(`[claude-code-pty] drain loop starting for ${session.sessionId}, generation=${lease.generation}`);
   let initSeen = false;
   let turnTokens = { input: 0, output: 0, cached: 0, cacheWrite: 0 };
   let turnCount = 0;
@@ -766,7 +766,7 @@ async function drainEvents(
       if (!state.processOwner.isCurrent(lease)) return;
 
       if (!initSeen) {
-        console.log(`[claude-code-pty] first line received (${line.length} characters)`);
+        logProviderDiagnostic(`[claude-code-pty] first line received (${line.length} characters)`);
       }
 
       let m: any;
@@ -774,7 +774,7 @@ async function drainEvents(
         m = JSON.parse(line);
       } catch {
         // Skip non-JSON lines (ANSI, progress, etc.)
-        console.log(`[claude-code-pty] non-JSON provider output received (${line.length} characters)`);
+        logProviderDiagnostic(`[claude-code-pty] non-JSON provider output received (${line.length} characters)`);
         continue;
       }
 
@@ -1021,7 +1021,7 @@ async function drainEvents(
       ctx.emitEvent(m);
     }
 
-    console.log(`[claude-code-pty] drain loop exited for ${session.sessionId}, status=${session.status}, initSeen=${initSeen}`);
+    logProviderDiagnostic(`[claude-code-pty] drain loop exited for ${session.sessionId}, status=${session.status}, initSeen=${initSeen}`);
 
     // Process exited and drain consumed all stdout. If we never saw init,
     // the session is stuck in "starting" — set a proper error now.
@@ -1067,7 +1067,7 @@ async function drainEvents(
     state.draining = false;
     const procExited = lease.process.exitCode !== null;
     if (procExited) {
-      console.log(`[claude-code-pty] process generation ${lease.generation} exited with code ${lease.process.exitCode}`);
+      logProviderDiagnostic(`[claude-code-pty] process generation ${lease.generation} exited with code ${lease.process.exitCode}`);
       state.needsRestart = true;
     }
   }
@@ -1181,7 +1181,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         if (session.status === "starting" && session.abortController === abortController) {
           // If process already exited, let drain loop handle it — don't kill
           if (state.processExitCode !== undefined) {
-            console.log(`[claude-code-pty] startup timeout for ${session.sessionId} but process already exited — drain loop will handle`);
+            logProviderDiagnostic(`[claude-code-pty] startup timeout for ${session.sessionId} but process already exited — drain loop will handle`);
             return;
           }
           const reason = state.stderrBuf
@@ -1203,7 +1203,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         throw new Error("claude-code-pty provider state missing during sendMessage");
       }
       const processOpen = !!state.processOwner.current();
-      console.log(`[claude-code-pty] sendMessage for ${session.sessionId}: status=${session.status} processOpen=${processOpen} needsRestart=${state.needsRestart} restartPending=${state.restartPending} interrupting=${state.interrupting} draining=${state.draining} pending=${session.pendingDispatch?.length}`);
+      logProviderDiagnostic(`[claude-code-pty] sendMessage for ${session.sessionId}: status=${session.status} processOpen=${processOpen} needsRestart=${state.needsRestart} restartPending=${state.restartPending} interrupting=${state.interrupting} draining=${state.draining} pending=${session.pendingDispatch?.length}`);
 
       // A close-gated replacement is already draining. Additional turns queue
       // behind the same replacement rather than spawning another generation.
@@ -1214,7 +1214,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
 
       // If currently running, queue the message
       if (session.status === "running" || (session.status === "starting" && state.draining)) {
-        console.log(`[claude-code-pty] QUEUED message for ${session.sessionId} (status=${session.status})`);
+        logProviderDiagnostic(`[claude-code-pty] QUEUED message for ${session.sessionId} (status=${session.status})`);
         session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
@@ -1223,7 +1223,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       // session-manager already marked the session idle. Queue the follow-up
       // until the old process actually exits, then restart cleanly.
       if (state.interrupting && processOpen) {
-        console.log(`[claude-code-pty] deferring follow-up until interrupted PTY exits for ${session.sessionId}`);
+        logProviderDiagnostic(`[claude-code-pty] deferring follow-up until interrupted PTY exits for ${session.sessionId}`);
         session.pendingDispatch.push(createPendingDispatchItem(content, "next_turn", "sdk"));
         return;
       }
@@ -1235,7 +1235,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
       }
 
       if (state.needsRestart || !processOpen) {
-        console.log(`[claude-code-pty] process needs restart for ${session.sessionId}, using --resume`);
+        logProviderDiagnostic(`[claude-code-pty] process needs restart for ${session.sessionId}, using --resume`);
         restartPtyTurn(ctx, state, content);
         return;
       }
@@ -1256,7 +1256,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         message: { role: "user", content },
       });
 
-      console.log(`[claude-code-pty] writing to live process stdin for ${session.sessionId} (pid=${state.proc?.pid})`);
+      logProviderDiagnostic(`[claude-code-pty] writing to live process stdin for ${session.sessionId} (pid=${state.proc?.pid})`);
       if (!writeMessageToStdin(state, content)) {
         console.error(`[claude-code-pty] failed to write to stdin — process may have died`);
         state.needsRestart = true;
@@ -1323,7 +1323,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         state.forceKillTimer = setTimeout(() => {
           state.forceKillTimer = null;
           if (state.processOwner.isCurrent(lease)) {
-            console.log(`[claude-code-pty] force-killing generation ${lease.generation} after SIGINT timeout`);
+            logProviderDiagnostic(`[claude-code-pty] force-killing generation ${lease.generation} after SIGINT timeout`);
             terminatePtyProcessTree(lease, true);
             state.needsRestart = true;
             session.abortController.abort();
@@ -1340,20 +1340,20 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         state.model = config.model;
         // Model change requires process restart on next turn
         state.needsRestart = true;
-        console.log(`[claude-code-pty] model changed to ${config.model}, will restart on next turn`);
+        logProviderDiagnostic(`[claude-code-pty] model changed to ${config.model}, will restart on next turn`);
       }
       if (config.effort !== undefined && config.effort !== state.effort) {
         state.effort = config.effort || undefined;
         // Effort is a spawn-time CLI flag, so it applies after a process restart.
         state.needsRestart = true;
-        console.log(`[claude-code-pty] effort changed to ${config.effort || "default"}, will restart on next turn`);
+        logProviderDiagnostic(`[claude-code-pty] effort changed to ${config.effort || "default"}, will restart on next turn`);
       }
       if (config.tools !== undefined || config.disallowedTools !== undefined) {
         // Tool toggles are --disallowedTools spawn args, applied on restart.
         // The new override is read from ctx.opts (merged from _configOverrides)
         // when buildSpawnArgs runs for the next turn.
         state.needsRestart = true;
-        console.log(`[claude-code-pty] tool overrides changed, will restart on next turn`);
+        logProviderDiagnostic(`[claude-code-pty] tool overrides changed, will restart on next turn`);
       }
     },
 

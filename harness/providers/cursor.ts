@@ -31,6 +31,7 @@ import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe
 import { hasExited, terminateProcessTree, waitForClose } from "./process-tree";
 import { cursorMcpConfigStore } from "./cursor-mcp-config";
 import { providerChildEnv } from "./child-env";
+import { logProviderDiagnostic } from "./provider-diagnostics";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -307,7 +308,7 @@ function writeCursorMcpConfig(
   const journalPath = cursorMcpConfigStore.install(mcpPath, content);
 
   // Server names only: the config body carries resolved credentials.
-  console.log(`[cursor] wrote MCP config: ${mcpPath} (${Object.keys(cursorMcpServers).length} servers: ${Object.keys(cursorMcpServers).join(", ")})`);
+  logProviderDiagnostic(`[cursor] wrote MCP config: ${mcpPath} (${Object.keys(cursorMcpServers).length} servers: ${Object.keys(cursorMcpServers).join(", ")})`);
   return { mcpPath, journalPath };
 }
 
@@ -537,7 +538,7 @@ async function runTurn(
     env.CURSOR_API_KEY = apiKey;
   }
 
-  console.log(`[cursor] spawning: ${bin} -p --model ${state.model} ${isResume && state.sessionId ? `--resume ${state.sessionId}` : "(new)"}`);
+  logProviderDiagnostic(`[cursor] spawning: ${bin} -p --model ${state.model} ${isResume && state.sessionId ? `--resume ${state.sessionId}` : "(new)"}`);
 
   let proc: ChildProcess;
   try {
@@ -882,7 +883,7 @@ async function runTurn(
       || String(err).includes("abort") || state.abortController.signal.aborted;
 
     if (isAbort) {
-      console.log(`[cursor] aborted ${session.sessionId}`);
+      logProviderDiagnostic(`[cursor] aborted ${session.sessionId}`);
       session.status = "idle";
       updateSessionStatus(session.sessionId, "idle");
       ctx.emitEvent({ type: "done" });

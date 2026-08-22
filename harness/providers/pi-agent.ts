@@ -10,18 +10,22 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { getModel } from "@mariozechner/pi-ai";
+import { getModel } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
-  createCodingTools,
+  createReadToolDefinition,
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createWriteToolDefinition,
   AuthStorage,
   SessionManager,
   SettingsManager,
   DefaultResourceLoader,
   type AgentSessionEvent,
   type ContextUsage,
-} from "@mariozechner/pi-coding-agent";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+  type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getGlobalConfig, getProfile, type ProviderDefaults } from "../profiles";
@@ -40,6 +44,8 @@ import {
 } from "./pi-model";
 import { listProviderAliases } from "./provider-definition";
 import { getProviderDefinition } from "./provider-definitions";
+import { MODUS_HOME } from "../modus-home";
+import { logProviderDiagnostic as providerLog } from "./provider-diagnostics";
 
 // ── Provider Names ──
 
@@ -48,7 +54,6 @@ const PI_TOOL_GROUPS = [
   { label: "search", tools: ["grep", "find", "ls"] },
   { label: "exec", tools: ["bash"] },
 ] as const;
-
 function buildPiCapabilities(providerName: string): ProviderCapabilities {
   const definition = requirePiProviderDefinition(providerName);
   return {
@@ -230,7 +235,7 @@ export async function fetchDefinitionModelPricing(
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const parsed = parseOpenRouterPricing(await res.json());
     modelPricingCache.set(providerName, parsed);
-    console.log(`[pi-agent] Cached ${parsed.size} model prices for "${providerName}" from ${url}`);
+    providerLog(`[pi-agent] Cached ${parsed.size} model prices for "${providerName}" from ${url}`);
     return parsed.get(modelId) ?? EMPTY;
   } catch (err) {
     console.error(`[pi-agent] Failed to fetch model pricing for "${providerName}" from ${url}:`, err);
@@ -319,7 +324,12 @@ async function readPiExtraBody(
 export function createPiCodingTools(
   cwd: string,
   additionalDirectories: string[],
-  factory: typeof createCodingTools = createCodingTools,
+  factory: (cwd: string) => ToolDefinition<any, any, any>[] = (toolCwd) => [
+    createReadToolDefinition(toolCwd),
+    createBashToolDefinition(toolCwd),
+    createEditToolDefinition(toolCwd),
+    createWriteToolDefinition(toolCwd),
+  ],
 ) {
   const tools = factory(cwd);
   if (!additionalDirectories.length) return tools;
@@ -611,34 +621,31 @@ function translateEvents(
       break;
     }
 
-    case "auto_compaction_start": {
-      console.log(`[pi-agent] ${session.sessionId}: ${event.type}`);
+    case "compaction_start": {
       ctx.emitEvent({
         type: "system",
         subtype: "compacting",
         provider: "pi-agent",
-        reason: (event as any).reason,
+        reason: event.reason,
       });
       break;
     }
 
-    case "auto_compaction_end": {
-      const e = event as any;
-      console.log(`[pi-agent] ${session.sessionId}: ${event.type} result=${e.result}`);
-      if (e.result === "error" || e.errorMessage) {
+    case "compaction_end": {
+      if (event.errorMessage) {
         ctx.emitEvent({
           type: "system",
           subtype: "compact_error",
           provider: "pi-agent",
-          error: e.errorMessage ?? "compaction failed",
+          error: event.errorMessage,
         });
       } else {
         ctx.emitEvent({
           type: "system",
           subtype: "compact_complete",
           provider: "pi-agent",
-          trigger: e.reason ?? "auto",
-          will_retry: !!e.willRetry,
+          trigger: event.reason,
+          will_retry: event.willRetry,
         });
       }
       break;
@@ -646,7 +653,7 @@ function translateEvents(
 
     case "auto_retry_start":
     case "auto_retry_end": {
-      console.log(`[pi-agent] ${session.sessionId}: ${event.type}`);
+      providerLog(`[pi-agent] ${session.sessionId}: ${event.type}`);
       break;
     }
   }
@@ -739,6 +746,7 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
         const additionalRootsPrompt = piAdditionalDirectoriesPrompt(session.additionalDirectories);
         const resourceLoader = new DefaultResourceLoader({
           cwd,
+          agentDir: join(MODUS_HOME, "runtime", "pi-agent"),
           settingsManager,
           systemPrompt: [profile?.prompt, additionalRootsPrompt].filter(Boolean).join("\n\n") || undefined,
           additionalSkillPaths: piAdditionalSkillPaths(cwd, opts.skillScopeKey),
@@ -750,9 +758,9 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
         await resourceLoader.reload();
 
         let mcpConnections: McpConnection[] = [];
-        let mcpTools: import("@mariozechner/pi-coding-agent").ToolDefinition[] = [];
+        let mcpTools: import("@earendil-works/pi-coding-agent").ToolDefinition[] = [];
         if (noTools) {
-          console.log(`[pi-agent] providerControls.pi.noTools enabled; skipping built-in and MCP tools`);
+          providerLog(`[pi-agent] providerControls.pi.noTools enabled; skipping built-in and MCP tools`);
         } else {
           // MCP tools: merge global + project-local + profile
           const mergedMcp = resolveMcpServers({
@@ -761,19 +769,19 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
             profile,
             sessionServers: opts.mcpServers,
           }).servers;
-          console.log(`[pi-agent] MCP servers to connect: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
+          providerLog(`[pi-agent] MCP servers to connect: ${Object.keys(mergedMcp).join(", ") || "(none)"}`);
 
           if (Object.keys(mergedMcp).length > 0) {
             const mcp = await startMcpServers(mergedMcp);
             mcpConnections = mcp.connections;
             mcpTools = mcp.tools;
-            console.log(`[pi-agent] MCP tools registered: ${mcpTools.map(t => t.name).join(", ") || "(none)"}`);
+            providerLog(`[pi-agent] MCP tools registered: ${mcpTools.map(t => t.name).join(", ") || "(none)"}`);
           }
         }
 
         // Built-in coding tools
         const tools = noTools ? [] : createPiCodingTools(cwd, session.additionalDirectories);
-        console.log(`[pi-agent] Built-in tools: ${tools.map((t: any) => t.name).join(", ")}`);
+        providerLog(`[pi-agent] Built-in tools: ${tools.map((t: any) => t.name).join(", ")}`);
 
         const { session: agentSession } = await createAgentSession({
           cwd,
@@ -782,8 +790,8 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
           sessionManager,
           settingsManager,
           resourceLoader,
-          tools,
-          customTools: !noTools && mcpTools.length > 0 ? mcpTools : undefined,
+          noTools: "builtin",
+          customTools: !noTools ? [...tools, ...mcpTools] : undefined,
         });
 
         // Disable auto-retry — harness manages retries at session level
@@ -795,7 +803,7 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
         }
 
         // Log final active tools the LLM sees
-        console.log(`[pi-agent] Active tools for LLM: ${agentSession.getActiveToolNames().join(", ")}`);
+        providerLog(`[pi-agent] Active tools for LLM: ${agentSession.getActiveToolNames().join(", ")}`);
 
         // Subscribe to events and translate
         // Accumulate streamed text/thinking so we can emit assembled assistant
@@ -863,7 +871,7 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
                   subtype: "max_turns_reached",
                   data: { maxTurns, turnCount },
                 });
-                console.log(`[pi-agent] ${session.sessionId}: maxTurns (${maxTurns}) reached — aborting`);
+                providerLog(`[pi-agent] ${session.sessionId}: maxTurns (${maxTurns}) reached — aborting`);
                 agentSession.abort().catch(() => {});
               }
             }

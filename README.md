@@ -59,20 +59,16 @@ git clone https://github.com/dotsimulate/modus.git
 cd modus
 ```
 
-**Linux / macOS:**
+From the repository root on every platform:
 ```bash
-./modus.sh setup
-```
-
-For a fresh Mac user profile, use the full [macOS setup guide](harness/docs/macos-setup.md). It covers Terminal, Homebrew/GitHub auth, Bun PATH setup, Claude Code, Codex, and common first-run errors.
-
-**Windows (PowerShell):**
-```powershell
-.\modus.bat setup
+bun run setup
 ```
 
 This installs dependencies, builds the UI, and registers `modus` as a global command.
 After setup, `modus` works from any directory.
+
+The checked-in `modus.sh` and `modus.bat` wrappers remain equivalent bootstrap
+entry points. For a fresh Mac user profile, use the full [macOS setup guide](harness/docs/macos-setup.md).
 
 These commands describe a source-checkout installation. A locally built or future
 qualified Windows NSIS package installs both Modus Desktop and its own `modus`
@@ -104,7 +100,7 @@ modus setup          # re-run dependency install + UI build
 modus logs [-f]      # show server logs (-f to follow)
 modus remote on|off  # expose modus on your Tailscale tailnet (off by default)
 modus update         # git pull + setup + restart
-modus dev            # dev mode (harness + vite + file watchers)
+modus dev            # native Tauri app + managed backend + Vite hot reload
 modus --version      # print version
 ```
 
@@ -246,21 +242,28 @@ Full architecture and subsystem reference lives in [harness/docs/](harness/docs/
 
 ## Dev Mode
 
-For developing the harness itself (not for end users):
+For developing Modus itself (not for end users), the default is the standalone
+Tauri application:
 
 ```bash
-modus dev              # harness + vite dev server + file watchers
-modus dev --watch      # watchdog with auto-reload on .ts changes
+modus dev              # native app + staged managed backend + Vite hot reload
+modus dev --browser    # legacy browser-oriented harness + Vite stack
 ```
 
-Optional crash notifications via [ntfy.sh](https://ntfy.sh):
-```bash
-MODUS_NOTIFY_TOPIC=your-topic modus dev
-```
+`modus dev` is the canonical source-development command; `bun run dev` from the
+repository root is its checkout-bound fallback. If an installed `modus` launcher
+appears earlier on `PATH`, it recognizes these source-only commands inside a Modus
+checkout and delegates them to that checkout.
+
+Tauri runs `stage-managed-backend.ts --dev`, which stages the backend and starts
+Vite before opening the native window. `Ctrl+C` stops the development process
+tree. Backend source changes require restarting Tauri so they are staged again;
+frontend React/CSS changes hot-reload in the open window.
 
 ## Prerequisites
 
 - [Bun](https://bun.sh), the runtime and package manager
+- Rust/Cargo for native `modus dev` and desktop builds
 - At least one provider backend (see [Providers](#providers) above)
 
 On macOS, see [harness/docs/macos-setup.md](harness/docs/macos-setup.md) for the complete first-run setup.

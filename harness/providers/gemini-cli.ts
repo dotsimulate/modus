@@ -738,8 +738,8 @@ async function runTurn(
         state.abortController.signal,
         promptId,
         maxRounds - round,
-        false,
         round === 0 ? displayContent : undefined,
+        false,
       )) {
         if (isTurnAborted(session, state)) break;
         session.lastEventAt = Date.now();
@@ -880,7 +880,7 @@ async function runTurn(
 
       // ── Execute pending tool calls via Scheduler ──
       const scheduler = new Scheduler({
-        config: state.config!,
+        context: state.config!,
         messageBus: state.config!.getMessageBus(),
         getPreferredEditor: () => undefined,
         schedulerId: `gemini-${session.sessionId}-${round}`,

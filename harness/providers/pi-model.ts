@@ -3,7 +3,7 @@
  * calls, model listing, health checks, and friendly diagnostics.
  */
 
-import type { Model } from "@mariozechner/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import { getGlobalConfig } from "../profiles";
 import { resolveSecret } from "../secrets";
 import {

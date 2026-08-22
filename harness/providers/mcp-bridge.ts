@@ -10,10 +10,11 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import type { ToolDefinition, AgentToolResult } from "@mariozechner/pi-coding-agent";
+import type { ToolDefinition, AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { McpServerConfig } from "../profiles";
 import { resolveSecret } from "../secrets";
 import { providerChildEnv } from "./child-env";
+import { logProviderDiagnostic } from "./provider-diagnostics";
 
 export type McpConnection = {
   name: string;
@@ -41,7 +42,7 @@ export async function startMcpServers(
         tools.push(wrapMcpTool(name, conn.client, tool));
       }
 
-      console.log(`[mcp-bridge] ${name}: connected, ${serverTools.length} tool(s)`);
+      logProviderDiagnostic(`[mcp-bridge] ${name}: connected, ${serverTools.length} tool(s)`);
     } catch (err) {
       console.error(`[mcp-bridge] ${name}: failed to connect —`, err);
     }

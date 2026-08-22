@@ -13,7 +13,7 @@
  *   open [path] Init + start + open browser to project
  *   moves export [path] Create a portable zip of project-local moves
  *   setup       Install dependencies and build UI
- *   dev         Dev mode (harness + vite + file watchers)
+ *   dev         Native desktop dev mode (Tauri + managed backend + Vite)
  *   logs        Tail server output
  *   update      Pull latest + re-setup + restart
  *   maintenance Inspect or apply plan-bound checkpoint storage maintenance
@@ -50,6 +50,8 @@ import {
 } from "./cli-vault";
 import { requireRegisteredVault } from "./vault-registry";
 import { uiDepsAreStale } from "./ui-deps-policy";
+import { validateCommandArguments, type CommandArgumentSpec } from "./cli-arguments";
+import { findSourceCheckout, isSourceOnlyCommand } from "./source-checkout";
 
 // ── Tailscale Serve ──
 //
@@ -271,6 +273,7 @@ function pinConfigured(): boolean {
 
 const HARNESS_DIR = dirname(Bun.fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(HARNESS_DIR, "..");
+const DESKTOP_DIR = join(ROOT_DIR, "desktop");
 const UI_DIR = join(HARNESS_DIR, "ui");
 const UI_SRC_DIR = join(UI_DIR, "src");
 const UI_DIST_DIR = join(UI_DIR, "dist");
@@ -592,6 +595,18 @@ function hasFlag(args: string[], ...flags: string[]): boolean {
   return args.some((a) => flags.includes(a));
 }
 
+function requireCommandArguments(
+  command: string,
+  args: string[],
+  spec: CommandArgumentSpec,
+): void {
+  const error = validateCommandArguments(command, args, spec);
+  if (!error) return;
+  console.error(error);
+  console.error(`Run 'modus ${command} --help' for usage.`);
+  process.exit(1);
+}
+
 function getArg(args: string[], index: number): string | undefined {
   const val = args[index];
   if (val && !val.startsWith("-")) return val;
@@ -667,6 +682,10 @@ async function cmdDaemonSupervise(): Promise<void> {
 }
 
 async function cmdStart(args: string[]): Promise<void> {
+  requireCommandArguments("start", args, {
+    flags: ["-d", "--daemon", "--remote", "--no-remote", "--show-token"],
+    valueFlags: ["--instance"],
+  });
   const daemon = hasFlag(args, "-d", "--daemon");
   const vault = selectedVault(args);
   const vaultRoot = selectedVaultRoot(vault);
@@ -958,6 +977,7 @@ async function cmdStart(args: string[]): Promise<void> {
 }
 
 async function cmdStop(args: string[]): Promise<void> {
+  requireCommandArguments("stop", args, { valueFlags: ["--instance"] });
   const vault = selectedVault(args);
   const vaultRoot = selectedVaultRoot(vault);
   const stateFiles = vaultStateFiles(CONFIG_DIR, vault, vaultRoot ?? undefined);
@@ -1006,7 +1026,13 @@ async function cmdStop(args: string[]): Promise<void> {
 }
 
 async function cmdRemote(args: string[]): Promise<void> {
+  requireCommandArguments("remote", args, { positionals: 1 });
   const sub = getArg(args, 0);
+  if (sub && !["on", "off", "status"].includes(sub)) {
+    console.error(`Unknown remote command: ${sub}`);
+    console.error("Supported: modus remote on | off | status");
+    process.exit(1);
+  }
 
   if (sub === "on") {
     if (!tailscaleInstalled()) {
@@ -1053,6 +1079,7 @@ async function cmdRemote(args: string[]): Promise<void> {
 }
 
 async function cmdStatus(args: string[]): Promise<void> {
+  requireCommandArguments("status", args, { valueFlags: ["--instance"] });
   const vault = selectedVault(args);
   const vaultRoot = selectedVaultRoot(vault);
   const stateFiles = vaultStateFiles(CONFIG_DIR, vault, vaultRoot ?? undefined);
@@ -1093,6 +1120,11 @@ async function cmdStatus(args: string[]): Promise<void> {
 }
 
 async function cmdMaintenance(args: string[]): Promise<void> {
+  requireCommandArguments("maintenance", args, {
+    flags: ["--apply", "--dry-run"],
+    valueFlags: ["--plan-id", "--instance"],
+    positionals: 1,
+  });
   const subject = getArg(args, 0);
   const apply = hasFlag(args, "--apply");
   const dryRun = hasFlag(args, "--dry-run");
@@ -1151,6 +1183,7 @@ async function cmdMaintenance(args: string[]): Promise<void> {
 }
 
 function cmdInit(args: string[]): void {
+  requireCommandArguments("init", args, { positionals: 1 });
   // Lazy-import init to avoid loading the full profile system at CLI parse time
   const { initProject } = require("./init") as typeof import("./init");
   const target = resolve(getArg(args, 0) ?? process.cwd());
@@ -1180,6 +1213,7 @@ function cmdInit(args: string[]): void {
 }
 
 async function cmdOpen(args: string[]): Promise<void> {
+  requireCommandArguments("open", args, { positionals: 1 });
   const target = resolve(getArg(args, 0) ?? process.cwd());
 
   // Init if needed
@@ -1199,7 +1233,7 @@ async function cmdOpen(args: string[]): Promise<void> {
   if (!pid || !isPidAlive(pid)) {
     // Set AGENT_CWD so the harness defaults to this project
     process.env.AGENT_CWD = target;
-    return cmdStart(args.filter((a) => a !== target && !a.startsWith("/")));
+    return cmdStart([]);
   }
 
   // Already running — just open browser with cwd param
@@ -1211,13 +1245,14 @@ async function cmdOpen(args: string[]): Promise<void> {
 }
 
 function cmdSetup(_args: string[]): void {
+  requireCommandArguments("setup", _args, {});
   requireSourceCheckout("setup");
   console.log("Setting up Modus...\n");
 
   // 1. Root deps (bun-pty for the Windows terminal PTY — resolves from the
   // repo-root node_modules)
   console.log("Installing root dependencies...");
-  const rootResult = Bun.spawnSync([BUN, "install"], {
+  const rootResult = Bun.spawnSync([BUN, "install", "--frozen-lockfile"], {
     cwd: dirname(HARNESS_DIR), stdout: "inherit", stderr: "inherit",
   });
   if (rootResult.exitCode !== 0) {
@@ -1227,7 +1262,7 @@ function cmdSetup(_args: string[]): void {
 
   // 2. Harness deps
   console.log("\nInstalling harness dependencies...");
-  const harnessResult = Bun.spawnSync([BUN, "install"], {
+  const harnessResult = Bun.spawnSync([BUN, "install", "--frozen-lockfile"], {
     cwd: HARNESS_DIR, stdout: "inherit", stderr: "inherit",
   });
   if (harnessResult.exitCode !== 0) {
@@ -1241,7 +1276,7 @@ function cmdSetup(_args: string[]): void {
     console.error(`UI directory not found: ${UI_DIR}`);
     process.exit(1);
   }
-  const uiResult = Bun.spawnSync([BUN, "install"], {
+  const uiResult = Bun.spawnSync([BUN, "install", "--frozen-lockfile"], {
     cwd: UI_DIR, stdout: "inherit", stderr: "inherit",
   });
   if (uiResult.exitCode !== 0) {
@@ -1249,7 +1284,18 @@ function cmdSetup(_args: string[]): void {
     process.exit(1);
   }
 
-  // 4. Build UI
+  // 4. Desktop deps. `modus dev` is the native Tauri loop, so source setup
+  // must provision the CLI that package.json invokes.
+  console.log("\nInstalling desktop dependencies...");
+  const desktopResult = Bun.spawnSync([BUN, "install", "--frozen-lockfile"], {
+    cwd: DESKTOP_DIR, stdout: "inherit", stderr: "inherit",
+  });
+  if (desktopResult.exitCode !== 0) {
+    console.error("Failed to install desktop dependencies.");
+    process.exit(1);
+  }
+
+  // 5. Build UI
   console.log("\nBuilding UI...");
   const buildResult = Bun.spawnSync([BUN, "run", "build"], {
     cwd: UI_DIR, stdout: "inherit", stderr: "inherit",
@@ -1259,7 +1305,7 @@ function cmdSetup(_args: string[]): void {
     process.exit(1);
   }
 
-  // 5. Register global `modus` command
+  // 6. Register global `modus` command
   console.log("\nRegistering global modus command...");
   const linkResult = Bun.spawnSync([BUN, "link"], {
     cwd: HARNESS_DIR, stdout: "inherit", stderr: "inherit",
@@ -1270,27 +1316,31 @@ function cmdSetup(_args: string[]): void {
     console.log("Global `modus` command registered.");
   }
 
-  console.log("\nDone. Run `modus start` to launch, or `modus init` in a project folder.");
+  console.log("\nDone. Run `modus dev` for the native development app, or `modus start` for the browser server.");
 }
 
 async function cmdDev(args: string[]): Promise<void> {
+  requireCommandArguments("dev", args, { flags: ["--browser"] });
   requireSourceCheckout("dev");
-  // Dev mode: delegate to existing dev.ts or watchdog depending on flags
-  if (hasFlag(args, "--watch", "-w")) {
-    // Watchdog mode with file watching
-    const proc = spawn([BUN, "run", "watchdog.ts"], {
+  const browser = hasFlag(args, "--browser");
+
+  if (browser) {
+    const proc = spawn([BUN, "run", "dev.ts"], {
       cwd: HARNESS_DIR,
       stdout: "inherit",
       stderr: "inherit",
-      env: { ...process.env, MODUS_WATCH_FILES: "1" },
+      env: process.env,
     });
     await proc.exited;
     process.exit(proc.exitCode ?? 0);
   }
 
-  // Default: full dev stack (harness + vite build --watch + vite dev server)
-  const proc = spawn([BUN, "run", "dev.ts"], {
-    cwd: HARNESS_DIR,
+  // The product is a managed-local Tauri application. Its beforeDevCommand
+  // stages the managed backend and starts Vite, so this is deliberately one
+  // process tree and one Ctrl+C rather than a browser server plus a shell the
+  // developer has to coordinate manually.
+  const proc = spawn([BUN, "run", "dev"], {
+    cwd: DESKTOP_DIR,
     stdout: "inherit",
     stderr: "inherit",
     env: process.env,
@@ -1300,19 +1350,19 @@ async function cmdDev(args: string[]): Promise<void> {
 }
 
 async function cmdLogs(args: string[]): Promise<void> {
+  requireCommandArguments("logs", args, {
+    flags: ["-f", "--follow"],
+    valueFlags: ["--instance"],
+  });
   const follow = hasFlag(args, "-f", "--follow");
   const vault = selectedVault(args);
   const vaultRoot = selectedVaultRoot(vault);
   const daemonLogFile = vaultDaemonLogFile(LOG_FILE, vault, vaultRoot ?? undefined);
-  const watchdogLogFile = join(HARNESS_DIR, "watchdog.log");
-
-  if (!existsSync(daemonLogFile) && (vault || !existsSync(watchdogLogFile))) {
+  if (!existsSync(daemonLogFile)) {
     console.log("No log files found.");
     return;
   }
-
-  // Named Vaults have no watchdog mode. Default keeps the legacy fallback.
-  const target = existsSync(daemonLogFile) ? daemonLogFile : watchdogLogFile;
+  const target = daemonLogFile;
 
   if (process.platform === "win32") {
     // Windows: no tail command, read file directly
@@ -1337,6 +1387,7 @@ async function cmdLogs(args: string[]): Promise<void> {
 }
 
 async function cmdUpdate(_args: string[]): Promise<void> {
+  requireCommandArguments("update", _args, {});
   requireSourceCheckout("update");
   console.log("Updating Modus...\n");
 
@@ -1375,6 +1426,10 @@ function cmdMoves(args: string[]): void {
   }
 
   const subArgs = args.slice(1);
+  requireCommandArguments("moves export", subArgs, {
+    valueFlags: ["--out", "-o"],
+    positionals: 1,
+  });
   const target = resolve(getPositionalArgs(subArgs, ["--out", "-o"])[0] ?? process.cwd());
   const outPath = getFlagValue(subArgs, "--out", "-o");
   const { exportPortableMoves } = require("./move-export") as typeof import("./move-export");
@@ -1396,6 +1451,29 @@ function cmdMoves(args: string[]): void {
 const args = process.argv.slice(2);
 const command = args[0];
 const commandArgs = args.slice(1);
+
+async function delegatePackagedSourceCommand(): Promise<void> {
+  if (!PACKAGED_CLI || !command || !isSourceOnlyCommand(command)) return;
+  const sourceRoot = findSourceCheckout(process.cwd());
+  if (!sourceRoot) return;
+
+  const environment = { ...process.env };
+  delete environment.MODUS_PACKAGED_CLI;
+  delete environment.MODUS_CLI_SERVER;
+  delete environment.MODUS_RESOURCES_DIR;
+  console.log(`Using Modus source checkout: ${sourceRoot}`);
+  const child = spawn([BUN, "run", join(sourceRoot, "harness", "cli.ts"), command, ...commandArgs], {
+    cwd: process.cwd(),
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+    env: environment,
+  });
+  await child.exited;
+  process.exit(child.exitCode ?? 1);
+}
+
+await delegatePackagedSourceCommand();
 
 // Handle --version / -v anywhere
 if (hasFlag(args, "--version", "-v")) {
@@ -1436,8 +1514,8 @@ Commands:
                 Create a zip of direct move files only, excluding nested folders and runtime/private artifacts
     --out PATH  Write the zip to a specific path
   setup         Install dependencies and build UI (source checkout only)
-  dev           Dev mode (source checkout only)
-    --watch      Use watchdog with file watching
+  dev           Start the native Tauri app with managed backend + Vite (source checkout only)
+    --browser    Use the legacy browser-oriented harness + Vite stack
   logs          Show server logs
     -f           Follow (live tail)
     --instance   Read a named Vault's daemon log

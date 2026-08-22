@@ -1,6 +1,6 @@
 ---
 title: MO Architecture
-lastUpdated: 2026-08-19
+lastUpdated: 2026-08-21
 lastCommit: bae0487
 covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
@@ -64,7 +64,6 @@ modus/
     modus-mcp.ts           # Built-in MCP server (modus_submit tool)
     prompt-loader.ts       # Handlebars template rendering for moves
     notify.ts              # Notification channels (egress primitive + action notify)
-    watchdog.ts            # Process health monitoring
     git.ts                 # Git operations for session context
     plugin.json            # Built-in modus-core manifest over resources in place
     templates/profiles/    # Built-in merged profiles + home rehydration source
