@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { BRIDGED_HARNESS_MODULES } from "../harness/bridged-modules";
+import { desktopBuildProfile } from "./staging-profile";
 
 const desktopDir = import.meta.dir;
 const repositoryDir = resolve(desktopDir, "..");
@@ -157,14 +158,13 @@ async function stage(): Promise<void> {
   const devMode = process.argv.includes("--dev");
   assertGeneratedPath(stageDir, tauriDir);
   assertGeneratedPath(binariesDir, tauriDir);
-  for (const profile of ["debug", "release"]) {
-    const generatedResources = join(targetDir, profile, "modus");
-    assertGeneratedPath(generatedResources, targetDir);
-    // Tauri overlays resources but does not reliably remove files deleted from
-    // the source stage. Clear only its generated resource copy so private or
-    // obsolete files cannot survive from an earlier build.
-    rmSync(generatedResources, { recursive: true, force: true });
-  }
+  const profile = desktopBuildProfile(devMode);
+  const generatedResources = join(targetDir, profile, "modus");
+  assertGeneratedPath(generatedResources, targetDir);
+  // Tauri overlays resources but does not reliably remove files deleted from
+  // the source stage. Clear only the active profile's generated copy so private
+  // or obsolete files cannot survive without colliding with a running dev build.
+  rmSync(generatedResources, { recursive: true, force: true });
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(stageDir, { recursive: true });
   mkdirSync(binariesDir, { recursive: true });

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateCommandArguments } from "../cli-arguments";
 import { findSourceCheckout, isSourceOnlyCommand } from "../source-checkout";
+import { desktopBuildProfile } from "../../desktop/staging-profile";
 
 const root = resolve(import.meta.dir, "../..");
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
@@ -19,6 +20,17 @@ describe("native development entry point", () => {
     expect(stageSource).toContain('if (process.argv.includes("--dev"))');
     expect(stageSource).toContain('cwd: join(harnessDir, "ui")');
     expect(stageSource).toContain('Bun.spawn(["bun", "run", "dev"]');
+  });
+
+  test("desktop staging never clears the inactive target profile", () => {
+    expect(desktopBuildProfile(true, "false")).toBe("debug");
+    expect(desktopBuildProfile(false, "true")).toBe("debug");
+    expect(desktopBuildProfile(false, "false")).toBe("release");
+    expect(desktopBuildProfile(false, undefined)).toBe("release");
+
+    const stageSource = read("desktop/stage-managed-backend.ts");
+    expect(stageSource).toContain("desktopBuildProfile(devMode)");
+    expect(stageSource).not.toContain('for (const profile of ["debug", "release"])');
   });
 
   test("the root CLI defaults to desktop and makes browser mode explicit", () => {
