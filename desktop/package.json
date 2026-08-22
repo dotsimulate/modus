@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build --no-bundle",
-    "build:bundle": "tauri build",
-    "build:signed": "tauri build --config src-tauri/tauri.signing.conf.json",
+    "build": "bun run build-desktop.ts binary",
+    "build:bundle": "bun run build-desktop.ts bundle",
+    "build:signed": "bun run build-desktop.ts signed",
     "stage:backend": "bun run stage-managed-backend.ts"
   },
   "devDependencies": {

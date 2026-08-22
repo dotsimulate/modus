@@ -33,6 +33,20 @@ describe("native development entry point", () => {
     expect(stageSource).not.toContain('for (const profile of ["debug", "release"])');
   });
 
+  test("desktop release scripts use the host-path-sanitizing build wrapper", () => {
+    const desktopPackage = JSON.parse(read("desktop/package.json"));
+    expect(desktopPackage.scripts.build).toBe("bun run build-desktop.ts binary");
+    expect(desktopPackage.scripts["build:bundle"]).toBe("bun run build-desktop.ts bundle");
+    expect(desktopPackage.scripts["build:signed"]).toBe("bun run build-desktop.ts signed");
+  });
+
+  test("desktop staging makes native JavaScript assets portable", () => {
+    const stageSource = read("desktop/stage-managed-backend.ts");
+    expect(stageSource).toContain("makeBundlePortable(");
+    expect(stageSource).toContain('"photon_rs_bg.wasm"');
+    expect(stageSource).toContain("stagePhotonWasm();");
+  });
+
   test("the root CLI defaults to desktop and makes browser mode explicit", () => {
     const cliSource = read("harness/cli.ts");
     const devBody = cliSource.slice(

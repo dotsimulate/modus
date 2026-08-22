@@ -19,7 +19,7 @@ the repository contains no endpoint, account name, certificate profile, or crede
 |---|---|
 | `src-tauri/tauri.signing.conf.json` | Config overlay setting `bundle.windows.signCommand`. Merged only by `build:signed`. |
 | `src-tauri/sign-windows.cmd` | Wrapper Tauri invokes once per artifact. Reads credentials from the environment. |
-| `package.json` → `build:signed` | `tauri build --config src-tauri/tauri.signing.conf.json` |
+| `package.json` → `build:signed` | Runs the host-path-sanitizing desktop build wrapper in signed mode; the wrapper invokes `tauri build --config src-tauri/tauri.signing.conf.json`. |
 
 Tauri replaces `%1` with the path of each binary to sign. It signs **every** bundled binary, not
 just the installer — including the `bun.exe` sidecar — so expect several invocations per build.
