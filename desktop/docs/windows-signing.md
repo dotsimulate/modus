@@ -5,8 +5,8 @@ UAC prompt. This document describes how signing is wired into the Modus desktop 
 
 Signing is **opt-in**. `bun run build:bundle` is unchanged and produces an unsigned installer
 with no credentials present, so contributors and CI can build without any signing setup.
-`bun run build:signed` merges `src-tauri/tauri.signing.conf.json`, which routes every artifact
-through `src-tauri/sign-windows.cmd`.
+`bun run build:signed` merges `src-tauri/tauri.signing.conf.json`, which routes each unsigned
+Modus artifact through `src-tauri/sign-windows.cmd`.
 
 No account-specific value is committed. The wrapper reads everything from the environment, so
 the repository contains no endpoint, account name, certificate profile, or credential.
@@ -21,8 +21,9 @@ the repository contains no endpoint, account name, certificate profile, or crede
 | `src-tauri/sign-windows.cmd` | Wrapper Tauri invokes once per artifact. Reads credentials from the environment. |
 | `package.json` → `build:signed` | Runs the host-path-sanitizing desktop build wrapper in signed mode; the wrapper invokes `tauri build --config src-tauri/tauri.signing.conf.json`. |
 
-Tauri replaces `%1` with the path of each binary to sign. It signs **every** bundled binary, not
-just the installer — including the `bun.exe` sidecar — so expect several invocations per build.
+Tauri replaces `%1` with the path of each binary to sign. It signs the Modus CLI sidecar, patched
+main executable, and installer. It verifies external sidecars first and skips one that already has
+a valid signature, so the upstream-signed `bun.exe` should retain its existing publisher.
 
 The reference implementation targets **Azure Trusted Signing** via `trusted-signing-cli`. The
 wrapper is the only file that knows that; swapping to `signtool`, `AzureSignTool`, or another
@@ -118,13 +119,20 @@ copy Modus_0.2.0_x64-setup.exe Modus_0.2.0_x64-setup-<what-it-predates>-<date>.e
 ## Verifying
 
 ```powershell
-Get-AuthenticodeSignature .\src-tauri\target\release\bundle\nsis\Modus_0.2.0_x64-setup.exe |
-  Format-List Status, StatusMessage, SignerCertificate
+$artifacts = @(
+  ".\src-tauri\target\release\bundle\nsis\Modus_0.2.0_x64-setup.exe"
+  ".\src-tauri\target\release\modus-desktop.exe"
+  ".\src-tauri\target\release\modus.exe"
+  ".\src-tauri\target\release\bun.exe"
+)
+Get-AuthenticodeSignature $artifacts |
+  Format-Table Path, Status, StatusMessage, SignerCertificate
 ```
 
-`Status` must be `Valid`. Check the signer subject, and confirm a timestamp is present — a
-signature without one stops validating when the certificate expires. Trusted Signing timestamps
-by default, so a missing timestamp indicates a problem.
+Every `Status` must be `Valid`. The first three should name the expected Modus publisher; Bun
+should retain its valid upstream signature. Check the signer subjects, and confirm timestamps are
+present — a signature without one stops validating when the certificate expires. Trusted Signing
+timestamps by default, so a missing timestamp indicates a problem.
 
 Then run the installer and confirm the UAC prompt names the expected publisher rather than
 "Unknown publisher".
