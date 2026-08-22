@@ -16,8 +16,8 @@ export type TurnNavigationEntry = {
 export type TurnNavigation = {
   current: number;
   total: number;
-  previousSeq: number | null;
-  nextSeq: number | null;
+  previous: TurnNavigationEntry | null;
+  next: TurnNavigationEntry | null;
   nextIsLatest: boolean;
 };
 
@@ -242,13 +242,13 @@ export function resolveTurnNavigation(
   turn: ChatTurn | null,
 ): TurnNavigation | null {
   if (!turn || turn.seq == null || entries.length === 0) return null;
-  const position = entries.findIndex((entry) => entry.number === turn.number || entry.seq === turn.seq);
+  const position = entries.findIndex((entry) => entry.number === turn.number);
   if (position < 0) return null;
   return {
     current: turn.number,
     total: entries[entries.length - 1]?.number ?? turn.number,
-    previousSeq: entries[position - 1]?.seq ?? null,
-    nextSeq: entries[position + 1]?.seq ?? null,
+    previous: entries[position - 1] ?? null,
+    next: entries[position + 1] ?? null,
     nextIsLatest: position + 1 === entries.length - 1,
   };
 }

@@ -462,6 +462,18 @@ app.use("/api/*", cors({
   exposeHeaders: ["Accept-Ranges", "Content-Length", "Content-Range", "Content-Type"],
 }));
 
+// The desktop dev UI is served from localhost:5180 while it talks to the
+// managed harness on 127.0.0.1:<dynamic port>. Health is intentionally public,
+// but it still needs an allow-origin response for that browser health probe.
+app.use("/health", cors({
+  origin: (origin, c) => isAllowedBrowserOrigin(origin, {
+    port: PORT,
+    requestHost: c.req.header("Host"),
+    configuredOrigins: process.env.MODUS_ALLOWED_ORIGINS,
+  }) ? origin : "",
+  allowMethods: ["GET", "OPTIONS"],
+}));
+
 // ── PIN Auth (browser gate) ──
 // If HARNESS_PIN is set, browsers must verify the PIN to get access.
 // Agents using HARNESS_TOKEN (Bearer header) bypass the PIN gate entirely.
@@ -800,7 +812,6 @@ function requireConfiguredFileApiAuth(c: any): Response | null {
 // ── Health ──
 
 app.get("/health", (c) => {
-  console.log(`[health-ping] ${Date.now()}`);
   const all = getAllActiveSessions();
   const live = all.filter(s => s.status === "running" || s.status === "starting");
   return c.json({
@@ -2134,6 +2145,10 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
   const beforeCreatedAt = Number.isFinite(requestedBeforeCreatedAt) && requestedBeforeCreatedAt > 0
     ? Math.floor(requestedBeforeCreatedAt)
     : undefined;
+  const requestedBeforeId = Number(c.req.query("beforeId"));
+  const beforeId = Number.isFinite(requestedBeforeId) && requestedBeforeId > 0
+    ? Math.floor(requestedBeforeId)
+    : undefined;
   const row = getSession(id);
   const active = getActiveSession(id);
   if (!row && !active) return c.json({ error: "session not found" }, 404);
@@ -2159,6 +2174,7 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
     limit,
     beforeSeq,
     beforeCreatedAt,
+    beforeId,
     includeDetails: c.req.query("details") !== "summary",
     preserveEventSequence: true,
   });
@@ -2176,6 +2192,7 @@ app.get("/api/sessions/:id/history-snapshot", (c) => {
     hasMoreHistory: history.hasMore,
     oldestSeq: history.oldestSeq,
     oldestCreatedAt: history.oldestCreatedAt,
+    oldestId: history.oldestId,
     olderTurnCount: history.olderTurnCount,
     lastSeq: active?.seq ?? getMaxSeq(id),
     createdAt: row?.created_at ?? active?.startedAt ?? Date.now(),

@@ -134,16 +134,33 @@ describe("turn card navigation", () => {
     expect(resolveTurnNavigation(entries, turnWithBlocks([], 2, 20))).toEqual({
       current: 2,
       total: 3,
-      previousSeq: 10,
-      nextSeq: 30,
+      previous: { number: 1, seq: 10 },
+      next: { number: 3, seq: 30 },
       nextIsLatest: true,
     });
     expect(resolveTurnNavigation(entries, turnWithBlocks([], 3, 30))).toEqual({
       current: 3,
       total: 3,
-      previousSeq: 20,
-      nextSeq: null,
+      previous: { number: 2, seq: 20 },
+      next: null,
       nextIsLatest: false,
+    });
+  });
+
+  test("uses turn number when a resumed provider reuses sequence values", () => {
+    const entries = [
+      { number: 7, seq: 1 },
+      { number: 8, seq: 4 },
+      { number: 9, seq: 1 },
+      { number: 10, seq: 4 },
+      { number: 11, seq: 7 },
+    ];
+    expect(resolveTurnNavigation(entries, turnWithBlocks([], 10, 4))).toEqual({
+      current: 10,
+      total: 11,
+      previous: { number: 9, seq: 1 },
+      next: { number: 11, seq: 7 },
+      nextIsLatest: true,
     });
   });
 });

@@ -13,12 +13,15 @@ import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, loadOlde
 import { modus } from "../modusClient";
 import { ChatView } from "../components/ChatView";
 import { PermissionOverlay } from "../components/PermissionOverlay";
-import { useSession } from "../providers/SessionContext";
+import { useActiveSessionId, useSessionActions, useSessionQueue } from "../providers/SessionContext";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 import { useProfiles } from "../providers/ProfileContext";
 import { useInterfaceSettings } from "../useInterfaceSettings";
 import SessionTurnWidget, { type TurnBlockKind } from "./session-turn.widget";
+import type { Message } from "../../../sdk/index";
+
+const EMPTY_MESSAGES: Message[] = [];
 
 type SessionChatConfig = WidgetBase & {
   type: "session-chat";
@@ -27,11 +30,19 @@ type SessionChatConfig = WidgetBase & {
 
 export default function SessionChatWidget(props: WidgetProps<SessionChatConfig>) {
   const { config, pageContext } = props;
-  const { branchFromSessionMessage, activeSession, queuedMessage, cancelQueued } = useSession();
+  const activeSessionId = useActiveSessionId();
+  const { branchFromSessionMessage } = useSessionActions();
+  const { queuedMessage, cancelQueued } = useSessionQueue();
   const { activeUP, profiles } = useProfiles();
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
   const selectedSession = pageContext?.get("selectedSession") as string | undefined;
   const sessionId = contextSessionId ?? selectedSession ?? config.sessionId ?? null;
+  const turnSessionId = pageContext?.get("turnSessionId");
+  const rawTurnNumber = pageContext?.get("turnNumber");
+  const focusTurnNumber = (typeof turnSessionId !== "string" || turnSessionId === sessionId)
+    && typeof rawTurnNumber === "number"
+    ? rawTurnNumber
+    : null;
 
   // Snapshot-then-subscribe (handles dedup + race-safe hydration internally)
   useEffect(() => {
@@ -81,7 +92,8 @@ export default function SessionChatWidget(props: WidgetProps<SessionChatConfig>)
     if (showMeta) blocks.push("meta");
     return blocks;
   }, [showMeta, showThinking, toolCallDisplay]);
-
+  const isActive = session?.status === "running" || session?.status === "starting" || session?.status === "interrupting";
+  const messages = session?.messages ?? EMPTY_MESSAGES;
   if (!sessionId) {
     return <WidgetEmptyState>no session selected</WidgetEmptyState>;
   }
@@ -90,13 +102,12 @@ export default function SessionChatWidget(props: WidgetProps<SessionChatConfig>)
     return <WidgetEmptyState>loading session...</WidgetEmptyState>;
   }
 
-  const isActive = session.status === "running" || session.status === "starting" || session.status === "interrupting";
   const permissions = session.pendingPermissions ?? [];
   // The pending-send strip belongs to the composer's session. This widget can be
   // pointed at any session, so only the one the composer is actually sending to
   // gets it — otherwise a second chat pane would show someone else's pending
   // message and offer to cancel it.
-  const pendingSend = activeSession?.id === sessionId ? queuedMessage : null;
+  const pendingSend = activeSessionId === sessionId ? queuedMessage : null;
 
   return (
     <div className="session-chat-widget" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden", position: "relative" }}>
@@ -112,7 +123,9 @@ export default function SessionChatWidget(props: WidgetProps<SessionChatConfig>)
         />
       ) : (
         <ChatView
-          messages={session.messages ?? []}
+          fontScale={interfaceSettings.chat.fontScale / 100}
+          focusTurnNumber={focusTurnNumber}
+          messages={messages}
           sessionId={sessionId}
           provider={session.provider ?? session.agentConfig?.provider}
           streaming={isActive}

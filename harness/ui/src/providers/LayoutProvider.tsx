@@ -12,7 +12,7 @@ import {
 } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "./ProfileContext";
-import { useSession } from "./SessionContext";
+import { useActiveSessionId } from "./SessionContext";
 import { useFileViewer } from "./FileViewerContext";
 import type { View } from "../views";
 import { normalizePanelLayout, type LayoutNode, type WidgetBase } from "../widgets";
@@ -59,11 +59,18 @@ function getDefaults(view: View): PanelDefaults {
   return VIEW_PANEL_DEFAULTS[view] ?? FALLBACK_DEFAULTS;
 }
 
+function findChatScrollElement(sessionId: string): HTMLElement | null {
+  for (const element of document.querySelectorAll<HTMLElement>("[data-chat-session-id]")) {
+    if (element.dataset.chatSessionId === sessionId) return element;
+  }
+  return null;
+}
+
 // ── Provider ──
 
 export function LayoutProvider({ view, children }: { view: View; children: ReactNode }) {
   const { activeUserProfile, activeUP, refreshUserProfiles } = useProfiles();
-  const { activeSession } = useSession();
+  const activeSessionId = useActiveSessionId();
   const { tabs: fileViewerTabs, activePath: fileViewerActivePath, hydrate: hydrateFileViewer } = useFileViewer();
 
   // ── Panel state ──
@@ -106,7 +113,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
 
   const savePanelState = useCallback((sessionId: string) => {
     if (!sessionId || sessionId.startsWith("pending-")) return;
-    const scrollEl = document.querySelector(".chat-messages");
+    const scrollEl = findChatScrollElement(sessionId);
     const snapshot: Record<string, unknown> = {
       leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth,
       scrollTop: scrollEl ? scrollEl.scrollTop : 0,
@@ -127,7 +134,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
 
   // Save on change (debounced)
   useEffect(() => {
-    const id = activeSession?.id;
+    const id = activeSessionId;
     if (!id || id.startsWith("pending-") || view !== "chat") return;
     savePanelState(id);
   }, [leftPanelOpen, leftPanelWidth, rightPanelOpen, rightPanelWidth, rightPanelBrowserPath, fileViewerTabs, fileViewerActivePath, view]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -135,7 +142,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
   // Restore on session switch (chat view only)
   useEffect(() => {
     if (view !== "chat") return;
-    const id = activeSession?.id ?? null;
+    const id = activeSessionId;
 
     // Only act on real (non-pending, non-null) session IDs.
     // During session creation the ID transitions through
@@ -149,7 +156,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
 
     // Save outgoing session's scroll position
     if (prevId) {
-      const scrollEl = document.querySelector(".chat-messages");
+      const scrollEl = findChatScrollElement(prevId);
       if (scrollEl) {
         const cached = uiCache.current.get(prevId) ?? {};
         cached.scrollTop = scrollEl.scrollTop;
@@ -174,7 +181,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
       hydrateFileViewer(savedTabs, savedActivePath);
       if (typeof state.scrollTop === "number" && state.scrollTop > 0) {
         requestAnimationFrame(() => {
-          const scrollEl = document.querySelector(".chat-messages");
+          const scrollEl = findChatScrollElement(id);
           if (scrollEl) scrollEl.scrollTop = state.scrollTop as number;
         });
       }
@@ -194,7 +201,7 @@ export function LayoutProvider({ view, children }: { view: View; children: React
         if (prevSessionIdRef.current === id) applyState(state);
       }).catch(() => {});
     }
-  }, [activeSession?.id, view]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeSessionId, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Resolve left panel widgets ──
   // Priority: local state (optimistic) → user profile per-view override → legacy → view defaults

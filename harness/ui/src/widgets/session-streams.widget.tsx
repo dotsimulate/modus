@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type MouseEvent } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
-import { useSession } from "../providers/SessionContext";
+import { useSessionActions } from "../providers/SessionContext";
 import { getSessionState } from "../sessionStore";
 import { sessionActivityAt as activityAt } from "../sessionActivity";
 import { useWidgetPollingValue } from "./widget-data";
@@ -194,7 +194,7 @@ function sortSessions(sessions: SessionInfo[]): SessionInfo[] {
 
 export default function SessionStreamsWidget({ config, widgetId, onSelectSession, pageContext }: WidgetProps<SessionStreamsConfig>) {
   const { activeUserProfile, activeCwd } = useProfiles();
-  const { refreshSessions, newSession } = useSession();
+  const { refreshSessions, newSession } = useSessionActions();
   const userProfile = activeUserProfile ?? undefined;
   const limit = config.limit ?? 500;
   const storageKey = `harness:session-streams:${activeUserProfile ?? "anon"}:${activeCwd ?? "global"}`;

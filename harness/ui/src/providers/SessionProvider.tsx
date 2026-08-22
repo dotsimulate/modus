@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { modus } from "../modusClient";
 import { nextMsgId } from "../../../sdk/index";
 import { setInputValue, getInputValue, shouldApplyFetchedDraft } from "../inputStore";
@@ -29,7 +29,17 @@ import {
   subscribeSessionIndex,
   type SessionIndexConnectionState,
 } from "../sessionIndexSync";
-import { SessionContext, type QueuedMessage, type DeliverMode, type SendOpts } from "./SessionContext";
+import {
+  ActiveSessionIdContext,
+  SessionActionsContext,
+  SessionContext,
+  SessionIndexContext,
+  SessionQueueContext,
+  type QueuedMessage,
+  type DeliverMode,
+  type SendOpts,
+  type SessionActionsContextValue,
+} from "./SessionContext";
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const {
@@ -349,7 +359,6 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       onDone: refreshSessions,
       forceHistoryRefresh: true,
     });
-
     // NOTE: do NOT write selectedProfile here. selectedProfile is the sidebar's
     // seed for the next new session (Domain B) and must not be contaminated by
     // which session the user navigates to (Domain A).
@@ -788,17 +797,95 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     await branchFromSessionMessage(activeSessionId, seq, prefill, restoreCode, providerMessageId);
   }, [activeSessionId, branchFromSessionMessage]);
 
-  return (
-    <SessionContext.Provider value={{
-      activeSession, serverSessions, allServerSessions, sessionsLoaded, sessionProjects, sessionIndexConnection,
+  const actionImplementationsRef = useRef<SessionActionsContextValue>({
+    handleInputChange,
+    send,
+    stop,
+    stopTask,
+    newSession,
+    selectSession,
+    archiveSession,
+    refreshSessions,
+    handlePermissionResponse,
+    cancelQueued,
+    updateActiveSessionConfig,
+    updateActiveSessionProfile,
+    branchFromMessage,
+    branchFromSessionMessage,
+  });
+  useLayoutEffect(() => {
+    actionImplementationsRef.current = {
       handleInputChange,
-      send, stop, stopTask, newSession, selectSession, archiveSession,
-      refreshSessions, handlePermissionResponse,
-      queuedMessage, cancelQueued, updateActiveSessionConfig, updateActiveSessionProfile,
-      branchFromMessage, branchFromSessionMessage,
-    }}>
-      {children}
-      {rewindNotice && (
+      send,
+      stop,
+      stopTask,
+      newSession,
+      selectSession,
+      archiveSession,
+      refreshSessions,
+      handlePermissionResponse,
+      cancelQueued,
+      updateActiveSessionConfig,
+      updateActiveSessionProfile,
+      branchFromMessage,
+      branchFromSessionMessage,
+    };
+  }, [
+    archiveSession,
+    branchFromMessage,
+    branchFromSessionMessage,
+    cancelQueued,
+    handleInputChange,
+    handlePermissionResponse,
+    newSession,
+    refreshSessions,
+    selectSession,
+    send,
+    stop,
+    stopTask,
+    updateActiveSessionConfig,
+    updateActiveSessionProfile,
+  ]);
+  const stableActions = useMemo<SessionActionsContextValue>(() => ({
+    handleInputChange: (...args) => actionImplementationsRef.current.handleInputChange(...args),
+    send: (...args) => actionImplementationsRef.current.send(...args),
+    stop: (...args) => actionImplementationsRef.current.stop(...args),
+    stopTask: (...args) => actionImplementationsRef.current.stopTask(...args),
+    newSession: (...args) => actionImplementationsRef.current.newSession(...args),
+    selectSession: (...args) => actionImplementationsRef.current.selectSession(...args),
+    archiveSession: (...args) => actionImplementationsRef.current.archiveSession(...args),
+    refreshSessions: (...args) => actionImplementationsRef.current.refreshSessions(...args),
+    handlePermissionResponse: (...args) => actionImplementationsRef.current.handlePermissionResponse(...args),
+    cancelQueued: (...args) => actionImplementationsRef.current.cancelQueued(...args),
+    updateActiveSessionConfig: (...args) => actionImplementationsRef.current.updateActiveSessionConfig(...args),
+    updateActiveSessionProfile: (...args) => actionImplementationsRef.current.updateActiveSessionProfile(...args),
+    branchFromMessage: (...args) => actionImplementationsRef.current.branchFromMessage(...args),
+    branchFromSessionMessage: (...args) => actionImplementationsRef.current.branchFromSessionMessage(...args),
+  }), []);
+  const sessionIndexValue = useMemo(() => ({
+    serverSessions,
+    allServerSessions,
+    sessionsLoaded,
+    sessionProjects,
+    sessionIndexConnection,
+  }), [serverSessions, allServerSessions, sessionsLoaded, sessionProjects, sessionIndexConnection]);
+  const sessionQueueValue = useMemo(() => ({ queuedMessage, cancelQueued }), [queuedMessage, cancelQueued]);
+
+  return (
+    <ActiveSessionIdContext.Provider value={activeSessionId}>
+      <SessionIndexContext.Provider value={sessionIndexValue}>
+        <SessionActionsContext.Provider value={stableActions}>
+          <SessionQueueContext.Provider value={sessionQueueValue}>
+            <SessionContext.Provider value={{
+              activeSession, serverSessions, allServerSessions, sessionsLoaded, sessionProjects, sessionIndexConnection,
+              handleInputChange,
+              send, stop, stopTask, newSession, selectSession, archiveSession,
+              refreshSessions, handlePermissionResponse,
+              queuedMessage, cancelQueued, updateActiveSessionConfig, updateActiveSessionProfile,
+              branchFromMessage, branchFromSessionMessage,
+            }}>
+              {children}
+              {rewindNotice && (
         <aside className="rewind-notice" aria-live="polite">
           <div><strong>{rewindNotice.label}</strong></div>
           {rewindNotice.error && <div className="rewind-dialog-error">{rewindNotice.error}</div>}
@@ -820,7 +907,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </aside>
-      )}
-    </SessionContext.Provider>
+              )}
+            </SessionContext.Provider>
+          </SessionQueueContext.Provider>
+        </SessionActionsContext.Provider>
+      </SessionIndexContext.Provider>
+    </ActiveSessionIdContext.Provider>
   );
 }

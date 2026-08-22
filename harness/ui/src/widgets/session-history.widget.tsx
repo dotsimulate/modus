@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { modus } from "../modusClient";
-import { useSession } from "../providers/SessionContext";
+import { useSessionActions, useSessionIndex } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { getSessionState } from "../sessionStore";
 import { sessionActivityAt as activityAt } from "../sessionActivity";
@@ -188,10 +188,8 @@ export default function SessionHistoryWidget({ config, widgetId, onSelectSession
     selectedProfile, selectProfile,
     setupState, setSetupState,
   } = useProfiles();
-  const {
-    serverSessions, allServerSessions, sessionIndexConnection,
-    archiveSession, refreshSessions, newSession,
-  } = useSession();
+  const { serverSessions, allServerSessions, sessionIndexConnection } = useSessionIndex();
+  const { archiveSession, refreshSessions, newSession } = useSessionActions();
 
   const [viewMode, setViewMode] = useWidgetUiState<ViewMode>(
     { userProfile: activeUserProfile },

@@ -32,6 +32,7 @@ type SessionEntry = {
   historyHasMore?: boolean;
   historyOldestSeq?: number | null;
   historyOldestCreatedAt?: number | null;
+  historyOldestId?: number | null;
   /** User prompts older than the oldest loaded page — turn numbering starts here. */
   historyOlderTurnCount?: number;
   historyLoadingOlder?: boolean;
@@ -89,10 +90,24 @@ let sessionAccess = 0;
 
 // Snapshot reference — changes on every mutation to trigger React re-renders
 let snapshot = 0;
+let notificationFrame: number | null = null;
+
+function flushNotifications() {
+  notificationFrame = null;
+  for (const fn of listeners) fn();
+}
 
 function notify() {
   snapshot++;
-  for (const fn of listeners) fn();
+  // Event payloads are reduced immediately, but rendering every streamed delta
+  // can starve input and the rest of the shell. Browser subscribers only need
+  // the newest snapshot once per paint; non-browser tests remain synchronous.
+  if (typeof requestAnimationFrame !== "function") {
+    flushNotifications();
+    return;
+  }
+  if (notificationFrame !== null) return;
+  notificationFrame = requestAnimationFrame(flushNotifications);
 }
 
 // ── Store API ──
@@ -121,6 +136,7 @@ export function setSessionState(id: string, state: ReducerState, profile?: strin
     historyHasMore: existing?.historyHasMore,
     historyOldestSeq: existing?.historyOldestSeq,
     historyOldestCreatedAt: existing?.historyOldestCreatedAt,
+    historyOldestId: existing?.historyOldestId,
     historyOlderTurnCount: existing?.historyOlderTurnCount,
     historyLoadingOlder: existing?.historyLoadingOlder,
     historyOlderError: existing?.historyOlderError,
@@ -203,6 +219,7 @@ export function hydrateSessionHistorySnapshot(snapshotData: SessionHistorySnapsh
     entry.historyHasMore = !!snapshotData.hasMoreHistory;
     entry.historyOldestSeq = snapshotData.oldestSeq ?? null;
     entry.historyOldestCreatedAt = snapshotData.oldestCreatedAt ?? null;
+    entry.historyOldestId = snapshotData.oldestId ?? null;
     entry.historyOlderTurnCount = snapshotData.olderTurnCount ?? 0;
     entry.historyLoadingOlder = false;
     entry.historyOlderError = undefined;
@@ -274,6 +291,7 @@ export async function loadOlderSessionHistory(sessionId: string): Promise<void> 
         ? message.timestamp
         : min
     ), null);
+  const beforeId = entry.historyOldestId ?? null;
   if (!beforeSeq && !beforeCreatedAt) return;
 
   entry.historyLoadingOlder = true;
@@ -285,6 +303,7 @@ export async function loadOlderSessionHistory(sessionId: string): Promise<void> 
       limit: HISTORY_PAGE_SIZE,
       beforeSeq: beforeSeq ?? undefined,
       beforeCreatedAt: beforeCreatedAt ?? undefined,
+      beforeId: beforeId ?? undefined,
       details: historyDetailMode(),
     });
     const current = sessions.get(sessionId);
@@ -299,6 +318,7 @@ export async function loadOlderSessionHistory(sessionId: string): Promise<void> 
     current.historyHasMore = !!snapshotData.hasMoreHistory;
     current.historyOldestSeq = snapshotData.oldestSeq ?? beforeSeq;
     current.historyOldestCreatedAt = snapshotData.oldestCreatedAt ?? beforeCreatedAt ?? null;
+    current.historyOldestId = snapshotData.oldestId ?? beforeId;
     // Taken from the page's own cutoff, never derived from the message array —
     // deriving it would shift by the size of every page already prepended.
     current.historyOlderTurnCount = snapshotData.olderTurnCount ?? 0;
@@ -424,7 +444,6 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
   const resolvedId = resolveId(id);
   const entry = sessions.get(resolvedId);
   if (!entry) return;
-
   for (const evt of events) {
     const event = evt.data;
     const seq = evt.seq;
@@ -1066,7 +1085,7 @@ export function deriveSession(
 /** Subscribe to store changes (for useSyncExternalStore) */
 function subscribe(callback: () => void): () => void {
   listeners.add(callback);
-  return () => listeners.delete(callback);
+  return () => { listeners.delete(callback); };
 }
 
 function getSnapshot(): number {
@@ -1089,11 +1108,15 @@ export function getStoreSnapshot(): number {
  * not on every global store mutation.
  */
 export function useSessionState(id: string | null): Session | null {
+  const subscribeSession = useCallback(
+    (callback: () => void) => subscribe(callback),
+    [id],
+  );
   const getSessionSnap = useCallback(
     () => id ? (sessions.get(id)?.revision ?? 0) : 0,
     [id],
   );
-  useSyncExternalStore(subscribe, getSessionSnap);
+  useSyncExternalStore(subscribeSession, getSessionSnap);
   if (!id) return null;
   const entry = sessions.get(id);
   if (!entry) return null;
@@ -1102,11 +1125,15 @@ export function useSessionState(id: string | null): Session | null {
 
 /** React hook for distinguishing loading/failed history from a truly empty thread. */
 export function useSessionHistoryLoadState(id: string | null): SessionHistoryLoadState {
+  const subscribeSession = useCallback(
+    (callback: () => void) => subscribe(callback),
+    [id],
+  );
   const getSessionSnap = useCallback(
     () => id ? (sessions.get(id)?.revision ?? 0) : 0,
     [id],
   );
-  useSyncExternalStore(subscribe, getSessionSnap);
+  useSyncExternalStore(subscribeSession, getSessionSnap);
   return getSessionHistoryLoadState(id);
 }
 
@@ -1115,11 +1142,15 @@ export function useSessionHistoryLoadState(id: string | null): SessionHistoryLoa
  * Only re-renders when the watched session changes.
  */
 export function useSessionReducerState(id: string | null): ReducerState | null {
+  const subscribeSession = useCallback(
+    (callback: () => void) => subscribe(callback),
+    [id],
+  );
   const getSessionSnap = useCallback(
     () => id ? (sessions.get(id)?.revision ?? 0) : 0,
     [id],
   );
-  useSyncExternalStore(subscribe, getSessionSnap);
+  useSyncExternalStore(subscribeSession, getSessionSnap);
   if (!id) return null;
   return sessions.get(id)?.state ?? null;
 }

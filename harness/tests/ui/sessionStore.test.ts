@@ -10,12 +10,41 @@ import {
   loadSessionMessageDetails,
   removeSession,
   setSessionState,
+  subscribeStore,
   shouldRefetchEmptyResolvedHistory,
   shouldReuseSessionSubscription,
   unsubscribeAll,
 } from "../../ui/src/sessionStore";
 import { createInitialState } from "../../ui/src/eventReducer";
 import { modus } from "../../ui/src/modusClient";
+
+describe("sessionStore render scheduling", () => {
+  test("coalesces browser subscriber notifications to one animation frame", () => {
+    const original = globalThis.requestAnimationFrame;
+    const frames: FrameRequestCallback[] = [];
+    let notified = 0;
+    globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    }) as typeof requestAnimationFrame;
+    const unsubscribe = subscribeStore(() => { notified++; });
+
+    try {
+      setSessionState("ses-frame", createInitialState("ses-frame"));
+      setSessionState("ses-frame", createInitialState("ses-frame"));
+
+      expect(notified).toBe(0);
+      expect(frames).toHaveLength(1);
+      frames.shift()?.(performance.now());
+      expect(notified).toBe(1);
+    } finally {
+      unsubscribe();
+      removeSession("ses-frame");
+      frames.shift()?.(performance.now());
+      globalThis.requestAnimationFrame = original;
+    }
+  });
+});
 
 describe("sessionStore history snapshot hydration", () => {
   afterEach(() => {
@@ -286,17 +315,21 @@ describe("sessionStore history snapshot hydration", () => {
       hasMoreHistory: true,
       oldestSeq: 1,
       oldestCreatedAt: 2000,
+      oldestId: 42,
     });
 
     let requestedBeforeSeq: number | undefined;
     let requestedBeforeCreatedAt: number | undefined;
+    let requestedBeforeId: number | undefined;
     const original = modus.getSessionHistorySnapshot;
     modus.getSessionHistorySnapshot = (async (_sessionId: string, options?: {
       beforeSeq?: number;
       beforeCreatedAt?: number;
+      beforeId?: number;
     }) => {
       requestedBeforeSeq = options?.beforeSeq;
       requestedBeforeCreatedAt = options?.beforeCreatedAt;
+      requestedBeforeId = options?.beforeId;
       return {
         sessionId: "ses-history",
         status: "done" as const,
@@ -314,6 +347,7 @@ describe("sessionStore history snapshot hydration", () => {
         hasMoreHistory: false,
         oldestSeq: 1,
         oldestCreatedAt: 1000,
+        oldestId: 12,
       };
     }) as typeof modus.getSessionHistorySnapshot;
 
@@ -325,6 +359,7 @@ describe("sessionStore history snapshot hydration", () => {
 
     expect(requestedBeforeSeq).toBe(1);
     expect(requestedBeforeCreatedAt).toBe(2000);
+    expect(requestedBeforeId).toBe(42);
     expect(getSessionState("ses-history")?.messages.map((message) => message.content)).toEqual([
       "older same sequence",
       "newer reused sequence",

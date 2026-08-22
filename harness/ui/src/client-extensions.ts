@@ -590,7 +590,8 @@ const evaluateExtensionModule: ClientExtensionModuleLoader = async (item) => {
   // Tauri CSP while still allowing trusted, backend-configured extensions.
   const response = await fetch(moduleUrl, { headers: authHeaders() });
   if (!response.ok) throw new Error(`Client extension fetch failed: ${response.status}`);
-  const blobUrl = URL.createObjectURL(new Blob([await response.text()], { type: "application/javascript" }));
+  const source = await response.text();
+  const blobUrl = URL.createObjectURL(new Blob([source], { type: "application/javascript" }));
   let mod: Record<string, unknown>;
   try {
     mod = await import(/* @vite-ignore */ blobUrl) as Record<string, unknown>;

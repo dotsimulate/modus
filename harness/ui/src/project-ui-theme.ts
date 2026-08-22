@@ -37,8 +37,11 @@ export async function loadAndApplyProjectUiState(
   try {
     const t0 = performance.now();
     const state = await modus.getProjectUiState(cwd);
-    reportClientTiming("projectUiTheme", performance.now() - t0, { stale: currentVersion !== loadVersion, source, cwd });
-    if (currentVersion === loadVersion) applyProjectUiState(state);
+    const fetchDuration = performance.now() - t0;
+    reportClientTiming("projectUiTheme", fetchDuration, { stale: currentVersion !== loadVersion, source, cwd });
+    if (currentVersion === loadVersion) {
+      applyProjectUiState(state);
+    }
     return state;
   } catch {
     if (currentVersion === loadVersion) applyProjectUiState(null);

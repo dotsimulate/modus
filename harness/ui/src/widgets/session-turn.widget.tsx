@@ -10,9 +10,9 @@
  * surface, and one instance declaring all three is the same turn as a single
  * column on a phone. The arrangement is data, not another branch in here.
  *
- * Which turn is shown comes from the page context key `turnSeq`. The compact
- * navigator here and the optional `session-turns` rail both publish that same
- * key. With no selection the newest turn is shown, which is the right default
+ * Which turn is shown comes from the page context key `turnNumber`, with
+ * `turnSeq` retained as a compatibility hint for older authored pages. The
+ * compact navigator and optional `session-turns` rail publish both. With no selection the newest turn is shown, which is the right default
  * for a surface that is only ever pointed at the live session.
  *
  * Segments always render in provider order. A turn that thought, called tools,
@@ -54,12 +54,15 @@ import {
   isNearTurnBottom,
   resolveTurnNavigation,
   shouldAutoScrollTurn,
+  type TurnNavigationEntry,
   type TurnScrollThroughProgress,
 } from "../turn-card-state";
 import { buildTurns, findTurnBySeq, segmentMessage, tallyToolNames, type ChatTurn } from "../turn-segments";
 import type { Message, SessionTurnIndexEntry, ToolCall } from "../../../sdk/index";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
+
+const EMPTY_TURN_MESSAGES: Message[] = [];
 
 /** What a projection may contain. Order here is documentation only — the
  *  renderer emits segments in the order the provider produced them. */
@@ -160,8 +163,12 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
   const selectedSession = pageContext?.get("selectedSession") as string | undefined;
   const sessionId = contextSessionId ?? selectedSession ?? config.sessionId ?? null;
 
+  const turnSessionId = pageContext?.get("turnSessionId");
+  const selectionMatchesSession = typeof turnSessionId !== "string" || turnSessionId === sessionId;
+  const rawTurnNumber = pageContext?.get("turnNumber");
+  const requestedNumber = selectionMatchesSession && typeof rawTurnNumber === "number" ? rawTurnNumber : null;
   const rawTurnSeq = pageContext?.get("turnSeq");
-  const requestedSeq = typeof rawTurnSeq === "number" ? rawTurnSeq : null;
+  const requestedSeq = selectionMatchesSession && requestedNumber == null && typeof rawTurnSeq === "number" ? rawTurnSeq : null;
 
   const blocks = useMemo(() => resolveBlocks(config.blocks), [config.blocks]);
 
@@ -171,7 +178,7 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
 
   const session = useSessionState(sessionId);
   const historyLoad = useSessionHistoryLoadState(sessionId);
-  const messages = useMemo(() => session?.messages ?? [], [session?.messages]);
+  const messages = session?.messages ?? EMPTY_TURN_MESSAGES;
 
   const [indexedTurns, setIndexedTurns] = useState<{
     sessionId: string;
@@ -207,16 +214,17 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
   );
 
   const turn: ChatTurn | null = useMemo(() => {
-    if (requestedSeq == null) return turns[turns.length - 1] ?? null;
-    return findTurnBySeq(turns, requestedSeq);
-  }, [turns, requestedSeq]);
+    if (requestedNumber != null) return turns.find((candidate) => candidate.number === requestedNumber) ?? null;
+    if (requestedSeq != null) return findTurnBySeq(turns, requestedSeq);
+    return turns[turns.length - 1] ?? null;
+  }, [turns, requestedNumber, requestedSeq]);
 
   // A ticker can address turns older than the loaded window, so an unresolved
   // seq means "page backwards until it appears" rather than "no such turn".
   // Each landed page moves olderTurnCount, which is what re-arms this; when
   // hasMore goes false it stops on its own.
-  const missingTurn = requestedSeq != null && !turn;
-  const pagingFor = useRef<number | null>(null);
+  const missingTurn = (requestedNumber != null || requestedSeq != null) && !turn;
+  const pagingFor = useRef<string | null>(null);
   useEffect(() => {
     if (!sessionId || !missingTurn) {
       pagingFor.current = null;
@@ -224,13 +232,13 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
     }
     if (!historyLoad.hasMore || historyLoad.loadingOlder || historyLoad.olderError) return;
     // Without this a page that yields nothing new would re-request forever.
-    const marker = historyLoad.olderTurnCount;
+    const marker = `${requestedNumber ?? requestedSeq}:${historyLoad.olderTurnCount}`;
     if (pagingFor.current === marker) return;
     pagingFor.current = marker;
     void loadOlderSessionHistory(sessionId);
   }, [
     sessionId, missingTurn, historyLoad.hasMore, historyLoad.loadingOlder,
-    historyLoad.olderError, historyLoad.olderTurnCount,
+    historyLoad.olderError, historyLoad.olderTurnCount, requestedNumber, requestedSeq,
   ]);
 
   const provider = session?.provider ?? session?.agentConfig?.provider;
@@ -330,9 +338,11 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
     );
   }, []);
 
-  const selectTurn = useCallback((seq: number | null) => {
-    pageContext?.set("turnSeq", seq);
-  }, [pageContext]);
+  const selectTurn = useCallback((entry: TurnNavigationEntry | null) => {
+    pageContext?.set("turnSessionId", sessionId);
+    pageContext?.set("turnNumber", entry?.number ?? null);
+    pageContext?.set("turnSeq", entry?.seq ?? null);
+  }, [pageContext, sessionId]);
 
   const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     if (!scrollThrough || !pageContext || !navigation) return;
@@ -359,8 +369,8 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
       {
         atTop: element.scrollTop <= 1,
         atBottom: element.scrollHeight - element.scrollTop - element.clientHeight <= 1,
-        canPrevious: navigation.previousSeq != null,
-        canNext: navigation.nextSeq != null,
+        canPrevious: navigation.previous != null,
+        canNext: navigation.next != null,
       },
     );
     scrollThroughProgressRef.current = result.progress;
@@ -369,15 +379,15 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
 
     scrollThroughLockedRef.current = true;
     if (result.navigate === "previous") {
-      if (navigation.previousSeq != null) {
+      if (navigation.previous != null) {
         scrollThroughLandingRef.current = "bottom";
-        selectTurn(navigation.previousSeq);
+        selectTurn(navigation.previous);
       }
       return;
     }
-    if (navigation.nextSeq != null) {
+    if (navigation.next != null) {
       scrollThroughLandingRef.current = "top";
-      selectTurn(navigation.nextIsLatest ? null : navigation.nextSeq);
+      selectTurn(navigation.nextIsLatest ? null : navigation.next);
     }
   }, [navigation, pageContext, scrollThrough, selectTurn]);
 
@@ -536,7 +546,7 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
 
   if (!turn) {
     if (missingTurn && (historyLoad.loadingOlder || historyLoad.hasMore)) {
-      return <WidgetEmptyState>loading turn {requestedSeq}…</WidgetEmptyState>;
+      return <WidgetEmptyState>loading turn {requestedNumber ?? requestedSeq}…</WidgetEmptyState>;
     }
     if (missingTurn) return <WidgetEmptyState>turn not found</WidgetEmptyState>;
     return <WidgetEmptyState>no turns yet</WidgetEmptyState>;
@@ -647,8 +657,8 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
                 className="session-turn-nav-button"
                 aria-label="Previous turn"
                 title="Previous turn"
-                disabled={navigation.previousSeq == null}
-                onClick={() => navigation.previousSeq != null && selectTurn(navigation.previousSeq)}
+                disabled={navigation.previous == null}
+                onClick={() => navigation.previous != null && selectTurn(navigation.previous)}
               >
                 <svg viewBox="0 0 16 16" aria-hidden="true">
                   <path d="m4 10 4-4 4 4" />
@@ -664,10 +674,10 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
                 className="session-turn-nav-button"
                 aria-label="Next turn"
                 title="Next turn"
-                disabled={navigation.nextSeq == null}
+                disabled={navigation.next == null}
                 onClick={() => {
-                  if (navigation.nextSeq == null) return;
-                  selectTurn(navigation.nextIsLatest ? null : navigation.nextSeq);
+                  if (navigation.next == null) return;
+                  selectTurn(navigation.nextIsLatest ? null : navigation.next);
                 }}
               >
                 <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -680,7 +690,7 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
               className={`session-turn-nav-latest${sessionRunning ? " session-turn-nav-latest--live" : ""}`}
               aria-label={sessionRunning ? "Go to active turn" : "Go to latest turn"}
               title={sessionRunning ? "Go to active turn" : "Go to latest turn"}
-              disabled={navigation.nextSeq == null}
+              disabled={navigation.next == null}
               onClick={() => selectTurn(null)}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">

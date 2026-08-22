@@ -6,7 +6,7 @@ const BASE_FONT_SIZE = 14;
 const MESSAGE_LINE_HEIGHT_RATIO = 1.7;
 const CODE_LINE_HEIGHT_RATIO = 1.5;
 
-export type FontProfile = "message" | "code" | "meta" | "session-preview";
+export type FontProfile = "message" | "code" | "meta" | "system" | "session-preview";
 
 const fontProfiles: Record<FontProfile, { font: string; lineHeight: number }> = {
   message: {
@@ -19,6 +19,10 @@ const fontProfiles: Record<FontProfile, { font: string; lineHeight: number }> = 
   },
   meta: {
     font: `10px ${FONT_MONO}`,
+    lineHeight: 16,
+  },
+  system: {
+    font: `11px ${FONT_MONO}`,
     lineHeight: 16,
   },
   "session-preview": {
@@ -112,6 +116,17 @@ const MESSAGE_META_HEIGHT = 24;
 const MESSAGE_ROLE_HEIGHT = 22;
 export const TOOL_CALL_COLLAPSED_HEIGHT = 32;
 const IMAGE_ESTIMATED_HEIGHT = 200;
+
+/** System notices are real wrapping rows, not fixed-height separators. */
+export function estimateSystemMessageHeight(
+  content: string | null | undefined,
+  maxWidth: number,
+  fontScale = 1,
+): number {
+  if (!content) return 16;
+  const contentWidth = Math.max(maxWidth - 48, 100);
+  return measureText(content, contentWidth, "system", fontScale).height + 16;
+}
 
 export function estimateMessageHeight(
   content: string | null | undefined,

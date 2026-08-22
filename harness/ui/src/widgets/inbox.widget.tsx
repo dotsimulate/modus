@@ -10,7 +10,7 @@
 
 import { useMemo } from "react";
 import type { SessionInfo } from "../../../sdk/index";
-import { useSession } from "../providers/SessionContext";
+import { useSessionIndex } from "../providers/SessionContext";
 
 import { getSessionState } from "../sessionStore";
 import { timeAgo, fmtCost } from "../utils/format";
@@ -42,7 +42,7 @@ function truncate(text: string, max: number): string {
 }
 
 export default function InboxWidget({ pageContext, onSelectSession }: WidgetProps<InboxConfig>) {
-  const { serverSessions } = useSession();
+  const { serverSessions } = useSessionIndex();
   const inbox = useMemo(() => {
     const awaiting = serverSessions
       .filter(isAwaitingResponse)

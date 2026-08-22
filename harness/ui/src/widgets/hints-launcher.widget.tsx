@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { modus, API_BASE, getAuthToken } from "../modusClient";
 import { queueComposerAttach } from "../client-extensions";
 import { useProfiles } from "../providers/ProfileContext";
-import { useSession } from "../providers/SessionContext";
+import { useActiveSessionId, useSessionActions } from "../providers/SessionContext";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 import { useWidgetUiState } from "./ui-state";
@@ -132,7 +132,8 @@ export default function HintsLauncherWidget({
   onSelectSession,
 }: WidgetProps<HintsLauncherConfig>) {
   const { activeCwd, projectRoot, activeUserProfile } = useProfiles();
-  const { newSession, selectSession, activeSession } = useSession();
+  const activeSessionId = useActiveSessionId();
+  const { newSession, selectSession } = useSessionActions();
   const cwd = projectRoot ?? activeCwd;
 
   const [draft, setDraft] = useWidgetUiState<string>(
@@ -269,7 +270,7 @@ export default function HintsLauncherWidget({
       // queueComposerAttach buffers until the new ChatInput mounts, so there's
       // no race between session creation and event delivery.
       try {
-        let sid = activeSession?.id ?? null;
+        let sid = activeSessionId;
         if (!sid) {
           sid = await newSession();
           if (!sid) {
@@ -305,14 +306,14 @@ export default function HintsLauncherWidget({
         setState({ phase: "error", error: String((err as Error).message ?? err) });
       }
     }
-  }, [cwd, cachedMoves, draft, activeSession, activeUserProfile, newSession, selectSession, onSelectSession, setDraft]);
+  }, [cwd, cachedMoves, draft, activeSessionId, activeUserProfile, newSession, selectSession, onSelectSession, setDraft]);
 
   // ── Passthrough: send the draft as-is ──
 
   const sendAsTyped = useCallback(async () => {
     if (!cwd || !draft.trim()) return;
     try {
-      let sid = activeSession?.id ?? null;
+      let sid = activeSessionId;
       if (!sid) {
         sid = await newSession();
       }
@@ -324,7 +325,7 @@ export default function HintsLauncherWidget({
     } catch (err) {
       setState({ phase: "error", error: String((err as Error).message ?? err) });
     }
-  }, [cwd, draft, activeSession, newSession, onSelectSession, setDraft]);
+  }, [cwd, draft, activeSessionId, newSession, onSelectSession, setDraft]);
 
   // ── Keyboard nav ──
 

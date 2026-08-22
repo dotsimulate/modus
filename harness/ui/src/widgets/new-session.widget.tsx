@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useState } from "react";
-import { useSession } from "../providers/SessionContext";
+import { useSessionActions } from "../providers/SessionContext";
 import { useProfiles } from "../providers/ProfileContext";
 import { useUiIntent } from "./intents";
 import type { WidgetBase, WidgetProps } from "./types";
@@ -23,7 +23,7 @@ type NewSessionConfig = WidgetBase & {
 
 export default function NewSessionWidget({ pageContext, onSelectSession }: WidgetProps<NewSessionConfig>) {
   const { visibleProfiles, selectProfile } = useProfiles();
-  const { newSession } = useSession();
+  const { newSession } = useSessionActions();
   const [busy, setBusy] = useState(false);
   const { dispatch } = useUiIntent(pageContext);
 

@@ -473,8 +473,8 @@ export function ChatInput({
     userProfileRef.current = userProfile;
   }, [onChange, projectCwd, sessionId, userProfile, value]);
 
-  // Resize for programmatic value changes (history nav, draft load, insertText).
-  // Typing path is handled synchronously in onInput to avoid post-paint reflow.
+  // Resize after React applies any controlled value change. useLayoutEffect runs
+  // before paint, so one measurement covers typing, history, and inserted text.
   useLayoutEffect(() => {
     const ta = ref.current;
     if (ta) {
@@ -1084,12 +1084,6 @@ export function ChatInput({
             placeholder={attachedMove || widgetContent ? "add context... (optional)" : (placeholder ?? "message... (drop or paste images)")}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            onInput={(e) => {
-              const ta = e.currentTarget;
-              ta.style.height = "auto";
-              ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
-              syncGhostScroll();
-            }}
             onKeyDown={handleKeyDown}
             onBeforeInput={handleBeforeInput}
             onPaste={handlePaste}

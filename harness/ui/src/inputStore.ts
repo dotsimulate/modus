@@ -19,7 +19,11 @@ function notify() {
 }
 
 export function getInputValue(): string {
-  return (activeSessionId ? drafts.get(activeSessionId) : undefined) ?? "";
+  return activeSessionId ? getInputValueForSession(activeSessionId) : "";
+}
+
+export function getInputValueForSession(sessionId: string): string {
+  return drafts.get(sessionId) ?? "";
 }
 
 export function setInputValue(v: string) {

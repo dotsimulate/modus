@@ -8,7 +8,8 @@
  *   { "id": "session-control-left", "type": "session-control" }
  */
 
-import { useSession } from "../providers/SessionContext";
+import { useActiveSessionId, useSessionActions } from "../providers/SessionContext";
+import { useSessionState } from "../sessionStore";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "../components/SearchDropdown";
 import { WidgetEmptyState } from "./widget-components";
@@ -23,7 +24,9 @@ const EFFORT_OPTIONS = [
 ];
 
 export default function SessionControlWidget() {
-  const { activeSession, updateActiveSessionConfig } = useSession();
+  const activeSessionId = useActiveSessionId();
+  const activeSession = useSessionState(activeSessionId);
+  const { updateActiveSessionConfig } = useSessionActions();
   const { profiles, activeUP, selectedProfile } = useProfiles();
 
   if (!activeSession || activeSession.id.startsWith("pending-")) {

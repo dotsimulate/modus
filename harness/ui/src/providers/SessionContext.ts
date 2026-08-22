@@ -63,5 +63,44 @@ type SessionContextValue = {
   branchFromSessionMessage: (sessionId: string, seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => Promise<void>;
 };
 
+export type SessionIndexContextValue = Pick<
+  SessionContextValue,
+  "serverSessions" | "allServerSessions" | "sessionsLoaded" | "sessionProjects" | "sessionIndexConnection"
+>;
+
+export type SessionActionsContextValue = Pick<
+  SessionContextValue,
+  | "handleInputChange"
+  | "send"
+  | "stop"
+  | "stopTask"
+  | "newSession"
+  | "selectSession"
+  | "archiveSession"
+  | "refreshSessions"
+  | "handlePermissionResponse"
+  | "cancelQueued"
+  | "updateActiveSessionConfig"
+  | "updateActiveSessionProfile"
+  | "branchFromMessage"
+  | "branchFromSessionMessage"
+>;
+
+export type SessionQueueContextValue = Pick<SessionContextValue, "queuedMessage" | "cancelQueued">;
+
 export const SessionContext = createContext<SessionContextValue>(null!);
 export const useSession = () => useContext(SessionContext);
+
+// High-frequency transcript updates must not invalidate the whole application
+// shell. These narrow contexts let shell/navigation consumers subscribe only
+// to the state they actually render while the legacy aggregate context remains
+// available to components that genuinely need the full active session.
+export const ActiveSessionIdContext = createContext<string | null>(null);
+export const SessionIndexContext = createContext<SessionIndexContextValue>(null!);
+export const SessionActionsContext = createContext<SessionActionsContextValue>(null!);
+export const SessionQueueContext = createContext<SessionQueueContextValue>(null!);
+
+export const useActiveSessionId = () => useContext(ActiveSessionIdContext);
+export const useSessionIndex = () => useContext(SessionIndexContext);
+export const useSessionActions = () => useContext(SessionActionsContext);
+export const useSessionQueue = () => useContext(SessionQueueContext);

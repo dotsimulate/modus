@@ -205,6 +205,8 @@ function widgetIcon(widgetType: string): ReactNode | undefined {
  * Rendered inside each scope node that has a sessionId in its context.
  */
 const emptySnapshot: Record<string, unknown> = {};
+const subscribeToNothing = (_callback: () => void) => () => {};
+const getEmptySnapshot = () => emptySnapshot;
 
 function visibilityMatches(
   state: Record<string, unknown>,
@@ -805,9 +807,12 @@ export function PanelTreeRenderer({
   empty = <div className="panel-empty">empty panel</div>,
 }: Props) {
   const visibilityBus = useScopeBus();
+  const tracksChildVisibility = (node.kind === "tabs" || node.kind === "list")
+    && !node.editable
+    && node.children.some((child) => !!child.showWhen || !!child.hideWhen);
   const visibilityState = useSyncExternalStore(
-    visibilityBus ? visibilityBus.subscribe : () => () => {},
-    visibilityBus ? visibilityBus.getSnapshot : () => emptySnapshot,
+    tracksChildVisibility && visibilityBus ? visibilityBus.subscribe : subscribeToNothing,
+    tracksChildVisibility && visibilityBus ? visibilityBus.getSnapshot : getEmptySnapshot,
   );
 
   if (node.kind === "widget") {

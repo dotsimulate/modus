@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Activity, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { MoveWidgetInfo, Message, TerminalInfo } from "../../../sdk/index";
 import { WIDGET_DEFS, WIDGETS, type LayoutNode, type WidgetBase } from "../widgets";
 import { WidgetPicker } from "./WidgetPicker";
@@ -7,6 +7,7 @@ import { RightPanelContextProvider } from "./RightPanelContext";
 import { PanelSurface, type PanelSurfaceItem } from "./PanelSurface";
 import { TerminalView } from "./TerminalView";
 import { modus } from "../modusClient";
+import { useSessionState } from "../sessionStore";
 
 type Props = {
   open: boolean;
@@ -119,6 +120,8 @@ export function RightPanel({
   onSelectSession,
   sessionId,
 }: Props) {
+  const liveSession = useSessionState(open ? (sessionId ?? null) : null);
+  const effectiveMessages = messages ?? liveSession?.messages ?? [];
   void tree;
   const validWidgets = (widgets ?? []).filter((w) => WIDGETS[w.type]);
   const [requestActiveId, setRequestActiveId] = useState<string | null>(null);
@@ -198,7 +201,7 @@ export function RightPanel({
   }, [moveWidgets]);
 
   const rightPanelContext = {
-    messages: messages ?? [],
+    messages: effectiveMessages,
     sessionId: sessionId ?? null,
     browserPath: initialBrowserPath ?? null,
     activeWidgetId: null,
@@ -297,24 +300,26 @@ export function RightPanel({
         className={`right-panel${open ? " open" : ""}`}
         style={open ? { width, minWidth: width } : undefined}
       >
-        <PanelSurface
-          mode={mode}
-          items={items}
-          picker={picker}
-          empty={children || <div className="panel-empty">no widgets pinned</div>}
-          requestActiveId={requestActiveId}
-          onRequestActiveHandled={clearRequestActive}
-          surfaceClassName="right-panel-content"
-          headerClassName="right-panel-tabs-bar"
-          bodyClassName="right-panel-body"
-          contentClassName="right-panel-content"
-          tabsClassName="rp-tabs"
-          tabClassName="rp-tab"
-          tabActiveClassName="rp-tab--active"
-          tabIconOnlyClassName="rp-tab--icon-only"
-          tabLabelClassName="rp-tab-label"
-          tabCloseClassName="rp-tab-close"
-        />
+        <Activity mode={open ? "visible" : "hidden"} name="right-panel">
+          <PanelSurface
+            mode={mode}
+            items={items}
+            picker={picker}
+            empty={children || <div className="panel-empty">no widgets pinned</div>}
+            requestActiveId={requestActiveId}
+            onRequestActiveHandled={clearRequestActive}
+            surfaceClassName="right-panel-content"
+            headerClassName="right-panel-tabs-bar"
+            bodyClassName="right-panel-body"
+            contentClassName="right-panel-content"
+            tabsClassName="rp-tabs"
+            tabClassName="rp-tab"
+            tabActiveClassName="rp-tab--active"
+            tabIconOnlyClassName="rp-tab--icon-only"
+            tabLabelClassName="rp-tab-label"
+            tabCloseClassName="rp-tab-close"
+          />
+        </Activity>
       </div>
     </RightPanelContextProvider>
   );
