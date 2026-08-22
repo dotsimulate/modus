@@ -299,6 +299,13 @@ target it was handed and call that, or the result lands in an unrelated
 composer with no error. The target is a live proxy that re-resolves on every
 call, so retaining it across remounts is safe.
 
+Continuous app-level input is the deliberate exception. If output is meant to
+follow chat navigation — dictation is the reference case — resolve the current
+composer through `api.getComposer()` and use the top-level composer helpers at
+delivery time. The built-in Whisper extension keeps the initiating handle only
+as a fallback for moments when no composer is active; completed chunks otherwise
+land in the chat the user is currently viewing.
+
 ## Composer Actions
 
 Extensions can register right-side composer controls rendered by `ChatInput`.
