@@ -27,13 +27,19 @@ All from `desktop/`:
 | Command | Produces |
 |---|---|
 | `bun run stage:backend` | staged resources only — the fastest way to prove a staging change |
-| `bun run build` | `tauri build --no-bundle` — a runnable executable plus adjacent sidecar and resources |
-| `bun run build:bundle` | the above plus the platform package |
-| `bun run build:signed` | `build:bundle` merged with `src-tauri/tauri.signing.conf.json` |
+| `bun run build` | host-path-sanitized `tauri build --no-bundle` — a runnable executable plus adjacent sidecar and resources |
+| `bun run build:bundle` | host-path-sanitized Tauri build plus the platform package |
+| `bun run build:signed` | the same wrapper merged with `src-tauri/tauri.signing.conf.json` |
 
 Staging runs automatically as Tauri's `beforeBuildCommand`, so `stage:backend`
 is not a required separate step before a build — it exists so staging can be
 exercised on its own.
+
+All three release build scripts run through `desktop/build-desktop.ts`. The
+wrapper passes encoded `--remap-path-prefix` flags to Cargo so the executable
+does not disclose the builder's checkout, Cargo home, Rustup home, or user-home
+paths. It rejects lower-priority Rust flag environment variables instead of
+silently overriding a custom build configuration.
 
 For core UI work, use the source-development loop instead of rebuilding an
 installer after every edit:
@@ -74,6 +80,13 @@ test can see:
   `.dll`/`.so`/`.dylib` is silently absent at runtime. That class of failure is
   invisible to the build, the typechecks, and the suite, and is reached only by
   using the feature.
+
+Staging handles the two current native cases explicitly: `bun-pty` contributes
+its ConPTY library, and Pi's Photon image resizing contributes
+`photon_rs_bg.wasm`. Bun also turns dependency-local `__dirname` values into
+build-host paths, so staging rewrites the known Photon and resvg declarations
+to the runtime resource directory and fails if a checkout or user-home path
+survives in a JavaScript bundle.
 
 `targetTriple()` resolves all six Windows/macOS/Linux x64 and arm64 triples and
 gates the executable suffix, so staging itself is portable; it prefers

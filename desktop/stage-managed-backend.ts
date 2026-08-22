@@ -3,11 +3,13 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { BRIDGED_HARNESS_MODULES } from "../harness/bridged-modules";
+import { makeBundlePortable } from "./portable-bundle";
 import { desktopBuildProfile } from "./staging-profile";
 
 const desktopDir = import.meta.dir;
@@ -41,7 +43,11 @@ function run(command: string[], cwd: string, env?: Record<string, string | undef
   }
 }
 
-async function bundle(input: string, output: string): Promise<void> {
+async function bundle(
+  input: string,
+  output: string,
+  portableModuleDirectories: string[] = [],
+): Promise<void> {
   const result = await Bun.build({
     entrypoints: [input],
     outdir: resolve(output, ".."),
@@ -58,6 +64,12 @@ async function bundle(input: string, output: string): Promise<void> {
   if (!result.success) {
     throw new Error(result.logs.map((log) => log.message).join("\n"));
   }
+  const portable = makeBundlePortable(
+    readFileSync(output, "utf8"),
+    portableModuleDirectories,
+    [repositoryDir, process.env.USERPROFILE, process.env.HOME],
+  );
+  writeFileSync(output, portable);
 }
 
 function copyResourceDirectory(name: string): void {
@@ -129,6 +141,22 @@ function targetTriple(): string {
   throw new Error(`Unsupported desktop target ${process.platform}/${process.arch}`);
 }
 
+function stagePhotonWasm(): void {
+  const source = join(
+    harnessDir,
+    "node_modules",
+    "@silvia-odwyer",
+    "photon-node",
+    "photon_rs_bg.wasm",
+  );
+  if (!existsSync(source)) {
+    throw new Error(
+      `Pi image-resize WASM missing at ${source}; packaged image resizing cannot work without it`,
+    );
+  }
+  copyFileSync(source, join(stageDir, "photon_rs_bg.wasm"));
+}
+
 function stageCliLauncher(triple: string, devMode: boolean): string {
   assertGeneratedPath(cliLauncherTargetDir, targetDir);
   const profile = devMode ? "debug" : "release";
@@ -171,9 +199,17 @@ async function stage(): Promise<void> {
 
   run(["bun", "run", "build"], join(harnessDir, "ui"));
 
-  await bundle(join(harnessDir, "index.ts"), join(stageDir, "server.js"));
+  await bundle(
+    join(harnessDir, "index.ts"),
+    join(stageDir, "server.js"),
+    [join(harnessDir, "node_modules", "@silvia-odwyer", "photon-node")],
+  );
   await bundle(join(harnessDir, "cli.ts"), join(stageDir, "cli.js"));
-  await bundle(join(harnessDir, "svg-render-worker.ts"), join(stageDir, "svg-render-worker.js"));
+  await bundle(
+    join(harnessDir, "svg-render-worker.ts"),
+    join(stageDir, "svg-render-worker.js"),
+    [join(harnessDir, "node_modules", "@resvg", "resvg-js")],
+  );
   await bundle(join(harnessDir, "providers", "antigravity-hook.ts"), join(stageDir, "providers", "antigravity-hook.js"));
   await bundle(join(harnessDir, "providers", "antigravity-mcp-bridge.ts"), join(stageDir, "providers", "antigravity-mcp-bridge.js"));
 
@@ -192,6 +228,7 @@ async function stage(): Promise<void> {
   }
 
   stagePtyLibrary();
+  stagePhotonWasm();
 
   // Bridge shims: built-in moves import harness runtime modules by relative
   // path (e.g. `../../docs-registry`). The bundled server.js does not ship
