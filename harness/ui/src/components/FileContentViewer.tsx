@@ -77,7 +77,7 @@ export const FileContentViewer = memo(function FileContentViewer({
         )}
         {!loading && !error && content !== null && isMarkdown && (
           <div className="message-content fcv-markdown" onContextMenu={onMarkdownContextMenu}>
-            <Markdown content={content} />
+            <Markdown content={content} sourceFile={filePath} />
           </div>
         )}
         {!loading && !error && content !== null && !isMarkdown && (

@@ -12,7 +12,13 @@ import {
   mermaidSecurityConfig,
   sanitizeMermaidSvg,
 } from "../markdown-security";
-import { buildLinkMenuItems, classifyLinkTarget, type LinkMenuActions } from "../markdown-links";
+import {
+  buildLinkMenuItems,
+  classifyLinkTarget,
+  markdownUrlTransform,
+  resolveMarkdownLinkTarget,
+  type LinkMenuActions,
+} from "../markdown-links";
 import { BACKEND_TARGET } from "../backendTarget";
 import { isTauriRuntime, openDesktopExternalUrl, openDesktopPath, revealDesktopPath } from "../desktopBridge";
 import { nativePickerApplies } from "../native-picker";
@@ -39,6 +45,7 @@ import c from "highlight.js/lib/languages/c";
 import cpp from "highlight.js/lib/languages/cpp";
 import java from "highlight.js/lib/languages/java";
 import ruby from "highlight.js/lib/languages/ruby";
+import powershell from "highlight.js/lib/languages/powershell";
 
 const langs: Record<string, LanguageFn> = {
   javascript, js: javascript, jsx: javascript,
@@ -55,6 +62,7 @@ const langs: Record<string, LanguageFn> = {
   diff,
   c, cpp, "c++": cpp,
   java, ruby, rb: ruby,
+  powershell, ps1: powershell, pwsh: powershell,
 };
 
 for (const [name, lang] of Object.entries(langs)) {
@@ -164,6 +172,9 @@ function MermaidDiagram({ code }: { code: string }) {
 
 function highlight(code: string, lang: string | null): string {
   if (!lang) return escapeHtml(code);
+  // Unknown fence labels are ordinary plain text, not exceptional. Asking
+  // highlight.js to throw also emits a console warning on every render.
+  if (!hljs.getLanguage(lang)) return escapeHtml(code);
   try {
     return hljs.highlight(code, { language: lang }).value;
   } catch {
@@ -285,9 +296,11 @@ const markdownComponents: MarkdownComponents = {
 
 export const Markdown = memo(function Markdown({
   content,
+  sourceFile,
   revealText = false,
 }: {
   content: string;
+  sourceFile?: string;
   revealText?: boolean;
 }) {
   const { openFile } = useFileViewer();
@@ -340,7 +353,7 @@ export const Markdown = memo(function Markdown({
   function targetOf(e: React.MouseEvent) {
     const link = (e.target as HTMLElement).closest("a");
     const href = link?.getAttribute("href");
-    return href ? classifyLinkTarget(href) : null;
+    return href ? resolveMarkdownLinkTarget(href, sourceFile) : null;
   }
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -376,7 +389,12 @@ export const Markdown = memo(function Markdown({
 
   return (
     <div onClick={handleClick} onContextMenu={handleContextMenu}>
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
+      <ReactMarkdown
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        components={markdownComponents}
+        urlTransform={markdownUrlTransform}
+      >
         {bounded.content}
       </ReactMarkdown>
       {linkError && <div className="markdown-link-error" role="status">{linkError}</div>}

@@ -1,37 +1,6 @@
 import { useState, useRef, useCallback } from "react";
-import type { Message, ToolCall } from "../../../sdk/index";
-import { userAuthoredMessageText } from "../move-context";
-
-type CopyMode = "last" | "text" | "thinking" | "full";
-
-function formatToolCallsText(toolCalls?: ToolCall[]): string {
-  if (!toolCalls?.length) return "";
-  return toolCalls.map(tc => {
-    const inputStr = Object.entries(tc.input)
-      .map(([k, v]) => `  ${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
-      .join("\n");
-    const parts = [`[${tc.name}]`, inputStr];
-    if (tc.result) parts.push(`→ ${tc.result.slice(0, 500)}`);
-    return parts.join("\n");
-  }).join("\n\n");
-}
-
-function buildCopyText(msg: Message, mode: CopyMode): string {
-  if (msg.role === "user") return userAuthoredMessageText(msg.content);
-  const tc = msg.turnCopy;
-
-  if (mode === "last") return msg.content;
-
-  const text = tc?.text ?? msg.content;
-  const thinking = tc?.thinking ?? msg.thinking;
-  const toolCalls = tc?.toolCalls ?? msg.toolCalls;
-
-  const parts: string[] = [];
-  if (mode !== "text" && thinking) parts.push(`<thinking>\n${thinking}\n</thinking>`);
-  if (mode === "full" && toolCalls?.length) parts.push(formatToolCallsText(toolCalls));
-  if (text) parts.push(text);
-  return parts.join("\n\n");
-}
+import type { Message } from "../../../sdk/index";
+import { buildCopyText, type CopyMode } from "../message-copy";
 
 const CopyIcon = () => (
   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
