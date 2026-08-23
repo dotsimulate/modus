@@ -21,6 +21,7 @@ loadSecrets();
 
 import { join, resolve, extname, dirname } from "path";
 import { APP_PATHS } from "./app-paths";
+import { checkResourceTree, formatResourceTreeReport } from "./resource-tree";
 import { initHarnessBridge } from "./harness-bridge";
 import { cursorMcpConfigStore } from "./providers/cursor-mcp-config";
 import { pruneAbandonedSensitiveTempDirectories } from "./sensitive-temp";
@@ -5277,6 +5278,11 @@ process.env.HARNESS_PORT = String(server.port);
 const authModes = [AUTH_TOKEN && "token", getPin() && "pin"].filter(Boolean);
 const protocol = HARNESS_TLS_CERT && HARNESS_TLS_KEY ? "https" : "http";
 console.log(`Agent harness listening on ${protocol}://${HOST}:${PORT}${authModes.length ? ` (auth: ${authModes.join("+")})` : ""}`);
+
+// Report a truncated resource tree before the subsystems that read it start, so
+// the cause is logged above the symptoms rather than after them.
+const resourceTreeWarning = formatResourceTreeReport(checkResourceTree(APP_PATHS.resourcesDir));
+if (resourceTreeWarning) console.error(resourceTreeWarning);
 
 initActions();
 initWakeScheduler();
