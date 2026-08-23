@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import type { ActionInfo, ActionRun } from "../../../sdk/index";
+import { describeActionCycleLimit, describeActionRunLimit } from "../action-limit-display";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
 
@@ -101,6 +102,9 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
   const dot = dotClass(action);
   const runCount = finiteNumber(action.cycleRunCount);
   const cycleNumber = finiteNumber(action.cycleNumber, 1);
+  const hasCycles = !!action.cycleInterval;
+  const runLimit = describeActionRunLimit(runCount, action.maxRuns, hasCycles);
+  const cycleLimit = describeActionCycleLimit(cycleNumber, action.maxCycles);
   const activeSessions = finiteNumber(action.activeSessions);
   const concurrency = Math.max(1, finiteNumber(action.concurrency, 1));
 
@@ -119,13 +123,8 @@ export default function ActionCardWidget({ config }: WidgetProps<ActionCardConfi
 
       <div className="action-card-meta">
         <span className="action-card-tag">{action.agentProfile}</span>
-        <span className="action-card-stat">{runCount} runs</span>
-        {action.maxRuns && (
-          <span className="action-card-stat">/ {action.maxRuns} max</span>
-        )}
-        {action.cycleInterval && (
-          <span className="action-card-stat">cycle {cycleNumber}</span>
-        )}
+        <span className="action-card-stat">{runLimit.label}</span>
+        {hasCycles && <span className="action-card-stat">{cycleLimit.label}</span>}
       </div>
 
       {lastRun && (

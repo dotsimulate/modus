@@ -252,6 +252,13 @@
 .sched-progress-fill--cycle { background: var(--success); }
 .sched-progress-fill--runs { background: var(--success); }
 .sched-progress-fill--next { background: var(--warning); }
+.sched-meter-unlimited {
+  flex: 1;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(12px * var(--font-scale, 1));
+  line-height: 1;
+}
 
 /* ── Toggle Switch ── */
 .sched-switch {
@@ -473,6 +480,13 @@
 .sched-run-row--no-session {
   cursor: default;
 }
+.sched-run-row--skipped-summary {
+  background: color-mix(in srgb, var(--bg-hover) 45%, transparent);
+}
+.sched-run-row--skipped-summary .sched-run-summary {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
 
 .sched-run-top {
   display: flex;
@@ -568,6 +582,9 @@
   font-family: var(--font-mono);
   font-size: calc(9px * var(--font-scale, 1));
   color: var(--error-dim);
+}
+.sched-run-status-label--skipped {
+  color: var(--text-muted);
 }
 .sched-run-attempts {
   font-family: var(--font-mono);
@@ -963,4 +980,3 @@
     padding-right: 0;
   }
 }
-
