@@ -1,6 +1,6 @@
 ---
 title: Harness Context
-lastUpdated: 2026-08-17
+lastUpdated: 2026-08-22
 covers: harness/harness-context.ts harness/wake-scheduler.ts harness/move-runner.ts harness/action-runner.ts harness/modus-mcp.ts harness/model-oneshot.ts harness/providers/pi-model.ts harness/providers/claude-cli-oneshot.ts
 ---
 
@@ -73,7 +73,7 @@ untouched:
 | Surface | Adapter behavior |
 |---|---|
 | `ctx.harness` (`HarnessBridge`) in moves | Same method names/shapes; delegates to `ctx.sessions/actions/channels/moves`. `notify` now reaches a real channel (was a console.log stub). |
-| `MoveApiContext` (move API handlers) | Keeps its historic fields (session-inject `notify`, `sendMessage`, state, db, …) **plus** orchestration members sourced from this context. It is *not* a superset of `MoveContext` — there is no `run`/shell on handlers. Exact member list, generated from source: [`generated/authoring-contracts`](./generated/authoring-contracts.md). |
+| `MoveApiContext` (move API handlers) | Keeps its historic fields (session-inject `notify`, `sendMessage`, state, db, …) **plus** orchestration members sourced from this context. It is *not* a superset of `MoveContext`: handlers do not get the convenience `run` field, but reviewed/builtin handlers do get capability-gated `ctx.shell.run(cmd)`. Exact member list, generated from source: [`generated/authoring-contracts`](./generated/authoring-contracts.md). |
 | `ActionContext` (actions) | Keeps all existing fields **plus** `ctx.sessions` / `ctx.channels` / `ctx.model`. Actions gain `trust`/`capabilities` (default: harness origin → builtin, project origin → reviewed). |
 | `.modus/api-handlers/*.ts` | Dual signature, detected by **export key** (never arity): `export const handlers = {…}` or named fns → old `(sessionId, data)`; `export const ops = {…}` → new `(ctx, data)` with the full Harness Context. |
 
@@ -184,6 +184,11 @@ Scheduled/event wakes are owned by `wake-scheduler.ts` — a small engine with i
 tick loop and a `scheduled_wakes` table for restart survival. `onEvent` wakes are matched
 from session-manager's lifecycle emission points (a cascade cooldown bounds self-referential
 wakes). `wake` returns a `WakeHandle` with `cancel()`.
+
+Restart survival does not replay downtime. On the first scheduler tick after restart, an
+overdue `{ at }` wake fires once and is removed. An overdue `{ every }` wake also fires once,
+then re-anchors its next fire to `now + everyMs`; intervals missed while the harness was down
+are not delivered in a burst.
 
 A "waiting team": park N workers on a "wait for instruction" first message, tag them
 `role:worker`, then `wake("role:worker", task, { every: "30m" })` to re-engage them. Each
