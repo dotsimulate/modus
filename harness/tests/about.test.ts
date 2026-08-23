@@ -1,7 +1,7 @@
 import { resolve as resolveTestSourceDir } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync } from "fs";
+import { join, resolve } from "path";
 import { getAboutInfo, resolveVersion, MODUS_LICENSE } from "../about";
 
 describe("about", () => {
@@ -40,5 +40,17 @@ describe("about", () => {
       expect(link.description).not.toBe("");
       expect(link.href === "#docs" || link.href.startsWith("https://")).toBe(true);
     }
+  });
+
+  test("does not claim configured providers and integrations are local", () => {
+    const aboutCopy = getAboutInfo().topics.map((topic) => topic.body).join("\n");
+    const tauriConfig = JSON.parse(readFileSync(
+      resolve(resolveTestSourceDir(import.meta.dir, ".."), "../desktop/src-tauri/tauri.conf.json"),
+      "utf8",
+    )) as { bundle: { longDescription: string } };
+    const userFacingCopy = `${aboutCopy}\n${tauriConfig.bundle.longDescription}`;
+
+    expect(userFacingCopy).not.toMatch(/everything runs locally/i);
+    expect(userFacingCopy).toMatch(/providers and integrations/i);
   });
 });

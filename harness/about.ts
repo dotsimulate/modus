@@ -84,8 +84,8 @@ const TOPICS: HelpTopic[] = [
     title: "What Modus is",
     body:
       "A local-first harness for running AI agents on your own machine. It manages sessions, "
-      + "composes prompts, and gives agents controlled access to your projects. Everything runs "
-      + "locally; no Modus service sees your work.",
+      + "composes prompts, and gives agents controlled access to your projects. Modus has no "
+      + "hosted collection service; providers and integrations you configure can receive content.",
     docId: "architecture",
   },
   {
