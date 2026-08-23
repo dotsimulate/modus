@@ -56,7 +56,7 @@ export async function handleModusMcpRequest(request: Request, scopeKey?: string)
 
   server.tool(
     "modus_submit",
-    "Submit a command to the harness. Provide the token you were given and a data object for the operation.",
+    "Submit a command to the harness. Provide the token you were given and the operation payload as a JSON string.",
     {
       token: z.string().describe("The token you received"),
       data: z.string().optional().describe("Operation payload as a JSON string"),
@@ -64,11 +64,9 @@ export async function handleModusMcpRequest(request: Request, scopeKey?: string)
     async (params) => {
       const { token, data: rawData, ...rest } = params as Record<string, unknown> & { token: string; data?: unknown };
 
-      // Three calling patterns:
-      // 1. data is an object (native MCP clients, most models)
-      // 2. data is a JSON string (Claude Code XML serialization — handled here, not in schema)
-      // 3. data is absent, fields passed flat (haiku/smaller models)
-      // Schema is plain object (no union/oneOf) to avoid llama.cpp autoparser PEG bugs.
+      // The advertised MCP schema uses a JSON string because that shape works
+      // consistently across provider tool serializers. Keep normalizing object
+      // and flat inputs here for older/internal callers that reach this handler.
       let data: Record<string, unknown>;
       if (rawData == null) {
         data = rest;
