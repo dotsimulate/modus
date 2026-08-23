@@ -15,6 +15,16 @@ export const OPENCODE_CAPABILITIES: ProviderCapabilities = {
   builtInToolMode: "event-derived",
   supportsMcp: true,
   mcpSupport: "full",
+  profilePrompt: {
+    supportedModes: ["append", "custom"],
+    delivery: { append: "system", custom: "system" },
+    summary: "OpenCode supports appended instructions and custom primary-agent system prompts.",
+  },
+  projectInstructions: {
+    control: "toggle",
+    sources: "OpenCode project config and instruction files",
+    summary: "Modus can enable or disable OpenCode project configuration and instructions.",
+  },
   nonToolSignals: ["reasoning", "streaming"],
   permissionModel: {
     mode: "runtime-native",

@@ -56,7 +56,8 @@ The `toolStates` session override also works (using Gemini tool names).
 
 ## `loadProjectSettings`
 
-Has no effect — Gemini does not read CLAUDE.md. Omit it.
+Controls Gemini project memory through the runtime's workspace-trust setting.
+When disabled, Gemini project memory files are not loaded.
 
 ## Effort
 
@@ -69,23 +70,22 @@ supported; `"low"` disables it.
 | Field | Notes |
 |-------|-------|
 | `model` | Gemini model ID; default `"gemini-2.5-pro"` |
-| `prompt` | Injected into the user message (custom or append mode) |
-| `promptMode` | Works; `"custom"` wraps in `<SYSTEM_INSTRUCTIONS>` tags |
+| `prompt` | Unavailable; a non-empty prompt is rejected because this integrated runtime exposes no isolated system-level channel |
+| `promptMode` | Unavailable for this provider |
 | `tools` | Gemini tool names (`list_directory`, `grep_search`, etc.) |
 | `disallowedTools` | Gemini tool names to exclude |
 | `permissionPolicy` | Maps to Gemini ApprovalMode (see table above) |
 | `mcpServers` | Full MCP support via Gemini settings.json |
 | `effort` | Controls Gemini thinking budget |
-| `loadProjectSettings` | No effect — omit |
+| `loadProjectSettings` | Enables or disables Gemini project memory |
 
 ## Example Profile
 
 ```json
 {
   "description": "Gemini research agent with web search",
-  "prompt": "You are a research assistant. Cite sources. Prefer google_web_search for current info.",
-  "promptMode": "append",
   "provider": "gemini-cli",
+  "loadProjectSettings": true,
   "effort": "high",
   "permissionPolicy": "bypass",
   "mcpServers": {

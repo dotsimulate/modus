@@ -139,11 +139,11 @@ export type Profile = {
   maxTurns?: number;
   /** Effort level */
   effort?: EffortLevel;
-  /** Whether to load CLAUDE.md and project settings */
+  /** Whether to load provider-native project instructions when the provider exposes a toggle */
   loadProjectSettings?: boolean;
   /** CLAUDE.md exclusions — raw globs or named rules + custom patterns */
   claudeMdExcludes?: ClaudeMdExcludes;
-  /** System prompt mode — "custom" replaces everything, "append" adds to claude_code preset */
+  /** Profile prompt mode — "custom" replaces built-in system instructions, "append" adds to them */
   promptMode?: "custom" | "append";
   /** MCP server configurations for this profile */
   mcpServers?: Record<string, McpServerConfig>;

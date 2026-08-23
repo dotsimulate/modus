@@ -8,7 +8,7 @@
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import type { SessionProvider, TurnContext } from "./types";
 import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
-import { getGlobalConfig, getUserData, type McpServerConfig, type PermissionPolicy } from "../profiles";
+import { getGlobalConfig, resolveProfilePrompt, type McpServerConfig, type PermissionPolicy } from "../profiles";
 import { permissionPolicyNeedsApproval } from "../permission-policy";
 import { resolveMcpServers } from "../mcp-config";
 import {
@@ -81,6 +81,16 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   ],
   supportsMcp: true,
   mcpSupport: "full",
+  profilePrompt: {
+    supportedModes: ["append", "custom"],
+    delivery: { append: "system", custom: "system" },
+    summary: "Claude Code supports both appended and replacement system prompts.",
+  },
+  projectInstructions: {
+    control: "toggle",
+    sources: "project CLAUDE.md and settings",
+    summary: "Modus can enable or disable Claude Code project settings.",
+  },
   nonToolSignals: ["thinking", "streaming"],
   permissionModel: {
     mode: "per-tool-ui",
@@ -497,14 +507,12 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
       // Build system prompt — resolve {{key}} template vars
       let systemPrompt: string | { type: "preset"; preset: "claude_code"; append?: string } | undefined;
-      let rawPrompt = profileDef?.prompt;
-      if (rawPrompt) {
-        const userData = getUserData();
-        rawPrompt = rawPrompt.replace(/\{\{(\w+)\}\}/g, (_, key) => userData[key] ?? `{{${key}}}`);
-        if (profileDef?.promptMode === "custom") {
-          systemPrompt = rawPrompt;
+      const resolvedPrompt = resolveProfilePrompt(profileDef);
+      if (resolvedPrompt?.text) {
+        if (resolvedPrompt.mode === "custom") {
+          systemPrompt = resolvedPrompt.text;
         } else {
-          systemPrompt = { type: "preset", preset: "claude_code", append: rawPrompt };
+          systemPrompt = { type: "preset", preset: "claude_code", append: resolvedPrompt.text };
         }
       }
 
@@ -1183,11 +1191,12 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
       // Build new system prompt
       let systemPrompt: string | { type: "preset"; preset: "claude_code"; append?: string } | undefined;
-      if (profileDef?.prompt) {
-        if (profileDef.promptMode === "custom") {
-          systemPrompt = profileDef.prompt;
+      const resolvedPrompt = resolveProfilePrompt(profileDef);
+      if (resolvedPrompt?.text) {
+        if (resolvedPrompt.mode === "custom") {
+          systemPrompt = resolvedPrompt.text;
         } else {
-          systemPrompt = { type: "preset", preset: "claude_code", append: profileDef.prompt };
+          systemPrompt = { type: "preset", preset: "claude_code", append: resolvedPrompt.text };
         }
       }
 
@@ -1205,6 +1214,9 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
 
       // Update SDK options for next resume
       state.sdkOptions.systemPrompt = systemPrompt;
+      state.sdkOptions.settingSources = (ctx.opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true)
+        ? ["project"]
+        : [];
       state.sdkOptions.model = ctx.opts.model || undefined;
       state.sdkOptions.effort = normalizeClaudeEffort(ctx.opts.effort);
       state.sdkOptions.maxTurns = ctx.opts.maxTurns || undefined;

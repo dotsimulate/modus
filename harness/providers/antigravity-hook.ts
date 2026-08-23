@@ -45,20 +45,7 @@ try {
   failClosed(`could not forward hook event: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-if (mode === "pre-invocation") {
-  const instructionPath = join(ipcDir, "profile-instructions.json");
-  if (existsSync(instructionPath)) {
-    try {
-      const instruction = JSON.parse(readFileSync(instructionPath, "utf8")) as { text?: unknown };
-      if (typeof instruction.text === "string" && instruction.text.trim()) {
-        writeHookResult({ injectSteps: [{ ephemeralMessage: instruction.text }] });
-      }
-    } catch (error) {
-      failClosed(`invalid Modus profile instruction: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  writeHookResult({});
-}
+if (mode === "pre-invocation") writeHookResult({});
 if (mode === "post-tool") writeHookResult({});
 if (mode === "stop") {
   if (input.fullyIdle === false) {

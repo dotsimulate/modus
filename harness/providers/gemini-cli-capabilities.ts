@@ -23,6 +23,16 @@ export const GEMINI_CAPABILITIES: ProviderCapabilities = {
   builtInToolMode: "explicit",
   supportsMcp: true,
   mcpSupport: "full",
+  profilePrompt: {
+    supportedModes: [],
+    delivery: {},
+    summary: "The integrated Gemini runtime has no isolated system-prompt override for Modus profiles.",
+  },
+  projectInstructions: {
+    control: "toggle",
+    sources: "Gemini project memory files",
+    summary: "Modus can enable or disable Gemini project memory through workspace trust.",
+  },
   nonToolSignals: ["thinking", "streaming"],
   permissionModel: {
     mode: "runtime-native",

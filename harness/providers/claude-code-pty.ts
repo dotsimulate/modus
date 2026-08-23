@@ -30,7 +30,7 @@ import { registerExternalTerminal, updateTerminalSession } from "../terminal-man
 import { getMemoryLimitedEnv } from "../memory-guard";
 import { attachPipeErrorHandler, pipeErrorCode, tryPipeOperation } from "../pipe-errors";
 import {
-  getGlobalConfig, getUserData,
+  getGlobalConfig, resolveProfilePrompt,
   type McpServerConfig,
   type PermissionPolicy,
 } from "../profiles";
@@ -82,6 +82,16 @@ const CAPABILITIES: ProviderCapabilities = {
   ],
   supportsMcp: true,
   mcpSupport: "full",
+  profilePrompt: {
+    supportedModes: ["append", "custom"],
+    delivery: { append: "system", custom: "system" },
+    summary: "Claude Code supports both appended and replacement system prompts.",
+  },
+  projectInstructions: {
+    control: "toggle",
+    sources: "project CLAUDE.md and settings",
+    summary: "Modus can enable or disable Claude Code project settings.",
+  },
   nonToolSignals: ["thinking", "streaming"],
   permissionModel: {
     mode: "runtime-native",
@@ -182,12 +192,6 @@ function contentToString(content: MessageContent): string {
     .filter((b: any) => b.type === "text")
     .map((b: any) => b.text)
     .join("\n");
-}
-
-function resolveSystemPrompt(profileDef: any): string | undefined {
-  if (!profileDef?.prompt) return undefined;
-  const userData = getUserData();
-  return profileDef.prompt.replace(/\{\{(\w+)\}\}/g, (_: string, key: string) => userData[key] ?? `{{${key}}}`);
 }
 
 function resolvePermissionMode(providerControls: unknown): string {
@@ -332,10 +336,10 @@ function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
   // System prompt — write to temp file to avoid Windows command line length limits.
   // Long system prompts as CLI args get truncated by cmd.exe at 8191 chars,
   // which can silently drop flags that come after (like --mcp-config).
-  const systemPrompt = resolveSystemPrompt(profileDef);
-  if (systemPrompt) {
-    const promptFile = writeSensitiveTempFile(privateTempDir(), "prompt.txt", systemPrompt);
-    if (profileDef?.promptMode === "custom") {
+  const resolvedPrompt = resolveProfilePrompt(profileDef);
+  if (resolvedPrompt?.text) {
+    const promptFile = writeSensitiveTempFile(privateTempDir(), "prompt.txt", resolvedPrompt.text);
+    if (resolvedPrompt.mode === "custom") {
       args.push("--system-prompt-file", promptFile);
     } else {
       args.push("--append-system-prompt-file", promptFile);
@@ -358,12 +362,10 @@ function buildSpawnArgs(ctx: TurnContext, resumeSessionId?: string): {
   if (mcpArgs.length > 0) args.push("--strict-mcp-config");
 
   // Project settings. The CLI dropped --no-project-settings; --setting-sources
-  // takes the list to load (user, project, local), so an empty list disables
-  // settings files and CLAUDE.md discovery. Loading stays on the CLI default.
+  // takes the list to load (user, project, local). Keep the SDK and PTY paths
+  // aligned on project-only settings when enabled and no settings when disabled.
   const loadSettings = opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true;
-  if (!loadSettings) {
-    args.push("--setting-sources", "");
-  }
+  args.push("--setting-sources", loadSettings ? "project" : "");
 
   // Build env
   const env: Record<string, string> = providerChildEnv();
@@ -1403,6 +1405,7 @@ export function createClaudeCodePtyProvider(): SessionProvider {
         state.effort = newEffort;
         state.needsRestart = true;
       }
+      state.needsRestart = true;
     },
   };
 }

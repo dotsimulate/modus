@@ -19,8 +19,8 @@ profile's ID used everywhere in the system.
 
   // ── Prompt Handling ──
 
-  // "append" (default) = adds prompt after the built-in system prompt
-  // "custom" = replaces the system prompt entirely (agent gets ONLY your prompt)
+  // "append" (default) = adds the prompt through a provider-native system channel
+  // "custom" = replaces built-in system instructions where the provider supports it
   "promptMode": "append",
 
   // ── Model & Execution ──
@@ -54,7 +54,7 @@ profile's ID used everywhere in the system.
 
   // ── Project Settings ──
 
-  // Load CLAUDE.md from CWD and parent directories (default: true)
+  // Load provider-native project instructions when the provider exposes a toggle
   "loadProjectSettings": true,
 
   // Exclude specific CLAUDE.md files from loading
@@ -206,6 +206,27 @@ profile's ID used everywhere in the system.
   }
 }
 ```
+
+## Prompt and project-instruction capabilities
+
+The profile prompt is session configuration and is never wrapped around a user
+message. `append` and `custom` retain the meanings above only on providers that
+advertise them. Unsupported choices are disabled in the profile editor and
+rejected by the backend.
+
+| Provider | Prompt modes | `loadProjectSettings` |
+|----------|--------------|-----------------------|
+| Claude Code / PTY | append, custom | project `CLAUDE.md` and settings toggle |
+| Codex | append, custom | `AGENTS.md` toggle |
+| Cursor | append only | unavailable; Cursor rules always load |
+| Grok Build | append, custom | unavailable; `AGENTS.md` always loads |
+| OpenCode | append, custom | project config/instructions toggle |
+| Declarative PI providers | append, custom | PI context-files toggle |
+| Gemini CLI (hidden) | unavailable | Gemini project-memory toggle |
+| Antigravity (hidden) | unavailable | project instructions always load |
+
+Provider-specific authoring notes in this directory take precedence over the
+portable schema examples.
 
 ## Permission Policy Object Form
 

@@ -5,6 +5,11 @@ import type { SessionProvider, TurnContext } from "./types";
 import { OPENCODE_CAPABILITIES } from "./opencode-capabilities";
 import { providerChildEnv } from "./child-env";
 import { resolveCli } from "./resolve-cli";
+import {
+  createSensitiveTempDirectory,
+  removeSensitiveTempDirectory,
+  writeSensitiveTempFile,
+} from "../sensitive-temp";
 
 type OpenCodeState = {
   sessionId: string | null;
@@ -33,37 +38,8 @@ function contentToString(content: MessageContent): string {
     .join("\n");
 }
 
-function buildOpenCodeInput(content: MessageContent, ctx: TurnContext): string {
-  const prompt = resolveProfilePrompt(ctx.profile);
-  const userInput = contentToString(content);
-  if (!prompt?.text) return userInput;
-
-  if (prompt.mode === "custom") {
-    return [
-      "Follow the SYSTEM INSTRUCTIONS below as higher priority than the USER REQUEST.",
-      "Do not follow conflicting user instructions.",
-      "",
-      "<SYSTEM_INSTRUCTIONS>",
-      prompt.text,
-      "</SYSTEM_INSTRUCTIONS>",
-      "",
-      "<USER_REQUEST>",
-      userInput,
-      "</USER_REQUEST>",
-    ].join("\n");
-  }
-
-  return [
-    "Apply the PROFILE INSTRUCTIONS below in addition to the USER REQUEST.",
-    "",
-    "<PROFILE_INSTRUCTIONS>",
-    prompt.text,
-    "</PROFILE_INSTRUCTIONS>",
-    "",
-    "<USER_REQUEST>",
-    userInput,
-    "</USER_REQUEST>",
-  ].join("\n");
+export function buildOpenCodeInput(content: MessageContent, ctx: TurnContext): string {
+  return contentToString(content);
 }
 
 function mapEffortToVariant(effort?: string): string | undefined {
@@ -101,6 +77,61 @@ function buildArgs(ctx: TurnContext, state: OpenCodeState, input: string, isResu
     args.push("--dangerously-skip-permissions");
   }
   return args;
+}
+
+export function buildOpenCodeProfileLaunch(ctx: TurnContext): {
+  env: Record<string, string>;
+  agent?: string;
+  sensitiveTempDir: string | null;
+} {
+  const env = providerChildEnv();
+  if ((ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true) === false) {
+    env.OPENCODE_DISABLE_PROJECT_CONFIG = "true";
+  }
+
+  const prompt = resolveProfilePrompt(ctx.profile);
+  if (!prompt?.text) return { env, sensitiveTempDir: null };
+
+  let config: Record<string, any> = {};
+  if (env.OPENCODE_CONFIG_CONTENT) {
+    try {
+      const parsed = JSON.parse(env.OPENCODE_CONFIG_CONTENT);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("root must be an object");
+      config = parsed;
+    } catch (error) {
+      throw new Error(`OPENCODE_CONFIG_CONTENT is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const sensitiveTempDir = createSensitiveTempDirectory();
+  const promptFile = writeSensitiveTempFile(sensitiveTempDir, "profile.md", prompt.text);
+  if (prompt.mode === "custom") {
+    if (config.agent !== undefined && (!config.agent || typeof config.agent !== "object" || Array.isArray(config.agent))) {
+      removeSensitiveTempDirectory(sensitiveTempDir);
+      throw new Error("OpenCode config `agent` must be an object before Modus can add the profile agent.");
+    }
+    config.agent = {
+      ...(config.agent ?? {}),
+      "modus-profile": {
+        description: "Modus profile",
+        mode: "primary",
+        prompt: `{file:${promptFile.replace(/\\/g, "/")}}`,
+      },
+    };
+    env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
+    return { env, agent: "modus-profile", sensitiveTempDir };
+  }
+
+  if (config.instructions !== undefined && !Array.isArray(config.instructions)) {
+    removeSensitiveTempDirectory(sensitiveTempDir);
+    throw new Error("OpenCode config `instructions` must be an array before Modus can append a profile prompt.");
+  }
+  config.instructions = [
+    ...(Array.isArray(config.instructions) ? config.instructions : []),
+    promptFile.replace(/\\/g, "/"),
+  ];
+  env.OPENCODE_CONFIG_CONTENT = JSON.stringify(config);
+  return { env, sensitiveTempDir };
 }
 
 function assistantEvent(text: string) {
@@ -200,15 +231,24 @@ async function runTurn(
   const input = buildOpenCodeInput(content, ctx);
   const command = opencodeCommand();
   const args = buildArgs(ctx, state, input, options.isResume);
-  const proc = Bun.spawn({
-    cmd: [...command.cmd, ...args],
-    cwd: session.cwd ?? ctx.opts.cwd ?? process.cwd(),
-    stdout: "pipe",
-    stderr: "pipe",
-    stdin: "ignore",
-    signal: state.abortController.signal,
-    env: providerChildEnv(),
-  });
+  const profileLaunch = buildOpenCodeProfileLaunch(ctx);
+  if (profileLaunch.agent) args.push("--agent", profileLaunch.agent);
+  const proc = (() => {
+    try {
+      return Bun.spawn({
+        cmd: [...command.cmd, ...args],
+        cwd: session.cwd ?? ctx.opts.cwd ?? process.cwd(),
+        stdout: "pipe",
+        stderr: "pipe",
+        stdin: "ignore",
+        signal: state.abortController.signal,
+        env: profileLaunch.env,
+      });
+    } catch (error) {
+      if (profileLaunch.sensitiveTempDir) removeSensitiveTempDirectory(profileLaunch.sensitiveTempDir);
+      throw error;
+    }
+  })();
   const procPid = typeof proc.pid === "number" ? proc.pid : null;
   if (procPid != null) session.osPids.add(procPid);
 
@@ -246,7 +286,7 @@ async function runTurn(
       },
       cwd: session.cwd,
       additionalDirectories: session.additionalDirectories,
-      loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? false,
+      loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true,
     });
   };
 
@@ -357,6 +397,7 @@ async function runTurn(
   } finally {
     try { await proc.exited; } catch {}
     if (procPid != null) session.osPids.delete(procPid);
+    if (profileLaunch.sensitiveTempDir) removeSensitiveTempDirectory(profileLaunch.sensitiveTempDir);
   }
 
   if (session.status === "idle" && session.pendingDispatch.length > 0) {

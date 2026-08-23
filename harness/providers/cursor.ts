@@ -14,6 +14,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import { createInterface } from "readline";
 import { join, isAbsolute } from "path";
+import { mkdirSync, writeFileSync } from "fs";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import { getMaxSeq, getSession, getSessionMessages, updateSessionStatus, type TurnContent } from "../db";
@@ -22,7 +23,7 @@ import { APP_PATHS } from "../app-paths";
 import { logActivity } from "../activity";
 import { resolveSecret } from "../secrets";
 import {
-  getGlobalConfig, getProfile, resolveProfilePrompt,
+  getGlobalConfig, getProfile,
   type McpServerConfig, type Profile,
 } from "../profiles";
 import { resolveMcpServers } from "../mcp-config";
@@ -32,6 +33,8 @@ import { hasExited, terminateProcessTree, waitForClose } from "./process-tree";
 import { cursorMcpConfigStore } from "./cursor-mcp-config";
 import { providerChildEnv } from "./child-env";
 import { logProviderDiagnostic } from "./provider-diagnostics";
+import { createSensitiveTempDirectory, removeSensitiveTempDirectory } from "../sensitive-temp";
+import { requireSupportedProfilePrompt } from "./profile-prompt-delivery";
 
 // ── Provider-specific state stored on session._providerState ──
 
@@ -42,6 +45,7 @@ type CursorState = {
   abortController: AbortController;
   mcpConfigPath: string | null;    // path to .cursor/mcp.json we wrote
   mcpJournalPath: string | null;   // durable restore journal for that write
+  profilePluginDir: string | null;
 };
 
 /**
@@ -68,6 +72,16 @@ const CURSOR_CAPABILITIES: ProviderCapabilities = {
   builtInToolMode: "event-derived",
   supportsMcp: true,
   mcpSupport: "full",
+  profilePrompt: {
+    supportedModes: ["append"],
+    delivery: { append: "rule" },
+    summary: "Cursor can append a profile as an always-applied private plugin rule; it cannot replace its built-in system prompt.",
+  },
+  projectInstructions: {
+    control: "always",
+    sources: "Cursor project rules",
+    summary: "Cursor always discovers project rules; its headless CLI has no disable switch.",
+  },
   nonToolSignals: ["thinking"],
   permissionModel: {
     mode: "runtime-native",
@@ -93,6 +107,7 @@ function createInitialState(session: ActiveSession, model: string): CursorState 
     abortController: session.abortController,
     mcpConfigPath: null,
     mcpJournalPath: null,
+    profilePluginDir: null,
   };
 }
 
@@ -116,16 +131,28 @@ function contentToString(content: MessageContent): string {
     .join("\n");
 }
 
-function buildCursorInput(content: MessageContent, ctx: TurnContext): string {
-  const prompt = resolveProfilePrompt(ctx.profile);
-  const userInput = buildBranchAwareUserInput(content, ctx);
-  if (!prompt?.text) return userInput;
+export function buildCursorInput(content: MessageContent, ctx: TurnContext): string {
+  return buildBranchAwareUserInput(content, ctx);
+}
 
-  const header = prompt.mode === "custom"
-    ? "System instructions:"
-    : "Additional profile instructions:";
+export function syncCursorProfilePlugin(ctx: TurnContext, state: CursorState): string | null {
+  if (state.profilePluginDir) {
+    removeSensitiveTempDirectory(state.profilePluginDir);
+    state.profilePluginDir = null;
+  }
+  const prompt = requireSupportedProfilePrompt(CURSOR_CAPABILITIES, ctx.profile);
+  if (!prompt?.text) return null;
 
-  return `${header}\n${prompt.text}\n\nUser request:\n${userInput}`;
+  const pluginDir = createSensitiveTempDirectory();
+  const rulesDir = join(pluginDir, "rules");
+  mkdirSync(rulesDir, { recursive: true, mode: 0o700 });
+  writeFileSync(
+    join(rulesDir, "modus-profile.mdc"),
+    `---\ndescription: Modus profile instructions\nalwaysApply: true\n---\n${prompt.text}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  state.profilePluginDir = pluginDir;
+  return pluginDir;
 }
 
 function formatCursorTranscript(turns: TurnContent[]): string {
@@ -323,6 +350,7 @@ export function createCursorProvider(): SessionProvider {
       const model = opts.model ?? profileDef?.model ?? "composer-2-fast";
       const state = createInitialState(session, model);
       session._providerState = state;
+      requireSupportedProfilePrompt(CURSOR_CAPABILITIES, profileDef);
 
       // Pre-check: ensure cursor-agent binary is available
       if (!resolveCursorAgentExecutable()) {
@@ -372,6 +400,7 @@ export function createCursorProvider(): SessionProvider {
     sendMessage(ctx: TurnContext, content: MessageContent) {
       const { session } = ctx;
       const state = getState(session);
+      requireSupportedProfilePrompt(CURSOR_CAPABILITIES, ctx.profile);
       if (!state) {
         const reason = "Cursor provider state missing during sendMessage. Start a new Cursor session.";
         markCursorUnavailable(ctx, reason);
@@ -472,6 +501,10 @@ export function createCursorProvider(): SessionProvider {
         state.mcpConfigPath = null;
         state.mcpJournalPath = null;
       }
+      if (state.profilePluginDir) {
+        removeSensitiveTempDirectory(state.profilePluginDir);
+        state.profilePluginDir = null;
+      }
       state.abortController.abort();
       session._providerState = null;
     },
@@ -508,6 +541,9 @@ async function runTurn(
   // Set workspace
   const cwd = session.cwd ?? ctx.opts.cwd ?? process.env.AGENT_CWD ?? process.cwd();
   args.push("--workspace", cwd);
+
+  const profilePluginDir = syncCursorProfilePlugin(ctx, state);
+  if (profilePluginDir) args.push("--plugin-dir", profilePluginDir);
 
   // Write MCP config and auto-approve
   if (!state.mcpConfigPath) {
@@ -678,7 +714,7 @@ async function runTurn(
                 },
                 cwd: session.cwd,
                 additionalDirectories: session.additionalDirectories,
-                loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? false,
+                loadProjectSettings: true,
               });
             }
           }

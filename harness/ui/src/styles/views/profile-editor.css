@@ -92,6 +92,18 @@
    rather than a count. Colour only — a badge here would outweigh the label. */
 .pf-group-meta--warn { color: var(--accent, #e89b50); }
 
+.pf-capability-help,
+.pf-capability-warning {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--font-scale, 1));
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.pf-capability-warning {
+  color: var(--warning, var(--accent));
+}
+
 /* All-vs-custom for the tool surface. The grid alone cannot distinguish "inherit
    everything" from "grant nothing", since both are zero selections. */
 .pf-tools-mode {

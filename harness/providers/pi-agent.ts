@@ -28,7 +28,7 @@ import {
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { ProviderCapabilities, SessionProvider, TurnContext } from "./types";
 import { createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
-import { getGlobalConfig, getProfile, type ProviderDefaults } from "../profiles";
+import { getGlobalConfig, getProfile, resolveProfilePrompt, type ProviderDefaults } from "../profiles";
 import { resolveMcpServers } from "../mcp-config";
 import { getScopedSkills } from "../skill-attachment";
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
@@ -66,6 +66,16 @@ function buildPiCapabilities(providerName: string): ProviderCapabilities {
     builtInToolMode: "explicit",
     supportsMcp: true,
     mcpSupport: "full",
+    profilePrompt: {
+      supportedModes: ["append", "custom"],
+      delivery: { append: "system", custom: "system" },
+      summary: "PI supports appended and replacement system prompts through its resource loader.",
+    },
+    projectInstructions: {
+      control: "toggle",
+      sources: "PI context files",
+      summary: "Modus can enable or disable PI project context files.",
+    },
     nonToolSignals: ["streaming"],
     permissionModel: {
       mode: "none",
@@ -88,7 +98,29 @@ type PiAgentState = {
   mcpConnections: McpConnection[];
   modelBaseUrl: string;
   extraBody?: Record<string, unknown>;
+  profileResources: {
+    prompt: ReturnType<typeof resolveProfilePrompt>;
+    loadProjectSettings: boolean;
+  };
 };
+
+export function piProfileResourceOverrides(
+  profileResources: PiAgentState["profileResources"],
+  additionalRootsPrompt?: string,
+) {
+  return {
+    systemPromptOverride: (base: string | undefined) => profileResources.prompt?.mode === "custom"
+      ? profileResources.prompt.text
+      : base,
+    appendSystemPromptOverride: (base: string[]) => [
+      ...base,
+      ...(profileResources.prompt?.mode === "append" ? [profileResources.prompt.text] : []),
+      ...(additionalRootsPrompt ? [additionalRootsPrompt] : []),
+    ],
+    agentsFilesOverride: (base: { agentsFiles: Array<{ path: string; content: string }> }) =>
+      profileResources.loadProjectSettings ? base : { agentsFiles: [] },
+  };
+}
 
 function getState(session: ActiveSession): PiAgentState | null {
   return session._providerState as PiAgentState | null;
@@ -744,11 +776,15 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
 
         // Resource loader with our profile prompt
         const additionalRootsPrompt = piAdditionalDirectoriesPrompt(session.additionalDirectories);
+        const profileResources: PiAgentState["profileResources"] = {
+          prompt: resolveProfilePrompt(profile),
+          loadProjectSettings: opts.loadProjectSettings ?? profile?.loadProjectSettings ?? true,
+        };
         const resourceLoader = new DefaultResourceLoader({
           cwd,
           agentDir: join(MODUS_HOME, "runtime", "pi-agent"),
           settingsManager,
-          systemPrompt: [profile?.prompt, additionalRootsPrompt].filter(Boolean).join("\n\n") || undefined,
+          ...piProfileResourceOverrides(profileResources, additionalRootsPrompt),
           additionalSkillPaths: piAdditionalSkillPaths(cwd, opts.skillScopeKey),
           noExtensions: true,
           noSkills: false,
@@ -896,6 +932,7 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
           mcpConnections,
           modelBaseUrl: model.baseUrl,
           extraBody,
+          profileResources,
         } satisfies PiAgentState;
 
         // Send the initial prompt
@@ -1010,7 +1047,7 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
       await disposePiAgent(session);
     },
 
-    switchProfile(session: ActiveSession, ctx: TurnContext, _contextMode: string) {
+    async switchProfile(session: ActiveSession, ctx: TurnContext, _contextMode: string) {
       const state = getState(session);
       if (!state) return;
 
@@ -1022,12 +1059,12 @@ export function createPiAgentProvider(providerName: string): SessionProvider {
       // synchronous, so a cold cache simply falls back to the static rates.
       const cachedInfo = modelPricingCache.get(providerName)?.get(newModelId);
       const newModel = buildModel(providerName, newModelId, profileDef, cachedInfo?.cost, cachedInfo?.contextLength || undefined);
-      state.agentSession.setModel(newModel);
-
-      // System prompt via agent reach-through
-      if (profileDef?.prompt) {
-        (state.agentSession as any).agent?.setSystemPrompt?.(profileDef.prompt);
-      }
+      state.profileResources.prompt = resolveProfilePrompt(profileDef);
+      state.profileResources.loadProjectSettings = ctx.opts.loadProjectSettings
+        ?? profileDef?.loadProjectSettings
+        ?? true;
+      await state.agentSession.reload();
+      await state.agentSession.setModel(newModel);
 
       // Tools swap
       const rawTools = ctx.opts.tools ?? profileDef?.tools ?? undefined;

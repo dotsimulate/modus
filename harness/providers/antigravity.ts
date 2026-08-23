@@ -7,7 +7,6 @@ import {
 import { getMaxSeq, getSession, updateSessionStatus } from "../db";
 import {
   getGlobalConfig,
-  resolveProfilePrompt,
   type McpServerConfig,
   type PermissionPolicy,
 } from "../profiles";
@@ -22,6 +21,7 @@ import { ANTIGRAVITY_CAPABILITIES } from "./antigravity-capabilities";
 import { resolveAntigravityExecutable } from "./antigravity-cli-runtime";
 import { ensureAntigravityPlugin } from "./antigravity-plugin";
 import { providerChildEnv } from "./child-env";
+import { requireSupportedProfilePrompt } from "./profile-prompt-delivery";
 
 type AntigravityProcess = {
   pid?: number;
@@ -76,15 +76,6 @@ function contentToString(content: MessageContent): string {
     throw new Error("Antigravity CLI print mode does not document a non-interactive image attachment flag, so Modus will not silently discard or fake image input.");
   }
   return content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
-}
-
-function profileInstruction(ctx: TurnContext): string | null {
-  const prompt = resolveProfilePrompt(ctx.profile);
-  if (!prompt?.text) return null;
-  const heading = prompt.mode === "custom"
-    ? "Modus controlling profile instructions (subject to Antigravity's built-in safety policies):"
-    : "Additional Modus profile instructions:";
-  return `${heading}\n\n${prompt.text}`;
 }
 
 export function buildAntigravityArgs(options: {
@@ -388,6 +379,7 @@ async function runTurn(
   let poll: ReturnType<typeof setInterval> | null = null;
   let procPid: number | null = null;
   try {
+    requireSupportedProfilePrompt(ANTIGRAVITY_CAPABILITIES, ctx.profile);
     const executable = deps.resolveExecutable();
     if (!executable) {
       throw new Error("Google Antigravity CLI (`agy`) is not installed or not on PATH. Install it from https://antigravity.google/docs/cli-getting-started");
@@ -396,9 +388,6 @@ async function runTurn(
       throw new Error("This Modus session has no saved Antigravity conversation UUID, so it cannot be resumed without inventing context.");
     }
     const input = contentToString(content);
-    if ((ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true) === false) {
-      throw new Error("Antigravity CLI does not document a headless flag that disables AGENTS.md/GEMINI.md context loading, so Modus cannot safely honor loadProjectSettings=false for this provider.");
-    }
     await deps.ensurePlugin(executable);
     if (state.abortController.signal.aborted || session.abortController.signal.aborted) {
       session.status = "idle";
@@ -417,11 +406,6 @@ async function runTurn(
       "mcp-servers.json",
       JSON.stringify(mergedMcpServers(ctx)),
     );
-    const instruction = profileInstruction(ctx);
-    if (instruction) {
-      writeSensitiveTempFile(state.hookDir, "profile-instructions.json", JSON.stringify({ text: instruction }));
-    }
-
     if (!options.skipPromptPersist) {
       ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
     }
@@ -450,7 +434,7 @@ async function runTurn(
       },
       cwd: session.cwd,
       additionalDirectories: session.additionalDirectories,
-      loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true,
+      loadProjectSettings: true,
     });
     session.status = "running";
     updateSessionStatus(session.sessionId, "running");

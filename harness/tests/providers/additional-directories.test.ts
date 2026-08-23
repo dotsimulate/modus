@@ -134,11 +134,13 @@ describe("additionalDirectories", () => {
 
   test("passes additional directories to Claude Code launch options", async () => {
     let capturedOptions: any;
+    let capturedUserMessage: any;
 
     mock.module("@anthropic-ai/claude-agent-sdk", () => ({
-      query({ options }: any) {
+      query({ prompt, options }: any) {
         capturedOptions = options;
         return (async function* () {
+          capturedUserMessage = (await prompt[Symbol.asyncIterator]().next()).value;
           yield { type: "system", subtype: "init", session_id: "claude-session", model: "claude-sonnet" };
           yield { type: "result", subtype: "success", result: "ok", total_cost_usd: 0, num_turns: 1 };
         })();
@@ -148,11 +150,15 @@ describe("additionalDirectories", () => {
     const { createClaudeCodeProvider } = await import("../../providers/claude-code");
     const session = makeSession(["/tmp/shared", "/tmp/other"]);
     const provider = createClaudeCodeProvider({ which: () => "test-claude" });
-    provider.startTurn(makeTurnContext(session));
+    const ctx = makeTurnContext(session);
+    ctx.profile = { description: "test", prompt: "Profile instruction.", promptMode: "append" };
+    provider.startTurn(ctx);
 
     await Bun.sleep(0);
 
     expect(capturedOptions.additionalDirectories).toEqual(["/tmp/shared", "/tmp/other"]);
+    expect(capturedOptions.systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "Profile instruction." });
+    expect(capturedUserMessage.message.content).toBe("hello");
   });
 
   test("passes additional directories to Codex thread options", async () => {
@@ -227,8 +233,9 @@ describe("additionalDirectories", () => {
       getProfile() {
         return undefined;
       },
-      resolveProfilePrompt() {
-        return undefined;
+      resolveProfilePrompt(profile: any) {
+        if (!profile?.prompt) return undefined;
+        return { text: profile.prompt, mode: profile.promptMode === "custom" ? "custom" : "append" };
       },
     }));
 
@@ -311,8 +318,9 @@ describe("additionalDirectories", () => {
       getProfile() {
         return undefined;
       },
-      resolveProfilePrompt() {
-        return undefined;
+      resolveProfilePrompt(profile: any) {
+        if (!profile?.prompt) return undefined;
+        return { text: profile.prompt, mode: profile.promptMode === "custom" ? "custom" : "append" };
       },
     }));
 

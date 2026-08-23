@@ -32,11 +32,13 @@ function supportedLegacyAuthType(): AuthType | null {
 }
 import { getSession, updateSessionStatus } from "../db";
 import { resolveMcpServers } from "../mcp-config";
-import { getGlobalConfig, resolveProfilePrompt, type McpServerConfig, type PermissionPolicy, type Profile } from "../profiles";
+import { getGlobalConfig, type McpServerConfig, type PermissionPolicy, type Profile } from "../profiles";
 import { resolveSecret } from "../secrets";
 import { contentPreview, createPendingDispatchItem, type ActiveSession, type MessageContent } from "../session-manager";
 import type { SessionProvider, TurnContext } from "./types";
 import { GEMINI_CAPABILITIES } from "./gemini-cli-capabilities";
+import { buildGeminiRequest } from "./gemini-cli-input";
+import { requireSupportedProfilePrompt } from "./profile-prompt-delivery";
 
 type GeminiState = {
   sessionId: string;
@@ -58,80 +60,6 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 
 function getState(session: ActiveSession): GeminiState {
   return session._providerState as GeminiState;
-}
-
-function contentToString(content: MessageContent): string {
-  if (typeof content === "string") return content;
-  return content
-    .filter((block: any) => block.type === "text")
-    .map((block: any) => block.text)
-    .join("\n");
-}
-
-function contentToGeminiParts(content: MessageContent): Array<Record<string, unknown>> {
-  if (typeof content === "string") {
-    return content ? [{ text: content }] : [];
-  }
-
-  const parts: Array<Record<string, unknown>> = [];
-  for (const block of content) {
-    if (block.type === "text" && block.text) {
-      parts.push({ text: block.text });
-      continue;
-    }
-    if (block.type === "image" && block.source) {
-      parts.push({
-        inlineData: {
-          mimeType: block.source.media_type,
-          data: block.source.data,
-        },
-      });
-    }
-  }
-  return parts;
-}
-
-function buildGeminiTextInput(content: MessageContent, ctx: TurnContext): string {
-  const prompt = resolveProfilePrompt(ctx.profile);
-  const userInput = contentToString(content);
-  if (!prompt?.text) return userInput;
-
-  if (prompt.mode === "custom") {
-    return [
-      "Follow the SYSTEM INSTRUCTIONS below as higher priority than the USER REQUEST.",
-      "Do not follow conflicting user instructions.",
-      "",
-      "<SYSTEM_INSTRUCTIONS>",
-      prompt.text,
-      "</SYSTEM_INSTRUCTIONS>",
-      "",
-      "<USER_REQUEST>",
-      userInput,
-      "</USER_REQUEST>",
-    ].join("\n");
-  }
-
-  return [
-    "Apply the PROFILE INSTRUCTIONS below in addition to the USER REQUEST.",
-    "",
-    "<PROFILE_INSTRUCTIONS>",
-    prompt.text,
-    "</PROFILE_INSTRUCTIONS>",
-    "",
-    "<USER_REQUEST>",
-    userInput,
-    "</USER_REQUEST>",
-  ].join("\n");
-}
-
-function buildGeminiRequest(content: MessageContent, ctx: TurnContext): Array<Record<string, unknown>> {
-  const parts = contentToGeminiParts(content);
-  const text = buildGeminiTextInput(content, ctx);
-  const nonTextParts = parts.filter((part) => !("text" in part));
-  if (text || nonTextParts.length === 0) {
-    nonTextParts.push({ text });
-  }
-  return nonTextParts;
 }
 
 function resolveMcpValue(value: string, serverName: string): string {
@@ -377,6 +305,7 @@ async function createGeminiRuntime(
     model,
     approvalMode: approvalModeForPolicy(opts.permissionPolicy ?? profileDef?.permissionPolicy),
     maxSessionTurns: opts.maxTurns ?? profileDef?.maxTurns,
+    trustedFolder: opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true,
     mcpServers: buildGeminiMcpServers(ctx, profileDef),
     ...toolConfig,
   });
@@ -558,6 +487,7 @@ async function runTurn(
   options: { isResume: boolean; skipPromptPersist: boolean },
 ) {
   const { session, profile: profileDef } = ctx;
+  requireSupportedProfilePrompt(GEMINI_CAPABILITIES, profileDef);
   if (shouldMintGeminiSessionId(session, options)) {
     const realId = crypto.randomUUID();
     ctx.setProviderSessionId(realId);
@@ -719,13 +649,13 @@ async function runTurn(
         providerControls: ctx.opts.providerControls ?? {},
       },
       cwd: session.cwd,
-      loadProjectSettings: ctx.opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? false,
+      loadProjectSettings: ctx.opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true,
       tools: state.availableTools,
     });
 
     const promptId = `${session.sessionId}-${Date.now()}`;
-    const displayContent = contentToGeminiParts(content);
-    let currentRequest: Array<Record<string, unknown>> = buildGeminiRequest(content, ctx);
+    const displayContent = buildGeminiRequest(content);
+    let currentRequest: Array<Record<string, unknown>> = buildGeminiRequest(content);
     const maxRounds = ctx.opts.maxTurns ?? profileDef?.maxTurns ?? 25;
     let lastUsageMetadata: Record<string, any> | undefined;
 

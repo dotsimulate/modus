@@ -1,6 +1,6 @@
 ---
 title: Capability Surface (condensed)
-lastUpdated: 2026-08-19
+lastUpdated: 2026-08-22
 covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts harness/app-paths.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts
 audience: agent
 ---
@@ -156,6 +156,11 @@ preconfigure right-panel widgets for sessions), and **`moves: [{name, inputs?,
 ask?}]`** — auto-activated at session start (`startSessionWithMoves`):
 inline moves gather pre-spawn and prepend the prompt; persistent moves activate
 post-spawn. **A profile + a persistent move = a standing Modus-aware agent.**
+
+Provider capabilities expose `profilePrompt.supportedModes` plus its native
+delivery channel, and `projectInstructions.control: toggle|always|none` plus
+the actual project sources. Profile prompts use those system-level channels and
+never rewrite a user message. Unsupported modes are rejected.
 
 A profile's **inline** bindings are shown in the composer as pending attachments
 before the first message (`<profile> attaches`), each removable — removal sends
