@@ -46,7 +46,7 @@
     "copyright": "Copyright © 2026 dotsimulate",
     "licenseFile": "../../LICENSE",
     "shortDescription": "Local-first AI agent harness",
-    "longDescription": "Modus runs AI agent sessions on your own machine, composing prompts and giving agents controlled access to your projects. Everything runs locally.",
+    "longDescription": "Modus runs its agent harness on your machine, composing prompts and giving agents controlled access to your projects. Providers and integrations you configure can receive content.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
