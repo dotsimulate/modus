@@ -1,11 +1,16 @@
 import { expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve as resolveTestSourceDir } from "node:path";
-import { resolve } from "path";
+import { join, resolve } from "path";
 
 const repoRoot = resolve(resolveTestSourceDir(import.meta.dir, ".."), "..");
 const script = resolve(repoRoot, ".github/scripts/classify-ci-paths.ps1");
 
-function classify(args: string[]): { ui_build: string; rust: string; reason: string } {
+function classify(
+  args: string[],
+  cwd = repoRoot,
+): { ui_build: string; rust: string; reason: string } {
   const shell = process.platform === "win32" ? "powershell" : "pwsh";
   const result = Bun.spawnSync([
     shell,
@@ -16,7 +21,7 @@ function classify(args: string[]): { ui_build: string; rust: string; reason: str
     script,
     ...args,
   ], {
-    cwd: repoRoot,
+    cwd,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -26,6 +31,18 @@ function classify(args: string[]): { ui_build: string; rust: string; reason: str
   const jsonLine = stdout.split(/\r?\n/).filter(Boolean).at(-1);
   expect(jsonLine).toBeTruthy();
   return JSON.parse(jsonLine!);
+}
+
+function git(cwd: string, ...args: string[]): string {
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = result.stdout.toString().trim();
+  const stderr = result.stderr.toString().trim();
+  expect(result.exitCode, stderr || stdout).toBe(0);
+  return stdout;
 }
 
 test("non-push events run extras", () => {
@@ -104,4 +121,35 @@ test("empty or unreadable diffs fail toward extras", () => {
     "-Sha", "abc",
   ]);
   expect(newHistory).toMatchObject({ ui_build: "true", rust: "true", reason: "new-history" });
+});
+
+test("git revision diffs classify the changed paths instead of treating SHAs as pathspecs", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "modus-ci-classifier-"));
+  try {
+    git(fixture, "init");
+    git(fixture, "config", "user.name", "Modus CI Test");
+    git(fixture, "config", "user.email", "modus-ci@example.invalid");
+    mkdirSync(join(fixture, "harness"), { recursive: true });
+    writeFileSync(join(fixture, "harness", "index.ts"), "export const version = 1;\n");
+    git(fixture, "add", "harness/index.ts");
+    git(fixture, "commit", "-m", "base");
+    const before = git(fixture, "rev-parse", "HEAD");
+
+    writeFileSync(join(fixture, "harness", "index.ts"), "export const version = 2;\n");
+    git(fixture, "add", "harness/index.ts");
+    git(fixture, "commit", "-m", "change harness only");
+    const sha = git(fixture, "rev-parse", "HEAD");
+
+    expect(classify([
+      "-EventName", "push",
+      "-BeforeSha", before,
+      "-Sha", sha,
+    ], fixture)).toEqual({
+      ui_build: "false",
+      rust: "false",
+      reason: "core-only",
+    });
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
 });
