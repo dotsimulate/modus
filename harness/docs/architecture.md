@@ -1,6 +1,6 @@
 ---
 title: MO Architecture
-lastUpdated: 2026-08-21
+lastUpdated: 2026-08-22
 lastCommit: bae0487
 covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
 ---
@@ -259,6 +259,41 @@ decisions:
 - Event reducer transforms raw SDK events into renderable message structure
 - ProfileProvider manages user profile selection and scoped visibility
 - ClientExtensionsBoot fetches and loads enabled browser-side extension modules
+
+### Backend target handoff
+
+The frontend routes every API call through one live `BACKEND_TARGET` record
+(`ui/src/backendTarget.ts`). Its `mode` is a capability decision, not just a display label:
+
+| Mode | Meaning |
+|---|---|
+| `browser` | Same-origin web UI. `apiBase` is empty and there is no native desktop authority. |
+| `managed-local` | A loopback backend supervised by this Tauri desktop process, including a selected named Vault. |
+| `external-local` | A backend already running on the same machine, discovered rather than supervised by this window. |
+| `remote` | A backend on another host. Backend paths and backend-supplied code must not be treated as local desktop resources. |
+
+The desktop/bootstrap boundary hands the resolved target to the web bundle through query
+parameters before React mounts:
+
+| Parameter | Contract |
+|---|---|
+| `modusTarget` | Normalized HTTP origin used as `apiBase`. |
+| `modusTargetId` | Stable client-side identity used to namespace saved state and detect backend replacement. |
+| `modusTargetMode` | One of the four modes above. An explicit URL without a valid mode defaults to `external-local`. |
+| `modusTargetLabel` | Human-readable connection label; it grants no authority. |
+| `modusVault` | Named-Vault slug, retained only for `managed-local` targets. |
+| `modusDiscover` | Bootstrap request (`local` or `external`) that is replaced with the concrete target after discovery. |
+
+`main.tsx` performs native bootstrap or local discovery, probes the selected backend, rejects
+an unexpected backend-identity change, rewrites the query to the concrete target, and then
+calls `configureBackendTarget`. These parameters select an address and client identity; they
+do not bypass the PIN/session or bearer-token authentication described above.
+
+Client-local filesystem features must also agree with the target mode. A Tauri native folder
+picker, reveal, or open-path action is valid only for `managed-local` and `external-local`,
+where client and backend refer to the same host filesystem. `remote` and `browser` use the
+backend-side browser/paths instead. The shared predicate is
+`nativePickerApplies(isTauriRuntime(), BACKEND_TARGET.mode)` in `ui/src/native-picker.ts`.
 
 ### View Registry
 
