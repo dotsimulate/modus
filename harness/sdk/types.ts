@@ -743,6 +743,26 @@ export type AccountInfo = {
   };
 };
 
+/** A single subscription usage window reported by Claude Code. */
+export type ClaudePlanUsageLimit = {
+  label: string;
+  usedPercent: number;
+  resetsAtText?: string;
+};
+
+/** Claude subscription plan usage reported by the authenticated Claude Code CLI. */
+export type ClaudePlanUsageSnapshot = {
+  available: boolean;
+  checkedAt: number;
+  source: "claude-cli";
+  statusText?: string;
+  limits: ClaudePlanUsageLimit[];
+  detailsText?: string;
+  reportText?: string;
+  stale?: boolean;
+  error?: string;
+};
+
 /** Gemini API availability and quota information for the configured account. */
 export type GeminiUsageInfo = {
   available: boolean;

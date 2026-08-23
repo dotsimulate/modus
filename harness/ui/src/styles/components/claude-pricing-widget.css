@@ -155,6 +155,124 @@
   text-transform: uppercase;
 }
 
+/* ── Plan usage ── */
+.cpw-plan-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cpw-plan-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cpw-plan-source,
+.cpw-plan-checked,
+.cpw-limit-reset,
+.cpw-plan-stale {
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  color: var(--text-muted);
+}
+
+.cpw-refresh {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.cpw-refresh:hover {
+  color: var(--text);
+  border-color: var(--border-active);
+}
+
+.cpw-plan-status {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--widget-scale));
+  line-height: 1.45;
+  color: var(--text-dim);
+  white-space: pre-line;
+}
+
+.cpw-limit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cpw-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cpw-limit-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cpw-limit-label,
+.cpw-limit-value {
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--widget-scale));
+}
+
+.cpw-limit-label {
+  color: var(--text-dim);
+}
+
+.cpw-limit-value {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cpw-plan-stale {
+  color: var(--warning);
+}
+
+.cpw-plan-details {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  color: var(--text-muted);
+}
+
+.cpw-plan-details summary {
+  cursor: pointer;
+}
+
+.cpw-plan-details pre,
+.cpw-plan-unavailable pre {
+  margin: 8px 0 0;
+  font-family: var(--font-mono);
+  font-size: calc(9px * var(--widget-scale));
+  line-height: 1.45;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cpw-plan-unavailable {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--widget-scale));
+  color: var(--text-muted);
+}
+
 /* ── History ── */
 .cpw-history {
   display: flex;

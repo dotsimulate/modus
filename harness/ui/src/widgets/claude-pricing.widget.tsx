@@ -7,13 +7,13 @@
 
 import { useCallback, useState } from "react";
 import { modus } from "../modusClient";
-import type { AccountInfo, SessionStats } from "../../../sdk/index";
+import type { AccountInfo, ClaudePlanUsageSnapshot, SessionStats } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileContext";
 import { fmtCost, fmtNum, basename, planLabel } from "../utils/format";
 import { ActivityChart, HBar, WidgetEmptyState } from "./widget-components";
 import { useWidgetPollingValue } from "./widget-data";
 
-type Tab = "overview" | "history" | "breakdown";
+type Tab = "overview" | "plan" | "history" | "breakdown";
 
 // ── Helpers ──
 
@@ -57,6 +57,18 @@ export default function ClaudePricingWidget() {
     intervalMs: 30_000,
     initialValue: null,
   });
+  const loadPlanUsage = useCallback(() => modus.getClaudePlanUsage(), []);
+  const {
+    value: planUsage,
+    loading: planLoading,
+    refresh: refreshPlanUsage,
+  } = useWidgetPollingValue<ClaudePlanUsageSnapshot | null>({
+    load: loadPlanUsage,
+    scopeKey: "claude-plan",
+    intervalMs: 5 * 60_000,
+    initialValue: null,
+    enabled: tab === "plan",
+  });
 
   if (loading || !pricing) {
     return <WidgetEmptyState>loading pricing...</WidgetEmptyState>;
@@ -73,6 +85,10 @@ export default function ClaudePricingWidget() {
           className={`cpw-tab ${tab === "overview" ? "cpw-tab--active" : ""}`}
           onClick={() => setTab("overview")}
         >overview</button>
+        <button
+          className={`cpw-tab ${tab === "plan" ? "cpw-tab--active" : ""}`}
+          onClick={() => setTab("plan")}
+        >plan</button>
         <button
           className={`cpw-tab ${tab === "history" ? "cpw-tab--active" : ""}`}
           onClick={() => setTab("history")}
@@ -130,6 +146,75 @@ export default function ClaudePricingWidget() {
                 <span className="cpw-period-lbl">last 30d</span>
               </div>
             </div>
+          </div>
+        )}
+
+        {tab === "plan" && (
+          <div className="cpw-plan-usage">
+            <div className="cpw-section-header">
+              <div className="cpw-plan-heading">
+                <span className="cpw-section-lbl">subscription limits</span>
+                <span className="cpw-plan-source">via Claude Code</span>
+              </div>
+              <button
+                className="cpw-refresh"
+                type="button"
+                onClick={() => { void refreshPlanUsage().catch(() => {}); }}
+              >refresh</button>
+            </div>
+
+            {planLoading && !planUsage && (
+              <WidgetEmptyState>loading plan usage...</WidgetEmptyState>
+            )}
+
+            {!planLoading && !planUsage && (
+              <WidgetEmptyState>plan usage is unavailable</WidgetEmptyState>
+            )}
+
+            {planUsage && (
+              <>
+                {planUsage.statusText && (
+                  <p className="cpw-plan-status">{planUsage.statusText}</p>
+                )}
+
+                {planUsage.limits.length > 0 ? (
+                  <div className="cpw-limit-list">
+                    {planUsage.limits.map((limit) => (
+                      <div key={limit.label} className="cpw-limit">
+                        <div className="cpw-limit-row">
+                          <span className="cpw-limit-label">{limit.label}</span>
+                          <span className="cpw-limit-value">{limit.usedPercent}% used</span>
+                        </div>
+                        <HBar value={Math.max(0, Math.min(100, limit.usedPercent))} max={100} prefix="cpw" />
+                        {limit.resetsAtText && (
+                          <span className="cpw-limit-reset">resets {limit.resetsAtText}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="cpw-plan-unavailable">
+                    <span>{planUsage.error ?? "Claude Code did not report plan limits."}</span>
+                    {planUsage.reportText && <pre>{planUsage.reportText}</pre>}
+                  </div>
+                )}
+
+                {planUsage.stale && (
+                  <span className="cpw-plan-stale">showing Claude Code's last-known usage</span>
+                )}
+
+                {planUsage.detailsText && (
+                  <details className="cpw-plan-details">
+                    <summary>local usage contributors</summary>
+                    <pre>{planUsage.detailsText}</pre>
+                  </details>
+                )}
+
+                <span className="cpw-plan-checked">
+                  checked {new Date(planUsage.checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                </span>
+              </>
+            )}
           </div>
         )}
 
