@@ -49,6 +49,17 @@
   text-align: center;
 }
 
+/* The shared `.panel-collapse` wrapper is a grid, and its clip is a grid item
+   with `min-width: auto` — so the min-content width of anything unbreakable
+   inside becomes the track's floor and widens the whole detail past the
+   disclosure's own border. A move gather ends in the harness-appended
+   `modus_submit` code fence, which is exactly that, so every move context bled
+   ~40px to the right and its prose stopped wrapping at the visible box width.
+   Floor the item at 0 and the detail below is free to scroll its own content. */
+.compact-disclosure .panel-collapse-clip {
+  min-width: 0;
+}
+
 .compact-disclosure__detail {
   max-height: 280px;
   overflow-y: auto;
