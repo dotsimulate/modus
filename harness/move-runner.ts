@@ -958,9 +958,9 @@ function buildApiOpsProtocol(apiToken: string, config: MoveConfig): string {
   lines.push("");
   lines.push("## How to call ops");
   lines.push("");
-  lines.push("Use the `modus_submit` tool:");
+  lines.push("Use the `modus_submit` tool. Its `data` argument is a JSON string:");
   lines.push("```");
-  lines.push(`modus_submit({ token: "${apiToken}", data: { "op": "<op-name>", "field": "value", "field2": "value2" } })`);
+  lines.push(`modus_submit({ token: "${apiToken}", data: "{\\"op\\":\\"<op-name>\\",\\"field\\":\\"value\\",\\"field2\\":\\"value2\\"}" })`);
   lines.push("```");
   lines.push("");
   lines.push("Do NOT use Bash, curl, or raw HTTP. Always use `modus_submit`.");
