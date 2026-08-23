@@ -91,6 +91,7 @@
 .action-card-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   color: var(--text-muted);
   font-size: calc(10px * var(--font-scale, 1));
@@ -256,4 +257,3 @@
     border-bottom: 1px solid var(--border);
   }
 }
-

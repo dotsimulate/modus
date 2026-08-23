@@ -1,6 +1,6 @@
 ---
 title: Actions
-lastUpdated: 2026-08-14
+lastUpdated: 2026-08-22
 covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts harness/skill-attachment.ts
 ---
 
@@ -57,8 +57,13 @@ runs sequentially, receiving the previous step's result.
 transient failures. `maxRetries` handles verify failures.
 
 **Artifacts**: `artifacts[]` declares expected output files with names and MIME
-types. `ctx.artifactPath(filename)` provides namespaced paths. Verify can check
-artifact existence. `ctx.attachArtifact({ sessionId, seq, path, name, mime, ... })`
+types. For execution `<executionId>` and run `<runNumber>`, `ctx.artifactDir()` is
+`<actionDir>/output/exec-<executionId>/run-<runNumber>/`, and
+`ctx.artifactPath(filename)` safely joins a filename beneath it. This location is
+beside the authored action, not under the active Vault's writable root: two Vault
+backends that run the same project or plugin action therefore share that action's
+output tree. Verify can check artifact existence.
+`ctx.attachArtifact({ sessionId, seq, path, name, mime, ... })`
 attaches an already-written file to a specific session turn, making it accessible
 via `/api/sessions/:id/artifacts/:artifactId`.
 

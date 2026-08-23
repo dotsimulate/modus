@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { modus } from "../modusClient";
 import type { ActionInfo, ActionRun, SessionInfo } from "../../../sdk/index";
 import { useProfiles } from "../providers/ProfileContext";
+import { collapseSkippedActionRuns } from "../action-run-history";
+import { describeActionCycleLimit, describeActionRunLimit } from "../action-limit-display";
 import { Markdown } from "./Markdown";
 
 type Props = {
@@ -121,21 +123,17 @@ function CycleInfo({ action }: { action: ActionInfo }) {
   const hasCycles = !!action.cycleInterval;
   const cycleRunCount = finiteNumber(action.cycleRunCount);
   const cycleNumber = finiteNumber(action.cycleNumber, 1);
-  const runs = action.maxRuns
-    ? `${cycleRunCount}/${action.maxRuns}`
-    : `${cycleRunCount}`;
+  const runs = describeActionRunLimit(cycleRunCount, action.maxRuns, hasCycles).label;
 
   if (!hasCycles) {
-    return <span className="sched-cycle-info">{runs} runs</span>;
+    return <span className="sched-cycle-info">{runs}</span>;
   }
 
-  const cycle = action.maxCycles
-    ? `${cycleNumber}/${action.maxCycles}`
-    : `${cycleNumber}`;
+  const cycle = describeActionCycleLimit(cycleNumber, action.maxCycles).label;
 
   return (
     <span className="sched-cycle-info">
-      cycle {cycle} · {runs} runs · {action.cycleInterval} reset
+      {cycle} · {runs} · resets every {action.cycleInterval}
     </span>
   );
 }
@@ -178,9 +176,7 @@ function RunsTab({
         {currentRuns.length === 0 && (
           <div className="sched-runs-empty">no runs in this cycle</div>
         )}
-        {currentRuns.map(r => (
-          <RunRow key={r.id} run={r} session={r.sessionId ? sessions.get(r.sessionId) : undefined} onSelect={onSelectSession} onPeek={onPeekSession} />
-        ))}
+        <RunRows runs={currentRuns} sessions={sessions} onSelect={onSelectSession} onPeek={onPeekSession} />
       </div>
 
       {/* Past cycle runs */}
@@ -190,9 +186,7 @@ function RunsTab({
             <span>previous cycles</span>
             <span className="sched-runs-count">{pastRuns.length}</span>
           </div>
-          {pastRuns.map(r => (
-            <RunRow key={r.id} run={r} session={r.sessionId ? sessions.get(r.sessionId) : undefined} onSelect={onSelectSession} onPeek={onPeekSession} />
-          ))}
+          <RunRows runs={pastRuns} sessions={sessions} onSelect={onSelectSession} onPeek={onPeekSession} />
         </div>
       )}
 
@@ -257,6 +251,58 @@ function copyToClipboard(text: string) {
   ta.select();
   document.execCommand("copy");
   document.body.removeChild(ta);
+}
+
+function RunRows({
+  runs,
+  sessions,
+  onSelect,
+  onPeek,
+}: {
+  runs: ActionRun[];
+  sessions: SessionMap;
+  onSelect: (id: string) => void;
+  onPeek?: (id: string) => void;
+}) {
+  return collapseSkippedActionRuns(runs).map((item) => {
+    if (item.kind === "skipped") {
+      return <SkippedRunsRow key={`skipped-${item.newest.id}-${item.oldest.id}`} {...item} />;
+    }
+
+    const run = item.run;
+    return (
+      <RunRow
+        key={run.id}
+        run={run}
+        session={run.sessionId ? sessions.get(run.sessionId) : undefined}
+        onSelect={onSelect}
+        onPeek={onPeek}
+      />
+    );
+  });
+}
+
+function SkippedRunsRow({ count, newest }: {
+  count: number;
+  newest: ActionRun;
+}) {
+  const startedAt = optionalFiniteNumber(newest.startedAt);
+
+  return (
+    <div className="sched-run-row sched-run-row--no-session sched-run-row--skipped-summary">
+      <div className="sched-run-top">
+        <div className="sched-run-summary">
+          {count} intended {count === 1 ? "skip" : "skips"}
+        </div>
+      </div>
+      <div className="sched-run-footer">
+        <span className="sched-run-num">latest run #{finiteNumber(newest.runNumber)}</span>
+        <span className="dash-dot dash-dot--idle" />
+        <span className="sched-run-status-label sched-run-status-label--skipped">gather returned null</span>
+        {startedAt ? <span className="sched-run-ago">latest {timeAgo(startedAt)}</span> : null}
+      </div>
+    </div>
+  );
 }
 
 function RunRow({ run, session, onSelect, onPeek }: { run: ActionRun; session?: SessionInfo; onSelect: (id: string) => void; onPeek?: (id: string) => void }) {
@@ -528,13 +574,17 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
 
 // ── Action Meters (3 rows: cycle, runs, next run) ──
 
-function MeterRow({ label, pct, kind }: { label: string; pct: number; kind: "cycle" | "runs" | "next" }) {
+function MeterRow({ label, pct, kind }: { label: string; pct: number | null; kind: "cycle" | "runs" | "next" }) {
   return (
     <div className="sched-meter-row">
       <span className="sched-meter-label">{label}</span>
-      <div className="sched-progress">
-        <div className={`sched-progress-fill sched-progress-fill--${kind}`} style={{ width: `${Math.min(100, pct)}%` }} />
-      </div>
+      {pct === null ? (
+        <span className="sched-meter-unlimited" aria-label="unlimited">∞</span>
+      ) : (
+        <div className="sched-progress">
+          <div className={`sched-progress-fill sched-progress-fill--${kind}`} style={{ width: `${Math.min(100, pct)}%` }} />
+        </div>
+      )}
     </div>
   );
 }
@@ -548,20 +598,10 @@ function ActionMeters({ action }: { action: ActionInfo }) {
 
   // Row 1: cycles
   const hasCycles = !!action.cycleInterval;
-  const cycleLabel = hasCycles
-    ? action.maxCycles ? `cycle ${cycleNumber}/${action.maxCycles}` : `cycle ${cycleNumber}`
-    : "";
-  const cyclePct = hasCycles && action.maxCycles
-    ? ((cycleNumber - 1) / action.maxCycles) * 100
-    : 0;
+  const cycleLimit = describeActionCycleLimit(cycleNumber, action.maxCycles);
 
   // Row 2: runs in current cycle
-  const runLabel = action.maxRuns
-    ? `${cycleRunCount}/${action.maxRuns} runs`
-    : `${cycleRunCount} runs`;
-  const runPct = action.maxRuns
-    ? (cycleRunCount / action.maxRuns) * 100
-    : 0;
+  const runLimit = describeActionRunLimit(cycleRunCount, action.maxRuns, hasCycles);
 
   // Row 3: countdown (only meaningful for interval triggers)
   let nextLabel = "";
@@ -581,8 +621,8 @@ function ActionMeters({ action }: { action: ActionInfo }) {
 
   return (
     <div className={`sched-meters ${off ? "sched-meters--off" : ""}`}>
-      <MeterRow label={cycleLabel || (hasCycles ? `${action.cycleInterval} reset` : "no cycles")} pct={cyclePct} kind="cycle" />
-      <MeterRow label={runLabel} pct={runPct} kind="runs" />
+      {hasCycles && <MeterRow label={cycleLimit.label} pct={cycleLimit.progressPct} kind="cycle" />}
+      <MeterRow label={runLimit.label} pct={runLimit.progressPct} kind="runs" />
       <MeterRow label={nextLabel || "--"} pct={nextPct} kind="next" />
     </div>
   );
