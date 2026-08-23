@@ -99,7 +99,7 @@ try {
             exit 0
         }
 
-        $raw = & git diff --name-only -- $BeforeSha $Sha 2>&1
+        $raw = & git diff --name-only $BeforeSha $Sha -- 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Classification -UiBuild $true -Rust $true -Reason "diff-unavailable"
             exit 0
