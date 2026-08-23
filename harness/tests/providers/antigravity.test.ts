@@ -175,7 +175,7 @@ describe("Antigravity CLI runtime", () => {
     expect(JSON.stringify(files)).not.toContain("oauth_creds.json");
   });
 
-  test("injects profile instructions through the documented PreInvocation ephemeral message", async () => {
+  test("does not inject a legacy profile-instructions file through PreInvocation", async () => {
     const ipcDir = join(tmpdir(), `modus-agy-hook-${crypto.randomUUID()}`);
     cleanup.push(ipcDir);
     mkdirSync(ipcDir, { recursive: true });
@@ -200,7 +200,7 @@ describe("Antigravity CLI runtime", () => {
     ]);
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
-    expect(JSON.parse(stdout)).toEqual({ injectSteps: [{ ephemeralMessage: "Use the project conventions." }] });
+    expect(JSON.parse(stdout)).toEqual({});
   });
 
   test("starts the profile MCP fan-in bridge over stdio", async () => {

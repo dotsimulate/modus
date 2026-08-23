@@ -2,7 +2,7 @@
 
 Provider name: `"cursor"`
 
-Cursor runs the `cursor-agent` CLI as a subprocess per turn, resuming via `--session-id`
+Cursor runs the `cursor-agent` CLI as a subprocess per turn, resuming via `--resume`
 for multi-turn. Read this before writing a cursor profile — several standard profile
 fields behave differently or have no effect.
 
@@ -50,8 +50,8 @@ the original file** when the session ends. If no MCP servers are configured, not
 
 ## Project Settings (`loadProjectSettings`)
 
-`loadProjectSettings` has no effect. Cursor reads its own project config, not CLAUDE.md.
-Omit or set `false` to avoid confusion.
+Cursor always reads its own project rules. Its headless CLI has no switch that
+disables them, so the profile editor shows project instructions as always on.
 
 ## Relevant Profile Fields
 
@@ -60,13 +60,13 @@ Fields that actually work with cursor:
 | Field | Notes |
 |-------|-------|
 | `model` | Cursor model name; default `"composer-2-fast"` |
-| `prompt` | Injected as a header before the user message |
-| `promptMode` | `"custom"` = replaces input; `"append"` = adds after |
+| `prompt` | Loaded as a private, always-applied Cursor plugin rule; never added to the user message |
+| `promptMode` | `"append"` only; `"custom"` is disabled and rejected because Cursor cannot replace its built-in system prompt |
 | `mcpServers` | Written to `.cursor/mcp.json`; merged with global |
 | `effort` | Passed through; cursor may or may not use it |
 | `maxTurns` | Not enforced by Cursor; omit |
 | `permissionPolicy` | No effect — Cursor is always auto-approve |
-| `loadProjectSettings` | No effect — omit |
+| `loadProjectSettings` | Unavailable; Cursor project rules are always on |
 
 ## Example Profile
 

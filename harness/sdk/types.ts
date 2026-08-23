@@ -981,6 +981,19 @@ export type ProviderCapabilities = {
   slashCommands?: ProviderSlashCommand[];
   supportsMcp: boolean;
   mcpSupport: "full" | "stdio-only" | "none";
+  /** How profile prompts reach the provider. An empty mode list means the
+   *  provider has no honest system-level delivery path. */
+  profilePrompt: {
+    supportedModes: Array<"append" | "custom">;
+    delivery: Partial<Record<"append" | "custom", "system" | "developer" | "rule">>;
+    summary: string;
+  };
+  /** Whether Modus can control provider-native project instruction discovery. */
+  projectInstructions: {
+    control: "toggle" | "always" | "none";
+    sources: string;
+    summary: string;
+  };
   /** Whether the provider discovers skills on disk by itself (Claude-family CLIs
    *  read `<cwd>/.claude/skills/`, PI reads `.pi/skills/`). Others read none, and
    *  reach Modus skills through the skill tools instead. */

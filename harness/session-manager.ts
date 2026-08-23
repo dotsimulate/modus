@@ -2303,14 +2303,8 @@ export async function switchProfile(
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  // Step 2: Resolve system prompt template vars
-  let systemPrompt = newProfile.prompt;
-  if (systemPrompt) {
-    const userData = getUserData();
-    systemPrompt = systemPrompt.replace(/\{\{(\w+)\}\}/g, (_, key) => userData[key] ?? `{{${key}}}`);
-  }
-
-  // Step 3–5: Provider swap
+  // Step 2–5: Provider swap. Providers resolve prompt templates through the
+  // shared resolver when constructing their native system configuration.
   const nextAdditionalDirectories = session._configOverrides.additionalDirectories
     ?? normalizeAdditionalDirectories(session.cwd ?? resolveSessionCwd(undefined), newProfile.additionalDirectories)
     ?? [];
@@ -2330,7 +2324,7 @@ export async function switchProfile(
 
   if (sameProvider && oldProvider.switchProfile) {
     // In-place swap: let provider handle internals
-    oldProvider.switchProfile(session, ctx, contextMode);
+    await oldProvider.switchProfile(session, ctx, contextMode);
   } else if (!sameProvider) {
     // Cross-provider switch: tear down old, dispose resources (MCP, AgentSession)
     oldProvider.abort(session);

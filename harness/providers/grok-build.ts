@@ -220,7 +220,7 @@ function mcpServers(ctx: TurnContext): any[] {
   });
 }
 
-function launchArgs(ctx: TurnContext, state: GrokState): string[] {
+export function launchArgs(ctx: TurnContext, state: GrokState): string[] {
   const args = ["--no-auto-update"];
   const prompt = resolveProfilePrompt(ctx.profile);
   if (prompt?.text) args.push(prompt.mode === "custom" ? "--system-prompt-override" : "--rules", prompt.text);
@@ -580,7 +580,7 @@ function emitInit(ctx: TurnContext, state: GrokState): void {
     },
     cwd: ctx.session.cwd,
     additionalDirectories: ctx.session.additionalDirectories,
-    loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? false,
+    loadProjectSettings: true,
   });
 }
 

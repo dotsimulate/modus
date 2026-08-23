@@ -36,6 +36,19 @@ export type ProviderCapabilities = {
   slashCommands?: ProviderSlashCommand[];
   supportsMcp: boolean;
   mcpSupport: "full" | "stdio-only" | "none";
+  /** How profile prompts reach the provider. An empty mode list means the
+   *  provider has no honest system-level delivery path. */
+  profilePrompt: {
+    supportedModes: Array<"append" | "custom">;
+    delivery: Partial<Record<"append" | "custom", "system" | "developer" | "rule">>;
+    summary: string;
+  };
+  /** Whether Modus can control provider-native project instruction discovery. */
+  projectInstructions: {
+    control: "toggle" | "always" | "none";
+    sources: string;
+    summary: string;
+  };
   /** Whether the provider discovers skills on disk by itself. Derived centrally
    *  in `registry.ts` from `provider-names.ts`, not declared per provider. */
   readsNativeSkills?: boolean;
@@ -93,7 +106,7 @@ export interface SessionProvider {
   updateConfig?(session: ActiveSession, config: Record<string, any>): void;
 
   /** Switch active profile mid-session (optional — provider-specific swap logic) */
-  switchProfile?(session: ActiveSession, ctx: TurnContext, contextMode: string): void;
+  switchProfile?(session: ActiveSession, ctx: TurnContext, contextMode: string): void | Promise<void>;
 
   /** Provider-native file rewind. Absence means Modus must not claim native support. */
   previewWorkspaceRewind?(session: ActiveSession, providerMessageId: string): Promise<{

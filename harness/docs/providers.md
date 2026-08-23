@@ -1,6 +1,6 @@
 ---
 title: Provider System
-lastUpdated: 2026-08-14
+lastUpdated: 2026-08-22
 lastCommit: a9adf68
 covers: harness/providers/ harness/modus-plugins.ts harness/templates/providers/ harness/session-manager.ts harness/skill-attachment.ts
 ---
@@ -211,6 +211,37 @@ if the provider then declines, the already-gathered text is queued rather than
 re-gathered, because activation has side effects (persistent registration, API
 token minting).
 
+## Profile prompts and project instructions
+
+Profile prompts are provider configuration, not message content. Modus resolves
+template variables and sends the prompt through a provider-native system-level
+channel. The user payload passed to the provider remains exactly the content
+submitted to the session. Repeating instructions on every turn belongs to a
+persistent move, which is visible in the session configuration.
+
+Two capability objects describe the real boundary:
+
+- `profilePrompt.supportedModes` lists `append` and/or `custom`.
+  `profilePrompt.delivery` maps each supported mode to its system, developer,
+  or rule channel.
+- `projectInstructions.control` is `toggle`, `always`, or `none`, with the
+  provider-native sources named in `sources`.
+
+| Provider | Append channel | Custom channel | Project instruction control |
+|----------|----------------|----------------|-----------------------------|
+| Claude Code / PTY | Claude system-prompt append | Claude system-prompt replacement | project-only settings toggle |
+| Codex | `developer_instructions` | `instructions` | `AGENTS.md` toggle (`project_doc_max_bytes = 0` disables) |
+| Cursor | private always-applied plugin rule | unavailable | Cursor rules always on |
+| Grok Build | `--rules` | `--system-prompt-override` | `AGENTS.md` always on |
+| OpenCode | config `instructions` | custom primary-agent `prompt` | project config/instructions toggle |
+| Declarative PI providers | `appendSystemPrompt` | `systemPrompt` | context-files toggle |
+| Gemini CLI (hidden) | unavailable | unavailable | Gemini project memory toggle |
+| Antigravity (hidden) | unavailable | unavailable | project instructions always on |
+
+The backend rejects a non-empty prompt when the selected mode is unsupported.
+It never approximates a system prompt by prepending headers or tags to the user
+message.
+
 ## Model selection
 
 Provider model endpoints return suggestions, not an allowlist. Model values in
@@ -231,8 +262,9 @@ Every current provider consumes `additionalDirectories`. PI's upstream
 `createCodingTools(cwd)` has one primary root, but its file tools accept
 absolute paths and bash is already unrestricted. Modus adds declared roots to
 PI's resource system prompt and every coding-tool description so the agent can
-address them by absolute path. PI still loads `CLAUDE.md` and skills from the
-primary `cwd`; Modus explicitly adds `<cwd>/.claude/skills` when present for
+address them by absolute path. PI loads its context files, when enabled, and
+skills from the primary `cwd`; Modus explicitly adds `<cwd>/.claude/skills`
+when present for
 cross-provider plugin skills. Extra roots widen coding access, not
 resource-loader discovery.
 

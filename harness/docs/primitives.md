@@ -1,6 +1,6 @@
 ---
 title: Core Primitives
-lastUpdated: 2026-08-19
+lastUpdated: 2026-08-22
 lastCommit: a9adf68
 covers: harness/db.ts harness/session-manager.ts harness/index.ts
 ---
@@ -122,8 +122,17 @@ skills, ui (label, placeholder, showThinking).
 **Template vars**: prompt supports `{{key}}` interpolation from `_users.json`
 defaults, overridden by user profile `templateVars`.
 
-**promptMode**: `"append"` adds the prompt after Claude Code's built-in system
-prompt. `"custom"` replaces it entirely.
+**promptMode**: `"append"` adds the profile prompt through a provider-native
+system/developer/rule channel; `"custom"` replaces the provider's built-in
+system instructions. The user's message is not rewritten. Providers advertise
+their supported modes through `profilePrompt.supportedModes`; unsupported modes
+are disabled in the editor and rejected by the backend. Cursor supports append
+only, while the hidden Gemini CLI and Antigravity adapters support neither.
+
+**loadProjectSettings**: controls native project instructions only when
+`projectInstructions.control` is `"toggle"`. `"always"` means the provider CLI
+has no disable switch. See [Profile System](./profile-system.md#key-fields) for
+the provider matrix.
 
 **Resolution**: project-local profiles override base profiles of the same name.
 `getProfile(name, cwd)` checks `.modus/profiles/agents/` first, falls back to

@@ -1,6 +1,6 @@
 ---
 title: Profile System
-lastUpdated: 2026-08-19
+lastUpdated: 2026-08-22
 lastCommit: a9adf68
 covers: harness/modus-home.ts harness/profiles.ts harness/profile-schemas.ts harness/templates/profiles/ harness/skills.ts harness/app-paths.ts
 ---
@@ -124,10 +124,31 @@ bash tool keeps PI's existing unrestricted behavior.
 `"medium"`, `"high"`, `"xhigh"`, `"max"`. Provider-specific normalization
 lives in each provider.
 
-**`promptMode`**: `"append"` layers your prompt on top of PI's default system prompt.
-`"custom"` replaces it entirely — you own the whole prompt.
+**`promptMode`**: `"append"` adds the profile prompt to the provider's built-in
+system instructions. `"custom"` replaces those built-in system instructions.
+The prompt is established as system-level session configuration and is never
+added to a user message. Provider support is explicit:
 
-**`loadProjectSettings`**: Whether to load `CLAUDE.md` files from the working directory.
+| Provider | Prompt modes | Project instructions |
+|----------|--------------|----------------------|
+| Claude Code / Claude Code PTY | append, custom | toggleable project `CLAUDE.md` and settings |
+| Codex | append, custom | toggleable `AGENTS.md` discovery |
+| Cursor | append only | always loads Cursor project rules |
+| Grok Build | append, custom | always loads `AGENTS.md` |
+| OpenCode | append, custom | toggleable project config and instruction files |
+| Declarative PI providers | append, custom | toggleable PI context files |
+| Gemini CLI (hidden) | unavailable | toggleable Gemini project memory |
+| Antigravity (hidden) | unavailable | always loads project instructions |
+
+An unsupported mode is disabled in the profile editor and rejected by the
+backend if it is supplied through JSON or an older saved profile. Cursor's
+append mode is an always-applied private plugin rule; it cannot replace Cursor's
+built-in prompt.
+
+**`loadProjectSettings`**: Controls provider-native project instructions only
+where the provider exposes such a control. The profile editor labels the
+provider's actual sources and shows always-on providers as disabled rather than
+claiming the setting was applied.
 
 **`env`**: Provider-specific process environment, not a universal endpoint
 override. The Claude Code SDK and Grok Build providers consume it today; other

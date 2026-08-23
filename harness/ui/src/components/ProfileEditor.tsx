@@ -338,6 +338,15 @@ function ProfileForm({
   const providerOptions = provider && !availableProviders.includes(provider)
     ? [provider, ...availableProviders]
     : availableProviders;
+  const selectedCapabilities = providerCapabilities[provider || "claude-code"];
+  const supportedPromptModes = selectedCapabilities?.profilePrompt?.supportedModes ?? ["append", "custom"];
+  const promptModeSupported = supportedPromptModes.includes(promptMode);
+  const projectInstructionControl = selectedCapabilities?.projectInstructions?.control ?? "toggle";
+  const displayedProjectSettings = projectInstructionControl === "always"
+    ? true
+    : projectInstructionControl === "none"
+      ? false
+      : loadProjectSettings;
 
   const enabledTools = Object.entries(toolStates).filter(([, s]) => s === "on").map(([t]) => t);
   const toolSummary = !toolsPinned
@@ -466,15 +475,28 @@ function ProfileForm({
           <label className="pf-field">
             <span>prompt mode</span>
             <select value={promptMode} onChange={(e) => setPromptMode(e.target.value as "custom" | "append")}>
-              <option value="append">append</option>
-              <option value="custom">custom</option>
+              <option value="append" disabled={!supportedPromptModes.includes("append")}>append</option>
+              <option value="custom" disabled={!supportedPromptModes.includes("custom")}>custom</option>
             </select>
           </label>
         </div>
+        {selectedCapabilities?.profilePrompt && prompt.trim() && !promptModeSupported && (
+          <span className="pf-capability-warning">{selectedCapabilities.profilePrompt.summary}</span>
+        )}
         <label className="pf-check">
-          <input type="checkbox" checked={loadProjectSettings} onChange={(e) => setLoadProjectSettings(e.target.checked)} />
-          <span>load CLAUDE.md</span>
+          <input
+            type="checkbox"
+            checked={displayedProjectSettings}
+            disabled={projectInstructionControl !== "toggle"}
+            onChange={(e) => setLoadProjectSettings(e.target.checked)}
+          />
+          <span>load project instructions</span>
         </label>
+        {selectedCapabilities?.projectInstructions && (
+          <span className="pf-capability-help">
+            {selectedCapabilities.projectInstructions.sources}: {selectedCapabilities.projectInstructions.summary}
+          </span>
+        )}
       </div>
 
       {/* Prompt */}
@@ -487,6 +509,9 @@ function ProfileForm({
           rows={10}
           placeholder="system prompt..."
         />
+        {selectedCapabilities?.profilePrompt && (
+          <span className="pf-capability-help">{selectedCapabilities.profilePrompt.summary}</span>
+        )}
       </div>
 
       {/* Tools */}

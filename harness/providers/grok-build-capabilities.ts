@@ -25,6 +25,16 @@ export const GROK_BUILD_CAPABILITIES: ProviderCapabilities = {
   ],
   supportsMcp: true,
   mcpSupport: "full",
+  profilePrompt: {
+    supportedModes: ["append", "custom"],
+    delivery: { append: "system", custom: "system" },
+    summary: "Grok Build supports appended rules and replacement system prompts.",
+  },
+  projectInstructions: {
+    control: "always",
+    sources: "AGENTS.md files",
+    summary: "Grok Build always discovers project instructions; its CLI has no disable switch.",
+  },
   nonToolSignals: ["thinking", "plan", "streaming"],
   permissionModel: {
     mode: "per-tool-ui",

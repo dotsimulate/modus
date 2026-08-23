@@ -105,14 +105,14 @@ Define `mcpServers` in the profile the same way as claude-code. HTTP/stdio serve
 | Field | Notes |
 |-------|-------|
 | `model` | OpenAI model ID |
-| `prompt` | Injected as instruction prelude before user message |
-| `promptMode` | `"custom"` = system instructions header; `"append"` = profile instructions header |
+| `prompt` | Delivered separately from the user message through Codex config |
+| `promptMode` | `"append"` uses `developer_instructions`; `"custom"` uses replacement `instructions` |
 | `codexSandboxMode` | Explicit sandbox override; see table above |
 | `codexRules` | Starlark command rules written at session start |
 | `permissionPolicy` | Drives sandbox derivation; `"ask"` falls back to `workspace-write` |
 | `effort` | `"low"/"medium"/"high"` only; `"off"/"max"` = no-op |
 | `mcpServers` | stdio + HTTP supported; SSE skipped |
-| `loadProjectSettings` | No effect — omit |
+| `loadProjectSettings` | Controls `AGENTS.md` discovery; `false` sets `project_doc_max_bytes` to `0` |
 
 ## Example Profile
 

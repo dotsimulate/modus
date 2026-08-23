@@ -100,6 +100,16 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
   ],
   supportsMcp: true,
   mcpSupport: "full",
+  profilePrompt: {
+    supportedModes: ["append", "custom"],
+    delivery: { append: "developer", custom: "system" },
+    summary: "Append uses Codex developer instructions; custom replaces Codex system instructions.",
+  },
+  projectInstructions: {
+    control: "toggle",
+    sources: "AGENTS.md files",
+    summary: "Modus can enable or disable Codex project instruction discovery.",
+  },
   nonToolSignals: ["reasoning", "todo_list", "file_change"],
   permissionModel: {
     mode: "runtime-native",
@@ -355,27 +365,12 @@ function cleanupCodexInputImages(input: CodexInput): void {
   }
 }
 
-function buildCodexInput(content: MessageContent, ctx: TurnContext): CodexInput {
-  const prompt = resolveProfilePrompt(ctx.profile);
+export function buildCodexInput(content: MessageContent, ctx: TurnContext): CodexInput {
   const userInput = contentToString(content);
   const imagePaths = materializeCodexImages(content, ctx.session.sessionId);
-
-  // Codex CLI does not expose a first-class system prompt or provider preset API.
-  // For now both prompt modes are applied as an injected instruction prelude so
-  // Codex sessions actually honor the profile contract instead of ignoring it.
-  const text = !prompt?.text
-    ? userInput
-    : [
-      prompt.mode === "custom" ? "System instructions:" : "Additional profile instructions:",
-      prompt.text,
-      "",
-      "User request:",
-      userInput,
-    ].join("\n");
-
-  if (imagePaths.length === 0) return text;
+  if (imagePaths.length === 0) return userInput;
   return [
-    { type: "text", text },
+    { type: "text", text: userInput },
     ...imagePaths.map((path) => ({ type: "local_image" as const, path })),
   ];
 }
@@ -642,7 +637,7 @@ function codexDisableFeatures(): string[] {
   return ["image_generation"];
 }
 
-function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?: Record<string, string> } {
+export function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?: Record<string, string> } {
   const { opts, profile } = ctx;
   const projectRoot = ctx.session.projectRoot ?? opts.cwd ?? ctx.session.cwd;
   const mergedMcp = resolveMcpServers({
@@ -651,8 +646,6 @@ function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?:
     profile,
     sessionServers: opts.mcpServers,
   }).servers;
-  if (Object.keys(mergedMcp).length === 0) return {};
-
   const mcpServers: CodexConfigObject = {};
   const extraEnv: Record<string, string> = {};
   for (const [name, config] of Object.entries(mergedMcp)) {
@@ -671,8 +664,19 @@ function buildCodexConfig(ctx: TurnContext): { config?: CodexConfigObject; env?:
     if (remoteConfig) mcpServers[name] = remoteConfig;
   }
 
+  const config: CodexConfigObject = {};
+  if (Object.keys(mcpServers).length > 0) config.mcp_servers = mcpServers;
+  const prompt = resolveProfilePrompt(profile);
+  if (prompt?.text) {
+    if (prompt.mode === "custom") config.instructions = prompt.text;
+    else config.developer_instructions = prompt.text;
+  }
+  if ((opts.loadProjectSettings ?? profile?.loadProjectSettings ?? true) === false) {
+    config.project_doc_max_bytes = 0;
+  }
+
   return {
-    config: Object.keys(mcpServers).length > 0 ? { mcp_servers: mcpServers } : undefined,
+    config: Object.keys(config).length > 0 ? config : undefined,
     env: Object.keys(extraEnv).length > 0 ? buildCodexEnv(extraEnv) : undefined,
   };
 }
@@ -1196,7 +1200,7 @@ async function runTurn(
               },
               cwd: session.cwd,
               additionalDirectories: session.additionalDirectories,
-              loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? false,
+              loadProjectSettings: ctx.opts.loadProjectSettings ?? ctx.profile?.loadProjectSettings ?? true,
             });
           }
           break;

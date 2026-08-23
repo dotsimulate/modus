@@ -24,6 +24,16 @@ export const ANTIGRAVITY_CAPABILITIES: ProviderCapabilities = {
   builtInToolMode: "event-derived",
   supportsMcp: true,
   mcpSupport: "full",
+  profilePrompt: {
+    supportedModes: [],
+    delivery: {},
+    summary: "Antigravity exposes no system-level prompt channel to the Modus provider.",
+  },
+  projectInstructions: {
+    control: "always",
+    sources: "Antigravity project instructions",
+    summary: "Antigravity always loads project instructions; its headless CLI has no disable switch.",
+  },
   nonToolSignals: ["tool_lifecycle", "final_response"],
   permissionModel: {
     mode: "per-tool-ui",
