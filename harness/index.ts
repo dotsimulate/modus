@@ -4420,6 +4420,11 @@ app.get("/api/account", async (c) => {
   return c.json({ account, costs });
 });
 
+app.get("/api/claude/usage", async (c) => {
+  const { probeClaudePlanUsage } = await import("./claude-usage");
+  return c.json(await probeClaudePlanUsage());
+});
+
 app.get("/api/gemini/usage", async (c) => {
   const params = new URL(c.req.url).searchParams;
   const cwd = params.get("cwd") ?? process.cwd();

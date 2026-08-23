@@ -5,6 +5,7 @@ type PollingOptions<T> = {
   scopeKey: string;
   intervalMs: number;
   initialValue: T;
+  enabled?: boolean;
 };
 
 type PollingResult<T> = {
@@ -25,11 +26,14 @@ export function useWidgetPollingValue<T>({
   scopeKey,
   intervalMs,
   initialValue,
+  enabled = true,
 }: PollingOptions<T>): PollingResult<T> {
   const [value, setValue] = useState<T>(initialValue);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) return;
+
     let alive = true;
 
     const run = async (showLoading: boolean) => {
@@ -54,7 +58,7 @@ export function useWidgetPollingValue<T>({
       alive = false;
       window.clearInterval(iv);
     };
-  }, [load, intervalMs, scopeKey]);
+  }, [enabled, load, intervalMs, scopeKey]);
 
   return {
     value,

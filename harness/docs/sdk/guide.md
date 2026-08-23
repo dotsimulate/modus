@@ -573,6 +573,9 @@ passed in.
 // Session stats
 const stats = await client.getSessionStats();
 
+// Claude subscription plan limit windows from the authenticated Claude Code CLI
+const plan = await client.getClaudePlanUsage();
+
 // Provider usage over time
 const usage = await client.getProviderUsageAnalytics("alex", 30);
 
@@ -587,6 +590,14 @@ const deep = await client.getDeepAnalytics({
 const activity = await client.getActivity({ limit: 50 });
 const summary = await client.getActivitySummary({ hours: 24 });
 ```
+
+`getClaudePlanUsage()` backs `GET /api/claude/usage`. It invokes Claude Code's
+supported `/usage` command through the user's existing CLI authentication; Modus
+does not read or store the CLI's OAuth token. The response contains dynamic
+subscription limit windows (`label`, `usedPercent`, and optional reset text),
+plus Claude's explanatory report when available. This is distinct from
+`getProviderUsageAnalytics()`, which is computed from sessions stored locally by
+Modus and is not an Anthropic subscription quota report.
 
 `getDeepAnalytics({ start, end, bucketMs?, userProfile?, cwd?, provider? })`
 backs `GET /api/analytics/deep`. The default range is the previous 48 hours and

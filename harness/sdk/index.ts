@@ -57,6 +57,8 @@ export type {
   // Session stats
   SessionStats,
   AccountInfo,
+  ClaudePlanUsageLimit,
+  ClaudePlanUsageSnapshot,
   GeminiUsageInfo,
   // Profiles
   McpServerConfig,
