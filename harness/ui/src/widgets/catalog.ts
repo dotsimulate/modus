@@ -90,6 +90,10 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
     minHeight: 60,
     preferredHeight: 120,
     maxHeight: 200,
+    conversation: {
+      provides: ["conversation.compose"],
+      modes: ["live"],
+    },
   },
   "config-bar": {
     type: "config-bar",
@@ -248,6 +252,25 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
     ],
     minHeight: 200,
     preferredHeight: 500,
+    conversation: {
+      provides: ["conversation.permissions"],
+      modes: ["lossless", "overview", "live", "read-only"],
+    },
+  },
+  "conversation-transcript": {
+    type: "conversation-transcript",
+    description:
+      "The canonical continuous transcript renderer used inside conversation lenses, including history paging, deferred details, artifacts, branching, git events, and live stream state.",
+    config: [
+      { name: "sessionId", type: "string", description: "Pin to a session instead of reading page context." },
+    ],
+    minHeight: 200,
+    preferredHeight: 500,
+    conversation: {
+      consumes: ["conversation.turn-content", "conversation.history", "conversation.artifacts"],
+      provides: ["conversation.turn-content", "conversation.history", "conversation.artifacts"],
+      modes: ["lossless", "live"],
+    },
   },
   "session-control": {
     type: "session-control",
@@ -324,6 +347,11 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
     zones: ["left-panel", "right-panel", "dashboard"],
     minHeight: 80,
     preferredHeight: 400,
+    conversation: {
+      consumes: ["conversation.turn-content", "conversation.history"],
+      provides: ["conversation.turn-content"],
+      modes: ["overview", "live"],
+    },
   },
   "session-turns": {
     type: "session-turns",
@@ -332,11 +360,31 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
     config: [
       { name: "orientation", type: '"vertical" | "horizontal"', description: "A rail down the side, or a strip across." },
       { name: "labels", type: "boolean", description: "Show the prompt's first line beside each mark. Labels are up to 80 characters, so a labelled rail needs a bounded width." },
+      { name: "header", type: "boolean", description: "Show the turn count and index-status controls above the list. Default true. Combined with labels:false, this is the compact spine used by Focus." },
       { name: "sessionId", type: "string", description: "Pin to a session instead of reading page context." },
     ],
     zones: ["left-panel", "right-panel"],
     minHeight: 120,
     preferredHeight: 420,
+    conversation: {
+      consumes: ["conversation.turn-index"],
+      provides: ["conversation.turn-index"],
+      modes: ["overview", "live", "read-only"],
+    },
+  },
+  "conversation-projection": {
+    type: "conversation-projection",
+    description:
+      "A trusted-local authored conversation projection loaded from the project, Vault, plugin, or harness projection registry. Remote backends fail closed.",
+    config: [
+      { name: "projectionId", type: "string", description: "Discovered projection id to render." },
+      { name: "sessionId", type: "string", description: "Pin to a session instead of reading page context." },
+    ],
+    minHeight: 120,
+    preferredHeight: 420,
+    conversation: {
+      modes: ["overview", "live", "read-only"],
+    },
   },
   "session-web": {
     type: "session-web",

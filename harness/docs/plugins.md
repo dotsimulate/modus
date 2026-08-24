@@ -1,15 +1,16 @@
 ---
 title: Plugins
-lastUpdated: 2026-08-19
-covers: harness/settings-schema.ts harness/modus-plugins.ts harness/plugin-settings.ts harness/profiles.ts harness/modus-home.ts harness/index.ts harness/move-runner.ts harness/action-runner.ts harness/pages.ts harness/client-extensions.ts harness/skills.ts harness/providers/provider-definitions.ts
+lastUpdated: 2026-08-23
+covers: harness/settings-schema.ts harness/modus-plugins.ts harness/plugin-settings.ts harness/profiles.ts harness/modus-home.ts harness/index.ts harness/move-runner.ts harness/action-runner.ts harness/pages.ts harness/conversation-lenses.ts harness/client-extensions.ts harness/skills.ts harness/providers/provider-definitions.ts
 ---
 
 # Plugins
 
 A plugin is a directory containing `.modus/`, registered in the current Vault.
-When enabled, its profiles, moves, actions, pages, provider definitions, global
-config, and client extensions merge into every project registered in that
-Vault. Registration lives in `<current-home>/plugins.json`, where
+When enabled, its profiles, moves, actions, pages, conversation lenses and
+projections, provider definitions, global config, and client extensions merge
+into every project registered in that Vault. Registration lives in
+`<current-home>/plugins.json`, where
 `<current-home>` is Main's Modus home or a named Vault's registered folder.
 Plugin content remains at its external source path and is never copied into a
 project. Named Vaults do not inherit Main's plugin registrations.
@@ -45,6 +46,8 @@ content semantics:
   "integration": {
     "agentProfiles": ["toolkit-reviewer"],
     "pages": ["toolkit"],
+    "lenses": ["toolkit:reader"],
+    "projections": ["toolkit-contact-sheet"],
     "pageNav": "auto"
   },
   "settings": [
@@ -54,14 +57,18 @@ content semantics:
   "contents": {
     "profiles": { "mode": "merge" },
     "moves": { "mode": "merge" },
+    "lenses": { "mode": "merge" },
+    "projections": { "mode": "merge" },
     "providers": { "mode": "merge" },
     "skills": { "mode": "merge" }
   }
 }
 ```
 
-`integration` is the public UI surface. Only listed profiles and pages appear
-globally; unlisted profiles remain resolvable by plugin-local automation.
+`integration` is the public UI surface. Only listed profiles, pages, lenses,
+and projections appear globally; unlisted profiles remain resolvable by
+plugin-local automation, while unlisted lens/projection files are not
+discoverable at all.
 `about` points to a readable disclosure file inside the plugin root, with
 `.modus/ABOUT.md` and `ABOUT.md` as fallbacks. Registration values override
 manifest identity values. Plugin content supports merge semantics only.
@@ -74,6 +81,8 @@ manifest identity values. Plugin content supports merge semantics only.
 | Moves | `.modus/moves/<name>/` | Project → plugin → built-in |
 | Actions | `.modus/actions/<name>/` | Project → plugin → built-in; plugin actions default to the plugin root and carry `origin: "plugin"` |
 | Pages | `.modus/pages/<name>.json` | Manifest-listed pages scan between project and built-in pages |
+| Conversation lenses | `.modus/lenses/<name>.json` | Manifest-listed lenses scan after project/Vault and before harness; see `conversation-lenses` |
+| Conversation projections | `.modus/projections/<name>/projection.json` | Manifest-listed trusted-local components use the same precedence and fail closed for remote backends |
 | Provider definitions | `.modus/providers/<name>.json` | Current-Vault definitions win plugin collisions; built-in names and aliases cannot be shadowed |
 | Skills | `.modus/skills/<name>/SKILL.md` | Project → current Vault → plugin; shipping one is not the same as attaching it |
 | Global config | `.modus/_global.json` | Merges after current-Vault config and before project config |

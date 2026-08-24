@@ -1,7 +1,7 @@
 ---
 title: Capability Surface (condensed)
-lastUpdated: 2026-08-22
-covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts harness/app-paths.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts
+lastUpdated: 2026-08-23
+covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts harness/conversation-lenses.ts harness/app-paths.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts
 audience: agent
 ---
 
@@ -247,6 +247,23 @@ Layout tree: `grid` (columns, templateColumns/Rows) / `panel` (list|tabs) /
 `move:<name>` embeds. Users fork built-in pages into projects
 (`POST /api/pages/fork`).
 
+## Conversation lenses — `.modus/lenses/*.json`
+
+Selectable chat-route recipes using the same `LayoutNode` grammar as pages.
+Contract: `{ contract: "conversation-lens@1", id, label, capabilities?,
+fallback?, layout, layouts?.mobile, context? }`. Discovery precedence is
+project → current Vault → enabled explicitly exposed plugin → harness.
+`core:transcript` and `core:focus` always ship as built-ins. Core keeps
+permissions, queued sends, errors, and Transcript recovery outside authored
+control. Unknown/invalid/capability-incomplete selections preserve the session
+and fall back with a visible reason.
+
+Trusted-local React projections live at
+`.modus/projections/<id>/projection.json + component.tsx`, use
+`conversation-projection@1`, and are composed with the
+`conversation-projection` widget. Project/Vault/plugin modules do not load when
+the backend target is remote. Full contract: `conversation-lenses`.
+
 ## Harness Context (server-side extension code)
 
 `ctx.vault.slug` (process identity; `null` for implicit default),
@@ -305,10 +322,10 @@ only — `promote` is gated by `sessionSpawn`, since spawning is what it does.
 
 ## Where things live
 
-- Project-planted config: `<project>/.modus/{moves,actions,pages,profiles,missions}/`
-- Vault-owned: `<current-home>/{profiles,providers,skills,data,logs,runtime,cache,history,checkpoints}/`
+- Project-planted config: `<project>/.modus/{moves,actions,pages,lenses,projections,profiles,missions}/`
+- Vault-owned: `<current-home>/{profiles,providers,skills,lenses,projections,data,logs,runtime,cache,history,checkpoints}/`
 - Vault registries/settings: `<current-home>/{projects.json,plugins.json,secrets.env}`
 - Main control plane only: `<MAIN_MODUS_HOME>/vaults.json`
-- Built-ins: `harness/{moves,actions,pages,prompts}/` (packaged into the desktop app)
+- Built-ins: `harness/{moves,actions,pages,lenses,projections,prompts}/` (packaged into the desktop app)
 - Docs API: `GET /api/docs` (index), `GET /api/docs/<id>`, `POST /api/docs/search`
   (`{queries: string[]}` — batch). Generated audit doc: `generated/move-ops`.

@@ -207,6 +207,14 @@ export type HarnessModelResult = {
   /** `"in-process"` (PI HTTP call, milliseconds) or `"subprocess"` (a CLI
    *  launched for one headless turn, seconds). See `allowSubprocess`. */
   transport: "in-process" | "subprocess";
+  /**
+   * Why the model stopped: `stop` | `length` | `toolUse` | `error` | `aborted`.
+   * Check this before treating a short answer as the model's considered reply —
+   * `"length"` means it was cut off at the token budget. A budget consumed
+   * entirely by a reasoning model's thinking blocks throws instead of returning
+   * an empty string.
+   */
+  stopReason?: string;
   elapsedMs: number;
 };
 

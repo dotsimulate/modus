@@ -141,6 +141,52 @@ describe("completion", () => {
     expect(result.usage).toEqual({ input: 10, output: 4, totalTokens: 14, costUsd: 0.002 });
   });
 
+  test("carries the stop reason so a truncated answer is distinguishable", async () => {
+    const result = await runOneShot(
+      { prompt: "summarize", provider: "ollama", model: "m", origin },
+      {
+        complete: async () => ({
+          content: [{ type: "text", text: "The build passed but the" }],
+          stopReason: "length",
+          usage: { input: 10, output: 64, totalTokens: 74 },
+        }),
+      },
+    );
+    // Truncated but real: the caller gets the partial answer AND the reason.
+    expect(result.text).toBe("The build passed but the");
+    expect(result.stopReason).toBe("length");
+    expect(getOneShotRecord(result.oneShotId)?.stopReason).toBe("length");
+  });
+
+  test("throws when the whole token budget went to dropped thinking blocks", async () => {
+    // Regression: measured on litellm/ornith-1-5-35b-q8 at maxTokens 64 — the
+    // model emitted 64 output tokens, all reasoning, so extractCompletionText
+    // returned "" and this resolved successfully with an empty answer.
+    await expect(
+      runOneShot(
+        { prompt: "title this", provider: "ollama", model: "m", maxTokens: 64, origin },
+        {
+          complete: async () => ({
+            content: [{ type: "thinking", text: undefined } as any],
+            stopReason: "length",
+            usage: { input: 10, output: 64, totalTokens: 74 },
+          }),
+        },
+      ),
+    ).rejects.toThrow(/produced no text.*maxTokens: 64.*64 output tokens/s);
+  });
+
+  test("an empty answer that stopped normally is still returned, not thrown", async () => {
+    // Only budget exhaustion is unambiguously a caller error. A model that
+    // genuinely had nothing to say is the caller's problem to interpret.
+    const result = await runOneShot(
+      { prompt: "x", provider: "ollama", model: "m", origin },
+      { complete: async () => ({ content: [], stopReason: "stop" }) },
+    );
+    expect(result.text).toBe("");
+    expect(result.stopReason).toBe("stop");
+  });
+
   test("records the call so it can be promoted later", async () => {
     const result = await runOneShot(
       { prompt: "fix this", profile: "cleanup", origin },

@@ -2,6 +2,7 @@ import { Activity, useState, useEffect, useCallback, useRef, Component, type Rea
 import type { MoveListItem } from "../../sdk/index";
 import { API_BASE, authHeaders, modus } from "./modusClient";
 import { customPageView, getCustomPageId, getMovePageName, movePageView, NAV_VIEWS, type View } from "./views";
+import { resolveMissingPageNavigation } from "./conversation-navigation";
 import { AuthProvider } from "./providers/AuthProvider";
 import { useAuth } from "./providers/AuthContext";
 import { ProfileProvider } from "./providers/ProfileProvider";
@@ -516,10 +517,23 @@ function AppContent({ router }: { router: HashRouter }) {
   }, [view]);
 
   useEffect(() => {
-    if (getCustomPageId(view) && !activeCustomPage) {
+    const sessionId = hashSessionId ?? activeSessionId;
+    const resolution = resolveMissingPageNavigation({
+      customPageId: getCustomPageId(view),
+      activeCustomPage: !!activeCustomPage,
+      projectCwd,
+      pagesDiscoveredFor,
+      sessionId,
+    });
+    if (resolution === "chat" && sessionId) {
+      navigateToSession(sessionId, activeUserProfile);
+    } else if (resolution === "home") {
       navigate("home");
     }
-  }, [activeCustomPage, navigate, view]);
+  }, [
+    activeCustomPage, activeSessionId, activeUserProfile, hashSessionId,
+    navigate, navigateToSession, pagesDiscoveredFor, projectCwd, view,
+  ]);
 
   useEffect(() => {
     if (!activeUserProfile) return;

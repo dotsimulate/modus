@@ -1,69 +1,152 @@
 /**
- * Session Chat widget — conversation view for a single session.
- *
- * Config: { "type": "session-chat", "id": "chat-1", "sessionId": "optional-id" }
- *
- * Shows the message thread for a given session. If no sessionId in config,
- * shows an empty state. Uses sessionStore for live SSE streaming.
- * Includes the PermissionOverlay for tool permission prompts.
+ * Conversation Host — the invariant boundary between a live session and an
+ * authored conversation lens. The historical `session-chat` widget key stays
+ * in place so project chat-studio forks and editable panel state do not migrate.
  */
 
-import { useEffect, useCallback, useMemo } from "react";
-import { useSessionState, useSessionHistoryLoadState, ensureSubscribed, loadOlderSessionHistory, loadSessionMessageDetails } from "../sessionStore";
-import { modus } from "../modusClient";
-import { ChatView } from "../components/ChatView";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  ConversationLensDefinitionV1,
+  ConversationLensRegistryEntry,
+  ConversationResourceRegistry,
+} from "../../../sdk/index";
+import { resolveConversationCapabilities, resolveConversationLens } from "../conversation-lens-resolution";
+import { PageView } from "../components/PageRenderer";
 import { PermissionOverlay } from "../components/PermissionOverlay";
-import { useActiveSessionId, useSessionActions, useSessionQueue } from "../providers/SessionContext";
+import { QueuedMessage } from "../components/QueuedMessage";
+import { useScopeBus } from "../components/pageScope";
+import {
+  applyInterfaceSettings,
+  projectChatOverrideEnabled,
+  writableProjectChatConfig,
+  writeDeviceInterfaceSettings,
+} from "../interface-settings";
+import { modus } from "../modusClient";
+import { useProfiles } from "../providers/ProfileContext";
+import { useActiveSessionId, useSessionQueue } from "../providers/SessionContext";
+import { ensureSubscribed, useSessionHistoryLoadState, useSessionState } from "../sessionStore";
+import { useConversationResources } from "../useConversationResources";
+import { useInterfaceSettings } from "../useInterfaceSettings";
 import type { WidgetBase, WidgetProps } from "./types";
 import { WidgetEmptyState } from "./widget-components";
-import { useProfiles } from "../providers/ProfileContext";
-import { useInterfaceSettings } from "../useInterfaceSettings";
-import SessionTurnWidget, { type TurnBlockKind } from "./session-turn.widget";
-import type { Message } from "../../../sdk/index";
-
-const EMPTY_MESSAGES: Message[] = [];
 
 type SessionChatConfig = WidgetBase & {
   type: "session-chat";
   sessionId?: string;
 };
 
-export default function SessionChatWidget(props: WidgetProps<SessionChatConfig>) {
+const EMERGENCY_TRANSCRIPT_DEFINITION: ConversationLensDefinitionV1 = {
+  contract: "conversation-lens@1",
+  id: "core:transcript",
+  label: "Transcript",
+  description: "Built-in recovery transcript",
+  capabilities: {
+    required: ["conversation.permissions", "conversation.turn-content", "conversation.history"],
+  },
+  layout: {
+    kind: "widget",
+    widget: { type: "conversation-transcript", id: "emergency-transcript" },
+  },
+  layouts: {
+    mobile: {
+      kind: "widget",
+      widget: { type: "conversation-transcript", id: "emergency-transcript-mobile" },
+    },
+  },
+  context: { turnNumber: null, turnSeq: null, turnSessionId: null },
+};
+
+function emergencyRegistry(cwd: string, reason: string): ConversationResourceRegistry {
+  const entry: ConversationLensRegistryEntry = {
+    id: "core:transcript",
+    status: "degraded",
+    source: { kind: "harness", label: "Modus recovery", key: "harness:recovery" },
+    reason,
+    definition: EMERGENCY_TRANSCRIPT_DEFINITION,
+  };
+  return {
+    contract: "conversation-resources@1",
+    cwd,
+    lenses: [entry],
+    projections: [],
+    diagnostics: [],
+  };
+}
+
+export default function ConversationHostWidget(props: WidgetProps<SessionChatConfig>) {
   const { config, pageContext } = props;
+  const parentBus = useScopeBus();
   const activeSessionId = useActiveSessionId();
-  const { branchFromSessionMessage } = useSessionActions();
   const { queuedMessage, cancelQueued } = useSessionQueue();
-  const { activeUP, profiles } = useProfiles();
+  const { activeUP, activeCwd, activeUserProfile, refreshUserProfiles } = useProfiles();
   const contextSessionId = pageContext?.get("sessionId") as string | undefined;
   const selectedSession = pageContext?.get("selectedSession") as string | undefined;
   const sessionId = contextSessionId ?? selectedSession ?? config.sessionId ?? null;
-  const turnSessionId = pageContext?.get("turnSessionId");
-  const rawTurnNumber = pageContext?.get("turnNumber");
-  const focusTurnNumber = (typeof turnSessionId !== "string" || turnSessionId === sessionId)
-    && typeof rawTurnNumber === "number"
-    ? rawTurnNumber
-    : null;
 
-  // Snapshot-then-subscribe (handles dedup + race-safe hydration internally)
   useEffect(() => {
     if (sessionId) void ensureSubscribed(sessionId);
   }, [sessionId]);
 
   const session = useSessionState(sessionId);
   const historyLoad = useSessionHistoryLoadState(sessionId);
-  const retryHistory = useCallback(() => {
-    if (sessionId) void ensureSubscribed(sessionId, { forceHistoryRefresh: true });
-  }, [sessionId]);
-  const loadOlderHistory = useCallback(() => {
-    return sessionId ? loadOlderSessionHistory(sessionId) : Promise.resolve();
-  }, [sessionId]);
-  const loadMessageDetails = useCallback((seq: number) => {
-    return sessionId ? loadSessionMessageDetails(sessionId, seq) : Promise.resolve();
+  const interfaceSettings = useInterfaceSettings(activeUP?.interface);
+  const cwd = session?.cwd ?? activeCwd ?? null;
+  const resources = useConversationResources(cwd);
+  const [runtimeFailure, setRuntimeFailure] = useState<{ lensId: string; reason: string } | null>(null);
+
+  useEffect(() => {
+    setRuntimeFailure(null);
+  }, [cwd, sessionId, interfaceSettings.chat.lensId]);
+
+  useEffect(() => {
+    const onProjectionFailure = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        sessionId?: string;
+        lensId?: string;
+        reason?: string;
+      }>).detail;
+      if (!detail || detail.sessionId !== sessionId || !detail.lensId) return;
+      setRuntimeFailure({
+        lensId: detail.lensId,
+        reason: detail.reason ?? "authored projection failed",
+      });
+    };
+    window.addEventListener("modus:conversation-projection-error", onProjectionFailure);
+    return () => window.removeEventListener("modus:conversation-projection-error", onProjectionFailure);
   }, [sessionId]);
 
-  // Permission responses MUST use this widget's own sessionId, not the
-  // context's activeSessionId. Failing to do so sends the response to the
-  // wrong session and leaves AskUserQuestion pending forever.
+  const capabilities = useMemo(() => resolveConversationCapabilities({
+    sessionId,
+    historyError: historyLoad.status === "error" ? historyLoad.error : historyLoad.olderError,
+  }), [historyLoad.error, historyLoad.olderError, historyLoad.status, sessionId]);
+
+  const defaultLensId = interfaceSettings.chat.lensId;
+  const requestedLensId = defaultLensId;
+  const registry = useMemo(() => {
+    if (resources.registry) return resources.registry;
+    if (resources.status === "error") {
+      return emergencyRegistry(cwd ?? "", resources.error ?? "lens discovery failed");
+    }
+    return null;
+  }, [cwd, resources.error, resources.registry, resources.status]);
+  const ordinaryResolution = useMemo(
+    () => resolveConversationLens(registry, requestedLensId, defaultLensId, capabilities),
+    [capabilities, defaultLensId, registry, requestedLensId],
+  );
+  const activeRuntimeFailure = runtimeFailure?.lensId === ordinaryResolution.resolvedId
+    ? runtimeFailure
+    : null;
+  const resolution = useMemo(() => {
+    if (!activeRuntimeFailure) return ordinaryResolution;
+    const recoveryRegistry = emergencyRegistry(cwd ?? "", activeRuntimeFailure.reason);
+    const recovery = resolveConversationLens(recoveryRegistry, "core:transcript", "core:transcript", capabilities);
+    return {
+      ...recovery,
+      requestedId: requestedLensId,
+      reason: `${activeRuntimeFailure.lensId}: ${activeRuntimeFailure.reason}; using Transcript`,
+    };
+  }, [activeRuntimeFailure, capabilities, cwd, ordinaryResolution, requestedLensId]);
+
   const handlePermission = useCallback(async (
     requestId: string,
     behavior: "allow" | "deny",
@@ -74,82 +157,95 @@ export default function SessionChatWidget(props: WidgetProps<SessionChatConfig>)
     await modus.respondToPermission(sessionId, { requestId, behavior, updatedInput, scope }).catch(() => {});
   }, [sessionId]);
 
-  const handleBranch = useCallback(async (seq: number, prefill?: string, restoreCode?: boolean, providerMessageId?: string) => {
-    if (!sessionId) return;
-    await branchFromSessionMessage(sessionId, seq, prefill, restoreCode, providerMessageId);
-  }, [branchFromSessionMessage, sessionId]);
+  const handleOpenTranscript = useCallback(() => {
+    const next = {
+      ...interfaceSettings,
+      chat: { ...interfaceSettings.chat, lensId: "core:transcript" },
+    };
+    applyInterfaceSettings(next);
 
-  const profileUi = profiles.find((profile) => profile.name === session?.profile)?.ui;
-  const interfaceSettings = useInterfaceSettings(activeUP?.interface);
-  const conversation = interfaceSettings.conversation;
-  const showThinking = profileUi?.showThinking ?? conversation.showThinking;
-  const showMeta = profileUi?.showMeta ?? conversation.showMeta;
-  const toolCallDisplay = profileUi?.showToolCalls === false ? "hidden" : conversation.toolCalls;
-  const turnBlocks = useMemo(() => {
-    const blocks: TurnBlockKind[] = ["prompt", "text"];
-    if (showThinking) blocks.push("thinking");
-    if (toolCallDisplay !== "hidden") blocks.push("tools");
-    if (showMeta) blocks.push("meta");
-    return blocks;
-  }, [showMeta, showThinking, toolCallDisplay]);
-  const isActive = session?.status === "running" || session?.status === "starting" || session?.status === "interrupting";
-  const messages = session?.messages ?? EMPTY_MESSAGES;
-  if (!sessionId) {
-    return <WidgetEmptyState>no session selected</WidgetEmptyState>;
-  }
+    if (projectChatOverrideEnabled(activeUP?.interface) && activeUserProfile) {
+      void modus.patchUserProfileUiConfig(activeUserProfile, {
+        interface: {
+          chat: writableProjectChatConfig(activeUP?.interface?.chat, next),
+        },
+      }).then(refreshUserProfiles).catch(() => {});
+      return;
+    }
 
-  if (!session) {
-    return <WidgetEmptyState>loading session...</WidgetEmptyState>;
-  }
+    writeDeviceInterfaceSettings(next);
+  }, [activeUP?.interface, activeUserProfile, interfaceSettings, refreshUserProfiles]);
+
+  if (!sessionId) return <WidgetEmptyState>no session selected</WidgetEmptyState>;
+  if (!session) return <WidgetEmptyState>loading session…</WidgetEmptyState>;
 
   const permissions = session.pendingPermissions ?? [];
-  // The pending-send strip belongs to the composer's session. This widget can be
-  // pointed at any session, so only the one the composer is actually sending to
-  // gets it — otherwise a second chat pane would show someone else's pending
-  // message and offer to cancel it.
   const pendingSend = activeSessionId === sessionId ? queuedMessage : null;
+  const entry = resolution.entry;
+  const definition = entry?.definition;
+  const diagnosticEntry = activeRuntimeFailure ? ordinaryResolution.entry : entry;
+  const lensDegraded = diagnosticEntry?.status === "degraded";
+  const lensReason = resolution.reason
+    ?? (lensDegraded
+      ? (diagnosticEntry.reason ?? `${diagnosticEntry.definition?.label ?? diagnosticEntry.id} is degraded`)
+      : undefined);
+  const gitUnavailable = interfaceSettings.conversation.showGitEvents && !session.cwd;
+  const statusReason = lensReason
+    ?? (gitUnavailable ? "git events unavailable · this session has no cwd" : undefined)
+    ?? (historyLoad.status === "error" ? (historyLoad.error ?? "conversation history unavailable") : undefined)
+    ?? historyLoad.olderError;
+  const showTranscriptRecovery = requestedLensId !== "core:transcript"
+    && Boolean(activeRuntimeFailure || resolution.reason || lensDegraded);
+  const diagnosticSource = diagnosticEntry
+    ? `${diagnosticEntry.source.label} · ${diagnosticEntry.source.kind}`
+    : null;
 
   return (
-    <div className="session-chat-widget" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden", position: "relative" }}>
-      {interfaceSettings.chat.presentation === "turns" ? (
-        <SessionTurnWidget
-          {...props}
-          config={{
-            type: "session-turn",
-            id: `${config.id ?? props.widgetId}:turns`,
-            sessionId,
-            blocks: turnBlocks,
-          }}
-        />
-      ) : (
-        <ChatView
-          fontScale={interfaceSettings.chat.fontScale / 100}
-          focusTurnNumber={focusTurnNumber}
-          messages={messages}
-          sessionId={sessionId}
-          provider={session.provider ?? session.agentConfig?.provider}
-          streaming={isActive}
-          streamFeed={session.streamFeed}
-          showThinking={showThinking}
-          showMeta={showMeta}
-          toolCallDisplay={toolCallDisplay}
-          showGitEvents={profileUi?.showGitEvents ?? conversation.showGitEvents}
-          showFileChanges={conversation.showFileChanges}
-          emptyTitle={historyLoad.status === "loading" ? "loading messages…" : historyLoad.status === "error" ? "messages unavailable" : "no messages"}
-          emptySubtitle={historyLoad.status === "loading" ? "fetching this conversation" : historyLoad.status === "error" ? (historyLoad.error ?? "could not load this conversation") : "session has no messages yet"}
-          emptyActionLabel={historyLoad.status === "error" ? "retry" : undefined}
-          onEmptyAction={historyLoad.status === "error" ? retryHistory : undefined}
-          hasOlderMessages={historyLoad.hasMore}
-          loadingOlderMessages={historyLoad.loadingOlder}
-          olderMessagesError={historyLoad.olderError}
-          olderTurnCount={historyLoad.olderTurnCount}
-          onLoadOlderMessages={loadOlderHistory}
-          onLoadMessageDetails={loadMessageDetails}
-          onBranch={handleBranch}
-          queuedMessage={pendingSend}
-          onCancelQueued={cancelQueued}
-        />
+    <div className="conversation-host">
+      {statusReason && (
+        <div className="conversation-host-diagnostic" role="status">
+          <span className="conversation-host-diagnostic-text">
+            {diagnosticSource ? `${diagnosticSource} · ${statusReason}` : statusReason}
+          </span>
+          {showTranscriptRecovery && (
+            <button type="button" onClick={handleOpenTranscript}>open Transcript</button>
+          )}
+        </div>
       )}
+
+      {pendingSend && <QueuedMessage message={pendingSend} onCancel={cancelQueued} />}
+
+      <div className="conversation-host-stage">
+        {resources.status === "loading" && !definition ? (
+          <WidgetEmptyState>discovering conversation views…</WidgetEmptyState>
+        ) : definition ? (
+          <PageView
+            key={`${sessionId}:${resolution.resolvedId}:${entry?.source.key}`}
+            layout={definition.layout as any}
+            layouts={definition.layouts as any}
+            context={{
+              ...(definition.context ?? {}),
+              sessionId,
+              conversationLensId: resolution.resolvedId,
+              conversationCwd: cwd,
+            }}
+            padding={0}
+            onNavigate={props.onNavigate}
+            onSelectSession={props.onSelectSession}
+            pageId={`conversation-lens:${resolution.resolvedId}`}
+            parentBus={parentBus}
+            bindings={[
+              { local: "sessionId", parent: "sessionId", direction: "down" },
+              { local: "turnNumber", parent: "turnNumber", direction: "twoWay" },
+              { local: "turnSeq", parent: "turnSeq", direction: "twoWay" },
+              { local: "turnSessionId", parent: "turnSessionId", direction: "twoWay" },
+            ]}
+          />
+        ) : (
+          <WidgetEmptyState>{resolution.reason ?? "Transcript unavailable"}</WidgetEmptyState>
+        )}
+      </div>
+
       {permissions.length > 0 && (
         <PermissionOverlay
           permissions={permissions}

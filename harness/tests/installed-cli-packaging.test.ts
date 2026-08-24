@@ -24,6 +24,12 @@ describe("installed Modus CLI packaging", () => {
     expect(launcher).toContain('.env("MODUS_RESOURCES_DIR", &layout.resources)');
   });
 
+  test("packages built-in conversation lens resources", () => {
+    const staging = readFileSync(join(desktopDir, "stage-managed-backend.ts"), "utf8");
+    expect(staging).toContain('"lenses",');
+    expect(staging).toContain('"projections",');
+  });
+
   test("installer owns one exact user PATH entry across install and uninstall", () => {
     const hooks = readFileSync(join(tauriDir, "nsis-hooks.nsh"), "utf8");
     expect(hooks).toContain("!macro NSIS_HOOK_POSTINSTALL");

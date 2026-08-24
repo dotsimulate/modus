@@ -40,6 +40,8 @@ type SessionTurnsConfig = WidgetBase & {
   orientation?: "vertical" | "horizontal";
   /** Show the prompt's first line beside each mark. Off for a bare rail. */
   labels?: boolean;
+  /** Show the count and index-status controls above the turn list. */
+  header?: boolean;
 };
 
 /** One rail entry, whatever it was assembled from. */
@@ -210,29 +212,31 @@ export default function SessionTurnsWidget({ config, pageContext }: WidgetProps<
       ? selectedNumber !== liveMark.number
       : selectedSeq != null && selectedSeq !== liveMark.seq
   );
-  const sessionRunning = session?.status === "running" || session?.status === "starting";
-
   if (!sessionId) return <WidgetEmptyState>no session selected</WidgetEmptyState>;
   if (!session) return <WidgetEmptyState>loading session…</WidgetEmptyState>;
   if (marks.length === 0) {
     return <WidgetEmptyState>{historyLoad.status === "loading" ? "loading turns…" : "no turns yet"}</WidgetEmptyState>;
   }
 
+  const bare = config.header === false && config.labels === false;
+
   return (
-    <div className={`session-turns session-turns--${orientation}`}>
-      <div className="session-turns-head">
-        <span className="session-turns-count">{marks.length} turns</span>
-        {indexError && <span className="session-turns-partial" title="Showing loaded turns only">partial</span>}
-        {behindLiveEdge && (
-          <button
-            type="button"
-            className={`session-turns-jump${sessionRunning ? " is-running" : ""}`}
-            onClick={() => liveMark && select(liveMark)}
-          >
-            {sessionRunning ? "live" : "latest"}
-          </button>
-        )}
-      </div>
+    <div className={`session-turns session-turns--${orientation}${bare ? " session-turns--bare" : ""}`}>
+      {config.header !== false && (
+        <div className="session-turns-head">
+          <span className="session-turns-count">{marks.length} turns</span>
+          {indexError && <span className="session-turns-partial" title="Showing loaded turns only">partial</span>}
+          {behindLiveEdge && (
+            <button
+              type="button"
+              className="session-turns-jump"
+              onClick={() => liveMark && select(liveMark)}
+            >
+              latest
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="session-turns-rail">
         {marks.map((mark) => {
@@ -241,7 +245,6 @@ export default function SessionTurnsWidget({ config, pageContext }: WidgetProps<
             : selectedSeq != null
               ? mark.seq === selectedSeq
               : mark.number === liveMark?.number;
-          const isLive = mark.number === liveMark?.number && !!sessionRunning;
           return (
             <button
               type="button"
@@ -249,7 +252,6 @@ export default function SessionTurnsWidget({ config, pageContext }: WidgetProps<
               className={
                 "session-turns-mark"
                 + (isSelected ? " is-selected" : "")
-                + (isLive ? " is-live" : "")
                 + (mark.loaded ? "" : " is-unloaded")
               }
               onClick={() => select(mark)}

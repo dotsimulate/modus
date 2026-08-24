@@ -78,6 +78,14 @@ export type OneShotRecord = {
   usage?: OneShotUsage;
   origin: OneShotOrigin;
   transport: OneShotTransport;
+  /**
+   * Why the model stopped, as pi-ai reports it: `stop` | `length` | `toolUse` |
+   * `error` | `aborted`. Carried because `text` alone cannot distinguish "the
+   * model said little" from "the answer was cut off at maxTokens" — a caller
+   * writing a session title needs to know which. The subprocess transport
+   * reports `stop` for any outcome it did not already throw on.
+   */
+  stopReason?: string;
   /** Wall-clock cost of the completion, so the latency difference between the
    *  transports stays visible instead of averaged away. */
   elapsedMs: number;
@@ -120,6 +128,9 @@ export type OneShotResult = {
   usage?: OneShotUsage;
   transport: OneShotTransport;
   elapsedMs: number;
+  /** See `OneShotRecord.stopReason`. `"length"` with non-empty text means the
+   *  answer is real but truncated — the caller decides whether that is usable. */
+  stopReason?: string;
 };
 
 // ── Target resolution ──
@@ -346,6 +357,7 @@ export async function runOneShot(
   let text: string;
   let resolvedModel: string;
   let usage: OneShotUsage | undefined;
+  let stopReason: string | undefined;
 
   if (target.transport === "subprocess") {
     const completeSubprocess = deps.completeSubprocess ?? runClaudeCliOneShot;
@@ -362,6 +374,10 @@ export async function runOneShot(
     // request, and never record the empty "CLI default" placeholder.
     resolvedModel = outcome.model ?? (target.model || "cli-default");
     usage = outcome.usage;
+    // parseCliOneShotOutput throws on is_error or any non-success subtype, so
+    // reaching here means the CLI finished normally. It exposes no finer-grained
+    // stop reason than that.
+    stopReason = "stop";
   } else {
     const model = buildPiModel(target.provider, target.model, target.profile);
     const complete = deps.complete ?? (await getLiveCompleter());
@@ -391,6 +407,26 @@ export async function runOneShot(
     text = extractCompletionText(completion);
     resolvedModel = target.model;
     usage = normalizeUsage(completion);
+    stopReason = completion.stopReason;
+
+    // A budget spent entirely on non-text blocks yields no answer at all, and
+    // without this it returned success with text: "". Measured 2026-08-23 on
+    // litellm/ornith-1-5-35b-q8: maxTokens 64 produced 64 output tokens, all of
+    // them reasoning, which extractCompletionText drops by design — so the
+    // caller saw an empty string, spent tokens, and had no way to tell why.
+    // auto-title's `if (!title) return` turned that into a silent no-op.
+    // Truncation with *some* text is left alone: a short answer is still an
+    // answer, and stopReason now tells the caller it was cut off.
+    if (!text && stopReason === "length") {
+      const spent = usage?.output;
+      throw new Error(
+        `one-shot: ${target.provider}/${resolvedModel} produced no text — the completion hit its token limit`
+        + `${req.maxTokens ? ` (maxTokens: ${req.maxTokens})` : ""}`
+        + `${spent ? ` after ${spent} output tokens` : ""}`
+        + `, all of them non-text. A reasoning model's thinking blocks are dropped on purpose, so a budget `
+        + `smaller than its scratchpad returns nothing. Raise maxTokens, or disable thinking for this model.`,
+      );
+    }
   }
 
   const record: OneShotRecord = {
@@ -406,6 +442,7 @@ export async function runOneShot(
     origin: req.origin,
     transport: target.transport,
     elapsedMs: Date.now() - startedAt,
+    stopReason,
   };
   storeRecord(record);
 
@@ -417,6 +454,7 @@ export async function runOneShot(
     usage: record.usage,
     transport: record.transport,
     elapsedMs: record.elapsedMs,
+    stopReason: record.stopReason,
   };
 }
 

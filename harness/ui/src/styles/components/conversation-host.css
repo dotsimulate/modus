@@ -1,0 +1,77 @@
+.conversation-host {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.conversation-host-diagnostic,
+.conversation-projection-error {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 5.5%, transparent);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale, 1));
+}
+
+.conversation-host-diagnostic {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.conversation-host-diagnostic-text {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-host-diagnostic button {
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 0;
+  padding: 2px 4px;
+  color: var(--text-muted);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.conversation-host-diagnostic button:hover,
+.conversation-host-diagnostic button:focus-visible {
+  color: var(--warning);
+}
+
+.conversation-host-diagnostic::before,
+.conversation-projection-error::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--warning) 8%, transparent), transparent 42%);
+}
+
+.conversation-host-stage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.conversation-host-stage > .dashboard {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: 0;
+}

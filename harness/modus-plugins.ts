@@ -34,9 +34,11 @@ export type ModusPluginManifest = {
     /** Profiles exposed in pickers. Other shipped profiles remain resolvable. */
     agentProfiles?: string[];
     pages?: string[];
+    lenses?: string[];
+    projections?: string[];
     pageNav?: "auto" | "hidden";
   };
-  contents?: Partial<Record<"moves" | "actions" | "pages" | "profiles" | "providers" | "skills", {
+  contents?: Partial<Record<"moves" | "actions" | "pages" | "profiles" | "providers" | "skills" | "lenses" | "projections", {
     mode?: "merge";
   }>>;
 };
@@ -275,6 +277,14 @@ export function getPluginMovesDir(plugin: ModusPlugin): string {
 
 export function getPluginPagesDir(plugin: ModusPlugin): string {
   return join(getPluginModusDir(plugin), "pages");
+}
+
+export function getPluginLensesDir(plugin: ModusPlugin): string {
+  return join(getPluginModusDir(plugin), "lenses");
+}
+
+export function getPluginProjectionsDir(plugin: ModusPlugin): string {
+  return join(getPluginModusDir(plugin), "projections");
 }
 
 export function getPluginProvidersDir(plugin: ModusPlugin): string {

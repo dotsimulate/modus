@@ -1,30 +1,41 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { modus } from "../modusClient";
 import { useProfiles } from "../providers/ProfileContext";
 import { CustomSelect } from "./CustomSelect";
-import type { ChatPresentation, ChatScrollIndicator } from "../../../sdk/index";
+import type { ChatScrollIndicator, ConversationLensId } from "../../../sdk/index";
 import {
   applyInterfaceSettings,
-  CHAT_PRESENTATIONS,
+  CORE_CONVERSATION_LENSES,
   CHAT_SCROLL_INDICATORS,
   DEFAULT_INTERFACE_SETTINGS,
-  projectChatOverrideConfig,
   projectChatOverrideEnabled,
   readDeviceInterfaceSettings,
   resolveEffectiveInterfaceSettings,
+  writableProjectChatConfig,
   writeDeviceInterfaceSettings,
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
+import { useConversationResources } from "../useConversationResources";
 
 const SCROLL_INDICATOR_OPTIONS = CHAT_SCROLL_INDICATORS.map((o) => ({ ...o }));
-const PRESENTATION_OPTIONS = CHAT_PRESENTATIONS.map((o) => ({ ...o }));
-
 export function ChatSettings() {
-  const { activeUserProfile, activeUP, refreshUserProfiles } = useProfiles();
+  const { activeUserProfile, activeUP, activeCwd, refreshUserProfiles } = useProfiles();
+  const conversationResources = useConversationResources(activeCwd);
+  const discoveredLensOptions = useMemo(() => {
+    const discovered = conversationResources.registry?.lenses
+      .filter((entry) => (entry.status === "available" || entry.status === "degraded") && entry.definition)
+      .map((entry) => ({ value: entry.id, label: entry.definition!.label }));
+    return discovered?.length ? discovered : CORE_CONVERSATION_LENSES.map((option) => ({ ...option }));
+  }, [conversationResources.registry]);
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<ResolvedInterfaceSettings>(
     () => resolveEffectiveInterfaceSettings(activeUP?.interface),
   );
+  const lensOptions = useMemo(() => (
+    discoveredLensOptions.some((option) => option.value === settings.chat.lensId)
+      ? discoveredLensOptions
+      : [...discoveredLensOptions, { value: settings.chat.lensId, label: `${settings.chat.lensId} (unavailable)` }]
+  ), [discoveredLensOptions, settings.chat.lensId]);
   const [projectOnly, setProjectOnly] = useState(() => projectChatOverrideEnabled(activeUP?.interface));
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -51,10 +62,7 @@ export function ChatSettings() {
         saveTimer.current = setTimeout(() => {
           modus.patchUserProfileUiConfig(activeUserProfile, {
             interface: {
-              chat: {
-                ...(activeUP?.interface?.chat ?? {}),
-                ...projectChatOverrideConfig(next),
-              },
+              chat: writableProjectChatConfig(activeUP?.interface?.chat, next),
             },
           })
             .then(refreshUserProfiles)
@@ -74,10 +82,7 @@ export function ChatSettings() {
     setProjectOnly(nextProjectOnly);
 
     if (nextProjectOnly) {
-      const chat = {
-        ...(activeUP?.interface?.chat ?? {}),
-        ...projectChatOverrideConfig(settings),
-      };
+      const chat = writableProjectChatConfig(activeUP?.interface?.chat, settings);
       void modus.patchUserProfileUiConfig(activeUserProfile, { interface: { chat } })
         .then(refreshUserProfiles)
         .catch(() => {});
@@ -128,7 +133,7 @@ export function ChatSettings() {
     settings.chat.fontScale === DEFAULT_INTERFACE_SETTINGS.chat.fontScale &&
     settings.chat.chatWidth === DEFAULT_INTERFACE_SETTINGS.chat.chatWidth &&
     settings.chat.scrollIndicator === DEFAULT_INTERFACE_SETTINGS.chat.scrollIndicator &&
-    settings.chat.presentation === DEFAULT_INTERFACE_SETTINGS.chat.presentation &&
+    settings.chat.lensId === DEFAULT_INTERFACE_SETTINGS.chat.lensId &&
     settings.chat.scrollThroughTurns === DEFAULT_INTERFACE_SETTINGS.chat.scrollThroughTurns;
 
   return (
@@ -181,9 +186,9 @@ export function ChatSettings() {
           <div className="chat-settings-row chat-settings-row--select">
             <span className="chat-settings-label">view</span>
             <CustomSelect
-              options={PRESENTATION_OPTIONS}
-              value={settings.chat.presentation}
-              onChange={(value) => update({ presentation: value as ChatPresentation })}
+              options={lensOptions}
+              value={settings.chat.lensId}
+              onChange={(value) => update({ lensId: value as ConversationLensId })}
             />
           </div>
           <div className="chat-settings-scope">

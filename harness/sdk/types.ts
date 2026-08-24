@@ -597,6 +597,134 @@ export type SessionTurnIndex = {
   olderTurnCount: number;
 };
 
+// ── Conversation lenses / authored projections ──
+
+export type ConversationCapabilityId =
+  | "conversation.permissions"
+  | "conversation.turn-content"
+  | "conversation.turn-index"
+  | "conversation.compose"
+  | "conversation.history"
+  | "conversation.artifacts";
+
+export type ConversationCapabilityStatus = "available" | "unavailable" | "degraded" | "disabled";
+
+export type ConversationCapabilityResolution = {
+  status: ConversationCapabilityStatus;
+  reason?: string;
+  version: 1;
+};
+
+export type ConversationResourceSource = {
+  kind: "project" | "vault" | "plugin" | "harness";
+  label: string;
+  pluginId?: string;
+  /** Opaque source identity used when loading authored code. Contains no path. */
+  key: string;
+};
+
+export type ConversationLensDefinitionV1 = {
+  contract: "conversation-lens@1";
+  id: string;
+  label: string;
+  description?: string;
+  icon?: string;
+  nav?: false;
+  capabilities?: {
+    required?: ConversationCapabilityId[];
+    optional?: ConversationCapabilityId[];
+  };
+  fallback?: string;
+  layout: unknown;
+  layouts?: { mobile?: unknown };
+  context?: Record<string, unknown>;
+};
+
+export type ConversationProjectionDefinitionV1 = {
+  contract: "conversation-projection@1";
+  id: string;
+  label: string;
+  description?: string;
+  component: string;
+  cache?: "module" | "none";
+  capabilities?: {
+    consumes?: ConversationCapabilityId[];
+    provides?: ConversationCapabilityId[];
+  };
+  modes?: Array<"lossless" | "overview" | "live" | "read-only">;
+};
+
+export type ConversationResourceStatus =
+  | "available"
+  | "invalid"
+  | "incompatible"
+  | "disabled"
+  | "degraded"
+  | "shadowed";
+
+export type ConversationLensRegistryEntry = {
+  id: string;
+  status: ConversationResourceStatus;
+  source: ConversationResourceSource;
+  reason?: string;
+  definition?: ConversationLensDefinitionV1;
+};
+
+export type ConversationProjectionRegistryEntry = {
+  id: string;
+  status: ConversationResourceStatus;
+  source: ConversationResourceSource;
+  reason?: string;
+  definition?: ConversationProjectionDefinitionV1;
+  /** Authenticated URL for the compiled browser module. */
+  moduleUrl?: string;
+};
+
+export type ConversationProjectionTurnV1 = SessionTurnIndexEntry & {
+  /** Whether this turn's semantic body is present in the client history window. */
+  loaded: boolean;
+  /** Whether loaded content still contains a deferred heavy-detail marker. */
+  deferred: boolean;
+  /** Available only for loaded turns; never fabricated from size metadata. */
+  promptPreview?: string;
+};
+
+/** Narrow browser contract derived from the Contact Sheet consumer. */
+export type ConversationProjectionPropsV1 = {
+  contract: "conversation-projection@1";
+  projection: {
+    id: string;
+    label: string;
+    source: ConversationResourceSource;
+  };
+  session: {
+    id: string;
+    cwd?: string;
+    status?: string;
+  };
+  turns: ConversationProjectionTurnV1[];
+  turnIndexSource: "messages" | "events" | "loaded";
+  partial: boolean;
+  selectedTurnNumber: number | null;
+  history: {
+    hasMore: boolean;
+    loadingOlder: boolean;
+    olderTurnCount: number;
+    error?: string;
+  };
+  selectTurn: (number: number, seq: number) => void;
+  loadOlder: () => Promise<void>;
+  loadDetails: (seq: number) => Promise<void>;
+};
+
+export type ConversationResourceRegistry = {
+  contract: "conversation-resources@1";
+  cwd: string;
+  lenses: ConversationLensRegistryEntry[];
+  projections: ConversationProjectionRegistryEntry[];
+  diagnostics: Array<ConversationLensRegistryEntry | ConversationProjectionRegistryEntry>;
+};
+
 // ── Events ──
 
 /** A single server-sent event from a session's event stream (untyped, kept for backward compat). */
@@ -1125,13 +1253,18 @@ export type ToolCallDisplayMode = "expanded" | "collapsed" | "hidden";
 
 /** How the chat indexes its own scroll. See harness/profiles.ts. */
 export type ChatScrollIndicator = "scroll" | "spine" | "ruler";
+/** @deprecated Read only for one-release migration to `chat.lensId`. */
 export type ChatPresentation = "conversation" | "turns";
+/** Open-world id resolved by the conversation-lens registry. */
+export type ConversationLensId = string;
 
 export type UserInterfaceConfig = {
   chat?: {
     fontScale?: number;
     chatWidth?: number;
     scrollIndicator?: ChatScrollIndicator;
+    lensId?: ConversationLensId;
+    /** @deprecated Use `lensId`. Still read so existing profiles migrate. */
     presentation?: ChatPresentation;
     scrollThroughTurns?: boolean;
     /** When true, this user profile overrides the device's chat display defaults. */
@@ -2090,6 +2223,8 @@ export type ModusPlugin = {
     integration?: {
       agentProfiles?: string[];
       pages?: string[];
+      lenses?: string[];
+      projections?: string[];
       pageNav?: "auto" | "hidden";
     };
   };

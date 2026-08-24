@@ -15,6 +15,7 @@ import type {
   TurnContent,
   SessionHistorySnapshot,
   SessionTurnIndex,
+  ConversationResourceRegistry,
   TypedSSEEvent,
   EventStreamHandle,
   EventStreamCallbacks,
@@ -353,6 +354,13 @@ export class ModusClient {
   async getSessionTurnIndex(id: string, opts?: { signal?: AbortSignal; limit?: number }): Promise<SessionTurnIndex> {
     const q = opts?.limit != null ? `?limit=${opts.limit}` : "";
     return (await this.fetch(`/api/sessions/${id}/turns${q}`, { signal: opts?.signal })).json();
+  }
+  /** Discovers conversation lens recipes and trusted-local projection modules
+   *  under project → Vault → enabled exposed plugin → harness precedence. */
+  async listConversationResources(cwd: string, opts?: { signal?: AbortSignal }): Promise<ConversationResourceRegistry> {
+    return (await this.fetch(`/api/conversation-lenses?cwd=${encodeURIComponent(cwd)}`, {
+      signal: opts?.signal,
+    })).json();
   }
   /** Soft-deletes (archives) a session. */
   async archiveSession(id: string): Promise<void> { await this.fetch(`/api/sessions/${id}`, { method: "DELETE" }); }

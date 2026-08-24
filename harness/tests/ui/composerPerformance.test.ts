@@ -76,11 +76,11 @@ describe("composer keystroke isolation", () => {
   });
 
   it("does not repeatedly restart transcript materialization", () => {
-    const conversation = readFileSync(join(UI_ROOT, "widgets", "session-chat.widget.tsx"), "utf8");
+    const transcript = readFileSync(join(UI_ROOT, "widgets", "conversation-transcript.widget.tsx"), "utf8");
     const turns = readFileSync(join(UI_ROOT, "widgets", "session-turn.widget.tsx"), "utf8");
 
-    expect(conversation).not.toContain("useDeferredValue");
-    expect(conversation).toContain("const messages = session?.messages ?? EMPTY_MESSAGES;");
+    expect(transcript).not.toContain("useDeferredValue");
+    expect(transcript).toContain("session.messages ?? EMPTY_MESSAGES");
     expect(turns).not.toContain("useDeferredValue");
     expect(turns).toContain("const messages = session?.messages ?? EMPTY_TURN_MESSAGES;");
   });

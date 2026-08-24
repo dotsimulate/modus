@@ -20,6 +20,11 @@
  */
 
 import type { LayoutNode, WidgetMeta } from "./widgets/types";
+import type {
+  ConversationCapabilityId,
+  ConversationLensDefinitionV1,
+  ConversationProjectionRegistryEntry,
+} from "../../sdk/types";
 
 export type LintSeverity = "error" | "warning" | "info";
 
@@ -427,6 +432,116 @@ export function lintPage(
   for (const layoutName of Object.keys(page.layouts ?? {})) {
     if (!page.layouts?.[layoutName]) continue;
     findings.push(...lintPageLayout(page, catalog, { layoutName }));
+  }
+  return findings;
+}
+
+/**
+ * Lens-specific enforcement layered on the existing page linter. Layout
+ * geometry stays page-native; this adds only conversation capability,
+ * projection, mobile, and recovery rules.
+ */
+export function lintConversationLens(
+  lens: ConversationLensDefinitionV1,
+  catalog: Record<string, WidgetMeta>,
+  projections: ConversationProjectionRegistryEntry[] = [],
+): LintFinding[] {
+  const page = {
+    id: lens.id,
+    title: lens.label,
+    layout: lens.layout as LayoutNode,
+    layouts: lens.layouts as Record<string, LayoutNode | undefined> | undefined,
+  };
+  const findings = lintPage(page, catalog);
+  const add = (rule: string, severity: LintSeverity, path: string, message: string) => {
+    findings.push({ rule, severity, path, message });
+  };
+  const provided = new Set<ConversationCapabilityId>(["conversation.permissions"]);
+  const modes = new Set<"lossless" | "overview" | "live" | "read-only">();
+  const projectionsById = new Map(projections.map((entry) => [entry.id, entry]));
+
+  const walk = (value: unknown, path: string): void => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const node = value as Record<string, unknown>;
+    if (node.kind === "widget") {
+      const widget = node.widget as Record<string, unknown> | undefined;
+      const meta = typeof widget?.type === "string" ? catalog[widget.type] : undefined;
+      for (const capability of meta?.conversation?.provides ?? []) provided.add(capability);
+      for (const capability of meta?.conversation?.consumes ?? []) provided.add(capability);
+      for (const mode of meta?.conversation?.modes ?? []) modes.add(mode);
+
+      if (widget?.type === "conversation-projection") {
+        const projectionId = widget.projectionId;
+        if (typeof projectionId !== "string" || !projectionId) {
+          add(
+            "missing-projection-id",
+            "error",
+            `${path}.widget.projectionId`,
+            "conversation-projection requires a non-empty projectionId.",
+          );
+        } else {
+          const projection = projectionsById.get(projectionId);
+          if (!projection || projection.status !== "available" || !projection.definition) {
+            add(
+              "invalid-projection",
+              "error",
+              `${path}.widget.projectionId`,
+              `Projection "${projectionId}" is not available${projection?.reason ? `: ${projection.reason}` : "."}`,
+            );
+          } else {
+            for (const capability of projection.definition.capabilities?.provides ?? []) provided.add(capability);
+            for (const capability of projection.definition.capabilities?.consumes ?? []) provided.add(capability);
+            for (const mode of projection.definition.modes ?? []) modes.add(mode);
+          }
+        }
+      }
+      return;
+    }
+    if (Array.isArray(node.children)) {
+      node.children.forEach((child, index) => walk(child, `${path}.children[${index}]`));
+    }
+  };
+
+  walk(lens.layout, "layout");
+  if (lens.layouts?.mobile) walk(lens.layouts.mobile, "layouts.mobile");
+
+  for (const capability of lens.capabilities?.required ?? []) {
+    if (!provided.has(capability)) {
+      add(
+        "missing-required-capability",
+        "error",
+        "capabilities.required",
+        `Required capability "${capability}" has no host, widget, or projection consumer/provider in this lens.`,
+      );
+    }
+  }
+  for (const capability of lens.capabilities?.optional ?? []) {
+    if (!provided.has(capability)) {
+      add(
+        "optional-capability-degraded",
+        "info",
+        "capabilities.optional",
+        `Optional capability "${capability}" is not drawn by this lens; Transcript recovery remains available.`,
+      );
+    }
+  }
+  if (!lens.layouts?.mobile) {
+    add(
+      "missing-mobile-layout",
+      "warning",
+      "layouts.mobile",
+      "Conversation lenses require a deliberate mobile layout; desktop fallback is not sufficient for a first-class chat surface.",
+    );
+  }
+  if (lens.id !== "core:transcript"
+    && (modes.has("overview") || modes.has("read-only"))
+    && lens.fallback !== "core:transcript") {
+    add(
+      "missing-lossless-recovery",
+      "error",
+      "fallback",
+      "Overview/read-only lenses must declare core:transcript as their lossless recovery target.",
+    );
   }
   return findings;
 }

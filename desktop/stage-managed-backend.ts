@@ -216,8 +216,10 @@ async function stage(): Promise<void> {
   for (const directory of [
     "actions",
     "docs",
+    "lenses",
     "moves",
     "pages",
+    "projections",
     "prompts",
     "templates",
     "ui/dist",

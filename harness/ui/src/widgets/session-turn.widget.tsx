@@ -562,7 +562,7 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
   return (
     <div
       ref={scrollRef}
-      className={`session-turn${streaming ? " session-turn--live" : ""}${scrollThrough ? " session-turn--scroll-through" : ""}`}
+      className={`session-turn${scrollThrough ? " session-turn--scroll-through" : ""}`}
       data-turn={turn.number}
       onScroll={handleScroll}
       onWheel={handleWheel}
@@ -572,7 +572,6 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
           {config.header !== false && (
             <div className="session-turn-head">
               <span className="session-turn-no">{String(turn.number).padStart(2, "0")}</span>
-              {streaming && <span className="session-turn-live">live</span>}
               <span className="session-turn-when">
                 {formatWhen(turn.prompt?.timestamp ?? turn.body[0]?.timestamp)}
               </span>
@@ -687,7 +686,7 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
             </div>
             <button
               type="button"
-              className={`session-turn-nav-latest${sessionRunning ? " session-turn-nav-latest--live" : ""}`}
+              className="session-turn-nav-latest"
               aria-label={sessionRunning ? "Go to active turn" : "Go to latest turn"}
               title={sessionRunning ? "Go to active turn" : "Go to latest turn"}
               disabled={navigation.next == null}

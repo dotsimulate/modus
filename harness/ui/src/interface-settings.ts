@@ -1,4 +1,4 @@
-import type { ChatPresentation, ChatScrollIndicator, UserInterfaceConfig } from "../../sdk/index";
+import type { ChatScrollIndicator, ConversationLensId, UserInterfaceConfig } from "../../sdk/index";
 import { backendStorageKey } from "./backendTarget";
 
 /**
@@ -36,7 +36,8 @@ export type ResolvedInterfaceSettings = {
     fontScale: number;
     chatWidth: number;
     scrollIndicator: ChatScrollIndicator;
-    presentation: ChatPresentation;
+    /** Requested open-world lens id. Registry resolution happens at render time. */
+    lensId: ConversationLensId;
     scrollThroughTurns: boolean;
   };
   conversation: {
@@ -71,7 +72,7 @@ export const PROJECT_CHAT_OVERRIDE_KEYS = [
   "fontScale",
   "chatWidth",
   "scrollIndicator",
-  "presentation",
+  "lensId",
   "scrollThroughTurns",
 ] as const satisfies readonly (keyof ResolvedInterfaceSettings["chat"])[];
 
@@ -80,7 +81,7 @@ export const DEFAULT_INTERFACE_SETTINGS: ResolvedInterfaceSettings = {
     fontScale: 100,
     chatWidth: 840,
     scrollIndicator: "spine",
-    presentation: "conversation",
+    lensId: "core:transcript",
     scrollThroughTurns: false,
   },
   conversation: {
@@ -121,9 +122,9 @@ export const CHAT_SCROLL_INDICATORS = [
   { value: "ruler", label: "ruler" },
 ] as const;
 
-export const CHAT_PRESENTATIONS = [
-  { value: "conversation", label: "conversation" },
-  { value: "turns", label: "turns" },
+export const CORE_CONVERSATION_LENSES = [
+  { value: "core:transcript", label: "Transcript" },
+  { value: "core:focus", label: "Focus" },
 ] as const;
 
 /**
@@ -138,8 +139,24 @@ function resolveScrollIndicator(chat?: UserInterfaceConfig["chat"]): ChatScrollI
   return DEFAULT_INTERFACE_SETTINGS.chat.scrollIndicator;
 }
 
-function resolvePresentation(value: unknown, fallback: ChatPresentation): ChatPresentation {
-  return value === "conversation" || value === "turns" ? value : fallback;
+export function legacyPresentationLensId(value: unknown): ConversationLensId | null {
+  if (value === "conversation") return "core:transcript";
+  if (value === "turns") return "core:focus";
+  return null;
+}
+
+/**
+ * Preserve authored ids verbatim enough to explain a fallback later. This is
+ * intentionally not a closed-set sanitizer: registry discovery owns whether
+ * an id is available, while settings own what the user requested.
+ */
+export function resolveRequestedLensId(
+  value: unknown,
+  legacyPresentation: unknown,
+  fallback: ConversationLensId,
+): ConversationLensId {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return legacyPresentationLensId(legacyPresentation) ?? fallback;
 }
 
 export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): ResolvedInterfaceSettings {
@@ -149,7 +166,11 @@ export function resolveInterfaceSettings(config?: UserInterfaceConfig | null): R
       fontScale: finiteRange(config?.chat?.fontScale, DEFAULT_INTERFACE_SETTINGS.chat.fontScale, 75, 175),
       chatWidth: finiteRange(config?.chat?.chatWidth, DEFAULT_INTERFACE_SETTINGS.chat.chatWidth, 500, 1600),
       scrollIndicator: resolveScrollIndicator(config?.chat),
-      presentation: resolvePresentation(config?.chat?.presentation, DEFAULT_INTERFACE_SETTINGS.chat.presentation),
+      lensId: resolveRequestedLensId(
+        config?.chat?.lensId,
+        config?.chat?.presentation,
+        DEFAULT_INTERFACE_SETTINGS.chat.lensId,
+      ),
       scrollThroughTurns: config?.chat?.scrollThroughTurns === true,
     },
     conversation: {
@@ -177,6 +198,8 @@ function parseInterfaceSettings(raw: string): ResolvedInterfaceSettings {
           fontScale: parsed.fontScale as number | undefined,
           chatWidth: parsed.chatWidth as number | undefined,
           scrollIndicator: parsed.scrollIndicator as ChatScrollIndicator | undefined,
+          lensId: parsed.lensId as string | undefined,
+          presentation: parsed.presentation as "conversation" | "turns" | undefined,
           spineEnabled: parsed.spineEnabled as boolean | undefined,
         },
       };
@@ -226,9 +249,18 @@ export function projectChatOverrideConfig(
     fontScale: settings.chat.fontScale,
     chatWidth: settings.chat.chatWidth,
     scrollIndicator: settings.chat.scrollIndicator,
-    presentation: settings.chat.presentation,
+    lensId: settings.chat.lensId,
     scrollThroughTurns: settings.chat.scrollThroughTurns,
   };
+}
+
+/** Build the persisted project chat object without carrying the legacy enum forward. */
+export function writableProjectChatConfig(
+  existing: UserInterfaceConfig["chat"] | undefined,
+  settings: ResolvedInterfaceSettings,
+): NonNullable<UserInterfaceConfig["chat"]> {
+  const { presentation: _legacyPresentation, ...current } = existing ?? {};
+  return { ...current, ...projectChatOverrideConfig(settings) };
 }
 
 /** Apply the explicit project display override over this device's defaults. */
@@ -248,7 +280,7 @@ export function resolveEffectiveInterfaceSettings(
         || chat?.scrollIndicator === "ruler"
         ? chat.scrollIndicator
         : deviceDefaults.chat.scrollIndicator,
-      presentation: resolvePresentation(chat?.presentation, deviceDefaults.chat.presentation),
+      lensId: resolveRequestedLensId(chat?.lensId, chat?.presentation, deviceDefaults.chat.lensId),
       scrollThroughTurns: typeof chat?.scrollThroughTurns === "boolean"
         ? chat.scrollThroughTurns
         : deviceDefaults.chat.scrollThroughTurns,

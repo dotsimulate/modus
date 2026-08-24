@@ -1,7 +1,14 @@
 # Text To Speech
 
-Modus routes speech synthesis through a shared server-side provider layer. Moves,
-actions, the harness API, and the standalone LAN gateway all use the same config.
+Modus routes speech synthesis through a shared server-side provider layer, so the
+harness API and the standalone LAN gateway resolve the same provider, voice, and
+format config.
+
+**Modus does not ship a speech engine.** Every provider below is a server *you*
+run or subscribe to. Until one is reachable, `/api/tts/health` reports it
+unconfigured and synthesis fails — that is the expected state on a fresh install,
+not a defect. Speech is opt-in infrastructure, like an MCP server or a provider
+CLI.
 
 ## Providers
 
@@ -52,13 +59,37 @@ Modus also accepts a `provider` field for explicit routing:
 }
 ```
 
+## Reaching TTS from a move or action
+
+There is **no `ctx.tts` binding on the Harness Context.** Authored moves and
+actions reach speech the same way any other client does — an HTTP POST to the
+harness's own compatibility route:
+
+```ts
+const res = await fetch("http://127.0.0.1:3777/v1/audio/speech", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ input: script, voice: "am_michael", response_format: "wav" }),
+});
+```
+
+Use the harness route rather than a provider container's address directly. That
+is the whole point of the layer: the provider, voice aliases, and format stay in
+one config that the user can repoint without editing authored content. An action
+that hardcodes `http://<some-lan-ip>:8880` has opted out of every one of those
+switches and will break when the provider moves.
+
+To attach the result to a turn, write the bytes to `ctx.artifactPath(name)` and
+call `ctx.attachArtifact({ sessionId, seq, path, name, mime, previewText })`.
+That is how audio lands at the bottom of an assistant turn.
+
 ## LAN Gateway
 
 For tools on other computers that already call a local Kokoro-style endpoint, run
-the standalone gateway:
+the standalone gateway from the `harness/` directory of your Modus checkout:
 
 ```bash
-cd /home/dot/dev/infra/agent_dev_zone/harness
+cd harness
 bun run tts:gateway
 ```
 

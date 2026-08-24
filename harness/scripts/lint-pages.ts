@@ -14,9 +14,10 @@
 
 import { readdirSync, readFileSync, statSync, existsSync } from "fs";
 import { join, resolve } from "path";
-import { lintPage, formatFindings, worstSeverity } from "../ui/src/page-lint";
+import { lintConversationLens, lintPage, formatFindings, worstSeverity } from "../ui/src/page-lint";
 import type { LintablePage } from "../ui/src/page-lint";
 import { WIDGET_META } from "../ui/src/widgets/catalog";
+import type { ConversationLensDefinitionV1, ConversationProjectionRegistryEntry } from "../sdk/types";
 
 const args = process.argv.slice(2);
 const quiet = args.includes("--quiet");
@@ -35,15 +36,57 @@ function resolveTargets(): string[] {
       return statSync(path).isDirectory() ? jsonFilesIn(path) : [path];
     });
   }
-  const defaults = [join(import.meta.dir, "..", "pages"), join(import.meta.dir, "..", "..", ".modus", "pages")];
+  const defaults = [
+    join(import.meta.dir, "..", "pages"),
+    join(import.meta.dir, "..", "lenses"),
+    join(import.meta.dir, "..", "..", ".modus", "pages"),
+    join(import.meta.dir, "..", "..", ".modus", "lenses"),
+  ];
   return defaults.filter(existsSync).flatMap(jsonFilesIn);
 }
+
+function localProjectionEntries(): ConversationProjectionRegistryEntry[] {
+  const roots = [
+    { dir: join(import.meta.dir, "..", "..", ".modus", "projections"), kind: "project" as const, label: "project" },
+    { dir: join(import.meta.dir, "..", "projections"), kind: "harness" as const, label: "Modus" },
+  ];
+  const entries: ConversationProjectionRegistryEntry[] = [];
+  for (const root of roots) {
+    if (!existsSync(root.dir)) continue;
+    for (const child of readdirSync(root.dir, { withFileTypes: true })) {
+      if (!child.isDirectory()) continue;
+      const manifestPath = join(root.dir, child.name, "projection.json");
+      if (!existsSync(manifestPath)) continue;
+      try {
+        const definition = JSON.parse(readFileSync(manifestPath, "utf8"));
+        entries.push({
+          id: definition.id ?? child.name,
+          status: definition.contract === "conversation-projection@1" ? "available" : "incompatible",
+          source: { kind: root.kind, label: root.label, key: `${root.kind}:${child.name}` },
+          definition,
+        });
+      } catch (error) {
+        entries.push({
+          id: child.name,
+          status: "invalid",
+          source: { kind: root.kind, label: root.label, key: `${root.kind}:${child.name}` },
+          reason: (error as Error).message,
+        });
+      }
+    }
+  }
+  const winners = new Map<string, ConversationProjectionRegistryEntry>();
+  for (const entry of entries) if (!winners.has(entry.id)) winners.set(entry.id, entry);
+  return [...winners.values()];
+}
+
+const projections = localProjectionEntries();
 
 let errors = 0;
 let warnings = 0;
 
 for (const path of resolveTargets()) {
-  let page: LintablePage;
+  let page: LintablePage | ConversationLensDefinitionV1;
   try {
     page = JSON.parse(readFileSync(path, "utf8")) as LintablePage;
   } catch (err) {
@@ -52,7 +95,9 @@ for (const path of resolveTargets()) {
     continue;
   }
 
-  const findings = lintPage(page, WIDGET_META);
+  const findings = (page as { contract?: string }).contract === "conversation-lens@1"
+    ? lintConversationLens(page as ConversationLensDefinitionV1, WIDGET_META, projections)
+    : lintPage(page as LintablePage, WIDGET_META);
   const shown = quiet ? findings.filter((f) => f.severity !== "info") : findings;
   errors += findings.filter((f) => f.severity === "error").length;
   warnings += findings.filter((f) => f.severity === "warning").length;

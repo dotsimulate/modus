@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { MoveWidgetInfo } from "../../../sdk/index";
+import type { ConversationCapabilityId, MoveWidgetInfo } from "../../../sdk/types";
 import type { View } from "../views";
 
 // ── Shared types ──
@@ -140,6 +140,12 @@ export type WidgetMeta = {
   preferredHeight?: number;
   /** Default UI intents supported by this widget type. */
   handles?: Array<UiIntentType | UiIntentCapability>;
+  /** Dependency-free conversation contract used by lens linting. */
+  conversation?: {
+    provides?: ConversationCapabilityId[];
+    consumes?: ConversationCapabilityId[];
+    modes?: Array<"lossless" | "overview" | "live" | "read-only">;
+  };
 };
 
 /** What a widget registration entry looks like */

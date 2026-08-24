@@ -1,8 +1,8 @@
 ---
 title: MO Architecture
-lastUpdated: 2026-08-22
+lastUpdated: 2026-08-23
 lastCommit: bae0487
-covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/ui/src/ .modus/ui/extensions/
+covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/conversation-lenses.ts harness/ui/src/ .modus/ui/extensions/ .modus/lenses/ .modus/projections/
 ---
 
 # MO Architecture
@@ -177,6 +177,8 @@ Key route groups:
 - `/api/sessions/*` — Session lifecycle, events SSE, messages, branching
 - `/api/actions/*` — Action config, executions, triggers
 - `/api/client-extensions*` — Client extension manifest + module serving
+- `/api/conversation-lenses` and `/api/conversation-projections/:id/module` —
+  source-aware conversation recipes and trusted-local projection modules
 - `/api/ui/*` — Theme/font registry, activation
 - `/api/providers/*` — Provider listing, model discovery
 - `/api/projects/*` — Project registry
@@ -341,6 +343,7 @@ button re-centers the view on the newest session.
 - [Harness Context](./harness-context.md) — unified server-side capability contract + session wake/mailbox
 - [Notify & Channels](./notify.md) — channel egress primitive, webhook body shaping, action notify
 - [Pages](./pages.md) — project-scoped custom pages, layouts, and page widget references
+- [Conversation Lenses](./conversation-lenses.md) — selectable chat-route recipes, safety fallback, and authored projections
 - [Panels](./panels.md) — side-panel architecture, widget registry, and persisted panel trees
 - [Project UI](./project-ui.md) — theme/font system in .modus/ui/
 - [Client Extensions](./client-extensions.md) — browser-side extension discovery and runtime API

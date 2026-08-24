@@ -51,6 +51,7 @@ import {
   registerTheme, registerFont, activateTheme, activateFont, patchTheme, patchFont,
 } from "./project-ui";
 import { forkConfigPage, listConfigPages } from "./pages";
+import { listConversationResources, resolveConversationProjectionComponent } from "./conversation-lenses";
 import { listDocs, getDoc, searchDocs, type DocAudience } from "./docs-registry";
 import { getAboutInfo } from "./about";
 import {
@@ -1245,6 +1246,62 @@ app.post("/api/pages/fork", async (c) => {
     recordAttributionHint({ kind: "project", projectId: project.id }, result.path, { type: "human" });
   }
   return c.json({ ok: true, path: result.path });
+});
+
+// ── Conversation lenses and trusted-local authored projections ──
+
+app.get("/api/conversation-lenses", (c) => {
+  const cwd = c.req.query("cwd");
+  if (!cwd) return c.json({ error: "cwd is required" }, 400);
+  return c.json(listConversationResources(cwd));
+});
+
+const conversationProjectionCache = new Map<string, { mtime: number; js: string }>();
+
+app.get("/api/conversation-projections/:id/module", async (c) => {
+  const id = c.req.param("id");
+  const cwd = c.req.query("cwd");
+  const source = c.req.query("source");
+  if (!cwd || !source) return c.json({ error: "cwd and source are required" }, 400);
+  const resolved = resolveConversationProjectionComponent(id, cwd, source);
+  if (!resolved) return c.json({ error: "projection unavailable or source changed" }, 404);
+
+  try {
+    const { statSync } = await import("fs");
+    const mtime = statSync(resolved.componentPath).mtimeMs;
+    const etag = moveAssetETag(mtime);
+    if (moveAssetNotModified(c.req.header("If-None-Match"), etag)) {
+      return new Response(null, {
+        status: 304,
+        headers: moveAssetHeaders("application/javascript", etag),
+      });
+    }
+    const cached = conversationProjectionCache.get(resolved.componentPath);
+    if (cached?.mtime === mtime) {
+      return new Response(cached.js, {
+        headers: moveAssetHeaders("application/javascript", etag),
+      });
+    }
+    const result = await Bun.build({
+      entrypoints: [resolved.componentPath],
+      format: "esm",
+      target: "browser",
+      external: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
+      define: { "process.env.NODE_ENV": '"production"' },
+    });
+    if (!result.success) {
+      console.error(`[conversation-projection] Build failed for ${id}:`, result.logs);
+      return c.json({ error: "projection build failed", detail: result.logs.map(String).join("\n") }, 500);
+    }
+    const js = await result.outputs[0]!.text();
+    conversationProjectionCache.set(resolved.componentPath, { mtime, js });
+    return new Response(js, { headers: moveAssetHeaders("application/javascript", etag) });
+  } catch (error) {
+    return c.json({
+      error: "projection load failed",
+      detail: error instanceof Error ? error.message : String(error),
+    }, 500);
+  }
 });
 
 // —— Docs (built-in documentation: index, content, batch search) ——

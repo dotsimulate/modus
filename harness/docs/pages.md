@@ -1,7 +1,7 @@
 ---
 title: Pages
-lastUpdated: 2026-07-26
-covers: harness/pages.ts harness/index.ts harness/ui/src/App.tsx harness/ui/src/components/PageRenderer.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/registry.ts harness/ui/src/widgets/ui-state.ts harness/ui/src/views.ts harness/sdk/types.ts .modus/pages/*.json harness/pages/*.json
+lastUpdated: 2026-08-23
+covers: harness/pages.ts harness/index.ts harness/ui/src/App.tsx harness/ui/src/conversation-navigation.ts harness/ui/src/components/PageRenderer.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/registry.ts harness/ui/src/widgets/ui-state.ts harness/ui/src/views.ts harness/sdk/types.ts .modus/pages/*.json harness/pages/*.json
 ---
 
 # Pages
@@ -13,6 +13,10 @@ wired together at runtime by a per-page event bus (`PageStateBus`).
 
 This doc is the authoritative reference for the page renderer. See `panels.md` for
 how the same primitives render inside the app-level side panels.
+
+Conversation lenses reuse this layout grammar and renderer but have their own
+chat-route selection, safety, discovery, and fallback contract. See
+`conversation-lenses` before using a page fork as a selectable chat view.
 
 ---
 
@@ -611,8 +615,11 @@ In `App.tsx`:
   bus state alive).
 - The `hashSessionId` is forwarded to the **active** page only — inactive mounted
   pages get `null` so they don't fight over the URL.
-- If the current `page:<id>` disappears after a reload (page deleted on disk),
-  the app redirects to `home`.
+- If the current `page:<id>` disappears, the app first waits until page
+  discovery is confirmed for the current cwd. With a selected session it
+  returns to that session's `chat` route; without a selected session it returns
+  to `home`. It never treats the outgoing project's still-loaded page list as
+  proof that a destination-project page is absent.
 
 ### `fullscreen` pages
 

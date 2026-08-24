@@ -364,13 +364,18 @@ export type ToolCallDisplayMode = "expanded" | "collapsed" | "hidden";
  *            turns as accent rungs on the right, turn numbers on hover
  */
 export type ChatScrollIndicator = "scroll" | "spine" | "ruler";
+/** @deprecated Read only for one-release migration to `chat.lensId`. */
 export type ChatPresentation = "conversation" | "turns";
+/** Open-world id resolved by the conversation-lens registry. */
+export type ConversationLensId = string;
 
 export type UserInterfaceConfig = {
   chat?: {
     fontScale?: number;
     chatWidth?: number;
     scrollIndicator?: ChatScrollIndicator;
+    lensId?: ConversationLensId;
+    /** @deprecated Use `lensId`. Still read so existing profiles migrate. */
     presentation?: ChatPresentation;
     scrollThroughTurns?: boolean;
     /** When true, this user profile overrides the device's chat display defaults. */

@@ -172,6 +172,11 @@ const UserInterfaceConfigSchema = z.object({
     fontScale: z.number().min(75).max(175).optional(),
     chatWidth: z.number().min(500).max(1600).optional(),
     scrollIndicator: z.enum(["scroll", "spine", "ruler"]).optional(),
+    // Open-world by design: discovery, not this profile schema, decides whether
+    // the requested lens currently exists. Keeping the id preserves a useful
+    // fallback reason across project/plugin changes.
+    lensId: z.string().min(1).optional(),
+    // Deprecated by lensId. Still accepted so an older profile round trips.
     presentation: z.enum(["conversation", "turns"]).optional(),
     scrollThroughTurns: z.boolean().optional(),
     projectOverride: z.boolean().optional(),

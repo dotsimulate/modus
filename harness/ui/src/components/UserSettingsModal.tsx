@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { modus } from "../modusClient";
-import type { ChatPresentation, ChatScrollIndicator, ModusPlugin, ProviderModel, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
+import type { ChatScrollIndicator, ConversationLensId, ModusPlugin, ProviderModel, UserProfile, UserProfileUiConfig } from "../../../sdk/index";
 import { providerFallbackModel } from "../../../provider-defaults";
 import { useProfiles } from "../providers/ProfileContext";
 import { SearchDropdown } from "./SearchDropdown";
@@ -12,7 +12,7 @@ import { CustomSelect } from "./CustomSelect";
 import { ProjectAppearanceSettings } from "./ProjectAppearanceSettings";
 import {
   applyInterfaceSettings,
-  CHAT_PRESENTATIONS,
+  CORE_CONVERSATION_LENSES,
   CHAT_SCROLL_INDICATORS,
   CONFIG_BAR_ITEMS,
   DEFAULT_INTERFACE_SETTINGS,
@@ -24,6 +24,7 @@ import {
   type ConfigBarItemId,
   type ResolvedInterfaceSettings,
 } from "../interface-settings";
+import { useConversationResources } from "../useConversationResources";
 import { isTauriRuntime } from "../desktopBridge";
 import AboutPanel from "./AboutPanel";
 import { providerDisplayLabel } from "../tools";
@@ -82,6 +83,13 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
     projectRoot,
     activeCwd,
   } = useProfiles();
+  const conversationResources = useConversationResources(activeCwd);
+  const discoveredConversationLensOptions = useMemo(() => {
+    const discovered = conversationResources.registry?.lenses
+      .filter((entry) => (entry.status === "available" || entry.status === "degraded") && entry.definition)
+      .map((entry) => ({ value: entry.id, label: entry.definition!.label }));
+    return discovered?.length ? discovered : CORE_CONVERSATION_LENSES.map((option) => ({ ...option }));
+  }, [conversationResources.registry]);
 
   const [displayName, setDisplayName] = useState(userProfile.displayName ?? "");
   const [defaultAgentProfile, setDefaultAgentProfile] = useState(userProfile.defaultAgentProfile ?? "");
@@ -97,6 +105,14 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
   const [interfaceSettings, setInterfaceSettings] = useState<ResolvedInterfaceSettings>(
     readDeviceInterfaceSettings,
   );
+  const conversationLensOptions = useMemo(() => (
+    discoveredConversationLensOptions.some((option) => option.value === interfaceSettings.chat.lensId)
+      ? discoveredConversationLensOptions
+      : [
+          ...discoveredConversationLensOptions,
+          { value: interfaceSettings.chat.lensId, label: `${interfaceSettings.chat.lensId} (unavailable)` },
+        ]
+  ), [discoveredConversationLensOptions, interfaceSettings.chat.lensId]);
   const [pageNavMode, setPageNavMode] = useState(userProfile.pageNav?.mode ?? "auto");
   const [resetLayout, setResetLayout] = useState(false);
 
@@ -460,11 +476,11 @@ export function UserSettingsModal({ userProfile, onClose, onSave }: Props) {
               <div className="us-row">
                 <span className="us-row-label">view</span>
                 <CustomSelect
-                  options={CHAT_PRESENTATIONS.map((o) => ({ ...o }))}
-                  value={interfaceSettings.chat.presentation}
+                  options={conversationLensOptions}
+                  value={interfaceSettings.chat.lensId}
                   onChange={(value) => updateInterfaceSettings({
                     ...interfaceSettings,
-                    chat: { ...interfaceSettings.chat, presentation: value as ChatPresentation },
+                    chat: { ...interfaceSettings.chat, lensId: value as ConversationLensId },
                   })}
                 />
               </div>

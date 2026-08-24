@@ -1,0 +1,84 @@
+{
+  "contract": "conversation-lens@1",
+  "id": "core:focus",
+  "label": "Focus",
+  "description": "One turn at a time with a compact conversation index and a permanent Transcript recovery path.",
+  "fallback": "core:transcript",
+  "capabilities": {
+    "required": [
+      "conversation.permissions",
+      "conversation.turn-content",
+      "conversation.turn-index"
+    ],
+    "optional": [
+      "conversation.compose",
+      "conversation.history",
+      "conversation.artifacts"
+    ]
+  },
+  "layout": {
+    "kind": "split",
+    "axis": "horizontal",
+    "sizes": [0.2, 4],
+    "collapsible": [true, false],
+    "children": [
+      {
+        "kind": "widget",
+        "widget": {
+          "type": "session-turns",
+          "id": "lens-focus-turns",
+          "labels": false,
+          "header": false
+        },
+        "publish": {
+          "turnNumber": "turnNumber",
+          "turnSeq": "turnSeq"
+        }
+      },
+      {
+        "kind": "widget",
+        "widget": {
+          "type": "session-turn",
+          "id": "lens-focus-turn",
+          "blocks": ["prompt", "thinking", "text", "meta"],
+          "promptMaxHeight": 190
+        }
+      }
+    ]
+  },
+  "layouts": {
+    "mobile": {
+      "kind": "tabs",
+      "id": "lens-focus-mobile-tabs",
+      "activeTab": "lens-focus-turn-mobile",
+      "children": [
+        {
+          "kind": "widget",
+          "widget": {
+            "type": "session-turn",
+            "id": "lens-focus-turn-mobile",
+            "blocks": ["prompt", "thinking", "text", "meta"],
+            "promptMaxHeight": 120
+          }
+        },
+        {
+          "kind": "widget",
+          "widget": {
+            "type": "session-turns",
+            "id": "lens-focus-turns-mobile",
+            "labels": true
+          },
+          "publish": {
+            "turnNumber": "turnNumber",
+            "turnSeq": "turnSeq"
+          }
+        }
+      ]
+    }
+  },
+  "context": {
+    "turnNumber": null,
+    "turnSeq": null,
+    "turnSessionId": null
+  }
+}

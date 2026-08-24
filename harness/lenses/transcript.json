@@ -1,0 +1,38 @@
+{
+  "contract": "conversation-lens@1",
+  "id": "core:transcript",
+  "label": "Transcript",
+  "description": "The complete continuous conversation with history, artifacts, actions, and live tool work.",
+  "capabilities": {
+    "required": [
+      "conversation.permissions",
+      "conversation.turn-content",
+      "conversation.history"
+    ],
+    "optional": [
+      "conversation.compose",
+      "conversation.artifacts"
+    ]
+  },
+  "layout": {
+    "kind": "widget",
+    "widget": {
+      "type": "conversation-transcript",
+      "id": "lens-transcript"
+    }
+  },
+  "layouts": {
+    "mobile": {
+      "kind": "widget",
+      "widget": {
+        "type": "conversation-transcript",
+        "id": "lens-transcript-mobile"
+      }
+    }
+  },
+  "context": {
+    "turnNumber": null,
+    "turnSeq": null,
+    "turnSessionId": null
+  }
+}

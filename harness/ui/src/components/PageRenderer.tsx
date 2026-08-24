@@ -5,7 +5,7 @@ import { Markdown } from "./Markdown";
 import { Actions } from "./Actions";
 import { GitPanel } from "./GitPanel";
 import { WIDGETS, WidgetChromeContext } from "../widgets";
-import type { DashboardBlock, DashboardModule, LayoutNode, WidgetBase, WidgetSize } from "../widgets";
+import type { DashboardBlock, DashboardModule, LayoutNode, ScopeBinding, WidgetBase, WidgetSize } from "../widgets";
 import { getWidgetInstanceId, useWidgetUiState } from "../widgets/ui-state";
 import { PanelTreeRenderer } from "./PanelTreeRenderer";
 import { PageInspectProbe } from "./PageInspectProbe";
@@ -13,6 +13,7 @@ import { WidgetErrorBoundary } from "./WidgetErrorBoundary";
 import {
   PageStateBusContext,
   PageUrlProvider,
+  ScopeBindingBridge,
   ScopeProvider,
   ScopeUrlSessionBinder,
   createPageStateBus,
@@ -275,6 +276,8 @@ export function PageView({
   onActivateSession,
   hashSessionId,
   pageId,
+  parentBus,
+  bindings,
 }: {
   blocks?: DashboardBlock[];
   layout?: PageLayoutInput;
@@ -288,6 +291,9 @@ export function PageView({
   hashSessionId?: string | null;
   /** Page id, used only to label measurements from the page inspector. */
   pageId?: string;
+  /** Optional outer page bus for a nested, directionally-bound layout. */
+  parentBus?: import("./pageScope").PageStateBus | null;
+  bindings?: ScopeBinding[];
 }) {
   const { activeCwd } = useProfiles();
   const isMobile = useMediaQuery("(max-width: 640px)");
@@ -305,6 +311,9 @@ export function PageView({
     return (
       <PageStateBusContext.Provider value={bus}>
         <PageUrlProvider hashSessionId={hashSessionId ?? null}>
+          {parentBus && bindings && bindings.length > 0 && (
+            <ScopeBindingBridge parentBus={parentBus} bindings={bindings} />
+          )}
           <div className="dashboard" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
             <div
               ref={inspectRef}

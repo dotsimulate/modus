@@ -66,11 +66,6 @@
   color: var(--text-tertiary);
 }
 
-/* Running is green here, matching --dot-running everywhere else in the app. */
-.session-turn-live {
-  color: var(--dot-running);
-}
-
 .session-turn-when {
   margin-left: auto;
   color: var(--text-muted);
@@ -410,15 +405,6 @@
   opacity: 0.3;
 }
 
-.session-turn-nav-latest--live {
-  color: var(--tool-running);
-  border-color: color-mix(in srgb, var(--tool-running) 42%, var(--border-visible));
-}
-
-.session-turn-nav-latest--live:disabled {
-  opacity: 0.72;
-}
-
 .session-turn-nav-latest svg {
   width: 13px;
   height: 13px;
@@ -446,24 +432,6 @@
   width: 8px;
   height: 1px;
   background: var(--border-visible);
-}
-
-/* An active turn is marked by a gradient wash from the top edge, not a bar. */
-.session-turn--live {
-  position: relative;
-}
-
-.session-turn--live::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 60px;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--dot-running) 5%, transparent),
-    transparent
-  );
 }
 
 @media (max-width: 700px) {
@@ -552,11 +520,6 @@
   border-color: var(--border-visible);
 }
 
-.session-turns-jump.is-running {
-  color: var(--dot-running);
-  border-color: color-mix(in srgb, var(--dot-running) 40%, transparent);
-}
-
 .session-turns-rail {
   flex: 1 1 auto;
   min-height: 0;
@@ -627,10 +590,6 @@
   color: var(--text);
 }
 
-.session-turns-mark.is-live .session-turns-no {
-  color: var(--dot-running);
-}
-
 /* A turn the index knows about but nobody has fetched. Dimmer, never hidden —
    it is still selectable, and selecting it is what loads it. */
 .session-turns-mark.is-unloaded {
@@ -688,4 +647,25 @@
 
 .session-turns--horizontal .session-turns-label {
   display: none;
+}
+
+/* Headerless unlabelled marks are a narrow spine, not a list. Compact them so
+   a ~5% split can show the numbers instead of clipping them. */
+.session-turns--bare .session-turns-rail {
+  overflow-x: hidden;
+}
+
+.session-turns--bare .session-turns-mark {
+  gap: 4px;
+  padding: 3px 2px;
+  justify-content: center;
+}
+
+.session-turns--bare .session-turns-no {
+  min-width: 1.5em;
+  text-align: end;
+}
+
+.session-turns--bare .session-turns-bars {
+  min-width: 0;
 }

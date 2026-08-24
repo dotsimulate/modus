@@ -5,6 +5,7 @@ import {
   projectChatOverrideConfig,
   resolveEffectiveInterfaceSettings,
   resolveInterfaceSettings,
+  writableProjectChatConfig,
 } from "../../ui/src/interface-settings";
 
 describe("interface settings scope", () => {
@@ -13,7 +14,7 @@ describe("interface settings scope", () => {
       fontScale: 115,
       chatWidth: 920,
       scrollIndicator: "ruler",
-      presentation: "conversation",
+      lensId: "project:ledger",
       scrollThroughTurns: true,
     },
     conversation: { showThinking: false, toolCalls: "hidden" },
@@ -22,7 +23,7 @@ describe("interface settings scope", () => {
 
   test("profile chat values do not override device defaults without an explicit scope", () => {
     const effective = resolveEffectiveInterfaceSettings({
-      chat: { fontScale: 85, presentation: "turns" },
+      chat: { fontScale: 85, lensId: "core:focus" },
     }, deviceDefaults);
 
     expect(effective).toEqual(deviceDefaults);
@@ -35,7 +36,7 @@ describe("interface settings scope", () => {
         fontScale: 90,
         chatWidth: 700,
         scrollIndicator: "scroll",
-        presentation: "turns",
+        lensId: "core:focus",
         scrollThroughTurns: false,
       },
       conversation: { showThinking: true, toolCalls: "expanded" },
@@ -46,7 +47,7 @@ describe("interface settings scope", () => {
       fontScale: 90,
       chatWidth: 700,
       scrollIndicator: "scroll",
-      presentation: "turns",
+      lensId: "core:focus",
       scrollThroughTurns: false,
     });
     expect(effective.conversation).toEqual(deviceDefaults.conversation);
@@ -55,12 +56,12 @@ describe("interface settings scope", () => {
 
   test("a partial project override inherits missing fields from this device", () => {
     const effective = resolveEffectiveInterfaceSettings({
-      chat: { projectOverride: true, presentation: "turns" },
+      chat: { projectOverride: true, lensId: "core:focus" },
     }, deviceDefaults);
 
     expect(effective.chat).toEqual({
       ...deviceDefaults.chat,
-      presentation: "turns",
+      lensId: "core:focus",
     });
   });
 
@@ -70,7 +71,7 @@ describe("interface settings scope", () => {
       "fontScale",
       "chatWidth",
       "scrollIndicator",
-      "presentation",
+      "lensId",
       "scrollThroughTurns",
     ]);
     expect(Object.keys(config).sort()).toEqual([
@@ -79,11 +80,31 @@ describe("interface settings scope", () => {
     ].sort());
   });
 
-  test("the profile UI schema accepts the explicit project presentation override", () => {
+  test("the profile UI schema accepts an open-world project lens override", () => {
     expect(UserProfileUiConfigSchema.safeParse({
       interface: {
-        chat: { projectOverride: true, presentation: "turns", scrollThroughTurns: true },
+        chat: { projectOverride: true, lensId: "project:contact-sheet", scrollThroughTurns: true },
       },
     }).success).toBe(true);
+  });
+
+  test("legacy presentation values migrate while authored ids remain open-world", () => {
+    expect(resolveInterfaceSettings({ chat: { presentation: "conversation" } }).chat.lensId)
+      .toBe("core:transcript");
+    expect(resolveInterfaceSettings({ chat: { presentation: "turns" } }).chat.lensId)
+      .toBe("core:focus");
+    expect(resolveInterfaceSettings({
+      chat: { lensId: "project:contact-sheet", presentation: "conversation" },
+    }).chat.lensId).toBe("project:contact-sheet");
+  });
+
+  test("project writes converge on lensId and remove the legacy enum", () => {
+    const config = writableProjectChatConfig({
+      presentation: "turns",
+      showLegacyThing: true,
+    } as any, deviceDefaults);
+    expect(config.lensId).toBe("project:ledger");
+    expect(config.presentation).toBeUndefined();
+    expect((config as any).showLegacyThing).toBe(true);
   });
 });

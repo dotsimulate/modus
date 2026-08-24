@@ -30,6 +30,8 @@ import ArtifactShelfWidget from "./artifact-shelf.widget";
 import ClaudePricingWidget from "./claude-pricing.widget";
 import CodeEditorWidget from "./code-editor.widget";
 import ComposerWidget from "./composer.widget";
+import ConversationProjectionWidget from "./conversation-projection.widget";
+import ConversationTranscriptWidget from "./conversation-transcript.widget";
 import ConfigBarWidget from "./config-bar.widget";
 import ConfigInspectorWidget from "./config-inspector.widget";
 import DeepAnalyticsWidget from "./deep-analytics.widget";
@@ -81,6 +83,8 @@ export const WIDGET_COMPONENTS: Record<string, ComponentType<WidgetProps<any>>> 
   "claude-pricing": ClaudePricingWidget,
   "code-editor": CodeEditorWidget,
   "composer": ComposerWidget,
+  "conversation-projection": ConversationProjectionWidget,
+  "conversation-transcript": ConversationTranscriptWidget,
   "config-bar": ConfigBarWidget,
   "config-inspector": ConfigInspectorWidget,
   "deep-analytics": DeepAnalyticsWidget,
