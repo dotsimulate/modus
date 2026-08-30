@@ -132,6 +132,54 @@ test("durable events keep resumed turns when provider sequences repeat", () => {
   expect(index.turns.map((turn) => turn.seq)).toEqual([1, 4, 1, 4]);
 });
 
+test("a queued prompt during interrupt does not create a result-only trailing turn", () => {
+  const sessionId = newSession("interrupted-queue");
+  addEvent(sessionId, 1, "user", "prompt", JSON.stringify({
+    subtype: "prompt",
+    message: { content: [{ type: "text", text: "first prompt" }] },
+  }));
+  addEvent(sessionId, 2, "assistant", "message", JSON.stringify({
+    message: { content: [{ type: "text", text: "partial answer" }] },
+  }));
+  addEvent(sessionId, 3, "system", "interrupted", JSON.stringify({
+    type: "system",
+    subtype: "interrupted",
+  }));
+
+  // A correction is persisted while the interrupted provider is still
+  // draining. Its prompt therefore precedes the old turn's terminal result.
+  addEvent(sessionId, 4, "user", "prompt", JSON.stringify({
+    subtype: "prompt",
+    message: { content: [{ type: "text", text: "corrected prompt" }] },
+  }));
+  addEvent(sessionId, 5, "result", "interrupted", JSON.stringify({ subtype: "interrupted" }));
+  addEvent(sessionId, 6, "assistant", "message", JSON.stringify({
+    message: { content: [{ type: "text", text: "corrected answer" }] },
+  }));
+  addEvent(sessionId, 7, "result", "success", JSON.stringify({ subtype: "success" }));
+
+  const index = getSessionTurnIndex(sessionId);
+  expect(index.turns.map((turn) => [turn.number, turn.seq])).toEqual([
+    [1, 1],
+    [2, 4],
+  ]);
+  const history = getSessionMessageHistory(sessionId, { preserveEventSequence: true });
+  expect(index.turns).toHaveLength(history.messages.filter((turn) => turn.role === "user").length);
+});
+
+test("assistant-first event history indexes the assistant rather than its terminal result", () => {
+  const sessionId = newSession("event-headless");
+  addEvent(sessionId, 5, "assistant", "message", JSON.stringify({
+    message: { content: [{ type: "text", text: "resumed mid-conversation" }] },
+  }));
+  addEvent(sessionId, 6, "result", "success", JSON.stringify({ subtype: "success" }));
+
+  const index = getSessionTurnIndex(sessionId);
+  expect(index.turns).toHaveLength(1);
+  expect(index.turns[0]!.seq).toBe(5);
+  expect(getSessionMessage(sessionId, index.turns[0]!.seq)).not.toBeNull();
+});
+
 test("every indexed seq resolves to a real turn", () => {
   const sessionId = newSession("resolvable");
   seedEventTurn(sessionId, 1, "alpha");

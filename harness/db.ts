@@ -245,7 +245,9 @@ db.run(`
     cycle_number INTEGER NOT NULL DEFAULT 1,
     trigger_type TEXT,
     after_run_error TEXT,
-    user_profile TEXT
+    user_profile TEXT,
+    answerer TEXT NOT NULL DEFAULT 'session',
+    answerer_metadata TEXT
   )
 `);
 db.run(`CREATE INDEX IF NOT EXISTS idx_action_runs_name ON action_runs(action_name, run_number DESC)`);
@@ -275,6 +277,12 @@ try {
 // Migration: add execution_id column linking runs to executions
 try {
   db.run(`ALTER TABLE action_runs ADD COLUMN execution_id INTEGER REFERENCES action_executions(id)`);
+} catch { /* column already exists */ }
+try {
+  db.run(`ALTER TABLE action_runs ADD COLUMN answerer TEXT NOT NULL DEFAULT 'session'`);
+} catch { /* column already exists */ }
+try {
+  db.run(`ALTER TABLE action_runs ADD COLUMN answerer_metadata TEXT`);
 } catch { /* column already exists */ }
 
 // ── Scheduled Wakes (ctx.sessions.wake with at/every/onEvent) ──
@@ -621,8 +629,8 @@ const stmts = {
   `),
   // Action Runs
   insertActionRun: db.prepare(`
-    INSERT INTO action_runs (action_name, action_scope, session_id, run_number, status, started_at, cycle_number, trigger_type, user_profile, execution_id)
-    VALUES ($action_name, $action_scope, $session_id, $run_number, $status, $started_at, $cycle_number, $trigger_type, $user_profile, $execution_id)
+    INSERT INTO action_runs (action_name, action_scope, session_id, run_number, status, started_at, cycle_number, trigger_type, user_profile, execution_id, answerer)
+    VALUES ($action_name, $action_scope, $session_id, $run_number, $status, $started_at, $cycle_number, $trigger_type, $user_profile, $execution_id, $answerer)
   `),
   updateActionRun: db.prepare(`
     UPDATE action_runs SET
@@ -635,18 +643,20 @@ const stmts = {
       after_run_error = COALESCE($after_run_error, after_run_error),
       attempts = COALESCE($attempts, attempts),
       verify_error = COALESCE($verify_error, verify_error),
-      warning = COALESCE($warning, warning)
+      warning = COALESCE($warning, warning),
+      answerer = COALESCE($answerer, answerer),
+      answerer_metadata = COALESCE($answerer_metadata, answerer_metadata)
     WHERE id = $id
   `),
   getActionRuns: db.prepare(`
-    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, warning, execution_id
+    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, warning, execution_id, answerer, answerer_metadata
     FROM action_runs
     WHERE action_name = $action_name
       AND ($action_scope IS NULL OR action_scope = $action_scope OR action_scope IS NULL)
     ORDER BY run_number DESC LIMIT $limit
   `),
   getRunsByExecution: db.prepare(`
-    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, warning, execution_id
+    SELECT id, action_name, session_id, run_number, status, summary, started_at, completed_at, cost_usd, error, cycle_number, trigger_type, after_run_error, user_profile, attempts, verify_error, warning, execution_id, answerer, answerer_metadata
     FROM action_runs WHERE execution_id = $execution_id
     ORDER BY run_number ASC
   `),
@@ -857,6 +867,81 @@ export function listSessionsForProjects(cwdPrefixes: string[], limit = 50): Sess
   const sql = `SELECT * FROM sessions WHERE tags NOT LIKE '%"archived"%' AND tags NOT LIKE '%"internal"%' AND (${scope.sql}) ORDER BY last_message_at DESC LIMIT ?`;
   const params = [...scope.params, limit];
   return db.prepare(sql).all(...params) as SessionRow[];
+}
+
+/** One (agent profile, project, folder) triple with how much it has actually been used. */
+export type ProfileUsageRow = {
+  profile: string;
+  /** Owning user profile as recorded on the session row. Null on legacy rows. */
+  userProfile: string | null;
+  cwd: string | null;
+  sessions: number;
+  messages: number;
+  costUsd: number;
+  lastUsedAt: number;
+};
+
+/**
+ * Which agent profiles are actually used, where, and how recently.
+ *
+ * The `sessions` table already carries `profile`, `cwd`, `user_profile` and
+ * `last_message_at`, so this is a plain GROUP BY over ~10k rows rather than
+ * anything derived — no event scan, no JSON parsing. It exists because
+ * choosing an agent from a list of names is a guess; choosing from a list of
+ * names with descriptions and a usage history is a decision.
+ *
+ * Grouped by the triple rather than by profile alone: the same profile name
+ * behaves differently per project, and the caller needs the folder to resolve
+ * a project for legacy rows whose `user_profile` is null. Archived and
+ * internal sessions are excluded, matching `searchSessions` — background
+ * routing runs must not show up as evidence for their own next decision.
+ */
+export function getProfileUsage(
+  opts: { sinceDays?: number; cwdPrefixes?: string[]; limit?: number } = {},
+): ProfileUsageRow[] {
+  const conditions: string[] = [
+    "profile IS NOT NULL",
+    "profile != ''",
+    `tags NOT LIKE '%"archived"%'`,
+    `tags NOT LIKE '%"internal"%'`,
+  ];
+  const params: any[] = [];
+
+  if (opts.sinceDays !== undefined && opts.sinceDays > 0) {
+    conditions.push("last_message_at >= ?");
+    params.push(Date.now() - opts.sinceDays * 86_400_000);
+  }
+
+  if (opts.cwdPrefixes && opts.cwdPrefixes.length > 0) {
+    const scope = buildProjectCwdScope("cwd", opts.cwdPrefixes);
+    conditions.push(`(${scope.sql})`);
+    params.push(...scope.params);
+  }
+
+  const limit = Math.min(Math.max(1, opts.limit ?? 200), 1000);
+  const rows = db.prepare(`
+    SELECT
+      profile,
+      user_profile AS userProfile,
+      cwd,
+      COUNT(*) AS sessions,
+      COALESCE(SUM(message_count), 0) AS messages,
+      COALESCE(SUM(total_cost_usd), 0) AS costUsd,
+      MAX(last_message_at) AS lastUsedAt
+    FROM sessions
+    WHERE ${conditions.join(" AND ")}
+    GROUP BY profile, user_profile, cwd
+    ORDER BY sessions DESC, lastUsedAt DESC
+    LIMIT ?
+  `).all(...params, limit) as ProfileUsageRow[];
+
+  return rows.map((row) => ({
+    ...row,
+    sessions: Number(row.sessions),
+    messages: Number(row.messages),
+    costUsd: Number(row.costUsd),
+    lastUsedAt: Number(row.lastUsedAt ?? 0),
+  }));
 }
 
 /** List sessions scoped to a user profile — filters by CWD prefixes AND/OR agent profiles AND/OR user_profile column */
@@ -1992,7 +2077,17 @@ export function getRunsByExecution(executionId: number): RunMeta[] {
 
 // ── Action Run Functions ──
 
-import type { RunSummary, RunMeta } from "./action-types";
+import type { ActionCompletionMetadata, RunSummary, RunMeta } from "./action-types";
+
+function parseActionCompletionMetadata(value: unknown): ActionCompletionMetadata | undefined {
+  if (typeof value !== "string" || !value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as ActionCompletionMetadata;
+    return parsed && typeof parsed === "object" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function mapRunRow(r: any): RunMeta {
   return {
@@ -2012,6 +2107,8 @@ function mapRunRow(r: any): RunMeta {
     verifyError: r.verify_error ?? null,
     warning: r.warning ?? null,
     executionId: r.execution_id ?? null,
+    answerer: r.answerer === "completion" ? "completion" : "session",
+    completion: parseActionCompletionMetadata(r.answerer_metadata),
   };
 }
 
@@ -2025,6 +2122,7 @@ export function insertActionRun(
   triggerTypeOrUserProfile?: string | null,
   userProfileOrExecutionId?: string | null | number,
   executionIdArg?: number,
+  answererArg: "session" | "completion" = "session",
 ): number {
   const scopedCall = typeof actionScopeOrRunNumber !== "number";
   const actionScope = scopedCall ? actionScopeOrRunNumber : null;
@@ -2049,6 +2147,7 @@ export function insertActionRun(
     $trigger_type: triggerType ?? null,
     $user_profile: userProfile ?? null,
     $execution_id: executionId ?? null,
+    $answerer: answererArg,
   });
   return Number((db.query("SELECT last_insert_rowid() as id").get() as any).id);
 }
@@ -2064,6 +2163,8 @@ export function updateActionRun(id: number, updates: {
   attempts?: number;
   verifyError?: string;
   warning?: string;
+  answerer?: "session" | "completion";
+  answererMetadata?: ActionCompletionMetadata;
 }) {
   stmts.updateActionRun.run({
     $id: id,
@@ -2077,6 +2178,8 @@ export function updateActionRun(id: number, updates: {
     $attempts: updates.attempts ?? null,
     $verify_error: updates.verifyError ?? null,
     $warning: updates.warning ?? null,
+    $answerer: updates.answerer ?? null,
+    $answerer_metadata: updates.answererMetadata ? JSON.stringify(updates.answererMetadata) : null,
   });
 }
 
@@ -2516,22 +2619,31 @@ function turnIndexFromMessageTable(sessionId: string): SessionTurnIndexEntry[] {
 /**
  * Turn boundaries from durable events.
  *
- * Only the two event kinds that bound a turn are read — a user prompt opens
- * one, a `result` closes one — so this stays on the indexed columns and never
- * touches an assistant payload. That is also why it reports no tool count:
- * every tool call lives inside a `data` blob that would have to be parsed.
+ * Only event kinds that affect turn shape are read: a user prompt opens a
+ * turn, the first assistant event starts its body, and a `result` closes that
+ * body. Assistant payloads are never selected. That is also why this reports
+ * no tool count: every tool call lives inside a `data` blob that would have to
+ * be parsed.
+ *
+ * Prompt and result order is not strictly nested. A correction queued during
+ * interrupt drain is persisted before the interrupted provider emits its
+ * terminal result. Matching the history reconstructor means a newer prompt
+ * becomes the current boundary and a result with no assistant body is ignored;
+ * treating that result as a headless turn creates an unrenderable final card.
  */
 function turnIndexFromEvents(sessionId: string): SessionTurnIndexEntry[] {
   const rows = db.prepare(`
-    SELECT seq, type, created_at, COALESCE(LENGTH(data), 0) AS data_length
+    SELECT seq, type, created_at,
+      CASE WHEN type = 'user' THEN COALESCE(LENGTH(data), 0) ELSE 0 END AS data_length
     FROM events
     WHERE session_id = $sid
-      AND ((type = 'user' AND subtype = 'prompt') OR type = 'result')
+      AND ((type = 'user' AND subtype = 'prompt') OR type IN ('assistant', 'result'))
     ORDER BY created_at ASC, id ASC
   `).all({ $sid: sessionId }) as { seq: number; type: string; created_at: number; data_length: number }[];
 
   const turns: SessionTurnIndexEntry[] = [];
-  let open = false;
+  let promptAvailable = false;
+  let assistantOpen = false;
 
   for (const row of rows) {
     if (row.type === "user") {
@@ -2541,19 +2653,38 @@ function turnIndexFromEvents(sessionId: string): SessionTurnIndexEntry[] {
         timestamp: row.created_at,
         promptWeight: row.data_length,
       });
-      open = true;
+      // Like reconstructSessionTurns, a new prompt closes any assistant body
+      // still in progress and becomes the boundary for the next one.
+      promptAvailable = true;
+      assistantOpen = false;
       continue;
     }
-    // A result with no prompt above it still marks a turn worth addressing.
-    if (!open) {
-      turns.push({
-        number: turns.length + 1,
-        seq: row.seq,
-        timestamp: row.created_at,
-        promptWeight: 0,
-      });
+
+    if (row.type === "assistant") {
+      if (!assistantOpen) {
+        // A resumed session or agent-first exchange has no prompt to address;
+        // use the first assistant event, which the detail route can resolve.
+        if (!promptAvailable) {
+          turns.push({
+            number: turns.length + 1,
+            seq: row.seq,
+            timestamp: row.created_at,
+            promptWeight: 0,
+          });
+        }
+        promptAvailable = false;
+        assistantOpen = true;
+      }
+      continue;
     }
-    open = false;
+
+    // A result only closes an assistant body that actually began. Result-only
+    // rows are not renderable turns; during interruption they can belong to
+    // the previous body even though a queued prompt is already durable.
+    if (assistantOpen) {
+      assistantOpen = false;
+      promptAvailable = false;
+    }
   }
 
   return turns;

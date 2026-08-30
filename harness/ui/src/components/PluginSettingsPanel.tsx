@@ -4,6 +4,7 @@ import type {
   PluginSettingDefinition,
   PluginSettingsSnapshot,
   ProjectInfo,
+  ProviderModel,
 } from "../../../sdk";
 import { modus } from "../modusClient";
 
@@ -13,20 +14,81 @@ type Props = {
   userProfile?: string | null;
 };
 
+/** Model lists come from the provider, so they are fetched per provider name. */
+type ModelCatalogue = {
+  byProvider: Record<string, ProviderModel[]>;
+  loading: string[];
+};
+
 function PluginSettingField({
   setting,
   value,
+  values,
   projects,
+  providers,
+  oneShotProviders,
+  models,
   disabled,
   onChange,
 }: {
   setting: PluginSettingDefinition;
   value: unknown;
+  values: Record<string, unknown>;
   projects: ProjectInfo[];
+  providers: string[];
+  oneShotProviders: string[];
+  models: ModelCatalogue;
   disabled: boolean;
   onChange: (value: unknown) => void;
 }) {
   const label = setting.label ?? setting.key;
+  if (setting.type === "provider") {
+    const options = setting.oneShotOnly ? oneShotProviders : providers;
+    // A value already stored but no longer offered still has to be visible, or
+    // the form would silently show "(unset)" for a setting that is very much set.
+    const withCurrent = value && !options.includes(String(value)) ? [String(value), ...options] : options;
+    return (
+      <label className="exw-setting">
+        <span className="exw-setting-label">{label}</span>
+        <select className="exw-setting-input" value={String(value ?? "")} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+          <option value="">(unset)</option>
+          {withCurrent.map((name) => <option key={name} value={name}>{name}</option>)}
+        </select>
+        {setting.description && <small className="exw-setting-description">{setting.description}</small>}
+        <small className="exw-setting-scope">{setting.scope ?? "user"}</small>
+      </label>
+    );
+  }
+  if (setting.type === "model") {
+    const providerName = setting.providerSetting ? String(values[setting.providerSetting] ?? "") : "";
+    const loading = models.loading.includes(providerName);
+    const available = models.byProvider[providerName] ?? [];
+    const ids = available.map((model) => model.id);
+    const withCurrent = value && !ids.includes(String(value)) ? [String(value), ...ids] : ids;
+    return (
+      <label className="exw-setting">
+        <span className="exw-setting-label">{label}</span>
+        <select
+          className="exw-setting-input"
+          value={String(value ?? "")}
+          disabled={disabled || !providerName || loading}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">
+            {!providerName ? "(choose a provider first)" : loading ? "loading…" : "(unset)"}
+          </option>
+          {withCurrent.map((id) => <option key={id} value={id}>{id}</option>)}
+        </select>
+        {providerName && !loading && ids.length === 0 && (
+          <small className="exw-setting-description">
+            {providerName} returned no models — check that it is configured and reachable.
+          </small>
+        )}
+        {setting.description && <small className="exw-setting-description">{setting.description}</small>}
+        <small className="exw-setting-scope">{setting.scope ?? "user"}</small>
+      </label>
+    );
+  }
   if (setting.type === "toggle") {
     return (
       <label className="exw-setting exw-setting--toggle">
@@ -116,8 +178,22 @@ export function PluginSettingsPanel({ plugin, cwd, userProfile }: Props) {
   const [snapshot, setSnapshot] = useState<PluginSettingsSnapshot | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [providers, setProviders] = useState<string[]>([]);
+  const [oneShotProviders, setOneShotProviders] = useState<string[]>([]);
+  const [models, setModels] = useState<ModelCatalogue>({ byProvider: {}, loading: [] });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const settings = snapshot?.settings ?? plugin.manifest.settings ?? [];
+  const needsProviders = settings.some((setting) => setting.type === "provider");
+  // Distinct provider names any `model` field currently points at. Joined so the
+  // effect below re-runs when a provider changes but not on every keystroke.
+  const modelProviderKey = settings
+    .filter((setting) => setting.type === "model")
+    .map((setting) => (setting.providerSetting ? String(values[setting.providerSetting] ?? "") : ""))
+    .filter(Boolean)
+    .sort()
+    .join(" ");
 
   useEffect(() => {
     let active = true;
@@ -135,6 +211,38 @@ export function PluginSettingsPanel({ plugin, cwd, userProfile }: Props) {
     });
     return () => { active = false; };
   }, [plugin.id, cwd, userProfile]);
+
+  useEffect(() => {
+    if (!needsProviders) return;
+    let active = true;
+    Promise.all([modus.listProviders(), modus.listOneShotProviders()])
+      .then(([all, oneShot]) => {
+        if (!active) return;
+        setProviders(all);
+        setOneShotProviders(oneShot);
+      })
+      // A provider list that will not load leaves the picker empty rather than
+      // failing the whole settings form, which the user may be here to fix.
+      .catch(() => { if (active) { setProviders([]); setOneShotProviders([]); } });
+    return () => { active = false; };
+  }, [needsProviders]);
+
+  useEffect(() => {
+    const wanted = modelProviderKey ? modelProviderKey.split(" ") : [];
+    const missing = wanted.filter((name) => !(name in models.byProvider) && !models.loading.includes(name));
+    if (missing.length === 0) return;
+    let active = true;
+    setModels((current) => ({ ...current, loading: [...current.loading, ...missing] }));
+    void Promise.all(missing.map(async (name) => [name, await modus.getProviderModels(name)] as const))
+      .then((entries) => {
+        if (!active) return;
+        setModels((current) => ({
+          byProvider: { ...current.byProvider, ...Object.fromEntries(entries) },
+          loading: current.loading.filter((name) => !missing.includes(name)),
+        }));
+      });
+    return () => { active = false; };
+  }, [modelProviderKey, models]);
 
   const changedValues = useMemo(
     () => !snapshot ? {} : Object.fromEntries(Object.entries(values).filter(([key, value]) =>
@@ -175,7 +283,7 @@ export function PluginSettingsPanel({ plugin, cwd, userProfile }: Props) {
 
   return (
     <div className="exw-settings">
-      {(snapshot?.settings ?? plugin.manifest.settings).map((setting) => {
+      {settings.map((setting) => {
         const missingScope = (setting.scope ?? "user") === "user" ? !userProfile
           : setting.scope === "project" ? !cwd
             : false;
@@ -184,7 +292,11 @@ export function PluginSettingsPanel({ plugin, cwd, userProfile }: Props) {
             key={setting.key}
             setting={setting}
             value={values[setting.key]}
+            values={values}
             projects={projects}
+            providers={providers}
+            oneShotProviders={oneShotProviders}
+            models={models}
             disabled={saving || missingScope}
             onChange={(value) => setValues((current) => ({ ...current, [setting.key]: value }))}
           />

@@ -315,6 +315,7 @@ function RunRow({ run, session, onSelect, onPeek }: { run: ActionRun; session?: 
     : run.status === "running" ? "..." : null;
   const statusLabel = runStatusLabel(run.status);
   const attempts = run.attempts && run.attempts > 1 ? run.attempts : null;
+  const completion = run.answerer === "completion" ? run.completion : undefined;
   const rawError = run.afterRunError || run.verifyError || run.error;
   const displayError = rawError
     ? rawError.split("\n").filter(l => l.trim() && !l.includes("WARNING:")).pop()
@@ -370,6 +371,17 @@ function RunRow({ run, session, onSelect, onPeek }: { run: ActionRun; session?: 
           <span>{session?.model ?? "model?"}</span>
           <span>{session?.profile ?? "profile?"}</span>
           {parseSessionTags(session?.tags).includes("internal") && <span className="sched-run-internal">internal</span>}
+        </div>
+      )}
+      {!hasSession && completion && (
+        <div className="sched-run-audit">
+          <span>completion {completion.oneShotId}</span>
+          <span>{completion.provider}</span>
+          <span>{completion.model}</span>
+          <span>{completion.transport}</span>
+          <span>{completion.elapsedMs}ms</span>
+          {completion.usage && <span>{completion.usage.totalTokens} tokens</span>}
+          {completion.stopReason && <span>stop: {completion.stopReason}</span>}
         </div>
       )}
     </div>
@@ -451,6 +463,7 @@ function AboutTab({ action, scope }: { action: ActionInfo; scope: ActionScope })
   const runPlan = config ? [
     ["enabled", String(config.enabled)],
     ["profile", config.agentProfile],
+    ["answerer", config.answerer ?? "session"],
     ["provider", config.provider ?? "profile default"],
     ["model", config.model ?? "profile default"],
     ["cwd", config.cwd ?? "(none)"],

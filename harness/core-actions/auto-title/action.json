@@ -1,0 +1,15 @@
+{
+  "name": "auto-title",
+  "description": "Names a conversation from its first exchange",
+  "longDescription": "## Auto-Title\n\nReplaces a session's opening-message preview with a short generated title, once, after the first complete user→assistant exchange.\n\n### How it works\n\n1. **Trigger**: assistant round 1, at end — the first full exchange, however many tool calls it took\n2. **Context**: `gather()` builds a prompt from the opening message and the truncated first response\n3. **Answer**: a one-shot completion, not an agent session — no session row, no provider process\n4. **Write-back**: `afterRun()` writes the title to the session row and tags it `auto-titled`\n\n### Model\n\nProvider and model come from Modus Core's settings (`titleProvider`, `titleModel`) so this can be pointed at something cheap and fast without editing shipped files. If either is unset, the `summarizer` agent profile decides.\n\nOne-shot completions are served in-process, which today means a PI-family provider (`openai-compat`, `ollama`, `openrouter`). CLI providers cannot answer one without spawning a full session.\n\n### Guard rails\n\n- **`excludeTags`** — never fires on action-spawned (`internal`) sessions, or on one already titled\n- **Round 1 only** — one title per session, at the point there is just enough to name it\n- **Uncapped concurrency** — a completion spawns nothing, so simultaneous sessions are all served rather than the second being dropped\n- **Opt-in** — ships disabled; enabling it is per-Vault and does not touch the installed application",
+  "enabled": false,
+  "answerer": "completion",
+  "agentProfile": "summarizer",
+  "provider": "${settings.titleProvider}",
+  "model": "${settings.titleModel}",
+  "trigger": {
+    "type": "session",
+    "on": { "role": "assistant", "round": 1, "at": "end" },
+    "excludeTags": ["internal", "auto-titled"]
+  }
+}

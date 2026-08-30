@@ -113,6 +113,8 @@ export type {
   ActionSummary,
   ActionDetail,
   ActionInfo,
+  ActionAnswerer,
+  ActionCompletionMetadata,
   ActionRun,
   ActionExecution,
   // Moves

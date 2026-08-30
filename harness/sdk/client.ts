@@ -544,6 +544,8 @@ export class ModusClient {
   // ── Providers ──
   /** Lists registered provider names. */
   async listProviders(): Promise<string[]> { return (await this.fetch("/api/providers")).json(); }
+  /** Lists providers that can answer a one-shot completion without spawning a session. */
+  async listOneShotProviders(): Promise<string[]> { return (await this.fetch("/api/providers/one-shot")).json(); }
   /** Returns capabilities for all providers (streaming, tools, vision, etc.). */
   async getProviderCapabilities(): Promise<ProviderCapabilities[]> { return (await this.fetch("/api/provider-capabilities")).json(); }
   /** Returns health/reachability status of all providers. */

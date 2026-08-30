@@ -3,6 +3,24 @@
   "name": "Modus Core",
   "description": "Built-in moves, actions, pages, conversation lenses, prompts, and starter content.",
   "about": "ABOUT.md",
+  "settings": [
+    {
+      "key": "titleProvider",
+      "type": "provider",
+      "scope": "global",
+      "oneShotOnly": true,
+      "label": "Naming provider",
+      "description": "Provider used by the auto-title action. Only providers that answer in-process are listed — a CLI provider would have to spawn a whole session to write six words. Leave unset to use the summarizer agent profile instead."
+    },
+    {
+      "key": "titleModel",
+      "type": "model",
+      "scope": "global",
+      "providerSetting": "titleProvider",
+      "label": "Naming model",
+      "description": "Model used by the auto-title action, listed live from the provider above. Pick something small and fast; this runs once per conversation and you pay for it."
+    }
+  ],
   "integration": {
     "agentProfiles": [
       "modus-helper",

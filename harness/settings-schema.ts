@@ -88,14 +88,38 @@ export function extensionSettingScope(def: ExtensionSettingSchema): ExtensionSet
 
 export type PluginSettingScope = "user" | "project" | "global";
 
+/**
+ * `provider` and `model` are pickers over live data rather than authored option
+ * lists. A shipped `select` would have to name models in JSON, and a model name
+ * baked into shipped content is stale by the next release — the list a user
+ * should choose from is the one their configured provider answers with today.
+ * The value stored is still just a string, so nothing downstream has to care.
+ *
+ * `model` reads `providerSetting` to know whose catalogue to list; that names
+ * another setting key on the same plugin, not a provider.
+ */
+export type PluginSettingType =
+  | "string"
+  | "number"
+  | "toggle"
+  | "select"
+  | "project-list"
+  | "secret-name"
+  | "provider"
+  | "model";
+
 export type PluginSettingDefinition = {
   key: string;
-  type: "string" | "number" | "toggle" | "select" | "project-list" | "secret-name";
+  type: PluginSettingType;
   label?: string;
   description?: string;
   default?: unknown;
   scope?: PluginSettingScope;
   options?: Array<{ value: string; label: string }>;
+  /** `provider` only: restrict the list to providers that can serve a one-shot completion. */
+  oneShotOnly?: boolean;
+  /** `model` only: the sibling setting key holding the provider to list models for. */
+  providerSetting?: string;
   /** Inclusive bound for a `number` field. Ignored by every other type. */
   min?: number;
   /** Inclusive bound for a `number` field. Ignored by every other type. */

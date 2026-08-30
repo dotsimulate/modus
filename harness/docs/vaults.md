@@ -1,7 +1,7 @@
 ---
 title: Vaults
-lastUpdated: 2026-08-19
-covers: harness/app-paths.ts harness/modus-home.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/secrets.ts harness/storage-migration.ts harness/sdk/client.ts harness/sdk/types.ts harness/ui/src/components/DesktopVaultManager.tsx harness/ui/src/desktopBridge.ts desktop/src-tauri/src/backend.rs desktop/src-tauri/src/main.rs desktop/src-tauri/src/vaults.rs
+lastUpdated: 2026-08-29
+covers: harness/app-paths.ts harness/modus-home.ts harness/core-action-overlay.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/cli-vault.ts harness/cli.ts harness/index.ts harness/secrets.ts harness/storage-migration.ts harness/sdk/client.ts harness/sdk/types.ts harness/ui/src/components/DesktopVaultManager.tsx harness/ui/src/desktopBridge.ts desktop/src-tauri/src/backend.rs desktop/src-tauri/src/main.rs desktop/src-tauri/src/vaults.rs
 audience: dev
 ---
 
@@ -204,8 +204,29 @@ canonical slug for a named process. The same identity reaches
 `MoveApiContext.vault`, `MoveContext.harness.vault`, and `ActionContext.vault`.
 It is not a move's `instanceId`.
 
+## Actions across Vaults
+
+Actions load from three roots, and only one of them is Vault-scoped content:
+
+| Root | Origin | Scope |
+|---|---|---|
+| `<resources>/core-actions/` | `harness` | The installed application, so identical in every Vault |
+| `<project>/.modus/actions/` for projects registered in this Vault | `project` | This Vault, gated by `projectAutomation` policy |
+| `<plugin>/.modus/actions/` for plugins enabled in this Vault | `plugin` | This Vault, gated by `plugins` policy |
+
+There is no Vault-global authored actions directory — unlike skills, which have
+`<current-home>/skills/`. A second Vault inherits the same shipped core actions
+and brings its own project and plugin actions.
+
+What *is* per-Vault for a core action is whether it runs. Its shipped
+`action.json` is an immutable default and the choice lives in
+`<current-home>/core-actions.json`, so one Vault can run auto-title while another
+does not. See `actions.md` for the overlay's shape, and the `modus-core` row in
+`plugins.md` for where core's settings are stored.
+
 ## Not delivered yet
 
+- A Vault-global authored actions root, equivalent to `<current-home>/skills/`.
 - Independent desktop windows for viewing multiple Vaults at once.
 - Vault-aware deep links or multi-Vault remote/Tailscale presentation.
 - Vault deletion, export, content import, or hard-delete semantics.

@@ -1368,6 +1368,14 @@ app.get("/api/providers", async (c) => {
   return c.json(listProviders());
 });
 
+// Providers that can answer a single prompt without spawning a session. Backs
+// the `provider` plugin setting when it declares `oneShotOnly`, so the picker
+// cannot offer a provider the completion path would reject at run time.
+app.get("/api/providers/one-shot", async (c) => {
+  const { listOneShotProviders } = await import("./providers/provider-names");
+  return c.json(listOneShotProviders());
+});
+
 app.get("/api/provider-capabilities", async (c) => {
   const { listProviderCapabilities } = await import("./providers/registry");
   return c.json(listProviderCapabilities());

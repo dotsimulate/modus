@@ -1,6 +1,6 @@
 ---
 title: Plugins
-lastUpdated: 2026-08-23
+lastUpdated: 2026-08-29
 covers: harness/settings-schema.ts harness/modus-plugins.ts harness/plugin-settings.ts harness/profiles.ts harness/modus-home.ts harness/index.ts harness/move-runner.ts harness/action-runner.ts harness/pages.ts harness/conversation-lenses.ts harness/client-extensions.ts harness/skills.ts harness/providers/provider-definitions.ts
 ---
 
@@ -138,6 +138,27 @@ rejects a value.
 | `user` | User-profile UI client-extension settings key `plugin:<id>` |
 | `project` | `<cwd>/.modus/_global.json` under `pluginSettings.<id>` |
 | `global` | Plugin registration in `<current-home>/plugins.json` |
+| `global`, for `modus-core` | `<current-home>/profiles/_global.json` under `pluginSettings.modus-core` |
+
+The built-in `modus-core` tier is synthesized rather than registered, so it has
+no `plugins.json` row to hold Vault-scoped values. Its global settings go to the
+Vault's own `_global.json` under the same `pluginSettings` field that project
+scope already uses, one layer up — per-Vault, and without a file or schema
+invented for a single plugin.
+
+Two setting types are pickers over live data rather than authored `options`,
+because a model name written into shipped JSON is stale by the next release:
+
+| Type | Renders | Extra fields |
+|---|---|---|
+| `provider` | Registered provider names | `oneShotOnly` — restrict to providers that can answer a one-shot completion without spawning a session |
+| `model` | The provider's live model list | `providerSetting` — the sibling setting key holding the provider to list models for |
+
+Both store a plain string. A `provider` value is validated on write against the
+known providers, and against the one-shot list when `oneShotOnly` is set. A
+`model` value is **not** checked against a live catalogue: that would cost a
+network round trip per write and would reject a model the user can see in their
+own picker whenever the provider is briefly unreachable.
 
 `project-list` values must exist in the Modus project registry.
 `secret-name` stores only a Modus secret identifier, never secret material.

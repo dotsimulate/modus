@@ -1,0 +1,13 @@
+{
+  "description": "Small, fast model for one-shot summarizing and naming — used by the auto-title core action",
+  "prompt": "You write short, plain labels for things. Answer with the label and nothing else: no preamble, no quotes, no trailing punctuation, no explanation of your choice.",
+  "promptMode": "custom",
+  "maxTurns": 1,
+  "loadProjectSettings": false,
+  "ui": {
+    "label": "summarizer",
+    "placeholder": "text to summarize...",
+    "emptyTitle": "summarizer",
+    "emptySubtitle": "short labels and titles, one shot"
+  }
+}

@@ -12,6 +12,9 @@
 
 import type { MoveCapabilities } from "./move-types";
 import type { HarnessSessions, HarnessChannels, HarnessContext } from "./harness-context";
+import type { ActionAnswerer, ActionCompletionMetadata } from "./action-answerer-types";
+
+export type { ActionAnswerer, ActionCompletionMetadata } from "./action-answerer-types";
 
 // ── Trigger Types ──
 
@@ -85,6 +88,8 @@ export interface ActionConfig {
 
   // ── What to run ──
   agentProfile: string;
+  /** How gather() is answered. Absent preserves the historic session path. */
+  answerer?: ActionAnswerer;
 
   // ── Multi-step profile sequence (optional) ──
   steps?: ActionStep[];
@@ -333,6 +338,8 @@ export interface RunResult {
   durationMs: number;
   sessionId: string | null;
   error: string | null;
+  answerer: ActionAnswerer;
+  completion?: ActionCompletionMetadata;
 }
 
 /** Content blocks for multipart messages (text + images/files) */
@@ -416,6 +423,8 @@ export interface RunMeta {
   verifyError: string | null;
   warning?: string | null;
   executionId: number | null;
+  answerer: ActionAnswerer;
+  completion?: ActionCompletionMetadata;
 }
 
 export interface SessionInfo {

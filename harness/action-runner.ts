@@ -2,10 +2,17 @@
  * Action Runner — orchestrates automated agent sessions (with multipart content support).
  *
  * Actions are the automation primitive in MO:
- *   trigger → gather() → session → afterRun()
+ *   trigger → gather() → session | completion → afterRun()
  *
- * Built-in harness actions live in `harness/actions/<name>/`.
- * Project-local actions live in `.modus/actions/<name>/` and override built-ins.
+ * Shipped core actions live in `harness/core-actions/<name>/` — tracked content
+ * of the built-in `modus-core` tier. `harness/actions/<name>/` is a gitignored
+ * personal scratch root that still loads in a source checkout but is not part of
+ * a build. Project-local actions live in `.modus/actions/<name>/`.
+ *
+ * A shipped core action's `action.json` is an immutable default: its per-Vault
+ * enabled state lives in the overlay (see core-action-overlay.ts), because the
+ * resources directory is the installed application and is the wrong place to
+ * persist a user's choice.
  *
  * Each action is a directory containing:
  *   - action.json  → ActionConfig (trigger, agent profile ref, limits)
@@ -59,12 +66,22 @@ import { logActivity, getActivityLog, getActivitySummary } from "./activity";
 import { svgToPngBase64 } from "./svg-render";
 import { getMove, gatherMoveOnce, activateMove, rekeyMoveByToken, activateMoveBindings, getMoveSkillSources } from "./move-runner";
 import { createTerminal as createTerminalPty, killTerminal as killTerminalPty, writeTerminal as writeTerminalPty } from "./terminal-manager";
-import { getPluginActionsDir, listEnabledModusPlugins, type ModusPlugin } from "./modus-plugins";
+import { CORE_PLUGIN_ID, getPluginActionsDir, listEnabledModusPlugins, type ModusPlugin } from "./modus-plugins";
+import { patchCoreActionOverlay, readCoreActionOverlay } from "./core-action-overlay";
+import { resolveActionSettingReference } from "./action-setting-reference";
 import { buildHarnessContext } from "./harness-context";
 import { isPluginAllowed, isProjectAutomationAllowed } from "./vault-policy";
+import {
+  actionAnswerer,
+  answerWithCompletion,
+  completionActionConfigError,
+} from "./action-answerer";
 
 // ── Constants ──
 
+/** Tracked, shipped core actions. Staged into a build; overlay-toggled per Vault. */
+const CORE_ACTIONS_DIR = join(APP_PATHS.resourcesDir, "core-actions");
+/** Gitignored personal scratch. Loads in a source checkout; never staged into a build. */
 const ACTIONS_DIR = join(APP_PATHS.resourcesDir, "actions");
 const MODUS_ACTIONS = ".modus/actions";
 const TICK_INTERVAL_MS = 10_000;       // check every 10 seconds
@@ -498,6 +515,16 @@ function loadActionsFromDir(
       // Project and plugin actions default their CWD to the root they came from.
       if (projectCwd && !config.cwd) config.cwd = projectCwd;
 
+      // A harness-origin action's shipped action.json is an immutable default;
+      // what the user actually chose for this Vault lives in the overlay.
+      if (config.origin === "harness") {
+        const overlay = readCoreActionOverlay()[name];
+        if (overlay?.enabled !== undefined) config.enabled = overlay.enabled;
+        if (overlay?.every !== undefined && config.trigger.type === "interval") {
+          config.trigger.every = overlay.every;
+        }
+      }
+
       if (config.trigger.type === "interval") {
         parseInterval(config.trigger.every);
       }
@@ -567,6 +594,7 @@ function loadActionsFromDir(
 
 function loadActions(): void {
   const seen = new Set<string>();
+  loadActionsFromDir(CORE_ACTIONS_DIR, seen);
   loadActionsFromDir(ACTIONS_DIR, seen);
   for (const { actionsDir, ...source } of discoverProjectActionDirs()) {
     loadActionsFromDir(actionsDir, seen, source);
@@ -771,8 +799,17 @@ async function fireAction(
     return;
   }
 
-  // Concurrency guard — count sessions with active work, not total executions
-  const maxConcurrency = state.config.concurrency ?? 1;
+  // Concurrency guard — count sessions with active work, not total executions.
+  //
+  // The default of 1 exists to stop a heavyweight action from spawning a second
+  // agent session on top of one already running. A completion-answered action
+  // spawns nothing: it is a single in-process request. Serializing those makes a
+  // per-session reflex silently lossy — two sessions ending a turn at the same
+  // moment and only the first is served — so a completion action is uncapped
+  // unless its author asked for a cap. Each concurrent run still gets its own
+  // execution (findActiveExecution skips busy ones), so nothing is shared.
+  const maxConcurrency = state.config.concurrency
+    ?? (actionAnswerer(state.config) === "completion" ? Infinity : 1);
   const activeSessions = [...state.activeExecutions.values()].filter(e => e.currentSessionId !== null).length;
   if (activeSessions >= maxConcurrency) {
     console.log(`[actions] "${name}" at concurrency limit (${activeSessions}/${maxConcurrency}) — dropping ${triggerInfo.type} trigger`);
@@ -798,6 +835,7 @@ async function fireAction(
   exec.runNumber++;
   const execRunNumber = exec.runNumber; // per-execution run number
   const cfg = state.config;
+  const answerer = actionAnswerer(cfg);
   const effectiveUserProfile = overrides?.userProfile ?? cfg.userProfile ?? undefined;
   const actionDir = state.actionDir;
 
@@ -839,7 +877,20 @@ async function fireAction(
     }
 
     const startedAt = Date.now();
-    runId = insertActionRun(name, state.scopeKey, runNumber, null, startedAt, exec.cycleNumber, triggerInfo.type, effectiveUserProfile, exec.id);
+    runId = insertActionRun(
+      name,
+      state.scopeKey,
+      runNumber,
+      null,
+      startedAt,
+      exec.cycleNumber,
+      triggerInfo.type,
+      effectiveUserProfile,
+      exec.id,
+      answerer,
+    );
+    const answererConfigError = completionActionConfigError(cfg);
+    if (answererConfigError) throw new Error(answererConfigError);
     const profileWarnings: string[] = [];
     const initialProfile = resolveActionProfileReference(
       cfg.agentProfile,
@@ -870,7 +921,10 @@ async function fireAction(
         caller: "system",
         cwd: cfg.cwd ?? state.projectCwd ?? process.cwd(),
         userProfile: effectiveUserProfile,
-        pluginId: state.pluginId,
+        // A harness-origin action is content of the built-in core tier, so its
+        // settings are core's. Without this its pluginId is undefined and
+        // ctx.pluginSettings resolves nothing at all.
+        pluginId: state.pluginId ?? (state.origin === "harness" ? CORE_PLUGIN_ID : undefined),
         trust: cfg.trust ?? (state.origin === "harness" ? "builtin" : "reviewed"),
         capabilities: cfg.capabilities ?? {},
       });
@@ -961,6 +1015,14 @@ async function fireAction(
       };
       lastCtx = ctx;
 
+      const warnUnresolved = (field: string) => (key: string) => {
+        const warning = `"${name}" ${field} references setting "${key}", which is not configured — falling back to the agent profile`;
+        console.warn(`[actions] ${warning}`);
+        profileWarnings.push(warning);
+      };
+      const resolvedProvider = resolveActionSettingReference(cfg.provider, ctx.pluginSettings, warnUnresolved("provider"));
+      const resolvedModel = resolveActionSettingReference(cfg.model, ctx.pluginSettings, warnUnresolved("model"));
+
       if (attempt > 1) {
         console.log(`[actions] Retry attempt ${attempt}/${maxRetries + 1} for "${name}" run #${runNumber} (last error: ${lastVerifyError})`);
       }
@@ -977,6 +1039,7 @@ async function fireAction(
             response: null, summary: "skipped — gather returned null",
             costUsd: 0, durationMs: Date.now() - startedAt,
             sessionId: null, error: null,
+            answerer,
           };
           break;
         }
@@ -999,189 +1062,213 @@ async function fireAction(
       }
 
       // ── Move bindings (inline + persistent) ──
-      const effectiveCwd = cfg.cwd ?? process.cwd();
-      const logPrefix = `actions:${name}`;
-      let moveApiTokens: string[] = [];
-      if (cfg.moves?.length) {
-        // Phase 1: gather inline (non-persistent) moves before session starts
-        const phase1 = await activateMoveBindings(
-          cfg.moves, "", effectiveCwd, effectiveUserProfile,
-          { persistentOnly: false, logPrefix, agentProfile: cfg.agentProfile },
-        );
-        if (phase1.inlineContext) {
-          if (typeof prompt === "string") {
-            prompt = `${phase1.inlineContext}\n\n${prompt}`;
-          } else {
-            prompt = [{ type: "text", text: phase1.inlineContext }, ...prompt];
-          }
-        }
-        moveApiTokens = phase1.apiTokens;
-      }
-
-      // ── Skills ──
-      // This path calls startSession() directly rather than
-      // startSessionWithMoves(), so attachment is resolved here too. Same
-      // ordering constraint: the scope key must exist before spawn because the
-      // provider is handed its MCP endpoint URL at that moment.
-      const actionProfile = initialProfile ? getProfile(initialProfile, effectiveCwd) : undefined;
-      const attachedSkills = collectSkills(effectiveCwd, {
-        names: [...(actionProfile?.skills ?? []), ...(cfg.skills ?? [])],
-        moves: cfg.moves?.length ? getMoveSkillSources(cfg.moves, effectiveCwd) : [],
-      });
-      for (const miss of attachedSkills.missing) {
-        console.warn(`[skills] ${logPrefix}: ${miss.requestedBy} attached "${miss.name}", which resolves to nothing under ${effectiveCwd}`);
-      }
-      const skillScopeKey = createSkillScope(attachedSkills.skills);
-      // PI loads the attached files natively; only the other providers need the
-      // scoped endpoint that carries the skill tools.
-      const userProfile = effectiveUserProfile ? getUserProfile(effectiveUserProfile) : undefined;
-      const providerName = cfg.provider ?? actionProfile?.provider ?? userProfile?.provider ?? "claude-code";
-      const mcpScopeKey = acceptsInjectedSkillPaths(providerName) ? undefined : (skillScopeKey ?? undefined);
-      const sessionMcpCredential = mintSessionMcpCredential(mcpScopeKey);
-      let session: ActiveSession;
-      try {
-        session = startSession({
+      if (answerer === "completion") {
+        const completed = await answerWithCompletion({
+          actionName: name,
           prompt,
           profile: initialProfile,
-          provider: cfg.provider,
-          maxTurns: cfg.maxTurns,
-          model: cfg.model,
-          effort: cfg.effort,
-          cwd: cfg.cwd,
-          tools: cfg.tools,
-          disallowedTools: cfg.disallowedTools,
-          providerControls: cfg.providerControls,
-          loadProjectSettings: cfg.loadProjectSettings,
-          actionName: name,
-          userProfile: effectiveUserProfile,
-          ...(skillScopeKey ? { skillScopeKey } : {}),
-          mcpServers: {
-            modus: buildModusMcpServer(mcpScopeKey, sessionMcpCredential ?? undefined),
-          },
+          provider: resolvedProvider,
+          model: resolvedModel,
+          completer: ctx.model,
         });
-      } catch (error) {
-        if (sessionMcpCredential) revokeSessionMcpCredential(sessionMcpCredential);
-        throw error;
-      }
-
-      // Wait for provider init so session.sessionId reflects the post-rekey backend ID
-      await waitForProviderInit(session);
-
-      if (sessionMcpCredential) bindSessionMcpCredential(session.sessionId, sessionMcpCredential);
-      if (skillScopeKey) bindSessionSkillScope(session.sessionId, skillScopeKey);
-
-      exec.currentSessionId = session.sessionId;
-
-      // ── Tag session for webhook session routing ──
-      if (triggerInfo.webhookSessionTag) {
-        addSessionTag(session.sessionId, triggerInfo.webhookSessionTag);
-        console.log(`[actions] Tagged session ${session.sessionId} with "${triggerInfo.webhookSessionTag}"`);
-      }
-
-      // ── Rekey inline API move registrations + activate persistent moves ──
-      if (cfg.moves?.length) {
-        for (const token of moveApiTokens) {
-          rekeyMoveByToken(token, session.sessionId);
-        }
-        // Phase 2: activate persistent moves on the real session
-        await activateMoveBindings(
-          cfg.moves, session.sessionId, effectiveCwd, effectiveUserProfile,
-          { persistentOnly: true, logPrefix, agentProfile: cfg.agentProfile },
-        );
-      }
-      console.log(`[actions] Run #${runNumber} for "${name}" → session ${session.sessionId} (attempt ${attempt})`);
-
-      updateActionRun(runId, {
-        sessionId: session.sessionId,
-        status: "running",
-        attempts: attempt,
-      });
-
-      const attemptStart = Date.now();
-      console.log(`[actions:${name}] monitorSession START for ${session.sessionId}`);
-      const outcome = await monitorSession(session, name);
-      console.log(`[actions:${name}] monitorSession END: ${outcome.sessionStatus} (${Date.now() - attemptStart}ms)`);
-
-      const outcomeStatus: RunResult["status"] =
-        outcome.sessionStatus === "error" || outcome.sessionStatus === "timeout"
-          ? "error" : "done";
-
-      runResult = {
-        status: outcomeStatus,
-        response: outcome.response,
-        summary: outcome.summary,
-        costUsd: outcome.costUsd,
-        durationMs: Date.now() - attemptStart,
-        sessionId: session.sessionId,
-        error: outcome.error,
-      };
-
-      // ── Multi-step sequence ──
-      if (outcomeStatus !== "error" && cfg.steps?.length) {
-        let finalOutcome = outcome;
-
-        for (let si = 0; si < cfg.steps.length; si++) {
-          const step = cfg.steps[si]!;
-          const stepIndex = si + 1;
-
-          // 1. Switch profile
-          const stepProfile = resolveActionProfileReference(
-            step.profile,
-            state,
-            runId,
-            profileWarnings,
-            effectiveUserProfile,
+        runResult = {
+          status: "done",
+          response: completed.response,
+          summary: completed.summary,
+          costUsd: completed.costUsd,
+          durationMs: completed.completion.elapsedMs,
+          sessionId: null,
+          error: null,
+          answerer: "completion",
+          completion: completed.completion,
+        };
+      } else {
+        const effectiveCwd = cfg.cwd ?? process.cwd();
+        const logPrefix = `actions:${name}`;
+        let moveApiTokens: string[] = [];
+        if (cfg.moves?.length) {
+          // Phase 1: gather inline (non-persistent) moves before session starts
+          const phase1 = await activateMoveBindings(
+            cfg.moves, "", effectiveCwd, effectiveUserProfile,
+            { persistentOnly: false, logPrefix, agentProfile: cfg.agentProfile },
           );
-          const switched = await switchProfile(session.sessionId, stepProfile, {
-            contextMode: step.contextMode ?? "full",
-          });
-          if (!switched) {
-            runResult!.status = "error";
-            runResult!.error = `switch to "${step.profile}" failed`;
-            break;
+          if (phase1.inlineContext) {
+            if (typeof prompt === "string") {
+              prompt = `${phase1.inlineContext}\n\n${prompt}`;
+            } else {
+              prompt = [{ type: "text", text: phase1.inlineContext }, ...prompt];
+            }
           }
+          moveApiTokens = phase1.apiTokens;
+        }
 
-          // 2. Get prompt for this step
-          let stepPrompt: string | ActionContent;
-          if (step.prompt) {
-            stepPrompt = step.prompt;
-          } else {
-            const stepCtx = { ...ctx, stepIndex, previousStepResult: finalOutcome };
-            const stepGathered = await mod.gather(stepCtx);
-            if (stepGathered === null) {
-              console.log(`[actions:${name}] gather() returned null for step ${stepIndex} — skipping remaining steps`);
+        // ── Skills ──
+        // This path calls startSession() directly rather than
+        // startSessionWithMoves(), so attachment is resolved here too. Same
+        // ordering constraint: the scope key must exist before spawn because the
+        // provider is handed its MCP endpoint URL at that moment.
+        const actionProfile = initialProfile ? getProfile(initialProfile, effectiveCwd) : undefined;
+        const attachedSkills = collectSkills(effectiveCwd, {
+          names: [...(actionProfile?.skills ?? []), ...(cfg.skills ?? [])],
+          moves: cfg.moves?.length ? getMoveSkillSources(cfg.moves, effectiveCwd) : [],
+        });
+        for (const miss of attachedSkills.missing) {
+          console.warn(`[skills] ${logPrefix}: ${miss.requestedBy} attached "${miss.name}", which resolves to nothing under ${effectiveCwd}`);
+        }
+        const skillScopeKey = createSkillScope(attachedSkills.skills);
+        // PI loads the attached files natively; only the other providers need the
+        // scoped endpoint that carries the skill tools.
+        const userProfile = effectiveUserProfile ? getUserProfile(effectiveUserProfile) : undefined;
+        const providerName = resolvedProvider ?? actionProfile?.provider ?? userProfile?.provider ?? "claude-code";
+        const mcpScopeKey = acceptsInjectedSkillPaths(providerName) ? undefined : (skillScopeKey ?? undefined);
+        const sessionMcpCredential = mintSessionMcpCredential(mcpScopeKey);
+        let session: ActiveSession;
+        try {
+          session = startSession({
+            prompt,
+            profile: initialProfile,
+            provider: resolvedProvider,
+            maxTurns: cfg.maxTurns,
+            model: resolvedModel,
+            effort: cfg.effort,
+            cwd: cfg.cwd,
+            tools: cfg.tools,
+            disallowedTools: cfg.disallowedTools,
+            providerControls: cfg.providerControls,
+            loadProjectSettings: cfg.loadProjectSettings,
+            actionName: name,
+            userProfile: effectiveUserProfile,
+            ...(skillScopeKey ? { skillScopeKey } : {}),
+            mcpServers: {
+              modus: buildModusMcpServer(mcpScopeKey, sessionMcpCredential ?? undefined),
+            },
+          });
+        } catch (error) {
+          if (sessionMcpCredential) revokeSessionMcpCredential(sessionMcpCredential);
+          throw error;
+        }
+
+        // Wait for provider init so session.sessionId reflects the post-rekey backend ID
+        await waitForProviderInit(session);
+
+        if (sessionMcpCredential) bindSessionMcpCredential(session.sessionId, sessionMcpCredential);
+        if (skillScopeKey) bindSessionSkillScope(session.sessionId, skillScopeKey);
+
+        exec.currentSessionId = session.sessionId;
+
+        // ── Tag session for webhook session routing ──
+        if (triggerInfo.webhookSessionTag) {
+          addSessionTag(session.sessionId, triggerInfo.webhookSessionTag);
+          console.log(`[actions] Tagged session ${session.sessionId} with "${triggerInfo.webhookSessionTag}"`);
+        }
+
+        // ── Rekey inline API move registrations + activate persistent moves ──
+        if (cfg.moves?.length) {
+          for (const token of moveApiTokens) {
+            rekeyMoveByToken(token, session.sessionId);
+          }
+          // Phase 2: activate persistent moves on the real session
+          await activateMoveBindings(
+            cfg.moves, session.sessionId, effectiveCwd, effectiveUserProfile,
+            { persistentOnly: true, logPrefix, agentProfile: cfg.agentProfile },
+          );
+        }
+        console.log(`[actions] Run #${runNumber} for "${name}" → session ${session.sessionId} (attempt ${attempt})`);
+
+        updateActionRun(runId, {
+          sessionId: session.sessionId,
+          status: "running",
+          attempts: attempt,
+        });
+
+        const attemptStart = Date.now();
+        console.log(`[actions:${name}] monitorSession START for ${session.sessionId}`);
+        const outcome = await monitorSession(session, name);
+        console.log(`[actions:${name}] monitorSession END: ${outcome.sessionStatus} (${Date.now() - attemptStart}ms)`);
+
+        const outcomeStatus: RunResult["status"] =
+          outcome.sessionStatus === "error" || outcome.sessionStatus === "timeout"
+            ? "error" : "done";
+
+        runResult = {
+          status: outcomeStatus,
+          response: outcome.response,
+          summary: outcome.summary,
+          costUsd: outcome.costUsd,
+          durationMs: Date.now() - attemptStart,
+          sessionId: session.sessionId,
+          error: outcome.error,
+          answerer: "session",
+        };
+
+        // ── Multi-step sequence ──
+        if (outcomeStatus !== "error" && cfg.steps?.length) {
+          let finalOutcome = outcome;
+
+          for (let si = 0; si < cfg.steps.length; si++) {
+            const step = cfg.steps[si]!;
+            const stepIndex = si + 1;
+
+            // 1. Switch profile
+            const stepProfile = resolveActionProfileReference(
+              step.profile,
+              state,
+              runId,
+              profileWarnings,
+              effectiveUserProfile,
+            );
+            const switched = await switchProfile(session.sessionId, stepProfile, {
+              contextMode: step.contextMode ?? "full",
+            });
+            if (!switched) {
+              runResult!.status = "error";
+              runResult!.error = `switch to "${step.profile}" failed`;
               break;
             }
-            stepPrompt = stepGathered;
+
+            // 2. Get prompt for this step
+            let stepPrompt: string | ActionContent;
+            if (step.prompt) {
+              stepPrompt = step.prompt;
+            } else {
+              const stepCtx = { ...ctx, stepIndex, previousStepResult: finalOutcome };
+              const stepGathered = await mod.gather(stepCtx);
+              if (stepGathered === null) {
+                console.log(`[actions:${name}] gather() returned null for step ${stepIndex} — skipping remaining steps`);
+                break;
+              }
+              stepPrompt = stepGathered;
+            }
+
+            // 3. Queue message (status set to "starting" by queueMessage)
+            const promptStr = typeof stepPrompt === "string" ? stepPrompt : JSON.stringify(stepPrompt);
+            await interactWithSession({
+              sessionId: session.sessionId,
+              prompt: promptStr,
+              createIfMissing: false,
+            });
+
+            // 4. Wait for step completion
+            finalOutcome = await monitorSession(session, name);
+
+            // Accumulate cost
+            runResult!.costUsd += finalOutcome.costUsd;
+
+            if (finalOutcome.sessionStatus === "error" || finalOutcome.sessionStatus === "timeout") {
+              runResult!.status = "error";
+              runResult!.error = finalOutcome.error;
+              break;
+            }
           }
 
-          // 3. Queue message (status set to "starting" by queueMessage)
-          const promptStr = typeof stepPrompt === "string" ? stepPrompt : JSON.stringify(stepPrompt);
-          await interactWithSession({
-            sessionId: session.sessionId,
-            prompt: promptStr,
-            createIfMissing: false,
-          });
-
-          // 4. Wait for step completion
-          finalOutcome = await monitorSession(session, name);
-
-          // Accumulate cost
-          runResult!.costUsd += finalOutcome.costUsd;
-
-          if (finalOutcome.sessionStatus === "error" || finalOutcome.sessionStatus === "timeout") {
-            runResult!.status = "error";
-            runResult!.error = finalOutcome.error;
-            break;
+          // Update runResult with final step's outcome
+          runResult!.response = finalOutcome.response;
+          runResult!.summary = finalOutcome.summary;
+          if (runResult!.status !== "error") {
+            runResult!.status = "done";
           }
         }
 
-        // Update runResult with final step's outcome
-        runResult!.response = finalOutcome.response;
-        runResult!.summary = finalOutcome.summary;
-        if (runResult!.status !== "error") {
-          runResult!.status = "done";
-        }
       }
 
       if (runResult!.status === "error") break;
@@ -1256,6 +1343,8 @@ async function fireAction(
       error: runResult!.error ?? undefined,
       verifyError: lastVerifyError,
       attempts: finalAttempts,
+      answerer: runResult!.answerer,
+      answererMetadata: runResult!.completion,
     });
 
     console.log(`[actions] Run #${runNumber} finalized for "${name}": ${finalStatus} (${finalAttempts} attempt(s))`);
@@ -1313,6 +1402,7 @@ async function fireAction(
       status: isTransient ? "error-transient" : "error",
       response: null, summary: null, costUsd: 0, durationMs: 0,
       sessionId: null, error: errMsg,
+      answerer,
     };
     if (runId !== null) {
       updateActionRun(runId, {
@@ -1339,7 +1429,14 @@ async function fireAction(
       agentProfile: cfg.agentProfile,
       userProfile: effectiveUserProfile,
       summary: `Action "${name}" run #${runNumber}: ${runResult?.status ?? "unknown"}`,
-      metadata: { status: runResult?.status, costUsd: runResult?.costUsd, durationMs: runResult?.durationMs, error: runResult?.error },
+      metadata: {
+        status: runResult?.status,
+        costUsd: runResult?.costUsd,
+        durationMs: runResult?.durationMs,
+        error: runResult?.error,
+        answerer: runResult?.answerer ?? answerer,
+        completion: runResult?.completion,
+      },
     });
 
     // Track cost on execution
@@ -1595,6 +1692,16 @@ export async function handleWebhook(name: string, token: string, payload?: unkno
 }
 
 function writeActionConfig(state: ActionState): void {
+  // A harness-origin action is shipped inside the installed application, so its
+  // action.json is read-only by contract: the user's choice goes to the
+  // per-Vault overlay instead. See core-action-overlay.ts.
+  if (state.origin === "harness") {
+    patchCoreActionOverlay(state.config.name, {
+      enabled: state.config.enabled,
+      ...(state.config.trigger.type === "interval" ? { every: state.config.trigger.every } : {}),
+    });
+    return;
+  }
   const configPath = join(state.actionDir, "action.json");
   const authored = JSON.parse(readFileSync(configPath, "utf-8")) as ActionConfig;
   authored.enabled = state.config.enabled;
@@ -1796,6 +1903,12 @@ export function onSessionEvent(
 
     // Check userProfile scoping
     if (state.config.userProfile && session.userProfile !== state.config.userProfile) continue;
+
+    // A user profile's `actions` allowlist filters what visibleActionStates()
+    // returns, so without this an action the profile excludes is invisible in
+    // the UI and still fires on that profile's sessions — the one combination
+    // the user cannot diagnose.
+    if (!actionAllowedByUserProfile(state, session.userProfile)) continue;
 
     // Match the event against the trigger's `on` spec
     const on = trigger.on;

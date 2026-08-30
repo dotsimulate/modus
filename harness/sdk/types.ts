@@ -1,8 +1,9 @@
 // ── ModusClient SDK Types ──
 
 import type { TurnMeta } from "../turn-meta";
+import type { ActionAnswerer, ActionCompletionMetadata } from "../action-answerer-types";
 
-export type { TurnMeta };
+export type { TurnMeta, ActionAnswerer, ActionCompletionMetadata };
 
 /** Options for constructing a ModusClient connection to the harness server. */
 export type ModusClientOptions = {
@@ -1426,6 +1427,8 @@ export type ActionInfo = {
   /** Project root for project-local actions. */
   projectCwd?: string;
   agentProfile: string;
+  /** Absent is the historic session-spawning path. */
+  answerer?: ActionAnswerer;
   trigger: ActionTrigger;
   /** For interval triggers, how long between cycles (a cycle is a batch of runs). */
   cycleInterval?: string;
@@ -1480,6 +1483,9 @@ export type ActionRun = {
   verifyError?: string | null;
   /** Non-fatal automation configuration warning (for example a missing profile). */
   warning?: string | null;
+  /** Persisted execution path; old rows normalize to session. */
+  answerer: ActionAnswerer;
+  completion?: ActionCompletionMetadata;
 };
 
 export type ActionExecution = {

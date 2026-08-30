@@ -163,6 +163,7 @@ describe("type shapes", () => {
       status: "failed-verification",
       response: null, summary: null, costUsd: 0,
       durationMs: 0, sessionId: null, error: "SVG empty",
+      answerer: "session",
     };
     expect(r1.status).toBe("failed-verification");
 
@@ -170,6 +171,7 @@ describe("type shapes", () => {
       status: "error-transient",
       response: null, summary: null, costUsd: 0,
       durationMs: 0, sessionId: null, error: "ECONNREFUSED",
+      answerer: "session",
     };
     expect(r2.status).toBe("error-transient");
   });
@@ -374,7 +376,7 @@ describe("type shapes", () => {
       status: "done", summary: null, startedAt: Date.now(),
       completedAt: Date.now(), costUsd: 0, error: null,
       triggerType: "manual", afterRunError: null,
-      attempts: 1, verifyError: null, executionId: 42,
+      attempts: 1, verifyError: null, executionId: 42, answerer: "session",
     };
     expect(run.executionId).toBe(42);
   });
@@ -385,7 +387,7 @@ describe("type shapes", () => {
       status: "done", summary: null, startedAt: Date.now(),
       completedAt: Date.now(), costUsd: 0, error: null,
       triggerType: "manual", afterRunError: null,
-      attempts: 1, verifyError: null, executionId: null,
+      attempts: 1, verifyError: null, executionId: null, answerer: "session",
     };
     expect(run.executionId).toBeNull();
   });

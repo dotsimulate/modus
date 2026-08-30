@@ -22,6 +22,7 @@ function run(runNumber: number, status: string): ActionRun {
     error: null,
     triggerType: "interval",
     afterRunError: null,
+    answerer: "session",
   };
 }
 
@@ -76,5 +77,11 @@ describe("action run history", () => {
     expect(actionsStyles).toMatch(
       /\.sched-run-status-label--skipped\s*\{[^}]*color:\s*var\(--text-muted\)/s,
     );
+  });
+
+  test("renders completion telemetry instead of inventing a session link", () => {
+    expect(actionsSource).toContain('run.answerer === "completion"');
+    expect(actionsSource).toContain("completion.usage.totalTokens");
+    expect(actionsSource).toContain("completion.stopReason");
   });
 });

@@ -1,7 +1,7 @@
 ---
 title: Actions
-lastUpdated: 2026-08-22
-covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts harness/skill-attachment.ts
+lastUpdated: 2026-08-29
+covers: harness/action-runner.ts harness/action-types.ts harness/harness-context.ts harness/skill-attachment.ts harness/core-action-overlay.ts harness/action-setting-reference.ts
 ---
 
 # Actions
@@ -11,15 +11,42 @@ what context, and what happens after.
 
 ## Directory Structure
 
-Built-in harness actions live in `harness/actions/<name>/`. Project-local actions
-live in `.modus/actions/<name>/`, and enabled plugin actions live in
+Shipped core actions live in `harness/core-actions/<name>/` — tracked content of
+the built-in `modus-core` tier, staged into a build. Project-local actions live in
+`.modus/actions/<name>/`, and enabled plugin actions live in
 `<plugin>/.modus/actions/<name>/`. Resolution is project → plugin → built-in.
+
+`harness/actions/<name>/` is a gitignored personal scratch root. It still loads in
+a source checkout, but it is deliberately not staged into a build: the staging
+copy has no gitignore awareness, so shipping it would ship whatever the machine
+that ran the build happened to have there — including the webhook tokens the
+loader writes back into an authored `action.json`.
 
 Each action directory contains:
 ```
 action.json   — ActionConfig (required)
 context.ts    — ActionModule: gather(), verify?(), afterRun?() (required)
 ```
+
+### Core action state is per-Vault
+
+A shipped core action's `action.json` is an **immutable default**. It lives in
+the packaged resources directory, which is the installed application — on macOS
+that is inside the signed `.app`, and everywhere else an upgrade replaces the
+file. It is also install-wide, so two Vaults could not disagree about it.
+
+Enabling, disabling, or re-timing a core action therefore writes to a per-Vault
+overlay at `<current-home>/core-actions.json` instead:
+
+```json
+{ "actions": { "auto-title": { "enabled": true } } }
+```
+
+Only the fields a user can change from the UI live there (`enabled`, and `every`
+for an interval trigger); everything else stays authored. An absent overlay means
+the shipped default applies — and shipped core actions default to
+`"enabled": false`, so an upgrade never starts running something new on its own.
+An unreadable overlay is ignored rather than failing action loading.
 
 ## Trigger Types
 
@@ -31,13 +58,17 @@ context.ts    — ActionModule: gather(), verify?(), afterRun?() (required)
 | `action` | Another action completes | `source` (action name), `condition` ("any"/"done"/"error") |
 | `session` | Session event fires | `on` (role + round + at, or "archived"/"deleted"), `excludeTags` — payload includes `assistantSeq` + `assistantMessageUuid` on assistant rounds |
 
+A session trigger is filtered by the same user-profile `actions` allowlist that
+decides what the Actions list shows. An action a profile excludes is neither
+listed for that profile nor fired on its sessions.
+
 ## Execution Model
 
 ```
 Trigger
   → gather(ctx) — build the prompt (access to DB, prior runs, trigger payload)
-  → Spawn session with agent profile
-  → Monitor until idle/done/error
+  → Answer through a session (default) or one-shot completion
+  → Monitor the session when one was spawned
   → verify?(ctx, result) — inspect output, accept/reject/retry
   → afterRun?(ctx, result) — side effects (only on success)
   → Notify channels (on configured statuses)
@@ -72,6 +103,65 @@ data into every run. Available as `ctx.inputs` in gather, verify, and afterRun.
 `ctx.cwd` carries the action's configured working directory (from `cfg.cwd`).
 Plugin actions default `cwd` to the plugin root and expand `${pluginDir}`
 recursively in `cwd` and `inputs`.
+
+### Answerers
+
+`ActionConfig.answerer` selects who answers the value returned by `gather()`:
+
+- absent or `"session"` preserves the historic behavior: spawn and monitor an
+  agent session;
+- `"completion"` calls `ctx.model.complete()` and passes its text to `verify()`
+  and `afterRun()` through the same `RunResult.response` field. No session is
+  created.
+
+Completion mode resolves its target from `agentProfile`; explicit action
+`provider` and `model` fields override that profile. It goes through the
+`modelCall` capability gate, never `sessionSpawn`. The run record carries
+`answerer: "completion"` plus the one-shot id, provider, model, transport,
+elapsed milliseconds, usage, and stop reason. The Actions run history shows
+those details in place of a session link.
+
+The PI transport itself uses a streaming model request, including
+`stream: true` for OpenAI-compatible providers, then buffers those events into
+the final result returned by `complete()`. Action authors receive the final
+value rather than progressive text deltas; progressive caller/UI delivery is a
+separate surface.
+
+A completion answerer accepts only a string from `gather()`. Multipart
+text/image content and session-only configuration are rejected with a named
+error instead of being ignored. Session-only fields are `steps`, `maxTurns`,
+`effort`, `tools`, `disallowedTools`, `providerControls`,
+`loadProjectSettings`, `moves`, and `skills`. Existing actions are unchanged
+when `answerer` is absent.
+
+**Concurrency defaults differ by answerer.** `concurrency` defaults to `1` for a
+session answerer, so a heavyweight action cannot spawn a second agent session on
+top of one still running. A completion answerer spawns nothing — it is a single
+in-process request — so it is **uncapped** unless the author sets `concurrency`
+explicitly. Without that, a per-session reflex is silently lossy: two sessions
+finishing a turn at the same moment, and only the first is served. Concurrent
+runs each get their own execution, so nothing is shared between them.
+
+### Settings references in `provider` and `model`
+
+An action's `provider` and `model` may be written as `${settings.<key>}`, which
+resolves against the owning plugin's settings (`ctx.pluginSettings`) **when the
+action fires**. Load-time `${pluginDir}` expansion is not enough here: settings
+change through the settings API without an action reload, so a value resolved at
+boot would go stale.
+
+```json
+{ "answerer": "completion", "provider": "${settings.titleProvider}", "model": "${settings.titleModel}" }
+```
+
+This is whole-string only and is not general templating — a provider or model is
+the entire value, and matching the whole string means an unresolved reference is
+visibly unresolved rather than a half-substituted model id that fails obscurely
+at the provider. An unresolved reference falls back to the agent profile and
+records a warning on the run.
+
+Harness-origin actions resolve settings against `modus-core`, which is the tier
+that ships them.
 
 **Move activation**: `ActionConfig.moves?: ActionMoveSpec[]` declares moves to
 activate on the spawned session. The runner uses move activation after session

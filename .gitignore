@@ -90,9 +90,16 @@ harness/package-lock.json
 # Harness runtime (auto-generated, personal per-user)
 # NOTE: user-owned profile state now lives in ~/.modus/profiles/ — see
 # harness/modus-home.ts. Nothing writes inside harness/profiles/ at runtime.
+# harness/actions/ is a personal scratch root: it loads in a source checkout and
+# is deliberately NOT staged into a build. Shipped actions are tracked content
+# under harness/core-actions/ — see desktop/stage-managed-backend.ts.
 harness/actions/
 harness/actions/*/output/
 harness/actions/*/gallery/
+# Run artifacts land beside the action they came from, including under the
+# tracked core root.
+harness/core-actions/*/output/
+harness/core-actions/*/gallery/
 harness/schedules/
 harness/TODO/
 TODO/
@@ -141,6 +148,7 @@ logs/
 .DS_Store
 Thumbs.db
 Desktop.ini
+*.stackdump
 
 # Editor / IDE
 .idea/

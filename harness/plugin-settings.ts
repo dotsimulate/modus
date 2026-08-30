@@ -5,15 +5,29 @@
  *   user    → user-profile UI client-extension settings
  *   project → <cwd>/.modus/_global.json
  *   Vault   → <current-home>/plugins.json registration
+ *
+ * The built-in `modus-core` tier is the one exception. It is synthesized rather
+ * than registered (see getCoreModusPlugin), so it has no `plugins.json` row to
+ * hold Vault-scoped values. Its global settings live in the Vault's own
+ * `_global.json` under `pluginSettings["modus-core"]` instead — the same field
+ * project scope already uses, one layer up. That keeps core settings per-Vault
+ * without inventing a file or a schema for a single plugin.
  */
 
 import {
+  CORE_PLUGIN_ID,
   getModusPlugin,
   patchModusPluginSettings,
   type PluginSettingDefinition,
   type PluginSettingScope,
 } from "./modus-plugins";
+import { ensureHomeLayout } from "./modus-home";
 import { settingNumberError } from "./settings-schema";
+import {
+  isKnownProvider,
+  listOneShotProviders,
+  supportsOneShotCompletion,
+} from "./providers/provider-names";
 import {
   getStoredGlobalConfig,
   getUserProfileUiConfig,
@@ -64,6 +78,24 @@ function assertSettingValue(setting: PluginSettingDefinition, value: unknown): v
         throw new Error(`${setting.key} is not one of the declared options`);
       }
       return;
+    case "provider":
+      if (typeof value !== "string") throw new Error(`${setting.key} must be a provider name`);
+      if (value && !isKnownProvider(value)) {
+        throw new Error(`${setting.key} is not a known provider: ${value}`);
+      }
+      if (value && setting.oneShotOnly && !supportsOneShotCompletion(value)) {
+        throw new Error(
+          `${setting.key} must be a provider that can answer a one-shot completion `
+          + `(${listOneShotProviders().join(", ")}); "${value}" would have to spawn a full session`,
+        );
+      }
+      return;
+    case "model":
+      // Not checked against a live catalogue: that costs a network round trip on
+      // every write, and a provider that is briefly unreachable would reject a
+      // model the user can see in their own picker.
+      if (typeof value !== "string") throw new Error(`${setting.key} must be a model id`);
+      return;
     case "project-list":
       if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
         throw new Error(`${setting.key} must be an array of registered project paths`);
@@ -78,6 +110,27 @@ function assertSettingValue(setting: PluginSettingDefinition, value: unknown): v
   }
 }
 
+/** Vault-scoped values for the synthesized core tier, which has no registration row. */
+function coreGlobalValues(): Record<string, unknown> | undefined {
+  return getStoredGlobalConfig().pluginSettings?.[CORE_PLUGIN_ID];
+}
+
+function writeCoreGlobalValues(values: Record<string, unknown>): void {
+  // saveGlobalConfig only creates the directory on its project branch, so a
+  // Vault whose _global.json has never been written would fail here. Boot
+  // normally runs rehydrateHome() first, but core settings must not depend on
+  // having been reached in that order.
+  ensureHomeLayout();
+  const config = getStoredGlobalConfig();
+  saveGlobalConfig({
+    ...config,
+    pluginSettings: {
+      ...(config.pluginSettings ?? {}),
+      [CORE_PLUGIN_ID]: { ...(config.pluginSettings?.[CORE_PLUGIN_ID] ?? {}), ...values },
+    },
+  });
+}
+
 function storedValues(pluginId: string, context: PluginSettingsContext) {
   const plugin = getModusPlugin(pluginId, { includeDisabled: true });
   if (!plugin) throw new Error(`plugin not found: ${pluginId}`);
@@ -87,7 +140,8 @@ function storedValues(pluginId: string, context: PluginSettingsContext) {
   const projectValues = context.cwd
     ? getStoredGlobalConfig(context.cwd).pluginSettings?.[plugin.id]
     : undefined;
-  return { plugin, userValues, projectValues, globalValues: plugin.settings };
+  const globalValues = plugin.id === CORE_PLUGIN_ID ? coreGlobalValues() : plugin.settings;
+  return { plugin, userValues, projectValues, globalValues };
 }
 
 export function getPluginSettings(
@@ -161,8 +215,12 @@ export function patchPluginSettings(
     }, context.cwd);
   }
 
-  if (Object.keys(byScope.global).length && !patchModusPluginSettings(plugin.id, byScope.global)) {
-    throw new Error(`global settings cannot be written for plugin "${plugin.id}"`);
+  if (Object.keys(byScope.global).length) {
+    if (plugin.id === CORE_PLUGIN_ID) {
+      writeCoreGlobalValues(byScope.global);
+    } else if (!patchModusPluginSettings(plugin.id, byScope.global)) {
+      throw new Error(`global settings cannot be written for plugin "${plugin.id}"`);
+    }
   }
 
   return getPluginSettings(plugin.id, context);
