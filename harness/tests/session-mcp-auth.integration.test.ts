@@ -1,6 +1,7 @@
 import { resolve as resolveTestSourceDir } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { removeTreeAfterExit } from "./fixtures/remove-tree";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -81,8 +82,8 @@ beforeAll(async () => {
 afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
   if (backend) await backend.exited;
-  rmSync(isolatedRoot, { recursive: true, force: true });
-  if (childPid !== null) rmSync(join(tmpdir(), "modus-tests", String(childPid)), { recursive: true, force: true });
+  await removeTreeAfterExit(isolatedRoot);
+  if (childPid !== null) await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(childPid)));
   // Kill, await exit, and unlink a tree can outrun the 5s default under load.
 }, 15_000);
 

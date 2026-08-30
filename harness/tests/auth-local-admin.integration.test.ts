@@ -1,6 +1,7 @@
 import { resolve as resolveTestSourceDir } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { removeTreeAfterExit } from "./fixtures/remove-tree";
+import { existsSync, mkdtempSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -56,8 +57,8 @@ beforeAll(async () => {
 afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
   if (backend) await backend.exited;
-  rmSync(isolatedRoot, { recursive: true, force: true });
-  if (backend?.pid) rmSync(join(tmpdir(), "modus-tests", String(backend.pid)), { recursive: true, force: true });
+  await removeTreeAfterExit(isolatedRoot);
+  if (backend?.pid) await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(backend.pid)));
   // Killing the backend, awaiting its exit, and removing the isolated tree can
   // also outrun the 5s default on a loaded runner.
 }, 15_000);

@@ -1,6 +1,7 @@
 import { resolve as resolveTestSourceDir } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { removeTreeAfterExit } from "./fixtures/remove-tree";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -76,9 +77,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (backend && backend.exitCode === null) backend.kill();
   if (backend) await backend.exited;
-  rmSync(isolatedRoot, { recursive: true, force: true });
+  await removeTreeAfterExit(isolatedRoot);
   if (childPid !== null) {
-    rmSync(join(tmpdir(), "modus-tests", String(childPid)), { recursive: true, force: true });
+    await removeTreeAfterExit(join(tmpdir(), "modus-tests", String(childPid)));
   }
   // Teardown spawns no work of its own but still kills, awaits, and unlinks a
   // tree; that can outrun the 5s default on a loaded runner.
