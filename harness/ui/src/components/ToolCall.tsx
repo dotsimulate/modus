@@ -25,6 +25,7 @@ import {
   loadMoveComponent,
   loadMoveComponentCSS,
 } from "./move-component-loader";
+import { canonicalToolName, isTodoTool } from "../tool-names";
 
 type Props = {
   tool: ToolCallType;
@@ -61,22 +62,12 @@ class MoveToolViewErrorBoundary extends Component<{
 }
 
 function displayToolName(name: string): string {
+  if (isTodoTool(name)) return "todo";
   if (name === "CommandExecution") return "command execution";
   if (name === "FileChange") return "file change";
   if (name === "WebSearch") return "web search";
   if (name === "MCPToolCall") return "mcp tool call";
   return name;
-}
-
-/**
- * Fold the many spellings of one tool onto a single key.
- *
- * Providers disagree about casing for the same tool (`Read`/`read`,
- * `Bash`/`bash`) and about separators (`web_search` vs `WebSearch`), which is
- * why this switch used to carry a case per spelling.
- */
-function canonicalToolName(name: string): string {
-  return name.toLowerCase().replace(/[_-]/g, "");
 }
 
 /** Arguments worth putting in a headline, most specific first. */
@@ -490,14 +481,14 @@ export const ToolCallView = memo(function ToolCallView({
   artifacts,
 }: Props) {
   const { openFile } = useFileViewer();
-  const [expanded, setExpanded] = useState(defaultExpanded ?? (tool.name === "TodoWrite"));
+  const isTodo = isTodoTool(tool.name);
+  const [expanded, setExpanded] = useState(defaultExpanded ?? isTodo);
   const [toolViewResolution, setToolViewResolution] = useState<MoveToolViewResolution | null>(null);
   const [ToolViewComponent, setToolViewComponent] = useState<ComponentType<MoveToolViewProps> | null>(null);
   // A claimed row that falls back to the native rendering is indistinguishable
   // from an unclaimed one, and a packaged desktop has no console to check. Keep
   // the reason so the row can say why instead of silently degrading.
   const [toolViewError, setToolViewError] = useState<string | null>(null);
-  const isTodo = tool.name === "TodoWrite";
   const apiToken = moveApiToken(tool);
   const op = moveApiOp(tool);
 

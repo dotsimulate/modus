@@ -1,5 +1,6 @@
 import type { SessionTurnIndexEntry, ToolCall } from "../../sdk/index";
 import { segmentMessage, type ChatTurn } from "./turn-segments";
+import { canonicalToolName } from "./tool-names";
 
 export type TurnActivity = {
   phase: "thinking" | "writing" | "tool" | "recent" | "error";
@@ -105,10 +106,6 @@ export function shouldAutoScrollTurn(
   scrollHeight: number,
 ): boolean {
   return latestTurn && following && scrollHeight > clientHeight + 1;
-}
-
-function canonicalToolName(name: string): string {
-  return name.toLowerCase().replace(/[_-]/g, "");
 }
 
 function truncate(value: string, max = 58): string {

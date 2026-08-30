@@ -205,12 +205,16 @@ describe("Grok Build ACP provider", () => {
     await waitFor(() => events.some((event) => event.type === "result" && event.subtype === "success"));
 
     expect(session.providerSessionId).toBe("fake-grok-session");
+    const init = events.find((event) => event.subtype === "init");
+    expect(init?.session_id).toBe("modus-test-session");
+    expect(init?.session_id).not.toBe(session.providerSessionId);
     expect(events.some((event) => event.type === "stream_event" && event.fullText === "hello world")).toBe(true);
     expect(events.some((event) => event.message?.content?.[0]?.type === "thinking")).toBe(true);
     expect(events.some((event) => event.message?.content?.[0]?.type === "tool_use")).toBe(true);
     expect(events.some((event) => event.subtype === "tool_result")).toBe(true);
     const result = events.find((event) => event.type === "result" && event.subtype === "success");
     expect(result).toMatchObject({ result: "hello world", input_tokens: 11, output_tokens: 7, total_tokens: 18, total_cost_usd: 0.001 });
+    expect(events.some((event) => event.type === "done")).toBe(true);
     expect(updates.at(-1)).toMatchObject({ status: "idle", costUsd: 0.001, lastResponse: "hello world" });
     expect(session.status).toBe("idle");
 

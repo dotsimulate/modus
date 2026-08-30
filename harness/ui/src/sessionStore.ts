@@ -10,11 +10,12 @@ import { useSyncExternalStore, useCallback } from "react";
 import { createInitialState, reduceEvent, type ReducerState } from "./eventReducer";
 import { modus } from "./modusClient";
 import {
-  multiSubscribe, multiReconnect, multiRekey, multiUnsubscribeAll,
+  multiSubscribe, multiReconnect, multiRekey, multiResume, multiUnsubscribeAll,
 } from "./multiEventStream";
 import { nextMsgId, type Session, type SessionHistorySnapshot, type TurnContent } from "../../sdk/index";
 import { readLocalInterfaceSettings } from "./interface-settings";
 import { reportClientTiming } from "./client-timing";
+import { isClientTempSessionId } from "./session-id";
 
 // ── Store State ──
 
@@ -480,8 +481,7 @@ export function applyEventBatch(id: string, events: { event: string; data: any; 
     // session_id values (e.g. temp → real → temp again after interrupts).
     // Replaying those rekeys creates an infinite subscribe loop between
     // the old and new IDs. The store already has the correct final ID.
-    if (!entry.catchingUp && event.type === "system" && event.subtype === "init" && event.session_id && event.session_id !== resolvedId) {
-      rekeySession(resolvedId, event.session_id);
+    if (maybeRekeyFromInit(resolvedId, event, entry.catchingUp)) {
       return; // rekey triggers notify
     }
     if (event.type === "system" && event.subtype === "switch" && event.toProfile) {
@@ -534,8 +534,7 @@ export function applyEvent(id: string, event: any, seq: number) {
   // Auto-rekey when provider's init event carries a different session ID
   // (e.g. temp ses-* → real UUID from claude-code-pty or other providers).
   // Skip during catch-up — replaying old rekeys creates infinite loops.
-  if (!entry.catchingUp && event.type === "system" && event.subtype === "init" && event.session_id && event.session_id !== resolvedId) {
-    rekeySession(resolvedId, event.session_id);
+  if (maybeRekeyFromInit(resolvedId, event, entry.catchingUp)) {
     return; // rekeySession already calls notify()
   }
   // Profile switch: update the entry-level profile name
@@ -561,6 +560,16 @@ const rekeyListeners = new Set<(oldId: string, newId: string) => void>();
 export function onSessionRekey(fn: (oldId: string, newId: string) => void): () => void {
   rekeyListeners.add(fn);
   return () => { rekeyListeners.delete(fn); };
+}
+
+function maybeRekeyFromInit(resolvedId: string, event: any, catchingUp: boolean | undefined): boolean {
+  if (catchingUp) return false;
+  if (event?.type !== "system" || event.subtype !== "init") return false;
+  const nextId = typeof event.session_id === "string" ? event.session_id : "";
+  if (!nextId || nextId === resolvedId) return false;
+  if (!isClientTempSessionId(resolvedId)) return false;
+  rekeySession(resolvedId, nextId);
+  return true;
 }
 
 /** Re-key a session (e.g. pending-xxx → real ID) */
@@ -1041,6 +1050,11 @@ export function evictInactiveSessions(keepId: string) {
 export function unsubscribeAll() {
   subscriptions.clear();
   multiUnsubscribeAll();
+}
+
+/** Force active transcript streams to re-open after browser suspension. */
+export function resumeSessionEventStreams() {
+  multiResume();
 }
 
 // ── Derive Session (public shape) from ReducerState ──

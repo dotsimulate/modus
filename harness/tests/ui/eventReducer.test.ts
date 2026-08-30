@@ -1,6 +1,32 @@
 import { describe, expect, test } from "bun:test";
 import { createInitialState, reduceEvent, splitToolResultContent, TOOL_RESULT_STORE_LIMIT } from "../../ui/src/eventReducer";
 
+describe("eventReducer init session identity", () => {
+  test("keeps a durable session id when init carries a provider-native conversation id", () => {
+    const modusId = "11111111-1111-4111-8111-111111111111";
+    let state = createInitialState(modusId);
+    state = reduceEvent(state, {
+      type: "system",
+      subtype: "init",
+      session_id: "fake-grok-session",
+      model: "grok-test",
+    }, 1);
+    expect(state.sessionId).toBe(modusId);
+    expect(state.status).toBe("running");
+  });
+
+  test("still adopts init.session_id from a pending composer id", () => {
+    let state = createInitialState("pending-draft");
+    state = reduceEvent(state, {
+      type: "system",
+      subtype: "init",
+      session_id: "11111111-1111-4111-8111-111111111111",
+      model: "grok-test",
+    }, 1);
+    expect(state.sessionId).toBe("11111111-1111-4111-8111-111111111111");
+  });
+});
+
 describe("eventReducer user prompt dedup", () => {
   /** What move-runner injects: the gathered block, then a blank line, then the prompt. */
   const withMoveContext = (move: string, context: string, prompt: string) =>

@@ -1,6 +1,6 @@
 ---
 title: MO Architecture
-lastUpdated: 2026-08-23
+lastUpdated: 2026-08-26
 lastCommit: bae0487
 covers: harness/index.ts harness/session-manager.ts harness/db.ts harness/activity.ts harness/terminal-db.ts harness/workspace-history.ts harness/workspace-history-index.ts harness/app-paths.ts harness/database-paths.ts harness/modus-home.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts harness/profiles.ts harness/profile-schemas.ts harness/providers/ harness/action-runner.ts harness/action-types.ts harness/move-runner.ts harness/move-types.ts harness/harness-context.ts harness/wake-scheduler.ts harness/client-extensions.ts harness/conversation-lenses.ts harness/ui/src/ .modus/ui/extensions/ .modus/lenses/ .modus/projections/
 ---
@@ -258,6 +258,12 @@ decisions:
 - URL routing via `#userProfile/sessionId` hash
 - External session store (`Map<sessionId, SessionState>`) with `useSyncExternalStore`
 - SSE subscription per active session for real-time events
+- One elected browser tab owns the global session-index stream and fallback poll;
+  sibling tabs receive snapshots and patches through `BroadcastChannel`.
+- Returning from browser suspension (`visibilitychange`, page restore, focus, or
+  network recovery) forces an authoritative session-index refresh and reopens
+  both the global lifecycle stream and active transcript stream. This is required
+  on mobile, where backgrounding can freeze stale timers and dead fetches for hours.
 - Event reducer transforms raw SDK events into renderable message structure
 - ProfileProvider manages user profile selection and scoped visibility
 - ClientExtensionsBoot fetches and loads enabled browser-side extension modules

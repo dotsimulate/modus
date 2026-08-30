@@ -12,6 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { shortPath, summarize } from "../../ui/src/components/ToolCall";
+import { isTodoTool } from "../../ui/src/tool-names";
 
 describe("home shortening is cross-platform", () => {
   test("shortens a home path on every platform Modus ships to", () => {
@@ -22,7 +23,7 @@ describe("home shortening is cross-platform", () => {
   });
 
   test("leaves a non-home path alone", () => {
-    expect(shortPath("D:/TOOLSHELF/modus/a.ts")).toBe("D:/TOOLSHELF/modus/a.ts");
+    expect(shortPath("D:/Work/app/a.ts")).toBe("D:/Work/app/a.ts");
     expect(shortPath("/etc/hosts")).toBe("/etc/hosts");
   });
 });
@@ -67,5 +68,21 @@ describe("unknown tools still say something", () => {
 
   test("mcp tools keep their server/tool shape", () => {
     expect(summarize("mcp__modus__modus_submit", {})).toBe("modus/modus_submit");
+  });
+});
+
+describe("todo tool spelling", () => {
+  const todos = [
+    { content: "write the page", status: "in_progress" },
+    { content: "link it", status: "pending" },
+  ];
+
+  test("Grok todo_write is the same tool as Claude TodoWrite", () => {
+    expect(isTodoTool("TodoWrite")).toBe(true);
+    expect(isTodoTool("todo_write")).toBe(true);
+    expect(isTodoTool("todo-write")).toBe(true);
+    expect(isTodoTool("read_file")).toBe(false);
+    expect(summarize("todo_write", { todos })).toBe("1 active · 1 pending");
+    expect(summarize("TodoWrite", { todos })).toBe("1 active · 1 pending");
   });
 });

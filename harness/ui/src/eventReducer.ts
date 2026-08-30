@@ -14,6 +14,7 @@ import { turnMetaFromResultEvent } from "../../turn-meta";
 import { providerErrorDisplayText } from "../../provider-error";
 import { userAuthoredMessageText } from "./move-context";
 import { copyTextFromBlocks } from "./message-copy";
+import { isClientTempSessionId } from "./session-id";
 
 export type ReducerState = {
   sessionId: string;
@@ -297,9 +298,10 @@ function reduceSystem(s: ReducerState, m: any, ts: number): ReducerState {
   }
   if (m.subtype === "init") {
     const nextConfig = readAgentConfig(m.config);
+    const nextId = typeof m.session_id === "string" ? m.session_id : "";
     return {
       ...s,
-      sessionId: m.session_id ?? s.sessionId,
+      sessionId: !isClientTempSessionId(s.sessionId) ? s.sessionId : (nextId || s.sessionId),
       model: m.model ?? s.model,
       agentConfig: nextConfig ?? s.agentConfig,
       cwd: m.cwd ?? s.cwd,

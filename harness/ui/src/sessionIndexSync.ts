@@ -52,6 +52,7 @@ let started = false;
 let leader = false;
 let lastFetchAt = 0;
 let fetchPromise: Promise<SessionIndex> | null = null;
+let fetchGeneration = 0;
 const indexListeners = new Set<IndexListener>();
 const stateListeners = new Set<StateListener>();
 const refreshWaiters = new Set<(index: SessionIndex) => void>();
@@ -72,15 +73,26 @@ function post(message: SyncMessage) {
   try { channel?.postMessage(message); } catch { /* channel unavailable */ }
 }
 
-async function fetchIndex(broadcast = true): Promise<SessionIndex> {
-  if (fetchPromise) return fetchPromise;
-  fetchPromise = modus.getSessionIndex(250).then((index) => {
+async function fetchIndex(broadcast = true, force = false): Promise<SessionIndex> {
+  if (fetchPromise && !force) return fetchPromise;
+  const generation = ++fetchGeneration;
+  const run = modus.getSessionIndex(250).then((index) => {
+    // A foreground resume may supersede a fetch that was frozen mid-request.
+    // Redirect its callers to the newer request/snapshot too: refreshSessions
+    // applies the returned value, so merely suppressing notifyIndex here would
+    // still let a late stale response replace the visible index.
+    if (generation !== fetchGeneration) {
+      return fetchPromise ?? currentIndex ?? index;
+    }
     lastFetchAt = Date.now();
     notifyIndex(index);
     if (broadcast) post({ kind: "index", source: tabId, index });
     return index;
-  }).finally(() => { fetchPromise = null; });
-  return fetchPromise;
+  }).finally(() => {
+    if (fetchPromise === run) fetchPromise = null;
+  });
+  fetchPromise = run;
+  return run;
 }
 
 function patchSession(session: SessionInfo, event: LifecycleEvent, at: number): SessionInfo {
@@ -206,6 +218,15 @@ function becomeLeader(role: SessionIndexConnectionState["role"] = "leader") {
   void runLifecycleStream(streamGeneration);
 }
 
+function restartLifecycleStream() {
+  if (!started || !leader) return;
+  streamGeneration++;
+  currentStream?.abort();
+  currentStream = null;
+  updateState({ status: "connecting" });
+  void runLifecycleStream(streamGeneration);
+}
+
 function maintainLease() {
   if (!started) return;
   if (!channel) {
@@ -320,6 +341,32 @@ export function refreshSessionIndex(): Promise<SessionIndex> {
     }, 1_500);
     refreshWaiters.add(finish);
   });
+}
+
+/**
+ * Reconcile immediately after a browser returns from suspension.
+ *
+ * A frozen tab may retain both an expired leader lease and a fetch whose TCP
+ * connection died while JavaScript timers were paused. Re-elect synchronously,
+ * force a new compact snapshot, and replace the lifecycle stream when this tab
+ * still owns it. Followers fetch their own snapshot too so a frozen leader
+ * cannot keep the visible tab stale.
+ */
+export function resumeSessionIndex(): void {
+  if (!started) return;
+  const wasLeader = leader;
+  const previousFetch = fetchPromise;
+  maintainLease();
+
+  if (leader) {
+    const leaseStartedFetch = fetchPromise !== previousFetch;
+    void fetchIndex(true, !leaseStartedFetch).catch(() => updateState({ status: "offline" }));
+    if (wasLeader) restartLifecycleStream();
+    return;
+  }
+
+  post({ kind: "refresh-request", source: tabId });
+  void fetchIndex(false, true).catch(() => updateState({ status: "offline" }));
 }
 
 export function getSessionIndexSnapshot(): SessionIndex | null {

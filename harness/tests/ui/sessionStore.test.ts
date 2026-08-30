@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  applyEvent,
   applyEventBatch,
   ensureSubscribed,
   getSessionHistoryLoadState,
   getSessionState,
+  getStoreSessionIds,
   hydrateSessionHistorySnapshot,
   evictInactiveSessions,
   loadOlderSessionHistory,
@@ -609,5 +611,42 @@ describe("sessionStore history snapshot hydration", () => {
     expect(after[0]?.detailsDeferred).toBe(false);
     expect(after[0]?.toolCalls?.[0]?.name).toBe("Read");
     expect(after[0]?.contentBlocks?.[1]?.type).toBe("tool_call");
+  });
+});
+
+describe("sessionStore init rekey", () => {
+  afterEach(() => {
+    removeSession("pending-draft");
+    removeSession("11111111-1111-4111-8111-111111111111");
+    removeSession("fake-grok-session");
+    unsubscribeAll();
+  });
+
+  test("does not replace a durable session id with a provider-native conversation id", () => {
+    const modusId = "11111111-1111-4111-8111-111111111111";
+    setSessionState(modusId, createInitialState(modusId));
+    applyEvent(modusId, {
+      type: "system",
+      subtype: "init",
+      session_id: "fake-grok-session",
+      model: "grok-test",
+    }, 1);
+    expect(getSessionState(modusId)?.sessionId).toBe(modusId);
+    expect(getSessionState("fake-grok-session")).toBeNull();
+    expect(getStoreSessionIds()).toContain(modusId);
+    expect(getStoreSessionIds()).not.toContain("fake-grok-session");
+  });
+
+  test("still rekeys a pending composer id from init", () => {
+    setSessionState("pending-draft", createInitialState("pending-draft"));
+    applyEvent("pending-draft", {
+      type: "system",
+      subtype: "init",
+      session_id: "11111111-1111-4111-8111-111111111111",
+      model: "grok-test",
+    }, 1);
+    expect(getSessionState("pending-draft")).toBeNull();
+    expect(getSessionState("11111111-1111-4111-8111-111111111111")?.sessionId)
+      .toBe("11111111-1111-4111-8111-111111111111");
   });
 });

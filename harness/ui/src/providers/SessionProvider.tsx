@@ -22,13 +22,16 @@ import {
   ensureSubscribed, unsubscribeSession,
   rekeySession, removeSession, evictInactiveSessions, onSessionRekey,
   useSessionHistoryLoadState, shouldRefetchEmptyResolvedHistory,
+  resumeSessionEventStreams,
 } from "../sessionStore";
 import { loadAndApplyProjectUiState } from "../project-ui-theme";
 import {
   refreshSessionIndex,
+  resumeSessionIndex,
   subscribeSessionIndex,
   type SessionIndexConnectionState,
 } from "../sessionIndexSync";
+import { subscribeBrowserResume } from "../browser-resume";
 import {
   ActiveSessionIdContext,
   SessionActionsContext,
@@ -161,6 +164,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // Exactly one elected tab owns the lifecycle stream and fallback index poll.
   // Followers receive compact snapshots and live patches over BroadcastChannel.
   useEffect(() => subscribeSessionIndex(applySessionIndex, setSessionIndexConnection), [applySessionIndex]);
+
+  useEffect(() => subscribeBrowserResume(() => {
+    resumeSessionIndex();
+    resumeSessionEventStreams();
+  }), []);
 
   useEffect(() => {
     const prev = prevActiveStatusRef.current;

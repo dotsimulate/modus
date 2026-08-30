@@ -102,6 +102,20 @@ export function multiReconnect(): void {
   scheduleConnect();
 }
 
+/** Reopen every active transcript stream after browser suspension. */
+export function multiResume(): void {
+  backoff = 0;
+  if (fallbackMode) {
+    for (const [sessionId, reg] of registry) openFallback(sessionId, reg);
+    return;
+  }
+  if (connectTimer) {
+    clearTimeout(connectTimer);
+    connectTimer = null;
+  }
+  connect();
+}
+
 /** Move a registration to a new id (e.g. temp ses-* → real UUID). */
 export function multiRekey(oldId: string, newId: string): void {
   const reg = registry.get(oldId);

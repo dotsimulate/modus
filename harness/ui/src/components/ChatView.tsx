@@ -15,6 +15,7 @@ import { INTERFACE_SETTINGS_EVENT, readLocalInterfaceSettings } from "../interfa
 import { buildLatestMoveToolCallIds, partitionToolRun } from "../move-tool-view";
 import { buildTurns, segmentContentBlocks } from "../turn-segments";
 import { TOOL_RUN_GROUP_MIN } from "./ToolCallGroup";
+import { isTodoTool } from "../tool-names";
 
 type DisplayItem =
   | { kind: "message"; key: string; message: Message; index: number }
@@ -232,7 +233,7 @@ export const ChatView = memo(function ChatView({ messages, sessionId, sessionTag
       const tcs = messages[i].toolCalls;
       if (tcs) {
         for (let j = tcs.length - 1; j >= 0; j--) {
-          if (tcs[j].name === "TodoWrite") return tcs[j].id;
+          if (isTodoTool(tcs[j].name)) return tcs[j].id;
         }
       }
     }

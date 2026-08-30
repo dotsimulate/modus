@@ -11,6 +11,7 @@
 import { useMemo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Message, ToolCall } from "../../../sdk/index";
 import { useFileViewer, type FileOpenRequest } from "../providers/FileViewerContext";
+import { isTodoTool } from "../tool-names";
 
 // ── Config ──
 
@@ -539,6 +540,7 @@ const CARD_REGISTRY: Record<string, ToolCardComponent> = {
 
 function getCard(toolName: string): ToolCardComponent {
   if (toolName.startsWith("mcp__")) return McpCard;
+  if (isTodoTool(toolName)) return TodoCard;
   return CARD_REGISTRY[toolName] ?? GenericCard;
 }
 

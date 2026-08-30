@@ -17,6 +17,7 @@ import { useContextMenu, type ContextMenuItem } from "./ContextMenu";
 import { addPrompt } from "../promptCache";
 import { partitionToolRun } from "../move-tool-view";
 import { segmentContentBlocks, tallyToolNames } from "../turn-segments";
+import { isTodoTool } from "../tool-names";
 
 /**
  * Absolute URL for a session artifact.
@@ -230,7 +231,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, provider, isNew 
           key={`${keyPrefix}:${index}:${tc.id}`}
           tool={tc}
           anchorId={`${keyPrefix}:${index}:${tc.id}`}
-          defaultExpanded={toolCallDisplay === "expanded" ? true : tc.name === "TodoWrite" ? tc.id === lastTodoId : undefined}
+          defaultExpanded={toolCallDisplay === "expanded" ? true : isTodoTool(tc.name) ? tc.id === lastTodoId : undefined}
           showGitEvents={showGitEvents}
           cwd={cwd}
           onStopTask={onStopTask}

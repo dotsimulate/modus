@@ -8,6 +8,7 @@ import {
 } from "react";
 import { estimateMessageHeight, clearMeasureCache } from "./textMeasure";
 import { calculateScrollTarget } from "../scroll-navigation";
+import { createScrollBottomTracker } from "../scroll-bottom-tracker";
 import { recordVirtualHeight } from "../virtual-message-measurement";
 
 export type VirtualItem<T> = {
@@ -71,7 +72,6 @@ type Props<T> = {
   scrollSessionId?: string | null;
 };
 
-const BOTTOM_THRESHOLD = 120;
 const WIDTH_CHANGE_THRESHOLD = 10;
 
 export function VirtualMessageList<T>({
@@ -92,7 +92,20 @@ export function VirtualMessageList<T>({
 }: Props<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const atBottomRef = useRef(true);
+
+  // Read through a ref so the tracker — and therefore every callback built on
+  // it — keeps a stable identity. A changing scroll callback would otherwise
+  // re-run the ResizeObserver effect, which republishes the scroll element and
+  // makes consumers re-run their own mount work.
+  const scrollStateChangeRef = useRef(onScrollStateChange);
+  scrollStateChangeRef.current = onScrollStateChange;
+  const bottomRef = useRef<ReturnType<typeof createScrollBottomTracker> | null>(null);
+  if (bottomRef.current === null) {
+    bottomRef.current = createScrollBottomTracker((atBottom) => {
+      scrollStateChangeRef.current?.(atBottom);
+    });
+  }
+  const bottom = bottomRef.current;
 
   const widthRef = useRef(0);
   const heightMapRef = useRef(new Map<string, number>());
@@ -167,19 +180,15 @@ export function VirtualMessageList<T>({
     const el = scrollRef.current;
     if (!el) return;
     setScrollTop(el.scrollTop);
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_THRESHOLD;
-    if (atBottom !== atBottomRef.current) {
-      atBottomRef.current = atBottom;
-      onScrollStateChange?.(atBottom);
-    }
-  }, [onScrollStateChange]);
+    bottom.measure(el);
+  }, [bottom]);
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    atBottomRef.current = true;
+    bottom.follow();
     el.scrollTop = el.scrollHeight;
-  }, []);
+  }, [bottom]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -194,7 +203,11 @@ export function VirtualMessageList<T>({
         invalidateAllHeights();
       }
 
-      if (atBottomRef.current) scrollToBottom();
+      // A viewport resize (mobile keyboard, panel drag) changes how far the
+      // reader is from the end without emitting a scroll event, so the
+      // detached case has to re-measure rather than assume nothing moved.
+      if (bottom.following) scrollToBottom();
+      else bottom.measure(el);
     });
     ro.observe(el);
     widthRef.current = el.clientWidth;
@@ -204,15 +217,15 @@ export function VirtualMessageList<T>({
       ro.disconnect();
       onScrollElement?.(null);
     };
-  }, [scrollToBottom, invalidateAllHeights, onScrollElement]);
+  }, [bottom, scrollToBottom, invalidateAllHeights, onScrollElement]);
 
   useLayoutEffect(() => {
-    if (stickyBottom && atBottomRef.current) {
+    if (stickyBottom && bottom.following) {
       scrollToBottom();
       const el = scrollRef.current;
       if (el) setScrollTop(el.scrollTop);
     }
-  }, [items, stickyBottom, scrollToBottom, heightVersion]);
+  }, [bottom, items, stickyBottom, scrollToBottom, heightVersion]);
 
   useEffect(() => {
     if (scrollToBottomTrigger !== undefined) scrollToBottom();
@@ -265,8 +278,10 @@ export function VirtualMessageList<T>({
 
         // Critical: clear the sticky-bottom flag BEFORE scrolling so the
         // stickyBottom layout effect doesn't fight us back to the bottom
-        // when measurements arrive mid-animation.
-        atBottomRef.current = false;
+        // when measurements arrive mid-animation. Detaching deliberately
+        // reports nothing: where this scroll lands is a geometry question,
+        // and the scroll events it emits answer it.
+        bottom.detach();
 
         // Cancel any pending settle from a previous click.
         clearSettles();
@@ -276,10 +291,18 @@ export function VirtualMessageList<T>({
         // throttling, so we don't drown React in 60fps re-renders. The
         // tradeoff is that the target locks in here and won't follow
         // measurement updates; we correct that with the settle below.
-        el.scrollTo({
-          top: initialTarget,
-          behavior: opts?.behavior ?? "smooth",
-        });
+        const behavior = opts?.behavior ?? "smooth";
+        const before = el.scrollTop;
+        el.scrollTo({ top: initialTarget, behavior });
+
+        // An instant scroll lands synchronously and only emits a scroll event
+        // when it actually moved. A restore that asks for the position the
+        // list is already at therefore has nothing left to resynchronize the
+        // tracker, which would strand the detach above and leave sticky-follow
+        // off for a session sitting at its own live edge. A smooth scroll is
+        // deliberately excluded: it has not moved yet, so reading here would
+        // measure the position being left rather than the one being asked for.
+        if (behavior !== "smooth" && el.scrollTop === before) bottom.measure(el);
 
         // If the user starts scrolling themselves, abort settles — they
         // took over and we shouldn't yank them around.
@@ -326,7 +349,7 @@ export function VirtualMessageList<T>({
     };
     // controlsRef identity is owned by the parent and assumed stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [controlsRef]);
+  }, [bottom, controlsRef]);
 
   // Publish a measured layout snapshot to the consumer's ref. Mutates
   // a ref (no setState) so measurement updates don't cascade re-renders

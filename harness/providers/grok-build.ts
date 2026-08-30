@@ -370,7 +370,7 @@ function handleUpdate(ctx: TurnContext, state: GrokState, params: any): void {
     if (typeof text !== "string") return;
     state.text += text;
     ctx.session.lastAssistantText = state.text.slice(-200);
-    ctx.broadcastEvent({
+    ctx.emitEvent({
       type: "stream_event",
       event: { type: "content_block_delta", delta: { type: "text_delta", text } },
       provider: "grok-build",
@@ -382,7 +382,7 @@ function handleUpdate(ctx: TurnContext, state: GrokState, params: any): void {
     const thinking = update?.content?.text;
     if (typeof thinking !== "string") return;
     state.thinking += thinking;
-    ctx.broadcastEvent({
+    ctx.emitEvent({
       type: "stream_event",
       event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking } },
       provider: "grok-build",
@@ -568,7 +568,10 @@ function emitInit(ctx: TurnContext, state: GrokState): void {
   ctx.emitEvent({
     type: "system",
     subtype: "init",
-    session_id: state.providerSessionId,
+    // Modus session id, not the ACP conversation id. The UI rekeys the
+    // transcript when init.session_id differs from the store key, so putting
+    // Grok's provider session here made the composer look idle mid-turn.
+    session_id: ctx.session.sessionId,
     model: state.model ?? ctx.opts.model ?? ctx.profile?.model ?? "",
     config: {
       provider: "grok-build",
@@ -602,8 +605,8 @@ async function runTurn(
     }
     if (!options.skipPromptPersist) {
       ctx.emitEvent({ type: "user", subtype: "prompt", message: { role: "user", content } });
-      emitInit(ctx, state);
     }
+    emitInit(ctx, state);
     state.turnActive = true;
     state.text = "";
     state.thinking = "";
@@ -648,6 +651,7 @@ async function runTurn(
       lastPrompt: session.preview,
       lastResponse: state.text.slice(0, 200),
     });
+    ctx.emitEvent({ type: "done" });
   } catch (error) {
     if (turnAbortController.signal.aborted) {
       session.status = "idle";

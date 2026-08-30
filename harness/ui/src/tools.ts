@@ -73,6 +73,7 @@ export const GROK_BUILD_TOOL_GROUPS: ToolGroup[] = [
   { label: "exec", tools: ["run_terminal_cmd"] },
   { label: "web", tools: ["web_search", "x_search"] },
   { label: "agents", tools: ["task", "spawn_subagent"] },
+  { label: "tasks", tools: ["todo_write"] },
   { label: "interaction", tools: ["ask_user_question"] },
 ];
 
