@@ -1,0 +1,19 @@
+{
+  "@anthropic-ai/claude-agent-sdk@0.3.239": {
+    "spdx": "LicenseRef-Anthropic-Commercial",
+    "source": "package.json declares \"SEE LICENSE IN README.md\", which is not an SPDX expression. The package ships LICENSE.md reading \"© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.\" — proprietary, not an open-source license."
+  },
+  "@anthropic-ai/claude-agent-sdk-win32-x64@0.3.239": {
+    "spdx": "LicenseRef-Anthropic-Commercial",
+    "source": "package.json declares \"SEE LICENSE IN LICENSE.md\", which is not an SPDX expression. Its LICENSE.md carries the same proprietary Anthropic PBC terms as the parent package."
+  },
+  "jsonify@0.0.1": {
+    "spdx": "LicenseRef-PublicDomain",
+    "source": "its README.md \"license\" section",
+    "text": "public domain"
+  },
+  "khroma@2.1.0": {
+    "spdx": "MIT",
+    "source": "Publishes no license field in package.json; its bundled license file opens \"The MIT License (MIT) / Copyright (c) 2019-present Fabio Spampinato, Andrew Maney\"."
+  }
+}

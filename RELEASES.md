@@ -48,7 +48,10 @@ Its release evidence should include:
   checks on clean operating-system users or virtual machines;
 - inspection for credentials, profiles, databases, logs, source maps, private
   names, usernames, and checkout paths;
-- project and third-party license/notice material plus an SBOM;
+- project and third-party license/notice material plus an SBOM — `THIRD-PARTY-NOTICES.md`
+  and `sbom.cdx.json` are generated and drift-checked in CI, and `bun run release:sbom`
+  stamps a build-specific SBOM carrying the source commit, toolchain versions, and a
+  SHA-256 per shipped file;
 - reproducible input records and build provenance/attestation;
 - platform-appropriate signing, including the installer and inner executable on
   Windows; and

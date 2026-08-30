@@ -11,7 +11,9 @@
     "start": "bun run index.ts",
     "tts:gateway": "bun run tts-gateway.ts",
     "docs:sdk": "typedoc --options sdk/typedoc.json",
-    "docs:generate": "bun run scripts/generate-docs.ts"
+    "docs:generate": "bun run scripts/generate-docs.ts",
+    "notices:generate": "bun run scripts/generate-notices.ts",
+    "notices:check": "bun run scripts/generate-notices.ts --check"
   },
   "devDependencies": {
     "@types/bun": "latest",

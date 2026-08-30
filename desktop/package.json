@@ -8,7 +8,8 @@
     "build": "bun run build-desktop.ts binary",
     "build:bundle": "bun run build-desktop.ts bundle",
     "build:signed": "bun run build-desktop.ts signed",
-    "stage:backend": "bun run stage-managed-backend.ts"
+    "stage:backend": "bun run stage-managed-backend.ts",
+    "release:sbom": "bun run generate-release-sbom.ts"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4"

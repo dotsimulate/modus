@@ -82,7 +82,22 @@ cargo fmt --manifest-path desktop/cli-launcher/Cargo.toml --check
 cargo clippy --manifest-path desktop/cli-launcher/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path desktop/cli-launcher/Cargo.toml --locked
 cargo build --manifest-path desktop/cli-launcher/Cargo.toml --locked
+bun run --cwd harness notices:check rust
 ```
+
+Changing a dependency means regenerating the third-party notices, from `harness/`:
+
+```bash
+bun run notices:generate
+```
+
+That rewrites `THIRD-PARTY-NOTICES.md`, `sbom.cdx.json`, and
+`desktop/installer-license.txt` from the installed dependency graph, so run it with all
+four workspaces installed. `notices.test.ts` fails when the JavaScript half drifts and the
+Rust job fails when the crate half does. If the generator throws because a package
+publishes no usable license field, read its published license and record it in
+`harness/notices/overrides.json` with the source — never drop the package to make the
+build pass. See `harness/docs/third-party-notices.md`.
 
 Run the publication-boundary check before requesting review:
 

@@ -44,7 +44,7 @@
     "active": true,
     "publisher": "dotsimulate",
     "copyright": "Copyright © 2026 dotsimulate",
-    "licenseFile": "../../LICENSE",
+    "licenseFile": "../installer-license.txt",
     "shortDescription": "Local-first AI agent harness",
     "longDescription": "Modus runs its agent harness on your machine, composing prompts and giving agents controlled access to your projects. Providers and integrations you configure can receive content.",
     "icon": [

@@ -92,6 +92,42 @@ survives in a JavaScript bundle.
 gates the executable suffix, so staging itself is portable; it prefers
 `TAURI_ENV_TARGET_TRIPLE` when Tauri supplies it.
 
+## Notices and SBOM
+
+`bun run notices:generate` (from `harness/`) rewrites three tracked files from the
+installed dependency graph:
+
+| File | What it is |
+|---|---|
+| `THIRD-PARTY-NOTICES.md` | every license the package redistributes, full text |
+| `sbom.cdx.json` | the same inventory as CycloneDX 1.6 |
+| `desktop/installer-license.txt` | what the installer's license page shows |
+
+Scope is what ships, resolved for one target. npm covers the transitive closure of each
+workspace's `dependencies`; cargo covers normal and build dependency kinds whose `cfg`
+holds for the target. `devDependencies`, `dev` crate kinds, and crates that only apply to
+another platform are excluded — target filtering is not cosmetic, it also keeps the output
+deterministic, since a crate that never applies here is never unpacked into the local
+registry and would otherwise resolve its license text differently per machine.
+
+Drift is a red test, split by where the inputs live. `notices.test.ts` verifies the
+JavaScript half in the Bun job; the Rust job runs `bun run notices:check rust`, because it
+is the only job with a populated cargo registry. Each half is triggered by the paths that
+can move it.
+
+Two SBOMs exist and are not interchangeable. The committed one omits `serialNumber` and
+`metadata.timestamp` so it can be drift-checked, which also means it cannot describe a
+specific artifact. `bun run release:sbom` (from `desktop/`, after a bundle build) produces
+the stamped one: source commit, toolchain versions, staged Bun version and digest, and a
+SHA-256 per shipped file.
+
+**A package whose only payload is a native binary ships nothing unless staging copies it
+by name.** Bundling inlines JavaScript and leaves native artifacts behind, so
+`harness/notices/not-redistributed.json` records the installed-but-unshipped packages with
+the evidence for each. The largest is `@anthropic-ai/claude-agent-sdk-win32-x64` — 322 MB
+of `claude.exe` that never enters the package, because the `claude-code` provider passes
+`pathToClaudeCodeExecutable` pointing at the user's own Claude Code install.
+
 ## Platform targets
 
 `bundle.targets` is **not** in `tauri.conf.json` — it is
@@ -145,6 +181,11 @@ memory.
 
 It refuses to run when any is missing, so a half-configured environment fails
 loudly instead of emitting an unsigned artifact that looks signed.
+
+`bundle.licenseFile` points at `desktop/installer-license.txt`, not at `LICENSE`. It used
+to point at `LICENSE`, which showed a user Apache-2.0 alone as though that covered an
+artifact embedding roughly a thousand third-party components. The generated file is the
+Apache-2.0 text plus a pointer to the full notices, which ship beside the packaged server.
 
 `bundle.publisher` is set and **must match the certificate subject**; a mismatch
 surfaces as a wrong or untrusted name in the UAC prompt. Verify bundle metadata

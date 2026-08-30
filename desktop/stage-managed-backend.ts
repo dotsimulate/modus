@@ -157,6 +157,49 @@ function stagePhotonWasm(): void {
   copyFileSync(source, join(stageDir, "photon_rs_bg.wasm"));
 }
 
+/**
+ * Copy the Bun runtime the package will ship, and prove which one it is.
+ *
+ * `Bun.which("bun")` takes whatever is first on the build machine's PATH — in a
+ * checkout that has been built once, that can be a Bun from this repository's
+ * own `target/` directory. Nothing recorded which version went into a package,
+ * so "record toolchain versions" in RELEASES.md could not be satisfied and the
+ * vendored Bun license notice could not be said to describe the shipped binary.
+ *
+ * The pin is the root `packageManager` field, which already names the Bun this
+ * project builds with. A mismatch fails the build rather than shipping a
+ * runtime whose notice is wrong.
+ */
+function stageBunRuntime(destination: string): { version: string; sha256: string } {
+  const root = JSON.parse(readFileSync(join(repositoryDir, "package.json"), "utf8")) as {
+    packageManager?: string;
+  };
+  const pinned = /^bun@(\d+\.\d+\.\d+)$/.exec(root.packageManager ?? "")?.[1];
+  if (!pinned) {
+    throw new Error(`Root package.json must pin "packageManager": "bun@<x.y.z>"; found ${root.packageManager}`);
+  }
+
+  const source = process.env.MODUS_DESKTOP_BUN_SOURCE?.trim() || Bun.which("bun");
+  if (!source) throw new Error("Could not locate the Bun runtime for desktop packaging");
+
+  const probe = Bun.spawnSync([source, "--version"], { stdout: "pipe", stderr: "pipe" });
+  if (probe.exitCode !== 0) {
+    throw new Error(`Could not read the version of the Bun runtime at ${source}: ${probe.stderr.toString()}`);
+  }
+  const version = probe.stdout.toString().trim();
+  if (version !== pinned) {
+    throw new Error(
+      `The Bun runtime selected for packaging reports ${version}, but this project pins ${pinned}. `
+        + "Point MODUS_DESKTOP_BUN_SOURCE at the pinned runtime, or update the pin and re-vendor "
+        + "desktop/third-party/bun/LICENSE.md to match.",
+    );
+  }
+
+  copyFileSync(source, destination);
+  const sha256 = new Bun.CryptoHasher("sha256").update(readFileSync(destination)).digest("hex");
+  return { version, sha256 };
+}
+
 function stageCliLauncher(triple: string, devMode: boolean): string {
   assertGeneratedPath(cliLauncherTargetDir, targetDir);
   const profile = devMode ? "debug" : "release";
@@ -214,7 +257,12 @@ async function stage(): Promise<void> {
   await bundle(join(harnessDir, "providers", "antigravity-mcp-bridge.ts"), join(stageDir, "providers", "antigravity-mcp-bridge.js"));
 
   for (const directory of [
-    "actions",
+    // "actions" is deliberately absent: harness/actions/ is gitignored personal
+    // scratch, and copyResourceDirectory has no gitignore awareness, so staging
+    // it shipped whatever the build machine happened to have there — including
+    // the webhook tokens loadActionsFromDir writes into an authored action.json.
+    // Shipped actions are tracked content and live in core-actions/.
+    "core-actions",
     "docs",
     "lenses",
     "moves",
@@ -262,13 +310,20 @@ async function stage(): Promise<void> {
   }
   copyFileSync(join(desktopDir, "managed-backend-package.json"), join(stageDir, "package.json"));
 
-  const bunSource = process.env.MODUS_DESKTOP_BUN_SOURCE?.trim() || Bun.which("bun");
-  if (!bunSource) throw new Error("Could not locate the Bun runtime for desktop packaging");
+  // The notices describe the whole package, so they ship with it. They live at
+  // the repository root rather than under harness/docs/ because a megabyte of
+  // license text does not belong in the searchable documentation set.
+  copyFileSync(join(repositoryDir, "THIRD-PARTY-NOTICES.md"), join(stageDir, "THIRD-PARTY-NOTICES.md"));
+
   const triple = targetTriple();
   const suffix = process.platform === "win32" ? ".exe" : "";
   const bunDestination = join(binariesDir, `bun-${triple}${suffix}`);
-  copyFileSync(bunSource, bunDestination);
+  const bun = stageBunRuntime(bunDestination);
   const cliDestination = stageCliLauncher(triple, devMode);
+  writeFileSync(
+    join(stageDir, "build-inputs.json"),
+    `${JSON.stringify({ target: triple, bun }, null, 2)}\n`,
+  );
 
   // Native addons ship per-libc variants (e.g. resvgjs.linux-x64-{gnu,musl}-*.node).
   // Bun.build copies every variant it can see, but only the one matching this
