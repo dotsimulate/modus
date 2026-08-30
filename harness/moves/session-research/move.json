@@ -1,7 +1,7 @@
 {
   "name": "session-research",
   "label": "Session Research",
-  "description": "Search and read past session conversations. Find which session worked on a topic, read its messages, get summaries.",
+  "description": "Search and read past session conversations within the current project. Find which session worked on a topic, read its messages, get summaries.",
   "icon": "search",
   "mode": "inline",
   "inputs": [],
@@ -9,7 +9,7 @@
     "tokenPrefix": "research",
     "ops": {
       "search": {
-        "description": "Full-text search across all sessions. Returns ranked results with rich snippets (400 chars of matching content).",
+        "description": "Full-text search across the calling session's own project (its cwd and user profile). Returns ranked results with rich snippets (400 chars of matching content). This is NOT a cross-project search — for that, see the hints move's search op.",
         "schema": {
           "type": "object",
           "properties": {

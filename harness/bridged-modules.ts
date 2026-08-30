@@ -22,6 +22,9 @@ export const BRIDGED_HARNESS_MODULES = [
   "move-runner",
   // modus-brain's feedback ops resolve MODUS_HOME to append their JSONL.
   "modus-home",
+  // hints resolves a session's cwd back to the project that owns it, so a
+  // cross-project recommendation can name the folder to open in.
+  "session-projects",
 ] as const;
 
 export type BridgedHarnessModule = (typeof BRIDGED_HARNESS_MODULES)[number];

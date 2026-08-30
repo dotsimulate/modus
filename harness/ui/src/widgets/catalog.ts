@@ -238,8 +238,14 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
   "hints-launcher": {
     type: "hints-launcher",
     description:
-      "Intent-routing gate: takes a draft intent, runs the built-in `hints` move in the background, and renders session / move / profile recommendation cards with keyboard nav.",
+      "Cross-project intent gate. A draft intent produces two passes: an immediate unscoped FTS5 session search (no model), then the built-in `hints` move in the background, whose cards name a project, an agent profile, a folder and an editable starting prompt. Picking one stages the launch — it switches project, resumes or creates the session, and seeds the composer draft unsent.",
     zones: ["dashboard", "left-panel", "right-panel"],
+    config: [
+      { name: "autoFire", type: "boolean", description: "Fire the agent pass on debounced typing, not just on ⌘↵. Default false." },
+      { name: "autoFireDelayMs", type: "number", description: "Debounce for autoFire. Default 500." },
+      { name: "groundedLimit", type: "number", description: "How many related sessions the instant search shows. Default 8." },
+      { name: "routerProfile", type: "string", description: "Agent profile that answers the routing query. Unset inherits the user profile default." },
+    ],
     minHeight: 180,
     preferredHeight: 360,
   },
@@ -342,6 +348,7 @@ export const WIDGET_META: Record<string, WidgetMeta> = {
       { name: "blocks", type: '("prompt"|"thinking"|"text"|"tools"|"meta")[]', description: "Which parts to draw. Default: all." },
       { name: "promptMaxHeight", type: "number", description: "Height at which the prompt scrolls instead of growing." },
       { name: "header", type: "boolean", description: "Show the turn number and timestamp. Default true." },
+      { name: "navigation", type: "boolean", description: "Show the compact previous/next navigator. Default true." },
       { name: "sessionId", type: "string", description: "Pin to a session instead of reading page context." },
     ],
     zones: ["left-panel", "right-panel", "dashboard"],

@@ -181,6 +181,8 @@ type ShortcutBinding = {
 const composers = new Map<string, ComposerHandle>();
 /** Attaches queued for composers that haven't registered yet (race-free session creation). */
 const pendingAttaches = new Map<string, PendingAttach>();
+/** Draft text queued for composers that haven't registered yet. Same race, different payload. */
+const pendingDrafts = new Map<string, string>();
 let activeComposerId: string | null = null;
 const shortcuts: ShortcutRegistration[] = [];
 const composerActions = new Map<string, ComposerActionRegistration>();
@@ -323,6 +325,14 @@ function ensureShortcutListener() {
 
 export function registerComposer(handle: ComposerHandle): () => void {
   composers.set(handle.id, handle);
+  // Drain a queued draft first: it replaces the whole textarea, so an attach
+  // chip staged alongside it must survive rather than be overwritten.
+  const pendingDraft = pendingDrafts.get(handle.id);
+  if (pendingDraft !== undefined) {
+    pendingDrafts.delete(handle.id);
+    try { handle.setDraft(pendingDraft); handle.focus(); }
+    catch (err) { console.error("[composer] setDraft on register failed:", err); }
+  }
   // Drain any pending attach queued before this composer mounted.
   const pending = pendingAttaches.get(handle.id);
   if (pending && handle.attachMove) {
@@ -333,6 +343,7 @@ export function registerComposer(handle: ComposerHandle): () => void {
   notifyComposerControls();
   return () => {
     composers.delete(handle.id);
+    pendingDrafts.delete(handle.id);
     if (activeComposerId === handle.id) {
       activeComposerId = Array.from(composers.keys()).at(-1) ?? null;
     }
@@ -361,6 +372,25 @@ export function queueComposerAttach(
     return;
   }
   pendingAttaches.set(composerId, { move, inputs });
+}
+
+/**
+ * Seed a composer's draft by ID without sending it. Delivers immediately when
+ * that composer is mounted, otherwise buffers until `registerComposer(id)`.
+ *
+ * This is the staging half of a cross-project launch: switching project,
+ * creating or resuming a session, and landing an editable prompt all happen
+ * before the target ChatInput exists, so the caller has no handle to write to.
+ * Deliberately never submits — the text is a starting point the user edits.
+ */
+export function queueComposerDraft(composerId: string, text: string): void {
+  const handle = composers.get(composerId);
+  if (handle) {
+    try { handle.setDraft(text); handle.focus(); }
+    catch (err) { console.error("[composer] setDraft failed:", err); }
+    return;
+  }
+  pendingDrafts.set(composerId, text);
 }
 
 export function useComposerActions(composerId: string): ComposerActionView[] {

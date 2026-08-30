@@ -400,8 +400,15 @@ function AppContent({ router }: { router: HashRouter }) {
     setUrlSession(id, project);
   }, [activeUserProfile, projectForSession, selectSession, setUrlSession, switchUserProfile]);
 
-  const handleActivateSession = useCallback((id: string) => {
-    const project = projectForSession(id);
+  /**
+   * `projectOverride` exists because `projectForSession` reads the session
+   * index, and a session created moments ago is not in it yet — it falls back
+   * to the *current* project, which is exactly wrong for a caller that just
+   * created a session in a different one. A caller that knows the project
+   * states it instead of letting it be inferred. `null` means "all projects".
+   */
+  const handleActivateSession = useCallback((id: string, projectOverride?: string | null) => {
+    const project = projectOverride !== undefined ? projectOverride : projectForSession(id);
     if (project !== activeUserProfile) switchUserProfile(project);
     selectSession(id);
     navigateToSession(id, project);

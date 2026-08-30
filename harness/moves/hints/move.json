@@ -1,10 +1,10 @@
 {
   "name": "hints",
   "label": "Hints",
-  "description": "Intent-gate. Reads a draft prompt and recommends the best next step — continue an existing conversation, run a built-in or project move (including scaffolding moves like create-profile / create-page), or start a new session with a specific agent profile.",
+  "description": "Launcher gate. Reads a draft intent and proposes ready-to-open new sessions across every configured project — an agent, its folder, and a short opening message staged into the composer for editing. Past sessions are research, not the destination.",
   "icon": "sparkles",
   "mode": "background",
-  "agentProfile": "hints",
+  "hidden": true,
   "inputs": [
     {
       "name": "query",
@@ -15,13 +15,107 @@
     },
     {
       "name": "profileHint",
-      "label": "Preferred profile (optional)",
+      "label": "Preferred agent (optional)",
       "type": "text",
       "required": false,
       "placeholder": ""
     }
   ],
-  "schemaHint": "{ recommendations: Array<{ kind: 'session'|'move'|'profile', target: string, label: string, reason: string, confidence?: number }>, passthrough: boolean, note?: string }",
+  "api": {
+    "tokenPrefix": "hints",
+    "ops": {
+      "agents": {
+        "description": "The agent catalog: every openable (project, folder, agent profile) triple, with the profile's description and how many sessions have actually used it. This is where a recommendation's `target` comes from — the project and folder are attached to it automatically, so never write a folder path by hand.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "project": {
+              "type": "string",
+              "description": "Restrict to one project id"
+            },
+            "query": {
+              "type": "string",
+              "description": "Filter by words appearing in the agent key, project name, or description"
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "Usage window in days (default 60, max 730)"
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max rows (default 40, max 200)"
+            }
+          }
+        }
+      },
+      "search": {
+        "description": "Full-text search across sessions in EVERY configured project. Research: it tells you which project a draft belongs to and what recently happened, so you can write a grounded opening message and cite real sessions in `references`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search terms"
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max results (default 10, max 30)"
+            },
+            "project": {
+              "type": "string",
+              "description": "Restrict to one project id from the agents op"
+            },
+            "profile": {
+              "type": "string",
+              "description": "Restrict to one agent profile"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "user",
+                "assistant"
+              ],
+              "description": "Search only user messages or only assistant messages"
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "Only sessions active within this many days. Use it when the draft says 'recently'."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      "read": {
+        "description": "Read recent turns from a past session so a reason can name what actually happened and the opening message can reference real material.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string",
+              "description": "Session id from search or the pre-fetched list"
+            },
+            "limit": {
+              "type": "number",
+              "description": "Max turns, newest first (default 6, max 20)"
+            },
+            "maxLength": {
+              "type": "number",
+              "description": "Max chars per turn (default 700, max 3000)"
+            }
+          },
+          "required": [
+            "sessionId"
+          ]
+        }
+      }
+    },
+    "state": {
+      "persist": false
+    }
+  },
+  "schemaHint": "{ recommendations: Array<{ kind: 'new'|'session'|'move', target: string, label: string, reason: string, prompt?: string, references?: string[], confidence?: number }>, passthrough: boolean, note?: string } — kind 'new' opens a new session; target is an agent from the catalog and its project/cwd are filled in automatically.",
   "submit": {
     "required": true,
     "retryOnInvalid": true,
@@ -39,5 +133,11 @@
     "fileRead": true,
     "fileWrite": false
   },
-  "tags": ["hints", "routing", "gate", "capability"]
+  "tags": [
+    "hints",
+    "routing",
+    "gate",
+    "launcher",
+    "capability"
+  ]
 }
