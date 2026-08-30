@@ -100,6 +100,25 @@ test("desktop and cli-launcher changes request Rust verification", () => {
   expect(launcher).toEqual({ ui_build: "false", rust: "true", reason: "rust" });
 });
 
+test("notices inputs request Rust verification, which owns the crate half", () => {
+  // The Rust job runs `notices:check rust`; crate license text exists only in
+  // the registry that job populates. If these did not route here, a change to
+  // the generator would skip the one check that verifies it.
+  for (const path of [
+    "harness/scripts/generate-notices.ts",
+    "harness/notices/overrides.json",
+    "THIRD-PARTY-NOTICES.md",
+    "sbom.cdx.json",
+  ]) {
+    const result = classify([
+      "-EventName", "push",
+      "-FromFiles",
+      "-ChangedFiles", path,
+    ]);
+    expect({ path, rust: result.rust }).toEqual({ path, rust: "true" });
+  }
+});
+
 test("workflow inputs fail toward extras", () => {
   const result = classify([
     "-EventName", "push",

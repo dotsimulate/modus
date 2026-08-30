@@ -63,7 +63,17 @@ function Test-UiBuildPath {
 
 function Test-RustPath {
     param([string]$Path)
-    return $Path -match '^desktop/'
+    # The Rust job owns the Rust half of the third-party notices check, because
+    # crate license text only exists in the cargo registry that job populates.
+    # So the notices generator and the artifacts it drift-checks route here too:
+    # without them a change to the generator skips its own verification.
+    return (
+        $Path -match '^desktop/' -or
+        $Path -match '^harness/notices/' -or
+        $Path -eq 'harness/scripts/generate-notices.ts' -or
+        $Path -eq 'THIRD-PARTY-NOTICES.md' -or
+        $Path -eq 'sbom.cdx.json'
+    )
 }
 
 try {
