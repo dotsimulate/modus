@@ -80,8 +80,8 @@ describe("parseMoveApiResultText", () => {
   test("peels a Grok MCP OkayOutput envelope before parsing the move-api body", () => {
     const body = formatMoveApiResultText({
       ok: true,
-      message: "Opening TODO\\live-html-smokes\\smoke.html",
-      path: "D:\\TOOLSHELF\\modus\\TODO\\live-html-smokes\\smoke.html",
+      message: "Opening docs\\smokes\\smoke.html",
+      path: "D:\\Work\\app\\docs\\smokes\\smoke.html",
     });
     const envelope = JSON.stringify({
       type: "MCP",
@@ -91,8 +91,8 @@ describe("parseMoveApiResultText", () => {
     });
     expect(parseMoveApiResultText(envelope, true)).toEqual({
       ok: true,
-      message: "Opening TODO\\live-html-smokes\\smoke.html",
-      path: "D:\\TOOLSHELF\\modus\\TODO\\live-html-smokes\\smoke.html",
+      message: "Opening docs\\smokes\\smoke.html",
+      path: "D:\\Work\\app\\docs\\smokes\\smoke.html",
     });
   });
 

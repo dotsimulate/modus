@@ -21,24 +21,24 @@ function matchingPaths(root: string, paths: string[]): string[] {
 
 describe("project CWD scope", () => {
   test("matches the root and descendants without absorbing a sibling prefix", () => {
-    expect(matchingPaths("D:\\TOOLSHELF\\modus", [
-      "D:\\TOOLSHELF\\modus",
-      "D:\\TOOLSHELF\\modus\\plugin",
-      "D:\\TOOLSHELF\\modus-session-atlas",
+    expect(matchingPaths("D:\\Projects\\app", [
+      "D:\\Projects\\app",
+      "D:\\Projects\\app\\plugin",
+      "D:\\Projects\\app-extra",
     ])).toEqual([
-      "D:\\TOOLSHELF\\modus",
-      "D:\\TOOLSHELF\\modus\\plugin",
+      "D:\\Projects\\app",
+      "D:\\Projects\\app\\plugin",
     ]);
   });
 
   test("treats slash style and ASCII path case equivalently", () => {
-    expect(matchingPaths("D:/Toolshelf/Modus/", [
-      "d:\\toolshelf\\modus",
-      "D:/TOOLSHELF/MODUS/project",
-      "D:/TOOLSHELF/modus-other",
+    expect(matchingPaths("D:/Projects/App/", [
+      "d:\\projects\\app",
+      "D:/PROJECTS/APP/project",
+      "D:/Projects/app-other",
     ])).toEqual([
-      "D:/TOOLSHELF/MODUS/project",
-      "d:\\toolshelf\\modus",
+      "D:/PROJECTS/APP/project",
+      "d:\\projects\\app",
     ]);
   });
 

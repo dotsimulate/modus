@@ -19,7 +19,7 @@ describe("classifyLinkTarget", () => {
       path: "C:\\Users\\dot\\notes.md",
       absolute: true,
     });
-    expect(classifyLinkTarget("D:/TOOLSHELF/modus/harness/index.ts")).toMatchObject({
+    expect(classifyLinkTarget("D:/Work/app/harness/index.ts")).toMatchObject({
       kind: "local",
       absolute: true,
     });
@@ -102,8 +102,8 @@ describe("classifyLinkTarget", () => {
 
 describe("markdownUrlTransform", () => {
   it("preserves Windows hrefs that react-markdown otherwise erases", () => {
-    expect(markdownUrlTransform("D:/TOOLSHELF/modus/README.md", "href")).toBe(
-      "D:/TOOLSHELF/modus/README.md",
+    expect(markdownUrlTransform("D:/Work/app/README.md", "href")).toBe(
+      "D:/Work/app/README.md",
     );
     expect(markdownUrlTransform("C:\\src\\main.ts", "href")).toBe("C:\\src\\main.ts");
   });
@@ -121,13 +121,13 @@ describe("markdownUrlTransform", () => {
 
 describe("Markdown file-relative links", () => {
   it("resolves bare and dot-relative links beside the displayed Windows file", () => {
-    expect(resolveMarkdownLinkTarget("SUPPORT.md", "D:/TOOLSHELF/modus/README.md")).toMatchObject({
+    expect(resolveMarkdownLinkTarget("SUPPORT.md", "D:/Work/app/README.md")).toMatchObject({
       kind: "local",
-      path: "D:/TOOLSHELF/modus/SUPPORT.md",
+      path: "D:/Work/app/SUPPORT.md",
       absolute: true,
     });
-    expect(resolveMarkdownLinkTarget("./moves.md", "D:\\TOOLSHELF\\modus\\harness\\docs\\pages.md")).toMatchObject({
-      path: "D:/TOOLSHELF/modus/harness/docs/moves.md",
+    expect(resolveMarkdownLinkTarget("./moves.md", "D:\\Work\\app\\harness\\docs\\pages.md")).toMatchObject({
+      path: "D:/Work/app/harness/docs/moves.md",
     });
   });
 
