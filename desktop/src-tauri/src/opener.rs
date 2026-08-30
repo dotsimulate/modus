@@ -30,7 +30,7 @@
 //! calls. Modus exposes its own commands instead and keeps
 //! `capabilities/default.json` unchanged.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use url::Url;
 
@@ -54,16 +54,35 @@ pub fn validate_external_url(raw: &str) -> Result<String, String> {
 }
 
 /// Accept a path the OS may act on, or explain why it was refused.
-pub fn validate_local_path(raw: &str) -> Result<&Path, String> {
+pub fn validate_local_path(raw: &str) -> Result<PathBuf, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err("refusing to open an empty path".into());
     }
+    #[cfg(windows)]
+    let trimmed = strip_url_path_slash_from_windows_drive(trimmed);
     let path = Path::new(trimmed);
     if !path.is_absolute() {
         return Err(format!("refusing to open a relative path: {trimmed}"));
     }
-    Ok(path)
+    Ok(path.to_path_buf())
+}
+
+#[cfg(windows)]
+fn strip_url_path_slash_from_windows_drive(path: &str) -> &str {
+    let Some(candidate) = path.strip_prefix('/') else {
+        return path;
+    };
+    let bytes = candidate.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\')
+    {
+        candidate
+    } else {
+        path
+    }
 }
 
 pub fn open_external_url(raw: &str) -> Result<(), String> {
@@ -155,7 +174,11 @@ mod tests {
     #[test]
     fn accepts_absolute_windows_paths() {
         assert!(validate_local_path("C:\\Users\\x\\file.txt").is_ok());
-        assert!(validate_local_path("D:/TOOLSHELF/modus").is_ok());
+        assert!(validate_local_path("D:/Work/project").is_ok());
+        assert_eq!(
+            validate_local_path("/D:/Work/project").unwrap(),
+            Path::new("D:/Work/project")
+        );
         assert!(validate_local_path("\\\\server\\share\\file.txt").is_ok());
         // A drive-relative path names a location only in the context of the
         // process's current drive, so it is not accepted.
