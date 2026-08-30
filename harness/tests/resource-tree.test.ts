@@ -5,6 +5,12 @@
  * on the install. These tests pin the partial-delete shape that produced it —
  * a recursive delete stopped mid-directory, leaving some entries and removing
  * others — and pin that a healthy source checkout stays silent.
+ *
+ * One of these deliberately consults git rather than the working tree. A
+ * required directory that exists only because it is gitignored local scratch
+ * satisfies a filesystem check on the machine that authored it and is absent
+ * everywhere else, so the working-tree check alone cannot see that class of
+ * regression at all.
  */
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
@@ -17,6 +23,17 @@ import {
 } from "../resource-tree";
 
 const HARNESS_DIR = resolve(import.meta.dir, "..");
+
+/** Run git in the harness directory. Returns null when this is not a checkout. */
+function git(...args: string[]): string | null {
+  const result = Bun.spawnSync(["git", ...args], {
+    cwd: HARNESS_DIR,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) return null;
+  return result.stdout.toString();
+}
 
 /** Build a resource tree containing every required directory, each non-empty. */
 function makeCompleteTree(): string {
@@ -47,6 +64,18 @@ describe("checkResourceTree", () => {
     // Guards against the required list drifting away from what the repository
     // actually ships, which would make this check cry wolf on every dev boot.
     expect(checkResourceTree(HARNESS_DIR).ok).toBe(true);
+  });
+
+  test("every required directory holds tracked content, not local scratch", () => {
+    // The check above reads the working tree, so a gitignored directory full of
+    // personal scratch passes it on the machine that has one and fails on every
+    // clean clone. Ask git what a fresh checkout would actually carry.
+    if (git("rev-parse", "--is-inside-work-tree") === null) return;
+
+    const untracked = REQUIRED_RESOURCE_DIRS.filter(
+      (relative) => (git("ls-files", "--", relative) ?? "").trim() === "",
+    );
+    expect(untracked).toEqual([]);
   });
 
   test("a delete that stopped partway through is reported as missing", () => {
