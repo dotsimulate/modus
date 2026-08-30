@@ -31,9 +31,13 @@ import { join } from "path";
  * `ui/dist` is deliberately excluded: it is a build output, and browser
  * development serves the UI from Vite without ever producing it, so requiring it
  * would fire on a healthy fresh clone.
+ *
+ * `actions` is excluded for the mirror-image reason: `harness/actions/` is
+ * gitignored personal scratch that a clean clone does not carry and staging
+ * deliberately skips. Shipped actions are tracked content under `core-actions`.
  */
 export const REQUIRED_RESOURCE_DIRS = [
-  "actions",
+  "core-actions",
   "docs",
   "moves",
   "pages",

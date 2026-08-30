@@ -56,11 +56,11 @@ describe("checkResourceTree", () => {
       // native addon was gone, everything after it survived.
       rmSync(join(root, "moves"), { recursive: true, force: true });
       rmSync(join(root, "pages"), { recursive: true, force: true });
-      rmSync(join(root, "actions"), { recursive: true, force: true });
+      rmSync(join(root, "core-actions"), { recursive: true, force: true });
 
       const report = checkResourceTree(root);
       expect(report.ok).toBe(false);
-      expect(report.missing).toEqual(["actions", "moves", "pages"]);
+      expect(report.missing).toEqual(["core-actions", "moves", "pages"]);
       expect(report.empty).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
