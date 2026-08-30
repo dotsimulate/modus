@@ -83,7 +83,7 @@ export type PageContextHandle = {
    * page-embedded widgets — use when creating a new session that should
    * immediately open the composer.
    */
-  activateSession?: (id: string) => void;
+  activateSession?: (id: string, project?: string | null) => void;
 };
 
 /** Props passed to every widget component */
@@ -255,6 +255,16 @@ export type LayoutNode =
       sizes?: (number | "auto")[];
       /** Per-child collapsibility. When true, a collapse tab appears on the inner edge. */
       collapsible?: boolean[];
+      children: LayoutNode[];
+    } & LayoutVisibility)
+  | ({
+      /**
+       * Overlay paints every child into the same bounds. The first child is
+       * the base layer and later children paint above it in source order.
+       * Overlay widgets own their transparency and pointer-event behavior.
+       */
+      kind: "overlay";
+      id?: string;
       children: LayoutNode[];
     } & LayoutVisibility)
   | ({

@@ -100,6 +100,23 @@ Use for fixed dashboards. Direct child `tabs` and `list` nodes can use
 Use for resizable workspaces. `axis` is `horizontal` or `vertical`. `sizes` entries
 are flex weights or `"auto"`.
 
+### Overlay
+
+```json
+{
+  "kind": "overlay",
+  "id": "annotated-stage",
+  "children": [
+    { "kind": "widget", "widget": { "type": "session-chat" } },
+    { "kind": "widget", "widget": { "type": "move:annotation-hud" } }
+  ]
+}
+```
+
+Every child occupies the same bounds. The first child is the base and later
+children paint above it in source order. Upper widgets must provide transparent
+pixels and explicit pointer-event behavior when the base should remain usable.
+
 ### Tabs
 
 ```json

@@ -1,6 +1,6 @@
 ---
 title: Conversation Lenses
-lastUpdated: 2026-08-23
+lastUpdated: 2026-08-24
 covers: harness/conversation-lenses.ts harness/index.ts harness/lenses/ harness/modus-plugins.ts harness/profiles.ts harness/profile-schemas.ts harness/sdk/types.ts harness/ui/src/widgets/session-chat.widget.tsx harness/ui/src/widgets/conversation-projection.widget.tsx harness/ui/src/components/authored-component-loader.ts harness/ui/src/conversation-lens-resolution.ts harness/ui/src/page-lint.ts harness/scripts/lint-pages.ts .modus/lenses/ .modus/projections/
 ---
 
@@ -130,6 +130,19 @@ Every file is one `conversation-lens@1` object:
 `layout`, `layouts.mobile`, and `context` are page-native. All normal layout
 nodes, widget `publish`/`subscribe`, `showWhen`/`hideWhen`, targets, and nested
 scopes remain available. See `pages` for that grammar.
+
+An `overlay` node paints every child into the same bounds. The first child is
+the base; later children paint above it in source order. The renderer makes
+upper layer wrappers pass pointer input through by default, so transparent
+pixels do not block the conversation underneath. Interactive descendants in an
+upper widget must explicitly set `pointer-events: auto`; a fully interactive
+upper widget can set that on its root. This supports heads-up controls and
+visual annotation without giving authored projection code the canonical turn
+body.
+
+When an overlaid index owns turn selection, set `navigation: false` on the
+underlying `session-turn` widget to suppress its compact previous/next control.
+The default remains `true`.
 
 For a bare navigation rail, set both `labels: false` and `header: false` on
 `session-turns`. That combination removes the turn total and index-status row

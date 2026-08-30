@@ -79,6 +79,8 @@ type SessionTurnConfig = WidgetBase & {
   promptMaxHeight?: number;
   /** Show the turn number and timestamp above the projection. */
   header?: boolean;
+  /** Show the compact previous/next navigator. Default: true. */
+  navigation?: boolean;
 };
 
 function resolveBlocks(raw: unknown): Set<TurnBlockKind> {
@@ -636,7 +638,7 @@ export default function SessionTurnWidget({ config, pageContext }: WidgetProps<S
           )}
         </div>
 
-        {pageContext && navigation && navigationEntries.length > 1 && (
+        {config.navigation !== false && pageContext && navigation && navigationEntries.length > 1 && (
           <nav className="session-turn-nav" aria-label="Turn navigation">
             <button
               type="button"

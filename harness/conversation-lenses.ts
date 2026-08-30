@@ -99,7 +99,7 @@ function validateLayout(value: unknown, path = "layout", depth = 0): string[] {
     }
     return errors;
   }
-  if (kind !== "grid" && kind !== "split" && kind !== "scope" && kind !== "tabs" && kind !== "list") {
+  if (kind !== "grid" && kind !== "split" && kind !== "overlay" && kind !== "scope" && kind !== "tabs" && kind !== "list") {
     return [`${path}.kind is not a supported LayoutNode kind`];
   }
   if (kind === "grid" && (typeof node.columns !== "number" || node.columns < 1)) {

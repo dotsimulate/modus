@@ -34,6 +34,18 @@ const sessionTurnsSource = readFileSync(
   join(import.meta.dir, "..", "..", "ui", "src", "widgets", "session-turns.widget.tsx"),
   "utf8",
 );
+const sessionTurnSource = readFileSync(
+  join(import.meta.dir, "..", "..", "ui", "src", "widgets", "session-turn.widget.tsx"),
+  "utf8",
+);
+const panelTreeSource = readFileSync(
+  join(import.meta.dir, "..", "..", "ui", "src", "components", "PanelTreeRenderer.tsx"),
+  "utf8",
+);
+const panelStyles = readFileSync(
+  join(import.meta.dir, "..", "..", "ui", "src", "styles", "components", "panels.css"),
+  "utf8",
+);
 
 function registry(lenses: ConversationLensRegistryEntry[]): ConversationResourceRegistry {
   return {
@@ -132,6 +144,48 @@ describe("conversation lens lint", () => {
     expect(sessionTurnsSource).toContain("config.header !== false");
     expect(sessionTurnsSource).toContain("session-turns--bare");
     expect(sessionTurnsSource).toContain("config.header === false && config.labels === false");
+  });
+
+  test("overlay layouts stack recursive children and let a lens own turn navigation", () => {
+    const lens: ConversationLensDefinitionV1 = {
+      contract: "conversation-lens@1",
+      id: "project:overlay",
+      label: "Overlay",
+      fallback: "core:transcript",
+      capabilities: { required: ["conversation.turn-content"] },
+      layout: {
+        kind: "overlay",
+        children: [
+          { kind: "widget", widget: { type: "session-turn", navigation: false } },
+          { kind: "widget", widget: { type: "conversation-projection", projectionId: "hud" } },
+        ],
+      },
+      layouts: {
+        mobile: { kind: "widget", widget: { type: "session-turn" } },
+      },
+    };
+    const projections: ConversationProjectionRegistryEntry[] = [{
+      id: "hud",
+      status: "available",
+      source: { kind: "project", label: "test", key: "test:hud" },
+      definition: {
+        contract: "conversation-projection@1",
+        id: "hud",
+        label: "HUD",
+        component: "component.tsx",
+      },
+    }];
+    const errors = lintConversationLens(lens, WIDGET_META, projections)
+      .filter((finding) => finding.severity === "error");
+    expect(errors).toEqual([]);
+    expect(panelTreeSource).toContain('node.kind === "overlay"');
+    expect(panelTreeSource).toContain('className="panel-overlay"');
+    expect(panelStyles).toMatch(/\.panel-overlay-layer\s*\{[^}]*grid-area: 1 \/ 1;/s);
+    expect(panelStyles).toMatch(
+      /\.panel-overlay\s*>\s*\.panel-overlay-layer:not\(:first-child\)\s*\{[^}]*pointer-events: none;/s,
+    );
+    expect(sessionTurnSource).toContain("navigation?: boolean");
+    expect(sessionTurnSource).toContain("config.navigation !== false");
   });
 
   test("catches missing mobile safety, capability providers, and recovery", () => {

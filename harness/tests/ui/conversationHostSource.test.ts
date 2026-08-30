@@ -34,6 +34,19 @@ describe("conversation host safety ownership", () => {
     expect(host).not.toContain('resolution.resolvedId !== "core:transcript"');
   });
 
+  test("discovery in progress renders a wait instead of a lens failure", () => {
+    // Resolving against a null registry reports every candidate as
+    // "not discovered for this project", so the host must not resolve until
+    // discovery settles, and a session with no cwd must still get a transcript.
+    expect(host).toContain("if (!registry) return <WidgetEmptyState>loading conversation");
+    expect(host).toContain('if (resources.status === "idle") {');
+  });
+
+  test("stalled discovery is retried on browser resume", () => {
+    expect(resources).toContain("subscribeBrowserResume");
+    expect(resources).toContain('state.status === "ready" && state.discoveredFor === cwd');
+  });
+
   test("permissions and queued sends remain outside the authored PageView", () => {
     const pageView = host.indexOf("<PageView");
     expect(pageView).toBeGreaterThan(-1);

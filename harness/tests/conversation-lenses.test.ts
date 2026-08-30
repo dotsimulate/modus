@@ -92,6 +92,17 @@ describe("conversation resource discovery", () => {
         ...lens("contact-sheet", "Contact Sheet", "conversation-projection"),
         layout: { kind: "widget", widget: { type: "conversation-projection", projectionId: "contact" } },
       });
+      writeJson(join(project, ".modus", "lenses", "overlay.json"), {
+        ...lens("overlay", "Overlay"),
+        fallback: "core:transcript",
+        layout: {
+          kind: "overlay",
+          children: [
+            { kind: "widget", widget: { type: "session-turn" } },
+            { kind: "widget", widget: { type: "conversation-projection", projectionId: "contact" } },
+          ],
+        },
+      });
       writeJson(join(project, ".modus", "projections", "contact", "projection.json"), projection("contact"));
       const projectComponent = join(project, ".modus", "projections", "contact", "component.tsx");
       writeFileSync(projectComponent, "export default function Contact(){ return null }\n");
@@ -148,6 +159,8 @@ describe("conversation resource discovery", () => {
         .toBe("incompatible");
       expect(result.registry.projections.find((entry: any) => entry.id === "contact").source.kind)
         .toBe("project");
+      const overlayEntry = result.registry.lenses.find((entry: any) => entry.id === "overlay");
+      expect(overlayEntry.status, JSON.stringify(overlayEntry)).toBe("available");
       expect(result.registry.diagnostics.some((entry: any) => (
         entry.id === "blocked-only" && entry.status === "disabled" && /Vault policy/.test(entry.reason)
       ))).toBe(true);

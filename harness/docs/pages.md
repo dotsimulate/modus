@@ -1,6 +1,6 @@
 ---
 title: Pages
-lastUpdated: 2026-08-23
+lastUpdated: 2026-08-24
 covers: harness/pages.ts harness/index.ts harness/ui/src/App.tsx harness/ui/src/conversation-navigation.ts harness/ui/src/components/PageRenderer.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/registry.ts harness/ui/src/widgets/ui-state.ts harness/ui/src/views.ts harness/sdk/types.ts .modus/pages/*.json harness/pages/*.json
 ---
 
@@ -194,6 +194,7 @@ type LayoutLeaf = {
 type LayoutNode =
   | { kind: "grid";  columns; gap?; templateColumns?; templateRows?; children; showWhen?; hideWhen? }
   | { kind: "split"; axis: "horizontal"|"vertical"; sizes?: (number|"auto")[]; collapsible?: boolean[]; children; showWhen?; hideWhen? }
+  | { kind: "overlay"; children: LayoutNode[]; showWhen?; hideWhen? }
   | { kind: "tabs";  activeTab?; columnSpan?; rowSpan?; editable?; target?; children: LayoutLeaf[]; title?; showWhen?; hideWhen? }
   | { kind: "list";  columnSpan?; rowSpan?; editable?; target?; children: LayoutLeaf[]; title?; showWhen?; hideWhen? }
   | { kind: "scope"; context?; bindUrlSession?; children: LayoutNode[]; showWhen?; hideWhen? }
@@ -209,6 +210,7 @@ exports that resolve to `LayoutNode` / `LayoutLeaf`.
 |------|------------|-------|
 | `grid` | CSS grid (`templateColumns` or `repeat(columns, minmax(0, 1fr))`; `templateRows` optional). | Children recurse; direct child `tabs` / `list` honor `columnSpan` / `rowSpan`. |
 | `split` | Flex container with draggable `panel-split-handle` between children. | `sizes[i]` is flex weight (number) or `"auto"` (content-sized, `flex: 0 0 auto`). `collapsible[i]: true` replaces the resize handle with a `SplitCollapseTab` on the inner edge (chevron toggles, drag resizes the neighbor). Auto/collapsed neighbors skip resize. Mobile default (≤640px) starts collapsible children collapsed. |
+| `overlay` | CSS grid with every child in the same cell. | First child is the base; later children paint above it. Upper children own transparency and pointer-event behavior. |
 | `tabs` | `PanelSurface` in tab mode. | Single active tab; horizontal wheel scrolling on the tab strip. |
 | `list` | `PanelSurface` in list mode. | Each child is a collapsible card (`CollapsibleSurfaceItem`). |
 | `scope` | Invisible wrapper that creates a nested `PageStateBus` for its subtree. | See §5.  |
@@ -252,7 +254,7 @@ page-level equivalent of how the app-level `RightPanel` auto-opens on file click
 
 ### Visibility — `showWhen` / `hideWhen`
 
-Every node kind (grid, split, tabs, list, scope, widget) supports both fields.
+Every node kind (grid, split, overlay, tabs, list, scope, widget) supports both fields.
 Implemented by `useLeafVisible()`:
 
 - `showWhen` is an **AND** of equalities. A node shows only when every listed
@@ -574,6 +576,8 @@ Dispatch by `node.kind`:
   with `pageContext` + `canNavigate` gating).
 - `split` → `ResizableSplit` (drag handles, collapse tabs, `expand-target`
   listener, `containsTarget` probe).
+- `overlay` → one isolated CSS grid cell; children recurse in source paint
+  order and retain independent visibility conditions.
 - `grid` → CSS grid container; children recurse; `columnSpan` / `rowSpan` on
   direct tabs/list children.
 - `scope` → `<ScopeProvider>` + `ScopeSessionWatcher` + optional

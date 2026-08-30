@@ -16,7 +16,7 @@ type Props = {
   node: LayoutNode;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
-  onActivateSession?: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
   empty?: ReactNode;
 };
 
@@ -33,7 +33,7 @@ function containsTarget(node: LayoutNode, target?: string): boolean {
   if ((node.kind === "tabs" || node.kind === "list") && node.editable && node.target) {
     return panelMatchesIntentTarget(node.id, target);
   }
-  if (node.kind === "split" || node.kind === "scope") {
+  if (node.kind === "split" || node.kind === "overlay" || node.kind === "scope") {
     return node.children.some((child) => containsTarget(child, target));
   }
   if (node.kind === "grid") {
@@ -492,7 +492,7 @@ function SplitChild({
   isAuto: boolean;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
-  onActivateSession?: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
   empty: ReactNode;
 }) {
   // All node types support showWhen/hideWhen
@@ -532,7 +532,7 @@ function ResizableSplit({
   node: SplitNode;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
-  onActivateSession?: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
   empty: ReactNode;
 }) {
   const count = node.children.length;
@@ -742,6 +742,69 @@ function ResizableSplit({
 
 type ScopeNode = Extract<LayoutNode, { kind: "scope" }>;
 
+type OverlayNode = Extract<LayoutNode, { kind: "overlay" }>;
+
+function OverlayLayer({
+  node,
+  index,
+  onNavigate,
+  onSelectSession,
+  onActivateSession,
+  empty,
+}: {
+  node: LayoutNode;
+  index: number;
+  onNavigate: (view: View) => void;
+  onSelectSession: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
+  empty: ReactNode;
+}) {
+  const visible = useLeafVisible(node.showWhen, node.hideWhen);
+  if (!visible) return null;
+
+  return (
+    <div className="panel-overlay-layer" style={{ zIndex: index }}>
+      <PanelTreeRenderer
+        node={node}
+        onNavigate={onNavigate}
+        onSelectSession={onSelectSession}
+        onActivateSession={onActivateSession}
+        empty={empty}
+      />
+    </div>
+  );
+}
+
+function OverlayRenderer({
+  node,
+  onNavigate,
+  onSelectSession,
+  onActivateSession,
+  empty,
+}: {
+  node: OverlayNode;
+  onNavigate: (view: View) => void;
+  onSelectSession: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
+  empty: ReactNode;
+}) {
+  return (
+    <div className="panel-overlay">
+      {node.children.map((child, index) => (
+        <OverlayLayer
+          key={child.id ?? `${child.kind}-${index}`}
+          node={child}
+          index={index}
+          onNavigate={onNavigate}
+          onSelectSession={onSelectSession}
+          onActivateSession={onActivateSession}
+          empty={empty}
+        />
+      ))}
+    </div>
+  );
+}
+
 function ScopeRenderer({
   node,
   onNavigate,
@@ -752,7 +815,7 @@ function ScopeRenderer({
   node: ScopeNode;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
-  onActivateSession?: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
   empty: ReactNode;
 }) {
   const parentBus = useScopeBus();
@@ -823,6 +886,18 @@ export function PanelTreeRenderer({
   if (node.kind === "split") {
     return (
       <ResizableSplit node={node} onNavigate={onNavigate} onSelectSession={onSelectSession} onActivateSession={onActivateSession} empty={empty} />
+    );
+  }
+
+  if (node.kind === "overlay") {
+    return (
+      <OverlayRenderer
+        node={node}
+        onNavigate={onNavigate}
+        onSelectSession={onSelectSession}
+        onActivateSession={onActivateSession}
+        empty={empty}
+      />
     );
   }
 

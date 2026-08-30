@@ -286,7 +286,7 @@ export function PageView({
   padding?: number;
   onNavigate: (view: View) => void;
   onSelectSession: (id: string) => void;
-  onActivateSession?: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
   /** Current hash session id — enables scope nodes with bindUrlSession to deep-link */
   hashSessionId?: string | null;
   /** Page id, used only to label measurements from the page inspector. */
@@ -417,6 +417,13 @@ function normalizePageLayoutNode(node: PageLayoutInput): LayoutNode {
   }
 
   if (node.kind === "split") {
+    return {
+      ...node,
+      children: node.children.map(normalizePageLayoutNode),
+    };
+  }
+
+  if (node.kind === "overlay") {
     return {
       ...node,
       children: node.children.map(normalizePageLayoutNode),

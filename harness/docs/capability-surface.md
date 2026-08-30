@@ -1,6 +1,6 @@
 ---
 title: Capability Surface (condensed)
-lastUpdated: 2026-08-23
+lastUpdated: 2026-08-24
 covers: harness/move-types.ts harness/action-types.ts harness/profile-schemas.ts harness/harness-context.ts harness/session-manager.ts harness/modus-mcp.ts harness/wake-scheduler.ts harness/skills.ts harness/skill-attachment.ts harness/conversation-lenses.ts harness/app-paths.ts harness/vault-types.ts harness/vault-policy.ts harness/vault-registry.ts harness/vault-api.ts
 audience: agent
 ---
@@ -128,10 +128,17 @@ counter, `maxCycles` caps) → execution (lifecycle instance, `concurrency`,
 `maxTransientRetries`, `retryBackoff`, `onGatherError`, `onTransientFailure`.
 
 **Pipeline**: trigger → `gather(ctx)` (returns prompt string, content blocks
-with images, or `null` to skip) → spawn session with `agentProfile` →
-monitor → `verify(ctx, result)` (accept/reject/retry) → `afterRun(ctx,
+with images, or `null` to skip) → answer through a session (default) or a
+tool-less one-shot completion (`answerer: "completion"`) → monitor when a
+session exists → `verify(ctx, result)` (accept/reject/retry) → `afterRun(ctx,
 result)` (side effects, success only) → `notify` specs (per-status, named
 channels, templated messages).
+
+Completion answering inherits `agentProfile` target resolution, honors explicit
+action `provider`/`model` overrides, and is gated by `modelCall` rather than
+`sessionSpawn`. It requires string gather output and rejects session-only fields
+instead of silently dropping them. Runs persist the answerer plus provider,
+model, transport, elapsed time, usage, stop reason, and one-shot id.
 
 **Also**: `steps[]` (multi-profile sequences with `contextMode:
 full|summary|lastResponse`), `moves: [{name, inputs}]` (**activate moves on the
@@ -241,8 +248,8 @@ without an action reload.
 ## Pages — `.modus/pages/*.json`, `harness/pages/*.json`, or declared by moves/actions/missions
 
 `{ id, title, nav?, fullscreen?, padding?, context?, layout, layouts?.mobile }`.
-Layout tree: `grid` (columns, templateColumns/Rows) / `panel` (list|tabs) /
-`widget` leaves. Widget types come from the built-in registry
+Layout tree: `grid` / resizable `split` / same-bounds `overlay` / `tabs` /
+`list` / nested `scope` / `widget` leaves. Widget types come from the built-in registry
 (`session-list`, `pages-browser`, `notes`, `code-editor`, `docs`, …) plus
 `move:<name>` embeds. Users fork built-in pages into projects
 (`POST /api/pages/fork`).
@@ -257,6 +264,10 @@ project → current Vault → enabled explicitly exposed plugin → harness.
 permissions, queued sends, errors, and Transcript recovery outside authored
 control. Unknown/invalid/capability-incomplete selections preserve the session
 and fall back with a visible reason.
+
+`overlay` layouts keep the canonical turn renderer as a base layer while
+painting transparent authored controls or annotations above it. Later children
+paint above earlier children; the authored upper widget owns hit testing.
 
 Trusted-local React projections live at
 `.modus/projections/<id>/projection.json + component.tsx`, use

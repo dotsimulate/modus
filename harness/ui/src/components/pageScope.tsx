@@ -18,7 +18,7 @@ export type PageStateBus = {
   observeIntents: (handler: UiIntentObserver) => () => void;
   onNavigate?: (view: string) => void;
   onSelectSession?: (id: string) => void;
-  onActivateSession?: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
 };
 
 export function createPageStateBus(initial: Record<string, unknown>): PageStateBus {
@@ -234,7 +234,7 @@ export function ScopeProvider({
   context?: Record<string, unknown>;
   onNavigate?: (view: string) => void;
   onSelectSession?: (id: string) => void;
-  onActivateSession?: (id: string) => void;
+  onActivateSession?: (id: string, project?: string | null) => void;
   children: ReactNode;
 }) {
   const [bus] = useState(() => createPageStateBus(context ?? {}));

@@ -122,10 +122,18 @@ export default function ConversationHostWidget(props: WidgetProps<SessionChatCon
 
   const defaultLensId = interfaceSettings.chat.lensId;
   const requestedLensId = defaultLensId;
+  // Discovery has three non-ready shapes and only one of them is a lens problem.
+  // `error` and `idle` both own a working transcript through the recovery
+  // registry, but `loading` must stay null: resolving against an empty registry
+  // reports every candidate as "not discovered for this project", which blames
+  // the project for a request that has simply not answered yet.
   const registry = useMemo(() => {
     if (resources.registry) return resources.registry;
     if (resources.status === "error") {
       return emergencyRegistry(cwd ?? "", resources.error ?? "lens discovery failed");
+    }
+    if (resources.status === "idle") {
+      return emergencyRegistry(cwd ?? "", "this session has no project directory");
     }
     return null;
   }, [cwd, resources.error, resources.registry, resources.status]);
@@ -178,6 +186,7 @@ export default function ConversationHostWidget(props: WidgetProps<SessionChatCon
 
   if (!sessionId) return <WidgetEmptyState>no session selected</WidgetEmptyState>;
   if (!session) return <WidgetEmptyState>loading session…</WidgetEmptyState>;
+  if (!registry) return <WidgetEmptyState>loading conversation…</WidgetEmptyState>;
 
   const permissions = session.pendingPermissions ?? [];
   const pendingSend = activeSessionId === sessionId ? queuedMessage : null;

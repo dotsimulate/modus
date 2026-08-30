@@ -1,6 +1,6 @@
 ---
 title: Panels
-lastUpdated: 2026-07-07
+lastUpdated: 2026-08-24
 covers: harness/ui/src/providers/LayoutProvider.tsx harness/ui/src/providers/LayoutContext.ts harness/ui/src/providers/FileViewerProvider.tsx harness/ui/src/components/PanelSurface.tsx harness/ui/src/components/PanelTreeRenderer.tsx harness/ui/src/components/LeftPanel.tsx harness/ui/src/components/RightPanel.tsx harness/ui/src/components/RightPanelContext.tsx harness/ui/src/components/WidgetPicker.tsx harness/ui/src/components/pageScope.tsx harness/ui/src/widgets/registry.ts harness/ui/src/widgets/types.ts harness/ui/src/widgets/layout.ts harness/ui/src/widgets/ui-state.ts harness/sdk/types.ts
 ---
 
@@ -10,7 +10,7 @@ Panels are the composable container primitive shared by two surfaces:
 
 1. **App-level side panels** (`LeftPanel`, `RightPanel`) — persistent chrome
    around the center view, managed by `LayoutProvider`.
-2. **Page panels** — `tabs`, `list`, `split`, `grid`, `scope` nodes inside a
+2. **Page panels** — `tabs`, `list`, `split`, `grid`, `overlay`, `scope` nodes inside a
    page's `layout` tree, managed by `PanelTreeRenderer` and the per-page
    `PageStateBus`.
 
@@ -180,6 +180,7 @@ type LayoutLeaf = {
 type LayoutNode =
   | { kind: "grid";  ... }
   | { kind: "split"; axis; sizes?: (number|"auto")[]; collapsible?: boolean[]; children }
+  | { kind: "overlay"; children: LayoutNode[] }
   | { kind: "tabs";  editable?; target?; activeTab?; children: LayoutLeaf[] }
   | { kind: "list";  editable?; target?; children: LayoutLeaf[] }
   | { kind: "scope"; context?; bindUrlSession?; children: LayoutNode[] }
@@ -202,6 +203,8 @@ Dispatches by `node.kind`:
 
 - `widget` — single leaf, no chrome. `renderLeaf(...).render(true)`.
 - `split` — `ResizableSplit` (see §5).
+- `overlay` — one isolated CSS grid cell; the first child is the base and later
+  recursive children paint above it.
 - `grid` — CSS grid; direct children recurse. `tabs`/`list` children honor
   `columnSpan` / `rowSpan`.
 - `scope` — wraps children in `ScopeProvider` + `ScopeSessionWatcher` (polls
