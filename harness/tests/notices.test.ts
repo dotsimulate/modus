@@ -18,6 +18,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "fs";
+import type { Component } from "../scripts/generate-notices";
 import {
   DEFAULT_TARGET,
   INSTALLER_LICENSE_PATH,
@@ -39,6 +40,24 @@ import {
   sbomComponentsFor,
 } from "../scripts/generate-notices";
 
+/**
+ * Walking the installed graph is the expensive part of this file: several hundred
+ * packages, each read from disk. Four tests want the same snapshot, and taking it
+ * four times pushed a single test past Bun's default 5s timeout on a loaded
+ * machine — a flake that reddens CI without anything having drifted. Take it once.
+ *
+ * Nothing below mutates the result: `partitionRedistributed` and `renderSbom`
+ * both build fresh arrays, and the remaining reader only iterates.
+ */
+let installedNpm: Component[] | null = null;
+function installedNpmComponents(): Component[] {
+  installedNpm ??= collectNpmComponents(DEFAULT_TARGET);
+  return installedNpm;
+}
+
+/** Generous: the walk is filesystem-bound and CI runners are slower than this one. */
+const GRAPH_WALK_TIMEOUT_MS = 60_000;
+
 describe("third-party notices", () => {
   test("the notices and SBOM are committed", () => {
     expect(existsSync(NOTICES_PATH)).toBe(true);
@@ -47,17 +66,17 @@ describe("third-party notices", () => {
   });
 
   test("the JavaScript section matches the installed dependency graph", () => {
-    const npm = collectNpmComponents(DEFAULT_TARGET);
+    const npm = installedNpmComponents();
     const rendered = renderNotices({ target: DEFAULT_TARGET, npm, cargo: [], binary: [] });
     const committed = normalizeEol(readFileSync(NOTICES_PATH, "utf-8"));
     expect(extractSection(rendered, "javascript")).toBe(extractSection(committed, "javascript"));
-  });
+  }, GRAPH_WALK_TIMEOUT_MS);
 
   test("the SBOM's npm components match the installed dependency graph", () => {
-    const components = collectNpmComponents(DEFAULT_TARGET);
+    const components = installedNpmComponents();
     const expected = JSON.parse(renderSbom({ target: DEFAULT_TARGET, components })).components;
     expect(sbomComponentsFor(readFileSync(SBOM_PATH, "utf-8"), "pkg:npm/")).toEqual(expected);
-  });
+  }, GRAPH_WALK_TIMEOUT_MS);
 
   test("the installer license page carries the third-party pointer", () => {
     const committed = normalizeEol(readFileSync(INSTALLER_LICENSE_PATH, "utf-8"));
@@ -75,7 +94,7 @@ describe("third-party notices", () => {
     // A stale exclusion is the dangerous direction: it would quietly drop a
     // component that started shipping. Over-inclusion is safe; silent omission
     // is the failure this whole file exists to prevent.
-    const { excluded } = partitionRedistributed(collectNpmComponents(DEFAULT_TARGET));
+    const { excluded } = partitionRedistributed(installedNpmComponents());
     expect(excluded.map((component) => `${component.name}@${component.version}`).sort())
       .toEqual(Object.keys(NOT_REDISTRIBUTED).sort());
   });
@@ -90,7 +109,7 @@ describe("third-party notices", () => {
   });
 
   test("every JavaScript component reproduces a license text", () => {
-    for (const component of collectNpmComponents(DEFAULT_TARGET)) {
+    for (const component of installedNpmComponents()) {
       expect(component.texts.length).toBeGreaterThan(0);
       for (const text of component.texts) {
         expect(text.body.trim()).not.toBe("");
