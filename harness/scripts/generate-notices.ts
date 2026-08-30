@@ -596,6 +596,16 @@ export function cargoTargetApplies(target: string | null | undefined): boolean {
  * `--locked --offline` keeps this reproducible and network-free. The registry
  * is populated wherever the crate graph has been built, which is also the only
  * place per-crate license text exists.
+ *
+ * `--filter-platform` is what makes `--offline` viable. Unfiltered, cargo
+ * resolves every platform's dependencies and must have each one present to
+ * describe it — including crates a Windows build never downloads, such as
+ * `android_system_properties`. A machine that happens to have fetched them
+ * succeeds while a build-only registry fails, which is a green local run and a
+ * red CI one. Filtering to the shipped triple asks only for what was built.
+ *
+ * This narrows the same closure `cargoTargetApplies()` narrows, from the same
+ * constant, so the two cannot disagree about which target is being described.
  */
 function cargoMetadata(manifest: string): CargoMetadata {
   const result = Bun.spawnSync(
@@ -608,6 +618,8 @@ function cargoMetadata(manifest: string): CargoMetadata {
       "1",
       "--locked",
       "--offline",
+      "--filter-platform",
+      CARGO_TRIPLE,
     ],
     { stdout: "pipe", stderr: "pipe" },
   );

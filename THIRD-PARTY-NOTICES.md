@@ -18807,7 +18807,7 @@ reaches the package only if staging copies it by name, and these are not copied.
 
 Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
-300 components, under 147 distinct license texts.
+298 components, under 146 distinct license texts.
 
 ### adler2 2.0.1
 
@@ -18842,13 +18842,6 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - Source: https://github.com/dtolnay/anyhow
 - License text: **RUS-0001** — MIT
 
-### arbitrary 1.4.2
-
-- License: `MIT OR Apache-2.0`
-- Redistributed under: `MIT`
-- Source: https://github.com/rust-fuzz/arbitrary/
-- License text: **RUS-0005** — MIT
-
 ### atomic-waker 1.1.2
 
 - License: `Apache-2.0 OR MIT`
@@ -18861,56 +18854,56 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/cuviper/autocfg
-- License text: **RUS-0006** — MIT
+- License text: **RUS-0005** — MIT
 
 ### base64 0.22.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/marshallpierce/rust-base64
-- License text: **RUS-0007** — MIT
+- License text: **RUS-0006** — MIT
 
 ### bit-set 0.8.0
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/contain-rs/bit-set
-- License text: **RUS-0008** — MIT
+- License text: **RUS-0007** — MIT
 
 ### bit-vec 0.8.0
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/contain-rs/bit-vec
-- License text: **RUS-0008** — MIT
+- License text: **RUS-0007** — MIT
 
 ### bitflags 1.3.2
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/bitflags/bitflags
-- License text: **RUS-0009** — MIT
+- License text: **RUS-0008** — MIT
 
 ### bitflags 2.13.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/bitflags/bitflags
-- License text: **RUS-0009** — MIT
+- License text: **RUS-0008** — MIT
 
 ### block-buffer 0.10.4
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/RustCrypto/utils
-- License text: **RUS-0010** — MIT
+- License text: **RUS-0009** — MIT
 
 ### brotli 8.0.4
 
 - License: `BSD-3-Clause AND MIT`
 - Source: https://github.com/dropbox/rust-brotli
 - License text: **RUS-0003** — BSD-3-Clause
-- License text: **RUS-0011** — MIT
+- License text: **RUS-0010** — MIT
 
 ### brotli-decompressor 5.0.3
 
@@ -18924,7 +18917,7 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/Nullus157/bs58-rs
-- License text: **RUS-0012** — MIT
+- License text: **RUS-0011** — MIT
 
 ### byteorder 1.5.0
 
@@ -18937,7 +18930,7 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `MIT`
 - Source: https://github.com/tokio-rs/bytes
-- License text: **RUS-0013** — MIT
+- License text: **RUS-0012** — MIT
 
 ### camino 1.2.4
 
@@ -18957,7 +18950,7 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://gitlab.com/lib.rs/cargo_toml
-- License text: **RUS-0014** — MIT
+- License text: **RUS-0013** — MIT
 
 ### cargo-platform 0.1.9
 
@@ -18971,160 +18964,153 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/cc-rs
-- License text: **RUS-0015** — MIT
+- License text: **RUS-0014** — MIT
 
 ### cfb 0.7.3
 
 - License: `MIT`
 - Source: https://github.com/mdsteele/rust-cfb
-- License text: **RUS-0016** — MIT
+- License text: **RUS-0015** — MIT
 
 ### cfg-if 1.0.4
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/cfg-if
-- License text: **RUS-0015** — MIT
+- License text: **RUS-0014** — MIT
 
 ### chrono 0.4.45
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/chronotope/chrono
-- License text: **RUS-0017** — MIT
+- License text: **RUS-0016** — MIT
 
 ### cookie 0.18.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/SergioBenitez/cookie-rs
-- License text: **RUS-0018** — MIT
+- License text: **RUS-0017** — MIT
 
 ### cpufeatures 0.2.17
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/RustCrypto/utils
-- License text: **RUS-0019** — MIT
+- License text: **RUS-0018** — MIT
 
 ### crc32fast 1.5.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/srijs/rust-crc32fast
-- License text: **RUS-0020** — MIT
+- License text: **RUS-0019** — MIT
 
 ### crossbeam-channel 0.5.16
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/crossbeam-rs/crossbeam
-- License text: **RUS-0021** — MIT
+- License text: **RUS-0020** — MIT
 
 ### crossbeam-utils 0.8.22
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/crossbeam-rs/crossbeam
-- License text: **RUS-0021** — MIT
+- License text: **RUS-0020** — MIT
 
 ### crypto-common 0.1.7
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/RustCrypto/traits
-- License text: **RUS-0022** — MIT
+- License text: **RUS-0021** — MIT
 
 ### cssparser 0.36.0
 
 - License: `MPL-2.0`
 - Source: https://github.com/servo/rust-cssparser
-- License text: **RUS-0023** — MPL-2.0
+- License text: **RUS-0022** — MPL-2.0
 
 ### cssparser-macros 0.6.1
 
 - License: `MPL-2.0`
 - Source: https://github.com/servo/rust-cssparser
-- License text: **RUS-0023** — MPL-2.0
+- License text: **RUS-0022** — MPL-2.0
 
 ### ctor 0.8.0
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/mmastrac/rust-ctor
-- License text: **RUS-0024** — MIT
+- License text: **RUS-0023** — MIT
 
 ### ctor-proc-macro 0.0.7
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/mmastrac/rust-ctor
-- License text: **RUS-0024** — MIT
+- License text: **RUS-0023** — MIT
 
 ### darling 0.23.0
 
 - License: `MIT`
 - Source: https://github.com/TedDriggs/darling
-- License text: **RUS-0025** — MIT
+- License text: **RUS-0024** — MIT
 
 ### darling_core 0.23.0
 
 - License: `MIT`
 - Source: https://github.com/TedDriggs/darling
-- License text: **RUS-0025** — MIT
+- License text: **RUS-0024** — MIT
 
 ### darling_macro 0.23.0
 
 - License: `MIT`
 - Source: https://github.com/TedDriggs/darling
-- License text: **RUS-0025** — MIT
+- License text: **RUS-0024** — MIT
 
 ### deranged 0.5.8
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/jhpratt/deranged
-- License text: **RUS-0026** — MIT
-
-### derive_arbitrary 1.4.2
-
-- License: `MIT OR Apache-2.0`
-- Redistributed under: `MIT`
-- Source: https://github.com/rust-fuzz/arbitrary
-- License text: **RUS-0005** — MIT
+- License text: **RUS-0025** — MIT
 
 ### derive_more 2.1.1
 
 - License: `MIT`
 - Source: https://github.com/JelteF/derive_more
-- License text: **RUS-0027** — MIT
+- License text: **RUS-0026** — MIT
 
 ### derive_more-impl 2.1.1
 
 - License: `MIT`
 - Source: https://github.com/JelteF/derive_more
-- License text: **RUS-0027** — MIT
+- License text: **RUS-0026** — MIT
 
 ### digest 0.10.7
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/RustCrypto/traits
-- License text: **RUS-0028** — MIT
+- License text: **RUS-0027** — MIT
 
 ### dirs 6.0.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/soc/dirs-rs
-- License text: **RUS-0029** — MIT
+- License text: **RUS-0028** — MIT
 
 ### dirs-sys 0.5.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/dirs-dev/dirs-sys-rs
-- License text: **RUS-0029** — MIT
+- License text: **RUS-0028** — MIT
 
 ### displaydoc 0.2.6
 
@@ -19137,13 +19123,13 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `MIT`
 - Source: https://github.com/niklak/dom_query
-- License text: **RUS-0030** — MIT
+- License text: **RUS-0029** — MIT
 
 ### dpi 0.1.2
 
 - License: `Apache-2.0 AND MIT`
 - Source: https://github.com/rust-windowing/winit
-- License text: **RUS-0031** — MIT
+- License text: **RUS-0030** — MIT
 
 ### dtoa 1.0.11
 
@@ -19156,28 +19142,28 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `MPL-2.0`
 - Source: https://github.com/upsuper/dtoa-short
-- License text: **RUS-0032** — MPL-2.0
+- License text: **RUS-0031** — MPL-2.0
 
 ### dtor 0.3.0
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/mmastrac/rust-ctor
-- License text: **RUS-0024** — MIT
+- License text: **RUS-0023** — MIT
 
 ### dtor-proc-macro 0.0.6
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/mmastrac/rust-ctor
-- License text: **RUS-0024** — MIT
+- License text: **RUS-0023** — MIT
 
 ### dunce 1.0.5
 
 - License: `CC0-1.0 OR MIT-0 OR Apache-2.0`
 - Redistributed under: `MIT-0`
 - Source: https://gitlab.com/kornelski/dunce
-- License text: **RUS-0033** — MIT-0
+- License text: **RUS-0032** — MIT-0
 
 ### dyn-clone 1.0.20
 
@@ -19190,14 +19176,14 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `MIT`
 - Source: https://github.com/nabijaczleweli/rust-embed-resource
-- License text: **RUS-0034** — MIT
+- License text: **RUS-0033** — MIT
 
 ### equivalent 1.0.2
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/indexmap-rs/equivalent
-- License text: **RUS-0035** — MIT
+- License text: **RUS-0034** — MIT
 
 ### erased-serde 0.4.10
 
@@ -19218,300 +19204,300 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/image-rs/fdeflate
-- License text: **RUS-0036** — MIT
+- License text: **RUS-0035** — MIT
 
 ### find-msvc-tools 0.1.9
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/cc-rs
-- License text: **RUS-0015** — MIT
+- License text: **RUS-0014** — MIT
 
 ### flate2 1.1.9
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/flate2-rs
-- License text: **RUS-0037** — MIT
+- License text: **RUS-0036** — MIT
 
 ### fnv 1.0.7
 
 - License: `Apache-2.0 / MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/rust-fnv
-- License text: **RUS-0038** — MIT
+- License text: **RUS-0037** — MIT
 
 ### foldhash 0.2.0
 
 - License: `Zlib`
 - Source: https://github.com/orlp/foldhash
-- License text: **RUS-0039** — Zlib
+- License text: **RUS-0038** — Zlib
 
 ### form_urlencoded 1.2.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/rust-url
-- License text: **RUS-0040** — MIT
+- License text: **RUS-0039** — MIT
 
 ### futures-channel 0.3.32
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/futures-rs
-- License text: **RUS-0041** — MIT
+- License text: **RUS-0040** — MIT
 
 ### futures-core 0.3.32
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/futures-rs
-- License text: **RUS-0041** — MIT
+- License text: **RUS-0040** — MIT
 
 ### futures-io 0.3.32
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/futures-rs
-- License text: **RUS-0041** — MIT
+- License text: **RUS-0040** — MIT
 
 ### futures-macro 0.3.32
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/futures-rs
-- License text: **RUS-0041** — MIT
+- License text: **RUS-0040** — MIT
 
 ### futures-sink 0.3.32
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/futures-rs
-- License text: **RUS-0041** — MIT
+- License text: **RUS-0040** — MIT
 
 ### futures-task 0.3.32
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/futures-rs
-- License text: **RUS-0041** — MIT
+- License text: **RUS-0040** — MIT
 
 ### futures-util 0.3.32
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/futures-rs
-- License text: **RUS-0041** — MIT
+- License text: **RUS-0040** — MIT
 
 ### generic-array 0.14.7
 
 - License: `MIT`
 - Source: https://github.com/fizyk20/generic-array.git
-- License text: **RUS-0042** — MIT
+- License text: **RUS-0041** — MIT
 
 ### getrandom 0.2.17
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-random/getrandom
-- License text: **RUS-0043** — MIT
+- License text: **RUS-0042** — MIT
 
 ### getrandom 0.3.4
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-random/getrandom
-- License text: **RUS-0044** — MIT
+- License text: **RUS-0043** — MIT
 
 ### getrandom 0.4.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-random/getrandom
-- License text: **RUS-0045** — MIT
+- License text: **RUS-0044** — MIT
 
 ### glob 0.3.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/glob
-- License text: **RUS-0009** — MIT
+- License text: **RUS-0008** — MIT
 
 ### hashbrown 0.12.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/hashbrown
-- License text: **RUS-0046** — MIT
+- License text: **RUS-0045** — MIT
 
 ### hashbrown 0.17.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/hashbrown
-- License text: **RUS-0046** — MIT
+- License text: **RUS-0045** — MIT
 
 ### heck 0.5.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/withoutboats/heck
-- License text: **RUS-0047** — MIT
+- License text: **RUS-0046** — MIT
 
 ### hex 0.4.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/KokaKiwi/rust-hex
-- License text: **RUS-0048** — MIT
+- License text: **RUS-0047** — MIT
 
 ### html5ever 0.38.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/html5ever
-- License text: **RUS-0049** — MIT
+- License text: **RUS-0048** — MIT
 
 ### http 1.4.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/hyperium/http
-- License text: **RUS-0050** — MIT
+- License text: **RUS-0049** — MIT
 
 ### http-body 1.1.0
 
 - License: `MIT`
 - Source: https://github.com/hyperium/http-body
-- License text: **RUS-0051** — MIT
+- License text: **RUS-0050** — MIT
 
 ### http-body-util 0.1.4
 
 - License: `MIT`
 - Source: https://github.com/hyperium/http-body
-- License text: **RUS-0051** — MIT
+- License text: **RUS-0050** — MIT
 
 ### httparse 1.10.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/seanmonstar/httparse
-- License text: **RUS-0052** — MIT
+- License text: **RUS-0051** — MIT
 
 ### hyper 1.10.1
 
 - License: `MIT`
 - Source: https://github.com/hyperium/hyper
-- License text: **RUS-0053** — MIT
+- License text: **RUS-0052** — MIT
 
 ### hyper-rustls 0.27.9
 
 - License: `Apache-2.0 OR ISC OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/rustls/hyper-rustls
-- License text: **RUS-0054** — MIT
+- License text: **RUS-0053** — MIT
 
 ### hyper-util 0.1.20
 
 - License: `MIT`
 - Source: https://github.com/hyperium/hyper-util
-- License text: **RUS-0055** — MIT
+- License text: **RUS-0054** — MIT
 
 ### ico 0.5.0
 
 - License: `MIT`
 - Source: https://github.com/mdsteele/rust-ico
-- License text: **RUS-0056** — MIT
+- License text: **RUS-0055** — MIT
 
 ### icu_collections 2.2.0
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### icu_locale_core 2.2.0
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### icu_normalizer 2.2.0
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### icu_normalizer_data 2.2.0
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### icu_properties 2.2.0
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### icu_properties_data 2.2.0
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### icu_provider 2.2.0
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### ident_case 1.0.1
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/TedDriggs/ident_case
-- License text: **RUS-0058** — MIT
+- License text: **RUS-0057** — MIT
 
 ### idna 1.1.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/rust-url/
-- License text: **RUS-0059** — MIT
+- License text: **RUS-0058** — MIT
 
 ### idna_adapter 1.2.2
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/hsivonen/idna_adapter
-- License text: **RUS-0060** — MIT
+- License text: **RUS-0059** — MIT
 
 ### indexmap 1.9.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/bluss/indexmap
-- License text: **RUS-0061** — MIT
+- License text: **RUS-0060** — MIT
 
 ### indexmap 2.14.0
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/indexmap-rs/indexmap
-- License text: **RUS-0061** — MIT
+- License text: **RUS-0060** — MIT
 
 ### infer 0.19.0
 
 - License: `MIT`
 - Source: https://github.com/bojand/infer
-- License text: **RUS-0062** — MIT
+- License text: **RUS-0061** — MIT
 
 ### ipnet 2.12.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/krisprice/ipnet
-- License text: **RUS-0063** — MIT
+- License text: **RUS-0062** — MIT
 
 ### itoa 1.0.18
 
@@ -19525,55 +19511,55 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/idubrov/json-patch
-- License text: **RUS-0064** — MIT
+- License text: **RUS-0063** — MIT
 
 ### jsonptr 0.6.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/chanced/jsonptr
-- License text: **RUS-0065** — MIT
+- License text: **RUS-0064** — MIT
 
 ### keyboard-types 0.7.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/pyfisch/keyboard-types
-- License text: **RUS-0066** — MIT
+- License text: **RUS-0065** — MIT
 
 ### libc 0.2.186
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/libc
-- License text: **RUS-0067** — MIT
+- License text: **RUS-0066** — MIT
 
 ### litemap 0.8.2
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### lock_api 0.4.14
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/Amanieu/parking_lot
-- License text: **RUS-0068** — MIT
+- License text: **RUS-0067** — MIT
 
 ### log 0.4.33
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/log
-- License text: **RUS-0009** — MIT
+- License text: **RUS-0008** — MIT
 
 ### markup5ever 0.38.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/html5ever
-- License text: **RUS-0049** — MIT
+- License text: **RUS-0048** — MIT
 
 ### memchr 2.8.3
 
@@ -19587,53 +19573,53 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/hyperium/mime
-- License text: **RUS-0069** — MIT
+- License text: **RUS-0068** — MIT
 
 ### minisign-verify 0.2.5
 
 - License: `MIT`
 - Source: https://github.com/jedisct1/rust-minisign-verify
-- License text: **RUS-0070** — MIT
+- License text: **RUS-0069** — MIT
 
 ### miniz_oxide 0.8.9
 
 - License: `MIT OR Zlib OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
-- License text: **RUS-0071** — MIT
+- License text: **RUS-0070** — MIT
 
 ### mio 1.2.2
 
 - License: `MIT`
 - Source: https://github.com/tokio-rs/mio
-- License text: **RUS-0072** — MIT
+- License text: **RUS-0071** — MIT
 
 ### muda 0.19.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/muda
-- License text: **RUS-0073** — MIT
+- License text: **RUS-0072** — MIT
 
 ### new_debug_unreachable 1.0.6
 
 - License: `MIT`
 - Source: https://github.com/mbrubeck/rust-debug-unreachable
-- License text: **RUS-0074** — MIT
+- License text: **RUS-0073** — MIT
 
 ### num-conv 0.2.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/jhpratt/num-conv
-- License text: **RUS-0075** — MIT
+- License text: **RUS-0074** — MIT
 
 ### num-traits 0.2.19
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-num/num-traits
-- License text: **RUS-0009** — MIT
+- License text: **RUS-0008** — MIT
 
 ### once_cell 1.21.4
 
@@ -19646,64 +19632,64 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `MIT`
 - Source: https://github.com/Byron/open-rs
-- License text: **RUS-0076** — MIT
+- License text: **RUS-0075** — MIT
 
 ### option-ext 0.2.0
 
 - License: `MPL-2.0`
 - Source: https://github.com/soc/option-ext.git
-- License text: **RUS-0077** — MPL-2.0
+- License text: **RUS-0076** — MPL-2.0
 
 ### parking_lot 0.12.5
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/Amanieu/parking_lot
-- License text: **RUS-0068** — MIT
+- License text: **RUS-0067** — MIT
 
 ### parking_lot_core 0.9.12
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/Amanieu/parking_lot
-- License text: **RUS-0068** — MIT
+- License text: **RUS-0067** — MIT
 
 ### percent-encoding 2.3.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/rust-url/
-- License text: **RUS-0059** — MIT
+- License text: **RUS-0058** — MIT
 
 ### phf 0.13.1
 
 - License: `MIT`
 - Source: https://github.com/rust-phf/rust-phf
-- License text: **RUS-0078** — MIT
+- License text: **RUS-0077** — MIT
 
 ### phf_codegen 0.13.1
 
 - License: `MIT`
 - Source: https://github.com/rust-phf/rust-phf
-- License text: **RUS-0078** — MIT
+- License text: **RUS-0077** — MIT
 
 ### phf_generator 0.13.1
 
 - License: `MIT`
 - Source: https://github.com/rust-phf/rust-phf
-- License text: **RUS-0078** — MIT
+- License text: **RUS-0077** — MIT
 
 ### phf_macros 0.13.1
 
 - License: `MIT`
 - Source: https://github.com/rust-phf/rust-phf
-- License text: **RUS-0078** — MIT
+- License text: **RUS-0077** — MIT
 
 ### phf_shared 0.13.1
 
 - License: `MIT`
 - Source: https://github.com/rust-phf/rust-phf
-- License text: **RUS-0078** — MIT
+- License text: **RUS-0077** — MIT
 
 ### pin-project-lite 0.2.17
 
@@ -19716,33 +19702,33 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `MIT`
 - Source: https://github.com/ebarnard/rust-plist/
-- License text: **RUS-0079** — MIT
+- License text: **RUS-0078** — MIT
 
 ### png 0.17.16
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/image-rs/image-png
-- License text: **RUS-0080** — MIT
+- License text: **RUS-0079** — MIT
 
 ### potential_utf 0.1.5
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### powerfmt 0.2.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/jhpratt/powerfmt
-- License text: **RUS-0081** — MIT
+- License text: **RUS-0080** — MIT
 
 ### precomputed-hash 0.1.1
 
 - License: `MIT`
 - Source: https://github.com/emilio/precomputed-hash
-- License text: **RUS-0082** — MIT
+- License text: **RUS-0081** — MIT
 
 ### proc-macro2 1.0.106
 
@@ -19755,7 +19741,7 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `MIT`
 - Source: https://github.com/tafia/quick-xml
-- License text: **RUS-0083** — MIT
+- License text: **RUS-0082** — MIT
 
 ### quote 1.0.46
 
@@ -19769,7 +19755,7 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0 OR Zlib`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-windowing/raw-window-handle
-- License text: **RUS-0084** — MIT
+- License text: **RUS-0083** — MIT
 
 ### ref-cast 1.0.25
 
@@ -19790,49 +19776,49 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/regex
-- License text: **RUS-0009** — MIT
+- License text: **RUS-0008** — MIT
 
 ### regex-automata 0.4.15
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/regex
-- License text: **RUS-0009** — MIT
+- License text: **RUS-0008** — MIT
 
 ### regex-syntax 0.8.11
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/regex
-- License text: **RUS-0009** — MIT
+- License text: **RUS-0008** — MIT
 
 ### reqwest 0.13.4
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/seanmonstar/reqwest
-- License text: **RUS-0085** — MIT
+- License text: **RUS-0084** — MIT
 
 ### rfd 0.16.0
 
 - License: `MIT`
 - Source: https://github.com/PolyMeilex/rfd
-- License text: **RUS-0086** — MIT
+- License text: **RUS-0085** — MIT
 
 ### ring 0.17.14
 
 - License: `Apache-2.0 AND ISC`
 - Source: https://github.com/briansmith/ring
-- License text: **RUS-0087** — Apache-2.0 AND ISC (LICENSE)
-- License text: **RUS-0088** — Apache-2.0 AND ISC (LICENSE-BoringSSL)
-- License text: **RUS-0089** — Apache-2.0 AND ISC (LICENSE-other-bits)
+- License text: **RUS-0086** — Apache-2.0 AND ISC (LICENSE)
+- License text: **RUS-0087** — Apache-2.0 AND ISC (LICENSE-BoringSSL)
+- License text: **RUS-0088** — Apache-2.0 AND ISC (LICENSE-other-bits)
 
 ### rustc_version 0.4.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/djc/rustc-version-rs
-- License text: **RUS-0068** — MIT
+- License text: **RUS-0067** — MIT
 
 ### rustc-hash 2.1.3
 
@@ -19846,71 +19832,71 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `Apache-2.0 OR ISC OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/rustls/rustls
-- License text: **RUS-0054** — MIT
+- License text: **RUS-0053** — MIT
 
 ### rustls-pki-types 1.15.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rustls/pki-types
-- License text: **RUS-0090** — MIT
+- License text: **RUS-0089** — MIT
 
 ### rustls-platform-verifier 0.7.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rustls/rustls-platform-verifier
-- License text: **RUS-0091** — MIT
+- License text: **RUS-0090** — MIT
 
 ### rustls-webpki 0.103.13
 
 - License: `ISC`
 - Source: https://github.com/rustls/webpki
-- License text: **RUS-0092** — ISC
+- License text: **RUS-0091** — ISC
 
 ### same-file 1.0.6
 
 - License: `Unlicense/MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/BurntSushi/same-file
-- License text: **RUS-0093** — MIT
+- License text: **RUS-0092** — MIT
 
 ### schemars 0.8.22
 
 - License: `MIT`
 - Source: https://github.com/GREsau/schemars
-- License text: **RUS-0094** — MIT
+- License text: **RUS-0093** — MIT
 
 ### schemars 0.9.0
 
 - License: `MIT`
 - Source: https://github.com/GREsau/schemars
-- License text: **RUS-0094** — MIT
+- License text: **RUS-0093** — MIT
 
 ### schemars 1.2.1
 
 - License: `MIT`
 - Source: https://github.com/GREsau/schemars
-- License text: **RUS-0094** — MIT
+- License text: **RUS-0093** — MIT
 
 ### schemars_derive 0.8.22
 
 - License: `MIT`
 - Source: https://github.com/GREsau/schemars
-- License text: **RUS-0094** — MIT
+- License text: **RUS-0093** — MIT
 
 ### scopeguard 1.2.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/bluss/scopeguard
-- License text: **RUS-0095** — MIT
+- License text: **RUS-0094** — MIT
 
 ### selectors 0.36.1
 
 - License: `MPL-2.0`
 - Source: https://github.com/servo/stylo
-- License text: **RUS-0096** — MPL-2.0 — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0095** — MPL-2.0 — text not published by this component; attribution derived from its package metadata
 
 ### semver 1.0.28
 
@@ -19966,21 +19952,21 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/toml-rs/toml
-- License text: **RUS-0097** — MIT
+- License text: **RUS-0096** — MIT
 
 ### serde_with 3.21.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/jonasbb/serde_with/
-- License text: **RUS-0098** — MIT
+- License text: **RUS-0097** — MIT
 
 ### serde_with_macros 3.21.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/jonasbb/serde_with/
-- License text: **RUS-0098** — MIT
+- License text: **RUS-0097** — MIT
 
 ### serde-untagged 0.1.9
 
@@ -19994,14 +19980,14 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/chippers/serialize-to-javascript
-- License text: **RUS-0099** — MIT
+- License text: **RUS-0098** — MIT
 
 ### serialize-to-javascript-impl 0.1.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/chippers/serialize-to-javascript
-- License text: **RUS-0099** — MIT
+- License text: **RUS-0098** — MIT
 
 ### servo_arc 0.4.3
 
@@ -20015,87 +20001,87 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/RustCrypto/hashes
-- License text: **RUS-0100** — MIT
+- License text: **RUS-0099** — MIT
 
 ### shlex 2.0.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/comex/rust-shlex
-- License text: **RUS-0101** — MIT
+- License text: **RUS-0100** — MIT
 
 ### simd-adler32 0.3.10
 
 - License: `MIT`
 - Source: https://github.com/mcountryman/simd-adler32
-- License text: **RUS-0102** — MIT
+- License text: **RUS-0101** — MIT
 
 ### siphasher 1.0.3
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/jedisct1/rust-siphash
-- License text: **RUS-0103** — MIT
+- License text: **RUS-0102** — MIT
 
 ### slab 0.4.12
 
 - License: `MIT`
 - Source: https://github.com/tokio-rs/slab
-- License text: **RUS-0104** — MIT
+- License text: **RUS-0103** — MIT
 
 ### smallvec 1.15.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/rust-smallvec
-- License text: **RUS-0105** — MIT
+- License text: **RUS-0104** — MIT
 
 ### socket2 0.6.5
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-lang/socket2
-- License text: **RUS-0015** — MIT
+- License text: **RUS-0014** — MIT
 
 ### softbuffer 0.4.8
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rust-windowing/softbuffer
-- License text: **RUS-0106** — MIT
+- License text: **RUS-0105** — MIT
 
 ### stable_deref_trait 1.2.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/storyyeller/stable_deref_trait
-- License text: **RUS-0107** — MIT
+- License text: **RUS-0106** — MIT
 
 ### string_cache 0.9.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/string-cache
-- License text: **RUS-0108** — MIT
+- License text: **RUS-0107** — MIT
 
 ### string_cache_codegen 0.6.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/string-cache
-- License text: **RUS-0108** — MIT
+- License text: **RUS-0107** — MIT
 
 ### strsim 0.11.1
 
 - License: `MIT`
 - Source: https://github.com/rapidfuzz/strsim-rs
-- License text: **RUS-0109** — MIT
+- License text: **RUS-0108** — MIT
 
 ### subtle 2.6.1
 
 - License: `BSD-3-Clause`
 - Source: https://github.com/dalek-cryptography/subtle
-- License text: **RUS-0110** — BSD-3-Clause
+- License text: **RUS-0109** — BSD-3-Clause
 
 ### syn 2.0.119
 
@@ -20108,138 +20094,138 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `Apache-2.0`
 - Source: https://github.com/Actyx/sync_wrapper
-- License text: **RUS-0111** — Apache-2.0
+- License text: **RUS-0110** — Apache-2.0
 
 ### synstructure 0.13.2
 
 - License: `MIT`
 - Source: https://github.com/mystor/synstructure
-- License text: **RUS-0112** — MIT
+- License text: **RUS-0111** — MIT
 
 ### tao 0.35.3
 
 - License: `Apache-2.0`
 - Source: https://github.com/tauri-apps/tao
-- License text: **RUS-0113** — Apache-2.0 (LICENSE)
-- License text: **RUS-0114** — Apache-2.0 (LICENSE.spdx)
+- License text: **RUS-0112** — Apache-2.0 (LICENSE)
+- License text: **RUS-0113** — Apache-2.0 (LICENSE.spdx)
 
 ### tauri 2.11.5
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-build 2.6.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-codegen 2.6.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-macros 2.6.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-plugin 2.6.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri
-- License text: **RUS-0116** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0115** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### tauri-plugin-deep-link 2.4.9
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/plugins-workspace
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-plugin-dialog 2.7.2
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/plugins-workspace
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-plugin-fs 2.5.1
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/plugins-workspace
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-plugin-opener 2.5.4
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/plugins-workspace
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-plugin-single-instance 2.4.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/plugins-workspace
-- License text: **RUS-0117** — MIT
+- License text: **RUS-0116** — MIT
 
 ### tauri-plugin-updater 2.10.1
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/plugins-workspace
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-runtime 2.11.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-runtime-wry 2.11.4
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-utils 2.9.3
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri
-- License text: **RUS-0115** — MIT
+- License text: **RUS-0114** — MIT
 
 ### tauri-winres 0.3.6
 
 - License: `MIT`
 - Source: https://github.com/tauri-apps/winres
-- License text: **RUS-0118** — MIT
+- License text: **RUS-0117** — MIT
 
 ### tempfile 3.27.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/Stebalien/tempfile
-- License text: **RUS-0119** — MIT
+- License text: **RUS-0118** — MIT
 
 ### tendril 0.5.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/html5ever
-- License text: **RUS-0120** — MIT
+- License text: **RUS-0119** — MIT
 
 ### thiserror 1.0.69
 
@@ -20274,157 +20260,157 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/time-rs/time
-- License text: **RUS-0121** — MIT
+- License text: **RUS-0120** — MIT
 
 ### time-core 0.1.9
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/time-rs/time
-- License text: **RUS-0121** — MIT
+- License text: **RUS-0120** — MIT
 
 ### time-macros 0.2.31
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/time-rs/time
-- License text: **RUS-0121** — MIT
+- License text: **RUS-0120** — MIT
 
 ### tinystr 0.8.3
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### tinyvec 1.12.0
 
 - License: `Zlib OR Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/Lokathor/tinyvec
-- License text: **RUS-0024** — MIT
+- License text: **RUS-0023** — MIT
 
 ### tinyvec_macros 0.1.1
 
 - License: `MIT OR Apache-2.0 OR Zlib`
 - Redistributed under: `MIT`
 - Source: https://github.com/Soveu/tinyvec_macros
-- License text: **RUS-0122** — MIT
+- License text: **RUS-0121** — MIT
 
 ### tokio 1.52.3
 
 - License: `MIT`
 - Source: https://github.com/tokio-rs/tokio
-- License text: **RUS-0123** — MIT
+- License text: **RUS-0122** — MIT
 
 ### tokio-rustls 0.26.4
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/rustls/tokio-rustls
-- License text: **RUS-0124** — MIT
+- License text: **RUS-0123** — MIT
 
 ### tokio-util 0.7.18
 
 - License: `MIT`
 - Source: https://github.com/tokio-rs/tokio
-- License text: **RUS-0123** — MIT
+- License text: **RUS-0122** — MIT
 
 ### toml 0.9.12+spec-1.1.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/toml-rs/toml
-- License text: **RUS-0097** — MIT
+- License text: **RUS-0096** — MIT
 
 ### toml 1.1.3+spec-1.1.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/toml-rs/toml
-- License text: **RUS-0097** — MIT
+- License text: **RUS-0096** — MIT
 
 ### toml_datetime 0.7.5+spec-1.1.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/toml-rs/toml
-- License text: **RUS-0097** — MIT
+- License text: **RUS-0096** — MIT
 
 ### toml_datetime 1.1.1+spec-1.1.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/toml-rs/toml
-- License text: **RUS-0097** — MIT
+- License text: **RUS-0096** — MIT
 
 ### toml_parser 1.1.2+spec-1.1.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/toml-rs/toml
-- License text: **RUS-0097** — MIT
+- License text: **RUS-0096** — MIT
 
 ### toml_writer 1.1.2+spec-1.1.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/toml-rs/toml
-- License text: **RUS-0097** — MIT
+- License text: **RUS-0096** — MIT
 
 ### tower 0.5.3
 
 - License: `MIT`
 - Source: https://github.com/tower-rs/tower
-- License text: **RUS-0125** — MIT
+- License text: **RUS-0124** — MIT
 
 ### tower-http 0.6.11
 
 - License: `MIT`
 - Source: https://github.com/tower-rs/tower-http
-- License text: **RUS-0126** — MIT
+- License text: **RUS-0125** — MIT
 
 ### tower-layer 0.3.3
 
 - License: `MIT`
 - Source: https://github.com/tower-rs/tower
-- License text: **RUS-0125** — MIT
+- License text: **RUS-0124** — MIT
 
 ### tower-service 0.3.3
 
 - License: `MIT`
 - Source: https://github.com/tower-rs/tower
-- License text: **RUS-0125** — MIT
+- License text: **RUS-0124** — MIT
 
 ### tracing 0.1.44
 
 - License: `MIT`
 - Source: https://github.com/tokio-rs/tracing
-- License text: **RUS-0127** — MIT
+- License text: **RUS-0126** — MIT
 
 ### tracing-attributes 0.1.31
 
 - License: `MIT`
 - Source: https://github.com/tokio-rs/tracing
-- License text: **RUS-0127** — MIT
+- License text: **RUS-0126** — MIT
 
 ### tracing-core 0.1.36
 
 - License: `MIT`
 - Source: https://github.com/tokio-rs/tracing
-- License text: **RUS-0127** — MIT
+- License text: **RUS-0126** — MIT
 
 ### tray-icon 0.24.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tray-icon
-- License text: **RUS-0073** — MIT
+- License text: **RUS-0072** — MIT
 
 ### try-lock 0.2.5
 
 - License: `MIT`
 - Source: https://github.com/seanmonstar/try-lock
-- License text: **RUS-0128** — MIT
+- License text: **RUS-0127** — MIT
 
 ### typeid 1.0.3
 
@@ -20438,42 +20424,42 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/paholg/typenum
-- License text: **RUS-0129** — MIT
+- License text: **RUS-0128** — MIT
 
 ### unic-char-property 0.9.0
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/open-i18n/rust-unic/
-- License text: **RUS-0130** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0129** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### unic-char-range 0.9.0
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/open-i18n/rust-unic/
-- License text: **RUS-0130** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0129** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### unic-common 0.9.0
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/open-i18n/rust-unic/
-- License text: **RUS-0130** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0129** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### unic-ucd-ident 0.9.0
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/open-i18n/rust-unic/
-- License text: **RUS-0130** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0129** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### unic-ucd-version 0.9.0
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/open-i18n/rust-unic/
-- License text: **RUS-0130** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0129** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### unicode-ident 1.0.24
 
@@ -20487,59 +20473,59 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/unicode-rs/unicode-segmentation
-- License text: **RUS-0047** — MIT
+- License text: **RUS-0046** — MIT
 
 ### untrusted 0.9.0
 
 - License: `ISC`
 - Source: https://github.com/briansmith/untrusted
-- License text: **RUS-0131** — ISC
+- License text: **RUS-0130** — ISC
 
 ### url 2.5.8
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/rust-url
-- License text: **RUS-0059** — MIT
+- License text: **RUS-0058** — MIT
 
 ### urlpattern 0.3.0
 
 - License: `MIT`
 - Source: https://github.com/denoland/rust-urlpattern
-- License text: **RUS-0132** — MIT
+- License text: **RUS-0131** — MIT
 
 ### utf8_iter 1.0.4
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/hsivonen/utf8_iter
-- License text: **RUS-0133** — MIT
+- License text: **RUS-0132** — MIT
 
 ### uuid 1.23.5
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/uuid-rs/uuid
-- License text: **RUS-0134** — MIT
+- License text: **RUS-0133** — MIT
 
 ### version_check 0.9.5
 
 - License: `MIT/Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/SergioBenitez/version_check
-- License text: **RUS-0135** — MIT
+- License text: **RUS-0134** — MIT
 
 ### vswhom 0.1.0
 
 - License: `MIT`
 - Source: https://github.com/nabijaczleweli/vswhom.rs
-- License text: **RUS-0136** — MIT
+- License text: **RUS-0135** — MIT
 
 ### vswhom-sys 0.1.3
 
 - License: `MIT`
 - Source: https://github.com/nabijaczleweli/vswhom-sys.rs
-- License text: **RUS-0136** — MIT
+- License text: **RUS-0135** — MIT
 
 ### walkdir 2.5.0
 
@@ -20552,265 +20538,265 @@ Statically linked into the Tauri desktop shell and the `modus` launcher sidecar.
 
 - License: `MIT`
 - Source: https://github.com/seanmonstar/want
-- License text: **RUS-0137** — MIT
+- License text: **RUS-0136** — MIT
 
 ### web_atoms 0.2.5
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/servo/html5ever
-- License text: **RUS-0049** — MIT
+- License text: **RUS-0048** — MIT
 
 ### webview2-com 0.38.2
 
 - License: `MIT`
 - Source: https://github.com/wravery/webview2-rs
-- License text: **RUS-0138** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0137** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### webview2-com-macros 0.8.1
 
 - License: `MIT`
 - Source: https://github.com/wravery/webview2-rs
-- License text: **RUS-0139** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0138** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### webview2-com-sys 0.38.2
 
 - License: `MIT`
 - Source: https://github.com/wravery/webview2-rs
-- License text: **RUS-0140** — MIT — text not published by this component; attribution derived from its package metadata
+- License text: **RUS-0139** — MIT — text not published by this component; attribution derived from its package metadata
 
 ### winapi-util 0.1.11
 
 - License: `Unlicense OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/BurntSushi/winapi-util
-- License text: **RUS-0093** — MIT
+- License text: **RUS-0092** — MIT
 
 ### window-vibrancy 0.6.0
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/tauri-plugin-vibrancy
-- License text: **RUS-0141** — MIT
+- License text: **RUS-0140** — MIT
 
 ### windows 0.61.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-collections 0.2.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-core 0.61.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-future 0.2.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-implement 0.60.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-interface 0.59.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-link 0.1.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-link 0.2.1
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-numerics 0.2.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-registry 0.5.3
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-result 0.3.4
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-strings 0.4.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-sys 0.59.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-sys 0.60.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-sys 0.61.2
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-targets 0.52.6
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-targets 0.53.5
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-threading 0.1.0
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### windows-version 0.1.7
 
 - License: `MIT OR Apache-2.0`
 - Redistributed under: `MIT`
 - Source: https://github.com/microsoft/windows-rs
-- License text: **RUS-0142** — MIT
+- License text: **RUS-0141** — MIT
 
 ### winnow 0.7.15
 
 - License: `MIT`
 - Source: https://github.com/winnow-rs/winnow
-- License text: **RUS-0143** — MIT
+- License text: **RUS-0142** — MIT
 
 ### winnow 1.0.4
 
 - License: `MIT`
 - Source: https://github.com/winnow-rs/winnow
-- License text: **RUS-0143** — MIT
+- License text: **RUS-0142** — MIT
 
 ### winreg 0.55.0
 
 - License: `MIT`
 - Source: https://github.com/gentoo90/winreg-rs
-- License text: **RUS-0144** — MIT
+- License text: **RUS-0143** — MIT
 
 ### writeable 0.6.3
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### wry 0.55.1
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/tauri-apps/wry
-- License text: **RUS-0145** — MIT
+- License text: **RUS-0144** — MIT
 
 ### yoke 0.8.3
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### yoke-derive 0.8.2
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### zerofrom 0.1.8
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### zerofrom-derive 0.1.7
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### zeroize 1.9.0
 
 - License: `Apache-2.0 OR MIT`
 - Redistributed under: `MIT`
 - Source: https://github.com/RustCrypto/utils
-- License text: **RUS-0146** — MIT
+- License text: **RUS-0145** — MIT
 
 ### zerotrie 0.2.4
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### zerovec 0.11.6
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### zerovec-derive 0.11.3
 
 - License: `Unicode-3.0`
 - Source: https://github.com/unicode-org/icu4x
-- License text: **RUS-0057** — Unicode-3.0
+- License text: **RUS-0056** — Unicode-3.0
 
 ### zip 4.6.1
 
 - License: `MIT`
 - Source: https://github.com/zip-rs/zip2.git
-- License text: **RUS-0147** — MIT
+- License text: **RUS-0146** — MIT
 
 ### zmij 1.0.23
 
@@ -20922,40 +20908,6 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ### RUS-0005 — MIT
 
-Applies to 2 components: arbitrary 1.4.2, derive_arbitrary 1.4.2.
-
-```text
-MIT License
-
-Copyright (c) 2019 Manish Goregaokar
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-```
-
-### RUS-0006 — MIT
-
 Applies to 1 component: autocfg 1.5.1.
 
 ```text
@@ -20986,7 +20938,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0007 — MIT
+### RUS-0006 — MIT
 
 Applies to 1 component: base64 0.22.1.
 
@@ -21014,7 +20966,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0008 — MIT
+### RUS-0007 — MIT
 
 Applies to 2 components: bit-set 0.8.0, bit-vec 0.8.0.
 
@@ -21046,7 +20998,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0009 — MIT
+### RUS-0008 — MIT
 
 Applies to 8 components: bitflags 1.3.2, bitflags 2.13.0, glob 0.3.3, log 0.4.33, num-traits 0.2.19, regex 1.13.0, regex-automata 0.4.15, regex-syntax 0.8.11.
 
@@ -21078,7 +21030,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0010 — MIT
+### RUS-0009 — MIT
 
 Applies to 1 component: block-buffer 0.10.4.
 
@@ -21110,7 +21062,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0011 — MIT
+### RUS-0010 — MIT
 
 Applies to 1 component: brotli 8.0.4.
 
@@ -21136,7 +21088,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0012 — MIT
+### RUS-0011 — MIT
 
 Applies to 1 component: bs58 0.5.1.
 
@@ -21163,7 +21115,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0013 — MIT
+### RUS-0012 — MIT
 
 Applies to 1 component: bytes 1.12.1.
 
@@ -21195,7 +21147,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0014 — MIT
+### RUS-0013 — MIT
 
 Applies to 1 component: cargo_toml 0.22.3.
 
@@ -21404,7 +21356,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0015 — MIT
+### RUS-0014 — MIT
 
 Applies to 4 components: cc 1.2.67, cfg-if 1.0.4, find-msvc-tools 0.1.9, socket2 0.6.5.
 
@@ -21436,7 +21388,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0016 — MIT
+### RUS-0015 — MIT
 
 Applies to 1 component: cfb 0.7.3.
 
@@ -21464,7 +21416,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0017 — MIT
+### RUS-0016 — MIT
 
 Applies to 1 component: chrono 0.4.45.
 
@@ -21710,7 +21662,7 @@ limitations under the License.
 ~~~~
 ```
 
-### RUS-0018 — MIT
+### RUS-0017 — MIT
 
 Applies to 1 component: cookie 0.18.1.
 
@@ -21743,7 +21695,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0019 — MIT
+### RUS-0018 — MIT
 
 Applies to 1 component: cpufeatures 0.2.17.
 
@@ -21775,7 +21727,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0020 — MIT
+### RUS-0019 — MIT
 
 Applies to 1 component: crc32fast 1.5.0.
 
@@ -21803,7 +21755,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0021 — MIT
+### RUS-0020 — MIT
 
 Applies to 2 components: crossbeam-channel 0.5.16, crossbeam-utils 0.8.22.
 
@@ -21837,7 +21789,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0022 — MIT
+### RUS-0021 — MIT
 
 Applies to 1 component: crypto-common 0.1.7.
 
@@ -21869,7 +21821,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0023 — MPL-2.0
+### RUS-0022 — MPL-2.0
 
 Applies to 2 components: cssparser 0.36.0, cssparser-macros 0.6.1.
 
@@ -22249,7 +22201,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### RUS-0024 — MIT
+### RUS-0023 — MIT
 
 Applies to 5 components: ctor 0.8.0, ctor-proc-macro 0.0.7, dtor 0.3.0, dtor-proc-macro 0.0.6, tinyvec 1.12.0.
 
@@ -22261,7 +22213,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0025 — MIT
+### RUS-0024 — MIT
 
 Applies to 3 components: darling 0.23.0, darling_core 0.23.0, darling_macro 0.23.0.
 
@@ -22289,7 +22241,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0026 — MIT
+### RUS-0025 — MIT
 
 Applies to 1 component: deranged 0.5.8.
 
@@ -22315,7 +22267,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0027 — MIT
+### RUS-0026 — MIT
 
 Applies to 2 components: derive_more 2.1.1, derive_more-impl 2.1.1.
 
@@ -22343,7 +22295,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0028 — MIT
+### RUS-0027 — MIT
 
 Applies to 1 component: digest 0.10.7.
 
@@ -22375,7 +22327,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0029 — MIT
+### RUS-0028 — MIT
 
 Applies to 2 components: dirs 6.0.0, dirs-sys 0.5.0.
 
@@ -22401,7 +22353,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0030 — MIT
+### RUS-0029 — MIT
 
 Applies to 1 component: dom_query 0.27.0.
 
@@ -22435,7 +22387,7 @@ derived from the "nipper" project (https://github.com/importcjj/nipper),
 developed by Chen Jiaju, licensed under the MIT License and the Apache License 2.0 (dual licensed).
 ```
 
-### RUS-0031 — MIT
+### RUS-0030 — MIT
 
 Applies to 1 component: dpi 0.1.2.
 
@@ -22493,7 +22445,7 @@ have been licensed under extremely permissive terms.
 ------------------------------------------------------------------------------
 ```
 
-### RUS-0032 — MPL-2.0
+### RUS-0031 — MPL-2.0
 
 Applies to 1 component: dtoa-short 0.3.5.
 
@@ -22873,7 +22825,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### RUS-0033 — MIT-0
+### RUS-0032 — MIT-0
 
 Applies to 1 component: dunce 1.0.5.
 
@@ -23001,7 +22953,7 @@ express Statement of Purpose.
     this CC0 or use of the Work.
 ```
 
-### RUS-0034 — MIT
+### RUS-0033 — MIT
 
 Applies to 1 component: embed-resource 3.0.11.
 
@@ -23029,7 +22981,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0035 — MIT
+### RUS-0034 — MIT
 
 Applies to 1 component: equivalent 1.0.2.
 
@@ -23061,7 +23013,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0036 — MIT
+### RUS-0035 — MIT
 
 Applies to 1 component: fdeflate 0.3.7.
 
@@ -23093,7 +23045,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0037 — MIT
+### RUS-0036 — MIT
 
 Applies to 1 component: flate2 1.1.9.
 
@@ -23125,7 +23077,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0038 — MIT
+### RUS-0037 — MIT
 
 Applies to 1 component: fnv 1.0.7.
 
@@ -23157,7 +23109,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0039 — Zlib
+### RUS-0038 — Zlib
 
 Applies to 1 component: foldhash 0.2.0.
 
@@ -23183,7 +23135,7 @@ the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
-### RUS-0040 — MIT
+### RUS-0039 — MIT
 
 Applies to 1 component: form_urlencoded 1.2.2.
 
@@ -23215,7 +23167,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0041 — MIT
+### RUS-0040 — MIT
 
 Applies to 7 components: futures-channel 0.3.32, futures-core 0.3.32, futures-io 0.3.32, futures-macro 0.3.32, futures-sink 0.3.32, futures-task 0.3.32, futures-util 0.3.32.
 
@@ -23248,7 +23200,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0042 — MIT
+### RUS-0041 — MIT
 
 Applies to 1 component: generic-array 0.14.7.
 
@@ -23276,7 +23228,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0043 — MIT
+### RUS-0042 — MIT
 
 Applies to 1 component: getrandom 0.2.17.
 
@@ -23309,7 +23261,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0044 — MIT
+### RUS-0043 — MIT
 
 Applies to 1 component: getrandom 0.3.4.
 
@@ -23342,7 +23294,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0045 — MIT
+### RUS-0044 — MIT
 
 Applies to 1 component: getrandom 0.4.3.
 
@@ -23375,7 +23327,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0046 — MIT
+### RUS-0045 — MIT
 
 Applies to 2 components: hashbrown 0.12.3, hashbrown 0.17.1.
 
@@ -23407,7 +23359,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0047 — MIT
+### RUS-0046 — MIT
 
 Applies to 2 components: heck 0.5.0, unicode-segmentation 1.13.3.
 
@@ -23439,7 +23391,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0048 — MIT
+### RUS-0047 — MIT
 
 Applies to 1 component: hex 0.4.3.
 
@@ -23466,7 +23418,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0049 — MIT
+### RUS-0048 — MIT
 
 Applies to 3 components: html5ever 0.38.0, markup5ever 0.38.0, web_atoms 0.2.5.
 
@@ -23498,7 +23450,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0050 — MIT
+### RUS-0049 — MIT
 
 Applies to 1 component: http 1.4.2.
 
@@ -23530,7 +23482,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0051 — MIT
+### RUS-0050 — MIT
 
 Applies to 2 components: http-body 1.1.0, http-body-util 0.1.4.
 
@@ -23562,7 +23514,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0052 — MIT
+### RUS-0051 — MIT
 
 Applies to 1 component: httparse 1.10.1.
 
@@ -23588,7 +23540,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0053 — MIT
+### RUS-0052 — MIT
 
 Applies to 1 component: hyper 1.10.1.
 
@@ -23614,7 +23566,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0054 — MIT
+### RUS-0053 — MIT
 
 Applies to 2 components: hyper-rustls 0.27.9, rustls 0.23.42.
 
@@ -23646,7 +23598,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0055 — MIT
+### RUS-0054 — MIT
 
 Applies to 1 component: hyper-util 0.1.20.
 
@@ -23672,7 +23624,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0056 — MIT
+### RUS-0055 — MIT
 
 Applies to 1 component: ico 0.5.0.
 
@@ -23700,7 +23652,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0057 — Unicode-3.0
+### RUS-0056 — Unicode-3.0
 
 Applies to 18 components: icu_collections 2.2.0, icu_locale_core 2.2.0, icu_normalizer 2.2.0, icu_normalizer_data 2.2.0, icu_properties 2.2.0, icu_properties_data 2.2.0, icu_provider 2.2.0, litemap 0.8.2, potential_utf 0.1.5, tinystr 0.8.3, writeable 0.6.3, yoke 0.8.3, yoke-derive 0.8.2, zerofrom 0.1.8, zerofrom-derive 0.1.7, zerotrie 0.2.4, zerovec 0.11.6, zerovec-derive 0.11.3.
 
@@ -23753,7 +23705,7 @@ Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
 ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
 ```
 
-### RUS-0058 — MIT
+### RUS-0057 — MIT
 
 Applies to 1 component: ident_case 1.0.1.
 
@@ -23779,7 +23731,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0059 — MIT
+### RUS-0058 — MIT
 
 Applies to 3 components: idna 1.1.0, percent-encoding 2.3.2, url 2.5.8.
 
@@ -23811,7 +23763,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0060 — MIT
+### RUS-0059 — MIT
 
 Applies to 1 component: idna_adapter 1.2.2.
 
@@ -23843,7 +23795,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0061 — MIT
+### RUS-0060 — MIT
 
 Applies to 2 components: indexmap 1.9.3, indexmap 2.14.0.
 
@@ -23875,7 +23827,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0062 — MIT
+### RUS-0061 — MIT
 
 Applies to 1 component: infer 0.19.0.
 
@@ -23903,7 +23855,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0063 — MIT
+### RUS-0062 — MIT
 
 Applies to 1 component: ipnet 2.12.0.
 
@@ -23917,7 +23869,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0064 — MIT
+### RUS-0063 — MIT
 
 Applies to 1 component: json-patch 3.0.1.
 
@@ -23945,7 +23897,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0065 — MIT
+### RUS-0064 — MIT
 
 Applies to 1 component: jsonptr 0.6.3.
 
@@ -23973,7 +23925,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0066 — MIT
+### RUS-0065 — MIT
 
 Applies to 1 component: keyboard-types 0.7.0.
 
@@ -23999,7 +23951,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0067 — MIT
+### RUS-0066 — MIT
 
 Applies to 1 component: libc 0.2.186.
 
@@ -24031,7 +23983,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0068 — MIT
+### RUS-0067 — MIT
 
 Applies to 4 components: lock_api 0.4.14, parking_lot 0.12.5, parking_lot_core 0.9.12, rustc_version 0.4.1.
 
@@ -24063,7 +24015,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0069 — MIT
+### RUS-0068 — MIT
 
 Applies to 1 component: mime 0.3.17.
 
@@ -24089,7 +24041,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0070 — MIT
+### RUS-0069 — MIT
 
 Applies to 1 component: minisign-verify 0.2.5.
 
@@ -24155,7 +24107,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0071 — MIT
+### RUS-0070 — MIT
 
 Applies to 1 component: miniz_oxide 0.8.9.
 
@@ -24186,7 +24138,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0072 — MIT
+### RUS-0071 — MIT
 
 Applies to 1 component: mio 1.2.2.
 
@@ -24212,7 +24164,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0073 — MIT
+### RUS-0072 — MIT
 
 Applies to 2 components: muda 0.19.3, tray-icon 0.24.1.
 
@@ -24240,7 +24192,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0074 — MIT
+### RUS-0073 — MIT
 
 Applies to 1 component: new_debug_unreachable 1.0.6.
 
@@ -24272,7 +24224,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0075 — MIT
+### RUS-0074 — MIT
 
 Applies to 1 component: num-conv 0.2.2.
 
@@ -24298,7 +24250,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0076 — MIT
+### RUS-0075 — MIT
 
 Applies to 1 component: open 5.4.1.
 
@@ -24330,7 +24282,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0077 — MPL-2.0
+### RUS-0076 — MPL-2.0
 
 Applies to 1 component: option-ext 0.2.0.
 
@@ -24710,7 +24662,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### RUS-0078 — MIT
+### RUS-0077 — MIT
 
 Applies to 5 components: phf 0.13.1, phf_codegen 0.13.1, phf_generator 0.13.1, phf_macros 0.13.1, phf_shared 0.13.1.
 
@@ -24737,7 +24689,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0079 — MIT
+### RUS-0078 — MIT
 
 Applies to 1 component: plist 1.10.0.
 
@@ -24763,7 +24715,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0080 — MIT
+### RUS-0079 — MIT
 
 Applies to 1 component: png 0.17.16.
 
@@ -24795,7 +24747,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0081 — MIT
+### RUS-0080 — MIT
 
 Applies to 1 component: powerfmt 0.2.0.
 
@@ -24821,7 +24773,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0082 — MIT
+### RUS-0081 — MIT
 
 Applies to 1 component: precomputed-hash 0.1.1.
 
@@ -24849,7 +24801,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0083 — MIT
+### RUS-0082 — MIT
 
 Applies to 1 component: quick-xml 0.41.0.
 
@@ -24879,7 +24831,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0084 — MIT
+### RUS-0083 — MIT
 
 Applies to 1 component: raw-window-handle 0.6.2.
 
@@ -24907,7 +24859,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0085 — MIT
+### RUS-0084 — MIT
 
 Applies to 1 component: reqwest 0.13.4.
 
@@ -24933,7 +24885,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0086 — MIT
+### RUS-0085 — MIT
 
 Applies to 1 component: rfd 0.16.0.
 
@@ -24961,7 +24913,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0087 — Apache-2.0 AND ISC (LICENSE)
+### RUS-0086 — Apache-2.0 AND ISC (LICENSE)
 
 Applies to 1 component: ring 0.17.14.
 
@@ -24977,7 +24929,7 @@ See src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT
 for the license to code that was sourced from the once_cell project.
 ```
 
-### RUS-0088 — Apache-2.0 AND ISC (LICENSE-BoringSSL)
+### RUS-0087 — Apache-2.0 AND ISC (LICENSE-BoringSSL)
 
 Applies to 1 component: ring 0.17.14.
 
@@ -25256,7 +25208,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### RUS-0089 — Apache-2.0 AND ISC (LICENSE-other-bits)
+### RUS-0088 — Apache-2.0 AND ISC (LICENSE-other-bits)
 
 Applies to 1 component: ring 0.17.14.
 
@@ -25276,7 +25228,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### RUS-0090 — MIT
+### RUS-0089 — MIT
 
 Applies to 1 component: rustls-pki-types 1.15.0.
 
@@ -25308,7 +25260,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0091 — MIT
+### RUS-0090 — MIT
 
 Applies to 1 component: rustls-platform-verifier 0.7.0.
 
@@ -25336,7 +25288,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0092 — ISC
+### RUS-0091 — ISC
 
 Applies to 1 component: rustls-webpki 0.103.13.
 
@@ -25362,7 +25314,7 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 ```
 
-### RUS-0093 — MIT
+### RUS-0092 — MIT
 
 Applies to 2 components: same-file 1.0.6, winapi-util 0.1.11.
 
@@ -25390,7 +25342,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0094 — MIT
+### RUS-0093 — MIT
 
 Applies to 4 components: schemars 0.8.22, schemars 0.9.0, schemars 1.2.1, schemars_derive 0.8.22.
 
@@ -25418,7 +25370,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0095 — MIT
+### RUS-0094 — MIT
 
 Applies to 1 component: scopeguard 1.2.0.
 
@@ -25450,7 +25402,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0096 — MPL-2.0 — text not published by this component; attribution derived from its package metadata
+### RUS-0095 — MPL-2.0 — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: selectors 0.36.1.
 
@@ -25832,7 +25784,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### RUS-0097 — MIT
+### RUS-0096 — MIT
 
 Applies to 7 components: serde_spanned 1.1.1, toml 0.9.12+spec-1.1.0, toml 1.1.3+spec-1.1.0, toml_datetime 0.7.5+spec-1.1.0, toml_datetime 1.1.1+spec-1.1.0, toml_parser 1.1.2+spec-1.1.0, toml_writer 1.1.2+spec-1.1.0.
 
@@ -25858,7 +25810,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0098 — MIT
+### RUS-0097 — MIT
 
 Applies to 2 components: serde_with 3.21.0, serde_with_macros 3.21.0.
 
@@ -25890,7 +25842,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0099 — MIT
+### RUS-0098 — MIT
 
 Applies to 2 components: serialize-to-javascript 0.1.2, serialize-to-javascript-impl 0.1.2.
 
@@ -25918,7 +25870,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0100 — MIT
+### RUS-0099 — MIT
 
 Applies to 1 component: sha2 0.10.9.
 
@@ -25952,7 +25904,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0101 — MIT
+### RUS-0100 — MIT
 
 Applies to 1 component: shlex 2.0.1.
 
@@ -25980,7 +25932,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0102 — MIT
+### RUS-0101 — MIT
 
 Applies to 1 component: simd-adler32 0.3.10.
 
@@ -26008,7 +25960,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0103 — MIT
+### RUS-0102 — MIT
 
 Applies to 1 component: siphasher 1.0.3.
 
@@ -26022,7 +25974,7 @@ http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 option.
 ```
 
-### RUS-0104 — MIT
+### RUS-0103 — MIT
 
 Applies to 1 component: slab 0.4.12.
 
@@ -26054,7 +26006,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0105 — MIT
+### RUS-0104 — MIT
 
 Applies to 1 component: smallvec 1.15.2.
 
@@ -26086,7 +26038,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0106 — MIT
+### RUS-0105 — MIT
 
 Applies to 1 component: softbuffer 0.4.8.
 
@@ -26112,7 +26064,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0107 — MIT
+### RUS-0106 — MIT
 
 Applies to 1 component: stable_deref_trait 1.2.1.
 
@@ -26144,7 +26096,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0108 — MIT
+### RUS-0107 — MIT
 
 Applies to 2 components: string_cache 0.9.0, string_cache_codegen 0.6.1.
 
@@ -26176,7 +26128,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0109 — MIT
+### RUS-0108 — MIT
 
 Applies to 1 component: strsim 0.11.1.
 
@@ -26206,7 +26158,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0110 — BSD-3-Clause
+### RUS-0109 — BSD-3-Clause
 
 Applies to 1 component: subtle 2.6.1.
 
@@ -26242,7 +26194,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### RUS-0111 — Apache-2.0
+### RUS-0110 — Apache-2.0
 
 Applies to 1 component: sync_wrapper 1.0.2.
 
@@ -26426,7 +26378,7 @@ Applies to 1 component: sync_wrapper 1.0.2.
    END OF TERMS AND CONDITIONS
 ```
 
-### RUS-0112 — MIT
+### RUS-0111 — MIT
 
 Applies to 1 component: synstructure 0.13.2.
 
@@ -26440,7 +26392,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0113 — Apache-2.0 (LICENSE)
+### RUS-0112 — Apache-2.0 (LICENSE)
 
 Applies to 1 component: tao 0.35.3.
 
@@ -26648,7 +26600,7 @@ Apache License
    limitations under the License.
 ```
 
-### RUS-0114 — Apache-2.0 (LICENSE.spdx)
+### RUS-0113 — Apache-2.0 (LICENSE.spdx)
 
 Applies to 1 component: tao 0.35.3.
 
@@ -26673,7 +26625,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### RUS-0115 — MIT
+### RUS-0114 — MIT
 
 Applies to 12 components: tauri 2.11.5, tauri-build 2.6.3, tauri-codegen 2.6.3, tauri-macros 2.6.3, tauri-plugin-deep-link 2.4.9, tauri-plugin-dialog 2.7.2, tauri-plugin-fs 2.5.1, tauri-plugin-opener 2.5.4, tauri-plugin-updater 2.10.1, tauri-runtime 2.11.3, tauri-runtime-wry 2.11.4, tauri-utils 2.9.3.
 
@@ -26701,7 +26653,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0116 — MIT — text not published by this component; attribution derived from its package metadata
+### RUS-0115 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: tauri-plugin 2.6.3.
 
@@ -26728,7 +26680,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0117 — MIT
+### RUS-0116 — MIT
 
 Applies to 1 component: tauri-plugin-single-instance 2.4.3.
 
@@ -26756,7 +26708,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0118 — MIT
+### RUS-0117 — MIT
 
 Applies to 1 component: tauri-winres 0.3.6.
 
@@ -26791,7 +26743,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0119 — MIT
+### RUS-0118 — MIT
 
 Applies to 1 component: tempfile 3.27.0.
 
@@ -26823,7 +26775,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0120 — MIT
+### RUS-0119 — MIT
 
 Applies to 1 component: tendril 0.5.1.
 
@@ -26855,7 +26807,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0121 — MIT
+### RUS-0120 — MIT
 
 Applies to 3 components: time 0.3.53, time-core 0.1.9, time-macros 0.2.31.
 
@@ -26881,7 +26833,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0122 — MIT
+### RUS-0121 — MIT
 
 Applies to 1 component: tinyvec_macros 0.1.1.
 
@@ -26909,7 +26861,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0123 — MIT
+### RUS-0122 — MIT
 
 Applies to 2 components: tokio 1.52.3, tokio-util 0.7.18.
 
@@ -26937,7 +26889,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0124 — MIT
+### RUS-0123 — MIT
 
 Applies to 1 component: tokio-rustls 0.26.4.
 
@@ -26969,7 +26921,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0125 — MIT
+### RUS-0124 — MIT
 
 Applies to 3 components: tower 0.5.3, tower-layer 0.3.3, tower-service 0.3.3.
 
@@ -27001,7 +26953,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0126 — MIT
+### RUS-0125 — MIT
 
 Applies to 1 component: tower-http 0.6.11.
 
@@ -27033,7 +26985,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0127 — MIT
+### RUS-0126 — MIT
 
 Applies to 3 components: tracing 0.1.44, tracing-attributes 0.1.31, tracing-core 0.1.36.
 
@@ -27065,7 +27017,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0128 — MIT
+### RUS-0127 — MIT
 
 Applies to 1 component: try-lock 0.2.5.
 
@@ -27092,7 +27044,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0129 — MIT
+### RUS-0128 — MIT
 
 Applies to 1 component: typenum 1.20.1.
 
@@ -27120,7 +27072,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0130 — MIT — text not published by this component; attribution derived from its package metadata
+### RUS-0129 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 5 components: unic-char-property 0.9.0, unic-char-range 0.9.0, unic-common 0.9.0, unic-ucd-ident 0.9.0, unic-ucd-version 0.9.0.
 
@@ -27147,7 +27099,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0131 — ISC
+### RUS-0130 — ISC
 
 Applies to 1 component: untrusted 0.9.0.
 
@@ -27167,7 +27119,7 @@ Applies to 1 component: untrusted 0.9.0.
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### RUS-0132 — MIT
+### RUS-0131 — MIT
 
 Applies to 1 component: urlpattern 0.3.0.
 
@@ -27195,7 +27147,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0133 — MIT
+### RUS-0132 — MIT
 
 Applies to 1 component: utf8_iter 1.0.4.
 
@@ -27227,7 +27179,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0134 — MIT
+### RUS-0133 — MIT
 
 Applies to 1 component: uuid 1.23.5.
 
@@ -27260,7 +27212,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0135 — MIT
+### RUS-0134 — MIT
 
 Applies to 1 component: version_check 0.9.5.
 
@@ -27286,7 +27238,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0136 — MIT
+### RUS-0135 — MIT
 
 Applies to 2 components: vswhom 0.1.0, vswhom-sys 0.1.3.
 
@@ -27314,7 +27266,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0137 — MIT
+### RUS-0136 — MIT
 
 Applies to 1 component: want 0.3.1.
 
@@ -27340,7 +27292,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0138 — MIT — text not published by this component; attribution derived from its package metadata
+### RUS-0137 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: webview2-com 0.38.2.
 
@@ -27367,7 +27319,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0139 — MIT — text not published by this component; attribution derived from its package metadata
+### RUS-0138 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: webview2-com-macros 0.8.1.
 
@@ -27394,7 +27346,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0140 — MIT — text not published by this component; attribution derived from its package metadata
+### RUS-0139 — MIT — text not published by this component; attribution derived from its package metadata
 
 Applies to 1 component: webview2-com-sys 0.38.2.
 
@@ -27421,7 +27373,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTI
 USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0141 — MIT
+### RUS-0140 — MIT
 
 Applies to 1 component: window-vibrancy 0.6.0.
 
@@ -27449,7 +27401,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0142 — MIT
+### RUS-0141 — MIT
 
 Applies to 19 components: windows 0.61.3, windows-collections 0.2.0, windows-core 0.61.2, windows-future 0.2.1, windows-implement 0.60.2, windows-interface 0.59.3, windows-link 0.1.3, windows-link 0.2.1, windows-numerics 0.2.0, windows-registry 0.5.3, windows-result 0.3.4, windows-strings 0.4.2, windows-sys 0.59.0, windows-sys 0.60.2, windows-sys 0.61.2, windows-targets 0.52.6, windows-targets 0.53.5, windows-threading 0.1.0, windows-version 0.1.7.
 
@@ -27477,7 +27429,7 @@ Applies to 19 components: windows 0.61.3, windows-collections 0.2.0, windows-cor
     SOFTWARE
 ```
 
-### RUS-0143 — MIT
+### RUS-0142 — MIT
 
 Applies to 2 components: winnow 0.7.15, winnow 1.0.4.
 
@@ -27502,7 +27454,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0144 — MIT
+### RUS-0143 — MIT
 
 Applies to 1 component: winreg 0.55.0.
 
@@ -27528,7 +27480,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### RUS-0145 — MIT
+### RUS-0144 — MIT
 
 Applies to 1 component: wry 0.55.1.
 
@@ -27556,7 +27508,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### RUS-0146 — MIT
+### RUS-0145 — MIT
 
 Applies to 1 component: zeroize 1.9.0.
 
@@ -27588,7 +27540,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### RUS-0147 — MIT
+### RUS-0146 — MIT
 
 Applies to 1 component: zip 4.6.1.
 

@@ -13131,24 +13131,6 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/arbitrary@1.4.2",
-      "name": "arbitrary",
-      "version": "1.4.2",
-      "purl": "pkg:cargo/arbitrary@1.4.2",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/rust-fuzz/arbitrary/"
-        }
-      ]
-    },
-    {
-      "type": "library",
       "bom-ref": "pkg:cargo/atomic-waker@1.1.2",
       "name": "atomic-waker",
       "version": "1.1.2",
@@ -13774,24 +13756,6 @@
         {
           "type": "website",
           "url": "https://github.com/jhpratt/deranged"
-        }
-      ]
-    },
-    {
-      "type": "library",
-      "bom-ref": "pkg:cargo/derive_arbitrary@1.4.2",
-      "name": "derive_arbitrary",
-      "version": "1.4.2",
-      "purl": "pkg:cargo/derive_arbitrary@1.4.2",
-      "licenses": [
-        {
-          "expression": "MIT OR Apache-2.0"
-        }
-      ],
-      "externalReferences": [
-        {
-          "type": "website",
-          "url": "https://github.com/rust-fuzz/arbitrary"
         }
       ]
     },
