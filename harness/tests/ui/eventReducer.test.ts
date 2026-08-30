@@ -179,6 +179,45 @@ describe("tool result content", () => {
     expect(splitToolResultContent("ok")).toEqual({ text: "ok", images: [] });
   });
 
+  test("lifts Grok ReadFile ImageContent out of the JSON envelope", () => {
+    const jpeg = "/9j/4AAQSkZJRgABAQAAAQABAAD";
+    const envelope = {
+      type: "ReadFile",
+      ImageContent: { data: jpeg },
+    };
+    expect(splitToolResultContent(envelope)).toEqual({
+      text: "",
+      images: [{ type: "image", mediaType: "image/jpeg", data: jpeg }],
+    });
+    expect(splitToolResultContent(JSON.stringify(envelope))).toEqual({
+      text: "",
+      images: [{ type: "image", mediaType: "image/jpeg", data: jpeg }],
+    });
+  });
+
+  test("a Grok image read lands on the tool call as an image, not a base64 wall", () => {
+    let state = createInitialState("ses-grok-img");
+    state = reduceEvent(state, {
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "r1", name: "read_file", input: { target_file: "look.png" } }] },
+    }, 1);
+    state = reduceEvent(state, {
+      type: "user",
+      isSynthetic: true,
+      message: {
+        content: [{
+          type: "tool_result",
+          tool_use_id: "r1",
+          content: JSON.stringify({ type: "ReadFile", ImageContent: { data: PIXEL } }),
+        }],
+      },
+    }, 2);
+    const tool = state.messages[0]?.toolCalls?.[0];
+    expect(tool?.images).toEqual([{ type: "image", mediaType: "image/png", data: PIXEL }]);
+    expect(tool?.result).toBe("");
+    expect(tool?.result).not.toContain(PIXEL);
+  });
+
   test("defaults a missing media type rather than dropping the image", () => {
     const { images } = splitToolResultContent([
       { type: "image", source: { type: "base64", data: PIXEL } },

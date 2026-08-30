@@ -15,6 +15,7 @@ import { providerErrorDisplayText } from "../../provider-error";
 import { userAuthoredMessageText } from "./move-context";
 import { copyTextFromBlocks } from "./message-copy";
 import { isClientTempSessionId } from "./session-id";
+import { peelToolResultImages } from "../../tool-result-images";
 
 export type ReducerState = {
   sessionId: string;
@@ -788,29 +789,15 @@ export const TOOL_RESULT_STORE_LIMIT = 100_000;
  * out here as attachments; everything else is flattened to text.
  */
 export function splitToolResultContent(content: unknown): { text: string; images: Attachment[] } {
-  if (typeof content === "string") return { text: content, images: [] };
-  if (!Array.isArray(content)) {
-    return { text: content == null ? "" : JSON.stringify(content), images: [] };
-  }
-
-  const images: Attachment[] = [];
-  const parts: string[] = [];
-  for (const block of content) {
-    if (block?.type === "image" && block.source?.type === "base64" && block.source.data) {
-      images.push({
-        type: "image",
-        mediaType: block.source.media_type ?? "image/png",
-        data: block.source.data,
-      });
-    } else if (block?.type === "text" && typeof block.text === "string") {
-      parts.push(block.text);
-    } else if (block != null) {
-      // Unknown block kinds still have to be visible rather than dropped —
-      // silently losing tool output is the failure mode this whole change is about.
-      parts.push(JSON.stringify(block));
-    }
-  }
-  return { text: parts.join("\n"), images };
+  const peeled = peelToolResultImages(content);
+  return {
+    text: peeled.text,
+    images: peeled.images.map((image) => ({
+      type: "image" as const,
+      mediaType: image.mediaType,
+      data: image.data,
+    })),
+  };
 }
 
 // ── User Messages (including synthetic tool_result) ──

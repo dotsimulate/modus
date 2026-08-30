@@ -12,7 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { shortPath, summarize } from "../../ui/src/components/ToolCall";
-import { isTodoTool } from "../../ui/src/tool-names";
+import { isTodoTool, toolFamily } from "../../ui/src/tool-names";
 
 describe("home shortening is cross-platform", () => {
   test("shortens a home path on every platform Modus ships to", () => {
@@ -46,6 +46,29 @@ describe("one case per tool, whatever the spelling", () => {
 
   test("a read range still reads as a range", () => {
     expect(summarize("Read", { file_path: "/tmp/a.ts", offset: 40, limit: 50 })).toBe("/tmp/a.ts :40-90");
+  });
+
+  test("Grok file and shell names fold onto the same headlines", () => {
+    expect(toolFamily("read_file")).toBe("read");
+    expect(toolFamily("write_file")).toBe("write");
+    expect(toolFamily("search_replace")).toBe("edit");
+    expect(toolFamily("run_terminal_cmd")).toBe("shell");
+    expect(toolFamily("run_terminal_command")).toBe("shell");
+    expect(summarize("read_file", { target_file: "/tmp/a.ts", offset: 10, limit: 20 })).toBe("/tmp/a.ts :10-30");
+    expect(summarize("write_file", { file_path: "/tmp/a.ts" })).toBe("/tmp/a.ts");
+    expect(summarize("search_replace", { file_path: "/tmp/a.ts" })).toBe("/tmp/a.ts");
+    expect(summarize("run_terminal_cmd", { command: "bun test" })).toBe("bun test");
+    expect(summarize("run_terminal_command", { command: ["bash", "-lc", "ls"] })).toBe("bash -lc ls");
+  });
+
+  test("Grok grep_search and list_dir fold onto grep and list headlines", () => {
+    expect(toolFamily("grep_search")).toBe("grep");
+    expect(toolFamily("grep")).toBe("grep");
+    expect(toolFamily("list_dir")).toBe("list");
+    expect(summarize("grep_search", { pattern: "toolFamily", path: "/tmp/src" })).toBe("/toolFamily/ in src");
+    expect(summarize("list_dir", { target_directory: "/tmp/src" })).toBe("/tmp/src");
+    expect(summarize("open_page", { url: "https://example.com/a" })).toBe("https://example.com/a");
+    expect(summarize("web_fetch", { url: "https://example.com/b" })).toBe("https://example.com/b");
   });
 });
 

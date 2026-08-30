@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from "react";
 import type { ToolCall } from "../../../sdk/index";
 import { ticketedRawFileUrl, ticketedShareableFileUrl } from "../rawFileUrl";
 import { useFileViewer } from "../providers/FileViewerContext";
+import { canonicalToolName, toolFamily, toolInputPath, toolWriteContent } from "../tool-names";
 
 export type FileEdit = {
   filePath: string;
@@ -17,16 +18,18 @@ export function extractFileEdits(toolCalls: ToolCall[]): FileEdit[] {
   for (const tc of toolCalls) {
     if (tc.status !== "completed") continue;
 
-    const name = (tc.name ?? "").toLowerCase();
-    const fp = (tc.input.file_path ?? tc.input.path) as string | undefined;
+    const family = toolFamily(tc.name ?? "");
+    const name = canonicalToolName(tc.name ?? "");
+    const fp = toolInputPath(tc.input);
     const hasBatchEdits = Array.isArray(tc.input.edits);
     const hasSingleEdit = typeof tc.input.old_string === "string" || typeof tc.input.new_string === "string";
-    const hasWrite = typeof tc.input.content === "string";
+    const writeContent = toolWriteContent(tc.input);
+    const hasWrite = writeContent != null;
 
     // Codex pre-fix format: Edit with { files: string[] } — emit one entry per file
-    if ((name === "edit" || name === "write") && Array.isArray(tc.input.files) && !fp) {
+    if ((family === "edit" || family === "write") && Array.isArray(tc.input.files) && !fp) {
       for (const filePath of tc.input.files as string[]) {
-        edits.push({ filePath, type: name === "write" ? "write" : "edit" });
+        edits.push({ filePath, type: family === "write" ? "write" : "edit" });
       }
       continue;
     }
@@ -40,7 +43,7 @@ export function extractFileEdits(toolCalls: ToolCall[]): FileEdit[] {
       continue;
     }
 
-    if (name === "edit" || name === "multiedit" || hasBatchEdits || hasSingleEdit) {
+    if (family === "edit" || hasBatchEdits || hasSingleEdit) {
       if (!fp) continue;
 
       if ((name === "multiedit" || hasBatchEdits) && Array.isArray(tc.input.edits)) {
@@ -60,12 +63,12 @@ export function extractFileEdits(toolCalls: ToolCall[]): FileEdit[] {
           newString: tc.input.new_string as string ?? "",
         });
       }
-    } else if (name === "write" || hasWrite) {
+    } else if (family === "write" || hasWrite) {
       if (!fp) continue;
       edits.push({
         filePath: fp,
         type: "write",
-        content: tc.input.content as string ?? "",
+        content: writeContent ?? "",
       });
     }
 

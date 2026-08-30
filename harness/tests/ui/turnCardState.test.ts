@@ -72,6 +72,33 @@ describe("describeTurnActivity", () => {
     expect(activity).toMatchObject({ phase: "tool", label: "Editing", detail: "App.tsx" });
   });
 
+  test("Grok file and shell names use the same activity labels", () => {
+    expect(describeTurnActivity(turnWithBlocks([{
+      type: "tool_call",
+      toolCall: tool("read_file", "running", { target_file: "C:\\repo\\src\\App.tsx" }),
+    }]), "running")).toMatchObject({ phase: "tool", label: "Reading", detail: "App.tsx" });
+    expect(describeTurnActivity(turnWithBlocks([{
+      type: "tool_call",
+      toolCall: tool("search_replace", "running", { file_path: "/work/a.ts" }),
+    }]), "running")).toMatchObject({ phase: "tool", label: "Editing", detail: "a.ts" });
+    expect(describeTurnActivity(turnWithBlocks([{
+      type: "tool_call",
+      toolCall: tool("write_file", "completed", { file_path: "/work/report.md" }),
+    }]), "running")).toMatchObject({ phase: "recent", label: "Wrote", detail: "report.md" });
+    expect(describeTurnActivity(turnWithBlocks([{
+      type: "tool_call",
+      toolCall: tool("run_terminal_cmd", "running", { command: "bun test" }),
+    }]), "running")).toMatchObject({ phase: "tool", label: "Running command", detail: "bun test" });
+    expect(describeTurnActivity(turnWithBlocks([{
+      type: "tool_call",
+      toolCall: tool("grep_search", "running", { pattern: "foo", path: "/work/src" }),
+    }]), "running")).toMatchObject({ phase: "tool", label: "Searching project", detail: "src" });
+    expect(describeTurnActivity(turnWithBlocks([{
+      type: "tool_call",
+      toolCall: tool("list_dir", "running", { target_directory: "/work/src" }),
+    }]), "running")).toMatchObject({ phase: "tool", label: "Inspecting folder", detail: "src" });
+  });
+
   test("keeps the latest completed action visible while the agent continues", () => {
     const activity = describeTurnActivity(turnWithBlocks([{
       type: "tool_call",

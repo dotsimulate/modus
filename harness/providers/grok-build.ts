@@ -25,6 +25,7 @@ import {
 } from "./grok-build-runtime";
 import { resolveSecret } from "../secrets";
 import { resolveCli } from "./resolve-cli";
+import { claudeToolResultContent, peelToolResultImages } from "../tool-result-images";
 
 type GrokBuildControls = {
   mode?: "default" | "auto" | "plan" | "always-approve";
@@ -74,7 +75,10 @@ export function ownsGrokClientGeneration(
   return currentClient === expectedClient && currentAbortController === expectedAbortController;
 }
 
-const GROK_TOOLS = GROK_BUILD_TOOL_GROUPS.flatMap((group) => [...group.tools]);
+const GROK_TOOLS = GROK_BUILD_TOOL_GROUPS
+  .flatMap((group) => [...group.tools])
+  .slice()
+  .sort((a, b) => b.length - a.length);
 
 function toolNameFromCall(call: any): string {
   const explicit = call?._meta?.toolName ?? call?._meta?.tool_name ?? call?.name;
@@ -131,7 +135,7 @@ function normalizedSet(values: Iterable<string>): Set<string> {
   return new Set(Array.from(values, (value) => value.toLowerCase()));
 }
 
-const GROK_SHELL_TOOLS = new Set(["run_terminal_cmd"]);
+const GROK_SHELL_TOOLS = new Set(["run_terminal_cmd", "run_terminal_command"]);
 
 export function toolDecision(ctx: TurnContext, toolName: string): "allow" | "ask" | "deny" {
   const lower = toolName.toLowerCase();
@@ -279,57 +283,9 @@ export function normalizeGrokToolCall(toolCall: any): { name: string; input: Rec
   return { name, input };
 }
 
-function isByte(value: unknown): boolean {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 255;
-}
-
-function bytesToString(bytes: number[]): string {
-  try {
-    return new TextDecoder().decode(Uint8Array.from(bytes));
-  } catch {
-    return bytes.map((b) => String.fromCharCode(b)).join("");
-  }
-}
-
 /** Peel Grok ACP / MCP result envelopes into plain tool text. */
 export function normalizeGrokToolOutput(value: unknown): string {
-  if (value == null) return "";
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-      try {
-        return normalizeGrokToolOutput(JSON.parse(trimmed));
-      } catch {
-        return value;
-      }
-    }
-    return value;
-  }
-  if (Array.isArray(value) && value.length > 0 && value.every(isByte)) {
-    return bytesToString(value as number[]);
-  }
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    if (typeof obj.OkayOutput === "string") return obj.OkayOutput;
-    if (typeof obj.ErrorOutput === "string") return obj.ErrorOutput;
-    if (typeof obj.output_for_prompt === "string") return obj.output_for_prompt;
-    if (typeof obj.output === "string") return obj.output;
-    if (Array.isArray(obj.output) && (obj.output as unknown[]).length > 0 && (obj.output as unknown[]).every(isByte)) {
-      return bytesToString(obj.output as number[]);
-    }
-    if (obj.output && typeof obj.output === "object" && !Array.isArray(obj.output)) {
-      const nested = obj.output as Record<string, unknown>;
-      if (typeof nested.OkayOutput === "string") return nested.OkayOutput;
-      if (typeof nested.ErrorOutput === "string") return nested.ErrorOutput;
-      if (typeof nested.output_for_prompt === "string") return nested.output_for_prompt;
-    }
-    const fileContent = obj.FileContent;
-    if (fileContent && typeof fileContent === "object" && !Array.isArray(fileContent)) {
-      const content = (fileContent as Record<string, unknown>).content;
-      if (typeof content === "string") return content;
-    }
-  }
-  return stringify(value);
+  return peelToolResultImages(value).text;
 }
 
 function emitToolStart(ctx: TurnContext, state: GrokState, toolCall: any): ToolState {
@@ -351,12 +307,18 @@ function emitToolStart(ctx: TurnContext, state: GrokState, toolCall: any): ToolS
   return tool;
 }
 
-function outputFromTool(update: any): string {
+function outputFromTool(update: any): string | Array<Record<string, unknown>> {
   const raw = update.rawOutput ?? update.raw_output;
-  if (raw != null) return normalizeGrokToolOutput(raw);
+  if (raw != null) {
+    const content = claudeToolResultContent(raw);
+    if (content !== "") return content;
+  }
   const content = Array.isArray(update.content) ? update.content : [];
-  const parts = content.map((entry: any) => entry?.content?.text ?? entry?.text ?? entry?.content).filter(Boolean);
-  if (parts.length) return parts.map((part: unknown) => normalizeGrokToolOutput(part)).join("\n");
+  if (content.length) {
+    const peeled = claudeToolResultContent(content);
+    if (peeled !== "") return peeled;
+  }
+  if (raw != null) return normalizeGrokToolOutput(raw);
   return stringify(update.status ?? "tool call completed");
 }
 

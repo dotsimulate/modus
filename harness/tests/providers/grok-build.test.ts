@@ -74,6 +74,7 @@ describe("Grok Build ACP provider", () => {
 
   test("peels MCP OkayOutput and byte-array Bash envelopes from tool results", async () => {
     const { normalizeGrokToolOutput } = await import("../../providers/grok-build");
+    const { claudeToolResultContent } = await import("../../tool-result-images");
     expect(normalizeGrokToolOutput({
       type: "MCP",
       tool_name: "modus_submit",
@@ -83,6 +84,18 @@ describe("Grok Build ACP provider", () => {
       type: "Bash",
       output: [104, 105, 10],
     })).toBe("hi\n");
+    const jpeg = "/9j/4AAQSkZJRgABAQAAAQABAAD";
+    expect(normalizeGrokToolOutput({
+      type: "ReadFile",
+      ImageContent: { data: jpeg },
+    })).toBe("");
+    expect(claudeToolResultContent({
+      type: "ReadFile",
+      ImageContent: { data: jpeg },
+    })).toEqual([{
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: jpeg },
+    }]);
   });
 
   test("reports a missing CLI as a durable error rather than a live-only result", async () => {
@@ -130,6 +143,13 @@ describe("Grok Build ACP provider", () => {
     expect(isKnownProvider("grok-build")).toBe(true);
     expect(listProviders()).toContain("grok-build");
     expect(getProviderCapabilities("grok-build")).toMatchObject({ name: "grok-build", family: "grok-build", supportsMcp: true });
+    const grokTools = getProviderCapabilities("grok-build")?.builtInTools ?? [];
+    for (const tool of [
+      "grep", "grep_search", "run_terminal_command", "open_page", "web_fetch",
+      "image_gen", "scheduler_create", "monitor", "list_dir",
+    ]) {
+      expect(grokTools).toContain(tool);
+    }
     expect(await probeGrokBuildModels(command)).toEqual([
       { id: "grok-test", owned_by: "xai", contextSource: "provider-default" },
     ]);

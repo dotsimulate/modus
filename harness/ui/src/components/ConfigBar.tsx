@@ -9,6 +9,7 @@ import { SearchDropdown } from "./SearchDropdown";
 import { profileOptions } from "../profile-options";
 import { ChatSettings } from "./ChatSettings";
 import { getAllTools, getToolGroups, isAntigravityProvider, isCodexProvider, isGeminiProvider, isGrokBuildProvider, isToolEnabled } from "../tools";
+import { isDiffTool, isGrepTool, isListTool, isReadTool, toolInputPath } from "../tool-names";
 import { useProfiles } from "../providers/ProfileContext";
 import type { Profile, SessionStatus, Message } from "../../../sdk/index";
 import { modus } from "../modusClient";
@@ -155,11 +156,11 @@ export function ConfigBar({
     const filesWritten = new Set<string>();
     for (const msg of (messages ?? [])) {
       for (const tc of (msg.toolCalls ?? [])) {
-        const path = (tc.input?.file_path ?? tc.input?.path ?? tc.input?.filePath) as string | undefined;
+        const path = toolInputPath(tc.input);
         if (!path) continue;
-        if (tc.name === "Read" || tc.name === "Grep" || tc.name === "Glob") {
+        if (isReadTool(tc.name) || isGrepTool(tc.name) || isListTool(tc.name) || tc.name === "Glob") {
           filesRead.add(path);
-        } else if (tc.name === "Write" || tc.name === "Edit") {
+        } else if (isDiffTool(tc.name)) {
           filesWritten.add(path);
         }
       }

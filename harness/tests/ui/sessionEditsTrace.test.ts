@@ -3,6 +3,7 @@ import type { Message, TouchRecord } from "../../sdk/index";
 
 let mergeSessionEdits: typeof import("../../ui/src/sessionEditsModel").mergeSessionEdits;
 let countChanges: typeof import("../../ui/src/components/FileChanges").countChanges;
+let extractFileEdits: typeof import("../../ui/src/components/FileChanges").extractFileEdits;
 
 beforeAll(async () => {
   Object.defineProperty(globalThis, "localStorage", {
@@ -14,7 +15,7 @@ beforeAll(async () => {
     },
   });
   ({ mergeSessionEdits } = await import("../../ui/src/sessionEditsModel"));
-  ({ countChanges } = await import("../../ui/src/components/FileChanges"));
+  ({ countChanges, extractFileEdits } = await import("../../ui/src/components/FileChanges"));
 });
 
 function touch(filePath: string, op: "write" | "edit"): TouchRecord {
@@ -71,5 +72,28 @@ describe("session edits trace model", () => {
 
     expect([...grouped.keys()]).toEqual(["D:\\repo\\src\\one.ts"]);
     expect(countChanges([...grouped.values()].flat())).toEqual({ additions: 2, deletions: 1 });
+  });
+});
+
+describe("Grok file tool names in extractFileEdits", () => {
+  test("search_replace and write_file land as edit/write the way Claude Edit/Write do", () => {
+    const edits = extractFileEdits([
+      {
+        id: "1",
+        name: "search_replace",
+        status: "completed",
+        input: { file_path: "src/a.ts", old_string: "old", new_string: "new" },
+      },
+      {
+        id: "2",
+        name: "write_file",
+        status: "completed",
+        input: { target_file: "src/b.ts", contents: "hello" },
+      },
+    ] as any);
+    expect(edits).toEqual([
+      { filePath: "src/a.ts", type: "edit", oldString: "old", newString: "new" },
+      { filePath: "src/b.ts", type: "write", content: "hello" },
+    ]);
   });
 });

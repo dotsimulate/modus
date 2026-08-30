@@ -11,7 +11,14 @@
 import { useMemo, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Message, ToolCall } from "../../../sdk/index";
 import { useFileViewer, type FileOpenRequest } from "../providers/FileViewerContext";
-import { isTodoTool } from "../tool-names";
+import {
+  canonicalToolName,
+  isWriteTool,
+  toolFamily,
+  toolInputCommand,
+  toolInputPath,
+  toolWriteContent,
+} from "../tool-names";
 
 // ── Config ──
 
@@ -226,12 +233,13 @@ function readRange(input: Record<string, unknown>): { line?: number; endLine?: n
 }
 
 function ReadCard({ tool, toggleControl, onOpenFile, intoTurnMs }: ToolCardProps) {
-  const fp = (tool.input.file_path as string) ?? (tool.input.path as string) ?? "";
+  const fp = toolInputPath(tool.input) ?? "";
   const offset = tool.input.offset as number | undefined;
   const limit = tool.input.limit as number | undefined;
   const range = readRange(tool.input);
   const text = tool.result ? unwrapResult(tool.result) : null;
-  const lineCount = text ? countLines(text) : null;
+  const images = tool.images ?? [];
+  const lineCount = !images.length && text ? countLines(text) : null;
 
   const rangeLabel = offset && limit
     ? `L${offset}\u2013${offset + limit}`
@@ -246,6 +254,7 @@ function ReadCard({ tool, toggleControl, onOpenFile, intoTurnMs }: ToolCardProps
         <span className="aa-file" title={fp}>{basename(fp)}</span>
         {dir && <span className="aa-dir" title={fp}>{dir}</span>}
         {rangeLabel && <span className="aa-tag">{rangeLabel}</span>}
+        {images.length > 0 && <span className="aa-tag">image</span>}
         {lineCount != null && <span className="aa-tag">{lineCount}L</span>}
         {fp && onOpenFile && (
           <button
@@ -270,21 +279,36 @@ function ReadCard({ tool, toggleControl, onOpenFile, intoTurnMs }: ToolCardProps
         <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
-    detail: text ? (
-      <pre className="aa-snippet aa-snippet--full">{text}</pre>
+    detail: images.length > 0 || text ? (
+      <div>
+        {images.length > 0 && (
+          <div className="tool-output-images">
+            {images.map((image, i) => (
+              <img
+                key={i}
+                className="message-image"
+                src={`data:${image.mediaType};base64,${image.data}`}
+                alt={basename(fp) || "tool image"}
+              />
+            ))}
+          </div>
+        )}
+        {text ? <pre className="aa-snippet aa-snippet--full">{text}</pre> : null}
+      </div>
     ) : undefined,
   };
 }
 
 function EditCard({ tool, expanded, toggleControl, intoTurnMs }: ToolCardProps) {
-  const fp = (tool.input.file_path as string) ?? "";
-  const isWrite = tool.name === "Write" || tool.name === "write";
+  const fp = toolInputPath(tool.input) ?? "";
+  const isWrite = isWriteTool(tool.name);
+  const writeContent = toolWriteContent(tool.input) ?? "";
 
   let adds = 0, dels = 0, editCount = 0;
   if (isWrite) {
-    adds = countLines((tool.input.content as string) ?? "");
+    adds = countLines(writeContent);
     editCount = 1;
-  } else if (tool.name === "MultiEdit" && Array.isArray(tool.input.edits)) {
+  } else if (canonicalToolName(tool.name) === "multiedit" && Array.isArray(tool.input.edits)) {
     editCount = (tool.input.edits as any[]).length;
     for (const e of tool.input.edits as Array<{ old_string?: string; new_string?: string }>) {
       const d = countDiffChanges(e.old_string ?? "", e.new_string ?? "");
@@ -313,13 +337,13 @@ function EditCard({ tool, expanded, toggleControl, intoTurnMs }: ToolCardProps) 
         <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
-    detail: (showPreview && (oldStr || newStr)) || (isWrite && expanded && (tool.input.content as string))
+    detail: (showPreview && (oldStr || newStr)) || (isWrite && expanded && writeContent)
       ? (
         <div className="aa-inline-diff">
           {oldStr && <pre className="aa-diff-line aa-diff-line--del">{"\u2212"} {oldStr}</pre>}
           {newStr && <pre className="aa-diff-line aa-diff-line--add">+ {newStr}</pre>}
-          {isWrite && (tool.input.content as string) && (
-            <pre className="aa-diff-line aa-diff-line--add">+ {tool.input.content as string}</pre>
+          {isWrite && writeContent && (
+            <pre className="aa-diff-line aa-diff-line--add">+ {writeContent}</pre>
           )}
         </div>
       ) : undefined,
@@ -327,7 +351,7 @@ function EditCard({ tool, expanded, toggleControl, intoTurnMs }: ToolCardProps) 
 }
 
 function BashCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
-  const cmd = (tool.input.command as string) ?? "";
+  const cmd = toolInputCommand(tool.input) ?? "";
   const desc = (tool.input.description as string) ?? "";
 
   return {
@@ -346,7 +370,7 @@ function BashCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
 
 function GrepCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const pattern = (tool.input.pattern as string) ?? "";
-  const path = (tool.input.path as string) ?? "";
+  const path = toolInputPath(tool.input) ?? "";
   const result = tool.result ? unwrapResult(tool.result) : "";
   const matchCount = result ? result.split("\n").filter(Boolean).length : null;
 
@@ -365,7 +389,7 @@ function GrepCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
 
 function GlobCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
   const pattern = (tool.input.pattern as string) ?? "";
-  const path = (tool.input.path as string) ?? "";
+  const path = toolInputPath(tool.input) ?? "";
   const result = tool.result ? unwrapResult(tool.result) : "";
   const fileCount = result ? result.split("\n").filter(Boolean).length : null;
 
@@ -376,6 +400,25 @@ function GlobCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
         <span className="aa-cmd">{pattern}</span>
         {path && <span className="aa-dir">{basename(path)}</span>}
         {fileCount != null && <span className="aa-tag">{fileCount} files</span>}
+        <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
+      </div>
+    ),
+  };
+}
+
+function LsCard({ tool, toggleControl, intoTurnMs }: ToolCardProps) {
+  const fp = toolInputPath(tool.input) ?? "";
+  const result = tool.result ? unwrapResult(tool.result) : "";
+  const fileCount = result ? result.split("\n").filter(Boolean).length : null;
+  const dir = dirOf(fp);
+
+  return {
+    summary: (
+      <div className="aa-card-row">
+        {toggleControl ? toggleControl(Icons.glob) : Icons.glob}
+        <span className="aa-file" title={fp}>{basename(fp) || fp || "."}</span>
+        {dir && <span className="aa-dir" title={fp}>{dir}</span>}
+        {fileCount != null && <span className="aa-tag">{fileCount} entries</span>}
         <ToolStatus tool={tool} intoTurnMs={intoTurnMs} />
       </div>
     ),
@@ -540,8 +583,17 @@ const CARD_REGISTRY: Record<string, ToolCardComponent> = {
 
 function getCard(toolName: string): ToolCardComponent {
   if (toolName.startsWith("mcp__")) return McpCard;
-  if (isTodoTool(toolName)) return TodoCard;
-  return CARD_REGISTRY[toolName] ?? GenericCard;
+  switch (toolFamily(toolName)) {
+    case "todo": return TodoCard;
+    case "read": return ReadCard;
+    case "write":
+    case "edit": return EditCard;
+    case "shell": return BashCard;
+    case "grep": return GrepCard;
+    case "list": return LsCard;
+    case "web": return WebCard;
+    default: return CARD_REGISTRY[toolName] ?? GenericCard;
+  }
 }
 
 // ── Helpers ──
@@ -557,7 +609,7 @@ function displayToolName(name: string): string {
 
 function toolSummary(tool: ToolCall): string {
   const inp = tool.input;
-  const fp = (inp.file_path as string) ?? (inp.path as string);
+  const fp = toolInputPath(inp);
   if (fp) return shortPath(fp);
   if (inp.skill) return inp.skill as string;
   if (inp.query) return truncate(inp.query as string, 40);

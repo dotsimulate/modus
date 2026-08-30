@@ -25,7 +25,18 @@ import {
   loadMoveComponent,
   loadMoveComponentCSS,
 } from "./move-component-loader";
-import { canonicalToolName, isTodoTool } from "../tool-names";
+import {
+  canonicalToolName,
+  isDiffTool,
+  isListTool,
+  isReadTool,
+  isTodoTool,
+  isWriteTool,
+  toolFamily,
+  toolInputCommand,
+  toolInputPath,
+  toolWriteContent,
+} from "../tool-names";
 
 type Props = {
   tool: ToolCallType;
@@ -62,22 +73,33 @@ class MoveToolViewErrorBoundary extends Component<{
 }
 
 function displayToolName(name: string): string {
-  if (isTodoTool(name)) return "todo";
   if (name === "CommandExecution") return "command execution";
   if (name === "FileChange") return "file change";
   if (name === "WebSearch") return "web search";
   if (name === "MCPToolCall") return "mcp tool call";
-  return name;
+  switch (toolFamily(name)) {
+    case "todo": return "todo";
+    case "read": return "read";
+    case "write": return "write";
+    case "edit": return "edit";
+    case "shell": return "command";
+    case "grep": return "grep";
+    case "list": return "list";
+    case "web": return "web";
+    default: return name;
+  }
 }
 
 /** Arguments worth putting in a headline, most specific first. */
 const SUMMARY_KEYS = [
-  "file_path", "filePath", "path", "notebook_path",
+  "file_path", "filePath", "target_file", "target_directory", "directory", "path", "notebook_path",
   "command", "cmd", "script",
   "pattern", "query", "url", "prompt", "description", "skill", "name",
 ];
 
-const PATH_KEYS = new Set(["file_path", "filePath", "path", "notebook_path"]);
+const PATH_KEYS = new Set([
+  "file_path", "filePath", "target_file", "target_directory", "directory", "path", "notebook_path",
+]);
 
 /**
  * Headline for a tool this build has no specific shape for.
@@ -109,14 +131,15 @@ function genericSummary(input: Record<string, unknown>): string {
 
 /** Extract a short human-readable summary from tool input + result */
 export function summarize(name: string, input: Record<string, unknown>): string {
-  const filePath = shortPath((input.file_path as string | undefined) ?? "");
+  const filePath = shortPath(toolInputPath(input) ?? "");
   if (name.startsWith("mcp__")) {
     const parts = name.split("__");
     if (parts.length >= 3) return `${parts[1]}/${parts[2]}`;
   }
 
   switch (canonicalToolName(name)) {
-    case "read": {
+    case "read":
+    case "readfile": {
       const p = filePath || truncate(shortPath(input.path as string ?? ""), 80);
       const offset = input.offset as number | undefined;
       const limit = input.limit as number | undefined;
@@ -127,35 +150,49 @@ export function summarize(name: string, input: Record<string, unknown>): string 
     }
     case "filechange": {
       const kind = input.change_kind as string | undefined;
-      const file = filePath || truncate(shortPath(input.path as string ?? ""), 80);
+      const file = filePath;
       return kind ? `${kind} ${file}` : file;
     }
     case "write":
+    case "writefile":
     case "edit":
+    case "searchreplace":
     case "multiedit":
     case "notebookedit":
     case "applypatch":
-      return filePath || truncate(shortPath(input.path as string ?? ""), 80);
+      return filePath;
     case "commandexecution":
     case "bash":
     case "powershell":
     case "shell":
-    case "exec": {
-      const command = input.command;
-      if (Array.isArray(command)) return truncate(command.join(" "), 80);
-      return truncate(command as string, 80);
+    case "exec":
+    case "runterminalcmd":
+    case "runterminalcommand": {
+      return truncate(toolInputCommand(input), 80);
     }
     case "grep":
-      return `/${input.pattern}/${input.path ? ` in ${basename(input.path as string)}` : ""}`;
+    case "grepsearch": {
+      const where = toolInputPath(input);
+      return `/${input.pattern}/${where ? ` in ${basename(where)}` : ""}`;
+    }
     case "glob":
       return `${input.pattern}${input.path ? ` in ${basename(input.path as string)}` : ""}`;
     case "find":
       return truncate(input.pattern as string ?? input.path as string, 80);
     case "ls":
-      return truncate(shortPath(input.path as string ?? ""), 80);
+    case "listdir":
+    case "listdirectory":
+      return filePath;
     case "webfetch":
+    case "openpage":
+    case "openpagewithfind":
       return truncate(input.url as string, 60);
     case "websearch":
+    case "xsearch":
+    case "xkeywordsearch":
+    case "xsemanticsearch":
+    case "xusersearch":
+    case "xthreadfetch":
       return truncate(input.query as string, 60);
     case "mcptoolcall": {
       const server = input.server as string | undefined;
@@ -298,7 +335,7 @@ function ToolInputArgs({ input }: { input: Record<string, unknown> }) {
     <div className="tool-args">
       {entries.map(([key, val]) => {
         const str = typeof val === "string" ? val : JSON.stringify(val, null, 2);
-        const display = typeof val === "string" && (key.includes("path") || key === "file_path")
+        const display = typeof val === "string" && (key.includes("path") || key === "file_path" || key === "target_file")
           ? shortPath(str) : str;
         const multiline = isCodeLike(display);
 
@@ -448,11 +485,11 @@ function EditDiffDetail({ tool }: { tool: ToolCallType }) {
   };
 
   const edits: FileEdit[] = [];
-  const fp = (inp.file_path as string) ?? "";
+  const fp = toolInputPath(inp) ?? "";
 
-  if (name === "Write" || name === "write") {
-    edits.push({ filePath: fp, type: "write", content: inp.content as string ?? "" });
-  } else if (name === "MultiEdit" && Array.isArray(inp.edits)) {
+  if (isWriteTool(name)) {
+    edits.push({ filePath: fp, type: "write", content: toolWriteContent(inp) ?? "" });
+  } else if (canonicalToolName(name) === "multiedit" && Array.isArray(inp.edits)) {
     for (const e of inp.edits as Array<{ old_string?: string; new_string?: string }>) {
       edits.push({ filePath: fp, type: "edit", oldString: e.old_string ?? "", newString: e.new_string ?? "" });
     }
@@ -482,7 +519,7 @@ export const ToolCallView = memo(function ToolCallView({
 }: Props) {
   const { openFile } = useFileViewer();
   const isTodo = isTodoTool(tool.name);
-  const [expanded, setExpanded] = useState(defaultExpanded ?? isTodo);
+  const [expanded, setExpanded] = useState(defaultExpanded ?? (isTodo || (tool.images?.length ?? 0) > 0));
   const [toolViewResolution, setToolViewResolution] = useState<MoveToolViewResolution | null>(null);
   const [ToolViewComponent, setToolViewComponent] = useState<ComponentType<MoveToolViewProps> | null>(null);
   // A claimed row that falls back to the native rendering is indistinguishable
@@ -586,12 +623,17 @@ export const ToolCallView = memo(function ToolCallView({
     if (isTodo && defaultExpanded === false) setExpanded(false);
   }, [defaultExpanded]);
 
+  useEffect(() => {
+    if ((tool.images?.length ?? 0) > 0 && defaultExpanded !== false) setExpanded(true);
+  }, [tool.images?.length, defaultExpanded]);
+
   const summary = summarize(tool.name, tool.input);
   const isAgent = tool.name === "Agent" && (tool.subMessages?.length ?? 0) > 0;
-  const isRead = tool.name === "Read" || tool.name === "read";
-  const isEdit = /^(Edit|edit|MultiEdit|Write|write|FileChange)$/.test(tool.name);
+  const isRead = isReadTool(tool.name);
+  const isList = isListTool(tool.name);
+  const isEdit = isDiffTool(tool.name);
   const todos = isTodo ? (tool.input.todos as Array<{ content: string; status: string; activeForm?: string }> | undefined) : undefined;
-  const readPath = isRead ? ((tool.input.file_path as string | undefined) ?? (tool.input.path as string | undefined)) : undefined;
+  const readPath = isRead ? toolInputPath(tool.input) : undefined;
   const readLines = readRange(tool.input);
   // Only a claimed row consumes this. Parsing unconditionally ran a scan over
   // every Read/Bash/Edit result in the transcript on every render, and the
@@ -650,9 +692,12 @@ export const ToolCallView = memo(function ToolCallView({
     </div>
   ) : isEdit ? (
     <EditDiffDetail tool={tool} />
-  ) : isRead && tool.result ? (
+  ) : (isRead || isList) && (tool.images?.length || tool.result) ? (
     <div className="tool-call-detail tool-call-detail--read">
-      <ReadOutput result={tool.result} offset={tool.input.offset as number | undefined} />
+      <ToolResultImages tool={tool} />
+      {tool.result ? (
+        <ReadOutput result={tool.result} offset={tool.input.offset as number | undefined} />
+      ) : null}
     </div>
   ) : (
     <div className="tool-call-detail">

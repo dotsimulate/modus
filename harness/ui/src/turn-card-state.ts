@@ -1,6 +1,6 @@
 import type { SessionTurnIndexEntry, ToolCall } from "../../sdk/index";
 import { segmentMessage, type ChatTurn } from "./turn-segments";
-import { canonicalToolName } from "./tool-names";
+import { canonicalToolName, toolFamily, toolInputPath } from "./tool-names";
 
 export type TurnActivity = {
   phase: "thinking" | "writing" | "tool" | "recent" | "error";
@@ -130,7 +130,7 @@ function firstString(input: Record<string, unknown>, keys: string[]): string {
 }
 
 function toolDetail(tool: ToolCall): string | undefined {
-  const path = firstString(tool.input, ["file_path", "filePath", "path", "notebook_path"]);
+  const path = toolInputPath(tool.input) ?? firstString(tool.input, ["file_path", "filePath", "path", "notebook_path"]);
   if (path) return truncate(basename(path));
   const detail = firstString(tool.input, ["description", "command", "cmd", "script", "pattern", "query", "url"]);
   return detail ? truncate(detail) : undefined;
@@ -138,22 +138,28 @@ function toolDetail(tool: ToolCall): string | undefined {
 
 function describeTool(tool: ToolCall, completed: boolean): Pick<TurnActivity, "label" | "detail"> {
   const name = canonicalToolName(tool.name);
+  const family = toolFamily(tool.name);
   const detail = toolDetail(tool);
 
-  if (name === "read") return { label: completed ? "Read" : "Reading", detail };
-  if (["write"].includes(name)) return { label: completed ? "Wrote" : "Writing", detail };
-  if (["edit", "multiedit", "notebookedit", "applypatch", "filechange"].includes(name)) {
+  if (family === "read") return { label: completed ? "Read" : "Reading", detail };
+  if (family === "write") return { label: completed ? "Wrote" : "Writing", detail };
+  if (family === "edit") {
     return { label: completed ? "Edited" : "Editing", detail };
   }
-  if (["commandexecution", "bash", "powershell", "shell", "exec"].includes(name)) {
+  if (family === "shell") {
     return { label: completed ? "Ran command" : "Running command", detail };
   }
-  if (["grep", "glob", "find"].includes(name)) {
+  if (family === "grep" || ["glob", "find"].includes(name)) {
     return { label: completed ? "Searched project" : "Searching project", detail };
   }
-  if (name === "ls") return { label: completed ? "Inspected folder" : "Inspecting folder", detail };
-  if (name === "websearch") return { label: completed ? "Searched the web" : "Searching the web", detail };
-  if (name === "webfetch") return { label: completed ? "Read web page" : "Reading web page", detail };
+  if (family === "list") return { label: completed ? "Inspected folder" : "Inspecting folder", detail };
+  if (family === "web") {
+    const key = canonicalToolName(tool.name);
+    if (key === "webfetch" || key === "openpage" || key === "openpagewithfind") {
+      return { label: completed ? "Read web page" : "Reading web page", detail };
+    }
+    return { label: completed ? "Searched the web" : "Searching the web", detail };
+  }
   if (["agent", "task", "workflow"].includes(name)) {
     return { label: completed ? "Finished delegated work" : "Coordinating work", detail };
   }
