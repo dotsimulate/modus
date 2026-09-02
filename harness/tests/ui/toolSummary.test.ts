@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { shortPath, summarize } from "../../ui/src/components/ToolCall";
+import { shortPath, summarize, summaryShowsPath } from "../../ui/src/components/ToolCall";
 import { isTodoTool, toolFamily } from "../../ui/src/tool-names";
 
 describe("home shortening is cross-platform", () => {
@@ -69,6 +69,27 @@ describe("one case per tool, whatever the spelling", () => {
     expect(summarize("list_dir", { target_directory: "/tmp/src" })).toBe("/tmp/src");
     expect(summarize("open_page", { url: "https://example.com/a" })).toBe("https://example.com/a");
     expect(summarize("web_fetch", { url: "https://example.com/b" })).toBe("https://example.com/b");
+  });
+});
+
+describe("path headline placement", () => {
+  test("file operations preserve the filename end of long paths", () => {
+    const path = "/workspace/a/very/long/provider/generated/path/to/ToolCall.tsx";
+    expect(summaryShowsPath("Read", { file_path: path })).toBe(true);
+    expect(summaryShowsPath("search_replace", { file_path: path })).toBe(true);
+    expect(summaryShowsPath("run_terminal_command", { command: path })).toBe(false);
+  });
+
+  test("unknown provider path tools retain the full path for CSS truncation", () => {
+    const path = `/workspace/${"nested/".repeat(12)}ToolCall.tsx`;
+    const summary = summarize("provider_file_reader", { file_path: path });
+    expect(summary).toBe(path);
+    expect(summaryShowsPath("provider_file_reader", { file_path: path })).toBe(true);
+  });
+
+  test("search context paths do not right-align pattern headlines", () => {
+    expect(summaryShowsPath("grep", { pattern: "ToolCall", path: "/workspace/src" })).toBe(false);
+    expect(summaryShowsPath("glob", { pattern: "**/*.tsx", path: "/workspace/src" })).toBe(false);
   });
 });
 

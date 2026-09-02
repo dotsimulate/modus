@@ -26,8 +26,8 @@ export function HtmlPreview({ filePath, content, nameActions, actions }: Props) 
       <div className="fcv-head">
         <div className="fcv-meta">
           <div className="fcv-name-row">
-            <span className="fcv-name">{basename(filePath)}</span>
             {nameActions && <div className="fcv-name-actions">{nameActions}</div>}
+            <span className="fcv-name">{basename(filePath)}</span>
           </div>
         </div>
         <div className="fcv-head-side">

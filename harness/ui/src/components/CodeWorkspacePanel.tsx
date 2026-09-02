@@ -556,8 +556,8 @@ export function CodeWorkspacePanel({ active = true, initialBrowserPath, onBrowse
             <div className="fcv-head">
               <div className="fcv-meta">
                 <div className="fcv-name-row">
-                  <span className="fcv-name">{basename(viewingFile)}</span>
                   <div className="fcv-name-actions">{copyPathBtn(viewingFile)}</div>
+                  <span className="fcv-name">{basename(viewingFile)}</span>
                 </div>
               </div>
               <div className="fcv-head-side">

@@ -57,8 +57,8 @@ export const FileContentViewer = memo(function FileContentViewer({
       <div className={`fcv-head${onHeaderPointerDown ? " fcv-head--draggable" : ""}`} onPointerDown={onHeaderPointerDown}>
         <div className="fcv-meta">
           <div className="fcv-name-row">
-            <span className="fcv-name">{name}</span>
             {nameActions && <div className="fcv-name-actions">{nameActions}</div>}
+            <span className="fcv-name">{name}</span>
           </div>
         </div>
         <div className="fcv-head-side">

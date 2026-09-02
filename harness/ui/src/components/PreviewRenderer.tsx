@@ -52,8 +52,8 @@ export function PreviewRenderer({
     <div className="fcv-head">
       <div className="fcv-meta">
         <div className="fcv-name-row">
-          <span className="fcv-name">{manifest.name}</span>
           {nameActions && <div className="fcv-name-actions">{nameActions}</div>}
+          <span className="fcv-name">{manifest.name}</span>
         </div>
       </div>
       <div className="fcv-head-side">

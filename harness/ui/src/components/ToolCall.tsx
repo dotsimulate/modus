@@ -113,7 +113,7 @@ function genericSummary(input: Record<string, unknown>): string {
   for (const key of SUMMARY_KEYS) {
     const value = input[key];
     if (typeof value === "string" && value.trim()) {
-      return truncate(PATH_KEYS.has(key) ? shortPath(value) : value, 80);
+      return PATH_KEYS.has(key) ? shortPath(value) : truncate(value, 80);
     }
     // Some providers pass a command as argv rather than a string.
     if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "string")) {
@@ -226,6 +226,45 @@ export function summarize(name: string, input: Record<string, unknown>): string 
     default:
       return genericSummary(input);
   }
+}
+
+/** Whether the headline is a path whose trailing filename should stay visible. */
+export function summaryShowsPath(name: string, input: Record<string, unknown>): boolean {
+  if (!toolInputPath(input) || name.startsWith("mcp__")) return false;
+
+  switch (canonicalToolName(name)) {
+    case "read":
+    case "readfile":
+    case "filechange":
+    case "write":
+    case "writefile":
+    case "edit":
+    case "searchreplace":
+    case "multiedit":
+    case "notebookedit":
+    case "applypatch":
+    case "ls":
+    case "listdir":
+    case "listdirectory":
+      return true;
+    case "find":
+      return typeof input.pattern !== "string" || !input.pattern.trim();
+    case "grep":
+    case "grepsearch":
+    case "glob":
+      return false;
+  }
+
+  // Match genericSummary's first usable argument without assuming a provider's
+  // tool name. A path only controls the headline when it wins that same scan.
+  for (const key of SUMMARY_KEYS) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) return PATH_KEYS.has(key);
+    if (Array.isArray(value) && value.length > 0 && value.every((part) => typeof part === "string")) {
+      return false;
+    }
+  }
+  return false;
 }
 
 function truncate(s: string | undefined, max: number): string {
@@ -723,7 +762,11 @@ export const ToolCallView = memo(function ToolCallView({
           {tool.status === "error" && <span className="tool-dot tool-dot--err" />}
         </span>
         <span className="tool-call-name">{displayToolName(tool.name)}</span>
-        {summary && <span className="tool-call-summary">{summary}</span>}
+        {summary && (
+          <span className={`tool-call-summary ${summaryShowsPath(tool.name, tool.input) ? "tool-call-summary--path" : ""}`}>
+            {summary}
+          </span>
+        )}
         {isAgent && (
           <span className="tool-call-sub-count">{countSubTools(tool.subMessages!)} calls</span>
         )}

@@ -51,6 +51,11 @@
 .tool-call.running .tool-call-name { color: var(--tool-running); }
 .tool-call.error .tool-call-name { color: var(--tool-error); }
 .tool-call-summary { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tool-call-summary--path {
+  direction: rtl;
+  flex: 1 1 auto;
+  text-align: right;
+}
 .tool-call-duration { color: var(--text-muted); margin-left: auto; flex-shrink: 0; font-size: calc(10px * var(--font-scale, 1)); }
 .tool-call-cancel {
   display: flex;
