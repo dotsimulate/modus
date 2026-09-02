@@ -25,7 +25,7 @@ Tauri replaces `%1` with the path of each binary to sign. It signs the Modus CLI
 main executable, and installer. It verifies external sidecars first and skips one that already has
 a valid signature, so the upstream-signed `bun.exe` should retain its existing publisher.
 
-The reference implementation targets **Azure Trusted Signing** via `trusted-signing-cli`. The
+The reference implementation targets **Azure Artifact Signing** (formerly Trusted Signing) via `trusted-signing-cli`. The
 wrapper is the only file that knows that; swapping to `signtool`, `AzureSignTool`, or another
 service means rewriting `sign-windows.cmd` and nothing else.
 
@@ -42,21 +42,21 @@ where.exe trusted-signing-cli
 
 ### 2. A service principal with signing rights
 
-In the Azure portal, for the Trusted Signing account:
+In the Azure portal, for the Artifact Signing account:
 
 1. **Microsoft Entra ID → App registrations → New registration.** Single tenant is fine. Record
    the **Application (client) ID** and **Directory (tenant) ID**.
 2. **Certificates & secrets → New client secret.** Record the **Value** immediately; it is shown
    once.
-3. **Trusted Signing account → Access control (IAM) → Add role assignment.** Grant the app
-   registration the **Trusted Signing Certificate Profile Signer** role.
+3. **Artifact Signing account → Access control (IAM) → Add role assignment.** Grant the app
+   registration the **Artifact Signing Certificate Profile Signer** role.
 
 Step 3 is the one most easily missed. Without it, signing fails with an authorization error even
 though every credential is correct.
 
 ### 3. Account values
 
-From the Trusted Signing account:
+From the Artifact Signing account:
 
 | Value | Where |
 |---|---|
@@ -72,7 +72,7 @@ Six variables, set in the shell the build runs from:
 
 ```powershell
 $env:MODUS_SIGN_ENDPOINT     = "https://<region>.codesigning.azure.net"
-$env:MODUS_SIGN_ACCOUNT      = "<trusted-signing-account-name>"
+$env:MODUS_SIGN_ACCOUNT      = "<artifact-signing-account-name>"
 $env:MODUS_SIGN_CERT_PROFILE = "<certificate-profile-name>"
 $env:AZURE_TENANT_ID         = "<directory-tenant-id>"
 $env:AZURE_CLIENT_ID         = "<application-client-id>"
@@ -131,7 +131,7 @@ Get-AuthenticodeSignature $artifacts |
 
 Every `Status` must be `Valid`. The first three should name the expected Modus publisher; Bun
 should retain its valid upstream signature. Check the signer subjects, and confirm timestamps are
-present — a signature without one stops validating when the certificate expires. Trusted Signing
+present — a signature without one stops validating when the certificate expires. Artifact Signing
 timestamps by default, so a missing timestamp indicates a problem.
 
 Then run the installer and confirm the UAC prompt names the expected publisher rather than
@@ -141,9 +141,12 @@ Then run the installer and confirm the UAC prompt names the expected publisher r
 
 ## Notes
 
-- **`bundle.publisher` must match the certificate subject.** It is set in `tauri.conf.json`. A
-  mismatch between the manifest publisher and the issued certificate is visible in the UAC prompt
-  and looks like tampering.
+- **`bundle.publisher` does not have to match the certificate subject.** It is set in
+  `tauri.conf.json` and is the NSIS manifest publisher, which keys the install location and the
+  uninstall registry entry — changing it breaks upgrade and uninstall detection for existing
+  installs. The UAC prompt names the *certificate* subject, which the signing service issues and
+  the manifest cannot influence. Leave `bundle.publisher` alone when the certificate subject
+  differs from it.
 - **Installer signing is not updater signing.** The Tauri updater carries its own signature, and
   its switch is compile-time: `src/updates.rs` reads `option_env!("MODUS_UPDATER_ENDPOINT")` and
   `option_env!("MODUS_UPDATER_PUBKEY")`. The `plugins.updater` block in `tauri.conf.json` is

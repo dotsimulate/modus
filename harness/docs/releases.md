@@ -187,10 +187,13 @@ to point at `LICENSE`, which showed a user Apache-2.0 alone as though that cover
 artifact embedding roughly a thousand third-party components. The generated file is the
 Apache-2.0 text plus a pointer to the full notices, which ship beside the packaged server.
 
-`bundle.publisher` is set and **must match the certificate subject**; a mismatch
-surfaces as a wrong or untrusted name in the UAC prompt. Verify bundle metadata
-by grepping the *generated* `target/release/nsis/x64/installer.nsi` — that file
-is the real check, not the source config.
+`bundle.publisher` is the NSIS manifest publisher, not a signing input: it keys
+the install location and uninstall registry entry, so changing it strands
+existing installs. The UAC prompt names the certificate subject instead, which
+the signing service issues and the manifest cannot influence — the two are
+allowed to differ. Verify bundle metadata by grepping the *generated*
+`target/release/nsis/x64/installer.nsi` — that file is the real check, not the
+source config.
 
 macOS notarization has no scaffolding in this repository. Note that a locally
 built macOS app does not need a Developer ID to run: ad-hoc signing satisfies
