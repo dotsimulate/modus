@@ -49,9 +49,10 @@ export type CodexReconnectNotice = {
 };
 
 /** Codex can emit a turn.failed-shaped progress notice while its transport is
- * still reconnecting. Only the explicit N/M form is transient. */
+ * still reconnecting. Only the explicit N/M form is transient; the parenthesised
+ * reason varies with the transport failure and is not part of the contract. */
 export function parseCodexReconnectNotice(message: string): CodexReconnectNotice | null {
-  const match = /^Reconnecting\.\.\.\s+(\d+)\/(\d+)\s+\(stream disconnected before completion:/i.exec(message.trim());
+  const match = /^Reconnecting\.\.\.\s+(\d+)\/(\d+)\s+\(/i.exec(message.trim());
   if (!match) return null;
   const attempt = Number(match[1]);
   const maxAttempts = Number(match[2]);
