@@ -1,6 +1,7 @@
 {
   "name": "modus-root",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "packageManager": "bun@1.3.12",
   "scripts": {
     "setup": "bun run harness/cli.ts setup",

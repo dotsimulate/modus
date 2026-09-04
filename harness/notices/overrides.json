@@ -1,7 +1,7 @@
 {
   "@anthropic-ai/claude-agent-sdk@0.3.239": {
     "spdx": "LicenseRef-Anthropic-Commercial",
-    "source": "package.json declares \"SEE LICENSE IN README.md\", which is not an SPDX expression. The package ships LICENSE.md reading \"© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.\" — proprietary, not an open-source license."
+    "source": "package.json declares \"SEE LICENSE IN README.md\", which is not an SPDX expression. The package ships LICENSE.md reading \"© Anthropic PBC. All rights reserved. Use is subject to the Legal Agreements outlined here: https://code.claude.com/docs/en/legal-and-compliance.\" — proprietary, not an open-source license. This classification is not a bar on shipping it: the README the license field points at is truncated in the published tarball, and the real \"License and terms\" section lives in the source repo (anthropics/claude-agent-sdk-typescript), referring use to Anthropic's Commercial Terms of Service \"including when you use it to power products and services that you make available to your own customers and end users\". Read the repo, not node_modules, before auditing this entry."
   },
   "@anthropic-ai/claude-agent-sdk-win32-x64@0.3.239": {
     "spdx": "LicenseRef-Anthropic-Commercial",

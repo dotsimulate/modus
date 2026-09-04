@@ -274,4 +274,6 @@ Early and moving fast. Modus runs daily for a small group of testers, but the pr
 
 ## License
 
-[Apache 2.0](LICENSE)
+Modus is licensed under the [Functional Source License, Version 1.1, ALv2 Future License](LICENSE) (`FSL-1.1-ALv2`).
+
+You can use, modify, and redistribute it for any purpose except offering it, or something substantially similar, as a competing commercial product or service. Commercial use inside your own work, including client work, is permitted. Every release automatically becomes Apache 2.0 two years after it is made available. Releases up to and including `v0.1.0` were published under Apache 2.0 and remain so.

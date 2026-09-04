@@ -183,9 +183,9 @@ It refuses to run when any is missing, so a half-configured environment fails
 loudly instead of emitting an unsigned artifact that looks signed.
 
 `bundle.licenseFile` points at `desktop/installer-license.txt`, not at `LICENSE`. It used
-to point at `LICENSE`, which showed a user Apache-2.0 alone as though that covered an
+to point at `LICENSE`, which showed a user the project license alone as though that covered an
 artifact embedding roughly a thousand third-party components. The generated file is the
-Apache-2.0 text plus a pointer to the full notices, which ship beside the packaged server.
+project license text plus a pointer to the full notices, which ship beside the packaged server.
 
 `bundle.publisher` is the NSIS manifest publisher, not a signing input: it keys
 the install location and uninstall registry entry, so changing it strands

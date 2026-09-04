@@ -82,7 +82,7 @@ describe("third-party notices", () => {
     const committed = normalizeEol(readFileSync(INSTALLER_LICENSE_PATH, "utf-8"));
     expect(committed).toBe(normalizeEol(renderInstallerLicense()));
     expect(committed).toContain("THIRD-PARTY COMPONENTS");
-    expect(committed).toContain("Apache License");
+    expect(committed).toContain("Functional Source License");
   });
 
   test("the vendored Bun notice is stamped for the pinned runtime", () => {

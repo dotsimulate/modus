@@ -160,6 +160,11 @@ logs, credentials, build output, or personal examples. Do not attach installer
 or release artifacts to a pull request unless a maintainer explicitly requests
 them through a protected release process.
 
-The project has not yet adopted a Contributor License Agreement or Developer
-Certificate of Origin requirement. Any future attestation policy will be an
-explicit maintainer decision and documented before enforcement.
+Contributions are accepted under the same terms as the project itself: by
+submitting a change you license it under the repository `LICENSE`
+(FSL-1.1-ALv2, including its automatic Apache 2.0 future grant) and confirm you
+have the right to do so. This is an inbound-equals-outbound policy; there is no
+separate Contributor License Agreement. Outside contributions must carry a
+Developer Certificate of Origin sign-off (`git commit -s`) attesting the same.
+Any stricter attestation policy will be an explicit maintainer decision and
+documented before enforcement.

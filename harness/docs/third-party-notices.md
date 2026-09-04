@@ -8,7 +8,7 @@ Where the license notices for everything Modus redistributes live, and how they 
 
 # Third-Party Notices
 
-Modus is licensed under Apache-2.0. The desktop package redistributes a great deal more
+Modus is licensed under FSL-1.1-ALv2. The desktop package redistributes a great deal more
 than that: a verbatim copy of the Bun runtime, two Rust executables, and JavaScript
 bundles that inline the source of their npm dependency trees. Those carry attribution
 obligations `LICENSE` does not satisfy on its own.
@@ -45,7 +45,7 @@ bun run notices:generate     # from harness/
 
 This rewrites `THIRD-PARTY-NOTICES.md`, `sbom.cdx.json`, and
 `desktop/installer-license.txt` — the last being what the installer's license page shows,
-which is the Apache-2.0 text plus a pointer to the full notices.
+which is the project license text plus a pointer to the full notices.
 
 Drift is a red test. `notices.test.ts` fails when the committed JavaScript section stops
 matching the dependency graph; CI's Rust job runs `bun run notices:check rust`, because
@@ -58,6 +58,15 @@ was read from — never delete the component to make the build pass.
 ## Licenses that are not open source
 
 `@anthropic-ai/claude-agent-sdk` and its platform sidecars are proprietary: "© Anthropic
-PBC. All rights reserved." They are recorded as `LicenseRef-Anthropic-Commercial`.
-Redistributing them inside a package is governed by Anthropic's legal agreements rather
-than by an open-source grant.
+PBC. All rights reserved." They are recorded as `LicenseRef-Anthropic-Commercial`, because
+that is a license classification and not an open-source grant — it is not a statement that
+the package may not ship.
+
+Read the governing text from the right place. The SDK's `package.json` declares
+`"license": "SEE LICENSE IN README.md"`, and **the README inside the published npm tarball
+has no license section** — the pointer is broken in the artifact you have on disk. The
+section exists in the package's source repository (`anthropics/claude-agent-sdk-typescript`),
+under `## License and terms`, and refers use of the SDK to Anthropic's Commercial Terms of
+Service "including when you use it to power products and services that you make available
+to your own customers and end users". Auditing this from `node_modules` alone reaches the
+opposite conclusion; check the repository before concluding that a grant is absent.

@@ -1,5 +1,6 @@
 {
   "name": "modus-harness",
+  "license": "FSL-1.1-ALv2",
   "module": "index.ts",
   "type": "module",
   "bin": {
