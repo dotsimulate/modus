@@ -17,8 +17,8 @@ function render(content: string): string {
 
 describe("rendered markdown links", () => {
   it("carries a Windows drive href through both sanitizer layers", () => {
-    expect(render("[report](D:/TD-tox/example/report.md:1)")).toContain(
-      'href="D:/TD-tox/example/report.md:1"',
+    expect(render("[report](D:/example/report.md:1)")).toContain(
+      'href="D:/example/report.md:1"',
     );
   });
 
