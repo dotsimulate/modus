@@ -1,4 +1,5 @@
-import { existsSync } from "fs";
+import { existsSync, readdirSync } from "fs";
+import { join } from "path";
 import type { MoveApiContext, MoveApiHandler, MoveContext } from "../../../harness/move-types";
 import { startSession } from "../../session-manager";
 import { getAllUserProfiles } from "../../profiles";
@@ -48,9 +49,26 @@ function newCallId(): string {
   return `pcall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function resolveProfile(value: string, fallbackProfile?: string): string {
-  if (value && value !== "Current profile") return value;
-  return fallbackProfile ?? "modus-helper";
+/**
+ * Guard (2026-09-03): a spawned receiver must wear one of the TARGET project's
+ * own agent profiles. The old fallback chain (defaultAgent ?? callerProfile ??
+ * "modus-helper") silently spawned receivers wearing the CALLER'S profile in
+ * the target project — anonymous clones that then answered in the target
+ * lead's name. The call is rejected before spawning instead.
+ */
+function targetProjectProfiles(targetCwd: string): string[] {
+  try {
+    return readdirSync(join(targetCwd, ".modus", "profiles", "agents"))
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => f.slice(0, -5));
+  } catch {
+    return [];
+  }
+}
+
+function profileBelongsToTarget(profile: string, targetCwd: string): boolean {
+  const bare = profile.startsWith("project:") ? profile.slice("project:".length) : profile;
+  return existsSync(join(targetCwd, ".modus", "profiles", "agents", `${bare}.json`));
 }
 
 function normalizePath(value: string): string {
@@ -130,8 +148,8 @@ export async function gather(ctx: MoveContext): Promise<string> {
     "",
     "Rules:",
     "- Call `modus_submit` with op `call` to start the protocol.",
-    "- If targetSessionId is present, the initial message is sent there.",
-    "- If targetSessionId is blank, a new target session is spawned in targetCwd.",
+    "- If targetSessionId is present, the initial message is sent there. Prefer this: verify the standing lead's id on the session index and target it explicitly.",
+    "- If targetSessionId is blank, a new target session is spawned in targetCwd — and its profile MUST be one of the TARGET project's own agents (or the target's declared default). A blank or foreign profile is rejected before anything spawns; your own profile is never used as a fallback.",
     "- The target agent receives this same API token and a callId so it can call back.",
     "- Each follow-up message uses op `message` and consumes one budget unit. Default budget is 1, so the target can answer once.",
     "- Do not perform extra work in the target project yourself.",
@@ -158,8 +176,7 @@ export const handlers: Record<string, MoveApiHandler> = {
     const state = await ctx.state.get<ProjectCallState>() ?? emptyState();
     const callId = newCallId();
     const owner = resolveTargetProjectOwner(targetCwd);
-    const callerProfile = ctx.db.getSession(ctx.sessionId)?.profile ?? undefined;
-    let targetProfile = resolveProfile(rawProfile, owner.defaultAgent ?? callerProfile);
+    let targetProfile = rawProfile && rawProfile !== "Current profile" ? rawProfile : "";
     const initial = buildInitialMessage({
       sourceCwd: ctx.cwd,
       title,
@@ -179,6 +196,35 @@ export const handlers: Record<string, MoveApiHandler> = {
       targetProfile = existing.profile ?? targetProfile;
       await ctx.sendMessage(targetSessionId, initial);
     } else {
+      // Spawning a receiver: the profile must belong to the target project.
+      // No profile given → the target owner's declared default agent, or a
+      // rejection — never the caller's profile, never a shipped fallback.
+      if (!targetProfile) {
+        if (owner.defaultAgent) {
+          targetProfile = owner.defaultAgent;
+        } else {
+          const available = targetProjectProfiles(targetCwd);
+          return {
+            ok: false,
+            error: `BLOCKED: no targetProfile was given and the target project declares no default agent. `
+              + `A cross-project spawn will not silently wear your profile — that is how anonymous clones `
+              + `end up answering in the target lead's name. Either pass targetSessionId for an existing seat `
+              + `(verify it on the session index first), or name one of the target project's own agents as `
+              + `targetProfile${available.length ? `: ${available.join(", ")}` : ` (none found under ${targetCwd}/.modus/profiles/agents/ — call an existing session instead)`}.`,
+          };
+        }
+      } else if (!profileBelongsToTarget(targetProfile, targetCwd)) {
+        const available = targetProjectProfiles(targetCwd);
+        return {
+          ok: false,
+          error: `BLOCKED: profile "${targetProfile}" does not belong to the target project `
+            + `(no ${targetCwd}/.modus/profiles/agents/ entry). Spawning a foreign-profile seat in another `
+            + `project creates an anonymous clone with no local authority. Either pass targetSessionId for an `
+            + `existing seat there, or use one of the target's own agents`
+            + `${available.length ? `: ${available.join(", ")}` : " (none found — call an existing session instead)"}.`,
+        };
+      }
+
       const session = startSession({
         profile: targetProfile,
         userProfile: owner.userProfile,

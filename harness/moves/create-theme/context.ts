@@ -12,7 +12,12 @@ export async function gather(ctx: MoveContext): Promise<string> {
     notes: theme.notes ?? "",
   }));
 
-  const activeThemeFile = activeTheme ? `.modus/ui/${activeTheme.file}` : null;
+  // Point the agent at the project-local active copy, not the registry
+  // record's source file: for built-in themes `.file` is relative to the
+  // harness resources dir (e.g. "ui/themes/modus-dark.css") and does not exist
+  // under the project, and prefixing it produced ".modus/ui/ui/themes/...".
+  // getActiveTheme only returns when the active copy exists on disk.
+  const activeThemeFile = activeTheme ? `.modus/ui/${activeTheme.activeFile}` : null;
   const date = ctx.date ?? new Date().toISOString().split("T")[0];
 
   const themesSection = themes.map(t =>
