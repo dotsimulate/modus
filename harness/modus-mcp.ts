@@ -23,7 +23,7 @@ import { z } from "zod";
 import { handleSubmit, isMoveApiToken, handleMoveApiSubmit } from "./move-runner";
 import { formatMoveApiResultText } from "./move-api-result";
 import { isMissionToken, handleMissionCommand } from "./mission-runner";
-import { addSessionTag, getSession } from "./db";
+import { addSessionTag, findApiTokenSession, getSession, saveApiToken } from "./db";
 import { broadcastUiEvent } from "./session-manager";
 import { buildHarnessContext, type HarnessContext } from "./harness-context";
 import { getScopedSkill, getScopedSkills } from "./skill-attachment";
@@ -240,26 +240,32 @@ export function registerApiHandler(name: string, handler: ApiHandler) {
 
 const API_PREFIX = "api-";
 
-/** Short token → sessionId registry. Tokens are session-scoped and in-memory only. */
-const tokenRegistry = new Map<string, string>();
-
 function isApiToken(token: string): boolean {
   return token.startsWith(API_PREFIX);
 }
 
-/** Create a short opaque API token for a session. The session ID is never exposed to the model. */
+/**
+ * Create a short opaque API token for a session. The session ID is never
+ * exposed to the model. The token is persisted in the harness database (see
+ * `api_tokens` in db.ts) so it keeps resolving after a restart: the prompt
+ * that quotes it lives on in the resumed session, and a token that dies with
+ * the process leaves that session calling `modus_submit` into
+ * "Invalid API token format" for the rest of its life. Session rekeys are
+ * followed by `renameSession`.
+ */
 export function createApiToken(sessionId: string): string {
   const bytes = new Uint8Array(5);
   crypto.getRandomValues(bytes);
   const rand = Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 8);
   const token = `${API_PREFIX}${rand}`;
-  tokenRegistry.set(token, sessionId);
+  saveApiToken(token, sessionId);
   return token;
 }
 
 /** Resolve an API token to its session ID. */
 function parseApiToken(token: string): string | null {
-  return tokenRegistry.get(token) ?? null;
+  if (!isApiToken(token)) return null;
+  return findApiTokenSession(token);
 }
 
 async function handleApiSubmit(token: string, data: Record<string, unknown>) {

@@ -137,6 +137,16 @@ function shadowGit(cwd: string): SimpleGit {
     ...process.env,
     GIT_DIR: shadowDirFor(cwd),
     GIT_WORK_TREE: cwd,
+    // Identity travels with every git call rather than relying on the shadow
+    // repo's stored config. A partial init (e.g. the config step throwing on an
+    // inherited GIT_EDITOR) used to leave a repo with HEAD but no user.name, and
+    // the isNew guard in ensureShadowRepo never repaired it — every later commit
+    // then failed with "Author identity unknown". Env identity cannot be left
+    // half-written, so the checkpoint author is always known.
+    GIT_AUTHOR_NAME: "modus-checkpoint",
+    GIT_AUTHOR_EMAIL: "checkpoint@modus.local",
+    GIT_COMMITTER_NAME: "modus-checkpoint",
+    GIT_COMMITTER_EMAIL: "checkpoint@modus.local",
   });
 }
 
@@ -158,12 +168,14 @@ async function ensureShadowRepo(cwd: string): Promise<void> {
     await simpleGit(cwd).raw(["init", "--bare", dir]);
     writeFileSync(join(dir, "work-tree.txt"), normalizeRoot(cwd));
   }
-  if (isNew) {
-    const g = shadowGit(cwd);
-    await g.raw(["config", "user.name", "modus-checkpoint"]);
-    await g.raw(["config", "user.email", "checkpoint@modus.local"]);
-    await g.raw(["config", "core.autocrlf", "false"]);
-  }
+  // Written every time, not just on init: a repo left half-configured by an
+  // earlier failed run (HEAD present, identity missing) is repaired on the next
+  // use rather than staying broken because isNew is now false. Identity also
+  // rides shadowGit's env, so these are belt-and-braces.
+  const g = shadowGit(cwd);
+  await g.raw(["config", "user.name", "modus-checkpoint"]);
+  await g.raw(["config", "user.email", "checkpoint@modus.local"]);
+  await g.raw(["config", "core.autocrlf", "false"]);
 }
 
 function splitNul(value: string): string[] {

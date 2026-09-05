@@ -373,6 +373,22 @@ control.
 
 When the agent calls the `ExitPlanMode` tool, the provider automatically resets `permissionMode` to `"default"` and notifies session-manager via `notifyConfigChange`, so the config_updated event reflects the cleared state.
 
+### How `bypass` reaches Claude Code
+
+A Modus `bypass` policy is not sent as the SDK's native `bypassPermissions`
+mode. It runs as `permissionMode: "default"` with a `PreToolUse` hook that allows
+every call. Two things depend on that hook being present: the SDK only consults
+`canUseTool` — where the harness intercepts `AskUserQuestion` and shows the
+interactive form — when a call is not pre-approved by the mode itself, and the
+session pause gate runs inside the hook. Native `bypassPermissions` shadows
+`canUseTool` entirely (the SDK reports `CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`), so an
+agent that asks a question gets an empty answer.
+
+The native shape is retained behind `MODUS_CLAUDE_NATIVE_BYPASS=1`. It exists for
+the Windows hook-IPC failure recorded on 2026-03-29, which did not reproduce on
+SDK 0.3.239 / CLI 2.1.261 (2026-09-05). When the variable is set, every session
+start logs that hooks are off and what that costs.
+
 ## Provider Health
 
 `checkAllProviderHealth()` reports readiness from registry-declared prerequisites:

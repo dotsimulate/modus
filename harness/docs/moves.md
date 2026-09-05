@@ -166,6 +166,11 @@ the runner registers `handlers` from context.ts, creates a `mapi-{prefix}-{insta
 `modus_submit(apiToken, { op: "...", ...data })` repeatedly. Handlers manage state via
 `MoveStateAPI`. With `api.state.persist: true`, state and the registry survive server restart.
 
+**Harness API tokens** (`api-` prefix, minted by `createApiToken` in `modus-mcp.ts` for the
+`api-access` and `ui` moves) map a token to a session ID. They are stored in the harness
+database (`api_tokens`), follow the session through a rekey, and keep resolving after a
+restart — a prompt that quotes one is still valid when the session is resumed.
+
 **Persistent moves** (`persistent: true`): no submit-token lifecycle. Activation stores an
 ambient registration per session; on each user turn the session manager calls
 `gatherAmbientContext(sessionId)`, which re-runs `gather()` for each active persistent move

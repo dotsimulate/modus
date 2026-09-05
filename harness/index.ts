@@ -1,5 +1,16 @@
 // Prevent nested session detection when launched from within Claude Code
 delete process.env.CLAUDECODE;
+// The harness never needs an interactive git editor, and simple-git refuses to run
+// at all when GIT_EDITOR is set ("not permitted without enabling allowUnsafeEditor").
+// A shell that launched us may have exported one — Claude Code's Bash tool sets
+// GIT_EDITOR=true — and that inherited value silently disabled every checkpoint
+// capture (2026-09-05). Drop it here, before any module builds a git client.
+for (const name of ["GIT_EDITOR", "GIT_SEQUENCE_EDITOR"]) {
+  if (process.env[name] !== undefined) {
+    console.warn(`[startup] ignoring inherited ${name}=${JSON.stringify(process.env[name])} — the harness runs git non-interactively; checkpoints would otherwise be disabled`);
+    delete process.env[name];
+  }
+}
 
 import { loadSecrets, resolveSecret, isSecretSet, getSecretsInfo, setupPin, changePin, disablePin, resetPin } from "./secrets";
 import { BrowserSessionStore } from "./browser-auth";

@@ -260,11 +260,31 @@ function readClaudePermissionMode(providerControls: unknown): ClaudePermissionMo
 
 const CLAUDE_SHELL_TOOLS = new Set(["bash", "powershell"]);
 
+/**
+ * Escape hatch: run Modus "bypass" as the SDK's native `bypassPermissions`
+ * mode with no hooks — the shape shipped on 2026-03-29 when the hook IPC
+ * between SDK and CLI was breaking on Windows at the first tool call.
+ *
+ * Off by default since 2026-09-05. A controlled run on Windows with SDK
+ * 0.3.239 / CLI 2.1.261 showed hooks round-tripping on every call with no
+ * failures, and the native mode has a real cost: the SDK never consults
+ * `canUseTool` there (`CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`), so AskUserQuestion
+ * runs headless and the agent gets an empty answer. Set
+ * `MODUS_CLAUDE_NATIVE_BYPASS=1` only if hook IPC failures return; the
+ * session log says when it is active.
+ */
+export const CLAUDE_NATIVE_BYPASS = process.env.MODUS_CLAUDE_NATIVE_BYPASS === "1";
+
 export function claudePermissionModeForPolicy(
   policy: PermissionPolicy | undefined,
   providerControls?: unknown,
+  options: { nativeBypass?: boolean } = {},
 ): ClaudePermissionMode {
-  if (!policy || policy === "bypass") return "bypassPermissions";
+  const nativeBypass = options.nativeBypass ?? CLAUDE_NATIVE_BYPASS;
+  // Modus "bypass" is expressed as the SDK's default mode plus a PreToolUse
+  // hook that allows everything (see preToolUseHook). That keeps canUseTool
+  // live for AskUserQuestion, which native bypassPermissions shadows.
+  if (!policy || policy === "bypass") return nativeBypass ? "bypassPermissions" : "default";
   if (policy === "auto-edit") return "acceptEdits";
   if (policy === "ask") return "default";
   return readClaudePermissionMode(providerControls);
@@ -546,9 +566,34 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         ?? "bypass";
       const policy = currentPolicy();
 
+      // ── Pause gate ──
+      // Holds the turn at a tool boundary when a pause was requested. Runs
+      // from the PreToolUse hook (every tool, every mode) and from canUseTool
+      // (only reached for AskUserQuestion once the hook has allowed it); the
+      // flag resets on first use so the second caller is a no-op.
+      const pauseGate = async (toolName: string, toolInput: Record<string, unknown>) => {
+        if (!session.pauseRequested) return;
+        session.pauseRequested = false;
+        session.status = "paused";
+        updateSessionStatus(session.sessionId, "paused");
+        ctx.emitEvent({
+          type: "system",
+          subtype: "paused",
+          data: { toolName, input: toolInput },
+        });
+        await new Promise<void>((resolve) => {
+          session.pauseResolver = resolve;
+        });
+        session.pauseResolver = null;
+        session.status = "running";
+        updateSessionStatus(session.sessionId, "running");
+      };
+
       const preToolUseHook = async (hookInput: any, toolUseID: string | undefined) => {
         const toolName: string = hookInput.tool_name;
         const input: Record<string, unknown> = hookInput.tool_input ?? {};
+
+        await pauseGate(toolName, input);
 
         if (toolName === "AskUserQuestion") {
           // AskUserQuestion is always handled by canUseTool interactively.
@@ -632,23 +677,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       };
 
       const canUseTool = async (toolName: string, toolInput: Record<string, unknown>) => {
-        // ── Pause gate ──
-        if (session.pauseRequested) {
-          session.pauseRequested = false;
-          session.status = "paused";
-          updateSessionStatus(session.sessionId, "paused");
-          ctx.emitEvent({
-            type: "system",
-            subtype: "paused",
-            data: { toolName, input: toolInput },
-          });
-          await new Promise<void>((resolve) => {
-            session.pauseResolver = resolve;
-          });
-          session.pauseResolver = null;
-          session.status = "running";
-          updateSessionStatus(session.sessionId, "running");
-        }
+        await pauseGate(toolName, toolInput);
 
         // ── AskUserQuestion — always intercept regardless of permission mode ──
         // Even in bypass mode we must show the interactive form. Without this,
@@ -739,6 +768,10 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         GIT_CONFIG_KEY_2: "submodule.recurse",
         GIT_CONFIG_VALUE_2: "false",
       };
+      const nativeBypassActive = policy === "bypass" && CLAUDE_NATIVE_BYPASS;
+      if (nativeBypassActive) {
+        console.warn(`[claude-code] MODUS_CLAUDE_NATIVE_BYPASS is set: session ${session.sessionId} runs native bypassPermissions with no hooks; AskUserQuestion will get no answer and pause cannot gate tools`);
+      }
       const sdkOptions: any = {
         pathToClaudeCodeExecutable: CLAUDE_PATH,
         cwd: session.cwd ?? opts.cwd ?? process.env.AGENT_CWD ?? process.cwd(),
@@ -754,19 +787,18 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
         tools: sdkTools,
         systemPrompt,
         settingSources: (opts.loadProjectSettings ?? profileDef?.loadProjectSettings ?? true) ? ["project"] : [],
-        // When harness policy is bypass, use bypassPermissions and skip hooks entirely.
-        // On Windows, the hook IPC stream between SDK and CLI is unreliable —
-        // every tool call triggers a round-trip that can fail with "Stream closed".
+        // Modus "bypass" runs as the SDK's default mode with a PreToolUse hook that
+        // allows every call: the hook is what keeps canUseTool reachable for
+        // AskUserQuestion, and it is where the pause gate lives. The native
+        // bypassPermissions shape (no hooks, canUseTool shadowed) is kept behind
+        // MODUS_CLAUDE_NATIVE_BYPASS for the Windows hook-IPC failure of 2026-03.
         permissionMode: claudePermissionModeForPolicy(policy, opts.providerControls),
         maxBudgetUsd: profileDef?.maxBudgetUsd,
         env: claudeEnv,
         plugins: profileDef?.plugins,
         sandbox: profileDef?.sandbox,
-        // Always wire canUseTool — it intercepts AskUserQuestion regardless of
-        // bypass mode. Non-AskUserQuestion tools short-circuit immediately in
-        // bypass mode so there's no performance cost.
         canUseTool,
-        ...(policy === "bypass" ? {} : {
+        ...(nativeBypassActive ? {} : {
           hooks: {
             PreToolUse: [{
               hooks: [preToolUseHook],
@@ -1145,7 +1177,7 @@ export function createClaudeCodeProvider(dependencies: ClaudeCodeProviderDepende
       if (config.permissionPolicy !== undefined) {
         const policy = session._configOverrides.permissionPolicy ?? state.profilePermissionPolicy ?? "bypass";
         state.sdkOptions.permissionMode = claudePermissionModeForPolicy(policy, config.providerControls);
-        state.sdkOptions.hooks = policy === "bypass" ? undefined : state.permissionHooks;
+        state.sdkOptions.hooks = policy === "bypass" && CLAUDE_NATIVE_BYPASS ? undefined : state.permissionHooks;
       }
 
       if (config.tools !== undefined && config.tools.length > 0 && hasMcp) {

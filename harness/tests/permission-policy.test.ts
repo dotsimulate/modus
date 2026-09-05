@@ -78,6 +78,16 @@ describe("portable permission policy", () => {
     }
   });
 
+  test("bypass runs as Claude's default mode so hooks and canUseTool stay live", () => {
+    // Native bypassPermissions shadows canUseTool (AskUserQuestion gets no
+    // answer) and skips the hook that carries the pause gate. The old shape
+    // survives only behind the explicit escape hatch.
+    expect(claudePermissionModeForPolicy("bypass")).toBe("default");
+    expect(claudePermissionModeForPolicy("bypass", undefined, { nativeBypass: false })).toBe("default");
+    expect(claudePermissionModeForPolicy("bypass", undefined, { nativeBypass: true })).toBe("bypassPermissions");
+    expect(claudePermissionModeForPolicy(undefined, undefined, { nativeBypass: true })).toBe("bypassPermissions");
+  });
+
   test("absent remains the bypass compatibility default", () => {
     expect(claudePermissionModeForPolicy(undefined)).toBe(claudePermissionModeForPolicy("bypass"));
     expect(approvalModeForPolicy(undefined)).toBe(approvalModeForPolicy("bypass"));

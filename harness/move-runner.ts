@@ -77,7 +77,15 @@ import {
 
 const BUILTIN_MOVES_DIR = join(APP_PATHS.resourcesDir, "moves");
 const MODUS_MOVES_DIR = ".modus/moves";
-const DEFAULT_TTL_MS = 10 * 60_000;       // 10 minutes
+// A submit token's clock starts at activation and counts wall-clock, including
+// time the agent spends waiting for the user to answer AskUserQuestion prompts.
+// A user-present move that asks a few clarifying questions could blow its own
+// token before the human finished answering (create-profile hit this
+// repeatedly, 2026-09-05). 30 minutes comfortably covers a real clarifying
+// exchange. The fuller fix is an idle timeout keyed off session activity so
+// human-wait time never counts at all; this bump removes the sharp edge without
+// that machinery.
+const DEFAULT_TTL_MS = 30 * 60_000;       // 30 minutes
 const DEFAULT_MAX_ATTEMPTS = 3;
 const TOKEN_CLEANUP_INTERVAL_MS = 60_000;  // sweep every 60s
 // Persisted API registrations are pruned by age and count on write. Move API
@@ -2327,7 +2335,11 @@ export async function handleSubmit(
     moveToken.status = "expired";
     tokenStore.delete(token);
     updateMoveRun(moveToken.moveRunId!, { status: "expired" });
-    return { ok: false, error: "Move token expired" };
+    return {
+      ok: false,
+      error: `Move token expired (a submit token lives ${Math.round(moveToken.ttl / 60000)} min from activation). `
+        + `Re-trigger the "${moveToken.moveName}" move to get a fresh token, then submit right away.`,
+    };
   }
 
   // Increment attempts

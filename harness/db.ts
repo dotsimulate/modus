@@ -102,6 +102,19 @@ db.run(`
   )
 `);
 
+// ── API Tokens (opaque `api-` tokens handed to agents by moves such as api-access) ──
+// Persisted so a token quoted in a session's prompt keeps resolving after the
+// harness restarts; an in-memory-only registry left every resumed session
+// holding a dead token and every call failing as "Invalid API token format".
+db.run(`
+  CREATE TABLE IF NOT EXISTS api_tokens (
+    token      TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )
+`);
+db.run(`CREATE INDEX IF NOT EXISTS idx_api_tokens_session ON api_tokens(session_id)`);
+
 // ── Messages (high-level conversation history) ──
 db.run(`
   CREATE TABLE IF NOT EXISTS messages (
@@ -705,7 +718,27 @@ const stmts = {
   deleteWebPosition: db.prepare(`
     DELETE FROM web_positions WHERE node_id = $node_id AND scope = $scope
   `),
+  // API Tokens
+  insertApiToken: db.prepare(`
+    INSERT INTO api_tokens (token, session_id, created_at) VALUES ($token, $session_id, $now)
+  `),
+  findApiToken: db.prepare(`
+    SELECT session_id FROM api_tokens WHERE token = $token
+  `),
 };
+
+// ── API Token Functions ──
+
+/** Persist an opaque API token for a session. Survives harness restarts. */
+export function saveApiToken(token: string, sessionId: string): void {
+  stmts.insertApiToken.run({ $token: token, $session_id: sessionId, $now: Date.now() });
+}
+
+/** Resolve a persisted API token to its session ID, or null when unknown. */
+export function findApiTokenSession(token: string): string | null {
+  const row = stmts.findApiToken.get({ $token: token }) as { session_id: string } | null;
+  return row?.session_id ?? null;
+}
 
 // ── Session Functions ──
 
@@ -782,6 +815,7 @@ export function renameSession(oldId: string, newId: string) {
     db.prepare(`UPDATE checkpoints SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     db.prepare(`UPDATE file_observations SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     db.prepare(`UPDATE action_runs SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
+    db.prepare(`UPDATE api_tokens SET session_id = $new WHERE session_id = $old`).run({ $old: oldId, $new: newId });
     // FTS5 virtual tables don't support UPDATE on session_id, so delete + re-insert
     db.prepare(`DELETE FROM search_index_v2 WHERE session_id = $old`).run({ $old: oldId });
   })();
