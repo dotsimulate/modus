@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import type { Options as ReactMarkdownOptions } from "react-markdown";
+import { rehypeModusLinks } from "./markdown-navigation";
 
 export const MAX_MARKDOWN_CHARS = 500_000;
 export const MAX_MERMAID_CHARS = 50_000;
@@ -19,7 +20,8 @@ export const mermaidSecurityConfig = {
 // React Markdown's later URL transform can classify it as a local path. Permit
 // one-letter candidates through this first layer; markdownUrlTransform still
 // rejects anything that is not actually `[A-Za-z]:[/\\]...`, and keeps every
-// other scheme behind React Markdown's default sanitizer.
+// other scheme behind React Markdown's default sanitizer. Modus candidates
+// likewise require a validated navigation destination in markdownUrlTransform.
 const windowsDriveProtocolCandidates = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"];
 
 export const markdownSanitizeSchema = {
@@ -31,12 +33,13 @@ export const markdownSanitizeSchema = {
   },
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), ...windowsDriveProtocolCandidates],
+    href: [...(defaultSchema.protocols?.href ?? []), ...windowsDriveProtocolCandidates, "modus"],
   },
 };
 
 export const markdownRehypePlugins: NonNullable<ReactMarkdownOptions["rehypePlugins"]> = [
   rehypeRaw,
+  rehypeModusLinks,
   [rehypeSanitize, markdownSanitizeSchema],
 ];
 

@@ -6,6 +6,7 @@ import {
   type DesktopDeepLinkTarget,
 } from "../desktopBridge";
 import { isSessionId } from "../sessionIds";
+import { onMarkdownNavigation } from "../markdown-navigation";
 
 /**
  * Claim the parked cold-start link, at most once per page load.
@@ -48,13 +49,18 @@ function isUsableTarget(target: DesktopDeepLinkTarget | null): target is Desktop
  * resolving the same way for everyone instead of depending on what was open.
  * A name that resolves to nothing must be ignored rather than navigated to.
  *
- * No-ops in the browser, where the equivalent is an ordinary URL fragment.
+ * Markdown navigation uses the same resolver in every client. Only the OS
+ * subscription and pending-link claim are desktop-specific.
  */
 export function useDesktopDeepLink(onLink: (target: DesktopDeepLinkTarget) => void): void {
   // Held in a ref so the subscription survives for the app's lifetime instead of
   // being torn down and re-established every time the callback's identity changes.
   const handlerRef = useRef(onLink);
   handlerRef.current = onLink;
+
+  useEffect(() => onMarkdownNavigation((target) => {
+    if (isUsableTarget(target)) handlerRef.current(target);
+  }), []);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

@@ -311,6 +311,26 @@ constructors for configured pages. Static slugs are `home` and `chat`; the only
 hardcoded nav link is `chat` with label `sessions`. Config pages add
 `page:<id>` views, and move pages add `move-page:<name>` views.
 
+### Markdown links
+
+Chat and Markdown file previews route `modus://session/<sessionId>` and
+`modus://page/<project>/<pageId>` inside the current backend, in both browser
+and desktop clients. Session navigation resolves the owning project through
+the same path as session history. Page navigation resolves existing pages after
+switching projects. Links cannot invoke moves or create resources.
+
+Inline, reference, angle-bracket, and sanitized HTML anchors are supported,
+including links inside lists, tables, and emphasis. Bare `modus:` URLs are
+linkified outside code and pasted blocks. The renderer also accepts
+`modus:session/<sessionId>`, `/session/<sessionId>`, and
+`//session/<sessionId>` as conversation aliases. Other `//host/path` links
+open as HTTPS URLs. HTTP and HTTPS links open externally.
+
+Local file links open in the file viewer; relative links in a Markdown preview
+resolve beside the displayed file. URL-encoded paths are decoded before being
+handed to the file API, and line references are retained. Arbitrary URI schemes
+remain subject to sanitization.
+
 ### Session Web
 
 The `web` view (`components/SessionWeb.tsx`) renders a zoomable, pannable DAG

@@ -14,7 +14,7 @@
  * **Hand the operating system only what we can name.** A link in a transcript is
  * model-authored text. Opening one is a real capability — the OS will launch
  * whatever handler is registered for a scheme — so the classifier allowlists
- * `http`/`https` and reports everything else as unsupported rather than guessing.
+ * `http`/`https`. Valid Modus destinations navigate inside the current app.
  * An unsupported target gets no Modus menu and no interception; it keeps whatever
  * the surrounding UI did before.
  *
@@ -24,6 +24,8 @@
 
 import type { ContextMenuItem } from "./components/ContextMenu";
 import { defaultUrlTransform } from "react-markdown";
+import { parseMarkdownNavigation } from "./markdown-navigation";
+import type { DesktopDeepLinkTarget } from "./desktopBridge";
 
 /** `C:\src` / `C:/src` — also the reason a scheme test cannot run first. */
 const WINDOWS_DRIVE = /^[A-Za-z]:[\\/]/;
@@ -43,6 +45,7 @@ const BARE_WEB_HOSTS: Array<{ pattern: RegExp; scheme: string }> = [
 ];
 
 export type MarkdownLinkTarget =
+  | { kind: "navigation"; target: DesktopDeepLinkTarget }
   | { kind: "web"; url: string }
   | {
       kind: "local";
@@ -89,10 +92,13 @@ export function splitLocalPath(href: string): { path: string; line?: number; end
 export function classifyLinkTarget(rawHref: string): MarkdownLinkTarget {
   const href = (rawHref ?? "").trim();
   if (!href) return { kind: "unsupported" };
+  const navigation = parseMarkdownNavigation(href);
+  if (navigation) return { kind: "navigation", target: navigation };
   // An in-page anchor is the renderer's own business.
   if (href.startsWith("#")) return { kind: "unsupported" };
 
   if (WINDOWS_DRIVE.test(href) || UNC_PREFIX.test(href)) return localTarget(href);
+  if (href.startsWith("//")) return { kind: "web", url: `https:${href}` };
 
   // Bare hosts are tested before schemes because `localhost:5180` satisfies the
   // scheme grammar, and reading `localhost` as a scheme would refuse the most
@@ -103,7 +109,7 @@ export function classifyLinkTarget(rawHref: string): MarkdownLinkTarget {
 
   const scheme = href.match(SCHEME)?.[1]?.toLowerCase();
   if (scheme) {
-    // `mailto:`, `tel:`, `file:`, `modus:` and anything else deliberately fall
+    // `mailto:`, `tel:`, `file:` and unknown schemes deliberately fall
     // through unclaimed rather than being forwarded to a registered handler.
     return scheme === "http" || scheme === "https"
       ? { kind: "web", url: href }
@@ -131,11 +137,15 @@ export function classifyLinkTarget(rawHref: string): MarkdownLinkTarget {
 /**
  * After rehype-sanitize admits a one-letter drive candidate, React Markdown's
  * own URL transform would still treat it as an unsafe URI scheme. Preserve
- * only destinations proven to be local paths; everything else, including image
- * sources and unsupported schemes, stays behind the library's sanitizer.
+ * only destinations proven to be local paths or in-app navigation; image
+ * sources and unsupported schemes stay behind the library's sanitizer.
  */
 export function markdownUrlTransform(value: string, key: string): string {
-  if (key === "href" && classifyLinkTarget(value).kind === "local") return value;
+  if (key === "href") {
+    const target = classifyLinkTarget(value);
+    if (target.kind === "local" || target.kind === "navigation") return value;
+    if (target.kind === "web") return target.url;
+  }
   return defaultUrlTransform(value);
 }
 
@@ -195,7 +205,10 @@ export function resolveMarkdownLinkTarget(
 }
 
 function localTarget(href: string): MarkdownLinkTarget {
-  const { path, line, endLine } = splitLocalPath(href);
+  const { path: encodedPath, line, endLine } = splitLocalPath(href);
+  // Markdown encodes spaces and Unicode in hrefs; the file API takes a path.
+  let path = encodedPath;
+  try { path = decodeURIComponent(encodedPath); } catch { /* Keep literal percent signs. */ }
   return { kind: "local", path, absolute: isAbsolutePath(path), line, endLine };
 }
 

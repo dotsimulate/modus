@@ -12,6 +12,27 @@ import {
 } from "../../ui/src/markdown-links";
 
 describe("classifyLinkTarget", () => {
+  it("routes session aliases before classifying filesystem paths", () => {
+    const id = "12345678-1234-1234-1234-123456789abc";
+    for (const prefix of ["modus://session/", "modus:session/", "/session/", "//session/"]) {
+      expect(resolveMarkdownLinkTarget(`${prefix}${id}`, "/repo/docs/guide.md")).toEqual({
+        kind: "navigation", target: { kind: "session", sessionId: id },
+      });
+    }
+    expect(classifyLinkTarget("modus://page/project/board")).toEqual({
+      kind: "navigation", target: { kind: "page", project: "project", slug: "board" },
+    });
+    for (const href of ["modus://move/run", "modus://session/invalid", `modus://session/${id}/extra`, "modus://page/project/../board"]) {
+      expect(classifyLinkTarget(href)).toEqual({ kind: "unsupported" });
+    }
+  });
+
+  it("decodes Markdown file destinations without losing line numbers", () => {
+    expect(resolveMarkdownLinkTarget("My%20Report.md:12", "/repo/README.md")).toMatchObject({
+      kind: "local", path: "/repo/My Report.md", line: 12,
+    });
+    expect(classifyLinkTarget("/repo/100%.md")).toMatchObject({ path: "/repo/100%.md" });
+  });
   it("treats a Windows drive path as a file, not as a scheme", () => {
     // `C:` matches the scheme grammar, which is why the drive test runs first.
     expect(classifyLinkTarget("C:\\Users\\dot\\notes.md")).toMatchObject({

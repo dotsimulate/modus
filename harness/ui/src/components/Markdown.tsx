@@ -25,6 +25,7 @@ import { nativePickerApplies } from "../native-picker";
 import { useContextMenu } from "./ContextMenu";
 import { PasteBlock } from "./PasteBlock";
 import { rehypeWordReveal } from "../markdown-reveal";
+import { openMarkdownNavigation } from "../markdown-navigation";
 
 // Register languages — core set for dev/AI chat
 import javascript from "highlight.js/lib/languages/javascript";
@@ -359,6 +360,11 @@ export const Markdown = memo(function Markdown({
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = targetOf(e);
     if (!target) return;
+    if (target.kind === "navigation") {
+      e.preventDefault();
+      openMarkdownNavigation(target.target);
+      return;
+    }
     if (target.kind === "local") {
       e.preventDefault();
       openInEditor(target.path, target.line, target.endLine);
